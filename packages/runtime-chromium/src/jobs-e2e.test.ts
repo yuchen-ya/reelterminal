@@ -1,6 +1,8 @@
 /**
  * Real-Chromium job lifecycle E2E:
- *  - Route F (frames→ffmpeg) produces a valid MP4 whose frames match preview
+ *  - Route F (frames→ffmpeg, EXPLICITLY FORCED — video-only experiment)
+ *    produces a valid H.264 MP4 whose frames match preview, is labeled
+ *    video-only in the capability details, and really carries no audio
  *  - cooperative cancel mid-export on BOTH routes (no fake artifacts left)
  *  - job serialization: a second export stays queued behind the first
  *  - cancel of a queued job settles cancelled without ever running
@@ -117,11 +119,17 @@ describe("chromium job lifecycle E2E", () => {
     }
   });
 
-  it("route F (frames→ffmpeg) exports a valid H.264 MP4 matching preview", async () => {
+  it("route F (forced video-only experiment) exports H.264 video matching preview — and says it has no audio", async () => {
     const { facade } = await makeSession({ forceExportRoute: "chromium-frames-ffmpeg" });
     const caps = await facade["capabilities.get"]();
     if (!caps.ok) throw new Error("caps failed");
     expect(caps.value.export.available).toBe(true);
+    // The capability must wear its limitation on the outside: explicitly
+    // forced, experimental, video-only, no audio track.
+    expect(caps.value.export.details?.["route"]).toBe("chromium-frames-ffmpeg");
+    expect(caps.value.export.details?.["videoOnly"]).toBe(true);
+    expect(caps.value.export.details?.["audio"]).toBe("none");
+    expect(caps.value.export.details?.["experimental"]).toBe(true);
 
     const preview = await facade["preview.render_frame"]({ timeSec: 2.5 });
     if (!preview.ok) throw new Error("preview failed");
@@ -147,6 +155,9 @@ describe("chromium job lifecycle E2E", () => {
     );
     expect(verified.value.pass).toBe(true);
     expect(Math.abs((verified.value.probe.frameCount ?? 0) - 150)).toBeLessThanOrEqual(1);
+    // Honesty check, not just a label: the video-only route really produced
+    // NO audio stream (this is exactly why it is never the default route).
+    expect(verified.value.probe.audioCodec).toBeNull();
 
     const similar = await facade["verify.artifact"]({
       path: mp4.path,

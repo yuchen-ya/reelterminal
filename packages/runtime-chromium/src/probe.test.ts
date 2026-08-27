@@ -76,21 +76,25 @@ describe("chromium runtime probe", () => {
       expect(result.page.decodeSample.height).toBe(TINY_MP4_EXPECTED.height);
     }
 
-    // Summary coherence: route is one of the honest three, and "unavailable"
-    // always carries a reason.
-    expect([
-      "chromium-webcodecs",
-      "chromium-frames-ffmpeg",
-      "unavailable",
-    ]).toContain(result.summary.exportRoute);
+    // Summary coherence: the DEFAULT route is only ever WebCodecs or
+    // unavailable — the video-only frames route is an explicit opt-in
+    // experiment and must never be derived silently. "unavailable" always
+    // carries a reason.
+    expect(["chromium-webcodecs", "unavailable"]).toContain(
+      result.summary.exportRoute,
+    );
     if (result.summary.exportRoute === "unavailable") {
       expect(result.summary.exportUnavailableReason).toBeTruthy();
     }
     if (result.summary.exportRoute === "chromium-webcodecs") {
+      // Route W requires BOTH the codec and a working ExportEngine.
       expect(result.summary.h264EncodeAvailable).toBe(true);
+      expect(result.page.exportEngineInit).toBe(true);
     }
-    if (result.summary.exportRoute === "chromium-frames-ffmpeg") {
+    // The video-only experiment's availability is a fact, not a route claim.
+    if (result.summary.videoOnlyFramesRouteAvailable) {
       expect(result.ffmpeg.available).toBe(true);
+      expect(result.summary.renderAvailable).toBe(true);
     }
 
     // Render availability implies all its prerequisites (no inflated claim).
