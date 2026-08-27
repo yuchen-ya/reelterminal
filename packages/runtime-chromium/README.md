@@ -162,9 +162,16 @@ reported in `job.status → route` and in the machine-readable probe
 - **One browser, one page.** Preview renders and exports serialize; a second
   export stays `queued` until the page is free. Cancellation still reaches a
   running export between frames.
-- **Input codec ≠ output codec.** Stock Chromium decodes VP8/VP9/AV1
-  everywhere; H.264 *decode* depends on the platform build (present on
-  Windows/macOS, absent on Linux CI Chromium). Output is always H.264.
+- **Input codec ≠ output codec.** Output is always H.264. Input decode
+  support is build-dependent and measured by the probe, never assumed:
+  VP8/VP9/AV1 decode everywhere; H.264 decode/encode is present in current
+  Playwright Chromium on Windows and Linux (probe-verified: Chromium 148)
+  but older/leaner builds may lack it — when in doubt, feed VP9/AV1 inputs
+  and read `runtime-probe.json`'s per-codec facts.
+- **Pixel compare scales references.** `verify.artifact` scales a
+  dimension-mismatched reference to the artifact's raster (the normal case
+  of comparing an export against its full-resolution source), and clamps a
+  `timeSec` at exactly the file's duration onto the last frame.
 - ffmpeg/ffprobe are only spawned as explicit binaries (no shell), resolved
   from config or `PATH`.
 

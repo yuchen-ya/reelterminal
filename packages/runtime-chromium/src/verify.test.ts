@@ -109,6 +109,54 @@ describe("FfmpegArtifactVerifier", () => {
     expect(notDifferent.pass).toBe(false);
   });
 
+  it("dimension-mismatched references are scaled, never a NaN failure", async () => {
+    const binaries = await resolveFfmpegBinaries();
+    if (!binaries) throw new Error("ffmpeg required for this test");
+    const a = writeTinyMp4(workDir);
+    // A 854x480 rendition of a DIFFERENT video (the acceptance scenario:
+    // comparing a 320x180 export against its full-resolution source).
+    const bigPath = path.join(workDir, "big-854x480.mp4");
+    const { runProcess } = await import("./node/ffmpeg");
+    await runProcess(binaries.ffmpeg, [
+      "-y", "-v", "error",
+      "-f", "lavfi", "-i", "testsrc2=size=854x480:rate=10:duration=6",
+      "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+      "-pix_fmt", "yuv420p", bigPath,
+    ]);
+    const different = await verifier.verify({
+      path: a,
+      compare: { referencePath: bigPath, timeSec: 1, referenceTimeSec: 1, mode: "different" },
+    });
+    expect(different.compare?.pass).toBe(true);
+    expect(different.compare?.meanAbsDiff).not.toBeNaN();
+    expect(different.compare?.changedPixelsRatio).toBeGreaterThan(0.2);
+
+    // Same-file compare at a mismatched size: SMPTE bars at 854x480 vs
+    // 320x180 scale onto each other closely — similar must pass.
+    const bigSamePath = path.join(workDir, "big-bars.mp4");
+    await runProcess(binaries.ffmpeg, [
+      "-y", "-v", "error",
+      "-i", a, "-vf", "scale=854:480",
+      "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+      "-pix_fmt", "yuv420p", bigSamePath,
+    ]);
+    const similar = await verifier.verify({
+      path: a,
+      compare: { referencePath: bigSamePath, timeSec: 1, referenceTimeSec: 1, mode: "similar", maxMeanAbsDiff: 12 },
+    });
+    expect(similar.compare?.pass).toBe(true);
+  });
+
+  it("compare at exactly t=duration clamps onto the last frame", async () => {
+    const a = writeTinyMp4(workDir); // 6.0 s, 60 frames
+    const report = await verifier.verify({
+      path: a,
+      compare: { referencePath: a, timeSec: 6.0, referenceTimeSec: 6.0, mode: "similar" },
+    });
+    expect(report.compare?.pass).toBe(true);
+    expect(report.compare?.meanAbsDiff).toBe(0);
+  });
+
   it("region-restricted compare: SMPTE bars differ in one band, match in another", async () => {
     const a = writeTinyMp4(workDir);
     // Same file: a center region compare must be perfectly similar.

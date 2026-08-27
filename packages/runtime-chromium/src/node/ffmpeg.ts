@@ -240,12 +240,14 @@ export async function extractFrameRgba(
   timeSec: number,
   width: number,
   height: number,
-  options: { timeoutMs?: number } = {},
+  options: { timeoutMs?: number; scale?: { width: number; height: number } } = {},
 ): Promise<Buffer> {
-  const expected = width * height * 4;
+  const outWidth = options.scale?.width ?? width;
+  const outHeight = options.scale?.height ?? height;
+  const expected = outWidth * outHeight * 4;
   if (expected <= 0 || expected > MAX_FRAME_BYTES) {
     throw new FfmpegError(
-      `refusing to extract a ${width}x${height} RGBA frame (${expected} bytes; cap is ${MAX_FRAME_BYTES})`,
+      `refusing to extract a ${outWidth}x${outHeight} RGBA frame (${expected} bytes; cap is ${MAX_FRAME_BYTES})`,
       "",
     );
   }
@@ -257,15 +259,16 @@ export async function extractFrameRgba(
       "-i", inputPath,
       "-ss", String(timeSec),
       "-frames:v", "1",
-      "-f", "rawvideo",
-      "-pix_fmt", "rgba",
-      rawPath,
     ];
+    if (options.scale) {
+      args.push("-vf", `scale=${options.scale.width}:${options.scale.height}`);
+    }
+    args.push("-f", "rawvideo", "-pix_fmt", "rgba", rawPath);
     await runProcess(ffmpegPath, args, options);
     const raw = await readFile(rawPath);
     if (raw.length !== expected) {
       throw new FfmpegError(
-        `frame extraction returned ${raw.length} bytes, expected ${expected} (${width}x${height} RGBA) — the source may have no frame at t=${timeSec}`,
+        `frame extraction returned ${raw.length} bytes, expected ${expected} (${outWidth}x${outHeight} RGBA) — the source may have no frame at t=${timeSec}`,
         "",
       );
     }

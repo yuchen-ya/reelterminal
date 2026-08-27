@@ -216,18 +216,8 @@ export class FfmpegArtifactVerifier implements ArtifactVerifier {
     binaries: FfmpegBinaries,
     filePath: string,
     timeSec: number,
+    scaleTo?: { width: number; height: number },
   ): Promise<PixelImage> {
-    if (hasImageExtension(filePath)) {
-      const probed = await ffprobeJson(binaries.ffprobe, filePath);
-      const stream = probed.streams?.find((s) => s.codec_type === "video");
-      const width = stream?.width ?? 0;
-      const height = stream?.height ?? 0;
-      if (width <= 0 || height <= 0) {
-        throw new Error(`cannot determine image dimensions of ${filePath}`);
-      }
-      const rgba = await extractFrameRgba(binaries.ffmpeg, filePath, 0, width, height);
-      return { width, height, rgba };
-    }
     const probed = await ffprobeJson(binaries.ffprobe, filePath);
     const stream = probed.streams?.find((s) => s.codec_type === "video");
     const width = stream?.width ?? 0;
@@ -235,8 +225,34 @@ export class FfmpegArtifactVerifier implements ArtifactVerifier {
     if (width <= 0 || height <= 0) {
       throw new Error(`cannot determine video dimensions of ${filePath}`);
     }
-    const rgba = await extractFrameRgba(binaries.ffmpeg, filePath, timeSec, width, height);
-    return { width, height, rgba };
+    if (hasImageExtension(filePath)) {
+      const rgba = await extractFrameRgba(
+        binaries.ffmpeg,
+        filePath,
+        0,
+        width,
+        height,
+        scaleTo ? { scale: scaleTo } : {},
+      );
+      return { width: scaleTo?.width ?? width, height: scaleTo?.height ?? height, rgba };
+    }
+    // Clamp onto the last real frame: t == duration is past every frame's
+    // [start, end) interval (frames live in [0, duration)).
+    const durationSec = Number(stream?.duration ?? probed.format?.duration ?? NaN);
+    const frameRate = parseFrameRate(stream?.avg_frame_rate ?? stream?.r_frame_rate);
+    let t = Math.max(0, timeSec);
+    if (Number.isFinite(durationSec) && durationSec > 0 && frameRate && frameRate > 0) {
+      t = Math.min(t, Math.max(0, durationSec - 1 / frameRate));
+    }
+    const rgba = await extractFrameRgba(
+      binaries.ffmpeg,
+      filePath,
+      t,
+      width,
+      height,
+      scaleTo ? { scale: scaleTo } : {},
+    );
+    return { width: scaleTo?.width ?? width, height: scaleTo?.height ?? height, rgba };
   }
 
   private async compareFrames(
@@ -246,29 +262,16 @@ export class FfmpegArtifactVerifier implements ArtifactVerifier {
   ): Promise<VerifyReport["compare"]> {
     const compare = request.compare;
     if (!compare) return undefined;
-    const [target, reference] = await Promise.all([
-      this.loadPixels(binaries, request.path, compare.timeSec),
-      this.loadPixels(
-        binaries,
-        compare.referencePath,
-        compare.referenceTimeSec ?? compare.timeSec,
-      ),
-    ]);
-    if (target.width !== reference.width || target.height !== reference.height) {
-      const check = {
-        name: "compare.dimensions",
-        pass: false,
-        details: `frame sizes differ: artifact ${target.width}x${target.height}, reference ${reference.width}x${reference.height}`,
-      };
-      checks.push(check);
-      return {
-        mode: compare.mode,
-        meanAbsDiff: NaN,
-        changedPixelsRatio: NaN,
-        region: { x: 0, y: 0, width: 1, height: 1 },
-        pass: false,
-      };
-    }
+    // The reference is scaled to the artifact's raster when sizes differ —
+    // comparing an export against its full-resolution source is the normal
+    // case, never a NaN failure.
+    const target = await this.loadPixels(binaries, request.path, compare.timeSec);
+    const reference = await this.loadPixels(
+      binaries,
+      compare.referencePath,
+      compare.referenceTimeSec ?? compare.timeSec,
+      { width: target.width, height: target.height },
+    );
 
     const regionNorm = compare.region ?? { x: 0, y: 0, width: 1, height: 1 };
     const x0 = Math.floor(regionNorm.x * target.width);
