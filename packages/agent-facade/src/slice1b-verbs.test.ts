@@ -16,10 +16,7 @@ import type {
   ProviderPreflight,
   RenderProvider,
 } from "./providers";
-import {
-  TINY_MP4_EXPECTED,
-  writeTinyMp4,
-} from "./media/fixtures/tiny-mp4";
+import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 
 /* ------------------------------ stubs ------------------------------ */
 
@@ -103,7 +100,7 @@ function stubExportProvider(opts?: {
         callbacks.onDone({
           path: finalPath,
           sizeBytes: (await stat(finalPath)).size,
-          route: "stub-route",
+          route: "chromium-webcodecs",
           framesEncoded: 150,
         });
       })();
@@ -310,6 +307,55 @@ describe("slice-1b verb contracts (stub providers)", () => {
     expect(conflict.ok).toBe(false);
     if (conflict.ok) return;
     expect(conflict.error.code).toBe("CONFLICT");
+  });
+
+  it("capabilities gate on artifactRoot even when provider preflights pass", async () => {
+    const facade = createAgentFacade({
+      mediaRoots: [mediaRoot],
+      // NO artifactRoot: artifact-producing capabilities must report
+      // unavailable even with healthy providers (no capability promises
+      // what the verb then refuses).
+      renderProvider: stubRenderProvider(),
+      exportProvider: stubExportProvider().provider,
+    });
+    const caps = await facade["capabilities.get"]();
+    expect(caps.ok).toBe(true);
+    if (!caps.ok) return;
+    expect(caps.value.preview.available).toBe(false);
+    expect(caps.value.preview.reason).toContain("artifactRoot");
+    expect(caps.value.export.available).toBe(false);
+    expect(caps.value.verify.available).toBe(false);
+    expect(caps.value.textOverlay.pixelRendering).toBe(false);
+  });
+
+  it("preview idempotent replay after artifact deletion re-renders honestly", async () => {
+    const facade = createAgentFacade({
+      mediaRoots: [mediaRoot],
+      artifactRoot,
+      renderProvider: stubRenderProvider(),
+    });
+    await makeProjectWithMedia(facade, mediaRoot);
+    const first = await facade["preview.render_frame"]({ timeSec: 2.5, idempotencyKey: "rf-del" });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const artifactPath = first.value.artifact.path;
+
+    const replay = await facade["preview.render_frame"]({ timeSec: 2.5, idempotencyKey: "rf-del" });
+    expect(replay.ok).toBe(true);
+    if (!replay.ok) return;
+    expect(replay.value.replayed).toBe(true);
+
+    // Delete the artifact: the next call with the same key must NOT replay a
+    // dangling reference — it re-renders the deterministic path.
+    await rm(artifactPath);
+    const rerendered = await facade["preview.render_frame"]({ timeSec: 2.5, idempotencyKey: "rf-del" });
+    expect(rerendered.ok).toBe(true);
+    if (!rerendered.ok) return;
+    expect(rerendered.value.replayed).toBe(false);
+    expect(rerendered.value.artifact.path).toBe(artifactPath);
+    expect(rerendered.value.artifact.sha256).toBe(first.value.artifact.sha256);
+    const restored = await stat(artifactPath);
+    expect(restored.size).toBeGreaterThan(0);
   });
 
   it("export.start snapshots the project, returns jobId immediately, replays same jobId", async () => {

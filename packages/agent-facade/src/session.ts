@@ -261,6 +261,9 @@ export class AgentFacadeSession {
       ...(this.config.artifactVerifier
         ? { artifactVerifier: this.config.artifactVerifier }
         : {}),
+      ...(this.config.artifactRoot !== undefined
+        ? { artifactRoot: this.config.artifactRoot }
+        : {}),
     };
   }
 
@@ -673,9 +676,11 @@ export class AgentFacadeSession {
       const rendersDir = resolvePath(artifactRoot, "renders");
       await mkdir(rendersDir, { recursive: true });
       const timeMs = Math.round(valid.timeSec * 1000);
+      // Scoped by project id: two sessions sharing one artifactRoot can
+      // never overwrite each other's preview artifacts.
       const destPath = resolvePath(
         rendersDir,
-        `frame-r${this.revision}-t${timeMs}-${width}x${height}.png`,
+        `frame-${project.id}-r${this.revision}-t${timeMs}-${width}x${height}.png`,
       );
 
       const rendered = await provider.renderFramePng({
@@ -895,7 +900,15 @@ export class AgentFacadeSession {
       }
       this.jobs.markCancelRequested(valid.jobId);
       try {
-        await provider.cancel(valid.jobId);
+        // The cancel path must never wedge the session's serialized lane:
+        // a provider that stops answering yields a bounded wait; the cancel
+        // request stays registered and the job still settles via callbacks.
+        await Promise.race([
+          provider.cancel(valid.jobId),
+          new Promise<"timeout">((resolveTimeout) =>
+            setTimeout(() => resolveTimeout("timeout" as const), 10_000),
+          ),
+        ]);
       } catch (error) {
         throw new FacadeError(
           "JOB_FAILED",
@@ -1207,10 +1220,17 @@ export class AgentFacadeSession {
     try {
       const artifactRoot = this.requireArtifactRoot("export.finalize");
       const resolution = resolveContainedPathDetailed(completion.path, [artifactRoot]);
-      if (resolution.kind !== "ok") {
+      if (resolution.kind === "outside") {
         throw new FacadeError(
           "JOB_FAILED",
           "export provider reported an artifact outside artifactRoot — refusing to publish it",
+          { path: completion.path },
+        );
+      }
+      if (resolution.kind !== "ok") {
+        throw new FacadeError(
+          "JOB_FAILED",
+          "export provider reported an artifact that cannot be read (missing or unreadable)",
           { path: completion.path },
         );
       }

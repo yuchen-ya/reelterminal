@@ -167,66 +167,88 @@ export class ChromiumRuntime {
 
   private async ensurePage(): Promise<Page> {
     if (this.closed) throw new Error("ChromiumRuntime is closed");
-    this.launchPromise ??= this.launch();
+    this.launchPromise ??= this.launch().catch((error: unknown) => {
+      // A failed launch must neither brick the runtime forever nor leak a
+      // half-started browser: clear the memo so the next call retries.
+      this.launchPromise = null;
+      throw error;
+    });
     return this.launchPromise;
   }
 
   private async launch(): Promise<Page> {
-    const browser = await chromium.launch({
-      headless: this.options.headless ?? true,
-      ...(this.options.executablePath
-        ? { executablePath: this.options.executablePath }
-        : {}),
-      args: [
-        "--disable-dev-shm-usage",
-        // OfflineAudioContext/AudioContext rendering must not stall on the
-        // autoplay policy in headless export sessions.
-        "--autoplay-policy=no-user-gesture-required",
-        ...(this.options.launchArgs ?? []),
-      ],
-    });
-    this.browser = browser;
+    let browser: Browser | null = null;
+    let server: Server | null = null;
+    try {
+      browser = await chromium.launch({
+        headless: this.options.headless ?? true,
+        ...(this.options.executablePath
+          ? { executablePath: this.options.executablePath }
+          : {}),
+        args: [
+          "--disable-dev-shm-usage",
+          // OfflineAudioContext/AudioContext rendering must not stall on the
+          // autoplay policy in headless export sessions.
+          "--autoplay-policy=no-user-gesture-required",
+          ...(this.options.launchArgs ?? []),
+        ],
+      });
+      this.browser = browser;
 
-    // WebCodecs (VideoDecoder/VideoEncoder) is gated on a secure context;
-    // about:blank/setContent is NOT one, but 127.0.0.1 is. Serve the harness
-    // page + bundle from a loopback-only server on an ephemeral port.
-    const bundle = await buildBrowserEntry();
-    const server = createServer((req, res) => {
-      if (req.url === "/bundle.js") {
-        res.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });
-        res.end(bundle);
-        return;
+      // WebCodecs (VideoDecoder/VideoEncoder) is gated on a secure context;
+      // about:blank/setContent is NOT one, but 127.0.0.1 is. Serve the harness
+      // page + bundle from a loopback-only server on an ephemeral port.
+      const bundle = await buildBrowserEntry();
+      server = createServer((req, res) => {
+        if (req.url === "/bundle.js") {
+          res.writeHead(200, { "content-type": "text/javascript; charset=utf-8" });
+          res.end(bundle);
+          return;
+        }
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(PAGE_HTML);
+      });
+      this.server = server;
+      await new Promise<void>((resolveListen, rejectListen) => {
+        server!.once("error", rejectListen);
+        server!.listen(0, "127.0.0.1", () => resolveListen());
+      });
+      const { port } = server.address() as AddressInfo;
+
+      const page = await browser.newPage();
+      const onConsole = this.options.onConsole;
+      if (onConsole) {
+        page.on("console", (msg) => onConsole(`[page:${msg.type()}] ${msg.text()}`));
+        page.on("pageerror", (error) => onConsole(`[page:error] ${error.message}`));
       }
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      res.end(PAGE_HTML);
-    });
-    this.server = server;
-    await new Promise<void>((resolveListen, rejectListen) => {
-      server.once("error", rejectListen);
-      server.listen(0, "127.0.0.1", () => resolveListen());
-    });
-    const { port } = server.address() as AddressInfo;
-
-    const page = await browser.newPage();
-    const onConsole = this.options.onConsole;
-    if (onConsole) {
-      page.on("console", (msg) => onConsole(`[page:${msg.type()}] ${msg.text()}`));
-      page.on("pageerror", (error) => onConsole(`[page:error] ${error.message}`));
-    }
-    await page.goto(`http://127.0.0.1:${port}/`, {
-      waitUntil: "domcontentloaded",
-      timeout: 60_000,
-    });
-    await page.addScriptTag({ url: "/bundle.js", type: "module" });
-    await page.waitForFunction(
-      () =>
-        (window as { __openreelRender?: unknown }).__openreelRender !==
+      await page.goto(`http://127.0.0.1:${port}/`, {
+        waitUntil: "domcontentloaded",
+        timeout: 60_000,
+      });
+      await page.addScriptTag({ url: "/bundle.js", type: "module" });
+      await page.waitForFunction(
+        () =>
+          (window as { __openreelRender?: unknown }).__openreelRender !==
+          undefined,
         undefined,
-      undefined,
-      { timeout: 60_000 },
-    );
-    this.page = page;
-    return page;
+        { timeout: 60_000 },
+      );
+      this.page = page;
+      return page;
+    } catch (error) {
+      // Reap the partial launch: no orphaned browser/server on any failure
+      // between browser start and a ready page.
+      this.browser = null;
+      this.server = null;
+      this.page = null;
+      if (browser) await browser.close().catch(() => undefined);
+      if (server) {
+        await new Promise<void>((resolveClose) =>
+          server!.close(() => resolveClose()),
+        );
+      }
+      throw error;
+    }
   }
 
   async close(): Promise<void> {

@@ -53,6 +53,8 @@ export interface ChromiumProvidersConfig {
    * capable machine exercise the fallback, never an incapable one lie.
    */
   readonly forceExportRoute?: "chromium-webcodecs" | "chromium-frames-ffmpeg";
+  /** Hard ceiling for one export job; default 600_000 (10 min). */
+  readonly exportWatchdogMs?: number;
 }
 
 interface JobSlot {
@@ -179,7 +181,9 @@ export class ChromiumExportProvider implements ExportProvider {
       () => undefined,
       () => undefined,
     );
-    await run.catch(() => undefined);
+    // Deliberately NOT awaited: the contract is a prompt return; settlement
+    // arrives exclusively through the callbacks.
+    void run.catch(() => undefined);
   }
 
   async cancel(jobId: string): Promise<void> {
@@ -210,15 +214,33 @@ export class ChromiumExportProvider implements ExportProvider {
         throw new Error("no export route available in this runtime");
       }
       this.activeRoute = route;
-      if (route === "chromium-webcodecs") {
-        await this.runWebcodecsRoute(request, callbacks, slot);
-      } else {
-        await this.runFramesFfmpegRoute(request, callbacks, slot);
+      // Watchdog: a wedged page/encoder must never freeze the job (or, via
+      // the shared page, the whole session) forever. On fire we abort the
+      // in-page export, recycle the browser, and settle as an error.
+      const watchdogMs = this.providers.watchdogMs;
+      let watchdog: ReturnType<typeof setTimeout> | undefined;
+      const watchdogFired = new Promise<never>((_resolve, reject) => {
+        watchdog = setTimeout(() => {
+          reject(new ExportWatchdogError(`export exceeded the ${watchdogMs}ms watchdog`));
+        }, watchdogMs);
+      });
+      try {
+        const work =
+          route === "chromium-webcodecs"
+            ? this.runWebcodecsRoute(request, callbacks, slot)
+            : this.runFramesFfmpegRoute(request, callbacks, slot);
+        await Promise.race([work, watchdogFired]);
+      } finally {
+        if (watchdog) clearTimeout(watchdog);
       }
     } catch (error) {
       slot.state = "settled";
       this.activeRoute = null;
-      if (slot.cancelRequested) {
+      if (error instanceof ExportWatchdogError) {
+        await this.providers.runtime.abortInPageExport().catch(() => undefined);
+        await this.providers.runtime.close().catch(() => undefined);
+        callbacks.onError({ code: "JOB_FAILED", message: error.message });
+      } else if (slot.cancelRequested) {
         callbacks.onCancelled();
       } else {
         callbacks.onError({
@@ -371,6 +393,9 @@ export class ChromiumExportProvider implements ExportProvider {
       if (sizeBytes === 0) {
         throw new Error("ffmpeg produced an empty MP4");
       }
+      // A cancel landing during finish()/faststart must not publish the file:
+      // mirror the Route-W post-completion check (see runWebcodecsRoute).
+      if (slot.cancelRequested) throw new FramesJobCancelled();
       await rename(partPath, finalPath);
       callbacks.onDone({
         path: finalPath,
@@ -400,6 +425,13 @@ class FramesJobCancelled extends Error {
   }
 }
 
+class ExportWatchdogError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExportWatchdogError";
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Pool: one browser + one probe, shared by all providers              */
 /* ------------------------------------------------------------------ */
@@ -407,11 +439,14 @@ class FramesJobCancelled extends Error {
 export class ChromiumProviderPool {
   readonly runtime: ChromiumRuntime;
   readonly ffmpegConfig: FfmpegConfig;
+  /** Export watchdog: hard ceiling for one export (default 10 min). */
+  readonly watchdogMs: number;
   private readonly config: ChromiumProvidersConfig;
   private probePromise: Promise<RuntimeProbeResult> | null = null;
 
   constructor(config: ChromiumProvidersConfig = {}) {
     this.config = config;
+    this.watchdogMs = config.exportWatchdogMs ?? 600_000;
     this.ffmpegConfig = {
       ...(config.ffmpegPath ? { ffmpegPath: config.ffmpegPath } : {}),
       ...(config.ffprobePath ? { ffprobePath: config.ffprobePath } : {}),

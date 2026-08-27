@@ -8,8 +8,9 @@
  * command injection.
  */
 import { spawn } from "node:child_process";
-import { delimiter, extname } from "node:path";
-import { stat } from "node:fs/promises";
+import { delimiter, extname, join } from "node:path";
+import { stat, readFile, rm, mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 export interface FfmpegBinaries {
   readonly ffmpeg: string;
@@ -224,10 +225,14 @@ export async function ffprobeJson(
 /* Frame extraction (raw RGBA — no image codec needed on the Node side) */
 /* ------------------------------------------------------------------ */
 
+/** Hard sanity cap for one extracted RGBA frame (512 MiB ≈ 8K×8K). */
+const MAX_FRAME_BYTES = 512 * 1024 * 1024;
+
 /**
  * Extract one frame as raw RGBA bytes. Seeking is accurate (decode-then-seek)
  * so the extracted frame is the frame AT timeSec, not the nearest keyframe.
- * The caller must know the expected dimensions and validates the byte count.
+ * The frame streams to a temp file (NOT stdout), so arbitrarily large rasters
+ * never hit a stdio cap; the byte count is validated exactly.
  */
 export async function extractFrameRgba(
   ffmpegPath: string,
@@ -237,24 +242,37 @@ export async function extractFrameRgba(
   height: number,
   options: { timeoutMs?: number } = {},
 ): Promise<Buffer> {
-  const args = [
-    "-v", "error",
-    "-i", inputPath,
-    "-ss", String(timeSec),
-    "-frames:v", "1",
-    "-f", "rawvideo",
-    "-pix_fmt", "rgba",
-    "pipe:1",
-  ];
-  const { stdout } = await runProcess(ffmpegPath, args, options);
   const expected = width * height * 4;
-  if (stdout.length !== expected) {
+  if (expected <= 0 || expected > MAX_FRAME_BYTES) {
     throw new FfmpegError(
-      `frame extraction returned ${stdout.length} bytes, expected ${expected} (${width}x${height} RGBA) — the source may have no frame at t=${timeSec}`,
+      `refusing to extract a ${width}x${height} RGBA frame (${expected} bytes; cap is ${MAX_FRAME_BYTES})`,
       "",
     );
   }
-  return stdout;
+  const tempDir = await mkdtemp(join(tmpdir(), "oframe-"));
+  const rawPath = join(tempDir, "frame.rgba");
+  try {
+    const args = [
+      "-v", "error",
+      "-i", inputPath,
+      "-ss", String(timeSec),
+      "-frames:v", "1",
+      "-f", "rawvideo",
+      "-pix_fmt", "rgba",
+      rawPath,
+    ];
+    await runProcess(ffmpegPath, args, options);
+    const raw = await readFile(rawPath);
+    if (raw.length !== expected) {
+      throw new FfmpegError(
+        `frame extraction returned ${raw.length} bytes, expected ${expected} (${width}x${height} RGBA) — the source may have no frame at t=${timeSec}`,
+        "",
+      );
+    }
+    return raw;
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 }
 
 /* ------------------------------------------------------------------ */

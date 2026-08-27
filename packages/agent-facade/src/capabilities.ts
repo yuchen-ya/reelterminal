@@ -45,6 +45,12 @@ export interface CapabilityContext {
   readonly renderProvider?: RenderProvider;
   readonly exportProvider?: ExportProvider;
   readonly artifactVerifier?: ArtifactVerifier;
+  /**
+   * Artifact-producing verbs hard-fail without it, so the capabilities must
+   * say unavailable too (a capability may never promise what the verb then
+   * refuses — RUNNER-06 in both directions).
+   */
+  readonly artifactRoot?: string;
 }
 
 const UNAVAILABLE_NO_RENDER_PROVIDER: CapabilityStatus = {
@@ -98,11 +104,27 @@ export async function buildCapabilities(
   ctx: CapabilityContext,
 ): Promise<Capabilities> {
   const mediaImportAvailable = ctx.mediaRoots.length > 0;
-  const [preview, exportVideo, verify] = await Promise.all([
+  const noArtifactRoot = ctx.artifactRoot === undefined || ctx.artifactRoot.length === 0;
+  const gateArtifactProducing = (
+    status: CapabilityStatus,
+    fallback: CapabilityStatus,
+  ): CapabilityStatus =>
+    noArtifactRoot
+      ? {
+          available: false,
+          reason:
+            "No artifactRoot is configured for this session; artifact-producing verbs would fail until one is provided.",
+          requires: fallback.requires,
+        }
+      : status;
+  const [previewRaw, exportRaw, verifyRaw] = await Promise.all([
     preflightOf(ctx.renderProvider, UNAVAILABLE_NO_RENDER_PROVIDER),
     preflightOf(ctx.exportProvider, UNAVAILABLE_NO_EXPORT_PROVIDER),
     preflightOf(ctx.artifactVerifier, UNAVAILABLE_NO_VERIFIER),
   ]);
+  const preview = gateArtifactProducing(previewRaw, UNAVAILABLE_NO_RENDER_PROVIDER);
+  const exportVideo = gateArtifactProducing(exportRaw, UNAVAILABLE_NO_EXPORT_PROVIDER);
+  const verify = gateArtifactProducing(verifyRaw, UNAVAILABLE_NO_VERIFIER);
   return {
     runtime: FACADE_RUNTIME,
     stateModel: {

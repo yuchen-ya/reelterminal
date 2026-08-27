@@ -150,6 +150,27 @@ describe("FfmpegArtifactVerifier", () => {
     ).rejects.toThrow();
   });
 
+  it("extractFrameRgba handles rasters above the old 16 MiB stdio cap (4K)", async () => {
+    const binaries = await resolveFfmpegBinaries();
+    if (!binaries) throw new Error("ffmpeg required for this test");
+    // A solid-red 3840x2160 clip: 33,177,600 RGBA bytes per frame — over the
+    // old 16 MiB stdout cap that silently truncated extraction.
+    const bigPath = path.join(workDir, "red-4k.mp4");
+    const { runProcess } = await import("./node/ffmpeg");
+    await runProcess(binaries.ffmpeg, [
+      "-y", "-v", "error",
+      "-f", "lavfi", "-i", "color=red:size=3840x2160:rate=1:duration=1",
+      "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+      "-pix_fmt", "yuv420p", bigPath,
+    ]);
+    const frame = await extractFrameRgba(binaries.ffmpeg, bigPath, 0, 3840, 2160);
+    expect(frame.length).toBe(3840 * 2160 * 4);
+    // Really the red frame (x264 red ≈ (81,90,240) in RGB-ish space post
+    // yuv→rgba conversion; just demand a strong red-dominant pixel).
+    expect(frame[0]!).toBeGreaterThan(150);
+    expect(frame[2]!).toBeLessThan(120);
+  });
+
   it("png reference frames load for comparison (preview artifact shape)", async () => {
     const binaries = await resolveFfmpegBinaries();
     if (!binaries) throw new Error("ffmpeg required for this test");
