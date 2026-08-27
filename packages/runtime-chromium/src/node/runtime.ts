@@ -238,16 +238,22 @@ export class ChromiumRuntime {
   }
 
   /**
-   * TEST-ONLY renderer crash switch: navigate the page to chrome://crash so
-   * the RENDERER dies while the browser stays connected — the scenario
-   * page.on("crash") exists for. Never call this in production code.
+   * TEST-ONLY renderer crash switch: CDP `Page.crash` kills the RENDERER
+   * while the browser stays connected — the scenario page.on("crash")
+   * exists for (chrome://crash is not honored on every platform build).
+   * The CDP call itself never acknowledges (the renderer dies before it can
+   * answer), so it is fired without awaiting; the 'crash' event is the
+   * signal. Never call this in production code.
    */
   async simulateRendererCrashForTesting(): Promise<void> {
     const page = this.page;
     if (!page) return;
-    await page
-      .goto("chrome://crash", { waitUntil: "commit", timeout: 10_000 })
-      .catch(() => undefined);
+    try {
+      const session = await page.context().newCDPSession(page);
+      void session.send("Page.crash").catch(() => undefined);
+    } catch {
+      /* page already gone */
+    }
   }
 
   /* --------------------------- lifecycle --------------------------- */
