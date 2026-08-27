@@ -10,6 +10,7 @@
  * binaries).
  */
 export {
+  probeWithRuntime,
   runChromiumRuntimeProbe,
   summarizeProbe,
   type ProbeOptions,

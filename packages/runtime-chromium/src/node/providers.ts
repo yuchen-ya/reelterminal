@@ -40,7 +40,7 @@ import {
   probeWithRuntime,
   type RuntimeProbeResult,
 } from "./probe";
-import { ChromiumRuntime, PartFileWriter } from "./runtime";
+import { ChromiumRuntime, HydratedSessionCancelled, PartFileWriter } from "./runtime";
 
 export interface ChromiumProvidersConfig {
   /** Explicit chromium executable; defaults to the Playwright-managed one. */
@@ -62,6 +62,12 @@ export interface ChromiumProvidersConfig {
   readonly forceExportRoute?: "chromium-webcodecs" | "chromium-frames-ffmpeg";
   /** Hard ceiling for one export job; default 600_000 (10 min). */
   readonly exportWatchdogMs?: number;
+  /**
+   * Hard ceiling for ONE probe/hydrate/render page evaluate (default
+   * 120_000). Raise it for very large media sets whose hydrate legitimately
+   * exceeds two minutes.
+   */
+  readonly pageOpTimeoutMs?: number;
 }
 
 /** Files an export job may write into its job dir (swept on non-done ends). */
@@ -172,9 +178,14 @@ export class ChromiumRenderProvider implements RenderProvider {
   async preflight(): Promise<ProviderPreflight> {
     const probe = await this.providers.probe();
     if (probe.launchError) {
+      // A wait-timeout means the runtime is BUSY (or wedged), not broken —
+      // say so instead of crying launch failure.
+      const busy = probe.launchError.includes("could not start within");
       return {
         available: false,
-        reason: `Chromium failed to launch: ${probe.launchError}`,
+        reason: busy
+          ? `runtime busy or wedged (probe waited ${POOL_PROBE_WAIT_TIMEOUT_MS / 1000}s): ${probe.launchError}`
+          : `Chromium failed to launch: ${probe.launchError}`,
         requires: "a working Chromium (playwright-core install chromium)",
       };
     }
@@ -344,6 +355,16 @@ export class ChromiumExportProvider implements ExportProvider {
         route === "chromium-webcodecs"
           ? this.runWebcodecsRoute(request, guarded, slot)
           : this.runFramesFfmpegRoute(request, guarded, slot);
+      // A route that settles LATE — after a grace-expired watchdog already
+      // terminalized the job — must never leave files behind either. Only
+      // sweep when terminalization ALREADY happened (terminal !== null):
+      // when this handler beats runJob's own continuation, the job is not
+      // terminal yet and runJob's normal paths do the sweeping.
+      void work.catch(() => undefined).then(() => {
+        if (guarded.terminal !== null && guarded.terminal !== "done") {
+          void sweepExportJobDir(request.jobDir);
+        }
+      });
       let outcome: RouteOutcome;
       try {
         outcome = await Promise.race([work, watchdogFired]);
@@ -419,6 +440,12 @@ export class ChromiumExportProvider implements ExportProvider {
   ): Promise<RouteOutcome> {
     const finalPath = join(request.jobDir, "output.mp4");
     const writer = await PartFileWriter.open(finalPath);
+    if (slot.cancelRequested) {
+      // Cancelled (or watchdog-stopped) before any page work began — no
+      // zombie export behind an already-terminal job.
+      await writer.discard().catch(() => undefined);
+      return { kind: "cancelled" };
+    }
     slot.abortActive = () => this.providers.runtime.abortInPageExport();
     let outcome;
     try {
@@ -437,9 +464,13 @@ export class ChromiumExportProvider implements ExportProvider {
             bytesWritten: event.bytesWritten,
           });
         },
+        { cancelCheck: () => slot.cancelRequested },
       );
     } catch (error) {
       await writer.discard().catch(() => undefined);
+      if (error instanceof HydratedSessionCancelled) {
+        return { kind: "cancelled" };
+      }
       throw error;
     } finally {
       slot.abortActive = undefined;
@@ -504,6 +535,7 @@ export class ChromiumExportProvider implements ExportProvider {
 
     let framesFed = 0;
     try {
+      if (slot.cancelRequested) throw new FramesJobCancelled();
       await this.providers.runtime.withHydratedSession(
         request.project,
         request.mediaFiles,
@@ -537,6 +569,7 @@ export class ChromiumExportProvider implements ExportProvider {
             });
           }
         },
+        { cancelCheck: () => slot.cancelRequested },
       );
       if (slot.cancelRequested) throw new FramesJobCancelled();
       callbacks.onProgress({
@@ -566,7 +599,10 @@ export class ChromiumExportProvider implements ExportProvider {
       encoder.abort();
       await rm(partPath, { force: true }).catch(() => undefined);
       await rm(finalPath, { force: true }).catch(() => undefined);
-      if (error instanceof FramesJobCancelled) {
+      if (
+        error instanceof FramesJobCancelled ||
+        error instanceof HydratedSessionCancelled
+      ) {
         return { kind: "cancelled" };
       }
       throw error;
@@ -597,6 +633,14 @@ class ExportWatchdogError extends Error {
  */
 const WATCHDOG_CLEANUP_GRACE_MS = 30_000;
 
+/**
+ * Ceiling for a pool preflight probe WAITING on the shared page (e.g. behind
+ * an active export). Preflights must answer in bounded time — a busy runtime
+ * yields a transient unavailable-with-reason, never a 10-minute stall of the
+ * caller (which, through the facade, is the serialized session lane).
+ */
+const POOL_PROBE_WAIT_TIMEOUT_MS = 30_000;
+
 /* ------------------------------------------------------------------ */
 /* Pool: one browser + generation-keyed probe, shared by all providers */
 /* ------------------------------------------------------------------ */
@@ -624,6 +668,9 @@ export class ChromiumProviderPool {
     this.runtime = new ChromiumRuntime({
       ...(config.executablePath ? { executablePath: config.executablePath } : {}),
       headless: config.headless ?? true,
+      ...(config.pageOpTimeoutMs !== undefined
+        ? { pageOpTimeoutMs: config.pageOpTimeoutMs }
+        : {}),
     });
   }
 
@@ -661,6 +708,7 @@ export class ChromiumProviderPool {
             ? { sampleMediaPath: this.config.probeSampleMediaPath }
             : {}),
           ffmpeg: this.ffmpegConfig,
+          waitTimeoutMs: POOL_PROBE_WAIT_TIMEOUT_MS,
         });
         // Cache only a successful probe whose browser is still the one we
         // measured (a recycle/crash mid-probe means these facts are stale).

@@ -28,6 +28,14 @@ export interface ChromiumRuntimeOptions {
   readonly launchArgs?: readonly string[];
   /** Forward in-page console messages and page errors (diagnostics). */
   readonly onConsole?: (line: string) => void;
+  /**
+   * Hard ceiling for ONE probe/hydrate/render page evaluate (default
+   * 120_000). Export evaluates are governed by the export watchdog instead.
+   * (playwright-core 1.60 has no protocol-level evaluate timeout at all —
+   * verified: a 185 s evaluate completes — so the watchdog really is the
+   * only ceiling an export needs.)
+   */
+  readonly pageOpTimeoutMs?: number;
 }
 
 export interface PageProbeFacts {
@@ -144,6 +152,44 @@ interface SinkBridge {
 
 const MEDIA_INPUT_SELECTOR = "#__openreel-media";
 
+/** Bound on graceful browser/server teardown during close()/recycle(). */
+const BROWSER_CLOSE_TIMEOUT_MS = 10_000;
+const SERVER_CLOSE_TIMEOUT_MS = 5_000;
+
+/**
+ * Default ceiling for ONE page evaluate (probe/hydrate/render). Exports are
+ * NOT covered here — the export watchdog owns that ceiling. On fire the
+ * runtime recycles the browser (which rejects the wedged evaluate) and the
+ * caller fails loudly instead of hanging the page lock forever.
+ */
+const DEFAULT_PAGE_OP_TIMEOUT_MS = 120_000;
+
+/** Thrown inside the lock chain when a queued op outlived its browser. */
+class RuntimeRecycledWhileQueued extends Error {
+  constructor() {
+    super("runtime was recycled while this operation was queued");
+    this.name = "RuntimeRecycledWhileQueued";
+  }
+}
+
+/** Thrown when a hydrated session is cancelled before any work began. */
+export class HydratedSessionCancelled extends Error {
+  constructor() {
+    super("cancelled before the page session started");
+    this.name = "HydratedSessionCancelled";
+  }
+}
+
+/** Thrown when one page evaluate exceeds the page-op ceiling. */
+class PageOpTimeoutError extends Error {
+  constructor(label: string, timeoutMs: number) {
+    super(
+      `${label} evaluate exceeded the ${timeoutMs}ms page-op ceiling — recycling the runtime`,
+    );
+    this.name = "PageOpTimeoutError";
+  }
+}
+
 const PAGE_HTML = `<!doctype html>
 <html><head><meta charset="utf-8"><title>openreel-render</title></head>
 <body><input id="__openreel-media" type="file" multiple style="display:none"></body></html>`;
@@ -189,6 +235,19 @@ export class ChromiumRuntime {
     const browser = this.browser;
     if (!browser) return;
     await browser.close().catch(() => undefined);
+  }
+
+  /**
+   * TEST-ONLY renderer crash switch: navigate the page to chrome://crash so
+   * the RENDERER dies while the browser stays connected — the scenario
+   * page.on("crash") exists for. Never call this in production code.
+   */
+  async simulateRendererCrashForTesting(): Promise<void> {
+    const page = this.page;
+    if (!page) return;
+    await page
+      .goto("chrome://crash", { waitUntil: "commit", timeout: 10_000 })
+      .catch(() => undefined);
   }
 
   /* --------------------------- lifecycle --------------------------- */
@@ -264,6 +323,15 @@ export class ChromiumRuntime {
       const { port } = server.address() as AddressInfo;
 
       const page = await browser.newPage();
+      // A RENDERER crash (OOM in a big raster, GPU process death) does NOT
+      // fire the browser's 'disconnected': the browser stays connected and
+      // the page stays assigned, so without this handler the pool would
+      // serve stale capabilities against a corpse forever. Recycle exactly
+      // like a full crash — the generation bump is synchronous.
+      page.on("crash", () => {
+        if (this.page !== page) return;
+        void this.recycle().catch(() => undefined);
+      });
       const onConsole = this.options.onConsole;
       if (onConsole) {
         page.on("console", (msg) => onConsole(`[page:${msg.type()}] ${msg.text()}`));
@@ -309,16 +377,16 @@ export class ChromiumRuntime {
    * launches a fresh browser on a bumped generation. This is the watchdog /
    * post-crash recovery path — a wedged page must never brick the pool.
    *
-   * The page mutex is reset: any operation still holding it was talking to
-   * the now-dead browser and will fail on its own; new work must not queue
-   * behind a corpse.
+   * The page mutex is deliberately NOT reset: there is exactly ONE lock
+   * chain for the runtime's whole life. The wedged operation's evaluate
+   * rejects when its browser dies, which advances the chain; anything that
+   * was queued before the recycle sees the generation change and re-enqueues
+   * at the tail (see withPageLock), so two operations can never find
+   * themselves running concurrently on the fresh page.
    */
   async recycle(): Promise<void> {
     if (this.closed) return;
     this.generationCounter += 1;
-    // Reset the mutex BEFORE awaiting teardown so queued callers unblock
-    // onto the fresh generation as soon as the old browser is gone.
-    this.mutex = Promise.resolve();
     await this.teardownBrowser();
   }
 
@@ -332,21 +400,96 @@ export class ChromiumRuntime {
     this.sinkBridge = null;
     this.sinkBindingsReady = false;
     if (browser) {
-      await browser.close().catch(() => undefined);
+      // A wedged browser must not hold recovery hostage: bound the close.
+      // (Playwright has no public process handle to force-kill here.)
+      await Promise.race([
+        browser.close().catch(() => undefined),
+        new Promise<void>((resolveTimeout) =>
+          setTimeout(resolveTimeout, BROWSER_CLOSE_TIMEOUT_MS),
+        ),
+      ]);
     }
     if (server) {
-      await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+      await Promise.race([
+        new Promise<void>((resolveClose) => server.close(() => resolveClose())),
+        new Promise<void>((resolveTimeout) =>
+          setTimeout(resolveTimeout, SERVER_CLOSE_TIMEOUT_MS),
+        ),
+      ]);
     }
   }
 
-  /** Serialize page operations; exports hold the lock for their duration. */
+  /**
+   * Serialize page operations; exports hold the lock for their duration.
+   *
+   * There is exactly ONE lock chain for the runtime's lifetime (recycle
+   * never resets it). An operation enqueued before a recycle/crash sees the
+   * generation change before its turn comes and re-enqueues at the CURRENT
+   * tail — so it still runs, serialized, on the fresh browser, and two
+   * operations can never execute concurrently on one page.
+   */
   private async withPageLock<T>(fn: (page: Page) => Promise<T>): Promise<T> {
-    const run = this.mutex.then(async () => fn(await this.ensurePage()));
-    this.mutex = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
+    for (;;) {
+      const generationAtEnqueue = this.generationCounter;
+      const run = this.mutex.then(async () => {
+        if (this.generationCounter !== generationAtEnqueue) {
+          throw new RuntimeRecycledWhileQueued();
+        }
+        return fn(await this.ensurePage());
+      });
+      this.mutex = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      try {
+        return await run;
+      } catch (error) {
+        if (error instanceof RuntimeRecycledWhileQueued && !this.closed) {
+          continue; // to the back of the (single) line, on the fresh browser
+        }
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * page.evaluate with a hard ceiling. A wedged evaluate must not hold the
+   * page lock (and thereby the whole pool) forever: on timeout the browser
+   * is recycled — which rejects the wedged evaluate — and the caller gets a
+   * loud error. Export evaluates are deliberately NOT routed through this
+   * (the export watchdog owns that ceiling).
+   *
+   * NB: Playwright serializes the function source — values cross the bridge
+   * ONLY via `arg`, never via closures.
+   */
+  private async boundedEvaluate<R, A = undefined>(
+    page: Page,
+    fn: (arg: A) => Promise<R> | R,
+    label: string,
+    arg?: A,
+  ): Promise<R> {
+    const timeoutMs = this.options.pageOpTimeoutMs ?? DEFAULT_PAGE_OP_TIMEOUT_MS;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        // Playwright's Unboxed<Arg> generic cannot be satisfied for an
+        // arbitrary A; the call sites keep full typing, so the cast is
+        // contained to this one bridge line.
+        page.evaluate(fn as never, arg as never) as Promise<R>,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            reject(new PageOpTimeoutError(label, timeoutMs));
+          }, timeoutMs);
+        }),
+      ]);
+    } catch (error) {
+      if (error instanceof PageOpTimeoutError) {
+        await this.recycle().catch(() => undefined);
+      }
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   /* ---------------------------- probe ---------------------------- */
@@ -359,12 +502,22 @@ export class ChromiumRuntime {
   }> {
     return this.withPageLock(async (page) => {
       if (sampleMediaPath !== undefined) {
+        // Bounded by Playwright's default action timeout (not an evaluate).
         await page.locator(MEDIA_INPUT_SELECTOR).setInputFiles(sampleMediaPath);
       }
-      const facts = (await page.evaluate(() =>
-        (window as never as { __openreelRender: { probe(): Promise<PageProbeFacts> } }).__openreelRender.probe(),
+      const facts = (await this.boundedEvaluate(
+        page,
+        () =>
+          (window as never as { __openreelRender: { probe(): Promise<PageProbeFacts> } }).__openreelRender.probe(),
+        "probe",
+        undefined,
       )) as PageProbeFacts;
-      const userAgent = await page.evaluate(() => navigator.userAgent);
+      const userAgent = await this.boundedEvaluate(
+        page,
+        () => navigator.userAgent,
+        "userAgent",
+        undefined,
+      );
       return {
         facts,
         browserVersion: this.browser?.version() ?? "unknown",
@@ -383,9 +536,13 @@ export class ChromiumRuntime {
     const mediaIds = Object.keys(mediaFiles);
     const paths = mediaIds.map((id) => mediaFiles[id] as string);
     const projectJson = JSON.stringify(project);
+    // setInputFiles is not a page evaluate (bounded by Playwright's own
+    // default action timeout, not the page-op ceiling); the evaluate below
+    // is the one boundedEvaluate covers.
     await page.locator(MEDIA_INPUT_SELECTOR).setInputFiles(paths);
-    const report = await page.evaluate(
-      ({ projectJson: json, ids }) =>
+    const report = (await this.boundedEvaluate(
+      page,
+      ({ projectJson: json, ids }: { projectJson: string; ids: string[] }) =>
         (window as never as {
           __openreelRender: {
             hydrate(
@@ -394,8 +551,9 @@ export class ChromiumRuntime {
             ): Promise<{ ok: boolean; mediaMissing: string[]; error?: string }>;
           };
         }).__openreelRender.hydrate(json, ids),
+      "hydrate",
       { projectJson, ids: mediaIds },
-    );
+    )) as { ok: boolean; mediaMissing: string[]; error?: string };
     if (!report.ok) {
       throw new Error(
         `browser hydrate failed${report.error ? `: ${report.error}` : ""}${
@@ -413,13 +571,15 @@ export class ChromiumRuntime {
     width: number,
     height: number,
   ): Promise<Buffer> {
-    const base64 = await page.evaluate(
-      ({ timeSec: t, width: w, height: h }) =>
+    const base64 = await this.boundedEvaluate(
+      page,
+      ({ timeSec: t, width: w, height: h }: { timeSec: number; width: number; height: number }) =>
         (window as never as {
           __openreelRender: {
             renderPngBase64(t: number, w: number, h: number): Promise<string>;
           };
         }).__openreelRender.renderPngBase64(t, w, h),
+      "renderPng",
       { timeSec, width, height },
     );
     return Buffer.from(base64, "base64");
@@ -431,6 +591,11 @@ export class ChromiumRuntime {
    * no other operation can clobber the hydrated state mid-export. Long
    * exports hold the page for their whole duration; other previews/exports
    * simply queue behind (one browser, one page — documented contract).
+   *
+   * `cancelCheck` runs ONCE right after the lock is acquired (before any
+   * hydrate work): an operation that was cancelled while it waited —
+   * including while a recycle re-enqueued it — bails before producing
+   * anything instead of running as a zombie behind an already-terminal job.
    */
   async withHydratedSession<T>(
     project: Project,
@@ -438,8 +603,12 @@ export class ChromiumRuntime {
     fn: (session: {
       renderPng(timeSec: number, width: number, height: number): Promise<Buffer>;
     }) => Promise<T>,
+    options: { cancelCheck?: () => boolean } = {},
   ): Promise<T> {
     return this.withPageLock(async (page) => {
+      if (options.cancelCheck?.() === true) {
+        throw new HydratedSessionCancelled();
+      }
       await this.hydrateOnPage(page, project, mediaFiles);
       return fn({
         renderPng: (timeSec, width, height) =>
@@ -504,8 +673,12 @@ export class ChromiumRuntime {
     },
     writer: PartFileWriter,
     onProgress: (event: ExportProgressJson) => void,
+    options: { cancelCheck?: () => boolean } = {},
   ): Promise<WebcodecsExportOutcome> {
     return this.withPageLock(async (page) => {
+      if (options.cancelCheck?.() === true) {
+        throw new HydratedSessionCancelled();
+      }
       await this.hydrateOnPage(page, project, mediaFiles);
       await this.ensureSinkBindings(page);
       this.sinkBridge = {

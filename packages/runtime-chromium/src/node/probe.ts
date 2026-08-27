@@ -74,6 +74,14 @@ export interface ProbeOptions {
   /** Sample video for the real in-page decode smoke (e.g. an h264 MP4). */
   readonly sampleMediaPath?: string;
   readonly ffmpeg?: FfmpegConfig;
+  /**
+   * Ceiling for WAITING on the runtime (e.g. behind an active export on the
+   * shared page). On fire the probe returns a launchError result — a
+   * transient, honestly-unavailable answer — instead of blocking the caller
+   * for the length of someone else's export. Undefined = wait forever
+   * (standalone evidence runs).
+   */
+  readonly waitTimeoutMs?: number;
 }
 
 const FALLBACK_FACTS: PageProbeFacts = {
@@ -162,13 +170,29 @@ export async function probeWithRuntime(
   let browserVersion = "unknown";
   let userAgent = "unknown";
   let launchError: string | undefined;
+  let waitTimer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const probed = await runtime.probeOnPage(options.sampleMediaPath);
+    const probed = await (options.waitTimeoutMs !== undefined
+      ? Promise.race([
+          runtime.probeOnPage(options.sampleMediaPath),
+          new Promise<never>((_resolve, reject) => {
+            waitTimer = setTimeout(() => {
+              reject(
+                new Error(
+                  `probe could not start within ${options.waitTimeoutMs}ms (runtime busy or wedged)`,
+                ),
+              );
+            }, options.waitTimeoutMs);
+          }),
+        ])
+      : runtime.probeOnPage(options.sampleMediaPath));
     facts = probed.facts;
     browserVersion = probed.browserVersion;
     userAgent = probed.userAgent;
   } catch (error) {
     launchError = error instanceof Error ? error.message : String(error);
+  } finally {
+    if (waitTimer) clearTimeout(waitTimer);
   }
 
   const summary = summarizeProbe(facts, ffmpeg !== null);
