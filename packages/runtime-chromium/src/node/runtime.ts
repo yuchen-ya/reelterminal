@@ -238,12 +238,13 @@ export class ChromiumRuntime {
   }
 
   /**
-   * TEST-ONLY renderer crash switch: CDP `Page.crash` kills the RENDERER
-   * while the browser stays connected — the scenario page.on("crash")
-   * exists for (chrome://crash is not honored on every platform build).
-   * The CDP call itself never acknowledges (the renderer dies before it can
-   * answer), so it is fired without awaiting; the 'crash' event is the
-   * signal. Never call this in production code.
+   * TEST-ONLY page-loss switch: kill the RENDERER while the browser stays
+   * connected — the scenario the crash/close handler exists for. Tries CDP
+   * `Page.crash` first (not every platform build implements it; the call
+   * never acknowledges since the renderer dies first); if the page is
+   * still alive a moment later, closes it out from under the runtime —
+   * either way the page-loss recovery path is exercised. Never call this
+   * in production code.
    */
   async simulateRendererCrashForTesting(): Promise<void> {
     const page = this.page;
@@ -252,7 +253,11 @@ export class ChromiumRuntime {
       const session = await page.context().newCDPSession(page);
       void session.send("Page.crash").catch(() => undefined);
     } catch {
-      /* page already gone */
+      /* CDP unavailable on this build */
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 1_000));
+    if (this.page === page && !page.isClosed()) {
+      await page.close().catch(() => undefined);
     }
   }
 
@@ -329,15 +334,18 @@ export class ChromiumRuntime {
       const { port } = server.address() as AddressInfo;
 
       const page = await browser.newPage();
-      // A RENDERER crash (OOM in a big raster, GPU process death) does NOT
-      // fire the browser's 'disconnected': the browser stays connected and
-      // the page stays assigned, so without this handler the pool would
-      // serve stale capabilities against a corpse forever. Recycle exactly
-      // like a full crash — the generation bump is synchronous.
-      page.on("crash", () => {
+      // A lost RENDERER (OOM in a big raster, GPU process death, or the
+      // page otherwise vanishing out from under us) does NOT fire the
+      // browser's 'disconnected': the browser stays connected and the page
+      // stays assigned, so without this handler the pool would serve stale
+      // capabilities against a corpse forever. Crash and unexpected close
+      // take the same recycle path — the generation bump is synchronous.
+      const onPageGone = () => {
         if (this.page !== page) return;
         void this.recycle().catch(() => undefined);
-      });
+      };
+      page.on("crash", onPageGone);
+      page.on("close", onPageGone);
       const onConsole = this.options.onConsole;
       if (onConsole) {
         page.on("console", (msg) => onConsole(`[page:${msg.type()}] ${msg.text()}`));
