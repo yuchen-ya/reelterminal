@@ -1,8 +1,9 @@
 # @openreel/agent-facade
 
 Pure-Node, in-process, transport-agnostic agent facade over the OpenReel
-canonical `Project` state (Slice 1). Design: `audit/facade-v0.md`,
-`docs/adr/0001-headless-facade-slice-1.md`.
+canonical `Project` state (Slice 1 + Slice 1b). Design: `audit/facade-v0.md`,
+`docs/adr/0001-headless-facade-slice-1.md`,
+`docs/adr/0002-chromium-runtime-slice-1b.md`.
 
 ```ts
 import { createAgentFacade } from "@openreel/agent-facade";
@@ -30,13 +31,17 @@ const state = await facade["project.get_state"]();
 
 ## Verbs
 
-`session.describe` · `capabilities.get` · `project.create` ·
+Slice 1: `session.describe` · `capabilities.get` · `project.create` ·
 `project.get_state` · `media.import` · `timeline.get` · `edit.apply`
+
+Slice 1b: `preview.render_frame` · `export.start` · `job.status` ·
+`job.cancel` · `verify.artifact`
 
 All verbs return `FacadeResult<T>` (`{ ok: true, value } | { ok: false,
 error }`) with typed error codes (`INVALID_PARAMS`, `NOT_FOUND`, `CONFLICT`,
-`UNSUPPORTED`, `ACTION_FAILED`, `INTERNAL`) — never throw for domain errors,
-never silently no-op with `ok: true`.
+`UNSUPPORTED`, `CONFIRMATION_REQUIRED`, `JOB_FAILED`, `ACTION_FAILED`,
+`INTERNAL`) — never throw for domain errors, never silently no-op with
+`ok: true`.
 
 ## Guarantees
 
@@ -61,9 +66,40 @@ never silently no-op with `ok: true`.
   `frameRate` a positive finite number) and only the schema-sanitized
   copies of `settings`/`style` ever reach the project.
 - **Honest capabilities**: `capabilities.get` reports what this runtime
-  actually has; preview/export are ALWAYS unavailable in this slice, even
-  when a `ProjectRenderAdapter` is injected — no facade verb consumes the
-  adapter yet, so it stays dormant.
+  actually has, per capability, from live provider preflights. The three
+  Slice-1b provider interfaces are independent (`RenderProvider`,
+  `ExportProvider`, `ArtifactVerifier` in `src/providers.ts`): injecting one
+  never flips another's capability, and the dormant Slice-1
+  `ProjectRenderAdapter` seam flips nothing at all. A capability is
+  available only when the facade ships the verb AND the provider's real
+  preflight passed; the verb itself re-checks and fails `UNSUPPORTED`
+  otherwise.
+
+## Slice 1b: preview / export / verify
+
+The facade stays pure Node; pixel/export/verify backing arrives through the
+provider interfaces. The reference implementation is
+[`@openreel/runtime-chromium`](../runtime-chromium/README.md) (real headless
+Chromium + system ffmpeg). Semantics owned by the facade itself:
+
+- `preview.render_frame({timeSec, width?, height?, expectedRevision?,
+  idempotencyKey?})` renders one PNG at the current revision into
+  `artifactRoot` and returns `{revision, artifact:{kind, format, path,
+  sizeBytes, sha256, sourceRevision}, ...}`.
+- `export.start({settings?, expectedRevision?, idempotencyKey?})` deep-clones
+  the project synchronously (the snapshot's revision is `sourceRevision`),
+  registers a job, and returns `{jobId, state:"queued"}` immediately. The
+  project stays editable; the job never sees later edits. Same
+  idempotencyKey+payload replays the same `jobId`.
+- `job.status` / `job.cancel` expose `queued|running|done|error|cancelled`
+  with progress, artifact (done only) and error (error only). A failed or
+  cancelled job never carries an artifact and the runtime never leaves a
+  success-looking file behind (exports write `.part` and rename on success).
+- `verify.artifact({path, expect?, compare?})` probes container/codec/
+  geometry/duration/frame count (ffprobe) and optionally pixel-compares a
+  frame against a reference image/video, with containment enforced
+  (`path` inside `artifactRoot`; `referencePath` inside `artifactRoot` or
+  `mediaRoots`). Failed expectations are data (`checks[].pass`), not errors.
 
 ## Media import
 
@@ -76,14 +112,13 @@ and `fileSize` comes from `stat`.
 
 ## Slice boundaries (what this is NOT)
 
-No Chromium/pixel rendering, no export, no OCR/verification, no MCP/CLI
-transport, no cloud GPU, no project replace/reset. Text overlays are
-canonical model state (`project.textClips` on a `type:"text"` track) —
-pixel rendering is NOT verified or claimed here. The Slice-1b seam is
-`ProjectRenderAdapter` (`src/render/adapter.ts`): a future Chromium runtime
-hydrates from the serialized project returned by `project.get_state`.
-Injecting an adapter today changes nothing — no verb calls it, and
-`capabilities.get` keeps reporting preview/export as unavailable.
+No MCP/CLI transport, no cloud GPU, no project replace/reset, no OCR. The
+facade ships the Slice-1b verbs and owns their state semantics, but contains
+no Chromium/Playwright/ffmpeg code — that lives in the runtime package.
+Text overlays are canonical model state (`project.textClips` on a
+`type:"text"` track); pixel claims exist only when a render provider passed
+its live preflight in the session. The Slice-1 `ProjectRenderAdapter` seam
+(`src/render/adapter.ts`) remains permanently dormant: no verb consumes it.
 
 ## Invariants
 

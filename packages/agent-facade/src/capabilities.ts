@@ -1,14 +1,26 @@
 /**
- * Live capability reporting (fixes RUNNER-06 "capability lies by omission"):
- * every claim is derived from what THIS session has actually been given —
- * configured media roots — never from a static manifest. In Slice 1
- * preview/export are ALWAYS unavailable: no facade verb consumes a render
- * adapter, so an injected ProjectRenderAdapter is dormant and must NOT flip
- * this report. The report flips only when a real preview/export verb ships
- * (Slice 1b) and has an adapter to back it.
+ * Live capability reporting (fixes RUNNER-06 "capability lies by omission" —
+ * and its twin, capability inflation): every claim is derived from what THIS
+ * session has actually been given and from each provider's own live
+ * preflight, never from a static manifest.
+ *
+ * Slice-1b rule (ADR 0002 #1): RenderProvider, ExportProvider and
+ * ArtifactVerifier are INDEPENDENT interfaces. Injecting one never flips
+ * another's capability — a runtime that can rasterize frames may still be
+ * unable to encode H.264, and the dormant Slice-1 renderAdapter seam flips
+ * nothing at all. A capability reports available only when (a) the facade
+ * ships the verb that consumes it and (b) the provider's real preflight
+ * passed. Preflights re-run on every capabilities.get so a dead runtime
+ * flips the report back to unavailable.
  */
 import { FACADE_ERROR_CODES } from "./errors";
 import type { ProjectRenderAdapter } from "./render/adapter";
+import type {
+  ArtifactVerifier,
+  ExportProvider,
+  ProviderPreflight,
+  RenderProvider,
+} from "./providers";
 import {
   EDIT_OP_TYPES,
   FACADE_CONTRACT_VERSION,
@@ -16,33 +28,78 @@ import {
   FACADE_VERBS,
   FACADE_VERSION,
   type Capabilities,
+  type CapabilityStatus,
   type SessionDescription,
 } from "./types";
 
 export interface CapabilityContext {
   readonly mediaRoots: readonly string[];
   /**
-   * Recorded for the Slice-1b seam and surfaced in session.describe notes
-   * for diagnostics. Deliberately has NO effect on preview/export
-   * availability in this slice — see buildCapabilities.
+   * Dormant Slice-1 seam, recorded for diagnostics only. Has NO effect on
+   * any capability — no facade verb consumes it (see render/adapter.ts).
    */
   readonly renderAdapter?: ProjectRenderAdapter;
+  readonly renderProvider?: RenderProvider;
+  readonly exportProvider?: ExportProvider;
+  readonly artifactVerifier?: ArtifactVerifier;
 }
 
-export function buildCapabilities(ctx: CapabilityContext): Capabilities {
-  const preview: Capabilities["preview"] = {
-    available: false,
-    reason:
-      "This runtime has no pixel preview path: Slice 1 exposes no preview verb, and an injected render adapter stays dormant.",
-    requires: "Slice 1b: Chromium harness + ProjectRenderAdapter (C)",
-  };
-  const exportVideo: Capabilities["export"] = {
-    available: false,
-    reason:
-      "No export pipeline exists in the pure-Node runtime: Slice 1 exposes no export verb, and an injected render adapter stays dormant.",
-    requires: "Slice 1b: Chromium harness + ProjectRenderAdapter (C)",
-  };
+const UNAVAILABLE_NO_RENDER_PROVIDER: CapabilityStatus = {
+  available: false,
+  reason:
+    "No render provider is configured for this session; preview.render_frame cannot produce pixels.",
+  requires: "a RenderProvider with a passing runtime preflight (e.g. @openreel/runtime-chromium)",
+};
+
+const UNAVAILABLE_NO_EXPORT_PROVIDER: CapabilityStatus = {
+  available: false,
+  reason:
+    "No export provider is configured for this session; export.start cannot encode video.",
+  requires: "an ExportProvider with a passing runtime preflight (Chromium WebCodecs H.264, or Chromium frames + system ffmpeg)",
+};
+
+const UNAVAILABLE_NO_VERIFIER: CapabilityStatus = {
+  available: false,
+  reason:
+    "No artifact verifier is configured for this session; verify.artifact cannot probe files.",
+  requires: "an ArtifactVerifier backed by ffprobe/ffmpeg (explicit paths or system PATH)",
+};
+
+async function preflightOf(
+  provider: { preflight(): Promise<ProviderPreflight> } | undefined,
+  unavailable: CapabilityStatus,
+): Promise<CapabilityStatus> {
+  if (!provider) return unavailable;
+  try {
+    const pre = await provider.preflight();
+    if (pre.available) {
+      return { available: true };
+    }
+    return {
+      available: false,
+      reason: pre.reason ?? unavailable.reason ?? "provider preflight failed",
+      ...(pre.requires ?? unavailable.requires
+        ? { requires: (pre.requires ?? unavailable.requires) as string }
+        : {}),
+    };
+  } catch (error) {
+    return {
+      available: false,
+      reason: `provider preflight threw: ${error instanceof Error ? error.message : String(error)}`,
+      requires: unavailable.requires,
+    };
+  }
+}
+
+export async function buildCapabilities(
+  ctx: CapabilityContext,
+): Promise<Capabilities> {
   const mediaImportAvailable = ctx.mediaRoots.length > 0;
+  const [preview, exportVideo, verify] = await Promise.all([
+    preflightOf(ctx.renderProvider, UNAVAILABLE_NO_RENDER_PROVIDER),
+    preflightOf(ctx.exportProvider, UNAVAILABLE_NO_EXPORT_PROVIDER),
+    preflightOf(ctx.artifactVerifier, UNAVAILABLE_NO_VERIFIER),
+  ]);
   return {
     runtime: FACADE_RUNTIME,
     stateModel: {
@@ -68,16 +125,18 @@ export function buildCapabilities(ctx: CapabilityContext): Capabilities {
     editOps: EDIT_OP_TYPES,
     textOverlay: {
       modelState: true,
-      pixelRendering: false,
+      pixelRendering: preview.available,
     },
     preview,
     export: exportVideo,
+    verify,
   };
 }
 
-export function buildSessionDescription(
+export async function buildSessionDescription(
   ctx: CapabilityContext,
-): SessionDescription {
+): Promise<SessionDescription> {
+  const caps = await buildCapabilities(ctx);
   return {
     facadeVersion: FACADE_VERSION,
     contractVersion: FACADE_CONTRACT_VERSION,
@@ -91,18 +150,21 @@ export function buildSessionDescription(
       importLocalMedia: "A",
       trimClip: "P",
       addTextOverlayModel: "P",
-      textOverlayPixels: "X",
-      exportVideo: "X",
-      verifyArtifact: "X",
+      textOverlayPixels: caps.preview.available ? "C" : "X",
+      exportVideo: caps.export.available ? "C" : "X",
+      verifyArtifact: caps.verify.available ? "A" : "X",
     },
     notes: [
       "Project is the canonical state; mutations are atomic serialized batches.",
-      "Text overlays are model-state only in this slice: pixel rendering is NOT verified and NOT claimed.",
+      caps.preview.available
+        ? "Text overlays render to real pixels via the configured render provider; pixel claims are E2E-verified only through preview.render_frame + verify.artifact."
+        : "Text overlays are model-state only in this session: no render provider passed preflight, so pixel rendering is NOT claimed.",
       ctx.renderAdapter
-        ? `a ProjectRenderAdapter ("${ctx.renderAdapter.id}") is injected but dormant: Slice 1 has no preview/export verb, so both report unavailable.`
-        : "preview/export are unavailable in this slice; the Slice-1b seam is a Chromium harness implementing ProjectRenderAdapter.",
-      "project.create is a single-initialization lifecycle verb outside the revision machinery: it takes no expectedRevision; an exact idempotent retry replays the creation result without resetting the project, and any other create while a project is open fails CONFLICT (no replace/reset in Slice 1).",
+        ? `a Slice-1 ProjectRenderAdapter ("${ctx.renderAdapter.id}") is injected but permanently dormant: no facade verb consumes it and it flips no capability.`
+        : "preview/export/verify capabilities come from independent provider preflights (RenderProvider / ExportProvider / ArtifactVerifier), never from each other's presence.",
+      "project.create is a single-initialization lifecycle verb outside the revision machinery: it takes no expectedRevision; an exact idempotent retry replays the creation result without resetting the project, and any other create while a project is open fails CONFLICT (no replace/reset).",
       `media.import accepts local files under the configured media roots only (${ctx.mediaRoots.length} root(s)); arbitrary URLs are not accepted.`,
+      "export.start snapshots the project synchronously (sourceRevision) and returns a jobId immediately; the same idempotencyKey+payload replays the same jobId. job.cancel is cooperative and always settles to a terminal state; failed/cancelled jobs never carry an artifact.",
       "Idempotency ledger is per session+project+verb and does not survive process restarts.",
     ],
   };

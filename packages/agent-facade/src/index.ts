@@ -1,10 +1,12 @@
 /**
- * @openreel/agent-facade — the Slice-1 agent-facing facade.
+ * @openreel/agent-facade — the agent-facing facade (Slice 1 + Slice 1b).
  *
  * Pure-Node, in-process, transport-agnostic. The public surface is the
- * seven-verb `AgentFacade` object returned by createAgentFacade(); verb
+ * twelve-verb `AgentFacade` object returned by createAgentFacade(); verb
  * names mirror audit/facade-v0.md. All verbs return FacadeResult<T> and
- * never throw for domain errors.
+ * never throw for domain errors. Pixel/export/verify backing arrives via the
+ * independent provider interfaces (providers.ts); the facade never imports
+ * Chromium, Playwright or ffmpeg itself.
  */
 import {
   AgentFacadeSession,
@@ -15,13 +17,21 @@ import type {
   Capabilities,
   EditApplyParams,
   EditApplyResult,
+  ExportStartParams,
+  ExportStartResult,
+  JobParams,
+  JobStatusView,
   MediaImportParams,
   MediaImportResult,
+  PreviewRenderFrameParams,
+  PreviewRenderFrameResult,
   ProjectCreateParams,
   ProjectCreateResult,
   ProjectState,
   SessionDescription,
   TimelineState,
+  VerifyArtifactParams,
+  VerifyArtifactResult,
 } from "./types";
 
 export interface AgentFacade {
@@ -38,11 +48,26 @@ export interface AgentFacade {
   readonly "edit.apply": (
     params: EditApplyParams,
   ) => Promise<FacadeResult<EditApplyResult>>;
+  readonly "preview.render_frame": (
+    params: PreviewRenderFrameParams,
+  ) => Promise<FacadeResult<PreviewRenderFrameResult>>;
+  readonly "export.start": (
+    params: ExportStartParams,
+  ) => Promise<FacadeResult<ExportStartResult>>;
+  readonly "job.status": (
+    params: JobParams,
+  ) => Promise<FacadeResult<JobStatusView>>;
+  readonly "job.cancel": (
+    params: JobParams,
+  ) => Promise<FacadeResult<JobStatusView>>;
+  readonly "verify.artifact": (
+    params: VerifyArtifactParams,
+  ) => Promise<FacadeResult<VerifyArtifactResult>>;
 }
 
 /**
  * Create an in-process facade session. One session owns one open project,
- * its revision counter and its idempotency ledger.
+ * its revision counter, its idempotency ledger and its job registry.
  */
 export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
   const session = new AgentFacadeSession(config);
@@ -54,6 +79,11 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "media.import": (params) => session.mediaImport(params),
     "timeline.get": () => session.timelineGet(),
     "edit.apply": (params) => session.editApply(params),
+    "preview.render_frame": (params) => session.previewRenderFrame(params),
+    "export.start": (params) => session.exportStart(params),
+    "job.status": (params) => session.jobStatus(params),
+    "job.cancel": (params) => session.jobCancel(params),
+    "verify.artifact": (params) => session.verifyArtifact(params),
   };
 }
 
@@ -67,5 +97,27 @@ export {
   type FacadeResult,
 } from "./errors";
 export type { ProjectRenderAdapter } from "./render/adapter";
+export { JobRegistry, JOB_STATES } from "./jobs";
+export type { JobProgressView, JobRecord, JobState } from "./jobs";
+export type {
+  ArtifactProbeExpectation,
+  ArtifactProbeReport,
+  ArtifactRef,
+  ArtifactVerifier,
+  ExportCallbacks,
+  ExportCompletion,
+  ExportProgressEvent,
+  ExportProvider,
+  ExportVideoRequest,
+  MediaFilesMap,
+  PixelCompareRequest,
+  ProviderPreflight,
+  RenderedFrameInfo,
+  RenderFrameRequest,
+  RenderProvider,
+  VerifyArtifactRequest,
+  VerifyCheck,
+  VerifyReport,
+} from "./providers";
 export { createEmptyProject, DEFAULT_PROJECT_SETTINGS } from "./project-factory";
 export * from "./types";

@@ -19,12 +19,16 @@ import { ActionExecutor } from "@openreel/core/actions/action-executor";
 import { ActionHistory } from "@openreel/core/actions/action-history";
 import type { Project, ProjectSettings } from "@openreel/core/types/project";
 import type { MediaItem } from "@openreel/core/types/project";
-import { basename } from "node:path";
-import { stat } from "node:fs/promises";
+import { basename, resolve as resolvePath } from "node:path";
+import { mkdir, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
 
 import { buildCapabilities, buildSessionDescription } from "./capabilities";
 import { FacadeError, ok, toFailure, type FacadeResult } from "./errors";
 import { IdempotencyLedger, stableStringify } from "./idempotency";
+import { JobRegistry, type JobRecord } from "./jobs";
 import {
   applyClipIdOverride,
   collectEntityIds,
@@ -33,6 +37,14 @@ import {
   validateEditOp,
 } from "./ops";
 import { createEmptyProject, DEFAULT_PROJECT_SETTINGS } from "./project-factory";
+import type {
+  ArtifactRef,
+  ArtifactVerifier,
+  ExportCallbacks,
+  ExportProvider,
+  RenderProvider,
+  VerifyArtifactRequest,
+} from "./providers";
 import type { ProjectRenderAdapter } from "./render/adapter";
 import {
   hasUrlScheme,
@@ -40,10 +52,14 @@ import {
 } from "./media/path-roots";
 import { probeLocalMediaFile } from "./media/node-media-adapter";
 import {
+  isFiniteNumber,
   isNonEmptyString,
   isNonNegativeInteger,
+  isNonNegativeNumber,
+  isPlainObject,
   isPositiveInteger,
   isPositiveNumber,
+  oneOf,
   validateObject,
   type ObjectSchema,
 } from "./validate";
@@ -51,15 +67,23 @@ import type {
   Capabilities,
   EditApplyParams,
   EditApplyResult,
+  ExportStartParams,
+  ExportStartResult,
+  JobParams,
+  JobStatusView,
   MediaImportParams,
   MediaImportResult,
   OpApplied,
+  PreviewRenderFrameParams,
+  PreviewRenderFrameResult,
   ProjectCounts,
   ProjectCreateParams,
   ProjectCreateResult,
   ProjectState,
   SessionDescription,
   TimelineState,
+  VerifyArtifactParams,
+  VerifyArtifactResult,
 } from "./types";
 
 export interface AgentFacadeConfig {
@@ -70,12 +94,23 @@ export interface AgentFacadeConfig {
    */
   readonly mediaRoots?: readonly string[];
   /**
-   * Reserved Slice-1b seam; no implementation ships in this slice. Injecting
-   * an adapter changes NOTHING observable: Slice 1 has no preview/export verb
-   * that could consume it, so capabilities.get keeps reporting both as
-   * unavailable (see capabilities.ts).
+   * Dormant Slice-1 seam, kept for contract stability. Injecting an adapter
+   * changes NOTHING observable: no facade verb consumes it and it flips no
+   * capability (see render/adapter.ts and capabilities.ts).
    */
   readonly renderAdapter?: ProjectRenderAdapter;
+  /**
+   * Absolute root every generated artifact (preview PNGs, exported videos)
+   * is written under. Artifact-producing verbs fail UNSUPPORTED without it;
+   * verify.artifact only inspects files inside it.
+   */
+  readonly artifactRoot?: string;
+  /** Slice-1b preview.render_frame backing (independent capability). */
+  readonly renderProvider?: RenderProvider;
+  /** Slice-1b export.start backing (independent capability). */
+  readonly exportProvider?: ExportProvider;
+  /** Slice-1b verify.artifact backing (independent capability). */
+  readonly artifactVerifier?: ArtifactVerifier;
 }
 
 const PROJECT_CREATE_SCHEMA: ObjectSchema = {
@@ -115,6 +150,76 @@ const EDIT_APPLY_SCHEMA: ObjectSchema = {
   idempotencyKey: { check: isNonEmptyString, describe: "a non-empty string" },
 };
 
+/** Rasters/encoders need even dimensions; 8192 caps browser-tab memory. */
+const isEvenDimension = (v: unknown): boolean =>
+  typeof v === "number" && Number.isInteger(v) && v >= 2 && v <= 8192 && v % 2 === 0;
+
+const isUnitInterval = (v: unknown): boolean =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
+
+const PREVIEW_RENDER_FRAME_SCHEMA: ObjectSchema = {
+  timeSec: { check: isNonNegativeNumber, describe: "a non-negative finite number", required: true },
+  width: { check: isEvenDimension, describe: "an even integer in [2, 8192]" },
+  height: { check: isEvenDimension, describe: "an even integer in [2, 8192]" },
+  expectedRevision: { check: isNonNegativeInteger, describe: "a non-negative integer" },
+  idempotencyKey: { check: isNonEmptyString, describe: "a non-empty string" },
+};
+
+const EXPORT_START_SCHEMA: ObjectSchema = {
+  settings: { check: isPlainObject, describe: "an object" },
+  expectedRevision: { check: isNonNegativeInteger, describe: "a non-negative integer" },
+  idempotencyKey: { check: isNonEmptyString, describe: "a non-empty string" },
+};
+
+const EXPORT_SETTINGS_SCHEMA: ObjectSchema = {
+  format: { check: oneOf(["mp4"]), describe: '"mp4" (the only container in this slice)' },
+  codec: { check: oneOf(["h264"]), describe: '"h264" (the only codec in this slice)' },
+  width: { check: isEvenDimension, describe: "an even integer in [2, 8192]" },
+  height: { check: isEvenDimension, describe: "an even integer in [2, 8192]" },
+  frameRate: { check: isPositiveNumber, describe: "a positive finite number" },
+  videoBitrateKbps: { check: isPositiveInteger, describe: "a positive integer" },
+};
+
+const JOB_PARAMS_SCHEMA: ObjectSchema = {
+  jobId: { check: isNonEmptyString, describe: "a non-empty string", required: true },
+};
+
+const VERIFY_EXPECT_SCHEMA: ObjectSchema = {
+  container: { check: oneOf(["mp4"]), describe: '"mp4"' },
+  videoCodec: { check: oneOf(["h264"]), describe: '"h264"' },
+  width: { check: isPositiveInteger, describe: "a positive integer" },
+  height: { check: isPositiveInteger, describe: "a positive integer" },
+  durationSec: { check: isPositiveNumber, describe: "a positive finite number" },
+  durationToleranceSec: { check: isPositiveNumber, describe: "a positive finite number" },
+};
+
+const VERIFY_REGION_SCHEMA: ObjectSchema = {
+  x: { check: isUnitInterval, describe: "a number in [0, 1]", required: true },
+  y: { check: isUnitInterval, describe: "a number in [0, 1]", required: true },
+  width: { check: isUnitInterval, describe: "a number in [0, 1]", required: true },
+  height: { check: isUnitInterval, describe: "a number in [0, 1]", required: true },
+};
+
+const VERIFY_COMPARE_SCHEMA: ObjectSchema = {
+  referencePath: { check: isNonEmptyString, describe: "a non-empty string", required: true },
+  timeSec: { check: isNonNegativeNumber, describe: "a non-negative finite number", required: true },
+  referenceTimeSec: { check: isNonNegativeNumber, describe: "a non-negative finite number" },
+  region: { check: isPlainObject, describe: "an object" },
+  mode: { check: oneOf(["similar", "different"]), describe: '"similar" or "different"', required: true },
+  maxMeanAbsDiff: { check: isFiniteNumber, describe: "a finite number" },
+  minMeanAbsDiff: { check: isFiniteNumber, describe: "a finite number" },
+  minChangedPixelsRatio: { check: isUnitInterval, describe: "a number in [0, 1]" },
+};
+
+const VERIFY_ARTIFACT_SCHEMA: ObjectSchema = {
+  path: { check: isNonEmptyString, describe: "a non-empty string", required: true },
+  expect: { check: isPlainObject, describe: "an object" },
+  compare: { check: isPlainObject, describe: "an object" },
+};
+
+/** Max media file size accepted for Chromium reads (2 GiB safety valve). */
+const MAX_MEDIA_FILE_BYTES = 2 * 1024 * 1024 * 1024;
+
 interface MutationOutcome<T> {
   readonly revision: number;
   readonly value: T;
@@ -134,34 +239,47 @@ export class AgentFacadeSession {
   private project: Project | null = null;
   private revision = 0;
   private ledger = new IdempotencyLedger(() => this.project?.id ?? "no-project");
+  private readonly jobs = new JobRegistry();
   private chain: Promise<unknown> = Promise.resolve();
 
   constructor(config: AgentFacadeConfig = {}) {
     this.config = config;
   }
 
+  private capabilityContext() {
+    return {
+      mediaRoots: this.config.mediaRoots ?? [],
+      ...(this.config.renderAdapter
+        ? { renderAdapter: this.config.renderAdapter }
+        : {}),
+      ...(this.config.renderProvider
+        ? { renderProvider: this.config.renderProvider }
+        : {}),
+      ...(this.config.exportProvider
+        ? { exportProvider: this.config.exportProvider }
+        : {}),
+      ...(this.config.artifactVerifier
+        ? { artifactVerifier: this.config.artifactVerifier }
+        : {}),
+    };
+  }
+
   /* ------------------------------ reads ------------------------------ */
 
   async sessionDescribe(): Promise<FacadeResult<SessionDescription>> {
-    return ok(
-      buildSessionDescription({
-        mediaRoots: this.config.mediaRoots ?? [],
-        ...(this.config.renderAdapter
-          ? { renderAdapter: this.config.renderAdapter }
-          : {}),
-      }),
-    );
+    try {
+      return ok(await buildSessionDescription(this.capabilityContext()));
+    } catch (error) {
+      return toFailure<SessionDescription>(error);
+    }
   }
 
   async capabilitiesGet(): Promise<FacadeResult<Capabilities>> {
-    return ok(
-      buildCapabilities({
-        mediaRoots: this.config.mediaRoots ?? [],
-        ...(this.config.renderAdapter
-          ? { renderAdapter: this.config.renderAdapter }
-          : {}),
-      }),
-    );
+    try {
+      return ok(await buildCapabilities(this.capabilityContext()));
+    } catch (error) {
+      return toFailure<Capabilities>(error);
+    }
   }
 
   async projectGetState(): Promise<FacadeResult<ProjectState>> {
@@ -473,6 +591,456 @@ export class AgentFacadeSession {
     });
   }
 
+  /* --------------------- Slice-1b: preview/export --------------------- */
+
+  /**
+   * preview.render_frame — rasterize ONE real PNG frame through the
+   * configured RenderProvider. Reads the canonical project at the current
+   * revision (no mutation, no revision increment), writes the PNG under
+   * artifactRoot and returns the hashed artifact ref.
+   */
+  async previewRenderFrame(
+    params: PreviewRenderFrameParams,
+  ): Promise<FacadeResult<PreviewRenderFrameResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<PreviewRenderFrameParams>(
+        params,
+        PREVIEW_RENDER_FRAME_SCHEMA,
+        "preview.render_frame params",
+      );
+      if (!this.project) return this.noProject();
+      const provider = this.config.renderProvider;
+      if (!provider) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "preview.render_frame: no render provider configured for this session",
+          { requires: "RenderProvider (e.g. @openreel/runtime-chromium)" },
+        );
+      }
+      const artifactRoot = this.requireArtifactRoot("preview.render_frame");
+      await this.requireProviderPreflight(provider, "preview.render_frame");
+
+      const project = this.project;
+      const width = valid.width ?? project.settings.width;
+      const height = valid.height ?? project.settings.height;
+      if (!isEvenDimension(width) || !isEvenDimension(height)) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `preview.render_frame: raster size must be even; project settings are ${project.settings.width}x${project.settings.height} — pass explicit even width/height`,
+        );
+      }
+
+      const duration = this.timelineDurationSec(project);
+      if (valid.timeSec > duration) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `preview.render_frame: timeSec ${valid.timeSec} is beyond the timeline duration ${duration}`,
+          { timeSec: valid.timeSec, durationSec: duration },
+        );
+      }
+      // The exact end of the timeline is past every clip's [start, end)
+      // interval; clamp it onto the last rendered frame.
+      const frameRate = project.settings.frameRate;
+      const timeSec =
+        valid.timeSec >= duration
+          ? Math.max(0, duration - 1 / (2 * frameRate))
+          : valid.timeSec;
+
+      const payload = { timeSec: valid.timeSec, width, height };
+      const prior = this.beginMutation<PreviewRenderFrameResult>(
+        "preview.render_frame",
+        valid.expectedRevision,
+        valid.idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        // Replay only while the artifact file still exists; a deleted file
+        // falls through to an honest re-render of the same deterministic path.
+        const stillThere = await stat(prior.value.artifact.path).then(
+          (s) => s.isFile(),
+          () => false,
+        );
+        if (stillThere) {
+          return ok<PreviewRenderFrameResult>({
+            ...prior.value,
+            revision: this.revision,
+            replayed: true,
+          });
+        }
+      }
+
+      const mediaFiles = await this.buildMediaFiles(project, "preview.render_frame");
+      const rendersDir = resolvePath(artifactRoot, "renders");
+      await mkdir(rendersDir, { recursive: true });
+      const timeMs = Math.round(valid.timeSec * 1000);
+      const destPath = resolvePath(
+        rendersDir,
+        `frame-r${this.revision}-t${timeMs}-${width}x${height}.png`,
+      );
+
+      const rendered = await provider.renderFramePng({
+        project: structuredClone(project),
+        sourceRevision: this.revision,
+        timeSec,
+        width,
+        height,
+        destPath,
+        mediaFiles,
+      });
+      const artifact = await this.artifactRefFor(
+        destPath,
+        "image",
+        "png",
+        this.revision,
+        rendered.bytesWritten,
+      );
+      const value: PreviewRenderFrameResult = {
+        revision: this.revision,
+        timeSec,
+        width,
+        height,
+        artifact,
+        replayed: false,
+      };
+      if (valid.idempotencyKey !== undefined) {
+        this.ledger.set("preview.render_frame", valid.idempotencyKey, {
+          revision: this.revision,
+          value,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(value);
+    });
+  }
+
+  /**
+   * export.start — snapshot the project NOW and hand the snapshot to the
+   * ExportProvider as a background job. Returns the jobId immediately; the
+   * project stays editable (the job renders the frozen snapshot). Same
+   * idempotencyKey + same payload replays the same jobId.
+   */
+  async exportStart(
+    params: ExportStartParams,
+  ): Promise<FacadeResult<ExportStartResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<ExportStartParams>(
+        params,
+        EXPORT_START_SCHEMA,
+        "export.start params",
+      );
+      if (!this.project) return this.noProject();
+      const provider = this.config.exportProvider;
+      if (!provider) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "export.start: no export provider configured for this session",
+          { requires: "ExportProvider (e.g. @openreel/runtime-chromium)" },
+        );
+      }
+      const artifactRoot = this.requireArtifactRoot("export.start");
+      await this.requireProviderPreflight(provider, "export.start");
+
+      const settingsInput =
+        valid.settings !== undefined
+          ? validateObject<NonNullable<ExportStartParams["settings"]>>(
+              valid.settings,
+              EXPORT_SETTINGS_SCHEMA,
+              "export.start params.settings",
+            )
+          : undefined;
+
+      const payload = { settings: settingsInput ?? null };
+      const prior = this.beginMutation<{ jobId: string; sourceRevision: number }>(
+        "export.start",
+        valid.expectedRevision,
+        valid.idempotencyKey,
+        payload,
+      );
+      if (prior && this.jobs.has(prior.value.jobId)) {
+        const job = this.jobs.get(prior.value.jobId);
+        return ok<ExportStartResult>({
+          jobId: prior.value.jobId,
+          state: job?.state ?? "queued",
+          sourceRevision: prior.value.sourceRevision,
+          replayed: true,
+        });
+      }
+
+      const project = this.project;
+      const duration = this.timelineDurationSec(project);
+      if (duration <= 0) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "export.start: the timeline is empty — add clips before exporting",
+        );
+      }
+      const toEven = (n: number) => n - (n % 2);
+      const width = settingsInput?.width ?? toEven(project.settings.width);
+      const height = settingsInput?.height ?? toEven(project.settings.height);
+      if (!isEvenDimension(width) || !isEvenDimension(height)) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `export.start: export size must be even and ≥2; resolved ${width}x${height}`,
+        );
+      }
+      const frameRate = settingsInput?.frameRate ?? project.settings.frameRate;
+      const videoBitrateKbps =
+        settingsInput?.videoBitrateKbps ??
+        Math.min(12000, Math.max(400, Math.round((width * height * frameRate * 0.12) / 1000)));
+
+      // The snapshot is the export's entire world: deep-cloned here,
+      // synchronously, inside the serialized lane. Later edits can proceed;
+      // they never reach this job.
+      const snapshot = structuredClone(project);
+      const sourceRevision = this.revision;
+      const mediaFiles = await this.buildMediaFiles(project, "export.start");
+
+      const jobId = `job-${crypto.randomUUID()}`;
+      const jobDir = resolvePath(artifactRoot, "exports", jobId);
+      await mkdir(jobDir, { recursive: true });
+      this.jobs.create(jobId, sourceRevision);
+      if (valid.idempotencyKey !== undefined) {
+        this.ledger.set("export.start", valid.idempotencyKey, {
+          revision: sourceRevision,
+          value: { jobId, sourceRevision },
+          payloadHash: stableStringify(payload),
+        });
+      }
+
+      const callbacks: ExportCallbacks = {
+        onRunning: () => this.jobs.markRunning(jobId),
+        onProgress: (event) => this.jobs.markProgress(jobId, event),
+        onDone: (completion) => {
+          void this.finalizeExport(jobId, sourceRevision, completion);
+        },
+        onError: (error) => this.jobs.markError(jobId, error),
+        onCancelled: () => this.jobs.markCancelled(jobId),
+      };
+      // Fire-and-forget: the verb has already answered. A synchronously
+      // throwing provider still lands in a terminal error state, never in a
+      // silent limbo.
+      void provider
+        .startExport(
+          {
+            project: snapshot,
+            sourceRevision,
+            settings: {
+              format: "mp4",
+              codec: "h264",
+              width,
+              height,
+              frameRate,
+              videoBitrateKbps,
+            },
+            jobId,
+            jobDir,
+            mediaFiles,
+          },
+          callbacks,
+        )
+        .catch((error: unknown) => {
+          this.jobs.markError(jobId, {
+            code: "JOB_FAILED",
+            message: error instanceof Error ? error.message : String(error),
+          });
+        });
+
+      return ok<ExportStartResult>({
+        jobId,
+        state: "queued",
+        sourceRevision,
+        replayed: false,
+      });
+    });
+  }
+
+  /** job.status — poll the facade-owned job registry. */
+  async jobStatus(params: JobParams): Promise<FacadeResult<JobStatusView>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<JobParams>(params, JOB_PARAMS_SCHEMA, "job.status params");
+      const job = this.jobs.get(valid.jobId);
+      if (!job) {
+        throw new FacadeError("NOT_FOUND", `job.status: unknown jobId "${valid.jobId}"`, {
+          jobId: valid.jobId,
+        });
+      }
+      return ok(this.jobView(job));
+    });
+  }
+
+  /**
+   * job.cancel — cooperative cancellation. Terminal jobs answer with their
+   * current state (idempotent no-op); live jobs get cancelRequested and the
+   * provider is told to abort. The job always settles to a terminal state
+   * afterwards; poll job.status to observe it.
+   */
+  async jobCancel(params: JobParams): Promise<FacadeResult<JobStatusView>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<JobParams>(params, JOB_PARAMS_SCHEMA, "job.cancel params");
+      const job = this.jobs.get(valid.jobId);
+      if (!job) {
+        throw new FacadeError("NOT_FOUND", `job.cancel: unknown jobId "${valid.jobId}"`, {
+          jobId: valid.jobId,
+        });
+      }
+      if (job.state === "done" || job.state === "error" || job.state === "cancelled") {
+        return ok(this.jobView(job));
+      }
+      const provider = this.config.exportProvider;
+      if (!provider) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "job.cancel: no export provider configured for this session",
+        );
+      }
+      this.jobs.markCancelRequested(valid.jobId);
+      try {
+        await provider.cancel(valid.jobId);
+      } catch (error) {
+        throw new FacadeError(
+          "JOB_FAILED",
+          `job.cancel: provider failed to cancel: ${error instanceof Error ? error.message : String(error)}`,
+          { jobId: valid.jobId },
+        );
+      }
+      return ok(this.jobView(this.jobs.get(valid.jobId) ?? job));
+    });
+  }
+
+  /**
+   * verify.artifact — read-only inspection (ffprobe-style probe + optional
+   * pixel comparison) of a file inside artifactRoot. A failed assertion is
+   * reported as data (checks[], pass:false), never as a thrown domain error;
+   * only infrastructure problems fail the call.
+   */
+  async verifyArtifact(
+    params: VerifyArtifactParams,
+  ): Promise<FacadeResult<VerifyArtifactResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<VerifyArtifactParams>(
+        params,
+        VERIFY_ARTIFACT_SCHEMA,
+        "verify.artifact params",
+      );
+      const verifier = this.config.artifactVerifier;
+      if (!verifier) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "verify.artifact: no artifact verifier configured for this session",
+          { requires: "ArtifactVerifier backed by ffprobe/ffmpeg" },
+        );
+      }
+      await this.requireProviderPreflight(verifier, "verify.artifact");
+
+      const artifactRoot = this.requireArtifactRoot("verify.artifact");
+      if (hasUrlScheme(valid.path)) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "verify.artifact: URLs are not accepted — pass a local artifact path inside artifactRoot",
+          { path: valid.path },
+        );
+      }
+      const target = resolveContainedPathDetailed(valid.path, [artifactRoot]);
+      if (target.kind === "outside") {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "verify.artifact: path escapes the configured artifactRoot",
+          { path: valid.path },
+        );
+      }
+      if (target.kind === "unresolvable") {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "verify.artifact: path cannot be read (not found or unreadable)",
+          { path: valid.path },
+        );
+      }
+
+      let request: VerifyArtifactRequest = { path: target.path };
+      if (valid.expect !== undefined) {
+        const expect = validateObject<NonNullable<VerifyArtifactParams["expect"]>>(
+          valid.expect,
+          VERIFY_EXPECT_SCHEMA,
+          "verify.artifact params.expect",
+        );
+        request = { ...request, expect };
+      }
+      if (valid.compare !== undefined) {
+        const compare = validateObject<NonNullable<VerifyArtifactParams["compare"]>>(
+          valid.compare,
+          VERIFY_COMPARE_SCHEMA,
+          "verify.artifact params.compare",
+        );
+        if (hasUrlScheme(compare.referencePath)) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            "verify.artifact: reference URLs are not accepted — pass a local path inside mediaRoots or artifactRoot",
+          );
+        }
+        let reference = resolveContainedPathDetailed(compare.referencePath, [artifactRoot]);
+        if (reference.kind !== "ok") {
+          reference = resolveContainedPathDetailed(
+            compare.referencePath,
+            this.config.mediaRoots ?? [],
+          );
+        }
+        if (reference.kind === "outside") {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            "verify.artifact: referencePath escapes both artifactRoot and mediaRoots",
+            { referencePath: compare.referencePath },
+          );
+        }
+        if (reference.kind === "unresolvable") {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            "verify.artifact: referencePath cannot be read (not found or unreadable)",
+            { referencePath: compare.referencePath },
+          );
+        }
+        let region;
+        if (compare.region !== undefined) {
+          region = validateObject<NonNullable<typeof compare.region>>(
+            compare.region,
+            VERIFY_REGION_SCHEMA,
+            "verify.artifact params.compare.region",
+          );
+          if (region.x + region.width > 1 || region.y + region.height > 1) {
+            throw new FacadeError(
+              "INVALID_PARAMS",
+              "verify.artifact: compare.region must satisfy x+width ≤ 1 and y+height ≤ 1",
+              { region },
+            );
+          }
+        }
+        request = {
+          ...request,
+          compare: {
+            referencePath: reference.path,
+            timeSec: compare.timeSec,
+            ...(compare.referenceTimeSec !== undefined
+              ? { referenceTimeSec: compare.referenceTimeSec }
+              : {}),
+            ...(region !== undefined ? { region } : {}),
+            mode: compare.mode,
+            ...(compare.maxMeanAbsDiff !== undefined
+              ? { maxMeanAbsDiff: compare.maxMeanAbsDiff }
+              : {}),
+            ...(compare.minMeanAbsDiff !== undefined
+              ? { minMeanAbsDiff: compare.minMeanAbsDiff }
+              : {}),
+            ...(compare.minChangedPixelsRatio !== undefined
+              ? { minChangedPixelsRatio: compare.minChangedPixelsRatio }
+              : {}),
+          },
+        };
+      }
+
+      const report = await verifier.verify(request);
+      return ok(report);
+    });
+  }
+
   /* ---------------------------- internals ---------------------------- */
 
   private async probeMedia(resolvedPath: string) {
@@ -486,6 +1054,201 @@ export class AgentFacadeSession {
         { path: resolvedPath },
       );
     }
+  }
+
+  /**
+   * Artifact-producing verbs need an artifactRoot; its absence is a session
+   * configuration gap, reported as UNSUPPORTED (never a silent temp-dir
+   * fallback — outputs must live where the caller can audit them).
+   */
+  private requireArtifactRoot(verb: string): string {
+    const root = this.config.artifactRoot;
+    if (root === undefined || root.length === 0) {
+      throw new FacadeError(
+        "UNSUPPORTED",
+        `${verb}: no artifactRoot configured for this session — artifact-producing verbs need an explicit output root`,
+      );
+    }
+    return resolvePath(root);
+  }
+
+  /**
+   * Verbs gate on the provider's OWN live preflight: a capability that
+   * reports unavailable must make the verb fail UNSUPPORTED with the same
+   * reason — never a silent attempt against a dead runtime.
+   */
+  private async requireProviderPreflight(
+    provider: { preflight(): Promise<{ available: boolean; reason?: string; requires?: string }> },
+    verb: string,
+  ): Promise<void> {
+    let pre;
+    try {
+      pre = await provider.preflight();
+    } catch (error) {
+      throw new FacadeError(
+        "UNSUPPORTED",
+        `${verb}: provider preflight threw: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (!pre.available) {
+      throw new FacadeError(
+        "UNSUPPORTED",
+        `${verb}: provider is unavailable — ${pre.reason ?? "preflight failed"}`,
+        pre.requires ? { requires: pre.requires } : undefined,
+      );
+    }
+  }
+
+  /**
+   * Map every timeline-referenced media item to a re-validated local file.
+   * The path is checked against mediaRoots AGAIN here (defense in depth: an
+   * imported path could have been swapped between import and render), must
+   * be a regular file, and is size-capped. A referenced item without a
+   * readable file fails the verb loudly instead of silently rendering
+   * without its pixels.
+   */
+  private async buildMediaFiles(project: Project, verb: string): Promise<Record<string, string>> {
+    const referenced = new Set<string>();
+    for (const track of project.timeline.tracks) {
+      for (const clip of track.clips) {
+        referenced.add(clip.mediaId);
+      }
+    }
+    const roots = this.config.mediaRoots ?? [];
+    const files: Record<string, string> = {};
+    const missing: string[] = [];
+    for (const item of project.mediaLibrary.items) {
+      if (!referenced.has(item.id)) continue;
+      const originalUrl =
+        typeof (item as { originalUrl?: unknown }).originalUrl === "string"
+          ? ((item as { originalUrl?: string }).originalUrl as string)
+          : null;
+      if (!originalUrl) {
+        missing.push(item.id);
+        continue;
+      }
+      const resolution = resolveContainedPathDetailed(originalUrl, roots);
+      if (resolution.kind !== "ok") {
+        missing.push(item.id);
+        continue;
+      }
+      const fileStat = await stat(resolution.path).catch(() => null);
+      if (!fileStat || !fileStat.isFile() || fileStat.size > MAX_MEDIA_FILE_BYTES) {
+        missing.push(item.id);
+        continue;
+      }
+      files[item.id] = resolution.path;
+    }
+    if (missing.length > 0) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: ${missing.length} referenced media item(s) have no readable file inside the configured mediaRoots`,
+        { mediaIds: missing, mediaRoots: [...roots] },
+      );
+    }
+    return files;
+  }
+
+  /** Streaming sha256 — artifacts are never buffered wholesale for hashing. */
+  private async sha256File(absPath: string): Promise<string> {
+    const hash = createHash("sha256");
+    await pipeline(createReadStream(absPath), async function* (source) {
+      for await (const chunk of source) {
+        hash.update(chunk as Buffer);
+      }
+    });
+    return hash.digest("hex");
+  }
+
+  private async artifactRefFor(
+    absPath: string,
+    kind: "image" | "video",
+    format: "png" | "mp4",
+    sourceRevision: number,
+    expectedBytes?: number,
+  ): Promise<ArtifactRef> {
+    const fileStat = await stat(absPath);
+    if (!fileStat.isFile() || fileStat.size === 0) {
+      throw new FacadeError(
+        "JOB_FAILED",
+        `provider reported success but the artifact is missing or empty: ${absPath}`,
+      );
+    }
+    if (expectedBytes !== undefined && expectedBytes > fileStat.size) {
+      throw new FacadeError(
+        "JOB_FAILED",
+        `provider wrote fewer bytes (${fileStat.size}) than it reported (${expectedBytes}) for ${absPath}`,
+      );
+    }
+    return {
+      kind,
+      format,
+      path: absPath,
+      sizeBytes: fileStat.size,
+      sha256: await this.sha256File(absPath),
+      sourceRevision,
+    };
+  }
+
+  /** Terminalize a finished export: verify containment + hash the MP4. */
+  private async finalizeExport(
+    jobId: string,
+    sourceRevision: number,
+    completion: { path: string; sizeBytes: number; route: string },
+  ): Promise<void> {
+    try {
+      const artifactRoot = this.requireArtifactRoot("export.finalize");
+      const resolution = resolveContainedPathDetailed(completion.path, [artifactRoot]);
+      if (resolution.kind !== "ok") {
+        throw new FacadeError(
+          "JOB_FAILED",
+          "export provider reported an artifact outside artifactRoot — refusing to publish it",
+          { path: completion.path },
+        );
+      }
+      const artifact = await this.artifactRefFor(
+        resolution.path,
+        "video",
+        "mp4",
+        sourceRevision,
+        completion.sizeBytes,
+      );
+      this.jobs.markDone(jobId, artifact, completion.route);
+    } catch (error) {
+      this.jobs.markError(jobId, {
+        code: error instanceof FacadeError ? error.code : "JOB_FAILED",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private jobView(job: JobRecord): JobStatusView {
+    return {
+      jobId: job.jobId,
+      kind: job.kind,
+      state: job.state,
+      progress: job.progress ? { ...job.progress } : null,
+      artifact: job.artifact ? { ...job.artifact } : null,
+      error: job.error ? { ...job.error } : null,
+      sourceRevision: job.sourceRevision,
+      route: job.route,
+      cancelRequested: job.cancelRequested,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+    };
+  }
+
+  private timelineDurationSec(project: Project): number {
+    let maxEnd = 0;
+    for (const track of project.timeline.tracks) {
+      for (const clip of track.clips) {
+        maxEnd = Math.max(maxEnd, clip.startTime + clip.duration);
+      }
+    }
+    for (const clip of project.textClips ?? []) {
+      maxEnd = Math.max(maxEnd, clip.startTime + clip.duration);
+    }
+    return maxEnd;
   }
 
   /**
