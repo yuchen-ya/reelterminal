@@ -9,7 +9,10 @@ import { createAgentFacade } from "@openreel/agent-facade";
 
 const facade = createAgentFacade({ mediaRoots: ["/abs/path/to/media"] });
 
-await facade["project.create"]({ name: "Demo" });
+// Single-initialization lifecycle verb: one project per session, ever.
+// An exact retry (same idempotencyKey + same payload) replays the creation
+// result without resetting anything; any other second create is a CONFLICT.
+await facade["project.create"]({ name: "Demo", idempotencyKey: "create-demo" });
 await facade["media.import"]({ path: "/abs/path/to/media/input.mp4" });
 await facade["edit.apply"]({
   ops: [
@@ -37,6 +40,12 @@ never silently no-op with `ok: true`.
 
 ## Guarantees
 
+- **Single-initialization lifecycle**: `project.create` opens the session's
+  one project. It lives outside the revision machinery (no
+  `expectedRevision`); an exact idempotent retry replays the committed
+  creation result with `replayed: true` and does NOT reset the project,
+  while any other create attempted with a project open fails `CONFLICT`.
+  Slice 1 has no replace/reset verb.
 - **Atomic batches**: every mutation is a snapshot transaction over a
   `structuredClone`d draft; any failure discards the draft and the original
   project is byte-exact untouched. One committed call bumps `revision`
@@ -47,25 +56,34 @@ never silently no-op with `ok: true`.
   result without re-executing (scoped per session+project+verb; reusing a
   key with a different payload fails `CONFLICT`; not restart-durable).
 - **Strict params**: closed schemas only — unknown fields, wrong field
-  names and unsupported ops fail with zero side effects.
+  names and unsupported ops fail with zero side effects. Project settings
+  are hardened (`width`/`height`/`sampleRate`/`channels` positive integers,
+  `frameRate` a positive finite number) and only the schema-sanitized
+  copies of `settings`/`style` ever reach the project.
 - **Honest capabilities**: `capabilities.get` reports what this runtime
-  actually has; preview/export are unavailable until a render adapter is
-  injected.
+  actually has; preview/export are ALWAYS unavailable in this slice, even
+  when a `ProjectRenderAdapter` is injected — no facade verb consumes the
+  adapter yet, so it stays dormant.
 
 ## Media import
 
 `media.import` reads local files inside the configured `mediaRoots` only
 (realpath containment, `..`/prefix escapes rejected, URLs rejected) and
 extracts real metadata (duration, width, height, media type) via mediabunny.
+Probing streams from disk through mediabunny's `FilePathSource` with an
+explicitly disposed `Input` — the file is never read into memory in full,
+and `fileSize` comes from `stat`.
 
 ## Slice boundaries (what this is NOT)
 
 No Chromium/pixel rendering, no export, no OCR/verification, no MCP/CLI
-transport, no cloud GPU. Text overlays are canonical model state
-(`project.textClips` on a `type:"text"` track) — pixel rendering is NOT
-verified or claimed here. The Slice-1b seam is `ProjectRenderAdapter`
-(`src/render/adapter.ts`): a future Chromium runtime hydrates from the
-serialized project returned by `project.get_state`.
+transport, no cloud GPU, no project replace/reset. Text overlays are
+canonical model state (`project.textClips` on a `type:"text"` track) —
+pixel rendering is NOT verified or claimed here. The Slice-1b seam is
+`ProjectRenderAdapter` (`src/render/adapter.ts`): a future Chromium runtime
+hydrates from the serialized project returned by `project.get_state`.
+Injecting an adapter today changes nothing — no verb calls it, and
+`capabilities.get` keeps reporting preview/export as unavailable.
 
 ## Invariants
 

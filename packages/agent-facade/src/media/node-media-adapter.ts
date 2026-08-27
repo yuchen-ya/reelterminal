@@ -4,9 +4,15 @@
  * browser engine (`packages/core/src/media/mediabunny-engine.ts`) this never
  * calls `track.canDecode()`, because `VideoDecoder` does not exist in Node;
  * mediabunny's demuxer-level probing is fully isomorphic.
+ *
+ * Memory contract: probing STREAMS from disk via mediabunny's FilePathSource
+ * (bounded internal cache, 8 MiB by default) — the file is never read into
+ * memory in full. The Input is explicitly disposed so the underlying file
+ * handle is always released, and the file size comes from `stat`, not from
+ * a byte buffer.
  */
-import { readFile } from "node:fs/promises";
-import { Input, ALL_FORMATS, BlobSource } from "mediabunny";
+import { stat } from "node:fs/promises";
+import { Input, ALL_FORMATS, FilePathSource } from "mediabunny";
 import type { InputAudioTrack, InputVideoTrack } from "mediabunny";
 import type { ImportedMediaMetadata } from "../types";
 
@@ -15,21 +21,6 @@ export interface ProbedMedia extends ImportedMediaMetadata {
   readonly mimeType: string;
   readonly hasVideo: boolean;
   readonly hasAudio: boolean;
-}
-
-/**
- * Disposes a mediabunny Input if explicit-resource-management disposal is
- * available at runtime. `Symbol.dispose` is not part of this package's ES2022
- * lib typing, so it is looked up dynamically.
- */
-function disposeInput(input: Input): void {
-  const disposeKey = (Symbol as unknown as { dispose?: symbol }).dispose;
-  if (disposeKey === undefined) return;
-  const disposable = input as unknown as Record<
-    symbol,
-    (() => void) | undefined
-  >;
-  disposable[disposeKey]?.();
 }
 
 /** Wraps any low-level failure into an Error naming the offending file. */
@@ -60,7 +51,8 @@ async function videoTrackFacts(
 }
 
 /**
- * Reads a local file and probes real container/track metadata via mediabunny.
+ * Probes a local file's real container/track metadata via mediabunny,
+ * streaming reads from disk (FilePathSource) instead of buffering the file.
  *
  * Throws an `Error` (with a clear, path-bearing message) when the file cannot
  * be read or is not a recognizable media file.
@@ -68,22 +60,20 @@ async function videoTrackFacts(
 export async function probeLocalMediaFile(
   absPath: string,
 ): Promise<ProbedMedia> {
-  let bytes: Buffer;
+  let fileSize: number;
   try {
-    bytes = await readFile(absPath);
+    const fileStat = await stat(absPath);
+    if (!fileStat.isFile()) {
+      throw new Error("not a regular file");
+    }
+    fileSize = fileStat.size;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Cannot read media file "${absPath}": ${message}`);
   }
 
-  // Node >= 18 provides the WHATWG Blob global; BlobSource consumes it.
-  // Cast note: @types/node models Buffer's backing store as ArrayBufferLike
-  // (possibly SharedArrayBuffer) while the DOM BlobPart typing demands an
-  // ArrayBuffer view; every Node Buffer is in fact backed by a private
-  // ArrayBuffer, so a single narrow cast keeps all supported type levels happy.
-  const blob = new Blob([bytes as unknown as BlobPart]);
   const input = new Input({
-    source: new BlobSource(blob),
+    source: new FilePathSource(absPath),
     formats: ALL_FORMATS,
   });
 
@@ -111,7 +101,8 @@ export async function probeLocalMediaFile(
   } catch (error) {
     throw toProbeError(absPath, error);
   } finally {
-    disposeInput(input);
+    // Explicit dispose: releases the file handle FilePathSource opened.
+    input.dispose();
   }
 
   if (unsupported) {
@@ -125,7 +116,7 @@ export async function probeLocalMediaFile(
     height: facts.height,
     frameRate: facts.frameRate,
     codec: facts.codec,
-    fileSize: bytes.byteLength,
+    fileSize,
     mimeType,
     hasVideo: videoTrack !== null,
     hasAudio: audioTrack !== null,

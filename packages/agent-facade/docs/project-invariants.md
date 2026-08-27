@@ -404,3 +404,31 @@ MUST NOT:
     only track existence/lock, media existence, startTime ≥ 0
     (action-validator.ts:494-551); overlap prevention (if wanted) is facade
     policy on the draft.
+
+---
+
+## Facade lifecycle & boundary rules (Slice 1 merge hardening)
+
+Facade-side contracts added on 2026-08-27 (ADR 0001 addendum); these are
+facade invariants, not core behavior:
+
+13. `project.create` is a SINGLE-INITIALIZATION lifecycle verb outside the
+    revision machinery (no `expectedRevision`). First create succeeds;
+    same `idempotencyKey` + same payload replays the committed creation
+    result (`replayed: true`) without resetting the project; same key +
+    different payload, or any other create with a project open, fails
+    CONFLICT. No replace/reset exists in Slice 1
+    (packages/agent-facade/src/session.ts `projectCreate`).
+14. Capability reporting is adapter-independent in this slice: an injected
+    `ProjectRenderAdapter` is dormant (no verb calls it), so
+    `capabilities.get` reports preview/export unavailable regardless
+    (packages/agent-facade/src/capabilities.ts, src/render/adapter.ts).
+15. Media probing MUST stream: mediabunny `FilePathSource` + explicit
+    `Input.dispose()`, `fileSize` from `stat` — never a whole-file
+    `readFile` buffer (packages/agent-facade/src/media/node-media-adapter.ts).
+16. Project settings are hardened: `width`/`height`/`sampleRate`/`channels`
+    positive integers, `frameRate` a positive finite number; and for BOTH
+    `project.create params.settings` and `text.create` `style`, only the
+    sanitized `validateObject` copies flow downstream — never the raw
+    nested caller objects (src/session.ts PROJECT_SETTINGS_SCHEMA,
+    src/ops.ts validateEditOp text.create).

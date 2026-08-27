@@ -44,6 +44,8 @@ export const isPositiveNumber: FieldCheck = (v) =>
   typeof v === "number" && Number.isFinite(v) && v > 0;
 export const isNonNegativeInteger: FieldCheck = (v) =>
   typeof v === "number" && Number.isInteger(v) && v >= 0;
+export const isPositiveInteger: FieldCheck = (v) =>
+  typeof v === "number" && Number.isInteger(v) && v > 0;
 export const isBoolean: FieldCheck = (v) => typeof v === "boolean";
 
 export function oneOf<T extends string>(values: readonly T[]): FieldCheck {

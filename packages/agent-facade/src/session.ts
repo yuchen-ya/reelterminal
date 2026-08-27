@@ -40,9 +40,10 @@ import {
 } from "./media/path-roots";
 import { probeLocalMediaFile } from "./media/node-media-adapter";
 import {
-  isFiniteNumber,
   isNonEmptyString,
   isNonNegativeInteger,
+  isPositiveInteger,
+  isPositiveNumber,
   validateObject,
   type ObjectSchema,
 } from "./validate";
@@ -55,6 +56,7 @@ import type {
   OpApplied,
   ProjectCounts,
   ProjectCreateParams,
+  ProjectCreateResult,
   ProjectState,
   SessionDescription,
   TimelineState,
@@ -67,7 +69,12 @@ export interface AgentFacadeConfig {
    * are then rejected until the caller configures roots).
    */
   readonly mediaRoots?: readonly string[];
-  /** Reserved Slice-1b seam; no implementation ships in this slice. */
+  /**
+   * Reserved Slice-1b seam; no implementation ships in this slice. Injecting
+   * an adapter changes NOTHING observable: Slice 1 has no preview/export verb
+   * that could consume it, so capabilities.get keeps reporting both as
+   * unavailable (see capabilities.ts).
+   */
   readonly renderAdapter?: ProjectRenderAdapter;
 }
 
@@ -77,14 +84,18 @@ const PROJECT_CREATE_SCHEMA: ObjectSchema = {
     check: (v) => typeof v === "object" && v !== null && !Array.isArray(v),
     describe: "an object",
   },
+  idempotencyKey: { check: isNonEmptyString, describe: "a non-empty string" },
 };
 
+// Hardened settings subset: dimensions and audio layout must be positive
+// INTEGERS; frameRate is the one field that legitimately carries a fraction
+// (29.97 etc.), so it is a positive finite number.
 const PROJECT_SETTINGS_SCHEMA: ObjectSchema = {
-  width: { check: isFiniteNumber, describe: "a finite number" },
-  height: { check: isFiniteNumber, describe: "a finite number" },
-  frameRate: { check: isFiniteNumber, describe: "a finite number" },
-  sampleRate: { check: isFiniteNumber, describe: "a finite number" },
-  channels: { check: isFiniteNumber, describe: "a finite number" },
+  width: { check: isPositiveInteger, describe: "a positive integer" },
+  height: { check: isPositiveInteger, describe: "a positive integer" },
+  frameRate: { check: isPositiveNumber, describe: "a positive finite number" },
+  sampleRate: { check: isPositiveInteger, describe: "a positive integer" },
+  channels: { check: isPositiveInteger, describe: "a positive integer" },
 };
 
 const MEDIA_IMPORT_SCHEMA: ObjectSchema = {
@@ -192,24 +203,65 @@ export class AgentFacadeSession {
 
   async projectCreate(
     params: ProjectCreateParams = {},
-  ): Promise<FacadeResult<ProjectState>> {
+  ): Promise<FacadeResult<ProjectCreateResult>> {
     return this.enqueue(async () => {
       const valid = validateObject<ProjectCreateParams>(
         params,
         PROJECT_CREATE_SCHEMA,
         "project.create params",
       );
-      if (valid.settings !== undefined) {
-        validateObject<Partial<ProjectSettings>>(
-          valid.settings,
-          PROJECT_SETTINGS_SCHEMA,
-          "project.create params.settings",
+      // The SANITIZED copy is what reaches the project — never the raw
+      // nested caller object (each field is read exactly once, here).
+      const settings =
+        valid.settings !== undefined
+          ? validateObject<Partial<ProjectSettings>>(
+              valid.settings,
+              PROJECT_SETTINGS_SCHEMA,
+              "project.create params.settings",
+            )
+          : undefined;
+
+      // project.create is a lifecycle verb OUTSIDE the revision machinery:
+      // it takes no expectedRevision (there is no project to precondition
+      // against), so replay/conflict resolution runs on the idempotency
+      // ledger alone.
+      const payload = { name: valid.name, settings };
+      const prior = this.beginMutation<ProjectState>(
+        "project.create",
+        undefined,
+        valid.idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        // Exact replay (same key + same payload): hand back a fresh clone of
+        // the committed creation snapshot. The live project is NOT reset.
+        return ok<ProjectCreateResult>({
+          revision: prior.revision,
+          project: structuredClone(prior.value.project),
+          counts: { ...prior.value.counts },
+          replayed: true,
+        });
+      }
+      if (this.project) {
+        throw new FacadeError(
+          "CONFLICT",
+          "project.create: this session already has an open project — project.create is a single-initialization lifecycle verb and Slice 1 provides no replace/reset",
         );
       }
-      this.project = createEmptyProject(valid.name, valid.settings);
+
+      this.project = createEmptyProject(valid.name, settings);
       this.revision = 0;
-      this.ledger.clear();
-      return ok(this.projectState());
+      const state = this.projectState();
+      if (valid.idempotencyKey !== undefined) {
+        // Recorded AFTER the swap so the entry is scoped to the NEW project
+        // id (the ledger's projectScope reads this.project at call time).
+        this.ledger.set("project.create", valid.idempotencyKey, {
+          revision: state.revision,
+          value: state,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok<ProjectCreateResult>({ ...state, replayed: false });
     });
   }
 

@@ -108,9 +108,26 @@ export interface Capabilities {
 /* project.*                                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * project.create is a SINGLE-INITIALIZATION lifecycle verb: it opens the
+ * session's one and only project. It lives OUTSIDE the project revision
+ * machinery — the project does not exist yet, so there is no revision to
+ * precondition on, and this verb accepts no `expectedRevision`. At-most-once
+ * semantics across transport retries come from `idempotencyKey` alone:
+ * a retry carrying the same key and the same payload replays the committed
+ * creation result WITHOUT resetting the project; the same key with a
+ * different payload — like any other create attempted while a project is
+ * open — fails CONFLICT. Slice 1 ships no replace/reset verb.
+ */
 export interface ProjectCreateParams {
   readonly name?: string;
+  /**
+   * Hardened subset: width/height/sampleRate/channels must be positive
+   * integers, frameRate a positive finite number. Only the sanitized,
+   * schema-validated copy reaches the project.
+   */
   readonly settings?: Partial<ProjectSettings>;
+  readonly idempotencyKey?: string;
 }
 
 export interface ProjectCounts {
@@ -128,6 +145,16 @@ export interface ProjectState {
    */
   readonly project: Project;
   readonly counts: ProjectCounts;
+}
+
+/**
+ * project.create result: the freshly created project state plus the replay
+ * marker. `replayed: true` means the call was an exact idempotent retry
+ * (same idempotencyKey + same payload) and the returned state is the
+ * committed creation snapshot — the live project was NOT reset or touched.
+ */
+export interface ProjectCreateResult extends ProjectState {
+  readonly replayed: boolean;
 }
 
 /* ------------------------------------------------------------------ */

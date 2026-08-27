@@ -142,7 +142,16 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
     case "text.create": {
       const op = validateObject<TextCreateOp>(raw, TEXT_CREATE_SCHEMA, label);
       if (op.style !== undefined) {
-        validateObject<TextStyleInput>(op.style, TEXT_STYLE_SCHEMA, `${label}.style`);
+        // Rebind to the SANITIZED copy: opToCoreActions spreads op.style into
+        // the canonical TextClip, so what flows downstream must be the fresh
+        // validated object — never the raw nested caller object (whose
+        // getters could yield different values post-validation).
+        const style = validateObject<TextStyleInput>(
+          op.style,
+          TEXT_STYLE_SCHEMA,
+          `${label}.style`,
+        );
+        return { ...op, style };
       }
       return op;
     }

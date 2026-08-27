@@ -18,6 +18,7 @@ import type {
   MediaImportParams,
   MediaImportResult,
   ProjectCreateParams,
+  ProjectCreateResult,
   ProjectState,
   SessionDescription,
   TimelineState,
@@ -28,7 +29,7 @@ export interface AgentFacade {
   readonly "capabilities.get": () => Promise<FacadeResult<Capabilities>>;
   readonly "project.create": (
     params?: ProjectCreateParams,
-  ) => Promise<FacadeResult<ProjectState>>;
+  ) => Promise<FacadeResult<ProjectCreateResult>>;
   readonly "project.get_state": () => Promise<FacadeResult<ProjectState>>;
   readonly "media.import": (
     params: MediaImportParams,

@@ -172,6 +172,37 @@ describe("ADV: text ops / ordering / caps / pollution", () => {
     }
   });
 
+  it("T4c: text.create uses the SANITIZED style copy — stateful getters are read exactly once", async () => {
+    let fontSizeReads = 0;
+    const style = {
+      // Valid at validation time, invalid on any later re-read: if the
+      // facade kept spreading the RAW style object downstream, the stored
+      // fontSize would collapse to 0.
+      get fontSize() {
+        fontSizeReads += 1;
+        return fontSizeReads === 1 ? 48 : 0;
+      },
+    };
+    const res = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "text", trackId: "t" },
+        {
+          op: "text.create",
+          trackId: "t",
+          text: "x",
+          startTime: 0,
+          duration: 5,
+          style: style as never,
+        },
+      ],
+    });
+    expect(res.ok).toBe(true);
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error();
+    expect(state.value.project.textClips?.[0]?.style.fontSize).toBe(48);
+    expect(fontSizeReads).toBe(1);
+  });
+
   it("T5: documented precedence holds — stale revision beats nonexistent file in media.import", async () => {
     const res = await facade["media.import"]({
       path: `${mediaRoot}/definitely-not-there.mp4`,

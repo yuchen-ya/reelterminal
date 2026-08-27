@@ -9,13 +9,13 @@
  *    blind replay; same key + same payload replays even with a stale
  *    expectedRevision.
  * 3. Failed attempt must NOT consume its key (retryability).
- * 4. project.create resets scope so old keys must not replay against the new
- *    project.
+ * 4. project.create is single-initialization: a second create is a CONFLICT
+ *    and must leave the open project — and its committed keys — untouched.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAgentFacade, type AgentFacade } from "./index";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
-import { makeTempDir, removeTempDir } from "./test-helpers";
+import { makeTempDir, projectJson, removeTempDir } from "./test-helpers";
 
 describe("ADV: idempotency hazards", () => {
   let mediaRoot: string;
@@ -123,33 +123,39 @@ describe("ADV: idempotency hazards", () => {
     expect(after.value.revision).toBe(1);
   });
 
-  it("H4: keys do not survive project.create into the new project scope", async () => {
+  it("H4: a second project.create is CONFLICT — the open project and its keys survive untouched", async () => {
     const first = await facade["edit.apply"]({
       ops: [{ op: "track.add", trackType: "video", trackId: "v1" }],
       idempotencyKey: "k-old",
     });
     expect(first.ok).toBe(true);
 
-    const recreated = await facade["project.create"]({ name: "New" });
-    expect(recreated.ok).toBe(true);
-    if (!recreated.ok) return;
-    expect(recreated.value.revision).toBe(0);
+    const before = await facade["project.get_state"]();
+    if (!before.ok) throw new Error("state failed");
 
+    const recreated = await facade["project.create"]({ name: "New" });
+    expect(recreated.ok).toBe(false);
+    if (recreated.ok) return;
+    expect(recreated.error.code).toBe("CONFLICT");
+
+    // No reset happened: the old key still replays its committed result
+    // against the SAME project instead of executing fresh.
     const again = await facade["edit.apply"]({
-      ops: [{ op: "track.add", trackType: "video", trackId: "v2" }],
-      idempotencyKey: "k-old", // same key, NEW project
+      ops: [{ op: "track.add", trackType: "video", trackId: "v1" }],
+      idempotencyKey: "k-old",
     });
     expect(again.ok).toBe(true);
     if (!again.ok) return;
-    expect(again.value.replayed).toBe(false); // must EXECUTE, not replay
+    expect(again.value.replayed).toBe(true);
     expect(again.value.revision).toBe(1);
 
     const state = await facade["project.get_state"]();
     if (!state.ok) return;
-    expect(state.value.project.name).toBe("New");
-    expect(state.value.project.timeline.tracks.map((t) => t.id)).toEqual([
-      "v2",
-    ]);
+    expect(state.value.project.name).toBe("AdvIdem");
+    expect(state.value.revision).toBe(1);
+    expect(projectJson(state.value.project)).toBe(
+      projectJson(before.value.project),
+    );
   });
 
   it("H5: two sessions with the same project-create flow are isolated", async () => {

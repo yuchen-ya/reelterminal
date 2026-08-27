@@ -79,3 +79,36 @@ ships no transport at all, so the exposure does not widen.
 - The 52 audit risks are NOT fixed wholesale here; the slice only avoids the
   audited traps on its own path (CORE-01/02/08, MEDIA-03/04, RUNNER-06,
   ADV-03).
+
+## Addendum 2026-08-27: merge-readiness hardening (same branch)
+
+Four contract tightenings landed before merge, none of which widens scope
+(still no Chromium, export, MCP or CLI):
+
+1. **`project.create` is a single-initialization lifecycle verb.** It lives
+   OUTSIDE the project revision machinery (no `expectedRevision` — there is
+   no project to precondition against) and accepts an optional
+   `idempotencyKey`. First create succeeds; an exact retry (same key + same
+   payload) returns the committed creation result with `replayed: true`
+   WITHOUT resetting the project; the same key with a different payload, or
+   any other create attempted while a project is open, fails `CONFLICT`.
+   Slice 1 deliberately ships no replace/reset verb — a session that needs a
+   fresh project is discarded and rebuilt.
+2. **Capability reporting is adapter-independent in Slice 1.** Injecting a
+   `ProjectRenderAdapter` no longer flips preview/export to available —
+   there is no facade verb or export method that could consume the adapter,
+   so the adapter is dormant and `capabilities.get` keeps reporting both as
+   unavailable. Availability flips only when Slice 1b adds the verbs that
+   drive the adapter (RUNNER-06 stays fixed in both directions: no omission,
+   no inflation).
+3. **Media probing streams.** The Node probe uses mediabunny's
+   `FilePathSource` with an explicitly disposed `Input` and takes `fileSize`
+   from `stat`; the whole file is never buffered into memory (the previous
+   `readFile` + `BlobSource` path did exactly that).
+4. **Settings/style validation is hardened and sanitizing.** Project
+   settings require positive integers (`width`/`height`/`sampleRate`/
+   `channels`) and a positive finite `frameRate`; for both
+   `project.create params.settings` and `text.create`'s `style`, only the
+   fresh copies returned by `validateObject` flow downstream — the raw
+   nested caller objects are never reused (stateful getters get exactly one
+   read, at validation time).
