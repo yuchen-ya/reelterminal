@@ -10,7 +10,6 @@
  */
 import { build } from "esbuild";
 import { fileURLToPath } from "node:url";
-import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -33,9 +32,14 @@ function resolveBrowserSource(name: "entry.ts" | "extract-audio-shim.ts"): strin
     join(moduleDir, "..", "src", "browser", name),
   ];
   try {
-    const require_ = createRequire(import.meta.url);
-    const pkgJson = require_.resolve("@openreel/runtime-chromium/package.json");
-    candidates.push(join(dirname(pkgJson), "src", "browser", name));
+    // import.meta.resolve honors the ESM ("import") export condition; a
+    // createRequire lookup would fail on these import-only exports maps.
+    // The main entry is <root>/src/index.ts; walk to the browser sources.
+    const mainEntry = fileURLToPath(
+      import.meta.resolve("@openreel/runtime-chromium"),
+    );
+    candidates.push(join(dirname(mainEntry), "browser", name));
+    candidates.push(join(dirname(mainEntry), "..", "src", "browser", name));
   } catch {
     // package self-resolution unavailable (source tree is enough)
   }
