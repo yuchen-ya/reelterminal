@@ -41,6 +41,13 @@ jobs:
       - name: Install Chromium for Playwright
         run: pnpm --filter @openreel/runtime-chromium exec playwright-core install --with-deps chromium
 
+      # ubuntu-latest does NOT ship ffmpeg: the frames-route encoder and the
+      # artifact verifier need real ffmpeg/ffprobe binaries.
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
       - name: Show ffmpeg/ffprobe used for verification
         run: |
           ffmpeg -version | head -1
