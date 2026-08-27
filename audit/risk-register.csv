@@ -1,0 +1,46 @@
+id,area,severity,title,evidence,facade_mitigation
+AREA-01,agent-registry,high,batch_actions non-atomic within transactional turn,"registry.ts:31559-31563; loop.ts:142-154,244-257",facade edit.apply wraps ops in snapshot txn; never expose raw batch_actions
+AREA-02,agent-registry,medium,destructive gating asymmetric (marker/transition/keyframe/effect deletes ungated),"registry.ts:15593,15606,15619,15625,15629",facade re-draws destructive boundaries in its own policy layer
+AREA-03,agent-registry,medium,stale capability docs (228 claimed vs 304 runtime),"docs/AGENT-CAPABILITIES.md:5 vs audit/probes/out/tool-catalog-summary.json",regenerate capability docs from registry in CI
+AREA-04,agent-registry,medium,no runtime JSON-schema arg validation (additionalProperties passthrough),"registry.ts:410-413; executor.ts:46-47",facade validates args against strict schemas before dispatch
+AREA-05,agent-registry,low-med,soft-budget stops commit partial turns,"loop.ts:22-28",facade treats budget stop as failure + rollback
+AREA-06,agent-registry,low-med,EditingHost optional-method surface drifts across hosts,"host.ts:213-275",facade versions the host seam; feature-detect per capability
+RUNNER-01,agent-runner,high,headless expensive/destructive tools run without confirmGate,"run.ts:51-60 vs loop.ts:201-223",facade passes explicit confirm policy in every runtime
+RUNNER-02,agent-runner,high,overlay create tools fail headless without schema-documented clip.id; with id they create clips no track references,"handlers/overlay.ts:48; probe case 5-6 audit/probes/out/headless-smoke.json",facade text ops generate ids and ensure text track (mirror live-host.ts:489-536)
+RUNNER-03,agent-runner,medium,partial turns persisted on max_steps/max_tool_calls,"run.ts:79-84",facade only saves on clean completion
+RUNNER-04,agent-runner,medium,GPU broker token minted via open unattested challenge leg,"gpu-job-runner.ts:62-89",out of v0 scope (cloud runner deferred); document before enabling
+RUNNER-05,agent-runner,low,static catalog under-attributes some host deps (jobTool runJob; guarded fallbacks),"agent-runner-headless.md TOOL-VIABILITY corrections",corrected in facade-overlays.json + this register; catalog regenerated
+RUNNER-06,agent-runner,low,capabilities() static regardless of injected jobs (misleading planners),"headless-host.ts:85-87",facade capabilities.get reports live availability
+RUNNER-07,agent-runner,low,commitTransaction unknown-handle silent no-op,"headless-host.ts:54-57",facade tracks txn handles itself
+CORE-01,core,high,executeMany/batch non-atomic; partial work committed on failure,"action-executor.ts:129-144; registry.ts:31539-31562",facade edit.apply = pre-validate + snapshot txn, all-or-nothing
+CORE-02,core,high,null-inverse undo trap: failed undo arms redo that double-applies,"action-history.ts:233-263; action-executor.ts:146-183",facade excludes 8 uninvertible types from op set; surfaces undoable flag
+CORE-03,core,medium,inverse generation outside try/catch -> rejected promise escapes,"action-executor.ts:98-102",facade catches and classifies; long-term core fix
+CORE-04,core,medium,undo path skips validation; state drift undetected,"action-executor.ts:170-171",facade re-validates inverse application or restricts undo to own groups
+CORE-05,core,medium,Headless vs Live rollback semantics divergent (snapshot+clear vs single-group undo),"headless-host.ts:44-70; live-host.ts:161-185",facade standardizes on snapshot semantics per host contract
+CORE-06,core,medium,lossy JSON snapshot for inverses (Blob/File destroyed; waveform degraded),"action-executor.ts:98; inverse-action-generator.ts:205-212",facade avoids media/delete reliance on undo; long-term structuredClone
+CORE-07,core,low-med,partial in-place mutation survives failed apply,"action-executor.ts:117-126",facade snapshot rollback covers it
+CORE-08,core,low,known-prefix unknown action types silently succeed as no-ops,"action-validator.ts:57-93 (no default branches)",facade allowlists the 110 known types at the boundary
+CORE-09,core,low,flawed inverses: subtitle/setStyle first-only; keyframe id ms-collision,"inverse-action-generator.ts:802-807; action-executor.ts:1424",document; exclude subtitle/setStyle from v0 op set
+LIVE-01,live-host,high,overlay dual-authority drift: engine singletons vs project arrays,"livehost-state.md STATE-AUTHORITY; host.ts:262-280 comment",facade text/shape ops always go through engine-aware adapters
+LIVE-02,live-host,medium,user edits during open agent turn join the turn's history group (proximity capture),"action-history.ts:225-230; runExclusive excludes UI writers",facade runtime is headless/single-writer in v0; live integration needs scoped groups
+LIVE-03,live-host,medium,in-place mutation before ref bump; stale-reference reads mid-flight,"project-store.ts:2904-2907",facade serializes all access (runExclusive-equivalent)
+LIVE-04,live-host,low-med,listProjects returns save-slot ids not project ids,"live-host.ts:217-233; auto-save.ts:180",facade project registry uses explicit ids
+LIVE-05,live-host,low,project open resets history silently,"project-store.ts:2993-3002",facade treats open as new session
+LIVE-06,live-host,low,mcpAutoAllowTrustedLocal default true gates nothing by default,"settings-store.ts:129; mcp-listener.ts:185-196",facade default policy = confirm destructive/expensive
+LIVE-07,live-host,medium,headless preview extraction cost: compositor entangled in 8.4k-line Preview.tsx,"Preview.tsx:2595-3229; canvas-renderers.ts as seed",first slice uses Chromium harness; extraction tracked as later slice
+DESK-01,desktop,high,default-on auto-allow + discoverable token = unattended destructive MCP,"settings-store.ts:129; mcp-listener.ts:184-196; server.ts:51-61",facade terminates auth itself; never inherits desktop default
+DESK-02,desktop,high,no atomicity/rollback across MCP; timed-out calls keep mutating,"mcp-listener.ts:174-212; renderer-bridge.ts:39-68",facade owns txn + cancel propagation
+DESK-03,desktop,medium,preload exposes arbitrary-path FS + keychain with no scoping,"preload/index.ts:14-32; ipc-contract.ts:34-35",facade never exposes desktop preload; document for product hardening
+DESK-04,desktop,medium,MCP token surfaced to renderer/UI (status + copyable panel),"server.ts:99-108; McpPanel.tsx:119-206",facade keeps tokens server-side
+DESK-05,desktop,medium,no CSP headers / permission-request handler,"desktop-mcp.md SECURITY",product hardening; not facade-blocking
+DESK-06,desktop,low,mcpResponse IPC does not validate event.sender,"renderer-bridge.ts:50-51",note for desktop hardening
+DESK-07,desktop,low,mediaFetchUrl SSRF DNS-rebinding gap; loopback guard env-disable-able,"fetch-url.ts:18-33,52",facade media.import validates scheme+host itself
+DESK-08,desktop,low,MCP protocol version negotiation echoes unsupported versions,"core.ts:44-49,125-138",facade pins one protocol version
+MEDIA-01,media-render,high,no headless pixel path: every frame producer needs browser canvas stack,"media-render-e2e.md F17-F21; G1; probe case 8",first E2E slice runs export under Chromium harness (C)
+MEDIA-02,media-render,high,overlay split-brain: actions-only text invisible to render/export; text-only project fails export,"F13-F16; export-engine.ts:1211,196-210",adapter: HeadlessHost.createTextOverlay -> titleEngine; or renderer fallback to project arrays
+MEDIA-03,media-render,medium,import_media_from_url desktop-gated; no headless fs ingest,"F5-F6",~50 LOC HeadlessHost.importMediaFromUrl adapter (fs->File->mediabunny)
+MEDIA-04,media-render,medium,clip/trim stale-base duration when in+out move together,"action-executor.ts:798-806",facade sends single-point trims; product fix later
+MEDIA-05,media-render,medium,media/import zeroes metadata -> add_clip silently defaults 5s,"action-executor.ts:356-380,683-689",facade import adapter writes probed metadata
+MEDIA-06,media-render,low-med,FFmpeg.wasm fetched from unpkg CDN at import time (supply chain),"ffmpeg-fallback.ts:3,130-152",pin/bundle wasm assets before production use
+MEDIA-07,media-render,low,no post-export verification (ffprobe/OCR absent),"F24",facade verify.artifact adapter (ffprobe spawn + frame extract)
+MEDIA-08,media-render,low,cloud GPU runner returns manifestURL only; artifact retrieval out-of-repo,"gpu-job-runner.ts:107-186",document as external dependency if cloud export used
