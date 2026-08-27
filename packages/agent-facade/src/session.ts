@@ -955,6 +955,14 @@ export class AgentFacadeSession {
           { path: valid.path },
         );
       }
+      const targetStat = await stat(target.path).catch(() => null);
+      if (!targetStat || !targetStat.isFile()) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "verify.artifact: path is not a regular file",
+          { path: valid.path },
+        );
+      }
 
       let request: VerifyArtifactRequest = { path: target.path };
       if (valid.expect !== undefined) {

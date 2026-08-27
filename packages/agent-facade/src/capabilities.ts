@@ -10,8 +10,11 @@
  * unable to encode H.264, and the dormant Slice-1 renderAdapter seam flips
  * nothing at all. A capability reports available only when (a) the facade
  * ships the verb that consumes it and (b) the provider's real preflight
- * passed. Preflights re-run on every capabilities.get so a dead runtime
- * flips the report back to unavailable.
+ * passed. Preflight freshness is the provider's contract (the Chromium
+ * providers cache one successful probe per pool); capabilities.get always
+ * re-delegates rather than caching answers itself, and verbs re-check the
+ * preflight before acting, so a runtime that never probed successfully can
+ * never be claimed.
  */
 import { FACADE_ERROR_CODES } from "./errors";
 import type { ProjectRenderAdapter } from "./render/adapter";
