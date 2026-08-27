@@ -1,0 +1,21 @@
+{
+  "generated_by": "audit/probes/dump-action-map.mjs",
+  "total_action_types": 110,
+  "registry_registered": 36,
+  "executor_switch_cases": 74,
+  "validator_switch_cases": 52,
+  "inverse_generator_cases": 56,
+  "invert_probe": {
+    "action": 19,
+    "null": 77,
+    "throw": 10
+  },
+  "history_probe": "push+canUndo ok",
+  "closure": {
+    "files_in_closure": 74,
+    "third_party_stubbed": [
+      "@paper-design/shaders"
+    ],
+    "unresolved": []
+  }
+}

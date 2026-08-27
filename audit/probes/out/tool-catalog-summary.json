@@ -1,0 +1,78 @@
+{
+  "generated_by": "audit/probes/dump-tool-catalog.mjs",
+  "runtime_tool_count": 304,
+  "static_element_count": 304,
+  "static_named_tools": 304,
+  "static_runtime_match": true,
+  "missing_in_static": [],
+  "missing_in_runtime": [],
+  "duplicate_static_names": [],
+  "by_domain": {
+    "read": 25,
+    "motion": 190,
+    "project": 7,
+    "track": 10,
+    "media": 3,
+    "clip": 11,
+    "speed": 6,
+    "transform": 3,
+    "effect": 5,
+    "color": 1,
+    "audio": 7,
+    "subtitle": 5,
+    "keyframe": 3,
+    "transition": 3,
+    "marker": 3,
+    "text": 3,
+    "graphics": 9,
+    "raw": 2,
+    "export": 7,
+    "ai": 1
+  },
+  "by_helper": {
+    "readTool": 21,
+    "inline-object": 215,
+    "actionTool": 61,
+    "overlayRemoveTool": 4,
+    "jobTool": 3
+  },
+  "closure": {
+    "files_in_closure": 115,
+    "third_party_stubbed": [
+      "@paper-design/shaders",
+      "polygon-clipping"
+    ],
+    "assets_referenced": [],
+    "unresolved": []
+  },
+  "editing_host_impls": {
+    "apps/web/src/services/agent/live-host.ts": {
+      "class": "LiveEditorHost",
+      "method_count": 27
+    },
+    "packages/agent/src/headless-host.ts": {
+      "class": "HeadlessHost",
+      "method_count": 9
+    }
+  },
+  "editing_host_optional_methods": [
+    "createProject",
+    "createShapeOverlay",
+    "createStickerOverlay",
+    "createSvgOverlay",
+    "createTextOverlay",
+    "exportMotionScene",
+    "importMediaFromUrl",
+    "inspectModel",
+    "listProjects",
+    "openProject",
+    "probeRiggingBackend",
+    "removeOverlay",
+    "rigHumanoidModel",
+    "saveProject",
+    "updateShapeOverlay",
+    "updateStickerOverlay",
+    "updateSvgOverlay",
+    "updateTextOverlay"
+  ]
+}
