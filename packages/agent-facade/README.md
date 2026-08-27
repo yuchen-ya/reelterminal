@@ -100,6 +100,11 @@ Chromium + system ffmpeg). Semantics owned by the facade itself:
   frame against a reference image/video, with containment enforced
   (`path` inside `artifactRoot`; `referencePath` inside `artifactRoot` or
   `mediaRoots`). Failed expectations are data (`checks[].pass`), not errors.
+- Output containment is enforced on the WRITE side too: `renders/`,
+  `exports/` and per-job directories must be real directories (never
+  symlinks/junctions) inside `artifactRoot` before a provider may write, and
+  the written artifact's realpath is re-validated afterwards — an escaped
+  file is removed and the verb fails, so zero bytes land outside.
 
 ## Media import
 

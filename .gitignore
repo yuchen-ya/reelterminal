@@ -44,6 +44,11 @@ coverage/
 .docs/
 docs/*
 !docs/superpowers/
+# Architecture decisions and slice evidence are real repo content: ADR 0001
+# was force-added before this rule existed; un-ignore the folders so ADRs
+# and machine-readable probe evidence are committed, never force-added.
+!docs/adr/
+!docs/slice-1b/
 .worktrees/
 # Project-specific
 /public/projects/

@@ -15,10 +15,11 @@ transport-agnostic provider interfaces defined by
 
 - **Chromium** — resolved by `playwright-core`. Install once:
   `pnpm --filter @openreel/runtime-chromium exec playwright-core install chromium`
-- **ffmpeg + ffprobe** — required for `verify.artifact` and for the
-  frames→ffmpeg export fallback. Resolved from explicit config
-  (`ffmpegPath`/`ffprobePath`) or the system `PATH`. Never committed, never
-  downloaded by this package, always spawned without a shell.
+- **ffmpeg + ffprobe** — required for `verify.artifact`, and for the
+  explicitly forced video-only frames→ffmpeg export experiment. Resolved
+  from explicit config (`ffmpegPath`/`ffprobePath`) or the system `PATH`.
+  Never committed, never downloaded by this package, always spawned without
+  a shell.
 
 ## Quick start
 
@@ -102,8 +103,9 @@ await facade["job.cancel"]({ jobId });  // cooperative; terminal states are no-o
 ```
 
 A failed or cancelled job **never** carries an artifact and never leaves an
-`output.mp4`/`.part` behind — exports write `output.part` and rename only on
-success.
+`output.mp4`/`output.mp4.part` behind — exports write to a `.part` temp name
+that is renamed only on success, and the job dir is swept before any
+error/cancelled terminalization.
 
 ### `verify.artifact`
 
@@ -133,22 +135,34 @@ infrastructure problems (missing binary, unreadable file) fail the call.
 ## Capabilities tell the truth
 
 `capabilities.get()` reports `preview`/`export`/`verify` independently, each
-gated on a **live preflight** (a real Chromium probe / ffmpeg resolution), and
-`session.describe()` flips the E2E step letters from `X` to `C`/`A` only when
-the capability is genuinely usable. A working renderer never implies a
-working exporter.
+gated on a **live preflight**, and `session.describe()` flips the E2E step
+letters from `X` to `C`/`A` only when the capability is genuinely usable. A
+working renderer never implies a working exporter.
 
-## Export routes (probe-selected, both honest)
+The preflight probe runs **on the pool's own runtime** — the same Chromium
+instance that would carry the preview/export work — never on a throwaway
+probe browser. The result is cached only for that browser's *generation*: a
+crash, a watchdog recycle or a failed launch invalidates the cache and the
+next preflight re-probes the fresh runtime. A capability can therefore never
+serve a stale success produced by a long-dead browser, and verbs re-check
+the preflight before acting, so the report and reality stay glued together.
 
-| Route | When | How |
-|---|---|---|
-| `chromium-webcodecs` | Chromium can encode H.264 (e.g. Windows/macOS) | Existing `ExportEngine` + `WebCodecsBackend` + mediabunny in-page; chunks stream to disk via a writable shim |
-| `chromium-frames-ffmpeg` | CI Chromium (no H.264 encode, e.g. Linux) | Same `renderFrame` per frame, piped as PNG into system ffmpeg/libx264 |
+## Export routes
 
-Both produce a real MP4/H.264 file; a WebM is never relabeled. The route is
-reported in `job.status → route` and in the machine-readable probe
-(`runChromiumRuntimeProbe`, saved by tests to
-`.artifacts/runtime-probe.json`).
+| Route | When | How | Audio |
+|---|---|---|---|
+| `chromium-webcodecs` (Route W) | **Default**, whenever the probe says the runtime can do it: render path OK **and** ExportEngine initialized **and** H.264 encodable | Existing `ExportEngine` + `WebCodecsBackend` + mediabunny in-page; chunks stream to disk via a writable shim | AAC from the timeline (when present) |
+| `chromium-frames-ffmpeg` (Route F) | **Explicit opt-in only** (`forceExportRoute`), for tests/experiments — never selected by the probe | Same `renderFrame` per frame, piped as PNG into system ffmpeg/libx264 | **None — video-only** |
+
+Route F drops audio (frames carry no sound). It is therefore **not a
+fallback**: the probe never derives it, the default export capability is
+either Route W or honestly `unavailable`, and forcing Route F makes the
+capability say so (`details: {route, videoOnly:true, audio:"none",
+experimental:true}`). Both routes produce a real MP4/H.264 file; a WebM is
+never relabeled. The route is reported in `job.status → route` and in the
+machine-readable probe (`runChromiumRuntimeProbe`, saved by tests to
+`.artifacts/runtime-probe.json`; the probe records the experiment's
+prerequisites as the `videoOnlyFramesRouteAvailable` fact).
 
 ## Guarantees and limits
 
@@ -158,10 +172,19 @@ reported in `job.status → route` and in the machine-readable probe
   (re-validated inside `mediaRoots`); nothing base64s a video into the page.
   Files >2 GiB are refused at the facade.
 - **Outputs are contained.** Everything lands under `artifactRoot` with
-  `{path, sizeBytes, sha256, sourceRevision}`.
+  `{path, sizeBytes, sha256, sourceRevision}`. The facade verifies the
+  output directories are real (never symlinks/junctions) BEFORE a provider
+  writes, and re-validates the written file's realpath AFTER the write — a
+  poisoned or swapped output tree fails the verb with zero bytes outside.
 - **One browser, one page.** Preview renders and exports serialize; a second
   export stays `queued` until the page is free. Cancellation still reaches a
   running export between frames.
+- **The watchdog recovers, never bricks.** Every export runs under a hard
+  ceiling (default 10 min). On fire the provider REALLY stops the work
+  (in-page abort / ffmpeg kill + browser recycle), lets route cleanup run,
+  sweeps the job dir, and only then settles the job — exactly once — as
+  `error` with no `.mp4`/`.part` left behind. The pool relaunches Chromium
+  on the next operation: preview and export keep working on the same pool.
 - **Input codec ≠ output codec.** Output is always H.264. Input decode
   support is build-dependent and measured by the probe, never assumed:
   VP8/VP9/AV1 decode everywhere; H.264 decode/encode is present in current
