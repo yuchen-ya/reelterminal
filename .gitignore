@@ -92,3 +92,4 @@ xcuserdata/
 # Signing certs — never commit
 *.p12
 *.pfx
+packages/runtime-chromium/.artifacts/

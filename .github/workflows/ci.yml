@@ -31,6 +31,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # packages/runtime-chromium launches real Chromium in its tests.
+      # (ffmpeg/ffprobe are preinstalled on ubuntu-latest and used as the
+      # frames-route encoder + artifact verifier.)
+      - name: Install Chromium for Playwright
+        run: pnpm --filter @openreel/runtime-chromium exec playwright-core install --with-deps chromium
+
       - name: Run TypeScript type checking
         run: pnpm typecheck
 
