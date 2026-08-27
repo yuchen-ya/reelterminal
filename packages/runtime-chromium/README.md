@@ -185,6 +185,10 @@ prerequisites as the `videoOnlyFramesRouteAvailable` fact).
   sweeps the job dir, and only then settles the job — exactly once — as
   `error` with no `.mp4`/`.part` left behind. The pool relaunches Chromium
   on the next operation: preview and export keep working on the same pool.
+  Renderer crashes (`page.on("crash")`) take the same recovery path, probe/
+  hydrate/render evaluates have a hard page-op ceiling (recycle on fire),
+  and preflight probes bound their wait on the shared page (a busy runtime
+  answers transient-unavailable rather than stalling the session lane).
 - **Input codec ≠ output codec.** Output is always H.264. Input decode
   support is build-dependent and measured by the probe, never assumed:
   VP8/VP9/AV1 decode everywhere; H.264 decode/encode is present in current

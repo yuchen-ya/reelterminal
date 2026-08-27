@@ -137,3 +137,28 @@ single terminalization point, guarded by an exactly-once callback wrapper —
 a job can never emit two terminal callbacks. `ChromiumRuntime.recycle()`
 replaces "close forever": the same pool launches a fresh browser and keeps
 serving preview/export after a watchdog or crash.
+
+**A7 (second adversarial pass, same day): recovery edge cases sealed.** The
+page lock is a SINGLE chain for the runtime's lifetime (recycle never resets
+it); an operation enqueued before a recycle sees the generation change and
+re-enqueues at the tail, so two operations can never run concurrently on the
+fresh page. A RENDERER crash (`page.on("crash")`, which never fires the
+browser's `disconnected`) triggers the same recycle+generation-bump
+recovery as a full crash — the pool can no longer serve stale capabilities
+against a dead page. Routes re-check cancellation after acquiring the page
+lock, so a job cancelled while queued behind a recycle never runs as a
+zombie; a post-terminal re-sweep covers late-settling work. Probe/hydrate/
+render evaluates carry a hard page-op ceiling (default 120 s, recycle on
+fire) and pool preflight probes bound their WAIT on the shared page
+(30 s → transient honest unavailable) so neither a wedged page nor a long
+export can stall the facade's serialized lane; graceful browser/server
+teardown is itself time-bounded. (playwright-core 1.60 carries NO
+protocol-level evaluate timeout — verified with a 185 s evaluate — so the
+export watchdog really is the only ceiling an export evaluate needs.)
+Known residual (accepted, documented): if the browser MAIN process hangs so
+completely that the bounded `browser.close()` times out with the process
+alive and no `disconnected` ever firing, the wedged evaluate never rejects
+and the single lock chain waits — degradation (a stuck pool), never
+corruption, double-terminalization or a capability lie; renderer-level
+wedges (the realistic class) are fully covered because closing the browser
+rejects the evaluate immediately.

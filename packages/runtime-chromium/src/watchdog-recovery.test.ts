@@ -189,6 +189,44 @@ describe("export watchdog + runtime recovery E2E", () => {
     expect(secondFinal.route).toBe("chromium-frames-ffmpeg");
   }, 600_000);
 
+  it("renderer crash (page dies, browser alive): stale capability is invalidated and the pool recovers", async () => {
+    const { facade, providers } = await makeSession();
+    const caps1 = await facade["capabilities.get"]();
+    if (!caps1.ok) throw new Error("caps failed");
+    if (!caps1.value.preview.available || !caps1.value.export.available) {
+      console.log("[watchdog] skipping renderer-crash test: runtime not capable here");
+      return;
+    }
+    const generationBefore = providers.pool.runtime.generation;
+    const before = await facade["preview.render_frame"]({ timeSec: 1 });
+    expect(before.ok).toBe(true);
+
+    // Kill ONLY the renderer (chrome://crash): the browser process stays
+    // connected, so this is the scenario 'disconnected' cannot cover.
+    await providers.pool.runtime.simulateRendererCrashForTesting();
+    const bumped = await waitFor(
+      () => providers.pool.runtime.generation !== generationBefore,
+      30_000,
+    );
+    expect(bumped).toBe(true);
+
+    // The stale probe is dead with the page: capabilities re-probe the fresh
+    // runtime, and the verbs agree with the report.
+    const caps2 = await facade["capabilities.get"]();
+    if (!caps2.ok) throw new Error("caps after renderer crash failed");
+    expect(caps2.value.preview.available).toBe(true);
+    expect(caps2.value.export.available).toBe(true);
+    const preview = await facade["preview.render_frame"]({ timeSec: 1 });
+    expect(preview.ok).toBe(true);
+    const started = await facade["export.start"]({});
+    if (!started.ok) throw new Error("export.start after renderer crash failed");
+    const final = await waitForJob(facade, started.value.jobId);
+    expect(final.state).toBe("done");
+    console.log(
+      `[watchdog] renderer-crash recovery: gen ${generationBefore} → ${providers.pool.runtime.generation}, export = ${final.state}`,
+    );
+  }, 600_000);
+
   it("hard browser crash: capability re-probes the fresh runtime and agrees with the verbs", async () => {
     const { facade, providers } = await makeSession();
     const caps1 = await facade["capabilities.get"]();

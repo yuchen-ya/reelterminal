@@ -45,7 +45,13 @@ export interface ArtifactRef {
   readonly kind: "image" | "video";
   /** Image artifacts are PNG; video artifacts are MP4/H.264 in this slice. */
   readonly format: "png" | "mp4";
-  /** Absolute local path inside the session's artifactRoot. */
+  /**
+   * Absolute local path inside the session's artifactRoot. This is the
+   * VERIFIED REALPATH (what the facade hashed after the post-write
+   * containment check) — on platforms where the configured root contains a
+   * symlink (e.g. macOS /var → /private/var) it differs textually from the
+   * configured root; compare realpath-to-realpath, never raw prefixes.
+   */
   readonly path: string;
   readonly sizeBytes: number;
   readonly sha256: string;

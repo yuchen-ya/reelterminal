@@ -5,7 +5,7 @@
  * wiring and the no-fake-artifact invariant.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm, writeFile, stat, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, stat, mkdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createAgentFacade, type AgentFacade } from "./index";
@@ -271,7 +271,11 @@ describe("slice-1b verb contracts (stub providers)", () => {
     expect(render.value.artifact.sourceRevision).toBe(2);
     expect(render.value.artifact.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(render.value.artifact.sizeBytes).toBeGreaterThan(0);
-    expect(render.value.artifact.path.startsWith(path.resolve(artifactRoot))).toBe(true);
+    // artifact.path is the VERIFIED REALPATH (post-write containment), so
+    // compare against the realpath'd root (they differ on e.g. macOS /var).
+    expect(
+      render.value.artifact.path.startsWith(await realpath(path.resolve(artifactRoot))),
+    ).toBe(true);
     const fileStat = await stat(render.value.artifact.path);
     expect(fileStat.size).toBe(render.value.artifact.sizeBytes);
   });

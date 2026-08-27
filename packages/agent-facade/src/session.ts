@@ -674,11 +674,10 @@ export class AgentFacadeSession {
 
       const mediaFiles = await this.buildMediaFiles(project, "preview.render_frame");
       const rendersDir = resolvePath(artifactRoot, "renders");
-      await mkdir(rendersDir, { recursive: true });
       // Containment BEFORE the provider writes: a symlinked/junctioned
       // renders dir (or a linked ancestor) must fail the verb with zero
       // bytes written outside artifactRoot.
-      await this.assertSafeArtifactDir(rendersDir, artifactRoot, "preview.render_frame");
+      await this.prepareArtifactDir(rendersDir, artifactRoot, "preview.render_frame");
       const timeMs = Math.round(valid.timeSec * 1000);
       // Scoped by project id: two sessions sharing one artifactRoot can
       // never overwrite each other's preview artifacts.
@@ -698,10 +697,11 @@ export class AgentFacadeSession {
       });
       // Containment AFTER the write: a provider that swapped the output dir
       // for a link mid-render (or wrote through one) is caught here, before
-      // the artifact is hashed and published.
-      await this.assertContainedWrittenFile(destPath, artifactRoot, "preview.render_frame");
+      // the artifact is hashed and published. The VERIFIED real path is
+      // what gets hashed — no swap window between check and hash.
+      const verifiedPath = await this.assertContainedWrittenFile(destPath, artifactRoot, "preview.render_frame");
       const artifact = await this.artifactRefFor(
-        destPath,
+        verifiedPath,
         "image",
         "png",
         this.revision,
@@ -810,14 +810,12 @@ export class AgentFacadeSession {
 
       const jobId = `job-${crypto.randomUUID()}`;
       const exportsDir = resolvePath(artifactRoot, "exports");
-      await mkdir(exportsDir, { recursive: true });
       // Containment BEFORE anything is created inside: a symlinked/junctioned
       // exports dir must fail here — mkdir'ing the job dir through a link
       // would already create a directory outside artifactRoot.
-      await this.assertSafeArtifactDir(exportsDir, artifactRoot, "export.start");
+      await this.prepareArtifactDir(exportsDir, artifactRoot, "export.start");
       const jobDir = resolvePath(exportsDir, jobId);
-      await mkdir(jobDir, { recursive: true });
-      await this.assertSafeArtifactDir(jobDir, artifactRoot, "export.start");
+      await this.prepareArtifactDir(jobDir, artifactRoot, "export.start");
       this.jobs.create(jobId, sourceRevision);
       if (valid.idempotencyKey !== undefined) {
         this.ledger.set("export.start", valid.idempotencyKey, {
@@ -1109,6 +1107,35 @@ export class AgentFacadeSession {
   }
 
   /**
+   * mkdir + pre-write containment gate, folded together so even a poisoned
+   * path that BREAKS mkdir (e.g. a dangling junction — mkdir -p through it
+   * throws ENOENT) surfaces as the clear symlink/junction refusal rather
+   * than a raw internal error.
+   */
+  private async prepareArtifactDir(
+    dir: string,
+    artifactRoot: string,
+    verb: string,
+  ): Promise<void> {
+    try {
+      await mkdir(dir, { recursive: true });
+    } catch (error) {
+      const linkStat = await lstat(dir).catch(() => null);
+      if (linkStat?.isSymbolicLink()) {
+        throw new FacadeError(
+          "JOB_FAILED",
+          `${verb}: refusing to write through a symlink/junction in the output path: ${dir} — remove it and let the facade create a real directory`,
+        );
+      }
+      throw new FacadeError(
+        "JOB_FAILED",
+        `${verb}: output directory cannot be created: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    await this.assertSafeArtifactDir(dir, artifactRoot, verb);
+  }
+
+  /**
    * Pre-write output-containment gate for a DIRECTORY the facade is about to
    * let a provider write into (renders/, exports/, exports/<jobId>). Two
    * independent checks, both fail-closed:
@@ -1170,15 +1197,16 @@ export class AgentFacadeSession {
    * (it is the file the provider just wrote through the escape; when the
    * path itself is a symlink, unlink removes the link, never the target) and
    * the verb fails — the facade never publishes an artifact it cannot
-   * contain.
+   * contain. On success it returns the VERIFIED real path, which the caller
+   * hashes/publishes (closing the swap window between check and hash).
    */
   private async assertContainedWrittenFile(
     filePath: string,
     artifactRoot: string,
     verb: string,
-  ): Promise<void> {
+  ): Promise<string> {
     const resolution = resolveContainedPathDetailed(filePath, [artifactRoot]);
-    if (resolution.kind === "ok") return;
+    if (resolution.kind === "ok") return resolution.path;
     await rm(filePath, { force: true }).catch(() => undefined);
     throw new FacadeError(
       "JOB_FAILED",

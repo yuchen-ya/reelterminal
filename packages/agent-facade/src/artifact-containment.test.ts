@@ -21,6 +21,7 @@ import {
   mkdir,
   mkdtemp,
   readdir,
+  realpath,
   rm,
   stat,
   symlink,
@@ -241,6 +242,59 @@ describe("artifactRoot output containment", () => {
     expect(escapedGone).toBe(true);
   });
 
+  it("preview refuses a DANGLING symlink/junction with the clear containment error (not a raw mkdir failure)", async () => {
+    // A dangling link breaks mkdir itself (ENOENT on win32); the verb must
+    // still surface the intended symlink/junction refusal, fail-closed.
+    await linkDir(path.join(outside, "no-such-target"), path.join(artifactRoot, "renders"));
+    const facade = createAgentFacade({
+      mediaRoots: [mediaRoot],
+      artifactRoot,
+      renderProvider: honestRenderProvider(),
+    });
+    await makeProjectWithMedia(facade, mediaRoot);
+
+    const res = await facade["preview.render_frame"]({ timeSec: 1 });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("JOB_FAILED");
+    expect(res.error.message).toContain("symlink");
+    expect(await filesUnder(outside)).toEqual([]);
+  });
+
+  it("post-write gate: a junction at destPath is removed and the outside target directory is untouched", async () => {
+    // Junctions need no privilege on Windows, so this pins the cleanup-
+    // never-deletes-the-target guarantee exactly where link attacks are
+    // cheapest (runs everywhere: POSIX symlinks to dirs behave the same).
+    const outsideDir = path.join(outside, "target-dir");
+    await mkdir(outsideDir, { recursive: true });
+    await writeFile(path.join(outsideDir, "precious.txt"), "keep me");
+    const junctionProvider: RenderProvider = {
+      id: "junction-render",
+      preflight: async () => ({ available: true }),
+      renderFramePng: async (request) => {
+        await linkDir(outsideDir, request.destPath);
+        return { bytesWritten: 100 };
+      },
+    };
+    const facade = createAgentFacade({
+      mediaRoots: [mediaRoot],
+      artifactRoot,
+      renderProvider: junctionProvider,
+    });
+    await makeProjectWithMedia(facade, mediaRoot);
+
+    const res = await facade["preview.render_frame"]({ timeSec: 1 });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("JOB_FAILED");
+    // The junction was unlinked; the outside directory and its content live.
+    const precious = await stat(path.join(outsideDir, "precious.txt")).then(
+      (s) => s.isFile(),
+      () => false,
+    );
+    expect(precious).toBe(true);
+  });
+
   it.skipIf(!FILE_SYMLINK_OK)("post-write gate: a provider reporting a path through a final symlink never publishes the target", async () => {
     // Provider writes a SYMLINK at destPath pointing at a pre-existing
     // outside file, hoping the facade hashes/publishes the outside bytes.
@@ -311,7 +365,8 @@ describe("artifactRoot output containment", () => {
     const preview = await facade["preview.render_frame"]({ timeSec: 1 });
     expect(preview.ok).toBe(true);
     if (!preview.ok) return;
-    expect(preview.value.artifact.path.startsWith(artifactRoot)).toBe(true);
+    // artifact.path is the verified realpath — compare realpath'd roots.
+    expect(preview.value.artifact.path.startsWith(await realpath(artifactRoot))).toBe(true);
 
     const started = await facade["export.start"]({});
     expect(started.ok).toBe(true);
