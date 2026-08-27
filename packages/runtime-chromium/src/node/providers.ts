@@ -6,19 +6,23 @@
  *   PNG under artifactRoot).
  * - ChromiumExportProvider: export.start backing. Route W reuses the existing
  *   ExportEngine/WebCodecsBackend inside Chromium with chunks streamed to
- *   disk; Route F (CI Chromium without H.264 encode) streams the SAME
- *   rendered frames into system ffmpeg/libx264. Both yield a real H.264 MP4;
- *   a WebM is never passed off as success. Jobs are serialized: the second
- *   job stays "queued" until the page is free. Cancellation is cooperative
- *   and always settles the job.
- * - Availability comes from the live runtime probe, independently per
- *   provider — a working renderer never implies a working exporter.
+ *   disk; Route F (video-only, EXPLICIT OPT-IN ONLY via forceExportRoute —
+ *   it drops audio, so the default export capability never selects it)
+ *   streams the SAME rendered frames into system ffmpeg/libx264. Both yield
+ *   a real H.264 MP4; a WebM is never passed off as success. Jobs are
+ *   serialized: the second job stays "queued" until the page is free.
+ *   Cancellation is cooperative and always settles the job.
+ * - Availability comes from a live probe OF THE POOL'S OWN RUNTIME (the
+ *   browser that would carry the job), keyed on the runtime generation — a
+ *   crashed/recycled browser re-probes instead of serving a stale success,
+ *   and a working renderer never implies a working exporter.
  */
 import { rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Project } from "@openreel/core/types/project";
 import type {
   ExportCallbacks,
+  ExportProgressEvent,
   ExportProvider,
   ExportVideoRequest,
   ProviderPreflight,
@@ -33,7 +37,7 @@ import {
   type FfmpegConfig,
 } from "./ffmpeg";
 import {
-  runChromiumRuntimeProbe,
+  probeWithRuntime,
   type RuntimeProbeResult,
 } from "./probe";
 import { ChromiumRuntime, PartFileWriter } from "./runtime";
@@ -47,20 +51,102 @@ export interface ChromiumProvidersConfig {
   /** Optional sample for the probe's real decode smoke. */
   readonly probeSampleMediaPath?: string;
   /**
-   * Test hook: pin the export route instead of deriving it from the probe.
-   * The pinned route is still validated against its prerequisites (frames
-   * route needs ffmpeg; webcodecs route needs H.264 encode) — it can make a
-   * capable machine exercise the fallback, never an incapable one lie.
+   * Explicitly pin the export route instead of deriving it from the probe.
+   * `chromium-frames-ffmpeg` is a VIDEO-ONLY experiment (no audio track) —
+   * pinning it is the ONLY way to get it; the probe-derived default route is
+   * always `chromium-webcodecs` or unavailable. A pinned route is still
+   * validated against its prerequisites (frames route needs ffmpeg;
+   * webcodecs route needs H.264 encode + ExportEngine init) — it can make a
+   * capable machine exercise the experiment, never an incapable one lie.
    */
   readonly forceExportRoute?: "chromium-webcodecs" | "chromium-frames-ffmpeg";
   /** Hard ceiling for one export job; default 600_000 (10 min). */
   readonly exportWatchdogMs?: number;
 }
 
+/** Files an export job may write into its job dir (swept on non-done ends). */
+const EXPORT_JOB_FILES = ["output.mp4", "output.mp4.part", "output.part"] as const;
+
+/**
+ * Best-effort removal of everything an export could have left behind. Runs
+ * before ANY error/cancelled terminalization so a non-done job never leaves
+ * a success-looking (or partial) file in its job dir.
+ */
+async function sweepExportJobDir(jobDir: string): Promise<void> {
+  await Promise.all(
+    EXPORT_JOB_FILES.map((name) =>
+      rm(join(jobDir, name), { force: true }).catch(() => undefined),
+    ),
+  );
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
+}
+
+/**
+ * Exactly-once terminal wrapper for an export job's callbacks: the first of
+ * onDone/onError/onCancelled wins, later terminal calls (and any
+ * progress/running signals after terminal) are dropped. This is the
+ * provider-side belt to the structural suspenders: routes in
+ * ChromiumExportProvider RETURN their outcome and let runJob terminalize, so
+ * a wedged job interrupted by the watchdog can never emit a second terminal
+ * callback when its route finally unwinds.
+ */
+export function guardExportCallbacks(
+  callbacks: ExportCallbacks,
+): ExportCallbacks & { readonly terminal: "done" | "error" | "cancelled" | null } {
+  let terminal: "done" | "error" | "cancelled" | null = null;
+  return {
+    get terminal() {
+      return terminal;
+    },
+    onRunning: () => {
+      if (terminal) return;
+      callbacks.onRunning();
+    },
+    onProgress: (event: ExportProgressEvent) => {
+      if (terminal) return;
+      callbacks.onProgress(event);
+    },
+    onDone: (completion) => {
+      if (terminal) return;
+      terminal = "done";
+      callbacks.onDone(completion);
+    },
+    onError: (error) => {
+      if (terminal) return;
+      terminal = "error";
+      callbacks.onError(error);
+    },
+    onCancelled: () => {
+      if (terminal) return;
+      terminal = "cancelled";
+      callbacks.onCancelled();
+    },
+  };
+}
+
 interface JobSlot {
   cancelRequested: boolean;
   state: "queued" | "active" | "settled";
+  /**
+   * Route-specific hard stop for the currently running work (in-page abort
+   * for Route W, ffmpeg kill for Route F). Set by the route while it runs;
+   * the watchdog and cancel() invoke it.
+   */
+  abortActive?: () => void | Promise<void>;
 }
+
+/** How a route ended; runJob turns this into THE terminal callback. */
+type RouteOutcome =
+  | { readonly kind: "done"; readonly completion: {
+      readonly path: string;
+      readonly sizeBytes: number;
+      readonly route: "chromium-webcodecs" | "chromium-frames-ffmpeg";
+      readonly framesEncoded: number;
+    } }
+  | { readonly kind: "cancelled" };
 
 function timelineDurationSec(project: Project): number {
   let maxEnd = 0;
@@ -135,7 +221,6 @@ export class ChromiumExportProvider implements ExportProvider {
   private readonly providers: ChromiumProviderPool;
   private exportChain: Promise<unknown> = Promise.resolve();
   private readonly jobs = new Map<string, JobSlot>();
-  private activeRoute: "chromium-webcodecs" | "chromium-frames-ffmpeg" | null = null;
 
   constructor(pool: ChromiumProviderPool) {
     this.providers = pool;
@@ -143,28 +228,48 @@ export class ChromiumExportProvider implements ExportProvider {
 
   async preflight(): Promise<ProviderPreflight> {
     const route = await this.providers.exportRoute();
+    const probe = await this.providers.probe();
     if (route === "unavailable") {
-      const probe = await this.providers.probe();
+      const forced = this.providers.forcedRoute;
       return {
         available: false,
         reason:
-          probe.summary.exportUnavailableReason ??
-          "no honest H.264 export route exists in this runtime",
+          forced === "chromium-frames-ffmpeg"
+            ? "the explicitly forced video-only frames→ffmpeg route is unavailable: no usable ffmpeg binary was found"
+            : forced === "chromium-webcodecs"
+              ? "the explicitly forced WebCodecs route is unavailable: this Chromium lacks H.264 encode or the ExportEngine failed to initialize"
+              : probe.summary.exportUnavailableReason ??
+                "no honest H.264 export route exists in this runtime",
         requires:
-          "Chromium with H.264 encode (WebCodecs) OR Chromium frames + an ffmpeg binary",
+          forced !== null
+            ? "the forced route's prerequisites (see forceExportRoute config)"
+            : "Chromium with H.264 encode + a working ExportEngine (WebCodecs route)",
         details: {
+          ...(forced !== null ? { forcedRoute: forced } : {}),
           h264EncodeAvailable: probe.summary.h264EncodeAvailable,
+          exportEngineInit: probe.page.exportEngineInit,
           ffmpegAvailable: probe.ffmpeg.available,
+          videoOnlyFramesRouteAvailable:
+            probe.summary.videoOnlyFramesRouteAvailable,
         },
       };
     }
-    const probe = await this.providers.probe();
     return {
       available: true,
       details: {
         route,
         chromium: probe.chromium.version,
         ffmpeg: probe.ffmpeg.available ? probe.ffmpeg.ffmpegPath : null,
+        ...(route === "chromium-frames-ffmpeg"
+          ? {
+              // Honesty: the frames route produces NO audio track. It only
+              // ever runs when explicitly forced, and says so every time.
+              videoOnly: true,
+              audio: "none",
+              experimental: true,
+              note: "explicitly forced video-only export (forceExportRoute): the output MP4 has no audio track",
+            }
+          : {}),
       },
     };
   }
@@ -190,68 +295,119 @@ export class ChromiumExportProvider implements ExportProvider {
     const slot = this.jobs.get(jobId);
     if (!slot || slot.state === "settled") return;
     slot.cancelRequested = true;
-    if (slot.state === "active" && this.activeRoute === "chromium-webcodecs") {
-      // Route F checks the flag between frames; Route W needs the in-page abort.
-      await this.providers.runtime.abortInPageExport();
+    if (slot.state === "active") {
+      // Route F checks the flag between frames; Route W needs the in-page
+      // abort to leave the encode loop promptly.
+      await slot.abortActive?.();
     }
   }
 
+  /**
+   * THE single place a job terminalizes. Routes return a RouteOutcome (or
+   * throw); this method — and only this method — converts that into the one
+   * terminal callback the contract allows, behind a settle-once guard.
+   */
   private async runJob(
     request: ExportVideoRequest,
     callbacks: ExportCallbacks,
     slot: JobSlot,
   ): Promise<void> {
-    if (slot.cancelRequested) {
-      slot.state = "settled";
-      callbacks.onCancelled();
-      return;
-    }
-    slot.state = "active";
-    callbacks.onRunning();
+    const guarded = guardExportCallbacks(callbacks);
     try {
+      if (slot.cancelRequested) {
+        await sweepExportJobDir(request.jobDir);
+        guarded.onCancelled();
+        return;
+      }
+      slot.state = "active";
+      guarded.onRunning();
+
       const route = await this.providers.exportRoute();
       if (route === "unavailable") {
         throw new Error("no export route available in this runtime");
       }
-      this.activeRoute = route;
+
       // Watchdog: a wedged page/encoder must never freeze the job (or, via
-      // the shared page, the whole session) forever. On fire we abort the
-      // in-page export, recycle the browser, and settle as an error.
-      const watchdogMs = this.providers.watchdogMs;
+      // the shared page, the whole session) forever.
+      const watchdogMs = this.providers.exportWatchdogMs;
       let watchdog: ReturnType<typeof setTimeout> | undefined;
       const watchdogFired = new Promise<never>((_resolve, reject) => {
         watchdog = setTimeout(() => {
-          reject(new ExportWatchdogError(`export exceeded the ${watchdogMs}ms watchdog`));
+          reject(
+            new ExportWatchdogError(
+              `export exceeded the ${watchdogMs}ms watchdog`,
+            ),
+          );
         }, watchdogMs);
       });
+      const work: Promise<RouteOutcome> =
+        route === "chromium-webcodecs"
+          ? this.runWebcodecsRoute(request, guarded, slot)
+          : this.runFramesFfmpegRoute(request, guarded, slot);
+      let outcome: RouteOutcome;
       try {
-        const work =
-          route === "chromium-webcodecs"
-            ? this.runWebcodecsRoute(request, callbacks, slot)
-            : this.runFramesFfmpegRoute(request, callbacks, slot);
-        await Promise.race([work, watchdogFired]);
+        outcome = await Promise.race([work, watchdogFired]);
+      } catch (error) {
+        if (!(error instanceof ExportWatchdogError)) throw error;
+        // Watchdog fired. Order matters: REALLY stop the underlying work,
+        // let its own cleanup run, sweep whatever is left, and only then
+        // terminalize (as error — a timeout is never "cancelled").
+        slot.cancelRequested = true; // route loops bail at the next check
+        const stopAndUnwind = (async () => {
+          try {
+            await slot.abortActive?.();
+          } catch {
+            /* best effort */
+          }
+          slot.abortActive = undefined;
+          // Killing the browser breaks any wedged page evaluate; the pool
+          // stays usable — the next operation launches a fresh browser.
+          await this.providers.runtime.recycle().catch(() => undefined);
+          // Give the route's own cleanup (writer.discard / encoder.abort +
+          // rm) the chance to finish before we terminalize.
+          await work.catch(() => undefined);
+        })();
+        await Promise.race([
+          stopAndUnwind,
+          delay(WATCHDOG_CLEANUP_GRACE_MS),
+        ]);
+        slot.state = "settled";
+        if (guarded.terminal !== "done") {
+          await sweepExportJobDir(request.jobDir);
+        }
+        guarded.onError({ code: "JOB_FAILED", message: error.message });
+        return;
       } finally {
         if (watchdog) clearTimeout(watchdog);
       }
+
+      slot.state = "settled";
+      if (outcome.kind === "done") {
+        guarded.onDone(outcome.completion);
+      } else {
+        await sweepExportJobDir(request.jobDir);
+        guarded.onCancelled();
+      }
+      return;
     } catch (error) {
       slot.state = "settled";
-      this.activeRoute = null;
-      if (error instanceof ExportWatchdogError) {
-        await this.providers.runtime.abortInPageExport().catch(() => undefined);
-        await this.providers.runtime.close().catch(() => undefined);
-        callbacks.onError({ code: "JOB_FAILED", message: error.message });
-      } else if (slot.cancelRequested) {
-        callbacks.onCancelled();
+      // Error or cancel: nothing success-looking may survive. (Never sweep
+      // after a done terminal — the artifact has been published already.)
+      if (guarded.terminal !== "done") {
+        await sweepExportJobDir(request.jobDir);
+      }
+      if (slot.cancelRequested) {
+        guarded.onCancelled();
       } else {
-        callbacks.onError({
+        guarded.onError({
           code: "JOB_FAILED",
           message: error instanceof Error ? error.message : String(error),
         });
       }
       return;
+    } finally {
+      slot.state = "settled";
     }
-    slot.state = "settled";
-    this.activeRoute = null;
   }
 
   /* --------------------------- Route W --------------------------- */
@@ -260,9 +416,10 @@ export class ChromiumExportProvider implements ExportProvider {
     request: ExportVideoRequest,
     callbacks: ExportCallbacks,
     slot: JobSlot,
-  ): Promise<void> {
+  ): Promise<RouteOutcome> {
     const finalPath = join(request.jobDir, "output.mp4");
     const writer = await PartFileWriter.open(finalPath);
+    slot.abortActive = () => this.providers.runtime.abortInPageExport();
     let outcome;
     try {
       outcome = await this.providers.runtime.exportWebcodecsStreaming(
@@ -284,14 +441,13 @@ export class ChromiumExportProvider implements ExportProvider {
     } catch (error) {
       await writer.discard().catch(() => undefined);
       throw error;
+    } finally {
+      slot.abortActive = undefined;
     }
     if (!outcome.success) {
       await writer.discard().catch(() => undefined);
       if (slot.cancelRequested || outcome.errorCode === "CANCELLED") {
-        slot.state = "settled";
-        this.activeRoute = null;
-        callbacks.onCancelled();
-        return;
+        return { kind: "cancelled" };
       }
       throw new Error(
         `in-page export failed (${outcome.errorCode ?? "unknown"}): ${outcome.errorMessage ?? "no message"}`,
@@ -301,18 +457,17 @@ export class ChromiumExportProvider implements ExportProvider {
       // Finished encoding but a cancel landed first: the result is discarded,
       // never published — the job is cancelled, not done.
       await writer.discard().catch(() => undefined);
-      slot.state = "settled";
-      this.activeRoute = null;
-      callbacks.onCancelled();
-      return;
+      return { kind: "cancelled" };
     }
-    const sizeBytes = writer.bytes;
-    callbacks.onDone({
-      path: finalPath,
-      sizeBytes,
-      route: "chromium-webcodecs",
-      framesEncoded: outcome.framesRendered ?? 0,
-    });
+    return {
+      kind: "done",
+      completion: {
+        path: finalPath,
+        sizeBytes: writer.bytes,
+        route: "chromium-webcodecs",
+        framesEncoded: outcome.framesRendered ?? 0,
+      },
+    };
   }
 
   /* --------------------------- Route F --------------------------- */
@@ -321,7 +476,7 @@ export class ChromiumExportProvider implements ExportProvider {
     request: ExportVideoRequest,
     callbacks: ExportCallbacks,
     slot: JobSlot,
-  ): Promise<void> {
+  ): Promise<RouteOutcome> {
     const binaries = await resolveFfmpegBinaries(this.providers.ffmpegConfig);
     if (!binaries) {
       throw new Error(
@@ -345,6 +500,7 @@ export class ChromiumExportProvider implements ExportProvider {
       frameRate,
       destPath: partPath,
     });
+    slot.abortActive = () => encoder.abort();
 
     let framesFed = 0;
     try {
@@ -397,23 +553,25 @@ export class ChromiumExportProvider implements ExportProvider {
       // mirror the Route-W post-completion check (see runWebcodecsRoute).
       if (slot.cancelRequested) throw new FramesJobCancelled();
       await rename(partPath, finalPath);
-      callbacks.onDone({
-        path: finalPath,
-        sizeBytes,
-        route: "chromium-frames-ffmpeg",
-        framesEncoded: framesFed,
-      });
+      return {
+        kind: "done",
+        completion: {
+          path: finalPath,
+          sizeBytes,
+          route: "chromium-frames-ffmpeg",
+          framesEncoded: framesFed,
+        },
+      };
     } catch (error) {
       encoder.abort();
       await rm(partPath, { force: true }).catch(() => undefined);
       await rm(finalPath, { force: true }).catch(() => undefined);
       if (error instanceof FramesJobCancelled) {
-        slot.state = "settled";
-        this.activeRoute = null;
-        callbacks.onCancelled();
-        return;
+        return { kind: "cancelled" };
       }
       throw error;
+    } finally {
+      slot.abortActive = undefined;
     }
   }
 }
@@ -432,21 +590,33 @@ class ExportWatchdogError extends Error {
   }
 }
 
+/**
+ * Bounded wait for a route's own cleanup after the watchdog killed its work
+ * (browser recycled / encoder aborted). Cleanup is local rm/discard — 30 s is
+ * generous; past it we terminalize anyway rather than hang the job forever.
+ */
+const WATCHDOG_CLEANUP_GRACE_MS = 30_000;
+
 /* ------------------------------------------------------------------ */
-/* Pool: one browser + one probe, shared by all providers              */
+/* Pool: one browser + generation-keyed probe, shared by all providers */
 /* ------------------------------------------------------------------ */
 
 export class ChromiumProviderPool {
   readonly runtime: ChromiumRuntime;
   readonly ffmpegConfig: FfmpegConfig;
-  /** Export watchdog: hard ceiling for one export (default 10 min). */
-  readonly watchdogMs: number;
+  /**
+   * Export watchdog: hard ceiling for one export (default 10 min). Public
+   * and mutable so tests can shrink it for one job and restore it after —
+   * the watchdog must never be a way to brick the pool.
+   */
+  exportWatchdogMs: number;
   private readonly config: ChromiumProvidersConfig;
-  private probePromise: Promise<RuntimeProbeResult> | null = null;
+  private probeCache: { readonly generation: number; readonly result: RuntimeProbeResult } | null = null;
+  private probeInFlight: Promise<RuntimeProbeResult> | null = null;
 
   constructor(config: ChromiumProvidersConfig = {}) {
     this.config = config;
-    this.watchdogMs = config.exportWatchdogMs ?? 600_000;
+    this.exportWatchdogMs = config.exportWatchdogMs ?? 600_000;
     this.ffmpegConfig = {
       ...(config.ffmpegPath ? { ffmpegPath: config.ffmpegPath } : {}),
       ...(config.ffprobePath ? { ffprobePath: config.ffprobePath } : {}),
@@ -457,26 +627,66 @@ export class ChromiumProviderPool {
     });
   }
 
-  /** The probe runs once per pool and is shared by every preflight. */
-  probe(): Promise<RuntimeProbeResult> {
-    this.probePromise ??= runChromiumRuntimeProbe({
-      ...(this.config.executablePath
-        ? { executablePath: this.config.executablePath }
-        : {}),
-      headless: this.config.headless ?? true,
-      ...(this.config.probeSampleMediaPath
-        ? { sampleMediaPath: this.config.probeSampleMediaPath }
-        : {}),
-      ffmpeg: this.ffmpegConfig,
-    });
-    return this.probePromise;
+  /** The explicitly pinned route, if any (null = probe-derived default). */
+  get forcedRoute(): "chromium-webcodecs" | "chromium-frames-ffmpeg" | null {
+    return this.config.forceExportRoute ?? null;
   }
 
   /**
-   * The effective export route: probe-derived, unless the config pins one —
-   * a pinned route is honored ONLY when its own prerequisites really hold
-   * (a forced frames route still needs ffmpeg; a forced webcodecs route
-   * still needs H.264 encode). Otherwise "unavailable".
+   * Probe THE POOL'S OWN RUNTIME — the same Chromium that would carry
+   * preview/export work — and cache the result only for that browser's
+   * generation. A crash, recycle or failed launch invalidates the cache, so
+   * a preflight can never serve a stale success produced by a long-dead
+   * browser (or by a throwaway probe browser that no job would ever use).
+   * Failed probes are not cached: the next call retries honestly.
+   */
+  probe(): Promise<RuntimeProbeResult> {
+    const cached = this.probeCache;
+    if (
+      cached !== null &&
+      cached.generation === this.runtime.generation &&
+      this.runtime.isBrowserConnected
+    ) {
+      return Promise.resolve(cached.result);
+    }
+    this.probeInFlight ??= (async () => {
+      const generationBefore = this.runtime.generation;
+      try {
+        const result = await probeWithRuntime(this.runtime, {
+          ...(this.config.executablePath
+            ? { executablePath: this.config.executablePath }
+            : {}),
+          headless: this.config.headless ?? true,
+          ...(this.config.probeSampleMediaPath
+            ? { sampleMediaPath: this.config.probeSampleMediaPath }
+            : {}),
+          ffmpeg: this.ffmpegConfig,
+        });
+        // Cache only a successful probe whose browser is still the one we
+        // measured (a recycle/crash mid-probe means these facts are stale).
+        if (
+          result.launchError === undefined &&
+          generationBefore === this.runtime.generation
+        ) {
+          this.probeCache = { generation: generationBefore, result };
+        } else {
+          this.probeCache = null;
+        }
+        return result;
+      } finally {
+        this.probeInFlight = null;
+      }
+    })();
+    return this.probeInFlight;
+  }
+
+  /**
+   * The effective export route: probe-derived by default — and the probe
+   * NEVER derives the video-only frames route (that would silently drop
+   * audio). `chromium-frames-ffmpeg` exists only when explicitly forced via
+   * config, and even then ONLY when its own prerequisite (a real ffmpeg
+   * binary) holds; a forced webcodecs route likewise still requires H.264
+   * encode + ExportEngine init. Otherwise "unavailable".
    */
   async exportRoute(): Promise<"chromium-webcodecs" | "chromium-frames-ffmpeg" | "unavailable"> {
     const probe = await this.probe();
@@ -484,7 +694,9 @@ export class ChromiumProviderPool {
     if (!forced) return probe.summary.exportRoute;
     if (!probe.summary.renderAvailable) return "unavailable";
     if (forced === "chromium-webcodecs") {
-      return probe.summary.h264EncodeAvailable ? forced : "unavailable";
+      return probe.summary.exportRoute === "chromium-webcodecs"
+        ? forced
+        : "unavailable";
     }
     const ffmpeg = await resolveFfmpegBinaries(this.ffmpegConfig);
     return ffmpeg ? forced : "unavailable";

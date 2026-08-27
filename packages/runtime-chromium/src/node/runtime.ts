@@ -158,9 +158,37 @@ export class ChromiumRuntime {
   private sinkBridge: SinkBridge | null = null;
   private sinkBindingsReady = false;
   private closed = false;
+  /**
+   * Bumped every time the browser instance is replaced (recycle or crash).
+   * Consumers key any per-browser cached state (probe results, exposed
+   * bindings) on this so a stale success can never outlive its browser.
+   */
+  private generationCounter = 0;
 
   constructor(options: ChromiumRuntimeOptions = {}) {
     this.options = options;
+  }
+
+  /** Identity of the current browser instance; changes on recycle/crash. */
+  get generation(): number {
+    return this.generationCounter;
+  }
+
+  /** True while a launched browser still reports itself connected. */
+  get isBrowserConnected(): boolean {
+    return this.browser !== null && this.browser.isConnected();
+  }
+
+  /**
+   * TEST-ONLY crash switch: kill the browser out from under the runtime
+   * WITHOUT the orderly teardown of close()/recycle(). The resulting
+   * 'disconnected' event drives the exact same recovery path a real crash
+   * (OOM kill, segfault) would — nothing in production code may call this.
+   */
+  async simulateBrowserCrashForTesting(): Promise<void> {
+    const browser = this.browser;
+    if (!browser) return;
+    await browser.close().catch(() => undefined);
   }
 
   /* --------------------------- lifecycle --------------------------- */
@@ -176,11 +204,27 @@ export class ChromiumRuntime {
     return this.launchPromise;
   }
 
+  /**
+   * The browser died without us closing it (crash, OOM kill). Drop every
+   * reference and bump the generation so the next operation relaunches and
+   * cached per-browser state (probe facts, exposed functions) is rebuilt
+   * instead of trusted blindly.
+   */
+  private onBrowserDisconnected(browser: Browser): void {
+    if (this.browser !== browser) return;
+    this.browser = null;
+    this.page = null;
+    this.launchPromise = null;
+    this.sinkBridge = null;
+    this.sinkBindingsReady = false;
+    this.generationCounter += 1;
+  }
+
   private async launch(): Promise<Page> {
     let browser: Browser | null = null;
     let server: Server | null = null;
     try {
-      browser = await chromium.launch({
+      const launchedBrowser = await chromium.launch({
         headless: this.options.headless ?? true,
         ...(this.options.executablePath
           ? { executablePath: this.options.executablePath }
@@ -193,7 +237,11 @@ export class ChromiumRuntime {
           ...(this.options.launchArgs ?? []),
         ],
       });
-      this.browser = browser;
+      browser = launchedBrowser;
+      this.browser = launchedBrowser;
+      launchedBrowser.on("disconnected", () =>
+        this.onBrowserDisconnected(launchedBrowser),
+      );
 
       // WebCodecs (VideoDecoder/VideoEncoder) is gated on a secure context;
       // about:blank/setContent is NOT one, but 127.0.0.1 is. Serve the harness
@@ -253,12 +301,36 @@ export class ChromiumRuntime {
 
   async close(): Promise<void> {
     this.closed = true;
+    await this.teardownBrowser();
+  }
+
+  /**
+   * Kill the current browser but keep the runtime USABLE: the next operation
+   * launches a fresh browser on a bumped generation. This is the watchdog /
+   * post-crash recovery path — a wedged page must never brick the pool.
+   *
+   * The page mutex is reset: any operation still holding it was talking to
+   * the now-dead browser and will fail on its own; new work must not queue
+   * behind a corpse.
+   */
+  async recycle(): Promise<void> {
+    if (this.closed) return;
+    this.generationCounter += 1;
+    // Reset the mutex BEFORE awaiting teardown so queued callers unblock
+    // onto the fresh generation as soon as the old browser is gone.
+    this.mutex = Promise.resolve();
+    await this.teardownBrowser();
+  }
+
+  private async teardownBrowser(): Promise<void> {
     const browser = this.browser;
     const server = this.server;
     this.browser = null;
     this.page = null;
     this.server = null;
     this.launchPromise = null;
+    this.sinkBridge = null;
+    this.sinkBindingsReady = false;
     if (browser) {
       await browser.close().catch(() => undefined);
     }
