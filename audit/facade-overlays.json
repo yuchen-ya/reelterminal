@@ -27,6 +27,9 @@
     "batch_actions": { "facade": "facade-replace", "note": "non-atomic today (CORE-01); facade edit.apply provides atomicity instead" },
     "export_video": { "facade": "facade-core-async", "note": "jobTool -> facade export.start; needs JobRunner injection headless (RUNNER G1)" },
     "import_media_from_url": { "facade": "facade-core", "note": "desktop-gated today (MEDIA-03); facade adds fs/path adapter" },
-    "create_text_clip": { "facade": "facade-core-via-edit-batch", "note": "RUNNER-02 clip.id + engine-sync must be fixed in adapter" }
+    "create_text_clip": { "facade": "facade-core-via-edit-batch", "note": "RUNNER-02 clip.id + engine-sync must be fixed in adapter" },
+    "recover_motion_scene3d_to_creation": { "note": "routes via persistMotionSceneCreationDraft -> creation/applyOperation (adversarial-review C7); catalog action_type column is direct-routing only" },
+    "simulate_creation_rigid_drop": { "note": "routes via commitCreationRigidBake -> creation/applyOperation (adversarial-review C7)" },
+    "simulate_creation_rigid_bodies": { "note": "routes via commitCreationRigidBake -> creation/applyOperation (adversarial-review C7)" }
   }
 }

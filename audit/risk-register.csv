@@ -13,13 +13,13 @@ RUNNER-05,agent-runner,low,static catalog under-attributes some host deps (jobTo
 RUNNER-06,agent-runner,low,capabilities() static regardless of injected jobs (misleading planners),"headless-host.ts:85-87",facade capabilities.get reports live availability
 RUNNER-07,agent-runner,low,commitTransaction unknown-handle silent no-op,"headless-host.ts:54-57",facade tracks txn handles itself
 CORE-01,core,high,executeMany/batch non-atomic; partial work committed on failure,"action-executor.ts:129-144; registry.ts:31539-31562",facade edit.apply = pre-validate + snapshot txn, all-or-nothing
-CORE-02,core,high,null-inverse undo trap: failed undo arms redo that double-applies,"action-history.ts:233-263; action-executor.ts:146-183",facade excludes 8 uninvertible types from op set; surfaces undoable flag
+CORE-02,core,high,null-inverse undo trap (DEMONSTRATED via probe: slip delta=2 -> failed undo -> redo replays -> inPoint=4),"action-history.ts:233-263; action-executor.ts:146-183; adversarial-state.mjs B8",facade excludes 8 uninvertible types from op set; surfaces undoable flag
 CORE-03,core,medium,inverse generation outside try/catch -> rejected promise escapes,"action-executor.ts:98-102",facade catches and classifies; long-term core fix
 CORE-04,core,medium,undo path skips validation; state drift undetected,"action-executor.ts:170-171",facade re-validates inverse application or restricts undo to own groups
 CORE-05,core,medium,Headless vs Live rollback semantics divergent (snapshot+clear vs single-group undo),"headless-host.ts:44-70; live-host.ts:161-185",facade standardizes on snapshot semantics per host contract
 CORE-06,core,medium,lossy JSON snapshot for inverses (Blob/File destroyed; waveform degraded),"action-executor.ts:98; inverse-action-generator.ts:205-212",facade avoids media/delete reliance on undo; long-term structuredClone
 CORE-07,core,low-med,partial in-place mutation survives failed apply,"action-executor.ts:117-126",facade snapshot rollback covers it
-CORE-08,core,low,known-prefix unknown action types silently succeed as no-ops,"action-validator.ts:57-93 (no default branches)",facade allowlists the 110 known types at the boundary
+CORE-08,core,medium,known-prefix unknown action types silently succeed as no-ops,"action-validator.ts:57-93 (no default branches)",facade allowlists the 110 known types at the boundary
 CORE-09,core,low,flawed inverses: subtitle/setStyle first-only; keyframe id ms-collision,"inverse-action-generator.ts:802-807; action-executor.ts:1424",document; exclude subtitle/setStyle from v0 op set
 LIVE-01,live-host,high,overlay dual-authority drift: engine singletons vs project arrays,"livehost-state.md STATE-AUTHORITY; host.ts:262-280 comment",facade text/shape ops always go through engine-aware adapters
 LIVE-02,live-host,medium,user edits during open agent turn join the turn's history group (proximity capture),"action-history.ts:225-230; runExclusive excludes UI writers",facade runtime is headless/single-writer in v0; live integration needs scoped groups
@@ -41,6 +41,13 @@ MEDIA-02,media-render,high,overlay split-brain: actions-only text invisible to r
 MEDIA-03,media-render,medium,import_media_from_url desktop-gated; no headless fs ingest,"F5-F6",~50 LOC HeadlessHost.importMediaFromUrl adapter (fs->File->mediabunny)
 MEDIA-04,media-render,medium,clip/trim stale-base duration when in+out move together,"action-executor.ts:798-806",facade sends single-point trims; product fix later
 MEDIA-05,media-render,medium,media/import zeroes metadata -> add_clip silently defaults 5s,"action-executor.ts:356-380,683-689",facade import adapter writes probed metadata
-MEDIA-06,media-render,low-med,FFmpeg.wasm fetched from unpkg CDN at import time (supply chain),"ffmpeg-fallback.ts:3,130-152",pin/bundle wasm assets before production use
+MEDIA-06,media-render,low,FFmpeg.wasm fetched from unpkg CDN at import time (supply chain; only MOV/undecodable inputs reach it),"ffmpeg-fallback.ts:3,130-152",pin/bundle wasm assets before production use
+ADV-01,adversarial,medium,NF-1 raw overlays grow stored timeline.duration but not export duration (divergent length accounting),"project-duration.ts:19-25 + action-executor.ts:284-288 vs export-engine.ts:1200-1240",facade never trusts timeline.duration for export-length claims
+ADV-02,adversarial,medium,NF-2 clip/merge executes as silent ghost-clip ADD on mismatched originalClip,"action-executor.ts:848-869; adversarial-state.mjs probe B1",clip/merge already excluded from facade op set (CORE-02 class)
+ADV-03,adversarial,medium,NF-3 tool-level silent ok:true no-op on wrong arg names (thin mapParams wrappers),"adversarial-state.mjs nonsense-times probe; upgrades AREA-04",facade strict arg validation + per-tool args-diff test suite before reliance
+ADV-04,adversarial,low-med,NF-4 creation-draft tools emit N+2 separate actions per call; partial draft survives mid-failure via direct MCP,"registry.ts:7798-7811 and 7850",creation domain deferred from facade v0; if added wrap in one txn
+ADV-05,adversarial,low,NF-5 post-rollback mutations still apply (rollback restores once, does not close),"adversarial-state.mjs F1/F2",facade discards host session after rollback
+ADV-06,adversarial,low,NF-6 commit != sealed: history persists across commit; host undo reverts committed turns,"adversarial-state.mjs E1",facade documents commit as grouping-ended not durability
+ADV-07,adversarial,info,NF-7 batch_actions failure index off-by-one (reports succeeded count),"registry.ts:31559",cosmetic; facade replaces batch_actions entirely
 MEDIA-07,media-render,low,no post-export verification (ffprobe/OCR absent),"F24",facade verify.artifact adapter (ffprobe spawn + frame extract)
 MEDIA-08,media-render,low,cloud GPU runner returns manifestURL only; artifact retrieval out-of-repo,"gpu-job-runner.ts:107-186",document as external dependency if cloud export used

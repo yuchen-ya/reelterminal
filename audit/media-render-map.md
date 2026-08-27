@@ -28,8 +28,12 @@ Two lanes, divergent:
 - **Raw lane**: `text/create` action → `project.textClips` only → **renders nothing**
   (documented `host.ts:250-263`; probe case 5-6).
 Render reader: `VideoEngine.getActiveTextClips()` ← `titleEngine.getAllTextClips()`
-(video-engine.ts:1764-1776); export duration calc reads the same singleton
-(export-engine.ts:1211) — a text-only headless project fails export with "Timeline is empty".
+(video-engine.ts:1764-1776; also requires a visible `type:"text"` track, :1766-1771);
+export duration calc reads the same singleton (export-engine.ts:1211) — a text-only headless
+project fails export with "Timeline is empty". Nuance from adversarial review (NF-1): raw
+overlay actions DO grow the **stored** `project.timeline.duration` (calculateProjectDuration
+includes textClips, project-duration.ts:19-25, runs after every action) — model length and
+exported length diverge, so duration is not a trustworthy proxy for what exports.
 
 ### 4. Preview
 `Preview.tsx` (8,453 lines) Canvas2D compositor, 150ms debounce on `project.modifiedAt`;

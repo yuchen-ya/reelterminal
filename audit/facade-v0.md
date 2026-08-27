@@ -62,13 +62,22 @@ pattern later).
 - Facade wraps the op list in ONE host transaction. Snapshot rollback
   (HeadlessHost pattern — structuredClone, proven byte-identical in probe case 11) on ANY
   op failure; result is all-or-nothing. Never use core `executeMany`/`batch_actions`
-  semantics (non-atomic, CORE-01).
+  semantics (non-atomic, CORE-01; adversarial probe re-confirmed: BATCH_FAILED leaves
+  earlier ops applied).
 - Pre-validate ALL ops (run each action's validate against the current snapshot before
   applying the first) to fail fast without side effects; this also kills the silent-no-op
   trap (CORE-08) because validate-rejected ops error the batch.
+- **Strict arg validation at the facade boundary** (ADV-03/NF-3): thin mapParams wrappers
+  accept wrong arg names and return ok:true no-ops — every op's args are validated against
+  a closed schema, and unknown keys are rejected, before any state change.
 - Postcondition report: per-op `{ok, actionType, createdIds}` — created entity ids must be
   surfaced explicitly (core never exposes `lastAddedIds`; facade captures by diffing or by
   reading executor state immediately post-op, core-actions.md F3).
+- Commit semantics (ADV-06/NF-6): commit = "grouping ended", NOT "sealed" — core history
+  survives commit and a host-level undo reverts the turn. Facade sessions must document
+  this and scope `history.undo` to facade-created groups (contract #verbs 11-12).
+- Post-rollback safety (ADV-05/NF-5): a rolled-back host session is discarded — rollback
+  restores once but does not close the door to further mutations.
 
 ### 2. Revision & conflict
 - Facade maintains `revision: integer` per open project, incremented on every successful

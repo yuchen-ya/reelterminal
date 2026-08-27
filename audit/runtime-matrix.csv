@@ -128,7 +128,7 @@ create_motion_composition,motion,rw,,,getProject|requireOpenProject,motion/creat
 delete_motion_composition,motion,rw,destructive,,requireOpenProject,motion/removeComposition,,,exposed,facade-defer-v1,
 duplicate_motion_composition,motion,rw,,,requireOpenProject,motion/createComposition,,,exposed,facade-defer-v1,
 create_creation_3d_scene,motion,rw,,,getProject|requireOpenProject,creation/applyOperation,,,exposed,facade-defer-v1,
-recover_motion_scene3d_to_creation,motion,rw,,,requireOpenProject,,,,exposed,facade-defer-v1,
+recover_motion_scene3d_to_creation,motion,rw,,,requireOpenProject,,,,exposed,facade-defer-v1,routes via persistMotionSceneCreationDraft -> creation/applyOperation (adversarial-review C7); catalog action_type column is direct-routing only
 sync_creation_scene_to_motion,motion,rw,,,getProject|requireOpenProject,creation/applyOperation,,,exposed,facade-defer-v1,
 add_creation_scene_object,motion,rw,,,requireOpenProject,creation/applyOperation,,,exposed,facade-defer-v1,
 add_creation_product_part,motion,rw,,,requireOpenProject,creation/applyOperation,,,exposed,facade-defer-v1,
@@ -140,8 +140,8 @@ add_creation_character,motion,rw,,,requireOpenProject,creation/applyOperation,,,
 pose_creation_character,motion,rw,,,requireOpenProject,creation/applyOperation,,,exposed,facade-defer-v1,
 add_creation_particle_system,motion,rw,,,requireOpenProject,creation/applyOperation,,,exposed,facade-defer-v1,
 duplicate_creation_object,motion,rw,,,requireOpenProject,creation/applyOperation,,,exposed,facade-defer-v1,
-simulate_creation_rigid_drop,motion,rw,,,requireOpenProject,,,,exposed,facade-defer-v1,
-simulate_creation_rigid_bodies,motion,rw,,,requireOpenProject,,,,exposed,facade-defer-v1,
+simulate_creation_rigid_drop,motion,rw,,,requireOpenProject,,,,exposed,facade-defer-v1,routes via commitCreationRigidBake -> creation/applyOperation (adversarial-review C7)
+simulate_creation_rigid_bodies,motion,rw,,,requireOpenProject,,,,exposed,facade-defer-v1,routes via commitCreationRigidBake -> creation/applyOperation (adversarial-review C7)
 bake_creation_cloth,motion,rw,,,requireOpenProject,creation/applyOperation,,,exposed,facade-defer-v1,
 bake_creation_skinned_limb,motion,rw,,,requireOpenProject,creation/applyOperation,,,exposed,facade-defer-v1,
 bake_creation_humanoid,motion,rw,,,requireOpenProject,creation/applyOperation,,,exposed,facade-defer-v1,
