@@ -11,10 +11,11 @@
  * nothing at all. A capability reports available only when (a) the facade
  * ships the verb that consumes it and (b) the provider's real preflight
  * passed. Preflight freshness is the provider's contract (the Chromium
- * providers cache one successful probe per pool); capabilities.get always
- * re-delegates rather than caching answers itself, and verbs re-check the
- * preflight before acting, so a runtime that never probed successfully can
- * never be claimed.
+ * providers probe their OWN job-carrying runtime and cache only for that
+ * browser's generation — a crash/recycle re-probes); capabilities.get
+ * always re-delegates rather than caching answers itself, and verbs
+ * re-check the preflight before acting, so a runtime that never probed
+ * successfully can never be claimed.
  */
 import { FACADE_ERROR_CODES } from "./errors";
 import type { ProjectRenderAdapter } from "./render/adapter";
@@ -64,7 +65,7 @@ const UNAVAILABLE_NO_EXPORT_PROVIDER: CapabilityStatus = {
   available: false,
   reason:
     "No export provider is configured for this session; export.start cannot encode video.",
-  requires: "an ExportProvider with a passing runtime preflight (Chromium WebCodecs H.264, or Chromium frames + system ffmpeg)",
+  requires: "an ExportProvider with a passing runtime preflight (Chromium WebCodecs H.264)",
 };
 
 const UNAVAILABLE_NO_VERIFIER: CapabilityStatus = {
@@ -82,7 +83,12 @@ async function preflightOf(
   try {
     const pre = await provider.preflight();
     if (pre.available) {
-      return { available: true };
+      // Surface the provider's details (route, video-only markers…): a
+      // capability that hides its limitations would be a quieter lie.
+      return {
+        available: true,
+        ...(pre.details ? { details: pre.details } : {}),
+      };
     }
     return {
       available: false,
@@ -90,6 +96,7 @@ async function preflightOf(
       ...(pre.requires ?? unavailable.requires
         ? { requires: (pre.requires ?? unavailable.requires) as string }
         : {}),
+      ...(pre.details ? { details: pre.details } : {}),
     };
   } catch (error) {
     return {

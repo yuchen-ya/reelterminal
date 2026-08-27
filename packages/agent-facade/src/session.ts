@@ -20,7 +20,7 @@ import { ActionHistory } from "@openreel/core/actions/action-history";
 import type { Project, ProjectSettings } from "@openreel/core/types/project";
 import type { MediaItem } from "@openreel/core/types/project";
 import { basename, resolve as resolvePath } from "node:path";
-import { mkdir, stat } from "node:fs/promises";
+import { lstat, mkdir, realpath, rm, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
@@ -675,6 +675,10 @@ export class AgentFacadeSession {
       const mediaFiles = await this.buildMediaFiles(project, "preview.render_frame");
       const rendersDir = resolvePath(artifactRoot, "renders");
       await mkdir(rendersDir, { recursive: true });
+      // Containment BEFORE the provider writes: a symlinked/junctioned
+      // renders dir (or a linked ancestor) must fail the verb with zero
+      // bytes written outside artifactRoot.
+      await this.assertSafeArtifactDir(rendersDir, artifactRoot, "preview.render_frame");
       const timeMs = Math.round(valid.timeSec * 1000);
       // Scoped by project id: two sessions sharing one artifactRoot can
       // never overwrite each other's preview artifacts.
@@ -692,6 +696,10 @@ export class AgentFacadeSession {
         destPath,
         mediaFiles,
       });
+      // Containment AFTER the write: a provider that swapped the output dir
+      // for a link mid-render (or wrote through one) is caught here, before
+      // the artifact is hashed and published.
+      await this.assertContainedWrittenFile(destPath, artifactRoot, "preview.render_frame");
       const artifact = await this.artifactRefFor(
         destPath,
         "image",
@@ -801,8 +809,15 @@ export class AgentFacadeSession {
       const mediaFiles = await this.buildMediaFiles(project, "export.start");
 
       const jobId = `job-${crypto.randomUUID()}`;
-      const jobDir = resolvePath(artifactRoot, "exports", jobId);
+      const exportsDir = resolvePath(artifactRoot, "exports");
+      await mkdir(exportsDir, { recursive: true });
+      // Containment BEFORE anything is created inside: a symlinked/junctioned
+      // exports dir must fail here — mkdir'ing the job dir through a link
+      // would already create a directory outside artifactRoot.
+      await this.assertSafeArtifactDir(exportsDir, artifactRoot, "export.start");
+      const jobDir = resolvePath(exportsDir, jobId);
       await mkdir(jobDir, { recursive: true });
+      await this.assertSafeArtifactDir(jobDir, artifactRoot, "export.start");
       this.jobs.create(jobId, sourceRevision);
       if (valid.idempotencyKey !== undefined) {
         this.ledger.set("export.start", valid.idempotencyKey, {
@@ -1094,6 +1109,85 @@ export class AgentFacadeSession {
   }
 
   /**
+   * Pre-write output-containment gate for a DIRECTORY the facade is about to
+   * let a provider write into (renders/, exports/, exports/<jobId>). Two
+   * independent checks, both fail-closed:
+   *
+   *  1. The directory itself must NOT be a symlink/junction. A link that
+   *     points inside today can be re-pointed outside between check and
+   *     write (TOCTOU), so linked output dirs are rejected outright — the
+   *     facade only ever creates real directories here, anything else was
+   *     placed by someone else. (Node's lstat reports Windows junctions as
+   *     symbolic links, so one check covers both.)
+   *  2. Its realpath must stay inside the realpath of artifactRoot, so even
+   *     a real directory nested under a linked ancestor fails containment.
+   */
+  private async assertSafeArtifactDir(
+    dir: string,
+    artifactRoot: string,
+    verb: string,
+  ): Promise<void> {
+    const dirStat = await lstat(dir).catch(() => null);
+    // The link check comes FIRST: lstat does not follow links, so a
+    // symlink/junction to a directory reports isDirectory() === false and
+    // would otherwise mask the escape as a plain "not a directory".
+    if (dirStat?.isSymbolicLink()) {
+      throw new FacadeError(
+        "JOB_FAILED",
+        `${verb}: refusing to write through a symlink/junction in the output path: ${dir} — remove it and let the facade create a real directory`,
+      );
+    }
+    if (!dirStat || !dirStat.isDirectory()) {
+      throw new FacadeError(
+        "JOB_FAILED",
+        `${verb}: output directory cannot be used (missing or not a directory): ${dir}`,
+      );
+    }
+    let realDir: string;
+    let realRoot: string;
+    try {
+      [realDir, realRoot] = await Promise.all([
+        realpath(dir),
+        realpath(artifactRoot),
+      ]);
+    } catch (error) {
+      throw new FacadeError(
+        "JOB_FAILED",
+        `${verb}: output directory cannot be verified (realpath failed): ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (resolveContainedPathDetailed(realDir, [realRoot]).kind !== "ok") {
+      throw new FacadeError(
+        "JOB_FAILED",
+        `${verb}: output directory escapes the configured artifactRoot: ${dir}`,
+      );
+    }
+  }
+
+  /**
+   * Post-write containment gate for a FILE a provider claims to have written
+   * under artifactRoot. On escape the dishonest file is removed best-effort
+   * (it is the file the provider just wrote through the escape; when the
+   * path itself is a symlink, unlink removes the link, never the target) and
+   * the verb fails — the facade never publishes an artifact it cannot
+   * contain.
+   */
+  private async assertContainedWrittenFile(
+    filePath: string,
+    artifactRoot: string,
+    verb: string,
+  ): Promise<void> {
+    const resolution = resolveContainedPathDetailed(filePath, [artifactRoot]);
+    if (resolution.kind === "ok") return;
+    await rm(filePath, { force: true }).catch(() => undefined);
+    throw new FacadeError(
+      "JOB_FAILED",
+      `${verb}: provider wrote outside the configured artifactRoot — the file was rejected and removed`,
+      { path: filePath },
+    );
+  }
+
+  /**
    * Verbs gate on the provider's OWN live preflight: a capability that
    * reports unavailable must make the verb fail UNSUPPORTED with the same
    * reason — never a silent attempt against a dead runtime.
@@ -1221,6 +1315,10 @@ export class AgentFacadeSession {
       const artifactRoot = this.requireArtifactRoot("export.finalize");
       const resolution = resolveContainedPathDetailed(completion.path, [artifactRoot]);
       if (resolution.kind === "outside") {
+        // Post-write containment: never publish, and remove the file the
+        // provider pushed through the escape (unlink never follows a final
+        // symlink, so this cannot delete an outside pre-existing target).
+        await rm(completion.path, { force: true }).catch(() => undefined);
         throw new FacadeError(
           "JOB_FAILED",
           "export provider reported an artifact outside artifactRoot — refusing to publish it",

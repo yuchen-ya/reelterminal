@@ -89,6 +89,13 @@ export interface CapabilityStatus {
   readonly reason?: string;
   /** What would be required to make it available (audit letter/seam). */
   readonly requires?: string;
+  /**
+   * Machine-readable detail surfaced from the provider's live preflight
+   * (e.g. export route, and for the explicitly forced video-only frames
+   * route the `videoOnly`/`audio:"none"` markers — limitations are part of
+   * the capability, never a footnote).
+   */
+  readonly details?: Readonly<Record<string, unknown>>;
 }
 
 export interface Capabilities {
