@@ -98,12 +98,27 @@ function analyzeElement(el) {
     : calleeM ? calleeM[1] : "unknown";
   const nameM = head.match(/^\w+\s*\(\s*"([^"]+)"/) || head.match(/name:\s*"([^"]+)"/);
   const actionTypeM = text.match(/actionType:\s*"([^"]+)"/);
+  // helper-mediated action routing: applyMotionAction(host, "motion/x", {...}),
+  // commitMotionComposition(host, ...) -> applyMotionAction("motion/upsertComposition")
+  const viaMotionM = text.match(/applyMotionAction\(\s*(?:host|h)\s*,\s*"([^"]+)"/);
+  const viaCommitM = /\bcommitMotionComposition\(/.test(text) ? "motion/upsertComposition" : null;
+  // direct applyAction({ type: "x", ... }) inside inline handlers
+  const directM = text.match(/applyAction\(\s*\{\s*type:\s*"([^"]+)"/);
+  // renderMotionFrameResult(...) -> host.runJob("exportFrame", ...)
+  const viaFrameJob = /\brenderMotionFrameResult\(/.test(text);
   const hostMethods = new Set();
   for (const m of text.matchAll(/\b(?:host|h)\.(\w+)\s*\(/g)) hostMethods.add(m[1]);
+  if (viaFrameJob) hostMethods.add("runJob:exportFrame");
+  const actionType = actionTypeM?.[1] ?? viaMotionM?.[1] ?? viaCommitM ?? directM?.[1] ?? null;
+  const via = actionTypeM ? null
+    : viaMotionM ? "applyMotionAction"
+    : viaCommitM ? "commitMotionComposition"
+    : directM ? "inline-applyAction" : null;
   return {
     name: nameM ? nameM[1] : null,
     helper,
-    action_type: actionTypeM ? actionTypeM[1] : null,
+    action_type: actionType,
+    action_via_helper: via,
     host_methods: [...hostMethods].sort(),
     uses_map_params: /mapParams\s*:/.test(text),
     domain_static: (text.match(/domain:\s*"([^"]+)"/) || [null, null])[1],
@@ -286,6 +301,7 @@ async function main() {
         ? { file: "packages/agent/src/registry.ts", line_start: st.lineStart, line_end: st.lineEnd, helper: st.helper }
         : { file: "packages/agent/src/registry.ts", helper: "unmatched-static" },
       action_type: st?.action_type ?? null,
+      action_via_helper: st?.action_via_helper ?? null,
       host_methods: hostMethods,
       core_symbols: usageByName.get(def.name) ?? [],
       uses_map_params: st?.uses_map_params ?? false,
