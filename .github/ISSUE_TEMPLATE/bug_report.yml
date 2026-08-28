@@ -1,12 +1,12 @@
 name: Bug Report
-description: Report a bug or issue with OpenReel
+description: Report a bug or issue with agent-video-engine-lab
 title: "[Bug]: "
-labels: ["needs-claude-review", "type-bug"]
+labels: ["type-bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a bug! This issue will be reviewed by Claude AI within 24 hours.
+        Thanks for taking the time to report a bug!
 
   - type: textarea
     id: description

@@ -69,11 +69,6 @@ Fixes #(issue number)
 
 ---
 
-**Note:** This PR will be reviewed by Claude AI within 24 hours. Claude will:
-- Run automated checks (TypeScript, tests, linting)
-- Provide detailed code review feedback
-- Approve or request changes
-
-Final approval and merge requires human review from Augustus.
-
-Learn more about our [AI-managed workflow](CLAUDE_WORKFLOW.md).
+**Note:** This is a lab repository; PRs are reviewed directly by the
+maintainer. Please keep the description honest about what was verified and
+what was not.
