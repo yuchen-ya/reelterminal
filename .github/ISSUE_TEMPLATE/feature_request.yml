@@ -1,12 +1,11 @@
 name: Feature Request
-description: Suggest a new feature or enhancement for OpenReel
+description: Suggest a new feature or enhancement for agent-video-engine-lab
 title: "[Feature]: "
-labels: ["needs-claude-review", "type-feature"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for suggesting a feature! Claude AI will review this request and discuss the implementation approach.
+        Thanks for suggesting a feature!
 
   - type: textarea
     id: problem
@@ -87,7 +86,7 @@ body:
       options:
         - label: I have searched existing issues to ensure this isn't a duplicate
           required: true
-        - label: This feature aligns with OpenReel's goal of browser-based video editing
+        - label: This feature aligns with the project's goal of browser-based video editing
           required: true
         - label: I am willing to help test this feature once implemented
           required: false

@@ -14,7 +14,7 @@ roadmap, not present.
 | Slice | State | What it proves |
 |---|---|---|
 | Slice 1 — headless agent facade | **Merged** ([PR #1](https://github.com/yuchen-ya/agent-video-engine-lab/pull/1)) | An agent can create a project, import media, build and trim a timeline, and add text — atomically, idempotently, over the canonical `Project` state, in pure Node. |
-| Slice 1b — Chromium render/export runtime | **Draft** ([PR #2](https://github.com/yuchen-ya/agent-video-engine-lab/pull/2)) | The same agent surface renders real pixels: PNG frame previews, H.264 MP4 exports with audio, and ffprobe/pixel-level artifact verification — with probe-verified, honestly reported capabilities. |
+| Slice 1b — Chromium render/export runtime | **Merged** ([PR #2](https://github.com/yuchen-ya/agent-video-engine-lab/pull/2)) | The same agent surface renders real pixels: PNG frame previews, H.264 MP4 exports with audio, and ffprobe/pixel-level artifact verification — with probe-verified, honestly reported capabilities. |
 | Slice 2+ (MCP/CLI/SKILL transports, wider verbs, live GUI parity) | Not started | See [Roadmap](#roadmap-near-term). |
 
 ## Relationship to OpenReel
@@ -160,8 +160,7 @@ MP4 → verify) lives in
 - CI (`.github/workflows/`): `ci.yml` runs typecheck/lint/tests + build on
   Ubuntu with Node 22, Chromium, and ffmpeg; `chromium-e2e.yml` runs the
   focused Slice-1b suites and always uploads the probe/verify evidence
-  artifact. (`desktop-readiness.yml` is inherited and currently stale — it
-  references a Rust workspace that does not exist in this repo.)
+  artifact.
 
 ## Not implemented yet
 
@@ -187,7 +186,8 @@ package READMEs linked above.
 
 ## Roadmap (near term)
 
-1. Land Slice 1b (PR #2), including this documentation overhaul.
+1. ~~Land Slice 1b (PR #2), including this documentation overhaul.~~ **Done**
+   — merged to `main`.
 2. Slice 2: thin MCP + CLI + SKILL transports over the existing 12 verbs —
    no copy of the internal 304-tool registry (still gated on the Desktop-MCP
    hardening decision in ADR 0001).
