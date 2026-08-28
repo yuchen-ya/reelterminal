@@ -160,8 +160,7 @@ MP4 → verify) lives in
 - CI (`.github/workflows/`): `ci.yml` runs typecheck/lint/tests + build on
   Ubuntu with Node 22, Chromium, and ffmpeg; `chromium-e2e.yml` runs the
   focused Slice-1b suites and always uploads the probe/verify evidence
-  artifact. (`desktop-readiness.yml` is inherited and currently stale — it
-  references a Rust workspace that does not exist in this repo.)
+  artifact.
 
 ## Not implemented yet
 

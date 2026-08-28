@@ -130,8 +130,7 @@ otherwise (the unsigned mac update feed is withheld). Set these encrypted Action
 **Cutting a release:** bump `apps/desktop/package.json` version, commit, push a
 matching `vX.Y.Z` tag to the (private) origin. CI builds, uploads to R2, and
 writes `manifest.json` — clients then see the update and the landing page shows
-the new downloads. No manual publish step. (`desktop-readiness.yml` is an
-unrelated stale Rust workflow; remove separately.)
+the new downloads. No manual publish step.
 
 ### Landing page
 
