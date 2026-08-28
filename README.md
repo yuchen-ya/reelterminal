@@ -1,308 +1,209 @@
-# OpenReel Video
+# Agent Video Engine Lab
 
-> **The open source CapCut alternative. Professional video editing in your browser. No uploads. No installs. 100% open source.**
+A laboratory for **agent-first video editing**: one canonical project
+world that both a human GUI and a machine agent operate with equal authority.
+Forked from [OpenReel](https://github.com/Augani/openreel-video) (MIT),
+being prepared for open-sourcing.
 
-OpenReel Video is a fully-featured browser-based video editor that runs entirely client-side. Built with React, TypeScript, WebCodecs, and WebGPU for professional-grade video editing without the need for expensive software or cloud processing.
+**Stage: early slices.** Two slices of real, tested machinery exist (below);
+everything else — transports, full verb coverage, live GUI↔agent parity — is
+roadmap, not present.
 
-**[Try it Live](https://openreel.video)** | **[Documentation](CONTRIBUTING.md)** | **[Discussions](https://github.com/Augani/openreel-video/discussions)** | **[Twitter](https://x.com/python_xi)**
+## Status at a glance
 
-![OpenReel Editor](https://img.shields.io/badge/Lines%20of%20Code-130k+-blue) ![License](https://img.shields.io/badge/License-MIT-green) ![Status](https://img.shields.io/badge/Status-Beta-orange) ![Open Source](https://img.shields.io/badge/Open%20Source-100%25-brightgreen) [![Sponsor Augani](https://img.shields.io/github/sponsors/Augani?logo=githubsponsors&label=Sponsor&color=EA4AAA)](https://github.com/sponsors/Augani)
+| Slice | State | What it proves |
+|---|---|---|
+| Slice 1 — headless agent facade | **Merged** ([PR #1](https://github.com/yuchen-ya/agent-video-engine-lab/pull/1)) | An agent can create a project, import media, build and trim a timeline, and add text — atomically, idempotently, over the canonical `Project` state, in pure Node. |
+| Slice 1b — Chromium render/export runtime | **Draft** ([PR #2](https://github.com/yuchen-ya/agent-video-engine-lab/pull/2)) | The same agent surface renders real pixels: PNG frame previews, H.264 MP4 exports with audio, and ffprobe/pixel-level artifact verification — with probe-verified, honestly reported capabilities. |
+| Slice 2+ (MCP/CLI/SKILL transports, wider verbs, live GUI parity) | Not started | See [Roadmap](#roadmap-near-term). |
 
----
+## Relationship to OpenReel
 
-## Why OpenReel?
+This repository is a fork of the OpenReel video editor by **Augustus Otu and
+Contributors**, MIT licensed ([LICENSE](LICENSE), copyright retained).
 
-- **100% Client-Side** - Your videos never leave your device. No uploads, no cloud processing, complete privacy.
-- **No Installation** - Works in Chrome/Edge. Just open and start editing.
-- **Professional Features** - Multi-track timeline, keyframe animations, color grading, audio effects, and more.
-- **GPU Accelerated** - WebGPU and WebCodecs for smooth 4K editing and fast exports.
-- **Free Forever** - MIT licensed, no subscriptions, no watermarks.
+**Inherited from upstream** (kept, not re-verified by this lab beyond what the
+slices exercise): the browser editor product (`apps/web`), the desktop /
+studio / image apps, the core engines and canonical `Project` model
+(`packages/core`), and the upstream 304-tool agent registry
+(`packages/agent`, `packages/agent-runner`).
 
----
+**Built by this lab:** the extraction audit (`audit/`), the agent facade
+(`packages/agent-facade`), the Chromium runtime (`packages/runtime-chromium`),
+the ADRs (`docs/adr/`), and the design principles
+([`docs/design-principles.md`](docs/design-principles.md)).
 
-## Features
+The upstream product's feature list and browser-support claims are **not**
+re-claimed here; for the product itself, see upstream. This README only
+describes what this repository has actually built and verified.
 
-### Video Editing
-- **Multi-track timeline** - Unlimited video, audio, image, text, and graphics tracks
-- **Real-time preview** - Smooth playback with GPU acceleration
-- **Precision editing** - Frame-accurate scrubbing, cut, trim, split, ripple delete
-- **Transitions** - Crossfade, dip to black/white, wipe, slide effects
-- **Video effects** - Brightness, contrast, saturation, blur, sharpen, glow, vignette, chroma key
-- **Blend modes** - Multiply, screen, overlay, add, subtract, and more
-- **Speed control** - 0.25x to 4x with audio pitch preservation
-- **Crop & transform** - Position, scale, rotation with 3D perspective
+## The first principle: Human–Agent Operational Parity
 
-### Graphics & Text
-- **Professional text editor** - Rich styling, shadows, outlines, gradients
-- **20+ text animations** - Typewriter, fade, slide, bounce, pop, elastic, glitch
-- **Karaoke-style subtitles** - Word-by-word highlighting synced to audio
-- **Shape tools** - Rectangle, circle, arrow, polygon, star with fill/stroke
-- **SVG support** - Import SVGs with color tinting and animations
-- **Stickers & emoji** - Built-in library
-- **Background generator** - Solid colors, gradients, mesh gradients, patterns
-- **Keyframe animations** - Animate any property over time with 20+ easing curves
+*One project world, two interfaces, equal operational authority.*
 
-### Audio
-- **Multi-track mixing** - Unlimited audio tracks with real-time mixing
-- **Waveform visualization** - Visual audio editing
-- **Audio effects** - EQ, compressor, reverb, delay, chorus, flanger, distortion
-- **Volume & panning** - Per-clip controls with fade in/out
-- **Beat detection** - Auto-generate markers synced to music
-- **Audio ducking** - Auto-reduce music when dialog plays
-- **Noise reduction** - 3-pass noise removal (tonal, broadband, rumble)
+The GUI and the agent API must drive the same canonical `Project`, the same
+editing engine, and the same artifact world: GUI buttons, state, and visual
+results have stable agent commands, machine-readable state, and observable
+artifacts as counterparts — and agent edits are reflected in the same project
+the human sees. No GUI-only business state, no agent shadow state, no
+second-class "AI features" surface. Parity means equal semantic capability
+within the same safety boundaries; it never licenses bypassing them.
 
-### Color Grading
-- **Color wheels** - Lift, gamma, gain controls
-- **HSL adjustments** - Hue, saturation, lightness fine-tuning
-- **Curves editor** - RGB and individual channel curves
-- **LUT support** - Import and apply 3D LUTs
-- **Built-in presets** - One-click color grading
+Full text and today's honest conformance table:
+[`docs/design-principles.md`](docs/design-principles.md).
 
-### Export
-- **MP4 (H.264/H.265)** - Universal compatibility
-- **WebM (VP8/VP9/AV1)** - Web-optimized format
-- **ProRes** - Professional intermediate format (Proxy, LT, Standard, HQ, 4444)
-- **Quality presets** - 4K @ 60fps, 1080p, 720p, 480p
-- **Custom settings** - Bitrate, frame rate, codec options, color depth
-- **Hardware encoding** - WebCodecs for fast exports
-- **AI upscaling** - Enhance resolution with WebGPU shaders
-- **Audio export** - MP3, WAV, AAC, FLAC, OGG
-- **Image sequences** - JPG, PNG, WebP frame export
-- **Progress tracking** - Real-time progress with cancel support
+## What works today (verified)
 
-### Professional Tools
-- **Unlimited undo/redo** - Full history with recovery
-- **Auto-save** - Never lose work (IndexedDB storage)
-- **Keyboard shortcuts** - Professional workflow
-- **Snap to grid** - Magnetic alignment
-- **Track management** - Show/hide, lock/unlock, reorder
-- **Subtitle support** - SRT import with customizable styling
-- **Screen recording** - Record screen, camera, or both
-- **Project sharing** - Export/import project files
+The facade exposes **12 verbs** returning typed results
+(`{ok:true,value} | {ok:false,error}`), with atomic snapshot batches,
+`expectedRevision` optimistic concurrency, idempotency keys, strict closed
+schemas, and live-preflight capability reporting:
 
-### Performance
-- **WebGPU rendering** - GPU-accelerated compositing
-- **WebCodecs API** - Hardware video decoding/encoding
-- **Frame caching** - LRU cache for smooth playback
-- **Web Workers** - Background processing
-- **4K support** - Edit and export in 4K resolution
+- **Slice 1:** `session.describe` · `capabilities.get` · `project.create` ·
+  `project.get_state` · `media.import` · `timeline.get` · `edit.apply`
+- **Slice 1b:** `preview.render_frame` · `export.start` · `job.status` ·
+  `job.cancel` · `verify.artifact`
 
----
+API, usage, and per-package limits:
+[`packages/agent-facade/README.md`](packages/agent-facade/README.md) ·
+[`packages/runtime-chromium/README.md`](packages/runtime-chromium/README.md).
 
-## Quick Start
+**Platform evidence (machine-readable):**
 
-### Try Online
-Visit **[openreel.video](https://openreel.video)** to start editing immediately.
-
-### Run Locally
-
-```bash
-# Clone the repository
-git clone https://github.com/Augani/openreel-video.git
-cd openreel-video
-
-# Install dependencies (requires Node.js 18+)
-pnpm install
-
-# Start development server
-pnpm dev
-
-# Open http://localhost:5173
-```
-
-### Build for Production
-
-```bash
-pnpm build
-pnpm preview
-```
-
----
-
-## Browser Requirements
-
-| Browser | Version | Status |
-|---------|---------|--------|
-| Chrome | 94+ | Full support |
-| Edge | 94+ | Full support |
-| Firefox | 130+ | Full support |
-| Safari | 16.4+ | Full support |
-
-All major browsers now support WebCodecs for hardware-accelerated video encoding/decoding.
-
-**Recommended:**
-- 8GB+ RAM
-- Dedicated GPU for 4K editing
-- Modern multi-core CPU
-
----
+- Windows (`win32/x64` in the probe; Windows 11 per PR #2), Chromium 148:
+  [`docs/slice-1b/runtime-probe/windows-local.json`](docs/slice-1b/runtime-probe/windows-local.json)
+  and
+  [`…-verify-report.json`](docs/slice-1b/runtime-probe/windows-local-verify-report.json)
+  — route `chromium-webcodecs`, 150-frame H.264/AAC MP4, pixel checks pass.
+- macOS (`darwin/arm64` in the probe; macOS 15 on the host), Node 22,
+  Chromium 148:
+  [`docs/slice-1b/runtime-probe/macos-local.json`](docs/slice-1b/runtime-probe/macos-local.json)
+  and
+  [`…-verify-report.json`](docs/slice-1b/runtime-probe/macos-local-verify-report.json)
+  — route `chromium-webcodecs`, 150-frame H.264/AAC MP4, pixel checks pass.
+- Linux CI: the `chromium-e2e-evidence` artifact uploaded by every
+  `Chromium E2E (Slice 1b)` run.
 
 ## Architecture
 
-### Monorepo Structure
-
 ```
-openreel/
-├── apps/web/              # React frontend (~66k lines)
-│   └── src/
-│       ├── components/    # UI components
-│       │   └── editor/    # Editor panels (Timeline, Preview, Inspector)
-│       ├── stores/        # Zustand state management
-│       ├── services/      # Auto-save, shortcuts, screen recording
-│       └── bridges/       # Engine coordination
-│
-└── packages/core/         # Core engines (~59k lines)
-    └── src/
-        ├── video/         # Video processing, WebGPU rendering
-        ├── audio/         # Web Audio API, effects, beat detection
-        ├── graphics/      # Canvas/THREE.js, shapes, SVG
-        ├── text/          # Text rendering, animations
-        ├── export/        # MP4/WebM encoding
-        └── storage/       # IndexedDB, serialization
+packages/core              canonical Project model + engines (inherited upstream)
+packages/agent-facade      pure-Node, in-process, transport-agnostic agent API
+                           (12 verbs; owns state semantics, jobs, idempotency)
+packages/runtime-chromium  Playwright-driven Chromium + ffmpeg providers
+                           (pixels, H.264 export, artifact verification)
+apps/web                   inherited browser editor GUI (Vite/React)
+audit/                     frozen extraction audit + machine evidence (historical)
+docs/adr/                  why the design is what it is (ADR 0001, 0002)
+docs/design-principles.md  enduring principles (Principle 1: parity)
+docs/slice-1b/             committed platform probe/verify evidence
 ```
 
-### Key Technologies
+The facade never imports Chromium/Playwright/ffmpeg; pixels arrive through
+three independent provider interfaces (`RenderProvider`, `ExportProvider`,
+`ArtifactVerifier`). Export defaults to **Route W** (in-page WebCodecs H.264
++ AAC); **Route F** (frames→ffmpeg) is a video-only, explicitly forced
+experiment — never a silent fallback. Details and rationale:
+[ADR 0002](docs/adr/0002-chromium-runtime-slice-1b.md).
 
-- **React 18** + **TypeScript** - Type-safe UI
-- **Zustand** - Lightweight state management
-- **MediaBunny** - Video/audio processing
-- **WebCodecs** - Hardware encoding/decoding
-- **WebGPU** - GPU-accelerated rendering
-- **Web Audio API** - Professional audio processing
-- **THREE.js** - 3D transforms and effects
-- **IndexedDB** - Local project storage
+## Quick start
 
-### Design Principles
+Prerequisites, as verified on this machine (macOS arm64) and in CI (Ubuntu):
 
-- **Action-based editing** - Every edit is an undoable action
-- **Immutable state** - Predictable updates with Zustand
-- **Engine separation** - Video, audio, graphics engines are independent
-- **Progressive enhancement** - Graceful fallbacks (WebGPU → Canvas2D)
+- **Node 22** (CI uses 22; `engines` floor is 18)
+- **pnpm 11.7** via corepack — the repo pins `packageManager: pnpm@11.7.0`
+- **ffmpeg + ffprobe** on `PATH` (`brew install ffmpeg` on macOS;
+  `apt-get install ffmpeg` on Ubuntu) — needed for `verify.artifact`
+- **Chromium** via Playwright (installed below), or a system Chrome passed
+  via config (`executablePath`)
 
----
-
-## AI-Managed Development
-
-OpenReel is an experiment in AI-assisted open source development. Claude AI helps manage:
-
-- **Issue triage** - Reviews and responds to issues
-- **Code implementation** - Writes features and fixes bugs
-- **Code review** - Maintains quality standards
-- **Documentation** - Keeps docs up to date
-
-Human oversight from Augustus ensures strategic direction and final approval on major changes. All code is public, tested, and follows best practices.
-
-**What this means for contributors:**
-- Issues get reviewed quickly (usually within 24 hours)
-- Bug fixes ship fast
-- Clear, detailed responses to questions
-- High code quality standards
-
----
-
-## Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-**Ways to contribute:**
-- Report bugs with reproduction steps
-- Suggest features in Discussions
-- Submit PRs for bugs or features
-- Improve documentation
-- Write tests
-- Share effect presets
-
-**Development workflow:**
 ```bash
-# Fork and clone
-git clone https://github.com/Augani/openreel-video.git
+git clone git@github.com:yuchen-ya/agent-video-engine-lab.git
+# or over HTTPS: git clone https://github.com/yuchen-ya/agent-video-engine-lab.git
+cd agent-video-engine-lab
 
-# Create feature branch
-git checkout -b feat/your-feature
+corepack pnpm install
 
-# Make changes, then test
-pnpm typecheck
-pnpm test
-pnpm lint
+# one-time browser install for the render/export runtime
+pnpm --filter @openreel/runtime-chromium exec playwright-core install chromium
 
-# Commit with conventional commits
-git commit -m "feat: add your feature"
-
-# Push and open PR
-git push origin feat/your-feature
+# focused test suites — the lab's verified surface
+pnpm --filter @openreel/agent-facade test:run       # 18 files, pure Node
+pnpm --filter @openreel/runtime-chromium test:run   # 6 files, real Chromium
 ```
 
----
+To run the inherited browser editor GUI: `pnpm dev` (Vite dev server).
+A full end-to-end agent scenario (create → import → trim → text → PNG →
+MP4 → verify) lives in
+[`packages/runtime-chromium/examples/hello-world-e2e.mts`](packages/runtime-chromium/examples/hello-world-e2e.mts).
 
-## Roadmap
+## Repository map
 
-### Completed
-- Multi-track timeline with drag-and-drop
-- Real-time video preview with GPU acceleration
-- Full editing suite (cut, trim, split, transitions)
-- Text editor with 20+ animations
-- Graphics (shapes, SVG, stickers, backgrounds)
-- Audio mixing with effects and beat detection
-- Color grading with LUT support
-- Keyframe animation system
-- Export to MP4/WebM (4K supported)
-- Screen recording
-- AI upscaling
-- Undo/redo with auto-save
+| Path | What it is | Status |
+|---|---|---|
+| `packages/agent-facade` | The lab's agent API (Slice 1 + 1b verbs) | Active, tested |
+| `packages/runtime-chromium` | Chromium render/export providers | Active, tested |
+| `packages/core` | Canonical `Project` model, engines | Inherited; exercised by the slices |
+| `packages/agent`, `packages/agent-runner` | Upstream 304-tool agent layer + CLI | Inherited; **not** the lab's contract |
+| `apps/web` | Browser editor GUI | Inherited; runs via `pnpm dev` |
+| `apps/desktop`, `apps/studio`, `apps/image` | Desktop/studio/image apps | Inherited |
+| `audit/` | Extraction audit (304 tools, 52 risks) + reproducible probes | Frozen historical evidence |
+| `docs/adr/` | Architecture decision records | Canonical "why" |
+| `docs/design-principles.md` | Enduring design principles | Canonical |
+| `docs/slice-1b/` | Platform probe/verify evidence JSON | Growing evidence |
+| `docs/AGENT-*.md`, `docs/AUTH-BROKER.md`, `docs/superpowers/` | Upstream product/planning docs | Historical; partially stale (see [`docs/README.md`](docs/README.md)) |
 
-### In Progress
-- Nested sequences (timeline in timeline)
-- Motion tracking
-- More export formats (ProRes, GIF)
-- Plugin system
+## Testing
 
-### Planned
-- Adjustment layers
-- Advanced masking
-- Audio spectral editing
-- Collaborative editing
-- Mobile optimization
+- Focused: the two `pnpm --filter … test:run` commands above.
+- Repo-wide: `pnpm test` · `pnpm typecheck` · `pnpm lint`.
+- CI (`.github/workflows/`): `ci.yml` runs typecheck/lint/tests + build on
+  Ubuntu with Node 22, Chromium, and ffmpeg; `chromium-e2e.yml` runs the
+  focused Slice-1b suites and always uploads the probe/verify evidence
+  artifact. (`desktop-readiness.yml` is inherited and currently stale — it
+  references a Rust workspace that does not exist in this repo.)
 
----
+## Not implemented yet
 
-## License
+- **No MCP / CLI / SKILL transports for the facade.** It is an in-process
+  library by design (ADR 0001); transports are a future slice.
+- The inherited upstream surfaces — the Desktop MCP shim (`apps/desktop`) and
+  the `@openreel/agent-runner` CLI — are **not** the lab's contract; the
+  audit rates the Desktop MCP debugger-grade (DESK-01/02/04) and ADR 0001
+  requires hardening before any public transport exposure.
+- **No live GUI↔agent session.** The facade runs headless; the parity gap is
+  tracked in `docs/design-principles.md`.
+- Most of the wider verb set from `audit/facade-v0.md` (project open/save,
+  `history.*`, media list/delete, richer edit ops).
+- No cloud GPU, no OCR, no project replace/reset.
 
-MIT License - Use freely for personal and commercial projects.
+## Known limitations (slice-scoped)
 
-See [LICENSE](LICENSE) for details.
+One Chromium page serializes preview/export per session · Route F is
+video-only by design · codec support is build-dependent and probe-measured,
+never assumed · files >2 GiB are refused · the idempotency ledger is not
+restart-durable · one project per session, no reset verb. Full lists:
+package READMEs linked above.
 
----
+## Roadmap (near term)
 
-## Acknowledgments
+1. Land Slice 1b (PR #2), including this documentation overhaul.
+2. Slice 2: thin MCP + CLI + SKILL transports over the existing 12 verbs —
+   no copy of the internal 304-tool registry (still gated on the Desktop-MCP
+   hardening decision in ADR 0001).
+3. Black-box E2E with a fresh Codex / Claude Code / Pi-class agent over those
+   transports: discover capabilities, import media, edit, preview, export,
+   verify.
+4. Widen the verb / edit-op set based on real agent-usage friction and
+   `audit/runtime-matrix.csv` (including remaining `facade-v0` verbs:
+   open/save, history, media management).
+5. Progressively close the live-GUI parity gap last
+   (`docs/design-principles.md` conformance table).
 
-**Built with:**
-- [MediaBunny](https://mediabunny.dev) - Media processing
-- [React](https://react.dev) - UI framework
-- [Zustand](https://zustand-demo.pmnd.rs/) - State management
-- [THREE.js](https://threejs.org) - 3D rendering
-- [TailwindCSS](https://tailwindcss.com) - Styling
+## License and attribution
 
-**Inspired by:**
-- DaVinci Resolve - Professional tools done right
-- CapCut - Accessible editing for everyone
-- Figma - Browser-based professional software
-
----
-
-## Support
-
-- **GitHub Issues** - Bug reports and feature requests
-- **GitHub Discussions** - Questions and community chat
-- **Twitter/X** - [@python_xi](https://x.com/python_xi)
-
----
-
-## $OPENREEL Token
-
-CA: `B7wDnfrdtvdG7SCkRjSMJ6LkVwGWvdWrQ75iV8G9pump`
-
----
-
-**Built with care by [@python_xi](https://x.com/python_xi) and AI working together.**
-
-*Making professional video editing accessible to everyone. Forever free. Forever open source.*
+MIT — see [LICENSE](LICENSE). Copyright (c) 2024–2026 Augustus Otu and
+Contributors (upstream OpenReel); lab contributions are under the same
+license. Built on [mediabunny](https://mediabunny.dev),
+[Playwright](https://playwright.dev), [FFmpeg](https://ffmpeg.org), React,
+and TypeScript.

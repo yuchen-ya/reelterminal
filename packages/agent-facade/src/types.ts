@@ -1,22 +1,29 @@
 /**
- * Public contract of the in-process agent facade (Slice 1).
+ * Public contract of the in-process agent facade (Slice 1 + Slice 1b).
  *
  * The facade is a pure-Node, transport-agnostic library. The core `Project`
  * is the canonical state; every mutation is an atomic, serialized,
  * revision-checked, idempotency-aware operation over that state.
  *
- * Scope of this slice (audit/facade-v0.md, reduced to the state-level E2E):
- *   session.describe · capabilities.get · project.create · project.get_state
- *   media.import · timeline.get · edit.apply
+ * Slice 1 verbs: session.describe · capabilities.get · project.create ·
+ *   project.get_state · media.import · timeline.get · edit.apply
+ * Slice 1b verbs (ADR 0002): preview.render_frame · export.start ·
+ *   job.status · job.cancel · verify.artifact
  *
- * Deliberately NOT in this slice: Chromium/pixel rendering, export, OCR,
- * MCP/CLI transports, cloud GPU. `RenderAdapter` (render/adapter.ts) is the
- * hydration seam reserved for the future Chromium runtime.
+ * Pixel/export/verify backing arrives through the independent provider
+ * interfaces in providers.ts (RenderProvider / ExportProvider /
+ * ArtifactVerifier); the facade itself never imports Chromium or ffmpeg.
+ * MCP/CLI transports remain out of scope.
  */
 import type { Project, ProjectSettings } from "@openreel/core/types/project";
+import type {
+  ArtifactRef,
+  ExportProgressEvent,
+  VerifyReport,
+} from "./providers";
 
-export const FACADE_VERSION = "0.1.0" as const;
-export const FACADE_CONTRACT_VERSION = "facade-slice-1" as const;
+export const FACADE_VERSION = "0.2.0" as const;
+export const FACADE_CONTRACT_VERSION = "facade-slice-1b" as const;
 export const FACADE_RUNTIME = "node-headless" as const;
 
 /* ------------------------------------------------------------------ */
@@ -31,6 +38,11 @@ export const FACADE_VERBS = [
   "media.import",
   "timeline.get",
   "edit.apply",
+  "preview.render_frame",
+  "export.start",
+  "job.status",
+  "job.cancel",
+  "verify.artifact",
 ] as const;
 
 export type FacadeVerb = (typeof FACADE_VERBS)[number];
@@ -39,16 +51,21 @@ export type FacadeVerb = (typeof FACADE_VERBS)[number];
 /* session.describe                                                    */
 /* ------------------------------------------------------------------ */
 
-/** Runtime classification per E2E step (audit/e2e-contract.md letters). */
+/**
+ * Runtime classification per E2E step (audit/e2e-contract.md letters:
+ * P pure Node · A adapter · C Chromium · D desktop · X missing/unverified).
+ * Pixel/export/verify letters are computed live from provider preflights:
+ * they stay "X" until the capability is genuinely usable in THIS session.
+ */
 export interface StepLetters {
   readonly facadeToRuntime: "P";
   readonly createProject: "P";
   readonly importLocalMedia: "A";
   readonly trimClip: "P";
   readonly addTextOverlayModel: "P";
-  readonly textOverlayPixels: "X";
-  readonly exportVideo: "X";
-  readonly verifyArtifact: "X";
+  readonly textOverlayPixels: "X" | "C";
+  readonly exportVideo: "X" | "C";
+  readonly verifyArtifact: "X" | "A";
 }
 
 export interface SessionDescription {
@@ -72,6 +89,13 @@ export interface CapabilityStatus {
   readonly reason?: string;
   /** What would be required to make it available (audit letter/seam). */
   readonly requires?: string;
+  /**
+   * Machine-readable detail surfaced from the provider's live preflight
+   * (e.g. export route, and for the explicitly forced video-only frames
+   * route the `videoOnly`/`audio:"none"` markers — limitations are part of
+   * the capability, never a footnote).
+   */
+  readonly details?: Readonly<Record<string, unknown>>;
 }
 
 export interface Capabilities {
@@ -97,11 +121,16 @@ export interface Capabilities {
   readonly editOps: readonly EditOpType[];
   readonly textOverlay: {
     readonly modelState: true;
-    /** Honest: this slice never claims pixel-verified text. */
-    readonly pixelRendering: false;
+    /**
+     * True only when a render provider passed its live preflight in THIS
+     * session (text pixels can actually be produced and inspected).
+     */
+    readonly pixelRendering: boolean;
   };
   readonly preview: CapabilityStatus;
   readonly export: CapabilityStatus;
+  /** verify.artifact backing (ffprobe/ffmpeg + pixel comparison). */
+  readonly verify: CapabilityStatus;
 }
 
 /* ------------------------------------------------------------------ */
@@ -319,3 +348,137 @@ export interface EditApplyResult {
   readonly applied: readonly OpApplied[];
   readonly replayed: boolean;
 }
+
+/* ------------------------------------------------------------------ */
+/* preview.render_frame (Slice 1b)                                     */
+/* ------------------------------------------------------------------ */
+
+export interface PreviewRenderFrameParams {
+  /**
+   * Timeline position in seconds. Must be a finite number in [0, timeline
+   * duration]; the exact end of the timeline is clamped to the last frame.
+   */
+  readonly timeSec: number;
+  /** Raster size; defaults to the project settings. Even numbers only. */
+  readonly width?: number;
+  readonly height?: number;
+  readonly expectedRevision?: number;
+  readonly idempotencyKey?: string;
+}
+
+export interface PreviewRenderFrameResult {
+  readonly revision: number;
+  readonly timeSec: number;
+  readonly width: number;
+  readonly height: number;
+  /** PNG artifact under artifactRoot: {path, sizeBytes, sha256, sourceRevision}. */
+  readonly artifact: ArtifactRef;
+  readonly replayed: boolean;
+}
+
+/* ------------------------------------------------------------------ */
+/* export.start (Slice 1b)                                             */
+/* ------------------------------------------------------------------ */
+
+/** Closed settings subset for this slice: MP4/H.264 only. */
+export interface ExportStartSettings {
+  readonly format?: "mp4";
+  readonly codec?: "h264";
+  /** Defaults to the project settings; even numbers only. */
+  readonly width?: number;
+  readonly height?: number;
+  /** Defaults to project settings.frameRate. */
+  readonly frameRate?: number;
+  /** Defaults to a size-appropriate bitrate. */
+  readonly videoBitrateKbps?: number;
+}
+
+export interface ExportStartParams {
+  readonly settings?: ExportStartSettings;
+  readonly expectedRevision?: number;
+  readonly idempotencyKey?: string;
+}
+
+export interface ExportStartResult {
+  readonly jobId: string;
+  /**
+   * "queued" on a fresh start (the job runs in the background). On an
+   * idempotent replay this is the job's CURRENT state, which may already be
+   * running/done/error/cancelled.
+   */
+  readonly state: "queued" | "running" | "done" | "error" | "cancelled";
+  /**
+   * Revision of the project snapshot this job exports. The snapshot is taken
+   * synchronously inside export.start; later edits never affect the job.
+   */
+  readonly sourceRevision: number;
+  readonly replayed: boolean;
+}
+
+/* ------------------------------------------------------------------ */
+/* job.status / job.cancel (Slice 1b)                                  */
+/* ------------------------------------------------------------------ */
+
+export interface JobParams {
+  readonly jobId: string;
+}
+
+export interface JobStatusView {
+  readonly jobId: string;
+  readonly kind: "export";
+  readonly state: "queued" | "running" | "done" | "error" | "cancelled";
+  readonly progress: {
+    readonly phase: ExportProgressEvent["phase"];
+    readonly percent: number;
+    readonly currentFrame?: number;
+    readonly totalFrames?: number;
+    readonly bytesWritten?: number;
+  } | null;
+  /**
+   * Present only in state "done". Failed/cancelled jobs never carry an
+   * artifact (no partial file is ever presented as a result).
+   */
+  readonly artifact: ArtifactRef | null;
+  readonly error: { readonly code: string; readonly message: string } | null;
+  readonly sourceRevision: number;
+  /** Export route that produced the artifact (null until done). */
+  readonly route: string | null;
+  readonly cancelRequested: boolean;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* verify.artifact (Slice 1b)                                          */
+/* ------------------------------------------------------------------ */
+
+export interface VerifyArtifactParams {
+  /** Artifact file to inspect. Must resolve inside artifactRoot. */
+  readonly path: string;
+  readonly expect?: {
+    readonly container?: "mp4";
+    readonly videoCodec?: "h264";
+    readonly width?: number;
+    readonly height?: number;
+    readonly durationSec?: number;
+    readonly durationToleranceSec?: number;
+  };
+  readonly compare?: {
+    /** PNG image or video file, inside mediaRoots or artifactRoot. */
+    readonly referencePath: string;
+    readonly timeSec: number;
+    readonly referenceTimeSec?: number;
+    readonly region?: {
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+    };
+    readonly mode: "similar" | "different";
+    readonly maxMeanAbsDiff?: number;
+    readonly minMeanAbsDiff?: number;
+    readonly minChangedPixelsRatio?: number;
+  };
+}
+
+export type VerifyArtifactResult = VerifyReport;

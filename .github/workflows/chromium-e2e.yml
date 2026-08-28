@@ -1,0 +1,79 @@
+name: Chromium E2E
+
+# Focused Slice-1b signal: the real-Chromium runtime probe + the full
+# create→import→trim→text→render→export→verify E2E on Linux, with the
+# machine-readable probe result and verification reports uploaded as
+# evidence. The general CI workflow runs the same tests as part of
+# `pnpm test`; this workflow exists to surface them separately and to
+# collect the artifacts.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chromium-e2e:
+    name: Chromium E2E (Slice 1b)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium for Playwright
+        run: pnpm --filter @openreel/runtime-chromium exec playwright-core install --with-deps chromium
+
+      # ubuntu-latest does NOT ship ffmpeg: the frames-route encoder and the
+      # artifact verifier need real ffmpeg/ffprobe binaries.
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Show ffmpeg/ffprobe used for verification
+        run: |
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+
+      - name: Typecheck facade + runtime
+        run: |
+          pnpm --filter @openreel/agent-facade typecheck
+          pnpm --filter @openreel/runtime-chromium typecheck
+
+      - name: Run Slice-1 facade tests (must stay green)
+        run: pnpm --filter @openreel/agent-facade test:run
+
+      - name: Run Chromium runtime tests (probe, E2E, jobs, verify)
+        run: pnpm --filter @openreel/runtime-chromium test:run
+
+      # Evidence MUST exist and MUST upload: the probe/verify JSON is the
+      # machine-readable proof of what this run measured. The directory is
+      # hidden (.artifacts), which upload-artifact skips by default — hence
+      # include-hidden-files — and a missing upload fails the job, never
+      # warns silently.
+      - name: Upload machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-e2e-evidence
+          path: packages/runtime-chromium/.artifacts/
+          include-hidden-files: true
+          if-no-files-found: error

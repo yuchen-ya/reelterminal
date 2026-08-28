@@ -1,5 +1,13 @@
 # Contributing to OpenReel
 
+> **Note (Agent Video Engine Lab):** this guide is inherited from the upstream
+> OpenReel project and still describes upstream's repository and workflow
+> (including the `github.com/Augani/openreel-video` clone URL below). For this
+> repository's identity, quick start, and where the lab's own code lives, read
+> [`README.md`](README.md) first; for the lab's verified test entry points,
+> use the focused commands in the README's Quick start. The coding standards
+> and testing guidance below still apply.
+
 Thank you for your interest in contributing to OpenReel! This document provides guidelines and instructions for contributing.
 
 ## Table of Contents

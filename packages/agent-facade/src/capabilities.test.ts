@@ -85,6 +85,11 @@ describe("capabilities.get / session.describe", () => {
       "media.import",
       "timeline.get",
       "edit.apply",
+      "preview.render_frame",
+      "export.start",
+      "job.status",
+      "job.cancel",
+      "verify.artifact",
     ]);
     expect(res.value.stepLetters.facadeToRuntime).toBe("P");
     expect(res.value.stepLetters.createProject).toBe("P");
@@ -137,10 +142,10 @@ describe("injected render adapter (dormant Slice-1 seam)", () => {
     if (!res.ok) return;
     expect(res.value.preview.available).toBe(false);
     expect(res.value.preview.reason).toBeTruthy();
-    expect(res.value.preview.requires).toContain("Slice 1b");
+    expect(res.value.preview.requires).toContain("RenderProvider");
     expect(res.value.export.available).toBe(false);
     expect(res.value.export.reason).toBeTruthy();
-    expect(res.value.export.requires).toContain("Slice 1b");
+    expect(res.value.export.requires).toContain("ExportProvider");
   });
 
   it("session.describe calls the injected adapter dormant, never available", async () => {
