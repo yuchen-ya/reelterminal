@@ -1,8 +1,8 @@
 {
-  "name": "openreel",
+  "name": "agent-video-engine-lab",
   "version": "0.1.1",
   "private": true,
-  "description": "Professional video, audio, and photo editing in your browser",
+  "description": "Agent Video Engine Lab: agent-first video-editing engine experiments (agent facade + Chromium render/export runtime) over the OpenReel codebase. Private monorepo root; packages keep their @openreel/* names.",
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @openreel/web dev",
@@ -38,12 +38,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Augani/openreel-video.git"
+    "url": "https://github.com/yuchen-ya/agent-video-engine-lab.git"
   },
   "bugs": {
-    "url": "https://github.com/Augani/openreel-video/issues"
+    "url": "https://github.com/yuchen-ya/agent-video-engine-lab/issues"
   },
-  "homepage": "https://openreel.video",
+  "homepage": "https://github.com/yuchen-ya/agent-video-engine-lab#readme",
   "engines": {
     "node": ">=18.0.0",
     "pnpm": ">=8.0.0"

@@ -53,8 +53,10 @@ node hello-world-e2e.mjs --input /abs/input.mp4 --media-root /abs/media \
   --artifact-root /abs/artifacts
 ```
 
-(Inside this repo: `node_modules/.bin/esbuild`. Outside: any esbuild ≥0.20.
-`playwright-core` must stay external so its browser registry resolves.)
+(Inside this repo: run from `packages/runtime-chromium/` and use
+`node_modules/.bin/esbuild` — esbuild is not hoisted to the repo root.
+Outside: any esbuild ≥0.20. `playwright-core` must stay external so its
+browser registry resolves.)
 
 ## Facade verbs added by Slice 1b
 

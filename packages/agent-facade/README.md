@@ -127,9 +127,11 @@ its live preflight in the session. The Slice-1 `ProjectRenderAdapter` seam
 
 ## Invariants
 
-See `docs/project-invariants.md` (evidence-backed MUST/MUST-NOT list the
-facade implements against: canonical TextClip shape, MEDIA-04 trim split,
-blob-free MediaItems, duration recomputation, facade-owned idempotency).
+See [`./docs/project-invariants.md`](docs/project-invariants.md)
+(evidence-backed MUST/MUST-NOT list the facade implements against: canonical
+TextClip shape, MEDIA-04 trim split, blob-free MediaItems, duration
+recomputation, facade-owned idempotency). Paths above starting with `audit/`
+or `docs/adr/` are repo-root-relative; this one lives inside the package.
 
 ## Tests
 

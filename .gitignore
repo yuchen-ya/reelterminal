@@ -49,6 +49,9 @@ docs/*
 # and machine-readable probe evidence are committed, never force-added.
 !docs/adr/
 !docs/slice-1b/
+# Canonical docs index and design principles are real repo content too.
+!docs/README.md
+!docs/design-principles.md
 .worktrees/
 # Project-specific
 /public/projects/
