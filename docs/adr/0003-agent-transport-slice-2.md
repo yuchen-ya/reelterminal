@@ -3,18 +3,27 @@
 - Status: **Proposed** (transport audit only — no implementation lands in this slice)
 - Date: 2026-08-28
 - Branch: `audit/slice-2-transport`
+- Revision: **r2** (2026-08-28) — incorporates the independent red-team
+  round on r1: `run` is now an executable workflow (Decision 3/B.6), the
+  MCP SDK is adopted and pin-locked (Consequences), the transport owns the
+  signal lifecycle via a minimal runtime change (Decision 7), listener and
+  hard-kill-residue wording corrected to fact (Decisions 1/7), paths are
+  absolute-only (Decision 6), and the schema story is single-source, not
+  twin hand-written schemas (Decision 4).
 - Context: ADR 0001 (headless facade; §5 gates transports on Desktop-MCP
   hardening), ADR 0002 (Chromium runtime; containment, watchdog, honest
   capabilities), `audit/transport-audit.md` (debugger-grade verdict on the
   upstream MCP path), `audit/facade-v0.md` (contracts #1–#7), the 12-verb
   `@openreel/agent-facade` as it exists on `main` (684289a).
 
-> Editorial note: `docs/*` is git-ignored outside a few whitelisted paths
-> (`docs/adr/`, `docs/slice-1b/`, …), and this slice may not modify
-> `.gitignore`. The audit deliverables (inventory, mapping, client facts,
-> E2E contract, adversarial review) therefore ride as appendices of this
-> ADR instead of separate files. If the whitelist is ever widened they can
-> be split out without changing a claim.
+> Editorial note: when this audit started, `docs/*` was git-ignored
+> outside a few whitelisted paths (`docs/adr/`, `docs/slice-1b/`, …) and
+> this slice could not modify `.gitignore`; the audit deliverables
+> (inventory, mapping, client facts, E2E contract, adversarial review)
+> therefore ride as appendices of this ADR instead of separate files. The
+> repository-hygiene PR removes that ignore-by-default policy, but the
+> appendices stay here for this slice — one decision, one document. They
+> can be split out later without changing a claim.
 
 ## Decisions
 
@@ -23,14 +32,22 @@
 `serve` runs a single MCP server over **stdio**. The process owns exactly
 one `AgentFacadeSession` for its whole lifetime; the session owns exactly
 one project (facade lifecycle — `project.create` is
-single-initialization, ADR 0001 addendum §1). There is no TCP listener:
-the only socket the process opens is the ones Chromium/ffmpeg need.
-Multi-project work means multiple `serve` processes, each with its own
-`mediaRoots`/`artifactRoot`/provider set. Session configuration
-(`mediaRoots`, `artifactRoot`, provider wiring) happens **only** at
-process start (flags/env, Appendix B.4) — no tool can widen the roots
-after start, because the facade config is constructor-only and the
-transport refuses to fake a setter.
+single-initialization, ADR 0001 addendum §1). The transport exposes **no
+externally reachable transport/control listener of any kind** — no TCP,
+no Unix socket, no named pipe; stdio is the whole control surface. Two
+internal sockets exist in the process tree and neither is a control
+surface: the Playwright-managed Chromium debugging channel, and the
+runtime's internal **harness HTTP server**, which serves only the render
+harness page to the Chromium page, bound to `127.0.0.1` on an ephemeral
+port (`packages/runtime-chromium/src/node/runtime.ts`) — loopback-only,
+not discoverable off-host, and it accepts no commands. Hardening that
+internal surface further belongs to the Desktop-MCP track (ADR 0001 §5),
+not to this slice. Multi-project work means multiple `serve` processes,
+each with its own `mediaRoots`/`artifactRoot`/provider set. Session
+configuration (`mediaRoots`, `artifactRoot`, provider wiring) happens
+**only** at process start (flags/env, Appendix B.5) — no tool can widen
+the roots after start, because the facade config is constructor-only and
+the transport refuses to fake a setter.
 
 Rationale: the facade's entire guarantees stack (serialized lane, revision
 counter, idempotency ledger, job registry) is per-session and in-memory.
@@ -50,7 +67,9 @@ Claude Code client constrains input-schema **property** names to the same
 class (Appendix C), so dot-forms are dropped at the tool layer only; the
 facade verb names remain the contract (tools echo `verb` where useful).
 No tool is added for anything a verb cannot already express — not
-`doctor`, not config, not project switching. `packages/agent`'
+`doctor`, not config, not project switching. The public surface is
+exactly these 12 tools: the transport has no configuration, flag, or env
+var that adds, renames, hides, or gates tools. `packages/agent`'s
 `toMcpTools()` (304 tools) is **never** called by this transport; the
 registry stays the internal/live surface (ADR 0001 §1,
 `audit/facade-v0.md` "Why not expose the 304 directly").
@@ -62,15 +81,22 @@ one binary and three subcommands:
 
 - `serve` — the MCP stdio server of §1. This **is** the persistent
   session; nothing else pretends to be.
-- `run --workflow <file.json|file.jsonl>` — one process, **one fresh
-  facade session**, executes the workflow (one step per JSON line/object;
-  each step = `{verb, params}`), writes one JSON line per step result to
-  stdout. `run` is explicitly stateless across invocations: no project
-  file I/O exists in the verb set (no `project.open`/`save`), so a
-  workflow is a single in-process session from `project.create` to
-  `verify.artifact`. This is *not* a disguised session and must never grow
-  one — cross-invocation persistence arrives only with facade open/save
-  verbs (slice 3+, listed as a product decision).
+- `run --workflow <file>` — one process, **one fresh facade session**,
+  executes an **executable workflow**, not a fixed list of literal calls:
+  an ordered list of steps, each with a stable caller-chosen step ID, in
+  which later steps reference earlier results through structured
+  `$ref`/JSON-Pointer substitution, and job completion is expressed by a
+  bounded `await` step (full format and its prohibitions: Appendix B.6).
+  This is what makes the real closed loop — import → edit → export →
+  await terminal → verify — expressible by a shell-only agent (Pi-class)
+  without an MCP client and without string templating. Execution stops at
+  the first failed step by default. `run` is explicitly stateless across
+  invocations: no project file I/O exists in the verb set (no
+  `project.open`/`save`), so a workflow is a single in-process session
+  from `project.create` to `verify.artifact`. This is *not* a disguised
+  session and must never grow one — cross-invocation persistence arrives
+  only with facade open/save verbs (a deferred candidate, Appendix F —
+  explicitly **not** this slice).
 - `doctor` — runs the real preflights (Chromium launch probe,
   ffmpeg/ffprobe resolution, codec checks via the runtime probe path,
   configured roots, provider availability) and prints one machine-readable
@@ -84,60 +110,84 @@ clients, e.g. Pi today, use `run` + `doctor`). It contains no one-shot
 commands wearing a session costume: anything that mutates state across
 processes is impossible in this verb set, and the CLI does not fake it.
 
-### 4. Schema single source of truth: JSON Schemas exported BY the facade, imported (never copied) by transports
+### 4. Schema single source of truth: ONE declaration per verb drives both runtime validation and the emitted MCP JSON Schema
 
 Today the facade validates with hand-rolled closed `ObjectSchema`s
 (`packages/agent-facade/src/validate.ts`, per-verb constants in
 `session.ts`) — strict, audited, zero-dep — and **no** JSON Schema exists
 for the verb params anywhere. MCP `tools/list` requires an `inputSchema`
-per tool, so something must generate them. Mechanism (concrete):
+per tool, so schemas must appear. The decision:
 
-1. `@openreel/agent-facade` gains a pure-data module (proposed
-   `src/schemas.ts`) exporting `FACADE_TOOL_SCHEMAS: Record<FacadeVerb,
-   JsonSchema>` (draft 2020-12), written **side-by-side with** the runtime
-   `*_SCHEMA` constants in `session.ts` — same file neighborhoods, one PR
-   reviews both halves of any change.
-2. The transport imports the schemas and assigns them verbatim:
-   `tool.inputSchema = FACADE_TOOL_SCHEMAS[verb]`. It never declares a
-   schema of its own. A CI assertion deep-equals every exported
-   `tools/list` entry against the facade export (copy-drift dies here).
-3. A CI **differential test** pins semantic equivalence: for each verb, a
-   fixed adversarial corpus (valid payloads + one payload per failure
-   class: unknown field, missing required, wrong type, enum violation,
-   plus a deterministic mutation sweep of each corpus entry) must classify
-   identically under (a) the facade's runtime `validateObject` validators
-   and (b) the exported JSON Schema evaluated by ajv (devDependency of the
-   transport only — the facade stays dependency-free).
-4. Client constraints shape the schemas up front (Appendix C): flat
-   top-level objects, property names `^[A-Za-z0-9_-]{1,64}$`, no
+**There is exactly one hand-maintained schema declaration per verb, and
+both consumers derive from it.** The runtime validator and the
+`tools/list` JSON Schema are two renderings of one source. The r1 text's
+mechanism — a second, hand-written set of 12 JSON Schemas kept
+"side-by-side" with the runtime validators — is **rejected as an end
+state**: two hand-maintained definitions of the same contract drift, and
+a CI deep-equal can only catch textual drift, never semantic drift. That
+arrangement may exist for at most one transitional PR inside slice 2a;
+it may not ship.
+
+Mechanism (decided by an early slice-2a spike, within these bounds):
+
+1. The spike evaluates, in order of preference: (a) grow
+   `validate.ts`'s closed `ObjectSchema` model into the single
+   declaration — the validators already are a declarative schema; teach
+   the same structure to *emit* draft-2020-12 JSON Schema, so validation
+   and emission share one definition; (b) generate both artifacts from a
+   neutral per-verb declaration via a build-time codegen step; (c) adopt
+   a schema library as the declaration. Choice (c) carries the r1 zod
+   verdict below and must beat (a) on audited-semantics preservation to
+   win. The spike's output is a one-page addendum to this ADR naming the
+   mechanism; the **requirement is not negotiable**: one hand-maintained
+   definition per verb, everything else derived.
+2. The transport imports the emitted schemas and assigns them verbatim:
+   `tool.inputSchema = <emitted>[verb]`. It never declares a schema of
+   its own. A CI assertion deep-equals every exported `tools/list` entry
+   against the facade-side emission (copy-drift dies here).
+3. **Adversarial / differential testing is retained regardless of
+   mechanism** — a single source removes hand-drift, not emitter bugs or
+   client-side schema mangling. For each verb, a fixed adversarial corpus
+   (valid payloads + one payload per failure class: unknown field,
+   missing required, wrong type, enum violation, plus a deterministic
+   mutation sweep of each corpus entry) must classify identically under
+   (a) the facade's runtime validators and (b) the emitted JSON Schema
+   evaluated by ajv (devDependency of the transport only — the facade
+   stays dependency-free). This test survives whatever mechanism the
+   spike picks.
+4. Client constraints shape the emitted schemas up front (Appendix C):
+   flat top-level objects, property names `^[A-Za-z0-9_-]{1,64}$`, no
    root-level `anyOf`/`oneOf`/`allOf` (Claude Code flattens those with
-   lossy notes), no `$ref` (not dereferenced by at least one major
-   client). `edit_apply`'s discriminated op union lives as a nested
+   lossy notes), no `$ref` in the *emitted schema* (not dereferenced by
+   at least one major client — unrelated to the workflow format's `$ref`,
+   Appendix B.6). `edit_apply`'s discriminated op union lives as a nested
    `anyOf` inside `items`, which is allowed where root-level combinators
    are not.
-5. **Known, bounded drift surface — cross-field constraints.** Some
-   facade rules are not expressible in plain JSON Schema: `clip.trim`
-   requires at least one of `inPoint`/`outPoint`; `verify.compare.region`
-   requires `x+width ≤ 1` and `y+height ≤ 1`. The twin schemas are
-   therefore a **superset filter at the boundary**, and the runtime
-   validators remain the only authority: a payload can be schema-valid
-   and still fail `INVALID_PARAMS` at the facade, and the differential
-   test must assert exactly that ordering (schema-valid ⇒ facade decides;
+5. **Cross-field constraints stay honest.** Some facade rules are not
+   expressible in plain JSON Schema: `clip.trim` requires at least one of
+   `inPoint`/`outPoint`; `verify.compare.region` requires `x+width ≤ 1`
+   and `y+height ≤ 1`. Such rules live in the single declaration as
+   validation-only predicates; the emitted JSON Schema is then a
+   **superset filter at the boundary** and the runtime validators remain
+   the only authority: a payload can be schema-valid and still fail
+   `INVALID_PARAMS` at the facade, and the differential corpus must
+   assert exactly that ordering (schema-valid ⇒ facade decides;
    schema-invalid ⇒ facade would also reject). The transport never
    pre-validates against the schema beyond what the MCP client itself
    does — rejecting early would mean a second validator with its own
    drift.
 
-Alternative considered and rejected for this slice: make zod the single
-source (zod infers TS types, `zod-to-json-schema` emits MCP schemas,
-facade validators replaced by `.parse()`). Rejected because it rewrites
-the audited validation layer (ADV-03 strict-params semantics,
+Alternative considered and rejected: make zod the single source (zod
+infers TS types, `zod-to-json-schema` emits MCP schemas, facade
+validators replaced by `.parse()`). Rejected as the *default* because it
+rewrites the audited validation layer (ADV-03 strict-params semantics,
 sanitizing-copy behavior), adds a runtime dependency to the pure facade,
 and the tree's zod versions are split (3.22.3 / 3.25.76 / 4.4.3 in
-`pnpm-lock.yaml`) — churn with no transport-visible win. Revisit if verb
-widening makes twin-maintenance painful (tracked as a product decision).
+`pnpm-lock.yaml`). The 2a spike may re-examine it as mechanism (c) only
+if it demonstrably preserves the audited semantics better than growing
+the existing model — the bar is high on purpose.
 
-### 5. Facade guarantees must arrive at the agent undamaged — the transport adds nothing and removes nothing
+### 5. Facade guarantees must arrive at the agent undamaged — the transport adds no semantics and removes none
 
 - **Error codes.** All 8 codes (`INVALID_PARAMS`, `NOT_FOUND`, `CONFLICT`,
   `UNSUPPORTED`, `CONFIRMATION_REQUIRED`, `JOB_FAILED`, `ACTION_FAILED`,
@@ -159,9 +209,12 @@ widening makes twin-maintenance painful (tracked as a product decision).
   immediately; `job_status`/`job_cancel` are plain tools. This shape is
   what makes default client tool timeouts (Codex `tool_timeout_sec` 60 s,
   DSH `toolCallTimeoutMs` 60 000, both official-documented) a non-issue:
-  no tool call is ever long-blocking by design. The poll loop belongs to
-  the agent (SKILL.md gives the cadence and terminal-state exit
-  conditions).
+  no tool call is ever long-blocking by design. Over MCP, the poll loop
+  belongs to the agent (SKILL.md gives the cadence and terminal-state
+  exit conditions). In a `run` workflow the same poll is expressed as a
+  bounded `await` step executed by the runner (Appendix B.6) — identical
+  semantics, mandatory bounds; the runner never spins unbounded on the
+  agent's behalf.
 - **Capability honesty.** `capabilities_get`/`session_describe` are
   passthrough to the live provider preflights (ADR 0002: availability
   flips only when a preflight passed *in this session*). The transport
@@ -186,22 +239,46 @@ widening makes twin-maintenance painful (tracked as a product decision).
   enforced by the facade exactly as built and tested: realpath
   containment for imports (`resolveContainedPathDetailed`), symlink/
   junction refusal plus pre- and post-write containment for artifacts,
-  `.part`-then-rename, post-write escape removal (ADR 0002 A5). The
-  transport passes paths verbatim — it never rewrites, resolves-relative-
-  silently, or "helpfully" expands `~` into a root, and it never adds a
-  root at runtime. `doctor` echoes the configured roots so the agent can
-  verify where it is allowed to touch. URLs are refused by the facade
-  already (`hasUrlScheme`), and the transport does not loosen that.
+  `.part`-then-rename, post-write escape removal (ADR 0002 A5). On top of
+  that, the transport is **absolute-path-only, everywhere**: every path
+  input — CLI flags, env config, workflow-step params, and every path the
+  SKILL tells an agent to pass — must be absolute. At startup the
+  transport canonicalizes the configured roots (they must exist, be
+  directories, and are stored in their `realpath` form; a relative,
+  missing, or undirectory root is a startup refusal, not a fallback). At
+  the boundary, a non-absolute path param is rejected before it reaches
+  the facade — nothing is ever resolved against the process cwd, and `~`
+  is never expanded. The transport passes paths verbatim otherwise: it
+  never rewrites or "helpfully" normalizes into a root, and it never
+  adds a root at runtime. `doctor` echoes the canonicalized roots so the
+  agent can verify where it is allowed to touch. URLs are refused by the
+  facade already (`hasUrlScheme`), and the transport does not loosen
+  that.
 
-### 7. Cleanup matrix (who cleans what, when)
+### 7. Cleanup matrix (who cleans what, when) — and who owns signals
+
+**Signal ownership (the one minimal runtime change this slice allows).**
+Today Playwright registers its own `SIGINT`/`SIGTERM`/`SIGHUP` handlers
+at launch (its default), which kill the browser immediately and race the
+bounded cancel/dispose path below. The transport must own the signal
+lifecycle, so slice 2b makes exactly one scoped change to
+`@openreel/runtime-chromium`: pass `handleSIGINT: false`,
+`handleSIGTERM: false`, `handleSIGHUP: false` at `chromium.launch`
+(nothing else in the runtime changes — containment, watchdog, recycle,
+and bounded teardown semantics are untouched). The transport then
+installs the only handlers: the **first** `SIGINT`/`SIGTERM` runs the
+bounded disposal path (cancel race → provider dispose → exit 130/143);
+a **second** signal exits immediately with no further cleanup promises
+(the operator's escape hatch; residue is the `SIGKILL` row). No other
+product-code change is authorized by this ADR.
 
 | Trigger | Actions | Guaranteed residue |
 |---|---|---|
-| Clean shutdown (stdio EOF / client exit / `shutdown`) | Stop accepting calls → request cancel on every non-terminal job (bounded wait, the facade's own 10 s cancel race, invoked through the public `job.cancel` verb path — no back doors) → dispose provider runtime (bounded graceful teardown, ADR 0002 A7) → flush stderr logs → exit 0 | None new. Artifacts persist (they are the deliverable); a cancelled export leaves no success-looking file (`.part` sweep) |
-| `SIGINT` / `SIGTERM` | Same disposal path, same bounds; exit 130/143 | Same as above |
-| Client abrupt disconnect (stdin EOF without handshake) | stdio EOF *is* the disconnect signal; identical to clean shutdown. No half-open connections exist on stdio — the class of "client vanished but server keeps serving" bugs cannot occur | Same as above |
-| `SIGKILL` / hard crash | Nothing in-process runs. Job dies with the process; job registry (in-memory) is gone; an in-flight export leaves `exports/<jobId>/*.part` | Inert `.part` in a unique per-job directory — never a valid-looking artifact (rename-on-success, ADR 0002 §5). GC is future work (product decision) |
-| Running export at any shutdown | Best-effort cooperative cancel first (job settles `cancelled`/`error`); if the window is lost, the `SIGKILL` row applies | Same as above |
+| Clean shutdown (stdio EOF / client exit / `shutdown`) | Stop accepting calls → request cancel on every non-terminal job (bounded wait, the facade's own 10 s cancel race, invoked through the public `job.cancel` verb path — no back doors) → dispose provider runtime (bounded graceful teardown, ADR 0002 A7) → flush stderr logs → exit 0 | None new. Artifacts persist (they are the deliverable); a cancelled export leaves no success-looking file (job-dir sweep) |
+| `SIGINT` / `SIGTERM` (first) | Same disposal path, same bounds, owned by the transport (Playwright signal handlers disabled, above); exit 130/143. A second signal = immediate hard exit | Same as above; after a hard exit, the `SIGKILL` row |
+| Client abrupt disconnect (stdin EOF without handshake) | stdio EOF *is* the disconnect signal; identical to clean shutdown. No half-open connections exist on stdio — the class of "client vanished but server keeps serving" bugs cannot occur | Same as row 1 |
+| `SIGKILL` / hard crash | Nothing in-process runs. Job dies with the process; job registry (in-memory) is gone. An in-flight export leaves one of two residues, depending on where the kill lands: (a) mid-write — an inert `exports/<jobId>/output.mp4.part`; (b) in the **rename→hash/registration window** — a byte-complete `exports/<jobId>/output.mp4` that no successful `ArtifactRef` ever reported (the rename happens before the facade hashes and terminalizes the job; a kill between them strands the file) | Either residue is **unregistered**: it must never be reported as, or mistaken for, a successful artifact — no ArtifactRef exists for it, and residue (b) is indistinguishable from a real deliverable by bytes alone. `doctor` lists per-job directories under `artifactRoot` and labels any file not referenced by a live session as an **orphan — unverifiable, do not trust as an artifact**. Slice 2 does **not** auto-delete orphans (GC is a deferred candidate, Appendix F) |
+| Running export at any shutdown | Best-effort cooperative cancel first (job settles `cancelled`/`error` with the job-dir sweep); if the window is lost, the `SIGKILL` row applies | Same as above |
 | Chromium crash / watchdog mid-job | Handled entirely inside `@openreel/runtime-chromium` (recycle + generation bump, exactly-once terminalization, ADR 0002 A6/A7). Transport is a bystander; next capability read re-preflights honestly | None new |
 | SKILL contract for agents | Poll `job_status` to a terminal state **before** disconnecting; a session that dies takes its jobs with it (documented facade limitation, not restart-durable) | — |
 
@@ -209,9 +286,9 @@ widening makes twin-maintenance painful (tracked as a product decision).
 
 | Result | Size behavior | Transport/SKILL contract |
 |---|---|---|
-| `project_get_state` | Unbounded (full canonical `Project` clone — the hydration contract) | SKILL: use `timeline_get` for orientation; `project_get_state` only when a full dump is truly needed. Paging/summary verbs are a facade change (slice 3 product decision), not transport-side field-dropping |
+| `project_get_state` | Unbounded (full canonical `Project` clone — the hydration contract) | SKILL: use `timeline_get` for orientation; `project_get_state` only when a full dump is truly needed. Paging/summary verbs are a facade change (deferred candidate, Appendix F), not transport-side field-dropping |
 | `timeline_get` | Compact by design (facade view: tracks/clips/text only) | Preferred read verb |
-| `preview_render_frame` | Returns `{path, sizeBytes, sha256, …}` — **never** pixel bytes | MCP image content blocks stay **off** by default (config flag, product decision). Visual truth is obtained via `verify_artifact` compare numbers, not by inlining PNGs |
+| `preview_render_frame` | Returns an **ArtifactRef** (`{path, sizeBytes, sha256, sourceRevision, …}`) — **never** pixel bytes | The default tool result is the ArtifactRef, full stop. MCP image content blocks (inline PNG) are **not emitted by default**; enabling them is an explicit config flag and a deferred product decision (Appendix F). Visual truth is obtained via `verify_artifact` compare numbers, not by inlining PNGs |
 | `verify_artifact` | Bounded report (`checks[]`, probe fields, compare numbers) — evidence files stay on disk, referenced by path | SKILL: assert on `checks[].pass` |
 | `job_status` | Small | SKILL: poll every 2–5 s, stop at terminal state; don't spin |
 | Errors | Bounded `{code, message, details}` | — |
@@ -231,8 +308,10 @@ configure `serve` per client (snippets for Codex/Claude Code/DSH; the
 `capabilities_get` **first** and to trust their reasons when a capability
 is unavailable, the 12 tools and their one-line purposes, the
 mediaRoots/artifactRoot world model, idempotency-key discipline, the
-`export_start` → poll → `verify_artifact` loop, and the "disconnect kills
-jobs" rule. It does **not**: restate parameter defaults or semantics that
+**absolute-paths-only rule** (agents always pass absolute paths; the
+transports reject relative ones), the `export_start` → poll/await →
+`verify_artifact` loop, and the "disconnect kills jobs" rule. It does
+**not**: restate parameter defaults or semantics that
 live in the facade (it links), add fallback behaviors or retries the
 facade doesn't have, carry client-specific tool variants (the same 12
 tools for every client; per-client config snippets are configuration, not
@@ -243,26 +322,44 @@ layer in prose would drift exactly like a second schema would.
 
 ## Consequences
 
-- No product code changes: the facade's runtime behavior and the runtime
-  package land **unchanged**; the only facade addition is the data-only
-  schema module of Decision 4 (2a). Slice 2 adds a new transport package
-  and the SKILL. ADR 0001 §5's
+- Product code changes are limited to exactly two, both scoped here: (a)
+  the facade gains the single-source schema mechanism of Decision 4 (2a)
+  — a validation-side change with zero behavioral drift, pinned by the
+  differential corpus; (b) the one-line signal-ownership launch change in
+  `@openreel/runtime-chromium` of Decision 7 (2b). Everything else in the
+  facade and runtime packages lands **unchanged**. Slice 2 adds a new
+  transport package and the SKILL. ADR 0001 §5's
   Desktop-MCP gate is untouched — this transport **does not reuse** the
   desktop path (Appendix A), so the gate is not a blocker for a Proposed
   slice, but exposure still does not widen beyond what a Draft PR implies.
-- New runtime dependency recommended for the transport package only:
-  `@modelcontextprotocol/sdk` (absent from the workspace today — 0 hits in
-  `pnpm-lock.yaml`; the desktop MCP is hand-rolled). Adopting the SDK is a
-  product decision (Appendix F); hand-rolling a minimal stdio JSON-RPC
-  layer is the fallback, using `apps/desktop/src/main/mcp/core.ts` as
-  prior art, *not* as imported code.
+- **The MCP core is the official `@modelcontextprotocol/sdk`, exactly
+  pin-locked** — no hand-rolled MCP core, in this slice or as a
+  "fallback". The desktop's hand-rolled core
+  (`apps/desktop/src/main/mcp/core.ts`) remains prior art to read, never
+  code to import. The dependency is confined to the transport package:
+  package.json pins an exact version with no semver range (pin candidate
+  at decision time: `1.30.0`, npm `latest` verified 2026-08-28; the
+  implementation PR records the final pin, and any later bump is its own
+  reviewed change). The SDK's spec-revision behavior is verified against
+  Appendix C's client facts at implementation time.
+- **Slice 2 scope exclusions, stated positively:** this slice does *not*
+  add `project.open`/`save`, a complete artifact-GC verb, idempotency-
+  ledger GC, or new paging/summary read verbs. All four are recorded as
+  deferred candidates in Appendix F with their motivations; each needs
+  its own decision before it lands. The transport must not smuggle any of
+  them in as conveniences.
+- **The Desktop-MCP hardening track stays independent.** It remains gated
+  by ADR 0001 §5 and its own future decision; this slice neither depends
+  on it nor advances it, and the old Desktop MCP is not this slice's
+  transport in any form.
 - No restart durability anywhere: session, ledger, and jobs die with the
   process — now true of the whole agent surface, stated in SKILL and
   doctor output.
 - The E2E contract (Appendix D) is defined but **not executed** in this
   slice; executing it is the next slice's deliverable, with committed
-  evidence under `docs/slice-2/` (requires a maintainer `.gitignore`
-  whitelist entry — product decision).
+  evidence under `docs/slice-2/`. (The old "docs ignored unless
+  whitelisted" policy is removed by the repository-hygiene PR; once that
+  lands on `main`, `docs/slice-2/` needs no `.gitignore` change.)
 
 ---
 
@@ -277,25 +374,26 @@ at most). Reuse estimates are of the slice-2 transport's *total surface*.
 | 1 | `AgentFacadeSession` + 12 verbs | `packages/agent-facade/src/{session,types,errors,idempotency,jobs,capabilities}.ts` | State semantics: atomic batches, revision, ledger, job registry, capability preflight, containment | **P** | ~100% reused unchanged. This is the product; the transport is a socket on it |
 | 2 | Closed-schema validators | `packages/agent-facade/src/validate.ts` + per-verb schemas | Strict boundary validation, zero deps | **P** | Unchanged. Twin JSON Schemas (Decision 4) are the only addition |
 | 3 | Providers (render/export/verify) | `packages/runtime-chromium` | Chromium pixels, H.264 export, ffprobe verify, watchdog/recycle | **P** | Reused verbatim; transport only constructs and disposes them |
-| 4 | MCP JSON-RPC core | `apps/desktop/src/main/mcp/core.ts` | Hand-rolled initialize/tools-list/call, protocol 2024-11-05→2025-06-18, content blocks; unit-tested | **X** (prior art) | Architecturally fine but bound to the desktop tool-provider shape; superseded by SDK (or a fresh minimal core). Read, don't import |
+| 4 | MCP JSON-RPC core | `apps/desktop/src/main/mcp/core.ts` | Hand-rolled initialize/tools-list/call, protocol 2024-11-05→2025-06-18, content blocks; unit-tested | **X** (prior art) | Bound to the desktop tool-provider shape; superseded by the official SDK (row 11). No hand-rolled core in this slice — not imported, not rewritten. Read, don't import |
 | 5 | Renderer-bridge dispatcher | `apps/desktop/src/main/mcp/dispatcher.ts`, `renderer-bridge.ts` | callId-correlated IPC promises; **timeouts abandon calls that keep mutating** | **X** | Its timeout semantics are DESK-04 — the exact trap this slice must not reproduce. Not needed: stdio is single-caller request/response |
-| 6 | Loopback HTTP server + bearer auth | `apps/desktop/src/main/mcp/http-server.ts` | 127.0.0.1 bind, timing-safe token, 4 MB body cap, tested | **X** for v0 | Good engineering, wrong default: Decision 1 forbids TCP. Revisit only behind a future explicit remote-transport ADR |
+| 6 | Loopback HTTP server + bearer auth | `apps/desktop/src/main/mcp/http-server.ts` | 127.0.0.1 bind, timing-safe token, 4 MB body cap, tested | **X** for v0 | Good engineering, wrong default: Decision 1 exposes no transport/control listener. Revisit only behind a future explicit remote-transport ADR |
 | 7 | stdio shim | `apps/desktop/src/mcp-shim/index.ts` | readline stdio → HTTP forwarder, endpoint file w/ token | **X** | Exists to bridge to #6; pattern (readline framing, 0600 endpoint file) noted for `serve`'s own stdio loop |
 | 8 | 304-tool registry + `toMcpTools()` | `packages/agent/src/registry.ts` (31 930 lines) | Internal/live editing surface | **X** — **never exposed** | The audit's central prohibition (`audit/facade-v0.md`). Stays internal |
 | 9 | `openreel-agent` CLI | `packages/agent-runner/src/cli.ts` + `run.ts` | LLM-driven headless editor (BYOK keys, prompt in → LLM loop → project mutated) | **X** | An LLM *orchestrator*, not an agent-facing transport; drives the 304 registry. Its `bin` + tsup packaging is the (trivial) pattern to copy |
 | 10 | LLM loop / hosts / evals | `packages/agent-runner/src/{run,node-llm,evals}`, `packages/agent/src/{loop,host,headless-host}` | BYOK turn loop over registry | **X** | Same reason as #9; orthogonal to transport |
-| 11 | MCP SDK | — (`@modelcontextprotocol/sdk`) | stdio server, framing, protocol negotiation | **C** (adopt) | Production-ready upstream; new dep confined to the transport package. Product decision F.1 |
+| 11 | MCP SDK | — (`@modelcontextprotocol/sdk`) | stdio server, framing, protocol negotiation | **C** (adopt — decided) | The MCP core for this slice. Official upstream, exact-pinned (no range; candidate `1.30.0` verified 2026-08-28), confined to the transport package. Hand-rolling is rejected |
 | 12 | JSON Schema evaluation (CI only) | — (`ajv`) | Differential schema test | **C** | devDependency of transport only; facade stays pure |
 | 13 | CLI arg parsing | `packages/agent-runner/src/cli.ts` pattern | ~80-line hand-rolled switch | **A** (pattern) | 3 subcommands need no framework. commander/yargs/cac exist in-tree only as transitive deps — not first-party, not adopted |
 | 14 | stdio handling | `node:readline` (as in `mcp-shim`) / `process.stdin` | NDJSON framing | **C** (trivial) | — |
-| 15 | Config loading | Desktop env-var + endpoint-file precedent | Flags + `OPENREEL_*` env | **C** (minimal) | No config library exists or is added; see B.4 |
+| 15 | Config loading | Desktop env-var + endpoint-file precedent | Flags + `OPENREEL_*` env | **C** (minimal) | No config library exists or is added; see B.5 |
 | 16 | Binary packaging | `tsup` (used by agent-runner, desktop) | Single-file bin | **P** | In-tree, proven |
 | 17 | zod | `apps/desktop@^3.23.8`; 3.x/4.x split in lock | Schema→types | **X** for slice 2 | Rejected as schema source (Decision 4); exists in tree, not in facade |
 | 18 | Chromium E2E scenario | `packages/runtime-chromium/examples/hello-world-e2e.mts` | create→import→trim→text→PNG→MP4→verify | **A** | Template for Appendix D's scenario; re-expressed as agent-driven tool calls |
 
 **Reuse ratio estimate:** ≈85–90 % of slice 2's shipped behavior is
-existing, tested facade + runtime code; the new code is the schema twin
-(data), the stdio server shell, `run`, `doctor`, and SKILL.md. The risk
+existing, tested facade + runtime code; the new code is the schema
+single-source + emitter, the stdio server shell, `run`, `doctor`, and
+SKILL.md. The risk
 concentrates where the new code is: framing, lifecycle, and the honest
 cleanup matrix — hence Appendix E.
 
@@ -326,7 +424,7 @@ verb's purpose and nothing else: no parameter semantics, no defaults, no
 workarounds — those live in the facade and the SKILL, and a description
 that restates them is drift waiting to happen.
 
-### B.3 `edit_apply` inputSchema (illustrative twin, shape pinned by Decision 4)
+### B.3 `edit_apply` inputSchema (illustrative emitted shape, pinned by Decision 4)
 
 ```json
 {
@@ -386,30 +484,91 @@ openreel-agent-transport serve \
 ```
 
 Env equivalents: `OPENREEL_AVE_MEDIA_ROOTS` (path-separator list),
-`OPENREEL_AVE_ARTIFACT_ROOT`, `OPENREEL_TRANSPORT_LOG`. Absent roots are
-honest: imports/artifacts then fail `UNSUPPORTED` with the facade's own
-message, and `doctor` says so. (Names proposed; mechanism is the
-decision.)
+`OPENREEL_AVE_ARTIFACT_ROOT`, `OPENREEL_TRANSPORT_LOG`. Roots must be
+**absolute**; at startup each is canonicalized to its `realpath` form and
+must exist and be a directory — a relative, missing, or non-directory
+root is a startup refusal (Decision 6), never a cwd-relative resolution
+and never a `~` expansion. Absent roots are honest: imports/artifacts
+then fail `UNSUPPORTED` with the facade's own message, and `doctor` says
+so. (Names proposed; mechanism is the decision.)
 
-### B.6 `run` workflow format
+### B.6 `run` workflow format — an executable workflow, not a literal call list
+
+A workflow file is JSONL, one **step** per line. Two step kinds exist:
+
+- **Verb step:** `{"id": <stepId>, "verb": <facade verb>, "params": {…}}`
+- **Await step:** `{"id": <stepId>, "await": {…}}` — bounded wait on a
+  job reaching a terminal state (below).
+
+**Step IDs.** Every step carries a caller-chosen `id`
+(`^[A-Za-z0-9_-]{1,64}$`, unique within the file, required). References
+are by ID only — never by line position, so reordering lines cannot
+silently rewire a workflow.
+
+**Structured references (`$ref`).** Any param value may be a reference
+object `{"$ref": "<stepId>"}` or `{"$ref": "<stepId>#/<pointer>"}`:
+
+- `<stepId>` alone resolves to that step's whole `result.value`;
+  `#/<pointer>` is an RFC 6901 JSON Pointer into that value.
+- A reference object is the **entire value at its position** and
+  substitutes structurally (the referenced JSON value is spliced in).
+  There is no string interpolation — `$ref` text inside a string is just
+  a string — and **no expression language, no arithmetic, no template
+  syntax, no eval of any kind**. This is a deliberate ceiling: workflows
+  stay data, auditable by reading, and the runner is never a code
+  executor.
+- Statically validated before step 1 runs: IDs unique; every `$ref`
+  names an existing, **earlier** step; pointers syntactically valid;
+  every verb known; every `await.jobId` sourced from an `export.start`
+  step (directly or via one `$ref` hop).
+- At runtime: a pointer miss, or a reference to a failed/skipped step,
+  fails the run — a workflow error, distinct from a verb's `ok:false`.
+
+**Await semantics (bounded, always).**
+`{"id": "wait", "await": {"jobId": {"$ref": "export#/jobId"},
+"timeoutMs": 600000, "pollMs": 2000}}` polls `job.status` through the
+session's serialized lane until the job reaches a terminal state
+(`done`/`error`/`cancelled`) or `timeoutMs` elapses. `timeoutMs` is
+**required** and bounded (≤ 3 600 000); `pollMs` defaults to 2000 and is
+bounded (250–30 000). The await step's result value **is** the terminal
+job status value, so later steps can reference `#/artifact/path` and
+friends. A timeout, or a terminal state other than `done`, is a step
+failure. The runner never waits unbounded on the agent's behalf.
+
+**Failure semantics.** Default is stop-on-first-failure: the first step
+whose result is `ok:false` (verb failure, await timeout/non-done,
+reference resolution failure) aborts the run with exit 1; later steps do
+not execute. `--keep-going` is the opt-in escape (exit code still
+reflects the first failure).
+
+**Example — the real closed loop (import → edit → export → await →
+verify), with the revision arithmetic stated exactly** (`project.create`
+is lifecycle: it leaves the session at revision 0; each committed
+mutation bumps exactly once):
 
 ```jsonl
-{"verb":"project.create","params":{"name":"Demo","idempotencyKey":"c1"}}
-{"verb":"media.import","params":{"path":"/abs/a/input.mp4","idempotencyKey":"i1"}}
-{"verb":"edit.apply","params":{"ops":[…],"expectedRevision":2,"idempotencyKey":"e1"}}
-{"verb":"export.start","params":{"idempotencyKey":"x1"}}
-{"verb":"job.status","params":{"jobId":"job-…"}}
-{"verb":"verify.artifact","params":{"path":"…","expect":{"container":"mp4","videoCodec":"h264"}}}
+{"id":"create","verb":"project.create","params":{"name":"Demo","idempotencyKey":"c1"}}
+{"id":"import","verb":"media.import","params":{"path":"/abs/a/input.mp4","expectedRevision":0,"idempotencyKey":"i1"}}
+{"id":"edit","verb":"edit.apply","params":{"ops":[{"op":"track.add","trackType":"video","trackId":"v1"},{"op":"clip.add","trackId":"v1","mediaId":{"$ref":"import#/mediaId"},"startTime":0,"duration":5,"clipId":"c1"}],"expectedRevision":1,"idempotencyKey":"e1"}}
+{"id":"export","verb":"export.start","params":{"idempotencyKey":"x1"}}
+{"id":"wait","await":{"jobId":{"$ref":"export#/jobId"},"timeoutMs":600000,"pollMs":2000}}
+{"id":"verify","verb":"verify.artifact","params":{"path":{"$ref":"wait#/artifact/path"},"expect":{"container":"mp4","videoCodec":"h264"}}}
 ```
 
-One JSON line in → one JSON line out (`{index, verb, result}`), in order,
-through the session's serialized lane; first `ok:false` fails the run
-(exit 1) unless `--keep-going`. Logs → stderr. Re-run semantics, stated
-plainly: a second `run` starts a **fresh session** — the empty ledger
-means no cross-process dedupe (that is what `serve` plus agent-owned
-idempotency keys are for); the rebuilt project gets a fresh id, so prior
-runs' artifacts can never collide, and nothing from a prior run is
-reused or overwritten.
+(create ⇒ revision 0; import with `expectedRevision:0` ⇒ revision 1;
+edit with `expectedRevision:1` ⇒ revision 2. `mediaId`, `jobId`, and
+the artifact path are never guessed or handwritten — they flow through
+`$ref`.)
+
+One JSON line in → one JSON line out (`{index, id, verb|await,
+result}`), in order, through the session's serialized lane. All path
+params are absolute (Decision 6 — the runner rejects relative paths
+rather than resolving them against its cwd). Logs → stderr. Re-run
+semantics, stated plainly: a second `run` starts a **fresh session** —
+the empty ledger means no cross-process dedupe (that is what `serve`
+plus agent-owned idempotency keys are for); the rebuilt project gets a
+fresh id, so prior runs' artifacts can never collide, and nothing from a
+prior run is reused or overwritten.
 
 ## Appendix C: Client compatibility facts (verified sources only)
 
@@ -456,8 +615,9 @@ raw result transcript):**
 
 1. **Doctor** — run `doctor`; expect exit "usable"; report lists
    Chromium build, ffmpeg/ffprobe paths, codec preflight results, the two
-   roots. (MCP-clients path: `serve` configured per Appendix C and
-   connected; Pi-class path: agent authors the Appendix B.5 workflow.)
+   canonicalized roots. (MCP-clients path: `serve` configured per
+   Appendix C and connected; Pi-class path: agent authors the Appendix
+   B.6 workflow.)
 2. **Discover** — `session_describe`: contract `facade-slice-1b`, 12
    verbs, 8 error codes. `capabilities_get`: `mediaImport.available`
    true; `preview`/`export` available with route details;
@@ -466,8 +626,9 @@ raw result transcript):**
    point of Decision 9).
 3. **Create** — `project_create {name, settings:{1920×1080@30},
    idempotencyKey:"s2-create"}` ⇒ ok, revision 0, `replayed:false`.
-4. **Import** — `media_import {path:<input.mp4>, idempotencyKey:"s2-imp"}`
-   ⇒ ok, `mediaId`; metadata duration ≥5 s.
+4. **Import** — `media_import {path:<input.mp4>, expectedRevision:0,
+   idempotencyKey:"s2-imp"}` ⇒ ok, `mediaId`, revision 1; metadata
+   duration ≥5 s.
 5. **Edit** — `edit_apply {ops:[track.add video v1, clip.add v1
    mediaId @0 clipId:"c1", clip.trim c1 outPoint 5, track.add text t1,
    text.create "Hello world" t1 0–5 s], expectedRevision:1,
@@ -483,9 +644,10 @@ raw result transcript):**
 7. **Preview** — `preview_render_frame {timeSec:2.5}` ⇒ PNG artifact
    `{path, sizeBytes>0, sha256, sourceRevision:2}` inside `artifactRoot`.
 8. **Export** — `export_start {idempotencyKey:"s2-exp"}` ⇒ `{jobId,
-   state:"queued", sourceRevision:2}`; poll `job_status` (2–5 s cadence)
-   to `done` with `artifact` and `route` recorded; total frames implied
-   5 s × 30 fps = **150**.
+   state:"queued", sourceRevision:2}`; reach a terminal state — MCP path:
+   poll `job_status` (2–5 s cadence); `run`-workflow path: a bounded
+   `await` step — to `done` with `artifact` and `route` recorded; total
+   frames implied 5 s × 30 fps = **150**.
 9. **Verify** — `verify_artifact {path:<mp4>, expect:{container:"mp4",
    videoCodec:"h264", width:1920, height:1080, durationSec:5,
    durationToleranceSec:1/30}}` ⇒ `probe.frameCount == 150`, all checks
@@ -500,13 +662,17 @@ raw result transcript):**
    previewed model.
 10. **Cleanup honesty** — disconnect the client immediately after a
     second `export_start`; restart `serve`; the new session reports no
-    project (`NOT_FOUND` on reads) and the old job is gone — and the
-    artifactRoot contains **no** success-looking file from the orphaned
-    job (only, at most, an inert `.part`).
+    project (`NOT_FOUND` on reads) and the old job is gone. Whatever the
+    orphaned job left in `artifactRoot` — an inert `.part`, or, if the
+    kill landed in the rename→hash window, a byte-complete `output.mp4`
+    — was **never reported by a successful ArtifactRef**; `doctor` lists
+    it as an orphan ("unverifiable — do not trust as an artifact") and
+    nothing auto-deletes it in this slice.
 
 **Evidence:** committed transcript (tool calls + results), artifacts'
 sha256s, client name/version, and the per-step letter table — under
-`docs/slice-2/` (whitelist pending, Appendix F). A run may only claim a
+`docs/slice-2/` (tracked by default once the hygiene PR lands on `main`,
+Appendix F). A run may only claim a
 client as "verified" when executed by that client's real binary; a
 scripted simulator is labeled `simulated`.
 
@@ -535,10 +701,10 @@ for the record:
    only authority for cross-field rules such as `clip.trim`'s
    "at least one of in/out" and `verify` region bounds — the corpus must
    include schema-valid/facade-rejected cases and assert they surface as
-   `INVALID_PARAMS`). Residual: the twin
-   (`validateObject` ↔ JSON Schema) can still diverge semantically on
-   exotic inputs; mitigated by the mutation sweep, accepted as CI-covered
-   risk.
+   `INVALID_PARAMS`). Residual: even from a single declaration, an
+   emitter bug could make the emitted schema diverge semantically from
+   the runtime validator on exotic inputs; mitigated by the mutation
+   sweep, accepted as CI-covered risk.
 3. **stdout pollution** — attack: a dependency (Playwright logger,
    ffmpeg banner, a future transitive dep) prints to fd 1 and corrupts
    the protocol stream. *Response:* Decision 6: spawn discipline (children
@@ -582,51 +748,114 @@ for the record:
    its own context — that is the agent's budget to spend; the *contract*
    failure would be the facade promising more than the transport
    delivers, which truncation (not lying) covers. Facade paging verbs
-   remain the real fix (Appendix F, product decision).
+   remain the real fix (Appendix F, deferred candidate).
+
+### Second round (r2, 2026-08-28) — findings that changed the text
+
+8. **`run` could not express the loop it claims to support** — attack: a
+   Pi-class agent must hand-write `job-…` and the artifact path into
+   literal steps (impossible — they are minted at runtime), and the r1
+   example's `expectedRevision:2` contradicted the facade (create ⇒ 0,
+   import ⇒ 1, edit expects 1). *Response:* B.6 is now an executable
+   workflow (stable step IDs, structural `$ref`/JSON-Pointer
+   substitution, bounded `await`), with string templating and expression
+   execution explicitly forbidden, and the revision example corrected.
+9. **Signal ownership was racing Playwright** — attack: Playwright's
+   default signal handlers kill the browser mid-dispose, defeating the
+   bounded cleanup matrix. *Response:* Decision 7 now owns the lifecycle
+   (`handleSIGINT/SIGTERM/SIGHUP: false` at launch — the slice's one
+   minimal runtime change; first signal bounded cancel+dispose, second
+   signal hard exit).
+10. **"No TCP listener" was false as written** — the runtime's internal
+    harness server binds `127.0.0.1:<ephemeral>`. *Response:* Decision 1
+    now says what is true: no externally reachable transport/control
+    listener; the loopback harness server is named, scoped, and its
+    further hardening assigned to the Desktop-MCP track.
+11. **Hard-kill residue was sugar-coated** — r1 promised "at most an
+    inert `.part`", but a kill in the rename→hash/registration window
+    strands a byte-complete `output.mp4`. *Response:* Decision 7 states
+    both residues and the rule that neither may ever be reported as a
+    successful ArtifactRef; `doctor` lists orphans without deleting them;
+    E2E step 10 amended.
+12. **Silent cwd-relative paths** — attack: relative paths in workflows
+    or flags resolve against whatever cwd the runner happened to start
+    in. *Response:* Decision 6 is absolute-path-only: roots canonicalized
+    (realpath) at startup, non-absolute params rejected at the boundary,
+    no `~` expansion.
+13. **Twin hand-written schemas were the drift trap r1 claimed to
+    avoid** — 12 hand-written JSON Schemas parked next to hand-rolled
+    validators is two definitions of one contract. *Response:* Decision 4
+    now requires one hand-maintained declaration per verb with both
+    consumers derived; mechanism deferred to a bounded 2a spike; the
+    adversarial/differential corpus is retained regardless.
 
 Verdict: **no finding invalidates a Decision**; two items (browser-reaper
 verification, over-broad-root doctor warning) become implementation-slice
 requirements; the rest is accepted, documented risk.
 
-## Appendix F: Implementation slices, risks, and product decisions
+## Appendix F: Implementation slices, risks, and deferred candidates
 
-**Suggested slices** (each lands tested; none touches product code):
+**Suggested slices** (each lands tested; product-code changes are limited
+to the two scoped in Consequences):
 
-- **2a — schema single-source:** facade `schemas.ts` (12 JSON Schemas) +
-  differential corpus test. Pure data; unblocks everything else.
-- **2b — `serve`:** transport package, SDK adoption, stdio server, 12
-  tools, Decision 5/6/7 contracts, stdout guard in CI.
-- **2c — `run` + `doctor`:** workflow executor + honest environment
-  report (incl. over-broad-root warning, browser-reaper verification from
-  Appendix E).
+- **2a — schema single-source:** run the Decision-4 spike, land the
+  single declaration mechanism + emitter, migrate the 12 verbs onto it,
+  and pin the adversarial/differential corpus test. Validation behavior
+  must not drift (the corpus proves it). Unblocks everything else.
+- **2b — `serve`:** transport package, exact-pinned
+  `@modelcontextprotocol/sdk`, stdio server, 12 tools, Decision 5/6/7
+  contracts — including the one-line runtime launch change
+  (`handleSIGINT/SIGTERM/SIGHUP: false`) with its own test (signal →
+  bounded cancel → dispose; second signal → hard exit) — and the stdout
+  guard in CI.
+- **2c — `run` + `doctor`:** the B.6 workflow executor (static
+  validation, `$ref` resolution, bounded `await`, stop-on-first-failure)
+  + the honest environment report (incl. over-broad-root warning,
+  canonical-root echo, orphan-artifact listing, browser-reaper
+  verification from Appendix E).
 - **2d — SKILL + black-box E2E:** SKILL.md (Decision 9), execute Appendix
   D against ≥2 real clients, commit evidence.
 
-**Risk register (slice-specific):** SDK/spec revision churn (pin exact
-version; 2025-03-26 vs 2025-06-18 framing differences) · stdout
-pollution by transitive deps (guard) · client timeout defaults (60 s
-Codex/DSH — solved by the job shape; document per-client config for
-`preview_render_frame` on huge projects) · Claude 25 k-token ceiling vs
-`project_get_state` (Decision 8; paging product decision) · jobs/ledger
-die with process (documented; SKILL rule) · `.part` residue after SIGKILL
-(inert; GC decision) · in-memory ledger growth on a long-lived `serve`
-(product decision: ledger GC or session-uptime guidance) · DSH
-developer-preview churn (evidence re-run per release) · one
-server=one project means N projects need N connections (stated, not
-solved).
+**Risk register (slice-specific):** SDK/spec revision churn (exact pin;
+2025-03-26 vs 2025-06-18 framing differences verified at implementation
+time) · stdout pollution by transitive deps (guard) · client timeout
+defaults (60 s Codex/DSH — solved by the job shape; document per-client
+config for `preview_render_frame` on huge projects) · Claude 25 k-token
+ceiling vs `project_get_state` (Decision 8; paging is a deferred
+candidate) · jobs/ledger die with process (documented; SKILL rule) ·
+hard-kill residue — inert `.part` **or** unregistered byte-complete
+`output.mp4` (Decision 7; never reported as an ArtifactRef; `doctor`
+lists orphans, no auto-delete this slice) · in-memory ledger growth on a
+long-lived `serve` (deferred candidate: ledger GC or session-uptime
+guidance) · DSH developer-preview churn (evidence re-run per release) ·
+one server=one project means N projects need N connections (stated, not
+solved) · `$ref` workflows pointing at reshaped results (pointer misses
+fail the run loudly — the workflow contract is the result-value shapes,
+already frozen by the facade's typed results).
 
-**Product decisions requested:**
+**Decided by this ADR (r2):**
 
-1. Adopt `@modelcontextprotocol/sdk` in a new `packages/agent-transport`
-   (package/bin names non-binding) vs hand-rolled minimal stdio core.
-2. Facade paging/summary read verbs (`project.state_summary` /
-   `get_state` paging) for slice 3 — the real context-budget fix.
-3. Facade `project.open`/`save` verbs (prerequisite for any CLI persistence
-   story; must come with their own ADR per Decision 3).
-4. Artifact GC verb or retention policy for `.part` residue.
-5. Idempotency-ledger GC policy for long-lived `serve` sessions.
-6. MCP image content blocks for previews (default **off** proposed).
-7. `.gitignore` whitelist entry for `docs/slice-2/` evidence
-   (maintainer-owned; this slice may not touch `.gitignore`).
-8. Confirm the ADR 0001 §5 Desktop-MCP hardening track remains a separate
-   product decision — this slice neither depends on it nor advances it.
+1. **MCP core = official `@modelcontextprotocol/sdk`, exact-pinned**, in
+   a new `packages/agent-transport` (package/bin names non-binding). No
+   hand-rolled core. (Was product decision 1 in r1.)
+2. **Desktop-MCP hardening stays a separate, independent track** (ADR
+   0001 §5): this slice neither depends on it nor advances it, and the
+   old Desktop MCP is not reused as this slice's transport in any form.
+   (Was product decision 8 in r1.)
+3. `.gitignore` whitelist entry for `docs/slice-2/` is **obsolete** —
+   the hygiene PR removes the ignore-by-default docs policy. (Was
+   product decision 7 in r1.)
+
+**Deferred candidates — explicitly NOT in slice 2** (each requires its
+own future decision/ADR; the transport must not grow them as
+conveniences):
+
+1. Facade paging/summary read verbs (`project.state_summary` /
+   `get_state` paging) — the real context-budget fix.
+2. Facade `project.open`/`save` verbs — prerequisite for any CLI
+   persistence story (Decision 3 forbids faking it in `run`).
+3. Artifact GC verb or retention policy for hard-kill residue (`.part`
+   and unregistered `output.mp4` orphans; `doctor` already lists them).
+4. Idempotency-ledger GC policy for long-lived `serve` sessions.
+5. MCP image content blocks for previews (default **off** — preview
+   returns an ArtifactRef).
