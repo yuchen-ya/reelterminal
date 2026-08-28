@@ -188,12 +188,17 @@ package READMEs linked above.
 ## Roadmap (near term)
 
 1. Land Slice 1b (PR #2), including this documentation overhaul.
-2. Widen the closed edit-op set, guided by `audit/runtime-matrix.csv`.
-3. Remaining `facade-v0` verbs (open/save, history, media management).
-4. Transport slice (MCP/CLI) — gated on the Desktop-MCP hardening decision
-   in ADR 0001.
-5. Close the live-GUI parity gap (`docs/design-principles.md` conformance
-   table).
+2. Slice 2: thin MCP + CLI + SKILL transports over the existing 12 verbs —
+   no copy of the internal 304-tool registry (still gated on the Desktop-MCP
+   hardening decision in ADR 0001).
+3. Black-box E2E with a fresh Codex / Claude Code / Pi-class agent over those
+   transports: discover capabilities, import media, edit, preview, export,
+   verify.
+4. Widen the verb / edit-op set based on real agent-usage friction and
+   `audit/runtime-matrix.csv` (including remaining `facade-v0` verbs:
+   open/save, history, media management).
+5. Progressively close the live-GUI parity gap last
+   (`docs/design-principles.md` conformance table).
 
 ## License and attribution
 
