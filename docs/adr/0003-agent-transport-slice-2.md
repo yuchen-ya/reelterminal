@@ -35,9 +35,9 @@ one project (facade lifecycle — `project.create` is
 single-initialization, ADR 0001 addendum §1). The transport exposes **no
 externally reachable transport/control listener of any kind** — no TCP,
 no Unix socket, no named pipe; stdio is the whole control surface. Two
-internal sockets exist in the process tree and neither is a control
-surface: the Playwright-managed Chromium debugging channel, and the
-runtime's internal **harness HTTP server**, which serves only the render
+internal channels exist in the process tree and neither is a control
+surface: the Playwright-managed Chromium debugging channel (pipe-based),
+and the runtime's internal **harness HTTP server**, which serves only the render
 harness page to the Chromium page, bound to `127.0.0.1` on an ephemeral
 port (`packages/runtime-chromium/src/node/runtime.ts`) — loopback-only,
 not discoverable off-host, and it accepts no commands. Hardening that
@@ -175,7 +175,10 @@ Mechanism (decided by an early slice-2a spike, within these bounds):
    schema-invalid ⇒ facade would also reject). The transport never
    pre-validates against the schema beyond what the MCP client itself
    does — rejecting early would mean a second validator with its own
-   drift.
+   drift. A transport-level test pins the passthrough: a
+   schema-valid-but-facade-rejected payload must surface the facade's
+   `INVALID_PARAMS` from the tool result, never a transport-side
+   rejection.
 
 Alternative considered and rejected: make zod the single source (zod
 infers TS types, `zod-to-json-schema` emits MCP schemas, facade
@@ -206,10 +209,16 @@ the existing model — the bar is high on purpose.
   key discipline: one key per logical mutation, and a retry reuses the
   same key with the byte-identical payload.
 - **Jobs.** `export_start` already returns `{jobId, state:"queued"}`
-  immediately; `job_status`/`job_cancel` are plain tools. This shape is
-  what makes default client tool timeouts (Codex `tool_timeout_sec` 60 s,
-  DSH `toolCallTimeoutMs` 60 000, both official-documented) a non-issue:
-  no tool call is ever long-blocking by design. Over MCP, the poll loop
+  immediately; `job_status`/`job_cancel` are plain tools. Export — the
+  only operation whose duration is unbounded by design — is a job, which
+  is what keeps default client tool timeouts (Codex `tool_timeout_sec`
+  60 s, DSH `toolCallTimeoutMs` 60 000, both official-documented)
+  manageable. The other verbs are synchronous in-call (`media.import`
+  probes, `preview.render_frame` renders, `verify.artifact` ffprobes and
+  pixel-compares): each is bounded, but only by input size, so a huge
+  project can exceed a 60 s default on `preview_render_frame` — the risk
+  register's per-client timeout configuration exists for exactly this
+  (Appendix F). Over MCP, the poll loop
   belongs to the agent (SKILL.md gives the cadence and terminal-state
   exit conditions). In a `run` workflow the same poll is expressed as a
   bounded `await` step executed by the runner (Appendix B.6) — identical
@@ -248,7 +257,11 @@ the existing model — the bar is high on purpose.
   missing, or undirectory root is a startup refusal, not a fallback). At
   the boundary, a non-absolute path param is rejected before it reaches
   the facade — nothing is ever resolved against the process cwd, and `~`
-  is never expanded. The transport passes paths verbatim otherwise: it
+  is never expanded. The check applies to the **resolved param value at
+  execution time** — after any `$ref` substitution (B.6), since a
+  reference can legally carry a relative string from an earlier result —
+  not only to literal workflow text; the workflow test corpus includes a
+  `$ref`-fed relative path and pins its rejection. The transport passes paths verbatim otherwise: it
   never rewrites or "helpfully" normalizes into a root, and it never
   adds a root at runtime. `doctor` echoes the canonicalized roots so the
   agent can verify where it is allowed to touch. URLs are refused by the
@@ -266,17 +279,23 @@ lifecycle, so slice 2b makes exactly one scoped change to
 `handleSIGTERM: false`, `handleSIGHUP: false` at `chromium.launch`
 (nothing else in the runtime changes — containment, watchdog, recycle,
 and bounded teardown semantics are untouched). The transport then
-installs the only handlers: the **first** `SIGINT`/`SIGTERM` runs the
-bounded disposal path (cancel race → provider dispose → exit 130/143);
-a **second** signal exits immediately with no further cleanup promises
-(the operator's escape hatch; residue is the `SIGKILL` row). No other
+installs the only handlers: the **first** `SIGINT`/`SIGTERM`/`SIGHUP`
+runs the bounded disposal path (cancel race → provider dispose → exit
+130/143/129 by signal); a **second** signal exits immediately with no
+further cleanup promises (the operator's escape hatch; residue is the
+`SIGKILL` row). The composed first-signal bound is stated honestly: the
+cancel request goes through the public verb path, so it queues behind
+any in-flight verb — worst case is *that verb's own ceiling* (e.g. the
+120 s page-op bound) **plus** the facade's 10 s cancel race **plus** the
+runtime's bounded teardown (10 s browser + 5 s harness server); the
+second signal is the escape hatch for the pathological case. No other
 product-code change is authorized by this ADR.
 
 | Trigger | Actions | Guaranteed residue |
 |---|---|---|
 | Clean shutdown (stdio EOF / client exit / `shutdown`) | Stop accepting calls → request cancel on every non-terminal job (bounded wait, the facade's own 10 s cancel race, invoked through the public `job.cancel` verb path — no back doors) → dispose provider runtime (bounded graceful teardown, ADR 0002 A7) → flush stderr logs → exit 0 | None new. Artifacts persist (they are the deliverable); a cancelled export leaves no success-looking file (job-dir sweep) |
-| `SIGINT` / `SIGTERM` (first) | Same disposal path, same bounds, owned by the transport (Playwright signal handlers disabled, above); exit 130/143. A second signal = immediate hard exit | Same as above; after a hard exit, the `SIGKILL` row |
-| Client abrupt disconnect (stdin EOF without handshake) | stdio EOF *is* the disconnect signal; identical to clean shutdown. No half-open connections exist on stdio — the class of "client vanished but server keeps serving" bugs cannot occur | Same as row 1 |
+| `SIGINT` / `SIGTERM` / `SIGHUP` (first) | Same disposal path, same bounds, owned by the transport (Playwright signal handlers disabled, above); exit 130/143/129. A second signal = immediate hard exit | Same as above; after a hard exit, the `SIGKILL` row |
+| Client abrupt disconnect (stdin EOF without handshake) | stdio EOF *is* the disconnect signal; identical to clean shutdown. No half-open connections exist on stdio — the class of "client vanished but server keeps serving" bugs cannot occur **under the direct-spawn configs of Appendix C** (a wrapper/shell that holds stdin's write end open after the client dies would defeat EOF detection; clients must spawn the server directly, and SKILL says so) | Same as row 1 |
 | `SIGKILL` / hard crash | Nothing in-process runs. Job dies with the process; job registry (in-memory) is gone. An in-flight export leaves one of two residues, depending on where the kill lands: (a) mid-write — an inert `exports/<jobId>/output.mp4.part`; (b) in the **rename→hash/registration window** — a byte-complete `exports/<jobId>/output.mp4` that no successful `ArtifactRef` ever reported (the rename happens before the facade hashes and terminalizes the job; a kill between them strands the file) | Either residue is **unregistered**: it must never be reported as, or mistaken for, a successful artifact — no ArtifactRef exists for it, and residue (b) is indistinguishable from a real deliverable by bytes alone. `doctor` lists per-job directories under `artifactRoot` and labels any file not referenced by a live session as an **orphan — unverifiable, do not trust as an artifact**. Slice 2 does **not** auto-delete orphans (GC is a deferred candidate, Appendix F) |
 | Running export at any shutdown | Best-effort cooperative cancel first (job settles `cancelled`/`error` with the job-dir sweep); if the window is lost, the `SIGKILL` row applies | Same as above |
 | Chromium crash / watchdog mid-job | Handled entirely inside `@openreel/runtime-chromium` (recycle + generation bump, exactly-once terminalization, ADR 0002 A6/A7). Transport is a bystander; next capability read re-preflights honestly | None new |
@@ -372,7 +391,7 @@ at most). Reuse estimates are of the slice-2 transport's *total surface*.
 | # | Asset | Where | What it is | Verdict | Notes / reuse |
 |---|---|---|---|---|---|
 | 1 | `AgentFacadeSession` + 12 verbs | `packages/agent-facade/src/{session,types,errors,idempotency,jobs,capabilities}.ts` | State semantics: atomic batches, revision, ledger, job registry, capability preflight, containment | **P** | ~100% reused unchanged. This is the product; the transport is a socket on it |
-| 2 | Closed-schema validators | `packages/agent-facade/src/validate.ts` + per-verb schemas | Strict boundary validation, zero deps | **P** | Unchanged. Twin JSON Schemas (Decision 4) are the only addition |
+| 2 | Closed-schema validators | `packages/agent-facade/src/validate.ts` + per-verb schemas | Strict boundary validation, zero deps | **P** | Unchanged. The single-source declaration per verb + emitted JSON Schemas (Decision 4) are the only addition |
 | 3 | Providers (render/export/verify) | `packages/runtime-chromium` | Chromium pixels, H.264 export, ffprobe verify, watchdog/recycle | **P** | Reused verbatim; transport only constructs and disposes them |
 | 4 | MCP JSON-RPC core | `apps/desktop/src/main/mcp/core.ts` | Hand-rolled initialize/tools-list/call, protocol 2024-11-05→2025-06-18, content blocks; unit-tested | **X** (prior art) | Bound to the desktop tool-provider shape; superseded by the official SDK (row 11). No hand-rolled core in this slice — not imported, not rewritten. Read, don't import |
 | 5 | Renderer-bridge dispatcher | `apps/desktop/src/main/mcp/dispatcher.ts`, `renderer-bridge.ts` | callId-correlated IPC promises; **timeouts abandon calls that keep mutating** | **X** | Its timeout semantics are DESK-04 — the exact trap this slice must not reproduce. Not needed: stdio is single-caller request/response |
@@ -517,12 +536,23 @@ object `{"$ref": "<stepId>"}` or `{"$ref": "<stepId>#/<pointer>"}`:
   syntax, no eval of any kind**. This is a deliberate ceiling: workflows
   stay data, auditable by reading, and the runner is never a code
   executor.
+- Substitution is **single-pass**: a substituted value is never
+  re-scanned for further `$ref` objects — reference chaining is not a
+  feature, it is how data-injection bugs would arrive.
 - Statically validated before step 1 runs: IDs unique; every `$ref`
   names an existing, **earlier** step; pointers syntactically valid;
-  every verb known; every `await.jobId` sourced from an `export.start`
-  step (directly or via one `$ref` hop).
+  every verb known; every `await.jobId` is either a literal job id or a
+  single `$ref` directly into an `export.start` step's result value
+  (e.g. `{"$ref":"export#/jobId"}` — "one hop": no chained references,
+  per the single-pass rule).
 - At runtime: a pointer miss, or a reference to a failed/skipped step,
-  fails the run — a workflow error, distinct from a verb's `ok:false`.
+  is a **workflow error** — distinct from a verb's `ok:false`. A
+  workflow error fails the referencing step; under the default
+  stop-on-first-failure it also aborts the run, and under `--keep-going`
+  the run continues with later steps (exit code still reflects the first
+  failure). Workflow errors are reported on their own stdout line shape
+  (`{index, id, workflowError}`) so agents never confuse them with verb
+  results.
 
 **Await semantics (bounded, always).**
 `{"id": "wait", "await": {"jobId": {"$ref": "export#/jobId"},
@@ -640,7 +670,12 @@ raw result transcript):**
    outside roots ⇒ `INVALID_PARAMS` (escape wording); retry of step 5
    with same key+payload ⇒ identical result `replayed:true`; same key
    different payload ⇒ `CONFLICT`; `timeline_get` shows exactly the
-   constructed world.
+   constructed world. For MCP-less (Pi-class) agents these
+   expected-failure probes are **multi-invocation work by design**: a
+   deliberately failing step aborts a default `run` workflow
+   (stop-on-first-failure is the honesty mechanism, not an obstacle), so
+   each negative probe is its own `run` invocation — or one
+   `--keep-going` run whose nonzero exit is itself the expected outcome.
 7. **Preview** — `preview_render_frame {timeSec:2.5}` ⇒ PNG artifact
    `{path, sizeBytes>0, sha256, sourceRevision:2}` inside `artifactRoot`.
 8. **Export** — `export_start {idempotencyKey:"s2-exp"}` ⇒ `{jobId,
@@ -788,6 +823,30 @@ for the record:
     now requires one hand-maintained declaration per verb with both
     consumers derived; mechanism deferred to a bounded 2a spike; the
     adversarial/differential corpus is retained regardless.
+
+### Third round (independent red team on r2, 2026-08-28)
+
+A separate read-only agent attacked the r2 text on seven axes (`run`
+expressiveness, signal ownership, stdout pollution, schema drift, path
+containment, job races/terminal states, absolute claims). Verdict: **no
+Decision invalidated**; seven text-level findings, all folded into the
+current text: the absolute-path check now explicitly applies to
+`$ref`-resolved values (a relative string smuggled through a reference
+would otherwise reach the facade's cwd-relative fallback —
+`path-roots.ts` resolves against `process.cwd()`); an Appendix A twin-
+schema remnant reworded; "no tool call is ever long-blocking" qualified
+(import/preview/verify are synchronous, bounded by input size);
+`--keep-going` + workflow-error semantics and single-pass substitution
+pinned; the composed first-signal bound (in-flight verb ceiling + 10 s
+cancel race + bounded teardown) and the SIGHUP exit code stated;
+negative probes acknowledged as multi-invocation work for MCP-less
+agents; and channel/socket wording, a direct-spawn caveat for EOF
+detection, and a transport-passthrough test pin added. Confirmed honest
+while attacking: the revision arithmetic matches the facade exactly, a
+failed job can never yield a wrong-typed splice (non-done await = step
+failure; null artifact = pointer miss), replayed `export.start`
+converges, and the `doctor` orphan listing is framed as future work, not
+existing fact.
 
 Verdict: **no finding invalidates a Decision**; two items (browser-reaper
 verification, over-broad-root doctor warning) become implementation-slice
