@@ -20,10 +20,10 @@
 > outside a few whitelisted paths (`docs/adr/`, `docs/slice-1b/`, …) and
 > this slice could not modify `.gitignore`; the audit deliverables
 > (inventory, mapping, client facts, E2E contract, adversarial review)
-> therefore ride as appendices of this ADR instead of separate files. The
-> repository-hygiene PR removes that ignore-by-default policy, but the
-> appendices stay here for this slice — one decision, one document. They
-> can be split out later without changing a claim.
+> therefore ride as appendices of this ADR instead of separate files.
+> That policy is gone (repository-hygiene merge d60f04c on `main`), but
+> the appendices stay here for this slice — one decision, one document.
+> They can be split out later without changing a claim.
 
 ## Decisions
 
@@ -377,8 +377,8 @@ layer in prose would drift exactly like a second schema would.
 - The E2E contract (Appendix D) is defined but **not executed** in this
   slice; executing it is the next slice's deliverable, with committed
   evidence under `docs/slice-2/`. (The old "docs ignored unless
-  whitelisted" policy is removed by the repository-hygiene PR; once that
-  lands on `main`, `docs/slice-2/` needs no `.gitignore` change.)
+  whitelisted" policy was removed by the repository-hygiene merge;
+  `docs/slice-2/` needs no `.gitignore` change.)
 
 ---
 
@@ -706,8 +706,8 @@ raw result transcript):**
 
 **Evidence:** committed transcript (tool calls + results), artifacts'
 sha256s, client name/version, and the per-step letter table — under
-`docs/slice-2/` (tracked by default once the hygiene PR lands on `main`,
-Appendix F). A run may only claim a
+`docs/slice-2/` (tracked by default on `main`, Appendix F). A run may
+only claim a
 client as "verified" when executed by that client's real binary; a
 scripted simulator is labeled `simulated`.
 
@@ -902,8 +902,8 @@ already frozen by the facade's typed results).
    old Desktop MCP is not reused as this slice's transport in any form.
    (Was product decision 8 in r1.)
 3. `.gitignore` whitelist entry for `docs/slice-2/` is **obsolete** —
-   the hygiene PR removes the ignore-by-default docs policy. (Was
-   product decision 7 in r1.)
+   the repository-hygiene merge removed the ignore-by-default docs
+   policy. (Was product decision 7 in r1.)
 
 **Deferred candidates — explicitly NOT in slice 2** (each requires its
 own future decision/ADR; the transport must not grow them as
