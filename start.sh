@@ -12,8 +12,9 @@ if [ ! -d "node_modules" ]; then
   pnpm install
 fi
 
-# Build WASM modules if not built
-if [ ! -d "packages/core/src/wasm/build" ]; then
+# Build WASM modules if not built (build:wasm emits per-module outputs;
+# check one real artifact — there is no single src/wasm/build directory)
+if [ ! -f "packages/core/src/wasm/fft/build/fft.wasm" ]; then
   echo "Building WASM modules..."
   pnpm build:wasm
 fi

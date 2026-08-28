@@ -1,7 +1,6 @@
 name: Feature Request
 description: Suggest a new feature or enhancement for agent-video-engine-lab
 title: "[Feature]: "
-labels: ["type-feature"]
 body:
   - type: markdown
     attributes:
