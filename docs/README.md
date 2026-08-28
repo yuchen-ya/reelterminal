@@ -41,9 +41,10 @@ you are writing for; do not copy content across rows — link instead.
 
 ## House rules
 
-- `docs/*` is git-ignored by default (leftover scratch-docs policy). Real
-  documents must be un-ignored in `.gitignore` — as `adr/`, `slice-1b/`,
-  `design-principles.md`, and this index already are. If you add a doc and it
-  does not show up in `git status`, that is why.
+- `docs/` is tracked by default. The old scratch-docs policy (`docs/*`
+  git-ignored, real documents force-added) is gone; the only ignore patterns
+  are precise scratch rules in `.gitignore` (`docs/**/*.local.md`,
+  `docs/**/scratch/`). If a new doc does not show up in `git status`, check
+  it does not match those.
 - Audit files and ADRs are frozen once landed: correct them by amendment
   (see ADR 0002's A3–A7), not by silent rewrite.

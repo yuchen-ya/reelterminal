@@ -15,10 +15,7 @@
     "test:watch": "pnpm -r test",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
-    "clean": "pnpm -r clean",
-    "claude:help": "cat scripts/claude-review.md",
-    "issues": "gh issue list --label needs-claude-review",
-    "prs": "gh pr list --label needs-claude-review"
+    "clean": "pnpm -r clean"
   },
   "keywords": [
     "video-editor",

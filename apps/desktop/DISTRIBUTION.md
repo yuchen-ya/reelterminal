@@ -107,6 +107,13 @@ Caveats: macOS install requires the build to be **signed** (Squirrel.Mac) — th
 
 ## 6. Release CI (build → R2)
 
+> **Historical — no active pipeline.** The inherited `release.yml` workflow
+> this section describes was **removed** from this fork (repository-hygiene
+> PR): it published to the upstream project's R2 bucket and signing
+> identities, which this lab does not own. Pushing a `v*` tag here builds
+> nothing. The text below is kept as the upstream design record; a future
+> real release pipeline needs its own design, credentials, and identities.
+
 `.github/workflows/release.yml` runs a `quality` gate (typecheck + tests) then
 builds all three platforms on a matrix (macos → dmg/zip arm64+x64, windows →
 nsis x64, ubuntu → AppImage/deb x64) on a `v*` tag (or `workflow_dispatch` with
@@ -130,8 +137,7 @@ otherwise (the unsigned mac update feed is withheld). Set these encrypted Action
 **Cutting a release:** bump `apps/desktop/package.json` version, commit, push a
 matching `vX.Y.Z` tag to the (private) origin. CI builds, uploads to R2, and
 writes `manifest.json` — clients then see the update and the landing page shows
-the new downloads. No manual publish step. (`desktop-readiness.yml` is an
-unrelated stale Rust workflow; remove separately.)
+the new downloads. No manual publish step.
 
 ### Landing page
 
