@@ -723,20 +723,8 @@ export async function publishCheckpoint(
       { path: opts.path },
     );
   }
-  if (dirStat.isSymbolicLink()) {
-    throw new FacadeError(
-      "INVALID_PARAMS",
-      `${verb}: refusing to write through a symlink/junction in the output path: ${targetDir}`,
-      { path: opts.path },
-    );
-  }
-  if (!dirStat.isDirectory()) {
-    throw new FacadeError(
-      "INVALID_PARAMS",
-      `${verb}: target directory cannot be used (not a directory): ${targetDir}`,
-      { path: opts.path },
-    );
-  }
+  // Containment FIRST, so a genuine escape always reports the escape
+  // wording regardless of what the lexical components look like.
   const dirContainment = resolveContainedPathDetailed(targetDir, opts.roots);
   if (dirContainment.kind === "unresolvable") {
     throw new FacadeError(
@@ -750,6 +738,20 @@ export async function publishCheckpoint(
       "INVALID_PARAMS",
       `${verb}: path escapes the configured project roots`,
       { path: opts.path, projectRoots: [...opts.roots] },
+    );
+  }
+  if (dirStat.isSymbolicLink()) {
+    throw new FacadeError(
+      "INVALID_PARAMS",
+      `${verb}: refusing to write through a symlink/junction in the output path: ${targetDir}`,
+      { path: opts.path },
+    );
+  }
+  if (!dirStat.isDirectory()) {
+    throw new FacadeError(
+      "INVALID_PARAMS",
+      `${verb}: target directory cannot be used (not a directory): ${targetDir}`,
+      { path: opts.path },
     );
   }
   // Component walk at or below the canonical root (10.1, fourth-round scope):
