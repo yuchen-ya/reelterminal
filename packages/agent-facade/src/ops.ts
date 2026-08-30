@@ -36,37 +36,121 @@ import {
 /* Strict op validation                                                */
 /* ------------------------------------------------------------------ */
 
-const TRACK_ADD_SCHEMA: ObjectSchema = {
-  op: { check: (v) => v === "track.add", describe: '"track.add"', required: true },
+/**
+ * The four op declarations below are the SINGLE hand-maintained definition
+ * of the closed edit.apply op set (ADR 0003 Decision 4): the runtime
+ * validator (validateEditOp) and the emitted draft-2020-12 JSON Schema
+ * (jsonschema.ts, via verb-schemas.ts) both derive from them. Rules that
+ * JSON Schema cannot express (clip.trim's at-least-one-of in/out, the
+ * out>in ordering, non-whitespace text) stay validation-only predicates —
+ * the emitted schema is a superset filter and these validators remain the
+ * only authority.
+ */
+export const TRACK_ADD_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "track.add",
+    describe: '"track.add"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "track.add" } },
+  },
   trackType: {
     check: oneOf(TRACK_TYPES),
     describe: `one of ${TRACK_TYPES.join(", ")}`,
     required: true,
+    emits: { kind: "leaf", schema: { enum: [...TRACK_TYPES] } },
   },
-  trackId: { check: isNonEmptyString, describe: "a non-empty string" },
+  trackId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
 };
 
-const CLIP_ADD_SCHEMA: ObjectSchema = {
-  op: { check: (v) => v === "clip.add", describe: '"clip.add"', required: true },
-  trackId: { check: isNonEmptyString, describe: "a non-empty string", required: true },
-  mediaId: { check: isNonEmptyString, describe: "a non-empty string", required: true },
-  startTime: { check: isNonNegativeNumber, describe: "a finite number >= 0", required: true },
-  duration: { check: isPositiveNumber, describe: "a finite number > 0" },
-  inPoint: { check: isNonNegativeNumber, describe: "a finite number >= 0" },
-  outPoint: { check: isPositiveNumber, describe: "a finite number > 0" },
-  clipId: { check: isNonEmptyString, describe: "a non-empty string" },
+export const CLIP_ADD_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "clip.add",
+    describe: '"clip.add"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.add" } },
+  },
+  trackId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  startTime: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  duration: {
+    check: isPositiveNumber,
+    describe: "a finite number > 0",
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  inPoint: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  outPoint: {
+    check: isPositiveNumber,
+    describe: "a finite number > 0",
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
 };
 
-const CLIP_TRIM_SCHEMA: ObjectSchema = {
-  op: { check: (v) => v === "clip.trim", describe: '"clip.trim"', required: true },
-  clipId: { check: isNonEmptyString, describe: "a non-empty string", required: true },
-  inPoint: { check: isNonNegativeNumber, describe: "a finite number >= 0" },
-  outPoint: { check: isNonNegativeNumber, describe: "a finite number >= 0" },
+export const CLIP_TRIM_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "clip.trim",
+    describe: '"clip.trim"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.trim" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  // "at least one of inPoint/outPoint" (and out > in) is a cross-field
+  // predicate enforced in validateEditOp — deliberately NOT emitted.
+  inPoint: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  outPoint: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
 };
 
-const TEXT_STYLE_SCHEMA: ObjectSchema = {
-  fontFamily: { check: isNonEmptyString, describe: "a non-empty string" },
-  fontSize: { check: isPositiveNumber, describe: "a finite number > 0" },
+export const TEXT_STYLE_SCHEMA: ObjectSchema = {
+  fontFamily: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  fontSize: {
+    check: isPositiveNumber,
+    describe: "a finite number > 0",
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
   fontWeight: {
     check: (v) =>
       v === "normal" ||
@@ -77,27 +161,58 @@ const TEXT_STYLE_SCHEMA: ObjectSchema = {
         v <= 900 &&
         v % 100 === 0),
     describe: '"normal", "bold", or a multiple of 100 in 100..900',
+    emits: {
+      kind: "leaf",
+      schema: { enum: ["normal", "bold", 100, 200, 300, 400, 500, 600, 700, 800, 900] },
+    },
   },
-  color: { check: isNonEmptyString, describe: "a non-empty string" },
+  color: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
   textAlign: {
     check: oneOf(["left", "center", "right", "justify"]),
     describe: "one of left, center, right, justify",
+    emits: { kind: "leaf", schema: { enum: ["left", "center", "right", "justify"] } },
   },
 };
 
-const TEXT_CREATE_SCHEMA: ObjectSchema = {
-  op: { check: (v) => v === "text.create", describe: '"text.create"', required: true },
+export const TEXT_CREATE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "text.create",
+    describe: '"text.create"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "text.create" } },
+  },
   text: {
     check: (v) => typeof v === "string" && v.trim().length > 0,
     describe: "a non-empty string",
     required: true,
+    // Superset filter: whitespace-only strings stay validator-only.
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
   },
-  startTime: { check: isNonNegativeNumber, describe: "a finite number >= 0", required: true },
-  duration: { check: isPositiveNumber, describe: "a finite number > 0", required: true },
-  trackId: { check: isNonEmptyString, describe: "a non-empty string" },
+  startTime: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  duration: {
+    check: isPositiveNumber,
+    describe: "a finite number > 0",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  trackId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
   style: {
     check: (v) => typeof v === "object" && v !== null && !Array.isArray(v),
     describe: "an object",
+    emits: { kind: "object", schema: TEXT_STYLE_SCHEMA },
   },
 };
 

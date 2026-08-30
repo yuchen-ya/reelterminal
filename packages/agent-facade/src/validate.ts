@@ -25,13 +25,86 @@ export function invalidParams(
 
 type FieldCheck = (value: unknown) => boolean;
 
+export type ObjectSchema = Record<string, FieldRule>;
+
+/* ------------------------------------------------------------------ */
+/* Draft-2020-12 emission metadata (ADR 0003 Decision 4)               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The emitted JSON-Schema node shapes the facade produces. The emitter is
+ * dependency-free and inlines everything (no `$ref` — at least one major
+ * MCP client does not dereference them), keeps objects closed
+ * (`additionalProperties: false`) and never places a combinator at a root.
+ */
+export type JsonSchemaNode =
+  | { readonly type: "string"; readonly minLength?: number }
+  | {
+      readonly type: "number";
+      readonly minimum?: number;
+      readonly exclusiveMinimum?: number;
+      readonly maximum?: number;
+    }
+  | {
+      readonly type: "integer";
+      readonly minimum?: number;
+      readonly exclusiveMinimum?: number;
+      readonly maximum?: number;
+    }
+  | { readonly type: "boolean" }
+  /** Mixed-type enums are expressed as a single `enum` (e.g. fontWeight). */
+  | { readonly enum: readonly (string | number)[] }
+  | { readonly const: string }
+  | JsonSchemaObjectNode
+  /** `maxItems: 0` pins an array the closed verb set can only ever leave empty. */
+  | { readonly type: "array"; readonly maxItems: 0 }
+  | {
+      readonly type: "array";
+      readonly items: JsonSchemaNode;
+      readonly minItems?: number;
+    }
+  /**
+   * The one nested `anyOf` the client constraints allow: the discriminated
+   * op union inside `edit.apply`'s `items` (never at a document root).
+   */
+  | { readonly anyOf: readonly JsonSchemaObjectNode[] };
+
+export interface JsonSchemaObjectNode {
+  readonly type: "object";
+  readonly additionalProperties: false;
+  readonly properties: Readonly<Record<string, JsonSchemaNode>>;
+  readonly required?: readonly string[];
+}
+
+/**
+ * How a field renders into the emitted draft-2020-12 schema. Structural
+ * kinds reference OTHER declarations, so a nested object is declared once
+ * and both consumers (runtime validator, emitter) derive from the same
+ * declaration — there is no second hand-written definition anywhere.
+ *
+ * A rule without `emits` is a validation-only predicate: it still validates
+ * at the boundary, but the emitter refuses to emit the verb until every
+ * field carries emission metadata (fail-closed against silent schema holes).
+ */
+export type FieldEmits =
+  | { readonly kind: "leaf"; readonly schema: JsonSchemaNode }
+  /** Nested closed object: derived wholesale from the referenced ObjectSchema. */
+  | { readonly kind: "object"; readonly schema: ObjectSchema }
+  | {
+      readonly kind: "array";
+      readonly items: FieldEmits;
+      readonly minItems?: number;
+    }
+  /** Discriminated union of closed objects (edit.apply's op set). */
+  | { readonly kind: "anyOfObjects"; readonly variants: readonly ObjectSchema[] };
+
 interface FieldRule {
   readonly check: FieldCheck;
   readonly describe: string;
   readonly required?: boolean;
+  /** Emission metadata (Decision 4): the single declaration's JSON-Schema face. */
+  readonly emits?: FieldEmits;
 }
-
-export type ObjectSchema = Record<string, FieldRule>;
 
 export const isString: FieldCheck = (v) => typeof v === "string";
 export const isNonEmptyString: FieldCheck = (v) =>
