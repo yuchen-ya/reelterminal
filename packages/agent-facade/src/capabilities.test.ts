@@ -81,6 +81,8 @@ describe("capabilities.get / session.describe", () => {
       "session.describe",
       "capabilities.get",
       "project.create",
+      "project.open",
+      "project.save",
       "project.get_state",
       "media.import",
       "timeline.get",

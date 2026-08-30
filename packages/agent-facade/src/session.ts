@@ -19,13 +19,22 @@ import { ActionExecutor } from "@openreel/core/actions/action-executor";
 import { ActionHistory } from "@openreel/core/actions/action-history";
 import type { Project, ProjectSettings } from "@openreel/core/types/project";
 import type { MediaItem } from "@openreel/core/types/project";
-import { basename, resolve as resolvePath } from "node:path";
-import { lstat, mkdir, realpath, rm, stat } from "node:fs/promises";
+import { basename, isAbsolute, resolve as resolvePath } from "node:path";
+import { lstat, mkdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 
 import { buildCapabilities, buildSessionDescription } from "./capabilities";
+import {
+  assertCheckpointIntegrity,
+  buildCheckpointDocument,
+  findMediaBindingOffenders,
+  MAX_CHECKPOINT_BYTES,
+  parseCheckpointText,
+  publishCheckpoint,
+  validateCheckpointStructure,
+} from "./checkpoint";
 import { FacadeError, ok, toFailure, type FacadeResult } from "./errors";
 import { IdempotencyLedger, stableStringify } from "./idempotency";
 import { JobRegistry, type JobRecord } from "./jobs";
@@ -52,17 +61,25 @@ import {
 } from "./media/path-roots";
 import { probeLocalMediaFile } from "./media/node-media-adapter";
 import {
-  isFiniteNumber,
-  isNonEmptyString,
-  isNonNegativeInteger,
-  isNonNegativeNumber,
-  isPlainObject,
-  isPositiveInteger,
-  isPositiveNumber,
-  oneOf,
   validateObject,
-  type ObjectSchema,
 } from "./validate";
+import {
+  EDIT_APPLY_SCHEMA,
+  EXPORT_SETTINGS_SCHEMA,
+  EXPORT_START_SCHEMA,
+  isEvenDimension,
+  JOB_PARAMS_SCHEMA,
+  MEDIA_IMPORT_SCHEMA,
+  PREVIEW_RENDER_FRAME_SCHEMA,
+  PROJECT_CREATE_SCHEMA,
+  PROJECT_OPEN_SCHEMA,
+  PROJECT_SAVE_SCHEMA,
+  PROJECT_SETTINGS_SCHEMA,
+  VERIFY_ARTIFACT_SCHEMA,
+  VERIFY_COMPARE_SCHEMA,
+  VERIFY_EXPECT_SCHEMA,
+  VERIFY_REGION_SCHEMA,
+} from "./verb-schemas";
 import type {
   Capabilities,
   EditApplyParams,
@@ -79,6 +96,10 @@ import type {
   ProjectCounts,
   ProjectCreateParams,
   ProjectCreateResult,
+  ProjectOpenParams,
+  ProjectOpenResult,
+  ProjectSaveParams,
+  ProjectSaveResult,
   ProjectState,
   SessionDescription,
   TimelineState,
@@ -93,6 +114,14 @@ export interface AgentFacadeConfig {
    * are then rejected until the caller configures roots).
    */
   readonly mediaRoots?: readonly string[];
+  /**
+   * Absolute roots that project.open / project.save may read and write
+   * checkpoint files under (ADR 0003 Decision 10.1). The transport
+   * canonicalizes them to realpath at startup; the facade treats them as
+   * opaque containment roots exactly like mediaRoots. Default: none —
+   * both persistence verbs then fail UNSUPPORTED.
+   */
+  readonly projectRoots?: readonly string[];
   /**
    * Dormant Slice-1 seam, kept for contract stability. Injecting an adapter
    * changes NOTHING observable: no facade verb consumes it and it flips no
@@ -113,109 +142,9 @@ export interface AgentFacadeConfig {
   readonly artifactVerifier?: ArtifactVerifier;
 }
 
-const PROJECT_CREATE_SCHEMA: ObjectSchema = {
-  name: { check: isNonEmptyString, describe: "a non-empty string" },
-  settings: {
-    check: (v) => typeof v === "object" && v !== null && !Array.isArray(v),
-    describe: "an object",
-  },
-  idempotencyKey: { check: isNonEmptyString, describe: "a non-empty string" },
-};
-
-// Hardened settings subset: dimensions and audio layout must be positive
-// INTEGERS; frameRate is the one field that legitimately carries a fraction
-// (29.97 etc.), so it is a positive finite number.
-const PROJECT_SETTINGS_SCHEMA: ObjectSchema = {
-  width: { check: isPositiveInteger, describe: "a positive integer" },
-  height: { check: isPositiveInteger, describe: "a positive integer" },
-  frameRate: { check: isPositiveNumber, describe: "a positive finite number" },
-  sampleRate: { check: isPositiveInteger, describe: "a positive integer" },
-  channels: { check: isPositiveInteger, describe: "a positive integer" },
-};
-
-const MEDIA_IMPORT_SCHEMA: ObjectSchema = {
-  path: { check: isNonEmptyString, describe: "a non-empty string", required: true },
-  name: { check: isNonEmptyString, describe: "a non-empty string" },
-  expectedRevision: { check: isNonNegativeInteger, describe: "a non-negative integer" },
-  idempotencyKey: { check: isNonEmptyString, describe: "a non-empty string" },
-};
-
-const EDIT_APPLY_SCHEMA: ObjectSchema = {
-  ops: {
-    check: (v) => Array.isArray(v),
-    describe: "an array of ops",
-    required: true,
-  },
-  expectedRevision: { check: isNonNegativeInteger, describe: "a non-negative integer" },
-  idempotencyKey: { check: isNonEmptyString, describe: "a non-empty string" },
-};
-
-/** Rasters/encoders need even dimensions; 8192 caps browser-tab memory. */
-const isEvenDimension = (v: unknown): boolean =>
-  typeof v === "number" && Number.isInteger(v) && v >= 2 && v <= 8192 && v % 2 === 0;
-
-const isUnitInterval = (v: unknown): boolean =>
-  typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
-
-const PREVIEW_RENDER_FRAME_SCHEMA: ObjectSchema = {
-  timeSec: { check: isNonNegativeNumber, describe: "a non-negative finite number", required: true },
-  width: { check: isEvenDimension, describe: "an even integer in [2, 8192]" },
-  height: { check: isEvenDimension, describe: "an even integer in [2, 8192]" },
-  expectedRevision: { check: isNonNegativeInteger, describe: "a non-negative integer" },
-  idempotencyKey: { check: isNonEmptyString, describe: "a non-empty string" },
-};
-
-const EXPORT_START_SCHEMA: ObjectSchema = {
-  settings: { check: isPlainObject, describe: "an object" },
-  expectedRevision: { check: isNonNegativeInteger, describe: "a non-negative integer" },
-  idempotencyKey: { check: isNonEmptyString, describe: "a non-empty string" },
-};
-
-const EXPORT_SETTINGS_SCHEMA: ObjectSchema = {
-  format: { check: oneOf(["mp4"]), describe: '"mp4" (the only container in this slice)' },
-  codec: { check: oneOf(["h264"]), describe: '"h264" (the only codec in this slice)' },
-  width: { check: isEvenDimension, describe: "an even integer in [2, 8192]" },
-  height: { check: isEvenDimension, describe: "an even integer in [2, 8192]" },
-  frameRate: { check: isPositiveNumber, describe: "a positive finite number" },
-  videoBitrateKbps: { check: isPositiveInteger, describe: "a positive integer" },
-};
-
-const JOB_PARAMS_SCHEMA: ObjectSchema = {
-  jobId: { check: isNonEmptyString, describe: "a non-empty string", required: true },
-};
-
-const VERIFY_EXPECT_SCHEMA: ObjectSchema = {
-  container: { check: oneOf(["mp4"]), describe: '"mp4"' },
-  videoCodec: { check: oneOf(["h264"]), describe: '"h264"' },
-  width: { check: isPositiveInteger, describe: "a positive integer" },
-  height: { check: isPositiveInteger, describe: "a positive integer" },
-  durationSec: { check: isPositiveNumber, describe: "a positive finite number" },
-  durationToleranceSec: { check: isPositiveNumber, describe: "a positive finite number" },
-};
-
-const VERIFY_REGION_SCHEMA: ObjectSchema = {
-  x: { check: isUnitInterval, describe: "a number in [0, 1]", required: true },
-  y: { check: isUnitInterval, describe: "a number in [0, 1]", required: true },
-  width: { check: isUnitInterval, describe: "a number in [0, 1]", required: true },
-  height: { check: isUnitInterval, describe: "a number in [0, 1]", required: true },
-};
-
-const VERIFY_COMPARE_SCHEMA: ObjectSchema = {
-  referencePath: { check: isNonEmptyString, describe: "a non-empty string", required: true },
-  timeSec: { check: isNonNegativeNumber, describe: "a non-negative finite number", required: true },
-  referenceTimeSec: { check: isNonNegativeNumber, describe: "a non-negative finite number" },
-  region: { check: isPlainObject, describe: "an object" },
-  mode: { check: oneOf(["similar", "different"]), describe: '"similar" or "different"', required: true },
-  maxMeanAbsDiff: { check: isFiniteNumber, describe: "a finite number" },
-  minMeanAbsDiff: { check: isFiniteNumber, describe: "a finite number" },
-  minChangedPixelsRatio: { check: isUnitInterval, describe: "a number in [0, 1]" },
-};
-
-const VERIFY_ARTIFACT_SCHEMA: ObjectSchema = {
-  path: { check: isNonEmptyString, describe: "a non-empty string", required: true },
-  expect: { check: isPlainObject, describe: "an object" },
-  compare: { check: isPlainObject, describe: "an object" },
-};
+// The per-verb param declarations are the SINGLE hand-maintained source
+// (ADR 0003 Decision 4): validation below and the emitted draft-2020-12
+// JSON Schemas (jsonschema.ts) both derive from them.
 
 /** Max media file size accepted for Chromium reads (2 GiB safety valve). */
 const MAX_MEDIA_FILE_BYTES = 2 * 1024 * 1024 * 1024;
@@ -384,6 +313,268 @@ export class AgentFacadeSession {
       }
       return ok<ProjectCreateResult>({ ...state, replayed: false });
     });
+  }
+
+  /**
+   * project.open — the lifecycle verb of Decision 10.4: adopts an
+   * `openreel-project@1` checkpoint only after EVERY step validates
+   * (containment → format → integrity → structure → media references);
+   * any failure leaves the session empty and unchanged. The project is
+   * adopted AT THE SAVED REVISION — the next committed mutation bumps
+   * revision + 1, so revision arithmetic is continuous across the process
+   * boundary. Create-style idempotent replay; the ledger after open is
+   * empty (it was never saved) — agents mint fresh keys per session.
+   */
+  async projectOpen(
+    params: ProjectOpenParams,
+  ): Promise<FacadeResult<ProjectOpenResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<ProjectOpenParams>(
+        params,
+        PROJECT_OPEN_SCHEMA,
+        "project.open params",
+      );
+      // Replay/conflict resolution runs BEFORE anything else, exactly as in
+      // project.create: an exact retry must replay the committed open
+      // snapshot without re-reading the file.
+      const payload = { path: valid.path };
+      const prior = this.beginMutation<ProjectState>(
+        "project.open",
+        undefined,
+        valid.idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        return ok<ProjectOpenResult>({
+          revision: prior.revision,
+          project: structuredClone(prior.value.project),
+          counts: { ...prior.value.counts },
+          replayed: true,
+        });
+      }
+      if (this.project) {
+        throw new FacadeError(
+          "CONFLICT",
+          "project.open: this session already has an open project — project.open is a single-initialization lifecycle verb and can never replace or reset it (a second project means a second session)",
+        );
+      }
+
+      // Steps 1–5 of 10.4, in order; all validation happens BEFORE the
+      // single-commit adoption below.
+      const adopted = await this.validateCheckpointForOpen(valid.path);
+
+      // Single-commit adoption inside the lane: from here nothing can fail.
+      this.project = adopted.project;
+      this.revision = adopted.revision;
+      const state = this.projectState();
+      if (valid.idempotencyKey !== undefined) {
+        // Recorded AFTER the swap so the entry is scoped to the adopted
+        // project id (the ledger's projectScope reads this.project).
+        this.ledger.set("project.open", valid.idempotencyKey, {
+          revision: state.revision,
+          value: state,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok<ProjectOpenResult>({ ...state, replayed: false });
+    });
+  }
+
+  /**
+   * project.save — a snapshot, NOT a mutation (Decision 10.3): no revision
+   * bump, no ledger entry, no idempotencyKey. Runs through the serialized
+   * lane so a checkpoint can never capture a half-applied batch. Default
+   * publication is race-atomic no-overwrite (hard-link publish, EEXIST ⇒
+   * CONFLICT); overwrite:true renames over the target and still refuses
+   * symlinks. Retry discipline: a save has no ledger, so an outcome-unknown
+   * save must NOT be blindly retried at the same path — re-save to a fresh
+   * versioned path instead.
+   */
+  async projectSave(
+    params: ProjectSaveParams,
+  ): Promise<FacadeResult<ProjectSaveResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<ProjectSaveParams>(
+        params,
+        PROJECT_SAVE_SCHEMA,
+        "project.save params",
+      );
+      if (!this.project) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          "project.save: no project is open — call project.create or project.open first",
+        );
+      }
+      // The optional expectedRevision is a pure guard, not a mutation.
+      if (
+        valid.expectedRevision !== undefined &&
+        valid.expectedRevision !== this.revision
+      ) {
+        throw new FacadeError(
+          "CONFLICT",
+          `revision conflict: expected ${valid.expectedRevision}, current is ${this.revision}`,
+          { currentRevision: this.revision },
+        );
+      }
+      const roots = this.config.projectRoots ?? [];
+      if (roots.length === 0) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "project.save: no project roots configured — the session was created without projectRoots",
+        );
+      }
+      // Absoluteness is enforced by the facade itself (10.1): the guarantee
+      // lives where the roots live, because the facade is a public library
+      // consumed by bindings without this transport's boundary checks.
+      if (!isAbsolute(valid.path)) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "project.save: checkpoint paths must be absolute — nothing is ever resolved against the process cwd",
+          { path: valid.path },
+        );
+      }
+
+      const document = buildCheckpointDocument(this.project, this.revision);
+      const { bytesWritten } = await publishCheckpoint({
+        path: valid.path,
+        document,
+        roots,
+        overwrite: valid.overwrite ?? false,
+      });
+      return ok<ProjectSaveResult>({
+        path: valid.path,
+        revision: this.revision,
+        bytesWritten,
+        stateSha256: document.stateSha256,
+        savedAt: document.savedAt,
+      });
+    });
+  }
+
+  /**
+   * Steps 1–5 of 10.4 in order. Every failure throws BEFORE the session
+   * adopts anything — the session stays empty and unchanged.
+   */
+  private async validateCheckpointForOpen(
+    rawPath: string,
+  ): Promise<{ project: Project; revision: number }> {
+    const verb = "project.open";
+    // Step 1 — containment: absolute; inside projectRoots (realpath);
+    // regular readable file; ≤ 256 MiB (never buffer unbounded input).
+    if (!isAbsolute(rawPath)) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: checkpoint paths must be absolute — nothing is ever resolved against the process cwd`,
+        { path: rawPath },
+      );
+    }
+    const roots = this.config.projectRoots ?? [];
+    if (roots.length === 0) {
+      throw new FacadeError(
+        "UNSUPPORTED",
+        `${verb}: no project roots configured — the session was created without projectRoots`,
+      );
+    }
+    const resolution = resolveContainedPathDetailed(rawPath, roots);
+    if (resolution.kind === "outside") {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: path escapes the configured project roots`,
+        { path: rawPath, projectRoots: [...roots] },
+      );
+    }
+    if (resolution.kind === "unresolvable") {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: path cannot be read (not found or unreadable)`,
+        { path: rawPath },
+      );
+    }
+    // A symlinked checkpoint FILE is followed and contained by realpath;
+    // the resolved REAL path is what gets stat'ed and read.
+    const resolvedPath = resolution.path;
+    const fileStat = await stat(resolvedPath).catch(() => null);
+    if (!fileStat || !fileStat.isFile()) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: path is not a regular file`,
+        { path: rawPath },
+      );
+    }
+    if (fileStat.size > MAX_CHECKPOINT_BYTES) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: path cannot be read (checkpoint exceeds the 256 MiB read cap)`,
+        { path: rawPath, bytes: fileStat.size, maxBytes: MAX_CHECKPOINT_BYTES },
+      );
+    }
+    const text = await readFile(resolvedPath, "utf8").catch(() => {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: path cannot be read (not found or unreadable)`,
+        { path: rawPath },
+      );
+    });
+
+    // Step 2 — format: JSON parses; format + formatVersion in the supported
+    // set; anything else ⇒ UNSUPPORTED naming found vs supported.
+    const parsed = parseCheckpointText(text);
+    // Step 3 — integrity: stateSha256 must recompute; mismatch is the
+    // corrupted-or-hand-edited wording (distinct from structure wording).
+    assertCheckpointIntegrity(parsed);
+    // Step 4 — structure: closed-schema validation of every top-level
+    // field + the headless-reachable project declaration + revision bounds.
+    const validated = validateCheckpointStructure(parsed);
+
+    // Step 5 — media references: exact 1:1 binding between mediaRefs and
+    // project.mediaLibrary.items first (mediaIds, path === originalUrl,
+    // sourceFile deep-equal), then every entry absolute + inside the
+    // CURRENT mediaRoots + exists + readable + fingerprint match. Every
+    // offending mediaId is listed in details.
+    const items = validated.project.mediaLibrary.items;
+    const bindingOffenders = findMediaBindingOffenders(validated.mediaRefs, items);
+    if (bindingOffenders.length > 0) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: mediaRefs do not match project.mediaLibrary.items — every media id must appear exactly once with path == originalUrl and an equal sourceFile`,
+        { mediaIds: bindingOffenders },
+      );
+    }
+    if (validated.mediaRefs.length > 0) {
+      const mediaRoots = this.config.mediaRoots ?? [];
+      const offenders: string[] = [];
+      for (const ref of validated.mediaRefs) {
+        if (!isAbsolute(ref.path)) {
+          offenders.push(ref.mediaId);
+          continue;
+        }
+        const mediaResolution = resolveContainedPathDetailed(ref.path, mediaRoots);
+        if (mediaResolution.kind !== "ok") {
+          offenders.push(ref.mediaId);
+          continue;
+        }
+        const mediaStat = await stat(mediaResolution.path).catch(() => null);
+        if (!mediaStat || !mediaStat.isFile()) {
+          offenders.push(ref.mediaId);
+          continue;
+        }
+        if (
+          mediaStat.size !== ref.sourceFile.size ||
+          Math.round(mediaStat.mtimeMs) !== ref.sourceFile.lastModified
+        ) {
+          offenders.push(ref.mediaId);
+        }
+      }
+      if (offenders.length > 0) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `${verb}: ${offenders.length} referenced media item(s) are missing, moved, or changed relative to the checkpoint — no relink, no fuzzy matching`,
+          { mediaIds: offenders, mediaRoots: [...mediaRoots] },
+        );
+      }
+    }
+
+    return { project: validated.project, revision: validated.revision };
   }
 
   async mediaImport(

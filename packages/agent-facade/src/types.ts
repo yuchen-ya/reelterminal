@@ -1,5 +1,6 @@
 /**
- * Public contract of the in-process agent facade (Slice 1 + Slice 1b).
+ * Public contract of the in-process agent facade (Slice 1 + Slice 1b +
+ * Slice 2a persistence, ADR 0003 Decision 10).
  *
  * The facade is a pure-Node, transport-agnostic library. The core `Project`
  * is the canonical state; every mutation is an atomic, serialized,
@@ -9,6 +10,8 @@
  *   project.get_state · media.import · timeline.get · edit.apply
  * Slice 1b verbs (ADR 0002): preview.render_frame · export.start ·
  *   job.status · job.cancel · verify.artifact
+ * Slice 2a verbs (ADR 0003 Decision 10): project.open · project.save —
+ *   the openreel-project@1 checkpoint pair (cross-session persistence).
  *
  * Pixel/export/verify backing arrives through the independent provider
  * interfaces in providers.ts (RenderProvider / ExportProvider /
@@ -23,7 +26,7 @@ import type {
 } from "./providers";
 
 export const FACADE_VERSION = "0.2.0" as const;
-export const FACADE_CONTRACT_VERSION = "facade-slice-1b" as const;
+export const FACADE_CONTRACT_VERSION = "facade-slice-2" as const;
 export const FACADE_RUNTIME = "node-headless" as const;
 
 /* ------------------------------------------------------------------ */
@@ -34,6 +37,8 @@ export const FACADE_VERBS = [
   "session.describe",
   "capabilities.get",
   "project.create",
+  "project.open",
+  "project.save",
   "project.get_state",
   "media.import",
   "timeline.get",
@@ -184,6 +189,59 @@ export interface ProjectState {
  */
 export interface ProjectCreateResult extends ProjectState {
   readonly replayed: boolean;
+}
+
+/* ------------------------------------------------------------------ */
+/* project.open / project.save (Slice 2a, ADR 0003 Decision 10)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * project.open is a SINGLE-INITIALIZATION lifecycle verb like
+ * project.create: legal only in a session with no active project (with one
+ * active it fails CONFLICT — it can never silently replace or reset a live
+ * project). It lives outside the revision machinery (no expectedRevision);
+ * the optional idempotencyKey carries create-style replay semantics: an
+ * exact retry returns the committed open snapshot without re-reading the
+ * file; the same key with a different payload ⇒ CONFLICT.
+ */
+export interface ProjectOpenParams {
+  /** Absolute checkpoint path; must resolve inside a configured projectRoot. */
+  readonly path: string;
+  readonly idempotencyKey?: string;
+}
+
+/**
+ * project.open result: the adopted project state (at the SAVED revision —
+ * the next committed mutation bumps revision + 1) plus the replay marker.
+ */
+export interface ProjectOpenResult extends ProjectState {
+  readonly replayed: boolean;
+}
+
+/**
+ * project.save is a SNAPSHOT, not a mutation: no revision bump, no ledger
+ * entry, no idempotencyKey. The optional expectedRevision is a pure guard
+ * (CONFLICT if the session has moved on). Default is no-overwrite: an
+ * existing target (file or dangling symlink) fails CONFLICT — pick a fresh
+ * versioned checkpoint path per milestone; overwrite:true is the explicit
+ * opt-in for replacing one's own checkpoint and still refuses symlinks.
+ */
+export interface ProjectSaveParams {
+  /** Absolute checkpoint path; must resolve inside a configured projectRoot. */
+  readonly path: string;
+  readonly expectedRevision?: number;
+  readonly overwrite?: boolean;
+}
+
+export interface ProjectSaveResult {
+  /** The path exactly as the caller passed it. */
+  readonly path: string;
+  /** The pre-save revision (saving never bumps it). */
+  readonly revision: number;
+  readonly bytesWritten: number;
+  readonly stateSha256: string;
+  /** ms epoch of the save. */
+  readonly savedAt: number;
 }
 
 /* ------------------------------------------------------------------ */

@@ -1,12 +1,13 @@
 /**
- * @openreel/agent-facade — the agent-facing facade (Slice 1 + Slice 1b).
+ * @openreel/agent-facade — the agent-facing facade (Slice 1 + Slice 1b +
+ * Slice 2a persistence).
  *
  * Pure-Node, in-process, transport-agnostic. The public surface is the
- * twelve-verb `AgentFacade` object returned by createAgentFacade(); verb
- * names mirror audit/facade-v0.md. All verbs return FacadeResult<T> and
- * never throw for domain errors. Pixel/export/verify backing arrives via the
- * independent provider interfaces (providers.ts); the facade never imports
- * Chromium, Playwright or ffmpeg itself.
+ * fourteen-verb `AgentFacade` object returned by createAgentFacade(); verb
+ * names mirror audit/facade-v0.md + ADR 0003 Appendix B.1. All verbs return
+ * FacadeResult<T> and never throw for domain errors. Pixel/export/verify
+ * backing arrives via the independent provider interfaces (providers.ts);
+ * the facade never imports Chromium, Playwright or ffmpeg itself.
  */
 import {
   AgentFacadeSession,
@@ -27,6 +28,10 @@ import type {
   PreviewRenderFrameResult,
   ProjectCreateParams,
   ProjectCreateResult,
+  ProjectOpenParams,
+  ProjectOpenResult,
+  ProjectSaveParams,
+  ProjectSaveResult,
   ProjectState,
   SessionDescription,
   TimelineState,
@@ -40,6 +45,12 @@ export interface AgentFacade {
   readonly "project.create": (
     params?: ProjectCreateParams,
   ) => Promise<FacadeResult<ProjectCreateResult>>;
+  readonly "project.open": (
+    params: ProjectOpenParams,
+  ) => Promise<FacadeResult<ProjectOpenResult>>;
+  readonly "project.save": (
+    params: ProjectSaveParams,
+  ) => Promise<FacadeResult<ProjectSaveResult>>;
   readonly "project.get_state": () => Promise<FacadeResult<ProjectState>>;
   readonly "media.import": (
     params: MediaImportParams,
@@ -75,6 +86,8 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "session.describe": () => session.sessionDescribe(),
     "capabilities.get": () => session.capabilitiesGet(),
     "project.create": (params) => session.projectCreate(params),
+    "project.open": (params) => session.projectOpen(params),
+    "project.save": (params) => session.projectSave(params),
     "project.get_state": () => session.projectGetState(),
     "media.import": (params) => session.mediaImport(params),
     "timeline.get": () => session.timelineGet(),
@@ -120,4 +133,24 @@ export type {
   VerifyReport,
 } from "./providers";
 export { createEmptyProject, DEFAULT_PROJECT_SETTINGS } from "./project-factory";
+export {
+  buildCheckpointDocument,
+  buildMediaRefs,
+  CHECKPOINT_FORMAT,
+  CHECKPOINT_FORMAT_VERSION,
+  computeStateSha256,
+  findMediaBindingOffenders,
+  MAX_CHECKPOINT_BYTES,
+  SUPPORTED_CHECKPOINT_FORMAT_VERSIONS,
+} from "./checkpoint";
+export type { CheckpointDocument, CheckpointMediaRef } from "./checkpoint";
+export {
+  emitObjectSchema,
+  EMITTED_VERB_JSON_SCHEMAS,
+} from "./jsonschema";
+export type { JsonSchemaNode, JsonSchemaObject } from "./jsonschema";
+export {
+  VERB_PARAM_SCHEMAS,
+  PROJECT_SETTINGS_SCHEMA,
+} from "./verb-schemas";
 export * from "./types";
