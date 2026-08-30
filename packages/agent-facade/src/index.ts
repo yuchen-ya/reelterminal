@@ -153,4 +153,8 @@ export {
   VERB_PARAM_SCHEMAS,
   PROJECT_SETTINGS_SCHEMA,
 } from "./verb-schemas";
+export {
+  VERB_SCHEMA_CORPUS,
+  type VerbSchemaCorpusCase,
+} from "./verb-schema-corpus";
 export * from "./types";
