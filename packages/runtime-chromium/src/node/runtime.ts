@@ -296,6 +296,13 @@ export class ChromiumRuntime {
     try {
       const launchedBrowser = await chromium.launch({
         headless: this.options.headless ?? true,
+        // ADR 0003 Decision 7: signal ownership belongs to the embedding
+        // transport — Playwright's default SIGINT/SIGTERM/SIGHUP handlers
+        // would kill the browser out from under the bounded cancel/dispose
+        // path. Nothing else about the launch changes.
+        handleSIGINT: false,
+        handleSIGTERM: false,
+        handleSIGHUP: false,
         ...(this.options.executablePath
           ? { executablePath: this.options.executablePath }
           : {}),

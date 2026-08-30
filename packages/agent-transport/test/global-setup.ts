@@ -8,7 +8,7 @@
  * dist/node_modules exactly as the real build step does.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,6 +19,10 @@ export default async function globalSetup(): Promise<void> {
   if (!existsSync(tsupBin)) {
     throw new Error(`global-setup: tsup binary not found at ${tsupBin} — run pnpm install`);
   }
+  // Remove dist BEFORE the build: tsup's `clean: true` would otherwise
+  // recurse into dist/node_modules (symlinks to the runtime deps) and try
+  // to unlink their content.
+  rmSync(path.join(packageDir, "dist"), { recursive: true, force: true });
   const build = spawnSync(tsupBin, ["--config", "tsup.config.ts"], {
     cwd: packageDir,
     stdio: "inherit",

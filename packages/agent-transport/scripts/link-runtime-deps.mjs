@@ -12,7 +12,7 @@
  * workspace. Idempotent: re-running replaces stale links.
  */
 import { createRequire } from "node:module";
-import { mkdir, rm, symlink } from "node:fs/promises";
+import { existsSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,13 +28,25 @@ const runtimeChromiumRequire = createRequire(
 /** Also linked: everything dist/cli.js itself imports externally. */
 const LINKED_PACKAGES = ["esbuild", "playwright-core", "mediabunny"];
 
-await mkdir(distModules, { recursive: true });
+mkdirSync(distModules, { recursive: true });
 for (const name of LINKED_PACKAGES) {
-  const pkgJsonPath = runtimeChromiumRequire.resolve(`${name}/package.json`);
-  const realDir = path.dirname(pkgJsonPath);
+  // Some packages (e.g. mediabunny) do not export "./package.json", so
+  // resolve the module ENTRY and walk up to the directory owning the
+  // package.json — that directory is the real store location.
+  const entryPath = runtimeChromiumRequire.resolve(name);
+  let realDir = path.dirname(entryPath);
+  for (;;) {
+    const candidate = path.join(realDir, "package.json");
+    if (existsSync(candidate)) break;
+    const parent = path.dirname(realDir);
+    if (parent === realDir) {
+      throw new Error(`link-runtime-deps: no package.json above ${entryPath}`);
+    }
+    realDir = parent;
+  }
   const linkPath = path.join(distModules, name);
-  await rm(linkPath, { force: true, recursive: true });
+  rmSync(linkPath, { force: true, recursive: true });
   const target = path.relative(path.dirname(linkPath), realDir);
-  await symlink(target, linkPath, "dir");
+  symlinkSync(target, linkPath, "dir");
   process.stderr.write(`[link-runtime-deps] dist/node_modules/${name} -> ${target}\n`);
 }
