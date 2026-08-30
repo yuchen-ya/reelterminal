@@ -1,6 +1,7 @@
 # ADR 0003: Agent Transport — Slice 2 (MCP stdio + minimal CLI + SKILL)
 
-- Status: **Proposed** (transport audit only — no implementation lands in this slice)
+- Status: **Accepted** (r2.2, 2026-08-30 — transport audit; implementation
+  lands in the follow-up slice branch `feat/agent-transport-slice-2`)
 - Date: 2026-08-28
 - Branch: `audit/slice-2-transport`
 - Revision: **r2.2** (2026-08-30) — adds cross-session project
@@ -219,7 +220,10 @@ the existing model — the bar is high on purpose.
   frame, unknown method) use JSON-RPC protocol errors — a separate,
   non-overlapping channel.
 - **Revision / idempotency.** `expectedRevision` and `idempotencyKey`
-  pass through in every mutating tool's schema, untouched. The transport
+  pass through in every mutating tool's schema, untouched. (The
+  lifecycle/snapshot verbs carry their documented own shapes instead —
+  `project.create`/`project.open`: `idempotencyKey` only; `project.save`:
+  an optional `expectedRevision` guard only, Decision 10.) The transport
   never mints keys, never retries a mutating call on the agent's behalf,
   and never hides a `CONFLICT` — silent transport-side retry/dedupe would
   mask exactly the bugs the ledger exists to surface. SKILL.md teaches
@@ -387,16 +391,29 @@ directory; relative/missing/non-directory is a startup refusal). A
 session with zero `projectRoots` is honest: `project.open`/`project.save`
 fail `UNSUPPORTED`. Every checkpoint path must be **absolute** (Decision
 6, including after `$ref` substitution in workflows) and must resolve
-inside `projectRoots`:
+inside `projectRoots`. Absoluteness is enforced **by the facade itself**
+(`INVALID_PARAMS` for a non-absolute `path` param or `mediaRefs` entry),
+independently of the transport's boundary check — the guarantee lives
+where the roots live, because the facade is a public library that future
+bindings consume without this transport (`resolveContainedPathDetailed`
+would otherwise resolve a relative input against the host's cwd).
 
 - on `project.open`: the facade's realpath containment
   (`resolveContainedPathDetailed`) must place the resolved file inside a
   root — a symlinked *file* is followed and contained by realpath, and an
   escape is `INVALID_PARAMS` with the escape wording;
-- on `project.save`: the artifact-write discipline, reused — the target
-  directory must exist, must resolve inside a root, and no path component
-  may be a symlink/junction (refuse, never write through a link), with
-  pre- and post-write containment checks. The parent directory is **not**
+- on `project.save`: the artifact-write discipline, reused, scoped
+  precisely — containment is decided by `realpath` comparison against
+  the canonical (startup-realpath'd) root, and the symlink/junction
+  component walk applies to the path components **at or below the
+  canonical root** (the target directory and the file itself): ancestors
+  *above* the root are already normalized by startup canonicalization,
+  so a root reached through a system link (`/tmp` → `/private/tmp` on
+  macOS) is fine, while a link at or below the root is refused — never
+  written through. The temp file and the rename target the
+  prefix-verified path, with pre- and post-write containment checks
+  exactly as `assertSafeArtifactDir` performs them. The parent directory
+  is **not**
   auto-created (typo-safe; the operator or agent creates it once, the
   same way roots come to exist).
 
@@ -408,12 +425,12 @@ agent bindings). Top level:
 |---|---|
 | `format` | the literal string `"openreel-project"` |
 | `formatVersion` | integer `1` |
-| `contract` | the facade contract label, `"facade-slice-2"` |
-| `savedAt` | ms epoch of the save |
-| `revision` | the project revision at save time (non-negative integer) |
-| `project` | the canonical `Project` JSON, exactly the `project.get_state` payload (runtime-only fields are already `null` in headless sessions: `fileHandle`, `blob`, `thumbnailUrl`, `waveformData`) |
-| `mediaRefs` | one entry per media item: `{mediaId, path, sourceFile:{name,size,lastModified}, metadata}` — `path` is the absolute realpath recorded at import |
-| `stateSha256` | hex SHA-256 over the canonical serialization of `{formatVersion, revision, project, mediaRefs}` |
+| `contract` | the facade contract label, `"facade-slice-2"` — a provenance label, informational only; the compatibility gate is `formatVersion`, never this field |
+| `savedAt` | ms epoch of the save (non-negative integer) |
+| `revision` | the project revision at save time (integer, `0 … Number.MAX_SAFE_INTEGER`) |
+| `project` | the inner canonical `Project` JSON (NOT the `ProjectState` wrapper that `project.get_state` returns; runtime-only fields are already `null` in headless sessions: `fileHandle`, `blob`, `thumbnailUrl`, `waveformData`) |
+| `mediaRefs` | one entry per media item: `{mediaId, path, sourceFile:{name,size,lastModified}, metadata}` — `path` is the absolute realpath recorded at import; covers exactly `project.mediaLibrary.items` (10.4 step 5) |
+| `stateSha256` | integrity hash, defined exactly: the lowercase hex SHA-256 over the UTF-8 bytes of the facade's `stableStringify` (`idempotency.ts` — lexicographically sorted object keys, arrays in order, `undefined` fields omitted) applied to the four-field object `{formatVersion, revision, project, mediaRefs}`. One canonicalizer, named in code, so every future binding hashes identically |
 
 **Explicitly never saved:** the idempotency ledger, the job registry and
 any job state (queued/running/terminal), provider handles or runtime
@@ -422,6 +439,20 @@ bytes (artifacts live under `artifactRoot`, referenced by path at most).
 `stateSha256` is **corruption detection, not tamper-proofing** — it
 catches truncation, bit-rot, and incomplete writes; anyone can recompute
 it after a deliberate edit, and the format claims nothing stronger.
+
+**Schema scope and evolution.** The project-document declaration
+(validated at open, 10.4 step 4) is a strict closed schema covering
+exactly the **headless-reachable subset** of the canonical `Project`
+model — the shapes the facade's own verbs can produce — not the full
+browser/desktop type union (`adjustmentLayers`, `masks`,
+`multicamGroups`, `creation`, KieAI fields, … are outside the headless
+surface and outside this schema). Because the schema is closed, **any
+change to the project-document shape — even a purely additive field —
+requires a `formatVersion` bump**: otherwise a newer writer's checkpoint
+would be misreported by an older reader as corrupted (step 4
+unknown-field) instead of unknown-version (step 2), which is exactly the
+honesty boundary 10.4 promises. Structure-step rejections always carry
+wording distinct from integrity-step rejections.
 
 **10.3 `project.save {path, expectedRevision?, overwrite?}` — a snapshot,
 not a mutation.** Saving does **not** bump the project revision, creates
@@ -432,11 +463,22 @@ pure guard (`CONFLICT` if the session has moved on) — a guard, not a
 mutation. Saves run through the session's serialized lane, so a
 checkpoint can never capture a half-applied batch. Without an active
 project: `NOT_FOUND`. Atomicity: write a uniquely named temp sibling
-(`<name>.<uuid>.tmp`) in the target directory, flush + fsync, **atomic
-rename** onto the target, then best-effort directory fsync. A crash
-mid-save leaves at most an inert, clearly named `.tmp` file — never a
-half-written checkpoint at the target path, and `project.open` refuses
-anything that fails full validation regardless of name. **Default is
+(`<name>.<uuid>.tmp`) in the target directory, flush + fsync, then
+**publish atomically, per mode** — default (no-overwrite): `link(temp,
+target)` + `unlink(temp)`, a hard-link publication that fails `EEXIST`
+atomically if the target has appeared since the existence check, so
+no-clobber is a filesystem guarantee, not an advisory check-then-act
+(POSIX and NTFS support this; on a filesystem without hardlinks the save
+fails honestly with wording saying so — risk register); `overwrite:true`:
+atomic rename over the target. Finally a best-effort directory fsync. A
+crash mid-save leaves at most an inert, clearly named `.tmp` file —
+never a half-written checkpoint at the target path, and `project.open`
+refuses anything that fails full validation regardless of name.
+Durability, stated exactly: once `project.save` returns ok, the
+checkpoint is **complete and visible to any later process**; power-loss
+durability is bounded by the directory fsync, which is best-effort and
+not possible on every platform (a no-op on Windows) — process death
+cannot undo a returned save, power loss might. **Default is
 no-overwrite:** if the target path already exists (file, or dangling
 symlink), save fails `CONFLICT`. Iteration therefore uses *versioned
 checkpoints* — the caller picks a fresh path per milestone
@@ -445,7 +487,11 @@ is the explicit opt-in for replacing one's own checkpoint and still
 refuses symlinks. (Platform note, stated plainly: rename-over-existing
 is atomic on POSIX and on current Windows/libuv for regular files, but
 fails there for read-only targets — the default no-overwrite mode is
-unaffected.)
+unaffected.) Retry story, stated plainly: save has no ledger entry, so
+a save whose outcome is unknown (e.g. client timeout) must **not** be
+blindly retried at the same path — the retry's `CONFLICT` is ambiguous
+between "first save landed" and "path pre-existed". Re-save to a fresh
+versioned path instead (SKILL teaches this).
 
 **10.4 `project.open {path, idempotencyKey?}` — a lifecycle verb that
 commits only after *everything* validates.** Like `project.create`, open
@@ -454,12 +500,16 @@ project; with an active project it fails `CONFLICT` — it can never
 silently replace or reset a live project (a second project means a
 second `serve` process, as in Decision 1). The optional
 `idempotencyKey` carries create-style replay semantics: an exact retry
-returns the committed open snapshot without re-reading the file. Before
+returns the committed open snapshot without re-reading the file; the
+same key with a different payload (e.g. a different `path`) ⇒
+`CONFLICT`, exactly as ledger semantics dictate elsewhere. Before
 the session adopts anything, all of the following must pass, in order —
 any failure leaves the session empty and unchanged:
 
 1. **Containment:** path absolute; resolves inside `projectRoots` via
-   realpath (10.1); is a regular, readable file. Escape ⇒
+   realpath (10.1); is a regular, readable file of at most **256 MiB**
+   (a larger file fails with the cannot-be-read wording — open never
+   buffers unbounded input). Escape ⇒
    `INVALID_PARAMS` (escape wording); missing/unreadable ⇒
    `INVALID_PARAMS` (cannot-be-read wording), mirroring `media.import`.
 2. **Format:** parses as JSON; `format == "openreel-project"` and
@@ -469,12 +519,23 @@ any failure leaves the session empty and unchanged:
    This slice ships no migration framework; a future version bump is a
    new reader decided by its own ADR.
 3. **Integrity:** `stateSha256` recomputes to the stored value; mismatch
-   ⇒ `INVALID_PARAMS` ("checkpoint corrupted or hand-edited" wording).
-4. **Structure:** `project` validates against a strict closed-schema
+   ⇒ `INVALID_PARAMS` ("checkpoint corrupted or hand-edited" wording,
+   always distinct from structure-step wording, 10.2).
+4. **Structure:** all top-level fields are schema-checked (`savedAt` a
+   non-negative integer; `contract` a string — informational provenance
+   only, never a compatibility gate, 10.2); `project` validates against
+   a strict closed-schema
    project-document declaration (same single-source machinery as the
-   verb schemas, Decision 4); `revision` is a non-negative integer.
+   verb schemas, Decision 4 — scope and evolution rule: 10.2);
+   `revision` is an integer in `0 … Number.MAX_SAFE_INTEGER`.
    Provenance beyond this is not claimed (10.6).
-5. **Media references:** every `mediaRefs` entry's `path` is absolute,
+5. **Media references:** `mediaRefs` must cover **exactly**
+   `project.mediaLibrary.items` — mediaIds 1:1, each entry's `path`
+   equal to its item's `originalUrl`, and `sourceFile` equal to the
+   item's `sourceFile` (any divergence fails open with the same
+   details-listing behavior; this is what binds the side table to the
+   payload the render path actually consumes). Then every entry's
+   `path` is absolute,
    resolves inside the **current** session's `mediaRoots`, exists, is
    readable, and its `{size, lastModified}` fingerprint matches the
    recorded `sourceFile`. A project with zero media items needs no
@@ -512,6 +573,25 @@ operator — the same trust class as the root configuration itself. The
 realpath-then-read sequence on open has the same TOCTOU shape as the
 facade's existing import containment; it is accepted and documented, not
 claimed away (Appendix E, fourth round).
+
+**Ownership and lineage.** A checkpoint carries no ownership, lock, or
+lineage: the supported multi-process pattern is **sequential** (save →
+process ends → another process opens). Concurrent writers sharing one
+`projectRoots` tree are last-writer-wins — two sessions that both open
+`v1` and each save `v2` have *forked the project's history*, and a stale
+session's `overwrite:true` can silently regress a newer checkpoint; the
+hard-link publication of 10.3 makes the no-overwrite default
+race-atomic, but no mechanism here serializes writers across processes
+or reconciles forks. Versioned paths are the lineage discipline; a
+merge/resume-fork tool is out of scope. The same boundary applies to
+artifacts: an adopted project keeps its checkpoint `id`, and preview
+artifact paths derive from `project.id` + revision — two **concurrent**
+sessions that opened the same checkpoint and share one `artifactRoot`
+can therefore regenerate the same artifact path (for identical state,
+content-identical; for forked state, divergent). Decision 1's "each
+`serve` process has its own roots set" is the rule; sharing one
+project+roots set across *live* processes is unsupported, sharing it
+across *sequential* processes is the feature.
 
 ## Consequences
 
@@ -918,8 +998,11 @@ boundary, with model state *and* pixels continuous.
    siblings left behind.
 3. **Kill process A entirely** — after the save has completed (the
    scenario runs both a clean-SIGTERM variant and a SIGKILL variant;
-   both must pass, because the checkpoint contract is "durable once
-   `project_save` returned ok", not "durable if shutdown was polite").
+   both must pass, because the checkpoint contract is "complete and
+   visible to any later process once `project_save` returned ok", not
+   "durable if shutdown was polite"; power-loss durability is the
+   separately-scoped directory-fsync bound of 10.3, which process
+   death cannot test).
 4. **Open in a brand-new process B** — fresh `serve` (or a second `run`
    invocation), fresh session, empty ledger: `project_open
    {path:<…>/e2e-v1.openreel.json}` ⇒ ok, `result.revision ==
@@ -944,7 +1027,10 @@ boundary, with model state *and* pixels continuous.
    (d) corruption honesty probes: a copy of `e2e-v1.openreel.json` with
    one byte flipped inside `project` ⇒ open refuses (integrity wording);
    a copy with `formatVersion: 999` ⇒ `UNSUPPORTED` (unknown-version
-   wording); a copy opened after one referenced media file is renamed
+   wording); a copy whose `mediaRefs` path diverges from the item's
+   `originalUrl` (hash recomputed) ⇒ open refuses (structure/binding
+   wording, 10.4 step 5); a copy opened after one referenced media file
+   is renamed
    away ⇒ open refuses, details naming the offending `mediaId`; a
    checkpoint path supplied through a symlinked directory that escapes
    `projectRoots` ⇒ `INVALID_PARAMS` (escape wording).
@@ -1100,6 +1186,92 @@ Verdict: **no finding invalidates a Decision**; two items (browser-reaper
 verification, over-broad-root doctor warning) become implementation-slice
 requirements; the rest is accepted, documented risk.
 
+### Fourth round (independent red team on r2.2 persistence, 2026-08-30)
+
+A fresh read-only agent attacked the r2.2 persistence design on the six
+mandated axes — save atomicity, corrupted files, symlink escape, media
+path changes, revision recovery, active-project overwrite — plus the
+r2.2 ripple effects (contract bump, B.6 `$ref`, cleanup matrix, doctor).
+Verdict: **0 BLOCKER / 6 MAJOR / 6 MINOR — Decision 10 stands**; the
+temp+fsync+rename core, the containment story, and the
+validate-everything-then-adopt open survived attack, and every MAJOR
+was a specification gap now closed in the text:
+
+14. **Durability was overclaimed against best-effort dir fsync** — a
+    returned save survives process death but power-loss durability rests
+    on a directory fsync that is best-effort and impossible on Windows.
+    *Response:* 10.3 now scopes the claim exactly ("complete and visible
+    to any later process once ok; power-loss durability bounded by the
+    directory fsync"), mirrored in Appendix D scenario 2 step 3 and the
+    risk register.
+15. **Cross-process save races were unowned** — the no-overwrite default
+    was check-then-act (defeatable by a millisecond race between two
+    processes), `overwrite:true` was unguarded last-writer-wins, and two
+    sessions adopting the same checkpoint share one project id, so
+    concurrent sessions sharing an artifactRoot could regenerate the
+    same preview path. *Response:* default publication is now atomic
+    hard-link `link(temp,target)`+`unlink` (EEXIST ⇒ `CONFLICT` — a
+    filesystem guarantee, not an advisory check; link-less filesystems
+    fail honestly); 10.6 gains the ownership/lineage paragraph —
+    sequential multi-process use is the supported pattern, concurrent
+    writers fork history, versioned paths are the discipline.
+16. **Open validation didn't bind `mediaRefs` to the project payload** —
+    a checkpoint with valid `mediaRefs` but a divergent
+    `mediaLibrary.items[].originalUrl` would pass open and fail at first
+    render. *Response:* 10.4 step 5 now requires exact 1:1 binding
+    (mediaIds, `path == originalUrl`, `sourceFile` equal); Appendix D
+    scenario 2 step 6d gains the divergent-`originalUrl` probe.
+17. **The save-side "no path component may be a symlink" rule was
+    unimplementable** on ordinary macOS/Windows layouts (system links
+    like `/tmp` → `/private/tmp` above the root). *Response:* 10.1 now
+    scopes the component walk to components at or below the canonical
+    root; ancestors above it are normalized by startup canonicalization;
+    the write targets the prefix-verified path.
+18. **The `stateSha256` canonicalization was undefined**, so a second
+    correct-intentioned writer could produce documents the facade
+    misreads as corrupted — breaking "one format, every surface".
+    *Response:* 10.2 pins the exact recipe (facade `stableStringify`:
+    sorted keys, arrays in order, `undefined` omitted; lowercase hex
+    SHA-256 over its UTF-8 bytes).
+19. **The project-document schema's scope and evolution rule were
+    undefined** — same-version schema growth would misreport newer
+    checkpoints as corrupted instead of unknown-version. *Response:*
+    10.2 now states the schema covers exactly the headless-reachable
+    closed subset, that **any** shape change (even additive) requires a
+    `formatVersion` bump, and that structure-step rejections carry
+    wording distinct from integrity-step rejections; the
+    `get_state`-wrapper phrasing was corrected.
+
+Minor findings folded in: `revision` bounded to `MAX_SAFE_INTEGER`
+(10.2/10.4); a 256 MiB checkpoint read cap (10.4 step 1); the save-retry
+ambiguity story (re-save to a fresh versioned path, 10.3) and the
+open different-payload `CONFLICT` stated (10.4); Decision 5 excepts the
+lifecycle/snapshot verbs from the blanket key/guard rule; all top-level
+checkpoint fields are schema-checked with `contract` documented as
+informational provenance (10.4 step 4); the facade itself rejects
+non-absolute checkpoint/`mediaRefs` paths, independent of the transport
+(10.1); doctor gains the checkpoint section (stray `.tmp` residue,
+canonical `projectRoots` echo — Appendix F 2c).
+
+Confirmed surviving while attacking: containment (no escape found;
+symlinked checkpoint file followed-and-contained, symlinked dir escape
+refused, hardlinks inert, case/Unicode tricks neutralized by realpath
+comparison, TOCTOU honestly accepted); the atomic-write core (no partial
+or corrupted file at the target under process kill at any point; lane-
+serialized saves never capture a half-applied batch); the corruption
+probes (truncation, bit-flips in payload or hash, wrong types,
+`formatVersion: 999` all refuse in the right class); lifecycle conflicts
+(open with active project, create-after-open, save-without-project,
+zero-`projectRoots` all fail in the documented codes); revision
+arithmetic continuity across open; the contract bump consistency (no
+stale "12 verbs"/slice-1b text); and B.6 `$ref` under persistence (no
+new hazard — cross-process `jobId`s fail `NOT_FOUND` honestly).
+
+Verdict: **no finding invalidates Decision 10**; the six MAJOR
+specification gaps are closed above, the MINORs are folded or recorded
+as accepted risk, and the persistence E2E (Appendix D scenario 2) pins
+the whole contract.
+
 ## Appendix F: Implementation slices, risks, and deferred candidates
 
 **Suggested slices** (each lands tested; product-code changes are limited
@@ -1126,7 +1298,9 @@ to the three scoped in Consequences):
   validation, `$ref` resolution, bounded `await`, stop-on-first-failure)
   + the honest environment report (incl. over-broad-root warning,
   canonical-root echo for all three root classes, orphan-artifact
-  listing, browser-reaper verification from Appendix E).
+  listing, checkpoint-section — stray `*.tmp` save residue listed as
+  inert residue, never as a valid checkpoint — and browser-reaper
+  verification from Appendix E).
 - **2d — SKILL + black-box E2E:** SKILL.md (Decision 9), execute Appendix
   D scenario 1 against ≥2 real clients and scenario 2 (persistence) at
   least over `run` and one MCP client, commit evidence.
@@ -1156,8 +1330,14 @@ not provenance, 10.6) · save/open cost is bounded by project size and
 media count respectively (full-document serialization, per-item
 fingerprint stat) · Windows rename-over-existing limits surface only
 under `overwrite:true` (10.3; the default no-overwrite mode is
-unaffected) · versioned checkpoints accumulate by design; retention is
-the operator's policy (deferred candidate 8).
+unaffected) · hard-link publication requires hardlink support from the
+checkpoint filesystem (APFS/NTFS/ext4 fine; a link-less filesystem fails
+saves honestly, 10.3) · power-loss durability of a save is bounded by a
+best-effort directory fsync, impossible on Windows (10.3 — process death
+is covered, power loss is not claimed) · concurrent writers on one
+checkpoint tree fork history; sequential multi-process use is the
+supported pattern (10.6) · versioned checkpoints accumulate by design;
+retention is the operator's policy (deferred candidate 8).
 
 **Decided by this ADR (r2.2):**
 
