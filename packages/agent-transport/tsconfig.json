@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "types": ["node"],
+    "paths": {
+      "@openreel/core": ["../core/src/index.ts"],
+      "@openreel/core/*": ["../core/src/*"],
+      "@openreel/agent-facade": ["../agent-facade/src/index.ts"],
+      "@openreel/agent-facade/*": ["../agent-facade/src/*"],
+      "@openreel/runtime-chromium": ["../runtime-chromium/src/index.ts"],
+      "@openreel/runtime-chromium/*": ["../runtime-chromium/src/*"],
+      "@openreel/agent-transport": ["./src/index.ts"],
+      "@openreel/agent-transport/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "test", "scripts", "tsup.config.ts", "vitest.config.ts"]
+}
