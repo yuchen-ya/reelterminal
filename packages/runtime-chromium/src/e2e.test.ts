@@ -132,7 +132,7 @@ describe("slice-1b chromium E2E", () => {
     expect(desc.value.stepLetters.textOverlayPixels).toBe("C");
     expect(desc.value.stepLetters.exportVideo).toBe("C");
     expect(desc.value.stepLetters.verifyArtifact).toBe("A");
-    expect(desc.value.contractVersion).toBe("facade-slice-1b");
+    expect(desc.value.contractVersion).toBe("facade-slice-2");
 
     // 1) project.create 320x180@30 ---------------------------------------
     const created = await facade["project.create"]({
