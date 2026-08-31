@@ -221,7 +221,12 @@ export function verifyProbeChecks(verifyValue) {
       (checks) => Array.isArray(checks) && checks.length > 0 && checks.every((c) => c.pass === true),
       JSON.stringify(verifyValue?.checks),
     ),
-    eq("verify: container mp4", probe?.container, "mp4"),
+    matches(
+      "verify: container is mp4 (ffprobe format_name list)",
+      probe?.container,
+      (c) => typeof c === "string" && c.split(",").map((part) => part.trim()).includes("mp4"),
+      `container=${probe?.container}`,
+    ),
     eq("verify: videoCodec h264", probe?.videoCodec, "h264"),
     eq("verify: 1920x1080", `${probe?.width}x${probe?.height}`, "1920x1080"),
     {
