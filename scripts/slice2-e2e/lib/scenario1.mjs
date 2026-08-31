@@ -9,8 +9,7 @@
  *              (label: simulated).
  * Every step letter of Appendix D maps to machine-checked assertions.
  */
-import { existsSync } from "node:fs";
-import { promises as fs } from "node:fs/promises";
+import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 
 import { CLIP_DURATION_SEC, PROJECT_SETTINGS } from "./env.mjs";
