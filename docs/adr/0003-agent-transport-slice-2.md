@@ -963,8 +963,15 @@ raw result transcript):**
    frames implied 5 s × 30 fps = **150**.
 9. **Verify** — `verify_artifact {path:<mp4>, expect:{container:"mp4",
    videoCodec:"h264", width:1920, height:1080, durationSec:5,
-   durationToleranceSec:1/30}}` ⇒ `probe.frameCount == 150`, all checks
-   pass. **Text pixels (two compares, both over the text's screen
+   durationToleranceSec:0.12}}` ⇒ `probe.frameCount == 150`, all checks
+   pass. (Errata, 2026-08-31: this line originally pinned
+   `durationToleranceSec:1/30`, which no export of this runtime can
+   meet — the muxed silent AAC track's priming extends the probed
+   *container* duration by ~77 ms. 0.12 s is the runtime's own
+   "±1 frame + mux epsilon" tolerance; the load-bearing exactness claim
+   is `probe.frameCount == 150`, which stays exact. See Appendix E,
+   post-implementation errata.) **Text pixels (two compares, both over
+   the text's screen
    region):** (a) `compare {referencePath:<step-7 preview PNG>,
    timeSec:2.5, mode:"similar"}` — exported frame matches the preview
    render of the same project/revision; (b) `compare
@@ -1271,6 +1278,36 @@ Verdict: **no finding invalidates Decision 10**; the six MAJOR
 specification gaps are closed above, the MINORs are folded or recorded
 as accepted risk, and the persistence E2E (Appendix D scenario 2) pins
 the whole contract.
+
+### Post-implementation errata (2026-08-31, slice-2d execution)
+
+Recorded when the Appendix D evidence runs executed the contract against
+the real binary (full detail: `docs/slice-2/evidence/findings/FINDINGS.md`):
+
+1. **`durationToleranceSec: 1/30` was unachievable** — `verify_artifact`
+   probes the ffprobe *format* (container) duration, and every export of
+   this runtime muxes a silent AAC track whose priming extends the
+   container by ~77 ms (the closed headless op set has no mute/omit).
+   Appendix D step 9 now pins the runtime's documented 0.12 s
+   "±1 frame + mux epsilon" tolerance; `probe.frameCount == 150` remains
+   the exact frame-exactness assertion. No facade/runtime change.
+2. **Frozen-product bug found and fixed: exports >4 MiB always failed.**
+   mediabunny's chunked `StreamTarget` rewrites regions after a
+   mid-stream flush, and `PartFileWriter.bytes` summed every write —
+   overcounting the real file size by the overlap (+8), so the facade's
+   honest byte guard ("provider wrote fewer bytes … than it reported",
+   Decision 5's undamaged guarantee working exactly as intended)
+   rejected every multi-chunk export. Fixed in `1866110`
+   (`PartFileWriter` reports the high-water mark of written end
+   positions — the true file size — with unit tests pinning sequential,
+   backward-rewrite, extending-rewrite, and sparse shapes). This is a
+   defect repair, not a contract change: the guard and the reported
+   semantics are unchanged. Pre-fix evidence runs used the agent-legal
+   `settings.videoBitrateKbps: 4000` deviation (Appendix D does not pin
+   bitrate); resolution evidence re-executes scenario 1 (run path) at
+   8000 kbps — a 4,986,587-byte multi-chunk export reaching `done`,
+   82/82 checks — under
+   `docs/slice-2/evidence/findings/finding1-export-overcount/resolution/`.
 
 ## Appendix F: Implementation slices, risks, and deferred candidates
 

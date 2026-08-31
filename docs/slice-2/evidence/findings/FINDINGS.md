@@ -1,11 +1,12 @@
 # Slice-2d E2E findings (frozen-product issues discovered by this E2E)
 
-These surfaced while executing Appendix D against the real binary. None of
-them is fixable inside slice 2d: both live in frozen product code (facade /
-runtime), and the ADR text is frozen too. They are recorded here so the
-evidence run's two documented deviations from the Appendix D letter are
-traceable, and so the runtime/facade owners get machine-readable
-reproductions.
+These surfaced while executing Appendix D against the real binary. Both
+are now resolved by the coordinator after the 2d evidence landed:
+finding 1 by a runtime defect fix (`1866110`, proven by the resolution
+evidence under `finding1-export-overcount/resolution/`), finding 2 by an
+ADR errata (Appendix D step 9 + Appendix E post-implementation errata).
+The pre-fix evidence runs' two documented deviations from the Appendix D
+letter remain traceable below.
 
 ## Finding 1 — export jobs fail deterministically once the MP4 exceeds mediabunny's 4 MiB StreamTarget chunk size
 
@@ -27,15 +28,27 @@ reproductions.
   fewer bytes … than it reported") then rejects the good file. Exports that
   stay under one chunk (all slice-1b tests at 320×180, ~small MB) never
   flush mid-stream, so the bug is invisible to the existing suites.
-- **Status:** NOT fixed here (frozen runtime + facade semantics). The E2E
-  exercises the agent-legal lever instead: `export_start` accepts
-  `settings.videoBitrateKbps`, and the evidence runs pass `4000`
-  (~2.5 MB ⇒ single-chunk export ⇒ job completes `done`). Appendix D does
-  not pin the bitrate; every other step-9 assertion (1920×1080, h264,
-  `frameCount == 150`, both pixel compares) is asserted unchanged.
-- **Suggested owner fix (for a future decision, not this slice):** report
-  the post-finalize file size (or make `PartFileWriter.bytes` a high-water
-  mark of `position`) instead of the accumulated write sum.
+- **Status:** **FIXED** (2026-08-31, commit `1866110` —
+  `PartFileWriter` reports the high-water mark of written end positions,
+  i.e. the true file size; unit tests pin sequential, backward-rewrite,
+  extending-rewrite, and sparse shapes in
+  `packages/runtime-chromium/src/node/part-file-writer.test.ts`).
+  Resolution evidence: scenario 1 (run path) re-executed at
+  `SLICE2_E2E_FORCE_MULTICHUNK=1` (8000 kbps ⇒ 4,986,587-byte
+  multi-chunk export, the exact finding shape) reaching `done`,
+  **82/82 checks** — `resolution/scenario1/run/`. The runner keeps the
+  4000 kbps guard-rail by default so the committed pre-fix evidence set
+  remains byte-identical when re-generated at its recorded SHA; the
+  pre-fix evidence below is preserved verbatim.
+- **Pre-fix status (historical):** the E2E exercised the agent-legal
+  lever instead: `export_start` accepts `settings.videoBitrateKbps`,
+  and the evidence runs passed `4000` (~2.5 MB ⇒ single-chunk export ⇒
+  job completes `done`). Appendix D does not pin bitrate; every other
+  step-9 assertion (1920×1080, h264, `frameCount == 150`, both pixel
+  compares) was asserted unchanged.
+- **Suggested owner fix (implemented as `1866110`):** report the
+  high-water mark of written end positions instead of the accumulated
+  write sum.
 
 ## Finding 2 — Appendix D's `durationToleranceSec: 1/30` is unachievable for any export of this runtime
 
@@ -53,8 +66,9 @@ reproductions.
   The runtime's own suites use `durationToleranceSec: 0.12` ("±1 frame +
   mux epsilon", `providers.ts ArtifactProbeExpectation`, slice-1b e2e) for
   exactly this reason.
-- **Status:** the ADR text is frozen, so this E2E asserts the ADR's
-  `frameCount == 150` exactly (the load-bearing frame-exactness claim) and
-  uses the runtime's documented 0.12 s mux-epsilon tolerance for the
-  container-duration check, with the deviation recorded here and in
-  REPORT.md.
+- **Status:** **RESOLVED by ADR errata** (2026-08-31): Appendix D step 9
+  now pins the runtime's documented 0.12 s "±1 frame + mux epsilon"
+  tolerance, with the reason recorded inline and in Appendix E's
+  post-implementation errata. This E2E asserts `frameCount == 150`
+  exactly (the load-bearing frame-exactness claim) and uses the 0.12 s
+  container-duration tolerance.
