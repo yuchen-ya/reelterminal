@@ -10,7 +10,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromiumAvailable, ffmpegAvailable, makeRoots, spawnCli, type Roots } from "./helpers";
 
@@ -168,21 +169,30 @@ describe("doctor: exit code 2 unusable", () => {
       console.warn("[doctor] SKIP unusable test: this probe needs chromium to isolate the ffmpeg failure");
       return;
     }
-    // A PATH without ffmpeg/ffprobe: probe's ffmpeg facts go unavailable.
-    const handle = spawnCli(["doctor", "--log-level", "error"], {
-      PATH: "/usr/bin:/bin:/usr/sbin",
-      OPENREEL_AVE_MEDIA_ROOTS: roots.mediaRoot,
-      OPENREEL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
-      OPENREEL_AVE_PROJECT_ROOTS: roots.projectRoot,
-    });
-    const exitCode = await handle.exitCode;
-    // The chromium runtime may still be healthy — the ffmpeg gap alone is
-    // unusable per the doctor contract.
-    const report = JSON.parse(handle.stdout) as DoctorReport;
-    expect([1, 2]).toContain(exitCode);
-    if (report.ffmpeg.available === false) {
-      expect(exitCode).toBe(2);
-      expect(report.verdict.classification).toBe("unusable");
+    // A PATH that cannot contain ffmpeg on ANY platform: macOS keeps it in
+    // /opt/homebrew/bin, but ubuntu CI apt-installs it into /usr/bin, so a
+    // "minimal system PATH" still resolves it there. An empty temp dir is
+    // the only deterministic hiding place (spawnCli uses the absolute
+    // process.execPath, so the child node starts fine without a PATH).
+    const emptyBin = await mkdtemp(path.join(tmpdir(), "ave-no-ffmpeg-"));
+    try {
+      const handle = spawnCli(["doctor", "--log-level", "error"], {
+        PATH: emptyBin,
+        OPENREEL_AVE_MEDIA_ROOTS: roots.mediaRoot,
+        OPENREEL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
+        OPENREEL_AVE_PROJECT_ROOTS: roots.projectRoot,
+      });
+      const exitCode = await handle.exitCode;
+      // The chromium runtime may still be healthy — the ffmpeg gap alone is
+      // unusable per the doctor contract.
+      const report = JSON.parse(handle.stdout) as DoctorReport;
+      expect([1, 2]).toContain(exitCode);
+      if (report.ffmpeg.available === false) {
+        expect(exitCode).toBe(2);
+        expect(report.verdict.classification).toBe("unusable");
+      }
+    } finally {
+      await rm(emptyBin, { recursive: true, force: true });
     }
   }, 300_000);
 });
