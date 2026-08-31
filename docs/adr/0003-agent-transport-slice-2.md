@@ -1319,6 +1319,47 @@ the real binary (full detail: `docs/slice-2/evidence/findings/FINDINGS.md`):
    contract, exactly the class of bug the black-box acceptance loop
    exists to catch.
 
+### Post-implementation errata (2026-09-01, phase-2 acceptance)
+
+Recorded when the phase-2 iteration loop converted promo-v1's ranked
+black-box friction log (`friction-log.md` F1/F3/F4) into general edit
+vocabulary:
+
+4. **The closed `edit.apply` op set widened from 4 to 7 ops.** F1 (no
+   way to remove or revise a text overlay), F3 (every overlay pinned to
+   frame center), and F4 (no gain control on the timeline) were the
+   top-ranked findings of the promo-v1 acceptance. Added: optional
+   `position`/`anchor` on `text.create` (normalized 0..1 frame
+   coordinates — the resolution-independent model core's
+   `Transform.position`/`anchor` already defined and the renderer
+   already resolved per frame size, so preview and export place text
+   identically); `text.update` (by `overlayId`; style MERGES with the
+   existing style and position/anchor merge with the existing transform
+   because core `text/update` shallow-spreads; at-least-one-field is a
+   validator-only predicate, like `clip.trim`'s in/out);
+   `text.delete`; and `clip.setVolume` (linear gain 0..4, matching
+   core's realtime clamp; 0 = mute, 1 = unity — honored by the export
+   chain's per-clip GainNode). `timeline.get`/`project.get_state` now
+   surface each overlay's `position`/`anchor` so an agent can edit what
+   it can see. Decision 4's single-source invariant is *strengthened*:
+   `EDIT_APPLY_SCHEMA`'s anyOf variants now derive from the
+   compile-time-keyed `EDIT_OP_SCHEMAS` record instead of a
+   hand-maintained list. B.1 stays at 14 MCP tools (these are ops, not
+   verbs); `packages/core` is untouched (the `text/update`,
+   `text/remove`, `audio/setVolume` handlers pre-existed); no
+   transition system; no promo-specific ops. `text.create` still mints
+   its own id (returned in `createdIds`), so a same-batch reference to
+   a not-yet-created overlay remains impossible by design — flagged
+   for a future slice. Evidence: facade 277→311 tests, transport
+   161→180; two new gated E2Es pin the behavior with real Chromium +
+   ffmpeg — position band proofs (text at y=0.85: bottom band
+   mean|Δ|=30.839 / top 0.000; after `text.update` to y=0.15: top
+   33.898 / bottom 0.000; after `text.delete`: full frame back to
+   baseline 0.000) and an export loudness proof (volume 1.0 vs 0.2:
+   identical audio codec, mean-volume drop 14.00 dB ≥ the asserted 8
+   dB). Commits `4350579`, `af4107e`, `3a3dd40`; SKILL.md documents
+   the widened vocabulary within its Decision-9 charter.
+
 ## Appendix F: Implementation slices, risks, and deferred candidates
 
 **Suggested slices** (each lands tested; product-code changes are limited
