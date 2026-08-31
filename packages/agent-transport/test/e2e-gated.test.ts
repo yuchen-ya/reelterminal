@@ -82,7 +82,7 @@ describe.skipIf(!runtimeHealthy)("closed loop over run (real Chromium + ffmpeg)"
           compare: { referencePath: { $ref: "preview#/artifact/path" }, timeSec: 2.5, mode: "similar", maxMeanAbsDiff: 14 },
         } },
     ]);
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode, result.stdoutLines.map((l) => JSON.stringify(l)).join("\n")).toBe(0);
     const [, , , previewLine, , waitLine, verifyLine, similarLine] = result.stdoutLines;
     expect(previewLine.result.ok).toBe(true);
     expect(previewLine.result.value.artifact.sourceRevision).toBe(2);
@@ -138,7 +138,7 @@ describe.skipIf(!runtimeHealthy)("closed loop over run (real Chromium + ffmpeg)"
       { id: "previewA", verb: "preview.render_frame", params: { timeSec: 2.5, expectedRevision: 2 } },
       { id: "save", verb: "project.save", params: { path: checkpoint } },
     ]);
-    expect(a.exitCode).toBe(0);
+    expect(a.exitCode, a.stdoutLines.map((l) => JSON.stringify(l)).join("\n")).toBe(0);
     const previewAPath = a.stdoutLines[3].result.value.artifact.path;
 
     // Process B: open (continues at saved revision) → export → await →
@@ -157,7 +157,7 @@ describe.skipIf(!runtimeHealthy)("closed loop over run (real Chromium + ffmpeg)"
           compare: { referencePath: previewAPath, timeSec: 2.5, mode: "similar", maxMeanAbsDiff: 14 },
         } },
     ]);
-    expect(b.exitCode).toBe(0);
+    expect(b.exitCode, b.stdoutLines.map((l) => JSON.stringify(l)).join("\n")).toBe(0);
     const [, previewBLine, , , verifyLine, similarLine] = b.stdoutLines;
     expect(previewBLine.result.ok).toBe(true);
     expect(verifyLine.result.value.pass).toBe(true);
