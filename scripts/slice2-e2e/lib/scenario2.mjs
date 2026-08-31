@@ -225,8 +225,8 @@ export async function scenario2Run({ env, recorder, cliPath, variant }) {
   await recorder.step("6b", "process B: compare similar previewB vs previewA — pixel continuity across the restart", [
     ...compareSimilarChecks(simAValue, "previewA.png (pre-restart)"),
   ]);
-  await recorder.step("8a", "process B export_start ⇒ queued", exportStartedChecks(exportBValue));
-  await recorder.step("8b", "process B export reached terminal done", exportDoneChecks(waitBValue));
+  await recorder.step("8a", "process B export_start ⇒ queued", exportStartedChecks(exportBValue, revisionBefore + 1));
+  await recorder.step("8b", "process B export reached terminal done", exportDoneChecks(waitBValue, revisionBefore + 1));
   await recorder.sha256Of(waitBValue.artifact.path, "s2 exported MP4");
   await recorder.step("6c", "process B: full verify battery of scenario 1 step 9 incl. compare-similar vs its own preview", [
     ...verifyProbeChecks(batteryValue),
@@ -326,8 +326,8 @@ export async function scenario2Mcp({ env, recorder, cliPath, variant }) {
   const exportB = await clientB.call("export_start", { settings: EXPORT_SETTINGS, idempotencyKey: `s2-expB-${variant.toLowerCase()}` });
   const doneB = await pollToTerminal({ client: clientB, jobId: exportB.facadeResult.value.jobId, recorder, label: `${label}/B` });
   await recorder.step("8", "process B export_start ⇒ queued → terminal done (poll 2.5 s)", [
-    ...exportStartedChecks(exportB.facadeResult.value),
-    ...exportDoneChecks(doneB),
+    ...exportStartedChecks(exportB.facadeResult.value, revisionBefore + 1),
+    ...exportDoneChecks(doneB, revisionBefore + 1),
   ]);
   await recorder.sha256Of(doneB.artifact.path, "s2 exported MP4 (mcp)");
 

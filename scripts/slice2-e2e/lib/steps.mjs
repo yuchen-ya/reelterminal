@@ -185,16 +185,18 @@ export async function previewChecks(value, env, expectedSourceRevision = 2) {
   ];
 }
 
-/* Appendix D step 8 — export reaches terminal done. */
-export function exportStartedChecks(value) {
+/* Appendix D step 8 — export reaches terminal done. Scenario 2's process-B
+ * export snapshots the project AFTER the continued edit, so its
+ * sourceRevision is passed explicitly (revisionBefore + 1). */
+export function exportStartedChecks(value, expectedSourceRevision = 2) {
   return [
     matches("export_start: jobId minted", value?.jobId, (j) => typeof j === "string" && j.startsWith("job-")),
     eq("export_start: state queued", value?.state, "queued"),
-    eq("export_start: sourceRevision 2", value?.sourceRevision, 2),
+    eq(`export_start: sourceRevision ${expectedSourceRevision}`, value?.sourceRevision, expectedSourceRevision),
   ];
 }
 
-export function exportDoneChecks(status) {
+export function exportDoneChecks(status, expectedSourceRevision = 2) {
   return [
     eq("job terminal state done", status?.state, "done"),
     matches(
@@ -207,7 +209,7 @@ export function exportDoneChecks(status) {
         s.route !== "",
       JSON.stringify({ artifact: status?.artifact, route: status?.route }),
     ),
-    eq("done job: sourceRevision 2", status?.sourceRevision, 2),
+    eq(`done job: sourceRevision ${expectedSourceRevision}`, status?.sourceRevision, expectedSourceRevision),
   ];
 }
 
