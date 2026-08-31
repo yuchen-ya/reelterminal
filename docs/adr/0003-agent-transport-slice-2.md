@@ -1308,6 +1308,16 @@ the real binary (full detail: `docs/slice-2/evidence/findings/FINDINGS.md`):
    8000 kbps — a 4,986,587-byte multi-chunk export reaching `done`,
    82/82 checks — under
    `docs/slice-2/evidence/findings/finding1-export-overcount/resolution/`.
+3. **`serve`/`run` ignored every `OPENREEL_AVE_*` env var** — found by
+   the black-box creative acceptance agent (promo-v1) following
+   SKILL.md's env-based per-client snippets into a rootless session.
+   `mergeEnvRoots` existed from 2c but no command called it, and
+   `OPENREEL_TRANSPORT_LOG` was read nowhere; doctor's own env path is
+   why doctor looked correct. Fixed in `4aa4e23` (both commands now
+   merge env under flags; six regression tests pin the wiring). The
+   B.5 text needed no change — this was the implementation failing the
+   contract, exactly the class of bug the black-box acceptance loop
+   exists to catch.
 
 ## Appendix F: Implementation slices, risks, and deferred candidates
 
