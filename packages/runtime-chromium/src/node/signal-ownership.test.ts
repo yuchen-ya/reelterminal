@@ -16,16 +16,8 @@
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { ChromiumRuntime } from "./runtime";
-
-const packageDir = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "..",
-);
 
 const hasChromium = (() => {
   try {
