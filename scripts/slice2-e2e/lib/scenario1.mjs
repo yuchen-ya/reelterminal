@@ -226,8 +226,12 @@ export async function scenario1Run({ env, recorder, cliPath }) {
       { id: "timelineAfter", verb: "timeline.get", params: {} },
     ],
   });
+  // Compare within THIS probe session: the ledger is per-process, so the
+  // replay must equal the edit committed earlier in the same workflow (a
+  // cross-session result would carry different minted ids by design).
+  const probeEditValue = okValue(lineById(probeRun.lines, "edit"), "edit");
   await recorder.step("6b", "replay same key+payload ⇒ identical result replayed:true", [
-    ...replayChecks(okValue(lineById(probeRun.lines, "replay"), "replay"), editValue),
+    ...replayChecks(okValue(lineById(probeRun.lines, "replay"), "replay"), probeEditValue),
   ]);
   await recorder.step("6c", "same key different payload ⇒ CONFLICT", [
     eqExit("probe run exit 1 (--keep-going: exit still reflects the first failure)", probeRun.exitCode, 1),
