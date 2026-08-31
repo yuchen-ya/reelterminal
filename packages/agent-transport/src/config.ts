@@ -180,6 +180,23 @@ export function mergeEnvRoots(
   };
 }
 
+/** Flags beat env for the log level too (B.5); an invalid env value refuses startup. */
+export function mergeEnvLogLevel(
+  logLevel: LogLevel | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): LogLevel {
+  if (logLevel !== undefined) return logLevel;
+  const raw = env[CONFIG_DEFAULTS.logLevelEnv];
+  if (raw === undefined) return "info";
+  if (raw !== "error" && raw !== "info" && raw !== "debug") {
+    throw new ConfigRefusal(
+      `${CONFIG_DEFAULTS.logLevelEnv} must be error|info|debug (got "${raw}")`,
+      { env: CONFIG_DEFAULTS.logLevelEnv, value: raw },
+    );
+  }
+  return raw;
+}
+
 /**
  * Startup validation of ONE root (Decision 6): absolute (never `~`-expanded),
  * exists, is a directory, stored in realpath form. Refusal message names the

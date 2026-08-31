@@ -25,7 +25,7 @@ import { isAbsolute } from "node:path";
 
 import type { AgentFacade, FacadeResult } from "@openreel/agent-facade";
 
-import { parseArgv, resolveConfig, refuseStartup, type TransportConfig } from "./config";
+import { parseArgv, resolveConfig, mergeEnvRoots, mergeEnvLogLevel, refuseStartup, type TransportConfig } from "./config";
 import { logError, logInfo, setLogLevel } from "./log";
 import { findRelativePathViolations, relativePathMessage } from "./paths";
 import { createTransportSession, isTerminalJobState, type TransportSession } from "./session";
@@ -761,7 +761,7 @@ export async function runCommand(argv: readonly string[]): Promise<number> {
   }
   let config: TransportConfig;
   try {
-    config = await resolveConfig(parsed.roots, parsed.logLevel);
+    config = await resolveConfig(mergeEnvRoots(parsed.roots), mergeEnvLogLevel(parsed.logLevel));
   } catch (error) {
     refuseStartup(error, "run");
   }

@@ -114,8 +114,11 @@ export interface McpClient {
 }
 
 /** Minimal NDJSON MCP client over a spawned serve process. */
-export function startServe(args: readonly string[] = []): McpClient {
-  const handle = spawnCli(["serve", ...args]);
+export function startServe(
+  args: readonly string[] = [],
+  env: Record<string, string | undefined> = {},
+): McpClient {
+  const handle = spawnCli(["serve", ...args], env);
   const pending: Record<string, any>[] = [];
   let notify: (() => void) | null = null;
   handle.child.stdout.on("data", (chunk: string) => {

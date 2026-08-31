@@ -14,6 +14,7 @@ export { createTransportSession, isTerminalJobState, type TransportSession } fro
 export {
   canonicalizeRoot,
   mergeEnvRoots,
+  mergeEnvLogLevel,
   parseArgv,
   resolveConfig,
   ConfigRefusal,

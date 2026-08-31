@@ -30,6 +30,8 @@ import { FACADE_CONTRACT_VERSION, type FacadeResult } from "@openreel/agent-faca
 import {
   parseArgv,
   resolveConfig,
+  mergeEnvRoots,
+  mergeEnvLogLevel,
   refuseStartup,
   type TransportConfig,
 } from "./config";
@@ -57,7 +59,7 @@ export async function serveCommand(argv: readonly string[]): Promise<never> {
   }
   let config: TransportConfig;
   try {
-    config = await resolveConfig(parsed.roots, parsed.logLevel);
+    config = await resolveConfig(mergeEnvRoots(parsed.roots), mergeEnvLogLevel(parsed.logLevel));
   } catch (error) {
     refuseStartup(error, "serve");
   }
