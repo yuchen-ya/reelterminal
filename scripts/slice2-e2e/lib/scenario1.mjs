@@ -302,7 +302,7 @@ export async function scenario1Run({ env, recorder, cliPath }) {
   });
   await recorder.step("10a", "restart ⇒ fresh session has no project and no jobs (NOT_FOUND on reads)", [
     eqExit("reads run exit 1 (the NOT_FOUNDs are the expected outcome)", readsRun.exitCode, 1),
-    postRestartReadsChecks({
+    ...postRestartReadsChecks({
       timelineResult: of(lineById(readsRun.lines, "timelineRead")),
       job1Result: of(lineById(readsRun.lines, "job1Read")),
       job2Result: of(lineById(readsRun.lines, "job2Read")),
@@ -426,7 +426,7 @@ export async function scenario1Mcp({ env, recorder, cliPath }) {
   const job2Read = await client2.call("job_status", { jobId: job2Id });
   await recorder.step("10a", "restart ⇒ fresh session has no project and no jobs (NOT_FOUND on reads)", [
     truthyExit("serve exited 0 on client disconnect (stdin EOF)", exitCode === 0, `exitCode=${exitCode}`),
-    postRestartReadsChecks({
+    ...postRestartReadsChecks({
       timelineResult: timelineRead.facadeResult,
       job1Result: job1Read.facadeResult,
       job2Result: job2Read.facadeResult,

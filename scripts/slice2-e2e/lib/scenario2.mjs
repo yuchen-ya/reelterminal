@@ -430,7 +430,7 @@ async function runCorruptionProbes({ env, recorder, cliPath, mode, v1Path, varia
     { code: "INVALID_PARAMS", wording: WORDINGS.mediaRefsBinding },
   );
   await recorder.step("6d-iii-2", "binding refusal names the offending mediaId", [
-    mediaMovedDetailsChecks(divergedResult),
+    ...mediaMovedDetailsChecks(divergedResult),
   ]);
 
   // 6d-iv — referenced media renamed away ⇒ refusal naming the mediaId.
@@ -450,7 +450,7 @@ async function runCorruptionProbes({ env, recorder, cliPath, mode, v1Path, varia
     await fs.rename(awayPath, env.inputMp4);
   }
   await recorder.step("6d-iv-2", "media-moved refusal names the offending mediaId", [
-    mediaMovedDetailsChecks(movedResult),
+    ...mediaMovedDetailsChecks(movedResult),
   ]);
 
   // 6d-v — checkpoint path through a symlinked directory escaping
