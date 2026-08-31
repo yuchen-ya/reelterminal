@@ -179,13 +179,9 @@ async function main() {
   );
   out.push("");
 
-  await writeFileSafe(reportPath, out.join("\n"));
-  console.log(`report written: ${reportPath}`);
-}
-
-async function writeFileSafe(text) {
   const { writeFile } = await import("node:fs/promises");
-  await writeFile(reportPath, text, "utf8");
+  await writeFile(reportPath, out.join("\n"), "utf8");
+  console.log(`report written: ${reportPath}`);
 }
 
 main().catch((error) => {

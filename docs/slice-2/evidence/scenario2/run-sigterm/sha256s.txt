@@ -1,0 +1,5 @@
+# sha256 — scenario2 (run; SIGTERM variant; simulated client)
+674aa3c450fe93f7e595d3bf14aeee9990e7ced9255dc3300c12f2e29af08b10  s2 previewA PNG
+8acac19fb4eaafdf09fa5bf74a8d9b333171cc142159be1cba59135b46706d35  s2 e2e-v1.openreel.json
+8aa5e24cd060589d6a3fc863b16401d12ca5b2276c5c8b0351eec4da24a39333  s2 previewB PNG
+b1cb01d6cf65658a73a8d6925ae63e8bc980a45902e1f7b1f5bda73d25ed7de0  s2 exported MP4

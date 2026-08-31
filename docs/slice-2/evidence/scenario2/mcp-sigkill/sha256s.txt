@@ -1,0 +1,5 @@
+# sha256 — scenario2 (mcp; SIGKILL variant; simulated client)
+674aa3c450fe93f7e595d3bf14aeee9990e7ced9255dc3300c12f2e29af08b10  s2 previewA PNG (mcp)
+3fb50a976015359107ae7def2d98b9bc29ebd089d135094a9a245ac0aaab33a8  s2 e2e-v1.openreel.json (mcp)
+8aa5e24cd060589d6a3fc863b16401d12ca5b2276c5c8b0351eec4da24a39333  s2 previewB PNG (mcp)
+24a6781dd65b1f301242c3843862c318ca7278b2e0510bc1fc2df93e4684d4e8  s2 exported MP4 (mcp)

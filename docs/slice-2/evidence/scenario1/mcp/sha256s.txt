@@ -1,0 +1,3 @@
+# sha256 — scenario1 (mcp; simulated client)
+674aa3c450fe93f7e595d3bf14aeee9990e7ced9255dc3300c12f2e29af08b10  s1 preview PNG (mcp)
+e212f40f4cc32b3cf61850709f1468854553523711672b1a2b1dc03ec4038bcb  s1 exported MP4 (mcp)
