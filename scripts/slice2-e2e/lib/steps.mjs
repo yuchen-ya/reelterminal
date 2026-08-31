@@ -20,6 +20,15 @@ import {
   truthy,
 } from "./common.mjs";
 
+/** 1920x1080@30 settings equality, component-wise. */
+function settingsChecks(settings, label) {
+  return [
+    eq(`${label}: settings.width == 1920`, settings?.width, PROJECT_SETTINGS.width),
+    eq(`${label}: settings.height == 1080`, settings?.height, PROJECT_SETTINGS.height),
+    eq(`${label}: settings.frameRate == 30`, settings?.frameRate, PROJECT_SETTINGS.frameRate),
+  ];
+}
+
 /* Appendix D step 2 — discover. */
 export function discoverChecks(describeValue, capsValue) {
   const verbs = describeValue?.verbs ?? [];
@@ -51,16 +60,7 @@ export function createChecks(value) {
   return [
     eq("create: revision 0", value?.revision, 0),
     eq("create: replayed false", value?.replayed, false),
-    eq(
-      "create: project settings are 1920x1080@30",
-      [
-        value?.project?.settings?.width,
-        value?.project?.settings?.height,
-        value?.project?.settings?.frameRate,
-      ].join("x@"),
-      `${PROJECT_SETTINGS.width}x@${PROJECT_SETTINGS.height}@${PROJECT_SETTINGS.frameRate}`,
-      JSON.stringify(value?.project?.settings),
-    ),
+    settingsChecks(value?.project?.settings, "create"),
   ];
 }
 
@@ -318,15 +318,7 @@ export function openChecks(openValue, revisionBefore) {
     truthy("open: ok", openValue?.revision !== undefined, JSON.stringify(openValue)),
     eq("open: adopted at the saved revision", openValue?.revision, revisionBefore),
     eq("open: replayed false", openValue?.replayed, false),
-    eq(
-      "open: project settings survived the checkpoint round-trip",
-      [
-        openValue?.project?.settings?.width,
-        openValue?.project?.settings?.height,
-        openValue?.project?.settings?.frameRate,
-      ].join("x@"),
-      `${PROJECT_SETTINGS.width}x@${PROJECT_SETTINGS.height}@${PROJECT_SETTINGS.frameRate}`,
-    ),
+    settingsChecks(openValue?.project?.settings, "open"),
   ];
 }
 

@@ -126,6 +126,7 @@ export function spawnWorkflow({ cliPath, recorder, label, steps, env = {}, flags
     stderr += chunk;
   });
   const lines = [];
+  const lineWaiters = [];
   let stdoutBuffer = "";
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk) => {
@@ -145,16 +146,23 @@ export function spawnWorkflow({ cliPath, recorder, label, steps, env = {}, flags
       }
       lines.push(parsed);
       void recorder?.record("run-step", { label, line: parsed });
+      const waiter = lineWaiters.shift();
+      if (waiter) waiter(parsed);
     }
   });
   let exitResolve;
   const exitPromise = new Promise((resolve) => {
     exitResolve = resolve;
   });
-  child.on("close", (code, signal) => exitResolve({ code, signal }));
+  child.on("close", (code, signal) => {
+    exitResolve({ code, signal });
+    const waiter = lineWaiters.shift();
+    if (waiter) waiter(null);
+  });
   return {
     child,
     lines,
+    lineWaiters,
     stderr: () => stderr,
     exitPromise,
     workflowPath,

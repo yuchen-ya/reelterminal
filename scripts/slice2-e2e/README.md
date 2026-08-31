@@ -71,6 +71,9 @@ docs/slice-2/evidence/
 docs/slice-2/REPORT.md        the run report tying it all together
 ```
 
+REPORT.md is rendered from the committed transcripts by
+`node scripts/slice2-e2e/report.mjs` — rerun it after any evidence run.
+
 Generated media/artifacts/checkpoints are NOT committed; they live in a fresh
 OS temp dir per scenario execution (`--keep-evidence` prints and keeps it).
 
