@@ -10,6 +10,7 @@
  * Every step letter of Appendix D maps to machine-checked assertions.
  */
 import { existsSync } from "node:fs";
+import { promises as fs } from "node:fs/promises";
 import path from "node:path";
 
 import { CLIP_DURATION_SEC, PROJECT_SETTINGS } from "./env.mjs";
@@ -183,7 +184,10 @@ export async function scenario1Run({ env, recorder, cliPath }) {
 
   // Step 6 — honesty probes, each expected-failing probe its OWN run
   // invocation (Appendix D step 6, Pi-class multi-invocation rule).
+  // The file must EXIST for the probe to reach the containment verdict: a
+  // nonexistent path is classified "cannot be read" before the roots check.
   const outsidePath = path.join(env.scratchDir, "outside.mp4");
+  await fs.writeFile(outsidePath, "probe: outside mediaRoots\n", "utf8");
   const outsideRun = await runWorkflow({
     cliPath,
     recorder,
@@ -346,8 +350,10 @@ export async function scenario1Mcp({ env, recorder, cliPath }) {
   await recorder.step("5", "edit_apply ⇒ revision 2 (0→1→2 arithmetic)", editChecks(edit.facadeResult.value));
 
   // Step 6 — honesty probes in the SAME long-lived session.
+  const outsidePath = path.join(env.scratchDir, "outside.mp4");
+  await fs.writeFile(outsidePath, "probe: outside mediaRoots\n", "utf8");
   const outside = await client.call("media_import", {
-    path: path.join(env.scratchDir, "outside.mp4"),
+    path: outsidePath,
     expectedRevision: 0,
     idempotencyKey: "s2-outside",
   });
