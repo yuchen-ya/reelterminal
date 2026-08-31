@@ -355,9 +355,10 @@ export async function scenario1Mcp({ env, recorder, cliPath }) {
   // Step 6 — honesty probes in the SAME long-lived session.
   const outsidePath = path.join(env.scratchDir, "outside.mp4");
   await fs.writeFile(outsidePath, "probe: outside mediaRoots\n", "utf8");
+  // No expectedRevision here: this probe runs mid-session (revision 2), and
+  // the point under test is containment, not the revision guard.
   const outside = await client.call("media_import", {
     path: outsidePath,
-    expectedRevision: 0,
     idempotencyKey: "s2-outside",
   });
   await recorder.step("6a", "media_import outside roots ⇒ INVALID_PARAMS (escape wording)", [
