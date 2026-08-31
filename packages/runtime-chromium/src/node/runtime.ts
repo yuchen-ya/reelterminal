@@ -84,6 +84,9 @@ export interface ExportProgressJson {
 export class PartFileWriter {
   private fd: FileHandle | null = null;
   private position = 0;
+  // High-water mark of written end positions, not a write sum: the chunked
+  // StreamTarget rewrites regions (e.g. header patches after a mid-stream
+  // flush), and summing those bytes would overcount the real file size.
   private bytesWritten = 0;
 
   private constructor(
@@ -110,7 +113,7 @@ export class PartFileWriter {
     const buffer = Buffer.from(base64, "base64");
     await this.fd.write(buffer, 0, buffer.length, this.position);
     this.position += buffer.length;
-    this.bytesWritten += buffer.length;
+    if (this.position > this.bytesWritten) this.bytesWritten = this.position;
   }
 
   /** Close and atomically rename into place. Only route to real artifacts. */
