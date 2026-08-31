@@ -163,6 +163,116 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       },
       expectValid: true,
     },
+    {
+      name: "valid text.create with position and anchor",
+      params: {
+        ops: [
+          { op: "text.create", text: "Lower third", startTime: 0, duration: 4, position: { x: 0.5, y: 0.85 }, anchor: { x: 0.5, y: 0.5 } },
+        ],
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid text.update with text only",
+      params: {
+        ops: [{ op: "text.update", overlayId: "text-1", text: "New copy" }],
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid text.update with position, style and timing",
+      params: {
+        ops: [
+          { op: "text.update", overlayId: "text-1", startTime: 1, duration: 3, style: { color: "#ff0000" }, position: { x: 0.5, y: 0.15 } },
+        ],
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid text.delete",
+      params: { ops: [{ op: "text.delete", overlayId: "text-1" }] },
+      expectValid: true,
+    },
+    {
+      name: "valid clip.setVolume at the ceiling",
+      params: { ops: [{ op: "clip.setVolume", clipId: "c1", volume: 4 }] },
+      expectValid: true,
+    },
+    {
+      name: "valid clip.setVolume mute",
+      params: { ops: [{ op: "clip.setVolume", clipId: "c1", volume: 0 }] },
+      expectValid: true,
+    },
+    {
+      name: "position x above 1",
+      params: {
+        ops: [{ op: "text.create", text: "x", startTime: 0, duration: 2, position: { x: 1.5, y: 0.5 } }],
+      },
+      expectValid: false,
+    },
+    {
+      name: "anchor y below 0",
+      params: {
+        ops: [{ op: "text.update", overlayId: "text-1", anchor: { x: 0.5, y: -0.1 } }],
+      },
+      expectValid: false,
+    },
+    {
+      name: "position missing y",
+      params: {
+        ops: [{ op: "text.update", overlayId: "text-1", position: { x: 0.5 } }],
+      },
+      expectValid: false,
+    },
+    {
+      name: "volume above the ceiling",
+      params: { ops: [{ op: "clip.setVolume", clipId: "c1", volume: 4.5 }] },
+      expectValid: false,
+    },
+    {
+      name: "volume below zero",
+      params: { ops: [{ op: "clip.setVolume", clipId: "c1", volume: -0.5 }] },
+      expectValid: false,
+    },
+    {
+      name: "wrong type volume",
+      params: { ops: [{ op: "clip.setVolume", clipId: "c1", volume: "1" }] },
+      expectValid: false,
+    },
+    {
+      name: "missing overlayId in text.delete",
+      params: { ops: [{ op: "text.delete" }] },
+      expectValid: false,
+    },
+    {
+      name: "unknown field in text.update",
+      params: {
+        ops: [{ op: "text.update", overlayId: "text-1", font_size: 48 }],
+      },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: whitespace-only text.update",
+      params: { ops: [{ op: "text.update", overlayId: "text-1", text: "   " }] },
+      expectValid: false,
+      schemaValid: true,
+    },
+    {
+      name: "schema-valid but facade-rejected: text.update needs at least one updatable field",
+      params: { ops: [{ op: "text.update", overlayId: "text-1" }] },
+      expectValid: false,
+      schemaValid: true,
+    },
+    {
+      name: "schema-valid but facade-rejected: whitespace-only text.create",
+      params: {
+        ops: [
+          { op: "text.create", text: "   ", startTime: 0, duration: 2 },
+        ],
+      },
+      expectValid: false,
+      schemaValid: true,
+    },
     { name: "missing required ops", params: { expectedRevision: 0 }, expectValid: false },
     { name: "ops must be an array", params: { ops: "track.add" }, expectValid: false },
     { name: "ops must not be empty", params: { ops: [] }, expectValid: false },

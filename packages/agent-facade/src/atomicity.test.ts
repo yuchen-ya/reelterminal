@@ -108,4 +108,90 @@ describe("edit.apply atomicity", () => {
     expect(afterState.value.revision).toBe(beforeRevision);
     expect(projectJson(afterState.value.project)).toBe(beforeJson);
   });
+
+  it("a failed batch after text.delete leaves the overlay in place, revision unchanged", async () => {
+    // Seed: one text overlay (revision 1).
+    const seeded = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "text", trackId: "t1" },
+        { op: "text.create", trackId: "t1", text: "survivor", startTime: 0, duration: 5 },
+      ],
+    });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) return;
+    const overlayId = seeded.value.applied[1]?.createdIds[0];
+    expect(overlayId).toBeTruthy();
+
+    const before = await facade["project.get_state"]();
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+    const beforeJson = projectJson(before.value.project);
+
+    const res = await facade["edit.apply"]({
+      ops: [
+        { op: "text.delete", overlayId: overlayId as string },
+        // Fails the whole batch after the delete already applied to the draft.
+        { op: "clip.trim", clipId: "no-such-clip", outPoint: 5 },
+      ],
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("NOT_FOUND");
+
+    const after = await facade["project.get_state"]();
+    expect(after.ok).toBe(true);
+    if (!after.ok) return;
+    expect(after.value.revision).toBe(before.value.revision);
+    expect(projectJson(after.value.project)).toBe(beforeJson);
+    expect(after.value.project.textClips ?? []).toHaveLength(1);
+  });
+
+  it("a failed batch after clip.setVolume leaves the volume untouched, revision unchanged", async () => {
+    // Seed: one video clip (revision 2 after import + edit).
+    const imported = await facade["media.import"]({
+      path: `${mediaRoot}/tiny-6s.mp4`,
+    });
+    expect(imported.ok).toBe(true);
+    if (!imported.ok) return;
+    const seeded = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v1" },
+        {
+          op: "clip.add",
+          trackId: "v1",
+          mediaId: imported.value.mediaId,
+          startTime: 0,
+          clipId: "c1",
+        },
+      ],
+    });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) return;
+
+    const before = await facade["project.get_state"]();
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+    const beforeJson = projectJson(before.value.project);
+
+    const res = await facade["edit.apply"]({
+      ops: [
+        { op: "clip.setVolume", clipId: "c1", volume: 0 },
+        // Fails the whole batch after the volume change applied to the draft.
+        { op: "text.delete", overlayId: "text-ghost" },
+      ],
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("NOT_FOUND");
+
+    const after = await facade["project.get_state"]();
+    expect(after.ok).toBe(true);
+    if (!after.ok) return;
+    expect(after.value.revision).toBe(before.value.revision);
+    expect(projectJson(after.value.project)).toBe(beforeJson);
+    const clip = after.value.project.timeline.tracks
+      .flatMap((t) => t.clips)
+      .find((c) => c.id === "c1");
+    expect(clip?.volume).toBe(1); // the clip/add default, not the batch's 0
+  });
 });

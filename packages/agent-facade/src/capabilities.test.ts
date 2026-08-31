@@ -10,6 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAgentFacade, type AgentFacade } from "./index";
 import type { ProjectRenderAdapter } from "./render/adapter";
+import { EDIT_OP_TYPES } from "./types";
 import { makeTempDir, removeTempDir } from "./test-helpers";
 
 describe("capabilities.get / session.describe", () => {
@@ -62,7 +63,11 @@ describe("capabilities.get / session.describe", () => {
       "clip.add",
       "clip.trim",
       "text.create",
+      "text.update",
+      "text.delete",
+      "clip.setVolume",
     ]);
+    expect(res.value.editOps).toEqual([...EDIT_OP_TYPES]);
     expect(res.value.stateModel).toEqual({
       canonicalProject: true,
       atomicBatch: true,

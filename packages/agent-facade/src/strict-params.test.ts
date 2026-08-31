@@ -139,4 +139,96 @@ describe("strict params", () => {
     expect(res.error.message).toContain("font_size");
     await expectZeroSideEffects(0);
   });
+
+  it("rejects unknown fields on text.update", async () => {
+    const res = await facade["edit.apply"]({
+      ops: [
+        { op: "text.update", overlayId: "text-1", color: "#fff" } as never,
+      ],
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("INVALID_PARAMS");
+    expect(res.error.message).toContain("color");
+    await expectZeroSideEffects(0);
+  });
+
+  it("rejects a text.update with zero updatable fields", async () => {
+    const res = await facade["edit.apply"]({
+      ops: [{ op: "text.update", overlayId: "text-1" }],
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("INVALID_PARAMS");
+    expect(res.error.message).toContain("at least one");
+    await expectZeroSideEffects(0);
+  });
+
+  it("rejects a missing overlayId (text.update / text.delete)", async () => {
+    for (const op of [
+      { op: "text.update", text: "x" },
+      { op: "text.delete" },
+    ]) {
+      const res = await facade["edit.apply"]({ ops: [op as never] });
+      expect(res.ok, JSON.stringify(op)).toBe(false);
+      if (res.ok) continue;
+      expect(res.error.code).toBe("INVALID_PARAMS");
+    }
+    await expectZeroSideEffects(0);
+  });
+
+  it("rejects whitespace-only text in text.update", async () => {
+    const res = await facade["edit.apply"]({
+      ops: [{ op: "text.update", overlayId: "text-1", text: "   " }],
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("INVALID_PARAMS");
+    await expectZeroSideEffects(0);
+  });
+
+  it("rejects position/anchor outside [0, 1]", async () => {
+    for (const [field, point] of [
+      ["position", { x: -0.1, y: 0.5 }],
+      ["position", { x: 0.5, y: 1.5 }],
+      ["anchor", { x: 2, y: 0.5 }],
+      ["anchor", { x: 0.5, y: NaN }],
+    ] as const) {
+      const res = await facade["edit.apply"]({
+        ops: [
+          {
+            op: "text.create",
+            text: "x",
+            startTime: 0,
+            duration: 2,
+            [field]: point,
+          } as never,
+        ],
+      });
+      expect(res.ok, `${field} ${JSON.stringify(point)}`).toBe(false);
+      if (res.ok) continue;
+      expect(res.error.code).toBe("INVALID_PARAMS");
+    }
+    // Same bounds on text.update:
+    const upd = await facade["edit.apply"]({
+      ops: [
+        { op: "text.update", overlayId: "text-1", position: { x: 0.5, y: 1.0001 } },
+      ],
+    });
+    expect(upd.ok).toBe(false);
+    if (!upd.ok) expect(upd.error.code).toBe("INVALID_PARAMS");
+    await expectZeroSideEffects(0);
+  });
+
+  it("rejects volume outside [0, 4] and wrong-typed volume", async () => {
+    for (const volume of [-0.5, 4.0001, "1", NaN, null]) {
+      const res = await facade["edit.apply"]({
+        ops: [{ op: "clip.setVolume", clipId: "c1", volume } as never],
+      });
+      expect(res.ok, String(volume)).toBe(false);
+      if (res.ok) continue;
+      expect(res.error.code).toBe("INVALID_PARAMS");
+    }
+    await expectZeroSideEffects(0);
+  });
 });

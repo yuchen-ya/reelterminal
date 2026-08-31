@@ -245,6 +245,8 @@ export class AgentFacadeSession {
         text: clip.text,
         startTime: clip.startTime,
         duration: clip.duration,
+        position: { ...clip.transform.position },
+        anchor: { ...clip.transform.anchor },
       })),
     });
   }

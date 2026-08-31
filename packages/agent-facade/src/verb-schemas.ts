@@ -17,8 +17,11 @@
 import { EDIT_OP_TYPES } from "./types";
 import {
   CLIP_ADD_SCHEMA,
+  CLIP_SET_VOLUME_SCHEMA,
   CLIP_TRIM_SCHEMA,
   TEXT_CREATE_SCHEMA,
+  TEXT_DELETE_SCHEMA,
+  TEXT_UPDATE_SCHEMA,
   TRACK_ADD_SCHEMA,
 } from "./ops";
 import {
@@ -162,6 +165,19 @@ export const MEDIA_IMPORT_SCHEMA: ObjectSchema = {
   },
 };
 
+/** Closed op declarations referenced by the edit.apply union, re-exported. */
+export const EDIT_OP_SCHEMAS: Readonly<
+  Record<(typeof EDIT_OP_TYPES)[number], ObjectSchema>
+> = {
+  "track.add": TRACK_ADD_SCHEMA,
+  "clip.add": CLIP_ADD_SCHEMA,
+  "clip.trim": CLIP_TRIM_SCHEMA,
+  "text.create": TEXT_CREATE_SCHEMA,
+  "text.update": TEXT_UPDATE_SCHEMA,
+  "text.delete": TEXT_DELETE_SCHEMA,
+  "clip.setVolume": CLIP_SET_VOLUME_SCHEMA,
+};
+
 export const EDIT_APPLY_SCHEMA: ObjectSchema = {
   ops: {
     check: (v) => Array.isArray(v),
@@ -172,7 +188,7 @@ export const EDIT_APPLY_SCHEMA: ObjectSchema = {
       minItems: 1,
       items: {
         kind: "anyOfObjects",
-        variants: [TRACK_ADD_SCHEMA, CLIP_ADD_SCHEMA, CLIP_TRIM_SCHEMA, TEXT_CREATE_SCHEMA],
+        variants: EDIT_OP_TYPES.map((opType) => EDIT_OP_SCHEMAS[opType]),
       },
     },
   },
@@ -186,16 +202,6 @@ export const EDIT_APPLY_SCHEMA: ObjectSchema = {
     describe: "a non-empty string",
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
   },
-};
-
-/** Closed op declarations referenced by the edit.apply union, re-exported. */
-export const EDIT_OP_SCHEMAS: Readonly<
-  Record<(typeof EDIT_OP_TYPES)[number], ObjectSchema>
-> = {
-  "track.add": TRACK_ADD_SCHEMA,
-  "clip.add": CLIP_ADD_SCHEMA,
-  "clip.trim": CLIP_TRIM_SCHEMA,
-  "text.create": TEXT_CREATE_SCHEMA,
 };
 
 /* ------------------------------------------------------------------ */

@@ -10,12 +10,7 @@ import {
   emitObjectSchema,
   EMITTED_VERB_JSON_SCHEMAS,
 } from "./jsonschema";
-import {
-  CLIP_ADD_SCHEMA,
-  CLIP_TRIM_SCHEMA,
-  TEXT_CREATE_SCHEMA,
-  TRACK_ADD_SCHEMA,
-} from "./ops";
+import { EDIT_OP_SCHEMAS } from "./verb-schemas";
 import { EDIT_OP_TYPES, FACADE_VERBS } from "./types";
 import { VERB_SCHEMA_CORPUS } from "./verb-schema-corpus";
 
@@ -121,15 +116,13 @@ describe("emitted schema per-verb structure", () => {
       type: "array",
       minItems: 1,
       items: {
-        anyOf: [
-          emitObjectSchema(TRACK_ADD_SCHEMA),
-          emitObjectSchema(CLIP_ADD_SCHEMA),
-          emitObjectSchema(CLIP_TRIM_SCHEMA),
-          emitObjectSchema(TEXT_CREATE_SCHEMA),
-        ],
+        anyOf: EDIT_OP_TYPES.map(
+          (opType) => emitObjectSchema(EDIT_OP_SCHEMAS[opType]) as unknown as Schema,
+        ),
       },
     });
     const anyOf = ((ops.items as Schema).anyOf ?? []) as Schema[];
+    expect(anyOf).toHaveLength(7);
     const trackAdd = anyOf[0];
     expect(trackAdd.additionalProperties).toBe(false);
     expect(trackAdd.required).toEqual(["op", "trackType"]);
@@ -148,6 +141,38 @@ describe("emitted schema per-verb structure", () => {
     expect((textCreate.properties as Schema).op).toEqual({ const: "text.create" });
     expect((textCreate.properties as Schema).style).toMatchObject({
       additionalProperties: false,
+    });
+    // Normalized point sub-objects are closed and bounded on both axes.
+    expect((textCreate.properties as Schema).position).toEqual({
+      type: "object",
+      additionalProperties: false,
+      required: ["x", "y"],
+      properties: {
+        x: { type: "number", minimum: 0, maximum: 1 },
+        y: { type: "number", minimum: 0, maximum: 1 },
+      },
+    });
+    expect((textCreate.properties as Schema).anchor).toEqual(
+      (textCreate.properties as Schema).position,
+    );
+    const textUpdate = anyOf[4];
+    expect(textUpdate.required).toEqual(["op", "overlayId"]);
+    expect((textUpdate.properties as Schema).op).toEqual({ const: "text.update" });
+    // Only overlayId is required: at-least-one-updatable-field is validator-only.
+    expect(textUpdate.required).not.toContain("text");
+    expect((textUpdate.properties as Schema).position).toMatchObject({
+      additionalProperties: false,
+    });
+    const textDelete = anyOf[5];
+    expect(textDelete.required).toEqual(["op", "overlayId"]);
+    expect((textDelete.properties as Schema).op).toEqual({ const: "text.delete" });
+    const clipSetVolume = anyOf[6];
+    expect(clipSetVolume.required).toEqual(["op", "clipId", "volume"]);
+    expect((clipSetVolume.properties as Schema).op).toEqual({ const: "clip.setVolume" });
+    expect((clipSetVolume.properties as Schema).volume).toEqual({
+      type: "number",
+      minimum: 0,
+      maximum: 4,
     });
   });
 

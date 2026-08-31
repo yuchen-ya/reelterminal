@@ -1,8 +1,9 @@
 /**
- * The closed Slice-1 op set for edit.apply: strict schema validation and
- * translation into core actions. Facade-level semantic checks that core
- * either skips or gets wrong (MEDIA-04 trim stale base, duplicate track ids)
- * live here so every core action the executor sees is already sane.
+ * The closed edit.apply op set: strict schema validation and translation
+ * into core actions. Facade-level semantic checks that core either skips
+ * or gets wrong (MEDIA-04 trim stale base, duplicate track ids, text
+ * overlay existence) live here so every core action the executor sees is
+ * already sane.
  */
 import type { Action } from "@openreel/core/types/actions";
 import type { Project } from "@openreel/core/types/project";
@@ -25,9 +26,13 @@ import {
   EDIT_OP_TYPES,
   TRACK_TYPES,
   type ClipAddOp,
+  type ClipSetVolumeOp,
   type ClipTrimOp,
   type EditOp,
+  type NormalizedPoint,
   type TextCreateOp,
+  type TextDeleteOp,
+  type TextUpdateOp,
   type TextStyleInput,
   type TrackAddOp,
 } from "./types";
@@ -37,14 +42,14 @@ import {
 /* ------------------------------------------------------------------ */
 
 /**
- * The four op declarations below are the SINGLE hand-maintained definition
+ * The op declarations below are the SINGLE hand-maintained definition
  * of the closed edit.apply op set (ADR 0003 Decision 4): the runtime
  * validator (validateEditOp) and the emitted draft-2020-12 JSON Schema
  * (jsonschema.ts, via verb-schemas.ts) both derive from them. Rules that
- * JSON Schema cannot express (clip.trim's at-least-one-of in/out, the
- * out>in ordering, non-whitespace text) stay validation-only predicates —
- * the emitted schema is a superset filter and these validators remain the
- * only authority.
+ * JSON Schema cannot express (clip.trim's at-least-one-of in/out, text.update's
+ * at-least-one-field, the out>in ordering, non-whitespace text) stay
+ * validation-only predicates — the emitted schema is a superset filter and
+ * these validators remain the only authority.
  */
 export const TRACK_ADD_SCHEMA: ObjectSchema = {
   op: {
@@ -140,6 +145,34 @@ export const CLIP_TRIM_SCHEMA: ObjectSchema = {
   },
 };
 
+/**
+ * Normalized [0, 1] {x, y} pair (text.create/text.update position and
+ * anchor). Resolution-independent: multiplied by frame width/height at
+ * render time, so preview and export place it identically.
+ */
+export const NORMALIZED_POINT_SCHEMA: ObjectSchema = {
+  x: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1,
+    describe: "a finite number in [0, 1]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  y: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1,
+    describe: "a finite number in [0, 1]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+};
+
+const isPlainObjectValue = (v: unknown): boolean =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+const TEXT_FIELD_EMITS = {
+  kind: "leaf",
+  schema: { type: "string", minLength: 1 },
+} as const;
+
 export const TEXT_STYLE_SCHEMA: ObjectSchema = {
   fontFamily: {
     check: isNonEmptyString,
@@ -210,11 +243,137 @@ export const TEXT_CREATE_SCHEMA: ObjectSchema = {
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
   },
   style: {
-    check: (v) => typeof v === "object" && v !== null && !Array.isArray(v),
+    check: isPlainObjectValue,
     describe: "an object",
     emits: { kind: "object", schema: TEXT_STYLE_SCHEMA },
   },
+  position: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: NORMALIZED_POINT_SCHEMA },
+  },
+  anchor: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: NORMALIZED_POINT_SCHEMA },
+  },
 };
+
+export const TEXT_UPDATE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "text.update",
+    describe: '"text.update"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "text.update" } },
+  },
+  // The id surfaced by timeline.get / project.get_state as
+  // textOverlays[].id.
+  overlayId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  text: {
+    check: (v) => typeof v === "string" && v.trim().length > 0,
+    describe: "a non-empty string",
+    // Superset filter: whitespace-only strings stay validator-only.
+    emits: TEXT_FIELD_EMITS,
+  },
+  startTime: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  duration: {
+    check: isPositiveNumber,
+    describe: "a finite number > 0",
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  style: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: TEXT_STYLE_SCHEMA },
+  },
+  position: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: NORMALIZED_POINT_SCHEMA },
+  },
+  anchor: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: NORMALIZED_POINT_SCHEMA },
+  },
+};
+
+export const TEXT_DELETE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "text.delete",
+    describe: '"text.delete"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "text.delete" } },
+  },
+  overlayId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const CLIP_SET_VOLUME_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "clip.setVolume",
+    describe: '"clip.setVolume"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.setVolume" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  // Linear gain; matches core's realtime clamp ceiling (0 = mute, 1 = unity).
+  volume: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 4,
+    describe: "a finite number in [0, 4]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 4 } },
+  },
+};
+
+/**
+ * Rebind nested style/position/anchor to SANITIZED copies: opToCoreActions
+ * spreads them into the canonical TextClip, so what flows downstream must be
+ * the fresh validated objects — never the raw nested caller objects (whose
+ * getters could yield different values post-validation).
+ */
+function sanitizeTextFields<T extends TextCreateOp | TextUpdateOp>(
+  op: T,
+  label: string,
+): T {
+  const out: Record<string, unknown> = { ...op };
+  if (op.style !== undefined) {
+    out.style = validateObject<TextStyleInput>(
+      op.style,
+      TEXT_STYLE_SCHEMA,
+      `${label}.style`,
+    );
+  }
+  for (const field of ["position", "anchor"] as const) {
+    const value = op[field];
+    if (value !== undefined) {
+      out[field] = validateObject<NormalizedPoint>(
+        value,
+        NORMALIZED_POINT_SCHEMA,
+        `${label}.${field}`,
+      );
+    }
+  }
+  return out as unknown as T;
+}
 
 /**
  * Validate one raw op against its closed schema. Throws INVALID_PARAMS on
@@ -256,20 +415,30 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
     }
     case "text.create": {
       const op = validateObject<TextCreateOp>(raw, TEXT_CREATE_SCHEMA, label);
-      if (op.style !== undefined) {
-        // Rebind to the SANITIZED copy: opToCoreActions spreads op.style into
-        // the canonical TextClip, so what flows downstream must be the fresh
-        // validated object — never the raw nested caller object (whose
-        // getters could yield different values post-validation).
-        const style = validateObject<TextStyleInput>(
-          op.style,
-          TEXT_STYLE_SCHEMA,
-          `${label}.style`,
-        );
-        return { ...op, style };
-      }
-      return op;
+      return sanitizeTextFields(op, label);
     }
+    case "text.update": {
+      const op = validateObject<TextUpdateOp>(raw, TEXT_UPDATE_SCHEMA, label);
+      // "at least one updatable field" is a cross-field predicate enforced
+      // here — deliberately NOT emitted.
+      if (
+        op.text === undefined &&
+        op.startTime === undefined &&
+        op.duration === undefined &&
+        op.style === undefined &&
+        op.position === undefined &&
+        op.anchor === undefined
+      ) {
+        throw invalidParams(
+          `${label}: at least one of text/startTime/duration/style/position/anchor is required`,
+        );
+      }
+      return sanitizeTextFields(op, label);
+    }
+    case "text.delete":
+      return validateObject<TextDeleteOp>(raw, TEXT_DELETE_SCHEMA, label);
+    case "clip.setVolume":
+      return validateObject<ClipSetVolumeOp>(raw, CLIP_SET_VOLUME_SCHEMA, label);
     default:
       // Unreachable: opType was allowlist-checked above. Keeps the function
       // total for the compiler and fail-closed for the runtime.
@@ -531,10 +700,78 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         duration: op.duration,
         text: op.text,
         style: { ...DEFAULT_TEXT_STYLE, ...(op.style ?? {}) },
-        transform: { ...DEFAULT_TEXT_TRANSFORM },
+        transform: {
+          ...DEFAULT_TEXT_TRANSFORM,
+          ...(op.position !== undefined ? { position: { ...op.position } } : {}),
+          ...(op.anchor !== undefined ? { anchor: { ...op.anchor } } : {}),
+        },
         keyframes: [],
       };
       return [makeAction("text/create", { clip })];
+    }
+
+    case "text.update": {
+      const existing = (draft.textClips ?? []).find(
+        (c) => c.id === op.overlayId,
+      );
+      if (!existing) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `text.update: text overlay "${op.overlayId}" not found`,
+          { overlayId: op.overlayId },
+        );
+      }
+      // Core text/update SHALLOW-spreads `updates` onto the clip, so merged
+      // style/transform must be sent whole — a partial object would drop the
+      // existing keys. Only keys the caller actually set go out.
+      const updates: Partial<TextClip> = {
+        ...(op.text !== undefined ? { text: op.text } : {}),
+        ...(op.startTime !== undefined ? { startTime: op.startTime } : {}),
+        ...(op.duration !== undefined ? { duration: op.duration } : {}),
+        ...(op.style !== undefined
+          ? { style: { ...existing.style, ...op.style } }
+          : {}),
+        ...(op.position !== undefined || op.anchor !== undefined
+          ? {
+              transform: {
+                ...existing.transform,
+                ...(op.position !== undefined ? { position: { ...op.position } } : {}),
+                ...(op.anchor !== undefined ? { anchor: { ...op.anchor } } : {}),
+              },
+            }
+          : {}),
+      };
+      return [makeAction("text/update", { clipId: op.overlayId, updates })];
+    }
+
+    case "text.delete": {
+      const exists = (draft.textClips ?? []).some(
+        (c) => c.id === op.overlayId,
+      );
+      if (!exists) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `text.delete: text overlay "${op.overlayId}" not found`,
+          { overlayId: op.overlayId },
+        );
+      }
+      return [makeAction("text/remove", { clipId: op.overlayId })];
+    }
+
+    case "clip.setVolume": {
+      const clip = draft.timeline.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.setVolume: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      return [
+        makeAction("audio/setVolume", { clipId: op.clipId, volume: op.volume }),
+      ];
     }
   }
 }

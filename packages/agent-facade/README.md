@@ -21,10 +21,23 @@ await facade["edit.apply"]({
     { op: "clip.add", trackId: "v1", mediaId, startTime: 0, clipId: "c1" },
     { op: "clip.trim", clipId: "c1", inPoint: 0, outPoint: 5 },
     { op: "track.add", trackType: "text", trackId: "t1" },
-    { op: "text.create", trackId: "t1", text: "Hello world", startTime: 0, duration: 5 },
+    { op: "text.create", trackId: "t1", text: "Hello world", startTime: 0, duration: 5,
+      // Normalized 0..1 frame coordinates (0.5/0.5 = center), identical in
+      // preview and export. Keep the anchor point inside [0.05, 0.95].
+      position: { x: 0.5, y: 0.15 } },
   ],
   expectedRevision: 1,
   idempotencyKey: "batch-1",
+});
+// Later batches: text.update (style/position MERGE — omitted keys keep their
+// values), text.delete, clip.setVolume (linear gain 0..4; 0 = mute, 1 =
+// unity) — overlay ids come from timeline.get textOverlays[].id.
+await facade["edit.apply"]({
+  ops: [
+    { op: "text.update", overlayId, style: { color: "#ffcc00" }, position: { x: 0.5, y: 0.85 } },
+    { op: "clip.setVolume", clipId: "c1", volume: 1.5 },
+  ],
+  idempotencyKey: "batch-2",
 });
 const state = await facade["project.get_state"]();
 ```

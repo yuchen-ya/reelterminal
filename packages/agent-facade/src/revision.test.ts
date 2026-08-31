@@ -93,4 +93,78 @@ describe("revision preconditions", () => {
     if (!r2.ok) return;
     expect(r2.value.revision).toBe(2);
   });
+
+  it("every committed batch of the text/volume ops bumps the revision exactly once", async () => {
+    const created = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v1" },
+        { op: "track.add", trackType: "text", trackId: "t1" },
+        {
+          op: "text.create",
+          trackId: "t1",
+          text: "rev",
+          startTime: 0,
+          duration: 5,
+          position: { x: 0.5, y: 0.8 },
+        },
+      ],
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(created.value.revision).toBe(1);
+    const overlayId = created.value.applied[2]?.createdIds[0];
+    expect(overlayId).toBeTruthy();
+
+    const updated = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "text.update",
+          overlayId: overlayId as string,
+          text: "rev2",
+          style: { color: "#123456" },
+        },
+      ],
+    });
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+    expect(updated.value.revision).toBe(2);
+
+    const volumeSet = await facade["edit.apply"]({
+      ops: [{ op: "clip.setVolume", clipId: "c1", volume: 0.5 }],
+    });
+    expect(volumeSet.ok).toBe(false); // no clip yet — must NOT bump anything
+    const untouched = await facade["project.get_state"]();
+    expect(untouched.ok).toBe(true);
+    if (!untouched.ok) return;
+    expect(untouched.value.revision).toBe(2);
+
+    const added = await facade["media.import"]({
+      path: `${mediaRoot}/tiny-6s.mp4`,
+    });
+    expect(added.ok).toBe(true);
+    if (!added.ok) return;
+    expect(added.value.revision).toBe(3);
+    const clipBatch = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "clip.add",
+          trackId: "v1",
+          mediaId: added.value.mediaId,
+          startTime: 0,
+          clipId: "c1",
+        },
+        { op: "clip.setVolume", clipId: "c1", volume: 2 },
+      ],
+    });
+    expect(clipBatch.ok).toBe(true);
+    if (!clipBatch.ok) return;
+    expect(clipBatch.value.revision).toBe(4); // two ops, ONE bump
+
+    const deleted = await facade["edit.apply"]({
+      ops: [{ op: "text.delete", overlayId: overlayId as string }],
+    });
+    expect(deleted.ok).toBe(true);
+    if (!deleted.ok) return;
+    expect(deleted.value.revision).toBe(5);
+  });
 });

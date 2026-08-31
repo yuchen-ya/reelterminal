@@ -394,6 +394,111 @@ describe("persistence: save → fresh session open → continue", () => {
     expect(opened.value.revision).toBe(1);
   });
 
+  it("text/volume mutations survive save → kill → open: updates persist, deletions do not resurrect", async () => {
+    const sessionA = newSession();
+    const created = await sessionA["project.create"]({ name: "Durable" });
+    expect(created.ok).toBe(true);
+    const imported = await sessionA["media.import"]({
+      path: join(mediaRoot, "tiny-6s.mp4"),
+    });
+    expect(imported.ok).toBe(true);
+    if (!imported.ok) return;
+    const batch1 = await sessionA["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v1" },
+        {
+          op: "clip.add",
+          trackId: "v1",
+          mediaId: imported.value.mediaId,
+          startTime: 0,
+          clipId: "c1",
+        },
+        { op: "track.add", trackType: "text", trackId: "t1" },
+        {
+          op: "text.create",
+          trackId: "t1",
+          text: "before",
+          startTime: 0,
+          duration: 5,
+        },
+        {
+          op: "text.create",
+          trackId: "t1",
+          text: "doomed",
+          startTime: 0,
+          duration: 5,
+        },
+      ],
+    });
+    expect(batch1.ok).toBe(true);
+    if (!batch1.ok) return;
+    const updatedId = batch1.value.applied[3]?.createdIds[0];
+    const doomedId = batch1.value.applied[4]?.createdIds[0];
+    expect(updatedId).toBeTruthy();
+    expect(doomedId).toBeTruthy();
+
+    // Update one overlay (text + position + style), delete the other, set
+    // the clip volume — then checkpoint.
+    const batch2 = await sessionA["edit.apply"]({
+      ops: [
+        {
+          op: "text.update",
+          overlayId: updatedId as string,
+          text: "after",
+          position: { x: 0.5, y: 0.15 },
+          anchor: { x: 0.5, y: 0.5 },
+          style: { color: "#00aaff", fontSize: 24 },
+        },
+        { op: "text.delete", overlayId: doomedId as string },
+        { op: "clip.setVolume", clipId: "c1", volume: 2.5 },
+      ],
+    });
+    expect(batch2.ok).toBe(true);
+    if (!batch2.ok) return;
+    const saved = await sessionA["project.save"]({
+      path: join(projectRoot, "durable-v1.openreel.json"),
+    });
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) return;
+
+    // A fresh session IS the restarted process: open the checkpoint.
+    const sessionB = newSession();
+    const opened = await sessionB["project.open"]({
+      path: join(projectRoot, "durable-v1.openreel.json"),
+    });
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    expect(opened.value.counts.textOverlays).toBe(1);
+    expect(opened.value.revision).toBe(saved.value.revision);
+
+    const timeline = await sessionB["timeline.get"]();
+    expect(timeline.ok).toBe(true);
+    if (!timeline.ok) return;
+    expect(timeline.value.textOverlays).toHaveLength(1);
+    const overlay = timeline.value.textOverlays[0];
+    if (!overlay) throw new Error("overlay missing after reopen");
+    expect(overlay.id).toBe(updatedId);
+    expect(overlay.text).toBe("after");
+    expect(overlay.position).toEqual({ x: 0.5, y: 0.15 });
+    expect(overlay.anchor).toEqual({ x: 0.5, y: 0.5 });
+    // The deleted overlay must NOT resurrect across the process boundary.
+    expect(
+      timeline.value.textOverlays.some((o) => o.id === doomedId),
+    ).toBe(false);
+
+    const state = await sessionB["project.get_state"]();
+    expect(state.ok).toBe(true);
+    if (!state.ok) return;
+    const clip = state.value.project.timeline.tracks
+      .flatMap((t) => t.clips)
+      .find((c) => c.id === "c1");
+    expect(clip?.volume).toBe(2.5);
+    const overlayClip = state.value.project.textClips?.[0];
+    expect(overlayClip?.style.color).toBe("#00aaff");
+    expect(overlayClip?.style.fontSize).toBe(24);
+    expect(overlayClip?.transform.position).toEqual({ x: 0.5, y: 0.15 });
+  });
+
   it("session.describe reports the slice-2 contract with 14 verbs and 8 error codes", async () => {
     const facade = newSession();
     const res = await facade["session.describe"]();

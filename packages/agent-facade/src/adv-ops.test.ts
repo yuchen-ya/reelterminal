@@ -21,6 +21,16 @@
  *      (fixed M4)
  *  T11 nonexistent file -> "cannot be read"; real escape -> "escapes roots"
  *      (fixed M2)
+ *  T12 text.update / text.delete / clip.setVolume NOT_FOUND paths name the
+ *      missing id
+ *  T13 intra-batch references resolve via the DRAFT (clip.add -> clip.setVolume
+ *      in one batch, video-track clip included); T13b update-then-delete of the
+ *      same overlay in one batch via the id a previous batch returned
+ *  T14 text.update merges style/transform (core shallow-spreads, so the facade
+ *      sends merged whole objects)
+ *  T15 sanitized nested copies on text.update (stateful getters read once)
+ *  T16 text.create position/anchor land in the clip transform; the state view
+ *      exposes both, and omission keeps the centered default
  */
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -336,5 +346,209 @@ describe("ADV: text ops / ordering / caps / pollution", () => {
     if (!outside.ok) {
       expect(outside.error.message).toContain("escapes the configured media roots");
     }
+  });
+
+  async function seedOverlay(
+    text = "seed",
+  ): Promise<{ overlayId: string; revision: number }> {
+    const res = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "text", trackId: "t1" },
+        { op: "text.create", trackId: "t1", text, startTime: 0, duration: 5 },
+      ],
+    });
+    if (!res.ok) throw new Error("seed overlay failed");
+    const overlayId = res.value.applied[1]?.createdIds[0];
+    if (!overlayId) throw new Error("seed created no overlay id");
+    return { overlayId, revision: res.value.revision };
+  }
+
+  async function seedVideoClip(): Promise<{ clipId: string }> {
+    const imported = await facade["media.import"]({
+      path: `${mediaRoot}/tiny-6s.mp4`,
+    });
+    if (!imported.ok) throw new Error("seed import failed");
+    const res = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v1" },
+        {
+          op: "clip.add",
+          trackId: "v1",
+          mediaId: imported.value.mediaId,
+          startTime: 0,
+          clipId: "c1",
+        },
+      ],
+    });
+    if (!res.ok) throw new Error("seed clip failed");
+    return { clipId: "c1" };
+  }
+
+  it("T12: text.update / text.delete / clip.setVolume name the missing id in NOT_FOUND", async () => {
+    await seedVideoClip();
+    for (const op of [
+      { op: "text.update", overlayId: "text-ghost", text: "x" },
+      { op: "text.delete", overlayId: "text-ghost" },
+      { op: "clip.setVolume", clipId: "clip-ghost", volume: 1 },
+    ] as const) {
+      const res = await facade["edit.apply"]({ ops: [op] });
+      expect(res.ok, JSON.stringify(op)).toBe(false);
+      if (res.ok) continue;
+      expect(res.error.code).toBe("NOT_FOUND");
+      expect(res.error.message).toContain(
+        op.op === "clip.setVolume" ? "clip-ghost" : "text-ghost",
+      );
+    }
+  });
+
+  it("T13: intra-batch references resolve via the DRAFT — clip.add then clip.setVolume in one batch", async () => {
+    const imported = await facade["media.import"]({
+      path: `${mediaRoot}/tiny-6s.mp4`,
+    });
+    if (!imported.ok) throw new Error("import failed");
+    const res = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v1" },
+        {
+          op: "clip.add",
+          trackId: "v1",
+          mediaId: imported.value.mediaId,
+          startTime: 0,
+          clipId: "c1",
+        },
+        // Same batch as the clip.add above: resolves against the draft.
+        { op: "clip.setVolume", clipId: "c1", volume: 2 },
+      ],
+    });
+    expect(res.ok).toBe(true);
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error();
+    const clip = state.value.project.timeline.tracks
+      .flatMap((t) => t.clips)
+      .find((c) => c.id === "c1");
+    expect(clip?.volume).toBe(2);
+    // Video-track clip: core stores `volume` on every timeline clip.
+    const track = state.value.project.timeline.tracks.find((t) => t.id === "v1");
+    expect(track?.type).toBe("video");
+  });
+
+  it("T13b: update-then-delete of the SAME overlay in one batch, using the id a previous batch returned", async () => {
+    const { overlayId } = await seedOverlay();
+    const res = await facade["edit.apply"]({
+      ops: [
+        { op: "text.update", overlayId, text: "Renamed", startTime: 1 },
+        { op: "text.delete", overlayId },
+      ],
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    // The second op must see the first op's draft result, not a stale view.
+    expect(res.value.applied.map((a) => a.op)).toEqual([
+      "text.update",
+      "text.delete",
+    ]);
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error();
+    expect(state.value.project.textClips ?? []).toHaveLength(0);
+  });
+
+  it("T14: text.update MERGES style and transform — omitted keys keep their values", async () => {
+    const created = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "text", trackId: "t1" },
+        {
+          op: "text.create",
+          trackId: "t1",
+          text: "styled",
+          startTime: 0,
+          duration: 5,
+          style: { fontSize: 72, color: "#ff0000" },
+          position: { x: 0.5, y: 0.8 },
+        },
+      ],
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const overlayId = created.value.applied[1]?.createdIds[0];
+    if (!overlayId) throw new Error("no overlay id");
+
+    // Partial style + position-only update: fontSize/anchor must survive.
+    const updated = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "text.update",
+          overlayId,
+          style: { color: "#00ff00" },
+          position: { x: 0.25, y: 0.2 },
+        },
+      ],
+    });
+    expect(updated.ok).toBe(true);
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error();
+    const clip = state.value.project.textClips?.[0];
+    if (!clip) throw new Error("overlay vanished");
+    expect(clip.style.fontSize).toBe(72);
+    expect(clip.style.color).toBe("#00ff00");
+    expect(clip.transform.position).toEqual({ x: 0.25, y: 0.2 });
+    // Untouched transform keys keep the canonical defaults.
+    expect(clip.transform.anchor).toEqual({ x: 0.5, y: 0.5 });
+    expect(clip.transform.opacity).toBe(1);
+  });
+
+  it("T15: text.update uses SANITIZED nested copies — stateful getters read exactly once", async () => {
+    const { overlayId } = await seedOverlay();
+    let xReads = 0;
+    const res = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "text.update",
+          overlayId,
+          position: {
+            get x() {
+              xReads += 1;
+              return xReads === 1 ? 0.3 : 0.9;
+            },
+            y: 0.4,
+          } as never,
+        },
+      ],
+    });
+    expect(res.ok).toBe(true);
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error();
+    expect(state.value.project.textClips?.[0]?.transform.position).toEqual({
+      x: 0.3,
+      y: 0.4,
+    });
+    expect(xReads).toBe(1);
+  });
+
+  it("T16: text.create position/anchor land in the clip transform; omission keeps the centered default", async () => {
+    await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "text", trackId: "tA" },
+        { op: "track.add", trackType: "text", trackId: "tB" },
+        {
+          op: "text.create",
+          trackId: "tA",
+          text: "placed",
+          startTime: 0,
+          duration: 5,
+          position: { x: 0.5, y: 0.85 },
+          anchor: { x: 0.5, y: 0.5 },
+        },
+        { op: "text.create", trackId: "tB", text: "default", startTime: 0, duration: 5 },
+      ],
+    });
+    const timeline = await facade["timeline.get"]();
+    if (!timeline.ok) throw new Error();
+    const byText = new Map(
+      timeline.value.textOverlays.map((o) => [o.text, o]),
+    );
+    // The state view exposes where text IS, before any text.update.
+    expect(byText.get("placed")?.position).toEqual({ x: 0.5, y: 0.85 });
+    expect(byText.get("placed")?.anchor).toEqual({ x: 0.5, y: 0.5 });
+    expect(byText.get("default")?.position).toEqual({ x: 0.5, y: 0.5 });
   });
 });

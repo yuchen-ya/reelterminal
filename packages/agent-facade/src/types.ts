@@ -302,6 +302,10 @@ export interface TextOverlayView {
   readonly text: string;
   readonly startTime: number;
   readonly duration: number;
+  /** Normalized box position, read from the clip's transform. */
+  readonly position: NormalizedPoint;
+  /** Normalized anchor within the text box, read from the clip's transform. */
+  readonly anchor: NormalizedPoint;
 }
 
 export interface TimelineState {
@@ -312,7 +316,7 @@ export interface TimelineState {
 }
 
 /* ------------------------------------------------------------------ */
-/* edit.apply — closed op set (Slice 1)                                */
+/* edit.apply — closed op set (Slice 1 + text/volume vocabulary)       */
 /* ------------------------------------------------------------------ */
 
 export const EDIT_OP_TYPES = [
@@ -320,6 +324,9 @@ export const EDIT_OP_TYPES = [
   "clip.add",
   "clip.trim",
   "text.create",
+  "text.update",
+  "text.delete",
+  "clip.setVolume",
 ] as const;
 
 export type EditOpType = (typeof EDIT_OP_TYPES)[number];
@@ -365,13 +372,22 @@ export interface ClipTrimOp {
   readonly outPoint?: number;
 }
 
-/** Closed style subset accepted by text.create in this slice. */
+/** Closed style subset accepted by text.create/text.update in this slice. */
 export interface TextStyleInput {
   readonly fontFamily?: string;
   readonly fontSize?: number;
   readonly fontWeight?: import("@openreel/core/text/types").FontWeight;
   readonly color?: string;
   readonly textAlign?: "left" | "center" | "right" | "justify";
+}
+
+/**
+ * Normalized 0..1 point. Resolution-independent: multiplied by the frame
+ * width/height at render time, so preview and export place it identically.
+ */
+export interface NormalizedPoint {
+  readonly x: number;
+  readonly y: number;
 }
 
 export interface TextCreateOp {
@@ -385,9 +401,50 @@ export interface TextCreateOp {
    */
   readonly trackId?: string;
   readonly style?: TextStyleInput;
+  /** Normalized box position (0.5/0.5 = frame center). */
+  readonly position?: NormalizedPoint;
+  /** Normalized anchor within the text box (0.5/0.5 = box center). */
+  readonly anchor?: NormalizedPoint;
 }
 
-export type EditOp = TrackAddOp | ClipAddOp | ClipTrimOp | TextCreateOp;
+/**
+ * Shallow-looking update over ONE existing text overlay (id from
+ * timeline.get/project.get_state textOverlays[].id). At least one optional
+ * field is required. style MERGES with the existing style and position/anchor
+ * merge with the existing transform — omitted fields keep their values.
+ */
+export interface TextUpdateOp {
+  readonly op: "text.update";
+  readonly overlayId: string;
+  readonly text?: string;
+  readonly startTime?: number;
+  readonly duration?: number;
+  readonly style?: TextStyleInput;
+  readonly position?: NormalizedPoint;
+  readonly anchor?: NormalizedPoint;
+}
+
+export interface TextDeleteOp {
+  readonly op: "text.delete";
+  readonly overlayId: string;
+}
+
+export interface ClipSetVolumeOp {
+  readonly op: "clip.setVolume";
+  /** Any existing timeline clip (audio or video track alike). */
+  readonly clipId: string;
+  /** Linear gain in [0, 4]: 0 = mute, 1 = unity. */
+  readonly volume: number;
+}
+
+export type EditOp =
+  | TrackAddOp
+  | ClipAddOp
+  | ClipTrimOp
+  | TextCreateOp
+  | TextUpdateOp
+  | TextDeleteOp
+  | ClipSetVolumeOp;
 
 export interface EditApplyParams {
   readonly ops: readonly EditOp[];
