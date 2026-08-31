@@ -20,7 +20,7 @@ import {
   utimes,
   writeFile,
 } from "node:fs/promises";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAgentFacade, type AgentFacade } from "./index";
@@ -481,20 +481,29 @@ describe("ADV checkpoint: save-side path discipline & atomicity", () => {
     const target = join(projectRoot, "raced.openreel.json");
     const sentinel = Buffer.from("sentinel-created-by-the-racer");
     let attempt = 0;
-    while (attempt < 5) {
+    while (attempt < 10) {
       attempt += 1;
-      const racer = setInterval(() => {
-        void readdir(projectRoot)
-          .then((entries) => {
-            if (entries.some((e) => e.endsWith(".tmp"))) {
-              return writeFile(target, sentinel);
-            }
-            return undefined;
-          })
-          .catch(() => undefined);
-      }, 1);
+      // Spin on the event loop's Check phase with SYNCHRONOUS calls: the
+      // instant the save's temp file exists, plant the target in the same
+      // turn — long before the save's fsync completes and link() is
+      // attempted. A 1 ms setInterval + async writeFile loses every race
+      // on fast Linux disks, where the fsync returns in microseconds.
+      let stop = false;
+      const racer = (): void => {
+        if (stop) return;
+        try {
+          if (readdirSync(projectRoot).some((e) => e.endsWith(".tmp"))) {
+            writeFileSync(target, sentinel);
+            return; // planted — stop spinning
+          }
+        } catch {
+          /* projectRoot raced away */
+        }
+        setImmediate(racer);
+      };
+      setImmediate(racer);
       const saved = await facade["project.save"]({ path: target });
-      clearInterval(racer);
+      stop = true;
 
       if (saved.ok) {
         // We lost the race (the save completed before the target appeared):
@@ -510,7 +519,7 @@ describe("ADV checkpoint: save-side path discipline & atomicity", () => {
       expect(await tmpFiles(projectRoot)).toEqual([]);
       return;
     }
-    throw new Error("race-atomicity test never won the race after 5 attempts");
+    throw new Error("race-atomicity test never won the race after 10 attempts");
   });
 
   it("overwrite:true replaces the session's OWN checkpoint but still refuses a symlink target", async () => {
