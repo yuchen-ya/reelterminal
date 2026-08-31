@@ -219,7 +219,7 @@ export async function scenario2Run({ env, recorder, cliPath, variant }) {
     ...saveConflictChecks(of(lineById(bRun.lines, "saveConflict"))),
   ]);
   await recorder.step("6a", "process B: pixels — previewB renders the pre-restart content", [
-    ...(await previewChecks(previewBValue, env)),
+    ...(await previewChecks(previewBValue, env, revisionBefore + 1)),
   ]);
   await recorder.sha256Of(previewBValue.artifact.path, "s2 previewB PNG");
   await recorder.step("6b", "process B: compare similar previewB vs previewA — pixel continuity across the restart", [
@@ -319,7 +319,7 @@ export async function scenario2Mcp({ env, recorder, cliPath, variant }) {
 
   const previewB = await clientB.call("preview_render_frame", { timeSec: 2.5 });
   await recorder.step("6a", "process B: pixels — previewB renders the pre-restart content", [
-    ...(await previewChecks(previewB.facadeResult.value, env)),
+    ...(await previewChecks(previewB.facadeResult.value, env, revisionBefore + 1)),
   ]);
   await recorder.sha256Of(previewB.facadeResult.value.artifact.path, "s2 previewB PNG (mcp)");
 

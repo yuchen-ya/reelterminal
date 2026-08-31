@@ -161,8 +161,9 @@ export function conflictChecks(result) {
   ];
 }
 
-/* Appendix D step 7 — preview. */
-export async function previewChecks(value, env) {
+/* Appendix D step 7 — preview. Scenario 2's previewB renders the project
+ * AFTER the continued edit, so its sourceRevision is passed explicitly. */
+export async function previewChecks(value, env, expectedSourceRevision = 2) {
   const artifact = value?.artifact;
   const inside = artifact ? await pathInsideRoot(artifact.path, env.artifactRoot) : false;
   return [
@@ -178,7 +179,7 @@ export async function previewChecks(value, env) {
     ),
     truthy("preview: sizeBytes > 0", typeof artifact?.sizeBytes === "number" && artifact.sizeBytes > 0, `sizeBytes=${artifact?.sizeBytes}`),
     matches("preview: sha256 is 64 hex chars", artifact?.sha256, (s) => typeof s === "string" && /^[0-9a-f]{64}$/.test(s)),
-    eq("preview: sourceRevision 2", artifact?.sourceRevision, 2),
+    eq(`preview: sourceRevision ${expectedSourceRevision}`, artifact?.sourceRevision, expectedSourceRevision),
     truthy("preview: PNG inside artifactRoot (realpath containment)", inside, `path=${artifact?.path} artifactRoot=${env.artifactRoot}`),
     eq("preview: rendered at t=2.5 s", value?.timeSec, 2.5),
   ];
