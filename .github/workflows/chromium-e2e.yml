@@ -34,7 +34,8 @@ jobs:
       # preinstalled toolchains this repo never uses before installing.
       - name: Free disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+            /usr/share/swift /usr/local/julia* /opt/az /usr/share/miniconda /usr/local/share/boost || true
           docker rmi $(docker images -aq) 2>/dev/null || true
           df -h /
 
@@ -76,8 +77,13 @@ jobs:
       - name: Run Slice-1 facade tests (must stay green)
         run: pnpm --filter @openreel/agent-facade test:run
 
+      # ulimit -c 0: the runtime/transport suites SIGKILL real Chromium
+      # (reaper, signal-ownership, watchdog) — apport/core dumps of a
+      # multi-GB browser process fill the root disk on ubuntu runners.
       - name: Run Chromium runtime tests (probe, E2E, jobs, verify)
-        run: pnpm --filter @openreel/runtime-chromium test:run
+        run: |
+          ulimit -c 0
+          pnpm --filter @openreel/runtime-chromium test:run
 
       # Slice 2 transport: the protocol/signal/workflow/doctor suites spawn
       # the REAL built binary — their vitest global-setup builds dist/cli.js
@@ -85,7 +91,9 @@ jobs:
       # the Appendix-B.6 closed loop through it. Its own step so a transport
       # regression is distinguishable from a runtime one.
       - name: Run agent-transport tests (serve/run/doctor over the real binary, e2e-gated)
-        run: pnpm --filter @openreel/agent-transport test:run
+        run: |
+          ulimit -c 0
+          pnpm --filter @openreel/agent-transport test:run
 
       # Evidence MUST exist and MUST upload: the probe/verify JSON is the
       # machine-readable proof of what this run measured. The directory is
@@ -127,7 +135,8 @@ jobs:
       - name: Free disk space (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+            /usr/share/swift /usr/local/julia* /opt/az /usr/share/miniconda /usr/local/share/boost || true
           docker rmi $(docker images -aq) 2>/dev/null || true
           df -h /
 
