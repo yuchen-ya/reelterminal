@@ -8,7 +8,7 @@
  *    protocol-conformant bytes
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { chromiumAvailable, ffmpegAvailable, initialize, makeRoots, spawnCli, startServe, type McpClient, type Roots } from "./helpers";
+import { chromiumAvailable, ffmpegAvailable, initialize, makeRoots, spawnCli, startServe, type CliHandle, type McpClient, type Roots } from "./helpers";
 import { writeTinyVp9Mp4 } from "@openreel/runtime-chromium/media/tiny-vp9-mp4";
 
 let roots!: Roots;
@@ -49,11 +49,27 @@ function parseJsonLines(stdout: string): { ok: unknown[]; bad: string[] } {
   return { ok, bad };
 }
 
+/**
+ * Readiness without racing: the server logs "MCP stdio server listening"
+ * only AFTER its signal handlers are installed, so waiting for that line
+ * beats any fixed sleep — on a loaded CI runner running the whole monorepo
+ * in parallel, module loading alone can exceed 1.5 s and a sleep-then-kill
+ * lands before the handlers exist (observed: exit -1 instead of 143).
+ */
+async function waitForListening(handle: CliHandle, timeoutMs = 60_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!handle.stderr.includes("MCP stdio server listening")) {
+    if (Date.now() > deadline) {
+      throw new Error(`serve never logged listening; stderr=${handle.stderr}`);
+    }
+    await new Promise((r) => setTimeout(r, 25));
+  }
+}
+
 describe("Decision 7: signal ownership", () => {
   it("first SIGTERM runs the bounded disposal and exits 143", async () => {
     const handle = spawnCli(["serve", ...serveArgs()]);
-    // give the server a moment to connect and log "listening"
-    await new Promise((r) => setTimeout(r, 1500));
+    await waitForListening(handle);
     handle.child.kill("SIGTERM");
     const code = await Promise.race([
       handle.exitCode,
@@ -123,7 +139,7 @@ describe("Decision 7: signal ownership", () => {
   it("SIGINT exits 130 and SIGHUP exits 129 through the same bounded disposal", async () => {
     for (const [signal, code] of [["SIGINT", 130], ["SIGHUP", 129]] as const) {
       const handle = spawnCli(["serve", ...serveArgs()]);
-      await new Promise((r) => setTimeout(r, 1200));
+      await waitForListening(handle);
       handle.child.kill(signal);
       const got = await Promise.race([
         handle.exitCode,
@@ -135,7 +151,7 @@ describe("Decision 7: signal ownership", () => {
 
   it("stdin EOF (client disconnect) runs the bounded disposal and exits 0", async () => {
     const handle = spawnCli(["serve", ...serveArgs()]);
-    await new Promise((r) => setTimeout(r, 1500));
+    await waitForListening(handle);
     handle.endStdin();
     const code = await Promise.race([
       handle.exitCode,

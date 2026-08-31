@@ -96,11 +96,14 @@ describe("B.5 env config honored by the commands (integration)", () => {
   }, 120_000);
 
   it("OPENREEL_TRANSPORT_LOG=error suppresses info-level stderr logs on serve", async () => {
-    const handle = spawnCli(["serve"], { ...envRoots(), OPENREEL_TRANSPORT_LOG: "error" });
-    await new Promise((r) => setTimeout(r, 1500));
-    handle.child.kill("SIGTERM");
-    expect(await handle.exitCode).toBe(143);
-    const levels = handle.stderr
+    // Readiness via the MCP handshake: at error level there is no
+    // "listening" info line to wait for, and a fixed sleep races handler
+    // installation on loaded runners.
+    const client = startServe([], { ...envRoots(), OPENREEL_TRANSPORT_LOG: "error" });
+    await initialize(client);
+    client.handle.child.kill("SIGTERM");
+    expect(await client.handle.exitCode).toBe(143);
+    const levels = client.handle.stderr
       .split("\n")
       .filter((l) => l.trim().length > 0)
       .map((l) => (JSON.parse(l) as { level: string }).level);
