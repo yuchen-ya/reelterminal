@@ -8,12 +8,18 @@
  *    protocol-conformant bytes
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { initialize, makeRoots, spawnCli, startServe, type McpClient, type Roots } from "./helpers";
+import { chromiumAvailable, ffmpegAvailable, initialize, makeRoots, spawnCli, startServe, type McpClient, type Roots } from "./helpers";
+import { writeTinyVp9Mp4 } from "@openreel/runtime-chromium/media/tiny-vp9-mp4";
 
 let roots!: Roots;
+let inputMp4!: string;
+
+// The second-signal escape-hatch test needs a real browser in the session.
+const runtimeHealthy = chromiumAvailable() && ffmpegAvailable();
 
 beforeAll(async () => {
   roots = await makeRoots();
+  inputMp4 = writeTinyVp9Mp4(roots.mediaRoot);
 });
 
 afterAll(async () => {
@@ -62,21 +68,57 @@ describe("Decision 7: signal ownership", () => {
     expect(logs.some((l) => l.exitCode === 143)).toBe(true);
   }, 180_000);
 
-  it("a second signal exits immediately with no further disposal promises", async () => {
-    const handle = spawnCli(["serve", ...serveArgs()]);
-    await new Promise((r) => setTimeout(r, 1500));
-    handle.child.kill("SIGTERM");
-    // second signal immediately after the first — well within the disposal bound
-    await new Promise((r) => setTimeout(r, 150));
-    handle.child.kill("SIGTERM");
+  // The escape hatch only matters while a disposal is genuinely in flight;
+  // a fixed sleep races an otherwise-instant empty teardown. Drive a real
+  // browser into the session (preview.render_frame), then send the second
+  // signal the moment the bounded disposal begins.
+  it.skipIf(!runtimeHealthy)("a second signal exits immediately with no further disposal promises", async () => {
+    const client: McpClient = startServe(serveArgs());
+    await initialize(client);
+    const call = async (id: number, name: string, args: Record<string, unknown>) => {
+      client.send({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
+      const response = await client.read();
+      return JSON.parse((response.result as any).content[0].text);
+    };
+    const created = await call(2, "project_create", {
+      name: "Escape hatch",
+      settings: { width: 320, height: 180, frameRate: 30, sampleRate: 48000, channels: 2 },
+      idempotencyKey: "sig2-create",
+    });
+    expect(created.ok).toBe(true);
+    const imported = await call(3, "media_import", {
+      path: inputMp4, expectedRevision: 0, idempotencyKey: "sig2-import",
+    });
+    expect(imported.ok).toBe(true);
+    const edited = await call(4, "edit_apply", {
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v1" },
+        { op: "clip.add", trackId: "v1", mediaId: imported.value.mediaId, startTime: 0, clipId: "c1" },
+      ],
+      expectedRevision: 1,
+      idempotencyKey: "sig2-edit",
+    });
+    expect(edited.ok).toBe(true);
+    const previewed = await call(5, "preview_render_frame", { timeSec: 0.5, expectedRevision: 2 });
+    expect(previewed.ok).toBe(true);
+
+    client.handle.child.kill("SIGTERM");
+    const deadline = Date.now() + 60_000;
+    while (!client.handle.stderr.includes("bounded disposal begins")) {
+      if (Date.now() > deadline) {
+        throw new Error(`bounded disposal never began; stderr=${client.handle.stderr}`);
+      }
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    client.handle.child.kill("SIGTERM");
     const code = await Promise.race([
-      handle.exitCode,
+      client.handle.exitCode,
       new Promise((resolve) => setTimeout(() => resolve("timeout"), 60_000)),
     ]);
     expect(code).toBe(143);
-    const logs = parseJsonLines(handle.stderr).ok as any[];
+    const logs = parseJsonLines(client.handle.stderr).ok as any[];
     expect(logs.some((l) => /second signal — immediate hard exit/.test(l.msg))).toBe(true);
-  }, 120_000);
+  }, 300_000);
 
   it("SIGINT exits 130 and SIGHUP exits 129 through the same bounded disposal", async () => {
     for (const [signal, code] of [["SIGINT", 130], ["SIGHUP", 129]] as const) {
