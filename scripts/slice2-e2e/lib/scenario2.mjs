@@ -157,13 +157,16 @@ export async function scenario2Run({ env, recorder, cliPath, variant }) {
 
   // Steps 4b+5+6 — process B (one fresh session): open, deep-equal timeline,
   // continue edit, save v2, save-conflict on v1, previewB, export, verify.
+  // --keep-going: step 5c (save onto v1 without overwrite) FAILS BY DESIGN —
+  // the workflow must continue to preview/export/verify; its nonzero exit is
+  // the expected outcome (Appendix D step 6, Pi-class rule).
   const bRun = await runWorkflow({
     cliPath,
     recorder,
     label: `${label}/B`,
     scratchDir: env.scratchDir,
     env: env.cliEnv(),
-    flags: env.cliFlags(),
+    flags: [...env.cliFlags(), "--keep-going"],
     steps: [
       { id: "open", verb: "project.open", params: { path: v1Path, idempotencyKey: `s2-openB-${variant.toLowerCase()}` } },
       { id: "timelineB", verb: "timeline.get", params: {} },
@@ -192,8 +195,8 @@ export async function scenario2Run({ env, recorder, cliPath, variant }) {
       },
     ],
   });
-  if (bRun.exitCode !== 0) {
-    throw new Error(`process B workflow exited ${bRun.exitCode}: ${JSON.stringify(bRun.lines).slice(0, 2000)}`);
+  if (bRun.exitCode !== 1) {
+    throw new Error(`process B workflow exited ${bRun.exitCode} (expected 1 — the deliberate saveConflict step): ${JSON.stringify(bRun.lines).slice(0, 2000)}`);
   }
   const openValue = okValue(lineById(bRun.lines, "open"), "open");
   const timelineBValue = okValue(lineById(bRun.lines, "timelineB"), "timelineB");
@@ -315,7 +318,9 @@ export async function scenario2Mcp({ env, recorder, cliPath, variant }) {
   await recorder.step("5c", "process B: save back onto v1 without overwrite ⇒ CONFLICT (default no-overwrite)", saveConflictChecks(saveConflict.facadeResult));
 
   const previewB = await clientB.call("preview_render_frame", { timeSec: 2.5 });
-  await recorder.step("6a", "process B: pixels — previewB renders the pre-restart content", previewChecks(previewB.facadeResult.value, env));
+  await recorder.step("6a", "process B: pixels — previewB renders the pre-restart content", [
+    ...(await previewChecks(previewB.facadeResult.value, env)),
+  ]);
   await recorder.sha256Of(previewB.facadeResult.value.artifact.path, "s2 previewB PNG (mcp)");
 
   const exportB = await clientB.call("export_start", { settings: EXPORT_SETTINGS, idempotencyKey: `s2-expB-${variant.toLowerCase()}` });

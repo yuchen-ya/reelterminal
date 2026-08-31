@@ -390,7 +390,7 @@ export async function scenario1Mcp({ env, recorder, cliPath }) {
   await recorder.sha256Of(preview.facadeResult.value.artifact.path, "s1 preview PNG (mcp)");
 
   // Step 8 — export_start, then poll job_status at a 2–5 s cadence to terminal.
-  const exportStart = await client.call("export_start", { idempotencyKey: EXPORT_KEY });
+  const exportStart = await client.call("export_start", { settings: EXPORT_SETTINGS, idempotencyKey: EXPORT_KEY });
   await recorder.step("8a", "export_start ⇒ {jobId, state:queued, sourceRevision:2}", exportStartedChecks(exportStart.facadeResult.value));
   const jobId = exportStart.facadeResult.value.jobId;
   const doneStatus = await pollToTerminal({ client, jobId, recorder, label });
@@ -412,7 +412,7 @@ export async function scenario1Mcp({ env, recorder, cliPath }) {
   await recorder.step("9c", "compare different vs raw input.mp4 (minChangedPixelsRatio > 0 — the load-bearing pixel proof)", compareDifferentChecks(different.facadeResult.value, "raw input.mp4"));
 
   // Step 10 — disconnect the client IMMEDIATELY after a second export_start.
-  const export2 = await client.call("export_start", { idempotencyKey: EXPORT2_KEY });
+  const export2 = await client.call("export_start", { settings: EXPORT_SETTINGS, idempotencyKey: EXPORT2_KEY });
   const job1Id = exportStart.facadeResult.value.jobId;
   const job2Id = export2.facadeResult.value.jobId;
   client.disconnect();
