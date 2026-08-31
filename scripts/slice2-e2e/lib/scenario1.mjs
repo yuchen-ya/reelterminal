@@ -75,13 +75,16 @@ const VERIFY_EXPECT = {
 };
 
 // Every export_start passes an explicit bitrate that keeps the MP4 under
-// mediabunny's 4 MiB StreamTarget chunk size: above it, the chunked muxer
-// rewrites a region and PartFileWriter.bytes overcounts by the overlap, so
-// the facade's honest byte guard fails the job ("provider wrote fewer bytes
-// (…-8) than it reported (…)" — finding 1 in REPORT.md, frozen product code).
-// The default 1080p bitrate (~7465 kbps => ~4.66 MB) deterministically hits
-// it; 4000 kbps (~2.5 MB) does not. ADR Appendix D does not pin bitrate.
-const EXPORT_SETTINGS = { videoBitrateKbps: 4000 };
+// mediabunny's 4 MiB StreamTarget chunk size. That guard-rail dates from
+// finding 1 (PartFileWriter overcount, REPORT.md) — FIXED in 1866110, so
+// fresh resolution runs set SLICE2_E2E_FORCE_MULTICHUNK=1 to pin 8000 kbps
+// (~5 MB, multi-chunk with mid-stream rewrites: the exact finding-1 shape,
+// now expected to pass). The default 1080p bitrate (~7465 kbps => ~4.66 MB)
+// is also multi-chunk; 4000 kbps (~2.5 MB) stays single-chunk. ADR Appendix
+// D does not pin bitrate.
+const EXPORT_SETTINGS = process.env.SLICE2_E2E_FORCE_MULTICHUNK === "1"
+  ? { videoBitrateKbps: 8000 }
+  : { videoBitrateKbps: 4000 };
 
 /* ------------------------------------------------------------------ */
 /* Path (a) — run                                                      */

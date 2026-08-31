@@ -1,0 +1,24 @@
+{
+  "note": "Environment block of the slice-2d evidence run (Appendix D evidence contract).",
+  "generatedAt": "2026-08-31T05:35:26.096Z",
+  "repo": "agent-video-engine-lab",
+  "repoHeadSha": "18661108f111681d91d94a10edc414333b062f38",
+  "cli": {
+    "path": "/Users/macbuke/my-project/agent-video-engine-lab-wt/slice-2/packages/agent-transport/dist/cli.js",
+    "sha256": "2e53c3d9316b25f548c17ddfc4be147d608ba482bf226a6d1d84c487769bbb60"
+  },
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "osRelease": "24.6.0"
+  },
+  "node": "v23.11.0",
+  "ffmpegVersion": "ffmpeg version 9.0.1 Copyright (c) 2000-2026 the FFmpeg developers",
+  "ffprobeVersion": "ffprobe version 9.0.1 Copyright (c) 2007-2026 the FFmpeg developers",
+  "doctorFacts": {
+    "chromiumBuild": "148.0.7778.96",
+    "transportVersion": "0.1.0",
+    "exportRoute": "chromium-webcodecs",
+    "verdict": "usable"
+  }
+}
