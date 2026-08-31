@@ -15,6 +15,7 @@ import { doctorChecks, runDoctor } from "./doctor.mjs";
 import { ServeClient } from "./mcp.mjs";
 import { runWorkflow, spawnWorkflow, waitForLine } from "./run.mjs";
 import {
+  TEXT_REGION,
   WORDINGS,
   computeStateSha256,
   lineById,
