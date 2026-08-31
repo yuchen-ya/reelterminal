@@ -12,8 +12,18 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { realpathSync } from "node:fs";
 import { copyFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import { chromiumAvailable, ffmpegAvailable, makeRoots, spawnCli, type Roots } from "./helpers";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import {
+  chromiumAvailable,
+  ffmpegAvailable,
+  makeRoots,
+  spawnCli,
+  type Roots,
+} from "./helpers";
 import { writeTinyVp9Mp4 } from "@openreel/runtime-chromium/media/tiny-vp9-mp4";
+
+const execFileAsync = promisify(execFile);
 
 let roots: Roots;
 let inputMp4: string;
@@ -163,5 +173,219 @@ describe.skipIf(!runtimeHealthy)("closed loop over run (real Chromium + ffmpeg)"
     expect(verifyLine.result.value.pass).toBe(true);
     // the pre-restart content renders pixel-continuous in the new process
     expect(similarLine.result.value.compare.pass).toBe(true);
+  }, 900_000);
+});
+
+/* ------------------------------------------------------------------ */
+/* edit.apply text-position + clip.setVolume vocabulary (pixel/audio)  */
+/* ------------------------------------------------------------------ */
+
+/** Locate a step's stdout line by its unique step id. */
+function stepLine(
+  lines: Record<string, any>[],
+  id: string,
+): Record<string, any> {
+  const line = lines.find((l) => l.id === id);
+  if (!line) throw new Error(`step line "${id}" missing from run output`);
+  return line;
+}
+
+describe.skipIf(!runtimeHealthy)("text position + clip.setVolume E2E (real Chromium + ffmpeg)", () => {
+  it("text.create/text.update/text.delete move pixels between bands and back to baseline", async () => {
+    const result = await runWorkflow([
+      { id: "create", verb: "project.create", params: { name: "Position", settings: { width: 320, height: 180, frameRate: 30, sampleRate: 48000, channels: 2 }, idempotencyKey: "pos-create" } },
+      { id: "import", verb: "media.import", params: { path: inputMp4, expectedRevision: 0, idempotencyKey: "pos-import" } },
+      {
+        id: "edit-base",
+        verb: "edit.apply",
+        params: {
+          ops: [
+            { op: "track.add", trackType: "video", trackId: "v1" },
+            { op: "clip.add", trackId: "v1", mediaId: { $ref: "import#/mediaId" }, startTime: 0, clipId: "c1" },
+            { op: "clip.trim", clipId: "c1", inPoint: 0, outPoint: 2 },
+          ],
+          expectedRevision: 1,
+          idempotencyKey: "pos-edit-base",
+        },
+      },
+      { id: "preview-base", verb: "preview.render_frame", params: { timeSec: 1, expectedRevision: 2 } },
+      {
+        id: "edit-bottom",
+        verb: "edit.apply",
+        params: {
+          ops: [
+            { op: "track.add", trackType: "text", trackId: "t1" },
+            { op: "text.create", text: "POSITION", startTime: 0, duration: 2, trackId: "t1", position: { x: 0.5, y: 0.85 } },
+          ],
+          expectedRevision: 2,
+          idempotencyKey: "pos-edit-bottom",
+        },
+      },
+      { id: "preview-bottom", verb: "preview.render_frame", params: { timeSec: 1, expectedRevision: 3 } },
+      {
+        id: "edit-top",
+        verb: "edit.apply",
+        params: {
+          ops: [
+            { op: "text.update", overlayId: { $ref: "edit-bottom#/applied/1/createdIds/0" }, position: { x: 0.5, y: 0.15 } },
+          ],
+          expectedRevision: 3,
+          idempotencyKey: "pos-edit-top",
+        },
+      },
+      { id: "preview-top", verb: "preview.render_frame", params: { timeSec: 1, expectedRevision: 4 } },
+      {
+        id: "edit-delete",
+        verb: "edit.apply",
+        params: {
+          ops: [
+            { op: "text.delete", overlayId: { $ref: "edit-bottom#/applied/1/createdIds/0" } },
+          ],
+          expectedRevision: 4,
+          idempotencyKey: "pos-edit-delete",
+        },
+      },
+      { id: "preview-deleted", verb: "preview.render_frame", params: { timeSec: 1, expectedRevision: 5 } },
+      // Text at the bottom: the bottom band differs from baseline, the top
+      // band is untouched.
+      { id: "bottom-changed", verb: "verify.artifact", params: {
+          path: { $ref: "preview-bottom#/artifact/path" },
+          compare: { referencePath: { $ref: "preview-base#/artifact/path" }, timeSec: 1, region: { x: 0, y: 0.7, width: 1, height: 0.3 }, mode: "different", minChangedPixelsRatio: 0.02 },
+        } },
+      { id: "top-unchanged", verb: "verify.artifact", params: {
+          path: { $ref: "preview-bottom#/artifact/path" },
+          compare: { referencePath: { $ref: "preview-base#/artifact/path" }, timeSec: 1, region: { x: 0, y: 0, width: 1, height: 0.3 }, mode: "similar", maxMeanAbsDiff: 4 },
+        } },
+      // After the move: the top band differs, the bottom band is baseline.
+      { id: "top-changed", verb: "verify.artifact", params: {
+          path: { $ref: "preview-top#/artifact/path" },
+          compare: { referencePath: { $ref: "preview-base#/artifact/path" }, timeSec: 1, region: { x: 0, y: 0, width: 1, height: 0.3 }, mode: "different", minChangedPixelsRatio: 0.02 },
+        } },
+      { id: "bottom-unchanged", verb: "verify.artifact", params: {
+          path: { $ref: "preview-top#/artifact/path" },
+          compare: { referencePath: { $ref: "preview-base#/artifact/path" }, timeSec: 1, region: { x: 0, y: 0.7, width: 1, height: 0.3 }, mode: "similar", maxMeanAbsDiff: 4 },
+        } },
+      // After the delete: the full frame is back to the baseline.
+      { id: "full-restored", verb: "verify.artifact", params: {
+          path: { $ref: "preview-deleted#/artifact/path" },
+          compare: { referencePath: { $ref: "preview-base#/artifact/path" }, timeSec: 1, mode: "similar", maxMeanAbsDiff: 4 },
+        } },
+    ]);
+    expect(result.exitCode, result.stdoutLines.map((l) => JSON.stringify(l)).join("\n")).toBe(0);
+    const log = (label: string, line: Record<string, any>) => {
+      const c = line.result.value.compare;
+      console.log(
+        `[e2e] ${label}: mean|Δ|=${c.meanAbsDiff?.toFixed(3)} changed=${((c.changedPixelsRatio ?? 0) * 100).toFixed(2)}%`,
+      );
+    };
+    for (const id of [
+      "bottom-changed",
+      "top-unchanged",
+      "top-changed",
+      "bottom-unchanged",
+      "full-restored",
+    ]) {
+      const line = stepLine(result.stdoutLines, id);
+      expect(line.result.ok, `${id} ran`).toBe(true);
+      expect(line.result.value.pass, `${id} passed`).toBe(true);
+      log(id, line);
+    }
+  }, 900_000);
+
+  it("clip.setVolume flows into the export: volume 1.0 vs 0.2 differ by >= 8 dB (volumedetect)", async () => {
+    // Sine-wave WAV fixture, generated in-test inside the media root.
+    const wavPath = path.join(roots.mediaRoot, "sine-2s.wav");
+    await execFileAsync("ffmpeg", [
+      "-v", "error",
+      "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+      "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le",
+      "-y", wavPath,
+    ]);
+
+    const result = await runWorkflow([
+      { id: "create", verb: "project.create", params: { name: "Volume", settings: { width: 320, height: 180, frameRate: 30, sampleRate: 48000, channels: 2 }, idempotencyKey: "vol-create" } },
+      { id: "import-video", verb: "media.import", params: { path: inputMp4, expectedRevision: 0, idempotencyKey: "vol-import-video" } },
+      { id: "import-audio", verb: "media.import", params: { path: wavPath, expectedRevision: 1, idempotencyKey: "vol-import-audio" } },
+      {
+        id: "edit",
+        verb: "edit.apply",
+        params: {
+          ops: [
+            { op: "track.add", trackType: "video", trackId: "v1" },
+            { op: "clip.add", trackId: "v1", mediaId: { $ref: "import-video#/mediaId" }, startTime: 0, clipId: "c1" },
+            { op: "clip.trim", clipId: "c1", inPoint: 0, outPoint: 2 },
+            { op: "track.add", trackType: "audio", trackId: "a1" },
+            { op: "clip.add", trackId: "a1", mediaId: { $ref: "import-audio#/mediaId" }, startTime: 0, clipId: "a2" },
+          ],
+          expectedRevision: 2,
+          idempotencyKey: "vol-edit",
+        },
+      },
+      { id: "export-unity", verb: "export.start", params: { idempotencyKey: "vol-export-unity" } },
+      { id: "wait-unity", await: { jobId: { $ref: "export-unity#/jobId" }, timeoutMs: 600000, pollMs: 1000 } },
+      {
+        id: "edit-quiet",
+        verb: "edit.apply",
+        params: {
+          ops: [
+            { op: "clip.setVolume", clipId: "a2", volume: 0.2 },
+          ],
+          expectedRevision: 3,
+          idempotencyKey: "vol-edit-quiet",
+        },
+      },
+      { id: "export-quiet", verb: "export.start", params: { idempotencyKey: "vol-export-quiet" } },
+      { id: "wait-quiet", await: { jobId: { $ref: "export-quiet#/jobId" }, timeoutMs: 600000, pollMs: 1000 } },
+    ]);
+    expect(result.exitCode, result.stdoutLines.map((l) => JSON.stringify(l)).join("\n")).toBe(0);
+    const unityLine = stepLine(result.stdoutLines, "wait-unity");
+    const quietLine = stepLine(result.stdoutLines, "wait-quiet");
+    expect(unityLine.result.value.state).toBe("done");
+    expect(quietLine.result.value.state).toBe("done");
+    const unityPath = unityLine.result.value.artifact.path as string;
+    const quietPath = quietLine.result.value.artifact.path as string;
+
+    async function meanVolumeDb(file: string): Promise<number> {
+      const { stderr } = await execFileAsync("ffmpeg", [
+        "-v", "info",
+        "-i", file,
+        "-map", "0:a:0",
+        "-af", "volumedetect",
+        "-f", "null",
+        "-",
+      ]);
+      const match = stderr.match(/mean_volume:\s*(-?[\d.]+)\s*dB/);
+      expect(match, `volumedetect reported mean_volume for ${file}`).toBeTruthy();
+      return Number(match![1]);
+    }
+
+    async function audioCodec(file: string): Promise<string> {
+      const { stdout } = await execFileAsync("ffprobe", [
+        "-v", "error",
+        "-select_streams", "a:0",
+        "-show_entries", "stream=codec_name",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        file,
+      ]);
+      expect(stdout.trim(), `audio stream present in ${file}`).toBeTruthy();
+      return stdout.trim();
+    }
+
+    const unityCodec = await audioCodec(unityPath);
+    const quietCodec = await audioCodec(quietPath);
+    const unityDb = await meanVolumeDb(unityPath);
+    const quietDb = await meanVolumeDb(quietPath);
+    console.log(
+      `[e2e] export audio: unity codec=${unityCodec} mean=${unityDb} dB; quiet codec=${quietCodec} mean=${quietDb} dB`,
+    );
+    // The WebCodecs route encodes whatever audio codec THIS Chromium build
+    // can produce into the MP4 (aac, or opus as the mediabunny fallback) —
+    // both are valid MP4 audio streams ffprobe can name.
+    expect(unityCodec).toBe(quietCodec);
+    expect(["aac", "opus", "mp3"]).toContain(unityCodec);
+    // 20*log10(0.2) ≈ -14 dB; the encode chain must preserve most of it.
+    const dropDb = unityDb - quietDb;
+    console.log(`[e2e] volume 1.0 → 0.2 mean-volume drop: ${dropDb.toFixed(2)} dB`);
+    expect(dropDb).toBeGreaterThanOrEqual(8);
   }, 900_000);
 });
