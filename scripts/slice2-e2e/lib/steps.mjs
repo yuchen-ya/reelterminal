@@ -60,7 +60,7 @@ export function createChecks(value) {
   return [
     eq("create: revision 0", value?.revision, 0),
     eq("create: replayed false", value?.replayed, false),
-    settingsChecks(value?.project?.settings, "create"),
+    ...settingsChecks(value?.project?.settings, "create"),
   ];
 }
 
@@ -318,7 +318,7 @@ export function openChecks(openValue, revisionBefore) {
     truthy("open: ok", openValue?.revision !== undefined, JSON.stringify(openValue)),
     eq("open: adopted at the saved revision", openValue?.revision, revisionBefore),
     eq("open: replayed false", openValue?.replayed, false),
-    settingsChecks(openValue?.project?.settings, "open"),
+    ...settingsChecks(openValue?.project?.settings, "open"),
   ];
 }
 
