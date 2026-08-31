@@ -520,7 +520,9 @@ export async function doctorCommand(argv: readonly string[]): Promise<number> {
     },
   };
 
-  const json = JSON.stringify(report, null, 2);
+  // Decision 6: stdout carries exactly one single-line JSON document —
+  // pretty printing would break line-delimited machine consumers.
+  const json = JSON.stringify(report);
   process.stdout.write(`${json}\n`);
   logInfo("doctor", "report written", {
     classification,
