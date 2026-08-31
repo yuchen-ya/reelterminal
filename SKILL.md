@@ -126,6 +126,33 @@ README — this skill does not restate them. Context discipline: orient with
 `timeline_get`; `project_get_state` is an unbounded full dump; artifacts
 come back as `{path, sizeBytes, sha256, sourceRevision}` refs, never pixels.
 
+### The `edit_apply` op vocabulary
+
+Seven ops, one atomic batch each call (the exact fields and bounds live in
+`edit_apply`'s `inputSchema`):
+
+- `track.add` — create a track (`trackType`); `clip.add` — place imported
+  media on a track; `clip.trim` — move a clip's `inPoint`/`outPoint` (at
+  least one, `outPoint` must exceed `inPoint`).
+- `text.create` — an overlay on a text track. `position`/`anchor` are
+  **normalized 0..1 frame coordinates** (resolution-independent:
+  `0.5/0.5` = center, `y:0.85` = lower third) and apply identically in
+  previews and exports. Safe area: keep the anchor point inside
+  `[0.05, 0.95]` on both axes so text stays fully visible.
+- `text.update` — edit one overlay by `overlayId` (read
+  `textOverlays[].id` from `timeline_get`/`project_get_state` first —
+  also where its current `position`/`anchor` are surfaced). At least one
+  updatable field is required; **`style` merges** with the existing style
+  and `position`/`anchor` merge with the existing placement — omitted
+  keys keep their values.
+- `text.delete` — remove an overlay by `overlayId`.
+- `clip.setVolume` — linear gain `0..4` on any clip (audio or video
+  track): `0` = mute, `1` = unity; it flows into the exported audio.
+
+Ops in one batch see each other's results, and a failure anywhere rolls
+the whole batch back; a deleted overlay stays deleted after
+`project.save` → `project.open`.
+
 ## 5. Idempotency, revisions, and the export loop
 
 - **Idempotency keys:** mint one fresh key per logical mutation; a retry
