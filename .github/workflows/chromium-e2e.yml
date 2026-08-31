@@ -91,7 +91,9 @@ jobs:
       # machine-readable proof of what this run measured. The directory is
       # hidden (.artifacts), which upload-artifact skips by default — hence
       # include-hidden-files — and a missing upload fails the job, never
-      # warns silently.
+      # warns silently. v4 artifacts are immutable by name: without
+      # overwrite a rerun of this job 409s on the artifact the failed
+      # attempt already created, which masks the rerun's own result.
       - name: Upload machine-readable evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -100,6 +102,7 @@ jobs:
           path: packages/runtime-chromium/.artifacts/
           include-hidden-files: true
           if-no-files-found: error
+          overwrite: true
 
   # Stretch (slice 2d): per-OS matrix for the two suites that don't need more
   # than Playwright's own browser management. macOS runs the same commands
