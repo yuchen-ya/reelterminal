@@ -302,3 +302,79 @@ Recorded here as design intent, explicitly not implemented in this slice:
   revision) and one bridge listener; the project file format is unchanged.
 - E2E must drive the real Electron build with real clicks and a real MCP
   stdio client; no store-level impersonation of the user.
+
+---
+
+## Errata 1 (2026-09-01): independent red-team round — verdict SHIP-WITH-FIXES, fixes landed
+
+An independent red team reviewed the committed slice (attack surfaces:
+CAS placement, undo integrity, revision semantics, context revision,
+security boundary, lease/modes, headless regression, honesty, persistence
+hygiene, lockfile/build). Verdict: **SHIP-WITH-FIXES** — two High findings,
+no Critical. Fixes landed in `4b77ae6`; all package suites and typechecks
+re-verified green afterwards.
+
+### Fixed in the round
+
+- **H1 (turn undo ate human edits).** `undoLastTurn`'s baseline loop could
+  revert human edits interleaved mid-turn. Fixed: `ActionHistory` gains
+  `peekUndoOwner()`; the loop stops at the first non-`"agent"` unit and
+  reports a partial undo honestly. The same owner-check now guards
+  `LiveEditorHost.rollbackTransaction` (baseline snapshot + bounded loop).
+- **H2 (stale-overwrite protection was opt-in).** `edit.apply` in live mode
+  now **always** runs the revision CAS: when the caller omits
+  `expectedRevision`, the facade auto-attaches the revision of the snapshot
+  the ops were translated against. Unguarded writes can no longer clobber a
+  fresh human edit.
+- **M1 (createdIds mis-attribution).** `LiveProjectStore.applyActions` now
+  returns category-partitioned ids (`{tracks, clips, textClips}`); the
+  facade partitions per category, so mixed batches hand each op its own id.
+- **M2 (lease wedged read-only).** The facade write-gate lazily re-attempts
+  `lease.acquire` instead of failing forever; CONFLICT names the actual
+  holder.
+- **M5 (project.save honesty).** All descriptions now state plainly: live
+  `project.save` flushes the GUI's autosave/recovery snapshot; it does not
+  write a `.openreel` project file.
+- **L2–L6, L9.** Idempotency ledger scoped per project; endpoint 404s
+  non-`/mcp` POST paths; preview replay keeps `artifact.sourceRevision` as
+  the truth carrier (mirrors headless, pinned by test); `getFullProject`/
+  `forceSave` fall back to the project's own overlay arrays when an engine
+  is momentarily null; `will-quit` awaits live-host disposal (no stale
+  endpoint file); push-owner reset moved into `finally`.
+
+### Known limitations and follow-ups (accepted for this slice)
+
+- **Playback vs context CAS.** Every playhead tick bumps `contextRevision`,
+  so an `expectedContextRevision` guard issued during playback is stale
+  within a frame and fails closed (CONFLICT → re-read → retry or pause).
+  This is safe-by-design but agents should read context while paused.
+  Follow-up: exclude playback ticks from the context fingerprint.
+- **Live preview/export needs file-backed media.** GUI-imported media held
+  as renderer blobs (no absolute path) makes the main-process snapshot
+  render fail honestly with UNSUPPORTED naming the media ids; text-only
+  projects and file-backed media render fine. Follow-up: record the source
+  path at desktop import (Electron `File.path`) so the honesty gate passes
+  for real user projects.
+- **Lease after external disconnect.** The HTTP endpoint is stateless; an
+  external agent that vanishes keeps the writer lease until the user
+  toggles the Agent Session off/on (the status bar always shows the
+  current holder). Follow-up: lease TTL or heartbeat.
+- **Status event ordering.** Rapid enable/disable can deliver out-of-order
+  status pushes that leave the UI claiming the session is on after a
+  disable ack (E2E G-04). Follow-up: sequence-stamp status events.
+- **Drag-gesture groups.** `beginGroup` during a human drag gesture
+  overwrites the gesture's group id (the drag tail becomes ungrouped).
+  Follow-up: nest or auto-close-and-remember in `ActionHistory`.
+- **Same-owner attribution inside one renderer transaction.** A GUI edit
+  landing *inside* a single `LiveEditorHost` transaction window inherits
+  the `"agent"` owner (the H1/M4 checks fail safe here — they stop at
+  anything not `"agent"`). Follow-up: per-push owner tagging in the store.
+- **Shim default endpoint.** `openreel-mcp` still defaults to the legacy
+  (internal) endpoint file; reaching the 15-verb live endpoint requires
+  `OPENREEL_MCP_ENDPOINT_FILE=~/.openreel/live-endpoint.json`. Deliberate
+  this slice (legacy MCP untouched per Decision 9); flip the default when
+  the legacy path is retired.
+- **Embedded-channel trust.** `window.openreel.facade.call` is available to
+  the (trusted-local) renderer without the token — consistent with the
+  local user boundary; a renderer compromise implies facade access within
+  that boundary. Documented here as the accepted threat model.
