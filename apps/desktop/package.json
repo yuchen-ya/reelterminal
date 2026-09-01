@@ -14,7 +14,7 @@
   },
   "description": "OpenReel — open-source professional video editor",
   "scripts": {
-    "build:main": "node scripts/prepare-aurora-native.mjs && tsup",
+    "build:main": "node scripts/prepare-aurora-native.mjs && tsup && node scripts/link-live-runtime-deps.mjs",
     "build:renderer": "OPENREEL_DESKTOP=1 pnpm --filter @openreel/web build",
     "build": "pnpm run build:renderer && pnpm run build:main",
     "predev": "pnpm run build:renderer",
@@ -29,7 +29,13 @@
     "dist": "pnpm run fetch:ffmpeg && pnpm run build && electron-builder"
   },
   "dependencies": {
+    "@openreel/agent-facade": "workspace:*",
+    "@openreel/core": "workspace:*",
+    "@openreel/runtime-chromium": "workspace:*",
     "electron-updater": "^6.3.9",
+    "esbuild": "^0.27.7",
+    "mediabunny": "^1.25.3",
+    "playwright-core": "^1.60.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

@@ -39,6 +39,11 @@ import {
   rotateMcpToken,
   testMcpConnection,
 } from "./mcp/server";
+import { registerLiveIpc } from "./ipc/live";
+import {
+  disposeLiveSessionHost,
+  getLiveSessionHost,
+} from "./live/host-instance";
 import {
   fileWriters,
   showSaveDialog,
@@ -311,6 +316,9 @@ app.whenReady().then(() => {
   handle(CHANNELS.mcpGetStatus, z.undefined(), () => getMcpStatus());
   handle(CHANNELS.mcpRotateToken, z.undefined(), () => rotateMcpToken());
   handle(CHANNELS.mcpTestConnection, z.undefined(), () => testMcpConnection());
+  // Live human–agent collaboration (ADR 0004 Slice 3): facade.call +
+  // collabControl behind the main-process session host.
+  registerLiveIpc(getLiveSessionHost());
   createWindow();
   initAutoUpdater();
   startMcpServer().catch((error) =>
@@ -362,4 +370,5 @@ app.on("will-quit", () => {
   disposeAuroraClient();
   cancelAllExports();
   void stopMcpServer();
+  void disposeLiveSessionHost();
 });

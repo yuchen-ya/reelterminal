@@ -1,13 +1,25 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "module": "CommonJS",
-    "moduleResolution": "node",
+    // tsc is typecheck-only here (tsup builds the CJS bundles). ESNext/Bundler
+    // matches the base config and allows import.meta in the TS-source
+    // workspace deps (runtime-chromium).
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "outDir": "dist",
     "lib": ["ES2022", "DOM"],
     "types": ["node"],
     "noEmit": true,
-    "composite": false
+    "composite": false,
+    "baseUrl": ".",
+    "paths": {
+      "@openreel/core": ["../../packages/core/src/index.ts"],
+      "@openreel/core/*": ["../../packages/core/src/*"],
+      "@openreel/agent-facade": ["../../packages/agent-facade/src/index.ts"],
+      "@openreel/agent-facade/*": ["../../packages/agent-facade/src/*"],
+      "@openreel/runtime-chromium": ["../../packages/runtime-chromium/src/index.ts"],
+      "@openreel/runtime-chromium/*": ["../../packages/runtime-chromium/src/*"]
+    }
   },
   "include": ["src"]
 }

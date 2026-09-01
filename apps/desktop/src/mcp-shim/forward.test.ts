@@ -1,5 +1,27 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import os from "node:os";
+import path from "node:path";
 import { forwardLine } from "./index";
+import { endpointFilePath } from "../shared/mcp";
+
+describe("endpointFilePath (shim endpoint selection)", () => {
+  afterEach(() => {
+    delete process.env.OPENREEL_MCP_ENDPOINT_FILE;
+  });
+
+  it("defaults to ~/.openreel/mcp-endpoint.json", () => {
+    delete process.env.OPENREEL_MCP_ENDPOINT_FILE;
+    expect(endpointFilePath()).toBe(
+      path.join(os.homedir(), ".openreel", "mcp-endpoint.json"),
+    );
+  });
+
+  it("OPENREEL_MCP_ENDPOINT_FILE selects another endpoint file (e.g. the live endpoint)", () => {
+    const live = path.join(os.homedir(), ".openreel", "live-endpoint.json");
+    process.env.OPENREEL_MCP_ENDPOINT_FILE = live;
+    expect(endpointFilePath()).toBe(live);
+  });
+});
 
 describe("forwardLine", () => {
   it("returns null for blank lines without calling post", async () => {

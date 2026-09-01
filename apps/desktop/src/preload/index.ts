@@ -125,6 +125,42 @@ contextBridge.exposeInMainWorld("openreel", {
     report: (payload: { message: string; stack?: string; type?: string; context?: unknown }) =>
       ipcRenderer.send(CHANNELS.crashReport, payload),
   },
+  // Live human–agent collaboration (ADR 0004). The main-process session host
+  // owns the facade sessions; these members only ever carry JSON-safe values
+  // across the contextBridge (functions wrapping invoke/on/send, event
+  // objects stripped).
+  facade: {
+    // Embedded chat → main-process live facade session. Returns the wire
+    // FacadeResult ({ ok, data?, error? }).
+    call: (verb: string, params: unknown) =>
+      ipcRenderer.invoke(CHANNELS.facadeCall, { verb, params }),
+  },
+  liveBridge: {
+    // Main→renderer live-store requests (Decision 1 seam). The handler runs
+    // the request against the canonical store and replies via respond().
+    onRequest: (handler: (req: unknown) => Promise<void> | void) => {
+      const listener = (_event: unknown, req: unknown) => {
+        void handler(req);
+      };
+      ipcRenderer.on(CHANNELS.liveRequest, listener);
+    },
+    respond: (reply: unknown) => ipcRenderer.send(CHANNELS.liveResponse, reply),
+  },
+  liveEvents: {
+    // Main→renderer push: collaboration status + current agent action.
+    onEvent: (cb: (evt: unknown) => void) => {
+      const handler = (_event: unknown, payload: unknown) => cb(payload);
+      ipcRenderer.on(CHANNELS.liveEvent, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.liveEvent, handler);
+    },
+  },
+  collabControl: {
+    enable: () => ipcRenderer.invoke(CHANNELS.collabEnable, undefined),
+    disable: () => ipcRenderer.invoke(CHANNELS.collabDisable, undefined),
+    getStatus: () => ipcRenderer.invoke(CHANNELS.collabGetStatus, undefined),
+    setMode: (mode: string) =>
+      ipcRenderer.invoke(CHANNELS.collabSetMode, { mode }),
+  },
   mcp: {
     // The main-process MCP server pushes tool-call / list-tool requests here; the
     // renderer runs them against the live editor and replies on the result

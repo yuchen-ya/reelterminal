@@ -56,4 +56,12 @@ export const CHANNELS = {
   mcpGetStatus: "openreel:mcp:getStatus",
   mcpRotateToken: "openreel:mcp:rotateToken",
   mcpTestConnection: "openreel:mcp:testConnection",
+  facadeCall: "openreel:facade:call",
+  liveRequest: "openreel:live:request",
+  liveResponse: "openreel:live:response",
+  liveEvent: "openreel:live:event",
+  collabEnable: "openreel:collab:enable",
+  collabDisable: "openreel:collab:disable",
+  collabGetStatus: "openreel:collab:getStatus",
+  collabSetMode: "openreel:collab:setMode",
 } as const;

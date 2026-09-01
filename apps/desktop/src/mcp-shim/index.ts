@@ -1,4 +1,22 @@
 #!/usr/bin/env node
+/**
+ * openreel-mcp — the stdio→HTTP MCP shim (ADR 0003 / ADR 0004 Decision 9).
+ *
+ * External MCP clients (Claude Desktop / Cursor / Cline / Codex) spawn this
+ * process over stdio; it forwards each newline-delimited JSON-RPC line to the
+ * desktop app's loopback endpoint as an authenticated HTTP POST and prints
+ * the response line back.
+ *
+ * The endpoint descriptor ({ url, port, token }) is read from an endpoint
+ * file the desktop app writes while the server runs:
+ *   default    ~/.openreel/mcp-endpoint.json     (legacy internal MCP)
+ *   override   $OPENREEL_MCP_ENDPOINT_FILE        — e.g. point the shim at
+ *              ~/.openreel/live-endpoint.json to bridge an external agent to
+ *              the LIVE collaboration endpoint (the 15 facade tools through
+ *              the main-process live session):
+ *              OPENREEL_MCP_ENDPOINT_FILE=~/.openreel/live-endpoint.json openreel-mcp
+ * Electron-free so it runs under plain node.
+ */
 import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
