@@ -99,4 +99,80 @@ describe("DesktopApp", () => {
     expect(useSettingsStore.getState().settingsOpen).toBe(true);
     expect(view.getByTestId("desktop-settings-dialog")).toBeTruthy();
   });
+
+  describe("DOM-level undo/redo keyboard handler (G-01)", () => {
+    function mockUndoRedo(): { undo: ReturnType<typeof vi.fn>; redo: ReturnType<typeof vi.fn> } {
+      const undo = vi.fn();
+      const redo = vi.fn();
+      (mockedUseProjectStore as unknown as { getState: () => unknown }).getState = () => ({
+        undo,
+        redo,
+      });
+      return { undo, redo };
+    }
+
+    it("routes Cmd+Z / Ctrl+Z to the store undo", () => {
+      mockHasProject(true);
+      const { undo, redo } = mockUndoRedo();
+      render(<DesktopApp />);
+
+      fireEvent.keyDown(window, { key: "z", metaKey: true });
+      expect(undo).toHaveBeenCalledTimes(1);
+      expect(redo).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+      expect(undo).toHaveBeenCalledTimes(2);
+      expect(redo).not.toHaveBeenCalled();
+    });
+
+    it("routes Cmd+Shift+Z / Ctrl+Y to the store redo", () => {
+      mockHasProject(true);
+      const { undo, redo } = mockUndoRedo();
+      render(<DesktopApp />);
+
+      fireEvent.keyDown(window, { key: "Z", metaKey: true, shiftKey: true });
+      expect(redo).toHaveBeenCalledTimes(1);
+      expect(undo).not.toHaveBeenCalled();
+
+      fireEvent.keyDown(window, { key: "y", ctrlKey: true });
+      expect(redo).toHaveBeenCalledTimes(2);
+      expect(undo).not.toHaveBeenCalled();
+    });
+
+    it("never hijacks text entry (input / textarea / contenteditable guard)", () => {
+      mockHasProject(true);
+      const { undo, redo } = mockUndoRedo();
+      render(<DesktopApp />);
+
+      const input = document.createElement("input");
+      const textarea = document.createElement("textarea");
+      const editable = document.createElement("div");
+      // jsdom does not implement isContentEditable (always false) — stub it
+      // so the guard path itself is exercised.
+      Object.defineProperty(editable, "isContentEditable", { value: true });
+      document.body.append(input, textarea, editable);
+
+      fireEvent.keyDown(input, { key: "z", metaKey: true });
+      fireEvent.keyDown(textarea, { key: "z", metaKey: true });
+      fireEvent.keyDown(editable, { key: "z", metaKey: true });
+      expect(undo).not.toHaveBeenCalled();
+      expect(redo).not.toHaveBeenCalled();
+
+      input.remove();
+      textarea.remove();
+      editable.remove();
+    });
+
+    it("ignores unrelated keys and modifier-less presses", () => {
+      mockHasProject(true);
+      const { undo, redo } = mockUndoRedo();
+      render(<DesktopApp />);
+
+      fireEvent.keyDown(window, { key: "z" });
+      fireEvent.keyDown(window, { key: "x", metaKey: true });
+      fireEvent.keyDown(window, { key: "z", metaKey: true, altKey: true });
+      expect(undo).not.toHaveBeenCalled();
+      expect(redo).not.toHaveBeenCalled();
+    });
+  });
 });

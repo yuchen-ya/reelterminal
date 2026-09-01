@@ -92,3 +92,5 @@ xcuserdata/
 *.p12
 *.pfx
 packages/runtime-chromium/.artifacts/
+apps/desktop/e2e/.artifacts/
+apps/desktop/e2e/scratch/

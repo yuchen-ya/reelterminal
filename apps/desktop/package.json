@@ -23,6 +23,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:e2e": "vitest run --config e2e/vitest.config.ts",
     "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs",
     "prepare:aurora": "node scripts/prepare-aurora-native.mjs",
     "pack": "pnpm run fetch:ffmpeg && pnpm run build && electron-builder --dir",
@@ -39,6 +40,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@types/node": "^20.14.0",
     "electron": "^33.0.0",
     "electron-builder": "^24.13.3",

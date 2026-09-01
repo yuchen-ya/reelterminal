@@ -203,6 +203,7 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
   return (
     <div
       ref={rulerRef}
+      data-testid="timeline-time-ruler"
       className={`h-[34px] border-b border-border relative bg-bg-1 select-none ${
         isDragging ? "cursor-grabbing" : "cursor-pointer"
       }`}

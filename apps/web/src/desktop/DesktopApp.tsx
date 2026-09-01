@@ -62,6 +62,41 @@ export function DesktopApp(): JSX.Element {
     });
   }, []);
 
+  // DOM-level undo/redo (G-01 fix): the native menu accelerator above only
+  // fires for real OS key events; this handler makes the SAME store
+  // undo/redo reachable to DOM-level keyboard input (and any front-end where
+  // the native menu is unavailable). No double-fire with real keyboards:
+  // NSMenu consumes the key equivalent before the renderer sees it. The
+  // focus guard mirrors services/keyboard-shortcuts.ts — never hijack text
+  // entry in an input, textarea, or contenteditable.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      const target = e.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      const key = e.key.toLowerCase();
+      const isUndo = key === "z" && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey;
+      const isRedo =
+        (key === "z" && (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey) ||
+        (key === "y" && e.ctrlKey && !e.shiftKey && !e.altKey);
+      if (!isUndo && !isRedo) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (isUndo) {
+        void useProjectStore.getState().undo();
+      } else {
+        void useProjectStore.getState().redo();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   // Forward uncaught renderer errors + unhandled rejections to the native crash
   // collector so editor-side faults are captured alongside main-process crashes.
   useEffect(() => installRendererCrashHandlers(), []);
