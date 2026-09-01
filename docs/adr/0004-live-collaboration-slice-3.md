@@ -63,11 +63,13 @@ export interface LiveProjectStore {
   getState(): Promise<{ project: Project; revision: number }>; // on-demand snapshot read
   getContext(): Promise<LiveEditorContext>;
   /** CAS-checked: rejects CONFLICT when expectedRevision is stale.
-      The batch executes as ONE history group (one undo unit). */
+      The batch executes as ONE history group (one undo unit).
+      Returns the new revision plus the ids that genuinely exist
+      afterwards (core mints entity ids; the store diffs canonical state). */
   applyActions(
     actions: readonly Action[],
     opts: { groupLabel: string; expectedRevision?: number; expectedContextRevision?: number },
-  ): Promise<{ revision: number }>;
+  ): Promise<{ revision: number; createdIds: string[] }>;
   requestSave(): Promise<{ revision: number }>; // routes to the GUI's own save path
 }
 ```
