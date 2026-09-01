@@ -62,8 +62,8 @@ export function createHistorySlice(
   } = deps;
 
   return {
-    beginHistoryGroup: (description?: string) => {
-      get().actionExecutor.getHistory().beginGroup(description);
+    beginHistoryGroup: (description?: string, owner?: string) => {
+      get().actionExecutor.getHistory().beginGroup(description, owner);
     },
 
     endHistoryGroup: () => {

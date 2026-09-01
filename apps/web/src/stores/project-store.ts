@@ -117,6 +117,13 @@ export interface ProjectState {
   // Project data
   project: Project;
   hasOpenProject: boolean;
+  /**
+   * ADR 0004 Decision 3: one monotonic, in-memory revision for the canonical
+   * project. Bumped by a single store subscription whenever the `project`
+   * reference changes (manual edits, agent edits, undo, redo, project switch).
+   * Never persisted into project files, autosave records, or checkpoints.
+   */
+  projectRevision: number;
 
   // Photo projects
   photoProjects: Map<string, PhotoProject>;
@@ -196,7 +203,7 @@ export interface ProjectState {
   moveClips: (
     moves: Array<{ clipId: string; startTime: number; trackId?: string }>,
   ) => Promise<ActionResult>;
-  beginHistoryGroup: (description?: string) => void;
+  beginHistoryGroup: (description?: string, owner?: string) => void;
   endHistoryGroup: () => void;
   closeGapBeforeClip: (clipId: string) => Promise<ActionResult>;
   consolidateTrack: (trackId: string) => Promise<ActionResult>;
@@ -332,6 +339,11 @@ export interface ProjectState {
     duration?: number,
     style?: Partial<TextStyle>,
     metadata?: import("@openreel/core").ClipMetadata,
+    options?: {
+      /** Pre-assigned clip id (live-bridge applies facade-minted ids verbatim). */
+      id?: string;
+      transform?: Partial<Transform>;
+    },
   ) => TextClip | null;
   updateTextContent: (clipId: string, text: string) => TextClip | null;
   updateTextStyle: (
@@ -1694,6 +1706,7 @@ export const useProjectStore = create<ProjectState>()(
       // Initial state - create empty project (Requirement 1.1)
       project: createEmptyProject(),
       hasOpenProject: false,
+      projectRevision: 0,
       photoProjects: new Map(),
       actionExecutor,
       actionHistory,
@@ -4494,3 +4507,20 @@ export const useProjectStore = create<ProjectState>()(
     };
   }),
 );
+
+// ADR 0004 Decision 3: the single choke point for the shared project revision.
+// Every committed mutation path (manual edits, agent edits, engine-aware
+// overlay edits, undo, redo, project load) replaces the `project` reference,
+// so one reference comparison here covers them all. In-memory only.
+useProjectStore.subscribe((state, prevState) => {
+  if (state.project !== prevState.project) {
+    useProjectStore.setState({
+      projectRevision: prevState.projectRevision + 1,
+    });
+  }
+});
+
+/** Current shared project revision (ADR 0004 Decision 3). */
+export function getProjectRevision(): number {
+  return useProjectStore.getState().projectRevision;
+}

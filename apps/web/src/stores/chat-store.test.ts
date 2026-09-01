@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   isSessionUnlocked: vi.fn(() => true),
   undo: vi.fn(async () => ({ success: true })),
   projectState: { hasOpenProject: true },
+  projectRevision: 0,
   undoStackSize: 0,
   settings: {
     defaultLlmProvider: "openai",
@@ -51,12 +52,14 @@ vi.mock("./project-store", () => ({
   useProjectStore: {
     getState: () => ({
       hasOpenProject: h.projectState.hasOpenProject,
+      project: { id: "proj-1" },
       undo: h.undo,
       actionExecutor: {
         getHistory: () => ({ getUndoStackSize: () => h.undoStackSize }),
       },
     }),
   },
+  getProjectRevision: () => h.projectRevision,
 }));
 
 import { useChatStore } from "./chat-store";
@@ -81,11 +84,13 @@ describe("chat-store", () => {
     vi.clearAllMocks();
     h.getSecret.mockResolvedValue("test-key");
     h.isSessionUnlocked.mockReturnValue(true);
-    h.undo.mockResolvedValue({ success: true });
+    h.undo.mockImplementation(async () => ({ success: true }));
     h.projectState.hasOpenProject = true;
+    h.projectRevision = 0;
     h.settings.agentAutoConfirm = false;
     h.settings.agentDryRun = false;
     h.undoStackSize = 0;
+    delete (window as { openreel?: unknown }).openreel;
   });
 
   it("refuses to run without an open project", async () => {
@@ -283,14 +288,22 @@ describe("chat-store", () => {
 
   it("undoLastTurn undoes once and clears the committed flag", async () => {
     h.runTurn.mockImplementation(
-      impl(async ({ messages }) => ({
-        text: "",
-        messages,
-        toolCalls: 0,
-        stoppedReason: "end_turn",
-        committed: true,
-      })),
+      impl(async ({ messages }) => {
+        // Simulate the turn pushing one entry onto the undo stack.
+        h.undoStackSize = 1;
+        return {
+          text: "",
+          messages,
+          toolCalls: 0,
+          stoppedReason: "end_turn",
+          committed: true,
+        };
+      }),
     );
+    h.undo.mockImplementation(async () => {
+      h.undoStackSize = Math.max(0, h.undoStackSize - 1);
+      return { success: true };
+    });
 
     await store().send("do something");
     expect(store().lastTurnCommitted).toBe(true);
@@ -301,6 +314,53 @@ describe("chat-store", () => {
 
     await store().undoLastTurn();
     expect(h.undo).toHaveBeenCalledTimes(1);
+  });
+
+  it("undoLastTurn undoes every group the turn pushed (multi-group turns)", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => {
+        // A facade-path turn spanning three history entries (e.g. three
+        // edit.apply calls, each its own group).
+        h.undoStackSize = 3;
+        return {
+          text: "",
+          messages,
+          toolCalls: 3,
+          stoppedReason: "end_turn",
+          committed: true,
+        };
+      }),
+    );
+    h.undo.mockImplementation(async () => {
+      h.undoStackSize = Math.max(0, h.undoStackSize - 1);
+      return { success: true };
+    });
+
+    await store().send("three edits");
+    expect(store().lastTurnCommitted).toBe(true);
+
+    await store().undoLastTurn();
+    expect(h.undo).toHaveBeenCalledTimes(3);
+    expect(store().lastTurnCommitted).toBe(false);
+  });
+
+  it("undoLastTurn does nothing when the turn left the undo stack unchanged", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => ({
+        text: "",
+        messages,
+        toolCalls: 0,
+        stoppedReason: "end_turn",
+        committed: true,
+      })),
+    );
+
+    await store().send("read-only question");
+    expect(store().lastTurnCommitted).toBe(true);
+
+    await store().undoLastTurn();
+    expect(h.undo).not.toHaveBeenCalled();
+    expect(store().lastTurnCommitted).toBe(false);
   });
 
   it("surfaces an error result as error status", async () => {
@@ -486,5 +546,115 @@ describe("chat-store", () => {
     expect(store().conversation).toHaveLength(0);
     expect(store().lastTurnCommitted).toBe(false);
     expect(store().status).toBe("idle");
+  });
+
+  it("captures send-time metadata on the user message", async () => {
+    h.projectRevision = 5;
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => ({
+        text: "ok",
+        messages,
+        toolCalls: 0,
+        stoppedReason: "end_turn",
+        committed: true,
+      })),
+    );
+
+    await store().send("hello");
+    const user = store().messages.find((m) => m.role === "user");
+    expect(user?.meta).toMatchObject({
+      projectId: "proj-1",
+      projectRevision: 5,
+    });
+    expect(user?.meta?.selection).toEqual({ clipIds: [], textIds: [] });
+    // The assistant message records the undo checkpoint for the turn.
+    const assistant = store().messages.find((m) => m.role === "assistant");
+    expect(assistant?.meta?.projectRevision).toBe(5);
+  });
+
+  it("populates per-tool-call metadata from ToolResult.data", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ onEvent }) => {
+        const call = { id: "t1", name: "edit_apply", args: { ops: [] } };
+        onEvent?.({ type: "tool_call", call });
+        onEvent?.({
+          type: "tool_result",
+          call,
+          result: {
+            ok: true,
+            summary: "Applied text.create (revision 7)",
+            data: { revision: 7, affectedIds: ["text-1", "track-2"] },
+          },
+        });
+        return {
+          text: "done",
+          messages: [],
+          toolCalls: 1,
+          stoppedReason: "end_turn",
+          committed: true,
+        };
+      }),
+    );
+
+    await store().send("add a title");
+    const assistant = store().messages.find((m) => m.role === "assistant");
+    expect(assistant?.toolCalls[0].meta).toEqual({
+      revision: 7,
+      affectedIds: ["text-1", "track-2"],
+    });
+  });
+
+  it("desktop + facade bridge: runs the turn against facade tools", async () => {
+    (window as { openreel?: unknown }).openreel = {
+      platform: "desktop",
+      facade: { call: vi.fn(async () => ({ ok: true, data: {} })) },
+    };
+    let seen: RunTurnInput | undefined;
+    h.runTurn.mockImplementation(
+      impl(async (input) => {
+        seen = input;
+        return {
+          text: "done",
+          messages: input.messages,
+          toolCalls: 0,
+          stoppedReason: "end_turn",
+          committed: true,
+        };
+      }),
+    );
+
+    await store().send("hello facade");
+    expect(h.runTurn).toHaveBeenCalledOnce();
+    expect(seen?.executor).toBeDefined();
+    expect(seen?.gating).toBeDefined();
+    expect(seen?.system).toContain("live collaboration agent");
+    // Facade verbs are exposed with MCP-style underscored names.
+    const names = (seen?.tools as Array<{ function?: { name: string } }>).map(
+      (t) => t.function?.name,
+    );
+    expect(names).toContain("edit_apply");
+    expect(names).toContain("editor_get_context");
+    expect(seen?.gating?.isReadOnly("editor_get_context")).toBe(true);
+  });
+
+  it("web (no desktop bridge): keeps registry tools and no injected executor", async () => {
+    let seen: RunTurnInput | undefined;
+    h.runTurn.mockImplementation(
+      impl(async (input) => {
+        seen = input;
+        return {
+          text: "done",
+          messages: input.messages,
+          toolCalls: 0,
+          stoppedReason: "end_turn",
+          committed: true,
+        };
+      }),
+    );
+
+    await store().send("hello web");
+    expect(seen?.executor).toBeUndefined();
+    expect(seen?.gating).toBeUndefined();
+    expect(seen?.system).toBe("system");
   });
 });

@@ -167,21 +167,29 @@ export class LiveEditorHost implements EditingHost {
 
   beginTransaction(label?: string): TxnHandle {
     this.appliedInTxn = 0;
-    useProjectStore.getState().beginHistoryGroup(label);
+    const store = useProjectStore.getState();
+    // ADR 0004 Decision 12: attribute the turn's pushes to the "agent" owner so
+    // an interleaved human edit auto-closes this group instead of joining it.
+    store.actionExecutor.setPushOwner("agent");
+    store.beginHistoryGroup(label);
     return { id: label ?? "turn" };
   }
 
   commitTransaction(_handle: TxnHandle, _label: string): void {
-    useProjectStore.getState().endHistoryGroup();
+    const store = useProjectStore.getState();
+    store.endHistoryGroup();
+    store.actionExecutor.setPushOwner(undefined);
   }
 
   async rollbackTransaction(_handle: TxnHandle): Promise<void> {
-    useProjectStore.getState().endHistoryGroup();
+    const store = useProjectStore.getState();
+    store.endHistoryGroup();
     // The turn's actions form one history group; a single undo reverts them all.
     if (this.appliedInTxn > 0) {
-      await useProjectStore.getState().undo();
+      await store.undo();
     }
     this.appliedInTxn = 0;
+    store.actionExecutor.setPushOwner(undefined);
   }
 
   async runJob(

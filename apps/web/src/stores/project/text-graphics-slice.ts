@@ -201,6 +201,7 @@ export function createTextGraphicsSlice(
       duration = 5,
       style,
       metadata,
+      options,
     ) => {
       const titleEngine = useEngineStore.getState().titleEngine;
       if (!titleEngine) {
@@ -220,6 +221,10 @@ export function createTextGraphicsSlice(
         duration,
         style,
         metadata,
+        ...(options?.id !== undefined ? { id: options.id } : {}),
+        ...(options?.transform !== undefined
+          ? { transform: options.transform }
+          : {}),
       });
       recordOverlayCreate("text", "textClips", textClip);
       return textClip;

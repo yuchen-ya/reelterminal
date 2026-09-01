@@ -11,6 +11,7 @@ import { autoSaveManager } from "../services/auto-save";
 import { UpdateBanner } from "./UpdateBanner";
 import { installRendererCrashHandlers, reportRendererCrash } from "./crash-reporting";
 import { installMcpListener } from "../services/agent/mcp-listener";
+import { installLiveBridge } from "../services/agent/live-bridge";
 import { getLiveEditorHost } from "../services/agent/host-singleton";
 import { createExportJobRunner } from "../services/agent/export-job-runner";
 import { useGpuJobPoller } from "../hooks/useGpuJobPoller";
@@ -73,6 +74,11 @@ export function DesktopApp(): JSX.Element {
     getLiveEditorHost().setJobRunner(createExportJobRunner());
     return installMcpListener();
   }, []);
+
+  // ADR 0004 Decision 1: serve the main-process live facade session's store
+  // requests (getState/getContext/applyActions/requestSave) against the
+  // canonical renderer store. No-op off desktop.
+  useEffect(() => installLiveBridge(), []);
 
   // Answer the native unsaved-changes guard on window close / quit: report
   // dirty state and flush pending changes on request.

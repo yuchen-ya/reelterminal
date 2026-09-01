@@ -20,6 +20,7 @@ import {
   ZoomIn,
   Proportions,
   Magnet,
+  Crosshair,
 } from "@/icons/lucide-compat";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { ToolcraftIconButton as IconButton } from "@openreel/ui";
@@ -27,6 +28,7 @@ import { ToolcraftText as Text } from "@openreel/ui";
 import { useProjectStore } from "../../stores/project-store";
 import { useTimelineStore } from "../../stores/timeline-store";
 import { useUIStore } from "../../stores/ui-store";
+import { useEditorContextStore } from "../../stores/editor-context-store";
 import { useThemeStore } from "../../stores/theme-store";
 import { getRenderBridge } from "../../bridges/render-bridge";
 import { getEffectsBridge } from "../../bridges/effects-bridge";
@@ -282,6 +284,27 @@ const scaleTransformPositionForPreview = (
       y: transform.position.y * scale,
     },
   };
+};
+
+// The rendered project frame is letterboxed ("contain") inside the canvas
+// element. Returns the content rect (CSS px, relative to the element's
+// top-left) that maps 1:1 onto the project frame, so pointer coordinates can
+// be normalized against the frame — the same geometry the selection bounds
+// helpers compute inline.
+const projectFrameContentRect = (
+  frameWidth: number,
+  frameHeight: number,
+  elementWidth: number,
+  elementHeight: number,
+): { x: number; y: number; width: number; height: number } => {
+  const frameAspect = frameWidth / frameHeight;
+  const elementAspect = elementWidth / elementHeight;
+  if (elementAspect > frameAspect) {
+    const width = elementHeight * frameAspect;
+    return { x: (elementWidth - width) / 2, y: 0, width, height: elementHeight };
+  }
+  const height = elementWidth / frameAspect;
+  return { x: 0, y: (elementHeight - height) / 2, width: elementWidth, height };
 };
 
 const applyStabilizationTransform = (
@@ -999,6 +1022,18 @@ export const Preview: React.FC = () => {
   const [showCompositionGrid, setShowCompositionGrid] = useState(false);
   const [showSafeMargins, setShowSafeMargins] = useState(false);
   const [canvasSnappingEnabled, setCanvasSnappingEnabled] = useState(true);
+
+  // ADR 0004 Decision 5: "agent target point" affordance. While armed, the
+  // next real click on the preview canvas is converted to normalized 0..1
+  // coordinates against the project frame and stored in the editor context.
+  const [targetPointArmed, setTargetPointArmed] = useState(false);
+  const agentTargetPoint = useEditorContextStore((state) => state.canvasPoint);
+  const setAgentTargetPoint = useEditorContextStore(
+    (state) => state.setCanvasPoint,
+  );
+  const clearAgentTargetPoint = useEditorContextStore(
+    (state) => state.clearCanvasPoint,
+  );
 
   const ZOOM_OPTIONS = [
     { label: "50%", value: 0.5 },
@@ -6491,6 +6526,55 @@ export const Preview: React.FC = () => {
 
   const activeShapeClip = selectedShapeClip;
 
+  // Agent target point: while armed, the next real click on the canvas is a
+  // genuine user gesture that pins a normalized 0..1 frame position for the
+  // agent (ADR 0004 Decision 5). Capture phase so the click never reaches the
+  // graphics-selection handler underneath.
+  const handleTargetPointClickCapture = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!targetPointArmed) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setTargetPointArmed(false);
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const content = projectFrameContentRect(
+        settings.width,
+        settings.height,
+        rect.width,
+        rect.height,
+      );
+      const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
+      setAgentTargetPoint({
+        x: clamp01((event.clientX - rect.left - content.x) / content.width),
+        y: clamp01((event.clientY - rect.top - content.y) / content.height),
+      });
+    },
+    [targetPointArmed, settings.width, settings.height, setAgentTargetPoint],
+  );
+
+  // Marker position for the stored point, in % of the canvas element so it
+  // tracks resizes; re-derived from the same letterbox geometry. Rendered as a
+  // DOM overlay (pointer-events: none) — never into the render surface, so it
+  // cannot leak into export pixels.
+  const agentTargetMarkerStyle = useMemo<React.CSSProperties | null>(() => {
+    if (!agentTargetPoint || canvasSize.width <= 0 || canvasSize.height <= 0) {
+      return null;
+    }
+    const content = projectFrameContentRect(
+      settings.width,
+      settings.height,
+      canvasSize.width,
+      canvasSize.height,
+    );
+    return {
+      left: `${((content.x + agentTargetPoint.x * content.width) / canvasSize.width) * 100}%`,
+      top: `${((content.y + agentTargetPoint.y * content.height) / canvasSize.height) * 100}%`,
+    };
+  }, [agentTargetPoint, canvasSize, settings.width, settings.height]);
+
   const handlePreviewKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       const target = event.target as HTMLElement;
@@ -6499,6 +6583,12 @@ export const Preview: React.FC = () => {
           "input, textarea, select, button, [contenteditable='true']",
         )
       ) {
+        return;
+      }
+      if (event.key === "Escape" && (targetPointArmed || agentTargetPoint)) {
+        setTargetPointArmed(false);
+        clearAgentTargetPoint();
+        event.preventDefault();
         return;
       }
       const direction =
@@ -6574,13 +6664,16 @@ export const Preview: React.FC = () => {
       void Promise.all(pending).finally(endHistoryGroup);
     },
     [
+      agentTargetPoint,
       allShapeClips,
       allTextClips,
       beginHistoryGroup,
+      clearAgentTargetPoint,
       endHistoryGroup,
       selectedItems,
       settings.height,
       settings.width,
+      targetPointArmed,
       timelineTracks,
       updateClipTransform,
       updateShapeTransform,
@@ -7720,6 +7813,7 @@ export const Preview: React.FC = () => {
           }
           onMouseMove={!isPlaying ? handleGraphicsMouseMove : undefined}
           onClick={!isPlaying ? handleGraphicsClick : undefined}
+          onClickCapture={handleTargetPointClickCapture}
           onMouseLeave={() => setHoveredGraphicClipId(null)}
         >
           <canvas
@@ -7728,9 +7822,23 @@ export const Preview: React.FC = () => {
             height={previewRes.height}
             className="w-full h-full object-contain bg-[var(--screen-bg)] rounded-[10px]"
             style={{
-              cursor: hoveredGraphicClipId && !isPlaying ? "pointer" : "default",
+              cursor: targetPointArmed
+                ? "crosshair"
+                : hoveredGraphicClipId && !isPlaying
+                  ? "pointer"
+                  : "default",
             }}
           />
+
+          {agentTargetMarkerStyle ? (
+            <div
+              aria-label="Agent target point"
+              className="pointer-events-none absolute z-30"
+              style={agentTargetMarkerStyle}
+            >
+              <span className="absolute -translate-x-1/2 -translate-y-1/2 block h-3 w-3 rounded-full border-2 border-accent bg-accent/30 shadow-[0_0_4px_rgba(0,0,0,0.6)]" />
+            </div>
+          ) : null}
 
           {showCompositionGrid && !cropMode ? (
             <div
@@ -8227,6 +8335,26 @@ export const Preview: React.FC = () => {
         </div>
 
         <div className="flex gap-1.5 items-center">
+          <IconButton
+            label="Set agent target point"
+            icon={<Crosshair size={16} />}
+            variant="ghost"
+            size="sm"
+            aria-pressed={targetPointArmed}
+            onClick={() => {
+              if (targetPointArmed || agentTargetPoint) {
+                setTargetPointArmed(false);
+                clearAgentTargetPoint();
+              } else {
+                setTargetPointArmed(true);
+              }
+            }}
+            className={`w-[34px] h-[34px] grid place-items-center rounded-[7px] transition-colors ${
+              targetPointArmed || agentTargetPoint
+                ? "bg-accent-soft text-accent"
+                : "bg-bg-2 text-fg-2 hover:text-fg hover:bg-bg-3"
+            }`}
+          />
           <IconButton
             label={isMuted ? "Unmute" : "Mute"}
             icon={isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}

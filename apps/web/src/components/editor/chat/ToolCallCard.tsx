@@ -30,6 +30,29 @@ const STATUS_META: Record<
   },
 };
 
+const MAX_VALUE_LENGTH = 60;
+
+function formatArgValue(value: unknown): string {
+  if (value === null) return "null";
+  if (value === undefined) return "—";
+  if (typeof value === "string") {
+    return value.length > MAX_VALUE_LENGTH
+      ? `${value.slice(0, MAX_VALUE_LENGTH)}…`
+      : value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0 ? "[]" : `[${value.length} items]`;
+  }
+  if (typeof value === "object") {
+    const keys = Object.keys(value as Record<string, unknown>);
+    return keys.length === 0 ? "{}" : `{${keys.slice(0, 4).join(", ")}${keys.length > 4 ? ", …" : ""}}`;
+  }
+  return String(value);
+}
+
 function previewArgs(args: Record<string, unknown>): string {
   const entries = Object.entries(args ?? {});
   if (entries.length === 0) return "";
@@ -46,8 +69,8 @@ function previewArgs(args: Record<string, unknown>): string {
 export function ToolCallCard({ call }: { call: ToolCallView }): JSX.Element {
   const [open, setOpen] = useState(false);
   const meta = STATUS_META[call.status];
-  const hasDetail =
-    Object.keys(call.args ?? {}).length > 0 || call.result !== undefined;
+  const argEntries = Object.entries(call.args ?? {});
+  const hasDetail = argEntries.length > 0 || call.result !== undefined;
 
   return (
     <div className="rounded-md border border-border bg-bg-1/60 text-[11px]">
@@ -75,14 +98,21 @@ export function ToolCallCard({ call }: { call: ToolCallView }): JSX.Element {
 
       {open && hasDetail && (
         <div className="space-y-1.5 border-t border-border px-2 py-1.5">
-          {Object.keys(call.args ?? {}).length > 0 && (
+          {argEntries.length > 0 && (
             <div>
               <div className="mb-0.5 text-[9px] uppercase tracking-wide text-fg-muted">
                 Arguments
               </div>
-              <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-bg-2 p-1.5 font-mono text-[10px] text-fg-2">
-                {JSON.stringify(call.args, null, 2)}
-              </pre>
+              <div className="space-y-0.5">
+                {argEntries.map(([key, value]) => (
+                  <div key={key} className="flex items-baseline gap-2">
+                    <span className="shrink-0 text-fg-muted">{key}</span>
+                    <span className="min-w-0 break-words font-mono text-[10px] text-fg-2">
+                      {formatArgValue(value)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {call.result && (
@@ -102,10 +132,32 @@ export function ToolCallCard({ call }: { call: ToolCallView }): JSX.Element {
               </div>
             </div>
           )}
+          {call.meta?.affectedIds && call.meta.affectedIds.length > 0 && (
+            <div>
+              <div className="mb-0.5 text-[9px] uppercase tracking-wide text-fg-muted">
+                Affected
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {call.meta.affectedIds.map((id) => (
+                  <span
+                    key={id}
+                    className="rounded bg-bg-2 px-1 py-0.5 font-mono text-[10px] text-fg-2"
+                  >
+                    {id}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {call.meta?.revision !== undefined && (
+            <div className="text-[10px] text-fg-muted">
+              revision {call.meta.revision}
+            </div>
+          )}
         </div>
       )}
 
-      {!open && Object.keys(call.args ?? {}).length > 0 && (
+      {!open && argEntries.length > 0 && (
         <div className="truncate px-2 pb-1.5 font-mono text-[10px] text-fg-muted">
           {previewArgs(call.args)}
         </div>

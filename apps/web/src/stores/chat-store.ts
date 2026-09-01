@@ -11,17 +11,32 @@ import type {
   ToolCall,
   ToolResult,
   LoopMessage,
+  RunTurnResult,
 } from "@openreel/agent";
 import { isSessionUnlocked, getSecret } from "../services/secure-storage";
 import { getLiveEditorHost, runExclusive } from "../services/agent/host-singleton";
 import { makeBYOKClient } from "../services/agent/llm-transport";
 import { defaultModelFor, modelsFor } from "../services/agent/models";
+import {
+  facadeAnthropicTools,
+  facadeOpenAITools,
+  facadeChatExecutor,
+  facadeGating,
+  LIVE_COLLAB_SYSTEM_PROMPT,
+} from "../services/agent/facade-chat";
+import { getLiveEditorContext } from "./editor-context-store";
 import { useSettingsStore } from "./settings-store";
-import { useProjectStore } from "./project-store";
+import { useProjectStore, getProjectRevision } from "./project-store";
 
 export type ChatStatus = "idle" | "running" | "awaiting_confirm" | "error";
 
 export type ToolCallStatus = "running" | "done" | "error" | "rejected";
+
+/** Per-tool-call metadata, extracted from ToolResult.data when present. */
+export interface ToolCallMeta {
+  readonly revision?: number;
+  readonly affectedIds?: string[];
+}
 
 export interface ToolCallView {
   readonly id: string;
@@ -29,6 +44,20 @@ export interface ToolCallView {
   readonly args: Record<string, unknown>;
   readonly status: ToolCallStatus;
   readonly result?: ToolResult;
+  readonly meta?: ToolCallMeta;
+}
+
+/** Send-time snapshot (ADR 0004 Decision 8: mutual legibility metadata). */
+export interface ChatMessageMeta {
+  readonly projectId: string;
+  readonly projectRevision: number;
+  readonly contextRevision: number;
+  readonly selection: {
+    readonly clipIds: string[];
+    readonly textIds: string[];
+  };
+  /** Undo-stack size recorded when this turn committed. */
+  readonly undoCheckpoint?: number;
 }
 
 export interface ChatMessage {
@@ -36,6 +65,7 @@ export interface ChatMessage {
   readonly role: "user" | "assistant";
   readonly text: string;
   readonly toolCalls: ToolCallView[];
+  readonly meta?: ChatMessageMeta;
 }
 
 interface PendingConfirm {
@@ -57,6 +87,8 @@ interface ChatState {
   abortController: AbortController | null;
   lastTurnCommitted: boolean;
   lastTurnUndoSize: number | null;
+  /** Undo-stack size captured before the running turn (multi-group undo base). */
+  turnStartUndoSize: number | null;
   usage: TokenUsage;
 
   send: (text: string) => Promise<void>;
@@ -86,6 +118,34 @@ function undoStackSize(): number | null {
   }
 }
 
+/**
+ * Desktop + live facade bridge ⇒ the chat runs against the 15-verb facade
+ * session in the main process (ADR 0004 Decision 8). Web keeps the registry
+ * tool surface.
+ */
+const useFacadeTools = (): boolean =>
+  isDesktop() && typeof window.openreel?.facade?.call === "function";
+
+/** Pulls { revision?, affectedIds? } out of a ToolResult data payload. */
+function extractToolCallMeta(data: unknown): ToolCallMeta | undefined {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    return undefined;
+  }
+  const record = data as Record<string, unknown>;
+  const revision =
+    typeof record.revision === "number" && Number.isFinite(record.revision)
+      ? record.revision
+      : undefined;
+  const affectedIds = Array.isArray(record.affectedIds)
+    ? record.affectedIds.filter((id): id is string => typeof id === "string")
+    : undefined;
+  if (revision === undefined && affectedIds === undefined) return undefined;
+  return {
+    ...(revision !== undefined ? { revision } : {}),
+    ...(affectedIds !== undefined ? { affectedIds } : {}),
+  };
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   status: "idle",
@@ -95,6 +155,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   abortController: null,
   lastTurnCommitted: false,
   lastTurnUndoSize: null,
+  turnStartUndoSize: null,
   usage: { inputTokens: 0, outputTokens: 0 },
 
   send: async (text: string) => {
@@ -149,13 +210,36 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const controller = new AbortController();
     const seq = ++activeSeq;
 
+    // Mutual-legibility metadata: the project/context state the user saw when
+    // they sent this message (Decision 8).
+    let sendMeta: ChatMessageMeta | undefined;
+    try {
+      const ctx = getLiveEditorContext();
+      sendMeta = {
+        projectId: useProjectStore.getState().project.id,
+        projectRevision: getProjectRevision(),
+        contextRevision: ctx.contextRevision,
+        selection: {
+          clipIds: [...ctx.selectedClipIds],
+          textIds: [...ctx.selectedTextIds],
+        },
+      };
+    } catch {
+      sendMeta = undefined;
+    }
+
     set((state) => ({
-      messages: [...state.messages, userMessage, assistantMessage],
+      messages: [
+        ...state.messages,
+        sendMeta ? { ...userMessage, meta: sendMeta } : userMessage,
+        assistantMessage,
+      ],
       conversation: [...state.conversation, { role: "user", content: trimmed }],
       status: "running",
       error: null,
       abortController: controller,
       pendingConfirm: null,
+      turnStartUndoSize: undoStackSize(),
     }));
 
     const updateAssistant = (fn: (m: ChatMessage) => ChatMessage): void => {
@@ -198,6 +282,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
                       : event.result.error?.code === "REJECTED"
                         ? "rejected"
                         : "error",
+                    meta:
+                      extractToolCallMeta(event.result.data) ?? tc.meta,
                   }
                 : tc,
             ),
@@ -218,17 +304,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
       apiKey,
       signal: controller.signal,
     });
-    const tools =
-      provider === "anthropic" ? toAnthropicTools() : toOpenAITools();
+    // Desktop: run the turn against the main-process live facade session
+    // (same 15-verb contract as external agents). Web: registry tools.
+    const facade = useFacadeTools();
+    const tools = facade
+      ? provider === "anthropic"
+        ? facadeAnthropicTools()
+        : facadeOpenAITools()
+      : provider === "anthropic"
+        ? toAnthropicTools()
+        : toOpenAITools();
+    const system = facade
+      ? LIVE_COLLAB_SYSTEM_PROMPT
+      : buildSystemPrompt(host);
     const autoConfirm = useSettingsStore.getState().agentAutoConfirm;
     const dryRun = useSettingsStore.getState().agentDryRun;
 
-    const result = await runExclusive(() =>
+    const run = (): Promise<RunTurnResult> =>
       runTurn({
         host,
         llm,
         tools,
-        system: buildSystemPrompt(host),
+        system,
+        ...(facade
+          ? { executor: facadeChatExecutor, gating: facadeGating }
+          : {}),
         messages: get().conversation,
         dryRun,
         confirmGate: autoConfirm
@@ -239,13 +339,37 @@ export const useChatStore = create<ChatState>((set, get) => ({
               }),
         onEvent,
         turnLabel: "AI edit",
-      }),
-    );
+      });
+
+    // The registry path mutates the store directly, so it serializes against
+    // other agent entry points via runExclusive. The facade path must NOT
+    // hold that lock: its edit.apply calls round-trip main → live bridge →
+    // back into this renderer, where the bridge takes runExclusive itself —
+    // holding it here would deadlock the turn. Per-batch serialization still
+    // happens inside the bridge.
+    const result = facade ? await run() : await runExclusive(run);
 
     // A reset() (or a newer turn) during the run supersedes this completion.
     if (activeSeq !== seq) return;
     const wasAborted = controller.signal.aborted;
+    const undoCheckpoint = result.committed ? undoStackSize() : null;
     set((state) => ({
+      messages: state.messages.map((m) =>
+        m.id === assistantId
+          ? {
+              ...m,
+              meta: {
+                ...(sendMeta ?? {
+                  projectId: "",
+                  projectRevision: 0,
+                  contextRevision: 0,
+                  selection: { clipIds: [], textIds: [] },
+                }),
+                ...(undoCheckpoint !== null ? { undoCheckpoint } : {}),
+              },
+            }
+          : m,
+      ),
       conversation: result.messages,
       status: wasAborted
         ? "idle"
@@ -253,7 +377,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           ? "error"
           : "idle",
       lastTurnCommitted: result.committed,
-      lastTurnUndoSize: result.committed ? undoStackSize() : null,
+      lastTurnUndoSize: undoCheckpoint,
       abortController: null,
       pendingConfirm: null,
       usage: {
@@ -292,8 +416,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set({ lastTurnCommitted: false, lastTurnUndoSize: null });
       return;
     }
-    await useProjectStore.getState().undo();
-    set({ lastTurnCommitted: false, lastTurnUndoSize: null });
+    const startSize = get().turnStartUndoSize;
+    if (startSize === null) {
+      // No pre-turn baseline (legacy state): one undo, as before.
+      await useProjectStore.getState().undo();
+    } else {
+      // A facade-path turn may span several history groups (one per
+      // edit.apply). Undo group-by-group until the stack is back to the
+      // pre-turn size; bounded so a stuck stack can't loop forever.
+      const MAX_UNDOS = 50;
+      for (let i = 0; i < MAX_UNDOS; i++) {
+        const size = undoStackSize();
+        if (size === null || size <= startSize) break;
+        const result = await useProjectStore.getState().undo();
+        if (!result.success) break;
+      }
+    }
+    set({
+      lastTurnCommitted: false,
+      lastTurnUndoSize: null,
+      turnStartUndoSize: null,
+    });
   },
 
   clearError: () => set({ error: null }),
@@ -312,6 +455,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       abortController: null,
       lastTurnCommitted: false,
       lastTurnUndoSize: null,
+      turnStartUndoSize: null,
       usage: { inputTokens: 0, outputTokens: 0 },
     });
   },

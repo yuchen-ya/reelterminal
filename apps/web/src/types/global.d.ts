@@ -170,6 +170,43 @@ export type OpenReelUpdaterStatus =
   | { state: "downloaded"; version: string }
   | { state: "error"; message: string };
 
+/* ---- Live collaboration (ADR 0004) --------------------------------------- */
+
+export type OpenReelCollabMode = "observe" | "assist" | "autonomous";
+
+export interface OpenReelCollabStatus {
+  enabled: boolean;
+  externalConnected: boolean;
+  writer: "embedded" | "external" | null;
+  mode: OpenReelCollabMode;
+  currentAction: string | null;
+}
+
+/** FacadeResult as serialized across the facade.call IPC channel. */
+export interface OpenReelFacadeResult {
+  ok: boolean;
+  data?: unknown;
+  error?: { code: string; message: string; details?: unknown };
+}
+
+export interface OpenReelLiveBridgeRequest {
+  callId: string;
+  kind: "getIdentity" | "getState" | "getContext" | "applyActions" | "requestSave";
+  [key: string]: unknown;
+}
+
+export interface OpenReelLiveBridgeReply {
+  callId: string;
+  ok: boolean;
+  result?: unknown;
+  error?: { code: string; message: string; details?: unknown };
+}
+
+export interface OpenReelLiveEvent {
+  type: "status" | "action";
+  [key: string]: unknown;
+}
+
 declare global {
   interface Window {
     openreel?: {
@@ -299,6 +336,28 @@ declare global {
         rigHumanoidModel(
           args: OpenReelRigHumanoidModelArgs,
         ): Promise<OpenReelRigHumanoidModelResult>;
+      };
+      /** Embedded-chat facade verb call → main-process live facade session. */
+      facade?: {
+        call(verb: string, params: unknown): Promise<OpenReelFacadeResult>;
+      };
+      /** Main→renderer live-store requests (ADR 0004 Decision 1 seam). */
+      liveBridge?: {
+        onRequest(
+          handler: (req: OpenReelLiveBridgeRequest) => Promise<void>,
+        ): void;
+        respond(reply: OpenReelLiveBridgeReply): void;
+      };
+      /** Main→renderer push: collaboration status + current agent action. */
+      liveEvents?: {
+        onEvent(cb: (evt: OpenReelLiveEvent) => void): () => void;
+      };
+      /** Live collaboration session control (desktop main session host). */
+      collabControl?: {
+        enable(): Promise<OpenReelCollabStatus>;
+        disable(): Promise<OpenReelCollabStatus>;
+        getStatus(): Promise<OpenReelCollabStatus>;
+        setMode(mode: OpenReelCollabMode): Promise<OpenReelCollabStatus>;
       };
     };
   }

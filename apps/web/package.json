@@ -21,6 +21,7 @@
     "@gsap/react": "^2.1.2",
     "@huggingface/transformers": "3.8.1",
     "@openreel/agent": "workspace:*",
+    "@openreel/agent-facade": "workspace:*",
     "@openreel/core": "workspace:*",
     "@openreel/ui": "workspace:*",
     "@paper-design/shaders-react": "^0.0.76",

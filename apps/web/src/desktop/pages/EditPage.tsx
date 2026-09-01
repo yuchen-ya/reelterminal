@@ -6,14 +6,21 @@ import { ToolcraftText as Text } from "@openreel/ui";
 import { AssetsPanel } from "../../components/editor/AssetsPanel";
 import { InspectorPanel } from "../../components/editor/InspectorPanel";
 import { PanelErrorBoundary } from "../../components/ErrorBoundary";
+import { CollabStatusBar } from "../editor/CollabStatusBar";
 import { Icon } from "@/icons/Icon";
 import { useResizable } from "../editor/useResizable";
+import { useUIStore } from "../../stores/ui-store";
 
 const Preview = lazy(() =>
   import("../../components/editor/Preview").then((m) => ({ default: m.Preview })),
 );
 const Timeline = lazy(() =>
   import("../../components/editor/Timeline").then((m) => ({ default: m.Timeline })),
+);
+const ChatPanel = lazy(() =>
+  import("../../components/editor/chat/ChatPanel").then((m) => ({
+    default: m.ChatPanel,
+  })),
 );
 
 function PanelLoading(): JSX.Element {
@@ -118,11 +125,26 @@ export function EditPage(): JSX.Element {
     storageKey: "openreel-desktop-timeline-h",
   });
 
-  const gridStyle: React.CSSProperties = {
-    gridTemplateColumns: `${mediaW.value}px 1fr ${inspectorW.value}px`,
-    gridTemplateRows: `1fr ${timelineH.value}px`,
-    gridTemplateAreas: "'media stage inspector' 'timeline timeline timeline'",
-  };
+  // ADR 0004 Decision 8: the embedded chat mounts as a collapsible right-side
+  // dock region (ui-store "agentChat" panel), with the collaboration status
+  // bar above the timeline.
+  const chatOpen = useUIStore((state) => state.panels.agentChat.visible);
+  const chatWidth = useUIStore((state) => state.panels.agentChat.width) ?? 380;
+  const togglePanel = useUIStore((state) => state.togglePanel);
+
+  const gridStyle: React.CSSProperties = chatOpen
+    ? {
+        gridTemplateColumns: `${mediaW.value}px 1fr ${inspectorW.value}px ${chatWidth}px`,
+        gridTemplateRows: `1fr auto ${timelineH.value}px`,
+        gridTemplateAreas:
+          "'media stage inspector chat' 'collab collab collab collab' 'timeline timeline timeline timeline'",
+      }
+    : {
+        gridTemplateColumns: `${mediaW.value}px 1fr ${inspectorW.value}px`,
+        gridTemplateRows: `1fr auto ${timelineH.value}px`,
+        gridTemplateAreas:
+          "'media stage inspector' 'collab collab collab' 'timeline timeline timeline'",
+      };
 
   return (
     <div className="grid h-full min-h-0 w-full gap-px overflow-hidden bg-border" style={gridStyle}>
@@ -141,6 +163,23 @@ export function EditPage(): JSX.Element {
         <InspectorPanel />
         <ColumnHandle edge="left" onPointerDown={inspectorW.onHandlePointerDown} />
       </DockRegion>
+
+      {chatOpen && (
+        <DockRegion
+          label="Agent"
+          name="Agent"
+          area="chat"
+          icon="bubble.left.and.text.bubble.right"
+        >
+          <Suspense fallback={<PanelLoading />}>
+            <ChatPanel onClose={() => togglePanel("agentChat")} />
+          </Suspense>
+        </DockRegion>
+      )}
+
+      <div className="h-8 min-h-0" style={{ gridArea: "collab" }}>
+        <CollabStatusBar />
+      </div>
 
       <DockRegion label="Timeline" name="Timeline" area="timeline" icon="rectangle.split.3x1" className="bg-tl-bg">
         <Suspense fallback={<PanelLoading />}>
