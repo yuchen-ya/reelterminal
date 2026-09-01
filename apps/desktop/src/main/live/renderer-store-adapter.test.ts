@@ -95,11 +95,15 @@ describe("createLiveStoreBridge", () => {
     bridge.handleResponse(validSender, {
       callId: "call-1",
       ok: true,
-      result: { revision: 6, createdIds: ["clip-1"] },
+      // The renderer diffs created ids per category (LiveCreatedIds).
+      result: {
+        revision: 6,
+        createdIds: { tracks: [], clips: ["clip-1"], textClips: [] },
+      },
     });
     await expect(pending).resolves.toEqual({
       revision: 6,
-      createdIds: ["clip-1"],
+      createdIds: { tracks: [], clips: ["clip-1"], textClips: [] },
     });
   });
 

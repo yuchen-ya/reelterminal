@@ -30,7 +30,7 @@ import type {
   LiveEditorContext,
   LiveProjectStore,
 } from "./live-store";
-import { collectEntityIds, diffCreatedIds } from "./ops";
+import { collectEntityIds, diffCreatedIdsByCategory } from "./ops";
 import { createEmptyProject } from "./project-factory";
 import type {
   ExportCallbacks,
@@ -133,7 +133,9 @@ class FakeLiveStore implements LiveProjectStore {
         );
       }
     }
-    const createdIds = diffCreatedIds(before, collectEntityIds(draft));
+    // The seam contract: created ids partitioned per category, so a mixed
+    // batch hands each creating op the id of its own entity.
+    const createdIds = diffCreatedIdsByCategory(before, collectEntityIds(draft));
     this.project = draft;
     this.revision += 1;
     this.batches.push({ actions, opts });
@@ -431,6 +433,53 @@ describe("live edit.apply", () => {
     ]);
   });
 
+  it("mixed batch [text.create, clip.add]: every op gets the id of its own entity", async () => {
+    // Seed one media item so clip.add has something to place.
+    store.project.mediaLibrary.items.push({
+      id: "m1",
+      name: "seed.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      metadata: {
+        duration: 6,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+        codec: "h264",
+        sampleRate: 48000,
+        channels: 2,
+        fileSize: 1024,
+      },
+      thumbnailUrl: null,
+      waveformData: null,
+    });
+    const facade = liveFacade();
+    const res = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "text", trackId: "t1" },
+        { op: "text.create", text: "overlay", startTime: 0, duration: 2 },
+        { op: "track.add", trackType: "video", trackId: "v1" },
+        { op: "clip.add", trackId: "v1", mediaId: "m1", startTime: 0 },
+      ],
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.applied).toHaveLength(4);
+    expect(res.value.applied[0]).toEqual({ op: "track.add", createdIds: ["t1"] });
+    // The text overlay id comes from the textClips bucket — not the "v1"
+    // track or the clip a flat project-ordered diff would have handed over.
+    const textId = store.project.textClips?.[0]?.id;
+    expect(textId).toBeDefined();
+    expect(res.value.applied[1]).toEqual({ op: "text.create", createdIds: [textId] });
+    expect(res.value.applied[2]).toEqual({ op: "track.add", createdIds: ["v1"] });
+    const clipId = store.project.timeline.tracks
+      .find((t) => t.id === "v1")
+      ?.clips[0]?.id;
+    expect(clipId).toBeDefined();
+    expect(res.value.applied[3]).toEqual({ op: "clip.add", createdIds: [clipId] });
+  });
+
   it("stale expectedRevision → CONFLICT, store untouched (no batch recorded)", async () => {
     const facade = liveFacade();
     await store.humanEdit({
@@ -451,6 +500,44 @@ describe("live edit.apply", () => {
     expect(store.batches).toHaveLength(0);
     expect(store.revision).toBe(1);
     expect(store.project.textClips ?? []).toHaveLength(0);
+  });
+
+  it("unguarded edit.apply still CASes: a concurrent human edit → CONFLICT, store untouched", async () => {
+    const tracksBefore = store.project.timeline.tracks.length;
+    const facade = liveFacade();
+    store.beforeApply = async () => {
+      // A human edit lands between the agent's snapshot read (translate)
+      // and its apply — exactly the window an unguarded call used to miss.
+      await store.humanEdit({
+        type: "track/add",
+        id: "human-mid-apply",
+        timestamp: Date.now(),
+        params: { trackType: "video" },
+      });
+    };
+    const res = await facade["edit.apply"]({
+      ops: [...TEXT_BATCH], // NO expectedRevision passed by the caller
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("CONFLICT");
+    // Nothing from the agent batch was applied; only the human edit stands.
+    expect(store.batches).toHaveLength(0);
+    expect(store.revision).toBe(1);
+    expect(store.project.timeline.tracks.length).toBe(tracksBefore + 1);
+    expect(store.project.textClips ?? []).toHaveLength(0);
+  });
+
+  it("unguarded edit.apply auto-attaches the snapshot revision to the store CAS", async () => {
+    const facade = liveFacade();
+    const res = await facade["edit.apply"]({ ops: [...TEXT_BATCH] });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.revision).toBe(1);
+    // The batch reached the store guarded with the snapshot revision (0),
+    // even though the caller passed no expectedRevision.
+    expect(store.batches).toHaveLength(1);
+    expect(store.batches[0]?.opts.expectedRevision).toBe(0);
   });
 
   it("stale expectedContextRevision → CONFLICT from the store CAS, nothing applied", async () => {
@@ -546,6 +633,43 @@ describe("live edit.apply", () => {
     });
     expect(clash.ok).toBe(false);
     if (!clash.ok) expect(clash.error.code).toBe("CONFLICT");
+  });
+
+  it("the ledger is scoped per project: a project switch never replays the old project's result", async () => {
+    const facade = liveFacade();
+    const first = await facade["edit.apply"]({
+      ops: [...TEXT_BATCH],
+      idempotencyKey: "edit-switch",
+    });
+    expect(first.ok).toBe(true);
+    const firstProjectId = store.project.id;
+
+    // Simulate a project switch: the same seam now serves a DIFFERENT
+    // project (the GUI opened another one).
+    store.project = createEmptyProject("Switched Project");
+    store.revision = 0;
+    expect(store.project.id).not.toBe(firstProjectId);
+
+    // Replaying the same key + payload must NOT serve the old project's
+    // committed result — it executes fresh against the new project.
+    const afterSwitch = await facade["edit.apply"]({
+      ops: [...TEXT_BATCH],
+      idempotencyKey: "edit-switch",
+    });
+    expect(afterSwitch.ok).toBe(true);
+    if (!afterSwitch.ok) return;
+    expect(afterSwitch.value.replayed).toBe(false);
+    expect(store.project.textClips?.[0]?.text).toBe("Hello live");
+
+    // …and within the SAME project the key still replays honestly.
+    const sameProject = await facade["edit.apply"]({
+      ops: [...TEXT_BATCH],
+      idempotencyKey: "edit-switch",
+    });
+    expect(sameProject.ok).toBe(true);
+    if (!sameProject.ok || !first.ok) return;
+    expect(sameProject.value.replayed).toBe(true);
+    expect(sameProject.value.applied).toEqual(afterSwitch.value.applied);
   });
 
   it("clip.add with an explicit clipId is honestly rejected in live mode", async () => {
@@ -665,6 +789,43 @@ describe("session modes + writer lease (Decisions 6/7)", () => {
     expect(res.ok).toBe(true);
   });
 
+  it("a writer-less session acquires the freed lease at its next write (no re-creation)", async () => {
+    const first = liveFacade({ sessionId: "agent-1" });
+    // Constructed while agent-1 holds the lease: writer-less.
+    const second = liveFacade({ sessionId: "agent-2" });
+    const blocked = await second["edit.apply"]({ ops: [...TEXT_BATCH] });
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) {
+      expect(blocked.error.code).toBe("CONFLICT");
+      expect(blocked.error.details?.leaseHolder).toBe("agent-1");
+    }
+
+    // The holder goes away (e.g. the embedded session is disposed by a mode
+    // switch) — the lease is released.
+    await first.dispose();
+    expect(lease.holder()).toBeNull();
+
+    // The SAME second session's next write acquires the lease at the gate
+    // instead of failing CONFLICT forever with a stale holder story.
+    const res = await second["edit.apply"]({ ops: [...TEXT_BATCH] });
+    expect(res.ok).toBe(true);
+    expect(lease.holder()).toBe("agent-2");
+    const describe = await second["session.describe"]();
+    expect(describe.ok && describe.value.writer).toBe(true);
+  });
+
+  it("a disposed session does not resurrect as the writer", async () => {
+    const first = liveFacade({ sessionId: "agent-1" });
+    const second = liveFacade({ sessionId: "agent-2" });
+    await second.dispose(); // never held the lease; now inert
+    await first.dispose();
+    expect(lease.holder()).toBeNull();
+    const res = await second["edit.apply"]({ ops: [...TEXT_BATCH] });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("CONFLICT");
+    expect(lease.holder()).toBeNull();
+  });
+
   it("session.describe mirrors the headless shape plus live fields", async () => {
     const facade = liveFacade({ mode: "autonomous" });
     const res = await facade["session.describe"]();
@@ -778,6 +939,43 @@ describe("live preview/export on a store snapshot (Decision 10)", () => {
     expect(res.value.artifact.sha256).toMatch(/^[0-9a-f]{64}$/);
     // The store is read, never mutated, by a preview.
     expect(store.batches).toHaveLength(0);
+  });
+
+  it("preview replay mirrors headless: current top-level revision, truthful artifact.sourceRevision", async () => {
+    await seedTextProject();
+    const facade = liveFacade({ renderProvider: stubRenderProvider() });
+    const first = await facade["preview.render_frame"]({
+      timeSec: 1,
+      idempotencyKey: "pv-1",
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const renderedRevision = store.revision;
+    expect(first.value.revision).toBe(renderedRevision);
+    expect(first.value.artifact.sourceRevision).toBe(renderedRevision);
+
+    // A human edit moves the revision AFTER the PNG was rendered.
+    await store.humanEdit({
+      type: "track/add",
+      id: "later-human",
+      timestamp: Date.now(),
+      params: { trackType: "video" },
+    });
+    expect(store.revision).toBe(renderedRevision + 1);
+
+    const replay = await facade["preview.render_frame"]({
+      timeSec: 1,
+      idempotencyKey: "pv-1",
+    });
+    expect(replay.ok).toBe(true);
+    if (!replay.ok) return;
+    expect(replay.value.replayed).toBe(true);
+    // Headless parity (session.ts preview.render_frame replay): the
+    // top-level revision is the CURRENT one; the artifact ref keeps the
+    // truth about which snapshot the PNG was actually rendered from.
+    expect(replay.value.revision).toBe(renderedRevision + 1);
+    expect(replay.value.artifact.sourceRevision).toBe(renderedRevision);
+    expect(replay.value.artifact.path).toBe(first.value.artifact.path);
   });
 
   it("preview.render_frame with blob/GUI-only media fails UNSUPPORTED instead of rendering wrong pixels", async () => {

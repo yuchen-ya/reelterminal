@@ -86,6 +86,21 @@ describe("live endpoint auth + transport", () => {
     expect(res.status).toBe(405);
   });
 
+  it("POST to a non-/mcp path is 404, never an accepted request", async () => {
+    const res = await fetch(`http://127.0.0.1:${running.port}/elsewhere`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    });
+    expect(res.status).toBe(404);
+    // The real path keeps working.
+    const ok = await rpc({ jsonrpc: "2.0", id: 2, method: "ping" }, token);
+    expect(ok.status).toBe(200);
+  });
+
   it("writes the endpoint file mode 0600 and deletes it on close", async () => {
     const mode = statSync(endpointFile).mode & 0o777;
     expect(mode).toBe(0o600);

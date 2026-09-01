@@ -143,7 +143,8 @@ function normalizeRenderQueueScale(
  */
 export class LiveEditorHost implements EditingHost {
   private jobRunner?: JobRunner;
-  private appliedInTxn = 0;
+  /** Undo-stack size captured at beginTransaction; rollback walks back to it. */
+  private txnUndoBaseline: number | null = null;
 
   constructor(options: LiveEditorHostOptions = {}) {
     this.jobRunner = options.jobRunner;
@@ -160,36 +161,51 @@ export class LiveEditorHost implements EditingHost {
 
   async applyAction(action: Action) {
     this.requireOpenProject();
-    const result = await useProjectStore.getState().executeAction(action);
-    if (result.success) this.appliedInTxn++;
-    return result;
+    return useProjectStore.getState().executeAction(action);
   }
 
   beginTransaction(label?: string): TxnHandle {
-    this.appliedInTxn = 0;
     const store = useProjectStore.getState();
     // ADR 0004 Decision 12: attribute the turn's pushes to the "agent" owner so
     // an interleaved human edit auto-closes this group instead of joining it.
     store.actionExecutor.setPushOwner("agent");
     store.beginHistoryGroup(label);
+    this.txnUndoBaseline = store.actionExecutor
+      .getHistory()
+      .getUndoStackSize();
     return { id: label ?? "turn" };
   }
 
   commitTransaction(_handle: TxnHandle, _label: string): void {
     const store = useProjectStore.getState();
     store.endHistoryGroup();
+    this.txnUndoBaseline = null;
     store.actionExecutor.setPushOwner(undefined);
   }
 
   async rollbackTransaction(_handle: TxnHandle): Promise<void> {
     const store = useProjectStore.getState();
-    store.endHistoryGroup();
-    // The turn's actions form one history group; a single undo reverts them all.
-    if (this.appliedInTxn > 0) {
-      await store.undo();
+    const history = store.actionExecutor.getHistory();
+    try {
+      store.endHistoryGroup();
+      const baseline = this.txnUndoBaseline ?? 0;
+      // With Decision-12 auto-close, an interleaved human edit splits the
+      // transaction into several agent units — a single undo would only revert
+      // the last one (or worse, eat the human's unit). Undo group-by-group
+      // back to the pre-transaction baseline, stopping at any foreign-owned
+      // top: the human unit is never eaten and the agent units below it
+      // honestly stay applied.
+      const MAX_UNDOS = 50;
+      for (let i = 0; i < MAX_UNDOS; i++) {
+        if (history.getUndoStackSize() <= baseline) break;
+        if (history.peekUndoOwner() !== "agent") break;
+        const result = await store.undo();
+        if (!result.success) break;
+      }
+    } finally {
+      this.txnUndoBaseline = null;
+      store.actionExecutor.setPushOwner(undefined);
     }
-    this.appliedInTxn = 0;
-    store.actionExecutor.setPushOwner(undefined);
   }
 
   async runJob(

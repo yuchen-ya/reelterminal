@@ -119,6 +119,22 @@ function undoStackSize(): number | null {
 }
 
 /**
+ * Owner of the top undo entry (ADR 0004 Decision 12). The undo loop below must
+ * never revert a foreign (human) unit while walking back a turn's agent units.
+ * Defaults to undefined (human) so an unreadable stack fails toward stopping.
+ */
+function peekUndoOwner(): string | undefined {
+  try {
+    return useProjectStore
+      .getState()
+      .actionExecutor.getHistory()
+      .peekUndoOwner();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Desktop + live facade bridge ⇒ the chat runs against the 15-verb facade
  * session in the main process (ADR 0004 Decision 8). Web keeps the registry
  * tool surface.
@@ -424,10 +440,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // A facade-path turn may span several history groups (one per
       // edit.apply). Undo group-by-group until the stack is back to the
       // pre-turn size; bounded so a stuck stack can't loop forever.
+      // Owner check (ADR 0004 Decision 12): a human edit interleaved
+      // mid-turn is its own undo unit — never revert it. Stop at the first
+      // foreign-owned top and say honestly that the undo is partial.
       const MAX_UNDOS = 50;
       for (let i = 0; i < MAX_UNDOS; i++) {
         const size = undoStackSize();
         if (size === null || size <= startSize) break;
+        if (peekUndoOwner() !== "agent") {
+          set({
+            error:
+              "Undo stopped at one of your own edits made during that turn, so the turn was only partially undone. Your edits were kept.",
+          });
+          break;
+        }
         const result = await useProjectStore.getState().undo();
         if (!result.success) break;
       }

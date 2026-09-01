@@ -148,6 +148,18 @@ and `{projectId, projectName, windowId}`.
   `editor_get_context` and retry. Headless `edit_apply` rejects the field
   `INVALID_PARAMS` (there is no context to guard).
 
+### Live-mode `edit_apply` / `project_save` honesty
+
+- **Live `edit_apply` revision CAS is unconditional:** when you omit
+  `expectedRevision`, the live session attaches the revision of the snapshot
+  your ops were translated against, so a human edit landing between your
+  read and the apply still fails `CONFLICT` and nothing is applied. An
+  explicit `expectedRevision` is honored as-is.
+- **Live `project_save` is not a checkpoint:** it flushes the GUI's
+  autosave/recovery snapshot and reports the current revision. It does not
+  write a `.openreel` project file — the GUI owns where and how project
+  files are written.
+
 ### The `edit_apply` op vocabulary
 
 Eight ops, one atomic batch each call (the exact fields and bounds live in

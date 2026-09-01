@@ -14,6 +14,7 @@ import {
   listGeneratedMotionShaders,
 } from "@openreel/core/motion/shaders";
 import { createEmptyProject } from "./project/project-helpers";
+import { autoSaveManager } from "../services/auto-save";
 
 const {
   mockEffectsBridge,
@@ -122,6 +123,7 @@ vi.mock("../services/auto-save", () => ({
     startAutoSave: vi.fn(),
     stopAutoSave: vi.fn(),
     triggerSave: vi.fn(),
+    forceSave: vi.fn().mockResolvedValue(undefined),
     getRecentSaves: vi.fn().mockResolvedValue([]),
     loadSave: vi.fn(),
     deleteSave: vi.fn(),
@@ -2196,5 +2198,69 @@ describe("ProjectStore - generated shader registry lifecycle", () => {
     expect(
       useProjectStore.getState().project.generatedShaders?.map((d) => d.id),
     ).toEqual([shaderA.id]);
+  });
+});
+
+describe("getFullProject / forceSave with momentarily-null engines", () => {
+  const overlayProject = (): Project => ({
+    ...createEmptyProject("Overlays"),
+    textClips: [
+      {
+        id: "tc-1",
+        trackId: "t1",
+        startTime: 0,
+        duration: 2,
+        text: "hello",
+        style: {},
+        transform: { position: { x: 0.5, y: 0.5 } },
+        keyframes: [],
+      },
+    ] as unknown as Project["textClips"],
+    shapeClips: [{ id: "shape-1" }] as unknown as Project["shapeClips"],
+    svgClips: [{ id: "svg-1" }] as unknown as Project["svgClips"],
+    stickerClips: [{ id: "sticker-1" }] as unknown as Project["stickerClips"],
+  });
+
+  const withNullEngines = (fn: () => void | Promise<void>): Promise<void> => {
+    const { titleEngine, graphicsEngine } = useEngineStore.getState();
+    useEngineStore.setState({ titleEngine: null, graphicsEngine: null });
+    return Promise.resolve()
+      .then(fn)
+      .finally(() => {
+        useEngineStore.setState({ titleEngine, graphicsEngine });
+      });
+  };
+
+  it("getFullProject falls back to the project's overlay arrays when engines are null", async () => {
+    useProjectStore.getState().createNewProject();
+    useProjectStore.setState({
+      project: overlayProject(),
+      hasOpenProject: true,
+    });
+    await withNullEngines(async () => {
+      const full = useProjectStore.getState().getFullProject();
+      // A momentarily-null engine must not silently drop overlays from the
+      // snapshot — the project's own mirror arrays are the fallback.
+      expect(full.textClips?.map((c) => c.id)).toEqual(["tc-1"]);
+      expect(full.shapeClips?.map((c) => c.id)).toEqual(["shape-1"]);
+      expect(full.svgClips?.map((c) => c.id)).toEqual(["svg-1"]);
+      expect(full.stickerClips?.map((c) => c.id)).toEqual(["sticker-1"]);
+    });
+  });
+
+  it("forceSave snapshots the same overlays instead of dropping them", async () => {
+    useProjectStore.getState().createNewProject();
+    useProjectStore.setState({
+      project: overlayProject(),
+      hasOpenProject: true,
+    });
+    await withNullEngines(async () => {
+      await useProjectStore.getState().forceSave();
+      const saved = vi.mocked(autoSaveManager.forceSave).mock.calls.at(-1)?.[0];
+      expect(saved?.textClips?.map((c) => c.id)).toEqual(["tc-1"]);
+      expect(saved?.shapeClips?.map((c) => c.id)).toEqual(["shape-1"]);
+      expect(saved?.svgClips?.map((c) => c.id)).toEqual(["svg-1"]);
+      expect(saved?.stickerClips?.map((c) => c.id)).toEqual(["sticker-1"]);
+    });
   });
 });

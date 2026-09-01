@@ -49,6 +49,7 @@ import {
   isLiveStoreConflict,
   LiveStoreConflictError,
   type LiveApplyActionsResult,
+  type LiveCreatedIds,
   type LiveProjectStore,
 } from "./live-store";
 import { hasUrlScheme, resolveContainedPathDetailed } from "./media/path-roots";
@@ -174,6 +175,13 @@ export class LiveFacadeSession {
   private readonly config: LiveFacadeConfig;
   private readonly jobs: JobRegistry;
   private readonly ledger: IdempotencyLedger;
+  /**
+   * Lazily resolved id of the OPEN project, folded into the ledger scope
+   * (headless scopes its ledger per project id; the live project id is only
+   * known asynchronously). Refreshed on every ledger access so a project
+   * switch never serves the previous project's committed results.
+   */
+  private ledgerProjectId: string | null = null;
   /** True while this session holds the writer lease. */
   private writer: boolean;
   private disposed = false;
@@ -182,9 +190,9 @@ export class LiveFacadeSession {
   constructor(config: LiveFacadeConfig) {
     this.config = config;
     this.jobs = config.jobTracker ?? new JobRegistry();
-    // Session-scoped ledger (headless scopes per project id; the live
-    // project is identified asynchronously, the session id is not).
-    this.ledger = new IdempotencyLedger(() => `live:${config.sessionId}`);
+    this.ledger = new IdempotencyLedger(
+      () => `live:${config.sessionId}#${this.ledgerProjectId ?? "unresolved"}`,
+    );
     // Decision 6: non-observe sessions take the writer lease at
     // construction. Failure is not fatal — the session runs read-only and
     // its write verbs fail CONFLICT naming the current holder.
@@ -219,8 +227,10 @@ export class LiveFacadeSession {
    * The Decision 6/7 verb gate, enforced BEFORE any param validation or
    * state access: observe rejects every non-read-only verb FORBIDDEN (a
    * fixed property of the mode); a writer-less assist/autonomous session
-   * rejects them CONFLICT with the current lease holder (retryable — the
-   * holder may release).
+   * first tries to ACQUIRE the lease — it may have been released since
+   * construction (e.g. the previous holder was disposed by a mode switch) —
+   * and only then fails CONFLICT, naming the ACTUAL current holder (or
+   * honestly reporting the lease unavailable when there is none).
    */
   private gate(verb: FacadeVerb): void {
     if (isReadOnlyVerb(verb)) return;
@@ -232,11 +242,20 @@ export class LiveFacadeSession {
       );
     }
     if (!this.writer) {
+      // A disposed session must not resurrect as the writer; a live one
+      // takes the freed lease instead of failing CONFLICT forever.
+      if (!this.disposed && this.config.lease.acquire(this.config.sessionId)) {
+        this.writer = true;
+        return;
+      }
+      const holder = this.config.lease.holder();
       throw new FacadeError(
         "CONFLICT",
-        `${verb}: another AI session holds the writer lease — this session runs read-only until it releases`,
+        holder !== null
+          ? `${verb}: another AI session ("${holder}") holds the writer lease — this session runs read-only until it releases`
+          : `${verb}: the writer lease is unavailable — this session could not acquire it`,
         {
-          leaseHolder: this.config.lease.holder(),
+          leaseHolder: holder,
           sessionId: this.config.sessionId,
         },
       );
@@ -344,9 +363,10 @@ export class LiveFacadeSession {
   }
 
   /**
-   * project.save (live): routed to the GUI's own save path — the GUI owns
-   * where and how the project file is written, so the verb takes no path
-   * and honestly reports only the revision at save time.
+   * project.save (live): flushes the GUI's autosave/recovery snapshot via
+   * the GUI's own save path — it does NOT write a .openreel project file
+   * (the GUI owns where and how project files are written), so the verb
+   * takes no path and honestly reports only the revision at flush time.
    */
   async projectSave(
     params: Record<string, never> = {},
@@ -388,7 +408,7 @@ export class LiveFacadeSession {
       // Idempotent replay first (headless semantics): a transport retry
       // replays the committed result without touching the store.
       const payload = { ops };
-      const prior = this.replayLookup<EditApplyPayload>(
+      const prior = await this.replayLookup<EditApplyPayload>(
         "edit.apply",
         valid.idempotencyKey,
         payload,
@@ -420,7 +440,6 @@ export class LiveFacadeSession {
           { currentRevision: revision },
         );
       }
-
       // Caller-assigned clip ids cannot be honored live: the canonical
       // store applies the core action stream and core mints clip ids
       // (headless renames inside its private draft transaction; there is no
@@ -465,9 +484,13 @@ export class LiveFacadeSession {
       try {
         committed = await this.config.store.applyActions(actions, {
           groupLabel: "agent: edit.apply",
-          ...(valid.expectedRevision !== undefined
-            ? { expectedRevision: valid.expectedRevision }
-            : {}),
+          // The renderer CAS is UNCONDITIONAL in live mode: a caller that
+          // omits expectedRevision is guarded with the revision of the
+          // snapshot the ops were translated against, so a human edit
+          // landing between translate and apply is a CONFLICT — never a
+          // silent stale-overwrite (Decision 3). An explicit caller
+          // expectedRevision is honored as-is (fail-fast checked above).
+          expectedRevision: valid.expectedRevision ?? revision,
           ...(valid.expectedContextRevision !== undefined
             ? { expectedContextRevision: valid.expectedContextRevision }
             : {}),
@@ -486,7 +509,8 @@ export class LiveFacadeSession {
       }
 
       // Partition the store-diffed created ids back onto the ops: every
-      // creating op type creates exactly one entity, in batch order.
+      // creating op consumes one id from its own category bucket (the store
+      // diffs per category, so a mixed batch can't cross-assign ids).
       const applied = partitionCreatedIds(ops, committed.createdIds);
       const value: EditApplyPayload = { applied };
       if (valid.idempotencyKey !== undefined) {
@@ -563,7 +587,7 @@ export class LiveFacadeSession {
           : valid.timeSec;
 
       const payload = { timeSec: valid.timeSec, width, height };
-      const prior = this.replayLookup<PreviewRenderFrameResult>(
+      const prior = await this.replayLookup<PreviewRenderFrameResult>(
         "preview.render_frame",
         valid.idempotencyKey,
         payload,
@@ -576,6 +600,10 @@ export class LiveFacadeSession {
           () => false,
         );
         if (stillThere) {
+          // Mirrors headless session.ts exactly (same spread + overwrite):
+          // the top-level revision is the CURRENT one — the verb runs now —
+          // while artifact.sourceRevision (inside prior.value, untouched)
+          // keeps the truth about which snapshot the PNG was rendered from.
           return ok<PreviewRenderFrameResult>({
             ...prior.value,
             revision,
@@ -689,7 +717,7 @@ export class LiveFacadeSession {
           : undefined;
 
       const payload = { settings: settingsInput ?? null };
-      const prior = this.replayLookup<{ jobId: string; sourceRevision: number }>(
+      const prior = await this.replayLookup<{ jobId: string; sourceRevision: number }>(
         "export.start",
         valid.idempotencyKey,
         payload,
@@ -1031,13 +1059,24 @@ export class LiveFacadeSession {
    * beginMutation's ledger phase — the revision CAS lives in the store, not
    * here). Returns the stored committed outcome on a replay hit; the same
    * key with a DIFFERENT payload is a CONFLICT, never a blind replay.
+   *
+   * The ledger scope tracks the open project: refreshed here, before every
+   * lookup, so a key replayed after a project switch misses the OLD
+   * project's entry and executes fresh (headless parity: per-project scope).
    */
-  private replayLookup<T>(
+  private async replayLookup<T>(
     verb: string,
     idempotencyKey: string | undefined,
     payload: unknown,
-  ): { revision: number; value: T } | null {
+  ): Promise<{ revision: number; value: T } | null> {
     if (idempotencyKey === undefined) return null;
+    try {
+      const { projectId } = await this.config.store.getIdentity();
+      this.ledgerProjectId = projectId;
+    } catch {
+      // Identity unreadable (e.g. no project open): keep the last known
+      // scope — the store's own errors/CAS stay authoritative.
+    }
     const stored = this.ledger.get<T>(verb, idempotencyKey);
     if (!stored) return null;
     if (stableStringify(payload) !== stored.payloadHash) {
@@ -1149,17 +1188,31 @@ export class LiveFacadeSession {
   }
 }
 
-/** Partition store-diffed created ids onto ops (one entity per creating op). */
+/**
+ * Partition store-diffed created ids onto ops. Each creating op consumes one
+ * id from ITS OWN category bucket, in batch order within that category —
+ * mirroring ops.ts diffCreatedIdsByCategory. A mixed batch (e.g.
+ * [text.create, clip.add]) thus hands every op the id of the entity it
+ * created; a flat project-ordered list would cross-assign the ids.
+ */
 function partitionCreatedIds(
   ops: readonly EditOp[],
-  createdIds: readonly string[],
+  createdIds: LiveCreatedIds,
 ): OpApplied[] {
-  let cursor = 0;
+  const buckets = {
+    "track.add": createdIds.tracks,
+    "clip.add": createdIds.clips,
+    "text.create": createdIds.textClips,
+  } as const;
+  const cursors = { "track.add": 0, "clip.add": 0, "text.create": 0 };
   return ops.map((op) => {
-    const count = CREATING_OPS.has(op.op) ? 1 : 0;
-    const ids = createdIds.slice(cursor, cursor + count);
-    cursor += count;
-    return { op: op.op, createdIds: ids };
+    if (!CREATING_OPS.has(op.op)) return { op: op.op, createdIds: [] };
+    const key = op.op as keyof typeof buckets;
+    const id = buckets[key][cursors[key]];
+    cursors[key] += 1;
+    // A missing bucket entry means the store created nothing for this op
+    // (e.g. an implicit dependency was diffed instead) — report honestly.
+    return { op: op.op, createdIds: id === undefined ? [] : [id] };
   });
 }
 

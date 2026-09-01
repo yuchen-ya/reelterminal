@@ -3033,10 +3033,15 @@ export const useProjectStore = create<ProjectState>()(
 
         const fullProject: Project = {
           ...project,
-          textClips: titleEngine?.getAllTextClips() || [],
-          shapeClips: graphicsEngine?.getAllShapeClips() || [],
-          svgClips: graphicsEngine?.getAllSVGClips() || [],
-          stickerClips: graphicsEngine?.getAllStickerClips() || [],
+          // Engines are the overlay authority while alive; a momentarily-null
+          // engine (mount/unmount races) must not drop overlays from the
+          // snapshot — fall back to the project's own mirror arrays.
+          textClips: titleEngine?.getAllTextClips() ?? project.textClips ?? [],
+          shapeClips:
+            graphicsEngine?.getAllShapeClips() ?? project.shapeClips ?? [],
+          svgClips: graphicsEngine?.getAllSVGClips() ?? project.svgClips ?? [],
+          stickerClips:
+            graphicsEngine?.getAllStickerClips() ?? project.stickerClips ?? [],
         };
         await autoSaveManager.forceSave(fullProject);
       },
@@ -3048,10 +3053,14 @@ export const useProjectStore = create<ProjectState>()(
 
         return {
           ...project,
-          textClips: titleEngine?.getAllTextClips() || [],
-          shapeClips: graphicsEngine?.getAllShapeClips() || [],
-          svgClips: graphicsEngine?.getAllSVGClips() || [],
-          stickerClips: graphicsEngine?.getAllStickerClips() || [],
+          // Same engine-null fallback as forceSave: never silently drop
+          // overlays from a snapshot.
+          textClips: titleEngine?.getAllTextClips() ?? project.textClips ?? [],
+          shapeClips:
+            graphicsEngine?.getAllShapeClips() ?? project.shapeClips ?? [],
+          svgClips: graphicsEngine?.getAllSVGClips() ?? project.svgClips ?? [],
+          stickerClips:
+            graphicsEngine?.getAllStickerClips() ?? project.stickerClips ?? [],
         };
       },
 

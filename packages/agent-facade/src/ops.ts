@@ -498,13 +498,33 @@ export function collectEntityIds(project: Project): EntityIdSets {
   return { tracks, clips, textOverlays };
 }
 
+/** Created entity ids, partitioned by category (the live seam's shape). */
+export interface CreatedIdsByCategory {
+  readonly tracks: readonly string[];
+  readonly clips: readonly string[];
+  readonly textClips: readonly string[];
+}
+
+export function diffCreatedIdsByCategory(
+  before: EntityIdSets,
+  after: EntityIdSets,
+): CreatedIdsByCategory {
+  return {
+    tracks: [...after.tracks].filter((id) => !before.tracks.has(id)),
+    clips: [...after.clips].filter((id) => !before.clips.has(id)),
+    textClips: [...after.textOverlays].filter(
+      (id) => !before.textOverlays.has(id),
+    ),
+  };
+}
+
 export function diffCreatedIds(before: EntityIdSets, after: EntityIdSets): string[] {
-  const created: string[] = [];
-  for (const id of after.tracks) if (!before.tracks.has(id)) created.push(id);
-  for (const id of after.clips) if (!before.clips.has(id)) created.push(id);
-  for (const id of after.textOverlays)
-    if (!before.textOverlays.has(id)) created.push(id);
-  return created;
+  const byCategory = diffCreatedIdsByCategory(before, after);
+  return [
+    ...byCategory.tracks,
+    ...byCategory.clips,
+    ...byCategory.textClips,
+  ];
 }
 
 /**

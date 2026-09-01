@@ -366,9 +366,24 @@ app.on("before-quit", () => {
 // quitting mid-export cannot orphan encoder processes or leave temp WAVs. Run
 // at will-quit (after the close guard has resolved) so a cancelled quit does
 // not kill exports.
-app.on("will-quit", () => {
+//
+// The live session host disposes ASYNCHRONOUSLY (endpoint server close, the
+// 0600 endpoint file, Chromium providers): fire-and-forget would leave them
+// behind on quit, so the quit is deferred once — same preventDefault +
+// re-quit shape as the window close guard in lifecycle.ts. The re-quit
+// re-enters this handler with the disposal done; the other three disposals
+// are idempotent and simply run again.
+let liveSessionHostDisposed = false;
+app.on("will-quit", (event) => {
   disposeAuroraClient();
   cancelAllExports();
   void stopMcpServer();
-  void disposeLiveSessionHost();
+  if (liveSessionHostDisposed) return;
+  event.preventDefault();
+  void disposeLiveSessionHost()
+    .catch(() => undefined)
+    .then(() => {
+      liveSessionHostDisposed = true;
+      app.quit();
+    });
 });

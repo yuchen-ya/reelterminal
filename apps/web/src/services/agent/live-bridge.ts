@@ -48,18 +48,41 @@ const noProject = (): { ok: false; error: LiveBridgeError } => ({
 });
 
 /**
- * Entity ids the live facade cares about (tracks, clips, text overlays), in
- * project order. createdIds is computed as the after/before diff around the
- * committed batch (LiveApplyActionsResult contract: "the ids that genuinely
- * exist in the canonical project" — core mints random ids, nobody guesses).
+ * Entity ids the live facade cares about, partitioned by category (the
+ * LiveCreatedIds seam contract: tracks / clips / text overlays). createdIds
+ * is computed as the after/before diff per category around the committed
+ * batch (LiveApplyActionsResult contract: "the ids that genuinely exist in
+ * the canonical project" — core mints entity ids; the store diffs canonical
+ * state). The facade assigns one id per creating op from the op's OWN
+ * category, so a mixed batch can't cross-assign ids.
  */
-function entityIdsInProjectOrder(): string[] {
+interface EntityIdsByCategory {
+  readonly tracks: string[];
+  readonly clips: string[];
+  readonly textClips: string[];
+}
+
+function entityIdsByCategory(): EntityIdsByCategory {
   const project = useProjectStore.getState().project;
-  return [
-    ...project.timeline.tracks.map((t) => t.id),
-    ...project.timeline.tracks.flatMap((t) => t.clips.map((c) => c.id)),
-    ...(project.textClips ?? []).map((c) => c.id),
-  ];
+  return {
+    tracks: project.timeline.tracks.map((t) => t.id),
+    clips: project.timeline.tracks.flatMap((t) => t.clips.map((c) => c.id)),
+    textClips: (project.textClips ?? []).map((c) => c.id),
+  };
+}
+
+function diffByCategory(
+  before: EntityIdsByCategory,
+  after: EntityIdsByCategory,
+): EntityIdsByCategory {
+  const beforeTracks = new Set(before.tracks);
+  const beforeClips = new Set(before.clips);
+  const beforeText = new Set(before.textClips);
+  return {
+    tracks: after.tracks.filter((id) => !beforeTracks.has(id)),
+    clips: after.clips.filter((id) => !beforeClips.has(id)),
+    textClips: after.textClips.filter((id) => !beforeText.has(id)),
+  };
 }
 
 /**
@@ -229,42 +252,51 @@ async function handleApplyActions(
       }
     }
 
-    const idsBefore = new Set(entityIdsInProjectOrder());
+    const idsBefore = entityIdsByCategory();
     let applied = 0;
     const executor = store.actionExecutor;
     executor.setPushOwner(AGENT_HISTORY_OWNER);
     store.beginHistoryGroup(groupLabel, AGENT_HISTORY_OWNER);
+    let applyError: unknown;
+    let applyFailed = false;
     try {
       for (const action of actions) {
         await applyOneAction(action);
         applied += 1;
       }
     } catch (error) {
-      // Mirror LiveEditorHost.rollbackTransaction: close the group, then a
-      // single group undo reverts everything this batch applied — but only
-      // when something was actually applied, otherwise the undo would eat a
-      // pre-existing user edit.
+      applyFailed = true;
+      applyError = error;
+    } finally {
+      // ALWAYS reset the push owner and close the group — even when the
+      // rollback below throws — otherwise a stranded "agent" owner would
+      // misattribute later human edits to the agent (Decision 12).
       useProjectStore.getState().endHistoryGroup();
+      executor.setPushOwner(undefined);
+    }
+    if (applyFailed) {
+      // Mirror LiveEditorHost.rollbackTransaction: a group undo reverts
+      // everything this batch applied — but only when something was
+      // actually applied, otherwise the undo would eat a pre-existing user
+      // edit. If this undo itself throws, the bridge reports BRIDGE_ERROR
+      // (the push owner is already reset above).
       if (applied > 0) {
         await useProjectStore.getState().undo();
       }
-      executor.setPushOwner(undefined);
       return {
         ok: false,
         error: {
           code: "APPLY_FAILED",
           message:
-            error instanceof Error ? error.message : "applyActions failed",
+            applyError instanceof Error
+              ? applyError.message
+              : "applyActions failed",
           details: { appliedBeforeError: applied },
         },
       };
     }
-    useProjectStore.getState().endHistoryGroup();
-    executor.setPushOwner(undefined);
 
-    const createdIds = entityIdsInProjectOrder().filter(
-      (id) => !idsBefore.has(id),
-    );
+    const createdIds = diffByCategory(idsBefore, entityIdsByCategory());
 
     return {
       ok: true,

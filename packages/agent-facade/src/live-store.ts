@@ -66,16 +66,26 @@ export interface LiveApplyActionsOptions {
   readonly expectedContextRevision?: number;
 }
 
+/**
+ * Ids of every entity the batch created, partitioned by entity category
+ * (tracks / timeline clips / text overlays), in creation order within each
+ * category — diffed by the store around its own apply, so they are the ids
+ * that genuinely exist in the canonical project (core mints random ids; the
+ * facade never guesses them). Category partitioning is load-bearing: a mixed
+ * batch (e.g. [text.create, clip.add]) must hand each op the id of ITS
+ * entity, which a single project-ordered flat list cannot express.
+ */
+export interface LiveCreatedIds {
+  readonly tracks: readonly string[];
+  readonly clips: readonly string[];
+  readonly textClips: readonly string[];
+}
+
 export interface LiveApplyActionsResult {
   /** The store's revision AFTER the committed batch (one bump per batch). */
   readonly revision: number;
-  /**
-   * Ids of every entity the batch created (tracks, clips, text overlays), in
-   * creation order — diffed by the store around its own apply, so they are
-   * the ids that genuinely exist in the canonical project (core mints random
-   * ids; the facade never guesses them).
-   */
-  readonly createdIds: string[];
+  /** Created entity ids by category — see LiveCreatedIds. */
+  readonly createdIds: LiveCreatedIds;
 }
 
 export interface LiveProjectStore {

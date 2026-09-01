@@ -99,15 +99,17 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     expect(res.ok).toBe(true);
     const { revision, createdIds } = res.result as {
       revision: number;
-      createdIds: string[];
+      createdIds: { tracks: string[]; clips: string[]; textClips: string[] };
     };
     expect(revision).toBe(getProjectRevision());
-    // createdIds is the before/after diff of the canonical project — the two
-    // genuinely-created tracks, not translator guesses.
+    // createdIds is the before/after diff of the canonical project, per
+    // category — the two genuinely-created tracks, not translator guesses.
     const trackIds = useProjectStore
       .getState()
       .project.timeline.tracks.map((t) => t.id);
-    expect(createdIds).toEqual(trackIds.slice(-2));
+    expect(createdIds.tracks).toEqual(trackIds.slice(-2));
+    expect(createdIds.clips).toEqual([]);
+    expect(createdIds.textClips).toEqual([]);
     expect(useProjectStore.getState().project.timeline.tracks.length).toBe(
       tracksBefore + 2,
     );
@@ -136,10 +138,13 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
       }),
     );
     expect(res.ok).toBe(true);
-    const { createdIds } = res.result as { createdIds: string[] };
-    // The facade-minted clip id survives; the auto-created text track id is
-    // part of the diff too.
-    expect(createdIds).toContain("text-facade-1");
+    const { createdIds } = res.result as {
+      createdIds: { tracks: string[]; clips: string[]; textClips: string[] };
+    };
+    // The facade-minted clip id survives in the textClips bucket; the
+    // auto-created text track id lands in the tracks bucket.
+    expect(createdIds.textClips).toContain("text-facade-1");
+    expect(createdIds.tracks).toHaveLength(1);
 
     // Engine-aware: the TitleEngine (what the Preview renders) holds the clip…
     const clip = useProjectStore.getState().getTextClip("text-facade-1");
@@ -276,6 +281,47 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     expect(useProjectStore.getState().project.timeline.tracks.length).toBe(
       tracksBefore,
     );
+  });
+
+  it("resets the push owner even when the failure rollback itself throws", async () => {
+    const originalUndo = useProjectStore.getState().undo;
+    // A batch that applies one action then fails triggers the catch-path
+    // rollback; make that rollback throw.
+    useProjectStore.setState({
+      undo: async () => {
+        throw new Error("undo exploded");
+      },
+    });
+    try {
+      const res = await handleLiveBridgeRequest(
+        req("applyActions", {
+          groupLabel: "doomed batch",
+          actions: [
+            act("track/add", { trackType: "video" }),
+            act("text/update", { clipId: "missing", updates: { text: "x" } }),
+          ],
+        }),
+      );
+      expect(res.ok).toBe(false);
+      expect(res.error?.code).toBe("BRIDGE_ERROR");
+      expect(res.error?.message).toContain("undo exploded");
+    } finally {
+      useProjectStore.setState({ undo: originalUndo });
+    }
+    // The push owner was reset despite the exploding rollback…
+    expect(
+      useProjectStore.getState().actionExecutor.getPushOwner(),
+    ).toBeUndefined();
+    // …so a later human edit keeps its own (human) undo unit instead of
+    // becoming agent-owned.
+    await useProjectStore
+      .getState()
+      .executeAction(act("track/add", { trackType: "audio" }));
+    const entries = useProjectStore
+      .getState()
+      .actionExecutor.getHistory()
+      .getHistoryEntries();
+    expect(entries.at(-1)?.owner).toBeUndefined();
   });
 
   it("requestSave routes through the GUI save path and returns the revision", async () => {

@@ -81,7 +81,7 @@ const TOOL_DESCRIPTIONS: Readonly<Record<FacadeVerb, string>> = {
   "project.open":
     "Unavailable in live mode — the GUI owns the project lifecycle; a live session attaches to the open project.",
   "project.save":
-    "Save the open project through the GUI's own save path and report the saved revision.",
+    "Flush the GUI's autosave/recovery snapshot for the open project and report the current revision; does not write a .openreel project file.",
   "project.get_state":
     "Return the full canonical project state at the current revision.",
   "media.import":
@@ -91,7 +91,7 @@ const TOOL_DESCRIPTIONS: Readonly<Record<FacadeVerb, string>> = {
   "editor.get_context":
     "Return the live editor context: selection, playhead, time range, canvas point, project/context revisions.",
   "edit.apply":
-    "Apply an atomic batch of closed edit ops as ONE undo unit, with optional revision/context CAS guards.",
+    "Apply an atomic batch of closed edit ops as ONE undo unit. The revision CAS is unconditional in live mode: an omitted expectedRevision is guarded with the revision of the snapshot the ops were translated against; expectedContextRevision remains optional.",
   "preview.render_frame":
     "Render one frame of the current project snapshot to a PNG artifact and return its reference.",
   "export.start":
@@ -344,6 +344,13 @@ export function startLiveEndpointServer(
     void (async () => {
       if (req.method !== "POST") {
         sendJson(res, 405, { error: "Method not allowed" });
+        return;
+      }
+      // Only the MCP path exists: POSTing anywhere else is a 404, not an
+      // implicitly accepted request (the endpoint file advertises /mcp).
+      const pathname = new URL(req.url ?? "/", `http://${host}`).pathname;
+      if (pathname !== "/mcp") {
+        sendJson(res, 404, { error: "Not found" });
         return;
       }
       if (!tokenMatches(bearerToken(req), token)) {

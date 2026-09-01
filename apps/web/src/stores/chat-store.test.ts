@@ -6,6 +6,7 @@ const h = vi.hoisted(() => ({
   getSecret: vi.fn(async () => "test-key"),
   isSessionUnlocked: vi.fn(() => true),
   undo: vi.fn(async () => ({ success: true })),
+  peekUndoOwner: vi.fn((): string | undefined => "agent"),
   projectState: { hasOpenProject: true },
   projectRevision: 0,
   undoStackSize: 0,
@@ -55,7 +56,10 @@ vi.mock("./project-store", () => ({
       project: { id: "proj-1" },
       undo: h.undo,
       actionExecutor: {
-        getHistory: () => ({ getUndoStackSize: () => h.undoStackSize }),
+        getHistory: () => ({
+          getUndoStackSize: () => h.undoStackSize,
+          peekUndoOwner: h.peekUndoOwner,
+        }),
       },
     }),
   },
@@ -85,6 +89,7 @@ describe("chat-store", () => {
     h.getSecret.mockResolvedValue("test-key");
     h.isSessionUnlocked.mockReturnValue(true);
     h.undo.mockImplementation(async () => ({ success: true }));
+    h.peekUndoOwner.mockReturnValue("agent");
     h.projectState.hasOpenProject = true;
     h.projectRevision = 0;
     h.settings.agentAutoConfirm = false;
@@ -341,6 +346,41 @@ describe("chat-store", () => {
 
     await store().undoLastTurn();
     expect(h.undo).toHaveBeenCalledTimes(3);
+    expect(store().lastTurnCommitted).toBe(false);
+  });
+
+  it("undoLastTurn stops at a human edit interleaved mid-turn and says so", async () => {
+    h.runTurn.mockImplementation(
+      impl(async ({ messages }) => {
+        // The turn pushed two agent units with a human edit between them
+        // (bottom→top: agent group, human edit, agent group) — the human
+        // edit landed mid-turn, so the stack size at commit still matches.
+        h.undoStackSize = 3;
+        return {
+          text: "",
+          messages,
+          toolCalls: 2,
+          stoppedReason: "end_turn",
+          committed: true,
+        };
+      }),
+    );
+    h.peekUndoOwner.mockImplementation(() =>
+      h.undoStackSize === 2 ? undefined : "agent",
+    );
+    h.undo.mockImplementation(async () => {
+      h.undoStackSize = Math.max(0, h.undoStackSize - 1);
+      return { success: true };
+    });
+
+    await store().send("two edits with a human edit between");
+    expect(store().lastTurnCommitted).toBe(true);
+
+    await store().undoLastTurn();
+    // Only the top agent group was undone; the human unit below it stopped
+    // the walk, and the outcome is surfaced honestly.
+    expect(h.undo).toHaveBeenCalledTimes(1);
+    expect(store().error).toMatch(/partially undone/);
     expect(store().lastTurnCommitted).toBe(false);
   });
 

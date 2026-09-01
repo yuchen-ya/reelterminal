@@ -428,6 +428,18 @@ export class ActionHistory {
       : null;
   }
 
+  /**
+   * Owner of the top undo entry (ADR 0004 Decision 12), without popping it.
+   * Agent rollback loops check this before each undo step so a human's
+   * interleaved undo unit is never eaten; undefined = human/default owner or
+   * an empty stack.
+   */
+  peekUndoOwner(): string | undefined {
+    return this.undoStack.length > 0
+      ? this.undoStack[this.undoStack.length - 1].owner
+      : undefined;
+  }
+
   peekRedo(): HistoryEntry | null {
     return this.redoStack.length > 0
       ? this.redoStack[this.redoStack.length - 1]

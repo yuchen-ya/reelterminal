@@ -132,4 +132,27 @@ describe("ActionHistory group ownership (ADR 0004 Decision 12)", () => {
     history.endGroup();
     expect(first).not.toBe(second);
   });
+
+  it("peekUndoOwner reports the top entry's owner without popping", () => {
+    const history = new ActionHistory();
+    expect(history.peekUndoOwner()).toBeUndefined();
+
+    // Human (default-owner) edit on top.
+    history.push(act("track/add", { trackType: "video" }), inv("track/remove"));
+    expect(history.peekUndoOwner()).toBeUndefined();
+    expect(history.getUndoStackSize()).toBe(1);
+
+    // Agent edit on top — the rollback loops may undo this one.
+    history.push(
+      act("track/add", { trackType: "text" }),
+      inv("track/remove"),
+      "agent",
+    );
+    expect(history.peekUndoOwner()).toBe("agent");
+    expect(history.getUndoStackSize()).toBe(2);
+
+    // Peeking never pops: still the agent entry after repeated peeks.
+    expect(history.peekUndoOwner()).toBe("agent");
+    expect(history.getUndoStackSize()).toBe(2);
+  });
 });
