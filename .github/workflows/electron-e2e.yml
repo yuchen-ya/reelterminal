@@ -17,7 +17,8 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # stacked-PR CI: include the slice-3 stack base while PRs #5/#6 are open
+    branches: [main, feat/agent-transport-slice-2]
   workflow_dispatch:
 
 concurrency:
