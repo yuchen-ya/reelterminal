@@ -16,7 +16,13 @@ export type { RegisteredTool, ToolHandler } from "./registry";
 export { executeTool, isDestructive, isExpensive } from "./executor";
 export * from "./llm";
 export { runTurn } from "./loop";
-export type { RunTurnInput, RunTurnResult, StopReason } from "./loop";
+export type {
+  RunTurnInput,
+  RunTurnResult,
+  StopReason,
+  ToolExecutor,
+  ToolGating,
+} from "./loop";
 export { buildSystemPrompt } from "./system-prompt";
 export { toLogRecord, createEventLogger, collectEvents } from "./observability";
 export type { AgentLogRecord } from "./observability";

@@ -10,6 +10,24 @@ import type {
 import { executeTool, isDestructive, isExpensive } from "./executor";
 import { getTool } from "./registry";
 
+/**
+ * Injectable tool executor (ADR 0004 Decision 8): the default runs the
+ * registry's executeTool against the host; the desktop live-collaboration chat
+ * injects one that calls the main-process facade session over IPC instead.
+ */
+export type ToolExecutor = (
+  name: string,
+  args: Record<string, unknown> | undefined,
+  host: EditingHost,
+) => Promise<ToolResult>;
+
+/** Injectable gating table; defaults to the registry's per-tool flags. */
+export interface ToolGating {
+  isReadOnly(name: string): boolean;
+  isDestructive(name: string): boolean;
+  isExpensive(name: string): boolean;
+}
+
 export interface RunTurnInput {
   readonly host: EditingHost;
   readonly llm: LLMClient;
@@ -20,6 +38,10 @@ export interface RunTurnInput {
   readonly messages: LoopMessage[];
   readonly confirmGate?: (call: ToolCall) => Promise<ConfirmDecision> | ConfirmDecision;
   readonly onEvent?: (event: AgentEvent) => void;
+  /** Defaults to the registry executor. */
+  readonly executor?: ToolExecutor;
+  /** Defaults to the registry gating (readOnly/destructive/expensive flags). */
+  readonly gating?: ToolGating;
   /**
    * maxTokens is a soft ceiling checked between steps: the turn stops before the
    * next completion once cumulative usage reaches it, so it can overshoot by at
@@ -102,6 +124,14 @@ export async function runTurn(input: RunTurnInput): Promise<RunTurnResult> {
   const maxSteps = input.limits?.maxSteps ?? 12;
   const maxToolCalls = input.limits?.maxToolCalls ?? 64;
   const maxTokens = input.limits?.maxTokens;
+  const executor: ToolExecutor =
+    input.executor ??
+    ((name, args, toolHost) => executeTool(name, args, toolHost));
+  const gating: ToolGating = input.gating ?? {
+    isReadOnly,
+    isDestructive,
+    isExpensive,
+  };
 
   const emit = (event: AgentEvent): void => onEvent?.(event);
   const messages: LoopMessage[] = [...input.messages];
@@ -201,7 +231,7 @@ export async function runTurn(input: RunTurnInput): Promise<RunTurnResult> {
         const needsConfirm =
           !dryRun &&
           !approveAll &&
-          (isDestructive(call.name) || isExpensive(call.name));
+          (gating.isDestructive(call.name) || gating.isExpensive(call.name));
         if (needsConfirm && confirmGate) {
           emit({ type: "awaiting_confirmation", call });
           const decision = await confirmGate(call);
@@ -223,13 +253,13 @@ export async function runTurn(input: RunTurnInput): Promise<RunTurnResult> {
         }
 
         let result;
-        if (dryRun && !isReadOnly(call.name)) {
+        if (dryRun && !gating.isReadOnly(call.name)) {
           result = {
             ok: true as const,
             summary: `[dry-run] would call ${call.name}`,
           };
         } else {
-          result = await executeTool(call.name, call.args, host);
+          result = await executor(call.name, call.args, host);
         }
         emit({ type: "tool_result", call, result });
         results.push({

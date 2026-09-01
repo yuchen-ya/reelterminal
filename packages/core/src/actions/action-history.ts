@@ -6,6 +6,13 @@ export interface HistoryEntry {
   readonly timestamp: number;
   readonly description: string;
   readonly groupId?: string;
+  /**
+   * Undo-unit owner (ADR 0004 Decision 12): "agent" for AI batches, undefined
+   * for human edits. A push whose owner differs from the open group's owner
+   * auto-closes that group first, so a human edit can never join an agent's
+   * undo unit (and vice versa).
+   */
+  readonly owner?: string;
 }
 
 export interface ActionGroup {
@@ -139,6 +146,9 @@ export class ActionHistory {
   private redoStack: HistoryEntry[] = [];
   private maxHistorySize: number;
   private currentGroupId: string | null = null;
+  private currentGroupOwner: string | undefined = undefined;
+  private activeOwner: string | undefined = undefined;
+  private groupCounter = 0;
   private snapshots: HistorySnapshot[] = [];
   private listeners: Set<() => void> = new Set();
   private lastActionTime: number = 0;
@@ -146,6 +156,19 @@ export class ActionHistory {
 
   constructor(maxHistorySize: number = 1000) {
     this.maxHistorySize = maxHistorySize;
+  }
+
+  /**
+   * Attributes every push (and every group begun) to `owner` until cleared.
+   * Agent entry points (LiveEditorHost transactions, the live bridge) set this
+   * to "agent" around a batch; GUI paths leave it undefined (the human owner).
+   */
+  setActiveOwner(owner: string | undefined): void {
+    this.activeOwner = owner;
+  }
+
+  getActiveOwner(): string | undefined {
+    return this.activeOwner;
   }
 
   subscribe(listener: () => void): () => void {
@@ -157,10 +180,26 @@ export class ActionHistory {
     this.listeners.forEach((listener) => listener());
   }
 
-  push(action: Action, inverseAction: Action | null = null): void {
+  push(
+    action: Action,
+    inverseAction: Action | null = null,
+    owner?: string,
+  ): void {
+    const effectiveOwner = owner ?? this.activeOwner;
     const now = Date.now();
     const timeSinceLastAction = now - this.lastActionTime;
     this.lastActionTime = now;
+
+    // Ownership rule: a push from a different owner auto-closes the open group
+    // before pushing, so an interleaved foreign edit keeps its own undo unit
+    // instead of silently joining the open one.
+    if (
+      this.currentGroupId !== null &&
+      this.currentGroupOwner !== effectiveOwner
+    ) {
+      this.currentGroupId = null;
+      this.currentGroupOwner = undefined;
+    }
 
     const lastEntry =
       this.undoStack.length > 0
@@ -173,10 +212,13 @@ export class ActionHistory {
     // - The previous entry has the same type AND targets the same entity
     //   (same clipId, effectId, etc.), so two distinct operations don't
     //   collapse just because they happened back-to-back.
+    // - The previous entry belongs to the same owner, so an agent batch and a
+    //   human drag on the same entity don't coalesce across owners.
     let groupId = this.currentGroupId;
     if (
       !groupId &&
       lastEntry &&
+      lastEntry.owner === effectiveOwner &&
       timeSinceLastAction < this.autoGroupWindow &&
       lastEntry.action.type === action.type &&
       AUTO_GROUPABLE_TYPES.has(action.type)
@@ -197,6 +239,7 @@ export class ActionHistory {
       timestamp: now,
       description: getActionDescription(action),
       groupId: groupId || undefined,
+      owner: effectiveOwner,
     };
 
     this.undoStack.push(entry);
@@ -216,13 +259,17 @@ export class ActionHistory {
     this.notify();
   }
 
-  beginGroup(_description?: string): string {
-    this.currentGroupId = `group-${Date.now()}`;
+  beginGroup(_description?: string, owner?: string): string {
+    // The counter suffix keeps group ids unique even for two groups begun in
+    // the same millisecond (e.g. back-to-back agent batches).
+    this.currentGroupId = `group-${Date.now()}-${++this.groupCounter}`;
+    this.currentGroupOwner = owner ?? this.activeOwner;
     return this.currentGroupId;
   }
 
   endGroup(): void {
     this.currentGroupId = null;
+    this.currentGroupOwner = undefined;
     this.notify();
   }
 
@@ -363,6 +410,7 @@ export class ActionHistory {
     this.redoStack = [];
     this.snapshots = [];
     this.currentGroupId = null;
+    this.currentGroupOwner = undefined;
     this.notify();
   }
 

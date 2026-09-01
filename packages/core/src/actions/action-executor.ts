@@ -224,6 +224,21 @@ export class ActionExecutor {
     return this.history;
   }
 
+  /**
+   * Attributes history pushes made while the owner is set (ADR 0004 Decision
+   * 12). LiveEditorHost sets "agent" around a transaction so an interleaved
+   * human edit auto-closes the agent's group instead of joining it; GUI paths
+   * never set it (the human/default owner). Forwarded to the history because
+   * engine-aware overlay helpers push there directly, bypassing execute().
+   */
+  setPushOwner(owner: string | undefined): void {
+    this.history.setActiveOwner(owner);
+  }
+
+  getPushOwner(): string | undefined {
+    return this.history.getActiveOwner();
+  }
+
   private resolveSpecialMarkers(action: Action): Action {
     const params = { ...action.params } as Record<string, unknown>;
 
