@@ -60,4 +60,59 @@ backwards requires an ADR.
 
 ---
 
+## Principle 2: One World, Three Modes
+
+*A video engine where humans and agents can each edit independently—or work together in the same timeline.*
+
+### Statement
+
+The product supports three modes over **one** world:
+
+1. **Human-only** — the user edits entirely through the GUI.
+2. **Agent-only** — an AI edits entirely through MCP/CLI/headless.
+3. **Human + Agent** — both collaborate live in the same project and hand
+   off to each other.
+
+All three modes use the same project format, the same editing actions, the
+same revision, the same undo history, and the same render result.
+
+### Hard constraints
+
+- **Shared World.** Human and AI operate on the same canonical `Project`.
+  There is no agent-side copy and no GUI-only state.
+- **Mutual Legibility.** The AI can read the user's current selection,
+  playhead, time range, and canvas position; the user can see the AI's
+  plan, actions, and results — as summaries, never raw JSON dumps.
+- **Seamless Handoff.** At any revision, either side can take over and
+  continue.
+- **Shared Reversibility.** The human can undo/redo AI operations, and the
+  AI observes the post-undo state as a new revision.
+- **No Privileged Editor.** GUI, embedded AI, and external agents all go
+  through the same action contract in the end; no side gets a private
+  backdoor into project state.
+- **No UI Automation Illusion.** The AI must never fake engine integration
+  by simulating mouse clicks on the GUI, and demo material must never
+  simulate collaboration that does not exist.
+
+### Prohibitions
+
+- **No parallel chat stack.** The embedded conversation reuses the existing
+  chat UI, provider abstraction, and message flow; it is not a second agent
+  application beside them.
+- **No snapshot-sync shortcuts.** Live mode must not poll whole-project
+  snapshots to overwrite the GUI store; mutations flow as actions through
+  the canonical store, reads are on-demand.
+- **No fake collaboration in promo material.** Recorded demos may only show
+  real, shipped collaboration, with the user's consent for their words.
+
+### Conformance today (honest status, 2026-09-01)
+
+| Requirement | Status |
+|---|---|
+| Agent-only mode | **Yes** — headless facade + Chromium runtime + stdio transport (Slices 1–2). |
+| Human-only mode | **Yes** — the inherited GUI, unchanged. |
+| Human + Agent live collaboration | **In progress** — Slice 3 (ADR 0004) lands the first vertical: shared revision, live context (`editor.get_context`), embedded chat on facade contracts, single-writer lease, shared undo. |
+
+---
+
 *Further principles will be added here as the project earns them.*

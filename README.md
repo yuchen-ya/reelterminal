@@ -1,9 +1,10 @@
 # Agent Video Engine Lab
 
-A laboratory for **agent-first video editing**: one canonical project
-world that both a human GUI and a machine agent operate with equal authority.
-Forked from [OpenReel](https://github.com/Augani/openreel-video) (MIT),
-being prepared for open-sourcing.
+A video engine where humans and agents can each edit independently—or work
+together in the same timeline. One canonical project world, three modes:
+human-only (GUI), agent-only (MCP/CLI/headless), and live human+agent
+collaboration. Forked from [OpenReel](https://github.com/Augani/openreel-video)
+(MIT), being prepared for open-sourcing.
 
 **Stage: early slices.** Two slices of real, tested machinery exist (below);
 everything else — transports, full verb coverage, live GUI↔agent parity — is
