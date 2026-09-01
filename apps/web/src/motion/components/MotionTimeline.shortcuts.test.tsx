@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import {
   act,
   cleanup,
@@ -7,6 +8,45 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ToolcraftPopoverProps } from "@openreel/ui";
+
+// jsdom hardening (pre-existing flake, surfaced on contended CI runners):
+// Radix Popper + floating-ui positioning spins the CPU in jsdom once the
+// marker popover opens, starving the async composition updates this file
+// waits on. Replace ToolcraftPopover with an inline open/close container —
+// identical DOM interactions (same roles/names inside `content`), no
+// positioning machinery. Product component is untouched.
+vi.mock("@openreel/ui", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@openreel/ui")>();
+  return {
+    ...actual,
+    ToolcraftPopover: ({
+      children,
+      content,
+      isOpen,
+      onOpenChange,
+      label,
+    }: ToolcraftPopoverProps) => {
+      const [open, setOpen] = useState(false);
+      const shown = isOpen ?? open;
+      return (
+        <div>
+          <span
+            onClick={() => {
+              const next = !shown;
+              setOpen(next);
+              onOpenChange?.(next);
+            }}
+          >
+            {children}
+          </span>
+          {shown ? <div aria-label={label}>{content}</div> : null}
+        </div>
+      );
+    },
+  };
+});
+
 import {
   DEFAULT_MOTION_TRANSFORM,
   createDefaultMotionCamera,
