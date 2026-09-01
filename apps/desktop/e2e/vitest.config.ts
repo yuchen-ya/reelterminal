@@ -16,7 +16,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     name: "desktop-e2e",
-    include: ["e2e/**/*.e2e.ts"],
+    include: ["e2e/**/*.e2e.ts", "e2e/harness/**/*.test.ts"],
     exclude: ["e2e/scratch/**"],
     // One spec file at a time, sequential tests inside a file: each file owns
     // one Electron app instance and they must never share the single-writer

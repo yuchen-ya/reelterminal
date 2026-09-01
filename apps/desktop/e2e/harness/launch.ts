@@ -12,11 +12,16 @@
  * captured for the token-hygiene assertion: the live endpoint token must
  * never appear in any of them.
  */
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright-core";
 import { DESKTOP_DIR, MAIN_BUNDLE_PATH, MCP_SHIM_PATH } from "./paths";
+import {
+  hasProcessExited,
+  removeRunDirectory,
+  waitForProcessExit,
+} from "./teardown";
 
 export interface LaunchedApp {
   readonly app: ElectronApplication;
@@ -102,7 +107,7 @@ async function launch(paths: ReturnType<typeof makeRunDirs>): Promise<LaunchedAp
   capturePage(page);
   await page.waitForLoadState("domcontentloaded");
 
-  let closed = false;
+  let closePromise: Promise<void> | undefined;
   const handle: LaunchedApp = {
     app,
     page,
@@ -126,30 +131,101 @@ async function launch(paths: ReturnType<typeof makeRunDirs>): Promise<LaunchedAp
       return launch(paths);
     },
 
-    async close(options = {}) {
-      if (closed) return;
-      closed = true;
-      const gracefulTimeoutMs = options.gracefulTimeoutMs ?? 15_000;
-      // A dirty project pops a NATIVE unsaved-changes dialog Playwright cannot
-      // answer; race the graceful close against a force kill so teardown never
-      // wedges the suite. Specs that need the graceful leg (save/reopen) call
-      // project_save first, which flushes autosave and keeps the guard quiet.
-      await Promise.race([
-        app.close().catch(() => undefined),
-        new Promise<void>((resolve) => {
-          setTimeout(() => {
+    close(options = {}) {
+      if (closePromise) return closePromise;
+      closePromise = (async () => {
+        const gracefulTimeoutMs = options.gracefulTimeoutMs ?? 15_000;
+        const child = app.process();
+        const errors: unknown[] = [];
+        const appClosePromise = app.close();
+        let forced = false;
+        let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
+
+        const killChild = (): void => {
+          if (hasProcessExited(child)) return;
+          const signalled = child.kill("SIGKILL");
+          if (!signalled && !hasProcessExited(child)) {
+            throw new Error("failed to send SIGKILL to the Electron process");
+          }
+        };
+
+        // A dirty project pops a NATIVE unsaved-changes dialog Playwright cannot
+        // answer; race the graceful close against a force kill so teardown never
+        // wedges the suite. Specs that need the graceful leg (save/reopen) call
+        // project_save first, which flushes autosave and keeps the guard quiet.
+        const forceKill = new Promise<void>((resolve, reject) => {
+          forceKillTimer = setTimeout(() => {
+            forced = true;
             try {
-              app.process().kill("SIGKILL");
-            } catch {
-              /* already gone */
+              killChild();
+              resolve();
+            } catch (error) {
+              reject(error);
             }
-            resolve();
           }, gracefulTimeoutMs);
-        }),
-      ]);
-      if (!options.keepRunDir && !paths.runDir.includes("keep")) {
-        rmSync(paths.runDir, { recursive: true, force: true });
-      }
+        });
+
+        try {
+          await Promise.race([appClosePromise, forceKill]);
+        } catch (error) {
+          // Preserve the real close error, but still take ownership of process
+          // exit and directory cleanup before surfacing it.
+          errors.push(error);
+          try {
+            killChild();
+          } catch (killError) {
+            errors.push(killError);
+          }
+        } finally {
+          if (forceKillTimer) clearTimeout(forceKillTimer);
+        }
+
+        // A SIGKILL request is not process-exit readiness. Chromium descendants
+        // can still touch the profile until Electron actually exits.
+        try {
+          await waitForProcessExit(child);
+        } catch (error) {
+          errors.push(error);
+        }
+
+        // If the force-kill path won the race, observe app.close()'s eventual
+        // outcome too. This keeps a late close failure visible and is bounded.
+        if (forced) {
+          let settleTimer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await Promise.race([
+              appClosePromise,
+              new Promise<never>((_, reject) => {
+                settleTimer = setTimeout(
+                  () => reject(new Error("app.close() did not settle after Electron exited")),
+                  5_000,
+                );
+              }),
+            ]);
+          } catch (error) {
+            errors.push(error);
+          } finally {
+            if (settleTimer) clearTimeout(settleTimer);
+          }
+        }
+
+        if (!options.keepRunDir && !paths.runDir.includes("keep")) {
+          try {
+            // macOS profile helpers can finish their final directory writes just
+            // after process exit. fs.rm's bounded ENOTEMPTY/EBUSY retry is awaited,
+            // idempotent, and still propagates a persistent cleanup failure.
+            await removeRunDirectory(paths.runDir);
+          } catch (error) {
+            errors.push(error);
+          }
+        }
+
+        if (errors.length === 1) throw errors[0];
+        if (errors.length > 1) {
+          throw new AggregateError(errors, "Electron E2E teardown failed");
+        }
+      })();
+      return closePromise;
     },
   };
 
