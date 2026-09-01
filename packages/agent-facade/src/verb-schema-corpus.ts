@@ -125,6 +125,10 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "no params is valid", params: {}, expectValid: true },
     { name: "unknown field", params: { trackId: "v1" }, expectValid: false },
   ],
+  "editor.get_context": [
+    { name: "no params is valid", params: {}, expectValid: true },
+    { name: "unknown field", params: { verbose: true }, expectValid: false },
+  ],
   "edit.apply": [
     {
       name: "valid track.add without optional id",
@@ -146,6 +150,25 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       name: "valid clip.trim with both points",
       params: { ops: [{ op: "clip.trim", clipId: "c1", inPoint: 1, outPoint: 4 }] },
       expectValid: true,
+    },
+    {
+      name: "valid with expectedContextRevision (live CAS guard, ADR 0004 Decision 4)",
+      params: {
+        ops: [{ op: "track.add", trackType: "video" }],
+        expectedRevision: 3,
+        expectedContextRevision: 7,
+      },
+      expectValid: true,
+    },
+    {
+      name: "expectedContextRevision must be a non-negative integer",
+      params: { ops: [{ op: "track.add", trackType: "video" }], expectedContextRevision: -1 },
+      expectValid: false,
+    },
+    {
+      name: "expectedContextRevision must be an integer",
+      params: { ops: [{ op: "track.add", trackType: "video" }], expectedContextRevision: 1.5 },
+      expectValid: false,
     },
     {
       name: "valid text.create with style",

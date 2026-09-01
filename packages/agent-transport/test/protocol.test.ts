@@ -3,10 +3,10 @@
  * `agent-video serve` binary and drive the MCP handshake end to end.
  *
  *  - initialize (serverInfo carries the transport's own facts)
- *  - tools/list: exactly the 14 tools of B.1, inputSchemas deep-equal the
+ *  - tools/list: exactly the 15 tools of B.1, inputSchemas deep-equal the
  *    facade emission EMITTED_VERB_JSON_SCHEMAS verbatim (Decision 4)
  *  - tools/call round-trips: session_describe contract `facade-slice-2`
- *    + 14 verbs; project_create/edit_apply happy path with exact revision
+ *    + 15 verbs; project_create/edit_apply happy path with exact revision
  *    arithmetic; CONFLICT and NOT_FOUND surface as tool-result
  *    `isError:true` with the facade's error codes — never protocol errors
  *    (Decision 5); unknown tool IS a protocol error (-32602)
@@ -68,7 +68,7 @@ describe("agent-video serve (real binary)", () => {
     expect(capsJson).not.toContain("facadeContract");
   });
 
-  it("tools/list exposes exactly the 14 tools of B.1 in order, with facade inputSchemas verbatim", async () => {
+  it("tools/list exposes exactly the 15 tools of B.1 in order, with facade inputSchemas verbatim", async () => {
     const c = await getClient();
     c.send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
     const reply = await c.read();
@@ -82,6 +82,7 @@ describe("agent-video serve (real binary)", () => {
       "project_get_state",
       "media_import",
       "timeline_get",
+      "editor_get_context",
       "edit_apply",
       "preview_render_frame",
       "export_start",
@@ -93,6 +94,7 @@ describe("agent-video serve (real binary)", () => {
     const verbOrder = [
       "session.describe", "capabilities.get", "project.create", "project.open",
       "project.save", "project.get_state", "media.import", "timeline.get",
+      "editor.get_context",
       "edit.apply", "preview.render_frame", "export.start", "job.status",
       "job.cancel", "verify.artifact",
     ];
@@ -101,7 +103,7 @@ describe("agent-video serve (real binary)", () => {
     });
   });
 
-  it("session_describe passthrough: contract facade-slice-2, 14 verbs, 8 error codes", async () => {
+  it("session_describe passthrough: contract facade-slice-2, 15 verbs, 9 error codes", async () => {
     const reply = await callTool("session_describe", {});
     expect(reply.error).toBeUndefined();
     expect(reply.result.isError).toBeFalsy();
@@ -109,8 +111,8 @@ describe("agent-video serve (real binary)", () => {
     const parsed = JSON.parse(text);
     expect(parsed.ok).toBe(true);
     expect(parsed.value.contractVersion).toBe("facade-slice-2");
-    expect(parsed.value.verbs).toHaveLength(14);
-    expect(parsed.value.errorCodes).toHaveLength(8);
+    expect(parsed.value.verbs).toHaveLength(15);
+    expect(parsed.value.errorCodes).toHaveLength(9);
     // structuredContent populated too (SDK 1.30.0 supports it)
     expect(reply.result.structuredContent.value.contractVersion).toBe("facade-slice-2");
   });

@@ -16,6 +16,24 @@
  * success-looking artifact can survive a non-done state.
  */
 import type { ArtifactRef, ExportProgressEvent } from "./providers";
+import type { JobStatusView } from "./types";
+
+/** The public job.status view of a registry record (a fresh copy). */
+export function jobStatusView(job: JobRecord): JobStatusView {
+  return {
+    jobId: job.jobId,
+    kind: job.kind,
+    state: job.state,
+    progress: job.progress ? { ...job.progress } : null,
+    artifact: job.artifact ? { ...job.artifact } : null,
+    error: job.error ? { ...job.error } : null,
+    sourceRevision: job.sourceRevision,
+    route: job.route,
+    cancelRequested: job.cancelRequested,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+  };
+}
 
 export const JOB_STATES = ["queued", "running", "done", "error", "cancelled"] as const;
 export type JobState = (typeof JOB_STATES)[number];
@@ -72,6 +90,11 @@ export class JobRegistry {
 
   get(jobId: string): JobRecord | null {
     return this.jobs.get(jobId) ?? null;
+  }
+
+  /** All records (insertion order) — used by session dispose to cancel live jobs. */
+  list(): JobRecord[] {
+    return [...this.jobs.values()];
   }
 
   has(jobId: string): boolean {

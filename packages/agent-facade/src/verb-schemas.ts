@@ -199,6 +199,11 @@ export const EDIT_APPLY_SCHEMA: ObjectSchema = {
     describe: "a non-negative integer",
     emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
   },
+  expectedContextRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative integer",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
   idempotencyKey: {
     check: isNonEmptyString,
     describe: "a non-empty string",
@@ -450,7 +455,7 @@ export const VERIFY_ARTIFACT_SCHEMA: ObjectSchema = {
 };
 
 /* ------------------------------------------------------------------ */
-/* The 14-verb declaration map (single source, Decision 4)             */
+/* The 15-verb declaration map (single source, Decision 4)             */
 /* ------------------------------------------------------------------ */
 
 /** Verb param declaration order mirrors FACADE_VERBS (Appendix B.1). */
@@ -465,6 +470,7 @@ export const VERB_PARAM_SCHEMAS: {
   "project.get_state": EMPTY_PARAMS_SCHEMA,
   "media.import": MEDIA_IMPORT_SCHEMA,
   "timeline.get": EMPTY_PARAMS_SCHEMA,
+  "editor.get_context": EMPTY_PARAMS_SCHEMA,
   "edit.apply": EDIT_APPLY_SCHEMA,
   "preview.render_frame": PREVIEW_RENDER_FRAME_SCHEMA,
   "export.start": EXPORT_START_SCHEMA,

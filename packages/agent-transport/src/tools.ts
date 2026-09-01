@@ -1,5 +1,6 @@
 /**
- * The 14 facade verbs ⇄ 14 MCP tools, 1:1 (ADR 0003 Decision 2, B.1/B.2).
+ * The 15 facade verbs ⇄ 15 MCP tools, 1:1 (ADR 0003 Decision 2, B.1/B.2;
+ * ADR 0004 adds editor.get_context ⇄ editor_get_context).
  *
  * `inputSchema` is ALWAYS the facade's emitted JSON Schema, verbatim — the
  * transport never declares a schema of its own (Decision 4). Tool
@@ -24,6 +25,7 @@ export const TOOL_NAMES = [
   "project_get_state",
   "media_import",
   "timeline_get",
+  "editor_get_context",
   "edit_apply",
   "preview_render_frame",
   "export_start",
@@ -39,7 +41,7 @@ const VERBS_IN_TOOL_ORDER: readonly FacadeVerb[] = [...FACADE_VERBS];
 
 if (VERBS_IN_TOOL_ORDER.length !== TOOL_NAMES.length) {
   throw new Error(
-    `tool map: facade has ${VERBS_IN_TOOL_ORDER.length} verbs but the transport maps ${TOOL_NAMES.length} tools (ADR 0003 B.1 requires exactly 14/14)`,
+    `tool map: facade has ${VERBS_IN_TOOL_ORDER.length} verbs but the transport maps ${TOOL_NAMES.length} tools (ADR 0003 B.1 + ADR 0004 require exactly 15/15)`,
   );
 }
 
@@ -56,7 +58,7 @@ export const VERB_TO_TOOL: Readonly<Record<FacadeVerb, ToolName>> =
 /** B.2: purpose only — parameter semantics live in the facade/schemas. */
 const TOOL_DESCRIPTIONS: Readonly<Record<ToolName, string>> = {
   session_describe:
-    "Describe the facade session: contract version, the 14 verbs, error codes, runtime step letters.",
+    "Describe the facade session: contract version, the 15 verbs, error codes, runtime step letters.",
   capabilities_get:
     "Report live provider capabilities (media import, preview, export, verify) with honest reasons when unavailable.",
   project_create:
@@ -70,6 +72,8 @@ const TOOL_DESCRIPTIONS: Readonly<Record<ToolName, string>> = {
   media_import:
     "Import a local media file from a configured media root into the project.",
   timeline_get: "Return the compact timeline view (tracks, clips, text overlays).",
+  editor_get_context:
+    "Return the editor context (selection, playhead, time range, canvas point); headless sessions answer honestly with contextAvailable:false.",
   edit_apply:
     "Apply an atomic batch of closed edit ops to the project timeline.",
   preview_render_frame:

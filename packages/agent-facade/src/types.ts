@@ -12,6 +12,8 @@
  *   job.status · job.cancel · verify.artifact
  * Slice 2a verbs (ADR 0003 Decision 10): project.open · project.save —
  *   the openreel-project@1 checkpoint pair (cross-session persistence).
+ * Slice 3 verbs (ADR 0004 Decision 4): editor.get_context — the live/
+ *   headless-honest editor-context read (14 → 15 verbs).
  *
  * Pixel/export/verify backing arrives through the independent provider
  * interfaces in providers.ts (RenderProvider / ExportProvider /
@@ -42,6 +44,7 @@ export const FACADE_VERBS = [
   "project.get_state",
   "media.import",
   "timeline.get",
+  "editor.get_context",
   "edit.apply",
   "preview.render_frame",
   "export.start",
@@ -51,6 +54,41 @@ export const FACADE_VERBS = [
 ] as const;
 
 export type FacadeVerb = (typeof FACADE_VERBS)[number];
+
+/* ------------------------------------------------------------------ */
+/* Session modes + the read-only verb gate (ADR 0004 Decision 7)       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Live session modes (ADR 0004 Decision 7). Observe runs the read-only
+ * verb set only; Assist (the default) and Autonomous share the full verb
+ * surface and differ only in step budget, which is a host concern, not a
+ * facade one. Headless sessions have no mode — the concept only exists
+ * for live sessions (createLiveFacade).
+ */
+export type LiveSessionMode = "observe" | "assist" | "autonomous";
+
+/**
+ * The read-only verb set every session mode may call (Decision 7). Write
+ * verbs are gated at the facade session boundary: Observe rejects them
+ * FORBIDDEN; a writer-less Assist/Autonomous session rejects them
+ * CONFLICT with holder information (Decision 6).
+ */
+export const READ_ONLY_VERBS = [
+  "session.describe",
+  "capabilities.get",
+  "project.get_state",
+  "timeline.get",
+  "editor.get_context",
+  "job.status",
+  "verify.artifact",
+] as const satisfies readonly FacadeVerb[];
+
+export type ReadOnlyVerb = (typeof READ_ONLY_VERBS)[number];
+
+export function isReadOnlyVerb(verb: FacadeVerb): verb is ReadOnlyVerb {
+  return (READ_ONLY_VERBS as readonly string[]).includes(verb);
+}
 
 /* ------------------------------------------------------------------ */
 /* session.describe                                                    */
@@ -64,8 +102,10 @@ export type FacadeVerb = (typeof FACADE_VERBS)[number];
  */
 export interface StepLetters {
   readonly facadeToRuntime: "P";
-  readonly createProject: "P";
-  readonly importLocalMedia: "A";
+  /** "X" in live sessions: project.create is unavailable (the GUI owns the project lifecycle). */
+  readonly createProject: "P" | "X";
+  /** "X" in live sessions: media.import is unavailable (the GUI owns media import). */
+  readonly importLocalMedia: "A" | "X";
   readonly trimClip: "P";
   readonly addTextOverlayModel: "P";
   readonly textOverlayPixels: "X" | "C";
@@ -76,12 +116,20 @@ export interface StepLetters {
 export interface SessionDescription {
   readonly facadeVersion: string;
   readonly contractVersion: string;
-  readonly runtime: typeof FACADE_RUNTIME;
+  /** "node-headless" for AgentFacadeSession; "live" for createLiveFacade sessions. */
+  readonly runtime: typeof FACADE_RUNTIME | "live";
   readonly verbs: readonly FacadeVerb[];
   readonly editOps: readonly EditOpType[];
   readonly errorCodes: readonly string[];
   readonly stepLetters: StepLetters;
   readonly notes: readonly string[];
+  /* Live-only fields (ADR 0004 Decisions 6/7) — absent in headless sessions. */
+  readonly mode?: LiveSessionMode;
+  /** True when this session currently holds the writer lease. */
+  readonly writer?: boolean;
+  /** Current lease holder's sessionId (null when the lease is free). */
+  readonly leaseHolder?: string | null;
+  readonly sessionId?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -104,7 +152,15 @@ export interface CapabilityStatus {
 }
 
 export interface Capabilities {
-  readonly runtime: typeof FACADE_RUNTIME;
+  /** "node-headless" for AgentFacadeSession; "live" for createLiveFacade sessions. */
+  readonly runtime: typeof FACADE_RUNTIME | "live";
+  /**
+   * Verbs that exist in the contract but are honestly unavailable in THIS
+   * session's mode (ADR 0004 Decision 11: live sessions report
+   * project.create / project.open / media.import here). Absent in headless
+   * sessions, where availability is reported per-capability below.
+   */
+  readonly unavailableVerbs?: readonly FacadeVerb[];
   readonly stateModel: {
     readonly canonicalProject: true;
     readonly atomicBatch: true;
@@ -244,6 +300,18 @@ export interface ProjectSaveResult {
   readonly savedAt: number;
 }
 
+/**
+ * Live-mode project.save result (ADR 0004 Decision 11): the save is routed
+ * to the GUI's own save path via LiveProjectStore.requestSave(), so the
+ * facade honestly has no checkpoint path/bytes/hash to report — the GUI
+ * owns where and how the project file is written. Only the revision at
+ * save time is known. Live project.save takes no params (no path, no
+ * overwrite): the GUI owns both.
+ */
+export interface LiveProjectSaveResult {
+  readonly revision: number;
+}
+
 /* ------------------------------------------------------------------ */
 /* media.import                                                        */
 /* ------------------------------------------------------------------ */
@@ -313,6 +381,45 @@ export interface TimelineState {
   readonly duration: number;
   readonly tracks: readonly TimelineTrackView[];
   readonly textOverlays: readonly TextOverlayView[];
+}
+
+/* ------------------------------------------------------------------ */
+/* editor.get_context (ADR 0004 Decision 4 — the 15th verb)            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * editor.get_context — the Mutual Legibility read. Live sessions report the
+ * real ephemeral editor context (selection, playhead, time range, canvas
+ * point) with a monotonic contextRevision the agent can CAS against via
+ * edit.apply's expectedContextRevision. Headless sessions have no editor:
+ * they answer honestly with contextAvailable:false and every context field
+ * null/empty — never fabricated values.
+ */
+export interface EditorGetContextResult {
+  readonly mode: "live" | "headless";
+  /** The project revision at the moment of the read. */
+  readonly projectRevision: number;
+  /**
+   * False in headless sessions (no editor exists): every context field is
+   * then null/empty and contextRevision is null. True in live sessions.
+   */
+  readonly contextAvailable: boolean;
+  readonly contextRevision: number | null;
+  readonly playheadSeconds: number | null;
+  readonly selectedClipIds: readonly string[];
+  readonly selectedTextIds: readonly string[];
+  readonly timeRange: {
+    readonly startSeconds: number;
+    readonly endSeconds: number;
+  } | null;
+  /** Normalized 0..1 point on the project frame (the "agent target point"). */
+  readonly canvasPoint: { readonly x: number; readonly y: number } | null;
+  readonly identity: {
+    readonly projectId: string | null;
+    readonly projectName: string | null;
+    /** Null in headless sessions (no window exists). */
+    readonly windowId: string | null;
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -460,6 +567,14 @@ export type EditOp =
 export interface EditApplyParams {
   readonly ops: readonly EditOp[];
   readonly expectedRevision?: number;
+  /**
+   * CAS guard on the editor context (ADR 0004 Decision 4): an agent that
+   * derived its ops from selection/playhead/canvas point MUST carry the
+   * contextRevision those reads returned; a stale value fails CONFLICT and
+   * nothing is applied. Live sessions CAS it at the store; headless
+   * sessions have no editor context and reject it INVALID_PARAMS.
+   */
+  readonly expectedContextRevision?: number;
   readonly idempotencyKey?: string;
 }
 

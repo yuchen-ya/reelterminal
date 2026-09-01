@@ -20,12 +20,16 @@ import { ActionHistory } from "@openreel/core/actions/action-history";
 import type { Project, ProjectSettings } from "@openreel/core/types/project";
 import type { MediaItem } from "@openreel/core/types/project";
 import { basename, isAbsolute, resolve as resolvePath } from "node:path";
-import { lstat, mkdir, readFile, realpath, rm, stat } from "node:fs/promises";
-import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
-import { pipeline } from "node:stream/promises";
+import { readFile, rm, stat } from "node:fs/promises";
 
 import { buildCapabilities, buildSessionDescription } from "./capabilities";
+import {
+  artifactRefFor,
+  assertContainedWrittenFile,
+  prepareArtifactDir,
+  requireArtifactRoot,
+  requireProviderPreflight,
+} from "./artifact-io";
 import {
   assertCheckpointIntegrity,
   buildCheckpointDocument,
@@ -37,7 +41,7 @@ import {
 } from "./checkpoint";
 import { FacadeError, ok, toFailure, type FacadeResult } from "./errors";
 import { IdempotencyLedger, stableStringify } from "./idempotency";
-import { JobRegistry, type JobRecord } from "./jobs";
+import { JobRegistry, jobStatusView } from "./jobs";
 import {
   applyClipIdOverride,
   collectEntityIds,
@@ -45,9 +49,13 @@ import {
   opToCoreActions,
   validateEditOp,
 } from "./ops";
+import {
+  projectStateView,
+  timelineDurationSec,
+  timelineStateView,
+} from "./projection";
 import { createEmptyProject, DEFAULT_PROJECT_SETTINGS } from "./project-factory";
 import type {
-  ArtifactRef,
   ArtifactVerifier,
   ExportCallbacks,
   ExportProvider,
@@ -65,6 +73,7 @@ import {
 } from "./validate";
 import {
   EDIT_APPLY_SCHEMA,
+  EMPTY_PARAMS_SCHEMA,
   EXPORT_SETTINGS_SCHEMA,
   EXPORT_START_SCHEMA,
   isEvenDimension,
@@ -84,6 +93,7 @@ import type {
   Capabilities,
   EditApplyParams,
   EditApplyResult,
+  EditorGetContextResult,
   ExportStartParams,
   ExportStartResult,
   JobParams,
@@ -93,7 +103,6 @@ import type {
   OpApplied,
   PreviewRenderFrameParams,
   PreviewRenderFrameResult,
-  ProjectCounts,
   ProjectCreateParams,
   ProjectCreateResult,
   ProjectOpenParams,
@@ -221,33 +230,36 @@ export class AgentFacadeSession {
 
   async timelineGet(): Promise<FacadeResult<TimelineState>> {
     if (!this.project) return this.noProject();
-    const project = this.project;
-    return ok({
-      revision: this.revision,
-      duration: project.timeline.duration,
-      tracks: project.timeline.tracks.map((track) => ({
-        id: track.id,
-        type: track.type,
-        name: track.name,
-        clips: track.clips.map((clip) => ({
-          id: clip.id,
-          trackId: clip.trackId,
-          mediaId: clip.mediaId,
-          startTime: clip.startTime,
-          duration: clip.duration,
-          inPoint: clip.inPoint,
-          outPoint: clip.outPoint,
-        })),
-      })),
-      textOverlays: (project.textClips ?? []).map((clip) => ({
-        id: clip.id,
-        trackId: clip.trackId,
-        text: clip.text,
-        startTime: clip.startTime,
-        duration: clip.duration,
-        position: { ...clip.transform.position },
-        anchor: { ...clip.transform.anchor },
-      })),
+    return ok(timelineStateView(this.project, this.revision));
+  }
+
+  /**
+   * editor.get_context (ADR 0004 Decision 4) — headless honesty: there is
+   * no editor, so every context field is null/empty and contextAvailable is
+   * false. Only the project revision and identity are real (read from the
+   * session's own state); windowId is always null — never fabricated.
+   */
+  async editorGetContext(
+    params: Record<string, never> = {},
+  ): Promise<FacadeResult<EditorGetContextResult>> {
+    return this.enqueue(async () => {
+      validateObject(params, EMPTY_PARAMS_SCHEMA, "editor.get_context params");
+      return ok<EditorGetContextResult>({
+        mode: "headless",
+        projectRevision: this.revision,
+        contextAvailable: false,
+        contextRevision: null,
+        playheadSeconds: null,
+        selectedClipIds: [],
+        selectedTextIds: [],
+        timeRange: null,
+        canvasPoint: null,
+        identity: {
+          projectId: this.project?.id ?? null,
+          projectName: this.project?.name ?? null,
+          windowId: null,
+        },
+      });
     });
   }
 
@@ -714,6 +726,15 @@ export class AgentFacadeSession {
         "edit.apply params",
       );
       if (!this.project) return this.noProject();
+      // ADR 0004 Decision 4: the context CAS exists only where an editor
+      // context exists. Headless has none — reject honestly rather than
+      // silently ignoring a guard the agent believes protects it.
+      if (valid.expectedContextRevision !== undefined) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "edit.apply: context revision unavailable in headless mode — expectedContextRevision requires a live session with an editor context",
+        );
+      }
 
       // Pre-validate EVERY op's closed schema before any execution or state
       // access — a malformed op anywhere fails the whole call with zero
@@ -813,8 +834,8 @@ export class AgentFacadeSession {
           { requires: "RenderProvider (e.g. @openreel/runtime-chromium)" },
         );
       }
-      const artifactRoot = this.requireArtifactRoot("preview.render_frame");
-      await this.requireProviderPreflight(provider, "preview.render_frame");
+      const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "preview.render_frame");
+      await requireProviderPreflight(provider, "preview.render_frame");
 
       const project = this.project;
       const width = valid.width ?? project.settings.width;
@@ -826,7 +847,7 @@ export class AgentFacadeSession {
         );
       }
 
-      const duration = this.timelineDurationSec(project);
+      const duration = timelineDurationSec(project);
       if (valid.timeSec > duration) {
         throw new FacadeError(
           "INVALID_PARAMS",
@@ -870,7 +891,7 @@ export class AgentFacadeSession {
       // Containment BEFORE the provider writes: a symlinked/junctioned
       // renders dir (or a linked ancestor) must fail the verb with zero
       // bytes written outside artifactRoot.
-      await this.prepareArtifactDir(rendersDir, artifactRoot, "preview.render_frame");
+      await prepareArtifactDir(rendersDir, artifactRoot, "preview.render_frame");
       const timeMs = Math.round(valid.timeSec * 1000);
       // Scoped by project id: two sessions sharing one artifactRoot can
       // never overwrite each other's preview artifacts.
@@ -892,8 +913,8 @@ export class AgentFacadeSession {
       // for a link mid-render (or wrote through one) is caught here, before
       // the artifact is hashed and published. The VERIFIED real path is
       // what gets hashed — no swap window between check and hash.
-      const verifiedPath = await this.assertContainedWrittenFile(destPath, artifactRoot, "preview.render_frame");
-      const artifact = await this.artifactRefFor(
+      const verifiedPath = await assertContainedWrittenFile(destPath, artifactRoot, "preview.render_frame");
+      const artifact = await artifactRefFor(
         verifiedPath,
         "image",
         "png",
@@ -943,8 +964,8 @@ export class AgentFacadeSession {
           { requires: "ExportProvider (e.g. @openreel/runtime-chromium)" },
         );
       }
-      const artifactRoot = this.requireArtifactRoot("export.start");
-      await this.requireProviderPreflight(provider, "export.start");
+      const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "export.start");
+      await requireProviderPreflight(provider, "export.start");
 
       const settingsInput =
         valid.settings !== undefined
@@ -973,7 +994,7 @@ export class AgentFacadeSession {
       }
 
       const project = this.project;
-      const duration = this.timelineDurationSec(project);
+      const duration = timelineDurationSec(project);
       if (duration <= 0) {
         throw new FacadeError(
           "INVALID_PARAMS",
@@ -1006,9 +1027,9 @@ export class AgentFacadeSession {
       // Containment BEFORE anything is created inside: a symlinked/junctioned
       // exports dir must fail here — mkdir'ing the job dir through a link
       // would already create a directory outside artifactRoot.
-      await this.prepareArtifactDir(exportsDir, artifactRoot, "export.start");
+      await prepareArtifactDir(exportsDir, artifactRoot, "export.start");
       const jobDir = resolvePath(exportsDir, jobId);
-      await this.prepareArtifactDir(jobDir, artifactRoot, "export.start");
+      await prepareArtifactDir(jobDir, artifactRoot, "export.start");
       this.jobs.create(jobId, sourceRevision);
       if (valid.idempotencyKey !== undefined) {
         this.ledger.set("export.start", valid.idempotencyKey, {
@@ -1075,7 +1096,7 @@ export class AgentFacadeSession {
           jobId: valid.jobId,
         });
       }
-      return ok(this.jobView(job));
+      return ok(jobStatusView(job));
     });
   }
 
@@ -1095,7 +1116,7 @@ export class AgentFacadeSession {
         });
       }
       if (job.state === "done" || job.state === "error" || job.state === "cancelled") {
-        return ok(this.jobView(job));
+        return ok(jobStatusView(job));
       }
       const provider = this.config.exportProvider;
       if (!provider) {
@@ -1122,7 +1143,7 @@ export class AgentFacadeSession {
           { jobId: valid.jobId },
         );
       }
-      return ok(this.jobView(this.jobs.get(valid.jobId) ?? job));
+      return ok(jobStatusView(this.jobs.get(valid.jobId) ?? job));
     });
   }
 
@@ -1149,9 +1170,9 @@ export class AgentFacadeSession {
           { requires: "ArtifactVerifier backed by ffprobe/ffmpeg" },
         );
       }
-      await this.requireProviderPreflight(verifier, "verify.artifact");
+      await requireProviderPreflight(verifier, "verify.artifact");
 
-      const artifactRoot = this.requireArtifactRoot("verify.artifact");
+      const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "verify.artifact");
       if (hasUrlScheme(valid.path)) {
         throw new FacadeError(
           "INVALID_PARAMS",
@@ -1283,157 +1304,6 @@ export class AgentFacadeSession {
     }
   }
 
-  /**
-   * Artifact-producing verbs need an artifactRoot; its absence is a session
-   * configuration gap, reported as UNSUPPORTED (never a silent temp-dir
-   * fallback — outputs must live where the caller can audit them).
-   */
-  private requireArtifactRoot(verb: string): string {
-    const root = this.config.artifactRoot;
-    if (root === undefined || root.length === 0) {
-      throw new FacadeError(
-        "UNSUPPORTED",
-        `${verb}: no artifactRoot configured for this session — artifact-producing verbs need an explicit output root`,
-      );
-    }
-    return resolvePath(root);
-  }
-
-  /**
-   * mkdir + pre-write containment gate, folded together so even a poisoned
-   * path that BREAKS mkdir (e.g. a dangling junction — mkdir -p through it
-   * throws ENOENT) surfaces as the clear symlink/junction refusal rather
-   * than a raw internal error.
-   */
-  private async prepareArtifactDir(
-    dir: string,
-    artifactRoot: string,
-    verb: string,
-  ): Promise<void> {
-    try {
-      await mkdir(dir, { recursive: true });
-    } catch (error) {
-      const linkStat = await lstat(dir).catch(() => null);
-      if (linkStat?.isSymbolicLink()) {
-        throw new FacadeError(
-          "JOB_FAILED",
-          `${verb}: refusing to write through a symlink/junction in the output path: ${dir} — remove it and let the facade create a real directory`,
-        );
-      }
-      throw new FacadeError(
-        "JOB_FAILED",
-        `${verb}: output directory cannot be created: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    await this.assertSafeArtifactDir(dir, artifactRoot, verb);
-  }
-
-  /**
-   * Pre-write output-containment gate for a DIRECTORY the facade is about to
-   * let a provider write into (renders/, exports/, exports/<jobId>). Two
-   * independent checks, both fail-closed:
-   *
-   *  1. The directory itself must NOT be a symlink/junction. A link that
-   *     points inside today can be re-pointed outside between check and
-   *     write (TOCTOU), so linked output dirs are rejected outright — the
-   *     facade only ever creates real directories here, anything else was
-   *     placed by someone else. (Node's lstat reports Windows junctions as
-   *     symbolic links, so one check covers both.)
-   *  2. Its realpath must stay inside the realpath of artifactRoot, so even
-   *     a real directory nested under a linked ancestor fails containment.
-   */
-  private async assertSafeArtifactDir(
-    dir: string,
-    artifactRoot: string,
-    verb: string,
-  ): Promise<void> {
-    const dirStat = await lstat(dir).catch(() => null);
-    // The link check comes FIRST: lstat does not follow links, so a
-    // symlink/junction to a directory reports isDirectory() === false and
-    // would otherwise mask the escape as a plain "not a directory".
-    if (dirStat?.isSymbolicLink()) {
-      throw new FacadeError(
-        "JOB_FAILED",
-        `${verb}: refusing to write through a symlink/junction in the output path: ${dir} — remove it and let the facade create a real directory`,
-      );
-    }
-    if (!dirStat || !dirStat.isDirectory()) {
-      throw new FacadeError(
-        "JOB_FAILED",
-        `${verb}: output directory cannot be used (missing or not a directory): ${dir}`,
-      );
-    }
-    let realDir: string;
-    let realRoot: string;
-    try {
-      [realDir, realRoot] = await Promise.all([
-        realpath(dir),
-        realpath(artifactRoot),
-      ]);
-    } catch (error) {
-      throw new FacadeError(
-        "JOB_FAILED",
-        `${verb}: output directory cannot be verified (realpath failed): ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    if (resolveContainedPathDetailed(realDir, [realRoot]).kind !== "ok") {
-      throw new FacadeError(
-        "JOB_FAILED",
-        `${verb}: output directory escapes the configured artifactRoot: ${dir}`,
-      );
-    }
-  }
-
-  /**
-   * Post-write containment gate for a FILE a provider claims to have written
-   * under artifactRoot. On escape the dishonest file is removed best-effort
-   * (it is the file the provider just wrote through the escape; when the
-   * path itself is a symlink, unlink removes the link, never the target) and
-   * the verb fails — the facade never publishes an artifact it cannot
-   * contain. On success it returns the VERIFIED real path, which the caller
-   * hashes/publishes (closing the swap window between check and hash).
-   */
-  private async assertContainedWrittenFile(
-    filePath: string,
-    artifactRoot: string,
-    verb: string,
-  ): Promise<string> {
-    const resolution = resolveContainedPathDetailed(filePath, [artifactRoot]);
-    if (resolution.kind === "ok") return resolution.path;
-    await rm(filePath, { force: true }).catch(() => undefined);
-    throw new FacadeError(
-      "JOB_FAILED",
-      `${verb}: provider wrote outside the configured artifactRoot — the file was rejected and removed`,
-      { path: filePath },
-    );
-  }
-
-  /**
-   * Verbs gate on the provider's OWN live preflight: a capability that
-   * reports unavailable must make the verb fail UNSUPPORTED with the same
-   * reason — never a silent attempt against a dead runtime.
-   */
-  private async requireProviderPreflight(
-    provider: { preflight(): Promise<{ available: boolean; reason?: string; requires?: string }> },
-    verb: string,
-  ): Promise<void> {
-    let pre;
-    try {
-      pre = await provider.preflight();
-    } catch (error) {
-      throw new FacadeError(
-        "UNSUPPORTED",
-        `${verb}: provider preflight threw: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    if (!pre.available) {
-      throw new FacadeError(
-        "UNSUPPORTED",
-        `${verb}: provider is unavailable — ${pre.reason ?? "preflight failed"}`,
-        pre.requires ? { requires: pre.requires } : undefined,
-      );
-    }
-  }
 
   /**
    * Map every timeline-referenced media item to a re-validated local file.
@@ -1485,47 +1355,6 @@ export class AgentFacadeSession {
     return files;
   }
 
-  /** Streaming sha256 — artifacts are never buffered wholesale for hashing. */
-  private async sha256File(absPath: string): Promise<string> {
-    const hash = createHash("sha256");
-    await pipeline(createReadStream(absPath), async function* (source) {
-      for await (const chunk of source) {
-        hash.update(chunk as Buffer);
-      }
-    });
-    return hash.digest("hex");
-  }
-
-  private async artifactRefFor(
-    absPath: string,
-    kind: "image" | "video",
-    format: "png" | "mp4",
-    sourceRevision: number,
-    expectedBytes?: number,
-  ): Promise<ArtifactRef> {
-    const fileStat = await stat(absPath);
-    if (!fileStat.isFile() || fileStat.size === 0) {
-      throw new FacadeError(
-        "JOB_FAILED",
-        `provider reported success but the artifact is missing or empty: ${absPath}`,
-      );
-    }
-    if (expectedBytes !== undefined && expectedBytes > fileStat.size) {
-      throw new FacadeError(
-        "JOB_FAILED",
-        `provider wrote fewer bytes (${fileStat.size}) than it reported (${expectedBytes}) for ${absPath}`,
-      );
-    }
-    return {
-      kind,
-      format,
-      path: absPath,
-      sizeBytes: fileStat.size,
-      sha256: await this.sha256File(absPath),
-      sourceRevision,
-    };
-  }
-
   /** Terminalize a finished export: verify containment + hash the MP4. */
   private async finalizeExport(
     jobId: string,
@@ -1533,7 +1362,7 @@ export class AgentFacadeSession {
     completion: { path: string; sizeBytes: number; route: string },
   ): Promise<void> {
     try {
-      const artifactRoot = this.requireArtifactRoot("export.finalize");
+      const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "export.finalize");
       const resolution = resolveContainedPathDetailed(completion.path, [artifactRoot]);
       if (resolution.kind === "outside") {
         // Post-write containment: never publish, and remove the file the
@@ -1553,7 +1382,7 @@ export class AgentFacadeSession {
           { path: completion.path },
         );
       }
-      const artifact = await this.artifactRefFor(
+      const artifact = await artifactRefFor(
         resolution.path,
         "video",
         "mp4",
@@ -1567,35 +1396,6 @@ export class AgentFacadeSession {
         message: error instanceof Error ? error.message : String(error),
       });
     }
-  }
-
-  private jobView(job: JobRecord): JobStatusView {
-    return {
-      jobId: job.jobId,
-      kind: job.kind,
-      state: job.state,
-      progress: job.progress ? { ...job.progress } : null,
-      artifact: job.artifact ? { ...job.artifact } : null,
-      error: job.error ? { ...job.error } : null,
-      sourceRevision: job.sourceRevision,
-      route: job.route,
-      cancelRequested: job.cancelRequested,
-      createdAt: job.createdAt,
-      updatedAt: job.updatedAt,
-    };
-  }
-
-  private timelineDurationSec(project: Project): number {
-    let maxEnd = 0;
-    for (const track of project.timeline.tracks) {
-      for (const clip of track.clips) {
-        maxEnd = Math.max(maxEnd, clip.startTime + clip.duration);
-      }
-    }
-    for (const clip of project.textClips ?? []) {
-      maxEnd = Math.max(maxEnd, clip.startTime + clip.duration);
-    }
-    return maxEnd;
   }
 
   /**
@@ -1682,21 +1482,7 @@ export class AgentFacadeSession {
   }
 
   private projectState(): ProjectState {
-    const project = this.project as Project;
-    return {
-      revision: this.revision,
-      project: structuredClone(project),
-      counts: this.counts(project),
-    };
-  }
-
-  private counts(project: Project): ProjectCounts {
-    return {
-      tracks: project.timeline.tracks.length,
-      clips: project.timeline.tracks.reduce((n, t) => n + t.clips.length, 0),
-      mediaItems: project.mediaLibrary.items.length,
-      textOverlays: (project.textClips ?? []).length,
-    };
+    return projectStateView(this.project as Project, this.revision);
   }
 
   private noProject<T>(): FacadeResult<T> {

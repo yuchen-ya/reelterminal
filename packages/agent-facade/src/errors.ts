@@ -12,6 +12,13 @@ export const FACADE_ERROR_CODES = [
   "JOB_FAILED",
   "ACTION_FAILED",
   "INTERNAL",
+  /**
+   * The session's mode forbids the verb outright (ADR 0004 Decision 7:
+   * Observe sessions run read-only verbs only). Distinct from CONFLICT,
+   * which reports a retryable state/lease precondition — FORBIDDEN is a
+   * fixed property of the session's mode, not of the current state.
+   */
+  "FORBIDDEN",
 ] as const;
 
 export type FacadeErrorCode = (typeof FACADE_ERROR_CODES)[number];

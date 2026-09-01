@@ -47,7 +47,7 @@ about why; there is no skill-level workaround. Missing capability ⇒ read
 
 ## 2. Configure `serve` per client (configuration, not variants)
 
-The same 14 tools exist on every client. Clients must spawn the server
+The same 15 tools exist on every client. Clients must spawn the server
 **directly** (no `sh -c` wrapper — a wrapper that holds stdin open defeats
 disconnect detection). Set the `OPENREEL_AVE_*` env vars in the server's
 environment; every root value must be an absolute path to an existing
@@ -98,7 +98,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
   `~` are refused, never resolved against any cwd. Paths must resolve
   inside the matching root class; escapes and URLs fail.
 
-## 4. The 14 tools
+## 4. The 15 tools
 
 | Tool | Purpose |
 |---|---|
@@ -110,7 +110,8 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `project_get_state` | Full canonical dump (Decision 8) |
 | `media_import` | Path inside `mediaRoots`; URLs refused |
 | `timeline_get` | Compact view — preferred read |
-| `edit_apply` | Closed op set; atomic; `expectedRevision` + `idempotencyKey` |
+| `editor_get_context` | Editor context (selection, playhead, canvas point); headless-honest — see below |
+| `edit_apply` | Closed op set; atomic; `expectedRevision` (+`expectedContextRevision` live) + `idempotencyKey` |
 | `preview_render_frame` | Replay/ledger only; artifact to `artifactRoot` |
 | `export_start` | Snapshot job; returns `jobId` immediately |
 | `job_status` | Poll to terminal |
@@ -119,12 +120,33 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 
 Every result is one JSON envelope: `{ok:true, value}` or
 `{ok:false, error:{code, message, details}}` with `isError:true` — match on
-`error.code` (8 codes: `INVALID_PARAMS NOT_FOUND CONFLICT UNSUPPORTED
-CONFIRMATION_REQUIRED JOB_FAILED ACTION_FAILED INTERNAL`), never on prose.
+`error.code` (9 codes: `INVALID_PARAMS NOT_FOUND CONFLICT UNSUPPORTED
+CONFIRMATION_REQUIRED JOB_FAILED ACTION_FAILED INTERNAL FORBIDDEN`), never on prose.
 Parameter schemas/defaults live in each tool's `inputSchema` and the facade
 README — this skill does not restate them. Context discipline: orient with
 `timeline_get`; `project_get_state` is an unbounded full dump; artifacts
 come back as `{path, sizeBytes, sha256, sourceRevision}` refs, never pixels.
+
+### `editor_get_context` — live vs headless honesty
+
+The verb exists so an agent collaborating with a human can read the
+ephemeral editor context: playhead, selected clip/text ids, selected time
+range, the normalized canvas target point, a monotonic `contextRevision`,
+and `{projectId, projectName, windowId}`.
+
+- **Headless** (this transport — `serve`/`run`/`doctor`): there is no
+  editor. The result is honest about it: `mode:"headless"`,
+  `contextAvailable:false`, every context field `null`/empty, `windowId`
+  `null`. Only `projectRevision` and the project identity are real. Never
+  treat the nulls as real values (e.g. do not read "no selection" into
+  them — there is no editor to select in).
+- **Live** (desktop GUI sessions, ADR 0004): `mode:"live"`,
+  `contextAvailable:true`, real context with a real `contextRevision`.
+- **`expectedContextRevision` on `edit_apply`:** an agent that derived its
+  ops from the live context carries that revision as a CAS guard; a stale
+  value fails `CONFLICT` and nothing is applied — re-read
+  `editor_get_context` and retry. Headless `edit_apply` rejects the field
+  `INVALID_PARAMS` (there is no context to guard).
 
 ### The `edit_apply` op vocabulary
 

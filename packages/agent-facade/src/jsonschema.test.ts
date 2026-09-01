@@ -33,11 +33,11 @@ function walk(schema: Schema, visit: (node: Schema) => void): void {
 }
 
 describe("emitted verb JSON Schemas — global client constraints", () => {
-  it("covers exactly the 14 facade verbs, keyed by verb name", () => {
+  it("covers exactly the 15 facade verbs, keyed by verb name", () => {
     expect(Object.keys(EMITTED_VERB_JSON_SCHEMAS).sort()).toEqual(
       [...FACADE_VERBS].sort(),
     );
-    expect(FACADE_VERBS).toHaveLength(14);
+    expect(FACADE_VERBS).toHaveLength(15);
   });
 
   for (const [verb, typedSchema] of Object.entries(EMITTED_VERB_JSON_SCHEMAS)) {
@@ -111,6 +111,8 @@ describe("emitted schema per-verb structure", () => {
     expect(schema.required).toEqual(["ops"]);
     const props = schema.properties as Schema;
     expect(props.expectedRevision).toEqual({ type: "integer", minimum: 0 });
+    // ADR 0004 Decision 4: the live context CAS guard, same integer shape.
+    expect(props.expectedContextRevision).toEqual({ type: "integer", minimum: 0 });
     const ops = props.ops as Schema;
     expect(ops).toEqual({
       type: "array",
@@ -249,6 +251,7 @@ describe("emitted schema per-verb structure", () => {
       "capabilities.get",
       "project.get_state",
       "timeline.get",
+      "editor.get_context",
     ] as const) {
       expect(EMITTED_VERB_JSON_SCHEMAS[verb]).toEqual({
         type: "object",

@@ -50,11 +50,17 @@ Slice 1: `session.describe` · `capabilities.get` · `project.create` ·
 Slice 1b: `preview.render_frame` · `export.start` · `job.status` ·
 `job.cancel` · `verify.artifact`
 
+Slice 2a: `project.open` · `project.save`
+
+Slice 3 (ADR 0004): `editor.get_context` — the live/headless-honest
+editor-context read; live sessions (createLiveFacade) implement the same
+15-verb contract over a `LiveProjectStore` seam with no project copy.
+
 All verbs return `FacadeResult<T>` (`{ ok: true, value } | { ok: false,
 error }`) with typed error codes (`INVALID_PARAMS`, `NOT_FOUND`, `CONFLICT`,
 `UNSUPPORTED`, `CONFIRMATION_REQUIRED`, `JOB_FAILED`, `ACTION_FAILED`,
-`INTERNAL`) — never throw for domain errors, never silently no-op with
-`ok: true`.
+`INTERNAL`, `FORBIDDEN`) — never throw for domain errors, never silently
+no-op with `ok: true`.
 
 ## Guarantees
 

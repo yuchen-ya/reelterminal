@@ -33,6 +33,8 @@ import {
   FACADE_VERSION,
   type Capabilities,
   type CapabilityStatus,
+  type FacadeVerb,
+  type LiveSessionMode,
   type SessionDescription,
 } from "./types";
 
@@ -52,6 +54,19 @@ export interface CapabilityContext {
    * refuses — RUNNER-06 in both directions).
    */
   readonly artifactRoot?: string;
+  /**
+   * Live-session marker (ADR 0004 Decisions 6/7/11). When present the
+   * reported runtime is "live", media.import is always unavailable (the GUI
+   * owns media import), and the live-unavailable verbs are listed honestly
+   * — never implied by omission.
+   */
+  readonly live?: {
+    readonly mode: LiveSessionMode;
+    readonly writer: boolean;
+    readonly leaseHolder: string | null;
+    readonly sessionId: string;
+    readonly unavailableVerbs: readonly FacadeVerb[];
+  };
 }
 
 const UNAVAILABLE_NO_RENDER_PROVIDER: CapabilityStatus = {
@@ -110,7 +125,7 @@ async function preflightOf(
 export async function buildCapabilities(
   ctx: CapabilityContext,
 ): Promise<Capabilities> {
-  const mediaImportAvailable = ctx.mediaRoots.length > 0;
+  const mediaImportAvailable = !ctx.live && ctx.mediaRoots.length > 0;
   const noArtifactRoot = ctx.artifactRoot === undefined || ctx.artifactRoot.length === 0;
   const gateArtifactProducing = (
     status: CapabilityStatus,
@@ -133,7 +148,8 @@ export async function buildCapabilities(
   const exportVideo = gateArtifactProducing(exportRaw, UNAVAILABLE_NO_EXPORT_PROVIDER);
   const verify = gateArtifactProducing(verifyRaw, UNAVAILABLE_NO_VERIFIER);
   return {
-    runtime: FACADE_RUNTIME,
+    runtime: ctx.live ? "live" : FACADE_RUNTIME,
+    ...(ctx.live ? { unavailableVerbs: ctx.live.unavailableVerbs } : {}),
     stateModel: {
       canonicalProject: true,
       atomicBatch: true,
@@ -146,8 +162,9 @@ export async function buildCapabilities(
       ...(mediaImportAvailable
         ? {}
         : {
-            reason:
-              "No media roots are configured for this session; every media.import would fail until roots are provided.",
+            reason: ctx.live
+              ? "Live mode: the GUI owns media import — import media in the editor; media.import is unavailable in this session."
+              : "No media roots are configured for this session; every media.import would fail until roots are provided.",
           }),
       sources: ["file"],
       mediaRoots: ctx.mediaRoots,
@@ -172,33 +189,67 @@ export async function buildSessionDescription(
   return {
     facadeVersion: FACADE_VERSION,
     contractVersion: FACADE_CONTRACT_VERSION,
-    runtime: FACADE_RUNTIME,
+    runtime: ctx.live ? "live" : FACADE_RUNTIME,
     verbs: FACADE_VERBS,
     editOps: EDIT_OP_TYPES,
     errorCodes: FACADE_ERROR_CODES,
     stepLetters: {
       facadeToRuntime: "P",
-      createProject: "P",
-      importLocalMedia: "A",
+      // Live mode owns no project lifecycle or media import (Decision 11).
+      createProject: ctx.live ? "X" : "P",
+      importLocalMedia: ctx.live ? "X" : "A",
       trimClip: "P",
       addTextOverlayModel: "P",
       textOverlayPixels: caps.preview.available ? "C" : "X",
       exportVideo: caps.export.available ? "C" : "X",
       verifyArtifact: caps.verify.available ? "A" : "X",
     },
-    notes: [
-      "Project is the canonical state; mutations are atomic serialized batches.",
-      caps.preview.available
-        ? "Text overlays render to real pixels via the configured render provider; pixel claims are E2E-verified only through preview.render_frame + verify.artifact."
-        : "Text overlays are model-state only in this session: no render provider passed preflight, so pixel rendering is NOT claimed.",
-      ctx.renderAdapter
-        ? `a Slice-1 ProjectRenderAdapter ("${ctx.renderAdapter.id}") is injected but permanently dormant: no facade verb consumes it and it flips no capability.`
-        : "preview/export/verify capabilities come from independent provider preflights (RenderProvider / ExportProvider / ArtifactVerifier), never from each other's presence.",
-      "project.create is a single-initialization lifecycle verb outside the revision machinery: it takes no expectedRevision; an exact idempotent retry replays the creation result without resetting the project, and any other create while a project is open fails CONFLICT (no replace/reset).",
-      `media.import accepts local files under the configured media roots only (${ctx.mediaRoots.length} root(s)); arbitrary URLs are not accepted.`,
-      "export.start snapshots the project synchronously (sourceRevision) and returns a jobId immediately; the same idempotencyKey+payload replays the same jobId. job.cancel is cooperative and always settles to a terminal state; failed/cancelled jobs never carry an artifact.",
-      "project.open / project.save checkpoint the project as openreel-project@1 files inside the configured project roots; save is a snapshot (never bumps the revision) and default is no-overwrite. The idempotency ledger is never saved — mint fresh keys after every open.",
-      "Idempotency ledger is per session+project+verb and does not survive process restarts.",
-    ],
+    ...(ctx.live
+      ? {
+          mode: ctx.live.mode,
+          writer: ctx.live.writer,
+          leaseHolder: ctx.live.leaseHolder,
+          sessionId: ctx.live.sessionId,
+        }
+      : {}),
+    notes: ctx.live ? liveNotes(ctx, caps) : headlessNotes(ctx, caps),
   };
+}
+
+function headlessNotes(
+  ctx: CapabilityContext,
+  caps: Capabilities,
+): string[] {
+  return [
+    "Project is the canonical state; mutations are atomic serialized batches.",
+    caps.preview.available
+      ? "Text overlays render to real pixels via the configured render provider; pixel claims are E2E-verified only through preview.render_frame + verify.artifact."
+      : "Text overlays are model-state only in this session: no render provider passed preflight, so pixel rendering is NOT claimed.",
+    ctx.renderAdapter
+      ? `a Slice-1 ProjectRenderAdapter ("${ctx.renderAdapter.id}") is injected but permanently dormant: no facade verb consumes it and it flips no capability.`
+      : "preview/export/verify capabilities come from independent provider preflights (RenderProvider / ExportProvider / ArtifactVerifier), never from each other's presence.",
+    "project.create is a single-initialization lifecycle verb outside the revision machinery: it takes no expectedRevision; an exact idempotent retry replays the creation result without resetting the project, and any other create while a project is open fails CONFLICT (no replace/reset).",
+    `media.import accepts local files under the configured media roots only (${ctx.mediaRoots.length} root(s)); arbitrary URLs are not accepted.`,
+    "export.start snapshots the project synchronously (sourceRevision) and returns a jobId immediately; the same idempotencyKey+payload replays the same jobId. job.cancel is cooperative and always settles to a terminal state; failed/cancelled jobs never carry an artifact.",
+    "project.open / project.save checkpoint the project as openreel-project@1 files inside the configured project roots; save is a snapshot (never bumps the revision) and default is no-overwrite. The idempotency ledger is never saved — mint fresh keys after every open.",
+    "Idempotency ledger is per session+project+verb and does not survive process restarts.",
+  ];
+}
+
+function liveNotes(
+  ctx: CapabilityContext,
+  caps: Capabilities,
+): string[] {
+  const live = ctx.live!;
+  return [
+    "The renderer's project store is the canonical state; this session holds NO project copy and reaches it only through the CAS-guarded LiveProjectStore seam — every read is an on-demand snapshot, every mutation one action batch applied as one undo unit.",
+    `Session mode "${live.mode}" is enforced at this boundary: observe runs the read-only verb set only (write verbs fail FORBIDDEN); at most one AI session holds the writer lease (write verbs without it fail CONFLICT with the holder). The human never takes the lease and can always edit.`,
+    caps.preview.available
+      ? "Text overlays render to real pixels via the configured render provider; pixel claims are E2E-verified only through preview.render_frame + verify.artifact."
+      : "Text overlays are model-state only in this session: no render provider passed preflight, so pixel rendering is NOT claimed.",
+    "project.create / project.open / media.import are unavailable in live mode (the GUI owns the project lifecycle and media import); project.save routes to the GUI's own save path. preview/export/verify run on a fresh snapshot of the canonical project and require its media to be file-backed and readable from this process.",
+    "editor.get_context reports the real ephemeral editor context (selection, playhead, time range, canvas point) with a monotonic contextRevision; edit.apply's expectedContextRevision CAS-guards ops derived from it.",
+    "export.start snapshots the project synchronously (sourceRevision) and returns a jobId immediately; the same idempotencyKey+payload replays the same jobId. job.cancel is cooperative and always settles to a terminal state; failed/cancelled jobs never carry an artifact.",
+    "Idempotency ledger is per session and does not survive process restarts.",
+  ];
 }

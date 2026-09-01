@@ -99,11 +99,12 @@ describe("Decision 4 item 2: transport assigns facade schemas verbatim", () => {
     const verbOrder: string[] = [
       "session.describe", "capabilities.get", "project.create", "project.open",
       "project.save", "project.get_state", "media.import", "timeline.get",
+      "editor.get_context",
       "edit.apply", "preview.render_frame", "export.start", "job.status",
       "job.cancel", "verify.artifact",
     ];
     const emitted = EMITTED_VERB_JSON_SCHEMAS as Record<string, unknown>;
-    expect(TOOLS).toHaveLength(14);
+    expect(TOOLS).toHaveLength(15);
     TOOLS.forEach((tool, i) => {
       expect(tool.inputSchema).toBe(emitted[verbOrder[i]]);
       expect(tool.inputSchema).toEqual(emitted[verbOrder[i]]);

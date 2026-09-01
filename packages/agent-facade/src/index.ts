@@ -1,13 +1,16 @@
 /**
  * @openreel/agent-facade — the agent-facing facade (Slice 1 + Slice 1b +
- * Slice 2a persistence).
+ * Slice 2a persistence + Slice 3 live collaboration).
  *
  * Pure-Node, in-process, transport-agnostic. The public surface is the
- * fourteen-verb `AgentFacade` object returned by createAgentFacade(); verb
- * names mirror audit/facade-v0.md + ADR 0003 Appendix B.1. All verbs return
- * FacadeResult<T> and never throw for domain errors. Pixel/export/verify
- * backing arrives via the independent provider interfaces (providers.ts);
- * the facade never imports Chromium, Playwright or ffmpeg itself.
+ * fifteen-verb `AgentFacade` object returned by createAgentFacade(); verb
+ * names mirror audit/facade-v0.md + ADR 0003 Appendix B.1 + ADR 0004
+ * (editor.get_context). All verbs return FacadeResult<T> and never throw
+ * for domain errors. Pixel/export/verify backing arrives via the
+ * independent provider interfaces (providers.ts); the facade never imports
+ * Chromium, Playwright or ffmpeg itself. Live sessions (createLiveFacade,
+ * ADR 0004) implement the same verb contract over a LiveProjectStore seam
+ * with no project copy.
  */
 import {
   AgentFacadeSession,
@@ -18,6 +21,7 @@ import type {
   Capabilities,
   EditApplyParams,
   EditApplyResult,
+  EditorGetContextResult,
   ExportStartParams,
   ExportStartResult,
   JobParams,
@@ -56,6 +60,9 @@ export interface AgentFacade {
     params: MediaImportParams,
   ) => Promise<FacadeResult<MediaImportResult>>;
   readonly "timeline.get": () => Promise<FacadeResult<TimelineState>>;
+  readonly "editor.get_context": (
+    params?: Record<string, never>,
+  ) => Promise<FacadeResult<EditorGetContextResult>>;
   readonly "edit.apply": (
     params: EditApplyParams,
   ) => Promise<FacadeResult<EditApplyResult>>;
@@ -91,6 +98,7 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "project.get_state": () => session.projectGetState(),
     "media.import": (params) => session.mediaImport(params),
     "timeline.get": () => session.timelineGet(),
+    "editor.get_context": (params) => session.editorGetContext(params),
     "edit.apply": (params) => session.editApply(params),
     "preview.render_frame": (params) => session.previewRenderFrame(params),
     "export.start": (params) => session.exportStart(params),
@@ -102,6 +110,20 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
 
 export { AgentFacadeSession, createAgentFacadeSession } from "./session";
 export type { AgentFacadeConfig } from "./session";
+export { createLiveFacade, LiveFacadeSession, LIVE_UNAVAILABLE_VERBS } from "./live-session";
+export type { LiveAgentFacade, LiveFacadeConfig } from "./live-session";
+export {
+  isLiveStoreConflict,
+  LiveStoreConflictError,
+} from "./live-store";
+export type {
+  LiveApplyActionsOptions,
+  LiveApplyActionsResult,
+  LiveEditorContext,
+  LiveProjectIdentity,
+  LiveProjectStore,
+} from "./live-store";
+export { LiveWriterLease } from "./live-lease";
 export {
   FacadeError,
   FACADE_ERROR_CODES,
@@ -110,7 +132,7 @@ export {
   type FacadeResult,
 } from "./errors";
 export type { ProjectRenderAdapter } from "./render/adapter";
-export { JobRegistry, JOB_STATES } from "./jobs";
+export { JobRegistry, JOB_STATES, jobStatusView } from "./jobs";
 export type { JobProgressView, JobRecord, JobState } from "./jobs";
 export type {
   ArtifactProbeExpectation,

@@ -244,6 +244,15 @@ describe("strict params", () => {
     await expectZeroSideEffects(0);
   });
 
+  it("rejects unknown fields on editor.get_context params", async () => {
+    const res = await facade["editor.get_context"]({ verbose: true } as never);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("INVALID_PARAMS");
+    expect(res.error.message).toContain("verbose");
+    await expectZeroSideEffects(0);
+  });
+
   it("rejects volume outside [0, 4] and wrong-typed volume", async () => {
     for (const volume of [-0.5, 4.0001, "1", NaN, null]) {
       const res = await facade["edit.apply"]({

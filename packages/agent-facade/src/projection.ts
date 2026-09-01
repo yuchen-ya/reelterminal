@@ -1,0 +1,81 @@
+/**
+ * Pure read projections of a canonical `Project` (extracted from
+ * AgentFacadeSession so the live session — ADR 0004 Decision 1, which
+ * holds NO project copy and works from LiveProjectStore snapshots —
+ * projects state byte-identically to headless). One projection logic, two
+ * session runtimes: a live `project.get_state`/`timeline.get` is the same
+ * view over a snapshot as headless is over its private project.
+ */
+import type { Project } from "@openreel/core/types/project";
+import type {
+  ProjectCounts,
+  ProjectState,
+  TimelineState,
+} from "./types";
+
+export function projectCounts(project: Project): ProjectCounts {
+  return {
+    tracks: project.timeline.tracks.length,
+    clips: project.timeline.tracks.reduce((n, t) => n + t.clips.length, 0),
+    mediaItems: project.mediaLibrary.items.length,
+    textOverlays: (project.textClips ?? []).length,
+  };
+}
+
+/**
+ * project.get_state view: the revision, a FRESH deep clone of the project
+ * (callers may never mutate facade/store state through the reference) and
+ * the entity counts.
+ */
+export function projectStateView(project: Project, revision: number): ProjectState {
+  return {
+    revision,
+    project: structuredClone(project),
+    counts: projectCounts(project),
+  };
+}
+
+/** timeline.get view: the compact tracks/clips/text-overlays projection. */
+export function timelineStateView(project: Project, revision: number): TimelineState {
+  return {
+    revision,
+    duration: project.timeline.duration,
+    tracks: project.timeline.tracks.map((track) => ({
+      id: track.id,
+      type: track.type,
+      name: track.name,
+      clips: track.clips.map((clip) => ({
+        id: clip.id,
+        trackId: clip.trackId,
+        mediaId: clip.mediaId,
+        startTime: clip.startTime,
+        duration: clip.duration,
+        inPoint: clip.inPoint,
+        outPoint: clip.outPoint,
+      })),
+    })),
+    textOverlays: (project.textClips ?? []).map((clip) => ({
+      id: clip.id,
+      trackId: clip.trackId,
+      text: clip.text,
+      startTime: clip.startTime,
+      duration: clip.duration,
+      position: { ...clip.transform.position },
+      anchor: { ...clip.transform.anchor },
+    })),
+  };
+}
+
+/** Max clip end across timeline tracks and text overlays, in seconds. */
+export function timelineDurationSec(project: Project): number {
+  let maxEnd = 0;
+  for (const track of project.timeline.tracks) {
+    for (const clip of track.clips) {
+      maxEnd = Math.max(maxEnd, clip.startTime + clip.duration);
+    }
+  }
+  for (const clip of project.textClips ?? []) {
+    maxEnd = Math.max(maxEnd, clip.startTime + clip.duration);
+  }
+  return maxEnd;
+}

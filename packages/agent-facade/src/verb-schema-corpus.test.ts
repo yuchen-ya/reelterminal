@@ -46,6 +46,7 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
     case "capabilities.get":
     case "project.get_state":
     case "timeline.get":
+    case "editor.get_context":
       validateObject(params, EMPTY_PARAMS_SCHEMA, `${verb} params`);
       return;
     case "project.create": {

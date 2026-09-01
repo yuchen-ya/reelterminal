@@ -92,6 +92,7 @@ describe("capabilities.get / session.describe", () => {
       "project.get_state",
       "media.import",
       "timeline.get",
+      "editor.get_context",
       "edit.apply",
       "preview.render_frame",
       "export.start",

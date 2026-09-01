@@ -2,7 +2,8 @@
  * `agent-video serve` — the MCP stdio server (ADR 0003 Decisions 1/2/5/7).
  *
  * One long-lived stdio MCP server process == one AgentFacadeSession. The
- * public surface is exactly the 14 tools of B.1; every result is the facade
+ * public surface is exactly the 15 tools of B.1 (14 slice-2 verbs plus
+ * `editor_get_context`, ADR 0004); every result is the facade
  * `FacadeResult` JSON as a single text content block (B.4), `ok:false` ⇒
  * `isError:true` — domain failures are never JSON-RPC protocol errors and
  * never string-mangled; agents match on `error.code`. Transport-level
