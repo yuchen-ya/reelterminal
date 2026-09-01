@@ -204,6 +204,11 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: true,
     },
     {
+      name: "valid clip.remove",
+      params: { ops: [{ op: "clip.remove", clipId: "c1" }] },
+      expectValid: true,
+    },
+    {
       name: "position x above 1",
       params: {
         ops: [{ op: "text.create", text: "x", startTime: 0, duration: 2, position: { x: 1.5, y: 0.5 } }],
@@ -242,6 +247,21 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     {
       name: "missing overlayId in text.delete",
       params: { ops: [{ op: "text.delete" }] },
+      expectValid: false,
+    },
+    {
+      name: "missing clipId in clip.remove",
+      params: { ops: [{ op: "clip.remove" }] },
+      expectValid: false,
+    },
+    {
+      name: "empty clipId in clip.remove",
+      params: { ops: [{ op: "clip.remove", clipId: "" }] },
+      expectValid: false,
+    },
+    {
+      name: "unknown field in clip.remove",
+      params: { ops: [{ op: "clip.remove", clipId: "c1", trackId: "v1" }] },
       expectValid: false,
     },
     {

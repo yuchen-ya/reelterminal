@@ -128,7 +128,7 @@ come back as `{path, sizeBytes, sha256, sourceRevision}` refs, never pixels.
 
 ### The `edit_apply` op vocabulary
 
-Seven ops, one atomic batch each call (the exact fields and bounds live in
+Eight ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
 - `track.add` — create a track (`trackType`); `clip.add` — place imported
@@ -148,9 +148,12 @@ Seven ops, one atomic batch each call (the exact fields and bounds live in
 - `text.delete` — remove an overlay by `overlayId`.
 - `clip.setVolume` — linear gain `0..4` on any clip (audio or video
   track): `0` = mute, `1` = unity; it flows into the exported audio.
+- `clip.remove` — remove one timeline clip (video/audio/image track, not
+  a text overlay) by `clipId` (read `tracks[].clips[].id` from
+  `timeline_get` first); the gap stays — no ripple.
 
 Ops in one batch see each other's results, and a failure anywhere rolls
-the whole batch back; a deleted overlay stays deleted after
+the whole batch back; a deleted overlay or clip stays deleted after
 `project.save` → `project.open`.
 
 ## 5. Idempotency, revisions, and the export loop

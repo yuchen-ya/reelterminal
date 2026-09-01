@@ -122,7 +122,7 @@ describe("emitted schema per-verb structure", () => {
       },
     });
     const anyOf = ((ops.items as Schema).anyOf ?? []) as Schema[];
-    expect(anyOf).toHaveLength(7);
+    expect(anyOf).toHaveLength(8);
     const trackAdd = anyOf[0];
     expect(trackAdd.additionalProperties).toBe(false);
     expect(trackAdd.required).toEqual(["op", "trackType"]);
@@ -173,6 +173,14 @@ describe("emitted schema per-verb structure", () => {
       type: "number",
       minimum: 0,
       maximum: 4,
+    });
+    const clipRemove = anyOf[7];
+    expect(clipRemove.additionalProperties).toBe(false);
+    expect(clipRemove.required).toEqual(["op", "clipId"]);
+    expect((clipRemove.properties as Schema).op).toEqual({ const: "clip.remove" });
+    expect((clipRemove.properties as Schema).clipId).toEqual({
+      type: "string",
+      minLength: 1,
     });
   });
 

@@ -66,6 +66,7 @@ describe("capabilities.get / session.describe", () => {
       "text.update",
       "text.delete",
       "clip.setVolume",
+      "clip.remove",
     ]);
     expect(res.value.editOps).toEqual([...EDIT_OP_TYPES]);
     expect(res.value.stateModel).toEqual({

@@ -1359,6 +1359,33 @@ vocabulary:
    identical audio codec, mean-volume drop 14.00 dB ≥ the asserted 8
    dB). Commits `4350579`, `af4107e`, `3a3dd40`; SKILL.md documents
    the widened vocabulary within its Decision-9 charter.
+5. **The closed `edit.apply` op set widened from 7 to 8 ops.** The
+   remaining vocabulary gap was the timeline-clip analogue of
+   `text.delete`: an agent could place and trim a clip but never remove
+   one. Added `clip.remove` (`{clipId}`) over timeline clips on
+   video/audio/image tracks (text overlays keep `text.delete`),
+   translated to core's pre-existing `clip/remove` action — the same
+   action the web UI's delete-clip path dispatches
+   (`apps/web/.../clip-slice.ts`), so UI-model compatibility holds by
+   construction — and deliberately NOT `clip/rippleDelete`: the gap
+   stays. The facade pre-check keeps the NOT_FOUND-names-the-id
+   convention (a second remove of the same id fails identically), a
+   removal reports empty `createdIds`, and the atomic draft-discard
+   transaction covers it like every other op. Decision 4's
+   single-source invariant is unchanged: the one `CLIP_REMOVE_SCHEMA`
+   declaration drives runtime validation, the emitted anyOf union (7→8
+   variants) and the transport's ajv differential corpus (4 new cases);
+   `EDIT_OP_SCHEMAS` stays compile-time-keyed on `EDIT_OP_TYPES`, so
+   the widened union cannot drift from the validators. B.1 stays at 14
+   MCP tools (an op, not a verb); `packages/core` is untouched; no
+   transition system. Evidence: facade 311→320 tests, transport
+   184→185; a new gated E2E pins the pixel behavior with real Chromium
+   — the post-removal frame differs from the content frame on every
+   pixel (mean|Δ|=123.706, changed 100%) and renders pixel-identical
+   after `project.save` → `project.open` — while the facade e2e pins the
+   revision arithmetic, the no-resurrection persistence, and
+   preview/export succeeding on the post-removal timeline. SKILL.md
+   documents the op within its Decision-9 charter.
 
 ## Appendix F: Implementation slices, risks, and deferred candidates
 

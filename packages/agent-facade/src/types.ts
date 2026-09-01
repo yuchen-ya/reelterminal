@@ -316,7 +316,7 @@ export interface TimelineState {
 }
 
 /* ------------------------------------------------------------------ */
-/* edit.apply — closed op set (Slice 1 + text/volume vocabulary)       */
+/* edit.apply — closed op set (Slice 1 + widened op vocabulary)        */
 /* ------------------------------------------------------------------ */
 
 export const EDIT_OP_TYPES = [
@@ -327,6 +327,7 @@ export const EDIT_OP_TYPES = [
   "text.update",
   "text.delete",
   "clip.setVolume",
+  "clip.remove",
 ] as const;
 
 export type EditOpType = (typeof EDIT_OP_TYPES)[number];
@@ -437,6 +438,15 @@ export interface ClipSetVolumeOp {
   readonly volume: number;
 }
 
+export interface ClipRemoveOp {
+  readonly op: "clip.remove";
+  /**
+   * One existing timeline clip (video/audio/image track — NOT a text
+   * overlay; remove those with text.delete).
+   */
+  readonly clipId: string;
+}
+
 export type EditOp =
   | TrackAddOp
   | ClipAddOp
@@ -444,7 +454,8 @@ export type EditOp =
   | TextCreateOp
   | TextUpdateOp
   | TextDeleteOp
-  | ClipSetVolumeOp;
+  | ClipSetVolumeOp
+  | ClipRemoveOp;
 
 export interface EditApplyParams {
   readonly ops: readonly EditOp[];

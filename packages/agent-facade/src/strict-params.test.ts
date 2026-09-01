@@ -187,6 +187,30 @@ describe("strict params", () => {
     await expectZeroSideEffects(0);
   });
 
+  it("rejects a missing or empty clipId (clip.remove)", async () => {
+    for (const op of [
+      { op: "clip.remove" },
+      { op: "clip.remove", clipId: "" },
+    ]) {
+      const res = await facade["edit.apply"]({ ops: [op as never] });
+      expect(res.ok, JSON.stringify(op)).toBe(false);
+      if (res.ok) continue;
+      expect(res.error.code).toBe("INVALID_PARAMS");
+    }
+    await expectZeroSideEffects(0);
+  });
+
+  it("rejects unknown extra fields on clip.remove", async () => {
+    const res = await facade["edit.apply"]({
+      ops: [{ op: "clip.remove", clipId: "c1", track_id: "v1" } as never],
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("INVALID_PARAMS");
+    expect(res.error.message).toContain("track_id");
+    await expectZeroSideEffects(0);
+  });
+
   it("rejects position/anchor outside [0, 1]", async () => {
     for (const [field, point] of [
       ["position", { x: -0.1, y: 0.5 }],

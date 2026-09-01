@@ -26,6 +26,7 @@ import {
   EDIT_OP_TYPES,
   TRACK_TYPES,
   type ClipAddOp,
+  type ClipRemoveOp,
   type ClipSetVolumeOp,
   type ClipTrimOp,
   type EditOp,
@@ -344,6 +345,21 @@ export const CLIP_SET_VOLUME_SCHEMA: ObjectSchema = {
   },
 };
 
+export const CLIP_REMOVE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "clip.remove",
+    describe: '"clip.remove"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.remove" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
 /**
  * Rebind nested style/position/anchor to SANITIZED copies: opToCoreActions
  * spreads them into the canonical TextClip, so what flows downstream must be
@@ -439,6 +455,8 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       return validateObject<TextDeleteOp>(raw, TEXT_DELETE_SCHEMA, label);
     case "clip.setVolume":
       return validateObject<ClipSetVolumeOp>(raw, CLIP_SET_VOLUME_SCHEMA, label);
+    case "clip.remove":
+      return validateObject<ClipRemoveOp>(raw, CLIP_REMOVE_SCHEMA, label);
     default:
       // Unreachable: opType was allowlist-checked above. Keeps the function
       // total for the compiler and fail-closed for the runtime.
@@ -772,6 +790,24 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       return [
         makeAction("audio/setVolume", { clipId: op.clipId, volume: op.volume }),
       ];
+    }
+
+    case "clip.remove": {
+      // Timeline clips only (video/audio/image tracks) — text overlays live
+      // in draft.textClips and are removed via text.delete.
+      const clip = draft.timeline.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.remove: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      // The SAME core action the UI's delete-clip path dispatches
+      // (apps/web clip-slice), so model compatibility holds by construction.
+      return [makeAction("clip/remove", { clipId: op.clipId })];
     }
   }
 }

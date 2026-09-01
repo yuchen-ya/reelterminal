@@ -21,8 +21,8 @@
  *      (fixed M4)
  *  T11 nonexistent file -> "cannot be read"; real escape -> "escapes roots"
  *      (fixed M2)
- *  T12 text.update / text.delete / clip.setVolume NOT_FOUND paths name the
- *      missing id
+ *  T12 text.update / text.delete / clip.setVolume / clip.remove NOT_FOUND
+ *      paths name the missing id
  *  T13 intra-batch references resolve via the DRAFT (clip.add -> clip.setVolume
  *      in one batch, video-track clip included); T13b update-then-delete of the
  *      same overlay in one batch via the id a previous batch returned
@@ -31,6 +31,8 @@
  *  T15 sanitized nested copies on text.update (stateful getters read once)
  *  T16 text.create position/anchor land in the clip transform; the state view
  *      exposes both, and omission keeps the centered default
+ *  T17 clip.remove deletes one timeline clip (sibling untouched, no ripple);
+ *      a second remove of the same id fails NOT_FOUND naming it
  */
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -384,19 +386,20 @@ describe("ADV: text ops / ordering / caps / pollution", () => {
     return { clipId: "c1" };
   }
 
-  it("T12: text.update / text.delete / clip.setVolume name the missing id in NOT_FOUND", async () => {
+  it("T12: text.update / text.delete / clip.setVolume / clip.remove name the missing id in NOT_FOUND", async () => {
     await seedVideoClip();
     for (const op of [
       { op: "text.update", overlayId: "text-ghost", text: "x" },
       { op: "text.delete", overlayId: "text-ghost" },
       { op: "clip.setVolume", clipId: "clip-ghost", volume: 1 },
+      { op: "clip.remove", clipId: "clip-ghost" },
     ] as const) {
       const res = await facade["edit.apply"]({ ops: [op] });
       expect(res.ok, JSON.stringify(op)).toBe(false);
       if (res.ok) continue;
       expect(res.error.code).toBe("NOT_FOUND");
       expect(res.error.message).toContain(
-        op.op === "clip.setVolume" ? "clip-ghost" : "text-ghost",
+        "clipId" in op ? "clip-ghost" : "text-ghost",
       );
     }
   });
@@ -550,5 +553,63 @@ describe("ADV: text ops / ordering / caps / pollution", () => {
     expect(byText.get("placed")?.position).toEqual({ x: 0.5, y: 0.85 });
     expect(byText.get("placed")?.anchor).toEqual({ x: 0.5, y: 0.5 });
     expect(byText.get("default")?.position).toEqual({ x: 0.5, y: 0.5 });
+  });
+
+  it("T17: clip.remove deletes one timeline clip (sibling untouched, no ripple); a second remove of the same id fails NOT_FOUND naming it", async () => {
+    const imported = await facade["media.import"]({
+      path: `${mediaRoot}/tiny-6s.mp4`,
+    });
+    if (!imported.ok) throw new Error("import failed");
+    const seeded = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v1" },
+        {
+          op: "clip.add",
+          trackId: "v1",
+          mediaId: imported.value.mediaId,
+          startTime: 0,
+          clipId: "c1",
+        },
+        {
+          op: "clip.add",
+          trackId: "v1",
+          mediaId: imported.value.mediaId,
+          startTime: 6,
+          clipId: "c2",
+        },
+      ],
+    });
+    if (!seeded.ok) throw new Error("seed failed");
+
+    const removed = await facade["edit.apply"]({
+      ops: [{ op: "clip.remove", clipId: "c1" }],
+    });
+    expect(removed.ok).toBe(true);
+    if (!removed.ok) return;
+    // A removal creates nothing: createdIds stays empty.
+    expect(removed.value.applied).toEqual([
+      { op: "clip.remove", createdIds: [] },
+    ]);
+
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error();
+    const clips = state.value.project.timeline.tracks.flatMap((t) => t.clips);
+    expect(clips.map((c) => c.id)).toEqual(["c2"]);
+    // The gap stays — core clip/remove never ripples siblings.
+    expect(clips[0]?.startTime).toBe(6);
+    const timeline = await facade["timeline.get"]();
+    if (!timeline.ok) throw new Error();
+    expect(
+      timeline.value.tracks.find((t) => t.id === "v1")?.clips.map((c) => c.id),
+    ).toEqual(["c2"]);
+
+    // Second remove of the same id — same NOT_FOUND class as text.delete.
+    const again = await facade["edit.apply"]({
+      ops: [{ op: "clip.remove", clipId: "c1" }],
+    });
+    expect(again.ok).toBe(false);
+    if (again.ok) return;
+    expect(again.error.code).toBe("NOT_FOUND");
+    expect(again.error.message).toContain("c1");
   });
 });

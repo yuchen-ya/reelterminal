@@ -177,7 +177,7 @@ describe.skipIf(!runtimeHealthy)("closed loop over run (real Chromium + ffmpeg)"
 });
 
 /* ------------------------------------------------------------------ */
-/* edit.apply text-position + clip.setVolume vocabulary (pixel/audio)  */
+/* edit.apply op vocabulary (pixel/audio proofs)                       */
 /* ------------------------------------------------------------------ */
 
 /** Locate a step's stdout line by its unique step id. */
@@ -190,7 +190,7 @@ function stepLine(
   return line;
 }
 
-describe.skipIf(!runtimeHealthy)("text position + clip.setVolume E2E (real Chromium + ffmpeg)", () => {
+describe.skipIf(!runtimeHealthy)("edit.apply op vocabulary E2E (real Chromium + ffmpeg)", () => {
   it("text.create/text.update/text.delete move pixels between bands and back to baseline", async () => {
     const result = await runWorkflow([
       { id: "create", verb: "project.create", params: { name: "Position", settings: { width: 320, height: 180, frameRate: 30, sampleRate: 48000, channels: 2 }, idempotencyKey: "pos-create" } },
@@ -387,5 +387,79 @@ describe.skipIf(!runtimeHealthy)("text position + clip.setVolume E2E (real Chrom
     const dropDb = unityDb - quietDb;
     console.log(`[e2e] volume 1.0 → 0.2 mean-volume drop: ${dropDb.toFixed(2)} dB`);
     expect(dropDb).toBeGreaterThanOrEqual(8);
+  }, 900_000);
+
+  it("clip.remove drops the clip's pixels: content frame vs blank after removal, stable across save → open", async () => {
+    const checkpoint = path.join(roots.projectRoot, "clip-remove-v1.openreel.json");
+    // Process A: clip present → preview → clip.remove → preview again.
+    const a = await runWorkflow([
+      { id: "create", verb: "project.create", params: { name: "Remove", settings: { width: 320, height: 180, frameRate: 30, sampleRate: 48000, channels: 2 }, idempotencyKey: "rm-create" } },
+      { id: "import", verb: "media.import", params: { path: inputMp4, expectedRevision: 0, idempotencyKey: "rm-import" } },
+      {
+        id: "edit",
+        verb: "edit.apply",
+        params: {
+          ops: [
+            { op: "track.add", trackType: "video", trackId: "v1" },
+            { op: "clip.add", trackId: "v1", mediaId: { $ref: "import#/mediaId" }, startTime: 0, clipId: "c1" },
+            { op: "clip.trim", clipId: "c1", inPoint: 0, outPoint: 2 },
+          ],
+          expectedRevision: 1,
+          idempotencyKey: "rm-edit",
+        },
+      },
+      { id: "preview-with", verb: "preview.render_frame", params: { timeSec: 1, expectedRevision: 2 } },
+      {
+        id: "remove",
+        verb: "edit.apply",
+        params: {
+          ops: [{ op: "clip.remove", clipId: "c1" }],
+          expectedRevision: 2,
+          idempotencyKey: "rm-remove",
+        },
+      },
+      { id: "timeline-after", verb: "timeline.get", params: {} },
+      // The emptied timeline has duration 0: only timeSec 0 is legal now.
+      { id: "preview-without", verb: "preview.render_frame", params: { timeSec: 0, expectedRevision: 3 } },
+      { id: "save", verb: "project.save", params: { path: checkpoint } },
+      // The load-bearing pixel proof: the post-removal frame differs from
+      // the content frame (both are stills, so compare at timeSec 0).
+      { id: "removed-differs", verb: "verify.artifact", params: {
+          path: { $ref: "preview-without#/artifact/path" },
+          compare: { referencePath: { $ref: "preview-with#/artifact/path" }, timeSec: 0, mode: "different", minChangedPixelsRatio: 0.02 },
+        } },
+    ]);
+    expect(a.exitCode, a.stdoutLines.map((l) => JSON.stringify(l)).join("\n")).toBe(0);
+    expect(stepLine(a.stdoutLines, "remove").result.value.revision).toBe(3);
+    const timelineLine = stepLine(a.stdoutLines, "timeline-after");
+    expect(
+      timelineLine.result.value.tracks.find((t: any) => t.id === "v1")?.clips,
+    ).toHaveLength(0);
+    const differs = stepLine(a.stdoutLines, "removed-differs");
+    expect(differs.result.value.pass).toBe(true);
+    const dc = differs.result.value.compare;
+    console.log(
+      `[e2e] clip.remove: with-vs-without mean|Δ|=${dc.meanAbsDiff?.toFixed(3)} changed=${((dc.changedPixelsRatio ?? 0) * 100).toFixed(2)}%`,
+    );
+    const previewWithoutPath = stepLine(a.stdoutLines, "preview-without")
+      .result.value.artifact.path as string;
+
+    // Process B: open the checkpoint — the removal persists across the
+    // process boundary and the emptied timeline renders the same frame.
+    const b = await runWorkflow([
+      { id: "open", verb: "project.open", params: { path: checkpoint } },
+      { id: "timeline", verb: "timeline.get", params: {} },
+      { id: "previewB", verb: "preview.render_frame", params: { timeSec: 0 } },
+      { id: "still-removed", verb: "verify.artifact", params: {
+          path: { $ref: "previewB#/artifact/path" },
+          compare: { referencePath: previewWithoutPath, timeSec: 0, mode: "similar", maxMeanAbsDiff: 4 },
+        } },
+    ]);
+    expect(b.exitCode, b.stdoutLines.map((l) => JSON.stringify(l)).join("\n")).toBe(0);
+    const reopened = stepLine(b.stdoutLines, "timeline");
+    expect(
+      reopened.result.value.tracks.find((t: any) => t.id === "v1")?.clips,
+    ).toHaveLength(0);
+    expect(stepLine(b.stdoutLines, "still-removed").result.value.pass).toBe(true);
   }, 900_000);
 });
