@@ -176,6 +176,7 @@ export interface LiveAgentFacade extends Omit<AgentFacade, "project.save"> {
 const CREATING_OPS: ReadonlySet<EditOp["op"]> = new Set([
   "track.add",
   "clip.add",
+  "clip.split",
   "text.create",
 ]);
 
@@ -1447,17 +1448,22 @@ function partitionCreatedIds(
   ops: readonly EditOp[],
   createdIds: LiveCreatedIds,
 ): OpApplied[] {
-  const buckets = {
-    "track.add": createdIds.tracks,
-    "clip.add": createdIds.clips,
-    "text.create": createdIds.textClips,
+  const categories = {
+    "track.add": "tracks",
+    "clip.add": "clips",
+    "clip.split": "clips",
+    "text.create": "textClips",
   } as const;
-  const cursors = { "track.add": 0, "clip.add": 0, "text.create": 0 };
+  const cursors = {
+    tracks: 0,
+    clips: 0,
+    textClips: 0,
+  };
   return ops.map((op) => {
     if (!CREATING_OPS.has(op.op)) return { op: op.op, createdIds: [] };
-    const key = op.op as keyof typeof buckets;
-    const id = buckets[key][cursors[key]];
-    cursors[key] += 1;
+    const category = categories[op.op as keyof typeof categories];
+    const id = createdIds[category][cursors[category]];
+    cursors[category] += 1;
     // A missing bucket entry means the store created nothing for this op
     // (e.g. an implicit dependency was diffed instead) — report honestly.
     return { op: op.op, createdIds: id === undefined ? [] : [id] };

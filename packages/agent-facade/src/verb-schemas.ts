@@ -17,8 +17,12 @@
 import { EDIT_OP_TYPES } from "./types";
 import {
   CLIP_ADD_SCHEMA,
+  CLIP_MOVE_SCHEMA,
   CLIP_REMOVE_SCHEMA,
+  CLIP_SET_FADE_SCHEMA,
+  CLIP_SET_SPEED_SCHEMA,
   CLIP_SET_VOLUME_SCHEMA,
+  CLIP_SPLIT_SCHEMA,
   CLIP_TRIM_SCHEMA,
   TEXT_CREATE_SCHEMA,
   TEXT_DELETE_SCHEMA,
@@ -172,11 +176,15 @@ export const EDIT_OP_SCHEMAS: Readonly<
 > = {
   "track.add": TRACK_ADD_SCHEMA,
   "clip.add": CLIP_ADD_SCHEMA,
+  "clip.move": CLIP_MOVE_SCHEMA,
   "clip.trim": CLIP_TRIM_SCHEMA,
+  "clip.split": CLIP_SPLIT_SCHEMA,
   "text.create": TEXT_CREATE_SCHEMA,
   "text.update": TEXT_UPDATE_SCHEMA,
   "text.delete": TEXT_DELETE_SCHEMA,
+  "clip.setSpeed": CLIP_SET_SPEED_SCHEMA,
   "clip.setVolume": CLIP_SET_VOLUME_SCHEMA,
+  "clip.setFade": CLIP_SET_FADE_SCHEMA,
   "clip.remove": CLIP_REMOVE_SCHEMA,
 };
 

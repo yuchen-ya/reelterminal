@@ -36,7 +36,7 @@ function fakeSession(overrides: {
   const calls: { verb: string; params: unknown }[] = [];
   let statusPointer = 0;
   const facade: AgentFacade = {
-    "session.describe": () => Promise.resolve({ ok: true, value: { contractVersion: "facade-slice-3" } as any }),
+    "session.describe": () => Promise.resolve({ ok: true, value: { contractVersion: "facade-slice-4" } as any }),
     "capabilities.get": () => Promise.resolve({ ok: true, value: {} as any }),
     "project.create": (params: unknown) => { calls.push({ verb: "project.create", params }); return Promise.resolve(overrides.verbResults?.["project.create"] ?? { ok: true, value: { revision: 0, replayed: false } as any }); },
     "project.open": () => { calls.push({ verb: "project.open", params: {} }); return Promise.resolve({ ok: true, value: { revision: 0 } as any }); },

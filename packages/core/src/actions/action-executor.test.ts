@@ -217,6 +217,105 @@ describe("ActionExecutor compound instance synchronization", () => {
   });
 });
 
+describe("ActionExecutor clip/split source timing", () => {
+  it("derives a two-sided trim duration in timeline seconds at constant speed", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProjectWithClip({
+      startTime: 10,
+      duration: 2.5,
+      inPoint: 1,
+      outPoint: 6,
+      speed: 2,
+    });
+
+    const result = await executor.execute({
+      id: "trim-fast",
+      type: "clip/trim",
+      timestamp: Date.now(),
+      params: { clipId: "c1", inPoint: 2, outPoint: 5 },
+    } as Action, project);
+    expect(result.success).toBe(true);
+    expect(project.timeline.tracks[0].clips[0]).toMatchObject({
+      inPoint: 2,
+      outPoint: 5,
+      duration: 1.5,
+      speed: 2,
+    });
+  });
+
+  it("scales the source cut for a constant-speed clip and remains undoable", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProjectWithClip({
+      startTime: 10,
+      duration: 2.5,
+      inPoint: 1,
+      outPoint: 6,
+      speed: 2,
+    });
+    const original = structuredClone(project.timeline.tracks[0].clips[0]);
+
+    const result = await executor.execute({
+      id: "split-fast",
+      type: "clip/split",
+      timestamp: Date.now(),
+      params: { clipId: "c1", time: 11 },
+    } as Action, project);
+    expect(result.success).toBe(true);
+    expect(project.timeline.tracks[0].clips).toHaveLength(2);
+    expect(project.timeline.tracks[0].clips[0]).toMatchObject({
+      id: "c1",
+      startTime: 10,
+      duration: 1,
+      inPoint: 1,
+      outPoint: 3,
+      speed: 2,
+    });
+    expect(project.timeline.tracks[0].clips[1]).toMatchObject({
+      startTime: 11,
+      duration: 1.5,
+      inPoint: 3,
+      outPoint: 6,
+      speed: 2,
+    });
+
+    const undone = await executor.undo(project);
+    expect(undone.success).toBe(true);
+    expect(project.timeline.tracks[0].clips).toEqual([original]);
+  });
+
+  it("cuts the correct source ranges for reversed constant-speed playback", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProjectWithClip({
+      startTime: 10,
+      duration: 2.5,
+      inPoint: 1,
+      outPoint: 6,
+      speed: 2,
+      reversed: true,
+    });
+
+    const result = await executor.execute({
+      id: "split-fast-reversed",
+      type: "clip/split",
+      timestamp: Date.now(),
+      params: { clipId: "c1", time: 11 },
+    } as Action, project);
+    expect(result.success).toBe(true);
+    expect(project.timeline.tracks[0].clips[0]).toMatchObject({
+      duration: 1,
+      inPoint: 4,
+      outPoint: 6,
+      reversed: true,
+    });
+    expect(project.timeline.tracks[0].clips[1]).toMatchObject({
+      duration: 1.5,
+      inPoint: 1,
+      outPoint: 4,
+      reversed: true,
+    });
+  });
+});
+
 describe("ActionExecutor clip/setBlendMode", () => {
   it("sets blend mode and restores prior (undefined -> normal) on undo", async () => {
     const executor = new ActionExecutor();

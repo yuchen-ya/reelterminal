@@ -26,8 +26,12 @@ import {
   EDIT_OP_TYPES,
   TRACK_TYPES,
   type ClipAddOp,
+  type ClipMoveOp,
   type ClipRemoveOp,
+  type ClipSetFadeOp,
+  type ClipSetSpeedOp,
   type ClipSetVolumeOp,
+  type ClipSplitOp,
   type ClipTrimOp,
   type EditOp,
   type NormalizedPoint,
@@ -142,6 +146,53 @@ export const CLIP_TRIM_SCHEMA: ObjectSchema = {
   outPoint: {
     check: isNonNegativeNumber,
     describe: "a finite number >= 0",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+};
+
+export const CLIP_MOVE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "clip.move",
+    describe: '"clip.move"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.move" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  startTime: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  trackId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const CLIP_SPLIT_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "clip.split",
+    describe: '"clip.split"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.split" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  time: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    required: true,
     emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
   },
 };
@@ -345,6 +396,52 @@ export const CLIP_SET_VOLUME_SCHEMA: ObjectSchema = {
   },
 };
 
+export const CLIP_SET_SPEED_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "clip.setSpeed",
+    describe: '"clip.setSpeed"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.setSpeed" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  speed: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0.1 && v <= 20,
+    describe: "a finite number in [0.1, 20]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0.1, maximum: 20 } },
+  },
+};
+
+export const CLIP_SET_FADE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "clip.setFade",
+    describe: '"clip.setFade"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.setFade" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  fadeIn: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  fadeOut: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+};
+
 export const CLIP_REMOVE_SCHEMA: ObjectSchema = {
   op: {
     check: (v) => v === "clip.remove",
@@ -412,6 +509,8 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       return validateObject<TrackAddOp>(raw, TRACK_ADD_SCHEMA, label);
     case "clip.add":
       return validateObject<ClipAddOp>(raw, CLIP_ADD_SCHEMA, label);
+    case "clip.move":
+      return validateObject<ClipMoveOp>(raw, CLIP_MOVE_SCHEMA, label);
     case "clip.trim": {
       const op = validateObject<ClipTrimOp>(raw, CLIP_TRIM_SCHEMA, label);
       if (op.inPoint === undefined && op.outPoint === undefined) {
@@ -429,6 +528,8 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       }
       return op;
     }
+    case "clip.split":
+      return validateObject<ClipSplitOp>(raw, CLIP_SPLIT_SCHEMA, label);
     case "text.create": {
       const op = validateObject<TextCreateOp>(raw, TEXT_CREATE_SCHEMA, label);
       return sanitizeTextFields(op, label);
@@ -453,8 +554,17 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
     }
     case "text.delete":
       return validateObject<TextDeleteOp>(raw, TEXT_DELETE_SCHEMA, label);
+    case "clip.setSpeed":
+      return validateObject<ClipSetSpeedOp>(raw, CLIP_SET_SPEED_SCHEMA, label);
     case "clip.setVolume":
       return validateObject<ClipSetVolumeOp>(raw, CLIP_SET_VOLUME_SCHEMA, label);
+    case "clip.setFade": {
+      const op = validateObject<ClipSetFadeOp>(raw, CLIP_SET_FADE_SCHEMA, label);
+      if (op.fadeIn === undefined && op.fadeOut === undefined) {
+        throw invalidParams(`${label}: at least one of fadeIn/fadeOut is required`);
+      }
+      return op;
+    }
     case "clip.remove":
       return validateObject<ClipRemoveOp>(raw, CLIP_REMOVE_SCHEMA, label);
     default:
@@ -690,17 +800,70 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           { clipId: op.clipId, mediaId: clip.mediaId, mediaDuration },
         );
       }
-      // MEDIA-04: core clip/trim computes duration from the STALE in/out point
-      // when both move in one action. Send them as two sequential actions so
-      // the second sees the first's result; final duration = newOut - newIn.
-      const actions: Action[] = [];
-      if (op.inPoint !== undefined) {
-        actions.push(makeAction("clip/trim", { clipId: op.clipId, inPoint: op.inPoint }));
+      return [
+        makeAction("clip/trim", {
+          clipId: op.clipId,
+          ...(op.inPoint !== undefined ? { inPoint: op.inPoint } : {}),
+          ...(op.outPoint !== undefined ? { outPoint: op.outPoint } : {}),
+        }),
+      ];
+    }
+
+    case "clip.move": {
+      const clip = draft.timeline.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError("NOT_FOUND", `clip.move: clip "${op.clipId}" not found`, {
+          clipId: op.clipId,
+        });
       }
-      if (op.outPoint !== undefined) {
-        actions.push(makeAction("clip/trim", { clipId: op.clipId, outPoint: op.outPoint }));
+      if (
+        op.trackId !== undefined &&
+        !draft.timeline.tracks.some((track) => track.id === op.trackId)
+      ) {
+        throw new FacadeError("NOT_FOUND", `clip.move: track "${op.trackId}" not found`, {
+          trackId: op.trackId,
+        });
       }
-      return actions;
+      return [
+        makeAction("clip/move", {
+          clipId: op.clipId,
+          startTime: op.startTime,
+          ...(op.trackId !== undefined ? { trackId: op.trackId } : {}),
+        }),
+      ];
+    }
+
+    case "clip.split": {
+      const clip = draft.timeline.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError("NOT_FOUND", `clip.split: clip "${op.clipId}" not found`, {
+          clipId: op.clipId,
+        });
+      }
+      if (
+        (clip.speedKeyframes?.length ?? 0) > 0 ||
+        (clip.freezeFrames?.length ?? 0) > 0
+      ) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "clip.split: variable-speed and freeze-frame clips are not supported yet",
+          { clipId: op.clipId },
+        );
+      }
+      const endTime = clip.startTime + clip.duration;
+      if (!(op.time > clip.startTime && op.time < endTime)) {
+        throw invalidParams("clip.split: time must be strictly inside the clip bounds", {
+          clipId: op.clipId,
+          time: op.time,
+          startTime: clip.startTime,
+          endTime,
+        });
+      }
+      return [makeAction("clip/split", { clipId: op.clipId, time: op.time })];
     }
 
     case "text.create": {
@@ -809,6 +972,49 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       }
       return [
         makeAction("audio/setVolume", { clipId: op.clipId, volume: op.volume }),
+      ];
+    }
+
+    case "clip.setSpeed": {
+      const clip = draft.timeline.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.setSpeed: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      return [makeAction("clip/setSpeed", { clipId: op.clipId, speed: op.speed })];
+    }
+
+    case "clip.setFade": {
+      const clip = draft.timeline.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.setFade: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      for (const [field, value] of [["fadeIn", op.fadeIn], ["fadeOut", op.fadeOut]] as const) {
+        if (value !== undefined && value > clip.duration) {
+          throw invalidParams(`clip.setFade: ${field} cannot exceed clip duration`, {
+            clipId: op.clipId,
+            [field]: value,
+            duration: clip.duration,
+          });
+        }
+      }
+      return [
+        makeAction("audio/setFade", {
+          clipId: op.clipId,
+          ...(op.fadeIn !== undefined ? { fadeIn: op.fadeIn } : {}),
+          ...(op.fadeOut !== undefined ? { fadeOut: op.fadeOut } : {}),
+        }),
       ];
     }
 

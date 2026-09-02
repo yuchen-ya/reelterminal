@@ -196,7 +196,8 @@ Every result is one JSON envelope: `{ok:true, value}` or
 CONFIRMATION_REQUIRED JOB_FAILED ACTION_FAILED INTERNAL FORBIDDEN`), never on prose.
 Parameter schemas/defaults live in each tool's `inputSchema` and the facade
 README — this skill does not restate them. Context discipline: orient with
-`timeline_get`; `project_get_state` is an unbounded full dump; ordinary
+`timeline_get` (its compact clip view includes effective volume, speed,
+reverse state, and fades); `project_get_state` is an unbounded full dump; ordinary
 artifacts come back as `{path, sizeBytes, sha256, sourceRevision}` refs. On
 successful `visual_inspect`, the stdio `serve` transport and desktop live MCP
 also attach bounded MCP PNG image content (contact sheet when supported,
@@ -238,12 +239,17 @@ and `{projectId, projectName, windowId}`.
 
 ### The `edit_apply` op vocabulary
 
-Eight ops, one atomic batch each call (the exact fields and bounds live in
+Twelve ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
 - `track.add` — create a track (`trackType`); `clip.add` — place imported
-  media on a track; `clip.trim` — move a clip's `inPoint`/`outPoint` (at
+  media on a track; `clip.move` — move it to an absolute timeline
+  `startTime` and optionally another track; `clip.trim` — move a clip's `inPoint`/`outPoint` (at
   least one, `outPoint` must exceed `inPoint`).
+- `clip.split` — cut a clip at an absolute timeline time strictly inside
+  its bounds; the result reports the new right-hand `clipId`. Constant-speed
+  and reversed clips preserve the correct source ranges; variable-speed and
+  freeze-frame clips currently return `UNSUPPORTED`.
 - `text.create` — an overlay on a text track. `position`/`anchor` are
   **normalized 0..1 frame coordinates** (resolution-independent:
   `0.5/0.5` = center, `y:0.85` = lower third) and apply identically in
@@ -256,8 +262,12 @@ Eight ops, one atomic batch each call (the exact fields and bounds live in
   and `position`/`anchor` merge with the existing placement — omitted
   keys keep their values.
 - `text.delete` — remove an overlay by `overlayId`.
+- `clip.setSpeed` — constant playback speed `0.1..20`; the timeline
+  duration is recomputed from the source span.
 - `clip.setVolume` — linear gain `0..4` on any clip (audio or video
   track): `0` = mute, `1` = unity; it flows into the exported audio.
+- `clip.setFade` — set `fadeIn` and/or `fadeOut` in seconds; each value
+  must fit within the current clip duration.
 - `clip.remove` — remove one timeline clip (video/audio/image track, not
   a text overlay) by `clipId` (read `tracks[].clips[].id` from
   `timeline_get` first); the gap stays — no ripple.

@@ -85,6 +85,15 @@ function diffByCategory(
   };
 }
 
+function appendCreatedIds(
+  target: EntityIdsByCategory,
+  created: EntityIdsByCategory,
+): void {
+  target.tracks.push(...created.tracks);
+  target.clips.push(...created.clips);
+  target.textClips.push(...created.textClips);
+}
+
 /**
  * Engine-aware text routing (ADR 0004 Decision 2): overlay actions must go
  * through the TitleEngine-backed store methods — raw executor application
@@ -252,7 +261,15 @@ async function handleApplyActions(
       }
     }
 
-    const idsBefore = entityIdsByCategory();
+    // Accumulate per action rather than diffing once after the whole batch.
+    // Project traversal order is not creation order when, for example, a
+    // later action adds a clip to an earlier track. The live facade consumes
+    // each category bucket in op order, so this ordering is part of the seam.
+    const createdIds: EntityIdsByCategory = {
+      tracks: [],
+      clips: [],
+      textClips: [],
+    };
     let applied = 0;
     const executor = store.actionExecutor;
     executor.setPushOwner(AGENT_HISTORY_OWNER);
@@ -261,7 +278,12 @@ async function handleApplyActions(
     let applyFailed = false;
     try {
       for (const action of actions) {
+        const idsBeforeAction = entityIdsByCategory();
         await applyOneAction(action);
+        appendCreatedIds(
+          createdIds,
+          diffByCategory(idsBeforeAction, entityIdsByCategory()),
+        );
         applied += 1;
       }
     } catch (error) {
@@ -295,8 +317,6 @@ async function handleApplyActions(
         },
       };
     }
-
-    const createdIds = diffByCategory(idsBefore, entityIdsByCategory());
 
     return {
       ok: true,

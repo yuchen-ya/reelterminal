@@ -810,15 +810,28 @@ export class ActionExecutor {
           ...track,
           clips: track.clips.map((clip: MutableClip) => {
             if (clip.id === params.clipId) {
-              const updates: Partial<MutableClip> = {};
-              if (params.inPoint !== undefined) {
-                updates.inPoint = params.inPoint;
-                updates.duration = clip.outPoint - params.inPoint;
-              }
-              if (params.outPoint !== undefined) {
-                updates.outPoint = params.outPoint;
-                updates.duration = params.outPoint - clip.inPoint;
-              }
+              const nextInPoint = params.inPoint ?? clip.inPoint;
+              const nextOutPoint = params.outPoint ?? clip.outPoint;
+              const updates: Partial<MutableClip> = {
+                ...(params.inPoint !== undefined
+                  ? { inPoint: params.inPoint }
+                  : {}),
+                ...(params.outPoint !== undefined
+                  ? { outPoint: params.outPoint }
+                  : {}),
+                ...(params.inPoint !== undefined || params.outPoint !== undefined
+                  ? {
+                      // inPoint/outPoint are source-media seconds while
+                      // duration is expressed on the timeline. Compute from
+                      // the complete resulting source range (including a
+                      // two-sided trim) and scale constant-speed clips back
+                      // to timeline time.
+                      duration:
+                        (nextOutPoint - nextInPoint) /
+                        Math.max(clip.speed ?? 1, 0.1),
+                    }
+                  : {}),
+              };
               return { ...clip, ...updates };
             }
             return clip;
@@ -833,11 +846,20 @@ export class ActionExecutor {
         if (clip) {
           const splitTime = params.time;
           const splitOffset = splitTime - clip.startTime;
+          // startTime/duration are timeline seconds, while inPoint/outPoint
+          // are source-media seconds. Constant-speed clips therefore need
+          // the timeline offset scaled before their source range is cut.
+          const sourceOffset = splitOffset * (clip.speed ?? 1);
+          const sourceSplit = clip.reversed
+            ? clip.outPoint - sourceOffset
+            : clip.inPoint + sourceOffset;
 
           const clip1 = {
             ...clip,
             duration: splitOffset,
-            outPoint: clip.inPoint + splitOffset,
+            ...(clip.reversed
+              ? { inPoint: sourceSplit }
+              : { outPoint: sourceSplit }),
           };
 
           const clip2 = {
@@ -845,7 +867,9 @@ export class ActionExecutor {
             id: crypto.randomUUID(),
             startTime: splitTime,
             duration: clip.duration - splitOffset,
-            inPoint: clip.inPoint + splitOffset,
+            ...(clip.reversed
+              ? { outPoint: sourceSplit }
+              : { inPoint: sourceSplit }),
           };
 
           timeline.tracks = timeline.tracks.map((track: MutableTrack) => ({

@@ -167,6 +167,77 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     );
   });
 
+  it("returns created clip ids in action order across different tracks", async () => {
+    const initial = useProjectStore.getState().project;
+    useProjectStore.setState({
+      project: {
+        ...initial,
+        mediaLibrary: {
+          ...initial.mediaLibrary,
+          items: [
+            ...initial.mediaLibrary.items,
+            {
+              id: "media-1",
+              name: "seed.mp4",
+              type: "video",
+              fileHandle: null,
+              blob: null,
+              metadata: {
+                duration: 6,
+                width: 320,
+                height: 180,
+                frameRate: 30,
+                codec: "h264",
+                sampleRate: 48000,
+                channels: 2,
+                fileSize: 1024,
+              },
+              thumbnailUrl: null,
+              waveformData: null,
+            },
+          ],
+        },
+      },
+    });
+    const tracks = await handleLiveBridgeRequest(
+      req("applyActions", {
+        actions: [
+          act("track/add", { trackType: "video", trackId: "v1" }),
+          act("track/add", { trackType: "video", trackId: "v2" }),
+        ],
+      }),
+    );
+    expect(tracks.ok).toBe(true);
+
+    // Create on the later project track first. A single post-batch project
+    // diff would return v1's clip before v2's and reverse these ids.
+    const clips = await handleLiveBridgeRequest(
+      req("applyActions", {
+        actions: [
+          act("clip/add", {
+            trackId: "v2",
+            mediaId: "media-1",
+            startTime: 0,
+          }),
+          act("clip/add", {
+            trackId: "v1",
+            mediaId: "media-1",
+            startTime: 0,
+          }),
+        ],
+      }),
+    );
+    expect(clips.ok).toBe(true);
+    const createdIds = (clips.result as {
+      createdIds: { clips: string[] };
+    }).createdIds.clips;
+    const project = useProjectStore.getState().project;
+    expect(createdIds).toEqual([
+      project.timeline.tracks.find((track) => track.id === "v2")?.clips[0]?.id,
+      project.timeline.tracks.find((track) => track.id === "v1")?.clips[0]?.id,
+    ]);
+  });
+
   it("applyActions routes text/create engine-aware and preserves the facade id", async () => {
     const res = await handleLiveBridgeRequest(
       req("applyActions", {

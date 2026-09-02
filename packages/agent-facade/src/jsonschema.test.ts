@@ -124,7 +124,7 @@ describe("emitted schema per-verb structure", () => {
       },
     });
     const anyOf = ((ops.items as Schema).anyOf ?? []) as Schema[];
-    expect(anyOf).toHaveLength(8);
+    expect(anyOf).toHaveLength(12);
     const trackAdd = anyOf[0];
     expect(trackAdd.additionalProperties).toBe(false);
     expect(trackAdd.required).toEqual(["op", "trackType"]);
@@ -135,10 +135,16 @@ describe("emitted schema per-verb structure", () => {
     const clipAdd = anyOf[1];
     expect(clipAdd.required).toEqual(["op", "trackId", "mediaId", "startTime"]);
     expect((clipAdd.properties as Schema).op).toEqual({ const: "clip.add" });
-    const clipTrim = anyOf[2];
+    const clipMove = anyOf[2];
+    expect(clipMove.required).toEqual(["op", "clipId", "startTime"]);
+    expect((clipMove.properties as Schema).op).toEqual({ const: "clip.move" });
+    const clipTrim = anyOf[3];
     expect(clipTrim.required).toEqual(["op", "clipId"]);
     expect((clipTrim.properties as Schema).op).toEqual({ const: "clip.trim" });
-    const textCreate = anyOf[3];
+    const clipSplit = anyOf[4];
+    expect(clipSplit.required).toEqual(["op", "clipId", "time"]);
+    expect((clipSplit.properties as Schema).op).toEqual({ const: "clip.split" });
+    const textCreate = anyOf[5];
     expect(textCreate.required).toEqual(["op", "text", "startTime", "duration"]);
     expect((textCreate.properties as Schema).op).toEqual({ const: "text.create" });
     expect((textCreate.properties as Schema).style).toMatchObject({
@@ -157,7 +163,7 @@ describe("emitted schema per-verb structure", () => {
     expect((textCreate.properties as Schema).anchor).toEqual(
       (textCreate.properties as Schema).position,
     );
-    const textUpdate = anyOf[4];
+    const textUpdate = anyOf[6];
     expect(textUpdate.required).toEqual(["op", "overlayId"]);
     expect((textUpdate.properties as Schema).op).toEqual({ const: "text.update" });
     // Only overlayId is required: at-least-one-updatable-field is validator-only.
@@ -165,10 +171,17 @@ describe("emitted schema per-verb structure", () => {
     expect((textUpdate.properties as Schema).position).toMatchObject({
       additionalProperties: false,
     });
-    const textDelete = anyOf[5];
+    const textDelete = anyOf[7];
     expect(textDelete.required).toEqual(["op", "overlayId"]);
     expect((textDelete.properties as Schema).op).toEqual({ const: "text.delete" });
-    const clipSetVolume = anyOf[6];
+    const clipSetSpeed = anyOf[8];
+    expect(clipSetSpeed.required).toEqual(["op", "clipId", "speed"]);
+    expect((clipSetSpeed.properties as Schema).speed).toEqual({
+      type: "number",
+      minimum: 0.1,
+      maximum: 20,
+    });
+    const clipSetVolume = anyOf[9];
     expect(clipSetVolume.required).toEqual(["op", "clipId", "volume"]);
     expect((clipSetVolume.properties as Schema).op).toEqual({ const: "clip.setVolume" });
     expect((clipSetVolume.properties as Schema).volume).toEqual({
@@ -176,7 +189,13 @@ describe("emitted schema per-verb structure", () => {
       minimum: 0,
       maximum: 4,
     });
-    const clipRemove = anyOf[7];
+    const clipSetFade = anyOf[10];
+    expect(clipSetFade.required).toEqual(["op", "clipId"]);
+    expect((clipSetFade.properties as Schema).fadeIn).toEqual({
+      type: "number",
+      minimum: 0,
+    });
+    const clipRemove = anyOf[11];
     expect(clipRemove.additionalProperties).toBe(false);
     expect(clipRemove.required).toEqual(["op", "clipId"]);
     expect((clipRemove.properties as Schema).op).toEqual({ const: "clip.remove" });

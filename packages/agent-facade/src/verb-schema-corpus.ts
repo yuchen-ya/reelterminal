@@ -232,6 +232,26 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: true,
     },
     {
+      name: "valid clip.move across tracks",
+      params: { ops: [{ op: "clip.move", clipId: "c1", startTime: 3.5, trackId: "v2" }] },
+      expectValid: true,
+    },
+    {
+      name: "valid clip.split at an absolute timeline time",
+      params: { ops: [{ op: "clip.split", clipId: "c1", time: 2.5 }] },
+      expectValid: true,
+    },
+    {
+      name: "valid clip.setSpeed at the ceiling",
+      params: { ops: [{ op: "clip.setSpeed", clipId: "c1", speed: 20 }] },
+      expectValid: true,
+    },
+    {
+      name: "valid clip.setFade with both edges",
+      params: { ops: [{ op: "clip.setFade", clipId: "c1", fadeIn: 0.25, fadeOut: 0.5 }] },
+      expectValid: true,
+    },
+    {
       name: "position x above 1",
       params: {
         ops: [{ op: "text.create", text: "x", startTime: 0, duration: 2, position: { x: 1.5, y: 0.5 } }],
@@ -286,6 +306,27 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       name: "unknown field in clip.remove",
       params: { ops: [{ op: "clip.remove", clipId: "c1", trackId: "v1" }] },
       expectValid: false,
+    },
+    {
+      name: "clip.move rejects negative start time",
+      params: { ops: [{ op: "clip.move", clipId: "c1", startTime: -0.1 }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.split requires time",
+      params: { ops: [{ op: "clip.split", clipId: "c1" }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setSpeed rejects values the core would clamp",
+      params: { ops: [{ op: "clip.setSpeed", clipId: "c1", speed: 20.1 }] },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: clip.setFade needs at least one edge",
+      params: { ops: [{ op: "clip.setFade", clipId: "c1" }] },
+      expectValid: false,
+      schemaValid: true,
     },
     {
       name: "unknown field in text.update",

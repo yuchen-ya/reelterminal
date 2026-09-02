@@ -52,6 +52,13 @@ export function timelineStateView(project: Project, revision: number): TimelineS
         duration: clip.duration,
         inPoint: clip.inPoint,
         outPoint: clip.outPoint,
+        volume: clip.volume,
+        speed: clip.speed ?? 1,
+        reversed: clip.reversed ?? false,
+        fade: {
+          fadeIn: clip.fade?.fadeIn ?? 0,
+          fadeOut: clip.fade?.fadeOut ?? 0,
+        },
       })),
     })),
     textOverlays: (project.textClips ?? []).map((clip) => ({

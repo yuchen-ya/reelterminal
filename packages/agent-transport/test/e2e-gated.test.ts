@@ -113,6 +113,77 @@ describe.skipIf(!runtimeHealthy)("closed loop over run (real Chromium + ffmpeg)"
     ).toBe(true);
   }, 900_000);
 
+  it("move → split → constant speed → fade reaches the real preview/export pipeline", async () => {
+    const result = await runWorkflow([
+      { id: "create", verb: "project.create", params: { name: "Finishing tools", settings: { width: 320, height: 180, frameRate: 30, sampleRate: 48000, channels: 2 } } },
+      { id: "import", verb: "media.import", params: { path: inputMp4, expectedRevision: 0 } },
+      {
+        id: "seed",
+        verb: "edit.apply",
+        params: {
+          ops: [
+            { op: "track.add", trackType: "video", trackId: "v1" },
+            { op: "clip.add", trackId: "v1", mediaId: { $ref: "import#/mediaId" }, startTime: 0, duration: 6, inPoint: 0, outPoint: 6, clipId: "c1" },
+          ],
+          expectedRevision: 1,
+        },
+      },
+      {
+        id: "arrange",
+        verb: "edit.apply",
+        params: {
+          ops: [
+            { op: "clip.move", clipId: "c1", startTime: 1 },
+            { op: "clip.split", clipId: "c1", time: 2 },
+          ],
+          expectedRevision: 2,
+        },
+      },
+      {
+        id: "finish",
+        verb: "edit.apply",
+        params: {
+          ops: [
+            { op: "clip.setSpeed", clipId: { $ref: "arrange#/applied/1/createdIds/0" }, speed: 2 },
+            { op: "clip.setFade", clipId: "c1", fadeIn: 0.2, fadeOut: 0.2 },
+          ],
+          expectedRevision: 3,
+        },
+      },
+      { id: "timeline", verb: "timeline.get", params: {} },
+      { id: "preview", verb: "preview.render_frame", params: { timeSec: 3, expectedRevision: 4 } },
+      { id: "export", verb: "export.start", params: {} },
+      { id: "wait", await: { jobId: { $ref: "export#/jobId" }, timeoutMs: 600000, pollMs: 1000 } },
+      { id: "verify", verb: "verify.artifact", params: {
+          path: { $ref: "wait#/artifact/path" },
+          expect: { container: "mp4", videoCodec: "h264", width: 320, height: 180, durationSec: 4.5, durationToleranceSec: 0.12 },
+        } },
+    ]);
+    expect(result.exitCode, result.stdoutLines.map((line) => JSON.stringify(line)).join("\n")).toBe(0);
+    const arrange = stepLine(result.stdoutLines, "arrange");
+    expect(arrange.result.value.applied[0]).toEqual({ op: "clip.move", createdIds: [] });
+    expect(arrange.result.value.applied[1].op).toBe("clip.split");
+    expect(arrange.result.value.applied[1].createdIds).toHaveLength(1);
+    const rightClipId = arrange.result.value.applied[1].createdIds[0];
+    const timeline = stepLine(result.stdoutLines, "timeline").result.value;
+    const clips = timeline.tracks.find((track: any) => track.id === "v1")?.clips;
+    expect(clips.find((clip: any) => clip.id === "c1")).toMatchObject({
+      startTime: 1,
+      duration: 1,
+      fade: { fadeIn: 0.2, fadeOut: 0.2 },
+    });
+    expect(clips.find((clip: any) => clip.id === rightClipId)).toMatchObject({
+      startTime: 2,
+      duration: 2.5,
+      inPoint: 1,
+      outPoint: 6,
+      speed: 2,
+    });
+    expect(stepLine(result.stdoutLines, "preview").result.ok).toBe(true);
+    expect(stepLine(result.stdoutLines, "wait").result.value.state).toBe("done");
+    expect(stepLine(result.stdoutLines, "verify").result.value.pass).toBe(true);
+  }, 900_000);
+
   it("job.cancel is reachable and idempotent on terminal jobs", async () => {
     const result = await runWorkflow([
       { id: "create", verb: "project.create", params: { name: "Cancel probe", idempotencyKey: "cancel-create" } },

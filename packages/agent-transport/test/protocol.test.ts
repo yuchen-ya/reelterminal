@@ -5,7 +5,7 @@
  *  - initialize (serverInfo carries the transport's own facts)
  *  - tools/list: exactly the 16 tools of the facade contract, inputSchemas deep-equal the
  *    facade emission EMITTED_VERB_JSON_SCHEMAS verbatim (Decision 4)
- *  - tools/call round-trips: session_describe contract `facade-slice-3`
+ *  - tools/call round-trips: session_describe contract `facade-slice-4`
  *    + 16 verbs; project_create/edit_apply happy path with exact revision
  *    arithmetic; CONFLICT and NOT_FOUND surface as tool-result
  *    `isError:true` with the facade's error codes — never protocol errors
@@ -63,7 +63,7 @@ describe("agent-video serve (real binary)", () => {
     expect(info.version).toBe("0.1.0");
     expect(typeof info.pid).toBe("number");
     expect(Array.isArray(info.args)).toBe(true);
-    expect(info.facadeContract).toBe("facade-slice-3");
+    expect(info.facadeContract).toBe("facade-slice-4");
     // Decision 5: capabilities carry ONLY the standard protocol
     // advertisement — never the server's own facts.
     const capsJson = JSON.stringify(init.result.capabilities);
@@ -107,18 +107,18 @@ describe("agent-video serve (real binary)", () => {
     });
   });
 
-  it("session_describe passthrough: contract facade-slice-3, 16 verbs, 9 error codes", async () => {
+  it("session_describe passthrough: contract facade-slice-4, 16 verbs, 9 error codes", async () => {
     const reply = await callTool("session_describe", {});
     expect(reply.error).toBeUndefined();
     expect(reply.result.isError).toBeFalsy();
     const text = reply.result.content[0].text as string;
     const parsed = JSON.parse(text);
     expect(parsed.ok).toBe(true);
-    expect(parsed.value.contractVersion).toBe("facade-slice-3");
+    expect(parsed.value.contractVersion).toBe("facade-slice-4");
     expect(parsed.value.verbs).toHaveLength(16);
     expect(parsed.value.errorCodes).toHaveLength(9);
     // structuredContent populated too (SDK 1.30.0 supports it)
-    expect(reply.result.structuredContent.value.contractVersion).toBe("facade-slice-3");
+    expect(reply.result.structuredContent.value.contractVersion).toBe("facade-slice-4");
   });
 
   it("project_create + edit_apply happy path with exact revision arithmetic", async () => {

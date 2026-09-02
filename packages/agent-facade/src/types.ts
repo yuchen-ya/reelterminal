@@ -15,6 +15,8 @@
  * Slice 3 verbs (ADR 0004 Decision 4): editor.get_context — the live/
  *   headless-honest editor-context read plus the read-only visual.inspect
  *   slice (16 verbs).
+ * Slice 4 widens edit.apply's closed finishing vocabulary to include clip
+ *   move/split, constant speed, and audio fades without adding new verbs.
  *
  * Pixel/export/verify backing arrives through the independent provider
  * interfaces in providers.ts (RenderProvider / ExportProvider /
@@ -29,8 +31,8 @@ import type {
   VerifyReport,
 } from "./providers";
 
-export const FACADE_VERSION = "0.3.0" as const;
-export const FACADE_CONTRACT_VERSION = "facade-slice-3" as const;
+export const FACADE_VERSION = "0.4.0" as const;
+export const FACADE_CONTRACT_VERSION = "facade-slice-4" as const;
 export const FACADE_RUNTIME = "node-headless" as const;
 
 /* ------------------------------------------------------------------ */
@@ -361,6 +363,13 @@ export interface TimelineClipView {
   readonly duration: number;
   readonly inPoint: number;
   readonly outPoint: number;
+  /** Effective linear audio gain; 0 = mute, 1 = unity. */
+  readonly volume: number;
+  /** Effective constant playback speed; defaults to 1. */
+  readonly speed: number;
+  readonly reversed: boolean;
+  /** Effective audio fades in seconds; missing model values normalize to 0. */
+  readonly fade: { readonly fadeIn: number; readonly fadeOut: number };
 }
 
 export interface TimelineTrackView {
@@ -438,11 +447,15 @@ export interface EditorGetContextResult {
 export const EDIT_OP_TYPES = [
   "track.add",
   "clip.add",
+  "clip.move",
   "clip.trim",
+  "clip.split",
   "text.create",
   "text.update",
   "text.delete",
+  "clip.setSpeed",
   "clip.setVolume",
+  "clip.setFade",
   "clip.remove",
 ] as const;
 
@@ -487,6 +500,22 @@ export interface ClipTrimOp {
   /** At least one of inPoint/outPoint is required. */
   readonly inPoint?: number;
   readonly outPoint?: number;
+}
+
+export interface ClipMoveOp {
+  readonly op: "clip.move";
+  readonly clipId: string;
+  /** Absolute timeline position in seconds. */
+  readonly startTime: number;
+  /** Optional destination track; omitted keeps the current track. */
+  readonly trackId?: string;
+}
+
+export interface ClipSplitOp {
+  readonly op: "clip.split";
+  readonly clipId: string;
+  /** Absolute timeline time strictly inside the clip bounds. */
+  readonly time: number;
 }
 
 /** Closed style subset accepted by text.create/text.update in this slice. */
@@ -554,6 +583,21 @@ export interface ClipSetVolumeOp {
   readonly volume: number;
 }
 
+export interface ClipSetSpeedOp {
+  readonly op: "clip.setSpeed";
+  readonly clipId: string;
+  /** Constant playback speed in [0.1, 20]. */
+  readonly speed: number;
+}
+
+export interface ClipSetFadeOp {
+  readonly op: "clip.setFade";
+  readonly clipId: string;
+  /** Audio fade durations in seconds; at least one is required. */
+  readonly fadeIn?: number;
+  readonly fadeOut?: number;
+}
+
 export interface ClipRemoveOp {
   readonly op: "clip.remove";
   /**
@@ -566,11 +610,15 @@ export interface ClipRemoveOp {
 export type EditOp =
   | TrackAddOp
   | ClipAddOp
+  | ClipMoveOp
   | ClipTrimOp
+  | ClipSplitOp
   | TextCreateOp
   | TextUpdateOp
   | TextDeleteOp
+  | ClipSetSpeedOp
   | ClipSetVolumeOp
+  | ClipSetFadeOp
   | ClipRemoveOp;
 
 export interface EditApplyParams {

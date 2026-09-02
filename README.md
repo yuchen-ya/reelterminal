@@ -55,6 +55,10 @@ for concrete external integrations.
 - `visual_inspect` provides bounded, read-only frame sampling by clip or time
   range, with revision-tagged PNG artifacts and a real contact sheet when the
   configured renderer supports native composition.
+- The atomic `edit_apply` vocabulary covers placement, moving, trimming,
+  splitting, constant speed, volume, fades, removal, and text overlay
+  creation/update/deletion. Split operations report the new clip id so an
+  Agent can continue editing it in later calls.
 - Users can mark audio, video, text, media, and graphics entities as stable
   Agent references (`#1`, `#2`, `#3`, …). Multi-selection assignment is
   deterministic; repeated marks keep their number; deleted entities remain

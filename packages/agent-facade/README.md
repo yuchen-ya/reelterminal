@@ -29,11 +29,14 @@ await facade["edit.apply"]({
   expectedRevision: 1,
   idempotencyKey: "batch-1",
 });
-// Later batches: text.update (style/position MERGE — omitted keys keep their
-// values), text.delete, clip.setVolume (linear gain 0..4; 0 = mute, 1 =
-// unity) — overlay ids come from timeline.get textOverlays[].id.
+// Later batches: clip.move, clip.split, clip.setSpeed, clip.setFade,
+// text.update (style/position MERGE — omitted keys keep their values),
+// text.delete, clip.setVolume (linear gain 0..4; 0 = mute, 1 = unity) —
+// ids come from timeline.get.
 await facade["edit.apply"]({
   ops: [
+    { op: "clip.move", clipId: "c1", startTime: 2 },
+    { op: "clip.setSpeed", clipId: "c1", speed: 1.5 },
     { op: "text.update", overlayId, style: { color: "#ffcc00" }, position: { x: 0.5, y: 0.85 } },
     { op: "clip.setVolume", clipId: "c1", volume: 1.5 },
   ],

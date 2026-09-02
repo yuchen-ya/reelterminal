@@ -51,8 +51,8 @@ interface RecordedBatch {
 /**
  * In-memory LiveProjectStore with the Decision 1 implementation contract:
  * CAS BEFORE apply (stale ⇒ LiveStoreConflictError, nothing applied), one
- * revision bump per committed batch, createdIds diffed around its own
- * apply — the ids that genuinely exist afterwards.
+ * revision bump per committed batch, createdIds diffed per action in creation
+ * order — the ids that genuinely exist afterwards.
  */
 class FakeLiveStore implements LiveProjectStore {
   project: Project;
@@ -125,19 +125,28 @@ class FakeLiveStore implements LiveProjectStore {
       );
     }
     const draft = structuredClone(this.project);
-    const before = collectEntityIds(draft);
+    const createdIds = {
+      tracks: [] as string[],
+      clips: [] as string[],
+      textClips: [] as string[],
+    };
     const executor = new ActionExecutor(new ActionHistory());
     for (const action of actions) {
+      const beforeAction = collectEntityIds(draft);
       const result = await executor.execute(action, draft);
       if (!result.success) {
         throw new Error(
           `store apply failed: ${result.error?.message ?? "unknown core error"}`,
         );
       }
+      const actionCreated = diffCreatedIdsByCategory(
+        beforeAction,
+        collectEntityIds(draft),
+      );
+      createdIds.tracks.push(...actionCreated.tracks);
+      createdIds.clips.push(...actionCreated.clips);
+      createdIds.textClips.push(...actionCreated.textClips);
     }
-    // The seam contract: created ids partitioned per category, so a mixed
-    // batch hands each creating op the id of its own entity.
-    const createdIds = diffCreatedIdsByCategory(before, collectEntityIds(draft));
     this.project = draft;
     this.revision += 1;
     this.batches.push({ actions, opts });
@@ -482,6 +491,151 @@ describe("live edit.apply", () => {
       ?.clips[0]?.id;
     expect(clipId).toBeDefined();
     expect(res.value.applied[3]).toEqual({ op: "clip.add", createdIds: [clipId] });
+  });
+
+  it("clip finishing ops move, split, retime and fade the canonical live project", async () => {
+    store.project.mediaLibrary.items.push({
+      id: "m1",
+      name: "seed.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      metadata: {
+        duration: 6,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+        codec: "h264",
+        sampleRate: 48000,
+        channels: 2,
+        fileSize: 1024,
+      },
+      thumbnailUrl: null,
+      waveformData: null,
+    });
+    const facade = liveFacade();
+    const seeded = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v1" },
+        {
+          op: "clip.add",
+          trackId: "v1",
+          mediaId: "m1",
+          startTime: 0,
+          duration: 4,
+          inPoint: 0,
+          outPoint: 4,
+        },
+      ],
+    });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) return;
+    const clipId = seeded.value.applied[1]!.createdIds[0]!;
+
+    const arranged = await facade["edit.apply"]({
+      ops: [
+        { op: "clip.move", clipId, startTime: 2 },
+        { op: "clip.split", clipId, time: 3.5 },
+      ],
+    });
+    expect(arranged.ok).toBe(true);
+    if (!arranged.ok) return;
+    expect(arranged.value.applied[0]).toEqual({ op: "clip.move", createdIds: [] });
+    expect(arranged.value.applied[1]?.op).toBe("clip.split");
+    expect(arranged.value.applied[1]?.createdIds).toHaveLength(1);
+    const rightClipId = arranged.value.applied[1]!.createdIds[0]!;
+
+    const finished = await facade["edit.apply"]({
+      ops: [
+        { op: "clip.setSpeed", clipId: rightClipId, speed: 2 },
+        { op: "clip.setFade", clipId, fadeIn: 0.2, fadeOut: 0.4 },
+      ],
+    });
+    expect(finished.ok).toBe(true);
+    expect(store.batches.at(-1)?.actions.map((action) => action.type)).toEqual([
+      "clip/setSpeed",
+      "audio/setFade",
+    ]);
+    const clips = store.project.timeline.tracks[0]!.clips;
+    expect(clips.find((clip) => clip.id === clipId)).toMatchObject({
+      startTime: 2,
+      duration: 1.5,
+      fade: { fadeIn: 0.2, fadeOut: 0.4 },
+    });
+    expect(clips.find((clip) => clip.id === rightClipId)).toMatchObject({
+      startTime: 3.5,
+      duration: 1.25,
+      speed: 2,
+    });
+
+    const ramped = clips.find((clip) => clip.id === rightClipId) as unknown as {
+      speedKeyframes: Array<{ id: string; time: number; speed: number; easing: "linear" }>;
+    };
+    ramped.speedKeyframes = [
+      { id: "speed-1", time: 0, speed: 2, easing: "linear" },
+    ];
+    const unsupported = await facade["edit.apply"]({
+      ops: [{ op: "clip.split", clipId: rightClipId, time: 4 }],
+    });
+    expect(unsupported.ok).toBe(false);
+    if (!unsupported.ok) expect(unsupported.error.code).toBe("UNSUPPORTED");
+  });
+
+  it("reports multiple split ids in op order rather than project traversal order", async () => {
+    store.project.mediaLibrary.items.push({
+      id: "m1",
+      name: "seed.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      metadata: {
+        duration: 6,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+        codec: "h264",
+        sampleRate: 48000,
+        channels: 2,
+        fileSize: 1024,
+      },
+      thumbnailUrl: null,
+      waveformData: null,
+    });
+    const facade = liveFacade();
+    const seeded = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v1" },
+        { op: "track.add", trackType: "video", trackId: "v2" },
+        { op: "clip.add", trackId: "v1", mediaId: "m1", startTime: 0 },
+        { op: "clip.add", trackId: "v2", mediaId: "m1", startTime: 0 },
+      ],
+    });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) return;
+    const v1ClipId = seeded.value.applied[2]!.createdIds[0]!;
+    const v2ClipId = seeded.value.applied[3]!.createdIds[0]!;
+
+    // Split the clip on the later project track first. A whole-project diff
+    // would return the v1 child before the v2 child and cross-assign them.
+    const split = await facade["edit.apply"]({
+      ops: [
+        { op: "clip.split", clipId: v2ClipId, time: 2 },
+        { op: "clip.split", clipId: v1ClipId, time: 3 },
+      ],
+    });
+    expect(split.ok).toBe(true);
+    if (!split.ok) return;
+
+    const v2ChildId = split.value.applied[0]!.createdIds[0]!;
+    const v1ChildId = split.value.applied[1]!.createdIds[0]!;
+    expect(
+      store.project.timeline.tracks.find((track) => track.id === "v2")?.clips
+        .some((clip) => clip.id === v2ChildId),
+    ).toBe(true);
+    expect(
+      store.project.timeline.tracks.find((track) => track.id === "v1")?.clips
+        .some((clip) => clip.id === v1ChildId),
+    ).toBe(true);
   });
 
   it("stale expectedRevision → CONFLICT, store untouched (no batch recorded)", async () => {

@@ -11,7 +11,7 @@
  *    create-after-open CONFLICT;
  *  - honest refusals: NOT_FOUND / UNSUPPORTED / INVALID_PARAMS;
  *  - the ledger after open is empty (keys minted pre-save do not replay);
- *  - contract bump: facade-slice-3, 16 verbs, 9 error codes (visual.inspect
+ *  - contract bump: facade-slice-4, 16 verbs, 9 error codes (visual.inspect
  *    adds bounded read-only visual artifacts).
  */
 import { readFile, stat } from "node:fs/promises";
@@ -505,7 +505,7 @@ describe("persistence: save → fresh session open → continue", () => {
     const res = await facade["session.describe"]();
     expect(res.ok).toBe(true);
     if (!res.ok) return;
-    expect(res.value.contractVersion).toBe("facade-slice-3");
+    expect(res.value.contractVersion).toBe("facade-slice-4");
     expect(res.value.verbs).toEqual([...FACADE_VERBS]);
     expect(res.value.verbs).toHaveLength(16);
     expect(res.value.errorCodes).toEqual([...FACADE_ERROR_CODES]);

@@ -62,11 +62,15 @@ describe("capabilities.get / session.describe", () => {
     expect(res.value.editOps).toEqual([
       "track.add",
       "clip.add",
+      "clip.move",
       "clip.trim",
+      "clip.split",
       "text.create",
       "text.update",
       "text.delete",
+      "clip.setSpeed",
       "clip.setVolume",
+      "clip.setFade",
       "clip.remove",
     ]);
     expect(res.value.editOps).toEqual([...EDIT_OP_TYPES]);
