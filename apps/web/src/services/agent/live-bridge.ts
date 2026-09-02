@@ -4,7 +4,7 @@ import type { TextStyle } from "@openreel/core/text/types";
 import { v4 as uuidv4 } from "uuid";
 import { useProjectStore, getProjectRevision } from "../../stores/project-store";
 import { getLiveEditorContext } from "../../stores/editor-context-store";
-import { runExclusive } from "./host-singleton";
+import { runExclusiveLiveWrite } from "./live-write-lock";
 
 /**
  * Renderer side of the ADR 0004 Decision 1 seam: the desktop main-process live
@@ -104,7 +104,7 @@ async function applyOneAction(
         ? clip.trackId
         : undefined;
     if (!trackId) {
-      // Mirror LiveEditorHost.createTextOverlay's track resolution.
+      // Mirror the editor's text-overlay track resolution.
       const existing = tracks.find((t) => t.type === "text");
       if (existing) {
         trackId = existing.id;
@@ -219,7 +219,7 @@ async function handleApplyActions(
       ? req.groupLabel
       : "Agent edit";
 
-  return runExclusive(async () => {
+  return runExclusiveLiveWrite(async () => {
     const store = useProjectStore.getState();
     if (!store.hasOpenProject) return noProject();
 
@@ -275,7 +275,7 @@ async function handleApplyActions(
       executor.setPushOwner(undefined);
     }
     if (applyFailed) {
-      // Mirror LiveEditorHost.rollbackTransaction: a group undo reverts
+      // A group undo reverts
       // everything this batch applied — but only when something was
       // actually applied, otherwise the undo would eat a pre-existing user
       // edit. If this undo itself throws, the bridge reports BRIDGE_ERROR
@@ -357,7 +357,7 @@ export async function handleLiveBridgeRequest(
       case "requestSave": {
         const store = useProjectStore.getState();
         if (!store.hasOpenProject) return noProject();
-        // The same save path the GUI's lifecycle flush / LiveEditorHost uses.
+        // The same save path the GUI's lifecycle flush uses.
         await store.forceSave();
         return { ok: true, result: { revision: getProjectRevision() } };
       }

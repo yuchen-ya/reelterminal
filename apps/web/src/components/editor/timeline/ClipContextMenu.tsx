@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import type { ToolcraftContextMenuOption as ContextMenuOption } from "@openreel/ui";
 import {
   Copy,
@@ -12,12 +13,17 @@ import {
   Image,
   ArrowLeftToLine,
   ListChecks,
+  Hash,
 } from "@/icons/lucide-compat";
 import type { Clip, Track } from "@openreel/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { getTimelineTrackSelection } from "../../../utils/timeline-item-actions";
+import {
+  markAgentReferenceForSelection,
+} from "../../../stores/editor-context-store";
+import { getAgentReferenceTargetForClip } from "../../../stores/agent-reference-targets";
 
 interface ClipContextMenuProps {
   clip: Clip;
@@ -30,6 +36,7 @@ export function useClipContextMenuItems({
   track,
   onClose,
 }: ClipContextMenuProps): ContextMenuOption[] {
+  const { t } = useTranslation();
   const {
     copyClips,
     duplicateClip,
@@ -45,6 +52,7 @@ export function useClipContextMenuItems({
   } = useProjectStore();
   const { playheadPosition } = useTimelineStore();
   const selectMultiple = useUIStore((state) => state.selectMultiple);
+  const project = useProjectStore((state) => state.project);
 
   const isPlayheadOnClip =
     playheadPosition >= clip.startTime &&
@@ -115,6 +123,13 @@ export function useClipContextMenuItems({
     onClose?.();
   };
 
+  const handleAddAgentReference = () => {
+    const target = getAgentReferenceTargetForClip(project, clip, track);
+    if (!target) return;
+    markAgentReferenceForSelection(target);
+    onClose?.();
+  };
+
   const handleCopyEffects = () => {
     copyEffects(clip.id);
     onClose?.();
@@ -153,29 +168,34 @@ export function useClipContextMenuItems({
     },
     { type: "divider" },
     {
-      label: "Copy Clip",
+      label: t("Copy Clip"),
       icon: <Copy size={14} aria-hidden />,
       onClick: handleCopy,
     },
     {
-      label: "Duplicate",
+      label: t("Duplicate"),
       icon: <Layers size={14} aria-hidden />,
       onClick: handleDuplicate,
     },
     {
-      label: "Select All Clips on Track",
+      label: t("Select All Clips on Track"),
       icon: <ListChecks size={14} aria-hidden />,
       onClick: handleSelectTrackClips,
     },
+    {
+      label: t("agentReferences.add"),
+      icon: <Hash size={14} aria-hidden />,
+      onClick: handleAddAgentReference,
+    },
     { type: "divider" },
     {
-      label: "Split at Playhead",
+      label: t("Split at Playhead"),
       icon: <Scissors size={14} aria-hidden />,
       isDisabled: !isPlayheadOnClip,
       onClick: handleSplit,
     },
     {
-      label: "Close Gap to Previous",
+      label: t("Close Gap to Previous"),
       icon: <ArrowLeftToLine size={14} aria-hidden />,
       isDisabled: !hasGapBeforeClip,
       onClick: handleCloseGap,
@@ -185,16 +205,16 @@ export function useClipContextMenuItems({
   if (isVideo || isImage) {
     items.push({
       type: "section",
-      title: "Effects",
+      title: t("Effects"),
       items: [
         {
-          label: "Copy Effects",
+          label: t("Copy Effects"),
           icon: <Sparkles size={14} aria-hidden />,
           isDisabled: !hasEffects,
           onClick: handleCopyEffects,
         },
         {
-          label: "Paste Effects",
+          label: t("Paste Effects"),
           icon: <Sparkles size={14} aria-hidden />,
           isDisabled: !hasCopiedEffects,
           onClick: handlePasteEffects,
@@ -205,7 +225,7 @@ export function useClipContextMenuItems({
 
   if (isVideoWithAudio) {
     items.push({
-      label: "Separate Audio",
+      label: t("Separate Audio"),
       icon: <Music size={14} aria-hidden />,
       onClick: handleSeparateAudio,
     });
@@ -214,16 +234,16 @@ export function useClipContextMenuItems({
   if (isAudio) {
     items.push({
       type: "section",
-      title: "Audio",
+      title: t("Audio"),
       items: [
         {
-          label: "Copy Audio Effects",
+          label: t("Copy Audio Effects"),
           icon: <Volume2 size={14} aria-hidden />,
           isDisabled: !hasEffects,
           onClick: handleCopyEffects,
         },
         {
-          label: "Paste Audio Effects",
+          label: t("Paste Audio Effects"),
           icon: <Volume2 size={14} aria-hidden />,
           isDisabled: !hasCopiedEffects,
           onClick: handlePasteEffects,
@@ -235,12 +255,12 @@ export function useClipContextMenuItems({
   items.push(
     { type: "divider" },
     {
-      label: "Ripple Delete",
+      label: t("Ripple Delete"),
       icon: <Trash2 size={14} aria-hidden />,
       onClick: handleRippleDelete,
     },
     {
-      label: "Delete",
+      label: t("Delete"),
       icon: <Trash2 size={14} aria-hidden />,
       onClick: handleDelete,
     },

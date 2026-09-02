@@ -1,6 +1,7 @@
 import type { Project, ProjectSettings } from "@openreel/core";
 import { normalizeProjectStoredFields } from "@openreel/core";
 import { v4 as uuidv4 } from "uuid";
+import { t as ti } from "../i18n";
 
 interface FilePickerAcceptType {
   description: string;
@@ -319,7 +320,7 @@ class ProjectManager {
     if (isDesktopFs()) {
       const filePath = await window.openreel!.fs.showSaveDialog({
         defaultPath: `${project.name}.oreel`,
-        filters: [{ name: "OpenReel Project", extensions: ["oreel", "json"] }],
+        filters: [{ name: "ReelTerminal Project", extensions: ["oreel", "json"] }],
       });
       if (!filePath) return false;
       await window.openreel!.fs.writeFile(
@@ -342,7 +343,7 @@ class ProjectManager {
         suggestedName: `${project.name}.oreel`,
         types: [
           {
-            description: "OpenReel Project",
+            description: ti("ReelTerminal Project"),
             accept: { "application/json": [".oreel", ".json"] },
           },
         ],
@@ -418,7 +419,7 @@ class ProjectManager {
   async openProject(): Promise<Project | null> {
     if (isDesktopFs()) {
       const filePath = await window.openreel!.fs.showOpenDialog({
-        filters: [{ name: "OpenReel Project", extensions: ["oreel", "json"] }],
+        filters: [{ name: "ReelTerminal Project", extensions: ["oreel", "json"] }],
       });
       if (!filePath) return null;
       const content = await window.openreel!.fs.readFile(filePath);
@@ -441,7 +442,7 @@ class ProjectManager {
         const [handle] = await win.showOpenFilePicker!({
           types: [
             {
-              description: "OpenReel Project",
+              description: ti("ReelTerminal Project"),
               accept: { "application/json": [".oreel", ".json"] },
             },
           ],

@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import "../i18n";
 
 class LocalStorageMock {
   private store = new Map<string, string>();

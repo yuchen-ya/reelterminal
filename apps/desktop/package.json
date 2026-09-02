@@ -4,15 +4,14 @@
   "version": "1.0.0-alpha.10",
   "type": "commonjs",
   "main": "dist/main/index.js",
+  "homepage": "https://github.com/yuchen-ya/reelterminal",
   "bin": {
-    "openreel-mcp": "dist/mcp-shim/index.js"
+    "openreel-live-mcp": "dist/live-mcp/index.js"
   },
-  "homepage": "https://openreel.video",
   "author": {
-    "name": "OpenReel",
-    "email": "support@openreel.video"
+    "name": "yuchen-ya and contributors"
   },
-  "description": "OpenReel — open-source professional video editor",
+  "description": "ReelTerminal — the finishing editor for AI video",
   "scripts": {
     "build:main": "node scripts/prepare-aurora-native.mjs && tsup && node scripts/link-live-runtime-deps.mjs",
     "build:renderer": "OPENREEL_DESKTOP=1 pnpm --filter @openreel/web build",
@@ -40,7 +39,6 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
     "@types/node": "^20.14.0",
     "electron": "^33.0.0",
     "electron-builder": "^24.13.3",

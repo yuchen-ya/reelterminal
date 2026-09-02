@@ -2,6 +2,7 @@ import type { JSX } from "react";
 import { useEffect, useState } from "react";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { ToolcraftText as Text } from "@openreel/ui";
+import { useTranslation } from "react-i18next";
 import type { OpenReelUpdaterStatus } from "../types/global";
 
 // Notify → (consented) download → install. Subscribes to main-process update
@@ -9,6 +10,7 @@ import type { OpenReelUpdaterStatus } from "../types/global";
 // install path quits through the normal guarded flow, so unsaved changes are
 // still protected.
 export function UpdateBanner(): JSX.Element | null {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<OpenReelUpdaterStatus | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
@@ -38,20 +40,20 @@ export function UpdateBanner(): JSX.Element | null {
       {status.state === "available" && (
         <>
           <Text type="body" weight="bold" display="block" className="text-sm">
-            Update {status.version} available
+            {t("desktop.update.available", { version: status.version })}
           </Text>
           <Text type="supporting" color="secondary" display="block" className="mt-1 text-xs">
-            A new version of OpenReel is ready to download.
+            {t("desktop.update.availableDescription")}
           </Text>
           <div className="mt-3 flex gap-2">
             <Button
-              label="Download"
+              label={t("desktop.update.download")}
               variant="primary"
               size="sm"
               onClick={() => void window.openreel?.updater.download()}
             />
             <Button
-              label="Later"
+              label={t("desktop.update.later")}
               variant="ghost"
               size="sm"
               onClick={() => setDismissed(true)}
@@ -63,7 +65,7 @@ export function UpdateBanner(): JSX.Element | null {
       {status.state === "downloading" && (
         <>
           <Text type="body" weight="bold" display="block" className="text-sm">
-            Downloading update…
+            {t("desktop.update.downloading")}
           </Text>
           <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-border">
             <div
@@ -80,21 +82,20 @@ export function UpdateBanner(): JSX.Element | null {
       {status.state === "downloaded" && (
         <>
           <Text type="body" weight="bold" display="block" className="text-sm">
-            Update {status.version} ready
+            {t("desktop.update.ready", { version: status.version })}
           </Text>
           <Text type="supporting" color="secondary" display="block" className="mt-1 text-xs">
-            Restart to install — you’ll be asked to save any unsaved changes
-            first.
+            {t("desktop.update.readyDescription")}
           </Text>
           <div className="mt-3 flex gap-2">
             <Button
-              label="Restart & Install"
+              label={t("desktop.update.restartInstall")}
               variant="primary"
               size="sm"
               onClick={() => void window.openreel?.updater.install()}
             />
             <Button
-              label="Later"
+              label={t("desktop.update.later")}
               variant="ghost"
               size="sm"
               onClick={() => setDismissed(true)}

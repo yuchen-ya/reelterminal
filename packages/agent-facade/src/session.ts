@@ -254,6 +254,7 @@ export class AgentFacadeSession {
         selectedTextIds: [],
         timeRange: null,
         canvasPoint: null,
+        references: {},
         identity: {
           projectId: this.project?.id ?? null,
           projectName: this.project?.name ?? null,

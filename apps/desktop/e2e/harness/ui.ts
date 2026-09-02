@@ -290,32 +290,3 @@ export async function pressRedo(page: Page): Promise<void> {
   await page.keyboard.press("Meta+Shift+z");
   await page.waitForTimeout(400);
 }
-
-/* ------------------------------------------------------------------ */
-/* embedded agent channel (what the chat UI uses)                      */
-/* ------------------------------------------------------------------ */
-
-export interface EmbeddedFacadeResult {
-  ok: boolean;
-  data?: unknown;
-  error?: { code: string; message: string; details?: Record<string, unknown> };
-}
-
-/** Embedded channel: exactly what the desktop chat panel calls. */
-export async function embeddedFacadeCall(
-  page: Page,
-  verb: string,
-  params: unknown = {},
-): Promise<EmbeddedFacadeResult> {
-  return page.evaluate(
-    ([v, p]) =>
-      (
-        window as unknown as {
-          openreel: {
-            facade: { call(verb: string, params: unknown): Promise<EmbeddedFacadeResult> };
-          };
-        }
-      ).openreel.facade.call(v, p),
-    [verb, params] as const,
-  );
-}

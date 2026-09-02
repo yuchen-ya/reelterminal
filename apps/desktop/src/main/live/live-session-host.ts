@@ -2,22 +2,20 @@
  * LiveSessionHost — the desktop main-process singleton that owns live
  * human–agent collaboration (ADR 0004 Slice 3):
  *
- *  - ONE `LiveWriterLease` (Decision 6). The embedded chat and the external
- *    MCP channel each get their own live facade session, created LAZILY on
- *    first use; writer arbitration is exactly the facade's lease semantics —
- *    the first non-observe session constructed grabs the lease, the other
- *    runs read-only and its write verbs fail CONFLICT naming the holder.
- *  - Both sessions share one `LiveProjectStore` bridge to the canonical
- *    renderer store, one Chromium provider set, and one artifactRoot
- *    (<userData>/live-artifacts). Sessions live in MAIN, so they survive
- *    renderer reloads; the bridge rejects in-flight calls honestly when the
- *    renderer is gone.
+ *  - ONE `LiveWriterLease` (Decision 6) belongs to the external agent's live
+ *    facade session. The optional in-app conversation surface is only a view
+ *    into that external session; it is not another writer or inference lane.
+ *  - The external session shares one `LiveProjectStore` bridge to the
+ *    canonical renderer store, one Chromium provider set, and one
+ *    artifactRoot (<userData>/live-artifacts). It lives in MAIN, so it
+ *    survives renderer reloads; the bridge rejects in-flight calls honestly
+ *    when the renderer is gone.
  *  - enable() starts the loopback endpoint for external agents; disable()
- *    disposes both sessions, stops the endpoint (deleting the endpoint
+ *    disposes the external session, stops the endpoint (deleting the endpoint
  *    file), closes the providers, and tears the bridge down.
- *  - Every verb call — embedded or external — is wrapped in liveEvents
- *    action start/end pushes, and every status change pushes a status event,
- *    so the user always sees what the agent is doing (Mutual Legibility).
+ *  - Every external verb call is wrapped in liveEvents action start/end
+ *    pushes, and every status change pushes a status event, so the user always
+ *    sees what the agent is doing (Mutual Legibility).
  *
  * The endpoint token is handled entirely inside live-endpoint-server.ts and
  * never enters this module's state, events, or logs.
@@ -48,11 +46,8 @@ import {
 } from "./live-endpoint-server";
 
 export const LIVE_SESSION_IDS = {
-  embedded: "embedded",
   external: "external",
 } as const;
-
-export type LiveChannel = keyof typeof LIVE_SESSION_IDS;
 
 export interface LiveProviders {
   readonly renderProvider?: RenderProvider;
@@ -85,8 +80,6 @@ export interface LiveSessionHost {
   disable(): Promise<LiveCollabStatus>;
   getStatus(): Promise<LiveCollabStatus>;
   setMode(mode: LiveSessionMode): Promise<LiveCollabStatus>;
-  /** Embedded chat → facade (lazy-creates the embedded session). */
-  callEmbedded(verb: FacadeVerb, params: unknown): Promise<FacadeResult<unknown>>;
   /** External endpoint → facade (lazy-creates the external session). */
   callExternal(verb: FacadeVerb, params: unknown): Promise<FacadeResult<unknown>>;
   readonly isEnabled: boolean;
@@ -131,28 +124,20 @@ export function createLiveSessionHost(
   let lease: LiveWriterLease | null = null;
   let providers: LiveProviders | null = null;
   let endpoint: RunningLiveEndpoint | null = null;
-  let embeddedSession: LiveAgentFacade | null = null;
   let externalSession: LiveAgentFacade | null = null;
   let externalConnected = false;
   let mode: LiveSessionMode = "assist";
-  /** Verbs currently in flight (embedded + external lanes may overlap). */
+  /** Verbs currently in flight on the external agent lane. */
   const inFlight: string[] = [];
 
   const currentAction = (): string | null =>
     inFlight.length > 0 ? inFlight[inFlight.length - 1]! : null;
 
-  /** Writer from session.describe of both live sessions (Decision 6). */
-  const currentWriter = async (): Promise<"embedded" | "external" | null> => {
-    const sessions: Array<["embedded" | "external", LiveAgentFacade | null]> = [
-      ["embedded", embeddedSession],
-      ["external", externalSession],
-    ];
-    for (const [channel, session] of sessions) {
-      if (!session) continue;
-      const description = await session["session.describe"]();
-      if (description.ok && description.value.writer === true) return channel;
-    }
-    return null;
+  /** Writer from the external session's session.describe (Decision 6). */
+  const currentWriter = async (): Promise<"external" | null> => {
+    if (!externalSession) return null;
+    const description = await externalSession["session.describe"]();
+    return description.ok && description.value.writer === true ? "external" : null;
   };
 
   const status = async (): Promise<LiveCollabStatus> => {
@@ -180,7 +165,7 @@ export function createLiveSessionHost(
     pushStatus();
   };
 
-  const makeSession = (channel: LiveChannel): LiveAgentFacade => {
+  const makeSession = (): LiveAgentFacade => {
     if (!bridge || !lease || !providers) {
       throw new Error("live collaboration is not enabled");
     }
@@ -196,17 +181,17 @@ export function createLiveSessionHost(
         ? { artifactVerifier: providers.artifactVerifier }
         : {}),
       lease,
-      sessionId: LIVE_SESSION_IDS[channel],
-      // The host mode belongs to the embedded chat (setMode re-creates that
-      // session); an external agent connects deliberately and gets Assist.
-      mode: channel === "embedded" ? mode : "assist",
+      sessionId: LIVE_SESSION_IDS.external,
+      // Mode is bound to the external session. The in-app conversation view,
+      // when present, observes this same session and cannot create a second
+      // inference or writer lane.
+      mode,
       artifactRoot: deps.artifactRoot,
     };
     return deps.createFacade(config);
   };
 
   const callVerb = async (
-    channel: LiveChannel,
     verb: FacadeVerb,
     params: unknown,
   ): Promise<FacadeResult<unknown>> => {
@@ -222,13 +207,8 @@ export function createLiveSessionHost(
     }
     let session: LiveAgentFacade;
     try {
-      if (channel === "embedded") {
-        embeddedSession ??= makeSession("embedded");
-        session = embeddedSession;
-      } else {
-        externalSession ??= makeSession("external");
-        session = externalSession;
-      }
+      externalSession ??= makeSession();
+      session = externalSession;
     } catch (error) {
       return internalFailure(
         error instanceof Error ? error.message : String(error),
@@ -323,8 +303,7 @@ export function createLiveSessionHost(
       if (!enabled) return status();
       enabled = false;
       externalConnected = false;
-      const sessions = [embeddedSession, externalSession];
-      embeddedSession = null;
+      const sessions = [externalSession];
       externalSession = null;
       await Promise.all(sessions.map(disposeSession));
       const runningEndpoint = endpoint;
@@ -359,21 +338,20 @@ export function createLiveSessionHost(
       if (nextMode === mode) return status();
       mode = nextMode;
       // Decision 7: the mode is enforced at the facade session boundary, so
-      // the embedded session is re-created to bind the new mode — lease
+      // the external session is re-created to bind the new mode — lease
       // re-acquisition follows facade semantics (dispose releases it; the
       // new session acquires when free).
-      if (embeddedSession) {
-        const previous = embeddedSession;
-        embeddedSession = null;
+      if (externalSession) {
+        const previous = externalSession;
+        externalSession = null;
         await disposeSession(previous);
-        if (enabled) embeddedSession = makeSession("embedded");
+        if (enabled) externalSession = makeSession();
       }
       pushStatus();
       return status();
     },
 
-    callEmbedded: (verb, params) => callVerb("embedded", verb, params),
-    callExternal: (verb, params) => callVerb("external", verb, params),
+    callExternal: (verb, params) => callVerb(verb, params),
   };
 
   return host;

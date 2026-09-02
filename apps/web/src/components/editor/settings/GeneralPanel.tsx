@@ -1,21 +1,23 @@
 import React, { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { ToolcraftSwitchControl } from "@openreel/ui";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
 import { ToolcraftNumberInputControl } from "@openreel/ui";
 import { ToolcraftSelectControl as Selector } from "@openreel/ui";
 import { ToolcraftText as Text } from "@openreel/ui";
-import { useSettingsStore, SERVICE_REGISTRY, type TtsProvider, type LlmProvider, type AggregatorProvider } from "../../../stores/settings-store";
+import { useSettingsStore } from "../../../stores/settings-store";
 import { useProjectStore } from "../../../stores/project-store";
+import type { LanguagePreference } from "../../../i18n";
 
-const ASPECT_PRESETS: Array<{ label: string; width: number; height: number }> = [
-  { label: "16:9 Landscape (1080p)", width: 1920, height: 1080 },
-  { label: "9:16 Vertical (TikTok/Reels)", width: 1080, height: 1920 },
-  { label: "1:1 Square", width: 1080, height: 1080 },
-  { label: "4:5 Portrait", width: 1080, height: 1350 },
-  { label: "4:3 Standard", width: 1440, height: 1080 },
-  { label: "21:9 Cinematic", width: 2560, height: 1080 },
-  { label: "4K Landscape", width: 3840, height: 2160 },
+const ASPECT_PRESETS: Array<{ labelKey: string; width: number; height: number }> = [
+  { labelKey: "settings.presetLandscape", width: 1920, height: 1080 },
+  { labelKey: "settings.presetVertical", width: 1080, height: 1920 },
+  { labelKey: "settings.presetSquare", width: 1080, height: 1080 },
+  { labelKey: "settings.presetPortrait", width: 1080, height: 1350 },
+  { labelKey: "settings.presetStandard", width: 1440, height: 1080 },
+  { labelKey: "settings.presetCinematic", width: 2560, height: 1080 },
+  { labelKey: "settings.preset4k", width: 3840, height: 2160 },
 ];
 
 const BACKGROUND_SWATCHES = [
@@ -32,18 +34,14 @@ const BACKGROUND_SWATCHES = [
 ];
 
 export const GeneralPanel: React.FC = () => {
+  const { t } = useTranslation();
   const {
     autoSave,
     autoSaveInterval,
-    defaultTtsProvider,
-    defaultLlmProvider,
-    defaultAggregator,
-    configuredServices,
+    language,
     setAutoSave,
     setAutoSaveInterval,
-    setDefaultTtsProvider,
-    setDefaultLlmProvider,
-    setDefaultAggregator,
+    setLanguage,
   } = useSettingsStore();
 
   const projectWidth = useProjectStore((s) => s.project.settings.width);
@@ -82,38 +80,41 @@ export const GeneralPanel: React.FC = () => {
     }
   }, [draftWidth, draftHeight, applyDimensions]);
 
-  const ttsProviders = [
-    { id: "piper", label: "Piper (Free / Built-in)" },
-    ...SERVICE_REGISTRY.filter(
-      (s) => s.id === "elevenlabs" || configuredServices.includes(s.id),
-    ),
-  ];
-
-  const llmProviders = SERVICE_REGISTRY.filter(
-    (s) =>
-      s.id === "openai" ||
-      s.id === "anthropic" ||
-      configuredServices.includes(s.id),
-  );
-
-  const aggregatorProviders = SERVICE_REGISTRY.filter(
-    (s) =>
-      s.id === "kie-ai" ||
-      s.id === "freepik" ||
-      configuredServices.includes(s.id),
-  );
-
   return (
     <div className="space-y-6 pb-4">
+      <div className="space-y-3">
+        <div>
+          <Text type="body" color="primary" className="text-sm font-medium">
+            {t("settings.language")}
+          </Text>
+          <Text type="supporting" color="secondary" className="mt-0.5 text-xs">
+            {t("settings.languageDescription")}
+          </Text>
+        </div>
+        <Selector
+          label={t("settings.language")}
+          size="md"
+          width={220}
+          value={language}
+          onChange={(value) => setLanguage(value as LanguagePreference)}
+          options={[
+            { label: t("common.systemDefault"), value: "system" },
+            { label: t("settings.english"), value: "en" },
+            { label: t("settings.simplifiedChinese"), value: "zh-CN" },
+          ]}
+        />
+      </div>
+
+      <div className="h-px bg-border" />
+
       {/* Project Composition */}
       <div className="space-y-4">
         <div>
           <Text type="body" color="primary" className="text-sm font-medium">
-            Project Composition
+            {t("settings.projectComposition")}
           </Text>
           <Text type="supporting" color="secondary" className="mt-0.5 text-xs">
-            Set the canvas dimensions for your project. Pick a preset for TikTok,
-            Reels, YouTube, or enter custom values.
+            {t("settings.projectCompositionDescription")}
           </Text>
         </div>
 
@@ -123,8 +124,8 @@ export const GeneralPanel: React.FC = () => {
                 preset.width === projectWidth && preset.height === projectHeight;
             return (
               <ClickableCard
-                key={preset.label}
-                label={preset.label}
+                key={preset.labelKey}
+                label={t(preset.labelKey)}
                 onClick={() => applyDimensions(preset.width, preset.height)}
                 padding={3}
                 variant={isActive ? "green" : "muted"}
@@ -135,7 +136,7 @@ export const GeneralPanel: React.FC = () => {
                 }`}
               >
                 <Text type="supporting" color="inherit" className="font-medium">
-                  {preset.label}
+                  {t(preset.labelKey)}
                 </Text>
                 <Text type="supporting" color="secondary" className="mt-0.5 text-[10px]">
                   {preset.width} × {preset.height}
@@ -147,7 +148,7 @@ export const GeneralPanel: React.FC = () => {
 
         <div className="flex items-end gap-2">
           <ToolcraftNumberInputControl
-            label="Width"
+            label={t("settings.width")}
             size="md"
             width="100%"
             min={16}
@@ -156,7 +157,7 @@ export const GeneralPanel: React.FC = () => {
             onChange={(value) => setDraftWidth(String(value))}
           />
           <ToolcraftNumberInputControl
-            label="Height"
+            label={t("settings.height")}
             size="md"
             width="100%"
             min={16}
@@ -165,7 +166,7 @@ export const GeneralPanel: React.FC = () => {
             onChange={(value) => setDraftHeight(String(value))}
           />
           <Button
-            label="Apply"
+            label={t("common.apply")}
             onClick={handleApplyCustom}
             variant="primary"
             size="md"
@@ -174,14 +175,14 @@ export const GeneralPanel: React.FC = () => {
 
         <div className="space-y-2">
           <Text type="supporting" color="secondary" className="text-xs font-medium">
-            Background fill
+            {t("settings.backgroundFill")}
           </Text>
           <Text type="supporting" color="secondary" className="text-[11px]">
-            Fills the canvas around clips that don&apos;t match the aspect ratio.
+            {t("settings.backgroundFillDescription")}
           </Text>
           <div className="flex flex-wrap items-center gap-2">
             <ClickableCard
-              label="No background fill"
+              label={t("settings.noBackgroundFill")}
               onClick={() => setCanvasBackground(undefined, undefined)}
               padding={2}
               variant={!backgroundFillMode ? "green" : "muted"}
@@ -191,10 +192,9 @@ export const GeneralPanel: React.FC = () => {
                   : "border-border bg-background-tertiary text-text-secondary hover:text-text-primary"
               }`}
             >
-              None
-            </ClickableCard>
+              {t("None")}</ClickableCard>
             <ClickableCard
-              label="Blur background fill"
+              label={t("settings.blurBackgroundFill")}
               onClick={() =>
                 setCanvasBackground("blur", layoutBackgroundColor)
               }
@@ -206,8 +206,7 @@ export const GeneralPanel: React.FC = () => {
                   : "border-border bg-background-tertiary text-text-secondary hover:text-text-primary"
               }`}
             >
-              Blur
-            </ClickableCard>
+              {t("Blur")}</ClickableCard>
             {BACKGROUND_SWATCHES.map((hex) => {
               const isActive =
                 backgroundFillMode === "color" &&
@@ -215,7 +214,7 @@ export const GeneralPanel: React.FC = () => {
               return (
                 <ClickableCard
                   key={hex}
-                  label={`Background color ${hex}`}
+                  label={t("settings.backgroundColor", { color: hex })}
                   onClick={() => setCanvasBackground("color", hex)}
                   padding={0}
                   variant="transparent"
@@ -237,20 +236,20 @@ export const GeneralPanel: React.FC = () => {
       {/* Auto-save */}
       <div className="space-y-4">
         <Text type="body" color="primary" className="text-sm font-medium">
-          Auto-Save
+          {t("settings.autoSave")}
         </Text>
 
         <div className="flex items-center justify-between">
           <div>
             <Text type="supporting" color="secondary" className="text-sm">
-              Enable auto-save
+              {t("settings.enableAutoSave")}
             </Text>
             <Text type="supporting" color="secondary" className="mt-0.5 text-xs">
-              Automatically save your project at regular intervals
+              {t("settings.enableAutoSaveDescription")}
             </Text>
           </div>
           <ToolcraftSwitchControl
-            ariaLabel="Enable auto-save"
+            ariaLabel={t("settings.enableAutoSave")}
             checked={autoSave}
             onCheckedChange={setAutoSave}
             showLabel={false}
@@ -260,92 +259,28 @@ export const GeneralPanel: React.FC = () => {
         {autoSave && (
           <div className="flex items-center gap-3">
             <Text type="supporting" color="secondary" className="whitespace-nowrap text-sm">
-              Save every
+              {t("settings.saveEvery")}
             </Text>
             <Selector
-              label="Auto-save interval"
+              label={t("settings.autoSaveInterval")}
               isLabelHidden
               size="md"
               width={150}
               value={String(autoSaveInterval)}
               onChange={(value) => setAutoSaveInterval(Number(value))}
               options={[
-                { label: "1 minute", value: "1" },
-                { label: "2 minutes", value: "2" },
-                { label: "5 minutes", value: "5" },
-                { label: "10 minutes", value: "10" },
-                { label: "15 minutes", value: "15" },
-                { label: "30 minutes", value: "30" },
+                { label: t("settings.minute", { count: 1 }), value: "1" },
+                { label: t("settings.minute", { count: 2 }), value: "2" },
+                { label: t("settings.minute", { count: 5 }), value: "5" },
+                { label: t("settings.minute", { count: 10 }), value: "10" },
+                { label: t("settings.minute", { count: 15 }), value: "15" },
+                { label: t("settings.minute", { count: 30 }), value: "30" },
               ]}
             />
           </div>
         )}
       </div>
 
-      <div className="h-px bg-border" />
-
-      {/* Default providers */}
-      <div className="space-y-4">
-        <Text type="body" color="primary" className="text-sm font-medium">
-          Default AI Providers
-        </Text>
-        <Text type="supporting" color="secondary" className="text-xs">
-          Choose which service to use by default for AI features.
-          Configure API keys in the &quot;API Keys&quot; tab first.
-        </Text>
-
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <Text type="supporting" color="secondary" className="text-sm">
-              Text to Speech/Voice To Speech/Sound Effects
-            </Text>
-            <Selector
-              label="Text to Speech provider"
-              isLabelHidden
-              size="md"
-              width={180}
-              value={defaultTtsProvider}
-              onChange={(value) => setDefaultTtsProvider(value as TtsProvider)}
-              options={ttsProviders.map((s) => ({ label: s.label, value: s.id }))}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Text type="supporting" color="secondary" className="text-sm">
-              AI Assistant (LLM)
-            </Text>
-            <Selector
-              label="AI Assistant provider"
-              isLabelHidden
-              size="md"
-              width={180}
-              value={defaultLlmProvider}
-              onChange={(value) => setDefaultLlmProvider(value as LlmProvider)}
-              options={llmProviders.map((s) => ({ label: s.label, value: s.id }))}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div>
-              <Text type="supporting" color="secondary" className="text-sm">
-                AI Aggregator
-              </Text>
-              <Text type="supporting" color="secondary" className="mt-0.5 text-xs">
-                Video/image generation, upscaling, and creative AI tools
-              </Text>
-            </div>
-            <Selector
-              label="AI Aggregator provider"
-              isLabelHidden
-              size="md"
-              width={180}
-              value={defaultAggregator}
-              onChange={(value) => setDefaultAggregator(value as AggregatorProvider)}
-              options={aggregatorProviders.map((s) => ({ label: s.label, value: s.id }))}
-            />
-          </div>
-        </div>
-      </div>
     </div>
   );
 };

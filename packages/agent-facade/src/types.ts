@@ -21,6 +21,7 @@
  * MCP/CLI transports remain out of scope.
  */
 import type { Project, ProjectSettings } from "@openreel/core/types/project";
+import type { LiveEditorReferences } from "./live-store";
 import type {
   ArtifactRef,
   ExportProgressEvent,
@@ -390,10 +391,11 @@ export interface TimelineState {
 /**
  * editor.get_context — the Mutual Legibility read. Live sessions report the
  * real ephemeral editor context (selection, playhead, time range, canvas
- * point) with a monotonic contextRevision the agent can CAS against via
- * edit.apply's expectedContextRevision. Headless sessions have no editor:
- * they answer honestly with contextAvailable:false and every context field
- * null/empty — never fabricated values.
+ * point, and stable-numbered agent references) with a monotonic
+ * contextRevision the agent can CAS against via edit.apply's
+ * expectedContextRevision. Headless sessions have no editor: they answer
+ * honestly with contextAvailable:false and every context field null/empty —
+ * never fabricated values.
  */
 export interface EditorGetContextResult {
   readonly mode: "live" | "headless";
@@ -414,6 +416,8 @@ export interface EditorGetContextResult {
   } | null;
   /** Normalized 0..1 point on the project frame (the "agent target point"). */
   readonly canvasPoint: { readonly x: number; readonly y: number } | null;
+  /** Ephemeral editor-session references keyed by their stable number. */
+  readonly references: LiveEditorReferences;
   readonly identity: {
     readonly projectId: string | null;
     readonly projectName: string | null;

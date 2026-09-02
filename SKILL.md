@@ -1,14 +1,84 @@
 ---
 name: agent-video
 description: >-
-  Drive the OpenReel Agent Video Engine through the agent-video transport
-  (ADR 0003): create/edit a video project, render preview frames, export
-  MP4/H.264, verify artifacts, and persist projects across sessions via
-  checkpoints. Use when a task asks to build, edit, render, export, verify,
-  or resume a video project with agent-video / @openreel/agent-transport.
+  Drive ReelTerminal through its live desktop MCP interface by default: connect
+  the external Agent to the open GUI project's 15-tool openreel-live-mcp
+  facade, inspect context, edit, preview, export, and verify. The optional
+  agent-video serve/run transport remains available for headless workflows.
 ---
 
-# agent-video — agent transport for the video engine
+# agent-video — ReelTerminal live desktop first
+
+ReelTerminal is the finishing editor for AI video: **ReelTerminal，你的 AI 视频终点站。
+生成发生在任何地方，成片发生在这里。** The default workflow is a live
+desktop session where the user and an external Agent are equal peers on the
+same GUI project, through different paths:
+
+- The user edits in the ReelTerminal GUI.
+- The external Agent connects through `openreel-live-mcp`.
+- Both paths use the same canonical project, revisions, undo history, preview,
+  export, and verification.
+
+ReelTerminal does not embed a conversational Agent or generative model, manage its
+provider keys, run its tool-use loop, or own conversation history. The external
+Agent owns its reasoning and conversation;
+ReelTerminal owns the editing world and its tool/context boundary.
+
+## 0. Live desktop workflow (default)
+
+1. Open a project in the ReelTerminal desktop editor.
+2. Enable **Agent Session** in the collaboration status bar. This starts the
+   token-authenticated loopback endpoint for the external Agent.
+3. Build and configure the `openreel-live-mcp` MCP connector in the Agent host:
+
+   ```sh
+   corepack pnpm --filter @openreel/desktop build:main
+   ```
+
+   The
+   connector reads `~/.openreel/live-endpoint.json` by default to discover the
+   current loopback URL and bearer token. The endpoint file is short-lived and
+   is removed when the Agent Session is disabled.
+
+Example MCP configuration (the connector itself owns endpoint-file parsing):
+
+```toml
+[mcp_servers.openreel-live-mcp]
+command = "node"
+args = ["/abs/repo/apps/desktop/dist/live-mcp/index.js"]
+```
+
+An installed desktop distribution may also place `openreel-live-mcp` on
+`PATH`; in a source checkout, use the built absolute path above so the Agent
+configuration is deterministic.
+
+Use an explicit endpoint-file option only if the connector or host requires
+one; the default is already `~/.openreel/live-endpoint.json`. Do not copy the
+token into project files, prompts, or logs.
+
+This connector exposes the same open GUI project through exactly **15 tools**:
+
+`session_describe` · `capabilities_get` · `project_create` · `project_open` ·
+`project_save` · `project_get_state` · `media_import` · `timeline_get` ·
+`editor_get_context` · `edit_apply` · `preview_render_frame` ·
+`export_start` · `job_status` · `job_cancel` · `verify_artifact`.
+
+The live facade reports GUI-owned lifecycle/media operations honestly as
+unavailable (`project_create`, `project_open`, and `media_import`); it does not
+pretend to replace the project or import media behind the user's back.
+`editor_get_context` includes the live selection, playhead, ranges, canvas
+target, context revision, and stable Agent-reference mapping. References are
+session-local (`#1`, `#2`, `#3`, …), deterministic for multi-selection, never
+renumbered/reused, and stale after deletion rather than silently rebinding.
+
+The desktop conversation panel and loopback client transport are landed. Each
+external Agent/host still runs and configures its thin server-side adapter at
+`/conversation`, atomically writes the private
+`~/.openreel/conversation-endpoint.json` descriptor with mode `0600`, and
+removes it on exit; ReelTerminal only reads that descriptor. There is no universal
+provider connector and no embedded model. MCP tool access through the live
+facade remains a separate 15-tool integration and must not be confused with
+the conversation transport.
 
 One `agent-video` process owns exactly **one facade session** and that
 session owns exactly **one project**. Two clients are provided:
@@ -24,7 +94,7 @@ absolute path for `<repo>` everywhere below. Authoritative contract:
 `docs/adr/0003-agent-transport-slice-2.md`; verb semantics:
 `packages/agent-facade/README.md`.
 
-## 1. Run `doctor` first — and trust its reasons
+## 1. Optional headless workflow: run `doctor` first — and trust its reasons
 
 ```sh
 OPENREEL_AVE_MEDIA_ROOTS=/abs/media \
@@ -45,7 +115,7 @@ are about to use. If one is `available: false`, its `reason` is the truth
 about why; there is no skill-level workaround. Missing capability ⇒ read
 `capabilities_get`'s reason, never "do this instead".
 
-## 2. Configure `serve` per client (configuration, not variants)
+## 2. Optional headless `serve` workflow (configuration, not variants)
 
 The same 15 tools exist on every client. Clients must spawn the server
 **directly** (no `sh -c` wrapper — a wrapper that holds stdin open defeats

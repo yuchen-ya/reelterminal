@@ -1,4 +1,4 @@
-/* OpenReel brand overrides layered after the prebuilt Astryx Neutral theme. */
+/* ReelTerminal brand overrides layered after the prebuilt Astryx Neutral theme. */
 [data-astryx-theme="neutral"] {
   --color-accent: light-dark(#10b981, #34d399);
   --color-accent-muted: light-dark(#e6f9f1, #064e3b);

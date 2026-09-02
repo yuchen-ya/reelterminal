@@ -1,15 +1,18 @@
 import type { JSX } from "react";
 import { useEffect } from "react";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { Bot, MessageSquare, Power, XCircle } from "@/icons/lucide-compat";
+import { Bot, MessageSquare, Power } from "@/icons/lucide-compat";
 import { useCollabStore, installCollabEventListener, type CollabMode } from "../../stores/collab-store";
-import { useChatStore } from "../../stores/chat-store";
 import { useUIStore } from "../../stores/ui-store";
+import { useAgentReferencesStore } from "../../stores/agent-references-store";
+import { useTranslation } from "react-i18next";
 
-const MODES: ReadonlyArray<{ id: CollabMode; label: string }> = [
-  { id: "observe", label: "Observe" },
-  { id: "assist", label: "Assist" },
-  { id: "autonomous", label: "Autonomous" },
+const MODES: ReadonlyArray<{
+  id: CollabMode;
+  labelKey: "desktop.collaboration.observe" | "desktop.collaboration.assist" | "desktop.collaboration.autonomous";
+}> = [
+  { id: "observe", labelKey: "desktop.collaboration.observe" },
+  { id: "assist", labelKey: "desktop.collaboration.assist" },
+  { id: "autonomous", labelKey: "desktop.collaboration.autonomous" },
 ];
 
 /**
@@ -18,6 +21,7 @@ const MODES: ReadonlyArray<{ id: CollabMode; label: string }> = [
  * Mounted above the timeline on the desktop Edit page.
  */
 export function CollabStatusBar(): JSX.Element {
+  const { t } = useTranslation();
   const enabled = useCollabStore((s) => s.enabled);
   const externalConnected = useCollabStore((s) => s.externalConnected);
   const writer = useCollabStore((s) => s.writer);
@@ -27,26 +31,24 @@ export function CollabStatusBar(): JSX.Element {
   const disable = useCollabStore((s) => s.disable);
   const setMode = useCollabStore((s) => s.setMode);
 
-  const chatStatus = useChatStore((s) => s.status);
-  const stopChat = useChatStore((s) => s.stop);
-  const chatOpen = useUIStore((s) => s.panels.agentChat.visible);
+  const chatOpen = useUIStore((s) => s.panels.externalAgent.visible);
   const togglePanel = useUIStore((s) => s.togglePanel);
+  const references = useAgentReferencesStore((s) =>
+    Object.values(s.references).sort((a, b) => a.number - b.number),
+  );
 
   useEffect(() => {
     void useCollabStore.getState().refresh();
     return installCollabEventListener();
   }, []);
 
-  const chatRunning =
-    chatStatus === "running" || chatStatus === "awaiting_confirm";
-
   const statusText = !enabled
-    ? "Disabled"
+    ? t("desktop.collaboration.disabled")
     : externalConnected
-      ? "External agent connected"
-      : writer === "embedded"
-        ? "Ready · writer: embedded"
-        : "Ready";
+      ? t("desktop.collaboration.externalConnected")
+      : writer === "external"
+        ? t("desktop.collaboration.readyExternal")
+        : t("desktop.collaboration.ready");
 
   return (
     <div className="flex h-full items-center gap-3 border-b border-border bg-bg-1 px-3 text-[11px] text-fg-2">
@@ -54,7 +56,7 @@ export function CollabStatusBar(): JSX.Element {
         type="button"
         role="switch"
         aria-checked={enabled}
-        aria-label="Agent Session"
+        aria-label={t("desktop.collaboration.agentSession")}
         onClick={() => void (enabled ? disable() : enable())}
         className={`flex items-center gap-1.5 rounded-[7px] px-2 py-1 font-medium transition-colors ${
           enabled
@@ -63,7 +65,7 @@ export function CollabStatusBar(): JSX.Element {
         }`}
       >
         <Power size={11} aria-hidden />
-        Agent Session
+        {t("desktop.collaboration.agentSession")}
       </button>
 
       <span className="flex items-center gap-1.5 text-fg-muted">
@@ -75,7 +77,7 @@ export function CollabStatusBar(): JSX.Element {
 
       <div
         role="radiogroup"
-        aria-label="Agent mode"
+        aria-label={t("desktop.collaboration.agentMode")}
         className="flex items-center gap-0.5 rounded-[7px] bg-bg-2 p-0.5"
       >
         {MODES.map((m) => (
@@ -92,49 +94,60 @@ export function CollabStatusBar(): JSX.Element {
                 : "text-fg-muted hover:text-fg"
             }`}
           >
-            {m.label}
+            {t(m.labelKey)}
           </button>
         ))}
       </div>
 
-      {(chatRunning || currentAction) && (
+      {currentAction && (
         <span className="flex min-w-0 items-center gap-1.5 text-accent">
           <Bot size={11} aria-hidden className="shrink-0" />
           <span className="truncate">
-            {currentAction
-              ? `Agent: ${currentAction}`
-              : chatRunning
-                ? "Agent working…"
-                : ""}
+            {t("desktop.collaboration.agentAction", { action: currentAction })}
           </span>
         </span>
       )}
 
-      {chatRunning && (
-        <button
-          type="button"
-          onClick={stopChat}
-          className="flex items-center gap-1 rounded-[7px] bg-bg-2 px-2 py-1 text-fg-2 transition-colors hover:bg-bg-3 hover:text-fg"
+      {references.length > 0 && (
+        <div
+          className="flex min-w-0 items-center gap-1 border-l border-border pl-2"
+          aria-label={t("agentReferences.ariaLabel")}
+          title={t("agentReferences.sessionHint")}
         >
-          <XCircle size={11} aria-hidden />
-          Cancel
-        </button>
+          {references.map((reference) => (
+            <span
+              key={reference.number}
+              className={`rounded-[4px] px-1.5 py-0.5 text-[9px] font-bold leading-none tabular-nums ${
+                reference.stale
+                  ? "bg-bg-3 text-fg-muted line-through"
+                  : "bg-violet-500/90 text-white"
+              }`}
+              aria-label={t("agentReferences.referenceLabel", {
+                number: reference.number,
+                state: reference.stale ? t("agentReferences.staleSuffix") : "",
+              })}
+            >
+              #{reference.number}
+            </span>
+          ))}
+        </div>
       )}
 
       <div className="ml-auto flex items-center">
-        <IconButton
-          label={chatOpen ? "Close agent chat" : "Open agent chat"}
-          icon={<MessageSquare size={13} aria-hidden />}
-          variant="ghost"
-          size="sm"
+        <button
+          type="button"
+          aria-label={t(chatOpen ? "externalAgent.closePanel" : "externalAgent.openPanel")}
           aria-pressed={chatOpen}
-          onClick={() => togglePanel("agentChat")}
-          className={`grid h-7 w-7 place-items-center rounded-md transition-colors ${
+          onClick={() => togglePanel("externalAgent")}
+          className={`flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors ${
             chatOpen
               ? "bg-accent-soft text-accent"
               : "text-fg-2 hover:bg-hover hover:text-fg"
           }`}
-        />
+        >
+          <MessageSquare size={13} aria-hidden />
+          {t("externalAgent.title")}
+        </button>
       </div>
     </div>
   );

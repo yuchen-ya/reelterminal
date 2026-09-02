@@ -46,6 +46,7 @@ export function ToolcraftDialog({
 
 export interface ToolcraftDialogHeaderProps {
   className?: string
+  closeLabel?: string
   endContent?: React.ReactNode
   onOpenChange?: (open: boolean) => void
   startContent?: React.ReactNode
@@ -55,6 +56,7 @@ export interface ToolcraftDialogHeaderProps {
 
 export function ToolcraftDialogHeader({
   className,
+  closeLabel = "Close dialog",
   endContent,
   onOpenChange,
   startContent,
@@ -91,7 +93,7 @@ export function ToolcraftDialogHeader({
       {onOpenChange ? (
         <button
           type="button"
-          aria-label="Close dialog"
+          aria-label={closeLabel}
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-fg-muted transition-colors hover:bg-bg-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => onOpenChange(false)}
         >

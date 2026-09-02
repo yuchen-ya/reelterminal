@@ -1,0 +1,42 @@
+import { app, BrowserWindow } from "electron";
+import path from "node:path";
+import { CHANNELS } from "../../shared/channels";
+import {
+  createConversationHost,
+  type ConversationHost,
+} from "./conversation-host";
+
+let host: ConversationHost | null = null;
+
+export function conversationEndpointFilePath(): string {
+  const override = process.env.OPENREEL_CONVERSATION_ENDPOINT_FILE;
+  return override && path.isAbsolute(override)
+    ? override
+    : path.join(app.getPath("home"), ".openreel", "conversation-endpoint.json");
+}
+
+function emitToEditor(payload: unknown): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    const contents = win.webContents;
+    if (
+      !contents.isDestroyed() &&
+      contents.getURL().startsWith("app://openreel/")
+    ) {
+      contents.send(CHANNELS.conversationEvent, payload);
+    }
+  }
+}
+
+export function getConversationHost(): ConversationHost {
+  host ??= createConversationHost({
+    descriptorFilePath: conversationEndpointFilePath(),
+    emitEvent: emitToEditor,
+  });
+  return host;
+}
+
+export async function disposeConversationHost(): Promise<void> {
+  const current = host;
+  host = null;
+  await current?.dispose().catch(() => undefined);
+}

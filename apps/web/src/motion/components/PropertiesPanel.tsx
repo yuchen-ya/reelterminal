@@ -185,9 +185,10 @@ import {
   IconButton,
 } from "./primitives";
 import { Scene3DInspector } from "./inspector/Scene3DInspector";
-import { GenerateShaderBox } from "./GenerateShaderBox";
 import { ShapeContentsSection } from "./ShapeContentsSection";
 import { ShaderPreviewBrowser } from "../../components/shaders/ShaderPreviewBrowser";
+import { useTranslation } from "react-i18next";
+import { t } from "../../i18n";
 
 interface PropertiesPanelProps {
   composition: MotionComposition;
@@ -331,6 +332,7 @@ function SelectControl<T extends string>({
   onChange: (value: T) => void;
   label?: string;
 }): JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="relative flex items-center rounded-[7px] border border-border bg-bg-1">
       <select
@@ -341,17 +343,17 @@ function SelectControl<T extends string>({
       >
         {groups
           ? groups.map((group) => (
-              <optgroup key={group.label} label={group.label}>
+              <optgroup key={group.label} label={t(group.label)}>
                 {group.options.map((option) => (
                   <option key={String(option.value)} value={option.value}>
-                    {option.label}
+                    {t(option.label)}
                   </option>
                 ))}
               </optgroup>
             ))
           : options.map((option) => (
               <option key={String(option.value)} value={option.value}>
-                {option.label}
+                {t(option.label)}
               </option>
             ))}
       </select>
@@ -413,6 +415,7 @@ function ToggleControl({
 }
 
 export function PropertiesPanel({ composition, embedded = false }: PropertiesPanelProps): JSX.Element {
+  const { t } = useTranslation();
   const selectedLayerId = useMotionStore((state) => state.selectedLayerId);
   const selectedLayerIds = useMotionStore((state) => state.selectedLayerIds);
   const selectedLightId = useMotionStore((state) => state.selectedLightId);
@@ -838,57 +841,57 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
       <div className={embedded ? "" : "min-h-0 flex-1 overflow-auto"}>
         {hasMultiLayerSelection ? (
           <>
-            <Section title="Align & Distribute" icon={AlignCenter} keepOpenInAccordion>
+            <Section title={t("Align & Distribute")} icon={AlignCenter} keepOpenInAccordion>
               <div
                 className="grid grid-cols-8 gap-1 rounded-lg border border-border bg-bg-1 p-1"
                 role="group"
-                aria-label="Align selected layers"
+                aria-label={t("Align selected layers")}
               >
                 <IconButton
-                  label="Align left"
+                  label={t("Align left")}
                   icon={AlignHorizontalJustifyStart}
                   variant="outline"
                   onClick={() => alignSelection("left")}
                 />
                 <IconButton
-                  label="Align horizontal center"
+                  label={t("Align horizontal center")}
                   icon={AlignHorizontalJustifyCenter}
                   variant="outline"
                   onClick={() => alignSelection("center-x")}
                 />
                 <IconButton
-                  label="Align right"
+                  label={t("Align right")}
                   icon={AlignHorizontalJustifyEnd}
                   variant="outline"
                   onClick={() => alignSelection("right")}
                 />
                 <IconButton
-                  label="Align top"
+                  label={t("Align top")}
                   icon={AlignVerticalJustifyStart}
                   variant="outline"
                   onClick={() => alignSelection("top")}
                 />
                 <IconButton
-                  label="Align vertical center"
+                  label={t("Align vertical center")}
                   icon={AlignVerticalJustifyCenter}
                   variant="outline"
                   onClick={() => alignSelection("center-y")}
                 />
                 <IconButton
-                  label="Align bottom"
+                  label={t("Align bottom")}
                   icon={AlignVerticalJustifyEnd}
                   variant="outline"
                   onClick={() => alignSelection("bottom")}
                 />
                 <IconButton
-                  label="Distribute horizontally"
+                  label={t("Distribute horizontally")}
                   icon={AlignHorizontalDistributeCenter}
                   variant="outline"
                   disabled={selectedLayers.length < 3}
                   onClick={() => distributeSelection("horizontal")}
                 />
                 <IconButton
-                  label="Distribute vertically"
+                  label={t("Distribute vertically")}
                   icon={AlignVerticalDistributeCenter}
                   variant="outline"
                   disabled={selectedLayers.length < 3}
@@ -897,8 +900,8 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               </div>
             </Section>
 
-            <Section title="Shared Appearance" icon={SlidersHorizontal} keepOpenInAccordion>
-              <FlatRow label="Opacity (average)">
+            <Section title={t("Shared Appearance")} icon={SlidersHorizontal} keepOpenInAccordion>
+              <FlatRow label={t("Opacity (average)")}>
                 <Slider
                   value={selectionOpacity}
                   onChange={(opacity) =>
@@ -908,41 +911,40 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               </FlatRow>
               <div className="grid grid-cols-2 gap-1.5">
                 <Button
-                  label={allSelectionVisible ? "Hide all" : "Show all"}
+                  label={allSelectionVisible ? t("Hide all") : t("Show all")}
                   icon={allSelectionVisible ? EyeOff : Eye}
                   onClick={() => setSelectionVisible(!allSelectionVisible)}
                 />
                 <Button
-                  label={allSelectionLocked ? "Unlock all" : "Lock all"}
+                  label={allSelectionLocked ? t("Unlock all") : t("Lock all")}
                   icon={allSelectionLocked ? Unlock : Lock}
                   onClick={() => setSelectionLocked(!allSelectionLocked)}
                 />
               </div>
             </Section>
 
-            <Section title="Selection Actions" icon={Layers} keepOpenInAccordion>
+            <Section title={t("Selection Actions")} icon={Layers} keepOpenInAccordion>
               <div className="grid grid-cols-2 gap-1.5">
                 <Button
-                  label="Duplicate selection"
+                  label={t("Duplicate selection")}
                   icon={Copy}
                   onClick={duplicateSelection}
                 />
                 <Button
-                  label="Delete selection"
+                  label={t("Delete selection")}
                   icon={Trash2}
                   variant="danger"
                   onClick={deleteSelection}
                 />
               </div>
               <p className="mt-2 text-[10.5px] leading-relaxed text-fg-muted">
-                Changes apply to all selected, unlocked layers. Animated opacity writes a keyframe at the playhead.
-              </p>
+                {t("Changes apply to all selected, unlocked layers. Animated opacity writes a keyframe at the playhead.")}</p>
             </Section>
           </>
         ) : selectedLayer ? (
           <>
-            <Section title="Transform" icon={Move} keepOpenInAccordion>
-              <FlatRow label="Position">
+            <Section title={t("Transform")} icon={Move} keepOpenInAccordion>
+              <FlatRow label={t("Position")}>
                 <AxisPill
                   axis="X"
                   value={getLayerPropertyInspectorValue("transform.position.x")}
@@ -966,7 +968,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                 />
               </FlatRow>
               <FlatRow
-                label="Scale"
+                label={t("Scale")}
                 leading={
                   <svg
                     width="13"
@@ -999,7 +1001,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                   }
                 />
               </FlatRow>
-              <FlatRow label="Rotation">
+              <FlatRow label={t("Rotation")}>
                 <AxisPill
                   axis="X"
                   value={getLayerPropertyInspectorValue("transform.rotation.x")}
@@ -1025,7 +1027,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                   }
                 />
               </FlatRow>
-              <FlatRow label="Anchor">
+              <FlatRow label={t("Anchor")}>
                 <AxisPill
                   axis="X"
                   value={getLayerPropertyInspectorValue("transform.anchor.x")}
@@ -1043,7 +1045,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                   }
                 />
               </FlatRow>
-              <FlatRow label="Opacity">
+              <FlatRow label={t("Opacity")}>
                 <Slider
                   value={getLayerPropertyInspectorValue("transform.opacity")}
                   onChange={(opacity) =>
@@ -1051,7 +1053,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                   }
                 />
               </FlatRow>
-              <FlatRow label="Perspective">
+              <FlatRow label={t("Perspective")}>
                 <AxisPill
                   axis="px"
                   value={getLayerPropertyInspectorValue("transform.perspective")}
@@ -1063,7 +1065,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                 />
               </FlatRow>
               <ToggleControl
-                label="Preserve 3D"
+                label={t("Preserve 3D")}
                 checked={selectedLayer.transform.transformStyle === "preserve-3d"}
                 onChange={(checked) =>
                   patchLayer({
@@ -1076,19 +1078,19 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               />
             </Section>
 
-            <Section title="Layer Options" defaultOpen={false}>
-              <Field label="Name">
+            <Section title={t("Layer Options")} defaultOpen={false}>
+              <Field label={t("Name")}>
                 <TextInput
                   value={selectedLayer.name}
                   onChange={(name) => patchLayer({ name } as Partial<MotionLayer>)}
                 />
               </Field>
-              <Field label="Parent">
+              <Field label={t("Parent")}>
                 <SelectControl
-                  label="Parent"
+                  label={t("Parent")}
                   value={selectedLayer.parentId ?? ""}
                   options={[
-                    { value: "", label: "None" },
+                    { value: "", label: t("None") },
                     ...composition.layers
                       .filter((layer) =>
                         canParentMotionLayer(
@@ -1099,19 +1101,19 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                       )
                       .map((layer) => ({
                         value: layer.id,
-                        label: layer.name,
+                        label: t(layer.name),
                       })),
                   ]}
                   onChange={(parentId) => reparentLayer(parentId || null)}
                 />
               </Field>
-              <FlatRow label="Blending" labelWidth={90}>
+              <FlatRow label={t("Blending")} labelWidth={90}>
                 <SelectControl
-                  label="Blend mode"
+                  label={t("Blend mode")}
                   value={selectedLayer.blendMode ?? "normal"}
                   options={MOTION_BLEND_MODE_OPTIONS.map((mode) => ({
                     value: mode.id,
-                    label: mode.name,
+                    label: t(mode.name),
                   }))}
                   onChange={(blendMode) =>
                     patchLayer({
@@ -1122,10 +1124,9 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               </FlatRow>
               <div className="flex items-center justify-between">
                 <span className="text-[13px] font-medium text-fg-3">
-                  Motion Blur
-                </span>
+                  {t("Motion Blur")}</span>
                 <ToolcraftSwitchControl
-                  ariaLabel="Motion blur"
+                  ariaLabel={t("Motion blur")}
                   checked={selectedLayer.motionBlur ?? false}
                   onCheckedChange={(checked) =>
                     patchLayer({
@@ -1137,7 +1138,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               </div>
               <div className="grid grid-cols-2 gap-2.5">
                 <ToggleControl
-                  label="Solo"
+                  label={t("Solo")}
                   icon={Star}
                   checked={selectedLayer.solo ?? false}
                   onChange={(checked) =>
@@ -1147,7 +1148,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                   }
                 />
                 <ToggleControl
-                  label="Guide"
+                  label={t("Guide")}
                   icon={Ruler}
                   checked={selectedLayer.guideLayer ?? false}
                   onChange={(checked) =>
@@ -1158,7 +1159,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                 />
               </div>
               <ToggleControl
-                label="Orient along path"
+                label={t("Orient along path")}
                 checked={selectedLayer.autoOrient ?? false}
                 onChange={(checked) =>
                   patchLayer({
@@ -1168,7 +1169,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               />
             </Section>
 
-            <Section title="Animation" icon={Diamond}>
+            <Section title={t("Animation")} icon={Diamond}>
               <div className="space-y-1.5">
                 {getLayerAnimationProperties(selectedLayer).map((property) => {
                   const keyframes = getMotionLayerPropertyKeyframes(
@@ -1208,7 +1209,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                       />
                       <IconButton
                         icon={Diamond}
-                        label={activeAtPlayhead ? "Remove keyframe" : "Add keyframe"}
+                        label={activeAtPlayhead ? t("Remove keyframe") : t("Add keyframe")}
                         active={activeAtPlayhead}
                         variant={activeAtPlayhead ? "solid" : "ghost"}
                         iconSize={13}
@@ -1217,7 +1218,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                       {keyframes.length > 0 ? (
                         <IconButton
                           icon={Trash2}
-                          label="Disable animation"
+                          label={t("Disable animation")}
                           variant="danger"
                           iconSize={13}
                           onClick={() =>
@@ -1231,9 +1232,9 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               </div>
             </Section>
 
-            <Section title="Timing" icon={Clock}>
+            <Section title={t("Timing")} icon={Clock}>
               <div className="grid grid-cols-2 gap-2.5">
-                <Field label="Start">
+                <Field label={t("Start")}>
                   <NumberInput
                     value={selectedLayer.startTime}
                     min={0}
@@ -1246,7 +1247,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                     }
                   />
                 </Field>
-                <Field label="Duration">
+                <Field label={t("Duration")}>
                   <NumberInput
                     value={selectedLayer.duration}
                     min={0.1}
@@ -1262,15 +1263,15 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
 
             {selectedLayer.type === "text" ? (
               <>
-                <Section title="Text" icon={Type}>
-                  <Field label="Content">
+                <Section title={t("Text")} icon={Type}>
+                  <Field label={t("Content")}>
                     <TextArea
                       value={selectedLayer.text}
                       onChange={(text) => patchLayer({ text } as Partial<MotionLayer>)}
                     />
                   </Field>
                   <SelectControl
-                    label="Font family"
+                    label={t("Font family")}
                     value={selectedLayer.style.fontFamily}
                     options={FONT_FAMILY_OPTIONS.some(
                       (option) => option.value === selectedLayer.style.fontFamily,
@@ -1292,7 +1293,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                   <div className="flex items-center gap-2">
                     <div className="min-w-0 flex-1">
                       <SelectControl
-                        label="Font weight"
+                        label={t("Font weight")}
                         value={String(selectedLayer.style.fontWeight ?? 700)}
                         options={FONT_WEIGHT_OPTIONS}
                         onChange={(weight) =>
@@ -1331,12 +1332,12 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                       } as Partial<MotionLayer>)
                     }
                   />
-                  <Field label="Fill type">
+                  <Field label={t("Fill type")}>
                     <SegmentedControl
                       value={selectedLayer.style.fillShader ? "shader" : "solid"}
                       options={[
-                        { value: "solid", label: "Solid" },
-                        { value: "shader", label: "Shader" },
+                        { value: "solid", label: t("Solid") },
+                        { value: "shader", label: t("Shader") },
                       ]}
                       onChange={(type) => {
                         const style = selectedLayer.style;
@@ -1374,7 +1375,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                       }
                     />
                   ) : (
-                    <FlatRow label="Fill" labelWidth={56}>
+                    <FlatRow label={t("Fill")} labelWidth={56}>
                       <ColorInput
                         value={selectedLayer.style.color}
                         onChange={(color) =>
@@ -1386,7 +1387,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                     </FlatRow>
                   )}
                   <div className="grid grid-cols-2 gap-2.5">
-                    <Field label="Tracking">
+                    <Field label={t("Tracking")}>
                       <NumberInput
                         value={selectedLayer.style.letterSpacing ?? 0}
                         step={0.5}
@@ -1398,7 +1399,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                         }
                       />
                     </Field>
-                    <Field label="Leading">
+                    <Field label={t("Leading")}>
                       <NumberInput
                         value={selectedLayer.style.lineHeight ?? 1.1}
                         min={0.5}
@@ -1411,7 +1412,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                       />
                     </Field>
                   </div>
-                  <Field label="Box width" hint="0 disables word wrap">
+                  <Field label={t("Box width")} hint={t("0 disables word wrap")}>
                     <NumberInput
                       value={selectedLayer.style.maxWidth ?? 0}
                       min={0}
@@ -1433,7 +1434,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                     />
                   </Field>
                   <div className="grid grid-cols-2 gap-2.5">
-                    <Field label="Stroke">
+                    <Field label={t("Stroke")}>
                       <ColorInput
                         value={selectedLayer.style.stroke?.color ?? "#000000"}
                         onChange={(color) =>
@@ -1452,7 +1453,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                         }
                       />
                     </Field>
-                    <Field label="Stroke width" hint="0 removes stroke">
+                    <Field label={t("Stroke width")} hint={t("0 removes stroke")}>
                       <NumberInput
                         value={selectedLayer.style.stroke?.width ?? 0}
                         min={0}
@@ -1487,7 +1488,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                   layer={selectedLayer}
                   replaceLayer={replaceLayer}
                 />
-                <Section title="Shader animator" icon={Zap}>
+                <Section title={t("Shader animator")} icon={Zap}>
                   <TextShaderAnimatorControls
                     layer={selectedLayer}
                     replaceLayer={replaceLayer}
@@ -1504,10 +1505,10 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
             ) : null}
 
             {selectedLayer.type === "scene3d" ? (
-              <Section title="Lighting & Environment" icon={Lightbulb}>
-                <Field label="Environment" hint="image-based lighting">
+              <Section title={t("Lighting & Environment")} icon={Lightbulb}>
+                <Field label={t("Environment")} hint={t("image-based lighting")}>
                   <SelectControl
-                    label="Environment"
+                    label={t("Environment")}
                     value={selectedLayer.lighting?.environment ?? "studio"}
                     options={[
                       "studio",
@@ -1533,7 +1534,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                     }
                   />
                 </Field>
-                <Field label="HDRI map URL" hint=".hdr / .exr / .jpg / .png">
+                <Field label={t("HDRI map URL")} hint=".hdr / .exr / .jpg / .png">
                   <TextInput
                     value={selectedLayer.lighting?.environmentUrl ?? ""}
                     placeholder="https://…/studio_2k.hdr"
@@ -1548,7 +1549,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                   />
                 </Field>
                 <ToggleControl
-                  label="Show environment as backdrop"
+                  label={t("Show environment as backdrop")}
                   checked={selectedLayer.lighting?.environmentBackground ?? false}
                   onChange={(environmentBackground) =>
                     patchLayer({
@@ -1560,7 +1561,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                   }
                 />
                 <ToggleControl
-                  label="Ground shadow"
+                  label={t("Ground shadow")}
                   checked={selectedLayer.lighting?.groundShadow ?? false}
                   onChange={(groundShadow) =>
                     patchLayer({
@@ -1572,7 +1573,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                   }
                 />
                 <div className="grid grid-cols-2 gap-2.5">
-                  <Field label="Ambient">
+                  <Field label={t("Ambient")}>
                     <NumberInput
                       value={selectedLayer.lighting?.ambient ?? 0.55}
                       min={0}
@@ -1585,7 +1586,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                       }
                     />
                   </Field>
-                  <Field label="Key intensity">
+                  <Field label={t("Key intensity")}>
                     <NumberInput
                       value={selectedLayer.lighting?.keyIntensity ?? 2.1}
                       min={0}
@@ -1598,7 +1599,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                       }
                     />
                   </Field>
-                  <Field label="Rim intensity">
+                  <Field label={t("Rim intensity")}>
                     <NumberInput
                       value={selectedLayer.lighting?.rimIntensity ?? 1.1}
                       min={0}
@@ -1611,7 +1612,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                       }
                     />
                   </Field>
-                  <Field label="Key color">
+                  <Field label={t("Key color")}>
                     <ColorInput
                       value={selectedLayer.lighting?.keyColor ?? "#fff2e6"}
                       onChange={(keyColor) =>
@@ -1627,10 +1628,10 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
 
             {selectedLayer.type === "shape" ? (
               <>
-                <Section title="Shape" icon={Square}>
-                  <Field label="Type">
+                <Section title={t("Shape")} icon={Square}>
+                  <Field label={t("Type")}>
                     <SelectControl
-                      label="Shape type"
+                      label={t("Shape type")}
                       value={selectedLayer.shapeType}
                       options={SHAPE_OPTIONS.map((shape) => ({
                         value: shape,
@@ -1654,10 +1655,10 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                   </Field>
                   {selectedLayer.shapeType === "path" ? (
                     <>
-                      <Field label="Path data">
+                      <Field label={t("Path data")}>
                         <TextArea
                           value={selectedLayer.pathData ?? ""}
-                          placeholder="M -50 -50 L 50 -50 L 50 50 L -50 50 Z"
+                          placeholder={t("M -50 -50 L 50 -50 L 50 50 L -50 50 Z")}
                           onChange={(pathData) =>
                             patchLayer({
                               pathData,
@@ -1666,7 +1667,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                         />
                       </Field>
                       <ToggleControl
-                        label="Closed path"
+                        label={t("Closed path")}
                         checked={selectedLayer.pathClosed ?? true}
                         onChange={(pathClosed) =>
                           patchLayer({
@@ -1690,18 +1691,16 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                           <div className="rounded-lg border border-border bg-bg-2 p-2.5">
                             <div className="mb-2 flex items-center justify-between gap-2">
                               <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-3">
-                                Path morph
-                              </span>
+                                {t("Path morph")}</span>
                               <span className="text-[10.5px] tabular-nums text-fg-muted">
-                                {keyframes.length} keys
-                              </span>
+                                {keyframes.length} {t(" keys")}</span>
                             </div>
                             <div className="grid grid-cols-2 gap-1.5">
                               <Button
                                 label={
                                   activeAtPlayhead
-                                    ? "Update path keyframe"
-                                    : "Add path keyframe"
+                                    ? t("Update path keyframe")
+                                    : t("Add path keyframe")
                                 }
                                 size="sm"
                                 variant={activeAtPlayhead ? "primary" : "secondary"}
@@ -1715,7 +1714,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                                 onClick={() => addShapePathKeyframe(selectedLayer)}
                               />
                               <Button
-                                label="Clear path keyframes"
+                                label={t("Clear path keyframes")}
                                 size="sm"
                                 variant="destructive"
                                 icon={<Trash2 size={13} aria-hidden />}
@@ -1729,7 +1728,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                     </>
                   ) : null}
                   <div className="grid grid-cols-2 gap-2.5">
-                    <Field label="Width">
+                    <Field label={t("Width")}>
                       <NumberInput
                         value={getLayerPropertyInspectorValue("shape.width")}
                         min={1}
@@ -1739,7 +1738,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                         }
                       />
                     </Field>
-                    <Field label="Height">
+                    <Field label={t("Height")}>
                       <NumberInput
                         value={getLayerPropertyInspectorValue("shape.height")}
                         min={1}
@@ -1753,7 +1752,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                   {selectedLayer.shapeType === "star" ||
                   selectedLayer.shapeType === "polygon" ? (
                     <div className="grid grid-cols-2 gap-2.5">
-                      <Field label="Points">
+                      <Field label={t("Points")}>
                         <NumberInput
                           value={selectedLayer.style.points ?? 5}
                           min={3}
@@ -1773,7 +1772,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                         />
                       </Field>
                       {selectedLayer.shapeType === "star" ? (
-                        <Field label="Inner radius">
+                        <Field label={t("Inner radius")}>
                           <NumberInput
                             value={selectedLayer.style.innerRadius ?? 0.45}
                             min={0.05}
@@ -1796,14 +1795,14 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                       ) : null}
                     </div>
                   ) : null}
-                  <Field label="Fill mode">
+                  <Field label={t("Fill mode")}>
                     <SegmentedControl
                       value={selectedLayer.style.fill.type}
                       options={[
-                        { value: "solid", label: "Solid" },
-                        { value: "gradient", label: "Grad" },
-                        { value: "shader", label: "Shader" },
-                        { value: "none", label: "None" },
+                        { value: "solid", label: t("Solid") },
+                        { value: "gradient", label: t("Grad") },
+                        { value: "shader", label: t("Shader") },
+                        { value: "none", label: t("None") },
                       ]}
                       onChange={(type) =>
                         patchLayer({
@@ -1831,7 +1830,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                   </Field>
                   {selectedLayer.style.fill.type === "solid" ? (
                     <div className="grid grid-cols-2 gap-2.5">
-                      <Field label="Fill color">
+                      <Field label={t("Fill color")}>
                         <ColorInput
                           value={selectedLayer.style.fill.color ?? "#14b8a6"}
                           onChange={(color) =>
@@ -1847,7 +1846,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                           }
                         />
                       </Field>
-                      <Field label="Fill opacity">
+                      <Field label={t("Fill opacity")}>
                         <Slider
                           value={getLayerPropertyInspectorValue(
                             "shape.fill.opacity",
@@ -1888,7 +1887,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                     />
                   ) : null}
                   <div className="grid grid-cols-2 gap-2.5">
-                    <Field label="Corner radius">
+                    <Field label={t("Corner radius")}>
                       <NumberInput
                         value={getLayerPropertyInspectorValue(
                           "shape.cornerRadius",
@@ -1903,7 +1902,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                         }
                       />
                     </Field>
-                    <Field label="Stroke width">
+                    <Field label={t("Stroke width")}>
                       <NumberInput
                         value={getLayerPropertyInspectorValue(
                           "shape.stroke.width",
@@ -1915,7 +1914,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                         }
                       />
                     </Field>
-                    <Field label="Stroke color">
+                    <Field label={t("Stroke color")}>
                       <ColorInput
                         value={selectedLayer.style.stroke.color}
                         onChange={(color) =>
@@ -1928,7 +1927,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                         }
                       />
                     </Field>
-                    <Field label="Stroke opacity">
+                    <Field label={t("Stroke opacity")}>
                       <Slider
                         value={getLayerPropertyInspectorValue(
                           "shape.stroke.opacity",
@@ -1938,14 +1937,14 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                         }
                       />
                     </Field>
-                    <Field label="Line cap">
+                    <Field label={t("Line cap")}>
                       <SelectControl
-                        label="Line cap"
+                        label={t("Line cap")}
                         value={selectedLayer.style.stroke.lineCap ?? "butt"}
                         options={[
-                          { value: "butt", label: "Butt" },
-                          { value: "round", label: "Round" },
-                          { value: "square", label: "Square" },
+                          { value: "butt", label: t("Butt") },
+                          { value: "round", label: t("Round") },
+                          { value: "square", label: t("Square") },
                         ]}
                         onChange={(lineCap) =>
                           patchLayer({
@@ -1960,14 +1959,14 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                         }
                       />
                     </Field>
-                    <Field label="Line join">
+                    <Field label={t("Line join")}>
                       <SelectControl
-                        label="Line join"
+                        label={t("Line join")}
                         value={selectedLayer.style.stroke.lineJoin ?? "miter"}
                         options={[
-                          { value: "miter", label: "Miter" },
-                          { value: "round", label: "Round" },
-                          { value: "bevel", label: "Bevel" },
+                          { value: "miter", label: t("Miter") },
+                          { value: "round", label: t("Round") },
+                          { value: "bevel", label: t("Bevel") },
                         ]}
                         onChange={(lineJoin) =>
                           patchLayer({
@@ -1982,7 +1981,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                         }
                       />
                     </Field>
-                    <Field label="Dash pattern">
+                    <Field label={t("Dash pattern")}>
                       <TextInput
                         value={formatDashArray(selectedLayer.style.stroke.dashArray)}
                         placeholder="8 4"
@@ -1999,7 +1998,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                         }
                       />
                     </Field>
-                    <Field label="Dash offset">
+                    <Field label={t("Dash offset")}>
                       <NumberInput
                         value={getLayerPropertyInspectorValue(
                           "shape.stroke.dashOffset",
@@ -2084,19 +2083,19 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
         ) : null}
 
         <Section
-          title="Composition"
+          title={t("Composition")}
           icon={Settings2}
           defaultOpen={!selectedLayer}
           keepOpenInAccordion={!selectedLayer}
         >
-          <Field label="Scene name">
+          <Field label={t("Scene name")}>
             <TextInput
               value={composition.name}
               onChange={(name) => updateComposition({ name })}
             />
           </Field>
           <div className="grid grid-cols-2 gap-2.5">
-            <Field label="Duration">
+            <Field label={t("Duration")}>
               <NumberInput
                 value={composition.duration}
                 min={0.1}
@@ -2105,7 +2104,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                 onChange={(duration) => updateComposition({ duration })}
               />
             </Field>
-            <Field label="Frame rate">
+            <Field label={t("Frame rate")}>
               <NumberInput
                 value={composition.frameRate}
                 min={1}
@@ -2115,7 +2114,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-2.5">
-            <Field label="Width">
+            <Field label={t("Width")}>
               <NumberInput
                 value={composition.width}
                 min={1}
@@ -2123,7 +2122,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                 onChange={(width) => updateComposition({ width })}
               />
             </Field>
-            <Field label="Height">
+            <Field label={t("Height")}>
               <NumberInput
                 value={composition.height}
                 min={1}
@@ -2132,7 +2131,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               />
             </Field>
           </div>
-          <Field label="Background">
+          <Field label={t("Background")}>
             <ColorInput
               value={composition.backgroundColor}
               onChange={(backgroundColor) => updateComposition({ backgroundColor })}
@@ -2140,16 +2139,16 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
           </Field>
         </Section>
 
-        <Section title="Camera" icon={Camera} defaultOpen={camera.enabled}>
+        <Section title={t("Camera")} icon={Camera} defaultOpen={camera.enabled}>
           <ToggleControl
-            label="Active camera"
+            label={t("Active camera")}
             checked={camera.enabled}
             onChange={enableCamera}
-            description="Pan, zoom, rotate, and push the whole scene in 3D space"
+            description={t("Pan, zoom, rotate, and push the whole scene in 3D space")}
           />
           <div className="grid grid-cols-2 gap-2.5">
             <CameraPropertyControl
-              label="Position X"
+              label={t("Position X")}
               property="camera.position.x"
               camera={baseCamera}
               localTime={cameraLocalTime}
@@ -2159,7 +2158,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               onToggleKeyframe={toggleCameraKeyframe}
             />
             <CameraPropertyControl
-              label="Position Y"
+              label={t("Position Y")}
               property="camera.position.y"
               camera={baseCamera}
               localTime={cameraLocalTime}
@@ -2169,7 +2168,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               onToggleKeyframe={toggleCameraKeyframe}
             />
             <CameraPropertyControl
-              label="Depth"
+              label={t("Depth")}
               property="camera.position.z"
               camera={baseCamera}
               localTime={cameraLocalTime}
@@ -2179,7 +2178,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               onToggleKeyframe={toggleCameraKeyframe}
             />
             <CameraPropertyControl
-              label="Zoom"
+              label={t("Zoom")}
               property="camera.zoom"
               camera={baseCamera}
               localTime={cameraLocalTime}
@@ -2190,7 +2189,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               onToggleKeyframe={toggleCameraKeyframe}
             />
             <CameraPropertyControl
-              label="Roll"
+              label={t("Roll")}
               property="camera.rotation"
               camera={baseCamera}
               localTime={cameraLocalTime}
@@ -2200,7 +2199,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               onToggleKeyframe={toggleCameraKeyframe}
             />
             <CameraPropertyControl
-              label="Perspective"
+              label={t("Perspective")}
               property="camera.perspective"
               camera={baseCamera}
               localTime={cameraLocalTime}
@@ -2213,14 +2212,14 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
             />
           </div>
           <ToggleControl
-            label="Depth of field"
+            label={t("Depth of field")}
             checked={camera.depthOfField?.enabled ?? false}
             onChange={setCameraDepthOfFieldEnabled}
-            description="Blur layers away from the camera focus plane"
+            description={t("Blur layers away from the camera focus plane")}
           />
           <div className="grid grid-cols-2 gap-2.5">
             <CameraPropertyControl
-              label="Focus"
+              label={t("Focus")}
               property="camera.focusDistance"
               camera={baseCamera}
               localTime={cameraLocalTime}
@@ -2231,7 +2230,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               onToggleKeyframe={toggleCameraKeyframe}
             />
             <CameraPropertyControl
-              label="Aperture"
+              label={t("Aperture")}
               property="camera.aperture"
               camera={baseCamera}
               localTime={cameraLocalTime}
@@ -2242,7 +2241,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               onToggleKeyframe={toggleCameraKeyframe}
             />
             <CameraPropertyControl
-              label="Max blur"
+              label={t("Max blur")}
               property="camera.maxBlur"
               camera={baseCamera}
               localTime={cameraLocalTime}
@@ -2255,7 +2254,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
             />
           </div>
           <Button
-            label="Reset camera"
+            label={t("Reset camera")}
             size="sm"
             variant="secondary"
             icon={<Camera size={13} aria-hidden />}
@@ -2281,17 +2280,17 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
           toggleLightKeyframe={toggleLightKeyframe}
         />
 
-        <Section title="Guides" icon={Ruler} defaultOpen={guides.length > 0}>
+        <Section title={t("Guides")} icon={Ruler} defaultOpen={guides.length > 0}>
           <div className="grid grid-cols-2 gap-2.5">
             <Button
-              label="Vertical"
+              label={t("Vertical")}
               size="sm"
               variant="secondary"
               icon={<Plus size={13} aria-hidden />}
               onClick={() => addGuide("vertical")}
             />
             <Button
-              label="Horizontal"
+              label={t("Horizontal")}
               size="sm"
               variant="secondary"
               icon={<Plus size={13} aria-hidden />}
@@ -2307,11 +2306,11 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                 >
                   <div className="grid grid-cols-[minmax(0,1fr)_96px_28px] gap-2">
                     <SelectControl
-                      label="Guide orientation"
+                      label={t("Guide orientation")}
                       value={guide.orientation}
                       options={[
-                        { value: "vertical", label: "Vertical" },
-                        { value: "horizontal", label: "Horizontal" },
+                        { value: "vertical", label: t("Vertical") },
+                        { value: "horizontal", label: t("Horizontal") },
                       ]}
                       onChange={(orientation) =>
                         replaceComposition(
@@ -2347,7 +2346,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                     />
                     <IconButton
                       icon={Trash2}
-                      label="Remove guide"
+                      label={t("Remove guide")}
                       size="sm"
                       variant="danger"
                       onClick={() =>
@@ -2358,7 +2357,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                     />
                   </div>
                   <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
-                    <Field label="Color">
+                    <Field label={t("Color")}>
                       <ColorInput
                         value={guide.color ?? "#14b8a6"}
                         onChange={(color) =>
@@ -2373,7 +2372,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                       />
                     </Field>
                     <ToggleControl
-                      label="Lock"
+                      label={t("Lock")}
                       checked={guide.locked ?? false}
                       onChange={(locked) =>
                         replaceComposition(
@@ -2392,7 +2391,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                 </div>
               ))}
               <Button
-                label="Clear guides"
+                label={t("Clear guides")}
                 size="sm"
                 variant="destructive"
                 icon={<Trash2 size={13} aria-hidden />}
@@ -2403,23 +2402,22 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
             </div>
           ) : (
             <ToolcraftText type="supporting" color="secondary" className="block rounded-lg border border-dashed border-border px-3 py-3 text-[12px] leading-relaxed text-fg-muted">
-              No guides
-            </ToolcraftText>
+              {t("No guides")}</ToolcraftText>
           )}
         </Section>
 
         <Section
-          title="Motion Blur"
+          title={t("Motion Blur")}
           icon={Zap}
           defaultOpen={motionBlurSettings.enabled}
         >
           <ToggleControl
-            label="Enable shutter blur"
+            label={t("Enable shutter blur")}
             checked={motionBlurSettings.enabled}
             onChange={(enabled) => patchMotionBlurSettings({ enabled })}
           />
           <div className="grid grid-cols-2 gap-2.5">
-            <Field label="Shutter angle" hint="deg">
+            <Field label={t("Shutter angle")} hint={t("deg")}>
               <NumberInput
                 value={motionBlurSettings.shutterAngle}
                 min={0}
@@ -2429,7 +2427,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                 }
               />
             </Field>
-            <Field label="Phase" hint="deg">
+            <Field label={t("Phase")} hint={t("deg")}>
               <NumberInput
                 value={motionBlurSettings.shutterPhase}
                 min={-360}
@@ -2440,7 +2438,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
               />
             </Field>
           </div>
-          <Field label="Samples">
+          <Field label={t("Samples")}>
             <NumberInput
               value={motionBlurSettings.samples}
               min={2}
@@ -2452,9 +2450,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
 
         {!selectedLayer ? (
           <ToolcraftText type="supporting" color="secondary" className="block px-3.5 pb-5 pt-1 text-[12px] leading-relaxed text-fg-muted">
-            Select a layer on the stage or in the layers panel to edit its
-            transform, timing, and style.
-          </ToolcraftText>
+            {t("Select a layer on the stage or in the layers panel to edit its transform, timing, and style.")}</ToolcraftText>
         ) : null}
       </div>
     </div>
@@ -2510,7 +2506,7 @@ function groupShaderDefsByCollection(
     options: buckets.get(collection) ?? [],
   }));
   if (leading.length > 0) {
-    return [{ label: "General", options: leading }, ...groups];
+    return [{ label: t("General"), options: leading }, ...groups];
   }
   return groups;
 }
@@ -2531,6 +2527,7 @@ function ShaderFillControls({
   onChange: (shader: MotionShaderFill) => void;
   previewSample?: "text" | "shape";
 }): JSX.Element {
+  const { t } = useTranslation();
   const fillDefs = getMotionShaderFillDefs();
   const def = getMotionShaderDef(shader.shaderId);
 
@@ -2556,9 +2553,9 @@ function ShaderFillControls({
 
   return (
     <div className="space-y-2.5 rounded-lg border border-border bg-bg-2 p-3">
-      <Field label="Shader">
+      <Field label={t("Shader")}>
         <SelectControl
-          label="Shader fill"
+          label={t("Shader fill")}
           value={shader.shaderId}
           options={[]}
           groups={groupShaderDefsByCollection(fillDefs)}
@@ -2570,11 +2567,11 @@ function ShaderFillControls({
         selectedId={shader.shaderId}
         onSelect={selectShader}
         sample={previewSample}
-        label="Fill previews"
+        label={t("Fill previews")}
       />
       {def
         ? def.params.map((paramDef) => (
-            <Field key={paramDef.name} label={paramDef.label}>
+            <Field key={paramDef.name} label={t(paramDef.label)}>
               <ShaderParamControl
                 paramDef={paramDef}
                 value={shader.params[paramDef.name]}
@@ -2584,7 +2581,6 @@ function ShaderFillControls({
             </Field>
           ))
         : null}
-      <GenerateShaderBox category="fill" onGenerated={(next) => selectShader(next.id)} />
     </div>
   );
 }
@@ -2670,6 +2666,7 @@ function TextShaderAnimatorControls({
   layer: Extract<MotionLayer, { type: "text" }>;
   replaceLayer: (nextLayer: MotionLayer) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   const textDefs = getMotionShaderTextDefs();
   const shaderAnimator = getMotionTextShaderAnimator(layer);
   const shader = shaderAnimator?.shader;
@@ -2747,12 +2744,12 @@ function TextShaderAnimatorControls({
 
   return (
     <div className="space-y-2.5 rounded-lg border border-border bg-bg-2 p-3">
-      <Field label="Shader animator">
+      <Field label={t("Shader animator")}>
         <SelectControl
-          label="Text shader animator"
+          label={t("Text shader animator")}
           value={shader?.shaderId ?? ""}
           options={[]}
-          groups={groupShaderDefsByCollection(textDefs, [{ value: "", label: "None" }])}
+          groups={groupShaderDefsByCollection(textDefs, [{ value: "", label: t("None") }])}
           onChange={selectShader}
         />
       </Field>
@@ -2760,7 +2757,7 @@ function TextShaderAnimatorControls({
         ? def.params.map((paramDef) => {
             const shaderRef = shader;
             return (
-              <Field key={paramDef.name} label={paramDef.label}>
+              <Field key={paramDef.name} label={t(paramDef.label)}>
                 <ShaderParamControl
                   paramDef={paramDef}
                   value={shaderRef.params[paramDef.name]}
@@ -2771,7 +2768,6 @@ function TextShaderAnimatorControls({
             );
           })
         : null}
-      <GenerateShaderBox category="text" onGenerated={(next) => selectShader(next.id)} />
     </div>
   );
 }
@@ -2789,6 +2785,7 @@ function GradientFillControls({
   setLayerProperty: (property: MotionAnimatableProperty, value: number) => void;
   localTime: number;
 }): JSX.Element {
+  const { t } = useTranslation();
   const fallbackFill = createDefaultMotionGradientFill(
     layer.style.fill.color ?? "#14b8a6",
     layer.style.stroke.color ?? "#ffffff",
@@ -2832,18 +2829,18 @@ function GradientFillControls({
 
   return (
     <div className="space-y-2.5 rounded-lg border border-border bg-bg-2 p-3">
-      <Field label="Gradient type">
+      <Field label={t("Gradient type")}>
         <SegmentedControl
           value={gradient.type}
           options={[
-            { value: "linear", label: "Linear" },
-            { value: "radial", label: "Radial" },
+            { value: "linear", label: t("Linear") },
+            { value: "radial", label: t("Radial") },
           ]}
           onChange={(type) => updateGradient({ type })}
         />
       </Field>
       {gradient.type === "linear" ? (
-        <Field label="Angle">
+        <Field label={t("Angle")}>
           <NumberInput
             value={gradientAngle}
             unit="°"
@@ -2857,7 +2854,7 @@ function GradientFillControls({
         stops={stops}
         onChange={(nextStops) => updateGradient({ stops: nextStops })}
       />
-      <Field label="Fill opacity">
+      <Field label={t("Fill opacity")}>
         <Slider
           value={fillOpacity}
           onChange={(opacity) =>
@@ -2920,6 +2917,7 @@ function GradientStopEditor({
   stops: readonly GradientStop[];
   onChange: (stops: GradientStop[]) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   const sorted = normalizeMotionGradientStops(stops);
 
   const commit = (nextStops: GradientStop[]): void => {
@@ -2986,7 +2984,7 @@ function GradientStopEditor({
         ))}
       </div>
       <Button
-        label="Add stop"
+        label={t("Add stop")}
         variant="ghost"
         size="sm"
         icon={<Plus size={13} aria-hidden />}
@@ -3014,6 +3012,7 @@ function StrokeGradientControls({
   layer: Extract<MotionLayer, { type: "shape" }>;
   patchLayer: (updates: Partial<MotionLayer>) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   const stroke = layer.style.stroke;
   const mode: "solid" | "gradient" = stroke.gradient ? "gradient" : "solid";
 
@@ -3059,24 +3058,24 @@ function StrokeGradientControls({
 
   return (
     <div className="mt-2.5 space-y-2.5">
-      <Field label="Stroke fill">
+      <Field label={t("Stroke fill")}>
         <SegmentedControl
           value={mode}
           options={[
-            { value: "solid", label: "Solid stroke" },
-            { value: "gradient", label: "Gradient stroke" },
+            { value: "solid", label: t("Solid stroke") },
+            { value: "gradient", label: t("Gradient stroke") },
           ]}
           onChange={setMode}
         />
       </Field>
       {stroke.gradient ? (
         <div className="space-y-2.5 rounded-lg border border-border bg-bg-2 p-3">
-          <Field label="Gradient type">
+          <Field label={t("Gradient type")}>
             <SegmentedControl
               value={stroke.gradient.type === "radial" ? "radial" : "linear"}
               options={[
-                { value: "linear", label: "Linear" },
-                { value: "radial", label: "Radial" },
+                { value: "linear", label: t("Linear") },
+                { value: "radial", label: t("Radial") },
               ]}
               onChange={setGradientType}
             />
@@ -3144,6 +3143,7 @@ function CameraPropertyControl({
   onChange: (property: MotionCameraProperty, value: number) => void;
   onToggleKeyframe: (property: MotionCameraProperty) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   const activeKeyframe = Boolean(
     findMotionCameraKeyframeAtTime(camera, property, localTime),
   );
@@ -3161,7 +3161,7 @@ function CameraPropertyControl({
         />
         <IconButton
           icon={Diamond}
-          label={activeKeyframe ? "Remove camera keyframe" : "Add camera keyframe"}
+          label={activeKeyframe ? t("Remove camera keyframe") : t("Add camera keyframe")}
           active={activeKeyframe}
           variant={activeKeyframe ? "solid" : "outline"}
           iconSize={13}
@@ -3207,8 +3207,9 @@ function LightsSection({
     property: MotionLightProperty,
   ) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   return (
-    <Section title="Lights" icon={Lightbulb} defaultOpen={lights.length > 0}>
+    <Section title={t("Lights")} icon={Lightbulb} defaultOpen={lights.length > 0}>
       <div className="grid grid-cols-3 gap-1.5">
         {LIGHT_TYPE_OPTIONS.map((type) => (
           <Button
@@ -3250,14 +3251,14 @@ function LightsSection({
                   />
                   <IconButton
                     icon={light.enabled ? Eye : EyeOff}
-                    label={light.enabled ? "Disable light" : "Enable light"}
+                    label={light.enabled ? t("Disable light") : t("Enable light")}
                     active={light.enabled}
                     size="sm"
                     onClick={() => toggleLight(light.id, !light.enabled)}
                   />
                   <IconButton
                     icon={Trash2}
-                    label="Remove light"
+                    label={t("Remove light")}
                     size="sm"
                     variant="danger"
                     onClick={() => removeLight(light.id)}
@@ -3265,9 +3266,9 @@ function LightsSection({
                 </div>
 
                 <div className="grid grid-cols-[108px_minmax(0,1fr)] gap-2">
-                  <Field label="Type">
+                  <Field label={t("Type")}>
                     <SelectControl
-                      label="Light type"
+                      label={t("Light type")}
                       value={light.type}
                       options={LIGHT_TYPE_OPTIONS.map((type) => ({
                         value: type,
@@ -3284,7 +3285,7 @@ function LightsSection({
                       }
                     />
                   </Field>
-                  <Field label="Color">
+                  <Field label={t("Color")}>
                     <ColorInput
                       value={light.color}
                       onChange={(color) => patchLight({ color })}
@@ -3366,7 +3367,7 @@ function LightsSection({
                 {light.type !== "ambient" ? (
                   <div className="space-y-2">
                     <ToggleControl
-                      label="Cast shadow"
+                      label={t("Cast shadow")}
                       checked={light.castsShadow}
                       onChange={(castsShadow) => patchLight({ castsShadow })}
                     />
@@ -3396,8 +3397,7 @@ function LightsSection({
         </div>
       ) : (
         <ToolcraftText type="supporting" color="secondary" className="block rounded-lg border border-dashed border-border px-3 py-3 text-[12px] leading-relaxed text-fg-muted">
-          No lights
-        </ToolcraftText>
+          {t("No lights")}</ToolcraftText>
       )}
     </Section>
   );
@@ -3447,6 +3447,7 @@ function LightPropertyControl({
     property: MotionLightProperty,
   ) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   const descriptor = getMotionLightPropertyDescriptor(property);
   const activeKeyframe = Boolean(
     findMotionLightKeyframeAtTime(light, property, localTime),
@@ -3455,7 +3456,7 @@ function LightPropertyControl({
 
   return (
     <Field
-      label={descriptor.label}
+      label={t(descriptor.label)}
       hint={keyframeCount > 0 ? `${keyframeCount} keys` : descriptor.unit}
     >
       <div className="grid grid-cols-[minmax(0,1fr)_32px] gap-1.5">
@@ -3469,7 +3470,7 @@ function LightPropertyControl({
         />
         <IconButton
           icon={Diamond}
-          label={activeKeyframe ? "Remove light keyframe" : "Add light keyframe"}
+          label={activeKeyframe ? t("Remove light keyframe") : t("Add light keyframe")}
           active={activeKeyframe}
           variant={activeKeyframe ? "solid" : "outline"}
           iconSize={13}
@@ -3489,10 +3490,11 @@ function AdjustmentLayerSection({
   layer: Extract<MotionLayer, { type: "adjustment" }>;
   replaceLayer: (nextLayer: MotionLayer) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   return (
-    <Section title="Adjustment" icon={SlidersHorizontal}>
+    <Section title={t("Adjustment")} icon={SlidersHorizontal}>
       <div className="grid grid-cols-2 gap-2.5">
-        <Field label="Width">
+        <Field label={t("Width")}>
           <NumberInput
             value={layer.width}
             min={1}
@@ -3500,7 +3502,7 @@ function AdjustmentLayerSection({
             onChange={(width) => replaceLayer({ ...layer, width })}
           />
         </Field>
-        <Field label="Height">
+        <Field label={t("Height")}>
           <NumberInput
             value={layer.height}
             min={1}
@@ -3520,15 +3522,16 @@ function NullLayerSection({
   layer: Extract<MotionLayer, { type: "null" }>;
   replaceLayer: (nextLayer: MotionLayer) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   return (
-    <Section title="Controller" icon={Crosshair}>
-      <Field label="Guide color">
+    <Section title={t("Controller")} icon={Crosshair}>
+      <Field label={t("Guide color")}>
         <ColorInput
           value={layer.guideColor ?? "#14b8a6"}
           onChange={(guideColor) => replaceLayer({ ...layer, guideColor })}
         />
       </Field>
-      <Field label="Guide size">
+      <Field label={t("Guide size")}>
         <NumberInput
           value={layer.guideSize ?? 48}
           min={12}
@@ -3551,23 +3554,23 @@ function ImageLayerSection({
   layer: Extract<MotionLayer, { type: "image" }>;
   replaceLayer: (nextLayer: MotionLayer) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   const imageAssets = composition.assets.filter((asset) => asset.type === "image");
   const selectedAsset = imageAssets.find((asset) => asset.id === layer.assetId);
 
   return (
-    <Section title="Image" icon={ImageIcon}>
+    <Section title={t("Image")} icon={ImageIcon}>
       {imageAssets.length === 0 ? (
         <ToolcraftText type="supporting" color="secondary" className="block rounded-lg border border-dashed border-border bg-bg-2 px-3 py-3 text-[12px] leading-relaxed text-fg-muted">
-          Add an image from the Assets panel to bind this layer to real media.
-        </ToolcraftText>
+          {t("Add an image from the Assets panel to bind this layer to real media.")}</ToolcraftText>
       ) : (
-        <Field label="Source">
+        <Field label={t("Source")}>
           <SelectControl
-            label="Image source"
+            label={t("Image source")}
             value={layer.assetId}
             options={imageAssets.map((asset) => ({
               value: asset.id,
-              label: asset.name,
+              label: t(asset.name),
             }))}
             onChange={(assetId) => {
               const asset = imageAssets.find(
@@ -3587,7 +3590,7 @@ function ImageLayerSection({
       )}
 
       <div className="grid grid-cols-2 gap-2.5">
-        <Field label="Width">
+        <Field label={t("Width")}>
           <NumberInput
             value={layer.width ?? selectedAsset?.width ?? 320}
             min={1}
@@ -3595,7 +3598,7 @@ function ImageLayerSection({
             onChange={(width) => replaceLayer({ ...layer, width })}
           />
         </Field>
-        <Field label="Height">
+        <Field label={t("Height")}>
           <NumberInput
             value={layer.height ?? selectedAsset?.height ?? 180}
             min={1}
@@ -3605,14 +3608,14 @@ function ImageLayerSection({
         </Field>
       </div>
 
-      <Field label="Fit">
+      <Field label={t("Fit")}>
         <SelectControl
-          label="Image fit"
+          label={t("Image fit")}
           value={layer.fit ?? "contain"}
           options={[
-            { value: "contain", label: "Contain" },
-            { value: "cover", label: "Cover" },
-            { value: "fill", label: "Fill" },
+            { value: "contain", label: t("Contain") },
+            { value: "cover", label: t("Cover") },
+            { value: "fill", label: t("Fill") },
           ]}
           onChange={(fit) =>
             replaceLayer({
@@ -3635,6 +3638,7 @@ function VideoLayerSection({
   layer: Extract<MotionLayer, { type: "video" }>;
   replaceLayer: (nextLayer: MotionLayer) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   const playhead = useMotionStore((state) => state.playhead);
   const videoAssets = composition.assets.filter((asset) => asset.type === "video");
   const selectedAsset = videoAssets.find((asset) => asset.id === layer.assetId);
@@ -3645,19 +3649,18 @@ function VideoLayerSection({
   );
 
   return (
-    <Section title="Video" icon={Film}>
+    <Section title={t("Video")} icon={Film}>
       {videoAssets.length === 0 ? (
         <ToolcraftText type="supporting" color="secondary" className="block rounded-lg border border-dashed border-border bg-bg-2 px-3 py-3 text-[12px] leading-relaxed text-fg-muted">
-          Add a video from the Assets panel to bind this layer to real footage.
-        </ToolcraftText>
+          {t("Add a video from the Assets panel to bind this layer to real footage.")}</ToolcraftText>
       ) : (
-        <Field label="Source">
+        <Field label={t("Source")}>
           <SelectControl
-            label="Video source"
+            label={t("Video source")}
             value={layer.assetId}
             options={videoAssets.map((asset) => ({
               value: asset.id,
-              label: asset.name,
+              label: t(asset.name),
             }))}
             onChange={(assetId) => {
               const asset = videoAssets.find(
@@ -3677,7 +3680,7 @@ function VideoLayerSection({
       )}
 
       <div className="grid grid-cols-2 gap-2.5">
-        <Field label="Width">
+        <Field label={t("Width")}>
           <NumberInput
             value={layer.width ?? selectedAsset?.width ?? 1920}
             min={1}
@@ -3685,7 +3688,7 @@ function VideoLayerSection({
             onChange={(width) => replaceLayer({ ...layer, width })}
           />
         </Field>
-        <Field label="Height">
+        <Field label={t("Height")}>
           <NumberInput
             value={layer.height ?? selectedAsset?.height ?? 1080}
             min={1}
@@ -3695,14 +3698,14 @@ function VideoLayerSection({
         </Field>
       </div>
 
-      <Field label="Fit">
+      <Field label={t("Fit")}>
         <SelectControl
-          label="Video fit"
+          label={t("Video fit")}
           value={layer.fit ?? "contain"}
           options={[
-            { value: "contain", label: "Contain" },
-            { value: "cover", label: "Cover" },
-            { value: "fill", label: "Fill" },
+            { value: "contain", label: t("Contain") },
+            { value: "cover", label: t("Cover") },
+            { value: "fill", label: t("Fill") },
           ]}
           onChange={(fit) =>
             replaceLayer({
@@ -3714,7 +3717,7 @@ function VideoLayerSection({
       </Field>
 
       <div className="grid grid-cols-2 gap-2.5">
-        <Field label="Speed" hint="×">
+        <Field label={t("Speed")} hint="×">
           <NumberInput
             value={layer.playbackRate ?? 1}
             min={0.1}
@@ -3723,7 +3726,7 @@ function VideoLayerSection({
             onChange={(playbackRate) => replaceLayer({ ...layer, playbackRate })}
           />
         </Field>
-        <Field label="Trim Start" hint="s">
+        <Field label={t("Trim Start")} hint="s">
           <NumberInput
             value={layer.trimStart ?? 0}
             min={0}
@@ -3735,19 +3738,19 @@ function VideoLayerSection({
 
       <div className="grid grid-cols-2 gap-2.5">
         <ToggleControl
-          label="Loop source"
+          label={t("Loop source")}
           checked={Boolean(layer.loop)}
           onChange={(loop) => replaceLayer({ ...layer, loop })}
         />
         <ToggleControl
-          label="Reverse"
+          label={t("Reverse")}
           checked={Boolean(layer.reverse)}
           onChange={(reverse) => replaceLayer({ ...layer, reverse })}
         />
       </div>
 
       <ToggleControl
-        label="Freeze frame"
+        label={t("Freeze frame")}
         checked={Number.isFinite(layer.freezeFrame)}
         onChange={(freeze) =>
           replaceLayer({
@@ -3757,7 +3760,7 @@ function VideoLayerSection({
         }
       />
       {Number.isFinite(layer.freezeFrame) ? (
-        <Field label="Frozen source time" hint="s">
+        <Field label={t("Frozen source time")} hint="s">
           <NumberInput
             value={layer.freezeFrame ?? 0}
             min={0}
@@ -3769,7 +3772,7 @@ function VideoLayerSection({
       ) : null}
 
       <ToggleControl
-        label="Mute audio"
+        label={t("Mute audio")}
         checked={layer.muted ?? false}
         onChange={(muted) => replaceLayer({ ...layer, muted })}
       />
@@ -3784,6 +3787,7 @@ function ParticleLayerSection({
   layer: Extract<MotionLayer, { type: "particle" }>;
   replaceLayer: (nextLayer: MotionLayer) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   const emitter = normalizeMotionParticleEmitter(layer.emitter);
   const patchEmitter = (updates: Partial<MotionParticleEmitter>) => {
     replaceLayer({
@@ -3796,7 +3800,7 @@ function ParticleLayerSection({
   };
 
   return (
-    <Section title="Particles" icon={Sparkles}>
+    <Section title={t("Particles")} icon={Sparkles}>
       <div className="grid grid-cols-2 gap-1.5">
         {MOTION_PARTICLE_PRESETS.map((preset) => (
           <Button
@@ -3809,7 +3813,7 @@ function ParticleLayerSection({
         ))}
       </div>
       <div className="grid grid-cols-2 gap-2.5">
-        <Field label="Rate" hint="/s">
+        <Field label={t("Rate")} hint="/s">
           <NumberInput
             value={emitter.emissionRate}
             min={0}
@@ -3818,7 +3822,7 @@ function ParticleLayerSection({
             onChange={(emissionRate) => patchEmitter({ emissionRate })}
           />
         </Field>
-        <Field label="Max">
+        <Field label={t("Max")}>
           <NumberInput
             value={emitter.maxParticles}
             min={0}
@@ -3827,7 +3831,7 @@ function ParticleLayerSection({
             onChange={(maxParticles) => patchEmitter({ maxParticles })}
           />
         </Field>
-        <Field label="Lifetime" hint="s">
+        <Field label={t("Lifetime")} hint="s">
           <NumberInput
             value={emitter.lifetime}
             min={0.01}
@@ -3836,7 +3840,7 @@ function ParticleLayerSection({
             onChange={(lifetime) => patchEmitter({ lifetime })}
           />
         </Field>
-        <Field label="Speed">
+        <Field label={t("Speed")}>
           <NumberInput
             value={emitter.speed}
             min={0}
@@ -3845,7 +3849,7 @@ function ParticleLayerSection({
             onChange={(speed) => patchEmitter({ speed })}
           />
         </Field>
-        <Field label="Spread" hint="deg">
+        <Field label={t("Spread")} hint={t("deg")}>
           <NumberInput
             value={emitter.spread}
             min={0}
@@ -3854,7 +3858,7 @@ function ParticleLayerSection({
             onChange={(spread) => patchEmitter({ spread })}
           />
         </Field>
-        <Field label="Gravity">
+        <Field label={t("Gravity")}>
           <NumberInput
             value={emitter.gravity}
             min={-5000}
@@ -3863,7 +3867,7 @@ function ParticleLayerSection({
             onChange={(gravity) => patchEmitter({ gravity })}
           />
         </Field>
-        <Field label="Size">
+        <Field label={t("Size")}>
           <NumberInput
             value={emitter.size}
             min={0.1}
@@ -3872,7 +3876,7 @@ function ParticleLayerSection({
             onChange={(size) => patchEmitter({ size })}
           />
         </Field>
-        <Field label="Random" hint="%">
+        <Field label={t("Random")} hint="%">
           <NumberInput
             value={Math.round(emitter.sizeRandomness * 100)}
             min={0}
@@ -3883,7 +3887,7 @@ function ParticleLayerSection({
             }
           />
         </Field>
-        <Field label="Start opacity" hint="%">
+        <Field label={t("Start opacity")} hint="%">
           <NumberInput
             value={Math.round(emitter.opacityStart * 100)}
             min={0}
@@ -3894,7 +3898,7 @@ function ParticleLayerSection({
             }
           />
         </Field>
-        <Field label="End opacity" hint="%">
+        <Field label={t("End opacity")} hint="%">
           <NumberInput
             value={Math.round(emitter.opacityEnd * 100)}
             min={0}
@@ -3905,7 +3909,7 @@ function ParticleLayerSection({
             }
           />
         </Field>
-        <Field label="Seed">
+        <Field label={t("Seed")}>
           <NumberInput
             value={emitter.seed}
             min={-1_000_000}
@@ -3914,13 +3918,13 @@ function ParticleLayerSection({
             onChange={(seed) => patchEmitter({ seed })}
           />
         </Field>
-        <Field label="Shape">
+        <Field label={t("Shape")}>
           <SelectControl
-            label="Particle shape"
+            label={t("Particle shape")}
             value={emitter.shape}
             options={[
-              { value: "circle", label: "Circle" },
-              { value: "square", label: "Square" },
+              { value: "circle", label: t("Circle") },
+              { value: "square", label: t("Square") },
             ]}
             onChange={(shape) =>
               patchEmitter({ shape: shape as MotionParticleShape })
@@ -3929,13 +3933,13 @@ function ParticleLayerSection({
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-2.5">
-        <Field label="Start color">
+        <Field label={t("Start color")}>
           <ColorInput
             value={emitter.colorStart}
             onChange={(colorStart) => patchEmitter({ colorStart })}
           />
         </Field>
-        <Field label="End color">
+        <Field label={t("End color")}>
           <ColorInput
             value={emitter.colorEnd}
             onChange={(colorEnd) => patchEmitter({ colorEnd })}
@@ -3957,6 +3961,7 @@ function PrecompSection({
   motionCompositions: readonly MotionComposition[];
   replaceLayer: (nextLayer: MotionLayer) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   const setActiveCompositionId = useMotionStore(
     (state) => state.setActiveCompositionId,
   );
@@ -4119,12 +4124,12 @@ function PrecompSection({
 
   return (
     <Section
-      title="Precomp"
+      title={t("Precomp")}
       icon={Clapperboard}
       action={
         <IconButton
           icon={Clapperboard}
-          label="Open source composition"
+          label={t("Open source composition")}
           size="sm"
           variant="outline"
           disabled={!source}
@@ -4134,18 +4139,16 @@ function PrecompSection({
     >
       {!source ? (
         <ToolcraftText type="supporting" color="secondary" className="block rounded-lg border border-dashed border-border bg-bg-2 px-3 py-3 text-[12px] leading-relaxed text-fg-muted">
-          This precomp layer references a composition that is no longer in the
-          project.
-        </ToolcraftText>
+          {t("This precomp layer references a composition that is no longer in the project.")}</ToolcraftText>
       ) : null}
 
-      <Field label="Source">
+      <Field label={t("Source")}>
         <SelectControl
-          label="Source composition"
+          label={t("Source composition")}
           value={layer.compositionId}
           options={sourceOptions.map((candidate) => ({
             value: candidate.id,
-            label: candidate.name,
+            label: t(candidate.name),
           }))}
           onChange={(compositionId) => {
             const nextSource = motionCompositions.find(
@@ -4165,7 +4168,7 @@ function PrecompSection({
       </Field>
 
       <div className="grid grid-cols-2 gap-2.5">
-        <Field label="Width">
+        <Field label={t("Width")}>
           <NumberInput
             value={layer.width}
             min={1}
@@ -4173,7 +4176,7 @@ function PrecompSection({
             onChange={(width) => replaceLayer({ ...layer, width })}
           />
         </Field>
-        <Field label="Height">
+        <Field label={t("Height")}>
           <NumberInput
             value={layer.height}
             min={1}
@@ -4184,7 +4187,7 @@ function PrecompSection({
       </div>
 
       <div className="grid grid-cols-2 gap-2.5">
-        <Field label="Time offset" hint="s">
+        <Field label={t("Time offset")} hint="s">
           <NumberInput
             value={layer.timeOffset}
             min={0}
@@ -4192,7 +4195,7 @@ function PrecompSection({
             onChange={(timeOffset) => replaceLayer({ ...layer, timeOffset })}
           />
         </Field>
-        <Field label="Playback">
+        <Field label={t("Playback")}>
           <NumberInput
             value={layer.playbackRate}
             min={0.01}
@@ -4205,45 +4208,45 @@ function PrecompSection({
       </div>
 
       <ToggleControl
-        label="Loop source"
+        label={t("Loop source")}
         checked={Boolean(layer.loop)}
         onChange={(loop) => replaceLayer({ ...layer, loop })}
       />
 
       <div className="rounded-lg border border-border bg-bg-2 p-2.5">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-3">Time remap</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-3">{t("Time remap")}</span>
           <span className="rounded-md bg-bg-1 px-1.5 py-0.5 text-[10.5px] tabular-nums text-fg-muted">
             {sourceTime.toFixed(2)}s
           </span>
         </div>
         <div className="mb-2 grid grid-cols-2 gap-1.5">
           <Button
-            label={remapped ? "Clear remap" : "Enable remap"}
+            label={remapped ? t("Clear remap") : t("Enable remap")}
             size="sm"
             variant="secondary"
             onClick={remapped ? clearTimeRemap : enableTimeRemap}
           />
           <Button
-            label={remapKeyAtPlayhead ? "Update key" : "Key time"}
+            label={remapKeyAtPlayhead ? t("Update key") : t("Key time")}
             size="sm"
             variant={remapKeyAtPlayhead ? "primary" : "secondary"}
             onClick={() => keySourceTime()}
           />
           <Button
-            label="Freeze"
+            label={t("Freeze")}
             size="sm"
             variant="secondary"
             onClick={freezeFrameAtPlayhead}
           />
           <Button
-            label="Reverse"
+            label={t("Reverse")}
             size="sm"
             variant="secondary"
             onClick={reverseTimeRemap}
           />
         </div>
-        <Field label="Source time at playhead" hint="s">
+        <Field label={t("Source time at playhead")} hint="s">
           <NumberInput
             value={sourceTime}
             min={0}
@@ -4254,14 +4257,14 @@ function PrecompSection({
         </Field>
       </div>
 
-      <Field label="Fit">
+      <Field label={t("Fit")}>
         <SelectControl
-          label="Precomp fit"
+          label={t("Precomp fit")}
           value={layer.fit ?? "contain"}
           options={[
-            { value: "contain", label: "Contain" },
-            { value: "cover", label: "Cover" },
-            { value: "fill", label: "Fill" },
+            { value: "contain", label: t("Contain") },
+            { value: "cover", label: t("Cover") },
+            { value: "fill", label: t("Fill") },
           ]}
           onChange={(fit) =>
             replaceLayer({
@@ -4276,11 +4279,10 @@ function PrecompSection({
         <div className="rounded-lg border border-border bg-bg-2 p-2.5">
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-3">
-              Instance overrides
-            </span>
+              {t("Instance overrides")}</span>
             {hasOverrides ? (
               <Button
-                label="Reset all"
+                label={t("Reset all")}
                 size="sm"
                 variant="ghost"
                 onClick={() => replaceLayer({ ...layer, overrides: undefined })}
@@ -4301,7 +4303,7 @@ function PrecompSection({
                     </span>
                     {override ? (
                       <Button
-                        label="Reset"
+                        label={t("Reset")}
                         size="sm"
                         variant="ghost"
                         onClick={() => clearChildOverride(child.id)}
@@ -4309,14 +4311,14 @@ function PrecompSection({
                     ) : null}
                   </div>
                   {child.type === "text" ? (
-                    <Field label="Text">
+                    <Field label={t("Text")}>
                       <TextArea
                         value={override?.text ?? child.text}
                         onChange={(text) => setChildOverride(child.id, { text })}
                       />
                     </Field>
                   ) : null}
-                  <Field label="Color">
+                  <Field label={t("Color")}>
                     <ColorInput
                       value={override?.color ?? masterColorOf(child)}
                       onChange={(color) => setChildOverride(child.id, { color })}
@@ -4339,6 +4341,7 @@ function TextAnimatorsSection({
   layer: Extract<MotionLayer, { type: "text" }>;
   replaceLayer: (nextLayer: MotionLayer) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   const animators = layer.textAnimators ?? [];
 
   const updateAnimator = (
@@ -4350,12 +4353,12 @@ function TextAnimatorsSection({
 
   return (
     <Section
-      title="Text Animators"
+      title={t("Text Animators")}
       icon={Type}
       action={
         <div className="relative flex w-[150px] items-center rounded-[7px] border border-border bg-bg-1">
           <select
-            aria-label="Add text animator preset"
+            aria-label={t("Add text animator preset")}
             value=""
             onChange={(event) => {
               const presetId = event.target.value;
@@ -4366,7 +4369,7 @@ function TextAnimatorsSection({
             }}
             className="w-full cursor-pointer appearance-none truncate bg-transparent py-1.5 pl-[10px] pr-[24px] text-[12px] font-medium text-fg-2 outline-none"
           >
-            <option value="">+ Add animator</option>
+            <option value="">{t("+ Add animator")}</option>
             {MOTION_TEXT_ANIMATOR_PRESETS.map((preset) => (
               <option key={preset.id} value={preset.id}>
                 {preset.name}
@@ -4390,9 +4393,7 @@ function TextAnimatorsSection({
     >
       {animators.length === 0 ? (
         <ToolcraftText type="supporting" color="secondary" className="block rounded-lg border border-dashed border-border bg-bg-2 px-3 py-3 text-[12px] leading-relaxed text-fg-muted">
-          Add a text animator for character reveals, type-on effects, kinetic
-          headlines, and staggered title sequences.
-        </ToolcraftText>
+          {t("Add a text animator for character reveals, type-on effects, kinetic headlines, and staggered title sequences.")}</ToolcraftText>
       ) : (
         <div className="space-y-3">
           {animators.map((animator) => (
@@ -4417,8 +4418,8 @@ function TextAnimatorsSection({
                     icon={animator.enabled ? Eye : EyeOff}
                     label={
                       animator.enabled
-                        ? "Disable Text Animator"
-                        : "Enable Text Animator"
+                        ? t("Disable Text Animator")
+                        : t("Enable Text Animator")
                     }
                     size="sm"
                     active={animator.enabled}
@@ -4434,7 +4435,7 @@ function TextAnimatorsSection({
                   />
                   <IconButton
                     icon={Trash2}
-                    label="Remove Text Animator"
+                    label={t("Remove Text Animator")}
                     size="sm"
                     variant="danger"
                     onClick={() =>
@@ -4445,7 +4446,7 @@ function TextAnimatorsSection({
               </div>
 
               <div className="space-y-3 p-3">
-                <Field label="Name">
+                <Field label={t("Name")}>
                   <TextInput
                     value={animator.name}
                     onChange={(name) =>
@@ -4458,13 +4459,13 @@ function TextAnimatorsSection({
                 </Field>
 
                 <div className="grid grid-cols-2 gap-2.5">
-                  <Field label="Based on">
+                  <Field label={t("Based on")}>
                     <SelectControl
-                      label="Based on"
+                      label={t("Based on")}
                       value={animator.selector.basedOn}
                       options={[
-                        { value: "characters", label: "Characters" },
-                        { value: "words", label: "Words" },
+                        { value: "characters", label: t("Characters") },
+                        { value: "words", label: t("Words") },
                       ]}
                       onChange={(basedOn) =>
                         updateAnimator(animator, (current) => ({
@@ -4477,14 +4478,14 @@ function TextAnimatorsSection({
                       }
                     />
                   </Field>
-                  <Field label="Direction">
+                  <Field label={t("Direction")}>
                     <SelectControl
-                      label="Direction"
+                      label={t("Direction")}
                       value={animator.timing.direction}
                       options={[
-                        { value: "forward", label: "Forward" },
-                        { value: "reverse", label: "Reverse" },
-                        { value: "center", label: "From center" },
+                        { value: "forward", label: t("Forward") },
+                        { value: "reverse", label: t("Reverse") },
+                        { value: "center", label: t("From center") },
                       ]}
                       onChange={(direction) =>
                         updateAnimator(animator, (current) => ({
@@ -4500,7 +4501,7 @@ function TextAnimatorsSection({
                 </div>
 
                 <div className="grid grid-cols-3 gap-2.5">
-                  <Field label="Start" hint="%">
+                  <Field label={t("Start")} hint="%">
                     <NumberInput
                       value={animator.selector.start}
                       min={0}
@@ -4513,7 +4514,7 @@ function TextAnimatorsSection({
                       }
                     />
                   </Field>
-                  <Field label="End" hint="%">
+                  <Field label={t("End")} hint="%">
                     <NumberInput
                       value={animator.selector.end}
                       min={0}
@@ -4526,7 +4527,7 @@ function TextAnimatorsSection({
                       }
                     />
                   </Field>
-                  <Field label="Offset" hint="%">
+                  <Field label={t("Offset")} hint="%">
                     <NumberInput
                       value={animator.selector.offset}
                       onChange={(offset) =>
@@ -4540,7 +4541,7 @@ function TextAnimatorsSection({
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
-                  <Field label="Start time" hint="s">
+                  <Field label={t("Start time")} hint="s">
                     <NumberInput
                       value={animator.timing.startTime}
                       min={0}
@@ -4553,7 +4554,7 @@ function TextAnimatorsSection({
                       }
                     />
                   </Field>
-                  <Field label="Duration" hint="s">
+                  <Field label={t("Duration")} hint="s">
                     <NumberInput
                       value={animator.timing.duration}
                       min={0.001}
@@ -4566,7 +4567,7 @@ function TextAnimatorsSection({
                       }
                     />
                   </Field>
-                  <Field label="Stagger" hint="s">
+                  <Field label={t("Stagger")} hint="s">
                     <NumberInput
                       value={animator.timing.stagger}
                       min={0}
@@ -4579,15 +4580,15 @@ function TextAnimatorsSection({
                       }
                     />
                   </Field>
-                  <Field label="Ease">
+                  <Field label={t("Ease")}>
                     <SelectControl
-                      label="Ease"
+                      label={t("Ease")}
                       value={animator.timing.easing}
                       options={[
-                        { value: "linear", label: "Linear" },
-                        { value: "ease", label: "Ease" },
-                        { value: "ease-in", label: "Ease in" },
-                        { value: "ease-out", label: "Ease out" },
+                        { value: "linear", label: t("Linear") },
+                        { value: "ease", label: t("Ease") },
+                        { value: "ease-in", label: t("Ease in") },
+                        { value: "ease-out", label: t("Ease out") },
                       ]}
                       onChange={(easing) =>
                         updateAnimator(animator, (current) => ({
@@ -4603,7 +4604,7 @@ function TextAnimatorsSection({
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5">
-                  <Field label="Initial X" hint="px">
+                  <Field label={t("Initial X")} hint="px">
                     <NumberInput
                       value={animator.properties.position.x}
                       onChange={(x) =>
@@ -4617,7 +4618,7 @@ function TextAnimatorsSection({
                       }
                     />
                   </Field>
-                  <Field label="Initial Y" hint="px">
+                  <Field label={t("Initial Y")} hint="px">
                     <NumberInput
                       value={animator.properties.position.y}
                       onChange={(y) =>
@@ -4631,7 +4632,7 @@ function TextAnimatorsSection({
                       }
                     />
                   </Field>
-                  <Field label="Initial scale">
+                  <Field label={t("Initial scale")}>
                     <NumberInput
                       value={animator.properties.scale.x}
                       min={0.001}
@@ -4647,7 +4648,7 @@ function TextAnimatorsSection({
                       }
                     />
                   </Field>
-                  <Field label="Initial opacity">
+                  <Field label={t("Initial opacity")}>
                     <NumberInput
                       value={animator.properties.opacity}
                       min={0}
@@ -4661,7 +4662,7 @@ function TextAnimatorsSection({
                       }
                     />
                   </Field>
-                  <Field label="Initial rotation" hint="deg">
+                  <Field label={t("Initial rotation")} hint={t("deg")}>
                     <NumberInput
                       value={animator.properties.rotation}
                       onChange={(rotation) =>
@@ -4699,6 +4700,7 @@ function ShapeModifiersSection({
   setSelectedProperty: (property: string | null) => void;
   replaceLayer: (nextLayer: MotionLayer) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   const trimPaths = getMotionTrimPathsModifier(layer);
   const repeater = getMotionRepeaterModifier(layer);
   const zigZag = getMotionZigZagModifier(layer);
@@ -4857,13 +4859,13 @@ function ShapeModifiersSection({
 
   return (
     <Section
-      title="Shape Modifiers"
+      title={t("Shape Modifiers")}
       icon={Scissors}
       action={
         <div className="flex items-center gap-1">
           <IconButton
             icon={Plus}
-            label="Add Trim Paths"
+            label={t("Add Trim Paths")}
             size="sm"
             variant="outline"
             disabled={Boolean(trimPaths)}
@@ -4871,7 +4873,7 @@ function ShapeModifiersSection({
           />
           <IconButton
             icon={Plus}
-            label="Add Repeater"
+            label={t("Add Repeater")}
             size="sm"
             variant="outline"
             disabled={Boolean(repeater)}
@@ -4879,7 +4881,7 @@ function ShapeModifiersSection({
           />
           <IconButton
             icon={Plus}
-            label="Add Zig Zag"
+            label={t("Add Zig Zag")}
             size="sm"
             variant="outline"
             disabled={Boolean(zigZag)}
@@ -4887,7 +4889,7 @@ function ShapeModifiersSection({
           />
           <IconButton
             icon={Plus}
-            label="Add Round Corners"
+            label={t("Add Round Corners")}
             size="sm"
             variant="outline"
             disabled={Boolean(roundCorners)}
@@ -4895,7 +4897,7 @@ function ShapeModifiersSection({
           />
           <IconButton
             icon={Plus}
-            label="Add Wiggle Paths"
+            label={t("Add Wiggle Paths")}
             size="sm"
             variant="outline"
             disabled={Boolean(wigglePaths)}
@@ -4903,7 +4905,7 @@ function ShapeModifiersSection({
           />
           <IconButton
             icon={Plus}
-            label="Add Offset Paths"
+            label={t("Add Offset Paths")}
             size="sm"
             variant="outline"
             disabled={Boolean(offsetPaths)}
@@ -4911,7 +4913,7 @@ function ShapeModifiersSection({
           />
           <IconButton
             icon={Plus}
-            label="Add Pucker & Bloat"
+            label={t("Add Pucker & Bloat")}
             size="sm"
             variant="outline"
             disabled={Boolean(puckerBloat)}
@@ -4919,7 +4921,7 @@ function ShapeModifiersSection({
           />
           <IconButton
             icon={Plus}
-            label="Add Twist"
+            label={t("Add Twist")}
             size="sm"
             variant="outline"
             disabled={Boolean(twist)}
@@ -4937,10 +4939,7 @@ function ShapeModifiersSection({
       !puckerBloat &&
       !twist ? (
         <ToolcraftText type="supporting" color="secondary" className="block rounded-lg border border-dashed border-border bg-bg-2 px-3 py-3 text-[12px] leading-relaxed text-fg-muted">
-          Add Trim Paths, Repeater, Zig Zag, Round Corners, Wiggle Paths, Offset
-          Paths, Pucker &amp; Bloat, or Twist modifiers for logo reveals, line
-          draws, patterns, echoes, kinetic outlines, and organic distortions.
-        </ToolcraftText>
+          {t("Add Trim Paths, Repeater, Zig Zag, Round Corners, Wiggle Paths, Offset Paths, Pucker & Bloat, or Twist modifiers for logo reveals, line draws, patterns, echoes, kinetic outlines, and organic distortions.")}</ToolcraftText>
       ) : (
         <div className="space-y-3">
           {trimPaths ? (
@@ -4954,14 +4953,13 @@ function ShapeModifiersSection({
                     {trimPaths.name}
                   </span>
                   <span className="block text-[10.5px] text-fg-muted">
-                    Stroke reveal modifier
-                  </span>
+                    {t("Stroke reveal modifier")}</span>
                 </span>
                 <div className="flex items-center gap-0.5">
                   <IconButton
                     icon={trimPaths.enabled ? Eye : EyeOff}
                     label={
-                      trimPaths.enabled ? "Disable Trim Paths" : "Enable Trim Paths"
+                      trimPaths.enabled ? t("Disable Trim Paths") : t("Enable Trim Paths")
                     }
                     size="sm"
                     active={trimPaths.enabled}
@@ -4977,7 +4975,7 @@ function ShapeModifiersSection({
                   />
                   <IconButton
                     icon={Trash2}
-                    label="Remove Trim Paths"
+                    label={t("Remove Trim Paths")}
                     size="sm"
                     variant="danger"
                     onClick={() =>
@@ -4987,9 +4985,9 @@ function ShapeModifiersSection({
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2.5 p-3">
-                {renderModifierNumberInput({ modifierId: trimPaths.id, property: "start", label: "Start", hint: "%", min: 0, max: 100 })}
-                {renderModifierNumberInput({ modifierId: trimPaths.id, property: "end", label: "End", hint: "%", min: 0, max: 100 })}
-                {renderModifierNumberInput({ modifierId: trimPaths.id, property: "offset", label: "Offset", hint: "deg" })}
+                {renderModifierNumberInput({ modifierId: trimPaths.id, property: "start", label: t("Start"), hint: "%", min: 0, max: 100 })}
+                {renderModifierNumberInput({ modifierId: trimPaths.id, property: "end", label: t("End"), hint: "%", min: 0, max: 100 })}
+                {renderModifierNumberInput({ modifierId: trimPaths.id, property: "offset", label: t("Offset"), hint: t("deg") })}
               </div>
             </div>
           ) : null}
@@ -5005,13 +5003,12 @@ function ShapeModifiersSection({
                     {repeater.name}
                   </span>
                   <span className="block text-[10.5px] text-fg-muted">
-                    {repeater.copies} generated copies
-                  </span>
+                    {repeater.copies} {t(" generated copies")}</span>
                 </span>
                 <div className="flex items-center gap-0.5">
                   <IconButton
                     icon={repeater.enabled ? Eye : EyeOff}
-                    label={repeater.enabled ? "Disable Repeater" : "Enable Repeater"}
+                    label={repeater.enabled ? t("Disable Repeater") : t("Enable Repeater")}
                     size="sm"
                     active={repeater.enabled}
                     onClick={() =>
@@ -5026,7 +5023,7 @@ function ShapeModifiersSection({
                   />
                   <IconButton
                     icon={Trash2}
-                    label="Remove Repeater"
+                    label={t("Remove Repeater")}
                     size="sm"
                     variant="danger"
                     onClick={() =>
@@ -5036,14 +5033,14 @@ function ShapeModifiersSection({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2.5 p-3">
-                {renderModifierNumberInput({ modifierId: repeater.id, property: "copies", label: "Copies", min: 1, max: 256 })}
-                {renderModifierNumberInput({ modifierId: repeater.id, property: "offset", label: "Offset", step: 0.1 })}
-                {renderModifierNumberInput({ modifierId: repeater.id, property: "position.x", label: "Position X", hint: "px" })}
-                {renderModifierNumberInput({ modifierId: repeater.id, property: "position.y", label: "Position Y", hint: "px" })}
-                {renderModifierNumberInput({ modifierId: repeater.id, property: "scale.x", label: "Scale X", min: 0.001, step: 0.05 })}
-                {renderModifierNumberInput({ modifierId: repeater.id, property: "scale.y", label: "Scale Y", min: 0.001, step: 0.05 })}
-                {renderModifierNumberInput({ modifierId: repeater.id, property: "rotation", label: "Rotation", hint: "deg" })}
-                {renderModifierNumberInput({ modifierId: repeater.id, property: "opacity", label: "Opacity", min: 0, max: 1, step: 0.05 })}
+                {renderModifierNumberInput({ modifierId: repeater.id, property: "copies", label: t("Copies"), min: 1, max: 256 })}
+                {renderModifierNumberInput({ modifierId: repeater.id, property: "offset", label: t("Offset"), step: 0.1 })}
+                {renderModifierNumberInput({ modifierId: repeater.id, property: "position.x", label: t("Position X"), hint: "px" })}
+                {renderModifierNumberInput({ modifierId: repeater.id, property: "position.y", label: t("Position Y"), hint: "px" })}
+                {renderModifierNumberInput({ modifierId: repeater.id, property: "scale.x", label: t("Scale X"), min: 0.001, step: 0.05 })}
+                {renderModifierNumberInput({ modifierId: repeater.id, property: "scale.y", label: t("Scale Y"), min: 0.001, step: 0.05 })}
+                {renderModifierNumberInput({ modifierId: repeater.id, property: "rotation", label: t("Rotation"), hint: t("deg") })}
+                {renderModifierNumberInput({ modifierId: repeater.id, property: "opacity", label: t("Opacity"), min: 0, max: 1, step: 0.05 })}
               </div>
             </div>
           ) : null}
@@ -5059,13 +5056,12 @@ function ShapeModifiersSection({
                     {zigZag.name}
                   </span>
                   <span className="block text-[10.5px] text-fg-muted">
-                    {zigZag.ridgesPerSegment} ridges per segment
-                  </span>
+                    {zigZag.ridgesPerSegment} {t(" ridges per segment")}</span>
                 </span>
                 <div className="flex items-center gap-0.5">
                   <IconButton
                     icon={zigZag.enabled ? Eye : EyeOff}
-                    label={zigZag.enabled ? "Disable Zig Zag" : "Enable Zig Zag"}
+                    label={zigZag.enabled ? t("Disable Zig Zag") : t("Enable Zig Zag")}
                     size="sm"
                     active={zigZag.enabled}
                     onClick={() =>
@@ -5080,7 +5076,7 @@ function ShapeModifiersSection({
                   />
                   <IconButton
                     icon={Trash2}
-                    label="Remove Zig Zag"
+                    label={t("Remove Zig Zag")}
                     size="sm"
                     variant="danger"
                     onClick={() =>
@@ -5090,8 +5086,8 @@ function ShapeModifiersSection({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2.5 p-3">
-                {renderModifierNumberInput({ modifierId: zigZag.id, property: "size", label: "Size", hint: "px", min: -4000, max: 4000, step: 1 })}
-                {renderModifierNumberInput({ modifierId: zigZag.id, property: "ridgesPerSegment", label: "Ridges", min: 0, max: 128, step: 1 })}
+                {renderModifierNumberInput({ modifierId: zigZag.id, property: "size", label: t("Size"), hint: "px", min: -4000, max: 4000, step: 1 })}
+                {renderModifierNumberInput({ modifierId: zigZag.id, property: "ridgesPerSegment", label: t("Ridges"), min: 0, max: 128, step: 1 })}
               </div>
             </div>
           ) : null}
@@ -5107,16 +5103,15 @@ function ShapeModifiersSection({
                     {roundCorners.name}
                   </span>
                   <span className="block text-[10.5px] text-fg-muted">
-                    {roundCorners.radius}px radius, {roundCorners.segments} samples
-                  </span>
+                    {roundCorners.radius}{t("px radius, ")}{roundCorners.segments} {t(" samples")}</span>
                 </span>
                 <div className="flex items-center gap-0.5">
                   <IconButton
                     icon={roundCorners.enabled ? Eye : EyeOff}
                     label={
                       roundCorners.enabled
-                        ? "Disable Round Corners"
-                        : "Enable Round Corners"
+                        ? t("Disable Round Corners")
+                        : t("Enable Round Corners")
                     }
                     size="sm"
                     active={roundCorners.enabled}
@@ -5132,7 +5127,7 @@ function ShapeModifiersSection({
                   />
                   <IconButton
                     icon={Trash2}
-                    label="Remove Round Corners"
+                    label={t("Remove Round Corners")}
                     size="sm"
                     variant="danger"
                     onClick={() =>
@@ -5144,8 +5139,8 @@ function ShapeModifiersSection({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2.5 p-3">
-                {renderModifierNumberInput({ modifierId: roundCorners.id, property: "radius", label: "Radius", hint: "px", min: 0, max: 4000, step: 1 })}
-                {renderModifierNumberInput({ modifierId: roundCorners.id, property: "segments", label: "Samples", min: 1, max: 48, step: 1 })}
+                {renderModifierNumberInput({ modifierId: roundCorners.id, property: "radius", label: t("Radius"), hint: "px", min: 0, max: 4000, step: 1 })}
+                {renderModifierNumberInput({ modifierId: roundCorners.id, property: "segments", label: t("Samples"), min: 1, max: 48, step: 1 })}
               </div>
             </div>
           ) : null}
@@ -5161,16 +5156,15 @@ function ShapeModifiersSection({
                     {wigglePaths.name}
                   </span>
                   <span className="block text-[10.5px] text-fg-muted">
-                    {wigglePaths.size}px at {wigglePaths.speed}x speed
-                  </span>
+                    {wigglePaths.size}{t("px at ")}{wigglePaths.speed}{t("x speed")}</span>
                 </span>
                 <div className="flex items-center gap-0.5">
                   <IconButton
                     icon={wigglePaths.enabled ? Eye : EyeOff}
                     label={
                       wigglePaths.enabled
-                        ? "Disable Wiggle Paths"
-                        : "Enable Wiggle Paths"
+                        ? t("Disable Wiggle Paths")
+                        : t("Enable Wiggle Paths")
                     }
                     size="sm"
                     active={wigglePaths.enabled}
@@ -5186,7 +5180,7 @@ function ShapeModifiersSection({
                   />
                   <IconButton
                     icon={Trash2}
-                    label="Remove Wiggle Paths"
+                    label={t("Remove Wiggle Paths")}
                     size="sm"
                     variant="danger"
                     onClick={() =>
@@ -5198,10 +5192,10 @@ function ShapeModifiersSection({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2.5 p-3">
-                {renderModifierNumberInput({ modifierId: wigglePaths.id, property: "size", label: "Size", hint: "px", min: 0, max: 4000, step: 1 })}
-                {renderModifierNumberInput({ modifierId: wigglePaths.id, property: "detail", label: "Detail", min: 0, max: 32, step: 1 })}
-                {renderModifierNumberInput({ modifierId: wigglePaths.id, property: "speed", label: "Speed", min: 0, max: 60, step: 0.1 })}
-                {renderModifierNumberInput({ modifierId: wigglePaths.id, property: "seed", label: "Seed", step: 1 })}
+                {renderModifierNumberInput({ modifierId: wigglePaths.id, property: "size", label: t("Size"), hint: "px", min: 0, max: 4000, step: 1 })}
+                {renderModifierNumberInput({ modifierId: wigglePaths.id, property: "detail", label: t("Detail"), min: 0, max: 32, step: 1 })}
+                {renderModifierNumberInput({ modifierId: wigglePaths.id, property: "speed", label: t("Speed"), min: 0, max: 60, step: 0.1 })}
+                {renderModifierNumberInput({ modifierId: wigglePaths.id, property: "seed", label: t("Seed"), step: 1 })}
               </div>
             </div>
           ) : null}
@@ -5217,16 +5211,15 @@ function ShapeModifiersSection({
                     {offsetPaths.name}
                   </span>
                   <span className="block text-[10.5px] text-fg-muted">
-                    {offsetPaths.amount}px {offsetPaths.lineJoin} join
-                  </span>
+                    {offsetPaths.amount}px {offsetPaths.lineJoin} {t(" join")}</span>
                 </span>
                 <div className="flex items-center gap-0.5">
                   <IconButton
                     icon={offsetPaths.enabled ? Eye : EyeOff}
                     label={
                       offsetPaths.enabled
-                        ? "Disable Offset Paths"
-                        : "Enable Offset Paths"
+                        ? t("Disable Offset Paths")
+                        : t("Enable Offset Paths")
                     }
                     size="sm"
                     active={offsetPaths.enabled}
@@ -5242,7 +5235,7 @@ function ShapeModifiersSection({
                   />
                   <IconButton
                     icon={Trash2}
-                    label="Remove Offset Paths"
+                    label={t("Remove Offset Paths")}
                     size="sm"
                     variant="danger"
                     onClick={() =>
@@ -5254,7 +5247,7 @@ function ShapeModifiersSection({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2.5 p-3">
-                {renderModifierNumberInput({ modifierId: offsetPaths.id, property: "amount", label: "Amount", hint: "px", min: -4000, max: 4000, step: 1 })}
+                {renderModifierNumberInput({ modifierId: offsetPaths.id, property: "amount", label: t("Amount"), hint: "px", min: -4000, max: 4000, step: 1 })}
               </div>
             </div>
           ) : null}
@@ -5270,16 +5263,15 @@ function ShapeModifiersSection({
                     {puckerBloat.name}
                   </span>
                   <span className="block text-[10.5px] text-fg-muted">
-                    {puckerBloat.amount}% distortion
-                  </span>
+                    {puckerBloat.amount}{t("% distortion")}</span>
                 </span>
                 <div className="flex items-center gap-0.5">
                   <IconButton
                     icon={puckerBloat.enabled ? Eye : EyeOff}
                     label={
                       puckerBloat.enabled
-                        ? "Disable Pucker & Bloat"
-                        : "Enable Pucker & Bloat"
+                        ? t("Disable Pucker & Bloat")
+                        : t("Enable Pucker & Bloat")
                     }
                     size="sm"
                     active={puckerBloat.enabled}
@@ -5295,7 +5287,7 @@ function ShapeModifiersSection({
                   />
                   <IconButton
                     icon={Trash2}
-                    label="Remove Pucker & Bloat"
+                    label={t("Remove Pucker & Bloat")}
                     size="sm"
                     variant="danger"
                     onClick={() =>
@@ -5307,7 +5299,7 @@ function ShapeModifiersSection({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2.5 p-3">
-                {renderModifierNumberInput({ modifierId: puckerBloat.id, property: "amount", label: "Amount", hint: "%", min: -100, max: 100, step: 1 })}
+                {renderModifierNumberInput({ modifierId: puckerBloat.id, property: "amount", label: t("Amount"), hint: "%", min: -100, max: 100, step: 1 })}
               </div>
             </div>
           ) : null}
@@ -5323,13 +5315,12 @@ function ShapeModifiersSection({
                     {twist.name}
                   </span>
                   <span className="block text-[10.5px] text-fg-muted">
-                    {twist.angle}deg twist
-                  </span>
+                    {twist.angle}{t("deg twist")}</span>
                 </span>
                 <div className="flex items-center gap-0.5">
                   <IconButton
                     icon={twist.enabled ? Eye : EyeOff}
-                    label={twist.enabled ? "Disable Twist" : "Enable Twist"}
+                    label={twist.enabled ? t("Disable Twist") : t("Enable Twist")}
                     size="sm"
                     active={twist.enabled}
                     onClick={() =>
@@ -5340,7 +5331,7 @@ function ShapeModifiersSection({
                   />
                   <IconButton
                     icon={Trash2}
-                    label="Remove Twist"
+                    label={t("Remove Twist")}
                     size="sm"
                     variant="danger"
                     onClick={() =>
@@ -5350,7 +5341,7 @@ function ShapeModifiersSection({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2.5 p-3">
-                {renderModifierNumberInput({ modifierId: twist.id, property: "angle", label: "Angle", hint: "deg", min: -3600, max: 3600, step: 1 })}
+                {renderModifierNumberInput({ modifierId: twist.id, property: "angle", label: t("Angle"), hint: t("deg"), min: -3600, max: 3600, step: 1 })}
               </div>
             </div>
           ) : null}

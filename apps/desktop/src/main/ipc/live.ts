@@ -1,35 +1,20 @@
 /**
  * Live collaboration IPC (ADR 0004): the renderer-facing handles behind
- * window.openreel.facade / .collabControl.
+ * window.openreel.collabControl.
  *
- * Every channel is restricted to the main editor window's webContents (the
- * embedded chat); facade.call additionally validates the verb against the
- * facade contract before it reaches the session host. The FacadeResult
- * crosses IPC in the global.d.ts wire shape ({ ok, data?, error? }).
+ * Every channel is restricted to the main editor window's webContents. Agent
+ * reasoning and tool calls arrive through the external live endpoint; this
+ * IPC surface only controls that session and reports its status.
  */
 import { ipcMain } from "electron";
 import { z } from "zod";
-import type { FacadeResult } from "@openreel/agent-facade";
 import { CHANNELS } from "../../shared/channels";
-import type { LiveFacadeResultWire } from "../../shared/live";
 import { liveTargetWebContents } from "../live/renderer-store-adapter";
-import { isFacadeVerb, type LiveSessionHost } from "../live/live-session-host";
-
-const facadeCallArgsSchema = z.object({
-  verb: z.string(),
-  params: z.unknown().optional(),
-});
+import type { LiveSessionHost } from "../live/live-session-host";
 
 const setModeArgsSchema = z.object({
   mode: z.enum(["observe", "assist", "autonomous"]),
 });
-
-/** In-process { ok, value } → wire { ok, data }; errors pass verbatim. */
-function toWire(result: FacadeResult<unknown>): LiveFacadeResultWire {
-  return result.ok
-    ? { ok: true, data: result.value }
-    : { ok: false, error: result.error };
-}
 
 function assertMainWindowSender(sender: unknown): void {
   const contents = liveTargetWebContents();
@@ -41,15 +26,6 @@ function assertMainWindowSender(sender: unknown): void {
 }
 
 export function registerLiveIpc(host: LiveSessionHost): void {
-  ipcMain.handle(CHANNELS.facadeCall, async (event, raw) => {
-    assertMainWindowSender(event.sender);
-    const { verb, params } = facadeCallArgsSchema.parse(raw);
-    if (!isFacadeVerb(verb)) {
-      throw new Error(`[ipc] unknown facade verb: ${verb}`);
-    }
-    return toWire(await host.callEmbedded(verb, params));
-  });
-
   ipcMain.handle(CHANNELS.collabEnable, async (event) => {
     assertMainWindowSender(event.sender);
     return host.enable();

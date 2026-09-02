@@ -1,0 +1,553 @@
+/**
+ * Small, dependency-free reference adapter for an external Agent.
+ *
+ * This module owns only an HTTP JSON-RPC carrier and discovery descriptor. It
+ * does not create an Agent session, retain history, call MCP, or know about a
+ * provider/model. The hooks are the external Agent's boundary.
+ */
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
+import { createServer } from "node:http";
+import { dirname, resolve } from "node:path";
+
+export const MAX_REQUEST_BYTES = 256 * 1024;
+export const CONVERSATION_ENDPOINT_PATH = "/conversation";
+export const CONVERSATION_PROTOCOL_VERSION = "openreel-conversation/1";
+
+const MAX_SESSION_ID_LENGTH = 512;
+const MAX_NAME_LENGTH = 256;
+const MAX_VERSION_LENGTH = 128;
+const MAX_DESCRIPTOR_LENGTH = 64 * 1024;
+const CAPABILITY_LEVELS = new Set(["basic", "streaming", "observable"]);
+
+class RpcFault extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = "RpcFault";
+    this.code = code;
+  }
+}
+
+class RequestTooLarge extends Error {
+  constructor() {
+    super("Request body is too large");
+    this.name = "RequestTooLarge";
+  }
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isRequestId(value) {
+  return (
+    (typeof value === "string" && value.length > 0 && value.length <= 512) ||
+    (typeof value === "number" && Number.isSafeInteger(value))
+  );
+}
+
+function isCursor(value) {
+  return (
+    (typeof value === "string" && value.length <= 512) ||
+    (typeof value === "number" && Number.isSafeInteger(value))
+  );
+}
+
+function requiredString(value, field, maxLength) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maxLength
+  ) {
+    throw new TypeError(`Invalid ${field}`);
+  }
+  return value;
+}
+
+function optionalString(value, field, maxLength) {
+  if (value === undefined) return undefined;
+  return requiredString(value, field, maxLength);
+}
+
+function normalizeAgent(agent) {
+  if (!isRecord(agent)) throw new TypeError("Invalid agent descriptor");
+  const name = requiredString(agent.name, "agent name", MAX_NAME_LENGTH);
+  const version = optionalString(agent.version, "agent version", MAX_VERSION_LENGTH);
+  return { name, ...(version === undefined ? {} : { version }) };
+}
+
+function normalizeAdapter(adapter) {
+  if (!isRecord(adapter)) throw new TypeError("Invalid adapter descriptor");
+  const name = requiredString(adapter.name, "adapter name", MAX_NAME_LENGTH);
+  const capabilityLevel = adapter.capabilityLevel;
+  if (typeof capabilityLevel !== "string" || !CAPABILITY_LEVELS.has(capabilityLevel)) {
+    throw new TypeError("Invalid adapter capability level");
+  }
+  return { name, capabilityLevel };
+}
+
+function normalizeOptions(options) {
+  if (!isRecord(options)) throw new TypeError("Adapter options are required");
+  const sessionId = requiredString(options.sessionId, "session id", MAX_SESSION_ID_LENGTH);
+  const descriptorPath = requiredString(options.descriptorPath, "descriptor path", 4_096);
+  const agent = normalizeAgent(options.agent);
+  const adapter = normalizeAdapter(options.adapter);
+  for (const name of [
+    "onInitialize",
+    "onResume",
+    "onPrompt",
+    "onCancel",
+    "onApproval",
+    "onUpdates",
+  ]) {
+    if (options[name] !== undefined && typeof options[name] !== "function") {
+      throw new TypeError(`${name} must be a function`);
+    }
+  }
+  return {
+    sessionId,
+    descriptorPath: resolve(descriptorPath),
+    agent,
+    adapter,
+    onInitialize: options.onInitialize,
+    onResume: options.onResume,
+    onPrompt: options.onPrompt,
+    onCancel: options.onCancel,
+    onApproval: options.onApproval,
+    onUpdates: options.onUpdates,
+  };
+}
+
+function conversationCapabilities(capabilityLevel, options) {
+  const streaming = capabilityLevel === "streaming" || capabilityLevel === "observable";
+  const observable = capabilityLevel === "observable";
+  return {
+    formalReply: true,
+    streaming,
+    reasoningSummary: observable,
+    toolEvents: observable,
+    approval: observable && typeof options.onApproval === "function",
+    usage: observable,
+    artifact: observable,
+    subtask: observable,
+  };
+}
+
+function defaultInitialize(options) {
+  return {
+    protocolVersion: CONVERSATION_PROTOCOL_VERSION,
+    agentInfo: options.agent,
+    sessionCapabilities: {
+      resume: true,
+      prompt: true,
+      cancel: true,
+      conversation: conversationCapabilities(options.adapter.capabilityLevel, options),
+    },
+  };
+}
+
+function defaultUpdates(params) {
+  return {
+    cursor: isRecord(params) && isCursor(params.after) ? params.after : "0",
+    notifications: [],
+  };
+}
+
+function genericHookFailure() {
+  // Never include hook exception text: it may contain a token, prompt, path,
+  // provider detail, or another secret supplied by the external Agent.
+  return new RpcFault(-32000, "External Agent request failed");
+}
+
+async function invokeHook(hook, params, fallback) {
+  if (!hook) return fallback();
+  try {
+    const result = await hook(params);
+    return result === undefined ? fallback() : result;
+  } catch {
+    throw genericHookFailure();
+  }
+}
+
+function requireParams(request) {
+  if (!isRecord(request.params)) throw new RpcFault(-32602, "Invalid params");
+  return request.params;
+}
+
+function requireSession(params, sessionId) {
+  if (params.sessionId !== sessionId) throw new RpcFault(-32602, "Invalid params");
+}
+
+function requireConversationParams(params, sessionId) {
+  requireSession(params, sessionId);
+  return params;
+}
+
+function normalizeNotifications(result) {
+  if (
+    !isRecord(result) ||
+    !isCursor(result.cursor) ||
+    !Array.isArray(result.notifications)
+  ) {
+    throw new RpcFault(-32001, "External Agent returned an invalid update batch");
+  }
+  const notifications = result.notifications.map((notification) => {
+    if (!isRecord(notification) || typeof notification.method !== "string") {
+      throw new RpcFault(-32001, "External Agent returned an invalid update batch");
+    }
+    return {
+      method: notification.method,
+      ...(notification.params === undefined ? {} : { params: notification.params }),
+    };
+  });
+  return { cursor: result.cursor, notifications };
+}
+
+function validatePromptParams(params, sessionId) {
+  requireConversationParams(params, sessionId);
+  if (
+    !Array.isArray(params.prompt) ||
+    params.prompt.some(
+      (part) =>
+        !isRecord(part) ||
+        part.type !== "text" ||
+        typeof part.text !== "string",
+    )
+  ) {
+    throw new RpcFault(-32602, "Invalid params");
+  }
+  return params;
+}
+
+function validateApprovalParams(params, sessionId) {
+  requireConversationParams(params, sessionId);
+  if (
+    typeof params.requestId !== "string" ||
+    params.requestId.length === 0 ||
+    (params.decision !== "approved" && params.decision !== "denied")
+  ) {
+    throw new RpcFault(-32602, "Invalid params");
+  }
+  return params;
+}
+
+function validateUpdateParams(params, sessionId) {
+  requireConversationParams(params, sessionId);
+  if (params.after !== undefined && !isCursor(params.after)) {
+    throw new RpcFault(-32602, "Invalid params");
+  }
+  if (
+    params.waitMs !== undefined &&
+    (typeof params.waitMs !== "number" ||
+      !Number.isSafeInteger(params.waitMs) ||
+      params.waitMs < 0 ||
+      params.waitMs > 30_000)
+  ) {
+    throw new RpcFault(-32602, "Invalid params");
+  }
+  return params;
+}
+
+async function dispatch(request, options) {
+  const method = request.method;
+  switch (method) {
+    case "initialize": {
+      if (!isRecord(request.params)) throw new RpcFault(-32602, "Invalid params");
+      if (
+        request.params.protocolVersion !== undefined &&
+        request.params.protocolVersion !== CONVERSATION_PROTOCOL_VERSION
+      ) {
+        throw new RpcFault(-32602, "Unsupported protocol version");
+      }
+      return invokeHook(
+        options.onInitialize,
+        request.params,
+        () => defaultInitialize(options),
+      );
+    }
+    case "session/resume": {
+      const params = requireParams(request);
+      requireSession(params, options.sessionId);
+      return invokeHook(options.onResume, params, () => ({ sessionId: options.sessionId }));
+    }
+    case "session/prompt": {
+      const params = validatePromptParams(requireParams(request), options.sessionId);
+      return invokeHook(options.onPrompt, params, () => ({}));
+    }
+    case "session/cancel": {
+      const params = requireParams(request);
+      requireSession(params, options.sessionId);
+      await invokeHook(options.onCancel, params, () => undefined);
+      return {};
+    }
+    case "session/approval": {
+      if (!options.onApproval) throw new RpcFault(-32601, "Method not found");
+      const params = validateApprovalParams(requireParams(request), options.sessionId);
+      return invokeHook(options.onApproval, params, () => ({}));
+    }
+    case "openreel/session/updates": {
+      const params = validateUpdateParams(requireParams(request), options.sessionId);
+      const result = await invokeHook(options.onUpdates, params, () => defaultUpdates(params));
+      return normalizeNotifications(result);
+    }
+    default:
+      throw new RpcFault(-32601, "Method not found");
+  }
+}
+
+function responseBody(id, result, token) {
+  // Hook results are Agent-owned data. Keep the adapter's bearer secret out
+  // even if an accidentally broad hook result includes it as a string.
+  return JSON.stringify({ jsonrpc: "2.0", id, result }).split(token).join("[redacted]");
+}
+
+function errorBody(id, error) {
+  const fault = error instanceof RpcFault ? error : genericHookFailure();
+  return JSON.stringify({
+    jsonrpc: "2.0",
+    id,
+    error: { code: fault.code, message: fault.message },
+  });
+}
+
+function sendJson(response, statusCode, body) {
+  const payload = Buffer.from(body, "utf8");
+  response.writeHead(statusCode, {
+    "content-type": "application/json",
+    "content-length": payload.byteLength,
+    "cache-control": "no-store",
+  });
+  response.end(payload);
+}
+
+function sendNoContent(response) {
+  response.writeHead(204, { "cache-control": "no-store" });
+  response.end();
+}
+
+function authorizationMatches(value, token) {
+  const expected = Buffer.from(`Bearer ${token}`);
+  const actual = Buffer.from(typeof value === "string" ? value : "");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+async function readRequestBody(request) {
+  const contentLength = request.headers["content-length"];
+  if (
+    contentLength !== undefined &&
+    (!/^\d+$/.test(contentLength) || Number(contentLength) > MAX_REQUEST_BYTES)
+  ) {
+    throw new RequestTooLarge();
+  }
+  const chunks = [];
+  let size = 0;
+  try {
+    for await (const chunk of request) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += buffer.byteLength;
+      if (size > MAX_REQUEST_BYTES) throw new RequestTooLarge();
+      chunks.push(buffer);
+    }
+  } catch (error) {
+    if (error instanceof RequestTooLarge) throw error;
+    throw new RpcFault(-32700, "Parse error");
+  }
+  return Buffer.concat(chunks, size).toString("utf8");
+}
+
+function requestId(request) {
+  if (!Object.hasOwn(request, "id") || request.id === undefined) {
+    return { notification: true, id: null };
+  }
+  if (!isRequestId(request.id)) throw new RpcFault(-32600, "Invalid Request");
+  return { notification: false, id: request.id };
+}
+
+async function writeDescriptor(descriptorPath, descriptor) {
+  const parent = dirname(descriptorPath);
+  await mkdir(parent, { recursive: true, mode: 0o700 });
+  const temporaryPath = `${descriptorPath}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
+  const payload = JSON.stringify(descriptor, null, 2) + "\n";
+  if (Buffer.byteLength(payload, "utf8") > MAX_DESCRIPTOR_LENGTH) {
+    throw new Error("Adapter descriptor is too large");
+  }
+  let handle;
+  try {
+    handle = await open(temporaryPath, "wx", 0o600);
+    await handle.writeFile(payload, "utf8");
+    await handle.chmod(0o600);
+    await handle.sync();
+    await handle.close();
+    handle = undefined;
+    await rename(temporaryPath, descriptorPath);
+  } catch (error) {
+    await handle?.close().catch(() => undefined);
+    await unlink(temporaryPath).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function removeOwnedDescriptor(descriptorPath, endpoint, token) {
+  let raw;
+  try {
+    raw = await readFile(descriptorPath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return;
+    return;
+  }
+  let descriptor;
+  try {
+    descriptor = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  // A later adapter atomically replaces the descriptor. Leave that instance
+  // untouched when either ownership marker no longer matches.
+  if (
+    !isRecord(descriptor) ||
+    descriptor.endpoint !== endpoint ||
+    descriptor.token !== token
+  ) {
+    return;
+  }
+  await unlink(descriptorPath).catch(() => undefined);
+}
+
+function closeServer(server, sockets) {
+  for (const socket of sockets) socket.destroy();
+  return new Promise((resolveClose) => {
+    server.close(() => resolveClose());
+  });
+}
+
+/**
+ * Start a thin external-Agent conversation carrier.
+ *
+ * The descriptor shape intentionally mirrors ConversationEndpointDescriptor
+ * in the desktop loopback connector: no extra endpoint, model, key, or
+ * transcript fields are written. Hooks receive protocol params only.
+ */
+export async function startConversationAdapter(options) {
+  const normalized = normalizeOptions(options);
+  const token = randomBytes(32).toString("hex");
+  const sockets = new Set();
+  let endpoint;
+  let closePromise;
+
+  const server = createServer((request, response) => {
+    void (async () => {
+      if (
+        request.method !== "POST" ||
+        request.url !== CONVERSATION_ENDPOINT_PATH
+      ) {
+        response.writeHead(404, { "cache-control": "no-store" });
+        response.end();
+        return;
+      }
+      if (!authorizationMatches(request.headers.authorization, token)) {
+        sendJson(response, 401, JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+      let body;
+      try {
+        body = await readRequestBody(request);
+      } catch (error) {
+        if (error instanceof RequestTooLarge) {
+          sendJson(response, 413, JSON.stringify({ error: "Request body is too large" }));
+          return;
+        }
+        sendJson(response, 400, errorBody(null, error));
+        return;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        sendJson(response, 400, errorBody(null, new RpcFault(-32700, "Parse error")));
+        return;
+      }
+      let requestInfo;
+      try {
+        if (
+          !isRecord(parsed) ||
+          parsed.jsonrpc !== "2.0" ||
+          typeof parsed.method !== "string" ||
+          parsed.method.length === 0
+        ) {
+          throw new RpcFault(-32600, "Invalid Request");
+        }
+        requestInfo = requestId(parsed);
+      } catch (error) {
+        sendJson(response, 400, errorBody(null, error));
+        return;
+      }
+      try {
+        const result = await dispatch(parsed, normalized);
+        if (requestInfo.notification) {
+          sendNoContent(response);
+          return;
+        }
+        sendJson(response, 200, responseBody(requestInfo.id, result, token));
+      } catch (error) {
+        if (requestInfo.notification) {
+          sendNoContent(response);
+          return;
+        }
+        sendJson(response, 200, errorBody(requestInfo.id, error));
+      }
+    })().catch(() => {
+      if (!response.headersSent) {
+        sendJson(response, 500, errorBody(null, null));
+      } else {
+        response.destroy();
+      }
+    });
+  });
+  server.requestTimeout = 35_000;
+  server.headersTimeout = 10_000;
+  server.keepAliveTimeout = 5_000;
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+
+  try {
+    await new Promise((resolveListen, rejectListen) => {
+      server.once("error", rejectListen);
+      server.listen(0, "127.0.0.1", () => {
+        server.removeListener("error", rejectListen);
+        resolveListen();
+      });
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Adapter did not receive a port");
+    endpoint = `http://127.0.0.1:${address.port}${CONVERSATION_ENDPOINT_PATH}`;
+    const descriptor = {
+      version: 1,
+      transport: "http-jsonrpc-long-poll",
+      endpoint,
+      token,
+      sessionId: normalized.sessionId,
+      agent: normalized.agent,
+      adapter: normalized.adapter,
+    };
+    await writeDescriptor(normalized.descriptorPath, descriptor);
+  } catch (error) {
+    await closeServer(server, sockets).catch(() => undefined);
+    throw error;
+  }
+
+  return {
+    endpoint,
+    descriptorPath: normalized.descriptorPath,
+    async close() {
+      if (!closePromise) {
+        closePromise = (async () => {
+          await closeServer(server, sockets).catch(() => undefined);
+          await removeOwnedDescriptor(normalized.descriptorPath, endpoint, token);
+        })();
+      }
+      return closePromise;
+    },
+  };
+}

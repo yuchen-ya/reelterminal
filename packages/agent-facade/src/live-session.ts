@@ -315,6 +315,7 @@ export class LiveFacadeSession {
         selectedTextIds: [...context.selectedTextIds],
         timeRange: context.timeRange ? { ...context.timeRange } : null,
         canvasPoint: context.canvasPoint ? { ...context.canvasPoint } : null,
+        references: context.references ? { ...context.references } : {},
         identity: {
           projectId: identity.projectId,
           projectName: identity.projectName,

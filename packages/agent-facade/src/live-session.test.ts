@@ -65,6 +65,7 @@ class FakeLiveStore implements LiveProjectStore {
     selectedTextIds: [],
     timeRange: null,
     canvasPoint: null,
+    references: {},
   };
   readonly batches: RecordedBatch[] = [];
   saveCount = 0;
@@ -98,6 +99,7 @@ class FakeLiveStore implements LiveProjectStore {
       canvasPoint: this.context.canvasPoint
         ? { ...this.context.canvasPoint }
         : null,
+      references: this.context.references ? { ...this.context.references } : {},
     };
   }
 
@@ -313,6 +315,7 @@ describe("editor.get_context — the 15th verb", () => {
       selectedTextIds: ["text-1"],
       timeRange: { startSeconds: 1, endSeconds: 3.5 },
       canvasPoint: { x: 0.5, y: 0.85 },
+      references: {},
     });
     const facade = liveFacade();
     const res = await facade["editor.get_context"]();
@@ -328,6 +331,7 @@ describe("editor.get_context — the 15th verb", () => {
       selectedTextIds: ["text-1"],
       timeRange: { startSeconds: 1, endSeconds: 3.5 },
       canvasPoint: { x: 0.5, y: 0.85 },
+      references: {},
       identity: {
         projectId: store.project.id,
         projectName: "Live Demo",
@@ -800,8 +804,8 @@ describe("session modes + writer lease (Decisions 6/7)", () => {
       expect(blocked.error.details?.leaseHolder).toBe("agent-1");
     }
 
-    // The holder goes away (e.g. the embedded session is disposed by a mode
-    // switch) — the lease is released.
+    // The holder goes away (for example, the live session is disabled) — the
+    // lease is released.
     await first.dispose();
     expect(lease.holder()).toBeNull();
 

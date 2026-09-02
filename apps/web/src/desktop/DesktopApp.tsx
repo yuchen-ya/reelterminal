@@ -10,16 +10,13 @@ import { useProjectStore } from "../stores/project-store";
 import { autoSaveManager } from "../services/auto-save";
 import { UpdateBanner } from "./UpdateBanner";
 import { installRendererCrashHandlers, reportRendererCrash } from "./crash-reporting";
-import { installMcpListener } from "../services/agent/mcp-listener";
 import { installLiveBridge } from "../services/agent/live-bridge";
-import { getLiveEditorHost } from "../services/agent/host-singleton";
-import { createExportJobRunner } from "../services/agent/export-job-runner";
-import { useGpuJobPoller } from "../hooks/useGpuJobPoller";
 import { useUIStore } from "../stores/ui-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { SettingsDialog } from "../components/editor/settings/SettingsDialog";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { Settings } from "@/icons/lucide-compat";
+import { useTranslation } from "react-i18next";
 import "./theme/desktop-theme.css";
 
 function detectPlatform(): string {
@@ -29,12 +26,11 @@ function detectPlatform(): string {
 }
 
 export function DesktopApp(): JSX.Element {
+  const { t } = useTranslation();
   const platform = detectPlatform();
   const hasProject = useProjectStore((state) => state.hasOpenProject);
   const desktopPage = useUIStore((state) => state.desktopPage);
   const isVideoEditing = desktopPage !== "motion";
-
-  useGpuJobPoller();
 
   // Drive native-menu actions into the app: undo/redo hit the project store
   // directly; new/open/export are broadcast as events for the relevant UI to
@@ -101,15 +97,6 @@ export function DesktopApp(): JSX.Element {
   // collector so editor-side faults are captured alongside main-process crashes.
   useEffect(() => installRendererCrashHandlers(), []);
 
-  // Serve main-process MCP tool calls against the live editor so external MCP
-  // clients drive the open project through the same tool layer as the chat panel.
-  // Also back the export_* job tools with a runner that renders via the export
-  // engine and uploads the artifact to R2, returning a presigned download URL.
-  useEffect(() => {
-    getLiveEditorHost().setJobRunner(createExportJobRunner());
-    return installMcpListener();
-  }, []);
-
   // ADR 0004 Decision 1: serve the main-process live facade session's store
   // requests (getState/getContext/applyActions/requestSave) against the
   // canonical renderer store. No-op off desktop.
@@ -137,7 +124,7 @@ export function DesktopApp(): JSX.Element {
       <DesktopTitleBar platform={platform}>
         {hasProject && isVideoEditing ? <DesktopExportButton /> : null}
         <Button
-          label="Settings"
+          label={t("desktop.settings")}
           variant="secondary"
           size="sm"
           icon={<Settings size={15} aria-hidden />}

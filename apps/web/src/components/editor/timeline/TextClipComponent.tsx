@@ -7,6 +7,7 @@ import { calculateSnap } from "./utils";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useUIStore } from "../../../stores/ui-store";
+import { AgentReferenceBadge } from "./AgentReferenceBadge";
 
 interface TextClipComponentProps {
   textClip: TextClip;
@@ -211,6 +212,7 @@ export const TextClipComponent: React.FC<TextClipComponentProps> = ({
             transition: isInteracting ? 'none' : 'opacity 150ms, box-shadow 150ms',
           }}
         >
+          <AgentReferenceBadge kind="text" entityId={textClip.id} />
           <div
             className={`absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 flex items-center justify-center transition-opacity ${
               isSelected ? "opacity-100 bg-amber-400" : "opacity-0 group-hover:opacity-100 hover:bg-amber-400/50"

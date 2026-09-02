@@ -1,6 +1,6 @@
 # Motion Creator rigging pipeline
 
-OpenReel needs a real DCC-backed pipeline for high quality 3D character work.
+ReelTerminal needs a real DCC-backed pipeline for high quality 3D character work.
 Static GLB placement is enough for props and environments, but a waving
 astronaut, walk cycle, hand pose, or camera-aware character performance needs
 armatures, animation clips, inverse kinematics, and retargeting.

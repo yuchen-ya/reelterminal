@@ -4,7 +4,7 @@ import { buildMenuTemplate } from "../src/main/app-menu";
 describe("buildMenuTemplate", () => {
   it("includes the app menu first on mac and not on others", () => {
     const mac = buildMenuTemplate("darwin");
-    expect(mac[0].label).toBe("OpenReel");
+    expect(mac[0].label).toBe("ReelTerminal");
     const win = buildMenuTemplate("win32");
     expect(win[0].label).toBe("File");
   });

@@ -9,11 +9,11 @@ export type PanelId =
   | "audioMixer"
   | "colorGrading"
   | "subtitles"
-  | "ai"
-  | "agentChat";
+  | "externalAgent";
 
 export type SelectionType =
   | "clip"
+  | "media"
   | "track"
   | "effect"
   | "keyframe"
@@ -202,8 +202,7 @@ const DEFAULT_PANELS: Record<PanelId, PanelState> = {
   audioMixer: { visible: false, width: 300 },
   colorGrading: { visible: false, width: 400 },
   subtitles: { visible: false, width: 300 },
-  ai: { visible: false, width: 300 },
-  agentChat: { visible: false, width: 380 },
+  externalAgent: { visible: false, width: 380 },
 };
 
 export const useUIStore = create<UIState>()(
@@ -594,7 +593,7 @@ export const useUIStore = create<UIState>()(
       }),
       {
         name: "openreel-ui-preferences",
-        version: 2,
+        version: 3,
         migrate: (persisted: unknown, version: number) => {
           const state = persisted as Record<string, unknown>;
           if (version === 0) {
@@ -603,8 +602,15 @@ export const useUIStore = create<UIState>()(
           if (version < 2) {
             const panels = (state.panels ?? {}) as Record<string, PanelState>;
             if (!panels.agentChat) {
-              panels.agentChat = DEFAULT_PANELS.agentChat;
+              panels.agentChat = DEFAULT_PANELS.externalAgent;
             }
+            state.panels = panels;
+          }
+          if (version < 3) {
+            const panels = (state.panels ?? {}) as Record<string, PanelState>;
+            panels.externalAgent =
+              panels.agentChat ?? DEFAULT_PANELS.externalAgent;
+            delete panels.agentChat;
             state.panels = panels;
           }
           return state;

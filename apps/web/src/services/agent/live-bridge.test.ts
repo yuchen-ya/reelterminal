@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { Action } from "@openreel/core";
 import type { TextClip } from "@openreel/core";
 import { useProjectStore, getProjectRevision } from "../../stores/project-store";
-import { getLiveEditorContext } from "../../stores/editor-context-store";
+import {
+  getLiveEditorContext,
+  markAgentReferences,
+} from "../../stores/editor-context-store";
 import {
   handleLiveBridgeRequest,
   installLiveBridge,
@@ -82,6 +85,40 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     const res = await handleLiveBridgeRequest(req("getContext"));
     expect(res.ok).toBe(true);
     expect(res.result).toEqual(getLiveEditorContext());
+  });
+
+  it("getContext carries detached machine-readable agent references", async () => {
+    markAgentReferences([
+      {
+        kind: "video",
+        entityId: "clip-reference-1",
+        label: "Opening shot",
+        timing: { startSeconds: 2, endSeconds: 5 },
+        trackOrder: 0,
+      },
+    ]);
+
+    const res = await handleLiveBridgeRequest(req("getContext"));
+    expect(res.ok).toBe(true);
+    const result = res.result as {
+      references: Record<string, {
+        number: number;
+        kind: string;
+        entityId: string;
+        label: string;
+        timing: { startSeconds: number | null; endSeconds: number | null };
+        revisionAtMark: number;
+        stale: boolean;
+      }>;
+    };
+    expect(result.references["1"]).toMatchObject({
+      number: 1,
+      kind: "video",
+      entityId: "clip-reference-1",
+      label: "Opening shot",
+      timing: { startSeconds: 2, endSeconds: 5 },
+      stale: true,
+    });
   });
 
   it("applyActions routes plain actions through executeAction as one undo unit", async () => {

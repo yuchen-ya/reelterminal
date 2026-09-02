@@ -18,9 +18,6 @@ vi.mock("./components/MotionTimeline", () => ({
 vi.mock("./components/LayerPanel", () => ({
   LayerPanel: () => <div>Layer panel</div>,
 }));
-vi.mock("./components/CreationWorkspacePanel", () => ({
-  CreationWorkspacePanel: () => <div>Creation workspace</div>,
-}));
 vi.mock("./components/AssetPanel", () => ({
   AssetPanel: () => <div>Asset panel</div>,
 }));
@@ -161,7 +158,7 @@ describe("MotionCreatorShell layout", () => {
   it("organizes motion creation around start and workflow groups", () => {
     renderShell();
 
-    for (const label of ["Start", "Layers", "Media", "Kits", "Scenes"]) {
+    for (const label of ["Start", "Layers", "Media", "Kits"]) {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     }
 

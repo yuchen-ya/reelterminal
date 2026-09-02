@@ -15,9 +15,9 @@ export function buildMenuTemplate(platform: string): MenuNode[] {
   const template: MenuNode[] = [];
   if (isMac) {
     template.push({
-      label: "OpenReel",
+      label: "ReelTerminal",
       submenu: [
-        { label: "About OpenReel", role: "about" },
+        { label: "About ReelTerminal", role: "about" },
         { label: "Settings…", accelerator: "Cmd+,", actionId: "settings" },
         { label: "Quit", role: "quit", accelerator: "Cmd+Q" },
       ],
@@ -67,7 +67,7 @@ export function buildMenuTemplate(platform: string): MenuNode[] {
   template.push({
     label: "Help",
     submenu: [
-      { label: "OpenReel Help" },
+      { label: "ReelTerminal Help" },
       { label: "Open Source Licenses", actionId: "openLicenses" },
     ],
   });

@@ -1,4 +1,4 @@
-# OpenReel Desktop — Distribution Guide
+# ReelTerminal Desktop — Distribution Guide
 
 How to build, sign, notarize, and ship the desktop app for **macOS, Windows, and Linux**.
 
@@ -86,7 +86,7 @@ In the release CI these come from the `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD` se
 Built apps are **not** on GitHub Releases. They live in a Cloudflare **R2**
 bucket served at **`https://dl.openreel.video`**, which hosts:
 
-- the installers — `OpenReel-<version>-arm64.dmg`, `-x64.dmg`, `-x64.exe`, `-x86_64.AppImage`, `-amd64.deb` (electron-builder's arch token differs per target: x64 → `x86_64` for AppImage, `amd64` for deb),
+- the installers — `ReelTerminal-<version>-arm64.dmg`, `-x64.dmg`, `-x64.exe`, `-x86_64.AppImage`, `-amd64.deb` (electron-builder's arch token differs per target: x64 → `x86_64` for AppImage, `amd64` for deb),
 - the electron-updater feed (`latest.yml`, `latest-mac.yml`, `latest-linux.yml`, `*.zip`, `*.blockmap`),
 - `manifest.json` — the human-download index the landing page reads.
 
@@ -151,8 +151,8 @@ the live manifest.
 
 ## 7. App identity
 
-- Product name: **OpenReel** · appId: `video.openreel.desktop` · version: `apps/desktop/package.json`.
-- Note: the GPU bundle id referenced in `src/main/index.ts` (`com.openreel.video`) differs from `video.openreel.desktop` — reconcile if a single identity is desired.
+- Product name: **ReelTerminal** · appId: `video.reelterminal.desktop` · version: `apps/desktop/package.json`.
+- Note: the GPU bundle id referenced in `src/main/index.ts` (`com.openreel.video`) differs from `video.reelterminal.desktop` — reconcile if a single identity is desired.
 
 ## What we (the product owner) must provide
 1. ~~ffmpeg binaries / GPL attribution / auto-update~~ — **done** (§2, §5).

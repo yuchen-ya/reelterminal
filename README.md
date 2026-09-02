@@ -1,210 +1,255 @@
-# Agent Video Engine Lab
+# ReelTerminal
 
-A video engine where humans and agents can each edit independently—or work
-together in the same timeline. One canonical project world, three modes:
-human-only (GUI), agent-only (MCP/CLI/headless), and live human+agent
-collaboration. Forked from [OpenReel](https://github.com/Augani/openreel-video)
-(MIT), being prepared for open-sourcing.
+> **ReelTerminal，你的 AI 视频终点站。生成发生在任何地方，成片发生在这里。**
+>
+> **ReelTerminal — your AI video's final stop. Generate anywhere; finish here.**
 
-**Stage: early slices.** Two slices of real, tested machinery exist (below);
-everything else — transports, full verb coverage, live GUI↔agent parity — is
-roadmap, not present.
+ReelTerminal is an agent-native video finishing editor. An external Agent, a
+skill, ComfyUI, or any other creation system may generate video, images,
+audio, animation, and text. ReelTerminal turns those ingredients into one
+reviewable timeline and one finished, verifiable film.
 
-## Status at a glance
+The human and the external Agent are equal peers: they have equal semantic
+authority over the same project, but use different paths. The user works in
+the GUI; the Agent works through the live facade. Both paths meet at the
+canonical `Project`, revision checks, undo/redo, preview, and export.
 
-| Slice | State | What it proves |
-|---|---|---|
-| Slice 1 — headless agent facade | **Merged** ([PR #1](https://github.com/yuchen-ya/agent-video-engine-lab/pull/1)) | An agent can create a project, import media, build and trim a timeline, and add text — atomically, idempotently, over the canonical `Project` state, in pure Node. |
-| Slice 1b — Chromium render/export runtime | **Merged** ([PR #2](https://github.com/yuchen-ya/agent-video-engine-lab/pull/2)) | The same agent surface renders real pixels: PNG frame previews, H.264 MP4 exports with audio, and ffprobe/pixel-level artifact verification — with probe-verified, honestly reported capabilities. |
-| Slice 2+ (MCP/CLI/SKILL transports, wider verbs, live GUI parity) | Not started | See [Roadmap](#roadmap-near-term). |
+ReelTerminal does not embed a general-purpose conversational Agent or generative
+model, select its provider, hold its BYOK key, run its tool-use loop, or own
+conversation history. It is the place where generated inputs become a
+finished film—not another agent or chat provider. Task-specific finishing
+algorithms such as transcription remain ordinary editor tools; they never
+become a second conversational authority.
 
-## Relationship to OpenReel
+The product and repository are named **ReelTerminal**. Inherited technical
+identifiers—including `@openreel/*` packages, `.openreel` project/state paths,
+the `window.openreel` preload bridge, and `openreel-*` protocol/CLI names—stay
+unchanged for compatibility. They are implementation contracts, not the
+user-facing brand.
 
-This repository is a fork of the OpenReel video editor by **Augustus Otu and
-Contributors**, MIT licensed ([LICENSE](LICENSE), copyright retained).
+## Current status
 
-**Inherited from upstream** (kept, not re-verified by this lab beyond what the
-slices exercise): the browser editor product (`apps/web`), the desktop /
-studio / image apps, the core engines and canonical `Project` model
-(`packages/core`), and the upstream 304-tool agent registry
-(`packages/agent`, `packages/agent-runner`).
+Slice 3 is the current product foundation. The status below intentionally
+separates what is implemented, what is a reusable foundation, and what remains
+for concrete external integrations.
 
-**Built by this lab:** the extraction audit (`audit/`), the agent facade
-(`packages/agent-facade`), the Chromium runtime (`packages/runtime-chromium`),
-the ADRs (`docs/adr/`), and the design principles
-([`docs/design-principles.md`](docs/design-principles.md)).
+### Implemented in this checkout
 
-The upstream product's feature list and browser-support claims are **not**
-re-claimed here; for the product itself, see upstream. This README only
-describes what this repository has actually built and verified.
+- The browser/desktop editor and the canonical ReelTerminal `Project` model share
+  one editing world.
+- A token-authenticated loopback MCP endpoint exposes exactly **15 live-facade
+  tools**:
 
-## The first principle: Human–Agent Operational Parity
+  `session.describe` · `capabilities.get` · `project.create` · `project.open` ·
+  `project.save` · `project.get_state` · `media.import` · `timeline.get` ·
+  `editor.get_context` · `edit.apply` · `preview.render_frame` ·
+  `export.start` · `job.status` · `job.cancel` · `verify.artifact`.
 
-*One project world, two interfaces, equal operational authority.*
+  In live mode, project creation/open and media import honestly report that
+  the GUI owns those operations. The other tools operate on the open project
+  through the shared live bridge.
+- Live revision and context checks, one-writer lease semantics, observe /
+  assist / autonomous modes, shared undo, and action activity status are in
+  place.
+- Users can mark audio, video, text, media, and graphics entities as stable
+  Agent references (`#1`, `#2`, `#3`, …). Multi-selection assignment is
+  deterministic; repeated marks keep their number; deleted entities remain
+  stale and never silently rebind. References are visible in the editor and
+  available as a machine-readable mapping from `editor.get_context`.
+- The retained product UI is wired for English and Simplified Chinese
+  (`zh-CN`). Current static surfaces are translated, while English remains the
+  fallback for newly introduced or missing copy.
+- The desktop GUI conversation panel and loopback client transport are landed.
+  External Agents/hosts still provide the thin server-side adapter that runs
+  `/conversation` and atomically publishes the private
+  `~/.openreel/conversation-endpoint.json` descriptor; ReelTerminal only reads it.
+- The legacy 304-tool desktop endpoint and the embedded BYOK agent/chat path
+  are removed from the ReelTerminal product contract. The extraction audit and
+  inherited source remain historical reference material only.
 
-The GUI and the agent API must drive the same canonical `Project`, the same
-editing engine, and the same artifact world: GUI buttons, state, and visual
-results have stable agent commands, machine-readable state, and observable
-artifacts as counterparts — and agent edits are reflected in the same project
-the human sees. No GUI-only business state, no agent shadow state, no
-second-class "AI features" surface. Parity means equal semantic capability
-within the same safety boundaries; it never licenses bypassing them.
+### Foundation already available
 
-Full text and today's honest conformance table:
-[`docs/design-principles.md`](docs/design-principles.md).
+- The pure-Node facade provides canonical project operations with typed
+  results, strict schemas, atomic batches, optimistic revisions, serialized
+  execution, and idempotency.
+- The Chromium runtime provides preview, H.264/AAC export, and artifact
+  verification through independent provider interfaces and honest preflight
+  capability reporting.
+- Project persistence, the live-store seam, desktop IPC, the external MCP
+  endpoint, and the external-session conversation protocol/client projection
+  provide the foundation for external-agent collaboration.
 
-## What works today (verified)
+### Remaining integration work
 
-The facade exposes **12 verbs** returning typed results
-(`{ok:true,value} | {ok:false,error}`), with atomic snapshot batches,
-`expectedRevision` optimistic concurrency, idempotency keys, strict closed
-schemas, and live-preflight capability reporting:
+- Each external Agent/host must run and configure its thin `/conversation`
+  server-side adapter, own the descriptor writer lifecycle, and remove the
+  `0600` descriptor on exit. ReelTerminal has no universal provider connector and
+  never embeds a model.
+- Wider editing verbs and richer external-agent interoperability will be
+  added only when they improve the finishing workflow and preserve the
+  product boundary. Generators integrate outside ReelTerminal through the Agent.
 
-- **Slice 1:** `session.describe` · `capabilities.get` · `project.create` ·
-  `project.get_state` · `media.import` · `timeline.get` · `edit.apply`
-- **Slice 1b:** `preview.render_frame` · `export.start` · `job.status` ·
-  `job.cancel` · `verify.artifact`
-
-API, usage, and per-package limits:
-[`packages/agent-facade/README.md`](packages/agent-facade/README.md) ·
-[`packages/runtime-chromium/README.md`](packages/runtime-chromium/README.md).
-
-**Platform evidence (machine-readable):**
-
-- Windows (`win32/x64` in the probe; Windows 11 per PR #2), Chromium 148:
-  [`docs/slice-1b/runtime-probe/windows-local.json`](docs/slice-1b/runtime-probe/windows-local.json)
-  and
-  [`…-verify-report.json`](docs/slice-1b/runtime-probe/windows-local-verify-report.json)
-  — route `chromium-webcodecs`, 150-frame H.264/AAC MP4, pixel checks pass.
-- macOS (`darwin/arm64` in the probe; macOS 15 on the host), Node 22,
-  Chromium 148:
-  [`docs/slice-1b/runtime-probe/macos-local.json`](docs/slice-1b/runtime-probe/macos-local.json)
-  and
-  [`…-verify-report.json`](docs/slice-1b/runtime-probe/macos-local-verify-report.json)
-  — route `chromium-webcodecs`, 150-frame H.264/AAC MP4, pixel checks pass.
-- Linux CI: the `chromium-e2e-evidence` artifact uploaded by every
-  `Chromium E2E (Slice 1b)` run.
+See [`docs/design-principles.md`](docs/design-principles.md) for the enduring
+rules and [`docs/product-scope.md`](docs/product-scope.md) for the product
+boundary and retention rule.
 
 ## Architecture
 
-```
-packages/core              canonical Project model + engines (inherited upstream)
-packages/agent-facade      pure-Node, in-process, transport-agnostic agent API
-                           (12 verbs; owns state semantics, jobs, idempotency)
-packages/runtime-chromium  Playwright-driven Chromium + ffmpeg providers
-                           (pixels, H.264 export, artifact verification)
-apps/web                   inherited browser editor GUI (Vite/React)
-audit/                     frozen extraction audit + machine evidence (historical)
-docs/adr/                  why the design is what it is (ADR 0001, 0002)
-docs/design-principles.md  enduring principles (Principle 1: parity)
-docs/slice-1b/             committed platform probe/verify evidence
+```text
+human GUI ───────────────┐
+                         ├─ canonical Project/actions ─ preview/export
+external Agent via MCP ─┘
 ```
 
-The facade never imports Chromium/Playwright/ffmpeg; pixels arrive through
-three independent provider interfaces (`RenderProvider`, `ExportProvider`,
-`ArtifactVerifier`). Export defaults to **Route W** (in-page WebCodecs H.264
-+ AAC); **Route F** (frames→ffmpeg) is a video-only, explicitly forced
-experiment — never a silent fallback. Details and rationale:
-[ADR 0002](docs/adr/0002-chromium-runtime-slice-1b.md).
+```text
+packages/core              canonical Project model + editing engines
+packages/agent-facade      typed 15-verb facade, headless and live sessions
+packages/runtime-chromium  Chromium render/export providers + verification
+packages/agent-transport   optional headless MCP/CLI transport foundation
+apps/web                   ReelTerminal editor GUI and renderer-side live bridge
+apps/desktop               desktop shell and external live MCP endpoint
+docs/adr/                  point-in-time architecture decisions
+docs/design-principles.md  enduring product and engineering principles
+docs/product-scope.md      product boundary and feature-retention rule
+audit/                     frozen historical extraction audit and evidence
+```
+
+The facade never owns a model or a conversation. It reads and mutates the
+canonical project through the appropriate store seam, and it reports the
+current live context on demand. The renderer-side bridge carries actions and
+detached context; it does not synchronize a second Agent project model.
+
+### Agent references
+
+References are ephemeral editor context, not project content. Each mark stores
+the entity kind, stable entity ID, human label, timeline timing when present,
+and the project revision at which it was marked. Numbers are session-local and
+monotonic: they are never renumbered or reused, including after deletion.
+
+`editor.get_context` exposes them as a number-keyed mapping:
+
+```json
+{
+  "references": {
+    "1": {
+      "kind": "video",
+      "entityId": "clip-abc",
+      "label": "Opening shot",
+      "timing": { "startSeconds": 0, "endSeconds": 4.5 },
+      "revisionAtMark": 12,
+      "stale": false
+    }
+  }
+}
+```
+
+## What the facade covers
+
+The 15-tool contract is shared by headless and live facade sessions. In a
+headless session, project lifecycle and local media operations are available
+subject to configured roots. In a live session, the GUI owns the open project
+and imported media; the facade acts on that shared project and reports live
+capabilities honestly.
+
+The live surface also reports the current selection, playhead, selected time
+range, canvas target, context revision, and stable Agent references. Write
+operations use the same revision and writer-lease boundaries as the rest of
+the editor. A live facade action is one undoable history group in the GUI.
+
+Package API details and limits live in
+[`packages/agent-facade/README.md`](packages/agent-facade/README.md). Runtime
+details live in
+[`packages/runtime-chromium/README.md`](packages/runtime-chromium/README.md).
 
 ## Quick start
 
-Prerequisites, as verified on this machine (macOS arm64) and in CI (Ubuntu):
+Prerequisites:
 
-- **Node 22** (CI uses 22; `engines` floor is 18)
-- **pnpm 11.7** via corepack — the repo pins `packageManager: pnpm@11.7.0`
-- **ffmpeg + ffprobe** on `PATH` (`brew install ffmpeg` on macOS;
-  `apt-get install ffmpeg` on Ubuntu) — needed for `verify.artifact`
-- **Chromium** via Playwright (installed below), or a system Chrome passed
-  via config (`executablePath`)
+- Node 22 (the CI runtime; the package engine floor is 18)
+- pnpm 11.7 via Corepack (`packageManager` is pinned)
+- ffmpeg and ffprobe on `PATH` for artifact verification
+- Chromium installed through Playwright for render/export tests
 
 ```bash
-git clone git@github.com:yuchen-ya/agent-video-engine-lab.git
-# or over HTTPS: git clone https://github.com/yuchen-ya/agent-video-engine-lab.git
-cd agent-video-engine-lab
+git clone git@github.com:yuchen-ya/reelterminal.git
+cd reelterminal
 
 corepack pnpm install
-
-# one-time browser install for the render/export runtime
 pnpm --filter @openreel/runtime-chromium exec playwright-core install chromium
 
-# focused test suites — the lab's verified surface
-pnpm --filter @openreel/agent-facade test:run       # 18 files, pure Node
-pnpm --filter @openreel/runtime-chromium test:run   # 6 files, real Chromium
+# Headless facade tests
+pnpm --filter @openreel/agent-facade test:run
+
+# Chromium runtime tests
+pnpm --filter @openreel/runtime-chromium test:run
+
+# Open the editor GUI
+pnpm dev
 ```
 
-To run the inherited browser editor GUI: `pnpm dev` (Vite dev server).
-A full end-to-end agent scenario (create → import → trim → text → PNG →
-MP4 → verify) lives in
+The runtime example covers create → import → edit → preview → export → verify:
 [`packages/runtime-chromium/examples/hello-world-e2e.mts`](packages/runtime-chromium/examples/hello-world-e2e.mts).
 
-## Repository map
+## Desktop live workflow
 
-| Path | What it is | Status |
+Start the desktop editor, open a project, and enable **Agent Session** in the
+collaboration bar. The desktop app then exposes the live project's 15-tool
+MCP interface through a token-authenticated loopback endpoint. Configure an
+external Agent with the built `apps/desktop/dist/live-mcp/index.js` MCP server
+(`pnpm --filter @openreel/desktop build:main`); by default it reads
+`~/.openreel/live-endpoint.json` to discover the current URL and token.
+
+The external Agent and the user remain equal peers over the same GUI project.
+The Agent can inspect context, use stable references, edit, preview, export,
+and verify through the live facade; the user keeps direct GUI control and the
+shared undo path. The desktop conversation panel and loopback client are also
+landed; the external Agent/host must run its thin `/conversation` adapter and
+publish the private descriptor described in
+[`docs/external-agent-conversation-adapter.md`](docs/external-agent-conversation-adapter.md).
+
+For a standalone, headless workflow, use the optional `agent-video serve` or
+`agent-video run` transport documented in the root [`SKILL.md`](SKILL.md).
+Those commands are not the default ReelTerminal desktop entry point.
+
+## Repository map and historical boundaries
+
+| Path | Role | Current status |
 |---|---|---|
-| `packages/agent-facade` | The lab's agent API (Slice 1 + 1b verbs) | Active, tested |
-| `packages/runtime-chromium` | Chromium render/export providers | Active, tested |
-| `packages/core` | Canonical `Project` model, engines | Inherited; exercised by the slices |
-| `packages/agent`, `packages/agent-runner` | Upstream 304-tool agent layer + CLI | Inherited; **not** the lab's contract |
-| `apps/web` | Browser editor GUI | Inherited; runs via `pnpm dev` |
-| `apps/desktop`, `apps/studio`, `apps/image` | Desktop/studio/image apps | Inherited |
-| `audit/` | Extraction audit (304 tools, 52 risks) + reproducible probes | Frozen historical evidence |
-| `docs/adr/` | Architecture decision records | Canonical "why" |
-| `docs/design-principles.md` | Enduring design principles | Canonical |
-| `docs/slice-1b/` | Platform probe/verify evidence JSON | Growing evidence |
-| `docs/AGENT-*.md`, `docs/AUTH-BROKER.md`, `docs/superpowers/` | Upstream product/planning docs | Historical; partially stale (see [`docs/README.md`](docs/README.md)) |
+| `packages/core` | Canonical project and editing engines | Active foundation |
+| `packages/agent-facade` | Headless/live 15-tool contract | Active |
+| `packages/runtime-chromium` | Render, export, and verification providers | Active foundation |
+| `packages/agent-transport` | Headless MCP/CLI transport foundation | Optional |
+| `apps/web` | ReelTerminal editor and live renderer bridge | Active |
+| `apps/desktop` | Desktop shell and live endpoint host | Active |
+| `audit/` | 304-tool extraction audit and risk evidence | Frozen historical material |
+| `docs/adr/` | Architecture decisions | Historical record; do not rewrite |
+
+The legacy desktop 304-tool endpoint, its registry, the embedded
+provider/model selection and BYOK inference loop, the LLM-driven runner, and
+project-owned chat history have been removed from the active source tree.
+Upstream planning documents may mention them; those documents are historical
+and do not override the product boundary described here.
 
 ## Testing
 
-- Focused: the two `pnpm --filter … test:run` commands above.
-- Repo-wide: `pnpm test` · `pnpm typecheck` · `pnpm lint`.
-- CI (`.github/workflows/`): `ci.yml` runs typecheck/lint/tests + build on
-  Ubuntu with Node 22, Chromium, and ffmpeg; `chromium-e2e.yml` runs the
-  focused Slice-1b suites and always uploads the probe/verify evidence
-  artifact.
+Focused package tests are the primary evidence for the headless facade and
+Chromium runtime. The repository also provides:
 
-## Not implemented yet
+```bash
+pnpm test
+pnpm typecheck
+pnpm lint
+```
 
-- **No MCP / CLI / SKILL transports for the facade.** It is an in-process
-  library by design (ADR 0001); transports are a future slice.
-- The inherited upstream surfaces — the Desktop MCP shim (`apps/desktop`) and
-  the `@openreel/agent-runner` CLI — are **not** the lab's contract; the
-  audit rates the Desktop MCP debugger-grade (DESK-01/02/04) and ADR 0001
-  requires hardening before any public transport exposure.
-- **No live GUI↔agent session.** The facade runs headless; the parity gap is
-  tracked in `docs/design-principles.md`.
-- Most of the wider verb set from `audit/facade-v0.md` (project open/save,
-  `history.*`, media list/delete, richer edit ops).
-- No cloud GPU, no OCR, no project replace/reset.
-
-## Known limitations (slice-scoped)
-
-One Chromium page serializes preview/export per session · Route F is
-video-only by design · codec support is build-dependent and probe-measured,
-never assumed · files >2 GiB are refused · the idempotency ledger is not
-restart-durable · one project per session, no reset verb. Full lists:
-package READMEs linked above.
-
-## Roadmap (near term)
-
-1. ~~Land Slice 1b (PR #2), including this documentation overhaul.~~ **Done**
-   — merged to `main`.
-2. Slice 2: thin MCP + CLI + SKILL transports over the existing 12 verbs —
-   no copy of the internal 304-tool registry (still gated on the Desktop-MCP
-   hardening decision in ADR 0001).
-3. Black-box E2E with a fresh Codex / Claude Code / Pi-class agent over those
-   transports: discover capabilities, import media, edit, preview, export,
-   verify.
-4. Widen the verb / edit-op set based on real agent-usage friction and
-   `audit/runtime-matrix.csv` (including remaining `facade-v0` verbs:
-   open/save, history, media management).
-5. Progressively close the live-GUI parity gap last
-   (`docs/design-principles.md` conformance table).
+Desktop live collaboration tests cover endpoint authentication and MCP shape,
+the 15-tool catalog, the renderer bridge, session host, lease, status events,
+and shared revision behavior.
 
 ## License and attribution
 
-MIT — see [LICENSE](LICENSE). Copyright (c) 2024–2026 Augustus Otu and
-Contributors (upstream OpenReel); lab contributions are under the same
-license. Built on [mediabunny](https://mediabunny.dev),
-[Playwright](https://playwright.dev), [FFmpeg](https://ffmpeg.org), React,
-and TypeScript.
+MIT — see [`LICENSE`](LICENSE). ReelTerminal is built on the MIT-licensed
+[OpenReel](https://github.com/Augani/openreel-video) editor by Augustus Otu
+and Contributors; the upstream copyright is retained.
+The project also uses [mediabunny](https://mediabunny.dev),
+[Playwright](https://playwright.dev), [FFmpeg](https://ffmpeg.org), React, and
+TypeScript.

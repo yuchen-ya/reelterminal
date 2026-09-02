@@ -3,8 +3,8 @@
  * Reversibility over the EXTERNAL agent channel).
  *
  * Human side: real UI input only (Playwright mouse/keyboard on the Electron
- * window). Agent side: a real MCP stdio client (sdk Client → openreel-mcp
- * shim → live endpoint). The test process never calls the facade in-process.
+ * window). Agent side: a real MCP JSON-RPC client → live endpoint. The test
+ * process never calls the facade in-process.
  */
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { existsSync, readFileSync } from "node:fs";

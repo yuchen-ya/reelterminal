@@ -1,27 +1,26 @@
-# Contributing to Agent Video Engine Lab
+# Contributing to ReelTerminal
 
-This is the **agent-video-engine-lab** repository (`yuchen-ya/agent-video-engine-lab`):
-a laboratory for agent-first video editing, forked from the OpenReel video
-editor. This guide describes *this* repository — how to set it up, where the
-lab's own code lives, and what "done" means here.
+This is the **ReelTerminal** repository (`yuchen-ya/reelterminal`): an
+agent-native video finishing editor forked from OpenReel. This guide describes
+how to set it up, where the project-specific code lives, and what "done" means
+here.
 
 > **Attribution.** This repository is a fork of
 > [OpenReel](https://github.com/Augani/openreel-video) by **Augustus Otu and
 > Contributors**, MIT licensed. The browser editor (`apps/web`), the desktop /
-> studio / image apps, the core engines and canonical `Project` model
-> (`packages/core`), and the upstream agent layer (`packages/agent`,
-> `packages/agent-runner`) are inherited from upstream; copyright and license
-> are retained ([LICENSE](LICENSE)). The extraction audit, the agent facade,
-> the Chromium runtime, and the ADRs are built by this lab. The upstream
-> project remains the place for the product itself and its feature claims.
+> studio / image apps, and the core engines and canonical `Project` model
+> (`packages/core`) are inherited from upstream; copyright and license are
+> retained ([LICENSE](LICENSE)). The extraction audit, the agent facade,
+> Chromium runtime, and external-Agent integration are maintained by
+> ReelTerminal. Upstream claims do not automatically become ReelTerminal
+> claims.
 
 ## What this repo is (and is not)
 
-Read [`README.md`](README.md) first — especially "Status at a glance" and
-"What works today (verified)". This is a lab: a small, honest, tested surface
-(`packages/agent-facade`, `packages/runtime-chromium`) over a large inherited
-codebase. Most of the tree is inherited upstream code that the lab does **not**
-re-verify; do not present inherited behavior as lab-verified.
+Read [`README.md`](README.md) first, especially the product boundary and
+current-status sections. ReelTerminal keeps a deliberately small, tested Agent
+surface over a large inherited editor codebase. Do not present unverified
+inherited behavior as ReelTerminal-specific work.
 
 Design background, in reading order:
 
@@ -42,8 +41,8 @@ Prerequisites (as verified on macOS arm64 and Ubuntu CI):
 - **Chromium** via Playwright (installed below)
 
 ```bash
-git clone https://github.com/yuchen-ya/agent-video-engine-lab.git
-cd agent-video-engine-lab
+git clone https://github.com/yuchen-ya/reelterminal.git
+cd reelterminal
 
 corepack pnpm install
 
@@ -64,15 +63,15 @@ pnpm dev
 apps/web                   inherited browser editor GUI (Vite/React)
 apps/desktop|studio|image  inherited Electron / auxiliary apps
 packages/core              canonical Project model + engines (inherited)
-packages/agent-facade      lab: pure-Node agent API (12 verbs)
-packages/runtime-chromium  lab: Chromium render/export + verification
-packages/agent|agent-runner  inherited upstream agent layer (not the lab contract)
+packages/agent-facade      typed headless/live API (15 verbs)
+packages/runtime-chromium  Chromium render/export + verification
+packages/agent-transport   optional headless MCP/workflow transport
 audit/                     frozen extraction audit + machine evidence
 docs/adr|slice-1b          ADRs and committed platform evidence
 ```
 
-Package names stay `@openreel/*` (inherited); the repository itself is
-`agent-video-engine-lab`.
+Package names stay `@openreel/*` for source and project-format compatibility;
+the product and repository are named `ReelTerminal`.
 
 ## Making changes
 
@@ -136,14 +135,14 @@ not just assertions — see `packages/runtime-chromium/README.md`.
    description, testing, and verification evidence).
 2. Keep the description honest about what was verified and what was not.
 3. Respond to review feedback; push updates to the same branch.
-4. Lab PRs are reviewed directly by the maintainer.
+4. ReelTerminal PRs are reviewed directly by the maintainer.
 
 ## Questions
 
-Open a [GitHub issue](https://github.com/yuchen-ya/agent-video-engine-lab/issues).
+Open a [GitHub issue](https://github.com/yuchen-ya/reelterminal/issues).
 For the upstream OpenReel product itself, see
 [upstream](https://github.com/Augani/openreel-video).
 
 ---
 
-Thank you for contributing — and for keeping the lab's reporting honest. 🎬
+Thank you for contributing — and for keeping ReelTerminal's reporting honest. 🎬

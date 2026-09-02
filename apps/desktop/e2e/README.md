@@ -7,18 +7,17 @@ built desktop app. Binding contract: `docs/adr/0004-live-collaboration-slice-3.m
 
 - **Human side** — real UI input only: Playwright mouse/keyboard on the
   Electron window (`_electron.launch` from playwright-core). No store calls,
-  no window internals to fake a user action. (DOM/`facade.call` reads are
-  used for observation and aiming only.)
-- **External agent** — a real MCP stdio client: `@modelcontextprotocol/sdk`
-  `Client` + `StdioClientTransport` → `openreel-mcp` shim → token-authed
-  loopback live endpoint → main-process live facade session.
-- **Embedded agent** — `window.openreel.facade.call` from the renderer
-  (exactly what the chat UI uses), covered in the cross-cutting spec.
+  no window internals to fake a user action.
+- **External agent** — a real MCP JSON-RPC client posts directly to the
+  token-authenticated loopback live endpoint → main-process live facade
+  session.
+- **In-app conversation** — when available, it is only a view into the same
+  external agent session; there is no embedded inference channel.
 
 ## Run
 
 ```bash
-pnpm --filter @openreel/desktop build      # renderer (vite) + main (tsup, incl. mcp-shim)
+pnpm --filter @openreel/desktop build      # renderer (vite) + main (tsup)
 pnpm --filter @openreel/desktop test:e2e   # this suite (vitest, serial, long timeouts)
 ```
 
@@ -32,9 +31,10 @@ the default `pnpm --filter @openreel/desktop test:run` never picks them up.
 
 Each spec launches its own app instance with a per-run temp dir:
 `--user-data-dir` isolates the Chromium profile (IndexedDB autosave) and the
-live-artifacts root; `OPENREEL_LIVE_ENDPOINT_FILE` /
-`OPENREEL_MCP_ENDPOINT_FILE` redirect both endpoint descriptor files so a
-test run never touches the developer's real `~/.openreel` files.
+live-artifacts root; `OPENREEL_LIVE_ENDPOINT_FILE` redirects the endpoint
+descriptor so a test run never touches the developer's real `~/.openreel` file.
+`OPENREEL_CONVERSATION_ENDPOINT_FILE` likewise isolates the external
+conversation descriptor.
 
 ## Coverage
 
@@ -50,12 +50,14 @@ test run never touches the developer's real `~/.openreel` files.
   CONFLICT, no duplicate.
 - `cross-cutting.e2e.ts` — shared revision + CAS against a real human drag;
   disable → MCP fails cleanly → re-enable/reconnect; `project.save` → full
-  relaunch → autosave recovery; embedded↔external writer lease (CONFLICT
-  with `leaseHolder: "external"`, ADR-faithful lifecycle); token security
-  boundary (no renderer accessor, 0600 endpoint file, renderer fetch denied,
-  401 enforcement, token never in any captured output).
+  relaunch → autosave recovery; token
+  security boundary (no renderer accessor, 0600 endpoint file, renderer fetch
+  denied, 401 enforcement, token never in any captured output).
 - `tools-list.e2e.ts` — `tools/list` is EXACTLY the 15 facade tools (no
   `execute_action`); unknown tool → protocol error.
+- `external-conversation.e2e.ts` — reference adapter → built Electron app;
+  prompt forwarding, chronological safe work log, approval round-trip, and
+  raw tool-payload exclusion.
 
 ## Evidence
 
@@ -72,12 +74,8 @@ screenshots and the rendered frame under test.
   store methods as the menu path; text-entry guard mirrors
   `services/keyboard-shortcuts.ts`). Flow-A's real-keyboard undo/redo leg
   now runs and passes.
-- **G-02 (medium, ADR 0004 errata — lease TTL/heartbeat)** — the writer
-  lease is session-bound: an external client disconnect does NOT release it
-  (only disable/setMode dispose sessions). Current behavior is pinned by
-  test with a TODO to flip when a disconnect-release lands.
 - **G-03 (low)** — `disable()` blocks for seconds while the endpoint's
-  `server.close()` drains the shim's HTTP keep-alive socket.
+  `server.close()` drains any HTTP keep-alive socket.
 - **G-04 (high, ADR 0004 errata — status-event sequencing)** — collab
   status pushes race: stale `enabled:true` status events can arrive after a
   disable ack and leave the UI claiming the session is on. Recorded as

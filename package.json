@@ -1,8 +1,8 @@
 {
-  "name": "agent-video-engine-lab",
+  "name": "reelterminal",
   "version": "0.1.1",
   "private": true,
-  "description": "Agent Video Engine Lab: agent-first video-editing engine experiments (agent facade + Chromium render/export runtime) over the OpenReel codebase. Private monorepo root; packages keep their @openreel/* names.",
+  "description": "ReelTerminal — the agent-native finishing editor for AI video. Built on OpenReel; inherited @openreel/* package names remain for compatibility.",
   "type": "module",
   "scripts": {
     "dev": "pnpm --filter @openreel/web dev",
@@ -31,16 +31,16 @@
     "color-grading",
     "export"
   ],
-  "author": "Augustus Otu and Contributors",
+  "author": "yuchen-ya and contributors",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yuchen-ya/agent-video-engine-lab.git"
+    "url": "https://github.com/yuchen-ya/reelterminal.git"
   },
   "bugs": {
-    "url": "https://github.com/yuchen-ya/agent-video-engine-lab/issues"
+    "url": "https://github.com/yuchen-ya/reelterminal/issues"
   },
-  "homepage": "https://github.com/yuchen-ya/agent-video-engine-lab#readme",
+  "homepage": "https://github.com/yuchen-ya/reelterminal#readme",
   "engines": {
     "node": ">=18.0.0",
     "pnpm": ">=8.0.0"

@@ -1,11 +1,9 @@
 /**
  * Cross-cutting (C) — shared revision/CAS against real human edits, session
- * disable/reconnect, save→reopen recovery, embedded↔external writer-lease
- * consistency, and the token security boundary (ADR 0004 Decisions 3, 6, 9).
+ * disable/reconnect, save→reopen recovery, and the token security boundary
+ * (ADR 0004 Decisions 3, 6, 9).
  *
- * Human side: real UI input only. External agent: real MCP stdio client.
- * Embedded agent: window.openreel.facade.call from the renderer (exactly
- * what the chat UI uses).
+ * Human side: real UI input only. External agent: authenticated live endpoint.
  */
 import { expect, test, describe, beforeAll, afterAll } from "vitest";
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -16,12 +14,10 @@ import {
   createProjectViaUI,
   disableAgentSessionViaUI,
   dragTextClipViaUI,
-  embeddedFacadeCall,
   enableAgentSessionViaUI,
   openRecentProjectViaUI,
   timelineTextClip,
   waitForEditorReady,
-  type EmbeddedFacadeResult,
 } from "./harness/ui";
 
 interface EditorContext {
@@ -35,7 +31,6 @@ interface TimelineView {
 }
 
 const CAPTION_TEXT = "DRAG-ME-CAPTION";
-const EMBEDDED_TEXT = "EMBEDDED-WRITE";
 
 async function postJson(
   url: string,
@@ -203,63 +198,6 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
     await evidence.screenshot("after-reopen");
   });
 
-  test("embedded↔external: one writer, identical context, ADR-faithful lease lifecycle", async () => {
-    // The external session (connected above, already used for writes) holds
-    // the writer lease. The embedded channel (facade.call — what the chat UI
-    // uses) must read the SAME context but fail writes CONFLICT.
-    const externalCtx = await readContext();
-    const embeddedCtx = (await embeddedFacadeCall(launched.page, "editor.get_context")) as
-      EmbeddedFacadeResult & { data?: EditorContext };
-    expect(embeddedCtx.ok).toBe(true);
-    expect(embeddedCtx.data!.projectRevision).toBe(externalCtx.projectRevision);
-    expect(embeddedCtx.data!.contextRevision).toBe(externalCtx.contextRevision);
-
-    const timeline = await readTimeline();
-    const overlay = timeline.textOverlays.find((o) => o.text === CAPTION_TEXT)!;
-    const embeddedWrite = await embeddedFacadeCall(launched.page, "edit.apply", {
-      ops: [{ op: "text.update", overlayId: overlay.id, text: EMBEDDED_TEXT }],
-    });
-    expect(embeddedWrite.ok).toBe(false);
-    expect(embeddedWrite.error!.code).toBe("CONFLICT");
-    expect(embeddedWrite.error!.details?.leaseHolder).toBe("external");
-
-    // G-02 (reported, severity medium): the lease is SESSION-bound — released
-    // only on dispose (disable / embedded setMode), never on client
-    // disconnect. The endpoint is stateless HTTP and cannot observe the shim
-    // exiting, so a disconnected external agent leaves the lease held.
-    // TODO(ADR 0004 errata — lease TTL/heartbeat): Decision 6 as implemented
-    // is pinned here; when a disconnect-release lands, flip this leg to
-    // expect the embedded write to succeed after disconnect.
-    await agent!.close();
-    const afterDisconnect = await embeddedFacadeCall(launched.page, "edit.apply", {
-      ops: [{ op: "text.update", overlayId: overlay.id, text: EMBEDDED_TEXT }],
-    });
-    expect(afterDisconnect.ok).toBe(false);
-    expect(afterDisconnect.error!.code).toBe("CONFLICT");
-    expect(afterDisconnect.error!.details?.leaseHolder).toBe("external");
-
-    // …and the documented release path (disable → sessions disposed →
-    // re-enable) frees the lease so the embedded channel can write.
-    await disableAgentSessionViaUI(launched.page, launched.endpointFile);
-    await enableAgentSessionViaUI(launched.page, launched.endpointFile);
-    await launched.waitForEndpointFile();
-    const afterRelease = await embeddedFacadeCall(launched.page, "edit.apply", {
-      ops: [{ op: "text.update", overlayId: overlay.id, text: EMBEDDED_TEXT }],
-    });
-    expect(afterRelease.ok).toBe(true);
-    await timelineTextClip(launched.page, EMBEDDED_TEXT).waitFor({ timeout: 15_000 });
-
-    evidence.record("writer_lease", {
-      externalContextRevision: externalCtx.contextRevision,
-      embeddedWhileExternalHolds: embeddedWrite.error,
-      embeddedAfterDisconnect: afterDisconnect.error,
-      embeddedAfterDisableEnable: { ok: afterRelease.ok },
-    });
-
-    // Reconnect the external client for the security assertions below.
-    agent = await connectExternalAgent(launched.endpointFile);
-  });
-
   test("security: the live token never leaves the main process; endpoint enforces auth", async () => {
     const endpoint = JSON.parse(readFileSync(launched.endpointFile, "utf8")) as {
       url: string;
@@ -282,27 +220,6 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
       ).openreel.collabControl.getStatus().then((s) => JSON.stringify(s)),
     );
     expect(statusJson).not.toContain(endpoint.token);
-    const describe = await embeddedFacadeCall(launched.page, "session.describe");
-    expect(JSON.stringify(describe)).not.toContain(endpoint.token);
-    // Legacy MCP surface (DESK-04 is about ITS token — assert only that the
-    // LIVE token is not leaked through it; record what it does contain).
-    const legacyStatus = await launched.page.evaluate(() =>
-      (
-        window as unknown as {
-          openreel: { mcp: { getStatus(): Promise<unknown> } };
-        }
-      ).openreel.mcp.getStatus().then((s) => JSON.stringify(s)),
-    );
-    expect(legacyStatus).not.toContain(endpoint.token);
-    const legacyFile = existsSync(launched.legacyEndpointFile)
-      ? (JSON.parse(readFileSync(launched.legacyEndpointFile, "utf8")) as { token?: string })
-      : null;
-    evidence.record("legacy_mcp_status_note", {
-      leaksLegacyToken:
-        legacyFile?.token !== undefined && legacyStatus.includes(legacyFile.token),
-      note: "DESK-04 concerns the LEGACY endpoint token; the live token must never appear here.",
-    });
-
     // 3. The endpoint file is mode 0600.
     const mode = statSync(launched.endpointFile).mode & 0o777;
     expect(mode.toString(8)).toBe("600");

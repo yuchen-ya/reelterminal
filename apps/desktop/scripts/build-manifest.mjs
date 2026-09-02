@@ -5,13 +5,11 @@
 //
 // Usage: node scripts/build-manifest.mjs <artifactsDir> <outFile>
 //   <artifactsDir> is searched recursively for the installers; filenames follow
-//   electron-builder's artifactName: OpenReel-<version>-<arch>.<ext>.
+//   electron-builder's artifactName: ReelTerminal-<version>-<arch>.<ext>.
 
 import { readdirSync, statSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-const BASE_URL = "https://dl.openreel.video";
 
 const [, , artifactsDir, outFile] = process.argv;
 if (!artifactsDir || !outFile) {
@@ -24,6 +22,7 @@ const pkg = JSON.parse(
   readFileSync(path.join(scriptDir, "..", "package.json"), "utf8"),
 );
 const version = pkg.version;
+const BASE_URL = `https://github.com/yuchen-ya/reelterminal/releases/download/v${version}`;
 
 function walk(dir) {
   const out = [];
@@ -36,7 +35,7 @@ function walk(dir) {
 }
 
 const files = walk(artifactsDir).filter((f) =>
-  path.basename(f).startsWith(`OpenReel-${version}-`),
+  path.basename(f).startsWith(`ReelTerminal-${version}-`),
 );
 
 function find(predicate) {

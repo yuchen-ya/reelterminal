@@ -2,9 +2,13 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   useEditorContextStore,
   getLiveEditorContext,
+  markAgentReferences,
+  resetAgentReferences,
 } from "./editor-context-store";
+import type { AgentReferenceTarget } from "./agent-references-store";
 import { useTimelineStore } from "./timeline-store";
 import { useUIStore } from "./ui-store";
+import { getProjectRevision } from "./project-store";
 
 const revision = (): number => useEditorContextStore.getState().contextRevision;
 
@@ -14,6 +18,7 @@ describe("editor-context-store (ADR 0004 Decision 4)", () => {
     useUIStore.getState().clearSelection();
     useEditorContextStore.getState().clearCanvasPoint();
     useEditorContextStore.getState().clearTimeRange();
+    resetAgentReferences();
   });
 
   it("bumps contextRevision when the playhead moves", () => {
@@ -92,5 +97,31 @@ describe("editor-context-store (ADR 0004 Decision 4)", () => {
     expect(ctx.selectedTextIds).toEqual([]);
     expect(ctx.canvasPoint).toBeNull();
     expect(ctx.timeRange).toBeNull();
+    expect(ctx.references).toEqual({});
+  });
+
+  it("projects stable agent references into the live context", () => {
+    const targets: AgentReferenceTarget[] = [
+      {
+        kind: "video",
+        entityId: "late",
+        label: "Late",
+        timing: { startSeconds: 4, endSeconds: 6 },
+        trackOrder: 0,
+      },
+      {
+        kind: "audio",
+        entityId: "early",
+        label: "Early",
+        timing: { startSeconds: 1, endSeconds: 3 },
+        trackOrder: 1,
+      },
+    ];
+    const marked = markAgentReferences(targets);
+    expect(marked.map((reference) => reference.number)).toEqual([1, 2]);
+    expect(getLiveEditorContext().references).toMatchObject({
+      "1": { entityId: "early", kind: "audio", revisionAtMark: getProjectRevision() },
+      "2": { entityId: "late", kind: "video", revisionAtMark: getProjectRevision() },
+    });
   });
 });

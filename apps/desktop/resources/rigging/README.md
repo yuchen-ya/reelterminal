@@ -1,8 +1,8 @@
-# OpenReel rigging sidecars
+# ReelTerminal rigging sidecars
 
 This folder is the desktop app's optional rigging backend resource root.
 
-In development, OpenReel checks this folder first after environment overrides:
+In development, ReelTerminal checks this folder first after environment overrides:
 
 - `OPENREEL_BLENDER_PATH=/absolute/path/to/blender`
 - `BLENDER_PATH=/absolute/path/to/blender`

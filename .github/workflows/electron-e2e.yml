@@ -1,9 +1,9 @@
 name: Electron E2E
 
 # Slice-3 (ADR 0004) live human–agent collaboration E2E: the REAL built
-# Electron app driven by real UI input (Playwright `_electron`), a REAL MCP
-# stdio client (sdk Client → openreel-mcp shim → live endpoint) as the
-# external agent, pixel-verified render frames, and the token security
+# Electron app driven by real UI input (Playwright `_electron`), a real MCP
+# JSON-RPC client driving the shipped stdio live connector as the external
+# agent, pixel-verified render frames, and the token security
 # boundary — with machine-readable evidence uploaded from
 # apps/desktop/e2e/.artifacts (mirroring the chromium-e2e evidence pattern).
 #
@@ -61,8 +61,8 @@ jobs:
           ffmpeg -version | head -1
           ffprobe -version | head -1
 
-      # The e2e launches the REAL build: renderer (vite) + main (tsup,
-      # incl. the mcp-shim the external agent channel spawns).
+      # The e2e launches the REAL build: renderer (vite), main (tsup), and the
+      # external-agent live connector shipped for stdio MCP clients.
       - name: Build desktop app
         run: pnpm --filter @openreel/desktop build
 
@@ -74,7 +74,7 @@ jobs:
 
       # ulimit -c 0: the runtime SIGKILLs real Chromium on teardown; core
       # dumps of a multi-GB browser process are useless and huge.
-      - name: Run Electron E2E (flows A+B, cross-cutting, legacy safety)
+      - name: Run Electron E2E (flows A+B, cross-cutting, endpoint safety)
         run: |
           ulimit -c 0
           pnpm --filter @openreel/desktop test:e2e

@@ -8,6 +8,7 @@ import {
 } from "@openreel/ui";
 import { Check, WrapText } from "@/icons/lucide-compat";
 import { useProjectStore } from "../../../stores/project-store";
+import { useTranslation } from "react-i18next";
 
 interface CaptionEditorPanelProps {
   maxWordsPerLine: number;
@@ -18,6 +19,7 @@ export const CaptionEditorPanel: React.FC<CaptionEditorPanelProps> = ({
   maxWordsPerLine,
   onMaxWordsPerLineChange,
 }) => {
+  const { t } = useTranslation();
   const project = useProjectStore((state) => state.project);
   const getAllTextClips = useProjectStore((state) => state.getAllTextClips);
   const updateTextContent = useProjectStore((state) => state.updateTextContent);
@@ -131,14 +133,12 @@ export const CaptionEditorPanel: React.FC<CaptionEditorPanelProps> = ({
         <div className="flex items-center justify-between gap-3">
           <div>
             <Text type="supporting" weight="bold" className="block text-[11px] text-fg">
-              Single-line captions
-            </Text>
+              {t("Single-line captions")}</Text>
             <Text type="supporting" color="secondary" className="block text-[9px]">
-              Split each cue into timed clips for vertical video.
-            </Text>
+              {t("Split each cue into timed clips for vertical video.")}</Text>
           </div>
           <Selector
-            label="Maximum words per caption"
+            label={t("Maximum words per caption")}
             isLabelHidden
             size="sm"
             width={84}
@@ -167,8 +167,7 @@ export const CaptionEditorPanel: React.FC<CaptionEditorPanelProps> = ({
 
       {captions.length === 0 ? (
         <Text type="supporting" color="secondary" className="block py-3 text-center text-[10px]">
-          Import SRT/VTT or transcribe the selected clip to create editable caption text.
-        </Text>
+          {t("Import SRT/VTT or transcribe the selected clip to create editable caption text.")}</Text>
       ) : (
         <>
           <div className="flex items-center justify-between">
@@ -180,7 +179,7 @@ export const CaptionEditorPanel: React.FC<CaptionEditorPanelProps> = ({
               {allSelected ? "Clear selection" : "Select all"}
             </button>
             <Text type="supporting" color="secondary" className="text-[9px]">
-              {captions.length} editable text clip{captions.length === 1 ? "" : "s"}
+              {captions.length} {t(" editable text clip")}{captions.length === 1 ? "" : "s"}
             </Text>
           </div>
           <div className="max-h-72 space-y-2 overflow-y-auto pr-1">

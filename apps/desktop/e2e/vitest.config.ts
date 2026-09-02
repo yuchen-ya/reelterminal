@@ -9,7 +9,7 @@
  *   pnpm --filter @openreel/desktop test:e2e
  *
  * Serial execution, long timeouts: every spec file boots the real built
- * Electron app and drives a real MCP stdio client against it.
+ * Electron app and drives a real MCP client against it.
  */
 import { defineConfig } from "vitest/config";
 

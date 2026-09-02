@@ -1,6 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { CHANNELS } from "../shared/channels";
-import type { McpBridgeRequest } from "../shared/mcp";
 
 contextBridge.exposeInMainWorld("openreel", {
   platform: "desktop",
@@ -24,11 +23,6 @@ contextBridge.exposeInMainWorld("openreel", {
     closeWrite: (handleId: string) => ipcRenderer.invoke(CHANNELS.fsCloseWrite, { handleId }),
     abortWrite: (handleId: string) => ipcRenderer.invoke(CHANNELS.fsAbortWrite, { handleId }),
     revealInFolder: (p: string) => ipcRenderer.invoke(CHANNELS.fsRevealInFolder, { path: p }),
-  },
-  keychain: {
-    get: (id: string) => ipcRenderer.invoke(CHANNELS.keychainGet, { id }),
-    set: (id: string, value: string) => ipcRenderer.invoke(CHANNELS.keychainSet, { id, value }),
-    delete: (id: string) => ipcRenderer.invoke(CHANNELS.keychainDelete, { id }),
   },
   export: {
     start: (args: unknown) =>
@@ -72,23 +66,6 @@ contextBridge.exposeInMainWorld("openreel", {
       return () => ipcRenderer.removeListener(CHANNELS.auroraSequenceEvent, handler);
     },
   },
-  cloud: {
-    fetch: (
-      service: string,
-      path: string,
-      options?: { method?: string; headers?: Record<string, string>; body?: string },
-    ) => ipcRenderer.invoke(CHANNELS.cloudFetch, { service, path, ...(options ?? {}) }),
-  },
-  gpu: {
-    uploadMedia: (args: unknown) => ipcRenderer.invoke(CHANNELS.gpuUploadMedia, args),
-    uploadExport: (args: unknown) => ipcRenderer.invoke(CHANNELS.gpuUploadExport, args),
-    submitJob: (args: unknown) => ipcRenderer.invoke(CHANNELS.gpuSubmitJob, args),
-    jobStatus: (jobID: string) => ipcRenderer.invoke(CHANNELS.gpuJobStatus, { jobID }),
-    fetchManifest: (jobID: string) => ipcRenderer.invoke(CHANNELS.gpuFetchManifest, { jobID }),
-    downloadArtifact: (jobID: string, relativePath: string) =>
-      ipcRenderer.invoke(CHANNELS.gpuDownloadArtifact, { jobID, relativePath }),
-    cancelJob: (jobID: string) => ipcRenderer.invoke(CHANNELS.gpuCancelJob, { jobID }),
-  },
   win: {
     minimize: () => ipcRenderer.invoke(CHANNELS.windowControl, { action: "minimize" }),
     toggleMaximize: () => ipcRenderer.invoke(CHANNELS.windowControl, { action: "toggleMaximize" }),
@@ -126,15 +103,8 @@ contextBridge.exposeInMainWorld("openreel", {
       ipcRenderer.send(CHANNELS.crashReport, payload),
   },
   // Live human–agent collaboration (ADR 0004). The main-process session host
-  // owns the facade sessions; these members only ever carry JSON-safe values
-  // across the contextBridge (functions wrapping invoke/on/send, event
-  // objects stripped).
-  facade: {
-    // Embedded chat → main-process live facade session. Returns the wire
-    // FacadeResult ({ ok, data?, error? }).
-    call: (verb: string, params: unknown) =>
-      ipcRenderer.invoke(CHANNELS.facadeCall, { verb, params }),
-  },
+  // owns the external facade session; this control surface only carries
+  // JSON-safe status/control values across the contextBridge.
   liveBridge: {
     // Main→renderer live-store requests (Decision 1 seam). The handler runs
     // the request against the canonical store and replies via respond().
@@ -161,35 +131,23 @@ contextBridge.exposeInMainWorld("openreel", {
     setMode: (mode: string) =>
       ipcRenderer.invoke(CHANNELS.collabSetMode, { mode }),
   },
-  mcp: {
-    // The main-process MCP server pushes tool-call / list-tool requests here; the
-    // renderer runs them against the live editor and replies on the result
-    // channel, correlated by callId so concurrent calls don't cross-wire.
-    onRequest: (
-      handler: (
-        req: McpBridgeRequest,
-      ) => Promise<{ ok: boolean; result?: unknown; error?: string }>,
-    ) => {
-      const listener = (_event: unknown, req: McpBridgeRequest) => {
-        void Promise.resolve()
-          .then(() => handler(req))
-          .then((res) =>
-            ipcRenderer.send(CHANNELS.mcpResponse, { callId: req.callId, ...res }),
-          )
-          .catch((error) =>
-            ipcRenderer.send(CHANNELS.mcpResponse, {
-              callId: req.callId,
-              ok: false,
-              error: error instanceof Error ? error.message : String(error),
-            }),
-          );
-      };
-      ipcRenderer.on(CHANNELS.mcpRequest, listener);
-      return () => ipcRenderer.removeListener(CHANNELS.mcpRequest, listener);
+  conversation: {
+    getState: () => ipcRenderer.invoke(CHANNELS.conversationGetState, undefined),
+    attach: () => ipcRenderer.invoke(CHANNELS.conversationAttach, undefined),
+    prompt: (text: string) =>
+      ipcRenderer.invoke(CHANNELS.conversationPrompt, { text }),
+    resolveApproval: (requestId: string, decision: "approved" | "denied") =>
+      ipcRenderer.invoke(CHANNELS.conversationResolveApproval, {
+        requestId,
+        decision,
+      }),
+    cancel: () => ipcRenderer.invoke(CHANNELS.conversationCancel, undefined),
+    detach: () => ipcRenderer.invoke(CHANNELS.conversationDetach, undefined),
+    onEvent: (cb: (event: unknown) => void) => {
+      const handler = (_event: unknown, payload: unknown) => cb(payload);
+      ipcRenderer.on(CHANNELS.conversationEvent, handler);
+      return () => ipcRenderer.removeListener(CHANNELS.conversationEvent, handler);
     },
-    getStatus: () => ipcRenderer.invoke(CHANNELS.mcpGetStatus, undefined),
-    rotateToken: () => ipcRenderer.invoke(CHANNELS.mcpRotateToken, undefined),
-    testConnection: () => ipcRenderer.invoke(CHANNELS.mcpTestConnection, undefined),
   },
   lifecycle: {
     // The main process asks (on window close / quit) whether there are unsaved

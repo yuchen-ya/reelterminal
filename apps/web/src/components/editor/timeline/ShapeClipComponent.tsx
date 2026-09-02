@@ -7,6 +7,7 @@ import { calculateSnap } from "./utils";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useUIStore } from "../../../stores/ui-store";
+import { AgentReferenceBadge } from "./AgentReferenceBadge";
 
 type GraphicClipUnion = ShapeClip | SVGClip | StickerClip;
 
@@ -227,6 +228,7 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
             transition: isInteracting ? 'none' : 'opacity 150ms, box-shadow 150ms',
           }}
         >
+          <AgentReferenceBadge kind="media" entityId={shapeClip.id} />
           <div
             className={`absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 flex items-center justify-center transition-opacity ${
               isSelected ? "opacity-100 bg-green-400" : `opacity-0 group-hover:opacity-100 hover:bg-${colorClass}-400/50`

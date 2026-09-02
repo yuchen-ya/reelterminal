@@ -5,9 +5,9 @@ export default defineConfig({
     "main/index": "src/main/index.ts",
     "preload/index": "src/preload/index.ts",
     "aurora-host/index": "src/aurora-host/index.ts",
-    // Standalone stdio->HTTP MCP shim spawned by external clients (Claude
-    // Desktop / Cursor / Cline). Electron-free so it runs under plain node.
-    "mcp-shim/index": "src/mcp-shim/index.ts",
+    // Standalone stdio→HTTP MCP connector for the external 15-tool live
+    // endpoint. It has no provider/model/registry dependencies.
+    "live-mcp/index": "src/live-mcp/index.ts",
   },
   format: ["cjs"],
   platform: "node",

@@ -1,0 +1,148 @@
+{
+  "fixtureVersion": 1,
+  "name": "basic-attach-and-long-poll",
+  "fixtureLevel": "basic",
+  "descriptor": {
+    "version": 1,
+    "transport": "http-jsonrpc-long-poll",
+    "endpoint": "http://127.0.0.1:43127/conversation",
+    "token": "fixture-token-1234567890",
+    "sessionId": "agent-session-basic",
+    "agent": { "name": "Example Agent", "version": "1.0" },
+    "adapter": {
+      "name": "example-basic-adapter",
+      "capabilityLevel": "basic"
+    }
+  },
+  "initialize": {
+    "jsonrpc": "2.0",
+    "id": "init-1",
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "openreel-conversation/1",
+      "clientInfo": { "name": "ReelTerminal", "version": "0.1.0" },
+      "clientCapabilities": {
+        "sessionUpdate": true,
+        "conversation": {
+          "formalReply": true,
+          "streaming": true,
+          "reasoningSummary": true,
+          "toolEvents": true,
+          "approval": true,
+          "usage": true,
+          "artifact": true,
+          "subtask": true
+        }
+      }
+    }
+  },
+  "initializeResult": {
+    "jsonrpc": "2.0",
+    "id": "init-1",
+    "result": {
+      "protocolVersion": "openreel-conversation/1",
+      "agentInfo": { "name": "Example Agent", "version": "1.0" },
+      "sessionCapabilities": {
+        "resume": true,
+        "prompt": true,
+        "cancel": true,
+        "conversation": {
+          "formalReply": true,
+          "streaming": false,
+          "reasoningSummary": false,
+          "toolEvents": false,
+          "approval": false,
+          "usage": false,
+          "artifact": false,
+          "subtask": false
+        }
+      }
+    }
+  },
+  "resume": {
+    "jsonrpc": "2.0",
+    "id": "resume-1",
+    "method": "session/resume",
+    "params": { "sessionId": "agent-session-basic" }
+  },
+  "resumeResult": {
+    "jsonrpc": "2.0",
+    "id": "resume-1",
+    "result": { "sessionId": "agent-session-basic", "state": "ready" }
+  },
+  "requests": [
+    {
+      "jsonrpc": "2.0",
+      "id": "prompt-1",
+      "method": "session/prompt",
+      "params": {
+        "sessionId": "agent-session-basic",
+        "prompt": [{ "type": "text", "text": "Review reference #1." }]
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": "cancel-1",
+      "method": "session/cancel",
+      "params": { "sessionId": "agent-session-basic" }
+    }
+  ],
+  "poll": {
+    "jsonrpc": "2.0",
+    "id": "poll-1",
+    "method": "openreel/session/updates",
+    "params": {
+      "sessionId": "agent-session-basic",
+      "waitMs": 25000
+    }
+  },
+  "pollResult": {
+    "jsonrpc": "2.0",
+    "id": "poll-1",
+    "result": {
+      "cursor": "cursor-basic-3",
+      "notifications": [
+        {
+          "method": "session/update",
+          "params": {
+            "sessionId": "agent-session-basic",
+            "sequence": 1,
+            "update": {
+              "sessionUpdate": "user_message",
+              "messageId": "message-1",
+              "content": [{ "type": "text", "text": "Review reference #1." }]
+            }
+          }
+        },
+        {
+          "method": "session/update",
+          "params": {
+            "sessionId": "agent-session-basic",
+            "sequence": 2,
+            "update": {
+              "sessionUpdate": "agent_message",
+              "messageId": "message-2",
+              "content": [{ "type": "text", "text": "I found one cut to review." }]
+            }
+          }
+        },
+        {
+          "method": "session/update",
+          "params": {
+            "sessionId": "agent-session-basic",
+            "sequence": 3,
+            "update": {
+              "sessionUpdate": "state_update",
+              "state": "idle",
+              "stopReason": "complete"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "unknownExtension": {
+    "sessionUpdate": "_vendor_progress",
+    "value": "opaque and ignored"
+  }
+}

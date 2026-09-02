@@ -99,14 +99,6 @@ export const rigHumanoidModelResultSchema = z.object({
 });
 export type RigHumanoidModelResult = z.infer<typeof rigHumanoidModelResultSchema>;
 
-export const cloudFetchArgsSchema = z.object({
-  service: z.enum(["elevenlabs", "openai", "anthropic"]),
-  path: z.string(),
-  method: z.string().optional(),
-  headers: z.record(z.string()).optional(),
-  body: z.string().optional(),
-});
-
 export interface AuroraRenderPreviewArgs {
   readonly scene: CreationScene;
   readonly assets: readonly CreationAssetRecipe[];
@@ -263,25 +255,6 @@ export const auroraSequenceSessionEventSchema = z.discriminatedUnion("kind", [
 export type AuroraSequenceSessionEvent = z.infer<
   typeof auroraSequenceSessionEventSchema
 >;
-
-export const gpuUploadMediaArgsSchema = z.object({
-  srcPath: z.string(),
-  filename: z.string(),
-  contentType: z.string().optional(),
-});
-export const gpuUploadExportArgsSchema = z.object({
-  bytes: z.union([z.instanceof(ArrayBuffer), z.instanceof(Uint8Array)]),
-  filename: z.string(),
-  contentType: z.string().optional(),
-});
-export const gpuSubmitJobArgsSchema = z.object({
-  kind: z.string(),
-  params: z.record(z.unknown()),
-  mediaKey: z.string().optional(),
-  mediaFilename: z.string().optional(),
-});
-export const gpuJobIdArgsSchema = z.object({ jobID: z.string() });
-export const gpuArtifactArgsSchema = z.object({ jobID: z.string(), relativePath: z.string() });
 
 export const windowControlArgsSchema = z.object({
   action: z.enum(["minimize", "toggleMaximize", "close"]),

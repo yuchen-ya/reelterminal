@@ -14,6 +14,8 @@ import {
   TRANSITION_DRAG_MIME,
 } from "../panels/EffectsTransitionsPanel";
 import { parseEditorEffectDropPayload } from "./effect-drop";
+import { AgentReferenceBadge } from "./AgentReferenceBadge";
+import { agentReferenceKindForTrack } from "../../../stores/agent-reference-targets";
 
 interface ClipComponentProps {
   clip: Clip;
@@ -760,6 +762,11 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
           </div>
         </>
       )}
+
+      <AgentReferenceBadge
+        kind={agentReferenceKindForTrack(track.type) ?? "media"}
+        entityId={clip.id}
+      />
 
       {/* Drag-drop hover indicators for effects/transitions */}
       {dragHover === "effect" && (

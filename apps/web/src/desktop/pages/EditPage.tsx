@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 import type React from "react";
 import { lazy, Suspense } from "react";
+import { useTranslation } from "react-i18next";
 import { ToolcraftText as Text } from "@openreel/ui";
 
 import { AssetsPanel } from "../../components/editor/AssetsPanel";
@@ -17,17 +18,18 @@ const Preview = lazy(() =>
 const Timeline = lazy(() =>
   import("../../components/editor/Timeline").then((m) => ({ default: m.Timeline })),
 );
-const ChatPanel = lazy(() =>
-  import("../../components/editor/chat/ChatPanel").then((m) => ({
-    default: m.ChatPanel,
+const ExternalAgentPanel = lazy(() =>
+  import("../../components/editor/agent/ExternalAgentPanelContainer").then((m) => ({
+    default: m.ExternalAgentPanelContainer,
   })),
 );
 
 function PanelLoading(): JSX.Element {
+  const { t } = useTranslation();
   return (
     <div className="grid h-full place-items-center">
       <Text type="supporting" color="secondary" className="text-xs">
-        Loading…
+        {t("common.loading")}
       </Text>
     </div>
   );
@@ -100,6 +102,7 @@ function RowHandle({
 }
 
 export function EditPage(): JSX.Element {
+  const { t } = useTranslation();
   const mediaW = useResizable({
     initial: 320,
     min: 220,
@@ -125,11 +128,10 @@ export function EditPage(): JSX.Element {
     storageKey: "openreel-desktop-timeline-h",
   });
 
-  // ADR 0004 Decision 8: the embedded chat mounts as a collapsible right-side
-  // dock region (ui-store "agentChat" panel), with the collaboration status
-  // bar above the timeline.
-  const chatOpen = useUIStore((state) => state.panels.agentChat.visible);
-  const chatWidth = useUIStore((state) => state.panels.agentChat.width) ?? 380;
+  // The optional external-session surface mounts as a collapsible right-side
+  // dock region; ReelTerminal does not own its model or conversation history.
+  const chatOpen = useUIStore((state) => state.panels.externalAgent.visible);
+  const chatWidth = useUIStore((state) => state.panels.externalAgent.width) ?? 380;
   const togglePanel = useUIStore((state) => state.togglePanel);
 
   const gridStyle: React.CSSProperties = chatOpen
@@ -148,31 +150,31 @@ export function EditPage(): JSX.Element {
 
   return (
     <div className="grid h-full min-h-0 w-full gap-px overflow-hidden bg-border" style={gridStyle}>
-      <DockRegion label="Media" name="Media" area="media" icon="photo.on.rectangle">
+      <DockRegion label={t("desktop.editor.media")} name={t("desktop.editor.media")} area="media" icon="photo.on.rectangle">
         <AssetsPanel />
         <ColumnHandle edge="right" onPointerDown={mediaW.onHandlePointerDown} />
       </DockRegion>
 
-      <DockRegion label="Viewer" name="Viewer" area="stage" icon="play.fill" className="bg-stage-bg">
+      <DockRegion label={t("desktop.editor.viewer")} name={t("desktop.editor.viewer")} area="stage" icon="play.fill" className="bg-stage-bg">
         <Suspense fallback={<PanelLoading />}>
           <Preview />
         </Suspense>
       </DockRegion>
 
-      <DockRegion label="Inspector" name="Inspector" area="inspector" icon="slider.horizontal.3">
+      <DockRegion label={t("desktop.editor.inspector")} name={t("desktop.editor.inspector")} area="inspector" icon="slider.horizontal.3">
         <InspectorPanel />
         <ColumnHandle edge="left" onPointerDown={inspectorW.onHandlePointerDown} />
       </DockRegion>
 
       {chatOpen && (
         <DockRegion
-          label="Agent"
-          name="Agent"
+          label={t("desktop.editor.agent")}
+          name={t("desktop.editor.agent")}
           area="chat"
           icon="bubble.left.and.text.bubble.right"
         >
           <Suspense fallback={<PanelLoading />}>
-            <ChatPanel onClose={() => togglePanel("agentChat")} />
+            <ExternalAgentPanel onClose={() => togglePanel("externalAgent")} />
           </Suspense>
         </DockRegion>
       )}
@@ -181,7 +183,7 @@ export function EditPage(): JSX.Element {
         <CollabStatusBar />
       </div>
 
-      <DockRegion label="Timeline" name="Timeline" area="timeline" icon="rectangle.split.3x1" className="bg-tl-bg">
+      <DockRegion label={t("desktop.editor.timeline")} name={t("desktop.editor.timeline")} area="timeline" icon="rectangle.split.3x1" className="bg-tl-bg">
         <Suspense fallback={<PanelLoading />}>
           <Timeline />
         </Suspense>

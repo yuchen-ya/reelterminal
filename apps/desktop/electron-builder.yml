@@ -1,13 +1,11 @@
-appId: video.openreel.desktop
-productName: OpenReel
+appId: video.reelterminal.desktop
+productName: ReelTerminal
 # Predictable, space-free, arch-suffixed names → clean R2 URLs + a simple
-# manifest (e.g. OpenReel-1.2.3-arm64.dmg, OpenReel-1.2.3-x64.exe).
+# manifest (e.g. ReelTerminal-1.2.3-arm64.dmg, ReelTerminal-1.2.3-x64.exe).
 artifactName: ${productName}-${version}-${arch}.${ext}
 asar: true
-# The MCP stdio shim must be a real on-disk file so external clients (Claude
-# Desktop / Cursor / Cline) can spawn it with `node`; unpack it from the asar.
 asarUnpack:
-  - dist/mcp-shim/**
+  - dist/live-mcp/**
 directories:
   output: release
 # Update feed for electron-updater. Builds embed app-update.yml pointing at the
@@ -15,7 +13,7 @@ directories:
 # CI uploads everything to R2 (the generic provider does not upload itself).
 publish:
   provider: generic
-  url: https://dl.openreel.video
+  url: https://github.com/yuchen-ya/reelterminal/releases/latest/download
   channel: latest
 files:
   - dist/**/*

@@ -1,13 +1,14 @@
 import type { JSX } from "react";
+import { useTranslation } from "react-i18next";
 
 export type WorkspaceMode = "video" | "motion";
 
 const MODES: Array<{
   id: WorkspaceMode;
-  label: string;
+  labelKey: "desktop.workspace.videoEditor" | "desktop.workspace.motionDesign";
 }> = [
-  { id: "video", label: "Video Editor" },
-  { id: "motion", label: "Motion Design" },
+  { id: "video", labelKey: "desktop.workspace.videoEditor" },
+  { id: "motion", labelKey: "desktop.workspace.motionDesign" },
 ];
 
 export function WorkspaceModeTabs({
@@ -23,6 +24,7 @@ export function WorkspaceModeTabs({
   className?: string;
   accessibleLabels?: Partial<Record<WorkspaceMode, string>>;
 }): JSX.Element {
+  const { t } = useTranslation();
   return (
     <div
       role="tablist"
@@ -45,7 +47,7 @@ export function WorkspaceModeTabs({
                 : "bg-transparent text-fg-3 font-medium hover:text-fg-2"
             }`}
           >
-            {mode.label}
+            {t(mode.labelKey)}
           </button>
         );
       })}

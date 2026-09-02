@@ -1,9 +1,9 @@
 # FFmpeg — license & attribution
 
-OpenReel Desktop bundles a prebuilt **FFmpeg** binary (one per platform/arch
+ReelTerminal Desktop bundles a prebuilt **FFmpeg** binary (one per platform/arch
 under `resources/bin/<platform>-<arch>/`) which it invokes **as a separate
 process** for video/audio export, transcoding, and stream probing. FFmpeg is not
-linked into the OpenReel application; it is executed across the OS process
+linked into the ReelTerminal application; it is executed across the OS process
 boundary.
 
 ## License
@@ -53,13 +53,13 @@ available from the upstream FFmpeg repository at the matching release tag:
 - Build definitions: <https://github.com/eugeneware/ffmpeg-static> and
   <https://www.osxexperts.net>.
 
-You may also obtain the corresponding source from OpenReel for three years from
+You may also obtain the corresponding source from ReelTerminal for three years from
 the date of distribution by contacting **support@openreel.video** *(replace with
 the real contact before shipping)*; we will provide it by download link or on a
 physical medium for no more than our reasonable cost of distribution.
 
-## Separation from OpenReel
+## Separation from ReelTerminal
 
-OpenReel Desktop (the Electron application and its own source) is **not** a
+ReelTerminal Desktop (the Electron application and its own source) is **not** a
 derivative work of FFmpeg and is licensed separately. Only the FFmpeg binaries in
 `resources/bin/` are covered by the GPL terms above.

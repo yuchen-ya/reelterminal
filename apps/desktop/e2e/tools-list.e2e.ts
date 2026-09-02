@@ -67,7 +67,7 @@ describe("legacy safety: tools/list is exactly the 15 facade tools", () => {
 
   test("an unknown tool name is a protocol error, not a domain result", async () => {
     await expect(agent.callTool("execute_action", { action: "x" })).rejects.toThrow(
-      /Unknown tool/i,
+      /Unknown (?:live )?tool/i,
     );
     evidence.record("unknown_tool_rejected", { tool: "execute_action" });
   });

@@ -54,6 +54,7 @@ import { EffectsTab } from "./inspector/tabs/EffectsTab";
 import { AiTab } from "./inspector/tabs/AiTab";
 import { TransitionInspector } from "./inspector/TransitionInspector";
 import { MultiClipInspector } from "./inspector/MultiClipInspector";
+import { useTranslation } from "react-i18next";
 
 // Initialize engines as singletons
 const chromaKeyEngine = new ChromaKeyEngine({ width: 1920, height: 1080 });
@@ -105,18 +106,20 @@ const rgbaFromHex = (hex: string, alpha: string): string => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
-const EmptyState: React.FC = () => (
+const EmptyState: React.FC = () => {
+  const { t: tr } = useTranslation();
+  return (
   <div className="flex-1 flex flex-col items-center justify-center p-10 text-center">
     <Text type="body" weight="semibold" display="block" className="mb-1.5 text-sm text-fg">
-      No selection
-    </Text>
+      {tr("No selection")}</Text>
     <Text type="supporting" display="block" className="text-xs text-fg-muted">
-      Select a clip to view its properties
-    </Text>
+      {tr("Select a clip to view its properties")}</Text>
   </div>
 );
+};
 
 export const InspectorPanel: React.FC = () => {
+  const { t: tr } = useTranslation();
   // Stores
   const {
     getClip,
@@ -1080,20 +1083,19 @@ export const InspectorPanel: React.FC = () => {
               <div className="flex items-center gap-2 mb-1">
                 <Captions size={14} className="text-accent" aria-hidden />
                 <Text type="supporting" weight="bold" className="text-accent">
-                  Subtitle
-                </Text>
+                  {tr("Subtitle")}</Text>
               </div>
               <Text type="supporting" display="block" className="text-[10px] text-fg-3">
-                {selectedSubtitle.startTime.toFixed(2)}s -{" "}
+                {selectedSubtitle.startTime.toFixed(2)}{tr("s -")}{" "}
                 {selectedSubtitle.endTime.toFixed(2)}s
               </Text>
             </Card>
 
             {/* Subtitle Text Editor */}
-            <Section title="Text Content">
+            <Section title={tr("Text Content")}>
               <div className="space-y-3">
                 <ToolcraftTextAreaControl
-                  label="Subtitle text"
+                  label={tr("Subtitle text")}
                   isLabelHidden
                   value={selectedSubtitle.text}
                   onChange={(text) =>
@@ -1102,21 +1104,20 @@ export const InspectorPanel: React.FC = () => {
                     })
                   }
                   rows={4}
-                  placeholder="Enter subtitle text..."
+                  placeholder={tr("Enter subtitle text...")}
                   width="100%"
                 />
               </div>
             </Section>
 
             {/* Subtitle Timing */}
-            <Section title="Timing">
+            <Section title={tr("Timing")}>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Text type="supporting" color="secondary" className="text-[10px]">
-                    Start Time
-                  </Text>
+                    {tr("Start Time")}</Text>
                   <ToolcraftNumberInputControl
-                    label="Start Time"
+                    label={tr("Start Time")}
                     isLabelHidden
                     step={0.1}
                     value={selectedSubtitle.startTime}
@@ -1131,10 +1132,9 @@ export const InspectorPanel: React.FC = () => {
                 </div>
                 <div className="flex items-center justify-between">
                   <Text type="supporting" color="secondary" className="text-[10px]">
-                    End Time
-                  </Text>
+                    {tr("End Time")}</Text>
                   <ToolcraftNumberInputControl
-                    label="End Time"
+                    label={tr("End Time")}
                     isLabelHidden
                     step={0.1}
                     value={selectedSubtitle.endTime}
@@ -1151,7 +1151,7 @@ export const InspectorPanel: React.FC = () => {
             </Section>
 
             {/* Subtitle Position */}
-            <Section title="Position">
+            <Section title={tr("Position")}>
               <div className="grid grid-cols-3 gap-2">
                 {(["top", "center", "bottom"] as const).map((pos) => (
                   <SelectableCard
@@ -1177,14 +1177,13 @@ export const InspectorPanel: React.FC = () => {
             </Section>
 
             {/* Subtitle Animation Style */}
-            <Section title="Animation">
+            <Section title={tr("Animation")}>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Text type="supporting" color="secondary" className="text-[10px]">
-                    Style
-                  </Text>
+                    {tr("Style")}</Text>
                   <Selector
-                    label="Animation style"
+                    label={tr("Animation style")}
                     isLabelHidden
                     value={selectedSubtitle.animationStyle || "none"}
                     onChange={(v) =>
@@ -1220,9 +1219,7 @@ export const InspectorPanel: React.FC = () => {
                   !selectedSubtitle.words?.length && (
                     <Card variant="muted" padding={2} className="bg-amber-400/10">
                       <Text type="supporting" display="block" className="text-[9px] text-amber-400">
-                      No word-level timing data. Re-generate captions to
-                      enable animation.
-                      </Text>
+                      {tr("No word-level timing data. Re-generate captions to enable animation.")}</Text>
                     </Card>
                   )}
                 {selectedSubtitle.animationStyle &&
@@ -1232,15 +1229,14 @@ export const InspectorPanel: React.FC = () => {
                     <div className="pt-2 border-t border-border space-y-2">
                       <div className="flex items-center justify-between">
                         <Text type="supporting" color="secondary" className="text-[10px]">
-                          Highlight Color
-                        </Text>
+                          {tr("Highlight Color")}</Text>
                         <div className="flex items-center gap-2">
                           <ColorSelector
                             value={
                               selectedSubtitle.style?.highlightColor ||
                               "#ffff00"
                             }
-                            label="Select highlight color"
+                            label={tr("Select highlight color")}
                             onChange={(highlightColor) =>
                               updateSubtitle(selectedSubtitle.id, {
                                 style: {
@@ -1290,14 +1286,13 @@ export const InspectorPanel: React.FC = () => {
             </Section>
 
             {/* Subtitle Font Settings */}
-            <Section title="Font">
+            <Section title={tr("Font")}>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Text type="supporting" color="secondary" className="text-[10px]">
-                    Font Family
-                  </Text>
+                    {tr("Font Family")}</Text>
                   <Selector
-                    label="Font family"
+                    label={tr("Font family")}
                     isLabelHidden
                     value={selectedSubtitle.style?.fontFamily || "Inter"}
                     onChange={(v) =>
@@ -1325,7 +1320,7 @@ export const InspectorPanel: React.FC = () => {
                   />
                 </div>
                 <FileInput
-                  label="Upload Custom Font"
+                  label={tr("Upload Custom Font")}
                   isLabelHidden
                   value={null}
                   onChange={(picked) => {
@@ -1335,15 +1330,14 @@ export const InspectorPanel: React.FC = () => {
                   }}
                   accept={FONT_FILE_ACCEPT}
                   mode="input"
-                  placeholder="Upload Custom Font"
+                  placeholder={tr("Upload Custom Font")}
                   width="100%"
                 />
                 <div className="flex items-center justify-between">
                   <Text type="supporting" color="secondary" className="text-[10px]">
-                    Font Size
-                  </Text>
+                    {tr("Font Size")}</Text>
                   <ToolcraftNumberInputControl
-                    label="Font Size"
+                    label={tr("Font Size")}
                     isLabelHidden
                     min={12}
                     max={72}
@@ -1364,16 +1358,15 @@ export const InspectorPanel: React.FC = () => {
             </Section>
 
             {/* Subtitle Colors */}
-            <Section title="Colors">
+            <Section title={tr("Colors")}>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Text type="supporting" color="secondary" className="text-[10px]">
-                    Text Color
-                  </Text>
+                    {tr("Text Color")}</Text>
                   <div className="flex items-center gap-2">
                     <ColorSelector
                       value={selectedSubtitle.style?.color || "#ffffff"}
-                      label="Select subtitle text color"
+                      label={tr("Select subtitle text color")}
                       onChange={(color) =>
                         updateSubtitle(selectedSubtitle.id, {
                           style: {
@@ -1387,15 +1380,14 @@ export const InspectorPanel: React.FC = () => {
                 </div>
                 <div className="flex items-center justify-between">
                   <Text type="supporting" color="secondary" className="text-[10px]">
-                    Background
-                  </Text>
+                    {tr("Background")}</Text>
                   <div className="flex items-center gap-2">
                     <ColorSelector
                       value={cssColorToHex(
                         selectedSubtitle.style?.backgroundColor,
                         "#000000",
                       )}
-                      label="Select subtitle background color"
+                      label={tr("Select subtitle background color")}
                       onChange={(hex) => {
                         updateSubtitle(selectedSubtitle.id, {
                           style: {
@@ -1411,7 +1403,7 @@ export const InspectorPanel: React.FC = () => {
                       }}
                     />
                     <Selector
-                      label="Background opacity"
+                      label={tr("Background opacity")}
                       isLabelHidden
                       value={
                         cssColorAlpha(selectedSubtitle.style?.backgroundColor)
@@ -1433,7 +1425,7 @@ export const InspectorPanel: React.FC = () => {
                         });
                       }}
                       options={[
-                        { value: "0", label: "None" },
+                        { value: "0", label: tr("None") },
                         { value: "0.5", label: "50%" },
                         { value: "0.7", label: "70%" },
                         { value: "1", label: "100%" },
@@ -1449,7 +1441,7 @@ export const InspectorPanel: React.FC = () => {
             {/* Delete Subtitle */}
             <div className="pt-4 border-t border-border">
               <Button
-                label="Delete Subtitle"
+                label={tr("Delete Subtitle")}
                 onClick={() => {
                   const { removeSubtitle } = useProjectStore.getState();
                   removeSubtitle(selectedSubtitle.id);

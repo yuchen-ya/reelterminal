@@ -10,7 +10,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
-  Box,
   ChevronLeft,
   ChevronRight,
   Diamond,
@@ -34,7 +33,6 @@ import { toast } from "../stores/notification-store";
 import { useUIStore } from "../stores/ui-store";
 import { AnimationPresetsPanel } from "./components/AnimationPresetsPanel";
 import { AssetPanel } from "./components/AssetPanel";
-import { CreationWorkspacePanel } from "./components/CreationWorkspacePanel";
 import { DeformPanel } from "./components/DeformPanel";
 import { EffectsPanel } from "./components/EffectsPanel";
 import { LayerPanel } from "./components/LayerPanel";
@@ -57,6 +55,7 @@ import {
   type MotionLeftTab,
   type MotionRightTab,
 } from "./stores/motion-store";
+import { useTranslation } from "react-i18next";
 
 interface MotionCreatorShellProps {
   composition: MotionComposition;
@@ -68,7 +67,6 @@ const LEFT_TABS: Array<{ id: MotionLeftTab; label: string; icon: LucideIcon }> =
   { id: "layers", label: "Layers", icon: Layers },
   { id: "assets", label: "Media", icon: Library },
   { id: "templates", label: "Kits", icon: Sparkles },
-  { id: "creation", label: "Scenes", icon: Box },
 ];
 
 type InspectorGroupId = "edit" | "animate" | "assist" | "deliver";
@@ -248,6 +246,7 @@ export function MotionCreatorShell({
   composition,
   embedded = false,
 }: MotionCreatorShellProps): JSX.Element {
+  const { t } = useTranslation();
   const [isExportingScene, setIsExportingScene] = useState(false);
   const [exportProgress, setExportProgress] = useState<number | null>(null);
   const setExportActive = useMotionStore((state) => state.setExportActive);
@@ -775,7 +774,7 @@ export function MotionCreatorShell({
           {!embedded ? (
             <WorkspaceModeTabs
               activeMode="motion"
-              ariaLabel="Workspaces"
+              ariaLabel={t("Workspaces")}
               onSelectMode={(mode) => {
                 if (mode === "video") {
                   navigate("editor");
@@ -794,13 +793,13 @@ export function MotionCreatorShell({
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <MotionHeaderIconButton
             icon="arrow.uturn.backward"
-            label="Undo"
+            label={t("Undo")}
             disabled={!canUndo || isExportingScene}
             onClick={undoMotionEdit}
           />
           <MotionHeaderIconButton
             icon="arrow.uturn.forward"
-            label="Redo"
+            label={t("Redo")}
             disabled={!canRedo || isExportingScene}
             onClick={redoMotionEdit}
           />
@@ -829,7 +828,7 @@ export function MotionCreatorShell({
               style={{ gridColumn: 1, gridRow: 1 }}
             >
               <nav
-                aria-label="Motion workspace tabs"
+                aria-label={t("Motion workspace tabs")}
                 className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-2"
               >
                 {LEFT_TABS.map((tab) => {
@@ -838,7 +837,7 @@ export function MotionCreatorShell({
                   return (
                     <Button
                       key={tab.id}
-                      label={tab.label}
+                      label={t(tab.label)}
                       icon={<Icon size={14} aria-hidden />}
                       variant={active ? "secondary" : "ghost"}
                       size="sm"
@@ -853,7 +852,6 @@ export function MotionCreatorShell({
                   <MotionStartPanel composition={composition} />
                 ) : null}
                 {leftTab === "layers" ? <LayerPanel composition={composition} /> : null}
-                {leftTab === "creation" ? <CreationWorkspacePanel /> : null}
                 {leftTab === "assets" ? <AssetPanel composition={composition} /> : null}
                 {leftTab === "templates" ? <MotionTemplateBrowser /> : null}
               </div>
@@ -861,7 +859,7 @@ export function MotionCreatorShell({
 
             <PanelResizeHandle
               side="left"
-              label="Resize workspace"
+              label={t("Resize workspace")}
               value={leftPanelWidth}
               min={MIN_LEFT_PANEL_WIDTH}
               max={MAX_LEFT_PANEL_WIDTH}
@@ -881,7 +879,7 @@ export function MotionCreatorShell({
 
             <PanelResizeHandle
               side="right"
-              label="Resize inspector"
+              label={t("Resize inspector")}
               value={rightPanelWidth}
               min={MIN_RIGHT_PANEL_WIDTH}
               max={MAX_RIGHT_PANEL_WIDTH}
@@ -912,7 +910,7 @@ export function MotionCreatorShell({
                     return (
                       <Button
                         key={group.id}
-                        label={group.label}
+                        label={t(group.label)}
                         icon={<Icon size={13} aria-hidden />}
                         variant={active ? "secondary" : "ghost"}
                         size="sm"
@@ -972,14 +970,14 @@ export function MotionCreatorShell({
         <div className="flex items-center gap-2">
           {parentCompositionId ? (
             <Button
-              label="Back"
+              label={t("Back")}
               variant="ghost"
               size="sm"
               icon={<ChevronLeft size={13} aria-hidden />}
               tooltip={
                 parentComposition
                   ? `Back to ${parentComposition.name}`
-                  : "Back to parent scene"
+                  : t("Back to parent scene")
               }
               onClick={goBackComposition}
             />
@@ -987,33 +985,33 @@ export function MotionCreatorShell({
           <div className="flex items-center gap-0.5">
             <FooterToggle
               icon={LayoutGrid}
-              label="Show layer switches"
+              label={t("Show layer switches")}
               active={timelineColumnMode === "switches"}
               onClick={() => setTimelineColumnMode("switches")}
             />
             <FooterToggle
               icon={SlidersHorizontal}
-              label="Show transfer modes"
+              label={t("Show transfer modes")}
               active={timelineColumnMode === "modes"}
               onClick={() => setTimelineColumnMode("modes")}
             />
             <FooterToggle
               icon={Diamond}
-              label={autoKeyframe ? "Auto-keyframe on" : "Auto-keyframe off"}
+              label={autoKeyframe ? t("Auto-keyframe on") : t("Auto-keyframe off")}
               active={autoKeyframe}
               onClick={() => setAutoKeyframe(!autoKeyframe)}
             />
           </div>
           <span className="tabular-nums">
-            Frame Render Time: <span className="text-fg-3">2.1ms</span>
+            {t("Frame Render Time: ")}<span className="text-fg-3">2.1ms</span>
           </span>
         </div>
         <div className="flex items-center gap-3">
           {exportProgress !== null ? (
-            <span className="tabular-nums text-accent">Exporting {exportProgress}%</span>
+            <span className="tabular-nums text-accent">{t("Exporting ")}{exportProgress}%</span>
           ) : null}
           <span className="text-fg-3">{composition.width}×{composition.height}</span>
-          <span>Toggle Switches / Modes</span>
+          <span>{t("Toggle Switches / Modes")}</span>
         </div>
       </footer>
     </div>
@@ -1035,6 +1033,7 @@ function InspectorWorkflowGroup({
   onToggle: () => void;
   onSelectPanel: (tab: MotionRightTab) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   const GroupIcon = group.icon;
   const hasActivePanel = group.panels.some((panel) => panel.id === activeTab);
 
@@ -1057,7 +1056,7 @@ function InspectorWorkflowGroup({
         />
         <GroupIcon size={14} aria-hidden className="shrink-0" />
         <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">
-          {group.label}
+          {t(group.label)}
         </span>
       </button>
       {open ? (
@@ -1075,7 +1074,7 @@ function InspectorWorkflowGroup({
                       : "bg-bg-1 text-fg-2 hover:bg-bg-2"
                   }`}
                 >
-                  <span className="truncate">{panel.label}</span>
+                  <span className="truncate">{t(panel.label)}</span>
                   {active ? (
                     <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                   ) : null}
@@ -1155,13 +1154,14 @@ function ExportButton({
   onExport: () => void;
   onUseInEditor: () => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
       <div className="flex items-stretch overflow-hidden rounded-[8px] shadow-sm">
         <button
           type="button"
-          aria-label="Export"
+          aria-label={t("Export")}
           disabled={exporting}
           onClick={() => setOpen((value) => !value)}
           className="flex items-center bg-accent px-[18px] py-[9px] text-[13px] font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-60"
@@ -1170,7 +1170,7 @@ function ExportButton({
         </button>
         <button
           type="button"
-          aria-label="Export options"
+          aria-label={t("Export options")}
           aria-expanded={open}
           disabled={exporting}
           onClick={() => setOpen((value) => !value)}
@@ -1188,7 +1188,7 @@ function ExportButton({
           />
           <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-52 overflow-hidden rounded-lg border border-border bg-bg-elev p-1.5 shadow-lg">
             <Button
-              label="Export video (MP4)"
+              label={t("Export video (MP4)")}
               variant="ghost"
               size="sm"
               icon={<Icon name="square.and.arrow.up" size={15} ariaHidden className="text-fg-3" />}
@@ -1199,7 +1199,7 @@ function ExportButton({
               className="w-full justify-start"
             />
             <Button
-              label="Use in Editor"
+              label={t("Use in Editor")}
               variant="ghost"
               size="sm"
               icon={<Icon name="paperplane" size={15} ariaHidden className="text-fg-3" />}
@@ -1231,16 +1231,17 @@ function TimelineResizeHandle({
   onDoubleClick: () => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
 }): JSX.Element {
+  const { t } = useTranslation();
   return (
     <div
       role="separator"
       aria-orientation="horizontal"
-      aria-label="Resize timeline"
+      aria-label={t("Resize timeline")}
       aria-valuemin={min}
       aria-valuemax={Math.round(max)}
       aria-valuenow={Math.round(value)}
       tabIndex={0}
-      title="Resize timeline"
+      title={t("Resize timeline")}
       onPointerDown={onPointerDown}
       onDoubleClick={onDoubleClick}
       onKeyDown={onKeyDown}
@@ -1305,6 +1306,7 @@ function SceneSwitcher({
 }: {
   composition: MotionComposition;
 }): JSX.Element {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const compositions = useProjectStore(
     (state) => state.project.motionCompositions ?? [],
@@ -1330,7 +1332,7 @@ function SceneSwitcher({
   return (
     <div className="relative">
       <Button
-        label={composition.name}
+        label={t(composition.name)}
         variant="ghost"
         size="sm"
         endContent={<Icon name="chevron.down" size={15} ariaHidden className="shrink-0 text-fg-muted" />}
@@ -1352,7 +1354,7 @@ function SceneSwitcher({
               weight="semibold"
               className="border-b border-border px-3 py-2 uppercase tracking-[0.08em]"
             >
-              Sequences · {compositions.length}
+              {t("Sequences · ")}{compositions.length}
             </ToolcraftText>
             <div className="max-h-72 overflow-auto p-1.5">
               {compositions.map((scene) => {
@@ -1389,7 +1391,7 @@ function SceneSwitcher({
               })}
             </div>
             <Button
-              label="New sequence"
+              label={t("New sequence")}
               icon={<Plus size={15} aria-hidden />}
               variant="ghost"
               size="sm"

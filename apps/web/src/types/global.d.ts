@@ -1,3 +1,5 @@
+import type { ExternalConversationDisplayState } from "@openreel/agent-facade";
+
 export {};
 
 export interface OpenReelHardwareInfo {
@@ -114,15 +116,6 @@ export type OpenReelAuroraSequenceSessionEvent =
       error: string;
     };
 
-export interface OpenReelMcpStatus {
-  running: boolean;
-  url: string;
-  port: number;
-  token: string;
-  shimPath: string;
-  endpointFile: string;
-}
-
 export interface OpenReelRiggingBackendProbe {
   available: boolean;
   provider: "blender";
@@ -177,16 +170,9 @@ export type OpenReelCollabMode = "observe" | "assist" | "autonomous";
 export interface OpenReelCollabStatus {
   enabled: boolean;
   externalConnected: boolean;
-  writer: "embedded" | "external" | null;
+  writer: "external" | null;
   mode: OpenReelCollabMode;
   currentAction: string | null;
-}
-
-/** FacadeResult as serialized across the facade.call IPC channel. */
-export interface OpenReelFacadeResult {
-  ok: boolean;
-  data?: unknown;
-  error?: { code: string; message: string; details?: unknown };
 }
 
 export interface OpenReelLiveBridgeRequest {
@@ -205,6 +191,25 @@ export interface OpenReelLiveBridgeReply {
 export interface OpenReelLiveEvent {
   type: "status" | "action";
   [key: string]: unknown;
+}
+
+export interface OpenReelConversationAdapterSummary {
+  availability: "missing" | "available" | "invalid";
+  agentLabel: string | null;
+  adapterName: string | null;
+  sessionId: string | null;
+  capabilityLevel: "basic" | "streaming" | "observable" | null;
+  message: string | null;
+}
+
+export interface OpenReelConversationState {
+  adapter: OpenReelConversationAdapterSummary;
+  conversation: ExternalConversationDisplayState;
+}
+
+export interface OpenReelConversationEvent {
+  type: "state";
+  state: OpenReelConversationState;
 }
 
 declare global {
@@ -232,11 +237,6 @@ declare global {
         abortWrite(handleId: string): Promise<void>;
         revealInFolder(path: string): Promise<void>;
       };
-      keychain: {
-        get(id: string): Promise<string | null>;
-        set(id: string, value: string): Promise<void>;
-        delete(id: string): Promise<void>;
-      };
       export: {
         start(args: OpenReelExportStartArgs): Promise<OpenReelExportSession>;
         writeAudioWav(jobId: string, wav: ArrayBuffer): Promise<void>;
@@ -263,22 +263,6 @@ declare global {
           cb: (event: OpenReelAuroraSequenceSessionEvent) => void,
         ): () => void;
       };
-      cloud: {
-        fetch(
-          service: "elevenlabs" | "openai" | "anthropic",
-          path: string,
-          options?: { method?: string; headers?: Record<string, string>; body?: string },
-        ): Promise<{ status: number; statusText: string; headers: Record<string, string>; body: ArrayBuffer }>;
-      };
-      gpu: {
-        uploadMedia(args: { srcPath: string; filename: string; contentType?: string }): Promise<{ mediaKey: string; downloadUrl?: string }>;
-        uploadExport(args: { bytes: ArrayBuffer | Uint8Array; filename: string; contentType?: string }): Promise<{ mediaKey: string; downloadUrl?: string }>;
-        submitJob(args: { kind: string; params: Record<string, unknown>; mediaKey?: string; mediaFilename?: string }): Promise<{ jobID: string; status: string; manifestURL?: string }>;
-        jobStatus(jobID: string): Promise<{ jobID: string; status: string; progress?: number; message?: string; manifestURL?: string; error?: string; queuePosition?: number; pendingAhead?: number }>;
-        fetchManifest(jobID: string): Promise<Record<string, unknown>>;
-        downloadArtifact(jobID: string, relativePath: string): Promise<{ tempPath: string; mime: string }>;
-        cancelJob(jobID: string): Promise<{ jobID: string; status: string }>;
-      };
       win: {
         minimize(): Promise<void>;
         toggleMaximize(): Promise<void>;
@@ -296,19 +280,6 @@ declare global {
       };
       crash: {
         report(payload: { message: string; stack?: string; type?: string; context?: unknown }): void;
-      };
-      mcp?: {
-        onRequest(
-          handler: (req: {
-            callId: string;
-            kind: "listTools" | "callTool";
-            name?: string;
-            args?: Record<string, unknown>;
-          }) => Promise<{ ok: boolean; result?: unknown; error?: string }>,
-        ): () => void;
-        getStatus(): Promise<OpenReelMcpStatus>;
-        rotateToken(): Promise<OpenReelMcpStatus>;
-        testConnection(): Promise<{ ok: boolean; message?: string; toolCount?: number }>;
       };
       media: {
         generateProxy(args: { srcPath: string; preset: "low" | "medium" | "high" }): Promise<{ outPath: string }>;
@@ -337,10 +308,6 @@ declare global {
           args: OpenReelRigHumanoidModelArgs,
         ): Promise<OpenReelRigHumanoidModelResult>;
       };
-      /** Embedded-chat facade verb call → main-process live facade session. */
-      facade?: {
-        call(verb: string, params: unknown): Promise<OpenReelFacadeResult>;
-      };
       /** Main→renderer live-store requests (ADR 0004 Decision 1 seam). */
       liveBridge?: {
         onRequest(
@@ -358,6 +325,19 @@ declare global {
         disable(): Promise<OpenReelCollabStatus>;
         getStatus(): Promise<OpenReelCollabStatus>;
         setMode(mode: OpenReelCollabMode): Promise<OpenReelCollabStatus>;
+      };
+      /** Optional GUI attachment to an externally-owned Agent conversation. */
+      conversation?: {
+        getState(): Promise<OpenReelConversationState>;
+        attach(): Promise<OpenReelConversationState>;
+        prompt(text: string): Promise<OpenReelConversationState>;
+        resolveApproval(
+          requestId: string,
+          decision: "approved" | "denied",
+        ): Promise<OpenReelConversationState>;
+        cancel(): Promise<OpenReelConversationState>;
+        detach(): Promise<OpenReelConversationState>;
+        onEvent(cb: (event: OpenReelConversationEvent) => void): () => void;
       };
     };
   }

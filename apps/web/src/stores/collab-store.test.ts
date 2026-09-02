@@ -8,7 +8,7 @@ import {
 const status = (over: Partial<CollabStatus> = {}): CollabStatus => ({
   enabled: true,
   externalConnected: false,
-  writer: "embedded",
+  writer: "external",
   mode: "assist",
   currentAction: null,
   ...over,
@@ -73,7 +73,7 @@ describe("collab-store (ADR 0004 Decisions 6+7)", () => {
     await useCollabStore.getState().enable();
     expect(collabControl.enable).toHaveBeenCalledOnce();
     expect(useCollabStore.getState().enabled).toBe(true);
-    expect(useCollabStore.getState().writer).toBe("embedded");
+    expect(useCollabStore.getState().writer).toBe("external");
 
     await useCollabStore.getState().setMode("autonomous");
     expect(collabControl.setMode).toHaveBeenCalledWith("autonomous");

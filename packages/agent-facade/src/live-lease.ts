@@ -1,8 +1,8 @@
 /**
  * The single-AI-writer lease (ADR 0004 Decision 6).
  *
- * At most one AI session — embedded chat or external MCP, never both —
- * holds write access at a time. The human never acquires the lease and can
+ * At most one external agent session holds write access at a time. The human
+ * never acquires the lease and can
  * always edit; revision CAS (Decision 3) is the concurrency guard there.
  * The lease is a plain in-memory object held by the session host (desktop
  * main process); it is NOT a lock around store access — sessions that fail

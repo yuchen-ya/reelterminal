@@ -1,6 +1,6 @@
 # @openreel/agent-facade
 
-Pure-Node, in-process, transport-agnostic agent facade over the OpenReel
+Pure-Node, in-process, transport-agnostic agent facade over the ReelTerminal
 canonical `Project` state (Slice 1 + Slice 1b). Design: `audit/facade-v0.md`,
 `docs/adr/0001-headless-facade-slice-1.md`,
 `docs/adr/0002-chromium-runtime-slice-1b.md`.

@@ -14,7 +14,7 @@ function textClip(): TextClip {
     trackId: "title-track",
     startTime: 0,
     duration: 5,
-    text: "OpenReel",
+    text: "ReelTerminal",
     style: {
       fontFamily: "Inter",
       fontSize: 72,

@@ -35,9 +35,34 @@ import type { Project } from "@openreel/core/types/project";
  * `contextRevision` (bumped whenever any derived value changes; never
  * persisted into project files, autosave records, or checkpoints) plus the
  * current playhead, selection split by entity kind, selected time range
- * (null when no gesture has defined one), and the normalized 0..1 "agent
- * target point" on the project frame (null until the user sets one).
+ * (null when no gesture has defined one), the normalized 0..1 "agent target
+ * point" on the project frame (null until the user sets one), and ephemeral
+ * stable-numbered agent references.
  */
+export type LiveEditorReferenceKind = "video" | "audio" | "text" | "media";
+
+export interface LiveEditorReference {
+  /** The entity category the editor exposed to the agent. */
+  readonly kind: LiveEditorReferenceKind;
+  readonly entityId: string;
+  readonly label: string;
+  /** Null start/end means the reference points at a media-library item. */
+  readonly timing: {
+    readonly startSeconds: number | null;
+    readonly endSeconds: number | null;
+  };
+  /** Project revision captured when the reference was first assigned. */
+  readonly revisionAtMark: number;
+  /** True once the original entity no longer exists in this editor session. */
+  readonly stale: boolean;
+  /** Stable number, also used as the key in LiveEditorContext.references. */
+  readonly number: number;
+}
+
+export type LiveEditorReferences = Readonly<
+  Record<string, LiveEditorReference>
+>;
+
 export interface LiveEditorContext {
   readonly contextRevision: number;
   readonly playheadSeconds: number | null;
@@ -49,6 +74,8 @@ export interface LiveEditorContext {
   } | null;
   /** Normalized 0..1 against the project frame (same space text.create consumes). */
   readonly canvasPoint: { readonly x: number; readonly y: number } | null;
+  /** Ephemeral, session-local number → reference mapping for agent collaboration. */
+  readonly references?: LiveEditorReferences;
 }
 
 export interface LiveProjectIdentity {

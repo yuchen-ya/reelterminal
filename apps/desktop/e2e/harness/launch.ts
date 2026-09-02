@@ -3,10 +3,10 @@
  *
  * One temp run dir per launch: `--user-data-dir` isolates the Chromium
  * profile (IndexedDB autosave, caches) and the live-artifacts root, while
- * OPENREEL_LIVE_ENDPOINT_FILE / OPENREEL_MCP_ENDPOINT_FILE redirect both
- * endpoint descriptor files so a test run never touches the developer's real
- * ~/.openreel files. (`--user-data-dir` is honored by Electron for
- * app.getPath("userData") — verified by e2e/scratch/probe.mjs.)
+ * OPENREEL_LIVE_ENDPOINT_FILE redirects the endpoint descriptor so a test run
+ * never touches the developer's real ~/.openreel file. (`--user-data-dir` is
+ * honored by Electron for app.getPath("userData") — verified by
+ * e2e/scratch/probe.mjs.)
  *
  * Main-process stdout/stderr and every renderer console/pageerror line are
  * captured for the token-hygiene assertion: the live endpoint token must
@@ -16,7 +16,11 @@ import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright-core";
-import { DESKTOP_DIR, MAIN_BUNDLE_PATH, MCP_SHIM_PATH } from "./paths";
+import {
+  DESKTOP_DIR,
+  LIVE_MCP_CONNECTOR_PATH,
+  MAIN_BUNDLE_PATH,
+} from "./paths";
 import {
   hasProcessExited,
   removeRunDirectory,
@@ -30,8 +34,8 @@ export interface LaunchedApp {
   readonly userDataDir: string;
   /** Live endpoint descriptor path (OPENREEL_LIVE_ENDPOINT_FILE). */
   readonly endpointFile: string;
-  /** Legacy MCP endpoint redirect (kept away from the real ~/.openreel). */
-  readonly legacyEndpointFile: string;
+  /** External conversation descriptor path (isolated from the user's home). */
+  readonly conversationEndpointFile: string;
   readonly output: {
     readonly mainStdout: string[];
     readonly mainStderr: string[];
@@ -56,7 +60,7 @@ function makeRunDirs(runDir?: string): {
   runDir: string;
   userDataDir: string;
   endpointFile: string;
-  legacyEndpointFile: string;
+  conversationEndpointFile: string;
 } {
   const dir = runDir ?? mkdtempSync(path.join(tmpdir(), "openreel-e2e-"));
   mkdirSync(dir, { recursive: true });
@@ -64,12 +68,12 @@ function makeRunDirs(runDir?: string): {
     runDir: dir,
     userDataDir: path.join(dir, "user-data"),
     endpointFile: path.join(dir, "live-endpoint.json"),
-    legacyEndpointFile: path.join(dir, "legacy-mcp-endpoint.json"),
+    conversationEndpointFile: path.join(dir, "conversation-endpoint.json"),
   };
 }
 
 async function launch(paths: ReturnType<typeof makeRunDirs>): Promise<LaunchedApp> {
-  if (!existsSync(MAIN_BUNDLE_PATH) || !existsSync(MCP_SHIM_PATH)) {
+  if (!existsSync(MAIN_BUNDLE_PATH) || !existsSync(LIVE_MCP_CONNECTOR_PATH)) {
     throw new Error(
       "desktop build missing — run `pnpm --filter @openreel/desktop build` before test:e2e",
     );
@@ -85,7 +89,7 @@ async function launch(paths: ReturnType<typeof makeRunDirs>): Promise<LaunchedAp
     env: {
       ...process.env,
       OPENREEL_LIVE_ENDPOINT_FILE: paths.endpointFile,
-      OPENREEL_MCP_ENDPOINT_FILE: paths.legacyEndpointFile,
+      OPENREEL_CONVERSATION_ENDPOINT_FILE: paths.conversationEndpointFile,
     },
     timeout: 120_000,
   });
@@ -114,7 +118,7 @@ async function launch(paths: ReturnType<typeof makeRunDirs>): Promise<LaunchedAp
     runDir: paths.runDir,
     userDataDir: paths.userDataDir,
     endpointFile: paths.endpointFile,
-    legacyEndpointFile: paths.legacyEndpointFile,
+    conversationEndpointFile: paths.conversationEndpointFile,
     output: { mainStdout, mainStderr, rendererConsole },
 
     async waitForEndpointFile(timeoutMs = 30_000) {

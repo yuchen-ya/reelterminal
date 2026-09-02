@@ -129,7 +129,7 @@ describe("flow B: caption at the user's canvas point + stale-context conflict", 
       height: number;
       artifact: { path: string; sizeBytes: number; sha256: string };
     }>("preview_render_frame", { timeSec: PLAYHEAD_T + 1 }, { timeoutMs: 300_000 });
-    expect(frame.ok).toBe(true);
+    expect(frame.ok, JSON.stringify(frame)).toBe(true);
     const artifact = frame.value!.artifact;
     const png = readFileSync(artifact.path);
     const evidencePng = evidence.writePng("rendered-frame", png);

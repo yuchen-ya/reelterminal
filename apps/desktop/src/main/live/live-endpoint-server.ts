@@ -1,10 +1,10 @@
 /**
  * LiveEndpointServer — the token-authenticated loopback MCP endpoint for
- * EXTERNAL agents (ADR 0004 Decision 9). An external agent talks stdio to the
- * openreel-mcp shim, which POSTs here; every tools/call runs through the
- * external live facade session hosted in this process.
+ * EXTERNAL agents (ADR 0004 Decision 9). An external agent posts MCP
+ * JSON-RPC here; every tools/call runs through the external live facade
+ * session hosted in this process.
  *
- * Same hardened shape as main/mcp/http-server.ts: 127.0.0.1-only bind,
+ * Hardened shape: 127.0.0.1-only bind,
  * POST-only, 4 MB body cap, no GET/SSE. The MCP surface is exactly
  * initialize / ping / tools/list / tools/call:
  *
@@ -20,8 +20,7 @@
  * timingSafeEqual on EVERY request. The endpoint file
  * (~/.openreel/live-endpoint.json, mode 0600) is written on start and
  * deleted on stop. THE TOKEN IS NEVER SENT TO THE RENDERER AND NEVER LOGGED
- * (DESK-04: the legacy MCP leaks its token via getMcpStatus — this path does
- * not): it appears only in the 0600 endpoint file, never in any IPC payload,
+ * It appears only in the 0600 endpoint file, never in any IPC payload,
  * status object, or response body beyond the file itself.
  */
 import {
@@ -44,7 +43,7 @@ import {
 
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
-/** MCP protocol versions, mirroring main/mcp/core.ts:44-49. */
+/** MCP protocol versions supported by the live endpoint. */
 const DEFAULT_PROTOCOL_VERSION = "2024-11-05";
 const SUPPORTED_PROTOCOL_VERSIONS = new Set([
   "2024-11-05",
@@ -132,9 +131,8 @@ export interface LiveEndpointFile {
 }
 
 /**
- * Stable location the shim reads (run it with
- * OPENREEL_MCP_ENDPOINT_FILE=~/.openreel/live-endpoint.json). Overridable for
- * tests via OPENREEL_LIVE_ENDPOINT_FILE so they never touch the real file.
+ * Stable location external clients read (overridable for tests via
+ * OPENREEL_LIVE_ENDPOINT_FILE so they never touch the real file).
  */
 export function liveEndpointFilePath(): string {
   const override = process.env.OPENREEL_LIVE_ENDPOINT_FILE;
@@ -229,7 +227,7 @@ async function handleLiveMessage(
         options.onExternalActivity?.();
         const requested = message.params?.protocolVersion;
         // Echo the client's version only if supported; otherwise negotiate
-        // down to the default (mirrors mcp/core.ts initialize).
+        // down to the default when the client requests an unknown version.
         const protocolVersion =
           typeof requested === "string" &&
           SUPPORTED_PROTOCOL_VERSIONS.has(requested)

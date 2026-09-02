@@ -10,7 +10,11 @@ import { useUIStore } from "../stores/ui-store";
 import { useSettingsStore } from "../stores/settings-store";
 
 vi.mock("../stores/project-store", () => ({
-  useProjectStore: vi.fn(),
+  getProjectRevision: vi.fn(() => 0),
+  useProjectStore: Object.assign(vi.fn(), {
+    getState: vi.fn(() => ({})),
+    subscribe: vi.fn(() => () => {}),
+  }),
 }));
 
 vi.mock("./editor/EditorBootstrapGate", () => ({
@@ -73,7 +77,7 @@ describe("DesktopApp", () => {
   it("renders the title bar and workspace when a project is open", () => {
     mockHasProject(true);
     const { getByText, getByTestId } = render(<DesktopApp />);
-    expect(getByText("OpenReel")).toBeTruthy();
+    expect(getByText("ReelTerminal")).toBeTruthy();
     expect(getByTestId("desktop-workspace")).toBeTruthy();
   });
 

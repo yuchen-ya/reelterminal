@@ -12,18 +12,5 @@ export const OPENREEL_CLOUD_URL = isDev
   ? "http://localhost:8787"
   : "https://api.openreel.video";
 
-/** OpenReel transcription / TTS service */
-export const OPENREEL_TTS_URL =
-  import.meta.env.VITE_OPENREEL_TTS_URL ||
-  (isDev ? "http://127.0.0.1:18000" : "https://cloud.openreel.video");
-
 /** OpenReel transcription service (GPU) */
 export const OPENREEL_TRANSCRIBE_URL = "https://cloud.openreel.video";
-
-/**
- * Third-party API base URLs.
- * These are used by the api-proxy service in dev mode (direct calls)
- * and by the Cloudflare Pages Function proxy in production.
- * Application code should use apiFetch() from services/api-proxy.ts
- * instead of importing these directly.
- */

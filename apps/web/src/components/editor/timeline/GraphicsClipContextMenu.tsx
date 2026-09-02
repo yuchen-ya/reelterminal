@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import type { ToolcraftContextMenuOption as ContextMenuOption } from "@openreel/ui";
 import {
   Layers,
@@ -6,11 +7,14 @@ import {
   Shapes,
   Type,
   ListChecks,
+  Hash,
 } from "@/icons/lucide-compat";
 import type { ShapeClip, SVGClip, StickerClip, TextClip } from "@openreel/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { getTimelineTrackSelection } from "../../../utils/timeline-item-actions";
+import { markAgentReferenceForSelection } from "../../../stores/editor-context-store";
+import { getAgentReferenceTargetForGraphic, getAgentReferenceTargetForText } from "../../../stores/agent-reference-targets";
 
 type GraphicsClipType = ShapeClip | SVGClip | StickerClip | TextClip;
 
@@ -29,6 +33,7 @@ export function useGraphicsClipContextMenuItems({
   onDelete,
   onDuplicate,
 }: GraphicsClipContextMenuProps): ContextMenuOption[] {
+  const { t } = useTranslation();
   const {
     deleteShapeClip,
     deleteSVGClip,
@@ -82,6 +87,15 @@ export function useGraphicsClipContextMenuItems({
     onClose?.();
   };
 
+  const handleAddAgentReference = () => {
+    const target =
+      clipType === "text"
+        ? getAgentReferenceTargetForText(project, clip as TextClip)
+        : getAgentReferenceTargetForGraphic(project, clip as ShapeClip | SVGClip | StickerClip);
+    markAgentReferenceForSelection(target);
+    onClose?.();
+  };
+
   const getClipTypeLabel = () => {
     switch (clipType) {
       case "shape":
@@ -126,7 +140,7 @@ export function useGraphicsClipContextMenuItems({
   if (onDuplicate) {
     items.push(
       {
-        label: "Duplicate",
+        label: t("Duplicate"),
         icon: <Layers size={14} aria-hidden />,
         onClick: handleDuplicate,
       },
@@ -140,11 +154,16 @@ export function useGraphicsClipContextMenuItems({
       icon: <ListChecks size={14} aria-hidden />,
       onClick: handleSelectTrackClips,
     },
+    {
+      label: t("agentReferences.add"),
+      icon: <Hash size={14} aria-hidden />,
+      onClick: handleAddAgentReference,
+    },
     { type: "divider" },
   );
 
   items.push({
-    label: "Delete",
+    label: t("Delete"),
     icon: <Trash2 size={14} aria-hidden />,
     onClick: handleDelete,
   });

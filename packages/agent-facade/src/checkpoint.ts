@@ -177,9 +177,9 @@ export function buildCheckpointDocument(
  * Strict closed declaration over exactly the HEADLESS-REACHABLE subset of
  * the canonical Project: what createEmptyProject + media.import + the
  * closed edit.apply op set can produce. Browser/desktop-only fields
- * (adjustmentLayers, masks, multicamGroups, creation, KieAI markers, …)
- * are outside the headless surface and outside this schema — an unknown
- * field fails the STRUCTURE step. Because the schema is closed, ANY change
+ * (adjustmentLayers, masks, multicamGroups, creation, provider-specific
+ * markers, …) are outside the headless surface and outside this schema — an
+ * unknown field fails the STRUCTURE step. Because the schema is closed, ANY change
  * to the document shape — even purely additive — requires a formatVersion
  * bump (10.2 evolution rule).
  *

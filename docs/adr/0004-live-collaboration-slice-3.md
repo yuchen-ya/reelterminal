@@ -1,6 +1,7 @@
 # ADR 0004: Live Human–Agent Collaboration — Slice 3
 
-- Status: **Accepted** (r1, 2026-09-01)
+- Status: **Accepted** (r1, 2026-09-01); Decision 8 superseded by ADR 0005
+  (2026-09-02)
 - Date: 2026-09-01
 - Branch: `feat/live-collaboration-slice-3` (stacked on `feat/agent-transport-slice-2`, PR #5)
 - Context: ADR 0001 (headless facade), ADR 0002 (Chromium runtime), ADR 0003
@@ -28,7 +29,7 @@ UI. This slice implements the first honest vertical of mode 3
 3. **Seamless Handoff** — at any revision, either side can take over.
 4. **Shared Reversibility** — the human can undo/redo AI operations; the AI
    observes the post-undo state as a new revision.
-5. **No Privileged Editor** — GUI, embedded AI, and external agents
+5. **No Privileged Editor** — GUI users and external agents
    ultimately go through the same action contract.
 6. **No UI Automation Illusion** — the AI never fakes engine integration by
    simulating mouse clicks on the GUI.
@@ -156,9 +157,10 @@ gesture on the real canvas — not UI automation, not simulated state.
 
 ### 6. One AI writer at a time; humans always write
 
-A writer lease (`LiveWriterLease` in `@openreel/agent-facade`, held by the
-desktop main session host) grants write access to **at most one AI session**
-— embedded chat or external MCP, never both. A session without the lease
+ A writer lease (`LiveWriterLease` in `@openreel/agent-facade`, held by the
+desktop main session host) grants write access to **at most one external Agent
+MCP session**. The optional conversation panel is only a view/client of that
+Agent's existing session and never becomes another writer. A session without the lease
 gets read-only verbs; write verbs fail `CONFLICT` with holder information.
 The human never acquires the lease and can always edit; revision CAS
 (Decision 3) is the concurrency guard, per the product rule "Human 始终可以操作".
@@ -172,16 +174,21 @@ Each AI session is created with a mode:
   `editor.get_context`, `job.status`, `verify.artifact`).
 - **Assist** (default) — full verbs within the conversation; every action is
   visible in the chat and the status bar, cancellable mid-turn, and undoable.
-  No per-op confirmation dialogs.
+  No per-op confirmation dialogs at the editor-facade boundary.
 - **Autonomous** — same verb surface, larger step budget for multi-step
   tasks.
 
 Mode is enforced at the facade session boundary (the verb gate), not by UI
-convention. Cancel reuses the existing abort path
-(`chat-store.stop()` → `AbortController` → turn rollback); undo reuses the
-store's group undo.
+convention. Conversation cancellation is forwarded to the external Agent;
+undo/redo remains part of the shared canonical editor history.
 
-### 8. Embedded chat: reuse the existing panel, rewire tools to the facade
+### 8. Superseded: embedded chat
+
+**Superseded by ADR 0005 on 2026-09-02.** The implementation described below
+is retained only as decision history. The embedded BYOK model loop, provider
+picker, key storage, and local conversation store have been removed. The
+shipped panel is a provider-neutral GUI client for an externally owned Agent
+session; it has no model, provider key, tool loop, or durable history.
 
 The existing chat surface is reused, not rebuilt: `ChatPanel`/
 `ChatMessage`/`ToolCallCard`/`ChatComposer` components, `chat-store`
@@ -296,7 +303,7 @@ Recorded here as design intent, explicitly not implemented in this slice:
 - The desktop main process becomes the session authority for AI
   collaboration; the renderer remains the project authority. Two
   authorities, one seam (`LiveProjectStore`), CAS-guarded.
-- Facade consumers (embedded chat, shim, future bindings) share one
+- Facade consumers (the external MCP shim and future bindings) share one
   contract and one schema source; tool count 14 → 15 everywhere.
 - The renderer gains two small in-memory counters (project/context
   revision) and one bridge listener; the project file format is unchanged.
@@ -374,7 +381,7 @@ re-verified green afterwards.
   `OPENREEL_MCP_ENDPOINT_FILE=~/.openreel/live-endpoint.json`. Deliberate
   this slice (legacy MCP untouched per Decision 9); flip the default when
   the legacy path is retired.
-- **Embedded-channel trust.** `window.openreel.facade.call` is available to
-  the (trusted-local) renderer without the token — consistent with the
-  local user boundary; a renderer compromise implies facade access within
-  that boundary. Documented here as the accepted threat model.
+- **Conversation-channel trust (updated by ADR 0005).** The renderer receives
+  only a bounded display projection over narrow IPC methods. Loopback endpoint
+  credentials remain in the desktop main process and never cross into the
+  renderer.

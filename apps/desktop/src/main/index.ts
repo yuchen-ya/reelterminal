@@ -21,29 +21,22 @@ import {
   startAuroraPreviewSession,
   startAuroraSequenceSession,
 } from "./ipc/aurora";
-import { getKeyStore } from "./ipc/keychain";
-import { cloudFetch } from "./ipc/cloud";
-import { GpuTokenProvider } from "./gpu/token-provider";
-import { GpuJobClient } from "./gpu/job-client";
-import { getOrCreateInstanceId } from "./gpu/instance-id";
 import { applyWindowControl, windowIsMaximized } from "./window-controls";
 import { installApplicationMenu, sendMenuAction } from "./app-menu";
 import { attachUnsavedGuard, markQuitting } from "./lifecycle";
 import { initAutoUpdater } from "./updater";
 import { initCrashReporter, reportError } from "./crash-reporter";
 import { migrateGpuCacheOnUpgrade } from "./gpu-cache-migration";
-import {
-  startMcpServer,
-  stopMcpServer,
-  getMcpStatus,
-  rotateMcpToken,
-  testMcpConnection,
-} from "./mcp/server";
 import { registerLiveIpc } from "./ipc/live";
+import { registerConversationIpc } from "./ipc/conversation";
 import {
   disposeLiveSessionHost,
   getLiveSessionHost,
 } from "./live/host-instance";
+import {
+  disposeConversationHost,
+  getConversationHost,
+} from "./conversation/host-instance";
 import {
   fileWriters,
   showSaveDialog,
@@ -84,12 +77,6 @@ import {
   riggingBackendProbeSchema,
   rigHumanoidModelArgsSchema,
   rigHumanoidModelResultSchema,
-  cloudFetchArgsSchema,
-  gpuUploadMediaArgsSchema,
-  gpuUploadExportArgsSchema,
-  gpuSubmitJobArgsSchema,
-  gpuJobIdArgsSchema,
-  gpuArtifactArgsSchema,
   windowControlArgsSchema,
 } from "../shared/ipc-contract";
 import type {
@@ -115,30 +102,6 @@ migrateGpuCacheOnUpgrade();
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   app.quit();
-}
-
-const BROKER_BASE_URL =
-  process.env.OPENREEL_AUTH_BROKER_BASE_URL ?? "https://api.openreel.video";
-const GPU_BASE_URL = process.env.OPENREEL_GPU_BASE_URL ?? "https://ai.openreel.video";
-const GPU_BUNDLE_ID = "com.openreel.video";
-
-let gpuClient: GpuJobClient | null = null;
-async function getGpuClient(): Promise<GpuJobClient> {
-  if (gpuClient) return gpuClient;
-  const instanceId = await getOrCreateInstanceId();
-  const tokenProvider = new GpuTokenProvider({
-    brokerBaseUrl: BROKER_BASE_URL,
-    bundleId: GPU_BUNDLE_ID,
-    instanceId,
-  });
-  gpuClient = new GpuJobClient({
-    gpuBaseUrl: GPU_BASE_URL,
-    brokerBaseUrl: BROKER_BASE_URL,
-    bundleId: GPU_BUNDLE_ID,
-    tokenProvider,
-    tempFilePath: (ext: string) => tempFilePath({ ext }),
-  });
-  return gpuClient;
 }
 
 function rendererRoot(): string {
@@ -245,33 +208,6 @@ app.whenReady().then(() => {
   handle(CHANNELS.riggingRigHumanoidModel, rigHumanoidModelArgsSchema, async (args) =>
     rigHumanoidModelResultSchema.parse(await rigHumanoidModel(args)),
   );
-  handle(CHANNELS.keychainGet, z.object({ id: z.string() }), ({ id }) => getKeyStore().get(id));
-  handle(CHANNELS.keychainSet, z.object({ id: z.string(), value: z.string() }), ({ id, value }) =>
-    getKeyStore().set(id, value),
-  );
-  handle(CHANNELS.keychainDelete, z.object({ id: z.string() }), ({ id }) => getKeyStore().delete(id));
-  handle(CHANNELS.cloudFetch, cloudFetchArgsSchema, cloudFetch);
-  handle(CHANNELS.gpuUploadMedia, gpuUploadMediaArgsSchema, async (args) =>
-    (await getGpuClient()).uploadMedia(args),
-  );
-  handle(CHANNELS.gpuUploadExport, gpuUploadExportArgsSchema, async (args) =>
-    (await getGpuClient()).uploadBytes(args),
-  );
-  handle(CHANNELS.gpuSubmitJob, gpuSubmitJobArgsSchema, async (args) =>
-    (await getGpuClient()).submitJob(args),
-  );
-  handle(CHANNELS.gpuJobStatus, gpuJobIdArgsSchema, async ({ jobID }) =>
-    (await getGpuClient()).jobStatus(jobID),
-  );
-  handle(CHANNELS.gpuFetchManifest, gpuJobIdArgsSchema, async ({ jobID }) =>
-    (await getGpuClient()).fetchManifest(jobID),
-  );
-  handle(CHANNELS.gpuDownloadArtifact, gpuArtifactArgsSchema, async ({ jobID, relativePath }) =>
-    (await getGpuClient()).downloadArtifact(jobID, relativePath),
-  );
-  handle(CHANNELS.gpuCancelJob, gpuJobIdArgsSchema, async ({ jobID }) =>
-    (await getGpuClient()).cancelJob(jobID),
-  );
   ipcMain.handle(CHANNELS.exportStart, (e, raw) => startExport(e.sender, raw));
   handle(
     CHANNELS.exportWriteAudioWav,
@@ -313,21 +249,12 @@ app.whenReady().then(() => {
       context: payload.context,
     });
   });
-  handle(CHANNELS.mcpGetStatus, z.undefined(), () => getMcpStatus());
-  handle(CHANNELS.mcpRotateToken, z.undefined(), () => rotateMcpToken());
-  handle(CHANNELS.mcpTestConnection, z.undefined(), () => testMcpConnection());
-  // Live human–agent collaboration (ADR 0004 Slice 3): facade.call +
-  // collabControl behind the main-process session host.
+  // Live human–agent collaboration (ADR 0004 Slice 3): external MCP endpoint
+  // plus collabControl behind the main-process session host.
   registerLiveIpc(getLiveSessionHost());
+  registerConversationIpc(getConversationHost());
   createWindow();
   initAutoUpdater();
-  startMcpServer().catch((error) =>
-    reportError({
-      type: "mcp-start-failed",
-      source: "main",
-      message: error instanceof Error ? error.message : String(error),
-    }),
-  );
   installApplicationMenu(process.platform, (id) => {
     if (id === "openLicenses") {
       const dir = app.isPackaged
@@ -377,10 +304,9 @@ let liveSessionHostDisposed = false;
 app.on("will-quit", (event) => {
   disposeAuroraClient();
   cancelAllExports();
-  void stopMcpServer();
   if (liveSessionHostDisposed) return;
   event.preventDefault();
-  void disposeLiveSessionHost()
+  void Promise.all([disposeLiveSessionHost(), disposeConversationHost()])
     .catch(() => undefined)
     .then(() => {
       liveSessionHostDisposed = true;

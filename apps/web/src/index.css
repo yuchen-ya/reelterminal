@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ============================================================
-   OpenReel Editor — v2 design tokens (cinematic dark, emerald)
+   ReelTerminal Editor — v2 design tokens (cinematic dark, emerald)
    All values are CSS variables. Components use Tailwind utilities
    that map to these via tailwind.config.js.
    ============================================================ */
@@ -60,7 +60,7 @@
     --stage-bg: #ffffff;
     --screen-bg: #ffffff;
 
-    /* accent (brand emerald #10b981 — matches the OpenReel logo) */
+    /* accent (brand emerald #10b981 — matches the ReelTerminal logo) */
     --accent: #10b981;
     --accent-strong: #059669;
     --accent-soft: #e6f9f1;
@@ -100,7 +100,7 @@
     /* the preview "screen" itself (canvas + letterbox): black in dark */
     --screen-bg: oklch(0 0 0);
 
-    /* accent (brand emerald — matches the OpenReel logo) */
+    /* accent (brand emerald — matches the ReelTerminal logo) */
     --accent: oklch(0.7 0.15 162);
     --accent-strong: oklch(0.63 0.16 162);
     --accent-soft: oklch(0.7 0.15 162 / 0.2);

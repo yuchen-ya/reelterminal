@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { ToolcraftText as Text } from "@openreel/ui";
 
 import { Toolbar } from "./Toolbar";
@@ -9,7 +10,6 @@ import { InspectorPanel } from "./InspectorPanel";
 import { Timeline } from "./Timeline";
 import { KeyframeEditorPanel } from "./KeyframeEditorPanel";
 import { AudioMixer } from "../audio-mixer";
-import { AIPanel } from "./ai-panel/AIPanel";
 import { KeyboardShortcutsOverlay } from "./KeyboardShortcutsOverlay";
 import { PanelErrorBoundary } from "../ErrorBoundary";
 import { SpotlightTour, MoGraphTour } from "./tour";
@@ -38,8 +38,10 @@ import {
   disposeTransitionBridge,
 } from "../../bridges/transition-bridge";
 
-const ChatPanel = React.lazy(() =>
-  import("./chat/ChatPanel").then((module) => ({ default: module.ChatPanel })),
+const ExternalAgentPanel = React.lazy(() =>
+  import("./agent/ExternalAgentPanelContainer").then((module) => ({
+    default: module.ExternalAgentPanelContainer,
+  })),
 );
 
 // Timeline area (bottom band) is sized as a vh fraction so the
@@ -211,6 +213,7 @@ const useEngineInitialization = () => {
  * properties on the root grid so panels can pick them up.
  */
 export const EditorInterface: React.FC = () => {
+  const { t } = useTranslation();
   const { initialized, initializing, initError, initStatus } =
     useEngineInitialization();
 
@@ -324,7 +327,7 @@ export const EditorInterface: React.FC = () => {
   const [chatWidth, setChatWidth] = useState(DEFAULT_CHAT_W);
   const [timelineVh, setTimelineVh] = useState(DEFAULT_TIMELINE_VH);
 
-  const chatVisible = panels.agentChat?.visible ?? false;
+  const chatVisible = panels.externalAgent?.visible ?? false;
 
   const mediaRef = useRef(mediaWidth);
   const inspectorRef = useRef(inspectorWidth);
@@ -357,7 +360,7 @@ export const EditorInterface: React.FC = () => {
       if (!root || !target) return;
       const rect = root.getBoundingClientRect();
       const chatOpen =
-        useUIStore.getState().panels.agentChat?.visible ?? false;
+        useUIStore.getState().panels.externalAgent?.visible ?? false;
       const chatOffset = chatOpen ? chatRef.current + RESIZE_HANDLE : 0;
 
       if (target === "media") {
@@ -432,7 +435,7 @@ export const EditorInterface: React.FC = () => {
       <div className="w-full h-full bg-bg flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <Text type="supporting" color="primary" className="text-fg-2 text-sm">Initializing editor…</Text>
+          <Text type="supporting" color="primary" className="text-fg-2 text-sm">{t("Initializing editor…")}</Text>
           <Text type="supporting" color="secondary" className="text-fg-muted text-xs mt-2">{initStatus}</Text>
           {initError && (
             <Text type="supporting" className="text-status-error text-xs mt-2">{initError}</Text>
@@ -533,16 +536,16 @@ export const EditorInterface: React.FC = () => {
               className="bg-bg-1 min-w-0 min-h-0 overflow-hidden rounded-xl border border-border shadow-sm"
               style={{ gridArea: "chat" }}
             >
-              <PanelErrorBoundary name="AI Editor">
+              <PanelErrorBoundary name={t("externalAgent.title")}>
                 <React.Suspense
                   fallback={
                     <div className="grid h-full place-items-center text-xs text-fg-muted">
-                      Loading AI Editor…
+                      {t("externalAgent.loading")}
                     </div>
                   }
                 >
-                  <ChatPanel
-                    onClose={() => setPanelVisible("agentChat", false)}
+                  <ExternalAgentPanel
+                    onClose={() => setPanelVisible("externalAgent", false)}
                   />
                 </React.Suspense>
               </PanelErrorBoundary>
@@ -569,14 +572,6 @@ export const EditorInterface: React.FC = () => {
                   visible
                   onClose={() => setPanelVisible("audioMixer", false)}
                 />
-              </PanelErrorBoundary>
-            </div>
-          )}
-
-          {panels.ai?.visible && (
-            <div className="shrink-0 border-b border-border">
-              <PanelErrorBoundary name="AI">
-                <AIPanel />
               </PanelErrorBoundary>
             </div>
           )}

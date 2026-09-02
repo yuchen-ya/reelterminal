@@ -229,9 +229,8 @@ describe("live session host enable/status/disable", () => {
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
     const host = createLiveSessionHost(fixture.deps);
     await host.enable();
-    await host.callEmbedded("timeline.get", undefined);
     await host.callExternal("project.get_state", undefined);
-    expect(fixture.sessions).toHaveLength(2);
+    expect(fixture.sessions).toHaveLength(1);
 
     const status = await host.disable();
     expect(status).toEqual({
@@ -254,7 +253,7 @@ describe("live session host enable/status/disable", () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
     const host = createLiveSessionHost(fixture.deps);
-    const result = await host.callEmbedded("timeline.get", undefined);
+    const result = await host.callExternal("timeline.get", undefined);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("UNSUPPORTED");
     expect(fixture.factoryCalls).toEqual([]);
@@ -262,19 +261,19 @@ describe("live session host enable/status/disable", () => {
 });
 
 describe("live session host verb dispatch + events", () => {
-  it("lazy-creates the embedded session on first use and surfaces it as writer", async () => {
+  it("lazy-creates the external session on first use and surfaces it as writer", async () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
     const host = createLiveSessionHost(fixture.deps);
     await host.enable();
     cleanups.push(() => void host.disable());
 
-    const result = await host.callEmbedded("timeline.get", undefined);
+    const result = await host.callExternal("timeline.get", undefined);
     expect(result.ok).toBe(true);
     expect(fixture.factoryCalls).toEqual([
-      { sessionId: "embedded", mode: "assist" },
+      { sessionId: "external", mode: "assist" },
     ]);
-    expect((await host.getStatus()).writer).toBe("embedded");
+    expect((await host.getStatus()).writer).toBe("external");
 
     await flushPushes();
     const actions = actionEvents(fixture.events);
@@ -295,23 +294,21 @@ describe("live session host verb dispatch + events", () => {
     expect(statuses.at(-1)?.currentAction).toBeNull();
   });
 
-  it("the external channel gets its own session; the first constructor keeps the lease", async () => {
+  it("reuses the external session for every endpoint verb and keeps the lease", async () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
     const host = createLiveSessionHost(fixture.deps);
     await host.enable();
     cleanups.push(() => void host.disable());
 
-    await host.callEmbedded("timeline.get", undefined);
+    await host.callExternal("timeline.get", undefined);
     await host.callExternal("project.get_state", undefined);
     expect(fixture.factoryCalls).toEqual([
-      { sessionId: "embedded", mode: "assist" },
       { sessionId: "external", mode: "assist" },
     ]);
-    // Embedded grabbed the lease at construction; external runs read-only.
+    // The single external session owns the sole writer lease.
     expect(fixture.sessions[0]!.isWriter).toBe(true);
-    expect(fixture.sessions[1]!.isWriter).toBe(false);
-    expect((await host.getStatus()).writer).toBe("embedded");
+    expect((await host.getStatus()).writer).toBe("external");
   });
 
   it("externalConnected flips on the endpoint's first initialize and clears on disable", async () => {
@@ -353,7 +350,7 @@ describe("live session host verb dispatch + events", () => {
     await host.enable();
     cleanups.push(() => void host.disable());
 
-    const result = await host.callEmbedded("edit.apply", { ops: [] });
+    const result = await host.callExternal("edit.apply", { ops: [] });
     expect(result.ok).toBe(false);
     await flushPushes();
     const end = actionEvents(fixture.events).at(-1);
@@ -371,20 +368,20 @@ describe("live session host verb dispatch + events", () => {
 });
 
 describe("live session host setMode", () => {
-  it("re-creates the embedded session with the new mode; lease follows facade semantics", async () => {
+  it("re-creates the external session with the new mode; lease follows facade semantics", async () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
     const host = createLiveSessionHost(fixture.deps);
     await host.enable();
     cleanups.push(() => void host.disable());
 
-    await host.callEmbedded("timeline.get", undefined);
-    expect((await host.getStatus()).writer).toBe("embedded");
+    await host.callExternal("timeline.get", undefined);
+    expect((await host.getStatus()).writer).toBe("external");
 
     const status = await host.setMode("observe");
     expect(fixture.factoryCalls).toEqual([
-      { sessionId: "embedded", mode: "assist" },
-      { sessionId: "embedded", mode: "observe" },
+      { sessionId: "external", mode: "assist" },
+      { sessionId: "external", mode: "observe" },
     ]);
     // The old session released the lease and the observe session never
     // acquires — no AI writer remains.
@@ -401,11 +398,11 @@ describe("live session host setMode", () => {
     await host.enable();
     cleanups.push(() => void host.disable());
 
-    await host.callEmbedded("timeline.get", undefined);
+    await host.callExternal("timeline.get", undefined);
     const status = await host.setMode("assist");
     expect(status.mode).toBe("assist");
     expect(fixture.factoryCalls).toEqual([
-      { sessionId: "embedded", mode: "assist" },
+      { sessionId: "external", mode: "assist" },
     ]);
   });
 });

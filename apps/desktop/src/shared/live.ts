@@ -2,9 +2,8 @@
  * Live human–agent collaboration IPC contract (ADR 0004, Slice 3).
  *
  * Canonical main-side mirror of the renderer-facing types in
- * apps/web/src/types/global.d.ts (the `facade` / `liveBridge` / `liveEvents`
- * / `collabControl` members of window.openreel) — same relationship as
- * shared/mcp.ts has with the legacy MCP listener. Keep the two in sync.
+ * apps/web/src/types/global.d.ts (the `liveBridge` / `liveEvents` /
+ * `collabControl` members of window.openreel). Keep the two in sync.
  */
 
 export type LiveCollabMode = "observe" | "assist" | "autonomous";
@@ -13,28 +12,11 @@ export type LiveCollabMode = "observe" | "assist" | "autonomous";
 export interface LiveCollabStatus {
   readonly enabled: boolean;
   readonly externalConnected: boolean;
-  /** The AI session currently holding the writer lease (ADR 0004 Decision 6). */
-  readonly writer: "embedded" | "external" | null;
+  /** The external agent session currently holding the writer lease. */
+  readonly writer: "external" | null;
   readonly mode: LiveCollabMode;
   /** Verb currently in flight, or null when the agent is idle. */
   readonly currentAction: string | null;
-}
-
-/** facade.call args (renderer → main). */
-export interface LiveFacadeCallArgs {
-  readonly verb: string;
-  readonly params?: unknown;
-}
-
-/**
- * FacadeResult as serialized across the facade.call IPC channel: the
- * in-process `{ ok: true, value }` becomes `{ ok: true, data }` on the wire
- * (global.d.ts `OpenReelFacadeResult`); the error side passes verbatim.
- */
-export interface LiveFacadeResultWire {
-  readonly ok: boolean;
-  readonly data?: unknown;
-  readonly error?: { code: string; message: string; details?: unknown };
 }
 
 /** collabControl.setMode args (renderer → main). */

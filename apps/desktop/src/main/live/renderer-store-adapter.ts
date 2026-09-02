@@ -1,9 +1,8 @@
 /**
  * RendererStoreAdapter — the main-process half of the ADR 0004 Decision 1
  * seam. Implements the facade's `LiveProjectStore` over a callId-correlated
- * IPC bridge to the canonical renderer store (same request/response
- * mechanics as main/mcp/dispatcher.ts + renderer-bridge.ts, but its OWN
- * channel namespace: "openreel:live:request" / "openreel:live:response").
+ * IPC bridge to the canonical renderer store. Its channel namespace is
+ * "openreel:live:request" / "openreel:live:response".
  *
  * Hardening (DESK-06 lesson): a response only resolves its pending call when
  * it arrives from the CURRENT target window's webContents — foreign or stale
