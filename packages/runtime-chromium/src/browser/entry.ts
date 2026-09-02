@@ -153,6 +153,57 @@ async function renderPngBase64(
   }
 }
 
+/** Compose a bounded real PNG contact sheet from the same rendered frames. */
+async function renderContactSheetBase64(request: {
+  samples: Array<{ timeSec: number; label: string }>;
+  width: number;
+  height: number;
+}): Promise<string> {
+  if (!currentProject) throw new Error("hydrate() must be called first");
+  if (request.samples.length < 1 || request.samples.length > 12) {
+    throw new Error("contact sheet sample count must be in [1, 12]");
+  }
+  const padding = 8;
+  const labelHeight = 28;
+  const columns = Math.min(4, request.samples.length);
+  const rows = Math.ceil(request.samples.length / columns);
+  const sheetWidth = columns * (request.width + padding) + padding;
+  const sheetHeight = rows * (request.height + labelHeight + padding) + padding;
+  // Keep browser canvas allocation bounded even if a provider caller is
+  // bypassed. The facade enforces the same budget before invoking us.
+  if (sheetWidth * sheetHeight > 24_000_000) {
+    throw new Error("contact sheet exceeds the 24-megapixel runtime budget");
+  }
+  const canvas = new OffscreenCanvas(sheetWidth, sheetHeight);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context on OffscreenCanvas");
+  ctx.fillStyle = "#101318";
+  ctx.fillRect(0, 0, sheetWidth, sheetHeight);
+  ctx.font = "14px sans-serif";
+  ctx.textBaseline = "top";
+  for (const [index, sample] of request.samples.entries()) {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const x = padding + column * (request.width + padding);
+    const y = padding + row * (request.height + labelHeight + padding);
+    const label = sample.label.length > 72 ? `${sample.label.slice(0, 69)}…` : sample.label;
+    ctx.fillStyle = "#f5f7fa";
+    ctx.fillText(label, x, y);
+    const frameBase64 = await renderPngBase64(sample.timeSec, request.width, request.height);
+    const binary = atob(frameBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+    try {
+      ctx.drawImage(bitmap, x, y + labelHeight, request.width, request.height);
+    } finally {
+      bitmap.close();
+    }
+  }
+  const blob = await canvas.convertToBlob({ type: "image/png" });
+  return await blobToBase64(blob);
+}
+
 /* ------------------------------ export (WebCodecs route) ------------------------------ */
 
 /**
@@ -413,6 +464,7 @@ async function probe(): Promise<Record<string, unknown>> {
 const api: OpenreelRenderApi = {
   hydrate,
   renderPngBase64,
+  renderContactSheetBase64,
   exportToMp4Webcodecs,
   abortExport,
   probe,
@@ -421,6 +473,11 @@ const api: OpenreelRenderApi = {
 export interface OpenreelRenderApi {
   hydrate(projectJson: string, mediaIds: string[]): Promise<HydrateReport>;
   renderPngBase64(timeSec: number, width: number, height: number): Promise<string>;
+  renderContactSheetBase64(request: {
+    samples: Array<{ timeSec: number; label: string }>;
+    width: number;
+    height: number;
+  }): Promise<string>;
   exportToMp4Webcodecs(settings: {
     width: number;
     height: number;

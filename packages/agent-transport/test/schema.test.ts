@@ -24,6 +24,7 @@ import { validateObject } from "@openreel/agent-facade/validate";
 import { validateEditOp } from "@openreel/agent-facade/ops";
 import {
   EXPORT_SETTINGS_SCHEMA,
+  VISUAL_INSPECT_RANGE_SCHEMA,
   VERIFY_COMPARE_SCHEMA,
   VERIFY_EXPECT_SCHEMA,
   VERIFY_REGION_SCHEMA,
@@ -72,6 +73,13 @@ function facadeRuntimeValidation(verb: string, params: unknown): boolean {
         }
         return true;
       }
+      case "visual.inspect": {
+        if (valid.timeRange !== undefined) {
+          validateObject(valid.timeRange, VISUAL_INSPECT_RANGE_SCHEMA, "visual.inspect params.timeRange");
+        }
+        if ((valid.clipId === undefined) === (valid.timeRange === undefined)) return false;
+        return true;
+      }
       case "verify.artifact": {
         if (valid.expect !== undefined) {
           validateObject(valid.expect, VERIFY_EXPECT_SCHEMA, "verify.artifact params.expect");
@@ -100,11 +108,11 @@ describe("Decision 4 item 2: transport assigns facade schemas verbatim", () => {
       "session.describe", "capabilities.get", "project.create", "project.open",
       "project.save", "project.get_state", "media.import", "timeline.get",
       "editor.get_context",
-      "edit.apply", "preview.render_frame", "export.start", "job.status",
+      "edit.apply", "preview.render_frame", "visual.inspect", "export.start", "job.status",
       "job.cancel", "verify.artifact",
     ];
     const emitted = EMITTED_VERB_JSON_SCHEMAS as Record<string, unknown>;
-    expect(TOOLS).toHaveLength(15);
+    expect(TOOLS).toHaveLength(16);
     TOOLS.forEach((tool, i) => {
       expect(tool.inputSchema).toBe(emitted[verbOrder[i]]);
       expect(tool.inputSchema).toEqual(emitted[verbOrder[i]]);

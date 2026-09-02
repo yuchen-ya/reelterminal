@@ -217,7 +217,7 @@ export function parseWorkflowLines(text: string): {
       ) {
         errors.push({
           line: lineNo,
-          message: `step "${id}": unknown verb ${JSON.stringify(verb)} — expected one of the 14 facade verbs`,
+          message: `step "${id}": unknown verb ${JSON.stringify(verb)} — expected one of the 16 facade verbs`,
         });
         continue;
       }
@@ -730,8 +730,10 @@ const FACADE_CALL_KEYS = [
   "project.get_state",
   "media.import",
   "timeline.get",
+  "editor.get_context",
   "edit.apply",
   "preview.render_frame",
+  "visual.inspect",
   "export.start",
   "job.status",
   "job.cancel",

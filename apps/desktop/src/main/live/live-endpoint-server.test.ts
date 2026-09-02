@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, existsSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, existsSync, statSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -31,6 +31,11 @@ let running: RunningLiveEndpoint;
 let token: string;
 let activity = 0;
 
+const ONE_PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
 async function rpc(body: unknown, authToken?: string): Promise<Response> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
@@ -51,6 +56,7 @@ beforeAll(async () => {
     serverInfo: { name: "openreel-live", version: "test" },
     port: 0,
     endpointFilePath: endpointFile,
+    artifactRoot: tempDir,
   });
   const file = JSON.parse(readFileSync(endpointFile, "utf8")) as {
     url: string;
@@ -160,7 +166,7 @@ describe("live endpoint MCP protocol", () => {
     expect(json.result).toEqual({});
   });
 
-  it("tools/list returns exactly the 15 facade tools, schemas verbatim, no renderer round-trip", async () => {
+  it("tools/list returns exactly the 16 facade tools, schemas verbatim, no renderer round-trip", async () => {
     const res = await rpc({ jsonrpc: "2.0", id: 1, method: "tools/list" }, token);
     const json = (await res.json()) as {
       result: {
@@ -168,7 +174,7 @@ describe("live endpoint MCP protocol", () => {
       };
     };
     const tools = json.result.tools;
-    expect(tools).toHaveLength(15);
+    expect(tools).toHaveLength(16);
     expect(tools.map((t) => t.name)).toEqual(FACADE_VERBS.map(toolNameForVerb));
     expect(tools.some((t) => t.name === "editor_get_context")).toBe(true);
     // The inputSchema is the facade emission, verbatim (no copy drift).
@@ -215,6 +221,59 @@ describe("live endpoint MCP protocol", () => {
     );
     const failedJson = (await failed.json()) as { result: { isError: boolean } };
     expect(failedJson.result.isError).toBe(true);
+  });
+
+  it("embeds a facade-contained visual PNG as an MCP image block", async () => {
+    const sheetPath = path.join(tempDir, "visual", "contact-sheet.png");
+    const sheetDir = path.dirname(sheetPath);
+    // The endpoint only exposes files beneath the configured artifact root;
+    // use a real PNG so this also exercises the transport signature check.
+    mkdirSync(sheetDir, { recursive: true });
+    writeFileSync(sheetPath, ONE_PIXEL_PNG);
+    nextResult = {
+      ok: true,
+      value: {
+        revision: 12,
+        sourceRevision: 12,
+        frames: [],
+        contactSheet: { path: sheetPath, format: "png", sizeBytes: ONE_PIXEL_PNG.length },
+      },
+    };
+    const res = await rpc(
+      { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "visual_inspect", arguments: { clipId: "c1" } } },
+      token,
+    );
+    const json = (await res.json()) as {
+      result: { content: Array<{ type: string; data?: string; mimeType?: string }> };
+    };
+    expect(json.result.content).toHaveLength(2);
+    expect(json.result.content[1]).toMatchObject({ type: "image", mimeType: "image/png" });
+    expect(json.result.content[1]?.data).toBe(ONE_PIXEL_PNG.toString("base64"));
+  });
+
+  it("falls back to a valid frame when the contact sheet is missing", async () => {
+    const framePath = path.join(tempDir, "visual", "frame-fallback.png");
+    mkdirSync(path.dirname(framePath), { recursive: true });
+    writeFileSync(framePath, ONE_PIXEL_PNG);
+    nextResult = {
+      ok: true,
+      value: {
+        revision: 12,
+        sourceRevision: 12,
+        contactSheet: { path: path.join(tempDir, "visual", "missing-sheet.png") },
+        frames: [{ artifact: { path: framePath } }],
+      },
+    };
+    const res = await rpc(
+      { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "visual_inspect", arguments: {} } },
+      token,
+    );
+    const json = (await res.json()) as {
+      result: { content: Array<{ type: string; data?: string; text?: string; mimeType?: string }> };
+    };
+    const image = json.result.content.find((block) => block.type === "image");
+    expect(image).toMatchObject({ type: "image", mimeType: "image/png", data: ONE_PIXEL_PNG.toString("base64") });
+    expect(json.result.content.some((block) => block.text?.includes("not embedded"))).toBe(true);
   });
 
   it("unknown tool is a protocol error, never a domain result", async () => {

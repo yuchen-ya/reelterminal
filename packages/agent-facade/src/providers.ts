@@ -90,6 +90,29 @@ export interface RenderedFrameInfo {
   readonly bytesWritten: number;
 }
 
+/** Request for one real PNG contact sheet composed by the render runtime. */
+export interface RenderContactSheetRequest {
+  /** Canonical serialized project snapshot (deep clone). */
+  readonly project: Project;
+  readonly sourceRevision: number;
+  /** Timeline positions, already validated and clamped by the facade. */
+  readonly samples: readonly {
+    readonly timeSec: number;
+    readonly label: string;
+  }[];
+  /** Raster size of each cell in the sheet. */
+  readonly width: number;
+  readonly height: number;
+  /** Absolute PNG destination inside artifactRoot. */
+  readonly destPath: string;
+  /** Re-validated media paths; providers must not read anything else. */
+  readonly mediaFiles: MediaFilesMap;
+}
+
+export interface RenderedContactSheetInfo {
+  readonly bytesWritten: number;
+}
+
 export interface RenderProvider {
   readonly id: string;
   /**
@@ -100,6 +123,14 @@ export interface RenderProvider {
   preflight(): Promise<ProviderPreflight>;
   /** Render one PNG frame to destPath. Throws on failure (facade maps it). */
   renderFramePng(request: RenderFrameRequest): Promise<RenderedFrameInfo>;
+  /**
+   * Optional runtime-native composition. When absent, visual.inspect still
+   * returns the individual real frame artifacts and records the honest
+   * fallback reason; no fake contact sheet is ever synthesized in Node.
+   */
+  renderContactSheetPng?(
+    request: RenderContactSheetRequest,
+  ): Promise<RenderedContactSheetInfo>;
 }
 
 /* ------------------------------------------------------------------ */

@@ -28,6 +28,8 @@ import type {
   ProviderPreflight,
   RenderFrameRequest,
   RenderedFrameInfo,
+  RenderContactSheetRequest,
+  RenderedContactSheetInfo,
   RenderProvider,
 } from "@openreel/agent-facade";
 
@@ -72,6 +74,12 @@ export interface ChromiumProvidersConfig {
 
 /** Files an export job may write into its job dir (swept on non-done ends). */
 const EXPORT_JOB_FILES = ["output.mp4", "output.mp4.part", "output.part"] as const;
+
+const VISUAL_MAX_SAMPLES = 12;
+const VISUAL_MAX_CELL_DIMENSION = 1024;
+const VISUAL_MAX_FRAME_PIXELS = 1_048_576;
+const VISUAL_MAX_CONTACT_SHEET_PIXELS = 24_000_000;
+const VISUAL_MAX_PNG_BYTES = 8 * 1024 * 1024;
 
 /**
  * Best-effort removal of everything an export could have left behind. Runs
@@ -221,6 +229,52 @@ export class ChromiumRenderProvider implements RenderProvider {
     );
     if (png.length === 0) {
       throw new Error("Chromium returned an empty PNG frame");
+    }
+    await writeFile(request.destPath, png);
+    return { bytesWritten: png.length };
+  }
+
+  async renderContactSheetPng(
+    request: RenderContactSheetRequest,
+  ): Promise<RenderedContactSheetInfo> {
+    const probe = await this.providers.probe();
+    if (!probe.summary.renderAvailable) {
+      throw new Error("render provider preflight failed — refusing to render contact sheet");
+    }
+    if (request.samples.length < 1 || request.samples.length > VISUAL_MAX_SAMPLES) {
+      throw new Error("contact sheet sample count must be in [1, 12]");
+    }
+    if (
+      request.width < 2 ||
+      request.height < 2 ||
+      request.width > VISUAL_MAX_CELL_DIMENSION ||
+      request.height > VISUAL_MAX_CELL_DIMENSION
+    ) {
+      throw new Error("contact sheet cell dimensions must be in [2, 1024]");
+    }
+    if (request.width * request.height > VISUAL_MAX_FRAME_PIXELS) {
+      throw new Error("contact sheet frame dimensions exceed the 1-megapixel runtime budget");
+    }
+    if (request.samples.length * request.width * request.height > VISUAL_MAX_CONTACT_SHEET_PIXELS) {
+      throw new Error("contact sheet frame pixels exceed the 24-megapixel runtime budget");
+    }
+    const columns = Math.min(4, request.samples.length);
+    const rows = Math.ceil(request.samples.length / columns);
+    const sheetPixels =
+      (columns * (request.width + 8) + 8) * (rows * (request.height + 28) + 8);
+    if (sheetPixels > VISUAL_MAX_CONTACT_SHEET_PIXELS) {
+      throw new Error("contact sheet exceeds the 24-megapixel runtime budget");
+    }
+    const png = await this.providers.runtime.renderContactSheetPng(
+      request.project,
+      request.mediaFiles,
+      request.samples,
+      request.width,
+      request.height,
+    );
+    if (png.length === 0) throw new Error("Chromium returned an empty contact sheet PNG");
+    if (png.length > VISUAL_MAX_PNG_BYTES) {
+      throw new Error("Chromium returned a contact sheet PNG over the 8 MiB artifact budget");
     }
     await writeFile(request.destPath, png);
     return { bytesWritten: png.length };

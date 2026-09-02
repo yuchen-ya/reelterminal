@@ -2,8 +2,8 @@
  * `agent-video serve` — the MCP stdio server (ADR 0003 Decisions 1/2/5/7).
  *
  * One long-lived stdio MCP server process == one AgentFacadeSession. The
- * public surface is exactly the 15 tools of B.1 (14 slice-2 verbs plus
- * `editor_get_context`, ADR 0004); every result is the facade
+ * public surface is exactly the 16 tools of the facade contract (including
+ * `editor_get_context` and `visual_inspect`); every result is the facade
  * `FacadeResult` JSON as a single text content block (B.4), `ok:false` ⇒
  * `isError:true` — domain failures are never JSON-RPC protocol errors and
  * never string-mangled; agents match on `error.code`. Transport-level
@@ -27,6 +27,8 @@ import {
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import { FACADE_CONTRACT_VERSION, type FacadeResult } from "@openreel/agent-facade";
+import { readFile, realpath, stat } from "node:fs/promises";
+import { isAbsolute, relative, resolve as resolvePath } from "node:path";
 
 import {
   parseArgv,
@@ -50,6 +52,100 @@ const SIGNAL_EXIT_CODES: Readonly<Record<string, number>> = {
 };
 
 const OWNED_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+
+const MAX_MCP_IMAGE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Add only the facade-verified contact sheet (or bounded individual frame
+ * artifacts on the honest fallback) as MCP image content. The structured
+ * result remains the complete machine-readable source of truth.
+ */
+export async function appendVisualImageContent(
+  content: CallToolResult["content"],
+  result: FacadeResult<unknown>,
+  artifactRoot: string | undefined,
+): Promise<void> {
+  if (!result.ok || artifactRoot === undefined) return;
+  const value = result.value as {
+    readonly contactSheet?: { readonly path?: unknown } | null;
+    readonly frames?: readonly { readonly artifact?: { readonly path?: unknown } }[];
+  };
+  const contactPath = typeof value.contactSheet?.path === "string"
+    ? value.contactSheet.path
+    : undefined;
+  const framePaths = (value.frames ?? [])
+    .map((frame) => frame.artifact?.path)
+    .filter((path): path is string => typeof path === "string")
+    .slice(0, 12);
+  // Prefer the single sheet, but keep the verified frame artifacts as a
+  // recovery path when the sheet was deleted, malformed, or too large.
+  const paths = contactPath === undefined ? framePaths : [contactPath, ...framePaths];
+  const root = await realpath(resolvePath(artifactRoot)).catch(() => null);
+  if (root === null) return;
+  let totalBase64 = 0;
+  let skipped = false;
+  for (const filePath of paths) {
+    if (!isAbsolute(filePath)) {
+      skipped = true;
+      continue;
+    }
+    const verified = await realpath(filePath).catch(() => null);
+    if (verified === null) {
+      skipped = true;
+      continue;
+    }
+    const rel = relative(root, verified);
+    if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
+      skipped = true;
+      continue;
+    }
+    const fileStat = await stat(verified).catch(() => null);
+    if (!fileStat?.isFile() || fileStat.size === 0 || fileStat.size > MAX_MCP_IMAGE_BYTES) {
+      skipped = true;
+      continue;
+    }
+    const bytes = await readFile(verified).catch(() => null);
+    if (bytes === null || bytes.length === 0 || bytes.length > MAX_MCP_IMAGE_BYTES) {
+      skipped = true;
+      continue;
+    }
+    // Re-check the PNG signature at the transport boundary before exposing
+    // bytes as an image content block.
+    if (
+      bytes.length < 8 ||
+      bytes.readUInt32BE(0) !== 0x89504e47 ||
+      bytes.readUInt32BE(4) !== 0x0d0a1a0a
+    ) {
+      skipped = true;
+      continue;
+    }
+    const encoded = bytes.toString("base64");
+    if (encoded.length > MAX_MCP_IMAGE_BYTES) {
+      skipped = true;
+      continue;
+    }
+    if (totalBase64 + encoded.length > MAX_MCP_IMAGE_BYTES * 2) {
+      skipped = true;
+      break;
+    }
+    content.push({
+      type: "image",
+      data: encoded,
+      mimeType: "image/png",
+    });
+    totalBase64 += encoded.length;
+    if (contactPath !== undefined && filePath === contactPath) break;
+  }
+  if (skipped) {
+    content.push({
+      type: "text",
+      text: JSON.stringify({
+        visualImageLimitation:
+          "Some visual PNG artifacts were not embedded because the MCP image containment, PNG, or response-size limit was reached; structuredContent retains every artifact reference.",
+      }),
+    });
+  }
+}
 
 export async function serveCommand(argv: readonly string[]): Promise<never> {
   let parsed;
@@ -133,8 +229,14 @@ export async function serveCommand(argv: readonly string[]): Promise<never> {
       // B.4 envelope: the full FacadeResult JSON as ONE text content block;
       // structuredContent is supported by the pinned SDK (1.30.0
       // CallToolResultSchema carries it) and is populated verbatim too.
+      const content: CallToolResult["content"] = [
+        { type: "text", text: JSON.stringify(result) },
+      ];
+      if (verb === "visual.inspect" && result.ok) {
+        await appendVisualImageContent(content, result, config.artifactRoot);
+      }
       return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
+        content,
         structuredContent: result as unknown as Record<string, unknown>,
         isError: !result.ok,
       };

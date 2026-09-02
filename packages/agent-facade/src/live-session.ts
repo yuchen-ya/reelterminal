@@ -1,6 +1,6 @@
 /**
  * LiveFacadeSession — the live human–agent collaboration facade
- * (ADR 0004: Slice 3). A SEPARATE implementation of the same 15-verb
+ * (ADR 0004: Slice 3). A SEPARATE implementation of the same 16-verb
  * contract as AgentFacadeSession (Decision 11: headless is untouched):
  *
  *  - It holds NO project copy. The renderer's store stays canonical
@@ -29,7 +29,7 @@ import { ActionExecutor } from "@openreel/core/actions/action-executor";
 import { ActionHistory } from "@openreel/core/actions/action-history";
 import type { Action } from "@openreel/core/types/actions";
 import type { Project } from "@openreel/core/types/project";
-import { stat } from "node:fs/promises";
+import { rm, stat } from "node:fs/promises";
 import { isAbsolute, resolve as resolvePath } from "node:path";
 
 import {
@@ -64,6 +64,7 @@ import type {
   ExportCallbacks,
   ExportProvider,
   RenderProvider,
+  RenderContactSheetRequest,
   VerifyArtifactRequest,
 } from "./providers";
 import { validateObject } from "./validate";
@@ -75,6 +76,8 @@ import {
   isEvenDimension,
   JOB_PARAMS_SCHEMA,
   PREVIEW_RENDER_FRAME_SCHEMA,
+  VISUAL_INSPECT_RANGE_SCHEMA,
+  VISUAL_INSPECT_SCHEMA,
   VERIFY_ARTIFACT_SCHEMA,
   VERIFY_COMPARE_SCHEMA,
   VERIFY_EXPECT_SCHEMA,
@@ -99,6 +102,8 @@ import {
   type OpApplied,
   type PreviewRenderFrameParams,
   type PreviewRenderFrameResult,
+  type VisualInspectParams,
+  type VisualInspectResult,
   type ProjectCreateParams,
   type ProjectCreateResult,
   type ProjectOpenParams,
@@ -109,6 +114,13 @@ import {
   type VerifyArtifactParams,
   type VerifyArtifactResult,
 } from "./types";
+import {
+  buildVisualSamplePlan,
+  MAX_VISUAL_CONTACT_SHEET_PIXELS,
+  MAX_VISUAL_FRAME_PIXELS,
+  MAX_VISUAL_PNG_BYTES,
+  visualRasterSize,
+} from "./visual-inspect";
 
 /** Max media file size accepted for Chromium reads (2 GiB safety valve). */
 const MAX_MEDIA_FILE_BYTES = 2 * 1024 * 1024 * 1024;
@@ -148,7 +160,7 @@ export interface LiveFacadeConfig {
 }
 
 /**
- * The live facade contract: the same 15 verbs as AgentFacade, with
+ * The live facade contract: the same 16 verbs as AgentFacade, with
  * project.save honestly re-shaped for live mode (the GUI's save path
  * reports a revision, not a checkpoint file — see LiveProjectSaveResult)
  * plus dispose() (release the lease, cancel jobs).
@@ -671,6 +683,241 @@ export class LiveFacadeSession {
       if (valid.idempotencyKey !== undefined) {
         this.ledger.set("preview.render_frame", valid.idempotencyKey, {
           revision,
+          value,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(value);
+    });
+  }
+
+  /** Live visual.inspect: reads the canonical store snapshot and never
+   * creates a shadow project. Frames and optional contact sheet use the same
+   * Chromium render provider as preview.render_frame. */
+  async visualInspect(
+    params: VisualInspectParams,
+  ): Promise<FacadeResult<VisualInspectResult>> {
+    return this.enqueue(async () => {
+      this.gate("visual.inspect");
+      const valid = validateObject<VisualInspectParams>(
+        params,
+        VISUAL_INSPECT_SCHEMA,
+        "visual.inspect params",
+      );
+      if (valid.timeRange !== undefined) {
+        validateObject(
+          valid.timeRange,
+          VISUAL_INSPECT_RANGE_SCHEMA,
+          "visual.inspect params.timeRange",
+        );
+      }
+      const provider = this.config.renderProvider;
+      if (!provider) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "visual.inspect: no render provider configured for this session",
+          { requires: "RenderProvider (e.g. @openreel/runtime-chromium)" },
+        );
+      }
+      const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "visual.inspect");
+      await requireProviderPreflight(provider, "visual.inspect");
+
+      const { project, revision } = await this.config.store.getState();
+      const plan = buildVisualSamplePlan(project, valid);
+      const sampleCount = plan.samples.length;
+      const { width, height } = visualRasterSize(project, valid.width, valid.height);
+      const framePixels = width * height;
+      const columns = Math.min(4, sampleCount);
+      const rows = Math.ceil(sampleCount / columns);
+      const sheetPixels =
+        (columns * (width + 8) + 8) * (rows * (height + 28) + 8);
+      if (framePixels > MAX_VISUAL_FRAME_PIXELS) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `visual.inspect: raster size ${width}x${height} exceeds the ${MAX_VISUAL_FRAME_PIXELS}-pixel frame limit`,
+        );
+      }
+      if (sampleCount * framePixels > MAX_VISUAL_CONTACT_SHEET_PIXELS || sheetPixels > MAX_VISUAL_CONTACT_SHEET_PIXELS) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "visual.inspect: requested samples exceed the contact-sheet pixel budget",
+          { sampleCount, width, height },
+        );
+      }
+
+      const payload = {
+        ...(valid.clipId !== undefined ? { clipId: valid.clipId } : {}),
+        ...(valid.timeRange !== undefined ? { timeRange: valid.timeRange } : {}),
+        sampleCount,
+        width,
+        height,
+      };
+      const prior = await this.replayLookup<VisualInspectResult>(
+        "visual.inspect",
+        valid.idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        const artifacts = [
+          ...prior.value.frames.map((frame) => frame.artifact.path),
+          ...(prior.value.contactSheet ? [prior.value.contactSheet.path] : []),
+        ];
+        const allThere = await Promise.all(
+          artifacts.map((path) => stat(path).then((s) => s.isFile(), () => false)),
+        );
+        if (allThere.every(Boolean)) {
+          return ok<VisualInspectResult>({
+            ...prior.value,
+            revision,
+            replayed: true,
+          });
+        }
+      }
+      // Match preview.render_frame: an idempotent replay is resolved first;
+      // otherwise expectedRevision guards the snapshot this read would use.
+      if (
+        valid.expectedRevision !== undefined &&
+        valid.expectedRevision !== revision
+      ) {
+        throw new FacadeError(
+          "CONFLICT",
+          `revision conflict: expected ${valid.expectedRevision}, current is ${revision}`,
+          { currentRevision: revision },
+        );
+      }
+
+      const sourceRevision = revision;
+      const mediaFiles = await this.buildLiveMediaFiles(project, "visual.inspect");
+      const framesDir = resolvePath(artifactRoot, "visual", "frames");
+      await prepareArtifactDir(framesDir, artifactRoot, "visual.inspect");
+      const frames = [] as VisualInspectResult["frames"][number][];
+      for (const [index, sample] of plan.samples.entries()) {
+        const destPath = resolvePath(
+          framesDir,
+          `frame-${project.id}-r${sourceRevision}-${index}-${Math.round(sample.timeSec * 1000)}-${width}x${height}.png`,
+        );
+        const rendered = await provider.renderFramePng({
+          project: structuredClone(project),
+          sourceRevision,
+          timeSec: sample.timeSec,
+          width,
+          height,
+          destPath,
+          mediaFiles,
+        });
+        if (rendered.bytesWritten > MAX_VISUAL_PNG_BYTES) {
+          await rm(destPath, { force: true });
+          throw new FacadeError(
+            "JOB_FAILED",
+            `visual.inspect: frame PNG exceeds the ${MAX_VISUAL_PNG_BYTES}-byte artifact limit`,
+            { index },
+          );
+        }
+        const verifiedPath = await assertContainedWrittenFile(
+          destPath,
+          artifactRoot,
+          "visual.inspect",
+        );
+        const artifact = await artifactRefFor(
+          verifiedPath,
+          "image",
+          "png",
+          sourceRevision,
+          rendered.bytesWritten,
+        );
+        if (artifact.sizeBytes > MAX_VISUAL_PNG_BYTES) {
+          await rm(verifiedPath, { force: true });
+          throw new FacadeError(
+            "JOB_FAILED",
+            `visual.inspect: frame PNG exceeds the ${MAX_VISUAL_PNG_BYTES}-byte artifact limit`,
+            { index },
+          );
+        }
+        frames.push({
+          index,
+          timeSec: sample.timeSec,
+          label: sample.label,
+          sourceRevision,
+          artifact,
+        });
+      }
+
+      const limitations: string[] = [];
+      let contactSheet: VisualInspectResult["contactSheet"] = null;
+      if (provider.renderContactSheetPng) {
+        const contactDir = resolvePath(artifactRoot, "visual", "contact-sheets");
+        await prepareArtifactDir(contactDir, artifactRoot, "visual.inspect");
+        const contactPath = resolvePath(
+          contactDir,
+          `contact-${project.id}-r${sourceRevision}-${sampleCount}-${width}x${height}.png`,
+        );
+        try {
+          const rendered = await provider.renderContactSheetPng({
+            project: structuredClone(project),
+            sourceRevision,
+            samples: plan.samples,
+            width,
+            height,
+            destPath: contactPath,
+            mediaFiles,
+          } satisfies RenderContactSheetRequest);
+          if (rendered.bytesWritten > MAX_VISUAL_PNG_BYTES) {
+            await rm(contactPath, { force: true });
+            limitations.push(
+              `contact sheet exceeded the ${MAX_VISUAL_PNG_BYTES}-byte artifact limit; individual frame PNGs are returned`,
+            );
+          } else {
+            const verifiedPath = await assertContainedWrittenFile(
+              contactPath,
+              artifactRoot,
+              "visual.inspect",
+            );
+            const artifact = await artifactRefFor(
+              verifiedPath,
+              "image",
+              "png",
+              sourceRevision,
+              rendered.bytesWritten,
+            );
+            if (artifact.sizeBytes > MAX_VISUAL_PNG_BYTES) {
+              await rm(verifiedPath, { force: true });
+              limitations.push(
+                `contact sheet exceeded the ${MAX_VISUAL_PNG_BYTES}-byte artifact limit; individual frame PNGs are returned`,
+              );
+            } else {
+              contactSheet = artifact;
+            }
+          }
+        } catch (error) {
+          if (error instanceof FacadeError && error.code === "JOB_FAILED") {
+            throw error;
+          }
+          await rm(contactPath, { force: true }).catch(() => undefined);
+          limitations.push(
+            `contact sheet unavailable: ${error instanceof Error ? error.message : String(error)}; individual frame PNGs are returned`,
+          );
+        }
+      } else {
+        limitations.push(
+          "render provider does not expose native contact-sheet composition; individual frame PNGs are returned",
+        );
+      }
+
+      const value: VisualInspectResult = {
+        revision: sourceRevision,
+        sourceRevision,
+        selection: plan.selection,
+        sampleCount,
+        width,
+        height,
+        frames,
+        contactSheet,
+        limitations,
+        replayed: false,
+      };
+      if (valid.idempotencyKey !== undefined) {
+        this.ledger.set("visual.inspect", valid.idempotencyKey, {
+          revision: sourceRevision,
           value,
           payloadHash: stableStringify(payload),
         });
@@ -1237,6 +1484,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "editor.get_context": (params) => session.editorGetContext(params),
     "edit.apply": (params) => session.editApply(params),
     "preview.render_frame": (params) => session.previewRenderFrame(params),
+    "visual.inspect": (params) => session.visualInspect(params),
     "export.start": (params) => session.exportStart(params),
     "job.status": (params) => session.jobStatus(params),
     "job.cancel": (params) => session.jobCancel(params),

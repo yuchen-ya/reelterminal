@@ -54,7 +54,15 @@ Slice 2a: `project.open` · `project.save`
 
 Slice 3 (ADR 0004): `editor.get_context` — the live/headless-honest
 editor-context read; live sessions (createLiveFacade) implement the same
-15-verb contract over a `LiveProjectStore` seam with no project copy.
+16-verb contract over a `LiveProjectStore` seam with no project copy.
+
+Visual slice: `visual.inspect` — a read-only sample of 1–12 frames selected
+by `clipId` or an explicit `timeRange`. Each frame is a real provider-rendered
+PNG artifact with `timeSec`, a deterministic label, and the source revision
+(the default runtime provider is Chromium). Runtimes with contact-sheet support also return one real PNG contact-sheet
+artifact; otherwise `limitations` explains why individual frame artifacts are
+the honest fallback. Raster cells are bounded to 1024×1024, with bounded
+pixel and PNG-byte budgets.
 
 All verbs return `FacadeResult<T>` (`{ ok: true, value } | { ok: false,
 error }`) with typed error codes (`INVALID_PARAMS`, `NOT_FOUND`, `CONFLICT`,

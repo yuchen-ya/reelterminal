@@ -3,7 +3,7 @@
  * openreel-live-mcp — stdio to the external-agent live endpoint.
  *
  * This deliberately forwards only the MCP methods implemented by the
- * 15-tool Slice 3 live endpoint. It never imports a registry, provider,
+ * 16-tool live endpoint. It never imports a registry, provider,
  * model, keychain, or conversation service. The descriptor is written by
  * the desktop live host while collaboration is enabled:
  *   default: ~/.openreel/live-endpoint.json
@@ -47,6 +47,7 @@ const LIVE_TOOL_NAMES = new Set([
   "editor_get_context",
   "edit_apply",
   "preview_render_frame",
+  "visual_inspect",
   "export_start",
   "job_status",
   "job_cancel",

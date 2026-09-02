@@ -376,6 +376,20 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     },
     { name: "unknown field", params: { timeSec: 0, format: "png" }, expectValid: false },
   ],
+  "visual.inspect": [
+    { name: "valid clip selection", params: { clipId: "clip-1" }, expectValid: true },
+    {
+      name: "valid explicit range",
+      params: { timeRange: { startSec: 0, endSec: 3 }, sampleCount: 12, width: 320, height: 180 },
+      expectValid: true,
+    },
+    { name: "schema-valid but facade-rejected: selection is required", params: { sampleCount: 3 }, expectValid: false, schemaValid: true },
+    { name: "schema-valid but facade-rejected: selection is exclusive", params: { clipId: "clip-1", timeRange: { startSec: 0, endSec: 3 } }, expectValid: false, schemaValid: true },
+    { name: "wrong sample count", params: { clipId: "clip-1", sampleCount: 13 }, expectValid: false },
+    { name: "wrong range type", params: { timeRange: { startSec: 0 } }, expectValid: false },
+    { name: "width over visual limit", params: { clipId: "clip-1", width: 2048 }, expectValid: false },
+    { name: "unknown field", params: { clipId: "clip-1", format: "png" }, expectValid: false },
+  ],
   "export.start": [
     { name: "valid empty", params: {}, expectValid: true },
     { name: "valid with settings", params: { settings: { format: "mp4", codec: "h264", width: 1280, height: 720 } }, expectValid: true },

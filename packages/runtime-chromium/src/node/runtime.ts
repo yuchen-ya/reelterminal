@@ -80,6 +80,12 @@ export interface ExportProgressJson {
   readonly bytesWritten: number;
 }
 
+interface ContactSheetEvalRequest {
+  samples: Array<{ timeSec: number; label: string }>;
+  width: number;
+  height: number;
+}
+
 /** Random-access writer for the streaming MP4 shim (`.part` until success). */
 export class PartFileWriter {
   private fd: FileHandle | null = null;
@@ -654,6 +660,31 @@ export class ChromiumRuntime {
     return this.withHydratedSession(project, mediaFiles, (session) =>
       session.renderPng(timeSec, width, height),
     );
+  }
+
+  /** Hydrate + compose a bounded real PNG contact sheet atomically. */
+  async renderContactSheetPng(
+    project: Project,
+    mediaFiles: Readonly<Record<string, string>>,
+    samples: readonly { timeSec: number; label: string }[],
+    width: number,
+    height: number,
+  ): Promise<Buffer> {
+    return this.withPageLock(async (page) => {
+      await this.hydrateOnPage(page, project, mediaFiles);
+      const base64 = await this.boundedEvaluate(
+        page,
+        (request: ContactSheetEvalRequest) =>
+          (window as never as {
+            __openreelRender: {
+              renderContactSheetBase64(request: ContactSheetEvalRequest): Promise<string>;
+            };
+          }).__openreelRender.renderContactSheetBase64(request),
+        "renderContactSheet",
+        { samples: samples.map((sample) => ({ ...sample })), width, height },
+      );
+      return Buffer.from(base64, "base64");
+    });
   }
 
   /* --------------------- export: WebCodecs route --------------------- */

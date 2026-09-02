@@ -279,6 +279,7 @@ export function createLiveSessionHost(
           callVerb: (verb, params) => host.callExternal(verb, params),
           onExternalActivity,
           serverInfo: deps.serverInfo,
+          artifactRoot: deps.artifactRoot,
           ...(deps.port !== undefined ? { port: deps.port } : {}),
           ...(deps.endpointFilePath !== undefined
             ? { endpointFilePath: deps.endpointFilePath }

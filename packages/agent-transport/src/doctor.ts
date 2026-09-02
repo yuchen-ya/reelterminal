@@ -8,7 +8,7 @@
  *   1 degraded — the runtime is healthy but the configuration is honest
  *                about gaps: any root relative/missing/non-directory,
  *                zero mediaRoots (imports fail), zero artifactRoot
- *                (preview/export/verify fail), zero projectRoots
+ *                (preview/visual/export/verify fail), zero projectRoots
  *                (project.open/project.save fail), or a root that IS the
  *                filesystem root (over-broad warning — containment is
  *                technically preserved but reaches everything).
@@ -422,7 +422,7 @@ export async function doctorCommand(argv: readonly string[]): Promise<number> {
     degraded("no mediaRoots configured — media.import fails UNSUPPORTED");
   }
   if (artifactRootReport === null) {
-    degraded("no artifactRoot configured — preview/export/verify fail UNSUPPORTED");
+    degraded("no artifactRoot configured — preview/visual/export/verify fail UNSUPPORTED");
   }
   if (projectRootReports.length === 0) {
     degraded("no projectRoots configured — project.open/project.save fail UNSUPPORTED (persistence unavailable)");

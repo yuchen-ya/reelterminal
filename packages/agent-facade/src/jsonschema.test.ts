@@ -33,11 +33,11 @@ function walk(schema: Schema, visit: (node: Schema) => void): void {
 }
 
 describe("emitted verb JSON Schemas — global client constraints", () => {
-  it("covers exactly the 15 facade verbs, keyed by verb name", () => {
+  it("covers exactly the 16 facade verbs, keyed by verb name", () => {
     expect(Object.keys(EMITTED_VERB_JSON_SCHEMAS).sort()).toEqual(
       [...FACADE_VERBS].sort(),
     );
-    expect(FACADE_VERBS).toHaveLength(15);
+    expect(FACADE_VERBS).toHaveLength(16);
   });
 
   for (const [verb, typedSchema] of Object.entries(EMITTED_VERB_JSON_SCHEMAS)) {
@@ -194,6 +194,15 @@ describe("emitted schema per-verb structure", () => {
     expect(props.height).toEqual({ type: "integer", minimum: 2, maximum: 8192 });
     // The validator refuses odd dimensions; the schema is the honest superset.
     expect(JSON.stringify(props.width)).not.toContain("multipleOf");
+  });
+
+  it("visual.inspect: bounded raster and exclusive selection fields emitted", () => {
+    const props = EMITTED_VERB_JSON_SCHEMAS["visual.inspect"].properties as Schema;
+    expect(props.clipId).toEqual({ type: "string", minLength: 1 });
+    expect(props.width).toEqual({ type: "integer", minimum: 2, maximum: 1024 });
+    expect(props.height).toEqual({ type: "integer", minimum: 2, maximum: 1024 });
+    expect((props.timeRange as Schema).additionalProperties).toBe(false);
+    expect((props.timeRange as Schema).required).toEqual(["startSec", "endSec"]);
   });
 
   it("export.start: settings consts for the closed mp4/h264 slice", () => {

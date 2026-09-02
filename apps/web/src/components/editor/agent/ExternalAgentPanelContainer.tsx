@@ -11,6 +11,7 @@ import { conversationViewModelFromProtocol } from "./AgentViewModel";
 import {
   ExternalAgentPanel,
   type ExternalAgentPanelProps,
+  buildVisualInspectionPrompt,
 } from "./ExternalAgentPanel";
 
 export interface ExternalAgentPanelContainerProps {
@@ -20,7 +21,7 @@ export interface ExternalAgentPanelContainerProps {
 export function ExternalAgentPanelContainer({
   onClose,
 }: ExternalAgentPanelContainerProps): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const state = useExternalConversationStore((value) => value.state);
   const busy = useExternalConversationStore((value) => value.busy);
   const error = useExternalConversationStore((value) => value.error);
@@ -36,6 +37,7 @@ export function ExternalAgentPanelContainer({
   const enableCollab = useCollabStore((value) => value.enable);
   const referencesByNumber = useAgentReferencesStore((value) => value.references);
   const [copying, setCopying] = useState(false);
+  const [inspectingVisual, setInspectingVisual] = useState(false);
 
   useEffect(() => {
     const off = installExternalConversationEventListener();
@@ -111,6 +113,18 @@ export function ExternalAgentPanelContainer({
     }
   };
 
+  const inspectVisual = async (): Promise<void> => {
+    if (references.length === 0 || viewModel.connection.state !== "connected" || busy) return;
+    setInspectingVisual(true);
+    try {
+      await prompt(buildVisualInspectionPrompt(references, i18n.language.startsWith("zh") ? "zh" : "en"));
+    } catch {
+      // The conversation store already exposes a localized connection error.
+    } finally {
+      setInspectingVisual(false);
+    }
+  };
+
   return (
     <ExternalAgentPanel
       viewModel={viewModel}
@@ -125,6 +139,8 @@ export function ExternalAgentPanelContainer({
         void resolveApproval(requestId, "denied").catch(() => undefined)}
       onCancel={() => void cancel().catch(() => undefined)}
       onCopyReferences={() => void copyReferences()}
+      onInspectVisual={() => void inspectVisual()}
+      inspectingVisual={inspectingVisual}
       sending={busy}
       cancelling={busy}
       copyingReferences={copying}

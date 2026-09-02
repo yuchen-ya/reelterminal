@@ -259,6 +259,74 @@ export const PREVIEW_RENDER_FRAME_SCHEMA: ObjectSchema = {
   },
 };
 
+/** Explicit range for visual.inspect; start < end is a runtime cross-field check. */
+export const VISUAL_INSPECT_RANGE_SCHEMA: ObjectSchema = {
+  startSec: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative finite number",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  endSec: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative finite number",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+};
+
+/** Visual inspection intentionally uses a much smaller raster ceiling than preview. */
+export const isVisualDimension = (v: unknown): boolean =>
+  typeof v === "number" && Number.isInteger(v) && v >= 2 && v <= 1024 && v % 2 === 0;
+
+const VISUAL_DIMENSION_EMITS = {
+  kind: "leaf",
+  schema: { type: "integer", minimum: 2, maximum: 1024 },
+} as const;
+
+/**
+ * Read-only visual context: exactly one clip id or explicit time range is
+ * required at runtime. A runtime-native contact sheet is optional; the
+ * fallback is a set of individually verified PNG frame artifacts.
+ */
+export const VISUAL_INSPECT_SCHEMA: ObjectSchema = {
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty timeline clip id",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  timeRange: {
+    check: isPlainObject,
+    describe: "an object",
+    emits: { kind: "object", schema: VISUAL_INSPECT_RANGE_SCHEMA },
+  },
+  sampleCount: {
+    check: (v) => isPositiveInteger(v) && (v as number) <= 12,
+    describe: "an integer in [1, 12]",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1, maximum: 12 } },
+  },
+  width: {
+    check: isVisualDimension,
+    describe: "an even integer in [2, 1024]",
+    emits: VISUAL_DIMENSION_EMITS,
+  },
+  height: {
+    check: isVisualDimension,
+    describe: "an even integer in [2, 1024]",
+    emits: VISUAL_DIMENSION_EMITS,
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative integer",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
 export const EXPORT_SETTINGS_SCHEMA: ObjectSchema = {
   format: {
     check: oneOf(["mp4"]),
@@ -455,7 +523,7 @@ export const VERIFY_ARTIFACT_SCHEMA: ObjectSchema = {
 };
 
 /* ------------------------------------------------------------------ */
-/* The 15-verb declaration map (single source, Decision 4)             */
+/* The 16-verb declaration map (single source, Decision 4)             */
 /* ------------------------------------------------------------------ */
 
 /** Verb param declaration order mirrors FACADE_VERBS (Appendix B.1). */
@@ -473,6 +541,7 @@ export const VERB_PARAM_SCHEMAS: {
   "editor.get_context": EMPTY_PARAMS_SCHEMA,
   "edit.apply": EDIT_APPLY_SCHEMA,
   "preview.render_frame": PREVIEW_RENDER_FRAME_SCHEMA,
+  "visual.inspect": VISUAL_INSPECT_SCHEMA,
   "export.start": EXPORT_START_SCHEMA,
   "job.status": JOB_PARAMS_SCHEMA,
   "job.cancel": JOB_PARAMS_SCHEMA,

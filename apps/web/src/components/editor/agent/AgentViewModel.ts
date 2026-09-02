@@ -55,6 +55,24 @@ export interface AgentApprovalOption {
   readonly label: string;
 }
 
+/**
+ * A host-owned opaque visual handle. The handle is deliberately not a path,
+ * URL, or raw artifact payload. A future host may resolve it to a short-lived
+ * app-owned object URL at the final rendering boundary.
+ */
+export interface AgentArtifactFrame {
+  readonly id?: string;
+  readonly previewId?: string;
+  readonly timecodeSeconds?: number;
+  readonly label?: string;
+}
+
+export interface AgentArtifactPreview {
+  readonly previewId?: string;
+  readonly timecodeSeconds?: number;
+  readonly frames?: readonly AgentArtifactFrame[];
+}
+
 export interface AgentReferenceChip {
   readonly number: number;
   /** This label is display-only user content and must never be translated. */
@@ -142,6 +160,10 @@ export type AgentActivity =
       readonly label: string;
       readonly status: "available" | "pending" | "failed";
       readonly sizeBytes?: number;
+      readonly kind?: string;
+      readonly mimeType?: string;
+      /** Optional forward-compatible visual projection; absent means no image was transmitted. */
+      readonly preview?: AgentArtifactPreview;
     }
   | {
       readonly type: "plan";
@@ -173,6 +195,113 @@ export interface AgentConversationViewModel {
   readonly thinkingSummary: AgentThinkingSummary | null;
   readonly toolCalls: readonly AgentToolCall[];
   readonly approvals: readonly AgentApprovalRequest[];
+}
+
+const MAX_ARTIFACT_PREVIEW_ID_LENGTH = 128;
+const MAX_ARTIFACT_FRAME_COUNT = 12;
+const MAX_ARTIFACT_LABEL_LENGTH = 160;
+const MAX_ARTIFACT_TIME_SECONDS = 24 * 60 * 60;
+
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as UnknownRecord
+    : null;
+}
+
+/** Preview handles are opaque identifiers, never paths, URLs, or payloads. */
+function projectOpaqueId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const id = value.trim();
+  return id.length > 0 && id.length <= MAX_ARTIFACT_PREVIEW_ID_LENGTH &&
+    /^[A-Za-z0-9._~-]+$/.test(id)
+    ? id
+    : undefined;
+}
+
+/** Keep display labels useful while dropping control characters and paths/URLs. */
+function projectDisplayText(value: unknown, maxLength = MAX_ARTIFACT_LABEL_LENGTH): string | undefined {
+  if (typeof value !== "string") return undefined;
+  let cleaned = "";
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    cleaned += codePoint <= 0x1f || codePoint === 0x7f ? " " : character;
+  }
+  cleaned = cleaned.replace(/\s+/g, " ").trim();
+  if (!cleaned || cleaned.length > maxLength) return undefined;
+  if (/^(?:[A-Za-z][A-Za-z0-9+.-]*:|[\\/]|[A-Za-z]:[\\/])/.test(cleaned)) {
+    return undefined;
+  }
+  return cleaned;
+}
+
+function projectVisualSeconds(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 &&
+    value <= MAX_ARTIFACT_TIME_SECONDS
+    ? value
+    : undefined;
+}
+
+function projectMimeType(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > 64) return undefined;
+  const mimeType = value.trim();
+  return /^[a-z]+\/[a-z0-9.+-]+$/i.test(mimeType) ? mimeType : undefined;
+}
+
+function projectArtifactKind(value: unknown): string | undefined {
+  const kind = projectDisplayText(value, 48);
+  return kind && !/[\\/:]/.test(kind) ? kind : undefined;
+}
+
+function projectArtifactFrame(value: unknown): AgentArtifactFrame | undefined {
+  const source = asRecord(value);
+  if (!source) return undefined;
+  const id = projectOpaqueId(source.id);
+  const previewId = projectOpaqueId(source.previewId);
+  const timecodeSeconds = projectVisualSeconds(source.timecodeSeconds);
+  const label = projectDisplayText(source.label);
+  const frame: AgentArtifactFrame = {
+    ...(id ? { id } : {}),
+    ...(previewId ? { previewId } : {}),
+    ...(timecodeSeconds !== undefined ? { timecodeSeconds } : {}),
+    ...(label ? { label } : {}),
+  };
+  return Object.keys(frame).length > 0 ? frame : undefined;
+}
+
+/** Explicitly project visual metadata; unknown keys are never copied. */
+function projectArtifactPreview(value: unknown): AgentArtifactPreview | undefined {
+  const source = asRecord(value);
+  if (!source) return undefined;
+  const previewId = projectOpaqueId(source.previewId);
+  const timecodeSeconds = projectVisualSeconds(source.timecodeSeconds);
+  const frames = Array.isArray(source.frames)
+    ? source.frames
+        .slice(0, MAX_ARTIFACT_FRAME_COUNT)
+        .map(projectArtifactFrame)
+        .filter((frame): frame is AgentArtifactFrame => frame !== undefined)
+    : [];
+  const preview: AgentArtifactPreview = {
+    ...(previewId ? { previewId } : {}),
+    ...(timecodeSeconds !== undefined ? { timecodeSeconds } : {}),
+    ...(frames.length > 0 ? { frames } : {}),
+  };
+  return Object.keys(preview).length > 0 ? preview : undefined;
+}
+
+function projectArtifactStatus(
+  value: unknown,
+): "available" | "pending" | "failed" | undefined {
+  return value === "available" || value === "pending" || value === "failed"
+    ? value
+    : undefined;
+}
+
+function projectSizeBytes(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
 }
 
 function connectionStateForLifecycle(
@@ -400,18 +529,32 @@ export function conversationViewModelFromProtocol(
         break;
       }
       case "artifact": {
-        const id = update.artifactId;
+        const visual = update as unknown as UnknownRecord;
+        const id = projectOpaqueId(update.artifactId) ?? `artifact-${event.sequence}`;
         const index = activityIndex(activities, "artifact", id);
         const previous = index >= 0 && activities[index].type === "artifact"
           ? activities[index]
           : undefined;
+        // The current wire protocol only exposes safe artifact metadata. Read
+        // optional visual fields defensively, then explicitly project each
+        // allowed field so paths, URLs, and raw payloads cannot cross into the
+        // view model (even if an adapter sends them as extra properties).
+        const preview = projectArtifactPreview(visual.preview) ?? projectArtifactPreview(visual);
+        const label = projectDisplayText(update.label) ?? previous?.label ?? "";
+        const status = projectArtifactStatus(update.status) ?? previous?.status ?? "available";
+        const sizeBytes = projectSizeBytes(update.sizeBytes) ?? previous?.sizeBytes;
+        const kind = projectArtifactKind(update.kind ?? visual.kind) ?? previous?.kind;
+        const mimeType = projectMimeType(update.mimeType ?? visual.mimeType) ?? previous?.mimeType;
         const next: AgentActivity = {
           type: "artifact",
           id,
           sequence: event.sequence,
-          label: update.label ?? previous?.label ?? "",
-          status: update.status ?? previous?.status ?? "available",
-          sizeBytes: update.sizeBytes ?? previous?.sizeBytes,
+          label,
+          status,
+          sizeBytes,
+          kind,
+          mimeType,
+          preview: preview ?? previous?.preview,
         };
         if (index >= 0) replaceActivity(activities, index, next);
         else activities.push(next);

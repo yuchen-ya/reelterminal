@@ -4,7 +4,7 @@
  * contextRevision counters, CAS-checks applyActions exactly like the
  * renderer bridge must, records every committed batch, and can simulate a
  * concurrent human edit landing between the agent's snapshot read and its
- * apply. Covered: the 15th verb live/headless honesty, CAS conflict paths,
+ * apply. Covered: the visual.inspect read path and live/headless honesty, CAS conflict paths,
  * the observe/assist mode gate, the single-writer lease, live-unavailable
  * lifecycle verbs, snapshot preview/export with stub providers, the
  * file-backed-media honesty rule, idempotent replay, and dispose.
@@ -307,7 +307,7 @@ afterEach(async () => {
 
 /* ------------------------- editor.get_context ----------------------- */
 
-describe("editor.get_context — the 15th verb", () => {
+describe("editor.get_context and visual.inspect read verbs", () => {
   it("live: reports the real editor context and identity (contextAvailable true)", async () => {
     store.setContext({
       playheadSeconds: 4.25,
@@ -708,7 +708,7 @@ describe("live edit.apply", () => {
 describe("session modes + writer lease (Decisions 6/7)", () => {
   it("observe: read-only verbs run, every write verb fails FORBIDDEN", async () => {
     const facade = liveFacade({ mode: "observe" });
-    // All seven read-only verbs are allowed through the gate.
+    // All eight read-only verbs are allowed through the gate.
     expect((await facade["session.describe"]()).ok).toBe(true);
     expect((await facade["capabilities.get"]()).ok).toBe(true);
     expect((await facade["project.get_state"]()).ok).toBe(true);
@@ -720,7 +720,7 @@ describe("session modes + writer lease (Decisions 6/7)", () => {
     const verify = await facade["verify.artifact"]({ path: "/x.mp4" });
     expect(verify.ok).toBe(false);
     if (!verify.ok) expect(verify.error.code).toBe("UNSUPPORTED"); // no verifier — NOT FORBIDDEN
-    expect(READ_ONLY_VERBS).toHaveLength(7);
+    expect(READ_ONLY_VERBS).toHaveLength(8);
 
     // Every non-read-only verb is FORBIDDEN, and the gate fires BEFORE
     // param validation (an empty/invalid payload is still FORBIDDEN).
@@ -840,7 +840,7 @@ describe("session modes + writer lease (Decisions 6/7)", () => {
     expect(res.value.writer).toBe(true);
     expect(res.value.leaseHolder).toBe("agent-1");
     expect(res.value.sessionId).toBe("agent-1");
-    expect(res.value.verbs).toHaveLength(15);
+    expect(res.value.verbs).toHaveLength(16);
     expect(res.value.stepLetters.createProject).toBe("X");
     expect(res.value.stepLetters.importLocalMedia).toBe("X");
   });
@@ -858,6 +858,7 @@ describe("session modes + writer lease (Decisions 6/7)", () => {
     ]);
     expect(res.value.mediaImport.available).toBe(false);
     expect(res.value.mediaImport.reason).toContain("GUI");
+    expect(res.value.visualInspection.details?.fileBackedMediaRequired).toBe(true);
   });
 });
 
@@ -982,7 +983,72 @@ describe("live preview/export on a store snapshot (Decision 10)", () => {
     expect(replay.value.artifact.path).toBe(first.value.artifact.path);
   });
 
-  it("preview.render_frame with blob/GUI-only media fails UNSUPPORTED instead of rendering wrong pixels", async () => {
+  it("visual.inspect samples the canonical live snapshot and returns bounded frame artifacts", async () => {
+    await seedTextProject();
+    const facade = liveFacade({ renderProvider: stubRenderProvider() });
+    const res = await facade["visual.inspect"]({
+      timeRange: { startSec: 0.25, endSec: 1.75 },
+      sampleCount: 2,
+      width: 320,
+      height: 180,
+      expectedRevision: store.revision,
+      idempotencyKey: "live-visual-1",
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.sourceRevision).toBe(store.revision);
+    expect(res.value.frames).toHaveLength(2);
+    expect(res.value.frames.map((frame) => frame.timeSec)).toEqual([0.25, 1.75]);
+    expect(res.value.contactSheet).toBeNull();
+    expect(res.value.limitations.join(" ")).toContain("individual frame PNGs");
+    expect((await stat(res.value.frames[0]!.artifact.path)).size).toBeGreaterThan(0);
+    expect(store.batches).toHaveLength(0);
+
+    const replay = await facade["visual.inspect"]({
+      timeRange: { startSec: 0.25, endSec: 1.75 },
+      sampleCount: 2,
+      width: 320,
+      height: 180,
+      idempotencyKey: "live-visual-1",
+    });
+    expect(replay.ok).toBe(true);
+    if (!replay.ok) return;
+    expect(replay.value.replayed).toBe(true);
+    expect(replay.value.frames[0]?.artifact.path).toBe(res.value.frames[0]?.artifact.path);
+
+    const clash = await facade["visual.inspect"]({
+      timeRange: { startSec: 0.25, endSec: 1.75 },
+      sampleCount: 1,
+      idempotencyKey: "live-visual-1",
+    });
+    expect(clash.ok).toBe(false);
+    if (!clash.ok) expect(clash.error.code).toBe("CONFLICT");
+
+    await rm(res.value.frames[0]!.artifact.path, { force: true });
+    const rerender = await facade["visual.inspect"]({
+      timeRange: { startSec: 0.25, endSec: 1.75 },
+      sampleCount: 2,
+      width: 320,
+      height: 180,
+      idempotencyKey: "live-visual-1",
+    });
+    expect(rerender.ok).toBe(true);
+    if (rerender.ok) expect(rerender.value.replayed).toBe(false);
+  });
+
+  it("visual.inspect rejects a stale expectedRevision before rendering", async () => {
+    await seedTextProject();
+    const facade = liveFacade({ renderProvider: stubRenderProvider() });
+    const res = await facade["visual.inspect"]({
+      timeRange: { startSec: 0, endSec: 1 },
+      expectedRevision: store.revision + 1,
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe("CONFLICT");
+    expect(await stat(path.join(artifactRoot, "visual")).catch(() => null)).toBeNull();
+  });
+
+  it("pixel-reading verbs reject blob/GUI-only media instead of rendering wrong pixels", async () => {
     // A clip referencing media with no absolute file path (blob-only).
     const project = structuredClone(store.project) as unknown as {
       mediaLibrary: { items: Array<Record<string, unknown>> };
@@ -1028,6 +1094,16 @@ describe("live preview/export on a store snapshot (Decision 10)", () => {
     expect(res.error.code).toBe("UNSUPPORTED");
     expect(res.error.message).toContain("file-backed media");
     expect(res.error.details?.mediaIds).toEqual(["m-blob"]);
+
+    const visual = await facade["visual.inspect"]({
+      timeRange: { startSec: 0, endSec: 1 },
+      sampleCount: 2,
+    });
+    expect(visual.ok).toBe(false);
+    if (visual.ok) return;
+    expect(visual.error.code).toBe("UNSUPPORTED");
+    expect(visual.error.message).toContain("file-backed media");
+    expect(visual.error.details?.mediaIds).toEqual(["m-blob"]);
   });
 
   it("export.start snapshots and runs through the job registry; job.cancel settles a hung job", async () => {

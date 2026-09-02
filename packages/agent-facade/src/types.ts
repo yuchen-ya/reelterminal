@@ -13,7 +13,8 @@
  * Slice 2a verbs (ADR 0003 Decision 10): project.open · project.save —
  *   the openreel-project@1 checkpoint pair (cross-session persistence).
  * Slice 3 verbs (ADR 0004 Decision 4): editor.get_context — the live/
- *   headless-honest editor-context read (14 → 15 verbs).
+ *   headless-honest editor-context read plus the read-only visual.inspect
+ *   slice (16 verbs).
  *
  * Pixel/export/verify backing arrives through the independent provider
  * interfaces in providers.ts (RenderProvider / ExportProvider /
@@ -28,8 +29,8 @@ import type {
   VerifyReport,
 } from "./providers";
 
-export const FACADE_VERSION = "0.2.0" as const;
-export const FACADE_CONTRACT_VERSION = "facade-slice-2" as const;
+export const FACADE_VERSION = "0.3.0" as const;
+export const FACADE_CONTRACT_VERSION = "facade-slice-3" as const;
 export const FACADE_RUNTIME = "node-headless" as const;
 
 /* ------------------------------------------------------------------ */
@@ -48,6 +49,7 @@ export const FACADE_VERBS = [
   "editor.get_context",
   "edit.apply",
   "preview.render_frame",
+  "visual.inspect",
   "export.start",
   "job.status",
   "job.cancel",
@@ -81,6 +83,7 @@ export const READ_ONLY_VERBS = [
   "project.get_state",
   "timeline.get",
   "editor.get_context",
+  "visual.inspect",
   "job.status",
   "verify.artifact",
 ] as const satisfies readonly FacadeVerb[];
@@ -190,6 +193,8 @@ export interface Capabilities {
     readonly pixelRendering: boolean;
   };
   readonly preview: CapabilityStatus;
+  /** visual.inspect backing; mirrors the real frame renderer and artifact root gate. */
+  readonly visualInspection: CapabilityStatus;
   readonly export: CapabilityStatus;
   /** verify.artifact backing (ffprobe/ffmpeg + pixel comparison). */
   readonly verify: CapabilityStatus;
@@ -385,7 +390,7 @@ export interface TimelineState {
 }
 
 /* ------------------------------------------------------------------ */
-/* editor.get_context (ADR 0004 Decision 4 — the 15th verb)            */
+/* editor.get_context (ADR 0004 Decision 4)                             */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -618,6 +623,61 @@ export interface PreviewRenderFrameResult {
   readonly height: number;
   /** PNG artifact under artifactRoot: {path, sizeBytes, sha256, sourceRevision}. */
   readonly artifact: ArtifactRef;
+  readonly replayed: boolean;
+}
+
+/* ------------------------------------------------------------------ */
+/* visual.inspect (read-only visual context slice)                    */
+/* ------------------------------------------------------------------ */
+
+/** Explicit time interval for visual.inspect sampling. */
+export interface VisualInspectTimeRange {
+  readonly startSec: number;
+  readonly endSec: number;
+}
+
+export interface VisualInspectParams {
+  /** Timeline clip id to inspect. Mutually exclusive with timeRange. */
+  readonly clipId?: string;
+  /** Explicit timeline interval. Mutually exclusive with clipId. */
+  readonly timeRange?: VisualInspectTimeRange;
+  /** Number of evenly spaced samples. Defaults to 6; hard maximum is 12. */
+  readonly sampleCount?: number;
+  /** Optional even thumbnail raster size. Defaults to a bounded project-scaled size. */
+  readonly width?: number;
+  readonly height?: number;
+  readonly expectedRevision?: number;
+  readonly idempotencyKey?: string;
+}
+
+export interface VisualInspectFrame {
+  readonly index: number;
+  /** Timeline position used for this rendered frame. */
+  readonly timeSec: number;
+  /** Stable human/machine-readable label printed in the contact sheet when available. */
+  readonly label: string;
+  /** Revision of the canonical snapshot that produced this frame. */
+  readonly sourceRevision: number;
+  /** Real PNG frame artifact. Always present, including when a contact sheet is available. */
+  readonly artifact: ArtifactRef;
+}
+
+export interface VisualInspectResult {
+  /** Current project revision at the end of the read. */
+  readonly revision: number;
+  /** Revision whose canonical snapshot produced every frame/artifact. */
+  readonly sourceRevision: number;
+  readonly selection:
+    | { readonly kind: "clip"; readonly clipId: string; readonly startSec: number; readonly endSec: number }
+    | { readonly kind: "timeRange"; readonly startSec: number; readonly endSec: number };
+  readonly sampleCount: number;
+  readonly width: number;
+  readonly height: number;
+  readonly frames: readonly VisualInspectFrame[];
+  /** Real PNG contact sheet when the runtime can safely compose one; null on honest fallback. */
+  readonly contactSheet: ArtifactRef | null;
+  /** Explicit limitations/reasons, never a fabricated visual artifact. */
+  readonly limitations: readonly string[];
   readonly replayed: boolean;
 }
 

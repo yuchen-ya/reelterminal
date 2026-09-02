@@ -27,7 +27,7 @@ describe("conversationViewModelFromProtocol", () => {
       sessionEvent(5, { sessionUpdate: "approval_request", requestId: "approval-1", title: "Apply edit?", summary: "The timeline will change." }),
       sessionEvent(6, { sessionUpdate: "tool_call_update", toolCallId: "tool-1", status: "running", summary: "Editing timeline" }),
       sessionEvent(7, { sessionUpdate: "agent_message_chunk", messageId: "a1", content: { type: "text", text: "the timeline." } }),
-      sessionEvent(8, { sessionUpdate: "artifact", artifactId: "artifact-1", label: "Title preview", status: "available" }),
+      sessionEvent(8, { sessionUpdate: "artifact", artifactId: "artifact-1", label: "Title preview", kind: "contact_sheet", mimeType: "image/png", status: "available" }),
       sessionEvent(9, { sessionUpdate: "subtask", subtaskId: "subtask-1", title: "Render preview", status: "running", summary: "Rendering" }),
       sessionEvent(10, { sessionUpdate: "plan", entries: [{ content: "Add a title", status: "completed" }] }),
       sessionEvent(11, { sessionUpdate: "usage", inputTokens: 3, outputTokens: 5, totalTokens: 8 }),
@@ -80,7 +80,93 @@ describe("conversationViewModelFromProtocol", () => {
     const approval = viewModel.activities.find((activity) => activity.type === "approval");
     expect(approval).toMatchObject({ id: "approval-1", phase: "resolution", status: "approved", sequence: 5 });
 
+    const artifact = viewModel.activities.find((activity) => activity.type === "artifact");
+    expect(artifact).toMatchObject({
+      id: "artifact-1",
+      kind: "contact_sheet",
+      mimeType: "image/png",
+      status: "available",
+    });
+
     const message = viewModel.activities.find((activity) => activity.type === "agent_message");
     expect(message).toMatchObject({ id: "a1", text: "First the timeline.", sequence: 3, streaming: false });
+  });
+
+  it("projects visual artifact fields through an allowlist", () => {
+    const frames = Array.from({ length: 20 }, (_, index) => ({
+      previewId: `frame-${index}`,
+      timecodeSeconds: index,
+      label: `Frame ${index + 1}`,
+      path: `/Users/private/frame-${index}.png`,
+      url: "file:///Users/private/frame.png",
+      rawPayload: { pixels: [1, 2, 3] },
+    }));
+    const maliciousUpdate = {
+      sessionUpdate: "artifact",
+      artifactId: "/Users/private/contact-sheet.png",
+      label: "/Users/private/contact-sheet.png",
+      kind: "file:///private/contact-sheet",
+      mimeType: "image/png",
+      status: "available",
+      preview: {
+        previewId: "preview-safe",
+        timecodeSeconds: 2.25,
+        path: "/Users/private/contact-sheet.png",
+        url: "file:///Users/private/contact-sheet.png",
+        rawPayload: { bytes: "not-for-ui" },
+        frames,
+      },
+    } as unknown as ExternalAgentSessionUpdate;
+    const state = {
+      lifecycle: "ready",
+      connectionId: "connection-1",
+      sessionId: "session-1",
+      agent: { name: "Remote editor" },
+      capabilities: {
+        formalReply: "supported",
+        streaming: "supported",
+        reasoningSummary: "supported",
+        toolEvents: "supported",
+        approval: "supported",
+        usage: "supported",
+        artifact: "supported",
+        subtask: "supported",
+      },
+      ownership: null,
+      fallback: null,
+      lastError: null,
+      updates: [sessionEvent(1, maliciousUpdate)],
+      lastEventSequence: 1,
+    } satisfies ExternalConversationDisplayState;
+
+    const artifact = conversationViewModelFromProtocol(state).activities.find(
+      (activity) => activity.type === "artifact",
+    );
+    expect(artifact).toMatchObject({
+      id: "artifact-1",
+      label: "",
+      mimeType: "image/png",
+      status: "available",
+    });
+    expect(artifact).not.toHaveProperty("path");
+    expect(artifact).not.toHaveProperty("url");
+    expect(artifact).not.toHaveProperty("rawPayload");
+    if (artifact?.type !== "artifact" || !artifact.preview) throw new Error("expected projected preview");
+    expect(Object.keys(artifact.preview).sort()).toEqual(["frames", "previewId", "timecodeSeconds"]);
+    expect(artifact.preview).toEqual({
+      previewId: "preview-safe",
+      timecodeSeconds: 2.25,
+      frames: frames.slice(0, 12).map((frame) => ({
+        previewId: frame.previewId,
+        timecodeSeconds: frame.timecodeSeconds,
+        label: frame.label,
+      })),
+    });
+    expect(artifact.preview).not.toHaveProperty("path");
+    expect(artifact.preview).not.toHaveProperty("url");
+    expect(artifact.preview).not.toHaveProperty("rawPayload");
+    expect(artifact.preview.frames).toHaveLength(12);
+    expect(artifact.preview.frames?.[0]).not.toHaveProperty("path");
+    expect(artifact.preview.frames?.[0]).not.toHaveProperty("url");
   });
 });

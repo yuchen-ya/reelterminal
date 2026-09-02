@@ -32,6 +32,7 @@ describe("capabilities.get / session.describe", () => {
     if (!res.ok) return;
     expect(res.value.preview.available).toBe(false);
     expect(res.value.preview.reason).toBeTruthy();
+    expect(res.value.visualInspection.details?.fileBackedMediaRequired).toBe(true);
     expect(res.value.export.available).toBe(false);
     expect(res.value.export.reason).toBeTruthy();
   });
@@ -95,6 +96,7 @@ describe("capabilities.get / session.describe", () => {
       "editor.get_context",
       "edit.apply",
       "preview.render_frame",
+      "visual.inspect",
       "export.start",
       "job.status",
       "job.cancel",

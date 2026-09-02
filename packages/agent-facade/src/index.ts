@@ -3,7 +3,7 @@
  * Slice 2a persistence + Slice 3 live collaboration).
  *
  * Pure-Node, in-process, transport-agnostic. The public surface is the
- * fifteen-verb `AgentFacade` object returned by createAgentFacade(); verb
+ * sixteen-verb `AgentFacade` object returned by createAgentFacade(); verb
  * names mirror audit/facade-v0.md + ADR 0003 Appendix B.1 + ADR 0004
  * (editor.get_context). All verbs return FacadeResult<T> and never throw
  * for domain errors. Pixel/export/verify backing arrives via the
@@ -30,6 +30,8 @@ import type {
   MediaImportResult,
   PreviewRenderFrameParams,
   PreviewRenderFrameResult,
+  VisualInspectParams,
+  VisualInspectResult,
   ProjectCreateParams,
   ProjectCreateResult,
   ProjectOpenParams,
@@ -69,6 +71,9 @@ export interface AgentFacade {
   readonly "preview.render_frame": (
     params: PreviewRenderFrameParams,
   ) => Promise<FacadeResult<PreviewRenderFrameResult>>;
+  readonly "visual.inspect": (
+    params: VisualInspectParams,
+  ) => Promise<FacadeResult<VisualInspectResult>>;
   readonly "export.start": (
     params: ExportStartParams,
   ) => Promise<FacadeResult<ExportStartResult>>;
@@ -101,6 +106,7 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "editor.get_context": (params) => session.editorGetContext(params),
     "edit.apply": (params) => session.editApply(params),
     "preview.render_frame": (params) => session.previewRenderFrame(params),
+    "visual.inspect": (params) => session.visualInspect(params),
     "export.start": (params) => session.exportStart(params),
     "job.status": (params) => session.jobStatus(params),
     "job.cancel": (params) => session.jobCancel(params),
@@ -217,6 +223,8 @@ export type {
   PixelCompareRequest,
   ProviderPreflight,
   RenderedFrameInfo,
+  RenderContactSheetRequest,
+  RenderedContactSheetInfo,
   RenderFrameRequest,
   RenderProvider,
   VerifyArtifactRequest,

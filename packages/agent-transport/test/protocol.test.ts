@@ -3,20 +3,23 @@
  * `agent-video serve` binary and drive the MCP handshake end to end.
  *
  *  - initialize (serverInfo carries the transport's own facts)
- *  - tools/list: exactly the 15 tools of B.1, inputSchemas deep-equal the
+ *  - tools/list: exactly the 16 tools of the facade contract, inputSchemas deep-equal the
  *    facade emission EMITTED_VERB_JSON_SCHEMAS verbatim (Decision 4)
- *  - tools/call round-trips: session_describe contract `facade-slice-2`
- *    + 15 verbs; project_create/edit_apply happy path with exact revision
+ *  - tools/call round-trips: session_describe contract `facade-slice-3`
+ *    + 16 verbs; project_create/edit_apply happy path with exact revision
  *    arithmetic; CONFLICT and NOT_FOUND surface as tool-result
  *    `isError:true` with the facade's error codes — never protocol errors
  *    (Decision 5); unknown tool IS a protocol error (-32602)
  */
 import { afterAll, describe, expect, it } from "vitest";
+import { copyFile } from "node:fs/promises";
 import { EMITTED_VERB_JSON_SCHEMAS } from "@openreel/agent-facade";
-import { initialize, makeRoots, startServe, type McpClient } from "./helpers";
+import { writeTinyVp9Mp4 } from "@openreel/runtime-chromium/media/tiny-vp9-mp4";
+import { chromiumAvailable, initialize, makeRoots, startServe, type McpClient } from "./helpers";
 
 let client: McpClient | null = null;
 let roots: Awaited<ReturnType<typeof makeRoots>> | null = null;
+const runtimeAvailable = chromiumAvailable();
 
 async function getClient(): Promise<McpClient> {
   if (!client) {
@@ -60,7 +63,7 @@ describe("agent-video serve (real binary)", () => {
     expect(info.version).toBe("0.1.0");
     expect(typeof info.pid).toBe("number");
     expect(Array.isArray(info.args)).toBe(true);
-    expect(info.facadeContract).toBe("facade-slice-2");
+    expect(info.facadeContract).toBe("facade-slice-3");
     // Decision 5: capabilities carry ONLY the standard protocol
     // advertisement — never the server's own facts.
     const capsJson = JSON.stringify(init.result.capabilities);
@@ -68,7 +71,7 @@ describe("agent-video serve (real binary)", () => {
     expect(capsJson).not.toContain("facadeContract");
   });
 
-  it("tools/list exposes exactly the 15 tools of B.1 in order, with facade inputSchemas verbatim", async () => {
+  it("tools/list exposes exactly the 16 tools in order, with facade inputSchemas verbatim", async () => {
     const c = await getClient();
     c.send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
     const reply = await c.read();
@@ -85,6 +88,7 @@ describe("agent-video serve (real binary)", () => {
       "editor_get_context",
       "edit_apply",
       "preview_render_frame",
+      "visual_inspect",
       "export_start",
       "job_status",
       "job_cancel",
@@ -95,7 +99,7 @@ describe("agent-video serve (real binary)", () => {
       "session.describe", "capabilities.get", "project.create", "project.open",
       "project.save", "project.get_state", "media.import", "timeline.get",
       "editor.get_context",
-      "edit.apply", "preview.render_frame", "export.start", "job.status",
+      "edit.apply", "preview.render_frame", "visual.inspect", "export.start", "job.status",
       "job.cancel", "verify.artifact",
     ];
     tools.forEach((tool, i) => {
@@ -103,18 +107,18 @@ describe("agent-video serve (real binary)", () => {
     });
   });
 
-  it("session_describe passthrough: contract facade-slice-2, 15 verbs, 9 error codes", async () => {
+  it("session_describe passthrough: contract facade-slice-3, 16 verbs, 9 error codes", async () => {
     const reply = await callTool("session_describe", {});
     expect(reply.error).toBeUndefined();
     expect(reply.result.isError).toBeFalsy();
     const text = reply.result.content[0].text as string;
     const parsed = JSON.parse(text);
     expect(parsed.ok).toBe(true);
-    expect(parsed.value.contractVersion).toBe("facade-slice-2");
-    expect(parsed.value.verbs).toHaveLength(15);
+    expect(parsed.value.contractVersion).toBe("facade-slice-3");
+    expect(parsed.value.verbs).toHaveLength(16);
     expect(parsed.value.errorCodes).toHaveLength(9);
     // structuredContent populated too (SDK 1.30.0 supports it)
-    expect(reply.result.structuredContent.value.contractVersion).toBe("facade-slice-2");
+    expect(reply.result.structuredContent.value.contractVersion).toBe("facade-slice-3");
   });
 
   it("project_create + edit_apply happy path with exact revision arithmetic", async () => {
@@ -199,5 +203,41 @@ describe("agent-video serve (real binary)", () => {
     expect(reply.error).toBeUndefined();
     expect(reply.result.isError).toBe(true);
     expect(JSON.parse(reply.result.content[0].text).error.code).toBe("NOT_FOUND");
+  });
+
+  it.skipIf(!runtimeAvailable)("visual_inspect returns a real PNG MCP image block over stdio", async () => {
+    await getClient();
+    if (!roots) throw new Error("test roots were not initialized");
+    const source = writeTinyVp9Mp4(roots.mediaRoot);
+    const inputPath = `${roots.mediaRoot}/input.mp4`;
+    await copyFile(source, inputPath);
+    const imported = await callTool("media_import", { path: inputPath });
+    const importedBody = JSON.parse(imported.result.content[0].text);
+    expect(importedBody.ok).toBe(true);
+    const mediaId = importedBody.value.mediaId as string;
+    const edited = await callTool("edit_apply", {
+      ops: [{ op: "clip.add", trackId: "v1", mediaId, startTime: 0, duration: 5, clipId: "visual-c1" }],
+      expectedRevision: importedBody.value.revision,
+    });
+    expect(JSON.parse(edited.result.content[0].text).ok).toBe(true);
+    const reply = await callTool("visual_inspect", {
+      clipId: "visual-c1",
+      sampleCount: 1,
+      width: 320,
+      height: 180,
+    });
+    expect(reply.error).toBeUndefined();
+    expect(reply.result.isError).toBeFalsy();
+    expect(reply.result.content.some((block: { type: string }) => block.type === "image")).toBe(true);
+    const image = reply.result.content.find((block: { type: string }) => block.type === "image") as {
+      data: string;
+      mimeType: string;
+    };
+    expect(image.mimeType).toBe("image/png");
+    expect(Buffer.from(image.data, "base64").subarray(0, 4)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+    );
+    // The structured result remains available alongside the image block.
+    expect(reply.result.structuredContent.value.frames).toHaveLength(1);
   });
 });

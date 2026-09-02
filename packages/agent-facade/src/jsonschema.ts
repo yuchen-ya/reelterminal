@@ -101,7 +101,7 @@ function emitVerbSchema(verb: FacadeVerb): JsonSchemaObject {
 
 /**
  * The emitted draft-2020-12 input schema per facade verb, keyed by verb
- * name (B.1 tool map, 15 verbs). The transport imports this map and assigns
+ * name (B.1 tool map, 16 verbs). The transport imports this map and assigns
  * `tool.inputSchema = EMITTED_VERB_JSON_SCHEMAS[verb]` verbatim; a CI
  * assertion there deep-equals it against the running `tools/list` payload,
  * so any drift between the two surfaces dies in CI.

@@ -132,7 +132,7 @@ describe("slice-1b chromium E2E", () => {
     expect(desc.value.stepLetters.textOverlayPixels).toBe("C");
     expect(desc.value.stepLetters.exportVideo).toBe("C");
     expect(desc.value.stepLetters.verifyArtifact).toBe("A");
-    expect(desc.value.contractVersion).toBe("facade-slice-2");
+    expect(desc.value.contractVersion).toBe("facade-slice-3");
 
     // 1) project.create 320x180@30 ---------------------------------------
     const created = await facade["project.create"]({
@@ -343,6 +343,28 @@ describe("slice-1b chromium E2E", () => {
     if (!stateAfter.ok) throw new Error("get_state failed");
     expect(stateAfter.value.revision).toBe(3);
     expect(stateAfter.value.project.textClips).toHaveLength(2);
+
+    // 8) visual.inspect: a real Chromium contact sheet plus frame artifacts
+    const visual = await facade["visual.inspect"]({
+      clipId: "c1",
+      sampleCount: 3,
+      width: 320,
+      height: 180,
+      idempotencyKey: "e2e-visual-c1",
+    });
+    expect(visual.ok).toBe(true);
+    if (!visual.ok) return;
+    expect(visual.value.frames).toHaveLength(3);
+    expect(visual.value.frames.every((frame) => frame.sourceRevision === 3)).toBe(true);
+    expect(visual.value.frames[0]?.timeSec).toBe(0);
+    expect(visual.value.frames[1]?.timeSec).toBe(2.5);
+    expect(visual.value.frames[2]?.timeSec).toBeCloseTo(5 - 1 / 60, 6);
+    expect(visual.value.contactSheet?.format).toBe("png");
+    if (!visual.value.contactSheet) return;
+    const contactSheetBytes = await readFile(visual.value.contactSheet.path);
+    expect(contactSheetBytes.subarray(0, 4)).toEqual(PNG_MAGIC);
+    expect(contactSheetBytes.length).toBe(visual.value.contactSheet.sizeBytes);
+    expect(contactSheetBytes.length).toBeGreaterThan(0);
 
     // Persist the verification evidence alongside the artifacts ----------
     const verifyEvidence = { probe: verified.value, similar: similar.value, different: different.value };

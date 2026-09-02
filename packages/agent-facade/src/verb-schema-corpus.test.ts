@@ -23,6 +23,8 @@ import {
   JOB_PARAMS_SCHEMA,
   MEDIA_IMPORT_SCHEMA,
   PREVIEW_RENDER_FRAME_SCHEMA,
+  VISUAL_INSPECT_RANGE_SCHEMA,
+  VISUAL_INSPECT_SCHEMA,
   PROJECT_CREATE_SCHEMA,
   PROJECT_OPEN_SCHEMA,
   PROJECT_SAVE_SCHEMA,
@@ -84,6 +86,20 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
     case "preview.render_frame":
       validateObject(params, PREVIEW_RENDER_FRAME_SCHEMA, "preview.render_frame params");
       return;
+    case "visual.inspect": {
+      const valid = validateObject<{ clipId?: string; timeRange?: unknown }>(
+        params,
+        VISUAL_INSPECT_SCHEMA,
+        "visual.inspect params",
+      );
+      if (valid.timeRange !== undefined) {
+        validateObject(valid.timeRange, VISUAL_INSPECT_RANGE_SCHEMA, "visual.inspect params.timeRange");
+      }
+      if ((valid.clipId === undefined) === (valid.timeRange === undefined)) {
+        throw new FacadeError("INVALID_PARAMS", "visual.inspect: pass exactly one of clipId or timeRange");
+      }
+      return;
+    }
     case "export.start": {
       const valid = validateObject<{ settings?: unknown }>(
         params,

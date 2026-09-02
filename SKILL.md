@@ -2,7 +2,7 @@
 name: agent-video
 description: >-
   Drive ReelTerminal through its live desktop MCP interface by default: connect
-  the external Agent to the open GUI project's 15-tool openreel-live-mcp
+  the external Agent to the open GUI project's 16-tool openreel-live-mcp
   facade, inspect context, edit, preview, export, and verify. The optional
   agent-video serve/run transport remains available for headless workflows.
 ---
@@ -56,11 +56,12 @@ Use an explicit endpoint-file option only if the connector or host requires
 one; the default is already `~/.openreel/live-endpoint.json`. Do not copy the
 token into project files, prompts, or logs.
 
-This connector exposes the same open GUI project through exactly **15 tools**:
+This connector exposes the same open GUI project through exactly **16 tools**:
 
 `session_describe` · `capabilities_get` · `project_create` · `project_open` ·
 `project_save` · `project_get_state` · `media_import` · `timeline_get` ·
 `editor_get_context` · `edit_apply` · `preview_render_frame` ·
+`visual_inspect` ·
 `export_start` · `job_status` · `job_cancel` · `verify_artifact`.
 
 The live facade reports GUI-owned lifecycle/media operations honestly as
@@ -77,7 +78,7 @@ external Agent/host still runs and configures its thin server-side adapter at
 `~/.openreel/conversation-endpoint.json` descriptor with mode `0600`, and
 removes it on exit; ReelTerminal only reads that descriptor. There is no universal
 provider connector and no embedded model. MCP tool access through the live
-facade remains a separate 15-tool integration and must not be confused with
+facade remains a separate 16-tool integration and must not be confused with
 the conversation transport.
 
 One `agent-video` process owns exactly **one facade session** and that
@@ -117,7 +118,7 @@ about why; there is no skill-level workaround. Missing capability ⇒ read
 
 ## 2. Optional headless `serve` workflow (configuration, not variants)
 
-The same 15 tools exist on every client. Clients must spawn the server
+The same 16 tools exist on every client. Clients must spawn the server
 **directly** (no `sh -c` wrapper — a wrapper that holds stdin open defeats
 disconnect detection). Set the `OPENREEL_AVE_*` env vars in the server's
 environment; every root value must be an absolute path to an existing
@@ -168,7 +169,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
   `~` are refused, never resolved against any cwd. Paths must resolve
   inside the matching root class; escapes and URLs fail.
 
-## 4. The 15 tools
+## 4. The 16 tools
 
 | Tool | Purpose |
 |---|---|
@@ -183,6 +184,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `editor_get_context` | Editor context (selection, playhead, canvas point); headless-honest — see below |
 | `edit_apply` | Closed op set; atomic; `expectedRevision` (+`expectedContextRevision` live) + `idempotencyKey` |
 | `preview_render_frame` | Replay/ledger only; artifact to `artifactRoot` |
+| `visual_inspect` | Sample 1–12 real Chromium frames for a clip or explicit time range; return PNG artifacts and a contact sheet when supported |
 | `export_start` | Snapshot job; returns `jobId` immediately |
 | `job_status` | Poll to terminal |
 | `job_cancel` | Cooperative; idempotent on terminal jobs |
@@ -194,8 +196,12 @@ Every result is one JSON envelope: `{ok:true, value}` or
 CONFIRMATION_REQUIRED JOB_FAILED ACTION_FAILED INTERNAL FORBIDDEN`), never on prose.
 Parameter schemas/defaults live in each tool's `inputSchema` and the facade
 README — this skill does not restate them. Context discipline: orient with
-`timeline_get`; `project_get_state` is an unbounded full dump; artifacts
-come back as `{path, sizeBytes, sha256, sourceRevision}` refs, never pixels.
+`timeline_get`; `project_get_state` is an unbounded full dump; ordinary
+artifacts come back as `{path, sizeBytes, sha256, sourceRevision}` refs. On
+successful `visual_inspect`, the stdio `serve` transport and desktop live MCP
+also attach bounded MCP PNG image content (contact sheet when supported,
+otherwise individual frame blocks). The CLI `run` transport remains JSONL
+envelopes plus artifact refs; it does not attach MCP image blocks.
 
 ### `editor_get_context` — live vs headless honesty
 

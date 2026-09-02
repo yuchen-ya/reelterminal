@@ -1,5 +1,5 @@
 /**
- * Legacy safety (D) — the live endpoint exposes EXACTLY the 15 facade tools
+ * Legacy safety (D) — the live endpoint exposes EXACTLY the 16 facade tools
  * (ADR 0004 Decisions 4 + 9): no internal-registry tool (e.g. the legacy
  * desktop MCP's execute_action) leaks onto the external surface, and an
  * unknown tool name is a JSON-RPC protocol error, never a domain result.
@@ -22,13 +22,14 @@ const EXPECTED_TOOLS = [
   "editor_get_context",
   "edit_apply",
   "preview_render_frame",
+  "visual_inspect",
   "export_start",
   "job_status",
   "job_cancel",
   "verify_artifact",
 ] as const;
 
-describe("legacy safety: tools/list is exactly the 15 facade tools", () => {
+describe("legacy safety: tools/list is exactly the 16 facade tools", () => {
   let launched: LaunchedApp;
   let agent: ExternalAgent;
   let evidence: EvidenceRecord;
@@ -48,7 +49,7 @@ describe("legacy safety: tools/list is exactly the 15 facade tools", () => {
     await launched?.close();
   });
 
-  test("tools/list returns exactly the 15 facade tools with schemas", async () => {
+  test("tools/list returns exactly the 16 facade tools with schemas", async () => {
     const { tools } = await agent.client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([...EXPECTED_TOOLS].sort());

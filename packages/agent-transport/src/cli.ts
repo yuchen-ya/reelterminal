@@ -31,7 +31,7 @@ Usage:
 
 Options (serve/run):
   --media-root <abs>      Repeatable. Roots media.import may read from.
-  --artifact-root <abs>   Exactly one. Root for preview/export/verify artifacts.
+  --artifact-root <abs>   Exactly one. Root for preview/visual/export/verify artifacts.
   --project-root <abs>    Repeatable. Roots for project.open/project.save checkpoints.
   --log-level <level>     error | info | debug (stderr JSON logs; default info)
 

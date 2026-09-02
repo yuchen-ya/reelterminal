@@ -152,7 +152,7 @@ export const TourPopover: React.FC<TourPopoverProps> = ({
         )}
 
         <IconButton
-          label={t("Skip tour")}
+          label={t("editorTour.skipTour")}
           icon={<X size={14} />}
           variant="ghost"
           size="sm"
@@ -178,7 +178,7 @@ export const TourPopover: React.FC<TourPopoverProps> = ({
             transition={{ delay: 0.15 }}
             className="text-sm text-text-secondary mb-4"
           >
-            {step.description}
+            {t(step.description)}
           </motion.p>
 
           {step.tips && step.tips.length > 0 && (
@@ -196,7 +196,7 @@ export const TourPopover: React.FC<TourPopoverProps> = ({
                     className="flex items-start gap-2 text-xs text-text-secondary"
                   >
                     <span className="text-primary mt-0.5">•</span>
-                    {tip}
+                    {t(tip)}
                   </li>
                 ))}
               </ul>
@@ -208,7 +208,7 @@ export const TourPopover: React.FC<TourPopoverProps> = ({
               <button
                 key={index}
                 type="button"
-                aria-label={`Go to step ${index + 1}`}
+                aria-label={t("editorTour.goToStep", { number: index + 1 })}
                 onClick={() => onGoToStep(index)}
                 className={`w-2 h-2 rounded-full transition-all ${
                   index === currentStep
@@ -223,30 +223,30 @@ export const TourPopover: React.FC<TourPopoverProps> = ({
         <div className="grid grid-cols-[88px_1fr_108px] items-center gap-3 px-4 py-3 border-t border-border bg-background-tertiary rounded-b-xl">
           <button
             type="button"
-            aria-label={t("Back")}
+            aria-label={t("editorTour.back")}
             onClick={onPrev}
             disabled={isFirstStep}
             className="inline-flex h-9 min-w-[88px] items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-background-secondary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30"
           >
             <ChevronLeft size={14} className="shrink-0" aria-hidden />
-            <span>{t("Back")}</span>
+            <span>{t("editorTour.back")}</span>
           </button>
 
           <button
             type="button"
-            aria-label={t("Skip tour")}
+            aria-label={t("editorTour.skipTour")}
             onClick={onSkip}
             className="mx-auto inline-flex h-9 items-center justify-center whitespace-nowrap rounded-lg px-3 text-xs font-medium text-text-muted transition-colors hover:bg-background-secondary hover:text-text-secondary"
           >
-            {t("Skip Tour")}</button>
+            {t("editorTour.skipTour")}</button>
 
           <button
             type="button"
-            aria-label={isLastStep ? t("Get Started") : t("Next")}
+            aria-label={isLastStep ? t("editorTour.getStarted") : t("editorTour.next")}
             onClick={onNext}
             className="inline-flex h-9 min-w-[108px] items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span>{isLastStep ? "Get Started" : "Next"}</span>
+            <span>{isLastStep ? t("editorTour.getStarted") : t("editorTour.next")}</span>
             {!isLastStep && <ChevronRight size={14} className="shrink-0" aria-hidden />}
           </button>
         </div>

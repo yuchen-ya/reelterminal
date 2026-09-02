@@ -37,13 +37,14 @@ for concrete external integrations.
 
 - The browser/desktop editor and the canonical ReelTerminal `Project` model share
   one editing world.
-- A token-authenticated loopback MCP endpoint exposes exactly **15 live-facade
+- A token-authenticated loopback MCP endpoint exposes exactly **16 live-facade
   tools**:
 
   `session.describe` · `capabilities.get` · `project.create` · `project.open` ·
   `project.save` · `project.get_state` · `media.import` · `timeline.get` ·
   `editor.get_context` · `edit.apply` · `preview.render_frame` ·
-  `export.start` · `job.status` · `job.cancel` · `verify.artifact`.
+  `visual_inspect` · `export.start` · `job.status` · `job.cancel` ·
+  `verify.artifact`.
 
   In live mode, project creation/open and media import honestly report that
   the GUI owns those operations. The other tools operate on the open project
@@ -51,6 +52,9 @@ for concrete external integrations.
 - Live revision and context checks, one-writer lease semantics, observe /
   assist / autonomous modes, shared undo, and action activity status are in
   place.
+- `visual_inspect` provides bounded, read-only frame sampling by clip or time
+  range, with revision-tagged PNG artifacts and a real contact sheet when the
+  configured renderer supports native composition.
 - Users can mark audio, video, text, media, and graphics entities as stable
   Agent references (`#1`, `#2`, `#3`, …). Multi-selection assignment is
   deterministic; repeated marks keep their number; deleted entities remain
@@ -103,7 +107,7 @@ external Agent via MCP ─┘
 
 ```text
 packages/core              canonical Project model + editing engines
-packages/agent-facade      typed 15-verb facade, headless and live sessions
+packages/agent-facade      typed 16-verb facade, headless and live sessions
 packages/runtime-chromium  Chromium render/export providers + verification
 packages/agent-transport   optional headless MCP/CLI transport foundation
 apps/web                   ReelTerminal editor GUI and renderer-side live bridge
@@ -145,7 +149,7 @@ monotonic: they are never renumbered or reused, including after deletion.
 
 ## What the facade covers
 
-The 15-tool contract is shared by headless and live facade sessions. In a
+The 16-tool contract is shared by headless and live facade sessions. In a
 headless session, project lifecycle and local media operations are available
 subject to configured roots. In a live session, the GUI owns the open project
 and imported media; the facade acts on that shared project and reports live
@@ -193,7 +197,7 @@ The runtime example covers create → import → edit → preview → export →
 ## Desktop live workflow
 
 Start the desktop editor, open a project, and enable **Agent Session** in the
-collaboration bar. The desktop app then exposes the live project's 15-tool
+collaboration bar. The desktop app then exposes the live project's 16-tool
 MCP interface through a token-authenticated loopback endpoint. Configure an
 external Agent with the built `apps/desktop/dist/live-mcp/index.js` MCP server
 (`pnpm --filter @openreel/desktop build:main`); by default it reads
@@ -216,7 +220,7 @@ Those commands are not the default ReelTerminal desktop entry point.
 | Path | Role | Current status |
 |---|---|---|
 | `packages/core` | Canonical project and editing engines | Active foundation |
-| `packages/agent-facade` | Headless/live 15-tool contract | Active |
+| `packages/agent-facade` | Headless/live 16-tool contract | Active |
 | `packages/runtime-chromium` | Render, export, and verification providers | Active foundation |
 | `packages/agent-transport` | Headless MCP/CLI transport foundation | Optional |
 | `apps/web` | ReelTerminal editor and live renderer bridge | Active |
@@ -242,7 +246,7 @@ pnpm lint
 ```
 
 Desktop live collaboration tests cover endpoint authentication and MCP shape,
-the 15-tool catalog, the renderer bridge, session host, lease, status events,
+the 16-tool catalog, the renderer bridge, session host, lease, status events,
 and shared revision behavior.
 
 ## License and attribution

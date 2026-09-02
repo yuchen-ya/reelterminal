@@ -1,5 +1,5 @@
 /**
- * The 15 facade verbs ⇄ 15 MCP tools, 1:1 (ADR 0003 Decision 2, B.1/B.2;
+ * The 16 facade verbs ⇄ 16 MCP tools, 1:1 (ADR 0003 Decision 2, B.1/B.2;
  * ADR 0004 adds editor.get_context ⇄ editor_get_context).
  *
  * `inputSchema` is ALWAYS the facade's emitted JSON Schema, verbatim — the
@@ -28,6 +28,7 @@ export const TOOL_NAMES = [
   "editor_get_context",
   "edit_apply",
   "preview_render_frame",
+  "visual_inspect",
   "export_start",
   "job_status",
   "job_cancel",
@@ -41,7 +42,7 @@ const VERBS_IN_TOOL_ORDER: readonly FacadeVerb[] = [...FACADE_VERBS];
 
 if (VERBS_IN_TOOL_ORDER.length !== TOOL_NAMES.length) {
   throw new Error(
-    `tool map: facade has ${VERBS_IN_TOOL_ORDER.length} verbs but the transport maps ${TOOL_NAMES.length} tools (ADR 0003 B.1 + ADR 0004 require exactly 15/15)`,
+    `tool map: facade has ${VERBS_IN_TOOL_ORDER.length} verbs but the transport maps ${TOOL_NAMES.length} tools (facade/transport must stay 1:1)`,
   );
 }
 
@@ -58,9 +59,9 @@ export const VERB_TO_TOOL: Readonly<Record<FacadeVerb, ToolName>> =
 /** B.2: purpose only — parameter semantics live in the facade/schemas. */
 const TOOL_DESCRIPTIONS: Readonly<Record<ToolName, string>> = {
   session_describe:
-    "Describe the facade session: contract version, the 15 verbs, error codes, runtime step letters.",
+    "Describe the facade session: contract version, the 16 verbs, error codes, runtime step letters.",
   capabilities_get:
-    "Report live provider capabilities (media import, preview, export, verify) with honest reasons when unavailable.",
+    "Report live provider capabilities (media import, preview, visual inspection, export, verify) with honest reasons when unavailable.",
   project_create:
     "Create this session's single project (single-initialization lifecycle verb).",
   project_open:
@@ -78,6 +79,8 @@ const TOOL_DESCRIPTIONS: Readonly<Record<ToolName, string>> = {
     "Apply an atomic batch of closed edit ops to the project timeline.",
   preview_render_frame:
     "Render one frame of the project to a PNG artifact and return its artifact reference.",
+  visual_inspect:
+    "Sample 1–12 real frames for a clip or time range and return PNG artifacts plus a contact sheet when supported.",
   export_start:
     "Start an export job for a snapshot of the current project; returns a jobId immediately.",
   job_status: "Return the current status of an export job.",

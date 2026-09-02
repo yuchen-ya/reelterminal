@@ -145,6 +145,22 @@ export async function buildCapabilities(
     preflightOf(ctx.artifactVerifier, UNAVAILABLE_NO_VERIFIER),
   ]);
   const preview = gateArtifactProducing(previewRaw, UNAVAILABLE_NO_RENDER_PROVIDER);
+  const visualRaw = gateArtifactProducing(
+    previewRaw,
+    UNAVAILABLE_NO_RENDER_PROVIDER,
+  );
+  const visualInspection: CapabilityStatus = {
+    ...visualRaw,
+    details: {
+      ...(visualRaw.details ?? {}),
+      // Both modes render from file-backed media. Live mode cannot safely
+      // turn renderer-owned Blob/GUI-only media into pixels in this process.
+      fileBackedMediaRequired: true,
+      contactSheet: typeof ctx.renderProvider?.renderContactSheetPng === "function",
+      maxSamples: 12,
+      maxCellDimension: 1024,
+    },
+  };
   const exportVideo = gateArtifactProducing(exportRaw, UNAVAILABLE_NO_EXPORT_PROVIDER);
   const verify = gateArtifactProducing(verifyRaw, UNAVAILABLE_NO_VERIFIER);
   return {
@@ -177,6 +193,7 @@ export async function buildCapabilities(
       pixelRendering: preview.available,
     },
     preview,
+    visualInspection,
     export: exportVideo,
     verify,
   };
@@ -225,9 +242,12 @@ function headlessNotes(
     caps.preview.available
       ? "Text overlays render to real pixels via the configured render provider; pixel claims are E2E-verified only through preview.render_frame + verify.artifact."
       : "Text overlays are model-state only in this session: no render provider passed preflight, so pixel rendering is NOT claimed.",
+    caps.visualInspection.available
+      ? "visual.inspect samples 1–12 real provider-rendered PNG frames for an explicit clip or time range; the default runtime provider is Chromium, contact-sheet composition is runtime-dependent, and individual frame artifacts remain available."
+      : "visual.inspect is unavailable in this session: it needs the same artifactRoot and passing RenderProvider preflight as preview.render_frame.",
     ctx.renderAdapter
       ? `a Slice-1 ProjectRenderAdapter ("${ctx.renderAdapter.id}") is injected but permanently dormant: no facade verb consumes it and it flips no capability.`
-      : "preview/export/verify capabilities come from independent provider preflights (RenderProvider / ExportProvider / ArtifactVerifier), never from each other's presence.",
+      : "preview and visual inspection share the RenderProvider preflight; export and verify use their own ExportProvider / ArtifactVerifier preflights, and no capability is inferred from an unrelated provider.",
     "project.create is a single-initialization lifecycle verb outside the revision machinery: it takes no expectedRevision; an exact idempotent retry replays the creation result without resetting the project, and any other create while a project is open fails CONFLICT (no replace/reset).",
     `media.import accepts local files under the configured media roots only (${ctx.mediaRoots.length} root(s)); arbitrary URLs are not accepted.`,
     "export.start snapshots the project synchronously (sourceRevision) and returns a jobId immediately; the same idempotencyKey+payload replays the same jobId. job.cancel is cooperative and always settles to a terminal state; failed/cancelled jobs never carry an artifact.",
@@ -247,7 +267,10 @@ function liveNotes(
     caps.preview.available
       ? "Text overlays render to real pixels via the configured render provider; pixel claims are E2E-verified only through preview.render_frame + verify.artifact."
       : "Text overlays are model-state only in this session: no render provider passed preflight, so pixel rendering is NOT claimed.",
-    "project.create / project.open / media.import are unavailable in live mode (the GUI owns the project lifecycle and media import); project.save routes to the GUI's own save path. preview/export/verify run on a fresh snapshot of the canonical project and require its media to be file-backed and readable from this process.",
+    caps.visualInspection.available
+      ? "visual.inspect samples 1–12 real provider-rendered PNG frames from the canonical project snapshot; the default runtime provider is Chromium, contact-sheet composition is runtime-dependent, and individual frame artifacts remain available."
+      : "visual.inspect is unavailable in this session: it needs the same artifactRoot and passing RenderProvider preflight as preview.render_frame.",
+    "project.create / project.open / media.import are unavailable in live mode (the GUI owns the project lifecycle and media import); project.save routes to the GUI's own save path. preview/visual inspection/export/verify run on a fresh snapshot of the canonical project and require its media to be file-backed and readable from this process.",
     "editor.get_context reports the real ephemeral editor context (selection, playhead, time range, canvas point) with a monotonic contextRevision; edit.apply's expectedContextRevision CAS-guards ops derived from it.",
     "export.start snapshots the project synchronously (sourceRevision) and returns a jobId immediately; the same idempotencyKey+payload replays the same jobId. job.cancel is cooperative and always settles to a terminal state; failed/cancelled jobs never carry an artifact.",
     "Idempotency ledger is per session and does not survive process restarts.",

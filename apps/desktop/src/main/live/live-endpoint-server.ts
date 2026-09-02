@@ -9,7 +9,7 @@
  * initialize / ping / tools/list / tools/call:
  *
  *  - tools/list is answered IN MAIN from the facade's own verb list + emitted
- *    JSON Schemas (no renderer round-trip): 15 tools, verb dots mapped to
+ *    JSON Schemas (no renderer round-trip): 16 tools, verb dots mapped to
  *    underscores (editor.get_context → editor_get_context), same envelope
  *    shape agent-transport produces.
  *  - tools/call returns the FacadeResult as ONE text content block plus
@@ -30,7 +30,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -53,7 +53,110 @@ const SUPPORTED_PROTOCOL_VERSIONS = new Set([
 
 class BodyTooLargeError extends Error {}
 
-/* ------------------------- the 15 facade tools -------------------------- */
+const MAX_MCP_IMAGE_BYTES = 8 * 1024 * 1024;
+
+/** Read only facade-verified PNGs under the host artifact root. */
+function visualImageContent(
+  result: FacadeResult<unknown>,
+  artifactRoot: string | undefined,
+): (
+  | { type: "image"; data: string; mimeType: "image/png" }
+  | { type: "text"; text: string }
+)[] {
+  if (!result.ok || artifactRoot === undefined) return [];
+  const value = result.value as {
+    readonly contactSheet?: { readonly path?: unknown } | null;
+    readonly frames?: readonly { readonly artifact?: { readonly path?: unknown } }[];
+  };
+  const contactPath = typeof value.contactSheet?.path === "string"
+    ? value.contactSheet.path
+    : undefined;
+  const framePaths = (value.frames ?? [])
+    .map((frame) => frame.artifact?.path)
+    .filter((candidate): candidate is string => typeof candidate === "string")
+    .slice(0, 12);
+  // Prefer the single sheet, but fall back to frames if that artifact is no
+  // longer readable, fails PNG validation, or exceeds the image budget.
+  const paths = contactPath === undefined ? framePaths : [contactPath, ...framePaths];
+  let root: string;
+  try {
+    root = realpathSync(path.resolve(artifactRoot));
+  } catch {
+    return [];
+  }
+  const blocks: (
+    | { type: "image"; data: string; mimeType: "image/png" }
+    | { type: "text"; text: string }
+  )[] = [];
+  let totalBase64 = 0;
+  let skipped = false;
+  for (const filePath of paths) {
+    if (!path.isAbsolute(filePath)) {
+      skipped = true;
+      continue;
+    }
+    let verified: string;
+    try {
+      verified = realpathSync(filePath);
+    } catch {
+      skipped = true;
+      continue;
+    }
+    const rel = path.relative(root, verified);
+    if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) {
+      skipped = true;
+      continue;
+    }
+    let bytes: Buffer;
+    try {
+      const info = statSync(verified);
+      if (!info.isFile() || info.size === 0 || info.size > MAX_MCP_IMAGE_BYTES) {
+        skipped = true;
+        continue;
+      }
+      bytes = readFileSync(verified);
+      if (bytes.length === 0 || bytes.length > MAX_MCP_IMAGE_BYTES) {
+        skipped = true;
+        continue;
+      }
+    } catch {
+      skipped = true;
+      continue;
+    }
+    if (
+      bytes.length < 8 ||
+      bytes.readUInt32BE(0) !== 0x89504e47 ||
+      bytes.readUInt32BE(4) !== 0x0d0a1a0a
+    ) {
+      skipped = true;
+      continue;
+    }
+    const encoded = bytes.toString("base64");
+    if (encoded.length > MAX_MCP_IMAGE_BYTES) {
+      skipped = true;
+      continue;
+    }
+    if (totalBase64 + encoded.length > MAX_MCP_IMAGE_BYTES * 2) {
+      skipped = true;
+      break;
+    }
+    blocks.push({ type: "image", data: encoded, mimeType: "image/png" });
+    totalBase64 += encoded.length;
+    if (contactPath !== undefined && filePath === contactPath) break;
+  }
+  if (skipped) {
+    blocks.push({
+      type: "text",
+      text: JSON.stringify({
+        visualImageLimitation:
+          "Some visual PNG artifacts were not embedded because the MCP image containment, PNG, or response-size limit was reached; structuredContent retains every artifact reference.",
+      }),
+    });
+  }
+  return blocks;
+}
+
+/* ------------------------- the 16 facade tools -------------------------- */
 
 export interface LiveTool {
   readonly name: string;
@@ -72,9 +175,9 @@ export function toolNameForVerb(verb: FacadeVerb): string {
  */
 const TOOL_DESCRIPTIONS: Readonly<Record<FacadeVerb, string>> = {
   "session.describe":
-    "Describe this live collaboration session: runtime, the 15 verbs, error codes, mode and writer state.",
+    "Describe this live collaboration session: runtime, the 16 verbs, error codes, mode and writer state.",
   "capabilities.get":
-    "Report live provider capabilities (preview, export, verify) with honest reasons when unavailable.",
+    "Report live provider capabilities (preview, visual inspection, export, verify) with honest reasons when unavailable.",
   "project.create":
     "Unavailable in live mode — the GUI owns the project lifecycle; a live session attaches to the open project.",
   "project.open":
@@ -93,6 +196,8 @@ const TOOL_DESCRIPTIONS: Readonly<Record<FacadeVerb, string>> = {
     "Apply an atomic batch of closed edit ops as ONE undo unit. The revision CAS is unconditional in live mode: an omitted expectedRevision is guarded with the revision of the snapshot the ops were translated against; expectedContextRevision remains optional.",
   "preview.render_frame":
     "Render one frame of the current project snapshot to a PNG artifact and return its reference.",
+  "visual.inspect":
+    "Sample 1–12 real frames for a clip or time range and return PNG artifacts plus a contact sheet when supported.",
   "export.start":
     "Start an export job for a snapshot of the current project; returns a jobId immediately.",
   "job.status": "Return the current status of an export job.",
@@ -184,6 +289,8 @@ export interface LiveEndpointOptions {
   /** Fires on the first initialize / tools/call (externalConnected). */
   readonly onExternalActivity?: () => void;
   readonly serverInfo: { name: string; version: string };
+  /** Facade-verified image artifacts may be embedded only from this root. */
+  readonly artifactRoot?: string;
   readonly host?: string;
   /** Defaults to OPENREEL_LIVE_PORT, else a random port. */
   readonly port?: number;
@@ -264,8 +371,15 @@ async function handleLiveMessage(
         // The full FacadeResult JSON as ONE text content block, with
         // structuredContent verbatim; domain failures are isError, never
         // protocol errors.
+        const content: Array<
+          | { type: "text"; text: string }
+          | { type: "image"; data: string; mimeType: "image/png" }
+        > = [{ type: "text", text: JSON.stringify(result) }];
+        if (verb === "visual.inspect" && result.ok) {
+          content.push(...visualImageContent(result, options.artifactRoot));
+        }
         return reply({
-          content: [{ type: "text", text: JSON.stringify(result) }],
+          content,
           structuredContent: result as unknown as Record<string, unknown>,
           isError: !result.ok,
         });
