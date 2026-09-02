@@ -116,7 +116,7 @@ export interface StepLetters {
   readonly facadeToRuntime: "P";
   /** "X" in live sessions: project.create is unavailable (the GUI owns the project lifecycle). */
   readonly createProject: "P" | "X";
-  /** "X" in live sessions: media.import is unavailable (the GUI owns media import). */
+  /** "A" when live roots + bridge are available; "X" otherwise. */
   readonly importLocalMedia: "A" | "X";
   readonly trimClip: "P";
   readonly addTextOverlayModel: "P";
@@ -168,9 +168,11 @@ export interface Capabilities {
   readonly runtime: typeof FACADE_RUNTIME | "live";
   /**
    * Verbs that exist in the contract but are honestly unavailable in THIS
-   * session's mode (ADR 0004 Decision 11: live sessions report
-   * project.create / project.open / media.import here). Absent in headless
-   * sessions, where availability is reported per-capability below.
+   * session's mode (ADR 0004 Decision 11: live sessions report their
+   * GUI-owned/unavailable verbs here). Absent in headless
+   * sessions, where availability is reported per-capability below. In live
+   * sessions only project.create/open are always GUI-owned; media.import is
+   * available through the host bridge when configured.
    */
   readonly unavailableVerbs?: readonly FacadeVerb[];
   readonly stateModel: {

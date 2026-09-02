@@ -5,7 +5,11 @@ import {
 } from "@openreel/agent-facade";
 import type { Action } from "@openreel/core/types/actions";
 import { createLiveStoreBridge } from "./renderer-store-adapter";
-import type { LiveBridgeRequest, LiveBridgeReply } from "../../shared/live";
+import type {
+  LiveBridgeRequest,
+  LiveBridgeReply,
+  LiveMediaImportRequest,
+} from "../../shared/live";
 
 function makeBridge() {
   const sent: LiveBridgeRequest[] = [];
@@ -107,6 +111,51 @@ describe("createLiveStoreBridge", () => {
     });
   });
 
+  it("importMedia forwards the complete request and CAS/group options", async () => {
+    const { bridge, sent, validSender } = makeBridge();
+    const request: LiveMediaImportRequest = {
+      path: "/media-root/agent-shot.mp4",
+      name: "Agent shot",
+      type: "video",
+      metadata: {
+        durationSec: 2,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+        codec: "h264",
+        fileSize: 42,
+      },
+      sourceFile: {
+        name: "agent-shot.mp4",
+        size: 42,
+        lastModified: 123,
+      },
+    };
+    const pending = bridge.store.importMedia(request, {
+      groupLabel: "agent: media.import",
+      expectedRevision: 5,
+      expectedContextRevision: 2,
+    });
+    expect(sent[0]).toEqual({
+      callId: "call-1",
+      kind: "importMedia",
+      ...request,
+      groupLabel: "agent: media.import",
+      expectedRevision: 5,
+      expectedContextRevision: 2,
+    });
+
+    bridge.handleResponse(validSender, {
+      callId: "call-1",
+      ok: true,
+      result: { revision: 6, mediaId: "media-1" },
+    });
+    await expect(pending).resolves.toEqual({
+      revision: 6,
+      mediaId: "media-1",
+    });
+  });
+
   it("maps a renderer CONFLICT reply to LiveStoreConflictError with details", async () => {
     const { bridge, validSender } = makeBridge();
     const pending = bridge.store.applyActions([fakeAction], {
@@ -142,6 +191,7 @@ describe("createLiveStoreBridge", () => {
     expect(failure).toBeInstanceOf(Error);
     expect(failure).not.toBeInstanceOf(LiveStoreConflictError);
     expect((failure as Error).message).toBe("No project is open");
+    expect((failure as { code?: string }).code).toBe("NO_PROJECT");
   });
 
   it("drops responses from a foreign sender (DESK-06); the right sender still resolves", async () => {

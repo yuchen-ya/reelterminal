@@ -28,6 +28,7 @@ import { LiveStoreConflictError } from "./live-store";
 import type {
   LiveApplyActionsOptions,
   LiveEditorContext,
+  LiveMediaImportRequest,
   LiveProjectStore,
 } from "./live-store";
 import { collectEntityIds, diffCreatedIdsByCategory } from "./ops";
@@ -40,6 +41,7 @@ import type {
   RenderProvider,
 } from "./providers";
 import { READ_ONLY_VERBS } from "./types";
+import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 
 /* --------------------------- FakeLiveStore --------------------------- */
 
@@ -68,6 +70,10 @@ class FakeLiveStore implements LiveProjectStore {
     references: {},
   };
   readonly batches: RecordedBatch[] = [];
+  readonly mediaImports: Array<{
+    readonly request: LiveMediaImportRequest;
+    readonly opts: LiveApplyActionsOptions;
+  }> = [];
   saveCount = 0;
   /** Test hook: fires inside applyActions BEFORE the CAS check (a human
       edit landing between the agent's snapshot read and its apply). */
@@ -153,6 +159,45 @@ class FakeLiveStore implements LiveProjectStore {
     this.revision += 1;
     this.batches.push({ actions, opts });
     return { revision: this.revision, createdIds };
+  }
+
+  async importMedia(
+    request: LiveMediaImportRequest,
+    opts: LiveApplyActionsOptions,
+  ) {
+    if (opts.expectedRevision !== undefined && opts.expectedRevision !== this.revision) {
+      throw new LiveStoreConflictError(
+        `store revision conflict: expected ${opts.expectedRevision}, current is ${this.revision}`,
+        { currentRevision: this.revision },
+      );
+    }
+    const mediaId = `media-live-${this.mediaImports.length + 1}`;
+    const draft = structuredClone(this.project);
+    draft.mediaLibrary.items.push({
+      id: mediaId,
+      name: request.name,
+      type: request.type,
+      fileHandle: null,
+      blob: null,
+      metadata: {
+        duration: request.metadata.durationSec,
+        width: request.metadata.width,
+        height: request.metadata.height,
+        frameRate: request.metadata.frameRate,
+        codec: request.metadata.codec,
+        sampleRate: 0,
+        channels: 0,
+        fileSize: request.metadata.fileSize,
+      },
+      thumbnailUrl: null,
+      waveformData: null,
+      originalUrl: request.path,
+      sourceFile: request.sourceFile,
+    });
+    this.project = draft;
+    this.revision += 1;
+    this.mediaImports.push({ request, opts });
+    return { revision: this.revision, mediaId };
   }
 
   async requestSave() {
@@ -285,6 +330,7 @@ function liveFacade(
   opts?: Partial<{
     mode: "observe" | "assist" | "autonomous";
     sessionId: string;
+    mediaRoots: readonly string[];
     renderProvider: RenderProvider;
     exportProvider: ExportProvider;
     store: LiveProjectStore;
@@ -296,6 +342,7 @@ function liveFacade(
     sessionId: opts?.sessionId ?? "agent-1",
     mode: opts?.mode ?? "assist",
     artifactRoot,
+    ...(opts?.mediaRoots ? { mediaRoots: opts.mediaRoots } : {}),
     ...(opts?.renderProvider ? { renderProvider: opts.renderProvider } : {}),
     ...(opts?.exportProvider ? { exportProvider: opts.exportProvider } : {}),
   });
@@ -1056,7 +1103,7 @@ describe("session modes + writer lease (Decisions 6/7)", () => {
       "media.import",
     ]);
     expect(res.value.mediaImport.available).toBe(false);
-    expect(res.value.mediaImport.reason).toContain("GUI");
+    expect(res.value.mediaImport.reason).toContain("media roots");
     expect(res.value.visualInspection.details?.fileBackedMediaRequired).toBe(true);
   });
 });
@@ -1090,6 +1137,137 @@ describe("live-unavailable verbs (Decision 11)", () => {
     expect(store.saveCount).toBe(1);
     // Saving is a snapshot, not a mutation: no revision bump.
     expect(store.revision).toBe(1);
+  });
+});
+
+describe("live media.import through the canonical store bridge", () => {
+  it("probes and imports an absolute file, with the store revision as a CAS", async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "media-"));
+    const inputPath = writeTinyMp4(mediaRoot);
+    const facade = liveFacade({ mediaRoots: [mediaRoot] });
+
+    const caps = await facade["capabilities.get"]();
+    expect(caps.ok && caps.value.mediaImport.available).toBe(true);
+    expect(caps.ok && caps.value.unavailableVerbs).toEqual([
+      "project.create",
+      "project.open",
+    ]);
+
+    const res = await facade["media.import"]({
+      path: inputPath,
+      name: "Opening shot",
+      expectedRevision: 0,
+      idempotencyKey: "import-1",
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value).toMatchObject({
+      revision: 1,
+      name: "Opening shot",
+      type: "video",
+      replayed: false,
+      metadata: {
+        durationSec: expect.any(Number),
+        width: expect.any(Number),
+        height: expect.any(Number),
+        fileSize: expect.any(Number),
+      },
+    });
+    expect(store.mediaImports).toHaveLength(1);
+    expect(store.mediaImports[0]?.opts).toEqual({
+      groupLabel: "agent: media.import",
+      expectedRevision: 0,
+    });
+    expect(store.mediaImports[0]?.request.path).toMatch(/\/tiny-6s\.mp4$/);
+    expect(store.project.mediaLibrary.items[0]).toMatchObject({
+      id: res.value.mediaId,
+      originalUrl: store.mediaImports[0]?.request.path,
+      name: "Opening shot",
+    });
+
+    // Exact retries replay the committed result without probing or adding a
+    // second canonical media item; this remains true after the source goes
+    // away, matching the headless idempotency contract.
+    await rm(inputPath, { force: true });
+    const replay = await facade["media.import"]({
+      path: inputPath,
+      name: "Opening shot",
+      expectedRevision: 999,
+      idempotencyKey: "import-1",
+    });
+    expect(replay.ok).toBe(true);
+    if (replay.ok) {
+      expect(replay.value.replayed).toBe(true);
+      expect(replay.value.mediaId).toBe(res.value.mediaId);
+      expect(replay.value.revision).toBe(1);
+    }
+    expect(store.mediaImports).toHaveLength(1);
+  });
+
+  it("enforces absolute root containment and revision precedence", async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "media-"));
+    const outsideRoot = await mkdtemp(path.join(artifactRoot, "outside-"));
+    const inputPath = writeTinyMp4(mediaRoot);
+    const facade = liveFacade({ mediaRoots: [mediaRoot] });
+
+    const stale = await facade["media.import"]({
+      path: path.join(mediaRoot, "missing.mp4"),
+      expectedRevision: 4,
+    });
+    expect(stale.ok).toBe(false);
+    if (!stale.ok) expect(stale.error.code).toBe("CONFLICT");
+
+    const relative = await facade["media.import"]({
+      path: path.relative(process.cwd(), inputPath),
+    });
+    expect(relative.ok).toBe(false);
+    if (!relative.ok) expect(relative.error.code).toBe("INVALID_PARAMS");
+
+    const outsidePath = path.join(outsideRoot, "outside.mp4");
+    await writeFile(outsidePath, Buffer.from("not-media"));
+    const outside = await facade["media.import"]({ path: outsidePath });
+    expect(outside.ok).toBe(false);
+    if (!outside.ok) expect(outside.error.code).toBe("INVALID_PARAMS");
+    expect(store.revision).toBe(0);
+    expect(store.mediaImports).toHaveLength(0);
+  });
+
+  it("maps a store CAS race to CONFLICT without claiming a media import", async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "media-"));
+    const inputPath = writeTinyMp4(mediaRoot);
+    const originalImport = store.importMedia.bind(store);
+    store.importMedia = async (request, opts) => {
+      store.revision += 1;
+      return originalImport(request, opts);
+    };
+    const facade = liveFacade({ mediaRoots: [mediaRoot] });
+    const result = await facade["media.import"]({ path: inputPath });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("CONFLICT");
+    expect(store.mediaImports).toHaveLength(0);
+  });
+
+  it("preserves typed renderer import failures instead of reporting INTERNAL", async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "media-"));
+    const inputPath = writeTinyMp4(mediaRoot);
+    store.importMedia = async () => {
+      const error = Object.assign(new Error("renderer could not decode file"), {
+        code: "DECODE_ERROR",
+        details: { path: inputPath },
+      });
+      throw error;
+    };
+    const facade = liveFacade({ mediaRoots: [mediaRoot] });
+    const result = await facade["media.import"]({ path: inputPath });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("INVALID_PARAMS");
+      expect(result.error.details).toEqual({
+        path: inputPath,
+        bridgeCode: "DECODE_ERROR",
+      });
+    }
+    expect(store.mediaImports).toHaveLength(0);
   });
 });
 

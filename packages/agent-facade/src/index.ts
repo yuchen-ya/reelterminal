@@ -125,6 +125,8 @@ export {
 export type {
   LiveApplyActionsOptions,
   LiveApplyActionsResult,
+  LiveMediaImportRequest,
+  LiveMediaImportResult,
   LiveEditorContext,
   LiveEditorReference,
   LiveEditorReferenceKind,

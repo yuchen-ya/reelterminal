@@ -369,26 +369,31 @@ export class ActionExecutor {
 
     switch (action.type) {
       case "media/import": {
-        const params = action.params as { file: File };
-        const newMediaItem = {
-          id: `media-${Date.now()}`,
-          name: params.file.name,
-          type: this.inferMediaType(params.file),
-          fileHandle: null,
-          blob: params.file,
-          metadata: {
-            duration: 0,
-            width: 0,
-            height: 0,
-            frameRate: 0,
-            codec: "",
-            sampleRate: 0,
-            channels: 0,
-            fileSize: params.file.size,
-          },
-          thumbnailUrl: null,
-          waveformData: null,
-        };
+        const params = action.params as { file: File; mediaItem?: MediaItem };
+        const newMediaItem: MediaItem =
+          params.mediaItem ?? {
+            id: `media-${Date.now()}`,
+            name: params.file.name,
+            type: this.inferMediaType(params.file),
+            fileHandle: null,
+            blob: params.file,
+            metadata: {
+              duration: 0,
+              width: 0,
+              height: 0,
+              frameRate: 0,
+              codec: "",
+              sampleRate: 0,
+              channels: 0,
+              fileSize: params.file.size,
+            },
+            thumbnailUrl: null,
+            waveformData: null,
+          };
+        // Pin the generated item onto the history action before it is pushed.
+        // Redo then restores the same id and metadata instead of minting a
+        // disconnected media id that existing clips cannot reference.
+        params.mediaItem ??= newMediaItem;
         mediaLibrary.items = [...mediaLibrary.items, newMediaItem];
         this.lastAddedIds.set("media", newMediaItem.id);
         break;

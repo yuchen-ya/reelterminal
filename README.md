@@ -46,9 +46,10 @@ for concrete external integrations.
   `visual_inspect` · `export.start` · `job.status` · `job.cancel` ·
   `verify.artifact`.
 
-  In live mode, project creation/open and media import honestly report that
-  the GUI owns those operations. The other tools operate on the open project
-  through the shared live bridge.
+  In live mode, project creation/open remain GUI-owned. An Agent can import
+  local video and audio from the roots reported by `capabilities.get`; the
+  media appears immediately in the open GUI project and uses the shared undo
+  history. The other tools operate on that same project through the live bridge.
 - Live revision and context checks, one-writer lease semantics, observe /
   assist / autonomous modes, shared undo, and action activity status are in
   place.
@@ -156,8 +157,8 @@ monotonic: they are never renumbered or reused, including after deletion.
 
 The 16-tool contract is shared by headless and live facade sessions. In a
 headless session, project lifecycle and local media operations are available
-subject to configured roots. In a live session, the GUI owns the open project
-and imported media; the facade acts on that shared project and reports live
+subject to configured roots. In a live session, the GUI owns the open project;
+the facade can import media and edit that shared project while reporting live
 capabilities honestly.
 
 The live surface also reports the current selection, playhead, selected time
@@ -218,9 +219,14 @@ external Agent with the built `apps/desktop/dist/live-mcp/index.js` MCP server
 `~/.openreel/live-endpoint.json` to discover the current URL and token.
 
 The external Agent and the user remain equal peers over the same GUI project.
-The Agent can inspect context, use stable references, edit, preview, export,
-and verify through the live facade; the user keeps direct GUI control and the
-shared undo path. The desktop conversation panel and loopback client are also
+The Agent can import local video/audio, inspect context, use stable references,
+edit, preview, export, and verify through the live facade; the user keeps direct
+GUI control and the shared undo path. `capabilities_get` reports the absolute
+media roots allowed by the desktop host; by default these are the OS media and
+document folders, including `ReelTerminal Agent Imports` under Videos. Set
+`OPENREEL_LIVE_MEDIA_ROOTS` to a platform-delimited list of existing absolute
+directories before launch to replace those defaults. The desktop conversation
+panel and loopback client are also
 landed; the external Agent/host must run its thin `/conversation` adapter and
 publish the private descriptor described in
 [`docs/external-agent-conversation-adapter.md`](docs/external-agent-conversation-adapter.md).

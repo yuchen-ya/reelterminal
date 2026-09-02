@@ -89,6 +89,9 @@ async function launch(paths: ReturnType<typeof makeRunDirs>): Promise<LaunchedAp
     env: {
       ...process.env,
       OPENREEL_LIVE_ENDPOINT_FILE: paths.endpointFile,
+      // The per-run directory is the only media root needed by import E2E;
+      // every other spec simply observes the additional honest capability.
+      OPENREEL_LIVE_MEDIA_ROOTS: paths.runDir,
       OPENREEL_CONVERSATION_ENDPOINT_FILE: paths.conversationEndpointFile,
     },
     timeout: 120_000,

@@ -11,16 +11,128 @@ type Set = StoreApi<ProjectState>["setState"];
 export type MediaSlice = Pick<
   ProjectState,
   | "importMedia"
+  | "importMediaFromPath"
   | "deleteMedia"
   | "replaceMediaAsset"
   | "renameMedia"
   | "getMediaItem"
 >;
 
+/** Optional provenance/coordination data for an import. */
+export interface ImportMediaOptions {
+  /** Absolute path supplied by the desktop live-agent bridge. */
+  readonly sourcePath?: string;
+  /** CAS guard used by live-agent imports. */
+  readonly expectedRevision?: number;
+  /** Agent-probed media kind. The browser still decodes the bytes for UI data. */
+  readonly type?: "video" | "audio" | "image";
+  /** Agent-probed metadata, in facade units, when available. */
+  readonly metadata?: {
+    readonly durationSec: number;
+    readonly width: number;
+    readonly height: number;
+    readonly frameRate: number;
+    readonly codec: string;
+    readonly fileSize: number;
+  };
+  /** Source fingerprint supplied by the desktop agent. */
+  readonly sourceFile?: {
+    readonly name: string;
+    readonly size: number;
+    readonly lastModified: number;
+    readonly folder?: string;
+  };
+  /** Internal live bridge marker: make this import one agent undo unit. */
+  readonly historyOwner?: string;
+  readonly historyGroupLabel?: string;
+}
+
+/**
+ * Keep path handling in the renderer boundary. The live agent is allowed to
+ * provide a local path, but the project store remains the only project writer.
+ */
+function isAbsoluteLocalPath(value: string): boolean {
+  return value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\");
+}
+
+function pathBasename(value: string): string {
+  const normalized = value.replaceAll("\\", "/");
+  return normalized.slice(normalized.lastIndexOf("/") + 1) || "media";
+}
+
+function mediaMimeType(value: string): string {
+  const extension = pathBasename(value).split(".").pop()?.toLowerCase();
+  switch (extension) {
+    case "mp4":
+    case "m4v":
+      return "video/mp4";
+    case "mov":
+      return "video/quicktime";
+    case "webm":
+      return "video/webm";
+    case "mkv":
+      return "video/x-matroska";
+    case "avi":
+      return "video/x-msvideo";
+    case "mp3":
+      return "audio/mpeg";
+    case "wav":
+      return "audio/wav";
+    case "m4a":
+      return "audio/mp4";
+    case "aac":
+      return "audio/aac";
+    case "flac":
+      return "audio/flac";
+    case "png":
+      return "image/png";
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "gif":
+      return "image/gif";
+    case "webp":
+      return "image/webp";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+/** Keep one IPC read bounded even when the host-side probe allowed a larger file. */
+const MAX_LIVE_MEDIA_IMPORT_BYTES = 256 * 1024 * 1024;
+
+function liveMediaSizeError(path: string, bytes: number) {
+  return importError(
+    "INVALID_PARAMS",
+    `AI media imports are limited to ${MAX_LIVE_MEDIA_IMPORT_BYTES} bytes per file`,
+    { path, bytes, maxBytes: MAX_LIVE_MEDIA_IMPORT_BYTES },
+  );
+}
+
+function importError(
+  code: "DECODE_ERROR" | "INVALID_PARAMS",
+  message: string,
+  details?: Record<string, unknown>,
+): { success: false; error: { code: typeof code; message: string; details?: Record<string, unknown> } } {
+  return {
+    success: false,
+    error: { code, message, ...(details ? { details } : {}) },
+  };
+}
+
 export function createMediaSlice(set: Set, get: Get): MediaSlice {
   return {
-    importMedia: async (file: File) => {
-      const { project } = get();
+    importMedia: async (file: File, options: ImportMediaOptions = {}) => {
+      if (
+        options.expectedRevision !== undefined &&
+        options.expectedRevision !== get().projectRevision
+      ) {
+        return importError(
+          "INVALID_PARAMS",
+          `Project revision mismatch: expected ${options.expectedRevision}, current ${get().projectRevision}`,
+          { reason: "CONFLICT", currentRevision: get().projectRevision },
+        );
+      }
 
       try {
         const mediaBridge = getMediaBridge();
@@ -79,7 +191,9 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
         }
 
         let mediaType: "video" | "audio" | "image";
-        if (file.type.startsWith("image/")) {
+        if (options.type) {
+          mediaType = options.type;
+        } else if (file.type.startsWith("image/")) {
           mediaType = "image";
         } else if (processedMedia.metadata.hasVideo) {
           mediaType = "video";
@@ -116,41 +230,109 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
           fileHandle: null,
           blob: file,
           metadata: {
-            duration: processedMedia.metadata.duration || 0,
-            width: processedMedia.metadata.width || 0,
-            height: processedMedia.metadata.height || 0,
-            frameRate: processedMedia.metadata.frameRate || 0,
-            codec: processedMedia.metadata.codec || "",
+            duration: options.metadata?.durationSec ?? (processedMedia.metadata.duration || 0),
+            width: options.metadata?.width ?? (processedMedia.metadata.width || 0),
+            height: options.metadata?.height ?? (processedMedia.metadata.height || 0),
+            frameRate: options.metadata?.frameRate ?? (processedMedia.metadata.frameRate || 0),
+            codec: options.metadata?.codec ?? (processedMedia.metadata.codec || ""),
             sampleRate: processedMedia.metadata.sampleRate || 0,
             channels: processedMedia.metadata.channels || 0,
-            fileSize: file.size,
+            fileSize: options.metadata?.fileSize ?? file.size,
           },
           thumbnailUrl,
           waveformData: processedMedia.waveformData?.peaks || null,
           filmstripThumbnails:
             filmstripThumbnails.length > 0 ? filmstripThumbnails : undefined,
-          sourceFile: {
+          sourceFile: options.sourceFile ?? {
             name: file.name,
             size: file.size,
             lastModified: file.lastModified,
           },
+          ...(options.sourcePath ? { originalUrl: options.sourcePath } : {}),
         };
+        let committedMediaId = newMediaItem.id;
 
-        const updatedProject = {
-          ...project,
+        // The import can spend seconds probing/decoding. Re-check immediately
+        // before the one canonical project write so a human edit cannot be
+        // silently overwritten by an agent import.
+        if (
+          options.expectedRevision !== undefined &&
+          options.expectedRevision !== get().projectRevision
+        ) {
+          return importError(
+            "INVALID_PARAMS",
+            `Project revision mismatch: expected ${options.expectedRevision}, current ${get().projectRevision}`,
+            { reason: "CONFLICT", currentRevision: get().projectRevision },
+          );
+        }
+
+        // Import decoding is asynchronous. Merge into the project that is
+        // current at commit time so a concurrent GUI/agent edit is not lost.
+        const commitProject = get().project;
+        let updatedProject = {
+          ...commitProject,
           mediaLibrary: {
-            ...project.mediaLibrary,
-            items: [...project.mediaLibrary.items, newMediaItem],
+            ...commitProject.mediaLibrary,
+            items: [...commitProject.mediaLibrary.items, newMediaItem],
           },
           modifiedAt: Date.now(),
         };
+
+        if (options.historyOwner) {
+          // Media import is not serializable as a wire action, but the
+          // renderer already has the File bytes and fully-probed MediaItem.
+          // Execute the canonical core action with that stable item so the
+          // normal GUI undo/redo path removes and restores the same identity.
+          const action: Action = {
+            type: "media/import",
+            id: uuidv4(),
+            timestamp: Date.now(),
+            // The complete item is part of the history action so redo keeps
+            // the same id, metadata and file provenance. The persisted blob
+            // remains under that stable id while the import is undone.
+            params: { file, mediaItem: newMediaItem },
+          };
+          const executor = get().actionExecutor;
+          const history = executor.getHistory();
+          const beforeIds = new Set(
+            commitProject.mediaLibrary.items.map((item) => item.id),
+          );
+          executor.setPushOwner(options.historyOwner);
+          history.beginGroup(options.historyGroupLabel, options.historyOwner);
+          let actionResult: Awaited<ReturnType<typeof executor.execute>>;
+          try {
+            actionResult = await executor.execute(action, get().project);
+          } finally {
+            history.endGroup();
+            executor.setPushOwner(undefined);
+          }
+          if (!actionResult.success) {
+            return actionResult;
+          }
+
+          const currentProject = get().project;
+          const created = currentProject.mediaLibrary.items.find(
+            (item) => !beforeIds.has(item.id),
+          );
+          if (!created) {
+            return importError(
+              "DECODE_ERROR",
+              "Media import completed without creating a canonical media item",
+            );
+          }
+          committedMediaId = created.id;
+          updatedProject = {
+            ...currentProject,
+            modifiedAt: Date.now(),
+          };
+        }
 
         set({ project: updatedProject });
 
         try {
           await saveMediaBlob(
             updatedProject.id,
-            newMediaItem.id,
+            committedMediaId,
             file,
             newMediaItem.metadata,
           );
@@ -168,7 +350,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
               if (thumbs.length > 0) {
                 const currentProject = get().project;
                 const mediaIndex = currentProject.mediaLibrary.items.findIndex(
-                  (m) => m.id === newMediaItem.id,
+                  (m) => m.id === committedMediaId,
                 );
                 if (mediaIndex !== -1) {
                   const updatedItems = [...currentProject.mediaLibrary.items];
@@ -198,7 +380,10 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
           }, 100);
         }
 
-        return { success: true, actionId: newMediaItem.id };
+        return {
+          success: true,
+          actionId: committedMediaId,
+        };
       } catch (error) {
         return {
           success: false,
@@ -208,6 +393,64 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
               error instanceof Error ? error.message : "Unknown import error",
           },
         };
+      }
+    },
+
+    importMediaFromPath: async (
+      sourcePath: string,
+      name?: string,
+      options: Omit<ImportMediaOptions, "sourcePath"> = {},
+    ) => {
+      if (!isAbsoluteLocalPath(sourcePath)) {
+        return importError(
+          "INVALID_PARAMS",
+          "AI media imports require an absolute local file path",
+          { path: sourcePath },
+        );
+      }
+
+      const fsBridge = typeof window === "undefined" ? undefined : window.openreel?.fs;
+      if (!fsBridge?.readFileBytes) {
+        return importError(
+          "DECODE_ERROR",
+          "Desktop file access is unavailable in this editor",
+        );
+      }
+
+      try {
+        const hintedSize = options.sourceFile?.size ?? options.metadata?.fileSize;
+        if (hintedSize !== undefined && hintedSize > MAX_LIVE_MEDIA_IMPORT_BYTES) {
+          return liveMediaSizeError(sourcePath, hintedSize);
+        }
+        const bytes = await fsBridge.readFileBytes(
+          sourcePath,
+          MAX_LIVE_MEDIA_IMPORT_BYTES,
+        );
+        if (bytes.byteLength > MAX_LIVE_MEDIA_IMPORT_BYTES) {
+          return liveMediaSizeError(sourcePath, bytes.byteLength);
+        }
+        const fileName = name?.trim() || pathBasename(sourcePath);
+        const file = new File([bytes], fileName, {
+          type: mediaMimeType(sourcePath),
+          // A path import cannot obtain a portable FileSystemFileHandle. Keep
+          // the browser File stable while originalUrl records the source path.
+          lastModified: Date.now(),
+        });
+        return await get().importMedia(file, {
+          sourcePath,
+          expectedRevision: options.expectedRevision,
+          type: options.type,
+          metadata: options.metadata,
+          sourceFile: options.sourceFile,
+          historyOwner: options.historyOwner,
+          historyGroupLabel: options.historyGroupLabel,
+        });
+      } catch (error) {
+        return importError(
+          "DECODE_ERROR",
+          error instanceof Error ? error.message : "Failed to read local media file",
+          { path: sourcePath },
+        );
       }
     },
 

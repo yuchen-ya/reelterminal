@@ -64,13 +64,28 @@ This connector exposes the same open GUI project through exactly **16 tools**:
 `visual_inspect` ·
 `export_start` · `job_status` · `job_cancel` · `verify_artifact`.
 
-The live facade reports GUI-owned lifecycle/media operations honestly as
-unavailable (`project_create`, `project_open`, and `media_import`); it does not
-pretend to replace the project or import media behind the user's back.
+The live facade reports GUI-owned project lifecycle operations honestly as
+unavailable (`project_create` and `project_open`). `media_import` accepts an
+absolute local video/audio path under a root reported by
+`capabilities_get.mediaImport.mediaRoots`, imports it into the open canonical
+GUI project, and returns the `mediaId` used by later `clip.add` edits. The media
+panel updates immediately and the user can undo the import through the normal
+GUI history. Agents should create or copy generated assets into one of the
+reported roots instead of asking the user to import them manually.
 `editor_get_context` includes the live selection, playhead, ranges, canvas
 target, context revision, and stable Agent-reference mapping. References are
 session-local (`#1`, `#2`, `#3`, …), deterministic for multi-selection, never
 renumbered/reused, and stale after deletion rather than silently rebinding.
+
+### Short creative briefs are complete requests
+
+When the user gives only an outcome (for example, “make a 30-second promo”),
+own the finishing workflow: read capabilities and current context, use the
+Agent host's available creation/search/audio tools to prepare suitable assets
+inside a reported media root, import them, build the timeline, preview and
+visually inspect, iterate, export, and verify the result. Every edit must go
+through the live facade so it appears in the open GUI. Ask the user only for a
+genuine creative decision or a capability blocker—not for tool choreography.
 
 The desktop conversation panel and loopback client transport are landed. Each
 external Agent/host still runs and configures its thin server-side adapter at

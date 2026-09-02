@@ -33,6 +33,10 @@ export const openDialogArgsSchema = z.object({
 });
 export const writeFileArgsSchema = z.object({ path: z.string(), data: z.string() });
 export const readFileArgsSchema = z.object({ path: z.string() });
+export const readFileBytesArgsSchema = z.object({
+  path: z.string(),
+  maxBytes: z.number().int().positive().optional(),
+});
 
 export const proxyArgsSchema = z.object({
   srcPath: z.string(),

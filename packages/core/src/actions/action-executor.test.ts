@@ -108,12 +108,14 @@ describe("ActionExecutor media/import undo", () => {
     const project = makeProject();
 
     await executor.execute(importAction(), project);
+    const imported = project.mediaLibrary.items[0]!;
     await executor.undo(project);
     expect(project.mediaLibrary.items).toHaveLength(0);
 
     const redo = await executor.redo(project);
     expect(redo.success).toBe(true);
     expect(project.mediaLibrary.items).toHaveLength(1);
+    expect(project.mediaLibrary.items[0]!.id).toBe(imported.id);
   });
 });
 

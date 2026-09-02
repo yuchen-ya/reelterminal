@@ -177,7 +177,7 @@ export interface OpenReelCollabStatus {
 
 export interface OpenReelLiveBridgeRequest {
   callId: string;
-  kind: "getIdentity" | "getState" | "getContext" | "applyActions" | "requestSave";
+  kind: "getIdentity" | "getState" | "getContext" | "applyActions" | "importMedia" | "requestSave";
   [key: string]: unknown;
 }
 
@@ -228,7 +228,7 @@ declare global {
           filters: { name: string; extensions: string[] }[];
         }): Promise<string | null>;
         readFile(path: string): Promise<string>;
-        readFileBytes(path: string): Promise<ArrayBuffer>;
+        readFileBytes(path: string, maxBytes?: number): Promise<ArrayBuffer>;
         tempFilePath(ext: string): Promise<string>;
         writeFile(path: string, data: string): Promise<void>;
         openWrite(path: string): Promise<string>;

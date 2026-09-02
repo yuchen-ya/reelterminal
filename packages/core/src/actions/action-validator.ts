@@ -189,6 +189,18 @@ export class ActionValidator {
             path: "params.file",
           });
         }
+        if (
+          action.params.mediaItem &&
+          project.mediaLibrary.items.some(
+            (item) => item.id === action.params.mediaItem?.id,
+          )
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: `Media with ID ${action.params.mediaItem.id} already exists`,
+            path: "params.mediaItem.id",
+          });
+        }
         break;
 
       case "media/delete":

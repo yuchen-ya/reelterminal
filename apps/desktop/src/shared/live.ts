@@ -31,6 +31,7 @@ export type LiveBridgeKind =
   | "getState"
   | "getContext"
   | "applyActions"
+  | "importMedia"
   | "requestSave";
 
 /**
@@ -45,6 +46,32 @@ export interface LiveBridgeRequest {
   readonly groupLabel?: string;
   readonly expectedRevision?: number;
   readonly expectedContextRevision?: number;
+}
+
+/** Main→renderer payload for a live agent local-media import. */
+export interface LiveMediaImportRequest {
+  readonly path: string;
+  readonly name: string;
+  readonly type: "video" | "audio";
+  readonly metadata: {
+    readonly durationSec: number;
+    readonly width: number;
+    readonly height: number;
+    readonly frameRate: number;
+    readonly codec: string;
+    readonly fileSize: number;
+  };
+  readonly sourceFile: {
+    readonly name: string;
+    readonly size: number;
+    readonly lastModified: number;
+  };
+  readonly idempotencyKey?: string;
+}
+
+export interface LiveMediaImportResult {
+  readonly revision: number;
+  readonly mediaId: string;
 }
 
 export interface LiveBridgeError {

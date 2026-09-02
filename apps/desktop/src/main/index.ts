@@ -60,6 +60,7 @@ import {
   saveDialogArgsSchema,
   openDialogArgsSchema,
   readFileArgsSchema,
+  readFileBytesArgsSchema,
   writeFileArgsSchema,
   proxyArgsSchema,
   transcodeArgsSchema,
@@ -162,7 +163,7 @@ app.whenReady().then(() => {
     fileWriters.abort(handleId),
   );
   handle(CHANNELS.fsRevealInFolder, readFileArgsSchema, revealInFolder);
-  handle(CHANNELS.fsReadFileBytes, readFileArgsSchema, readFileBytes);
+  handle(CHANNELS.fsReadFileBytes, readFileBytesArgsSchema, readFileBytes);
   handle(CHANNELS.fsTempFilePath, z.object({ ext: z.string() }), tempFilePath);
   handle(CHANNELS.mediaGenerateProxy, proxyArgsSchema, generateProxy);
   handle(CHANNELS.mediaTranscode, transcodeArgsSchema, transcode);

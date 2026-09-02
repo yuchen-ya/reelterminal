@@ -149,6 +149,12 @@ Probing streams from disk through mediabunny's `FilePathSource` with an
 explicitly disposed `Input` — the file is never read into memory in full,
 and `fileSize` comes from `stat`.
 
+Live sessions use the same path and metadata validation, then delegate the
+canonical media-library insertion through `LiveProjectStore.importMedia`.
+The live host must provide absolute `mediaRoots` and implement that JSON-safe
+bridge; its revision CAS and one undo group are part of the seam contract.
+The facade does not send browser `File`/`Blob` objects across the bridge.
+
 ## Slice boundaries (what this is NOT)
 
 No MCP/CLI transport, no cloud GPU, no project replace/reset, no OCR. The

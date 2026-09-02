@@ -26,7 +26,12 @@ import {
 import type { Action } from "@openreel/core/types/actions";
 import type { Project } from "@openreel/core/types/project";
 import { CHANNELS } from "../../shared/channels";
-import type { LiveBridgeReply, LiveBridgeRequest } from "../../shared/live";
+import type {
+  LiveBridgeReply,
+  LiveBridgeRequest,
+  LiveMediaImportRequest,
+  LiveMediaImportResult,
+} from "../../shared/live";
 
 /** Reads + requestSave are quick store operations. */
 const READ_TIMEOUT_MS = 10_000;
@@ -37,6 +42,19 @@ interface PendingCall {
   readonly resolve: (value: unknown) => void;
   readonly reject: (reason: Error) => void;
   readonly timer: ReturnType<typeof setTimeout>;
+}
+
+/** Preserve renderer error codes across the typed LiveProjectStore seam. */
+class LiveStoreBridgeError extends Error {
+  readonly code: string;
+  readonly details?: Record<string, unknown>;
+
+  constructor(code: string, message: string, details?: Record<string, unknown>) {
+    super(message);
+    this.name = "LiveStoreBridgeError";
+    this.code = code;
+    if (details !== undefined) this.details = details;
+  }
 }
 
 export interface LiveStoreBridgeDeps {
@@ -113,7 +131,11 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
       return;
     }
     call.reject(
-      new Error(error?.message ?? "Renderer returned an error"),
+      new LiveStoreBridgeError(
+        error?.code ?? "BRIDGE_ERROR",
+        error?.message ?? "Renderer returned an error",
+        error?.details,
+      ),
     );
   };
 
@@ -154,6 +176,21 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
       ) as Promise<LiveApplyActionsResult>,
     requestSave: () =>
       request("requestSave", {}, READ_TIMEOUT_MS) as Promise<{ revision: number }>,
+    importMedia: (params: LiveMediaImportRequest, opts) =>
+      request(
+        "importMedia",
+        {
+          ...params,
+          groupLabel: opts.groupLabel,
+          ...(opts.expectedRevision !== undefined
+            ? { expectedRevision: opts.expectedRevision }
+            : {}),
+          ...(opts.expectedContextRevision !== undefined
+            ? { expectedContextRevision: opts.expectedContextRevision }
+            : {}),
+        },
+        APPLY_TIMEOUT_MS,
+      ) as Promise<LiveMediaImportResult>,
   };
 
   return {

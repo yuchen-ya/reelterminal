@@ -60,6 +60,8 @@ export interface LiveProviders {
 export interface LiveSessionHostDeps {
   /** Absolute artifact root (created on enable); sessions write under it. */
   readonly artifactRoot: string;
+  /** Absolute local roots from which the external Agent may import media. */
+  readonly mediaRoots?: readonly string[];
   /** Wires the main↔renderer live-store bridge (Electron in prod, stub in tests). */
   readonly installStoreBridge: () => LiveStoreBridge;
   /** Chromium providers in prod; a stub in tests. */
@@ -171,6 +173,7 @@ export function createLiveSessionHost(
     }
     const config: LiveFacadeConfig = {
       store: bridge.store,
+      ...(deps.mediaRoots ? { mediaRoots: deps.mediaRoots } : {}),
       ...(providers.renderProvider
         ? { renderProvider: providers.renderProvider }
         : {}),

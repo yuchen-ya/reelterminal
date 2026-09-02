@@ -14,7 +14,8 @@ contextBridge.exposeInMainWorld("openreel", {
     showSaveDialog: (opts: unknown) => ipcRenderer.invoke(CHANNELS.fsShowSaveDialog, opts),
     showOpenDialog: (opts: unknown) => ipcRenderer.invoke(CHANNELS.fsShowOpenDialog, opts),
     readFile: (p: string) => ipcRenderer.invoke(CHANNELS.fsReadFile, { path: p }),
-    readFileBytes: (p: string) => ipcRenderer.invoke(CHANNELS.fsReadFileBytes, { path: p }),
+    readFileBytes: (p: string, maxBytes?: number) =>
+      ipcRenderer.invoke(CHANNELS.fsReadFileBytes, { path: p, maxBytes }),
     tempFilePath: (ext: string) => ipcRenderer.invoke(CHANNELS.fsTempFilePath, { ext }),
     writeFile: (p: string, data: string) => ipcRenderer.invoke(CHANNELS.fsWriteFile, { path: p, data }),
     openWrite: (p: string) => ipcRenderer.invoke(CHANNELS.fsOpenWrite, { path: p }),

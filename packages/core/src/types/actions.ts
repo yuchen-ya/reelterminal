@@ -1,4 +1,4 @@
-import type { ProjectSettings } from "./project";
+import type { MediaItem, ProjectSettings } from "./project";
 import type {
   Transform,
   EasingType,
@@ -114,7 +114,14 @@ export type ProjectAction =
 
 // Media actions
 export type MediaAction =
-  | { type: "media/import"; params: { file: File } }
+  | {
+      type: "media/import";
+      params: {
+        file: File;
+        /** Optional fully-probed item; preserves its stable id on redo. */
+        mediaItem?: MediaItem;
+      };
+    }
   | { type: "media/delete"; params: { mediaId: string } }
   | { type: "media/rename"; params: { mediaId: string; name: string } };
 

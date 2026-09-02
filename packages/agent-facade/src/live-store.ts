@@ -29,6 +29,7 @@
  */
 import type { Action } from "@openreel/core/types/actions";
 import type { Project } from "@openreel/core/types/project";
+import type { ImportedMediaMetadata } from "./types";
 
 /**
  * Ephemeral editor context (Decision 4): monotonic in-memory
@@ -116,6 +117,37 @@ export interface LiveApplyActionsResult {
   readonly createdIds: LiveCreatedIds;
 }
 
+/**
+ * JSON-safe media description sent across the live main↔renderer bridge.
+ *
+ * The facade probes the file in the Node host and sends the canonical,
+ * realpathed path plus the metadata/fingerprint it observed. The renderer
+ * side turns this description into its own media-library entry; a browser
+ * `File`/`Blob` is deliberately not part of this seam.
+ */
+export interface LiveMediaImportRequest {
+  /** Absolute, realpathed file inside one of the configured media roots. */
+  readonly path: string;
+  readonly name: string;
+  readonly type: "video" | "audio";
+  readonly metadata: ImportedMediaMetadata;
+  readonly sourceFile: {
+    readonly name: string;
+    readonly size: number;
+    readonly lastModified: number;
+  };
+  /** Optional retry key forwarded so the renderer can commit at most once. */
+  readonly idempotencyKey?: string;
+}
+
+/** Result of the renderer's committed media-library insertion. */
+export interface LiveMediaImportResult {
+  /** Revision after the one media-import history group commits. */
+  readonly revision: number;
+  /** Id minted by the canonical GUI project store. */
+  readonly mediaId: string;
+}
+
 export interface LiveProjectStore {
   getIdentity(): Promise<LiveProjectIdentity>;
   /** On-demand snapshot read: a detached project clone plus its revision. */
@@ -129,6 +161,15 @@ export interface LiveProjectStore {
     actions: readonly Action[],
     opts: LiveApplyActionsOptions,
   ): Promise<LiveApplyActionsResult>;
+  /**
+   * Import one host-validated local file into the canonical GUI project.
+   * Implementations MUST CAS `expectedRevision` before committing and MUST
+   * make this one undoable history group, just like applyActions.
+   */
+  importMedia(
+    request: LiveMediaImportRequest,
+    opts: LiveApplyActionsOptions,
+  ): Promise<LiveMediaImportResult>;
   /** Route to the GUI's own save path (the GUI owns where/how files land). */
   requestSave(): Promise<{ revision: number }>;
 }

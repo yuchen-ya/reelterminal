@@ -13,6 +13,27 @@ import {
 } from "./live-bridge";
 import { getTransitionBridge } from "../../bridges/transition-bridge";
 
+const { mockSaveMediaBlob, mockImportFile } = vi.hoisted(() => ({
+  mockSaveMediaBlob: vi.fn(async () => undefined),
+  mockImportFile: vi.fn(),
+}));
+
+vi.mock("../../services/media-storage", () => ({
+  saveMediaBlob: mockSaveMediaBlob,
+  deleteMediaBlob: vi.fn(async () => undefined),
+  loadProjectMedia: vi.fn(async () => []),
+  loadFileHandle: vi.fn(async () => null),
+  loadDirectoryHandle: vi.fn(async () => null),
+}));
+
+vi.mock("../../bridges/media-bridge", () => ({
+  getMediaBridge: vi.fn(() => ({
+    isInitialized: vi.fn(() => true),
+    importFile: mockImportFile,
+  })),
+  initializeMediaBridge: vi.fn(async () => undefined),
+}));
+
 const act = (type: string, params: Record<string, unknown>): Action => ({
   type,
   id: `a-${Math.random().toString(36).slice(2)}`,
@@ -42,6 +63,25 @@ const undoSize = (): number =>
 
 describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
   beforeEach(() => {
+    mockImportFile.mockImplementation(async (file: File) => ({
+      success: true,
+      media: {
+        blob: file,
+        thumbnails: [],
+        waveformData: null,
+        metadata: {
+          duration: 7,
+          width: 640,
+          height: 360,
+          frameRate: 30,
+          codec: "h264",
+          sampleRate: 0,
+          channels: 0,
+          hasVideo: true,
+          hasAudio: false,
+        },
+      },
+    }));
     useProjectStore.getState().createNewProject();
   });
 
@@ -120,6 +160,192 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
       timing: { startSeconds: 2, endSeconds: 5 },
       stale: true,
     });
+  });
+
+  it("imports an agent path into the canonical media library and one agent undo unit", async () => {
+    mockSaveMediaBlob.mockClear();
+    const readFileBytes = vi.fn(async () => new ArrayBuffer(4));
+    (window as unknown as { openreel: unknown }).openreel = {
+      fs: { readFileBytes },
+    };
+    const beforeRevision = getProjectRevision();
+    const sourcePath = "/media-root/agent-shot.mp4";
+    const res = await handleLiveBridgeRequest(
+      req("importMedia", {
+        path: sourcePath,
+        name: "Agent shot",
+        type: "video",
+        metadata: {
+          durationSec: 7,
+          width: 640,
+          height: 360,
+          frameRate: 30,
+          codec: "h264",
+          fileSize: 4,
+        },
+        sourceFile: {
+          name: "agent-shot.mp4",
+          size: 4,
+          lastModified: 123,
+        },
+        expectedRevision: beforeRevision,
+      }),
+    );
+
+    expect(res.ok).toBe(true);
+    const imported = res.result as {
+      revision: number;
+      mediaId: string;
+      name: string;
+      type: string;
+    };
+    expect(imported.revision).toBe(beforeRevision + 1);
+    expect(imported.name).toBe("Agent shot");
+    expect(imported.type).toBe("video");
+    expect(readFileBytes).toHaveBeenCalledWith(sourcePath, 256 * 1024 * 1024);
+    const item = useProjectStore.getState().getMediaItem(imported.mediaId);
+    expect(item).toMatchObject({
+      id: imported.mediaId,
+      name: "Agent shot",
+      type: "video",
+      originalUrl: sourcePath,
+      sourceFile: { name: "agent-shot.mp4", size: 4, lastModified: 123 },
+      metadata: { duration: 7, width: 640, height: 360, fileSize: 4 },
+    });
+    expect(mockSaveMediaBlob).toHaveBeenCalledWith(
+      useProjectStore.getState().project.id,
+      imported.mediaId,
+      expect.any(File),
+      expect.objectContaining({ fileSize: 4 }),
+    );
+
+    const lastEntry = useProjectStore
+      .getState()
+      .actionExecutor
+      .getHistory()
+      .peekUndo();
+    expect(lastEntry?.owner).toBe("agent");
+    expect(lastEntry?.groupId).toBeTruthy();
+
+    const undone = await useProjectStore.getState().undo();
+    expect(undone.success).toBe(true);
+    expect(useProjectStore.getState().getMediaItem(imported.mediaId)).toBeUndefined();
+    expect(getProjectRevision()).toBe(beforeRevision + 2);
+
+    const redone = await useProjectStore.getState().redo();
+    expect(redone.success).toBe(true);
+    expect(useProjectStore.getState().getMediaItem(imported.mediaId)).toMatchObject({
+      id: imported.mediaId,
+      originalUrl: sourcePath,
+      sourceFile: { name: "agent-shot.mp4", size: 4, lastModified: 123 },
+      metadata: { duration: 7, width: 640, height: 360, fileSize: 4 },
+    });
+    expect(getProjectRevision()).toBe(beforeRevision + 3);
+  });
+
+  it("keeps an intervening edit when a manual media decode finishes later", async () => {
+    let finishDecode!: (value: unknown) => void;
+    mockImportFile.mockImplementationOnce(
+      (file: File) =>
+        new Promise((resolve) => {
+          finishDecode = (value) => resolve(value);
+          // Keep the File reachable in the closure just like the real bridge.
+          void file;
+        }),
+    );
+    const file = new File([new Uint8Array([1, 2, 3, 4])], "human.mp4", {
+      type: "video/mp4",
+    });
+    const pendingImport = useProjectStore.getState().importMedia(file);
+    await vi.waitFor(() => expect(mockImportFile).toHaveBeenCalledTimes(1));
+
+    const track = await useProjectStore
+      .getState()
+      .executeAction(act("track/add", { trackType: "video" }));
+    expect(track.success).toBe(true);
+    const trackId = useProjectStore.getState().project.timeline.tracks.at(-1)!.id;
+
+    finishDecode({
+      success: true,
+      media: {
+        blob: file,
+        thumbnails: [],
+        waveformData: null,
+        metadata: {
+          duration: 7,
+          width: 640,
+          height: 360,
+          frameRate: 30,
+          codec: "h264",
+          sampleRate: 0,
+          channels: 0,
+          hasVideo: true,
+          hasAudio: false,
+        },
+      },
+    });
+    const imported = await pendingImport;
+
+    expect(imported.success).toBe(true);
+    expect(
+      useProjectStore.getState().project.timeline.tracks.some((item) => item.id === trackId),
+    ).toBe(true);
+    expect(useProjectStore.getState().project.mediaLibrary.items).toHaveLength(1);
+  });
+
+  it("replays a committed import key without reading or inserting the file twice", async () => {
+    const readFileBytes = vi.fn(async () => new ArrayBuffer(4));
+    (window as unknown as { openreel: unknown }).openreel = {
+      fs: { readFileBytes },
+    };
+    const beforeRevision = getProjectRevision();
+    const request = req("importMedia", {
+      path: "/media-root/idempotent.mp4",
+      name: "Idempotent shot",
+      type: "video",
+      metadata: {
+        durationSec: 7,
+        width: 640,
+        height: 360,
+        frameRate: 30,
+        codec: "h264",
+        fileSize: 4,
+      },
+      sourceFile: {
+        name: "idempotent.mp4",
+        size: 4,
+        lastModified: 123,
+      },
+      expectedRevision: beforeRevision,
+      idempotencyKey: "renderer-import-1",
+    });
+
+    const first = await handleLiveBridgeRequest(request);
+    const replay = await handleLiveBridgeRequest({
+      ...request,
+      callId: "c2",
+      // A committed replay wins over a now-stale transport guard.
+      expectedRevision: beforeRevision + 999,
+    });
+
+    expect(first.ok).toBe(true);
+    expect(replay.ok).toBe(true);
+    expect(replay.result).toMatchObject({
+      mediaId: (first.result as { mediaId: string }).mediaId,
+      revision: (first.result as { revision: number }).revision,
+      replayed: true,
+    });
+    expect(readFileBytes).toHaveBeenCalledTimes(1);
+    expect(useProjectStore.getState().project.mediaLibrary.items).toHaveLength(1);
+
+    const conflict = await handleLiveBridgeRequest({
+      ...request,
+      callId: "c3",
+      path: "/media-root/different.mp4",
+    });
+    expect(conflict.ok).toBe(false);
+    expect(conflict.error?.code).toBe("CONFLICT");
+    expect(readFileBytes).toHaveBeenCalledTimes(1);
   });
 
   it("applyActions routes plain actions through executeAction as one undo unit", async () => {

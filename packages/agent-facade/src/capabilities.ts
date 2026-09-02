@@ -56,15 +56,17 @@ export interface CapabilityContext {
   readonly artifactRoot?: string;
   /**
    * Live-session marker (ADR 0004 Decisions 6/7/11). When present the
-   * reported runtime is "live", media.import is always unavailable (the GUI
-   * owns media import), and the live-unavailable verbs are listed honestly
-   * — never implied by omission.
+   * reported runtime is "live" and the live-unavailable verbs are listed
+   * honestly — never implied by omission. Media import is available only
+   * when the host supplies both configured roots and the explicit store
+   * import bridge.
    */
   readonly live?: {
     readonly mode: LiveSessionMode;
     readonly writer: boolean;
     readonly leaseHolder: string | null;
     readonly sessionId: string;
+    readonly mediaImportAvailable: boolean;
     readonly unavailableVerbs: readonly FacadeVerb[];
   };
 }
@@ -125,7 +127,9 @@ async function preflightOf(
 export async function buildCapabilities(
   ctx: CapabilityContext,
 ): Promise<Capabilities> {
-  const mediaImportAvailable = !ctx.live && ctx.mediaRoots.length > 0;
+  const mediaImportAvailable = ctx.live
+    ? ctx.live.mediaImportAvailable && ctx.mediaRoots.length > 0
+    : ctx.mediaRoots.length > 0;
   const noArtifactRoot = ctx.artifactRoot === undefined || ctx.artifactRoot.length === 0;
   const gateArtifactProducing = (
     status: CapabilityStatus,
@@ -179,7 +183,9 @@ export async function buildCapabilities(
         ? {}
         : {
             reason: ctx.live
-              ? "Live mode: the GUI owns media import — import media in the editor; media.import is unavailable in this session."
+              ? ctx.mediaRoots.length === 0
+                ? "Live mode: no media roots are configured; media.import cannot read a local file until roots are provided."
+                : "Live mode: the host did not provide the live-store media import bridge; media.import is unavailable in this session."
               : "No media roots are configured for this session; every media.import would fail until roots are provided.",
           }),
       sources: ["file"],
@@ -212,9 +218,10 @@ export async function buildSessionDescription(
     errorCodes: FACADE_ERROR_CODES,
     stepLetters: {
       facadeToRuntime: "P",
-      // Live mode owns no project lifecycle or media import (Decision 11).
+      // Live mode owns no project lifecycle; media import is reported from
+      // the host bridge/root preflight above.
       createProject: ctx.live ? "X" : "P",
-      importLocalMedia: ctx.live ? "X" : "A",
+      importLocalMedia: caps.mediaImport.available ? "A" : "X",
       trimClip: "P",
       addTextOverlayModel: "P",
       textOverlayPixels: caps.preview.available ? "C" : "X",
@@ -270,7 +277,7 @@ function liveNotes(
     caps.visualInspection.available
       ? "visual.inspect samples 1–12 real provider-rendered PNG frames from the canonical project snapshot; the default runtime provider is Chromium, contact-sheet composition is runtime-dependent, and individual frame artifacts remain available."
       : "visual.inspect is unavailable in this session: it needs the same artifactRoot and passing RenderProvider preflight as preview.render_frame.",
-    "project.create / project.open / media.import are unavailable in live mode (the GUI owns the project lifecycle and media import); project.save routes to the GUI's own save path. preview/visual inspection/export/verify run on a fresh snapshot of the canonical project and require its media to be file-backed and readable from this process.",
+    `project.create / project.open are unavailable in live mode (the GUI owns the project lifecycle); ${caps.mediaImport.available ? "media.import validates and imports an absolute local file through the live store bridge" : "media.import is unavailable until the live host provides media roots and its store bridge"}; project.save routes to the GUI's own save path. preview/visual inspection/export/verify run on a fresh snapshot of the canonical project and require its media to be file-backed and readable from this process.`,
     "editor.get_context reports the real ephemeral editor context (selection, playhead, time range, canvas point) with a monotonic contextRevision; edit.apply's expectedContextRevision CAS-guards ops derived from it.",
     "export.start snapshots the project synchronously (sourceRevision) and returns a jobId immediately; the same idempotencyKey+payload replays the same jobId. job.cancel is cooperative and always settles to a terminal state; failed/cancelled jobs never carry an artifact.",
     "Idempotency ledger is per session and does not survive process restarts.",

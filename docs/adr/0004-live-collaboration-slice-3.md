@@ -256,13 +256,17 @@ every mutation; no agent involvement is needed for the user to see changes.
 ### 11. Headless mode is untouched
 
 `AgentFacadeSession` (headless) keeps its private ownership model; the live
-session is a separate implementation of the same 15-verb `AgentFacade`
+session is a separate implementation of the same 16-verb `AgentFacade`
 interface behind `createLiveFacade(...)`. `agent-transport serve/run/doctor`
-behave exactly as in Slice 2. The only shared change is the 15th verb
-(schema + tools-list assertion 14 → 15), which headless answers honestly
-(Decision 4). Live v1 honestly reports `media.import`, `project.create`,
-and `project.open` as unavailable (the GUI owns media import and project
-lifecycle in live mode); `project.save` routes to the GUI's save path.
+behave exactly as in Slice 2, and headless continues to answer the shared
+contract honestly (Decision 4). Live mode reports `project.create` and
+`project.open` as unavailable because the GUI owns project lifecycle;
+`project.save` routes to
+the GUI's save path. As of the Slice 3 completion pass, `media.import` is
+available when the host supplies both approved media roots and the renderer
+store bridge: it validates and probes an absolute local file in the main
+process, then imports it through the canonical GUI store as a visible,
+undoable edit.
 
 ### 12. Undo-unit integrity: history groups gain an owner
 

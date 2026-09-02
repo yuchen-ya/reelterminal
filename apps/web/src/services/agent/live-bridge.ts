@@ -22,12 +22,52 @@ export interface LiveBridgeRequest {
     | "getState"
     | "getContext"
     | "applyActions"
+    | "importMedia"
     | "requestSave";
   readonly actions?: readonly Action[];
   readonly groupLabel?: string;
   readonly expectedRevision?: number;
   readonly expectedContextRevision?: number;
+  /** `importMedia` payload; path must be absolute and local. */
+  readonly path?: string;
+  readonly name?: string;
+  readonly type?: "video" | "audio";
+  readonly metadata?: {
+    readonly durationSec: number;
+    readonly width: number;
+    readonly height: number;
+    readonly frameRate: number;
+    readonly codec: string;
+    readonly fileSize: number;
+  };
+  readonly sourceFile?: {
+    readonly name: string;
+    readonly size: number;
+    readonly lastModified: number;
+  };
+  readonly idempotencyKey?: string;
 }
+
+interface MediaImportLedgerEntry {
+  readonly payload: string;
+  readonly result: {
+    readonly revision: number;
+    readonly mediaId: string;
+    readonly name: string;
+    readonly type: "video" | "audio";
+    readonly metadata: {
+      readonly durationSec: number;
+      readonly width: number;
+      readonly height: number;
+      readonly frameRate: number;
+      readonly codec: string;
+      readonly fileSize: number;
+    };
+  };
+}
+
+/** Renderer-side commit ledger closes the timeout/retry duplicate window. */
+const mediaImportLedger = new Map<string, Map<string, MediaImportLedgerEntry>>();
 
 export interface LiveBridgeError {
   readonly code: string;
@@ -371,6 +411,123 @@ async function handleApplyActions(
 }
 
 /**
+ * Import a path that was validated/probed by the main-process facade. The
+ * renderer reads the bytes through the existing fs preload and then delegates
+ * to the exact same project-store import path as a picker/drop import. This is
+ * intentionally one store call: media metadata, persistence, and the project
+ * revision stay together and the GUI observes the new library item normally.
+ */
+async function handleImportMedia(
+  req: LiveBridgeRequest,
+): Promise<Omit<LiveBridgeReply, "callId">> {
+  return runExclusiveLiveWrite(async () => {
+    const store = useProjectStore.getState();
+    if (!store.hasOpenProject) return noProject();
+    if (typeof req.path !== "string" || req.path.trim().length === 0) {
+      return {
+        ok: false,
+        error: { code: "INVALID_PARAMS", message: "importMedia requires a path" },
+      };
+    }
+
+    const idempotencyKey =
+      typeof req.idempotencyKey === "string" && req.idempotencyKey.length > 0
+        ? req.idempotencyKey
+        : undefined;
+    const payload = JSON.stringify({ path: req.path, name: req.name ?? null });
+    const projectLedger = idempotencyKey
+      ? mediaImportLedger.get(store.project.id)
+      : undefined;
+    const prior = idempotencyKey ? projectLedger?.get(idempotencyKey) : undefined;
+    if (prior) {
+      if (prior.payload !== payload) {
+        return {
+          ok: false,
+          error: {
+            code: "CONFLICT",
+            message: `idempotency key "${idempotencyKey}" was already committed with a different payload`,
+            details: { idempotencyKey },
+          },
+        };
+      }
+      return { ok: true, result: { ...prior.result, replayed: true } };
+    }
+
+    const result = await store.importMediaFromPath(req.path, req.name, {
+      expectedRevision: req.expectedRevision,
+      type: req.type,
+      metadata: req.metadata,
+      sourceFile: req.sourceFile,
+      historyOwner: "agent",
+      historyGroupLabel: req.groupLabel || "agent: media.import",
+    });
+    if (!result.success) {
+      const reason = result.error?.details?.reason;
+      return {
+        ok: false,
+        error: {
+          code: reason === "CONFLICT" ? "CONFLICT" : result.error?.code ?? "DECODE_ERROR",
+          message: result.error?.message ?? "Failed to import media",
+          ...(result.error?.details ? { details: result.error.details } : {}),
+        },
+      };
+    }
+
+    const mediaId = result.actionId;
+    const item = mediaId ? useProjectStore.getState().getMediaItem(mediaId) : undefined;
+    if (!mediaId || !item) {
+      return {
+        ok: false,
+        error: {
+          code: "BRIDGE_ERROR",
+          message: "Media import completed without a canonical media item",
+        },
+      };
+    }
+    if (item.type !== "video" && item.type !== "audio") {
+      return {
+        ok: false,
+        error: {
+          code: "BRIDGE_ERROR",
+          message: `Live media import produced unsupported type "${item.type}"`,
+        },
+      };
+    }
+
+    const committed = {
+      revision: getProjectRevision(),
+      mediaId,
+      name: item.name,
+      type: item.type,
+      metadata: {
+        durationSec: item.metadata.duration,
+        width: item.metadata.width,
+        height: item.metadata.height,
+        frameRate: item.metadata.frameRate,
+        codec: item.metadata.codec,
+        fileSize: item.metadata.fileSize,
+      },
+    } as const;
+    if (idempotencyKey) {
+      let ledger = mediaImportLedger.get(store.project.id);
+      if (!ledger) {
+        ledger = new Map();
+        mediaImportLedger.set(store.project.id, ledger);
+      }
+      ledger.set(idempotencyKey, { payload, result: committed });
+    }
+
+    return {
+      ok: true,
+      result: {
+        ...committed,
+        replayed: false,
+      },
+    };
+  });
+}
+
+/**
  * The live-store contract requires fresh, detached values — never live store
  * references. The IPC structured clone already detaches cross-process, but
  * in-process callers (tests) get a real clone too. Falls back to the raw
@@ -418,6 +575,9 @@ export async function handleLiveBridgeRequest(
       }
       case "applyActions": {
         return await handleApplyActions(req);
+      }
+      case "importMedia": {
+        return await handleImportMedia(req);
       }
       case "requestSave": {
         const store = useProjectStore.getState();

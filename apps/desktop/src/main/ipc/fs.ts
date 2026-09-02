@@ -70,9 +70,62 @@ export async function readTextFile(args: { path: string }): Promise<string> {
   return fs.readFile(args.path, "utf8");
 }
 
-export async function readFileBytes(args: { path: string }): Promise<ArrayBuffer> {
-  const buf = await fs.readFile(args.path);
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+export async function readFileBytes(args: {
+  path: string;
+  maxBytes?: number;
+}): Promise<ArrayBuffer> {
+  const handle = await fs.open(args.path, "r");
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile()) {
+      throw new Error(`Cannot read bytes from a non-file path: ${args.path}`);
+    }
+    if (args.maxBytes !== undefined && stat.size > args.maxBytes) {
+      throw new Error(
+        `File exceeds the ${args.maxBytes}-byte read limit: ${args.path}`,
+      );
+    }
+
+    // Stat and read through the same handle so a path swap cannot redirect the
+    // bounded import to a different file between the two operations.
+    if (args.maxBytes === undefined) {
+      const buf = await handle.readFile();
+      return buf.buffer.slice(
+        buf.byteOffset,
+        buf.byteOffset + buf.byteLength,
+      ) as ArrayBuffer;
+    }
+
+    // Do not delegate a bounded read to readFile(): the file could grow after
+    // stat and make that allocation unbounded. Read at most maxBytes + 1 in
+    // fixed chunks and use the extra byte only to detect growth past the cap.
+    const chunks: Uint8Array[] = [];
+    const chunkBytes = 1024 * 1024;
+    let total = 0;
+    while (total <= args.maxBytes) {
+      const remaining = args.maxBytes + 1 - total;
+      const chunk = new Uint8Array(Math.min(chunkBytes, remaining));
+      const { bytesRead } = await handle.read(chunk, 0, chunk.byteLength, null);
+      if (bytesRead === 0) break;
+      chunks.push(chunk.subarray(0, bytesRead));
+      total += bytesRead;
+    }
+    if (total > args.maxBytes) {
+      throw new Error(
+        `File exceeds the ${args.maxBytes}-byte read limit: ${args.path}`,
+      );
+    }
+
+    const result = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return result.buffer;
+  } finally {
+    await handle.close();
+  }
 }
 
 export async function writeTextFile(args: { path: string; data: string }): Promise<void> {

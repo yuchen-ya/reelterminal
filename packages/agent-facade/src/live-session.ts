@@ -16,8 +16,8 @@
  *  - Session modes (Decision 7): observe runs the read-only verb set only
  *    (write verbs fail FORBIDDEN); assist/autonomous share the full live
  *    verb surface. Enforced here, at the facade session boundary.
- *  - Honesty: project.create/project.open/media.import are unavailable
- *    (the GUI owns lifecycle and import); preview/export run on a snapshot
+ *  - Honesty: project.create/project.open remain GUI-owned; media.import
+ *    validates and delegates through the explicit live store bridge; preview/export run on a snapshot
  *    and require its media to be file-backed and readable from THIS process
  *    — blob/GUI-only media fails loudly instead of silently rendering
  *    wrong pixels. Text-only projects render fine.
@@ -30,7 +30,7 @@ import { ActionHistory } from "@openreel/core/actions/action-history";
 import type { Action } from "@openreel/core/types/actions";
 import type { Project } from "@openreel/core/types/project";
 import { rm, stat } from "node:fs/promises";
-import { isAbsolute, resolve as resolvePath } from "node:path";
+import { basename, isAbsolute, resolve as resolvePath } from "node:path";
 
 import {
   artifactRefFor,
@@ -50,9 +50,12 @@ import {
   LiveStoreConflictError,
   type LiveApplyActionsResult,
   type LiveCreatedIds,
+  type LiveMediaImportRequest,
+  type LiveMediaImportResult,
   type LiveProjectStore,
 } from "./live-store";
 import { hasUrlScheme, resolveContainedPathDetailed } from "./media/path-roots";
+import { probeLocalMediaFile } from "./media/node-media-adapter";
 import { opToCoreActions, validateEditOp } from "./ops";
 import {
   projectStateView,
@@ -75,6 +78,7 @@ import {
   EXPORT_START_SCHEMA,
   isEvenDimension,
   JOB_PARAMS_SCHEMA,
+  MEDIA_IMPORT_SCHEMA,
   PREVIEW_RENDER_FRAME_SCHEMA,
   VISUAL_INSPECT_RANGE_SCHEMA,
   VISUAL_INSPECT_SCHEMA,
@@ -124,20 +128,29 @@ import {
 
 /** Max media file size accepted for Chromium reads (2 GiB safety valve). */
 const MAX_MEDIA_FILE_BYTES = 2 * 1024 * 1024 * 1024;
+/**
+ * Live import currently crosses Electron IPC as one ArrayBuffer. Keep that
+ * transfer far below the Chromium-read ceiling so a valid request cannot
+ * exhaust the renderer before its own identical guard runs.
+ */
+const MAX_LIVE_IMPORT_FILE_BYTES = 256 * 1024 * 1024;
 
 /**
  * Verbs that exist in the contract but are honestly unavailable in live
- * mode (Decision 11): the GUI owns the project lifecycle and media import.
+ * mode (Decision 11): the GUI owns the project lifecycle. Media import is
+ * available when the host supplies media roots and the explicit live-store
+ * import bridge.
  */
 export const LIVE_UNAVAILABLE_VERBS = [
   "project.create",
   "project.open",
-  "media.import",
 ] as const satisfies readonly FacadeVerb[];
 
 export interface LiveFacadeConfig {
   /** The canonical-store seam (Decision 1). */
   readonly store: LiveProjectStore;
+  /** Absolute roots from which media.import may read local files. */
+  readonly mediaRoots?: readonly string[];
   /** preview.render_frame backing (same provider type as headless). */
   readonly renderProvider?: RenderProvider;
   /** export.start / job.cancel backing (same provider type as headless). */
@@ -216,8 +229,13 @@ export class LiveFacadeSession {
   }
 
   private capabilityContext() {
+    const mediaImportAvailable =
+      (this.config.mediaRoots?.length ?? 0) > 0 &&
+      typeof this.config.store.importMedia === "function";
+    const unavailableVerbs: FacadeVerb[] = [...LIVE_UNAVAILABLE_VERBS];
+    if (!mediaImportAvailable) unavailableVerbs.push("media.import");
     return {
-      mediaRoots: [],
+      mediaRoots: this.config.mediaRoots ?? [],
       ...(this.config.renderProvider
         ? { renderProvider: this.config.renderProvider }
         : {}),
@@ -233,7 +251,8 @@ export class LiveFacadeSession {
         writer: this.writer,
         leaseHolder: this.config.lease.holder(),
         sessionId: this.config.sessionId,
-        unavailableVerbs: LIVE_UNAVAILABLE_VERBS as readonly FacadeVerb[],
+        mediaImportAvailable,
+        unavailableVerbs,
       },
     };
   }
@@ -340,7 +359,7 @@ export class LiveFacadeSession {
     });
   }
 
-  /* --------------------- live-unavailable lifecycle ------------------ */
+  /* --------------------- live lifecycle ------------------------------ */
 
   async projectCreate(
     _params?: ProjectCreateParams,
@@ -367,14 +386,214 @@ export class LiveFacadeSession {
   }
 
   async mediaImport(
-    _params: MediaImportParams,
+    params: MediaImportParams,
   ): Promise<FacadeResult<MediaImportResult>> {
     return this.enqueue(async () => {
       this.gate("media.import");
-      throw this.liveUnavailable(
-        "media.import",
-        "the GUI owns media import — import media in the editor, then reference it by mediaId",
+      const valid = validateObject<MediaImportParams>(
+        params,
+        // Keep the same closed schema and payload semantics as headless.
+        // expectedRevision is a guard, not part of the idempotency payload.
+        MEDIA_IMPORT_SCHEMA,
+        "media.import params",
       );
+
+      const payload = { path: valid.path, name: valid.name };
+      const prior = await this.replayLookup<
+        Omit<MediaImportResult, "revision" | "replayed">
+      >("media.import", valid.idempotencyKey, payload);
+      if (prior) {
+        return ok<MediaImportResult>({
+          ...prior.value,
+          revision: prior.revision,
+          replayed: true,
+        });
+      }
+
+      // Read the revision before touching the filesystem. This preserves the
+      // headless precedence contract: a stale caller revision is CONFLICT,
+      // even when its source path is missing or malformed. The store repeats
+      // the CAS at commit time to catch a human edit during probing.
+      const { revision } = await this.config.store.getState();
+      if (
+        valid.expectedRevision !== undefined &&
+        valid.expectedRevision !== revision
+      ) {
+        throw new FacadeError(
+          "CONFLICT",
+          `revision conflict: expected ${valid.expectedRevision}, current is ${revision}`,
+          { currentRevision: revision },
+        );
+      }
+
+      const importer = this.config.store.importMedia;
+      if (typeof importer !== "function") {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "media.import: the live store does not expose an import bridge",
+        );
+      }
+
+      const roots = this.config.mediaRoots ?? [];
+      if (roots.length === 0) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "media.import: no media roots configured for this live session",
+        );
+      }
+      if (hasUrlScheme(valid.path)) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "media.import: URLs are not accepted in live mode — pass an absolute local file path inside a configured media root",
+          { path: valid.path },
+        );
+      }
+      if (!isAbsolute(valid.path)) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "media.import: paths must be absolute — nothing is resolved against the host process cwd",
+          { path: valid.path },
+        );
+      }
+      const resolution = resolveContainedPathDetailed(valid.path, roots);
+      if (resolution.kind === "outside") {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "media.import: path escapes the configured media roots",
+          { path: valid.path, mediaRoots: [...roots] },
+        );
+      }
+      if (resolution.kind === "unresolvable") {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "media.import: path cannot be read (not found or unreadable)",
+          { path: valid.path },
+        );
+      }
+
+      const resolved = resolution.path;
+      const fileStat = await stat(resolved).catch(() => null);
+      if (!fileStat || !fileStat.isFile()) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "media.import: path is not a regular file",
+          { path: valid.path },
+        );
+      }
+      if (fileStat.size > MAX_LIVE_IMPORT_FILE_BYTES) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `media.import: file exceeds the ${MAX_LIVE_IMPORT_FILE_BYTES}-byte live import limit`,
+          {
+            path: valid.path,
+            bytes: fileStat.size,
+            maxBytes: MAX_LIVE_IMPORT_FILE_BYTES,
+          },
+        );
+      }
+
+      let probed: Awaited<ReturnType<typeof probeLocalMediaFile>>;
+      try {
+        probed = await probeLocalMediaFile(resolved);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `media.import: cannot read media metadata: ${message}`,
+          { path: resolved },
+        );
+      }
+
+      const name = valid.name ?? basename(resolved);
+      const request: LiveMediaImportRequest = {
+        path: resolved,
+        name,
+        type: probed.type,
+        metadata: {
+          durationSec: probed.durationSec,
+          width: probed.width,
+          height: probed.height,
+          frameRate: probed.frameRate,
+          codec: probed.codec,
+          fileSize: probed.fileSize,
+        },
+        sourceFile: {
+          name: basename(resolved),
+          size: fileStat.size,
+          lastModified: Math.round(fileStat.mtimeMs),
+        },
+        ...(valid.idempotencyKey !== undefined
+          ? { idempotencyKey: valid.idempotencyKey }
+          : {}),
+      };
+
+      let committed: LiveMediaImportResult;
+      try {
+        // Preserve the store receiver: concrete bridges may implement this
+        // as a class method with stateful revision/history bookkeeping.
+        committed = await this.config.store.importMedia(request, {
+          groupLabel: "agent: media.import",
+          // As with live edit.apply, omitted expectedRevision is still an
+          // unconditional CAS against the snapshot we validated/probed.
+          expectedRevision: valid.expectedRevision ?? revision,
+        });
+      } catch (error) {
+        if (isLiveStoreConflict(error)) {
+          throw new FacadeError(
+            "CONFLICT",
+            `media.import: ${error instanceof Error ? error.message : String(error)}`,
+            error instanceof LiveStoreConflictError ? error.details : undefined,
+          );
+        }
+        // Renderer bridges retain a typed error code on ordinary failures.
+        // Keep invalid/decode input failures in the facade's public taxonomy
+        // instead of letting the enqueue boundary turn them into INTERNAL.
+        const typed =
+          typeof error === "object" && error !== null
+            ? (error as { code?: unknown; details?: Record<string, unknown> })
+            : undefined;
+        if (typed?.code === "INVALID_PARAMS") {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            error instanceof Error ? error.message : String(error),
+            typed.details,
+          );
+        }
+        if (typed?.code === "DECODE_ERROR") {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            error instanceof Error ? error.message : String(error),
+            { ...typed.details, bridgeCode: "DECODE_ERROR" },
+          );
+        }
+        if (typed?.code === "NO_PROJECT") {
+          throw new FacadeError(
+            "NOT_FOUND",
+            "media.import: no project is open in the GUI",
+            typed.details,
+          );
+        }
+        throw error;
+      }
+
+      const value: Omit<MediaImportResult, "revision" | "replayed"> = {
+        mediaId: committed.mediaId,
+        name,
+        type: probed.type,
+        metadata: request.metadata,
+      };
+      if (valid.idempotencyKey !== undefined) {
+        this.ledger.set("media.import", valid.idempotencyKey, {
+          revision: committed.revision,
+          value,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok<MediaImportResult>({
+        ...value,
+        revision: committed.revision,
+        replayed: false,
+      });
     });
   }
 

@@ -9,6 +9,8 @@ import {
   type FacadeVerb,
   type LiveAgentFacade,
   type LiveFacadeConfig,
+  type LiveMediaImportRequest,
+  type LiveMediaImportResult,
   type LiveProjectStore,
   type LiveSessionMode,
 } from "@openreel/agent-facade";
@@ -97,6 +99,13 @@ function makeBridgeStub() {
     applyActions: async () => {
       throw new Error("not exercised by host tests");
     },
+    importMedia: async (
+      _request: LiveMediaImportRequest,
+      _opts,
+    ): Promise<LiveMediaImportResult> => ({
+      revision: 1,
+      mediaId: "media-1",
+    }),
     requestSave: async () => ({ revision: 1 }),
   };
   const bridge: LiveStoreBridge = {
@@ -133,6 +142,7 @@ function makeFixture(
   const factory = makeFacadeFactory(sessions, overrides);
   const deps: LiveSessionHostDeps = {
     artifactRoot: path.join(tempDir, "live-artifacts"),
+    mediaRoots: [tempDir],
     installStoreBridge: () => bridge,
     createProviders: () => providers,
     createFacade: (config) => {
@@ -308,6 +318,7 @@ describe("live session host verb dispatch + events", () => {
     ]);
     // The single external session owns the sole writer lease.
     expect(fixture.sessions[0]!.isWriter).toBe(true);
+    expect(fixture.sessions[0]!.config.mediaRoots).toEqual([fixture.tempDir]);
     expect((await host.getStatus()).writer).toBe("external");
   });
 

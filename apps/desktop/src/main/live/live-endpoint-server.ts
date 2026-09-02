@@ -171,7 +171,8 @@ export function toolNameForVerb(verb: FacadeVerb): string {
 /**
  * One short purpose string per tool (parameter semantics live in the facade
  * schemas, same discipline as agent-transport tools.ts) — live-mode honest:
- * the lifecycle/import verbs exist in the contract but report unavailable.
+ * project lifecycle remains GUI-owned while media import targets the open
+ * GUI project through the canonical store bridge.
  */
 const TOOL_DESCRIPTIONS: Readonly<Record<FacadeVerb, string>> = {
   "session.describe":
@@ -187,7 +188,7 @@ const TOOL_DESCRIPTIONS: Readonly<Record<FacadeVerb, string>> = {
   "project.get_state":
     "Return the full canonical project state at the current revision.",
   "media.import":
-    "Unavailable in live mode — the GUI owns media import; reference already-imported media by mediaId.",
+    "Import a local video or audio file into the open GUI project. Use an absolute path under one of capabilities_get.mediaImport.mediaRoots; the returned mediaId can be passed to clip.add, the Media panel updates immediately, and the import is undoable in the GUI.",
   "timeline.get":
     "Return the compact timeline view (tracks, clips, text overlays) at the current revision.",
   "editor.get_context":
