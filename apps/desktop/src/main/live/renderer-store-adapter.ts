@@ -20,6 +20,8 @@ import {
   LiveStoreConflictError,
   type LiveApplyActionsResult,
   type LiveEditorContext,
+  type LiveEditorControlParams,
+  type LiveEditorControlResult,
   type LiveProjectIdentity,
   type LiveProjectStore,
 } from "@openreel/agent-facade";
@@ -159,6 +161,24 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
       }>,
     getContext: () =>
       request("getContext", {}, READ_TIMEOUT_MS) as Promise<LiveEditorContext>,
+    editorControl: (params: LiveEditorControlParams) =>
+      request(
+        "editorControl",
+        {
+          action: params.action,
+          ...(params.timeSeconds !== undefined
+            ? { timeSeconds: params.timeSeconds }
+            : {}),
+          ...(params.targets !== undefined ? { targets: [...params.targets] } : {}),
+          ...(params.selectionMode !== undefined
+            ? { selectionMode: params.selectionMode }
+            : {}),
+          ...(params.expectedContextRevision !== undefined
+            ? { expectedContextRevision: params.expectedContextRevision }
+            : {}),
+        },
+        READ_TIMEOUT_MS,
+      ) as Promise<LiveEditorControlResult>,
     applyActions: (actions: readonly Action[], opts) =>
       request(
         "applyActions",

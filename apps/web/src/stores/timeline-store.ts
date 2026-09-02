@@ -13,6 +13,8 @@ export type PlaybackState = "stopped" | "playing" | "paused";
 
 export interface TimelineState {
   playheadPosition: number;
+  /** Explicit seek/scrub intent, excluding ordinary playback clock ticks. */
+  playheadInteractionRevision: number;
   playbackState: PlaybackState;
   playbackLockedReason: string | null;
   playbackRate: number;
@@ -78,6 +80,7 @@ export const useTimelineStore = create<TimelineState>()(
     persist(
       (set, get) => ({
     playheadPosition: 0,
+    playheadInteractionRevision: 0,
     playbackState: "stopped",
     playbackLockedReason: null,
     playbackRate: 1.0,
@@ -142,34 +145,44 @@ export const useTimelineStore = create<TimelineState>()(
     },
 
     setPlayheadPosition: (position: number) => {
-      set({ playheadPosition: Math.max(0, position) });
+      const clampedPosition = Math.max(0, position);
+      if (clampedPosition === get().playheadPosition) return;
+      // PlaybackBridge and the preview clock use this method for ordinary
+      // frame ticks; those must not invalidate editor-context CAS guards.
+      set({ playheadPosition: clampedPosition });
     },
 
     seekTo: (position: number) => {
       const clampedPosition = Math.max(0, position);
-      set({ playheadPosition: clampedPosition });
+      if (clampedPosition === get().playheadPosition) return;
+      set((state) => ({
+        playheadPosition: clampedPosition,
+        playheadInteractionRevision: state.playheadInteractionRevision + 1,
+      }));
     },
 
     seekRelative: (delta: number) => {
       const { playheadPosition } = get();
       const newPosition = Math.max(0, playheadPosition + delta);
-      set({ playheadPosition: newPosition });
+      get().seekTo(newPosition);
     },
 
     seekToStart: () => {
-      set({ playheadPosition: 0 });
+      get().seekTo(0);
     },
 
     seekToEnd: (duration: number) => {
-      set({ playheadPosition: duration });
+      get().seekTo(duration);
     },
 
     startScrubbing: (position: number) => {
-      set({
+      const clampedPosition = Math.max(0, position);
+      set((state) => ({
         isScrubbing: true,
-        scrubPosition: position,
-        playheadPosition: position,
-      });
+        scrubPosition: clampedPosition,
+        playheadPosition: clampedPosition,
+        playheadInteractionRevision: state.playheadInteractionRevision + 1,
+      }));
     },
 
     updateScrubPosition: (position: number) => {

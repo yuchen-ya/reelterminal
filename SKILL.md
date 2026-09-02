@@ -2,7 +2,7 @@
 name: agent-video
 description: >-
   Drive ReelTerminal through its live desktop MCP interface by default: connect
-  the external Agent to the open GUI project's 16-tool openreel-live-mcp
+  the external Agent to the open GUI project's 17-tool openreel-live-mcp
   facade, inspect context, edit, preview, export, and verify. The optional
   agent-video serve/run transport remains available for headless workflows.
 ---
@@ -56,11 +56,11 @@ Use an explicit endpoint-file option only if the connector or host requires
 one; the default is already `~/.openreel/live-endpoint.json`. Do not copy the
 token into project files, prompts, or logs.
 
-This connector exposes the same open GUI project through exactly **16 tools**:
+This connector exposes the same open GUI project through exactly **17 tools**:
 
 `session_describe` · `capabilities_get` · `project_create` · `project_open` ·
 `project_save` · `project_get_state` · `media_import` · `timeline_get` ·
-`editor_get_context` · `edit_apply` · `preview_render_frame` ·
+`editor_get_context` · `editor_control` · `edit_apply` · `preview_render_frame` ·
 `visual_inspect` ·
 `export_start` · `job_status` · `job_cancel` · `verify_artifact`.
 
@@ -76,6 +76,9 @@ reported roots instead of asking the user to import them manually.
 target, context revision, and stable Agent-reference mapping. References are
 session-local (`#1`, `#2`, `#3`, …), deterministic for multi-selection, never
 renumbered/reused, and stale after deletion rather than silently rebinding.
+The context revision changes on meaningful selection or explicit seek/scrub
+changes; ordinary playback ticks do not invalidate a context CAS guard every
+frame.
 
 ### Short creative briefs are complete requests
 
@@ -93,7 +96,7 @@ external Agent/host still runs and configures its thin server-side adapter at
 `~/.openreel/conversation-endpoint.json` descriptor with mode `0600`, and
 removes it on exit; ReelTerminal only reads that descriptor. There is no universal
 provider connector and no embedded model. MCP tool access through the live
-facade remains a separate 16-tool integration and must not be confused with
+facade remains a separate 17-tool integration and must not be confused with
 the conversation transport.
 
 One `agent-video` process owns exactly **one facade session** and that
@@ -133,7 +136,7 @@ about why; there is no skill-level workaround. Missing capability ⇒ read
 
 ## 2. Optional headless `serve` workflow (configuration, not variants)
 
-The same 16 tools exist on every client. Clients must spawn the server
+The same 17 tools exist on every client. Clients must spawn the server
 **directly** (no `sh -c` wrapper — a wrapper that holds stdin open defeats
 disconnect detection). Set the `OPENREEL_AVE_*` env vars in the server's
 environment; every root value must be an absolute path to an existing
@@ -184,7 +187,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
   `~` are refused, never resolved against any cwd. Paths must resolve
   inside the matching root class; escapes and URLs fail.
 
-## 4. The 16 tools
+## 4. The 17 tools
 
 | Tool | Purpose |
 |---|---|
@@ -197,6 +200,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `media_import` | Path inside `mediaRoots`; URLs refused |
 | `timeline_get` | Compact view — preferred read |
 | `editor_get_context` | Editor context (selection, playhead, canvas point); headless-honest — see below |
+| `editor_control` | Ephemeral live playback and selection/reveal control; never changes project revision or undo history |
 | `edit_apply` | Closed op set; atomic; `expectedRevision` (+`expectedContextRevision` live) + `idempotencyKey` |
 | `preview_render_frame` | Replay/ledger only; artifact to `artifactRoot` |
 | `visual_inspect` | Sample 1–12 real Chromium frames for a clip or explicit time range; return PNG artifacts and a contact sheet when supported |
@@ -254,10 +258,14 @@ and `{projectId, projectName, windowId}`.
 
 ### The `edit_apply` op vocabulary
 
-Nineteen ops, one atomic batch each call (the exact fields and bounds live in
+Twenty-one ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
-- `track.add` — create a track (`trackType`); `clip.add` — place imported
+- `track.add` — create a track (`trackType`); `track.remove` — remove an empty
+  track only (tracks with clips, overlays, or transitions are rejected with a
+  machine-readable `CONFLICT`); `media.remove` — remove imported media only
+  when no timeline clip references it (otherwise `CONFLICT` lists the clip
+  ids); `clip.add` — place imported
   media on a track; `clip.move` — move it to an absolute timeline
   `startTime` and optionally another track; `clip.trim` — move a clip's `inPoint`/`outPoint` (at
   least one, `outPoint` must exceed `inPoint`).
@@ -270,7 +278,10 @@ Nineteen ops, one atomic batch each call (the exact fields and bounds live in
   next-free-gap placement; the new clip id is returned.
 - `clip.rippleDelete` — remove one clip and close the resulting gap on its
   track, matching the editor's Ripple Delete command.
-- `text.create` — an overlay on a text track. `position`/`anchor` are
+- `text.create` — an overlay on a text track. If no text track exists, the
+  same atomic `edit_apply` batch creates one automatically. Read its
+  `applied[i].createdIds` entry: `[textTrackId, overlayId]` for that implicit
+  lane, `[overlayId]` when a text track already exists. `position`/`anchor` are
   **normalized 0..1 frame coordinates** (resolution-independent:
   `0.5/0.5` = center, `y:0.85` = lower third) and apply identically in
   previews and exports. Safe area: keep the anchor point inside
@@ -321,7 +332,11 @@ the whole batch back; a deleted overlay or clip stays deleted after
   `cancelled`) — then stop polling. In a `run` workflow the same wait is a
   bounded `await` step (`timeoutMs` required, ≤ 3 600 000; `pollMs`
   250–30 000). Never guess artifact paths — use the `artifact.path` the
-  job reports.
+  job reports. Stdio MCP transports (including the desktop
+  `openreel-live-mcp` connector) may instead include `_meta.progressToken` on
+  `export_start` and receive opt-in `notifications/progress` updates. Direct
+  loopback HTTP callers have no server-push channel, so the polling contract
+  remains their required fallback.
 - **Always finish with `verify_artifact`:** assert on `checks[].pass` and
   the `compare` numbers; the report is data, the files stay on disk.
 - **Preview before exporting** (`preview_render_frame {timeSec}`) so pixel

@@ -65,6 +65,7 @@ class FakeLiveStore implements LiveProjectStore {
     playheadSeconds: null,
     selectedClipIds: [],
     selectedTextIds: [],
+    selectedMediaIds: [],
     timeRange: null,
     canvasPoint: null,
     references: {},
@@ -74,6 +75,7 @@ class FakeLiveStore implements LiveProjectStore {
     readonly request: LiveMediaImportRequest;
     readonly opts: LiveApplyActionsOptions;
   }> = [];
+  editorControlError: Error | null = null;
   saveCount = 0;
   /** Test hook: fires inside applyActions BEFORE the CAS check (a human
       edit landing between the agent's snapshot read and its apply). */
@@ -101,6 +103,7 @@ class FakeLiveStore implements LiveProjectStore {
       contextRevision: this.contextRevision,
       selectedClipIds: [...this.context.selectedClipIds],
       selectedTextIds: [...this.context.selectedTextIds],
+      selectedMediaIds: [...this.context.selectedMediaIds],
       timeRange: this.context.timeRange ? { ...this.context.timeRange } : null,
       canvasPoint: this.context.canvasPoint
         ? { ...this.context.canvasPoint }
@@ -203,6 +206,41 @@ class FakeLiveStore implements LiveProjectStore {
   async requestSave() {
     this.saveCount += 1;
     return { revision: this.revision };
+  }
+
+  async editorControl(
+    params: import("./live-store").LiveEditorControlParams,
+  ): Promise<import("./live-store").LiveEditorControlResult> {
+    if (this.editorControlError) throw this.editorControlError;
+    const context = this.context;
+    if (
+      params.expectedContextRevision !== undefined &&
+      params.expectedContextRevision !== this.contextRevision
+    ) {
+      throw new LiveStoreConflictError("context conflict", {
+        currentContextRevision: this.contextRevision,
+      });
+    }
+    if (params.action === "seek") this.context = { ...context, playheadSeconds: params.timeSeconds ?? 0 };
+    if (params.action === "select") {
+      this.context = {
+        ...context,
+        selectedClipIds: (params.targets ?? []).filter((t) => t.kind === "clip").map((t) => t.id),
+        selectedTextIds: (params.targets ?? []).filter((t) => t.kind === "text").map((t) => t.id),
+        selectedMediaIds: (params.targets ?? []).filter((t) => t.kind === "media").map((t) => t.id),
+      };
+    }
+    this.contextRevision += 1;
+    return {
+      action: params.action,
+      playbackState: params.action === "play" ? "playing" : "paused",
+      playheadSeconds: this.context.playheadSeconds ?? 0,
+      selectedClipIds: this.context.selectedClipIds,
+      selectedTextIds: this.context.selectedTextIds,
+      selectedMediaIds: this.context.selectedMediaIds,
+      revealedTargets: params.targets ?? [],
+      contextRevision: this.contextRevision,
+    };
   }
 
   /** Simulate a HUMAN edit: one action straight into the canonical store,
@@ -371,6 +409,7 @@ describe("editor.get_context and visual.inspect read verbs", () => {
       playheadSeconds: 4.25,
       selectedClipIds: ["clip-a", "clip-b"],
       selectedTextIds: ["text-1"],
+      selectedMediaIds: [],
       timeRange: { startSeconds: 1, endSeconds: 3.5 },
       canvasPoint: { x: 0.5, y: 0.85 },
       references: {},
@@ -387,6 +426,7 @@ describe("editor.get_context and visual.inspect read verbs", () => {
       playheadSeconds: 4.25,
       selectedClipIds: ["clip-a", "clip-b"],
       selectedTextIds: ["text-1"],
+      selectedMediaIds: [],
       timeRange: { startSeconds: 1, endSeconds: 3.5 },
       canvasPoint: { x: 0.5, y: 0.85 },
       references: {},
@@ -396,6 +436,47 @@ describe("editor.get_context and visual.inspect read verbs", () => {
         windowId: "win-1",
       },
     });
+  });
+
+  it("live editor.control preserves renderer NOT_FOUND details", async () => {
+    const bridgeError = Object.assign(new Error("target missing"), {
+      code: "NOT_FOUND",
+      details: { target: { kind: "clip", id: "missing" } },
+    });
+    store.editorControlError = bridgeError;
+    const res = await liveFacade()["editor.control"]({
+      action: "select",
+      targets: [{ kind: "clip", id: "missing" }],
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error).toEqual({
+      code: "NOT_FOUND",
+      message: "editor.control: target missing",
+      details: { target: { kind: "clip", id: "missing" } },
+    });
+  });
+
+  it("live editor.control preserves stale context CONFLICT details", async () => {
+    const res = await liveFacade()["editor.control"]({
+      action: "pause",
+      expectedContextRevision: 1,
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("CONFLICT");
+    expect(res.error.details).toEqual({ currentContextRevision: 0 });
+  });
+
+  it("editor.control rejects malformed targets as INVALID_PARAMS before the bridge", async () => {
+    const res = await liveFacade()["editor.control"]({
+      action: "select",
+      targets: [{ kind: "bogus", id: "x" }],
+    } as never);
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("INVALID_PARAMS");
+    expect(store.editorControlError).toBeNull();
   });
 
   it("headless: honest empty context (contextAvailable false), real revision and identity", async () => {
@@ -490,6 +571,26 @@ describe("live edit.apply", () => {
     expect(store.batches[0]?.opts.expectedRevision).toBe(0);
     // The actions are the SAME core actions headless emits.
     expect(store.batches[0]?.actions.map((a) => a.type)).toEqual([
+      "track/add",
+      "text/create",
+    ]);
+  });
+
+  it("text.create creates the missing text track in the same live undo batch", async () => {
+    const facade = liveFacade();
+    const res = await facade["edit.apply"]({
+      ops: [{ op: "text.create", text: "auto lane", startTime: 0, duration: 2 }],
+      expectedRevision: 0,
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const createdIds = res.value.applied[0]?.createdIds ?? [];
+    expect(createdIds).toHaveLength(2);
+    expect(store.project.timeline.tracks).toHaveLength(1);
+    expect(store.project.timeline.tracks[0]?.type).toBe("text");
+    expect(store.project.timeline.tracks[0]?.id).toBe(createdIds[0]);
+    expect(store.project.textClips?.[0]?.id).toBe(createdIds[1]);
+    expect(store.batches[0]?.actions.map((action) => action.type)).toEqual([
       "track/add",
       "text/create",
     ]);
@@ -966,7 +1067,7 @@ describe("session modes + writer lease (Decisions 6/7)", () => {
     const verify = await facade["verify.artifact"]({ path: "/x.mp4" });
     expect(verify.ok).toBe(false);
     if (!verify.ok) expect(verify.error.code).toBe("UNSUPPORTED"); // no verifier — NOT FORBIDDEN
-    expect(READ_ONLY_VERBS).toHaveLength(8);
+    expect(READ_ONLY_VERBS).toHaveLength(9);
 
     // Every non-read-only verb is FORBIDDEN, and the gate fires BEFORE
     // param validation (an empty/invalid payload is still FORBIDDEN).
@@ -1086,7 +1187,7 @@ describe("session modes + writer lease (Decisions 6/7)", () => {
     expect(res.value.writer).toBe(true);
     expect(res.value.leaseHolder).toBe("agent-1");
     expect(res.value.sessionId).toBe("agent-1");
-    expect(res.value.verbs).toHaveLength(16);
+    expect(res.value.verbs).toHaveLength(17);
     expect(res.value.stepLetters.createProject).toBe("X");
     expect(res.value.stepLetters.importLocalMedia).toBe("X");
   });

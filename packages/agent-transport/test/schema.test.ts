@@ -30,6 +30,7 @@ import {
   VERIFY_REGION_SCHEMA,
   VERB_PARAM_SCHEMAS,
   PROJECT_SETTINGS_SCHEMA,
+  EDITOR_CONTROL_TARGET_SCHEMA,
 } from "@openreel/agent-facade/verb-schemas";
 
 const ajv = new Ajv2020({ strict: false, allErrors: true });
@@ -94,6 +95,19 @@ function facadeRuntimeValidation(verb: string, params: unknown): boolean {
         }
         return true;
       }
+      case "editor.control": {
+        const action = valid.action;
+        if (action === "seek" && valid.timeSeconds === undefined) return false;
+        if (action !== "seek" && valid.timeSeconds !== undefined) return false;
+        if (action === "select" && (!Array.isArray(valid.targets) || valid.targets.length === 0)) return false;
+        if (action !== "select" && (valid.targets !== undefined || valid.selectionMode !== undefined)) return false;
+        if (Array.isArray(valid.targets)) {
+          valid.targets.forEach((target, index) =>
+            validateObject(target, EDITOR_CONTROL_TARGET_SCHEMA, `${verb} params.targets[${index}]`),
+          );
+        }
+        return true;
+      }
       default:
         return true;
     }
@@ -108,11 +122,12 @@ describe("Decision 4 item 2: transport assigns facade schemas verbatim", () => {
       "session.describe", "capabilities.get", "project.create", "project.open",
       "project.save", "project.get_state", "media.import", "timeline.get",
       "editor.get_context",
+      "editor.control",
       "edit.apply", "preview.render_frame", "visual.inspect", "export.start", "job.status",
       "job.cancel", "verify.artifact",
     ];
     const emitted = EMITTED_VERB_JSON_SCHEMAS as Record<string, unknown>;
-    expect(TOOLS).toHaveLength(16);
+    expect(TOOLS).toHaveLength(17);
     TOOLS.forEach((tool, i) => {
       expect(tool.inputSchema).toBe(emitted[verbOrder[i]]);
       expect(tool.inputSchema).toEqual(emitted[verbOrder[i]]);

@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import os from "node:os";
 import path from "node:path";
-import { endpointFilePath, forwardLine, validateLiveEndpointUrl } from "./index";
+import {
+  createSerializedLineWriter,
+  endpointFilePath,
+  forwardLine,
+  startProgressWatch,
+  validateLiveEndpointUrl,
+  type ProgressNotification,
+} from "./index";
 
 describe("live MCP endpoint selection", () => {
   afterEach(() => {
@@ -71,5 +78,161 @@ describe("forwardLine", () => {
   it("does not emit a response for notifications", async () => {
     const post = vi.fn().mockResolvedValue(null);
     expect(await forwardLine('{"jsonrpc":"2.0","method":"notifications/initialized"}', post)).toBeNull();
+  });
+
+  it("starts opt-in progress only after a successful export response", async () => {
+    const post = vi.fn().mockResolvedValue({
+      jsonrpc: "2.0",
+      id: 4,
+      result: {
+        structuredContent: {
+          ok: true,
+          value: { jobId: "job-export" },
+        },
+      },
+    });
+    const started = vi.fn();
+    const response = await forwardLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 4,
+        method: "tools/call",
+        params: { name: "export_start", arguments: {}, _meta: { progressToken: "原样-token" } },
+      }),
+      post,
+      { onExportStarted: started },
+    );
+
+    expect(started).toHaveBeenCalledWith("job-export", "原样-token");
+    expect(JSON.parse(response!)).toMatchObject({ id: 4, result: { structuredContent: { ok: true } } });
+  });
+
+  it("does not start a watcher when export_start has no progress token", async () => {
+    const post = vi.fn().mockResolvedValue({
+      jsonrpc: "2.0",
+      id: 5,
+      result: { structuredContent: { ok: true, value: { jobId: "job-quiet" } } },
+    });
+    const started = vi.fn();
+    await forwardLine(
+      '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"export_start","arguments":{}}}',
+      post,
+      { onExportStarted: started },
+    );
+    expect(started).not.toHaveBeenCalled();
+  });
+
+  it("keeps the successful tools/call response when status polling fails", async () => {
+    const post = vi
+      .fn()
+      .mockResolvedValueOnce({
+        jsonrpc: "2.0",
+        id: 6,
+        result: { structuredContent: { ok: true, value: { jobId: "job-poll-fails" } } },
+      })
+      .mockRejectedValueOnce(new Error("job_status unavailable"));
+    let watch: ReturnType<typeof startProgressWatch> | undefined;
+    const response = await forwardLine(
+      '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"export_start","arguments":{},"_meta":{"progressToken":"poll-token"}}}',
+      post,
+      {
+        onExportStarted: (jobId, progressToken) => {
+          watch = startProgressWatch({
+            jobId,
+            progressToken,
+            readStatus: async () => {
+              await post({ method: "tools/call", params: { name: "job_status" } });
+              return null;
+            },
+            notify: async () => undefined,
+          });
+        },
+      },
+    );
+    await watch?.done;
+    expect(JSON.parse(response!)).toMatchObject({ id: 6, result: { structuredContent: { ok: true } } });
+  });
+});
+
+describe("live MCP progress forwarding", () => {
+  it("echoes the token, stays monotonic, deduplicates, and stops at done", async () => {
+    const notifications: ProgressNotification[] = [];
+    const statuses = [
+      { state: "queued" as const, progress: null },
+      { state: "running" as const, progress: { percent: 0.15, phase: "rendering" } },
+      { state: "running" as const, progress: { percent: 0.15, phase: "rendering" } },
+      // A provider regression must not make the external Agent see progress go backwards.
+      { state: "running" as const, progress: { percent: 0.1, phase: "rendering" } },
+      { state: "done" as const, progress: { percent: 1, phase: "complete" } },
+    ];
+    const watch = startProgressWatch({
+      jobId: "job-1",
+      progressToken: 99,
+      pollMs: 10,
+      readStatus: async () => statuses.shift() ?? { state: "done" as const, progress: null },
+      notify: async (notification) => {
+        notifications.push(notification);
+      },
+    });
+
+    await watch.done;
+    expect(notifications).toEqual([
+      { progressToken: 99, progress: 0, total: 1, message: "queued" },
+      { progressToken: 99, progress: 0.15, total: 1, message: "rendering" },
+      { progressToken: 99, progress: 1, total: 1, message: "complete" },
+    ]);
+  });
+
+  it.each(["error", "cancelled"] as const)("cleans up on %s without throwing into tools/call", async (state) => {
+    let reads = 0;
+    const watch = startProgressWatch({
+      jobId: "job-terminal",
+      progressToken: "terminal-token",
+      pollMs: 10,
+      readStatus: async () => {
+        reads += 1;
+        return { state, progress: null };
+      },
+      notify: async () => {
+        throw new Error("notification sink unavailable");
+      },
+    });
+    await expect(watch.done).resolves.toBeUndefined();
+    expect(reads).toBe(1);
+  });
+
+  it("stops an in-flight connector watcher when the connector closes", async () => {
+    let reads = 0;
+    const watch = startProgressWatch({
+      jobId: "job-close",
+      progressToken: "close-token",
+      pollMs: 10,
+      readStatus: async () => {
+        reads += 1;
+        return { state: "running" as const, progress: { percent: 0.2, phase: "rendering" } };
+      },
+      notify: async () => undefined,
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    watch.stop();
+    await watch.done;
+    expect(reads).toBe(1);
+  });
+
+  it("serializes concurrent tool responses and notifications into complete lines", async () => {
+    const writes: string[] = [];
+    let releaseFirst!: () => void;
+    const first = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const write = createSerializedLineWriter(async (line) => {
+      if (line === "response-1") await first;
+      writes.push(line);
+    });
+    const firstWrite = write("response-1");
+    const secondWrite = write("progress-1");
+    releaseFirst();
+    await Promise.all([firstWrite, secondWrite]);
+    expect(writes).toEqual(["response-1", "progress-1"]);
   });
 });

@@ -1511,6 +1511,7 @@ export const Timeline: React.FC = () => {
 
           <div
             ref={tracksRef}
+            data-live-editor-scroll-container="timeline"
             data-testid="timeline-tracks-scroll"
             className="flex-1 bg-background relative overflow-auto custom-scrollbar"
             onScroll={(e) => {

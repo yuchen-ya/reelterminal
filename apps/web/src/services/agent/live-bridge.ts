@@ -1,9 +1,17 @@
 import type { Action } from "@openreel/core/types/actions";
 import type { TextClip, Transform, Transition } from "@openreel/core";
+import type {
+  LiveEditorControlParams,
+  LiveEditorControlResult,
+  LiveEditorControlTarget,
+} from "@openreel/agent-facade/live-store";
 import type { TextStyle } from "@openreel/core/text/types";
 import { v4 as uuidv4 } from "uuid";
 import { useProjectStore, getProjectRevision } from "../../stores/project-store";
 import { getLiveEditorContext } from "../../stores/editor-context-store";
+import { useUIStore, type SelectionItem } from "../../stores/ui-store";
+import { useTimelineStore } from "../../stores/timeline-store";
+import { getPlaybackBridge } from "../../bridges/playback-bridge";
 import { runExclusiveLiveWrite } from "./live-write-lock";
 
 /**
@@ -21,6 +29,7 @@ export interface LiveBridgeRequest {
     | "getIdentity"
     | "getState"
     | "getContext"
+    | "editorControl"
     | "applyActions"
     | "importMedia"
     | "requestSave";
@@ -28,6 +37,10 @@ export interface LiveBridgeRequest {
   readonly groupLabel?: string;
   readonly expectedRevision?: number;
   readonly expectedContextRevision?: number;
+  readonly action?: LiveEditorControlParams["action"];
+  readonly timeSeconds?: number;
+  readonly targets?: readonly LiveEditorControlTarget[];
+  readonly selectionMode?: LiveEditorControlParams["selectionMode"];
   /** `importMedia` payload; path must be absolute and local. */
   readonly path?: string;
   readonly name?: string;
@@ -541,6 +554,198 @@ function detach<T>(value: T): T {
   }
 }
 
+const LIVE_REVEAL_MEDIA_EVENT = "openreel:live-reveal-media";
+
+/** Locate a rendered target without trusting ids as CSS selectors. */
+function renderedEditorTarget(
+  target: LiveEditorControlTarget,
+): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  const selector =
+    target.kind === "media"
+      ? "[data-live-media-id]"
+      : "[data-live-editor-target-id]";
+  return (
+    Array.from(document.querySelectorAll<HTMLElement>(selector)).find((el) =>
+      target.kind === "media"
+        ? el.dataset.liveMediaId === target.id
+        : el.dataset.liveEditorTargetId === target.id &&
+          el.dataset.liveEditorTargetKind === target.kind,
+    ) ?? null
+  );
+}
+
+/** Ask the relevant editor surface to reveal and focus a target. */
+async function revealEditorTargets(
+  targets: readonly LiveEditorControlTarget[],
+): Promise<LiveEditorControlTarget[]> {
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return [];
+  }
+
+  // AssetsPanel owns its tab state; this event keeps that internal detail out
+  // of the project store while still making a media target visible to a human.
+  for (const target of targets) {
+    if (target.kind === "media") {
+      useUIStore.getState().setPanelVisible("mediaLibrary", true);
+      window.dispatchEvent(
+        new CustomEvent(LIVE_REVEAL_MEDIA_EVENT, { detail: { id: target.id } }),
+      );
+    }
+  }
+
+  // Let a panel/tab state update commit before querying its target node.
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+  const revealed: LiveEditorControlTarget[] = [];
+  for (const target of targets) {
+    const element = renderedEditorTarget(target);
+    if (!element) continue;
+    try {
+      element.scrollIntoView({ block: "nearest", inline: "center" });
+    } catch {
+      // Some test DOMs do not implement scrollIntoView; focus remains useful.
+    }
+    try {
+      element.focus({ preventScroll: true });
+    } catch {
+      element.focus();
+    }
+    revealed.push(target);
+  }
+  return revealed;
+}
+
+function targetSelectionItem(
+  target: LiveEditorControlTarget,
+  project: ReturnType<typeof useProjectStore.getState>["project"],
+): SelectionItem | null {
+  if (target.kind === "media") {
+    return project.mediaLibrary.items.some((item) => item.id === target.id)
+      ? { type: "media", id: target.id }
+      : null;
+  }
+
+  if (target.kind === "text") {
+    const text = (project.textClips ?? []).find((clip) => clip.id === target.id);
+    return text ? { type: "text-clip", id: target.id, trackId: text.trackId } : null;
+  }
+
+  const track = project.timeline.tracks.find((candidate) =>
+    candidate.clips.some((clip) => clip.id === target.id),
+  );
+  if (track) return { type: "clip", id: target.id, trackId: track.id };
+  const shape = (project.shapeClips ?? []).find((clip) => clip.id === target.id);
+  if (shape) return { type: "shape-clip", id: target.id, trackId: shape.trackId };
+  const svg = (project.svgClips ?? []).find((clip) => clip.id === target.id);
+  if (svg) return { type: "shape-clip", id: target.id, trackId: svg.trackId };
+  const sticker = (project.stickerClips ?? []).find((clip) => clip.id === target.id);
+  return sticker ? { type: "shape-clip", id: target.id, trackId: sticker.trackId } : null;
+}
+
+function controlResult(
+  action: LiveEditorControlParams["action"],
+  revealedTargets: readonly LiveEditorControlTarget[] = [],
+): LiveEditorControlResult {
+  const context = getLiveEditorContext();
+  const timeline = useTimelineStore.getState();
+  return {
+    action,
+    playbackState: timeline.playbackState,
+    playheadSeconds: context.playheadSeconds ?? timeline.playheadPosition,
+    selectedClipIds: [...context.selectedClipIds],
+    selectedTextIds: [...context.selectedTextIds],
+    selectedMediaIds: [...context.selectedMediaIds],
+    revealedTargets: [...revealedTargets],
+    contextRevision: context.contextRevision,
+  };
+}
+
+async function handleEditorControl(
+  req: LiveBridgeRequest,
+): Promise<Omit<LiveBridgeReply, "callId">> {
+  const store = useProjectStore.getState();
+  if (!store.hasOpenProject) return noProject();
+  const context = getLiveEditorContext();
+  if (
+    req.expectedContextRevision !== undefined &&
+    req.expectedContextRevision !== context.contextRevision
+  ) {
+    return {
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        message: `Editor context revision mismatch: expected ${req.expectedContextRevision}, current ${context.contextRevision}. Re-read context and retry.`,
+        details: { currentContextRevision: context.contextRevision },
+      },
+    };
+  }
+  const action = req.action;
+  if (!action) {
+    return {
+      ok: false,
+      error: { code: "INVALID_PARAMS", message: "editorControl requires action" },
+    };
+  }
+
+  switch (action) {
+    case "play":
+      await getPlaybackBridge().play();
+      break;
+    case "pause":
+      getPlaybackBridge().pause();
+      break;
+    case "seek":
+      if (typeof req.timeSeconds !== "number" || !Number.isFinite(req.timeSeconds)) {
+        return {
+          ok: false,
+          error: { code: "INVALID_PARAMS", message: "editorControl seek requires a finite timeSeconds" },
+        };
+      }
+      await getPlaybackBridge().seek(req.timeSeconds);
+      break;
+    case "select": {
+      const rawTargets = req.targets ?? [];
+      const selectionItems: SelectionItem[] = [];
+      for (const target of rawTargets) {
+        const item = targetSelectionItem(target, store.project);
+        if (!item) {
+          return {
+            ok: false,
+            error: {
+              code: "NOT_FOUND",
+              message: `editorControl: ${target.kind} target "${target.id}" was not found in the open project`,
+              details: { target },
+            },
+          };
+        }
+        selectionItems.push(item);
+      }
+      if (selectionItems.length === 0) {
+        return {
+          ok: false,
+          error: { code: "INVALID_PARAMS", message: "editorControl select requires at least one target" },
+        };
+      }
+      const ui = useUIStore.getState();
+      if (req.selectionMode === "add") {
+        const merged = [...ui.selectedItems];
+        for (const item of selectionItems) {
+          if (!merged.some((selected) => selected.type === item.type && selected.id === item.id)) {
+            merged.push(item);
+          }
+        }
+        ui.selectMultiple(merged);
+      } else {
+        ui.selectMultiple(selectionItems);
+      }
+      const revealed = await revealEditorTargets(rawTargets);
+      return { ok: true, result: controlResult(action, revealed) };
+    }
+  }
+  return { ok: true, result: controlResult(action) };
+}
+
 /** Handles one main→renderer live-store request (exported for tests). */
 export async function handleLiveBridgeRequest(
   req: LiveBridgeRequest,
@@ -572,6 +777,9 @@ export async function handleLiveBridgeRequest(
       }
       case "getContext": {
         return { ok: true, result: detach(getLiveEditorContext()) };
+      }
+      case "editorControl": {
+        return await handleEditorControl(req);
       }
       case "applyActions": {
         return await handleApplyActions(req);

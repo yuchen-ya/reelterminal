@@ -49,4 +49,44 @@ describe("AssetsPanel graphics workflow", () => {
       expect(useUIStore.getState().getSelectedClipIds()).toEqual([shapes[0]?.id]);
     });
   });
+
+  it("keeps a live-revealed media target keyboard-focusable", () => {
+    const initial = useProjectStore.getState().project;
+    useProjectStore.setState({
+      project: {
+        ...initial,
+        mediaLibrary: {
+          ...initial.mediaLibrary,
+          items: [
+            {
+              id: "media-focus",
+              name: "focus.mp4",
+              type: "video",
+              fileHandle: null,
+              blob: null,
+              metadata: {
+                duration: 1,
+                width: 320,
+                height: 180,
+                frameRate: 30,
+                codec: "h264",
+                sampleRate: 0,
+                channels: 0,
+                fileSize: 1,
+              },
+              thumbnailUrl: null,
+              waveformData: null,
+            },
+          ],
+        },
+      },
+    });
+
+    const { container } = render(<AssetsPanel />);
+    const target = container.querySelector<HTMLElement>(
+      '[data-live-media-id="media-focus"]',
+    );
+    expect(target).not.toBeNull();
+    expect(target?.tabIndex).toBe(0);
+  });
 });

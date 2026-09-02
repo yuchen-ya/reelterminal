@@ -202,6 +202,8 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
     <ContextMenu items={contextMenuItems} menuWidth={200} size="sm">
         <div
           ref={clipRef}
+          data-live-editor-target-kind="clip"
+          data-live-editor-target-id={shapeClip.id}
           role="button"
           tabIndex={0}
           aria-label={`Select ${shapeLabel} clip`}

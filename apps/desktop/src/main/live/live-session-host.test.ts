@@ -96,6 +96,9 @@ function makeBridgeStub() {
     getContext: async () => {
       throw new Error("not exercised by host tests");
     },
+    editorControl: async () => {
+      throw new Error("not exercised by host tests");
+    },
     applyActions: async () => {
       throw new Error("not exercised by host tests");
     },

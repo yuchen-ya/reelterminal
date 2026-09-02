@@ -715,6 +715,8 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     <ContextMenu items={contextMenuItems} menuWidth={220} size="sm">
         <div
           ref={clipRef}
+          data-live-editor-target-kind="clip"
+          data-live-editor-target-id={clip.id}
           role="button"
           tabIndex={track.locked ? -1 : 0}
           aria-label={`Select clip ${clipName}`}

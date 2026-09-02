@@ -3,9 +3,9 @@
  * Slice 2a persistence + Slice 3 live collaboration).
  *
  * Pure-Node, in-process, transport-agnostic. The public surface is the
- * sixteen-verb `AgentFacade` object returned by createAgentFacade(); verb
+ * seventeen-verb `AgentFacade` object returned by createAgentFacade(); verb
  * names mirror audit/facade-v0.md + ADR 0003 Appendix B.1 + ADR 0004
- * (editor.get_context). All verbs return FacadeResult<T> and never throw
+ * (editor.get_context/editor.control). All verbs return FacadeResult<T> and never throw
  * for domain errors. Pixel/export/verify backing arrives via the
  * independent provider interfaces (providers.ts); the facade never imports
  * Chromium, Playwright or ffmpeg itself. Live sessions (createLiveFacade,
@@ -65,6 +65,9 @@ export interface AgentFacade {
   readonly "editor.get_context": (
     params?: Record<string, never>,
   ) => Promise<FacadeResult<EditorGetContextResult>>;
+  readonly "editor.control": (
+    params: import("./live-store").LiveEditorControlParams,
+  ) => Promise<FacadeResult<import("./live-store").LiveEditorControlResult>>;
   readonly "edit.apply": (
     params: EditApplyParams,
   ) => Promise<FacadeResult<EditApplyResult>>;
@@ -104,6 +107,7 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "media.import": (params) => session.mediaImport(params),
     "timeline.get": () => session.timelineGet(),
     "editor.get_context": (params) => session.editorGetContext(params),
+    "editor.control": (params) => session.editorControl(params),
     "edit.apply": (params) => session.editApply(params),
     "preview.render_frame": (params) => session.previewRenderFrame(params),
     "visual.inspect": (params) => session.visualInspect(params),
@@ -133,6 +137,10 @@ export type {
   LiveEditorReferences,
   LiveProjectIdentity,
   LiveProjectStore,
+  LiveEditorControlParams,
+  LiveEditorControlResult,
+  LiveEditorControlTarget,
+  LiveEditorControlTargetKind,
 } from "./live-store";
 export { LiveWriterLease } from "./live-lease";
 export {
@@ -250,6 +258,8 @@ export {
   EMITTED_VERB_JSON_SCHEMAS,
 } from "./jsonschema";
 export type { JsonSchemaNode, JsonSchemaObject } from "./jsonschema";
+export { EMITTED_VERB_OUTPUT_JSON_SCHEMAS } from "./output-schemas";
+export type { OutputSchemaNode, OutputSchemaObject } from "./output-schemas";
 export {
   VERB_PARAM_SCHEMAS,
   PROJECT_SETTINGS_SCHEMA,

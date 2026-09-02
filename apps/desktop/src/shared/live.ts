@@ -30,6 +30,7 @@ export type LiveBridgeKind =
   | "getIdentity"
   | "getState"
   | "getContext"
+  | "editorControl"
   | "applyActions"
   | "importMedia"
   | "requestSave";
@@ -46,6 +47,13 @@ export interface LiveBridgeRequest {
   readonly groupLabel?: string;
   readonly expectedRevision?: number;
   readonly expectedContextRevision?: number;
+  readonly action?: "play" | "pause" | "seek" | "select";
+  readonly timeSeconds?: number;
+  readonly targets?: readonly {
+    readonly kind: "clip" | "text" | "media";
+    readonly id: string;
+  }[];
+  readonly selectionMode?: "replace" | "add";
 }
 
 /** Main→renderer payload for a live agent local-media import. */

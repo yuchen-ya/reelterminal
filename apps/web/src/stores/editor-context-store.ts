@@ -210,10 +210,12 @@ useProjectStore.subscribe((state, previousState) => {
   }
 });
 
-// contextRevision tracks every derived value: the two owned here (via the
-// setters above) and the two read from source stores (via subscriptions).
+// contextRevision tracks meaningful derived context changes: the two owned
+// here (via the setters above), selection changes, and explicit seek/scrub
+// intent. Ordinary playback clock ticks update playheadPosition for rendering
+// but deliberately do not invalidate an editor-context CAS guard every frame.
 useTimelineStore.subscribe((state, prevState) => {
-  if (state.playheadPosition !== prevState.playheadPosition) {
+  if (state.playheadInteractionRevision !== prevState.playheadInteractionRevision) {
     useEditorContextStore.setState((s) => ({
       contextRevision: s.contextRevision + 1,
     }));
@@ -249,6 +251,9 @@ export function getLiveEditorContext(): LiveEditorContext {
       .map((item) => item.id),
     selectedTextIds: selectedItems
       .filter((item) => item.type === "text-clip")
+      .map((item) => item.id),
+    selectedMediaIds: selectedItems
+      .filter((item) => item.type === "media")
       .map((item) => item.id),
     timeRange,
     canvasPoint,

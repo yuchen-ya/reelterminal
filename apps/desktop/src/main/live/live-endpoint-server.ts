@@ -9,7 +9,7 @@
  * initialize / ping / tools/list / tools/call:
  *
  *  - tools/list is answered IN MAIN from the facade's own verb list + emitted
- *    JSON Schemas (no renderer round-trip): 16 tools, verb dots mapped to
+ *    JSON Schemas (no renderer round-trip): 17 tools, verb dots mapped to
  *    underscores (editor.get_context → editor_get_context), same envelope
  *    shape agent-transport produces.
  *  - tools/call returns the FacadeResult as ONE text content block plus
@@ -35,6 +35,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   EMITTED_VERB_JSON_SCHEMAS,
+  EMITTED_VERB_OUTPUT_JSON_SCHEMAS,
   FACADE_VERBS,
   type FacadeResult,
   type FacadeVerb,
@@ -156,12 +157,14 @@ function visualImageContent(
   return blocks;
 }
 
-/* ------------------------- the 16 facade tools -------------------------- */
+/* ------------------------- the 17 facade tools -------------------------- */
 
 export interface LiveTool {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: JsonSchemaObject;
+  /** Successful/failed FacadeResult envelope shape, when declared. */
+  readonly outputSchema?: Record<string, unknown>;
 }
 
 export function toolNameForVerb(verb: FacadeVerb): string {
@@ -176,7 +179,7 @@ export function toolNameForVerb(verb: FacadeVerb): string {
  */
 const TOOL_DESCRIPTIONS: Readonly<Record<FacadeVerb, string>> = {
   "session.describe":
-    "Describe this live collaboration session: runtime, the 16 verbs, error codes, mode and writer state.",
+    "Describe this live collaboration session: runtime, the 17 verbs, error codes, mode and writer state.",
   "capabilities.get":
     "Report live provider capabilities (preview, visual inspection, export, verify) with honest reasons when unavailable.",
   "project.create":
@@ -193,8 +196,10 @@ const TOOL_DESCRIPTIONS: Readonly<Record<FacadeVerb, string>> = {
     "Return the compact timeline view (tracks, clips, text overlays) at the current revision.",
   "editor.get_context":
     "Return the live editor context: selection, playhead, time range, canvas point, project/context revisions.",
+  "editor.control":
+    "Control ephemeral live-editor UI state: play, pause, seek, or select/reveal one or more clip, text, or media targets without changing project revision or undo history.",
   "edit.apply":
-    "Apply an atomic batch of closed edit ops as ONE undo unit. The revision CAS is unconditional in live mode: an omitted expectedRevision is guarded with the revision of the snapshot the ops were translated against; expectedContextRevision remains optional.",
+    "Apply an atomic batch of closed edit ops as ONE undo unit, including safe track.remove (empty tracks only) and media.remove (unreferenced media only). The revision CAS is unconditional in live mode: an omitted expectedRevision is guarded with the revision of the snapshot the ops were translated against; expectedContextRevision remains optional.",
   "preview.render_frame":
     "Render one frame of the current project snapshot to a PNG artifact and return its reference.",
   "visual.inspect":
@@ -220,7 +225,14 @@ function buildLiveTools(): {
       throw new Error(`live endpoint: no emitted JSON schema for verb "${verb}"`);
     }
     const name = toolNameForVerb(verb);
-    tools.push({ name, description: TOOL_DESCRIPTIONS[verb], inputSchema });
+    tools.push({
+      name,
+      description: TOOL_DESCRIPTIONS[verb],
+      inputSchema,
+      outputSchema: EMITTED_VERB_OUTPUT_JSON_SCHEMAS[verb] as Readonly<
+        Record<string, unknown>
+      >,
+    });
     toolToVerb.set(name, verb);
   }
   return { tools, toolToVerb };

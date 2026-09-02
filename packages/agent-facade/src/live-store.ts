@@ -33,7 +33,9 @@ import type { ImportedMediaMetadata } from "./types";
 
 /**
  * Ephemeral editor context (Decision 4): monotonic in-memory
- * `contextRevision` (bumped whenever any derived value changes; never
+ * `contextRevision` (bumped for meaningful selection, explicit seek/scrub,
+ * canvas/range/reference changes; ordinary playback clock ticks do not
+ * invalidate it every frame; never
  * persisted into project files, autosave records, or checkpoints) plus the
  * current playhead, selection split by entity kind, selected time range
  * (null when no gesture has defined one), the normalized 0..1 "agent target
@@ -69,6 +71,8 @@ export interface LiveEditorContext {
   readonly playheadSeconds: number | null;
   readonly selectedClipIds: readonly string[];
   readonly selectedTextIds: readonly string[];
+  /** Media-library ids selected in the GUI (distinct from timeline clips). */
+  readonly selectedMediaIds: readonly string[];
   readonly timeRange: {
     readonly startSeconds: number;
     readonly endSeconds: number;
@@ -77,6 +81,41 @@ export interface LiveEditorContext {
   readonly canvasPoint: { readonly x: number; readonly y: number } | null;
   /** Ephemeral, session-local number → reference mapping for agent collaboration. */
   readonly references?: LiveEditorReferences;
+}
+
+/** A target the live editor can select/reveal without changing the project. */
+export type LiveEditorControlTargetKind = "clip" | "text" | "media";
+
+export interface LiveEditorControlTarget {
+  readonly kind: LiveEditorControlTargetKind;
+  readonly id: string;
+}
+
+/**
+ * Ephemeral live-editor controls. These intentionally live outside the
+ * project/action-history seam: playback, selection and viewport focus are
+ * collaborative UI state, not edits to persist or undo.
+ */
+export interface LiveEditorControlParams {
+  readonly action: "play" | "pause" | "seek" | "select";
+  readonly timeSeconds?: number;
+  readonly targets?: readonly LiveEditorControlTarget[];
+  /** replace (default) or add to the current GUI selection. */
+  readonly selectionMode?: "replace" | "add";
+  /** Optional CAS guard for a target derived from editor.get_context. */
+  readonly expectedContextRevision?: number;
+}
+
+export interface LiveEditorControlResult {
+  readonly action: LiveEditorControlParams["action"];
+  readonly playbackState: "stopped" | "playing" | "paused";
+  readonly playheadSeconds: number;
+  readonly selectedClipIds: readonly string[];
+  readonly selectedTextIds: readonly string[];
+  readonly selectedMediaIds: readonly string[];
+  /** Targets that were selected and asked to be revealed in the GUI. */
+  readonly revealedTargets: readonly LiveEditorControlTarget[];
+  readonly contextRevision: number;
 }
 
 export interface LiveProjectIdentity {
@@ -153,6 +192,10 @@ export interface LiveProjectStore {
   /** On-demand snapshot read: a detached project clone plus its revision. */
   getState(): Promise<{ project: Project; revision: number }>;
   getContext(): Promise<LiveEditorContext>;
+  /** Apply one ephemeral playback/selection control to the live editor. */
+  editorControl(
+    params: LiveEditorControlParams,
+  ): Promise<LiveEditorControlResult>;
   /**
    * CAS-checked batch apply — see the implementation contract above. Stale
    * expectations reject with `LiveStoreConflictError`; nothing is applied.

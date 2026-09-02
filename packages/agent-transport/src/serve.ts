@@ -2,7 +2,7 @@
  * `agent-video serve` — the MCP stdio server (ADR 0003 Decisions 1/2/5/7).
  *
  * One long-lived stdio MCP server process == one AgentFacadeSession. The
- * public surface is exactly the 16 tools of the facade contract (including
+ * public surface is exactly the 17 tools of the facade contract (including
  * `editor_get_context` and `visual_inspect`); every result is the facade
  * `FacadeResult` JSON as a single text content block (B.4), `ok:false` ⇒
  * `isError:true` — domain failures are never JSON-RPC protocol errors and
@@ -41,6 +41,7 @@ import {
 import { logError, logInfo, setLogLevel } from "./log";
 import { TOOL_TO_VERB, TOOLS, type ToolName } from "./tools";
 import { createTransportSession, type TransportSession } from "./session";
+import { startJobProgressWatch, type McpProgressToken } from "./progress";
 
 export const TRANSPORT_VERSION = "0.1.0";
 
@@ -188,12 +189,42 @@ export async function serveCommand(argv: readonly string[]): Promise<never> {
   });
 
   let shuttingDown = false;
+  const progressWatches = new Map<string, ReturnType<typeof startJobProgressWatch>>();
+
+  const progressTokenFor = (request: unknown): McpProgressToken | undefined => {
+    const token = (request as { params?: { _meta?: { progressToken?: unknown } } }).params?._meta?.progressToken;
+    return typeof token === "string" || typeof token === "number" ? token : undefined;
+  };
+
+  const watchExportProgress = (jobId: string, progressToken: McpProgressToken): void => {
+    progressWatches.get(jobId)?.stop();
+    const watch = startJobProgressWatch({
+      jobId,
+      progressToken,
+      readStatus: (id) => session.facade["job.status"]({ jobId: id }),
+      notify: ({ progressToken: token, progress, total, message }) =>
+        server.notification({
+          method: "notifications/progress",
+          params: {
+            progressToken: token,
+            progress,
+            total,
+            ...(message !== undefined ? { message } : {}),
+          },
+        }),
+    });
+    progressWatches.set(jobId, watch);
+    void watch.done.finally(() => {
+      if (progressWatches.get(jobId) === watch) progressWatches.delete(jobId);
+    });
+  };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: TOOLS as unknown as readonly {
       name: string;
       description: string;
       inputSchema: Record<string, unknown>;
+      outputSchema: Record<string, unknown>;
     }[],
   }));
 
@@ -223,6 +254,8 @@ export async function serveCommand(argv: readonly string[]): Promise<never> {
         const value = result.value as { readonly jobId?: unknown };
         if (typeof value?.jobId === "string") {
           session.trackJob(value.jobId);
+          const progressToken = progressTokenFor(request);
+          if (progressToken !== undefined) watchExportProgress(value.jobId, progressToken);
         }
       }
       logInfo("serve", "tool call", { tool: toolName, ok: result.ok });
@@ -267,6 +300,8 @@ export async function serveCommand(argv: readonly string[]): Promise<never> {
     if (disposalStarted) return;
     disposalStarted = true;
     shuttingDown = true;
+    for (const watch of progressWatches.values()) watch.stop();
+    progressWatches.clear();
     logInfo("signal", "bounded disposal begins", { trigger, exitCode });
     try {
       await session.dispose(trigger);

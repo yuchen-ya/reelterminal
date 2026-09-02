@@ -119,6 +119,94 @@ describe("ActionExecutor media/import undo", () => {
   });
 });
 
+describe("ActionExecutor removal undo fidelity", () => {
+  it("restores media provenance and optional fields after media/delete undo/redo", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+    project.mediaLibrary.items.push({
+      id: "media-1",
+      name: "shot.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      metadata: {
+        duration: 6,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+        codec: "h264",
+        sampleRate: 48000,
+        channels: 2,
+        fileSize: 100,
+      },
+      thumbnailUrl: null,
+      waveformData: null,
+      originalUrl: "/media/shot.mp4",
+      sourceFile: { name: "shot.mp4", size: 100, lastModified: 123 },
+      isPlaceholder: false,
+      filmstripThumbnails: [{ timestamp: 0, url: "thumb://0" }],
+    });
+
+    const removed = await executor.execute(
+      {
+        id: "remove-media",
+        type: "media/delete",
+        timestamp: 1,
+        params: { mediaId: "media-1" },
+      } as Action,
+      project,
+    );
+    expect(removed.success).toBe(true);
+    expect(project.mediaLibrary.items).toHaveLength(0);
+
+    expect((await executor.undo(project)).success).toBe(true);
+    expect(project.mediaLibrary.items[0]).toMatchObject({
+      id: "media-1",
+      originalUrl: "/media/shot.mp4",
+      sourceFile: { name: "shot.mp4", size: 100, lastModified: 123 },
+      isPlaceholder: false,
+      filmstripThumbnails: [{ timestamp: 0, url: "thumb://0" }],
+    });
+
+    expect((await executor.redo(project)).success).toBe(true);
+    expect(project.mediaLibrary.items).toHaveLength(0);
+  });
+
+  it("restores an empty track's groupId after track/remove undo/redo", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+    project.timeline.tracks.push({
+      id: "track-1",
+      type: "video",
+      name: "Video 1",
+      clips: [],
+      transitions: [],
+      locked: false,
+      hidden: false,
+      muted: false,
+      solo: false,
+      groupId: "group-1",
+    });
+
+    const removed = await executor.execute(
+      {
+        id: "remove-track",
+        type: "track/remove",
+        timestamp: 1,
+        params: { trackId: "track-1" },
+      } as Action,
+      project,
+    );
+    expect(removed.success).toBe(true);
+    expect(project.timeline.tracks).toHaveLength(0);
+
+    expect((await executor.undo(project)).success).toBe(true);
+    expect(project.timeline.tracks[0]?.groupId).toBe("group-1");
+    expect((await executor.redo(project)).success).toBe(true);
+    expect(project.timeline.tracks).toHaveLength(0);
+  });
+});
+
 describe("ActionExecutor grouped generated IDs", () => {
   it("undoes every rapidly-added track in one history group", async () => {
     const executor = new ActionExecutor();

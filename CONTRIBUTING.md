@@ -63,7 +63,7 @@ pnpm dev
 apps/web                   inherited browser editor GUI (Vite/React)
 apps/desktop|studio|image  inherited Electron / auxiliary apps
 packages/core              canonical Project model + engines (inherited)
-packages/agent-facade      typed headless/live API (16 verbs)
+packages/agent-facade      typed headless/live API (17 verbs)
 packages/runtime-chromium  Chromium render/export + verification
 packages/agent-transport   optional headless MCP/workflow transport
 audit/                     frozen extraction audit + machine evidence

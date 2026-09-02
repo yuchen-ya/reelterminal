@@ -111,6 +111,52 @@ describe("createLiveStoreBridge", () => {
     });
   });
 
+  it("editorControl forwards ephemeral action and target/CAS fields", async () => {
+    const { bridge, sent, validSender } = makeBridge();
+    const pending = bridge.store.editorControl({
+      action: "select",
+      targets: [
+        { kind: "clip", id: "clip-1" },
+        { kind: "media", id: "media-1" },
+      ],
+      selectionMode: "add",
+      expectedContextRevision: 4,
+    });
+    expect(sent[0]).toEqual({
+      callId: "call-1",
+      kind: "editorControl",
+      action: "select",
+      targets: [
+        { kind: "clip", id: "clip-1" },
+        { kind: "media", id: "media-1" },
+      ],
+      selectionMode: "add",
+      expectedContextRevision: 4,
+    });
+    bridge.handleResponse(validSender, {
+      callId: "call-1",
+      ok: true,
+      result: {
+        action: "select",
+        playbackState: "paused",
+        playheadSeconds: 2,
+        selectedClipIds: ["clip-1"],
+        selectedTextIds: [],
+        selectedMediaIds: ["media-1"],
+        revealedTargets: [
+          { kind: "clip", id: "clip-1" },
+          { kind: "media", id: "media-1" },
+        ],
+        contextRevision: 5,
+      },
+    });
+    await expect(pending).resolves.toMatchObject({
+      action: "select",
+      selectedClipIds: ["clip-1"],
+      selectedMediaIds: ["media-1"],
+    });
+  });
+
   it("importMedia forwards the complete request and CAS/group options", async () => {
     const { bridge, sent, validSender } = makeBridge();
     const request: LiveMediaImportRequest = {

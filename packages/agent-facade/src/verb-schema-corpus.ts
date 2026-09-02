@@ -129,10 +129,38 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "no params is valid", params: {}, expectValid: true },
     { name: "unknown field", params: { verbose: true }, expectValid: false },
   ],
+  "editor.control": [
+    { name: "play is valid", params: { action: "play" }, expectValid: true },
+    {
+      name: "select accepts multiple target kinds",
+      params: {
+        action: "select",
+        targets: [
+          { kind: "clip", id: "clip-1" },
+          { kind: "text", id: "text-1" },
+          { kind: "media", id: "media-1" },
+        ],
+        selectionMode: "add",
+      },
+      expectValid: true,
+    },
+    { name: "seek requires timeSeconds (runtime cross-field rule)", params: { action: "seek" }, schemaValid: true, expectValid: false },
+    { name: "unknown field", params: { action: "pause", speed: 2 }, expectValid: false },
+  ],
   "edit.apply": [
     {
       name: "valid track.add without optional id",
       params: { ops: [{ op: "track.add", trackType: "video" }] },
+      expectValid: true,
+    },
+    {
+      name: "valid track.remove",
+      params: { ops: [{ op: "track.remove", trackId: "v1" }] },
+      expectValid: true,
+    },
+    {
+      name: "valid media.remove",
+      params: { ops: [{ op: "media.remove", mediaId: "m1" }] },
       expectValid: true,
     },
     {
@@ -350,6 +378,16 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
     },
     {
+      name: "missing trackId in track.remove",
+      params: { ops: [{ op: "track.remove" }] },
+      expectValid: false,
+    },
+    {
+      name: "missing mediaId in media.remove",
+      params: { ops: [{ op: "media.remove" }] },
+      expectValid: false,
+    },
+    {
       name: "empty clipId in clip.remove",
       params: { ops: [{ op: "clip.remove", clipId: "" }] },
       expectValid: false,
@@ -357,6 +395,16 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     {
       name: "unknown field in clip.remove",
       params: { ops: [{ op: "clip.remove", clipId: "c1", trackId: "v1" }] },
+      expectValid: false,
+    },
+    {
+      name: "unknown field in track.remove",
+      params: { ops: [{ op: "track.remove", trackId: "v1", force: true }] },
+      expectValid: false,
+    },
+    {
+      name: "unknown field in media.remove",
+      params: { ops: [{ op: "media.remove", mediaId: "m1", force: true }] },
       expectValid: false,
     },
     {

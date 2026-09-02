@@ -186,6 +186,8 @@ export const TextClipComponent: React.FC<TextClipComponentProps> = ({
     <ContextMenu items={contextMenuItems} menuWidth={200} size="sm">
         <div
           ref={clipRef}
+          data-live-editor-target-kind="text"
+          data-live-editor-target-id={textClip.id}
           role="button"
           tabIndex={0}
           aria-label={`Select text clip ${textClip.text || "Text"}`}

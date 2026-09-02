@@ -167,6 +167,23 @@ export async function buildCapabilities(
   };
   const exportVideo = gateArtifactProducing(exportRaw, UNAVAILABLE_NO_EXPORT_PROVIDER);
   const verify = gateArtifactProducing(verifyRaw, UNAVAILABLE_NO_VERIFIER);
+  const editorControl: CapabilityStatus = ctx.live
+    ? {
+        available: true,
+        details: {
+          actions: ["play", "pause", "seek", "select"],
+          targetKinds: ["clip", "text", "media"],
+          changesProject: false,
+          changesRevision: false,
+          changesHistory: false,
+        },
+      }
+    : {
+        available: false,
+        reason:
+          "No live editor is attached to this headless session; playback, selection and viewport controls are unavailable.",
+        requires: "createLiveFacade with a connected desktop editor",
+      };
   return {
     runtime: ctx.live ? "live" : FACADE_RUNTIME,
     ...(ctx.live ? { unavailableVerbs: ctx.live.unavailableVerbs } : {}),
@@ -200,6 +217,7 @@ export async function buildCapabilities(
     },
     preview,
     visualInspection,
+    editorControl,
     export: exportVideo,
     verify,
   };
@@ -278,7 +296,7 @@ function liveNotes(
       ? "visual.inspect samples 1–12 real provider-rendered PNG frames from the canonical project snapshot; the default runtime provider is Chromium, contact-sheet composition is runtime-dependent, and individual frame artifacts remain available."
       : "visual.inspect is unavailable in this session: it needs the same artifactRoot and passing RenderProvider preflight as preview.render_frame.",
     `project.create / project.open are unavailable in live mode (the GUI owns the project lifecycle); ${caps.mediaImport.available ? "media.import validates and imports an absolute local file through the live store bridge" : "media.import is unavailable until the live host provides media roots and its store bridge"}; project.save routes to the GUI's own save path. preview/visual inspection/export/verify run on a fresh snapshot of the canonical project and require its media to be file-backed and readable from this process.`,
-    "editor.get_context reports the real ephemeral editor context (selection, playhead, time range, canvas point) with a monotonic contextRevision; edit.apply's expectedContextRevision CAS-guards ops derived from it.",
+    `editor.get_context reports the real ephemeral editor context (selection, playhead, time range, canvas point) with a monotonic contextRevision; edit.apply's expectedContextRevision CAS-guards ops derived from it. ${caps.editorControl.available ? "editor.control can play, pause, seek and select/reveal without changing project revision or undo history." : "editor.control is unavailable because this is a headless session."}`,
     "export.start snapshots the project synchronously (sourceRevision) and returns a jobId immediately; the same idempotencyKey+payload replays the same jobId. job.cancel is cooperative and always settles to a terminal state; failed/cancelled jobs never carry an artifact.",
     "Idempotency ledger is per session and does not survive process restarts.",
   ];

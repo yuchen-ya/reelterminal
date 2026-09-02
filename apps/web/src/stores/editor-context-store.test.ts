@@ -34,6 +34,13 @@ describe("editor-context-store (ADR 0004 Decision 4)", () => {
     expect(revision()).toBe(before);
   });
 
+  it("does not bump for ordinary playback clock ticks", () => {
+    const before = revision();
+    useTimelineStore.getState().setPlayheadPosition(0.25);
+    useTimelineStore.getState().setPlayheadPosition(0.5);
+    expect(revision()).toBe(before);
+  });
+
   it("bumps contextRevision when the selection changes", () => {
     const before = revision();
     useUIStore.getState().select({ type: "clip", id: "clip-1" });

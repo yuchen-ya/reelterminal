@@ -33,6 +33,8 @@ import {
   VERIFY_COMPARE_SCHEMA,
   VERIFY_EXPECT_SCHEMA,
   VERIFY_REGION_SCHEMA,
+  EDITOR_CONTROL_SCHEMA,
+  EDITOR_CONTROL_TARGET_SCHEMA,
 } from "./verb-schemas";
 import { VERB_SCHEMA_CORPUS } from "./verb-schema-corpus";
 import { FACADE_VERBS } from "./types";
@@ -51,6 +53,45 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
     case "editor.get_context":
       validateObject(params, EMPTY_PARAMS_SCHEMA, `${verb} params`);
       return;
+    case "editor.control": {
+      const valid = validateObject<Record<string, unknown>>(
+        params,
+        EDITOR_CONTROL_SCHEMA,
+        "editor.control params",
+      );
+      const action = valid.action;
+      if (action === "seek" && valid.timeSeconds === undefined) {
+        throw new FacadeError("INVALID_PARAMS", "editor.control: seek requires timeSeconds");
+      }
+      if (action !== "seek" && valid.timeSeconds !== undefined) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `editor.control: timeSeconds is only valid for seek, not ${String(action)}`,
+        );
+      }
+      if (action === "select" && (!Array.isArray(valid.targets) || valid.targets.length === 0)) {
+        throw new FacadeError("INVALID_PARAMS", "editor.control: select requires at least one target");
+      }
+      if (
+        action !== "select" &&
+        (valid.targets !== undefined || valid.selectionMode !== undefined)
+      ) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `editor.control: targets and selectionMode are only valid for select, not ${String(action)}`,
+        );
+      }
+      if (Array.isArray(valid.targets)) {
+        valid.targets.forEach((target, index) =>
+          validateObject(
+            target,
+            EDITOR_CONTROL_TARGET_SCHEMA,
+            `editor.control params.targets[${index}]`,
+          ),
+        );
+      }
+      return;
+    }
     case "project.create": {
       const valid = validateObject<{ settings?: unknown }>(
         params,

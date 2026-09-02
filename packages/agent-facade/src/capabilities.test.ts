@@ -79,6 +79,8 @@ describe("capabilities.get / session.describe", () => {
       "transition.add",
       "transition.update",
       "transition.remove",
+      "track.remove",
+      "media.remove",
     ]);
     expect(res.value.editOps).toEqual([...EDIT_OP_TYPES]);
     expect(res.value.stateModel).toEqual({
@@ -105,6 +107,7 @@ describe("capabilities.get / session.describe", () => {
       "media.import",
       "timeline.get",
       "editor.get_context",
+      "editor.control",
       "edit.apply",
       "preview.render_frame",
       "visual.inspect",

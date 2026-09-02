@@ -1,6 +1,6 @@
 /**
  * LiveFacadeSession — the live human–agent collaboration facade
- * (ADR 0004: Slice 3). A SEPARATE implementation of the same 16-verb
+ * (ADR 0004: Slice 3). A SEPARATE implementation of the same 17-verb
  * contract as AgentFacadeSession (Decision 11: headless is untouched):
  *
  *  - It holds NO project copy. The renderer's store stays canonical
@@ -40,7 +40,14 @@ import {
   requireProviderPreflight,
 } from "./artifact-io";
 import { buildCapabilities, buildSessionDescription } from "./capabilities";
-import { FacadeError, ok, toFailure, type FacadeResult } from "./errors";
+import {
+  FacadeError,
+  FACADE_ERROR_CODES,
+  ok,
+  toFailure,
+  type FacadeResult,
+  type FacadeErrorCode,
+} from "./errors";
 import type { AgentFacade } from "./index";
 import { IdempotencyLedger, stableStringify } from "./idempotency";
 import { JobRegistry, jobStatusView } from "./jobs";
@@ -52,6 +59,9 @@ import {
   type LiveCreatedIds,
   type LiveMediaImportRequest,
   type LiveMediaImportResult,
+  type LiveEditorControlParams,
+  type LiveEditorControlResult,
+  type LiveEditorControlTarget,
   type LiveProjectStore,
 } from "./live-store";
 import { hasUrlScheme, resolveContainedPathDetailed } from "./media/path-roots";
@@ -86,6 +96,8 @@ import {
   VERIFY_COMPARE_SCHEMA,
   VERIFY_EXPECT_SCHEMA,
   VERIFY_REGION_SCHEMA,
+  EDITOR_CONTROL_SCHEMA,
+  EDITOR_CONTROL_TARGET_SCHEMA,
 } from "./verb-schemas";
 import {
   isReadOnlyVerb,
@@ -173,7 +185,7 @@ export interface LiveFacadeConfig {
 }
 
 /**
- * The live facade contract: the same 16 verbs as AgentFacade, with
+ * The live facade contract: the same 17 verbs as AgentFacade, with
  * project.save honestly re-shaped for live mode (the GUI's save path
  * reports a revision, not a checkpoint file — see LiveProjectSaveResult)
  * plus dispose() (release the lease, cancel jobs).
@@ -197,6 +209,44 @@ const CREATING_OPS: ReadonlySet<EditOp["op"]> = new Set([
 
 interface EditApplyPayload {
   readonly applied: readonly OpApplied[];
+}
+
+/** Preserve typed renderer failures across the live facade boundary. */
+function liveControlBridgeFailure(error: unknown): FacadeError | null {
+  const typed =
+    typeof error === "object" && error !== null
+      ? (error as { code?: unknown; details?: unknown })
+      : undefined;
+  const code = typeof typed?.code === "string" ? typed.code : undefined;
+  const details =
+    typeof typed?.details === "object" && typed.details !== null
+      ? (typed.details as Record<string, unknown>)
+      : undefined;
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (isLiveStoreConflict(error) || code === "CONFLICT") {
+    return new FacadeError("CONFLICT", `editor.control: ${message}`, details);
+  }
+  // The renderer uses NO_PROJECT for a detached window; expose the facade's
+  // stable public taxonomy rather than leaking a bridge-only code.
+  if (code === "NO_PROJECT") {
+    return new FacadeError(
+      "NOT_FOUND",
+      "editor.control: no project is open in the GUI",
+      details,
+    );
+  }
+  if (
+    code !== undefined &&
+    (FACADE_ERROR_CODES as readonly string[]).includes(code)
+  ) {
+    return new FacadeError(
+      code as FacadeErrorCode,
+      `editor.control: ${message}`,
+      details,
+    );
+  }
+  return null;
 }
 
 export class LiveFacadeSession {
@@ -347,6 +397,7 @@ export class LiveFacadeSession {
         playheadSeconds: context.playheadSeconds,
         selectedClipIds: [...context.selectedClipIds],
         selectedTextIds: [...context.selectedTextIds],
+        selectedMediaIds: [...context.selectedMediaIds],
         timeRange: context.timeRange ? { ...context.timeRange } : null,
         canvasPoint: context.canvasPoint ? { ...context.canvasPoint } : null,
         references: context.references ? { ...context.references } : {},
@@ -356,6 +407,71 @@ export class LiveFacadeSession {
           windowId: identity.windowId,
         },
       });
+    });
+  }
+
+  /**
+   * Control only ephemeral editor state. The renderer owns playback,
+   * selection and focus; this facade never mutates the project or revision.
+   */
+  async editorControl(
+    params: LiveEditorControlParams,
+  ): Promise<FacadeResult<LiveEditorControlResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<LiveEditorControlParams>(
+        params,
+        EDITOR_CONTROL_SCHEMA,
+        "editor.control params",
+      );
+      const normalizedTargets = valid.targets?.map((target, index) =>
+        validateObject<LiveEditorControlTarget>(
+          target,
+          EDITOR_CONTROL_TARGET_SCHEMA,
+          `editor.control params.targets[${index}]`,
+        ),
+      );
+      this.gate("editor.control");
+      if (valid.action === "seek" && valid.timeSeconds === undefined) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "editor.control: seek requires timeSeconds",
+        );
+      }
+      if (valid.action !== "seek" && valid.timeSeconds !== undefined) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `editor.control: timeSeconds is only valid for seek, not ${valid.action}`,
+        );
+      }
+      if (valid.action === "select" && (!valid.targets || valid.targets.length === 0)) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "editor.control: select requires at least one target",
+        );
+      }
+      if (
+        valid.action !== "select" &&
+        (valid.targets !== undefined || valid.selectionMode !== undefined)
+      ) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `editor.control: targets and selectionMode are only valid for select, not ${valid.action}`,
+        );
+      }
+      try {
+        return ok(
+          await this.config.store.editorControl({
+            ...valid,
+            ...(normalizedTargets !== undefined
+              ? { targets: normalizedTargets }
+              : {}),
+          }),
+        );
+      } catch (error) {
+        const mapped = liveControlBridgeFailure(error);
+        if (mapped) throw mapped;
+        throw error;
+      }
     });
   }
 
@@ -696,7 +812,12 @@ export class LiveFacadeSession {
       const draft = structuredClone(snapshot);
       const executor = new ActionExecutor(new ActionHistory());
       const actions: Action[] = [];
+      const autoTextTrackIds: Array<string | undefined> = [];
       for (const [index, op] of ops.entries()) {
+        const hadTextTrack =
+          op.op === "text.create" && op.trackId === undefined
+            ? draft.timeline.tracks.some((track) => track.type === "text")
+            : true;
         const opActions = opToCoreActions(op, draft);
         for (const action of opActions) {
           const result = await executor.execute(action, draft);
@@ -712,6 +833,11 @@ export class LiveFacadeSession {
             );
           }
         }
+        autoTextTrackIds[index] =
+          op.op === "text.create" && op.trackId === undefined && !hadTextTrack
+            ? (opActions.find((action) => action.type === "track/add")?.params
+                .trackId as string | undefined)
+            : undefined;
         actions.push(...opActions);
       }
 
@@ -746,7 +872,7 @@ export class LiveFacadeSession {
       // Partition the store-diffed created ids back onto the ops: every
       // creating op consumes one id from its own category bucket (the store
       // diffs per category, so a mixed batch can't cross-assign ids).
-      const applied = partitionCreatedIds(ops, committed.createdIds);
+      const applied = partitionCreatedIds(ops, committed.createdIds, autoTextTrackIds);
       const value: EditApplyPayload = { applied };
       if (valid.idempotencyKey !== undefined) {
         this.ledger.set("edit.apply", valid.idempotencyKey, {
@@ -1668,6 +1794,7 @@ export class LiveFacadeSession {
 function partitionCreatedIds(
   ops: readonly EditOp[],
   createdIds: LiveCreatedIds,
+  autoTextTrackIds: readonly (string | undefined)[] = [],
 ): OpApplied[] {
   const categories = {
     "track.add": "tracks",
@@ -1677,20 +1804,43 @@ function partitionCreatedIds(
     "text.create": "textClips",
     "transition.add": "transitions",
   } as const;
+  const usedTracks = new Set<string>();
   const cursors = {
     tracks: 0,
     clips: 0,
     textClips: 0,
     transitions: 0,
   };
-  return ops.map((op) => {
+  return ops.map((op, index) => {
     if (!CREATING_OPS.has(op.op)) return { op: op.op, createdIds: [] };
-    const category = categories[op.op as keyof typeof categories];
-    const id = createdIds[category][cursors[category]];
-    cursors[category] += 1;
+    const ids: string[] = [];
+    if (op.op === "track.add") {
+      const id = createdIds.tracks.find((candidate) => !usedTracks.has(candidate));
+      if (id !== undefined) {
+        usedTracks.add(id);
+        ids.push(id);
+      }
+    } else if (op.op === "text.create") {
+      // An implicit text lane is part of this higher-level op. Use the exact
+      // id emitted by the translator, so explicit track.add ops in the same
+      // batch cannot steal or reorder it.
+      const autoTrackId = autoTextTrackIds[index];
+      if (autoTrackId !== undefined && createdIds.tracks.includes(autoTrackId)) {
+        usedTracks.add(autoTrackId);
+        ids.push(autoTrackId);
+      }
+      const id = createdIds.textClips[cursors.textClips];
+      cursors.textClips += 1;
+      if (id !== undefined) ids.push(id);
+    } else {
+      const category = categories[op.op as keyof typeof categories];
+      const id = createdIds[category][cursors[category]];
+      cursors[category] += 1;
+      if (id !== undefined) ids.push(id);
+    }
     // A missing bucket entry means the store created nothing for this op
     // (e.g. an implicit dependency was diffed instead) — report honestly.
-    return { op: op.op, createdIds: id === undefined ? [] : [id] };
+    return { op: op.op, createdIds: ids };
   });
 }
 
@@ -1712,6 +1862,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "media.import": (params) => session.mediaImport(params),
     "timeline.get": () => session.timelineGet(),
     "editor.get_context": (params) => session.editorGetContext(params),
+    "editor.control": (params) => session.editorControl(params),
     "edit.apply": (params) => session.editApply(params),
     "preview.render_frame": (params) => session.previewRenderFrame(params),
     "visual.inspect": (params) => session.visualInspect(params),

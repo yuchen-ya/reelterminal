@@ -37,7 +37,7 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
 
   const project = useProjectStore((s) => s.project);
   const getMediaItem = useProjectStore((s) => s.getMediaItem);
-  const setPlayheadPosition = useTimelineStore((s) => s.setPlayheadPosition);
+  const seekTo = useTimelineStore((s) => s.seekTo);
 
   const [preferences, setPreferences] = useState<HighlightPreferences>({
     targetClipCount: 5,
@@ -117,9 +117,9 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
 
   const handlePreview = useCallback(
     (highlight: HighlightResult) => {
-      setPlayheadPosition(highlight.start);
+      seekTo(highlight.start);
     },
-    [setPlayheadPosition],
+    [seekTo],
   );
 
   const toggleSelect = useCallback((index: number) => {

@@ -3,7 +3,7 @@
  * openreel-live-mcp — stdio to the external-agent live endpoint.
  *
  * This deliberately forwards only the MCP methods implemented by the
- * 16-tool live endpoint. It never imports a registry, provider,
+ * 17-tool live endpoint. It never imports a registry, provider,
  * model, keychain, or conversation service. The descriptor is written by
  * the desktop live host while collaboration is enabled:
  *   default: ~/.openreel/live-endpoint.json
@@ -20,6 +20,18 @@ interface RpcMessage {
   readonly id?: string | number | null;
   readonly method?: string;
   readonly params?: Record<string, unknown>;
+}
+
+type McpProgressToken = string | number;
+
+interface LiveJobStatus {
+  readonly state: "queued" | "running" | "done" | "error" | "cancelled";
+  readonly progress: { readonly percent: number; readonly phase?: string } | null;
+}
+
+interface ExportStartedOptions {
+  /** Called only after a successful export_start response with a token. */
+  readonly onExportStarted?: (jobId: string, progressToken: McpProgressToken) => void;
 }
 
 interface LiveEndpoint {
@@ -45,6 +57,7 @@ const LIVE_TOOL_NAMES = new Set([
   "media_import",
   "timeline_get",
   "editor_get_context",
+  "editor_control",
   "edit_apply",
   "preview_render_frame",
   "visual_inspect",
@@ -101,6 +114,137 @@ function readEndpoint(): LiveEndpoint {
 
 export type RpcPoster = (message: RpcMessage) => Promise<unknown>;
 
+export interface ProgressNotification {
+  readonly progressToken: McpProgressToken;
+  readonly progress: number;
+  readonly total: 1;
+  readonly message: string;
+}
+
+export interface ProgressWatch {
+  readonly done: Promise<void>;
+  stop(): void;
+}
+
+export interface ProgressWatchOptions {
+  readonly jobId: string;
+  readonly progressToken: McpProgressToken;
+  readonly readStatus: (jobId: string) => Promise<LiveJobStatus | null>;
+  readonly notify: (notification: ProgressNotification) => Promise<void>;
+  readonly pollMs?: number;
+}
+
+const TERMINAL_JOB_STATES = new Set<LiveJobStatus["state"]>([
+  "done",
+  "error",
+  "cancelled",
+]);
+
+function boundedProgress(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}
+
+/**
+ * Poll a live job only when the caller supplied an MCP progress token.
+ * Notifications are monotonic and deduplicated by the emitted progress and
+ * message, rather than by provider bookkeeping fields which may change while
+ * the user-visible percentage stays the same.
+ */
+export function startProgressWatch(options: ProgressWatchOptions): ProgressWatch {
+  const pollMs = Math.max(10, options.pollMs ?? 500);
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let releaseWait: (() => void) | null = null;
+  let lastProgress = 0;
+  let lastMessage: string | null = null;
+  let hasNotification = false;
+
+  const wait = (): Promise<void> =>
+    new Promise((resolve) => {
+      releaseWait = () => {
+        releaseWait = null;
+        timer = null;
+        resolve();
+      };
+      timer = setTimeout(() => releaseWait?.(), pollMs);
+      if (typeof timer === "object" && "unref" in timer) timer.unref();
+    });
+
+  const done = (async () => {
+    while (!stopped) {
+      const status = await Promise.resolve()
+        .then(() => options.readStatus(options.jobId))
+        .catch(() => null);
+      if (stopped || status === null) return;
+
+      let notification: ProgressNotification | null = null;
+      if (status.state === "done") {
+        notification = {
+          progressToken: options.progressToken,
+          progress: 1,
+          total: 1,
+          message: "complete",
+        };
+      } else if (status.state === "queued") {
+        notification = {
+          progressToken: options.progressToken,
+          progress: 0,
+          total: 1,
+          message: "queued",
+        };
+      } else if (status.state === "running" && status.progress !== null) {
+        const phase = typeof status.progress.phase === "string" && status.progress.phase.length > 0
+          ? status.progress.phase.slice(0, 64)
+          : "running";
+        notification = {
+          progressToken: options.progressToken,
+          progress: Math.max(lastProgress, boundedProgress(status.progress.percent)),
+          total: 1,
+          message: phase,
+        };
+      }
+
+      if (
+        notification !== null &&
+        (!hasNotification ||
+          notification.progress !== lastProgress ||
+          notification.message !== lastMessage)
+      ) {
+        hasNotification = true;
+        lastProgress = notification.progress;
+        lastMessage = notification.message;
+        await Promise.resolve()
+          .then(() => options.notify(notification))
+          .catch(() => undefined);
+      }
+      if (TERMINAL_JOB_STATES.has(status.state)) return;
+      await wait();
+    }
+  })();
+
+  return {
+    done,
+    stop: () => {
+      stopped = true;
+      if (timer !== null) clearTimeout(timer);
+      releaseWait?.();
+    },
+  };
+}
+
+/** Serialize all connector stdout frames, including asynchronous progress. */
+export function createSerializedLineWriter(
+  writeLine: (line: string) => Promise<void>,
+): (line: string) => Promise<void> {
+  let tail = Promise.resolve();
+  return (line) => {
+    const next = tail.then(() => writeLine(line));
+    tail = next.catch(() => undefined);
+    return next;
+  };
+}
+
 function postRpc(endpoint: LiveEndpoint, message: RpcMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let url: URL;
@@ -154,8 +298,60 @@ function postRpc(endpoint: LiveEndpoint, message: RpcMessage): Promise<unknown> 
   });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function progressTokenFor(message: RpcMessage): McpProgressToken | undefined {
+  const token = message.params?._meta;
+  if (!isRecord(token)) return undefined;
+  const value = token.progressToken;
+  return typeof value === "string" || typeof value === "number" ? value : undefined;
+}
+
+function exportJobIdFromResponse(response: unknown): string | undefined {
+  if (!isRecord(response) || !isRecord(response.result)) return undefined;
+  const structured = response.result.structuredContent;
+  if (!isRecord(structured) || structured.ok !== true || !isRecord(structured.value)) {
+    return undefined;
+  }
+  const jobId = structured.value.jobId;
+  return typeof jobId === "string" && jobId.length > 0 ? jobId : undefined;
+}
+
+function jobStatusFromResponse(response: unknown): LiveJobStatus | null {
+  if (!isRecord(response) || !isRecord(response.result)) return null;
+  const structured = response.result.structuredContent;
+  if (!isRecord(structured) || structured.ok !== true || !isRecord(structured.value)) {
+    return null;
+  }
+  const state = structured.value.state;
+  if (
+    state !== "queued" &&
+    state !== "running" &&
+    state !== "done" &&
+    state !== "error" &&
+    state !== "cancelled"
+  ) {
+    return null;
+  }
+  const rawProgress = structured.value.progress;
+  let progress: LiveJobStatus["progress"] = null;
+  if (isRecord(rawProgress) && typeof rawProgress.percent === "number") {
+    progress = {
+      percent: rawProgress.percent,
+      ...(typeof rawProgress.phase === "string" ? { phase: rawProgress.phase } : {}),
+    };
+  }
+  return { state, progress };
+}
+
 /** Forward one newline-delimited MCP message, or return null for notifications. */
-export async function forwardLine(line: string, post: RpcPoster): Promise<string | null> {
+export async function forwardLine(
+  line: string,
+  post: RpcPoster,
+  options: ExportStartedOptions = {},
+): Promise<string | null> {
   const trimmed = line.trim();
   if (!trimmed) return null;
   let message: RpcMessage;
@@ -186,6 +382,19 @@ export async function forwardLine(line: string, post: RpcPoster): Promise<string
   }
   try {
     const response = await post(message);
+    if (message.method === "tools/call" && message.params?.name === "export_start") {
+      const progressToken = progressTokenFor(message);
+      const jobId = exportJobIdFromResponse(response);
+      if (progressToken !== undefined && jobId !== undefined) {
+        // A watcher is best-effort and must never turn a successful tool call
+        // into a connector error if its polling setup fails.
+        try {
+          options.onExportStarted?.(jobId, progressToken);
+        } catch {
+          // The main tools/call response remains authoritative.
+        }
+      }
+    }
     return response === null || response === undefined ? null : JSON.stringify(response);
   } catch (error) {
     if (isNotification) return null;
@@ -209,12 +418,59 @@ function main(): void {
     process.exit(1);
   }
   const post: RpcPoster = (message) => postRpc(endpoint, message);
+  const writeLine = createSerializedLineWriter(
+    (line) =>
+      new Promise<void>((resolve, reject) => {
+        process.stdout.write(`${line}\n`, (error) => (error ? reject(error) : resolve()));
+      }),
+  );
+  const progressWatches = new Map<string, ProgressWatch>();
+  let closing = false;
+  const watchKey = (jobId: string, progressToken: McpProgressToken): string =>
+    JSON.stringify([jobId, progressToken]);
+  const stopProgressWatches = (): void => {
+    closing = true;
+    for (const watch of progressWatches.values()) watch.stop();
+    progressWatches.clear();
+  };
+  const watchExportProgress = (jobId: string, progressToken: McpProgressToken): void => {
+    if (closing) return;
+    const key = watchKey(jobId, progressToken);
+    progressWatches.get(key)?.stop();
+    const watch = startProgressWatch({
+      jobId,
+      progressToken,
+      readStatus: async (id) => {
+        const response = await post({
+          jsonrpc: "2.0",
+          id: `progress-${id}`,
+          method: "tools/call",
+          params: { name: "job_status", arguments: { jobId: id } },
+        });
+        return jobStatusFromResponse(response);
+      },
+      notify: (notification) =>
+        writeLine(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            method: "notifications/progress",
+            params: notification,
+          }),
+        ),
+    });
+    progressWatches.set(key, watch);
+    void watch.done.finally(() => {
+      if (progressWatches.get(key) === watch) progressWatches.delete(key);
+    });
+  };
   const rl = createInterface({ input: process.stdin });
   rl.on("line", (line) => {
-    void forwardLine(line, post).then((response) => {
-      if (response !== null) process.stdout.write(`${response}\n`);
+    void forwardLine(line, post, { onExportStarted: watchExportProgress }).then((response) => {
+      if (response !== null) void writeLine(response);
     });
   });
+  rl.on("close", stopProgressWatches);
+  process.once("exit", stopProgressWatches);
 }
 
 if (require.main === module) main();

@@ -113,7 +113,7 @@ external Agent via MCP ─┘
 
 ```text
 packages/core              canonical Project model + editing engines
-packages/agent-facade      typed 16-verb facade, headless and live sessions
+packages/agent-facade      typed 17-verb facade, headless and live sessions
 packages/runtime-chromium  Chromium render/export providers + verification
 packages/agent-transport   optional headless MCP/CLI transport foundation
 apps/web                   ReelTerminal editor GUI and renderer-side live bridge
@@ -155,7 +155,7 @@ monotonic: they are never renumbered or reused, including after deletion.
 
 ## What the facade covers
 
-The 16-tool contract is shared by headless and live facade sessions. In a
+The 17-tool contract is shared by headless and live facade sessions. In a
 headless session, project lifecycle and local media operations are available
 subject to configured roots. In a live session, the GUI owns the open project;
 the facade can import media and edit that shared project while reporting live
@@ -212,7 +212,7 @@ The runtime example covers create → import → edit → preview → export →
 ## Desktop live workflow
 
 Start the desktop editor, open a project, and enable **Agent Session** in the
-collaboration bar. The desktop app then exposes the live project's 16-tool
+collaboration bar. The desktop app then exposes the live project's 17-tool
 MCP interface through a token-authenticated loopback endpoint. Configure an
 external Agent with the built `apps/desktop/dist/live-mcp/index.js` MCP server
 (`pnpm --filter @openreel/desktop build:main`); by default it reads
@@ -240,7 +240,7 @@ Those commands are not the default ReelTerminal desktop entry point.
 | Path | Role | Current status |
 |---|---|---|
 | `packages/core` | Canonical project and editing engines | Active foundation |
-| `packages/agent-facade` | Headless/live 16-tool contract | Active |
+| `packages/agent-facade` | Headless/live 17-tool contract | Active |
 | `packages/runtime-chromium` | Render, export, and verification providers | Active foundation |
 | `packages/agent-transport` | Headless MCP/CLI transport foundation | Optional |
 | `apps/web` | ReelTerminal editor and live renderer bridge | Active |
@@ -266,7 +266,7 @@ pnpm lint
 ```
 
 Desktop live collaboration tests cover endpoint authentication and MCP shape,
-the 16-tool catalog, the renderer bridge, session host, lease, status events,
+the 17-tool catalog, the renderer bridge, session host, lease, status events,
 and shared revision behavior.
 
 ## License and attribution

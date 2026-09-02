@@ -1,6 +1,6 @@
 /**
- * The 16 facade verbs ⇄ 16 MCP tools, 1:1 (ADR 0003 Decision 2, B.1/B.2;
- * ADR 0004 adds editor.get_context ⇄ editor_get_context).
+ * The 17 facade verbs ⇄ 17 MCP tools, 1:1 (ADR 0003 Decision 2, B.1/B.2;
+ * ADR 0004 adds editor.get_context/editor.control).
  *
  * `inputSchema` is ALWAYS the facade's emitted JSON Schema, verbatim — the
  * transport never declares a schema of its own (Decision 4). Tool
@@ -11,6 +11,7 @@
  */
 import {
   EMITTED_VERB_JSON_SCHEMAS,
+  EMITTED_VERB_OUTPUT_JSON_SCHEMAS,
   type JsonSchemaObject,
 } from "@openreel/agent-facade";
 import { FACADE_VERBS, type FacadeVerb } from "@openreel/agent-facade";
@@ -26,6 +27,7 @@ export const TOOL_NAMES = [
   "media_import",
   "timeline_get",
   "editor_get_context",
+  "editor_control",
   "edit_apply",
   "preview_render_frame",
   "visual_inspect",
@@ -59,7 +61,7 @@ export const VERB_TO_TOOL: Readonly<Record<FacadeVerb, ToolName>> =
 /** B.2: purpose only — parameter semantics live in the facade/schemas. */
 const TOOL_DESCRIPTIONS: Readonly<Record<ToolName, string>> = {
   session_describe:
-    "Describe the facade session: contract version, the 16 verbs, error codes, runtime step letters.",
+    "Describe the facade session: contract version, the 17 verbs, error codes, runtime step letters.",
   capabilities_get:
     "Report live provider capabilities (media import, preview, visual inspection, export, verify) with honest reasons when unavailable.",
   project_create:
@@ -75,8 +77,10 @@ const TOOL_DESCRIPTIONS: Readonly<Record<ToolName, string>> = {
   timeline_get: "Return the compact timeline view (tracks, clips, text overlays).",
   editor_get_context:
     "Return the editor context (selection, playhead, time range, canvas point); headless sessions answer honestly with contextAvailable:false.",
+  editor_control:
+    "Control ephemeral live-editor UI state: play, pause, seek, or select/reveal clip, text, or media targets without changing project revision or undo history.",
   edit_apply:
-    "Apply an atomic batch of closed edit ops to the project timeline.",
+    "Apply an atomic batch of closed edit ops to the project, including safe removal of empty tracks and unreferenced media.",
   preview_render_frame:
     "Render one frame of the project to a PNG artifact and return its artifact reference.",
   visual_inspect:
@@ -93,6 +97,8 @@ export interface McpTool {
   readonly name: ToolName;
   readonly description: string;
   readonly inputSchema: JsonSchemaObject;
+  /** Successful `{ok:true,value}` structuredContent shape. */
+  readonly outputSchema: Record<string, unknown>;
 }
 
 /**
@@ -110,5 +116,6 @@ export const TOOLS: readonly McpTool[] = TOOL_NAMES.map((tool) => {
     name: tool,
     description: TOOL_DESCRIPTIONS[tool],
     inputSchema,
+    outputSchema: EMITTED_VERB_OUTPUT_JSON_SCHEMAS[verb] as unknown as Record<string, unknown>,
   };
 });

@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Image as ImageIcon, Film, Music, Plus, Upload, Trash2,
@@ -352,6 +352,8 @@ const MediaThumbnail: React.FC<{
     return (
       <ContextMenu items={contextMenuItems} menuWidth={220} size="sm">
         <div
+          data-live-media-id={item.id}
+          tabIndex={0}
           draggable
           onDragStart={onDragStart}
           onClick={onSelect}
@@ -447,6 +449,8 @@ const MediaThumbnail: React.FC<{
     <div className="flex flex-col">
       {/* Thumbnail container */}
       <div
+        data-live-media-id={item.id}
+        tabIndex={0}
         draggable
         onDragStart={onDragStart}
         onClick={onSelect}
@@ -563,6 +567,19 @@ export const AssetsPanel: React.FC = () => {
 
   const setActiveTab = useCallback((tab: AssetsTab) => {
     setActiveTabRaw(tab);
+  }, []);
+
+  // Live editor control keeps panel ownership local while allowing the
+  // renderer bridge to ask the media tab to reveal a selected library item.
+  useEffect(() => {
+    const handleLiveReveal = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: unknown }>).detail?.id;
+      if (typeof id !== "string" || id.length === 0) return;
+      setActiveTabRaw("media");
+    };
+    window.addEventListener("openreel:live-reveal-media", handleLiveReveal);
+    return () =>
+      window.removeEventListener("openreel:live-reveal-media", handleLiveReveal);
   }, []);
 
   const [isDragOver, setIsDragOver] = useState(false);
@@ -691,7 +708,7 @@ export const AssetsPanel: React.FC = () => {
   // Handle media item selection
   const handleSelectItem = useCallback(
     (itemId: string) => {
-      select({ type: "clip", id: itemId });
+      select({ type: "media", id: itemId });
     },
     [select],
   );

@@ -14,7 +14,7 @@
  *   the openreel-project@1 checkpoint pair (cross-session persistence).
  * Slice 3 verbs (ADR 0004 Decision 4): editor.get_context — the live/
  *   headless-honest editor-context read plus the read-only visual.inspect
- *   slice (16 verbs).
+ *   slice (17 verbs).
  * Slice 4 widens edit.apply's closed finishing vocabulary to include clip
  *   move/split/duplicate/ripple-delete, constant speed/reverse, visual
  *   transforms/crop, audio fades, and clip transitions without adding new
@@ -55,6 +55,7 @@ export const FACADE_VERBS = [
   "media.import",
   "timeline.get",
   "editor.get_context",
+  "editor.control",
   "edit.apply",
   "preview.render_frame",
   "visual.inspect",
@@ -91,6 +92,7 @@ export const READ_ONLY_VERBS = [
   "project.get_state",
   "timeline.get",
   "editor.get_context",
+  "editor.control",
   "visual.inspect",
   "job.status",
   "verify.artifact",
@@ -205,6 +207,8 @@ export interface Capabilities {
   readonly preview: CapabilityStatus;
   /** visual.inspect backing; mirrors the real frame renderer and artifact root gate. */
   readonly visualInspection: CapabilityStatus;
+  /** Ephemeral live-editor playback/selection/reveal controls. */
+  readonly editorControl: CapabilityStatus;
   readonly export: CapabilityStatus;
   /** verify.artifact backing (ffprobe/ffmpeg + pixel comparison). */
   readonly verify: CapabilityStatus;
@@ -459,6 +463,7 @@ export interface EditorGetContextResult {
   readonly playheadSeconds: number | null;
   readonly selectedClipIds: readonly string[];
   readonly selectedTextIds: readonly string[];
+  readonly selectedMediaIds: readonly string[];
   readonly timeRange: {
     readonly startSeconds: number;
     readonly endSeconds: number;
@@ -499,6 +504,8 @@ export const EDIT_OP_TYPES = [
   "transition.add",
   "transition.update",
   "transition.remove",
+  "track.remove",
+  "media.remove",
 ] as const;
 
 export type EditOpType = (typeof EDIT_OP_TYPES)[number];
@@ -518,6 +525,18 @@ export interface TrackAddOp {
   readonly trackType: TrackType;
   /** Optional deterministic id; a fresh one is minted when omitted. */
   readonly trackId?: string;
+}
+
+/** Remove one existing, empty timeline track. Content must be removed first. */
+export interface TrackRemoveOp {
+  readonly op: "track.remove";
+  readonly trackId: string;
+}
+
+/** Remove one imported media item that is not referenced by any timeline clip. */
+export interface MediaRemoveOp {
+  readonly op: "media.remove";
+  readonly mediaId: string;
 }
 
 export interface ClipAddOp {
@@ -602,7 +621,8 @@ export interface TextCreateOp {
   readonly duration: number;
   /**
    * Target text track. When omitted, the first existing text track is used;
-   * if none exists the op fails (create one explicitly via track.add).
+   * if none exists, edit.apply creates a text track in the same atomic batch
+   * and undo unit before creating the overlay.
    */
   readonly trackId?: string;
   readonly style?: TextStyleInput;
@@ -729,6 +749,8 @@ export interface TransitionRemoveOp {
 
 export type EditOp =
   | TrackAddOp
+  | TrackRemoveOp
+  | MediaRemoveOp
   | ClipAddOp
   | ClipMoveOp
   | ClipTrimOp
@@ -764,7 +786,15 @@ export interface EditApplyParams {
 
 export interface OpApplied {
   readonly op: EditOpType;
-  /** Ids of entities this op created (track/clip/text overlay). */
+  /**
+   * Ids of entities this op created. For the usual creating ops this is one
+   * id (`track.add` → track, `clip.add`/split/duplicate → clip,
+   * `text.create` → text overlay, `transition.add` → transition). When
+   * `text.create` had no existing text track, it creates both entities and
+   * reports `[textTrackId, overlayId]` in that order. Empty for non-creating
+   * ops. Never guess a `clipId` field or a `results[]` collection: consume
+   * this per-op array from `applied`.
+   */
   readonly createdIds: readonly string[];
 }
 

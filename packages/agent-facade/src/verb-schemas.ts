@@ -32,6 +32,8 @@ import {
   TEXT_DELETE_SCHEMA,
   TEXT_UPDATE_SCHEMA,
   TRACK_ADD_SCHEMA,
+  TRACK_REMOVE_SCHEMA,
+  MEDIA_REMOVE_SCHEMA,
   TRANSITION_ADD_SCHEMA,
   TRANSITION_REMOVE_SCHEMA,
   TRANSITION_UPDATE_SCHEMA,
@@ -177,6 +179,68 @@ export const MEDIA_IMPORT_SCHEMA: ObjectSchema = {
   },
 };
 
+/* ------------------------------------------------------------------ */
+/* editor.control (ephemeral live-editor context)                     */
+
+export const EDITOR_CONTROL_TARGET_SCHEMA: ObjectSchema = {
+  kind: {
+    check: oneOf(["clip", "text", "media"] as const),
+    describe: '"clip", "text" or "media"',
+    required: true,
+    emits: {
+      kind: "leaf",
+      schema: { enum: ["clip", "text", "media"] },
+    },
+  },
+  id: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+/**
+ * A single closed control entry point keeps transport discovery compact while
+ * retaining clear verbs in the action discriminator. Cross-field rules (for
+ * example, seek requiring timeSeconds) remain runtime validation below.
+ */
+export const EDITOR_CONTROL_SCHEMA: ObjectSchema = {
+  action: {
+    check: oneOf(["play", "pause", "seek", "select"] as const),
+    describe: '"play", "pause", "seek" or "select"',
+    required: true,
+    emits: {
+      kind: "leaf",
+      schema: { enum: ["play", "pause", "seek", "select"] },
+    },
+  },
+  timeSeconds: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  targets: {
+    check: (value) => Array.isArray(value),
+    describe: "an array of target objects",
+    emits: {
+      kind: "array",
+      minItems: 1,
+      items: { kind: "anyOfObjects", variants: [EDITOR_CONTROL_TARGET_SCHEMA] },
+    },
+  },
+  selectionMode: {
+    check: oneOf(["replace", "add"] as const),
+    describe: '"replace" or "add"',
+    emits: { kind: "leaf", schema: { enum: ["replace", "add"] } },
+  },
+  expectedContextRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative integer",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+};
+
 /** Closed op declarations referenced by the edit.apply union, re-exported. */
 export const EDIT_OP_SCHEMAS: Readonly<
   Record<(typeof EDIT_OP_TYPES)[number], ObjectSchema>
@@ -200,6 +264,8 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "transition.add": TRANSITION_ADD_SCHEMA,
   "transition.update": TRANSITION_UPDATE_SCHEMA,
   "transition.remove": TRANSITION_REMOVE_SCHEMA,
+  "track.remove": TRACK_REMOVE_SCHEMA,
+  "media.remove": MEDIA_REMOVE_SCHEMA,
 };
 
 export const EDIT_APPLY_SCHEMA: ObjectSchema = {
@@ -545,7 +611,7 @@ export const VERIFY_ARTIFACT_SCHEMA: ObjectSchema = {
 };
 
 /* ------------------------------------------------------------------ */
-/* The 16-verb declaration map (single source, Decision 4)             */
+/* The 17-verb declaration map (single source, Decision 4)             */
 /* ------------------------------------------------------------------ */
 
 /** Verb param declaration order mirrors FACADE_VERBS (Appendix B.1). */
@@ -561,6 +627,7 @@ export const VERB_PARAM_SCHEMAS: {
   "media.import": MEDIA_IMPORT_SCHEMA,
   "timeline.get": EMPTY_PARAMS_SCHEMA,
   "editor.get_context": EMPTY_PARAMS_SCHEMA,
+  "editor.control": EDITOR_CONTROL_SCHEMA,
   "edit.apply": EDIT_APPLY_SCHEMA,
   "preview.render_frame": PREVIEW_RENDER_FRAME_SCHEMA,
   "visual.inspect": VISUAL_INSPECT_SCHEMA,

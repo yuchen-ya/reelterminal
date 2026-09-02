@@ -166,7 +166,7 @@ describe("live endpoint MCP protocol", () => {
     expect(json.result).toEqual({});
   });
 
-  it("tools/list returns exactly the 16 facade tools, schemas verbatim, no renderer round-trip", async () => {
+  it("tools/list returns exactly the 17 facade tools, schemas verbatim, no renderer round-trip", async () => {
     const res = await rpc({ jsonrpc: "2.0", id: 1, method: "tools/list" }, token);
     const json = (await res.json()) as {
       result: {
@@ -174,7 +174,7 @@ describe("live endpoint MCP protocol", () => {
       };
     };
     const tools = json.result.tools;
-    expect(tools).toHaveLength(16);
+    expect(tools).toHaveLength(17);
     expect(tools.map((t) => t.name)).toEqual(FACADE_VERBS.map(toolNameForVerb));
     expect(tools.some((t) => t.name === "editor_get_context")).toBe(true);
     // The inputSchema is the facade emission, verbatim (no copy drift).

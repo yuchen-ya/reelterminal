@@ -177,7 +177,7 @@ export interface OpenReelCollabStatus {
 
 export interface OpenReelLiveBridgeRequest {
   callId: string;
-  kind: "getIdentity" | "getState" | "getContext" | "applyActions" | "importMedia" | "requestSave";
+  kind: "getIdentity" | "getState" | "getContext" | "editorControl" | "applyActions" | "importMedia" | "requestSave";
   [key: string]: unknown;
 }
 

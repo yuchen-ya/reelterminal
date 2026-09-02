@@ -91,7 +91,14 @@ import {
   VERIFY_COMPARE_SCHEMA,
   VERIFY_EXPECT_SCHEMA,
   VERIFY_REGION_SCHEMA,
+  EDITOR_CONTROL_SCHEMA,
+  EDITOR_CONTROL_TARGET_SCHEMA,
 } from "./verb-schemas";
+import type {
+  LiveEditorControlParams,
+  LiveEditorControlResult,
+  LiveEditorControlTarget,
+} from "./live-store";
 import type {
   Capabilities,
   EditApplyParams,
@@ -264,6 +271,7 @@ export class AgentFacadeSession {
         playheadSeconds: null,
         selectedClipIds: [],
         selectedTextIds: [],
+        selectedMediaIds: [],
         timeRange: null,
         canvasPoint: null,
         references: {},
@@ -273,6 +281,55 @@ export class AgentFacadeSession {
           windowId: null,
         },
       });
+    });
+  }
+
+  /**
+   * Headless honesty: playback/selection/reveal are editor-only controls.
+   * Validate the closed contract first, then report UNSUPPORTED without
+   * inventing a playhead, selection or viewport.
+   */
+  async editorControl(
+    params: LiveEditorControlParams,
+  ): Promise<FacadeResult<LiveEditorControlResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<LiveEditorControlParams>(
+        params,
+        EDITOR_CONTROL_SCHEMA,
+        "editor.control params",
+      );
+      valid.targets?.forEach((target, index) =>
+        validateObject<LiveEditorControlTarget>(
+          target,
+          EDITOR_CONTROL_TARGET_SCHEMA,
+          `editor.control params.targets[${index}]`,
+        ),
+      );
+      if (valid.action === "seek" && valid.timeSeconds === undefined) {
+        throw new FacadeError("INVALID_PARAMS", "editor.control: seek requires timeSeconds");
+      }
+      if (valid.action !== "seek" && valid.timeSeconds !== undefined) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `editor.control: timeSeconds is only valid for seek, not ${valid.action}`,
+        );
+      }
+      if (valid.action === "select" && (!valid.targets || valid.targets.length === 0)) {
+        throw new FacadeError("INVALID_PARAMS", "editor.control: select requires at least one target");
+      }
+      if (
+        valid.action !== "select" &&
+        (valid.targets !== undefined || valid.selectionMode !== undefined)
+      ) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `editor.control: targets and selectionMode are only valid for select, not ${valid.action}`,
+        );
+      }
+      throw new FacadeError(
+        "UNSUPPORTED",
+        "editor.control: no live editor is attached to this headless session",
+      );
     });
   }
 

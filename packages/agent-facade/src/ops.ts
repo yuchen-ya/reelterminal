@@ -50,6 +50,8 @@ import {
   type TextUpdateOp,
   type TextStyleInput,
   type TrackAddOp,
+  type TrackRemoveOp,
+  type MediaRemoveOp,
   type TransitionAddOp,
   type TransitionRemoveOp,
   type TransitionUpdateOp,
@@ -85,6 +87,36 @@ export const TRACK_ADD_SCHEMA: ObjectSchema = {
   trackId: {
     check: isNonEmptyString,
     describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const TRACK_REMOVE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "track.remove",
+    describe: '"track.remove"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "track.remove" } },
+  },
+  trackId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const MEDIA_REMOVE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "media.remove",
+    describe: '"media.remove"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "media.remove" } },
+  },
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
   },
 };
@@ -829,6 +861,10 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
   switch (opType as EditOp["op"]) {
     case "track.add":
       return validateObject<TrackAddOp>(raw, TRACK_ADD_SCHEMA, label);
+    case "track.remove":
+      return validateObject<TrackRemoveOp>(raw, TRACK_REMOVE_SCHEMA, label);
+    case "media.remove":
+      return validateObject<MediaRemoveOp>(raw, MEDIA_REMOVE_SCHEMA, label);
     case "clip.add":
       return validateObject<ClipAddOp>(raw, CLIP_ADD_SCHEMA, label);
     case "clip.move":
@@ -1054,6 +1090,68 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           ...(op.trackId !== undefined ? { trackId: op.trackId } : {}),
         }),
       ];
+    }
+
+    case "track.remove": {
+      const track = draft.timeline.tracks.find((candidate) => candidate.id === op.trackId);
+      if (!track) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `track.remove: track "${op.trackId}" not found`,
+          { trackId: op.trackId },
+        );
+      }
+
+      // A track can carry timeline clips or engine-backed overlays. Refuse
+      // non-empty tracks rather than silently orphaning content. This keeps
+      // the operation safe for both headless state and the live renderer.
+      const clipIds = track.clips.map((clip) => clip.id);
+      const transitionIds = (track.transitions ?? []).map((transition) => transition.id);
+      const overlayIds = [
+        ...(draft.textClips ?? []),
+        ...(draft.shapeClips ?? []),
+        ...(draft.svgClips ?? []),
+        ...(draft.stickerClips ?? []),
+      ]
+        .filter((clip) => clip.trackId === op.trackId)
+        .map((clip) => clip.id);
+      if (clipIds.length > 0 || transitionIds.length > 0 || overlayIds.length > 0) {
+        throw new FacadeError(
+          "CONFLICT",
+          `track.remove: track "${op.trackId}" is not empty — remove its clips and overlays first`,
+          {
+            reason: "TRACK_NOT_EMPTY",
+            trackId: op.trackId,
+            ...(clipIds.length > 0 ? { clipIds } : {}),
+            ...(overlayIds.length > 0 ? { overlayIds } : {}),
+            ...(transitionIds.length > 0 ? { transitionIds } : {}),
+          },
+        );
+      }
+      return [makeAction("track/remove", { trackId: op.trackId })];
+    }
+
+    case "media.remove": {
+      const media = draft.mediaLibrary.items.find((item) => item.id === op.mediaId);
+      if (!media) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `media.remove: media "${op.mediaId}" not found`,
+          { mediaId: op.mediaId },
+        );
+      }
+      const clipIds = draft.timeline.tracks
+        .flatMap((track) => track.clips)
+        .filter((clip) => clip.mediaId === op.mediaId)
+        .map((clip) => clip.id);
+      if (clipIds.length > 0) {
+        throw new FacadeError(
+          "CONFLICT",
+          `media.remove: media "${op.mediaId}" is still referenced by timeline clips — remove the clips first`,
+          { reason: "MEDIA_IN_USE", mediaId: op.mediaId, clipIds },
+        );
+      }
+      return [makeAction("media/delete", { mediaId: op.mediaId })];
     }
 
     case "clip.add": {
@@ -1311,6 +1409,7 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
 
     case "text.create": {
       let trackId = op.trackId;
+      let autoCreatedTrackId: string | undefined;
       if (trackId !== undefined) {
         const track = draft.timeline.tracks.find((t) => t.id === trackId);
         if (!track) {
@@ -1328,13 +1427,16 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         }
       } else {
         const textTrack = draft.timeline.tracks.find((t) => t.type === "text");
-        if (!textTrack) {
-          throw new FacadeError(
-            "NOT_FOUND",
-            "text.create: no text track exists — add one first via track.add {trackType:\"text\"}",
-          );
+        if (textTrack) {
+          trackId = textTrack.id;
+        } else {
+          // A text overlay is a higher-level intent: when the project has no
+          // text lane yet, create one in the same action stream and point the
+          // overlay at its explicit id. Both headless drafts and live stores
+          // therefore commit/undo this as one atomic edit.apply unit.
+          autoCreatedTrackId = `track-${crypto.randomUUID()}`;
+          trackId = autoCreatedTrackId;
         }
-        trackId = textTrack.id;
       }
 
       const clip: TextClip = {
@@ -1351,7 +1453,17 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         },
         keyframes: [],
       };
-      return [makeAction("text/create", { clip })];
+      return [
+        ...(autoCreatedTrackId !== undefined
+          ? [
+              makeAction("track/add", {
+                trackType: "text",
+                trackId: autoCreatedTrackId,
+              }),
+            ]
+          : []),
+        makeAction("text/create", { clip }),
+      ];
     }
 
     case "text.update": {

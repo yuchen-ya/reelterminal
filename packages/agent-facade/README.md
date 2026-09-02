@@ -20,8 +20,7 @@ await facade["edit.apply"]({
     { op: "track.add", trackType: "video", trackId: "v1" },
     { op: "clip.add", trackId: "v1", mediaId, startTime: 0, clipId: "c1" },
     { op: "clip.trim", clipId: "c1", inPoint: 0, outPoint: 5 },
-    { op: "track.add", trackType: "text", trackId: "t1" },
-    { op: "text.create", trackId: "t1", text: "Hello world", startTime: 0, duration: 5,
+    { op: "text.create", text: "Hello world", startTime: 0, duration: 5,
       // Normalized 0..1 frame coordinates (0.5/0.5 = center), identical in
       // preview and export. Keep the anchor point inside [0.05, 0.95].
       position: { x: 0.5, y: 0.15 } },
@@ -29,12 +28,15 @@ await facade["edit.apply"]({
   expectedRevision: 1,
   idempotencyKey: "batch-1",
 });
-// Later batches: clip.move, clip.split, clip.duplicate, clip.rippleDelete,
+// Later batches: track.remove (empty tracks only), media.remove (unreferenced
+// media only), clip.move, clip.split, clip.duplicate, clip.rippleDelete,
 // clip.setSpeed, clip.setReverse, clip.setTransform, clip.setFade,
 // transition.add/update/remove,
 // text.update (style/position MERGE — omitted keys keep their values),
 // text.delete, clip.setVolume (linear gain 0..4; 0 = mute, 1 = unity) —
-// ids come from timeline.get.
+// ids come from timeline.get/project.get_state. track.remove rejects a track
+// that still has clips, overlays, or transitions; media.remove rejects media
+// still referenced by any timeline clip.
 await facade["edit.apply"]({
   ops: [
     { op: "clip.move", clipId: "c1", startTime: 2 },
@@ -60,8 +62,9 @@ Slice 1b: `preview.render_frame` · `export.start` · `job.status` ·
 Slice 2a: `project.open` · `project.save`
 
 Slice 3 (ADR 0004): `editor.get_context` — the live/headless-honest
-editor-context read; live sessions (createLiveFacade) implement the same
-16-verb contract over a `LiveProjectStore` seam with no project copy.
+editor-context read. `editor.control` adds ephemeral live playback and
+selection/reveal controls; live sessions (createLiveFacade) implement the same
+17-verb contract over a `LiveProjectStore` seam with no project copy.
 
 Visual slice: `visual.inspect` — a read-only sample of 1–12 frames selected
 by `clipId` or an explicit `timeRange`. Each frame is a real provider-rendered
@@ -99,6 +102,11 @@ no-op with `ok: true`.
   are hardened (`width`/`height`/`sampleRate`/`channels` positive integers,
   `frameRate` a positive finite number) and only the schema-sanitized
   copies of `settings`/`style` ever reach the project.
+- **High-level text intent**: `text.create` uses the first existing text track;
+  when none exists it creates the text track in the same atomic batch and undo
+  unit. Its `applied` entry reports `[textTrackId, overlayId]` in that case;
+  otherwise it reports `[overlayId]`. Read `applied[i].createdIds` by op —
+  there is no guessed `results[].clipId` field.
 - **Honest capabilities**: `capabilities.get` reports what this runtime
   actually has, per capability, from live provider preflights. The three
   Slice-1b provider interfaces are independent (`RenderProvider`,
@@ -125,6 +133,11 @@ Chromium + system ffmpeg). Semantics owned by the facade itself:
   registers a job, and returns `{jobId, state:"queued"}` immediately. The
   project stays editable; the job never sees later edits. Same
   idempotencyKey+payload replays the same `jobId`.
+- The stdio MCP transports (including the desktop `openreel-live-mcp`
+  connector) accept `_meta.progressToken` on `export.start` and emit opt-in
+  `notifications/progress` updates while the job is running. Direct callers of
+  the desktop loopback HTTP endpoint have no server-push channel and should
+  keep the documented `job.status` polling flow.
 - `job.status` / `job.cancel` expose `queued|running|done|error|cancelled`
   with progress, artifact (done only) and error (error only). A failed or
   cancelled job never carries an artifact and the runtime never leaves a

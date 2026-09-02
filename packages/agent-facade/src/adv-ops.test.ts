@@ -116,6 +116,27 @@ describe("ADV: text ops / ordering / caps / pollution", () => {
     expect(state.value.project.textClips?.[0]?.trackId).toBe("tA");
   });
 
+  it("T3b: text.create creates a text track atomically when the project has none", async () => {
+    const before = await facade["project.get_state"]();
+    if (!before.ok) throw new Error();
+    const res = await facade["edit.apply"]({
+      ops: [{ op: "text.create", text: "auto lane", startTime: 0, duration: 2 }],
+      expectedRevision: before.value.revision,
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.revision).toBe(before.value.revision + 1);
+    expect(res.value.applied).toHaveLength(1);
+    const createdIds = res.value.applied[0]?.createdIds ?? [];
+    expect(createdIds).toHaveLength(2);
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error();
+    const textTrack = state.value.project.timeline.tracks.find((track) => track.type === "text");
+    expect(textTrack?.id).toBe(createdIds[0]);
+    expect(state.value.project.textClips?.[0]?.id).toBe(createdIds[1]);
+    expect(state.value.project.textClips?.[0]?.trackId).toBe(textTrack?.id);
+  });
+
   it("T4a: empty/whitespace text is REJECTED; a real TextClip is canonical + JSON-safe", async () => {
     for (const bad of ["", "   "]) {
       const rejected = await facade["edit.apply"]({

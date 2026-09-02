@@ -841,6 +841,24 @@ export class InverseActionGenerator {
       waveformData: item.waveformData
         ? new Float32Array(item.waveformData)
         : null,
+      // Keep provenance and optional media-library fields intact across an
+      // agent media.remove → GUI undo. Dropping originalUrl/sourceFile here
+      // makes the restored item impossible to render/save safely in a live
+      // session even though undo reports success.
+      ...(item.filmstripThumbnails !== undefined
+        ? {
+            filmstripThumbnails: item.filmstripThumbnails.map((thumbnail) => ({
+              ...thumbnail,
+            })),
+          }
+        : {}),
+      ...(item.isPlaceholder !== undefined
+        ? { isPlaceholder: item.isPlaceholder }
+        : {}),
+      ...(item.originalUrl !== undefined ? { originalUrl: item.originalUrl } : {}),
+      ...(item.sourceFile !== undefined
+        ? { sourceFile: { ...item.sourceFile } }
+        : {}),
     };
   }
 
@@ -855,6 +873,7 @@ export class InverseActionGenerator {
       hidden: track.hidden,
       muted: track.muted,
       solo: track.solo,
+      ...(track.groupId !== undefined ? { groupId: track.groupId } : {}),
     };
   }
 
