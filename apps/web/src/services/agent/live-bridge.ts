@@ -1,5 +1,5 @@
 import type { Action } from "@openreel/core/types/actions";
-import type { TextClip, Transform } from "@openreel/core";
+import type { TextClip, Transform, Transition } from "@openreel/core";
 import type { TextStyle } from "@openreel/core/text/types";
 import { v4 as uuidv4 } from "uuid";
 import { useProjectStore, getProjectRevision } from "../../stores/project-store";
@@ -49,8 +49,8 @@ const noProject = (): { ok: false; error: LiveBridgeError } => ({
 
 /**
  * Entity ids the live facade cares about, partitioned by category (the
- * LiveCreatedIds seam contract: tracks / clips / text overlays). createdIds
- * is computed as the after/before diff per category around the committed
+ * LiveCreatedIds seam contract: tracks / clips / text overlays / transitions).
+ * `createdIds` is computed as the after/before diff per category around the committed
  * batch (LiveApplyActionsResult contract: "the ids that genuinely exist in
  * the canonical project" — core mints entity ids; the store diffs canonical
  * state). The facade assigns one id per creating op from the op's OWN
@@ -60,6 +60,7 @@ interface EntityIdsByCategory {
   readonly tracks: string[];
   readonly clips: string[];
   readonly textClips: string[];
+  readonly transitions: string[];
 }
 
 function entityIdsByCategory(): EntityIdsByCategory {
@@ -68,6 +69,9 @@ function entityIdsByCategory(): EntityIdsByCategory {
     tracks: project.timeline.tracks.map((t) => t.id),
     clips: project.timeline.tracks.flatMap((t) => t.clips.map((c) => c.id)),
     textClips: (project.textClips ?? []).map((c) => c.id),
+    transitions: project.timeline.tracks.flatMap((track) =>
+      (track.transitions ?? []).map((transition) => transition.id),
+    ),
   };
 }
 
@@ -78,10 +82,14 @@ function diffByCategory(
   const beforeTracks = new Set(before.tracks);
   const beforeClips = new Set(before.clips);
   const beforeText = new Set(before.textClips);
+  const beforeTransitions = new Set(before.transitions);
   return {
     tracks: after.tracks.filter((id) => !beforeTracks.has(id)),
     clips: after.clips.filter((id) => !beforeClips.has(id)),
     textClips: after.textClips.filter((id) => !beforeText.has(id)),
+    transitions: after.transitions.filter(
+      (id) => !beforeTransitions.has(id),
+    ),
   };
 }
 
@@ -92,6 +100,7 @@ function appendCreatedIds(
   target.tracks.push(...created.tracks);
   target.clips.push(...created.clips);
   target.textClips.push(...created.textClips);
+  target.transitions.push(...created.transitions);
 }
 
 /**
@@ -204,6 +213,41 @@ async function applyOneAction(
     return;
   }
 
+  // Transition actions use the editor's transition-aware store methods so
+  // the project model and TransitionBridge stay synchronized for preview,
+  // inspection, undo/redo, and export. A raw executor call would update the
+  // project array but leave the renderer bridge stale until a later reload.
+  if (action.type === "transition/set") {
+    const { transition } = action.params as { transition: Transition };
+    const created = await store.addClipTransition(transition);
+    if (!created) {
+      throw new Error(`Failed to add transition "${transition.id}"`);
+    }
+    return;
+  }
+
+  if (action.type === "transition/update") {
+    const { transitionId, ...updates } = action.params as {
+      transitionId: string;
+      type?: Transition["type"];
+      duration?: number;
+      params?: Record<string, unknown>;
+    };
+    const updated = await store.updateClipTransition(transitionId, updates);
+    if (!updated) {
+      throw new Error(`Failed to update transition "${transitionId}"`);
+    }
+    return;
+  }
+
+  if (action.type === "transition/remove") {
+    const { transitionId } = action.params as { transitionId: string };
+    if (!(await store.removeClipTransition(transitionId))) {
+      throw new Error(`Failed to remove transition "${transitionId}"`);
+    }
+    return;
+  }
+
   const result = await store.executeAction(action);
   if (!result.success) {
     throw new Error(result.error?.message ?? `Action ${action.type} failed`);
@@ -269,6 +313,7 @@ async function handleApplyActions(
       tracks: [],
       clips: [],
       textClips: [],
+      transitions: [],
     };
     let applied = 0;
     const executor = store.actionExecutor;

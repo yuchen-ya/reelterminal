@@ -11,6 +11,7 @@ import {
   installLiveBridge,
   type LiveBridgeRequest,
 } from "./live-bridge";
+import { getTransitionBridge } from "../../bridges/transition-bridge";
 
 const act = (type: string, params: Record<string, unknown>): Action => ({
   type,
@@ -236,6 +237,104 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
       project.timeline.tracks.find((track) => track.id === "v2")?.clips[0]?.id,
       project.timeline.tracks.find((track) => track.id === "v1")?.clips[0]?.id,
     ]);
+  });
+
+  it("keeps agent transition actions synchronized with the preview bridge", async () => {
+    const initial = useProjectStore.getState().project;
+    useProjectStore.setState({
+      project: {
+        ...initial,
+        mediaLibrary: {
+          ...initial.mediaLibrary,
+          items: [{
+            id: "media-transition",
+            name: "transition.mp4",
+            type: "video",
+            fileHandle: null,
+            blob: null,
+            metadata: {
+              duration: 6,
+              width: 320,
+              height: 180,
+              frameRate: 30,
+              codec: "h264",
+              sampleRate: 48000,
+              channels: 2,
+              fileSize: 1024,
+            },
+            thumbnailUrl: null,
+            waveformData: null,
+          }],
+        },
+      },
+    });
+    const seeded = await handleLiveBridgeRequest(
+      req("applyActions", {
+        actions: [
+          act("track/add", { trackType: "video", trackId: "v-transition" }),
+          act("clip/add", {
+            trackId: "v-transition",
+            mediaId: "media-transition",
+            startTime: 0,
+            duration: 3,
+            outPoint: 3,
+          }),
+          act("clip/add", {
+            trackId: "v-transition",
+            mediaId: "media-transition",
+            startTime: 3,
+            duration: 3,
+            outPoint: 3,
+          }),
+        ],
+      }),
+    );
+    expect(seeded.ok).toBe(true);
+    const clipIds = (seeded.result as {
+      createdIds: { clips: string[] };
+    }).createdIds.clips;
+    expect(clipIds).toHaveLength(2);
+
+    const bridge = getTransitionBridge();
+    bridge.initialize(320, 180);
+    const transition = {
+      id: "transition-live-1",
+      clipAId: clipIds[0]!,
+      clipBId: clipIds[1]!,
+      type: "crossfade" as const,
+      duration: 0.5,
+      params: { curve: "ease" },
+    };
+    const applied = await handleLiveBridgeRequest(
+      req("applyActions", {
+        actions: [
+          act("transition/set", { transition }),
+          act("transition/update", {
+            transitionId: transition.id,
+            type: "dipToBlack",
+            duration: 0.75,
+            params: { holdDuration: 0.1 },
+          }),
+        ],
+      }),
+    );
+    expect(applied.ok).toBe(true);
+    expect((applied.result as {
+      createdIds: { transitions: string[] };
+    }).createdIds.transitions).toEqual([transition.id]);
+    expect(bridge.getTransition(transition.id)).toMatchObject({
+      type: "dipToBlack",
+      duration: 0.75,
+      params: { holdDuration: 0.1 },
+    });
+
+    const removed = await handleLiveBridgeRequest(
+      req("applyActions", {
+        actions: [act("transition/remove", { transitionId: transition.id })],
+      }),
+    );
+    expect(removed.ok).toBe(true);
+    expect(bridge.getTransition(transition.id)).toBeUndefined();
   });
 
   it("applyActions routes text/create engine-aware and preserves the facade id", async () => {

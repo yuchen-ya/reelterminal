@@ -16,7 +16,9 @@
  *   headless-honest editor-context read plus the read-only visual.inspect
  *   slice (16 verbs).
  * Slice 4 widens edit.apply's closed finishing vocabulary to include clip
- *   move/split, constant speed, and audio fades without adding new verbs.
+ *   move/split/duplicate/ripple-delete, constant speed/reverse, visual
+ *   transforms/crop, audio fades, and clip transitions without adding new
+ *   verbs.
  *
  * Pixel/export/verify backing arrives through the independent provider
  * interfaces in providers.ts (RenderProvider / ExportProvider /
@@ -24,6 +26,10 @@
  * MCP/CLI transports remain out of scope.
  */
 import type { Project, ProjectSettings } from "@openreel/core/types/project";
+import {
+  TRANSITION_TYPES as CORE_TRANSITION_TYPES,
+  type TransitionType,
+} from "@openreel/core/types/effects";
 import type { LiveEditorReferences } from "./live-store";
 import type {
   ArtifactRef,
@@ -370,6 +376,23 @@ export interface TimelineClipView {
   readonly reversed: boolean;
   /** Effective audio fades in seconds; missing model values normalize to 0. */
   readonly fade: { readonly fadeIn: number; readonly fadeOut: number };
+  readonly transform: {
+    /** Pixel offset from the project-frame center. */
+    readonly position: { readonly x: number; readonly y: number };
+    readonly scale: { readonly x: number; readonly y: number };
+    /** Clockwise degrees. */
+    readonly rotation: number;
+    readonly anchor: NormalizedPoint;
+    readonly opacity: number;
+    readonly fitMode: "contain" | "cover" | "stretch" | "none";
+    /** Normalized source rectangle, or null when the full source is used. */
+    readonly crop: {
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+    } | null;
+  };
 }
 
 export interface TimelineTrackView {
@@ -377,6 +400,16 @@ export interface TimelineTrackView {
   readonly type: string;
   readonly name: string;
   readonly clips: readonly TimelineClipView[];
+  readonly transitions: readonly TimelineTransitionView[];
+}
+
+export interface TimelineTransitionView {
+  readonly id: string;
+  readonly clipAId: string;
+  readonly clipBId: string | null;
+  readonly edge: "in" | "out" | null;
+  readonly type: TransitionType;
+  readonly duration: number;
 }
 
 export interface TextOverlayView {
@@ -450,13 +483,20 @@ export const EDIT_OP_TYPES = [
   "clip.move",
   "clip.trim",
   "clip.split",
+  "clip.duplicate",
+  "clip.rippleDelete",
   "text.create",
   "text.update",
   "text.delete",
   "clip.setSpeed",
+  "clip.setReverse",
+  "clip.setTransform",
   "clip.setVolume",
   "clip.setFade",
   "clip.remove",
+  "transition.add",
+  "transition.update",
+  "transition.remove",
 ] as const;
 
 export type EditOpType = (typeof EDIT_OP_TYPES)[number];
@@ -516,6 +556,23 @@ export interface ClipSplitOp {
   readonly clipId: string;
   /** Absolute timeline time strictly inside the clip bounds. */
   readonly time: number;
+}
+
+export interface ClipDuplicateOp {
+  readonly op: "clip.duplicate";
+  readonly clipId: string;
+  /** Optional destination track; omitted keeps the source track. */
+  readonly trackId?: string;
+  /**
+   * Optional absolute timeline position. When omitted, ReelTerminal uses the
+   * same next-free-gap placement as the editor's Duplicate command.
+   */
+  readonly startTime?: number;
+}
+
+export interface ClipRippleDeleteOp {
+  readonly op: "clip.rippleDelete";
+  readonly clipId: string;
 }
 
 /** Closed style subset accepted by text.create/text.update in this slice. */
@@ -590,6 +647,40 @@ export interface ClipSetSpeedOp {
   readonly speed: number;
 }
 
+export interface ClipSetReverseOp {
+  readonly op: "clip.setReverse";
+  readonly clipId: string;
+  readonly reversed: boolean;
+}
+
+export interface ClipTransformInput {
+  /** Pixel offset from the project-frame center; both axes are required. */
+  readonly position?: { readonly x: number; readonly y: number };
+  /** Multipliers in [0.01, 20]; both axes are required. */
+  readonly scale?: { readonly x: number; readonly y: number };
+  /** Clockwise degrees in [-360, 360]. */
+  readonly rotation?: number;
+  readonly anchor?: NormalizedPoint;
+  readonly opacity?: number;
+  readonly fitMode?: "contain" | "cover" | "stretch" | "none";
+  /** Normalized source rectangle contained within 0..1. */
+  readonly crop?: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  /** Remove an existing crop. Cannot be combined with crop. */
+  readonly clearCrop?: true;
+}
+
+export interface ClipSetTransformOp {
+  readonly op: "clip.setTransform";
+  readonly clipId: string;
+  /** Partial transform patch; at least one field is required. */
+  readonly transform: ClipTransformInput;
+}
+
 export interface ClipSetFadeOp {
   readonly op: "clip.setFade";
   readonly clipId: string;
@@ -607,19 +698,53 @@ export interface ClipRemoveOp {
   readonly clipId: string;
 }
 
+/** Every transition type exposed by the editor's transition engine. */
+export const EDIT_TRANSITION_TYPES = CORE_TRANSITION_TYPES;
+
+export interface TransitionAddOp {
+  readonly op: "transition.add";
+  /** Outgoing clip. It must end where clipBId starts, on the same visual track. */
+  readonly clipAId: string;
+  /** Incoming clip. */
+  readonly clipBId: string;
+  readonly type: TransitionType;
+  /** Total center-on-cut transition duration, in seconds. */
+  readonly duration: number;
+}
+
+export interface TransitionUpdateOp {
+  readonly op: "transition.update";
+  readonly transitionId: string;
+  /** At least one of type/duration is required. */
+  readonly type?: TransitionType;
+  readonly duration?: number;
+}
+
+export interface TransitionRemoveOp {
+  readonly op: "transition.remove";
+  readonly transitionId: string;
+}
+
 export type EditOp =
   | TrackAddOp
   | ClipAddOp
   | ClipMoveOp
   | ClipTrimOp
   | ClipSplitOp
+  | ClipDuplicateOp
+  | ClipRippleDeleteOp
   | TextCreateOp
   | TextUpdateOp
   | TextDeleteOp
   | ClipSetSpeedOp
+  | ClipSetReverseOp
+  | ClipSetTransformOp
   | ClipSetVolumeOp
   | ClipSetFadeOp
-  | ClipRemoveOp;
+  | ClipRemoveOp
+  | TransitionAddOp
+  | TransitionUpdateOp
+  | TransitionRemoveOp;
 
 export interface EditApplyParams {
   readonly ops: readonly EditOp[];

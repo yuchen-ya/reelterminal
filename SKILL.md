@@ -197,7 +197,7 @@ CONFIRMATION_REQUIRED JOB_FAILED ACTION_FAILED INTERNAL FORBIDDEN`), never on pr
 Parameter schemas/defaults live in each tool's `inputSchema` and the facade
 README — this skill does not restate them. Context discipline: orient with
 `timeline_get` (its compact clip view includes effective volume, speed,
-reverse state, and fades); `project_get_state` is an unbounded full dump; ordinary
+reverse state, fades, transform, fit, and crop); `project_get_state` is an unbounded full dump; ordinary
 artifacts come back as `{path, sizeBytes, sha256, sourceRevision}` refs. On
 successful `visual_inspect`, the stdio `serve` transport and desktop live MCP
 also attach bounded MCP PNG image content (contact sheet when supported,
@@ -239,7 +239,7 @@ and `{projectId, projectName, windowId}`.
 
 ### The `edit_apply` op vocabulary
 
-Twelve ops, one atomic batch each call (the exact fields and bounds live in
+Nineteen ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
 - `track.add` — create a track (`trackType`); `clip.add` — place imported
@@ -250,6 +250,11 @@ Twelve ops, one atomic batch each call (the exact fields and bounds live in
   its bounds; the result reports the new right-hand `clipId`. Constant-speed
   and reversed clips preserve the correct source ranges; variable-speed and
   freeze-frame clips currently return `UNSUPPORTED`.
+- `clip.duplicate` — clone a clip with its timing, effects, transform, speed,
+  reverse, fades, and audio settings. Omit `startTime` to use the editor's
+  next-free-gap placement; the new clip id is returned.
+- `clip.rippleDelete` — remove one clip and close the resulting gap on its
+  track, matching the editor's Ripple Delete command.
 - `text.create` — an overlay on a text track. `position`/`anchor` are
   **normalized 0..1 frame coordinates** (resolution-independent:
   `0.5/0.5` = center, `y:0.85` = lower third) and apply identically in
@@ -264,6 +269,11 @@ Twelve ops, one atomic batch each call (the exact fields and bounds live in
 - `text.delete` — remove an overlay by `overlayId`.
 - `clip.setSpeed` — constant playback speed `0.1..20`; the timeline
   duration is recomputed from the source span.
+- `clip.setReverse` — enable or disable reverse playback without changing
+  the clip's timeline placement.
+- `clip.setTransform` — patch visual composition fields: pixel offset from
+  frame center, X/Y scale, rotation, normalized anchor, opacity, fit mode,
+  and normalized source crop. Use `clearCrop:true` to restore the full source.
 - `clip.setVolume` — linear gain `0..4` on any clip (audio or video
   track): `0` = mute, `1` = unity; it flows into the exported audio.
 - `clip.setFade` — set `fadeIn` and/or `fadeOut` in seconds; each value
@@ -271,6 +281,11 @@ Twelve ops, one atomic batch each call (the exact fields and bounds live in
 - `clip.remove` — remove one timeline clip (video/audio/image track, not
   a text overlay) by `clipId` (read `tracks[].clips[].id` from
   `timeline_get` first); the gap stays — no ripple.
+- `transition.add` — add any editor-supported visual transition between two
+  directed, adjacent clips on one visual track; the new transition id is
+  returned. `transition.update` changes its type and/or duration, and
+  `transition.remove` restores the hard cut. Read transition ids from each
+  `timeline_get` track's `transitions` array.
 
 Ops in one batch see each other's results, and a failure anywhere rolls
 the whole batch back; a deleted overlay or clip stays deleted after

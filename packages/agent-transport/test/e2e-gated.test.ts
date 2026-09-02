@@ -113,7 +113,7 @@ describe.skipIf(!runtimeHealthy)("closed loop over run (real Chromium + ffmpeg)"
     ).toBe(true);
   }, 900_000);
 
-  it("move → split → constant speed → fade reaches the real preview/export pipeline", async () => {
+  it("finishing edits plus duplicate and transition reach the real preview/export pipeline", async () => {
     const result = await runWorkflow([
       { id: "create", verb: "project.create", params: { name: "Finishing tools", settings: { width: 320, height: 180, frameRate: 30, sampleRate: 48000, channels: 2 } } },
       { id: "import", verb: "media.import", params: { path: inputMp4, expectedRevision: 0 } },
@@ -145,18 +145,48 @@ describe.skipIf(!runtimeHealthy)("closed loop over run (real Chromium + ffmpeg)"
         params: {
           ops: [
             { op: "clip.setSpeed", clipId: { $ref: "arrange#/applied/1/createdIds/0" }, speed: 2 },
+            { op: "clip.setReverse", clipId: { $ref: "arrange#/applied/1/createdIds/0" }, reversed: true },
+            { op: "clip.setTransform", clipId: "c1", transform: {
+              position: { x: 30, y: -10 },
+              scale: { x: 0.75, y: 0.75 },
+              opacity: 0.9,
+              fitMode: "cover",
+              crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
+            } },
             { op: "clip.setFade", clipId: "c1", fadeIn: 0.2, fadeOut: 0.2 },
           ],
           expectedRevision: 3,
         },
       },
+      {
+        id: "duplicate",
+        verb: "edit.apply",
+        params: {
+          ops: [{ op: "clip.duplicate", clipId: "c1" }],
+          expectedRevision: 4,
+        },
+      },
+      {
+        id: "transition",
+        verb: "edit.apply",
+        params: {
+          ops: [{
+            op: "transition.add",
+            clipAId: { $ref: "arrange#/applied/1/createdIds/0" },
+            clipBId: { $ref: "duplicate#/applied/0/createdIds/0" },
+            type: "crossfade",
+            duration: 0.5,
+          }],
+          expectedRevision: 5,
+        },
+      },
       { id: "timeline", verb: "timeline.get", params: {} },
-      { id: "preview", verb: "preview.render_frame", params: { timeSec: 3, expectedRevision: 4 } },
+      { id: "preview", verb: "preview.render_frame", params: { timeSec: 4.5, expectedRevision: 6 } },
       { id: "export", verb: "export.start", params: {} },
       { id: "wait", await: { jobId: { $ref: "export#/jobId" }, timeoutMs: 600000, pollMs: 1000 } },
       { id: "verify", verb: "verify.artifact", params: {
           path: { $ref: "wait#/artifact/path" },
-          expect: { container: "mp4", videoCodec: "h264", width: 320, height: 180, durationSec: 4.5, durationToleranceSec: 0.12 },
+          expect: { container: "mp4", videoCodec: "h264", width: 320, height: 180, durationSec: 5.5, durationToleranceSec: 0.12 },
         } },
     ]);
     expect(result.exitCode, result.stdoutLines.map((line) => JSON.stringify(line)).join("\n")).toBe(0);
@@ -165,12 +195,26 @@ describe.skipIf(!runtimeHealthy)("closed loop over run (real Chromium + ffmpeg)"
     expect(arrange.result.value.applied[1].op).toBe("clip.split");
     expect(arrange.result.value.applied[1].createdIds).toHaveLength(1);
     const rightClipId = arrange.result.value.applied[1].createdIds[0];
+    const duplicate = stepLine(result.stdoutLines, "duplicate").result.value;
+    expect(duplicate.applied[0].op).toBe("clip.duplicate");
+    expect(duplicate.applied[0].createdIds).toHaveLength(1);
+    const duplicateId = duplicate.applied[0].createdIds[0];
+    const transition = stepLine(result.stdoutLines, "transition").result.value;
+    expect(transition.applied[0].op).toBe("transition.add");
+    expect(transition.applied[0].createdIds).toHaveLength(1);
     const timeline = stepLine(result.stdoutLines, "timeline").result.value;
     const clips = timeline.tracks.find((track: any) => track.id === "v1")?.clips;
     expect(clips.find((clip: any) => clip.id === "c1")).toMatchObject({
       startTime: 1,
       duration: 1,
       fade: { fadeIn: 0.2, fadeOut: 0.2 },
+      transform: {
+        position: { x: 30, y: -10 },
+        scale: { x: 0.75, y: 0.75 },
+        opacity: 0.9,
+        fitMode: "cover",
+        crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
+      },
     });
     expect(clips.find((clip: any) => clip.id === rightClipId)).toMatchObject({
       startTime: 2,
@@ -178,7 +222,24 @@ describe.skipIf(!runtimeHealthy)("closed loop over run (real Chromium + ffmpeg)"
       inPoint: 1,
       outPoint: 6,
       speed: 2,
+      reversed: true,
     });
+    expect(clips.find((clip: any) => clip.id === duplicateId)).toMatchObject({
+      startTime: 4.5,
+      duration: 1,
+      transform: {
+        position: { x: 30, y: -10 },
+        scale: { x: 0.75, y: 0.75 },
+      },
+    });
+    expect(timeline.tracks.find((track: any) => track.id === "v1")?.transitions)
+      .toContainEqual(expect.objectContaining({
+        id: transition.applied[0].createdIds[0],
+        clipAId: rightClipId,
+        clipBId: duplicateId,
+        type: "crossfade",
+        duration: 0.5,
+      }));
     expect(stepLine(result.stdoutLines, "preview").result.ok).toBe(true);
     expect(stepLine(result.stdoutLines, "wait").result.value.state).toBe("done");
     expect(stepLine(result.stdoutLines, "verify").result.value.pass).toBe(true);

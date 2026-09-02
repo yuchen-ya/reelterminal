@@ -19,9 +19,19 @@ export default async function globalSetup(): Promise<void> {
   if (!existsSync(tsupBin)) {
     throw new Error(`global-setup: tsup binary not found at ${tsupBin} — run pnpm install`);
   }
-  // Remove dist BEFORE the build: tsup's `clean: true` would otherwise
-  // recurse into dist/node_modules (symlinks to the runtime deps) and try
-  // to unlink their content.
+  // Unlink generated dependency links before ANY recursive dist cleanup.
+  // Some cleaners traverse directory symlinks and can otherwise erase the
+  // pnpm-store targets rather than just the links.
+  const unlink = spawnSync(
+    process.execPath,
+    [path.join(packageDir, "scripts", "unlink-runtime-deps.mjs")],
+    { cwd: packageDir, stdio: "inherit" },
+  );
+  if (unlink.status !== 0) {
+    throw new Error(
+      `global-setup: unlink-runtime-deps failed with status ${unlink.status}`,
+    );
+  }
   rmSync(path.join(packageDir, "dist"), { recursive: true, force: true });
   const build = spawnSync(tsupBin, ["--config", "tsup.config.ts"], {
     cwd: packageDir,

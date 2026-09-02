@@ -56,9 +56,10 @@ for concrete external integrations.
   range, with revision-tagged PNG artifacts and a real contact sheet when the
   configured renderer supports native composition.
 - The atomic `edit_apply` vocabulary covers placement, moving, trimming,
-  splitting, constant speed, volume, fades, removal, and text overlay
-  creation/update/deletion. Split operations report the new clip id so an
-  Agent can continue editing it in later calls.
+  splitting, duplication, ripple deletion, constant speed/reverse, visual
+  transforms and crop, volume, fades, ordinary removal, clip transitions,
+  and text overlay creation/update/deletion. Creation operations report their
+  real ids so an Agent can continue editing them in later calls.
 - Users can mark audio, video, text, media, and graphics entities as stable
   Agent references (`#1`, `#2`, `#3`, …). Multi-selection assignment is
   deterministic; repeated marks keep their number; deleted entities remain
@@ -197,6 +198,15 @@ pnpm dev
 
 The runtime example covers create → import → edit → preview → export → verify:
 [`packages/runtime-chromium/examples/hello-world-e2e.mts`](packages/runtime-chromium/examples/hello-world-e2e.mts).
+
+### 普通用户最短出片路径
+
+1. 在“媒体”面板点击“导入媒体”，选择视频、图片或音频。
+2. 把素材拖到时间线；选中片段后，可在时间线工具栏/右键菜单完成分割、复制、波纹删除，在检查器调整画面、速度和声音。
+3. 在相邻片段的切点添加转场，用预览窗口和播放控制检查成片。
+4. 点击右上角“导出”，选择分辨率与质量并生成视频。
+
+这些操作与外部 Agent 使用的是同一个项目、动作历史和渲染/导出链路；用户可随时撤销 Agent 的一整批改动，也可以继续手工调整。
 
 ## Desktop live workflow
 

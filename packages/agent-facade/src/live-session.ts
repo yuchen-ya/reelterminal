@@ -177,7 +177,9 @@ const CREATING_OPS: ReadonlySet<EditOp["op"]> = new Set([
   "track.add",
   "clip.add",
   "clip.split",
+  "clip.duplicate",
   "text.create",
+  "transition.add",
 ]);
 
 interface EditApplyPayload {
@@ -1452,12 +1454,15 @@ function partitionCreatedIds(
     "track.add": "tracks",
     "clip.add": "clips",
     "clip.split": "clips",
+    "clip.duplicate": "clips",
     "text.create": "textClips",
+    "transition.add": "transitions",
   } as const;
   const cursors = {
     tracks: 0,
     clips: 0,
     textClips: 0,
+    transitions: 0,
   };
   return ops.map((op) => {
     if (!CREATING_OPS.has(op.op)) return { op: op.op, createdIds: [] };

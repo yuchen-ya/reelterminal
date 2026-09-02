@@ -1,12 +1,14 @@
 /**
  * The closed edit.apply op set: strict schema validation and translation
- * into core actions. Facade-level semantic checks that core either skips
- * or gets wrong (MEDIA-04 trim stale base, duplicate track ids, text
- * overlay existence) live here so every core action the executor sees is
- * already sane.
+ * into core actions. Facade-level semantic checks that the generic core
+ * boundary does not own (media bounds, duplicate ids, text-overlay
+ * existence, normalized crop bounds) live here so every core action the
+ * executor sees is already sane.
  */
 import type { Action } from "@openreel/core/types/actions";
 import type { Project } from "@openreel/core/types/project";
+import type { Transform, Transition } from "@openreel/core/types/timeline";
+import { TransitionEngine } from "@openreel/core/video/transition-engine";
 import type { TextClip } from "@openreel/core/text/types";
 import {
   DEFAULT_TEXT_STYLE,
@@ -18,18 +20,26 @@ import {
   isNonEmptyString,
   isNonNegativeNumber,
   isPositiveNumber,
+  isBoolean,
+  isFiniteNumber,
   oneOf,
   validateObject,
   type ObjectSchema,
 } from "./validate";
 import {
   EDIT_OP_TYPES,
+  EDIT_TRANSITION_TYPES,
   TRACK_TYPES,
   type ClipAddOp,
+  type ClipDuplicateOp,
   type ClipMoveOp,
   type ClipRemoveOp,
+  type ClipRippleDeleteOp,
   type ClipSetFadeOp,
+  type ClipSetReverseOp,
   type ClipSetSpeedOp,
+  type ClipSetTransformOp,
+  type ClipTransformInput,
   type ClipSetVolumeOp,
   type ClipSplitOp,
   type ClipTrimOp,
@@ -40,6 +50,9 @@ import {
   type TextUpdateOp,
   type TextStyleInput,
   type TrackAddOp,
+  type TransitionAddOp,
+  type TransitionRemoveOp,
+  type TransitionUpdateOp,
 } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -194,6 +207,46 @@ export const CLIP_SPLIT_SCHEMA: ObjectSchema = {
     describe: "a finite number >= 0",
     required: true,
     emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+};
+
+export const CLIP_DUPLICATE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "clip.duplicate",
+    describe: '"clip.duplicate"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.duplicate" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  trackId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  startTime: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+};
+
+export const CLIP_RIPPLE_DELETE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "clip.rippleDelete",
+    describe: '"clip.rippleDelete"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.rippleDelete" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
   },
 };
 
@@ -374,6 +427,127 @@ export const TEXT_DELETE_SCHEMA: ObjectSchema = {
   },
 };
 
+const PIXEL_POINT_SCHEMA: ObjectSchema = {
+  x: {
+    check: isFiniteNumber,
+    describe: "a finite number",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number" } },
+  },
+  y: {
+    check: isFiniteNumber,
+    describe: "a finite number",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number" } },
+  },
+};
+
+const SCALE_POINT_SCHEMA: ObjectSchema = {
+  x: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0.01 && v <= 20,
+    describe: "a finite number in [0.01, 20]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0.01, maximum: 20 } },
+  },
+  y: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0.01 && v <= 20,
+    describe: "a finite number in [0.01, 20]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0.01, maximum: 20 } },
+  },
+};
+
+const CROP_RECT_SCHEMA: ObjectSchema = {
+  x: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v < 1,
+    describe: "a finite number in [0, 1)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  y: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v < 1,
+    describe: "a finite number in [0, 1)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  width: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 1,
+    describe: "a finite number in (0, 1]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0, maximum: 1 } },
+  },
+  height: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 1,
+    describe: "a finite number in (0, 1]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0, maximum: 1 } },
+  },
+};
+
+const CLIP_TRANSFORM_SCHEMA: ObjectSchema = {
+  position: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: PIXEL_POINT_SCHEMA },
+  },
+  scale: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: SCALE_POINT_SCHEMA },
+  },
+  rotation: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= -360 && v <= 360,
+    describe: "a finite number in [-360, 360]",
+    emits: { kind: "leaf", schema: { type: "number", minimum: -360, maximum: 360 } },
+  },
+  anchor: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: NORMALIZED_POINT_SCHEMA },
+  },
+  opacity: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1,
+    describe: "a finite number in [0, 1]",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  fitMode: {
+    check: oneOf(["contain", "cover", "stretch", "none"]),
+    describe: "one of contain, cover, stretch, none",
+    emits: { kind: "leaf", schema: { enum: ["contain", "cover", "stretch", "none"] } },
+  },
+  crop: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: CROP_RECT_SCHEMA },
+  },
+  clearCrop: {
+    check: (v) => v === true,
+    describe: "true",
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+};
+
+export const CLIP_SET_TRANSFORM_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "clip.setTransform",
+    describe: '"clip.setTransform"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.setTransform" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  transform: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    required: true,
+    emits: { kind: "object", schema: CLIP_TRANSFORM_SCHEMA },
+  },
+};
+
 export const CLIP_SET_VOLUME_SCHEMA: ObjectSchema = {
   op: {
     check: (v) => v === "clip.setVolume",
@@ -417,6 +591,27 @@ export const CLIP_SET_SPEED_SCHEMA: ObjectSchema = {
   },
 };
 
+export const CLIP_SET_REVERSE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "clip.setReverse",
+    describe: '"clip.setReverse"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.setReverse" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  reversed: {
+    check: isBoolean,
+    describe: "a boolean",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+};
+
 export const CLIP_SET_FADE_SCHEMA: ObjectSchema = {
   op: {
     check: (v) => v === "clip.setFade",
@@ -457,6 +652,79 @@ export const CLIP_REMOVE_SCHEMA: ObjectSchema = {
   },
 };
 
+export const TRANSITION_ADD_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "transition.add",
+    describe: '"transition.add"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "transition.add" } },
+  },
+  clipAId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  clipBId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  type: {
+    check: oneOf(EDIT_TRANSITION_TYPES),
+    describe: `one of ${EDIT_TRANSITION_TYPES.join(", ")}`,
+    required: true,
+    emits: { kind: "leaf", schema: { enum: [...EDIT_TRANSITION_TYPES] } },
+  },
+  duration: {
+    check: isPositiveNumber,
+    describe: "a finite number > 0",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+};
+
+export const TRANSITION_UPDATE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "transition.update",
+    describe: '"transition.update"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "transition.update" } },
+  },
+  transitionId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  type: {
+    check: oneOf(EDIT_TRANSITION_TYPES),
+    describe: `one of ${EDIT_TRANSITION_TYPES.join(", ")}`,
+    emits: { kind: "leaf", schema: { enum: [...EDIT_TRANSITION_TYPES] } },
+  },
+  duration: {
+    check: isPositiveNumber,
+    describe: "a finite number > 0",
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+};
+
+export const TRANSITION_REMOVE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "transition.remove",
+    describe: '"transition.remove"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "transition.remove" } },
+  },
+  transitionId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
 /**
  * Rebind nested style/position/anchor to SANITIZED copies: opToCoreActions
  * spreads them into the canonical TextClip, so what flows downstream must be
@@ -486,6 +754,60 @@ function sanitizeTextFields<T extends TextCreateOp | TextUpdateOp>(
     }
   }
   return out as unknown as T;
+}
+
+function sanitizeClipTransform(
+  op: ClipSetTransformOp,
+  label: string,
+): ClipSetTransformOp {
+  const transform = validateObject<ClipTransformInput>(
+    op.transform,
+    CLIP_TRANSFORM_SCHEMA,
+    `${label}.transform`,
+  );
+  if (Object.keys(transform).length === 0) {
+    throw invalidParams(`${label}: transform must set at least one field`);
+  }
+  const sanitized: Record<string, unknown> = { ...transform };
+  if (transform.position !== undefined) {
+    sanitized.position = validateObject<{ x: number; y: number }>(
+      transform.position,
+      PIXEL_POINT_SCHEMA,
+      `${label}.transform.position`,
+    );
+  }
+  if (transform.scale !== undefined) {
+    sanitized.scale = validateObject<{ x: number; y: number }>(
+      transform.scale,
+      SCALE_POINT_SCHEMA,
+      `${label}.transform.scale`,
+    );
+  }
+  if (transform.anchor !== undefined) {
+    sanitized.anchor = validateObject<NormalizedPoint>(
+      transform.anchor,
+      NORMALIZED_POINT_SCHEMA,
+      `${label}.transform.anchor`,
+    );
+  }
+  if (transform.crop !== undefined) {
+    const crop = validateObject<NonNullable<ClipTransformInput["crop"]>>(
+      transform.crop,
+      CROP_RECT_SCHEMA,
+      `${label}.transform.crop`,
+    );
+    if (crop.x + crop.width > 1 || crop.y + crop.height > 1) {
+      throw invalidParams(
+        `${label}: crop must stay within the normalized source bounds`,
+        { crop },
+      );
+    }
+    sanitized.crop = crop;
+  }
+  if (transform.crop !== undefined && transform.clearCrop === true) {
+    throw invalidParams(`${label}: crop and clearCrop cannot be combined`);
+  }
+  return { ...op, transform: sanitized as ClipTransformInput };
 }
 
 /**
@@ -530,6 +852,14 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
     }
     case "clip.split":
       return validateObject<ClipSplitOp>(raw, CLIP_SPLIT_SCHEMA, label);
+    case "clip.duplicate":
+      return validateObject<ClipDuplicateOp>(raw, CLIP_DUPLICATE_SCHEMA, label);
+    case "clip.rippleDelete":
+      return validateObject<ClipRippleDeleteOp>(
+        raw,
+        CLIP_RIPPLE_DELETE_SCHEMA,
+        label,
+      );
     case "text.create": {
       const op = validateObject<TextCreateOp>(raw, TEXT_CREATE_SCHEMA, label);
       return sanitizeTextFields(op, label);
@@ -556,6 +886,16 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       return validateObject<TextDeleteOp>(raw, TEXT_DELETE_SCHEMA, label);
     case "clip.setSpeed":
       return validateObject<ClipSetSpeedOp>(raw, CLIP_SET_SPEED_SCHEMA, label);
+    case "clip.setReverse":
+      return validateObject<ClipSetReverseOp>(raw, CLIP_SET_REVERSE_SCHEMA, label);
+    case "clip.setTransform": {
+      const op = validateObject<ClipSetTransformOp>(
+        raw,
+        CLIP_SET_TRANSFORM_SCHEMA,
+        label,
+      );
+      return sanitizeClipTransform(op, label);
+    }
     case "clip.setVolume":
       return validateObject<ClipSetVolumeOp>(raw, CLIP_SET_VOLUME_SCHEMA, label);
     case "clip.setFade": {
@@ -567,6 +907,27 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
     }
     case "clip.remove":
       return validateObject<ClipRemoveOp>(raw, CLIP_REMOVE_SCHEMA, label);
+    case "transition.add":
+      return validateObject<TransitionAddOp>(raw, TRANSITION_ADD_SCHEMA, label);
+    case "transition.update": {
+      const op = validateObject<TransitionUpdateOp>(
+        raw,
+        TRANSITION_UPDATE_SCHEMA,
+        label,
+      );
+      if (op.type === undefined && op.duration === undefined) {
+        throw invalidParams(
+          `${label}: at least one of type/duration is required`,
+        );
+      }
+      return op;
+    }
+    case "transition.remove":
+      return validateObject<TransitionRemoveOp>(
+        raw,
+        TRANSITION_REMOVE_SCHEMA,
+        label,
+      );
     default:
       // Unreachable: opType was allowlist-checked above. Keeps the function
       // total for the compiler and fail-closed for the runtime.
@@ -595,17 +956,20 @@ export interface EntityIdSets {
   readonly tracks: ReadonlySet<string>;
   readonly clips: ReadonlySet<string>;
   readonly textOverlays: ReadonlySet<string>;
+  readonly transitions: ReadonlySet<string>;
 }
 
 export function collectEntityIds(project: Project): EntityIdSets {
   const tracks = new Set<string>();
   const clips = new Set<string>();
+  const transitions = new Set<string>();
   for (const track of project.timeline.tracks) {
     tracks.add(track.id);
     for (const clip of track.clips) clips.add(clip.id);
+    for (const transition of track.transitions ?? []) transitions.add(transition.id);
   }
   const textOverlays = new Set((project.textClips ?? []).map((c) => c.id));
-  return { tracks, clips, textOverlays };
+  return { tracks, clips, textOverlays, transitions };
 }
 
 /** Created entity ids, partitioned by category (the live seam's shape). */
@@ -613,6 +977,7 @@ export interface CreatedIdsByCategory {
   readonly tracks: readonly string[];
   readonly clips: readonly string[];
   readonly textClips: readonly string[];
+  readonly transitions: readonly string[];
 }
 
 export function diffCreatedIdsByCategory(
@@ -625,6 +990,9 @@ export function diffCreatedIdsByCategory(
     textClips: [...after.textOverlays].filter(
       (id) => !before.textOverlays.has(id),
     ),
+    transitions: [...after.transitions].filter(
+      (id) => !before.transitions.has(id),
+    ),
   };
 }
 
@@ -634,6 +1002,7 @@ export function diffCreatedIds(before: EntityIdSets, after: EntityIdSets): strin
     ...byCategory.tracks,
     ...byCategory.clips,
     ...byCategory.textClips,
+    ...byCategory.transitions,
   ];
 }
 
@@ -866,6 +1235,80 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       return [makeAction("clip/split", { clipId: op.clipId, time: op.time })];
     }
 
+    case "clip.duplicate": {
+      const sourceTrack = draft.timeline.tracks.find((track) =>
+        track.clips.some((clip) => clip.id === op.clipId),
+      );
+      const clip = sourceTrack?.clips.find((candidate) => candidate.id === op.clipId);
+      if (!sourceTrack || !clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.duplicate: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      const targetTrack = op.trackId
+        ? draft.timeline.tracks.find((track) => track.id === op.trackId)
+        : sourceTrack;
+      if (!targetTrack) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.duplicate: track "${op.trackId}" not found`,
+          { trackId: op.trackId },
+        );
+      }
+      if (targetTrack.type !== sourceTrack.type) {
+        throw invalidParams(
+          "clip.duplicate: destination track must have the same type as the source track",
+          {
+            clipId: op.clipId,
+            sourceTrackType: sourceTrack.type,
+            destinationTrackType: targetTrack.type,
+          },
+        );
+      }
+
+      // Match the editor's Duplicate command: start after the source, then
+      // scan forward until the full duplicate fits in a gap. An explicit
+      // startTime remains available when the caller intentionally wants an
+      // overlap or a precise placement.
+      let startTime = op.startTime ?? clip.startTime + clip.duration;
+      if (op.startTime === undefined) {
+        const epsilon = 0.0001;
+        const sortedClips = [...targetTrack.clips].sort(
+          (a, b) => a.startTime - b.startTime,
+        );
+        for (const other of sortedClips) {
+          if (other.id === clip.id) continue;
+          if (other.startTime + other.duration <= startTime + epsilon) continue;
+          if (other.startTime >= startTime + clip.duration - epsilon) break;
+          startTime = other.startTime + other.duration;
+        }
+      }
+      return [
+        makeAction("clip/add", {
+          trackId: targetTrack.id,
+          mediaId: clip.mediaId,
+          startTime,
+          sourceClip: structuredClone(clip),
+        }),
+      ];
+    }
+
+    case "clip.rippleDelete": {
+      const exists = draft.timeline.tracks.some((track) =>
+        track.clips.some((clip) => clip.id === op.clipId),
+      );
+      if (!exists) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.rippleDelete: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      return [makeAction("clip/rippleDelete", { clipId: op.clipId })];
+    }
+
     case "text.create": {
       let trackId = op.trackId;
       if (trackId !== undefined) {
@@ -989,6 +1432,71 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       return [makeAction("clip/setSpeed", { clipId: op.clipId, speed: op.speed })];
     }
 
+    case "clip.setReverse": {
+      const clip = draft.timeline.tracks
+        .flatMap((t) => t.clips)
+        .find((c) => c.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.setReverse: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      return [
+        makeAction("clip/setReverse", {
+          clipId: op.clipId,
+          reversed: op.reversed,
+        }),
+      ];
+    }
+
+    case "clip.setTransform": {
+      const track = draft.timeline.tracks.find((candidate) =>
+        candidate.clips.some((clip) => clip.id === op.clipId),
+      );
+      if (!track) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.setTransform: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      if (track.type === "audio") {
+        throw invalidParams(
+          "clip.setTransform: visual transforms are unavailable on audio tracks",
+          { clipId: op.clipId, trackId: track.id },
+        );
+      }
+      const patch: Partial<Transform> = {
+        ...(op.transform.position !== undefined
+          ? { position: { ...op.transform.position } }
+          : {}),
+        ...(op.transform.scale !== undefined
+          ? { scale: { ...op.transform.scale } }
+          : {}),
+        ...(op.transform.rotation !== undefined
+          ? { rotation: op.transform.rotation }
+          : {}),
+        ...(op.transform.anchor !== undefined
+          ? { anchor: { ...op.transform.anchor } }
+          : {}),
+        ...(op.transform.opacity !== undefined
+          ? { opacity: op.transform.opacity }
+          : {}),
+        ...(op.transform.fitMode !== undefined
+          ? { fitMode: op.transform.fitMode }
+          : {}),
+        ...(op.transform.crop !== undefined
+          ? { crop: { ...op.transform.crop } }
+          : {}),
+        ...(op.transform.clearCrop === true ? { crop: undefined } : {}),
+      };
+      return [
+        makeAction("transform/update", { clipId: op.clipId, transform: patch }),
+      ];
+    }
+
     case "clip.setFade": {
       const clip = draft.timeline.tracks
         .flatMap((t) => t.clips)
@@ -1034,6 +1542,160 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       // The SAME core action the UI's delete-clip path dispatches
       // (apps/web clip-slice), so model compatibility holds by construction.
       return [makeAction("clip/remove", { clipId: op.clipId })];
+    }
+
+    case "transition.add": {
+      const trackA = draft.timeline.tracks.find((track) =>
+        track.clips.some((clip) => clip.id === op.clipAId),
+      );
+      const trackB = draft.timeline.tracks.find((track) =>
+        track.clips.some((clip) => clip.id === op.clipBId),
+      );
+      const clipA = trackA?.clips.find((clip) => clip.id === op.clipAId);
+      const clipB = trackB?.clips.find((clip) => clip.id === op.clipBId);
+      if (!trackA || !clipA) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `transition.add: outgoing clip "${op.clipAId}" not found`,
+          { clipAId: op.clipAId },
+        );
+      }
+      if (!trackB || !clipB) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `transition.add: incoming clip "${op.clipBId}" not found`,
+          { clipBId: op.clipBId },
+        );
+      }
+      if (trackA.id !== trackB.id) {
+        throw invalidParams("transition.add: clips must be on the same track", {
+          clipAId: op.clipAId,
+          clipBId: op.clipBId,
+        });
+      }
+      if (trackA.type === "audio" || trackA.type === "text") {
+        throw invalidParams(
+          "transition.add: visual transitions require a visual track",
+          { trackId: trackA.id, trackType: trackA.type },
+        );
+      }
+      const cutTime = clipA.startTime + clipA.duration;
+      if (Math.abs(cutTime - clipB.startTime) >= 0.001) {
+        throw invalidParams(
+          "transition.add: clipA must end where clipB starts",
+          {
+            clipAId: op.clipAId,
+            clipBId: op.clipBId,
+            clipAEnd: cutTime,
+            clipBStart: clipB.startTime,
+          },
+        );
+      }
+      const existing = (trackA.transitions ?? []).find(
+        (transition) =>
+          transition.clipAId === op.clipAId &&
+          transition.clipBId === op.clipBId &&
+          transition.edge === undefined,
+      );
+      if (existing) {
+        throw new FacadeError(
+          "CONFLICT",
+          "transition.add: this cut already has a transition; update or remove it first",
+          { transitionId: existing.id },
+        );
+      }
+      const maxDuration = Math.min(clipA.duration, clipB.duration) * 2;
+      if (op.duration > maxDuration) {
+        throw invalidParams(
+          `transition.add: duration cannot exceed ${maxDuration} seconds for this cut`,
+          { duration: op.duration, maxDuration },
+        );
+      }
+      const engine = new TransitionEngine({
+        width: draft.settings.width,
+        height: draft.settings.height,
+        useGPU: false,
+      });
+      const transition: Transition = {
+        id: `transition-${crypto.randomUUID()}`,
+        clipAId: op.clipAId,
+        clipBId: op.clipBId,
+        type: op.type,
+        duration: op.duration,
+        params: engine.getDefaultParams(op.type),
+      };
+      return [makeAction("transition/set", { transition })];
+    }
+
+    case "transition.update": {
+      let ownerTrack: Project["timeline"]["tracks"][number] | undefined;
+      let transition: Transition | undefined;
+      for (const track of draft.timeline.tracks) {
+        const candidate = (track.transitions ?? []).find(
+          (item) => item.id === op.transitionId,
+        );
+        if (candidate) {
+          ownerTrack = track;
+          transition = candidate;
+          break;
+        }
+      }
+      if (!ownerTrack || !transition) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `transition.update: transition "${op.transitionId}" not found`,
+          { transitionId: op.transitionId },
+        );
+      }
+      if (op.duration !== undefined) {
+        const clipA = ownerTrack.clips.find(
+          (clip) => clip.id === transition?.clipAId,
+        );
+        const clipB = transition.clipBId
+          ? ownerTrack.clips.find((clip) => clip.id === transition?.clipBId)
+          : undefined;
+        const maxDuration = clipB
+          ? Math.min(clipA?.duration ?? 0, clipB.duration) * 2
+          : (clipA?.duration ?? 0);
+        if (maxDuration <= 0 || op.duration > maxDuration) {
+          throw invalidParams(
+            `transition.update: duration cannot exceed ${maxDuration} seconds for this placement`,
+            { transitionId: op.transitionId, duration: op.duration, maxDuration },
+          );
+        }
+      }
+      const engine = new TransitionEngine({
+        width: draft.settings.width,
+        height: draft.settings.height,
+        useGPU: false,
+      });
+      return [
+        makeAction("transition/update", {
+          transitionId: op.transitionId,
+          ...(op.type !== undefined
+            ? { type: op.type, params: engine.getDefaultParams(op.type) }
+            : {}),
+          ...(op.duration !== undefined ? { duration: op.duration } : {}),
+        }),
+      ];
+    }
+
+    case "transition.remove": {
+      const exists = draft.timeline.tracks.some((track) =>
+        (track.transitions ?? []).some(
+          (transition) => transition.id === op.transitionId,
+        ),
+      );
+      if (!exists) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `transition.remove: transition "${op.transitionId}" not found`,
+          { transitionId: op.transitionId },
+        );
+      }
+      return [
+        makeAction("transition/remove", { transitionId: op.transitionId }),
+      ];
     }
   }
 }

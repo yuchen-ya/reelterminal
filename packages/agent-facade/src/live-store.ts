@@ -95,7 +95,7 @@ export interface LiveApplyActionsOptions {
 
 /**
  * Ids of every entity the batch created, partitioned by entity category
- * (tracks / timeline clips / text overlays), in creation order within each
+ * (tracks / timeline clips / text overlays / transitions), in creation order within each
  * category — diffed by the store around its own apply, so they are the ids
  * that genuinely exist in the canonical project (core mints random ids; the
  * facade never guesses them). Category partitioning is load-bearing: a mixed
@@ -106,6 +106,7 @@ export interface LiveCreatedIds {
   readonly tracks: readonly string[];
   readonly clips: readonly string[];
   readonly textClips: readonly string[];
+  readonly transitions: readonly string[];
 }
 
 export interface LiveApplyActionsResult {

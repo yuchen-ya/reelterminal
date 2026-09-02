@@ -75,6 +75,19 @@ describe("finishing edit tools", () => {
     const finishing = await facade["edit.apply"]({
       ops: [
         { op: "clip.setSpeed", clipId: rightClipId, speed: 2 },
+        { op: "clip.setReverse", clipId: rightClipId, reversed: true },
+        {
+          op: "clip.setTransform",
+          clipId: "c1",
+          transform: {
+            position: { x: 80, y: -20 },
+            scale: { x: 0.75, y: 0.75 },
+            rotation: 15,
+            opacity: 0.8,
+            fitMode: "cover",
+            crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
+          },
+        },
         { op: "clip.setFade", clipId: "a-clip", fadeIn: 0.25, fadeOut: 0.5 },
       ],
     });
@@ -89,6 +102,14 @@ describe("finishing edit tools", () => {
       startTime: 2,
       duration: 1.5,
       outPoint: 1.5,
+      transform: {
+        position: { x: 80, y: -20 },
+        scale: { x: 0.75, y: 0.75 },
+        rotation: 15,
+        opacity: 0.8,
+        fitMode: "cover",
+        crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
+      },
     });
     expect(v2?.clips.find((clip) => clip.id === rightClipId)).toMatchObject({
       startTime: 3.5,
@@ -96,11 +117,46 @@ describe("finishing edit tools", () => {
       inPoint: 1.5,
       outPoint: 4,
       speed: 2,
+      reversed: true,
     });
     const audio = state.value.project.timeline.tracks
       .find((track) => track.id === "a1")
       ?.clips.find((clip) => clip.id === "a-clip");
     expect(audio?.fade).toEqual({ fadeIn: 0.25, fadeOut: 0.5 });
+  });
+
+  it("clears an existing crop and reports the effective compact transform", async () => {
+    const cropped = await facade["edit.apply"]({
+      ops: [{
+        op: "clip.setTransform",
+        clipId: "c1",
+        transform: { crop: { x: 0.2, y: 0.1, width: 0.6, height: 0.8 } },
+      }],
+    });
+    expect(cropped.ok).toBe(true);
+    const cleared = await facade["edit.apply"]({
+      ops: [{
+        op: "clip.setTransform",
+        clipId: "c1",
+        transform: { clearCrop: true },
+      }],
+    });
+    expect(cleared.ok).toBe(true);
+
+    const timeline = await facade["timeline.get"]();
+    expect(timeline.ok).toBe(true);
+    if (!timeline.ok) return;
+    const clip = timeline.value.tracks
+      .flatMap((track) => track.clips)
+      .find((candidate) => candidate.id === "c1");
+    expect(clip?.transform).toMatchObject({
+      position: { x: 0, y: 0 },
+      scale: { x: 1, y: 1 },
+      rotation: 0,
+      opacity: 1,
+      fitMode: "contain",
+      crop: null,
+    });
   });
 
   it("keeps trim duration in timeline seconds after a constant-speed change", async () => {
@@ -126,6 +182,98 @@ describe("finishing edit tools", () => {
     });
   });
 
+  it("duplicates into the next free gap and ripple-deletes with the editor's timing semantics", async () => {
+    const first = await facade["edit.apply"]({
+      ops: [{ op: "clip.duplicate", clipId: "c1" }],
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.value.applied[0]?.createdIds).toHaveLength(1);
+    const firstId = first.value.applied[0]!.createdIds[0]!;
+
+    const second = await facade["edit.apply"]({
+      ops: [{ op: "clip.duplicate", clipId: "c1" }],
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    const secondId = second.value.applied[0]!.createdIds[0]!;
+
+    let timeline = await facade["timeline.get"]();
+    expect(timeline.ok).toBe(true);
+    if (!timeline.ok) return;
+    let clips = timeline.value.tracks.find((track) => track.id === "v1")?.clips;
+    expect(clips?.find((clip) => clip.id === firstId)?.startTime).toBe(4);
+    expect(clips?.find((clip) => clip.id === secondId)?.startTime).toBe(8);
+
+    const ripple = await facade["edit.apply"]({
+      ops: [{ op: "clip.rippleDelete", clipId: firstId }],
+    });
+    expect(ripple.ok).toBe(true);
+
+    timeline = await facade["timeline.get"]();
+    expect(timeline.ok).toBe(true);
+    if (!timeline.ok) return;
+    clips = timeline.value.tracks.find((track) => track.id === "v1")?.clips;
+    expect(clips?.some((clip) => clip.id === firstId)).toBe(false);
+    expect(clips?.find((clip) => clip.id === secondId)?.startTime).toBe(4);
+  });
+
+  it("adds, updates, reads and removes a renderer-compatible clip transition", async () => {
+    const duplicated = await facade["edit.apply"]({
+      ops: [{ op: "clip.duplicate", clipId: "c1" }],
+    });
+    expect(duplicated.ok).toBe(true);
+    if (!duplicated.ok) return;
+    const incomingId = duplicated.value.applied[0]!.createdIds[0]!;
+
+    const added = await facade["edit.apply"]({
+      ops: [{
+        op: "transition.add",
+        clipAId: "c1",
+        clipBId: incomingId,
+        type: "crossfade",
+        duration: 0.5,
+      }],
+    });
+    expect(added.ok).toBe(true);
+    if (!added.ok) return;
+    expect(added.value.applied[0]?.createdIds).toHaveLength(1);
+    const transitionId = added.value.applied[0]!.createdIds[0]!;
+
+    const updated = await facade["edit.apply"]({
+      ops: [{
+        op: "transition.update",
+        transitionId,
+        type: "dipToBlack",
+        duration: 0.75,
+      }],
+    });
+    expect(updated.ok).toBe(true);
+
+    let timeline = await facade["timeline.get"]();
+    expect(timeline.ok).toBe(true);
+    if (!timeline.ok) return;
+    expect(timeline.value.tracks.find((track) => track.id === "v1")?.transitions)
+      .toContainEqual({
+        id: transitionId,
+        clipAId: "c1",
+        clipBId: incomingId,
+        edge: null,
+        type: "dipToBlack",
+        duration: 0.75,
+      });
+
+    const removed = await facade["edit.apply"]({
+      ops: [{ op: "transition.remove", transitionId }],
+    });
+    expect(removed.ok).toBe(true);
+    timeline = await facade["timeline.get"]();
+    expect(timeline.ok).toBe(true);
+    if (!timeline.ok) return;
+    expect(timeline.value.tracks.find((track) => track.id === "v1")?.transitions)
+      .toEqual([]);
+  });
+
   it("rejects unsafe bounds and missing targets without changing the project", async () => {
     const before = await facade["project.get_state"]();
     expect(before.ok).toBe(true);
@@ -134,6 +282,9 @@ describe("finishing edit tools", () => {
     const cases = [
       ["split boundary", [{ op: "clip.split", clipId: "c1", time: 0 }]],
       ["speed below minimum", [{ op: "clip.setSpeed", clipId: "c1", speed: 0.01 }]],
+      ["empty transform", [{ op: "clip.setTransform", clipId: "c1", transform: {} }]],
+      ["crop outside source", [{ op: "clip.setTransform", clipId: "c1", transform: { crop: { x: 0.5, y: 0, width: 0.75, height: 1 } } }]],
+      ["audio-track transform", [{ op: "clip.setTransform", clipId: "a-clip", transform: { opacity: 0.5 } }]],
       ["fade longer than clip", [{ op: "clip.setFade", clipId: "a-clip", fadeIn: 5 }]],
       ["missing move target", [{ op: "clip.move", clipId: "c1", startTime: 1, trackId: "missing" }]],
     ] as const;

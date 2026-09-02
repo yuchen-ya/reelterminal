@@ -129,6 +129,7 @@ class FakeLiveStore implements LiveProjectStore {
       tracks: [] as string[],
       clips: [] as string[],
       textClips: [] as string[],
+      transitions: [] as string[],
     };
     const executor = new ActionExecutor(new ActionHistory());
     for (const action of actions) {
@@ -146,6 +147,7 @@ class FakeLiveStore implements LiveProjectStore {
       createdIds.tracks.push(...actionCreated.tracks);
       createdIds.clips.push(...actionCreated.clips);
       createdIds.textClips.push(...actionCreated.textClips);
+      createdIds.transitions.push(...actionCreated.transitions);
     }
     this.project = draft;
     this.revision += 1;
@@ -548,12 +550,24 @@ describe("live edit.apply", () => {
     const finished = await facade["edit.apply"]({
       ops: [
         { op: "clip.setSpeed", clipId: rightClipId, speed: 2 },
+        { op: "clip.setReverse", clipId: rightClipId, reversed: true },
+        {
+          op: "clip.setTransform",
+          clipId,
+          transform: {
+            position: { x: 80, y: -20 },
+            scale: { x: 0.75, y: 0.75 },
+            crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
+          },
+        },
         { op: "clip.setFade", clipId, fadeIn: 0.2, fadeOut: 0.4 },
       ],
     });
     expect(finished.ok).toBe(true);
     expect(store.batches.at(-1)?.actions.map((action) => action.type)).toEqual([
       "clip/setSpeed",
+      "clip/setReverse",
+      "transform/update",
       "audio/setFade",
     ]);
     const clips = store.project.timeline.tracks[0]!.clips;
@@ -561,14 +575,45 @@ describe("live edit.apply", () => {
       startTime: 2,
       duration: 1.5,
       fade: { fadeIn: 0.2, fadeOut: 0.4 },
+      transform: {
+        position: { x: 80, y: -20 },
+        scale: { x: 0.75, y: 0.75 },
+        crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
+      },
     });
     expect(clips.find((clip) => clip.id === rightClipId)).toMatchObject({
       startTime: 3.5,
       duration: 1.25,
       speed: 2,
+      reversed: true,
     });
 
-    const ramped = clips.find((clip) => clip.id === rightClipId) as unknown as {
+    const duplicated = await facade["edit.apply"]({
+      ops: [{ op: "clip.duplicate", clipId }],
+    });
+    expect(duplicated.ok).toBe(true);
+    if (!duplicated.ok) return;
+    expect(duplicated.value.applied[0]?.op).toBe("clip.duplicate");
+    expect(duplicated.value.applied[0]?.createdIds).toHaveLength(1);
+    const duplicateId = duplicated.value.applied[0]!.createdIds[0]!;
+
+    const transitioned = await facade["edit.apply"]({
+      ops: [{
+        op: "transition.add",
+        clipAId: rightClipId,
+        clipBId: duplicateId,
+        type: "crossfade",
+        duration: 0.5,
+      }],
+    });
+    expect(transitioned.ok).toBe(true);
+    if (!transitioned.ok) return;
+    expect(transitioned.value.applied[0]?.op).toBe("transition.add");
+    expect(transitioned.value.applied[0]?.createdIds).toHaveLength(1);
+
+    const ramped = store.project.timeline.tracks
+      .flatMap((track) => track.clips)
+      .find((clip) => clip.id === rightClipId) as unknown as {
       speedKeyframes: Array<{ id: string; time: number; speed: number; easing: "linear" }>;
     };
     ramped.speedKeyframes = [

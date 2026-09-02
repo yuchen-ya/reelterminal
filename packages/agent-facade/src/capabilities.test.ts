@@ -65,13 +65,20 @@ describe("capabilities.get / session.describe", () => {
       "clip.move",
       "clip.trim",
       "clip.split",
+      "clip.duplicate",
+      "clip.rippleDelete",
       "text.create",
       "text.update",
       "text.delete",
       "clip.setSpeed",
+      "clip.setReverse",
+      "clip.setTransform",
       "clip.setVolume",
       "clip.setFade",
       "clip.remove",
+      "transition.add",
+      "transition.update",
+      "transition.remove",
     ]);
     expect(res.value.editOps).toEqual([...EDIT_OP_TYPES]);
     expect(res.value.stateModel).toEqual({

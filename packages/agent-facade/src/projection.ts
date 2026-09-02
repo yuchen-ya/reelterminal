@@ -59,6 +59,23 @@ export function timelineStateView(project: Project, revision: number): TimelineS
           fadeIn: clip.fade?.fadeIn ?? 0,
           fadeOut: clip.fade?.fadeOut ?? 0,
         },
+        transform: {
+          position: { ...clip.transform.position },
+          scale: { ...clip.transform.scale },
+          rotation: clip.transform.rotation,
+          anchor: { ...clip.transform.anchor },
+          opacity: clip.transform.opacity,
+          fitMode: clip.transform.fitMode ?? "contain",
+          crop: clip.transform.crop ? { ...clip.transform.crop } : null,
+        },
+      })),
+      transitions: (track.transitions ?? []).map((transition) => ({
+        id: transition.id,
+        clipAId: transition.clipAId,
+        clipBId: transition.clipBId ?? null,
+        edge: transition.edge ?? null,
+        type: transition.type,
+        duration: transition.duration,
       })),
     })),
     textOverlays: (project.textClips ?? []).map((clip) => ({

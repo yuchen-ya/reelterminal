@@ -242,13 +242,65 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: true,
     },
     {
+      name: "valid clip.duplicate with automatic placement",
+      params: { ops: [{ op: "clip.duplicate", clipId: "c1" }] },
+      expectValid: true,
+    },
+    {
+      name: "valid clip.rippleDelete",
+      params: { ops: [{ op: "clip.rippleDelete", clipId: "c1" }] },
+      expectValid: true,
+    },
+    {
       name: "valid clip.setSpeed at the ceiling",
       params: { ops: [{ op: "clip.setSpeed", clipId: "c1", speed: 20 }] },
       expectValid: true,
     },
     {
+      name: "valid clip.setReverse",
+      params: { ops: [{ op: "clip.setReverse", clipId: "c1", reversed: true }] },
+      expectValid: true,
+    },
+    {
+      name: "valid clip.setTransform composition patch",
+      params: {
+        ops: [{
+          op: "clip.setTransform",
+          clipId: "c1",
+          transform: {
+            position: { x: 120, y: -40 },
+            scale: { x: 0.75, y: 0.75 },
+            rotation: 12,
+            opacity: 0.8,
+            fitMode: "cover",
+            crop: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
+          },
+        }],
+      },
+      expectValid: true,
+    },
+    {
       name: "valid clip.setFade with both edges",
       params: { ops: [{ op: "clip.setFade", clipId: "c1", fadeIn: 0.25, fadeOut: 0.5 }] },
+      expectValid: true,
+    },
+    {
+      name: "valid transition.add",
+      params: {
+        ops: [{ op: "transition.add", clipAId: "c1", clipBId: "c2", type: "crossfade", duration: 0.5 }],
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid transition.update",
+      params: {
+        ops: [{ op: "transition.update", transitionId: "tr1", type: "dipToBlack", duration: 0.3 }],
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid transition.remove",
+      params: { ops: [{ op: "transition.remove", transitionId: "tr1" }] },
       expectValid: true,
     },
     {
@@ -321,6 +373,52 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       name: "clip.setSpeed rejects values the core would clamp",
       params: { ops: [{ op: "clip.setSpeed", clipId: "c1", speed: 20.1 }] },
       expectValid: false,
+    },
+    {
+      name: "transition.add rejects an unknown type",
+      params: {
+        ops: [{ op: "transition.add", clipAId: "c1", clipBId: "c2", type: "magic", duration: 0.5 }],
+      },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: transition.update needs a change",
+      params: { ops: [{ op: "transition.update", transitionId: "tr1" }] },
+      expectValid: false,
+      schemaValid: true,
+    },
+    {
+      name: "clip.setTransform rejects an empty patch",
+      params: { ops: [{ op: "clip.setTransform", clipId: "c1", transform: {} }] },
+      expectValid: false,
+      schemaValid: true,
+    },
+    {
+      name: "clip.setTransform rejects crop outside the source",
+      params: {
+        ops: [{
+          op: "clip.setTransform",
+          clipId: "c1",
+          transform: { crop: { x: 0.5, y: 0, width: 0.75, height: 1 } },
+        }],
+      },
+      expectValid: false,
+      schemaValid: true,
+    },
+    {
+      name: "clip.setTransform rejects crop and clearCrop together",
+      params: {
+        ops: [{
+          op: "clip.setTransform",
+          clipId: "c1",
+          transform: {
+            crop: { x: 0, y: 0, width: 1, height: 1 },
+            clearCrop: true,
+          },
+        }],
+      },
+      expectValid: false,
+      schemaValid: true,
     },
     {
       name: "schema-valid but facade-rejected: clip.setFade needs at least one edge",

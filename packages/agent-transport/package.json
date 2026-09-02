@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "tsup && node scripts/link-runtime-deps.mjs",
+    "build": "node scripts/unlink-runtime-deps.mjs && tsup && node scripts/link-runtime-deps.mjs",
     "test": "vitest",
     "test:run": "vitest run",
     "typecheck": "tsc --noEmit"

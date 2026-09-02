@@ -17,10 +17,14 @@
 import { EDIT_OP_TYPES } from "./types";
 import {
   CLIP_ADD_SCHEMA,
+  CLIP_DUPLICATE_SCHEMA,
   CLIP_MOVE_SCHEMA,
   CLIP_REMOVE_SCHEMA,
+  CLIP_RIPPLE_DELETE_SCHEMA,
   CLIP_SET_FADE_SCHEMA,
+  CLIP_SET_REVERSE_SCHEMA,
   CLIP_SET_SPEED_SCHEMA,
+  CLIP_SET_TRANSFORM_SCHEMA,
   CLIP_SET_VOLUME_SCHEMA,
   CLIP_SPLIT_SCHEMA,
   CLIP_TRIM_SCHEMA,
@@ -28,6 +32,9 @@ import {
   TEXT_DELETE_SCHEMA,
   TEXT_UPDATE_SCHEMA,
   TRACK_ADD_SCHEMA,
+  TRANSITION_ADD_SCHEMA,
+  TRANSITION_REMOVE_SCHEMA,
+  TRANSITION_UPDATE_SCHEMA,
 } from "./ops";
 import {
   isFiniteNumber,
@@ -179,13 +186,20 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "clip.move": CLIP_MOVE_SCHEMA,
   "clip.trim": CLIP_TRIM_SCHEMA,
   "clip.split": CLIP_SPLIT_SCHEMA,
+  "clip.duplicate": CLIP_DUPLICATE_SCHEMA,
+  "clip.rippleDelete": CLIP_RIPPLE_DELETE_SCHEMA,
   "text.create": TEXT_CREATE_SCHEMA,
   "text.update": TEXT_UPDATE_SCHEMA,
   "text.delete": TEXT_DELETE_SCHEMA,
   "clip.setSpeed": CLIP_SET_SPEED_SCHEMA,
+  "clip.setReverse": CLIP_SET_REVERSE_SCHEMA,
+  "clip.setTransform": CLIP_SET_TRANSFORM_SCHEMA,
   "clip.setVolume": CLIP_SET_VOLUME_SCHEMA,
   "clip.setFade": CLIP_SET_FADE_SCHEMA,
   "clip.remove": CLIP_REMOVE_SCHEMA,
+  "transition.add": TRANSITION_ADD_SCHEMA,
+  "transition.update": TRANSITION_UPDATE_SCHEMA,
+  "transition.remove": TRANSITION_REMOVE_SCHEMA,
 };
 
 export const EDIT_APPLY_SCHEMA: ObjectSchema = {
