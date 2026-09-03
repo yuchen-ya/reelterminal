@@ -37,6 +37,7 @@ import {
   EMITTED_VERB_JSON_SCHEMAS,
   EMITTED_VERB_OUTPUT_JSON_SCHEMAS,
   FACADE_VERBS,
+  LIVE_VERB_INPUT_SCHEMA_OVERRIDES,
   type FacadeResult,
   type FacadeVerb,
   type JsonSchemaObject,
@@ -220,7 +221,11 @@ function buildLiveTools(): {
   const tools: LiveTool[] = [];
   const toolToVerb = new Map<string, FacadeVerb>();
   for (const verb of FACADE_VERBS) {
-    const inputSchema = EMITTED_VERB_JSON_SCHEMAS[verb];
+    // Live-honest input surface: live project.save takes no params (the GUI
+    // owns the save target) and must not advertise the headless checkpoint
+    // schema; every other verb serves the shared facade emission verbatim.
+    const inputSchema =
+      LIVE_VERB_INPUT_SCHEMA_OVERRIDES[verb] ?? EMITTED_VERB_JSON_SCHEMAS[verb];
     if (inputSchema === undefined) {
       throw new Error(`live endpoint: no emitted JSON schema for verb "${verb}"`);
     }

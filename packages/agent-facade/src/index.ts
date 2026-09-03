@@ -256,6 +256,7 @@ export type { CheckpointDocument, CheckpointMediaRef } from "./checkpoint";
 export {
   emitObjectSchema,
   EMITTED_VERB_JSON_SCHEMAS,
+  LIVE_VERB_INPUT_SCHEMA_OVERRIDES,
 } from "./jsonschema";
 export type { JsonSchemaNode, JsonSchemaObject } from "./jsonschema";
 export { EMITTED_VERB_OUTPUT_JSON_SCHEMAS } from "./output-schemas";

@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   emitObjectSchema,
   EMITTED_VERB_JSON_SCHEMAS,
+  LIVE_VERB_INPUT_SCHEMA_OVERRIDES,
 } from "./jsonschema";
 import { EDIT_OP_SCHEMAS } from "./verb-schemas";
 import { EDIT_OP_TYPES, FACADE_VERBS } from "./types";
@@ -333,6 +334,20 @@ describe("emitted schema per-verb structure", () => {
         properties: {},
       });
     }
+  });
+
+  it("live input-schema overrides: only project.save, as a closed empty object", () => {
+    // Live project.save takes no params (the GUI owns the save target), so
+    // the live tools/list must not advertise the headless checkpoint schema
+    // with required `path`. Every other verb serves the shared emission.
+    expect(Object.keys(LIVE_VERB_INPUT_SCHEMA_OVERRIDES).sort()).toEqual([
+      "project.save",
+    ]);
+    expect(LIVE_VERB_INPUT_SCHEMA_OVERRIDES["project.save"]).toEqual({
+      type: "object",
+      additionalProperties: false,
+      properties: {},
+    });
   });
 });
 

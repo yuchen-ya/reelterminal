@@ -177,9 +177,19 @@ describe("live endpoint MCP protocol", () => {
     expect(tools).toHaveLength(17);
     expect(tools.map((t) => t.name)).toEqual(FACADE_VERBS.map(toolNameForVerb));
     expect(tools.some((t) => t.name === "editor_get_context")).toBe(true);
-    // The inputSchema is the facade emission, verbatim (no copy drift).
+    // The inputSchema is the facade emission, verbatim (no copy drift) —
+    // except live-honest overrides: live project.save takes no params (the
+    // GUI owns the save target), so the checkpoint schema with required
+    // `path` must NOT be advertised.
     const editApply = tools.find((t) => t.name === "edit_apply");
     expect(editApply?.inputSchema).toEqual(EMITTED_VERB_JSON_SCHEMAS["edit.apply"]);
+    const projectSave = tools.find((t) => t.name === "project_save");
+    expect(projectSave?.inputSchema).toEqual({
+      type: "object",
+      additionalProperties: false,
+      properties: {},
+    });
+    expect(projectSave?.inputSchema).not.toEqual(EMITTED_VERB_JSON_SCHEMAS["project.save"]);
     // tools/list is answered in main — no facade call happened for it.
     expect(calls).toHaveLength(0);
   });

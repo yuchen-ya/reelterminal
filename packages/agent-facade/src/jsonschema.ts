@@ -114,3 +114,24 @@ export const EMITTED_VERB_JSON_SCHEMAS: Readonly<
 > = Object.fromEntries(
   FACADE_VERBS.map((verb) => [verb, emitVerbSchema(verb)]),
 ) as Readonly<Record<FacadeVerb, JsonSchemaObject>>;
+
+/**
+ * Live-mode input-schema overrides (ADR 0004). The live facade implements the
+ * same 17 verbs, but live `project.save` is NOT a checkpoint write: it takes
+ * no params (the GUI owns the save target) and flushes the GUI's autosave
+ * snapshot, reporting only the revision. Advertising the headless checkpoint
+ * schema (`path` required) on the live `tools/list` would instruct
+ * integrators to pass a param the live runtime must reject — a contract
+ * self-contradiction. Live endpoints assign
+ * `LIVE_VERB_INPUT_SCHEMA_OVERRIDES[verb] ?? EMITTED_VERB_JSON_SCHEMAS[verb]`.
+ * Everything else stays verbatim across both modes.
+ */
+export const LIVE_VERB_INPUT_SCHEMA_OVERRIDES: Readonly<
+  Partial<Record<FacadeVerb, JsonSchemaObject>>
+> = {
+  "project.save": {
+    type: "object",
+    additionalProperties: false,
+    properties: {},
+  },
+};

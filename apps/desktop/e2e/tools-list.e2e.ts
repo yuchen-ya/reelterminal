@@ -1,5 +1,5 @@
 /**
- * Legacy safety (D) — the live endpoint exposes EXACTLY the 16 facade tools
+ * Legacy safety (D) — the live endpoint exposes EXACTLY the 17 facade tools
  * (ADR 0004 Decisions 4 + 9): no internal-registry tool (e.g. the legacy
  * desktop MCP's execute_action) leaks onto the external surface, and an
  * unknown tool name is a JSON-RPC protocol error, never a domain result.
@@ -20,6 +20,7 @@ const EXPECTED_TOOLS = [
   "media_import",
   "timeline_get",
   "editor_get_context",
+  "editor_control",
   "edit_apply",
   "preview_render_frame",
   "visual_inspect",
@@ -29,7 +30,7 @@ const EXPECTED_TOOLS = [
   "verify_artifact",
 ] as const;
 
-describe("legacy safety: tools/list is exactly the 16 facade tools", () => {
+describe("legacy safety: tools/list is exactly the 17 facade tools", () => {
   let launched: LaunchedApp;
   let agent: ExternalAgent;
   let evidence: EvidenceRecord;
@@ -49,7 +50,7 @@ describe("legacy safety: tools/list is exactly the 16 facade tools", () => {
     await launched?.close();
   });
 
-  test("tools/list returns exactly the 16 facade tools with schemas", async () => {
+  test("tools/list returns exactly the 17 facade tools with schemas", async () => {
     const { tools } = await agent.client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([...EXPECTED_TOOLS].sort());
@@ -59,6 +60,12 @@ describe("legacy safety: tools/list is exactly the 16 facade tools", () => {
       expect(tool.inputSchema?.type).toBe("object");
       expect(typeof tool.description).toBe("string");
     }
+    // Live-honest contract: live project.save takes no params (the GUI owns
+    // the save target) and must not advertise the headless `path` argument.
+    const projectSave = tools.find((t) => t.name === "project_save");
+    expect(
+      (projectSave?.inputSchema as { required?: string[] } | undefined)?.required ?? [],
+    ).not.toContain("path");
     evidence.record("tools_list", {
       count: names.length,
       names,
