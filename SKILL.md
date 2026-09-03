@@ -86,6 +86,12 @@ This connector exposes the same open GUI project through exactly **17 tools**:
 `visual_inspect` ·
 `export_start` · `job_status` · `job_cancel` · `verify_artifact`.
 
+The facade verbs are dot-named (`session.describe`, `editor.control`); on the
+MCP wire each dot becomes an underscore (`session.describe` →
+`session_describe`, `editor.control` → `editor_control`). `session_describe`'s
+verb list, documentation, and error messages use the dotted form; `tools/call`
+takes the underscored tool name.
+
 The live facade reports GUI-owned project lifecycle operations honestly as
 unavailable (`project_create` and `project_open`). `media_import` accepts an
 absolute local video/audio path under a root reported by
@@ -248,12 +254,12 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `editor_get_context` | Editor context (selection, playhead, canvas point); headless-honest — see below |
 | `editor_control` | Ephemeral live playback and selection/reveal control; never changes project revision or undo history |
 | `edit_apply` | Closed op set; atomic; `expectedRevision` (+`expectedContextRevision` live) + `idempotencyKey` |
-| `preview_render_frame` | Replay/ledger only; artifact to `artifactRoot` |
-| `visual_inspect` | Sample 1–12 real Chromium frames for a clip or explicit time range; return PNG artifacts and a contact sheet when supported |
+| `preview_render_frame` | Replay/ledger only; artifact to `artifactRoot`; raster defaults to project size, explicit even `width`/`height` scale-render the same frame |
+| `visual_inspect` | Sample 1–12 real Chromium frames for a clip or explicit time range; return PNG artifacts and a contact sheet when supported; default raster 640 px wide, aspect-preserved (bounds in facade README) |
 | `export_start` | Snapshot job; returns `jobId` immediately |
 | `job_status` | Poll to terminal |
 | `job_cancel` | Cooperative; idempotent on terminal jobs |
-| `verify_artifact` | ffprobe/pixel checks as data |
+| `verify_artifact` | ffprobe/pixel checks as data; container duration may exceed the video stream by up to ~0.1 s from AAC packaging (expected — see facade README) |
 
 Every result is one JSON envelope: `{ok:true, value}` or
 `{ok:false, error:{code, message, details}}` with `isError:true` — match on
@@ -312,7 +318,10 @@ Twenty-one ops, one atomic batch each call (the exact fields and bounds live in
   machine-readable `CONFLICT`); `media.remove` — remove imported media only
   when no timeline clip references it (otherwise `CONFLICT` lists the clip
   ids); `clip.add` — place imported
-  media on a track; `clip.move` — move it to an absolute timeline
+  media on a track (omit `clipId` in live mode: the canonical store mints
+  clip ids and explicit ids are rejected `INVALID_PARAMS` — read
+  `applied[i].createdIds` instead; see the facade README's live-mode
+  differences); `clip.move` — move it to an absolute timeline
   `startTime` and optionally another track; `clip.trim` — move a clip's `inPoint`/`outPoint` (at
   least one, `outPoint` must exceed `inPoint`).
 - `clip.split` — cut a clip at an absolute timeline time strictly inside

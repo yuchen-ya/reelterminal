@@ -37,14 +37,18 @@ for concrete external integrations.
 
 - The browser/desktop editor and the canonical ReelTerminal `Project` model share
   one editing world.
-- A token-authenticated loopback MCP endpoint exposes exactly **16 live-facade
+- A token-authenticated loopback MCP endpoint exposes exactly **17 live-facade
   tools**:
 
   `session.describe` · `capabilities.get` · `project.create` · `project.open` ·
   `project.save` · `project.get_state` · `media.import` · `timeline.get` ·
-  `editor.get_context` · `edit.apply` · `preview.render_frame` ·
-  `visual_inspect` · `export.start` · `job.status` · `job.cancel` ·
-  `verify.artifact`.
+  `editor.get_context` · `editor.control` · `edit.apply` ·
+  `preview.render_frame` · `visual.inspect` · `export.start` · `job.status` ·
+  `job.cancel` · `verify.artifact`.
+
+  The facade verbs above use dotted names; on the MCP wire each dot becomes an
+  underscore (`session.describe` → `session_describe`, `editor.control` →
+  `editor_control`). `session_describe` reports the same 17 verbs.
 
   In live mode, project creation/open remain GUI-owned. An Agent can import
   local video and audio from the roots reported by `capabilities.get`; the

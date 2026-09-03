@@ -72,7 +72,11 @@ PNG artifact with `timeSec`, a deterministic label, and the source revision
 (the default runtime provider is Chromium). Runtimes with contact-sheet support also return one real PNG contact-sheet
 artifact; otherwise `limitations` explains why individual frame artifacts are
 the honest fallback. Raster cells are bounded to 1024×1024, with bounded
-pixel and PNG-byte budgets.
+pixel and PNG-byte budgets. The raster defaults to 640 px wide (or the
+project width when smaller) with the project aspect preserved, even-rounded;
+explicit `width`/`height` must be even integers in [2, 1024]. Frames, cells,
+and `preview.render_frame` output all share one compositor and one coordinate
+system: layers keep their project-relative geometry at any raster size.
 
 All verbs return `FacadeResult<T>` (`{ ok: true, value } | { ok: false,
 error }`) with typed error codes (`INVALID_PARAMS`, `NOT_FOUND`, `CONFLICT`,
@@ -117,6 +121,30 @@ no-op with `ok: true`.
   preflight passed; the verb itself re-checks and fails `UNSUPPORTED`
   otherwise.
 
+## Live-mode contract differences (ADR 0004)
+
+Live sessions (`createLiveFacade`) implement the same 17 verbs against the
+open GUI project. Where a verb's behavior must differ by mode, the contract
+states it up front instead of letting integrators discover it at runtime:
+
+- `project.create` / `project.open` are unavailable live (the GUI owns the
+  project lifecycle) and fail honestly.
+- `project.save` takes NO params live — it flushes the GUI's
+  autosave/recovery snapshot and reports the current revision; it does not
+  write a `.openreel` checkpoint. Live transports advertise a closed empty
+  param object for it (`LIVE_VERB_INPUT_SCHEMA_OVERRIDES`); the headless
+  `{path, expectedRevision?, overwrite?}` checkpoint schema is headless-only.
+- `clip.add` with an explicit `clipId` is honored headless (post-execution
+  id override inside the draft transaction) but rejected `INVALID_PARAMS`
+  live: the canonical store mints clip ids and there is no draft to rename
+  in. Omit `clipId` live and read `applied[i].createdIds` instead.
+- `verify.artifact` compare `referencePath` resolves inside `artifactRoot`
+  or `mediaRoots` headless; a live session has no `mediaRoots`, so live
+  references must live inside `artifactRoot`.
+- Live `edit.apply` guards an omitted `expectedRevision` with the revision
+  of the snapshot the ops were translated against (unconditional CAS), so a
+  human edit landing between read and apply fails `CONFLICT`.
+
 ## Slice 1b: preview / export / verify
 
 The facade stays pure Node; pixel/export/verify backing arrives through the
@@ -127,7 +155,12 @@ Chromium + system ffmpeg). Semantics owned by the facade itself:
 - `preview.render_frame({timeSec, width?, height?, expectedRevision?,
   idempotencyKey?})` renders one PNG at the current revision into
   `artifactRoot` and returns `{revision, artifact:{kind, format, path,
-  sizeBytes, sha256, sourceRevision}, ...}`.
+  sizeBytes, sha256, sourceRevision}, ...}`. The raster defaults to the
+  project's own `settings.width × settings.height`; explicit `width`/`height`
+  must be even integers in [2, 8192]. The same compositor renders exports,
+  previews, and `visual.inspect` frames, so a smaller raster is a true
+  scaled render of the same frame (layers keep project-relative geometry),
+  not a re-layout.
 - `export.start({settings?, expectedRevision?, idempotencyKey?})` deep-clones
   the project synchronously (the snapshot's revision is `sourceRevision`),
   registers a job, and returns `{jobId, state:"queued"}` immediately. The
@@ -147,6 +180,12 @@ Chromium + system ffmpeg). Semantics owned by the facade itself:
   frame against a reference image/video, with containment enforced
   (`path` inside `artifactRoot`; `referencePath` inside `artifactRoot` or
   `mediaRoots`). Failed expectations are data (`checks[].pass`), not errors.
+  Duration expectations should tolerate AAC packaging: the audio stream is
+  packed into 1024-sample AAC frames (~21 ms at 48 kHz) plus encoder
+  priming, so the MP4 container duration can exceed the video stream by up
+  to ~0.1 s (a 30.00 s / 900-frame export reports ≈30.08 s). That is
+  expected muxing behavior, not a render defect — assert on
+  `probe.frameCount` and a duration tolerance, as the E2E does.
 - Output containment is enforced on the WRITE side too: `renders/`,
   `exports/` and per-job directories must be real directories (never
   symlinks/junctions) inside `artifactRoot` before a provider may write, and
