@@ -33,13 +33,15 @@ Options (serve/run):
   --media-root <abs>      Repeatable. Roots media.import may read from.
   --artifact-root <abs>   Exactly one. Root for preview/visual/export/verify artifacts.
   --project-root <abs>    Repeatable. Roots for project.open/project.save checkpoints.
+  --delivery-root <abs>   Repeatable. Roots export.start destinationPath may deliver to (<root>/jobs/<slug>/output/).
   --log-level <level>     error | info | debug (stderr JSON logs; default info)
 
 Environment (flags beat env):
-  OPENREEL_AVE_MEDIA_ROOTS     path-separator list
-  OPENREEL_AVE_ARTIFACT_ROOT   single path
-  OPENREEL_AVE_PROJECT_ROOTS   path-separator list
-  OPENREEL_TRANSPORT_LOG       error | info | debug
+  OPENREEL_AVE_MEDIA_ROOTS      path-separator list
+  OPENREEL_AVE_ARTIFACT_ROOT    single path
+  OPENREEL_AVE_PROJECT_ROOTS    path-separator list
+  OPENREEL_AVE_DELIVERY_ROOTS   path-separator list
+  OPENREEL_TRANSPORT_LOG        error | info | debug
 
 Every root and path input must be ABSOLUTE (relative paths and '~' are
 refused, never resolved against the cwd). Missing/relative/non-directory

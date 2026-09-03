@@ -67,7 +67,10 @@ selection/reveal controls; live sessions (createLiveFacade) implement the same
 17-verb contract over a `LiveProjectStore` seam with no project copy.
 
 Visual slice: `visual.inspect` — a read-only sample of 1–12 frames selected
-by `clipId` or an explicit `timeRange`. Each frame is a real provider-rendered
+by exactly one of `clipId` (a timeline clip id from `timeline.get`) or an
+explicit `timeRange` of the shape `{"startSec": <number ≥ 0>, "endSec":
+<number > startSec>}` in timeline seconds. Each frame is a real
+provider-rendered
 PNG artifact with `timeSec`, a deterministic label, and the source revision
 (the default runtime provider is Chromium). Runtimes with contact-sheet support also return one real PNG contact-sheet
 artifact; otherwise `limitations` explains why individual frame artifacts are
@@ -161,11 +164,25 @@ Chromium + system ffmpeg). Semantics owned by the facade itself:
   previews, and `visual.inspect` frames, so a smaller raster is a true
   scaled render of the same frame (layers keep project-relative geometry),
   not a re-layout.
-- `export.start({settings?, expectedRevision?, idempotencyKey?})` deep-clones
+- `export.start({settings?, destinationPath?, expectedRevision?,
+  idempotencyKey?})` deep-clones
   the project synchronously (the snapshot's revision is `sourceRevision`),
   registers a job, and returns `{jobId, state:"queued"}` immediately. The
   project stays editable; the job never sees later edits. Same
   idempotencyKey+payload replays the same `jobId`.
+- `destinationPath` (optional) delivers a COPY of the verified artifact into
+  the Agent workspace: it must be an absolute, not-yet-existing `.mp4` path
+  directly inside `<deliveryRoot>/jobs/<slug>/output/` (see
+  `capabilities_get.mediaImport.workspaceLayout` and
+  `capabilities_get.export.details.deliveryRoots`). Validation runs before
+  the job exists (bad paths fail `INVALID_PARAMS`; an existing destination
+  fails `CONFLICT` — delivery never overwrites), and the copy itself is
+  atomic-excl. `job.status` reports the outcome as `deliveredTo` /
+  `deliveryError`; a delivery failure never downgrades the done job or hides
+  its artifact. Delivery roots are session config (`deliveryRoots`), wired
+  headless via `OPENREEL_AVE_DELIVERY_ROOTS` / `--delivery-root` and in the
+  desktop live host from the Agent workspace root; with none configured,
+  `destinationPath` fails fast with the reason.
 - The stdio MCP transports (including the desktop `openreel-live-mcp`
   connector) accept `_meta.progressToken` on `export.start` and emit opt-in
   `notifications/progress` updates while the job is running. Direct callers of

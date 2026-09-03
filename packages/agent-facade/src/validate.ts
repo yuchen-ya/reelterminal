@@ -144,10 +144,15 @@ export function validateObject<T>(
   const allowed = new Set(Object.keys(schema));
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) {
-      throw invalidParams(`${label}: unknown field "${key}"`, {
-        field: key,
-        allowedFields: [...allowed],
-      });
+      // The allowed list goes IN the message: agents typically read the
+      // message string first and details only second.
+      throw invalidParams(
+        `${label}: unknown field "${key}" (allowed fields: ${[...allowed].join(", ")})`,
+        {
+          field: key,
+          allowedFields: [...allowed],
+        },
+      );
     }
   }
   const out: Record<string, unknown> = {};

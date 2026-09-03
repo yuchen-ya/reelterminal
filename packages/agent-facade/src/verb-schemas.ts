@@ -385,7 +385,8 @@ export const VISUAL_INSPECT_SCHEMA: ObjectSchema = {
   },
   timeRange: {
     check: isPlainObject,
-    describe: "an object",
+    describe:
+      'an object {"startSec": <number ≥ 0>, "endSec": <number > startSec>} in timeline seconds',
     emits: { kind: "object", schema: VISUAL_INSPECT_RANGE_SCHEMA },
   },
   sampleCount: {
@@ -453,6 +454,12 @@ export const EXPORT_START_SCHEMA: ObjectSchema = {
     check: isPlainObject,
     describe: "an object",
     emits: { kind: "object", schema: EXPORT_SETTINGS_SCHEMA },
+  },
+  destinationPath: {
+    check: isNonEmptyString,
+    describe:
+      'an absolute .mp4 path inside a job deliverables directory ("<deliveryRoot>/jobs/<slug>/output/<name>.mp4")',
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
   },
   expectedRevision: {
     check: isNonNegativeInteger,

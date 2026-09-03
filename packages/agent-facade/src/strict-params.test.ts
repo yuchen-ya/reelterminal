@@ -107,6 +107,11 @@ describe("strict params", () => {
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.error.code).toBe("INVALID_PARAMS");
+    // The message itself names the allowed fields (agents read the message
+    // first; details.allowedFields carries the same list as data).
+    expect(res.error.message).toContain("allowed fields:");
+    expect(res.error.message).toContain("path");
+    expect(res.error.details).toMatchObject({ field: "media_id" });
     await expectZeroSideEffects(0);
   });
 

@@ -255,7 +255,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `editor_control` | Ephemeral live playback and selection/reveal control; never changes project revision or undo history |
 | `edit_apply` | Closed op set; atomic; `expectedRevision` (+`expectedContextRevision` live) + `idempotencyKey` |
 | `preview_render_frame` | Replay/ledger only; artifact to `artifactRoot`; raster defaults to project size, explicit even `width`/`height` scale-render the same frame |
-| `visual_inspect` | Sample 1–12 real Chromium frames for a clip or explicit time range; return PNG artifacts and a contact sheet when supported; default raster 640 px wide, aspect-preserved (bounds in facade README) |
+| `visual_inspect` | Sample 1–12 real Chromium frames for a clip (`clipId`) or explicit time range (`timeRange: {startSec, endSec}`, exactly one of the two); return PNG artifacts and a contact sheet when supported; default raster 640 px wide, aspect-preserved (bounds in facade README) |
 | `export_start` | Snapshot job; returns `jobId` immediately |
 | `job_status` | Poll to terminal |
 | `job_cancel` | Cooperative; idempotent on terminal jobs |
@@ -384,7 +384,12 @@ the whole batch back; a deleted overlay or clip stays deleted after
 - **Exports are jobs** (so 60 s client tool timeouts stay manageable):
   `export_start {idempotencyKey}` ⇒ `{jobId, state:"queued"}` ⇒ poll
   `job_status` every 2–5 s until a terminal state (`done`/`error`/
-  `cancelled`) — then stop polling. In a `run` workflow the same wait is a
+  `cancelled`) — then stop polling. Optional `destinationPath`
+  (`<deliveryRoot>/jobs/<slug>/output/<name>.mp4`, see
+  `capabilities_get.export.details.deliveryRoots`) copies the verified
+  artifact straight into the Agent workspace's `output/` directory after
+  completion — never overwrites; `job_status` then reports
+  `deliveredTo`/`deliveryError`. In a `run` workflow the same wait is a
   bounded `await` step (`timeoutMs` required, ≤ 3 600 000; `pollMs`
   250–30 000). Never guess artifact paths — use the `artifact.path` the
   job reports. Stdio MCP transports (including the desktop

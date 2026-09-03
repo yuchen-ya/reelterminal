@@ -369,6 +369,7 @@ function liveFacade(
     mode: "observe" | "assist" | "autonomous";
     sessionId: string;
     mediaRoots: readonly string[];
+    deliveryRoots: readonly string[];
     renderProvider: RenderProvider;
     exportProvider: ExportProvider;
     store: LiveProjectStore;
@@ -381,6 +382,7 @@ function liveFacade(
     mode: opts?.mode ?? "assist",
     artifactRoot,
     ...(opts?.mediaRoots ? { mediaRoots: opts.mediaRoots } : {}),
+    ...(opts?.deliveryRoots ? { deliveryRoots: opts.deliveryRoots } : {}),
     ...(opts?.renderProvider ? { renderProvider: opts.renderProvider } : {}),
     ...(opts?.exportProvider ? { exportProvider: opts.exportProvider } : {}),
   });
@@ -1624,6 +1626,60 @@ describe("live preview/export on a store snapshot (Decision 10)", () => {
     expect(cancelled.value.cancelRequested).toBe(true);
     const after = await waitForJob(facade, hung.value.jobId);
     expect(after.state).toBe("cancelled");
+  });
+
+  it("export.start destinationPath delivers into the workspace output directory (live/headless parity)", async () => {
+    await seedTextProject();
+    const deliveryRoot = await mkdtemp(path.join(tmpdir(), "facade-live-delivery-"));
+    const outputDir = path.join(deliveryRoot, "jobs", "2026-09-03-demo", "output");
+    await mkdir(outputDir, { recursive: true });
+    try {
+      const stub = stubExportProvider();
+      const facade = liveFacade({
+        exportProvider: stub.provider,
+        deliveryRoots: [deliveryRoot],
+      });
+      const destination = path.join(outputDir, "promo.mp4");
+      const started = await facade["export.start"]({ destinationPath: destination });
+      expect(started.ok).toBe(true);
+      if (!started.ok) return;
+      await stub.awaitStart(started.value.jobId);
+      stub.settle(started.value.jobId, "done");
+
+      // Delivery is a post-done copy: poll job.status until it settles.
+      const deadline = Date.now() + 5000;
+      let view = await waitForJob(facade, started.value.jobId);
+      while (
+        view.deliveredTo === null &&
+        view.deliveryError === null &&
+        Date.now() < deadline
+      ) {
+        await new Promise((r) => setTimeout(r, 10));
+        view = await waitForJob(facade, started.value.jobId);
+      }
+      expect(view.state).toBe("done");
+      expect(view.deliveryError).toBeNull();
+      expect(view.deliveredTo).toContain(path.join("jobs", "2026-09-03-demo", "output", "promo.mp4"));
+
+      // Same rules as headless: a path outside jobs/<slug>/output fails fast.
+      const bad = await facade["export.start"]({
+        destinationPath: path.join(deliveryRoot, "elsewhere.mp4"),
+      });
+      expect(bad.ok).toBe(false);
+      if (!bad.ok) expect(bad.error.code).toBe("INVALID_PARAMS");
+      expect(stub.requests).toHaveLength(1); // no second provider call
+
+      // And without delivery roots the destination is refused with the reason.
+      const noRoots = liveFacade({ exportProvider: stubExportProvider().provider });
+      const refused = await noRoots["export.start"]({ destinationPath: destination });
+      expect(refused.ok).toBe(false);
+      if (!refused.ok) {
+        expect(refused.error.code).toBe("INVALID_PARAMS");
+        expect(refused.error.message).toContain("no delivery roots");
+      }
+    } finally {
+      await rm(deliveryRoot, { recursive: true, force: true });
+    }
   });
 
   it("dispose cancels live jobs and marks them cancelled", async () => {

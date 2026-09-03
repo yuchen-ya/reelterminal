@@ -62,6 +62,12 @@ export interface LiveSessionHostDeps {
   readonly artifactRoot: string;
   /** Absolute local roots from which the external Agent may import media. */
   readonly mediaRoots?: readonly string[];
+  /**
+   * Absolute roots under which export.start's destinationPath may deliver a
+   * verified artifact copy (`<deliveryRoot>/jobs/<slug>/output/`). The
+   * desktop host passes the Agent workspace root by default.
+   */
+  readonly deliveryRoots?: readonly string[];
   /** Wires the main↔renderer live-store bridge (Electron in prod, stub in tests). */
   readonly installStoreBridge: () => LiveStoreBridge;
   /** Chromium providers in prod; a stub in tests. */
@@ -174,6 +180,7 @@ export function createLiveSessionHost(
     const config: LiveFacadeConfig = {
       store: bridge.store,
       ...(deps.mediaRoots ? { mediaRoots: deps.mediaRoots } : {}),
+      ...(deps.deliveryRoots ? { deliveryRoots: deps.deliveryRoots } : {}),
       ...(providers.renderProvider
         ? { renderProvider: providers.renderProvider }
         : {}),

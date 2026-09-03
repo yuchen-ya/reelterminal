@@ -54,7 +54,10 @@ Reusable, user-approved assets such as logos, fonts, and brand audio may go in
 4. Use `preview_render_frame` and `visual_inspect`; place retained inspection
    evidence in `evidence/`.
 5. Export through ReelTerminal, wait for completion, run `verify_artifact`, and
-   only then copy or name the delivery in `output/`.
+   only then copy or name the delivery in `output/`. Alternatively pass
+   `export.start`'s `destinationPath` (`<recommendedRoot>/jobs/<slug>/output/<name>.mp4`)
+   to deliver the verified artifact copy directly — it never overwrites, and
+   `job_status` reports `deliveredTo`/`deliveryError`.
 6. A successful task ends with a concise `project/manifest.json` listing the
    final file, duration, dimensions, verification result, and source paths.
 7. Never commit job contents to Git. Never delete another job, `source/`,
@@ -72,6 +75,7 @@ same job:
 OPENREEL_AVE_MEDIA_ROOTS=<job>/source:<job>/generated
 OPENREEL_AVE_ARTIFACT_ROOT=<job>/work/artifacts
 OPENREEL_AVE_PROJECT_ROOTS=<job>/project
+OPENREEL_AVE_DELIVERY_ROOTS=<recommendedRoot>   # optional: enables export.start destinationPath
 ```
 
 Use the platform path delimiter (`:` on macOS/Linux, `;` on Windows). After a

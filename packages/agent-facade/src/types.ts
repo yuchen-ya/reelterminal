@@ -926,6 +926,15 @@ export interface ExportStartSettings {
 
 export interface ExportStartParams {
   readonly settings?: ExportStartSettings;
+  /**
+   * Optional deliverable copy target: an absolute .mp4 path inside
+   * `<deliveryRoot>/jobs/<slug>/output/` (docs/AGENT-WORKSPACE.md). The
+   * artifact is still produced and verified inside artifactRoot first; the
+   * finished file is then copied to this destination with no-overwrite
+   * semantics. Fails INVALID_PARAMS fast when no delivery root is
+   * configured or the path escapes the jobs output layout.
+   */
+  readonly destinationPath?: string;
   readonly expectedRevision?: number;
   readonly idempotencyKey?: string;
 }
@@ -971,6 +980,14 @@ export interface JobStatusView {
    */
   readonly artifact: ArtifactRef | null;
   readonly error: { readonly code: string; readonly message: string } | null;
+  /**
+   * export.start destinationPath outcome (both null when no destination was
+   * requested). On success `deliveredTo` is the absolute path the verified
+   * artifact was copied to; a delivery failure never hides the artifact —
+   * the job stays "done" and `deliveryError` carries the reason.
+   */
+  readonly deliveredTo: string | null;
+  readonly deliveryError: string | null;
   readonly sourceRevision: number;
   /** Export route that produced the artifact (null until done). */
   readonly route: string | null;

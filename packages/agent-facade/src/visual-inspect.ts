@@ -67,7 +67,8 @@ export function buildVisualSamplePlan(
   if (hasClip === hasRange) {
     throw new FacadeError(
       "INVALID_PARAMS",
-      "visual.inspect: pass exactly one of clipId or timeRange",
+      'visual.inspect: pass exactly one selector — clipId (a timeline clip id) or timeRange ({"startSec": <number ≥ 0>, "endSec": <number > startSec>})',
+      { received: { clipId: hasClip, timeRange: hasRange } },
     );
   }
   const sampleCount = params.sampleCount ?? 6;

@@ -17,6 +17,7 @@ export const CONFIG_DEFAULTS = {
   mediaRootsEnv: "OPENREEL_AVE_MEDIA_ROOTS",
   artifactRootEnv: "OPENREEL_AVE_ARTIFACT_ROOT",
   projectRootsEnv: "OPENREEL_AVE_PROJECT_ROOTS",
+  deliveryRootsEnv: "OPENREEL_AVE_DELIVERY_ROOTS",
   logLevelEnv: "OPENREEL_TRANSPORT_LOG",
 } as const;
 
@@ -25,12 +26,14 @@ export interface RawRoots {
   readonly mediaRoots: readonly string[];
   readonly artifactRoot?: string;
   readonly projectRoots: readonly string[];
+  readonly deliveryRoots: readonly string[];
 }
 
 export interface TransportConfig {
   readonly mediaRoots: readonly string[];
   readonly artifactRoot?: string;
   readonly projectRoots: readonly string[];
+  readonly deliveryRoots: readonly string[];
   readonly logLevel: LogLevel;
 }
 
@@ -59,6 +62,7 @@ interface ParsedArgv {
 export function parseArgv(argv: readonly string[]): ParsedArgv {
   const mediaRoots: string[] = [];
   const projectRoots: string[] = [];
+  const deliveryRoots: string[] = [];
   let artifactRoot: string | undefined;
   let logLevel: LogLevel | undefined;
   let workflowPath: string | undefined;
@@ -79,6 +83,9 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
         break;
       case "--project-root":
         projectRoots.push(value());
+        break;
+      case "--delivery-root":
+        deliveryRoots.push(value());
         break;
       case "--artifact-root": {
         const v = value();
@@ -124,6 +131,7 @@ export function parseArgv(argv: readonly string[]): ParsedArgv {
       mediaRoots,
       ...(artifactRoot !== undefined ? { artifactRoot } : {}),
       projectRoots,
+      deliveryRoots,
     },
     ...(logLevel !== undefined ? { logLevel } : {}),
     ...(workflowPath !== undefined ? { workflowPath } : {}),
@@ -173,10 +181,20 @@ export function mergeEnvRoots(
   if (artifactRoot === undefined && env[CONFIG_DEFAULTS.artifactRootEnv] !== undefined) {
     artifactRoot = env[CONFIG_DEFAULTS.artifactRootEnv] as string;
   }
+  const deliveryRoots =
+    roots.deliveryRoots.length > 0
+      ? [...roots.deliveryRoots]
+      : (() => {
+          const raw = env[CONFIG_DEFAULTS.deliveryRootsEnv];
+          return raw === undefined
+            ? []
+            : splitEnvList(raw, CONFIG_DEFAULTS.deliveryRootsEnv);
+        })();
   return {
     mediaRoots,
     ...(artifactRoot !== undefined ? { artifactRoot } : {}),
     projectRoots,
+    deliveryRoots,
   };
 }
 
@@ -204,7 +222,7 @@ export function mergeEnvLogLevel(
  */
 export async function canonicalizeRoot(
   raw: string,
-  rootClass: "mediaRoot" | "artifactRoot" | "projectRoot",
+  rootClass: "mediaRoot" | "artifactRoot" | "projectRoot" | "deliveryRoot",
 ): Promise<string> {
   if (raw.length === 0) {
     throw new ConfigRefusal(`${rootClass}: empty path given`, { root: raw });
@@ -237,7 +255,7 @@ export async function canonicalizeRoot(
 }
 
 /**
- * Validate + canonicalize all three root classes. Throws ConfigRefusal on
+ * Validate + canonicalize all four root classes. Throws ConfigRefusal on
  * the first offending root (startup refusal, exit 2).
  */
 export async function resolveConfig(
@@ -250,6 +268,9 @@ export async function resolveConfig(
   const projectRoots = await Promise.all(
     roots.projectRoots.map((root) => canonicalizeRoot(root, "projectRoot")),
   );
+  const deliveryRoots = await Promise.all(
+    roots.deliveryRoots.map((root) => canonicalizeRoot(root, "deliveryRoot")),
+  );
   const artifactRoot =
     roots.artifactRoot !== undefined
       ? await canonicalizeRoot(roots.artifactRoot, "artifactRoot")
@@ -258,6 +279,7 @@ export async function resolveConfig(
     mediaRoots,
     ...(artifactRoot !== undefined ? { artifactRoot } : {}),
     projectRoots,
+    deliveryRoots,
     logLevel: logLevel ?? "info",
   };
 }

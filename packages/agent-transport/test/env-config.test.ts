@@ -34,23 +34,34 @@ function envRoots(): Record<string, string> {
 describe("B.5 env merge functions (unit)", () => {
   it("mergeEnvRoots fills only the classes flags left empty", () => {
     const merged = mergeEnvRoots(
-      { mediaRoots: ["/flag/m"], projectRoots: [] },
+      { mediaRoots: ["/flag/m"], projectRoots: [], deliveryRoots: ["/flag/d"] },
       {
         OPENREEL_AVE_MEDIA_ROOTS: `/env/m1${path.delimiter}/env/m2`,
         OPENREEL_AVE_ARTIFACT_ROOT: "/env/a",
         OPENREEL_AVE_PROJECT_ROOTS: "/env/p",
+        OPENREEL_AVE_DELIVERY_ROOTS: "/env/d",
       },
     );
     expect(merged.mediaRoots).toEqual(["/flag/m"]); // flag wins
     expect(merged.artifactRoot).toBe("/env/a"); // env fills
     expect(merged.projectRoots).toEqual(["/env/p"]); // env fills
+    expect(merged.deliveryRoots).toEqual(["/flag/d"]); // flag wins
+  });
+
+  it("mergeEnvRoots fills deliveryRoots from OPENREEL_AVE_DELIVERY_ROOTS", () => {
+    const merged = mergeEnvRoots(
+      { mediaRoots: [], projectRoots: [], deliveryRoots: [] },
+      { OPENREEL_AVE_DELIVERY_ROOTS: `/env/d1${path.delimiter}/env/d2` },
+    );
+    expect(merged.deliveryRoots).toEqual(["/env/d1", "/env/d2"]);
   });
 
   it("mergeEnvRoots without env leaves every class empty", () => {
-    const merged = mergeEnvRoots({ mediaRoots: [], projectRoots: [] }, {});
+    const merged = mergeEnvRoots({ mediaRoots: [], projectRoots: [], deliveryRoots: [] }, {});
     expect(merged.mediaRoots).toEqual([]);
     expect(merged.artifactRoot).toBeUndefined();
     expect(merged.projectRoots).toEqual([]);
+    expect(merged.deliveryRoots).toEqual([]);
   });
 
   it("mergeEnvLogLevel: flag wins, env fills, default info, invalid env refuses startup", () => {

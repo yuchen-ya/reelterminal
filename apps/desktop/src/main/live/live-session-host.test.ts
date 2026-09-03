@@ -146,6 +146,7 @@ function makeFixture(
   const deps: LiveSessionHostDeps = {
     artifactRoot: path.join(tempDir, "live-artifacts"),
     mediaRoots: [tempDir],
+    deliveryRoots: [path.join(tempDir, "workspace")],
     installStoreBridge: () => bridge,
     createProviders: () => providers,
     createFacade: (config) => {
@@ -322,6 +323,9 @@ describe("live session host verb dispatch + events", () => {
     // The single external session owns the sole writer lease.
     expect(fixture.sessions[0]!.isWriter).toBe(true);
     expect(fixture.sessions[0]!.config.mediaRoots).toEqual([fixture.tempDir]);
+    expect(fixture.sessions[0]!.config.deliveryRoots).toEqual([
+      path.join(fixture.tempDir, "workspace"),
+    ]);
     expect((await host.getStatus()).writer).toBe("external");
   });
 

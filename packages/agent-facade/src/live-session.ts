@@ -49,6 +49,11 @@ import {
   type FacadeErrorCode,
 } from "./errors";
 import type { AgentFacade } from "./index";
+import {
+  deliverExportArtifact,
+  resolveDeliveryDestination,
+  type DeliveryDestination,
+} from "./delivery";
 import { IdempotencyLedger, stableStringify } from "./idempotency";
 import { JobRegistry, jobStatusView } from "./jobs";
 import type { LiveWriterLease } from "./live-lease";
@@ -163,6 +168,12 @@ export interface LiveFacadeConfig {
   readonly store: LiveProjectStore;
   /** Absolute roots from which media.import may read local files. */
   readonly mediaRoots?: readonly string[];
+  /**
+   * Absolute roots under which export.start's destinationPath may deliver a
+   * verified artifact copy (`<deliveryRoot>/jobs/<slug>/output/`) — same
+   * rule as headless (docs/AGENT-WORKSPACE.md). Default: none.
+   */
+  readonly deliveryRoots?: readonly string[];
   /** preview.render_frame backing (same provider type as headless). */
   readonly renderProvider?: RenderProvider;
   /** export.start / job.cancel backing (same provider type as headless). */
@@ -286,6 +297,7 @@ export class LiveFacadeSession {
     if (!mediaImportAvailable) unavailableVerbs.push("media.import");
     return {
       mediaRoots: this.config.mediaRoots ?? [],
+      deliveryRoots: this.config.deliveryRoots ?? [],
       ...(this.config.renderProvider
         ? { renderProvider: this.config.renderProvider }
         : {}),
@@ -1312,7 +1324,12 @@ export class LiveFacadeSession {
             )
           : undefined;
 
-      const payload = { settings: settingsInput ?? null };
+      // The payload pins the RAW destinationPath so an idempotent retry of
+      // the same request replays even after the delivery created the file.
+      const payload = {
+        settings: settingsInput ?? null,
+        destinationPath: valid.destinationPath ?? null,
+      };
       const prior = await this.replayLookup<{ jobId: string; sourceRevision: number }>(
         "export.start",
         valid.idempotencyKey,
@@ -1327,6 +1344,17 @@ export class LiveFacadeSession {
           replayed: true,
         });
       }
+
+      // Validate the delivery destination BEFORE any job state exists: a bad
+      // destination fails fast with zero side effects (same as headless).
+      const delivery =
+        valid.destinationPath !== undefined
+          ? await resolveDeliveryDestination(
+              valid.destinationPath,
+              this.config.deliveryRoots ?? [],
+              "export.start",
+            )
+          : null;
 
       const { project, revision } = await this.config.store.getState();
       if (
@@ -1385,7 +1413,7 @@ export class LiveFacadeSession {
         onRunning: () => this.jobs.markRunning(jobId),
         onProgress: (event) => this.jobs.markProgress(jobId, event),
         onDone: (completion) => {
-          void this.finalizeExport(jobId, sourceRevision, completion);
+          void this.finalizeExport(jobId, sourceRevision, completion, delivery);
         },
         onError: (error) => this.jobs.markError(jobId, error),
         onCancelled: () => this.jobs.markCancelled(jobId),
@@ -1736,6 +1764,7 @@ export class LiveFacadeSession {
     jobId: string,
     sourceRevision: number,
     completion: { path: string; sizeBytes: number; route: string },
+    delivery: DeliveryDestination | null = null,
   ): Promise<void> {
     try {
       const artifactRoot = requireArtifactRoot(
@@ -1765,6 +1794,22 @@ export class LiveFacadeSession {
         completion.sizeBytes,
       );
       this.jobs.markDone(jobId, artifact, completion.route);
+      if (delivery !== null) {
+        // Post-publish copy into the Agent workspace deliverables directory.
+        // A delivery failure never downgrades the done job or hides the
+        // artifact — it surfaces as deliveryError on job.status.
+        try {
+          await deliverExportArtifact(resolution.path, delivery);
+          this.jobs.markDelivered(jobId, delivery.path);
+        } catch (deliveryError) {
+          this.jobs.markDeliveryFailed(
+            jobId,
+            deliveryError instanceof Error
+              ? deliveryError.message
+              : String(deliveryError),
+          );
+        }
+      }
     } catch (error) {
       this.jobs.markError(jobId, {
         code: error instanceof FacadeError ? error.code : "JOB_FAILED",

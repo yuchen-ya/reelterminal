@@ -93,11 +93,29 @@ function isDirectory(candidate: string): boolean {
   }
 }
 
+/**
+ * Roots under which export.start's destinationPath may deliver finished
+ * artifacts (`<root>/jobs/<slug>/output/`). Defaults to the Agent workspace
+ * root — the one place the workspace convention defines a deliverables
+ * directory. OPENREEL_LIVE_DELIVERY_ROOTS overrides for advanced hosts.
+ */
+function liveDeliveryRoots(): readonly string[] {
+  const configured = process.env.OPENREEL_LIVE_DELIVERY_ROOTS;
+  if (configured?.trim()) {
+    return configured
+      .split(path.delimiter)
+      .map((entry) => entry.trim())
+      .filter((entry) => path.isAbsolute(entry) && isDirectory(entry));
+  }
+  return [agentWorkspaceRoot()];
+}
+
 export function getLiveSessionHost(): LiveSessionHost {
   if (!host) {
     host = createLiveSessionHost({
       artifactRoot: path.join(app.getPath("userData"), "live-artifacts"),
       mediaRoots: liveMediaRoots(),
+      deliveryRoots: liveDeliveryRoots(),
       installStoreBridge: installLiveStoreBridge,
       createProviders: (): LiveProviders => {
         const chromium = createChromiumProviders();

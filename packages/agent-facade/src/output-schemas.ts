@@ -431,13 +431,15 @@ const jobStatus = (): OutputSchemaNode =>
       progress: nullable(jobProgress()),
       artifact: nullable(artifactRef()),
       error: nullable(objectSchema({ code: stringSchema(), message: stringSchema() }, ["code", "message"])),
+      deliveredTo: nullable(stringSchema()),
+      deliveryError: nullable(stringSchema()),
       sourceRevision: integerSchema(0),
       route: nullable(stringSchema()),
       cancelRequested: booleanSchema(),
       createdAt: stringSchema(),
       updatedAt: stringSchema(),
     },
-    ["jobId", "kind", "state", "progress", "artifact", "error", "sourceRevision", "route", "cancelRequested", "createdAt", "updatedAt"],
+    ["jobId", "kind", "state", "progress", "artifact", "error", "deliveredTo", "deliveryError", "sourceRevision", "route", "cancelRequested", "createdAt", "updatedAt"],
   );
 
 const verifyResult = (): OutputSchemaNode =>

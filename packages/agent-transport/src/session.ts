@@ -52,6 +52,7 @@ export function createTransportSession(config: TransportConfig): TransportSessio
     mediaRoots: config.mediaRoots,
     ...(config.artifactRoot !== undefined ? { artifactRoot: config.artifactRoot } : {}),
     projectRoots: config.projectRoots,
+    deliveryRoots: config.deliveryRoots,
     renderProvider: providers.renderProvider,
     exportProvider: providers.exportProvider,
     artifactVerifier: new FfmpegArtifactVerifier(),

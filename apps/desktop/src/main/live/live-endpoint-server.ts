@@ -204,9 +204,9 @@ const TOOL_DESCRIPTIONS: Readonly<Record<FacadeVerb, string>> = {
   "preview.render_frame":
     "Render one frame of the current project snapshot to a PNG artifact and return its reference.",
   "visual.inspect":
-    "Sample 1–12 real frames for a clip or time range and return PNG artifacts plus a contact sheet when supported.",
+    'Sample 1–12 real frames and return PNG artifacts plus a contact sheet when supported. Pass exactly ONE selector: clipId (a timeline clip id from timeline_get) or timeRange as {"startSec": <number>, "endSec": <number>} in timeline seconds with endSec > startSec ≥ 0. Optional: sampleCount (1–12, default 6), width/height (even, ≤1024).',
   "export.start":
-    "Start an export job for a snapshot of the current project; returns a jobId immediately.",
+    'Start an export job for a snapshot of the current project; returns a jobId immediately. Optional destinationPath "<deliveryRoot>/jobs/<slug>/output/<name>.mp4" copies the verified artifact into the Agent workspace deliverables directory after completion (never overwrites; see capabilities_get.export.details.deliveryRoots). Poll job.status until done, then check deliveredTo/deliveryError.',
   "job.status": "Return the current status of an export job.",
   "job.cancel":
     "Request cooperative cancellation of an export job (idempotent on terminal jobs).",

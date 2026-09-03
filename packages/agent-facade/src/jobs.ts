@@ -27,6 +27,8 @@ export function jobStatusView(job: JobRecord): JobStatusView {
     progress: job.progress ? { ...job.progress } : null,
     artifact: job.artifact ? { ...job.artifact } : null,
     error: job.error ? { ...job.error } : null,
+    deliveredTo: job.deliveredTo,
+    deliveryError: job.deliveryError,
     sourceRevision: job.sourceRevision,
     route: job.route,
     cancelRequested: job.cancelRequested,
@@ -53,6 +55,9 @@ export interface JobRecord {
   readonly progress: JobProgressView | null;
   readonly artifact: ArtifactRef | null;
   readonly error: { readonly code: string; readonly message: string } | null;
+  /** destinationPath delivery outcome (both null when none was requested). */
+  readonly deliveredTo: string | null;
+  readonly deliveryError: string | null;
   /** Project revision snapshot the job exports. */
   readonly sourceRevision: number;
   /** Export route reported on completion (null until done). */
@@ -78,6 +83,8 @@ export class JobRegistry {
       progress: null,
       artifact: null,
       error: null,
+      deliveredTo: null,
+      deliveryError: null,
       sourceRevision,
       route: null,
       cancelRequested: false,
@@ -141,6 +148,24 @@ export class JobRegistry {
       if (TERMINAL.has(job.state)) return job;
       return { ...job, state: "done" as JobState, artifact, route, error: null };
     });
+  }
+
+  /** destinationPath copy succeeded (post-done bookkeeping only). */
+  markDelivered(jobId: string, deliveredTo: string): void {
+    this.transition(jobId, (job) =>
+      job.state === "done" ? { ...job, deliveredTo, deliveryError: null } : job,
+    );
+  }
+
+  /**
+   * destinationPath copy failed. The artifact itself is valid, so the job
+   * stays "done" — the failure is reported on deliveryError, never by
+   * hiding the artifact or faking a job error.
+   */
+  markDeliveryFailed(jobId: string, message: string): void {
+    this.transition(jobId, (job) =>
+      job.state === "done" ? { ...job, deliveryError: message } : job,
+    );
   }
 
   markError(jobId: string, error: { code: string; message: string }): void {

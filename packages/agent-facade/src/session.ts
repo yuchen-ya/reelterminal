@@ -40,6 +40,11 @@ import {
   validateCheckpointStructure,
 } from "./checkpoint";
 import { FacadeError, ok, toFailure, type FacadeResult } from "./errors";
+import {
+  deliverExportArtifact,
+  resolveDeliveryDestination,
+  type DeliveryDestination,
+} from "./delivery";
 import { IdempotencyLedger, stableStringify } from "./idempotency";
 import { JobRegistry, jobStatusView } from "./jobs";
 import {
@@ -151,6 +156,14 @@ export interface AgentFacadeConfig {
    */
   readonly projectRoots?: readonly string[];
   /**
+   * Absolute roots under which export.start's destinationPath may deliver a
+   * verified artifact copy. The destination must resolve to a fresh .mp4
+   * file directly inside `<deliveryRoot>/jobs/<slug>/output/` — the Agent
+   * workspace deliverables directory (docs/AGENT-WORKSPACE.md). Default:
+   * none — destinationPath then fails INVALID_PARAMS before any job runs.
+   */
+  readonly deliveryRoots?: readonly string[];
+  /**
    * Dormant Slice-1 seam, kept for contract stability. Injecting an adapter
    * changes NOTHING observable: no facade verb consumes it and it flips no
    * capability (see render/adapter.ts and capabilities.ts).
@@ -206,6 +219,7 @@ export class AgentFacadeSession {
   private capabilityContext() {
     return {
       mediaRoots: this.config.mediaRoots ?? [],
+      deliveryRoots: this.config.deliveryRoots ?? [],
       ...(this.config.renderAdapter
         ? { renderAdapter: this.config.renderAdapter }
         : {}),
@@ -1276,7 +1290,12 @@ export class AgentFacadeSession {
             )
           : undefined;
 
-      const payload = { settings: settingsInput ?? null };
+      // The payload pins the RAW destinationPath so an idempotent retry of
+      // the same request replays even after the delivery created the file.
+      const payload = {
+        settings: settingsInput ?? null,
+        destinationPath: valid.destinationPath ?? null,
+      };
       const prior = this.beginMutation<{ jobId: string; sourceRevision: number }>(
         "export.start",
         valid.expectedRevision,
@@ -1292,6 +1311,19 @@ export class AgentFacadeSession {
           replayed: true,
         });
       }
+
+      // Validate the delivery destination BEFORE any job state exists: a bad
+      // destination fails fast with zero side effects (no job, no ledger
+      // entry, no provider work).
+      const delivery =
+        valid.destinationPath !== undefined
+          ? await resolveDeliveryDestination(
+              valid.destinationPath,
+              this.config.deliveryRoots ?? [],
+              "export.start",
+            )
+          : null;
+
 
       const project = this.project;
       const duration = timelineDurationSec(project);
@@ -1343,7 +1375,7 @@ export class AgentFacadeSession {
         onRunning: () => this.jobs.markRunning(jobId),
         onProgress: (event) => this.jobs.markProgress(jobId, event),
         onDone: (completion) => {
-          void this.finalizeExport(jobId, sourceRevision, completion);
+          void this.finalizeExport(jobId, sourceRevision, completion, delivery);
         },
         onError: (error) => this.jobs.markError(jobId, error),
         onCancelled: () => this.jobs.markCancelled(jobId),
@@ -1660,6 +1692,7 @@ export class AgentFacadeSession {
     jobId: string,
     sourceRevision: number,
     completion: { path: string; sizeBytes: number; route: string },
+    delivery: DeliveryDestination | null = null,
   ): Promise<void> {
     try {
       const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "export.finalize");
@@ -1690,6 +1723,22 @@ export class AgentFacadeSession {
         completion.sizeBytes,
       );
       this.jobs.markDone(jobId, artifact, completion.route);
+      if (delivery !== null) {
+        // Post-publish copy into the Agent workspace deliverables directory.
+        // A delivery failure never downgrades the done job or hides the
+        // artifact — it surfaces as deliveryError on job.status.
+        try {
+          await deliverExportArtifact(resolution.path, delivery);
+          this.jobs.markDelivered(jobId, delivery.path);
+        } catch (deliveryError) {
+          this.jobs.markDeliveryFailed(
+            jobId,
+            deliveryError instanceof Error
+              ? deliveryError.message
+              : String(deliveryError),
+          );
+        }
+      }
     } catch (error) {
       this.jobs.markError(jobId, {
         code: error instanceof FacadeError ? error.code : "JOB_FAILED",

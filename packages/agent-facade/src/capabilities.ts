@@ -41,6 +41,13 @@ import {
 export interface CapabilityContext {
   readonly mediaRoots: readonly string[];
   /**
+   * Roots under which export.start destinationPath may deliver a verified
+   * artifact copy (`<deliveryRoot>/jobs/<slug>/output/`). Reported so agents
+   * can discover the rule instead of guessing paths; empty means
+   * destinationPath always fails fast with INVALID_PARAMS.
+   */
+  readonly deliveryRoots?: readonly string[];
+  /**
    * Dormant Slice-1 seam, recorded for diagnostics only. Has NO effect on
    * any capability — no facade verb consumes it (see render/adapter.ts).
    */
@@ -165,7 +172,19 @@ export async function buildCapabilities(
       maxCellDimension: 1024,
     },
   };
-  const exportVideo = gateArtifactProducing(exportRaw, UNAVAILABLE_NO_EXPORT_PROVIDER);
+  const exportVideoRaw = gateArtifactProducing(exportRaw, UNAVAILABLE_NO_EXPORT_PROVIDER);
+  const deliveryRoots = ctx.deliveryRoots ?? [];
+  const exportVideo: CapabilityStatus = {
+    ...exportVideoRaw,
+    details: {
+      ...(exportVideoRaw.details ?? {}),
+      deliveryRoots,
+      destinationPathRule:
+        deliveryRoots.length > 0
+          ? 'export.start accepts destinationPath "<deliveryRoot>/jobs/<slug>/output/<name>.mp4"; the verified artifact is copied there after completion (no overwrite) and job.status reports deliveredTo/deliveryError.'
+          : "No delivery roots are configured for this session; export.start destinationPath fails INVALID_PARAMS until one is provided.",
+    },
+  };
   const verify = gateArtifactProducing(verifyRaw, UNAVAILABLE_NO_VERIFIER);
   const editorControl: CapabilityStatus = ctx.live
     ? {

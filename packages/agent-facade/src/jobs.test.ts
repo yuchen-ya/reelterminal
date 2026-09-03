@@ -4,7 +4,7 @@
  * and the no-artifact-on-failure invariant.
  */
 import { describe, expect, it } from "vitest";
-import { JobRegistry } from "./jobs";
+import { JobRegistry, jobStatusView } from "./jobs";
 import type { ArtifactRef } from "./providers";
 
 const ARTIFACT: ArtifactRef = {
@@ -101,5 +101,33 @@ describe("JobRegistry", () => {
     reg.markError("nope", { code: "X", message: "y" });
     reg.markCancelled("nope");
     expect(reg.get("nope")).toBeNull();
+  });
+
+  it("delivery bookkeeping settles only on done jobs and survives in the status view", () => {
+    const reg = new JobRegistry();
+    reg.create("j1", 2);
+    // Not done yet: delivery marks are ignored.
+    reg.markDelivered("j1", "/ws/jobs/a/output/x.mp4");
+    expect(reg.get("j1")?.deliveredTo).toBeNull();
+
+    reg.markDone("j1", ARTIFACT, "chromium-webcodecs");
+    reg.markDelivered("j1", "/ws/jobs/a/output/x.mp4");
+    expect(reg.get("j1")?.deliveredTo).toBe("/ws/jobs/a/output/x.mp4");
+    expect(reg.get("j1")?.deliveryError).toBeNull();
+    expect(reg.get("j1")?.artifact).toEqual(ARTIFACT);
+
+    reg.create("j2", 2);
+    reg.markDone("j2", ARTIFACT, "chromium-webcodecs");
+    reg.markDeliveryFailed("j2", "EEXIST: file already exists");
+    const failed = reg.get("j2");
+    // A delivery failure never hides the artifact or downgrades the job.
+    expect(failed?.state).toBe("done");
+    expect(failed?.artifact).toEqual(ARTIFACT);
+    expect(failed?.deliveryError).toBe("EEXIST: file already exists");
+    expect(failed?.deliveredTo).toBeNull();
+
+    const view = jobStatusView(failed!);
+    expect(view.deliveredTo).toBeNull();
+    expect(view.deliveryError).toBe("EEXIST: file already exists");
   });
 });
