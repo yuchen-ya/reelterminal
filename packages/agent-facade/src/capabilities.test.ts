@@ -53,6 +53,30 @@ describe("capabilities.get / session.describe", () => {
     expect(res.value.mediaImport.sources).toEqual(["file"]);
     expect(res.value.mediaImport.urlImport).toBe(false);
     expect(res.value.mediaImport.mediaRoots).toEqual([mediaRoot]);
+    expect(res.value.mediaImport.recommendedRoot).toBe(mediaRoot);
+    expect(res.value.mediaImport.workspaceLayout).toEqual({
+      jobDirectoryPattern: "jobs/<YYYY-MM-DD>-<short-slug>",
+      sharedDirectory: "shared",
+      jobEntries: [
+        "brief.md",
+        "source",
+        "generated",
+        "work",
+        "project",
+        "output",
+        "evidence",
+      ],
+      deliverablesDirectory: "output",
+    });
+  });
+
+  it("reports no recommended workspace when no media root is configured", async () => {
+    const unconfigured = createAgentFacade();
+    const res = await unconfigured["capabilities.get"]();
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.mediaImport.available).toBe(false);
+    expect(res.value.mediaImport.recommendedRoot).toBeNull();
   });
 
   it("reports the exact closed op set and mutation guarantees", async () => {

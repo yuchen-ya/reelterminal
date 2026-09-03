@@ -25,11 +25,39 @@ the authenticated loopback endpoint, and exposes exactly the 17 live tools
 listed in the root [`SKILL.md`](../SKILL.md). Do not copy the endpoint token
 into prompts, project files, or logs.
 
+Never print or `cat` the descriptor while diagnosing a connection. Read it only
+inside the connector/client process and pass the token directly to the loopback
+Authorization header. A descriptor left by an unclean exit may be stale, so
+probe liveness without echoing credentials and let a newly prepared desktop
+session replace it. Bypass system HTTP proxies for `127.0.0.1` and `localhost`.
+
+No endpoint file means the GUI session is not ready; it does not select the
+headless workflow. For normal user-facing creation, an Agent with local-app
+control should launch ReelTerminal and complete the project/Agent Session steps
+through the GUI. Otherwise it should ask the user to do so. Headless is used
+only when the user explicitly asks for it or GUI-visible collaboration is not
+part of the task.
+
+When a project is already open, its format and current edits are user-provided
+context. Continue in that project unless the user explicitly asks to replace it
+or change format; do not hunt for a different project merely because another
+aspect ratio seems more conventional.
+
 The Agent and GUI edit the same canonical project with revision checks and one
 undo history. Use `editor_get_context` before an edit; it includes current
 selection, playhead, context revision, and stable numbered references (`#1`,
 `#2`, …). If a referenced item has been deleted, it remains visibly stale and
 its number is never rebound.
+
+## Keep every creation task in one workspace
+
+Start by calling `capabilities_get`. Create one task directory under
+`mediaImport.recommendedRoot/jobs`, following the fixed structure documented in
+[`AGENT-WORKSPACE.md`](AGENT-WORKSPACE.md). Do not put generated assets,
+recording frames, helper scripts, or finished videos in the repository root.
+The desktop app creates the recommended `ReelTerminal Agent Workspace`
+automatically; the older `ReelTerminal Agent Imports` path remains readable for
+compatibility only.
 
 ## Current limit
 

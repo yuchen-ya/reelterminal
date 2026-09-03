@@ -34,7 +34,8 @@ let host: LiveSessionHost | null = null;
  *
  * The default deliberately avoids granting the whole home directory. It
  * covers the OS folders where people and creative Agents normally put media,
- * and creates one deterministic inbox under Videos for generated assets.
+ * and creates one deterministic workspace under Videos for generated assets,
+ * working files, deliverables, and evidence.
  * Advanced hosts can replace the list before launch without changing the
  * MCP contract.
  */
@@ -47,10 +48,24 @@ function liveMediaRoots(): readonly string[] {
       .filter((entry) => path.isAbsolute(entry) && isDirectory(entry));
   }
 
-  const inbox = path.join(app.getPath("videos"), "ReelTerminal Agent Imports");
-  mkdirSync(inbox, { recursive: true });
+  const workspace = path.join(
+    app.getPath("videos"),
+    "ReelTerminal Agent Workspace",
+  );
+  mkdirSync(path.join(workspace, "jobs"), { recursive: true });
+  mkdirSync(path.join(workspace, "shared"), { recursive: true });
+
+  // Keep the former inbox readable so existing projects do not lose access
+  // to media imported before the workspace convention was introduced. New
+  // Agent work belongs under workspace/jobs; the first root is advertised as
+  // capabilities_get.mediaImport.recommendedRoot.
+  const legacyInbox = path.join(
+    app.getPath("videos"),
+    "ReelTerminal Agent Imports",
+  );
   const candidates = [
-    inbox,
+    workspace,
+    legacyInbox,
     app.getPath("desktop"),
     app.getPath("documents"),
     app.getPath("downloads"),

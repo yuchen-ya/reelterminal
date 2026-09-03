@@ -36,9 +36,31 @@ ReelTerminal owns the editing world and its tool/context boundary.
    ```
 
    The
-   connector reads `~/.openreel/live-endpoint.json` by default to discover the
-   current loopback URL and bearer token. The endpoint file is short-lived and
-   is removed when the Agent Session is disabled.
+connector reads `~/.openreel/live-endpoint.json` by default to discover the
+current loopback URL and bearer token. The endpoint file is short-lived and
+is removed when the Agent Session is disabled.
+
+Treat that descriptor as a credential: never `cat`, print, log, paste, or return
+its contents. Let `openreel-live-mcp` read it, or read it only inside a client
+process that sends the token directly in the loopback Authorization header.
+File existence is not a liveness check; after an unclean app exit it may be
+stale. Probe the local endpoint without echoing credentials, then launch/prepare
+the GUI and let the desktop host replace an unreachable descriptor. HTTP clients
+must bypass system proxies for loopback (`127.0.0.1`, `localhost`).
+
+The live desktop path is mandatory for an ordinary user-facing creation brief.
+If the endpoint file is absent, that means the desktop session has not been
+prepared; it is **not** permission to silently switch to headless mode. When the
+Agent host can control local apps, it should launch the desktop editor, create
+or open the project through the GUI, enable Agent Session through the GUI, and
+then connect. Otherwise ask the user to perform those GUI lifecycle steps. Use
+the headless transport only when the user explicitly requests headless work or
+no GUI-visible collaboration is required.
+
+An already-open live project is user context, including its aspect ratio, frame
+rate, name, and existing edits. Use it as-is unless the user explicitly asks for
+a new project or different settings. Do not replace a vertical project with a
+horizontal one (or vice versa) merely because one format seems more conventional.
 
 Example MCP configuration (the connector itself owns endpoint-file parsing):
 
@@ -71,7 +93,10 @@ absolute local video/audio path under a root reported by
 GUI project, and returns the `mediaId` used by later `clip.add` edits. The media
 panel updates immediately and the user can undo the import through the normal
 GUI history. Agents should create or copy generated assets into one of the
-reported roots instead of asking the user to import them manually.
+reported roots instead of asking the user to import them manually. For every
+new creation task, use `capabilities_get.mediaImport.recommendedRoot` and the
+job layout in [`docs/AGENT-WORKSPACE.md`](docs/AGENT-WORKSPACE.md); never scatter
+generated media, helper scripts, or deliverables across the source repository.
 `editor_get_context` includes the live selection, playhead, ranges, canvas
 target, context revision, and stable Agent-reference mapping. References are
 session-local (`#1`, `#2`, `#3`, …), deterministic for multi-selection, never
@@ -83,12 +108,33 @@ frame.
 ### Short creative briefs are complete requests
 
 When the user gives only an outcome (for example, “make a 30-second promo”),
-own the finishing workflow: read capabilities and current context, use the
-Agent host's available creation/search/audio tools to prepare suitable assets
+the default still means the live desktop workflow; never infer headless mode
+from a missing endpoint. Treat the open project's settings as part of that
+brief. Own the finishing workflow: read capabilities and current context, use
+the Agent host's available creation/search/audio tools to prepare suitable assets
 inside a reported media root, import them, build the timeline, preview and
 visually inspect, iterate, export, and verify the result. Every edit must go
 through the live facade so it appears in the open GUI. Ask the user only for a
 genuine creative decision or a capability blocker—not for tool choreography.
+
+### Agent workspace discipline
+
+Before creating any file, call `capabilities_get`. Create exactly one job at
+`<recommendedRoot>/jobs/<YYYY-MM-DD>-<short-slug>/` and keep the whole task in
+that directory. Use the fixed folders `source/`, `generated/`, `work/`,
+`project/`, `output/`, and `evidence/`; write the interpreted request to
+`brief.md`. Put only final, verified deliverables in `output/`. Preview frames,
+contact sheets, logs, raw captures, generated scripts, and retry artifacts are
+not deliverables and belong in `work/` or `evidence/`. Reusable user-approved
+brand assets may live in `<recommendedRoot>/shared/`.
+
+The desktop host creates `ReelTerminal Agent Workspace/jobs` and `shared`
+under the operating system's Videos folder. `ReelTerminal Agent Imports` is a
+legacy readable root, not the destination for new jobs. Do not create task
+folders at the repository root, inside source packages, or in `/tmp` (except
+truly disposable process scratch). Do not delete another job, `source/`,
+`shared/`, or a delivered `output/` unless the user explicitly asks. Full
+rules and headless root mapping: [`docs/AGENT-WORKSPACE.md`](docs/AGENT-WORKSPACE.md).
 
 The desktop conversation panel and loopback client transport are landed. Each
 external Agent/host still runs and configures its thin server-side adapter at

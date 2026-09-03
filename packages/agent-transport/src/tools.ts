@@ -63,7 +63,7 @@ const TOOL_DESCRIPTIONS: Readonly<Record<ToolName, string>> = {
   session_describe:
     "Describe the facade session: contract version, the 17 verbs, error codes, runtime step letters.",
   capabilities_get:
-    "Report live provider capabilities (media import, preview, visual inspection, export, verify) with honest reasons when unavailable.",
+    "Report live provider capabilities and the recommended Agent workspace root/layout, with honest reasons when unavailable.",
   project_create:
     "Create this session's single project (single-initialization lifecycle verb).",
   project_open:

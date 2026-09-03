@@ -222,8 +222,13 @@ The external Agent and the user remain equal peers over the same GUI project.
 The Agent can import local video/audio, inspect context, use stable references,
 edit, preview, export, and verify through the live facade; the user keeps direct
 GUI control and the shared undo path. `capabilities_get` reports the absolute
-media roots allowed by the desktop host; by default these are the OS media and
-document folders, including `ReelTerminal Agent Imports` under Videos. Set
+media roots allowed by the desktop host. Its `mediaImport.recommendedRoot`
+points to the automatically created `ReelTerminal Agent Workspace` under
+Videos. Agents keep each creation under `jobs/<date>-<slug>/`, using the
+standard source/generated/work/project/output/evidence layout in
+[`docs/AGENT-WORKSPACE.md`](docs/AGENT-WORKSPACE.md). The former
+`ReelTerminal Agent Imports` folder remains readable for backward compatibility
+but is not the destination for new work. Set
 `OPENREEL_LIVE_MEDIA_ROOTS` to a platform-delimited list of existing absolute
 directories before launch to replace those defaults. The desktop conversation
 panel and loopback client are also

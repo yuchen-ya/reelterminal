@@ -192,6 +192,27 @@ export interface Capabilities {
     readonly sources: readonly ["file"];
     /** Absolute roots the caller allowed; imports outside them fail. */
     readonly mediaRoots: readonly string[];
+    /**
+     * Preferred absolute root for a new Agent-owned job workspace. This is
+     * the first configured media root, or null when imports are unavailable.
+     * Callers should still treat mediaRoots as the containment authority.
+     */
+    readonly recommendedRoot: string | null;
+    /** Machine-readable default layout for one self-contained creation job. */
+    readonly workspaceLayout: {
+      readonly jobDirectoryPattern: "jobs/<YYYY-MM-DD>-<short-slug>";
+      readonly sharedDirectory: "shared";
+      readonly jobEntries: readonly [
+        "brief.md",
+        "source",
+        "generated",
+        "work",
+        "project",
+        "output",
+        "evidence",
+      ];
+      readonly deliverablesDirectory: "output";
+    };
     readonly urlImport: false;
     readonly metadata: readonly ["duration", "width", "height", "mediaType"];
   };
