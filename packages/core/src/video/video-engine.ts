@@ -761,15 +761,15 @@ export class VideoEngine {
             );
             if (compoundFrame) {
               const transform = clipInfo.transform;
+              // Position is a project-pixel offset from frame center, so it
+              // follows the raster size; scale is a multiplier on the
+              // canvas-fit draw size inside drawFrameToContext and must NOT
+              // be scaled again (double-scaling shrank the video layer).
               const scaledTransform: Transform = {
                 ...transform,
                 position: {
                   x: transform.position.x * scaleX,
                   y: transform.position.y * scaleY,
-                },
-                scale: {
-                  x: transform.scale.x * scaleX,
-                  y: transform.scale.y * scaleY,
                 },
               };
               let processed = compoundFrame;
@@ -944,10 +944,6 @@ export class VideoEngine {
                 x: finalTransform.position.x * scaleX,
                 y: finalTransform.position.y * scaleY,
               },
-              scale: {
-                x: finalTransform.scale.x * scaleX,
-                y: finalTransform.scale.y * scaleY,
-              },
             };
 
             let processedBitmap = bitmap;
@@ -1055,6 +1051,8 @@ export class VideoEngine {
         subjectFrame,
         options.realtime ?? false,
         subjectStreamId,
+        settings.width,
+        settings.height,
       );
     }
     subjectFrame?.close();
@@ -1714,6 +1712,8 @@ export class VideoEngine {
     subjectFrame: ImageBitmap | null,
     realtime: boolean,
     streamId: string,
+    sourceWidth: number = width,
+    sourceHeight: number = height,
   ): Promise<void> {
     let subjectMask: SegmentationResult | null = null;
     if (textClip.behindSubject && subjectFrame) {
@@ -1733,7 +1733,15 @@ export class VideoEngine {
     }
 
     if (!textClip.behindSubject || !subjectFrame || !subjectMask) {
-      await this.renderTextClipToCanvasCtx(ctx, textClip, time, width, height);
+      await this.renderTextClipToCanvasCtx(
+        ctx,
+        textClip,
+        time,
+        width,
+        height,
+        sourceWidth,
+        sourceHeight,
+      );
       return;
     }
 
@@ -1746,6 +1754,8 @@ export class VideoEngine {
       time,
       width,
       height,
+      sourceWidth,
+      sourceHeight,
     );
     if (
       !this.applySubjectOcclusionMask(
@@ -1829,18 +1839,37 @@ export class VideoEngine {
     time: number,
     width: number,
     height: number,
+    sourceWidth: number = width,
+    sourceHeight: number = height,
   ): Promise<void> {
     const clipLocalTime = time - textClip.startTime;
+    // Text style values (fontSize, stroke, shadow, metrics) are project-pixel
+    // denominated. Rasterize in project space and scale the finished layer
+    // into the target raster so text keeps its project-relative size at any
+    // preview/contact-sheet resolution (at project size this is the exact
+    // same pixels as before — a 1:1 pass-through).
     const result = titleEngine.renderText(
       textClip,
-      width,
-      height,
+      sourceWidth,
+      sourceHeight,
       clipLocalTime,
     );
 
+    let layer: OffscreenCanvas | HTMLCanvasElement = result.canvas;
+    if (sourceWidth !== width || sourceHeight !== height) {
+      const scaled = new OffscreenCanvas(width, height);
+      const scaledCtx = scaled.getContext("2d");
+      if (scaledCtx) {
+        scaledCtx.imageSmoothingEnabled = true;
+        scaledCtx.imageSmoothingQuality = "high";
+        scaledCtx.drawImage(result.canvas, 0, 0, width, height);
+        layer = scaled;
+      }
+    }
+
     await this.drawOverlayCanvasWithEffects(
       ctx,
-      result.canvas,
+      layer,
       textClip.effects ?? [],
       width,
       height,
