@@ -187,7 +187,7 @@ export const TemplatesTab: React.FC = () => {
               variant="ghost"
               onClick={() => handleApplyTemplate(template.id)}
               isDisabled={applying !== null}
-              className="group relative flex flex-col p-3 bg-background-tertiary border border-border rounded-lg hover:border-primary/50 transition-all text-left disabled:opacity-50"
+              className="group relative flex h-auto flex-col items-stretch justify-start gap-0 p-3 bg-background-tertiary border border-border rounded-lg hover:border-primary/50 transition-all text-left disabled:opacity-50"
             >
               <div className="w-full aspect-video bg-background-secondary rounded mb-2 flex items-center justify-center">
                 {template.thumbnailUrl ? (

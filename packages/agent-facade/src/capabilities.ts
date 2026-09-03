@@ -181,7 +181,7 @@ export async function buildCapabilities(
       deliveryRoots,
       destinationPathRule:
         deliveryRoots.length > 0
-          ? 'export.start accepts destinationPath "<deliveryRoot>/jobs/<slug>/output/<name>.mp4"; the verified artifact is copied there after completion (no overwrite) and job.status reports deliveredTo/deliveryError.'
+          ? 'export.start accepts destinationPath "<deliveryRoot>/jobs/<slug>/output/<name>.mp4"; the verified artifact is copied there after completion (no overwrite) and job.status reports deliveredTo/deliveryError. verify.artifact accepts the reported deliveredTo path verbatim.'
           : "No delivery roots are configured for this session; export.start destinationPath fails INVALID_PARAMS until one is provided.",
     },
   };

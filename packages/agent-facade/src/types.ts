@@ -1044,7 +1044,11 @@ export interface JobStatusView {
 /* ------------------------------------------------------------------ */
 
 export interface VerifyArtifactParams {
-  /** Artifact file to inspect. Must resolve inside artifactRoot. */
+  /**
+   * Artifact file to inspect. Must resolve inside artifactRoot, or name a
+   * delivered copy at its exact deliveredTo location inside a configured
+   * delivery root's job output directory (`<deliveryRoot>/jobs/<slug>/output/`).
+   */
   readonly path: string;
   readonly expect?: {
     readonly container?: "mp4";

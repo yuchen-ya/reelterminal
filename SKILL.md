@@ -123,6 +123,32 @@ visually inspect, iterate, export, and verify the result. Every edit must go
 through the live facade so it appears in the open GUI. Ask the user only for a
 genuine creative decision or a capability blocker—not for tool choreography.
 
+### Two engagement tiers: interactive edits vs delivery
+
+**Interactive editing is the default.** When the user asks for a change to the
+open project — trim this, move that, add a marker, tweak a title — keep the
+loop light:
+
+1. Read only what the edit needs (`timeline_get` and/or `editor_get_context`;
+   not a full `project_get_state` dump for a routine edit).
+2. Apply the whole change as ONE atomic `edit_apply` batch with one fresh
+   idempotency key.
+3. Confirm ONCE, lightly — the user is watching the GUI, so add at most a
+   single `preview_render_frame` (or a 1–2 frame `visual_inspect`) when the
+   change is visual. Then reply immediately with what changed.
+
+Never during interactive edits: `project_save`, `export_start`, `job_status`
+polling, ffprobe/ffmpeg shell-outs, or batch frame extraction. Do not
+"save for safety" either — the live GUI owns persistence and autosave.
+
+**Delivery runs only on explicit request.** Only when the user asks for a
+finished artifact ("export it", "deliver the final mp4") run the full
+pipeline: `project_save` → `export_start` (with `destinationPath` into the
+job's `output/`) → `job_status` to a terminal state → `verify_artifact` (a
+reported `deliveredTo` path is accepted verbatim) → evidence frames/contact
+sheets into `evidence/` → report the paths. Waiting on a creative decision
+("want me to change #2?") is never a delivery trigger.
+
 ### Agent workspace discipline
 
 Before creating any file, call `capabilities_get`. Create exactly one job at
@@ -259,7 +285,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `export_start` | Snapshot job; returns `jobId` immediately |
 | `job_status` | Poll to terminal |
 | `job_cancel` | Cooperative; idempotent on terminal jobs |
-| `verify_artifact` | ffprobe/pixel checks as data; container duration may exceed the video stream by up to ~0.1 s from AAC packaging (expected — see facade README) |
+| `verify_artifact` | ffprobe/pixel checks as data; `path` inside `artifactRoot` or the reported `deliveredTo` verbatim; container duration may exceed the video stream by up to ~0.1 s from AAC packaging (expected — see facade README) |
 
 Every result is one JSON envelope: `{ok:true, value}` or
 `{ok:false, error:{code, message, details}}` with `isError:true` — match on
@@ -407,7 +433,9 @@ the whole batch back; a deleted overlay or clip stays deleted after
   loopback HTTP callers have no server-push channel, so the polling contract
   remains their required fallback.
 - **Always finish with `verify_artifact`:** assert on `checks[].pass` and
-  the `compare` numbers; the report is data, the files stay on disk.
+  the `compare` numbers; the report is data, the files stay on disk. The
+  reported `deliveredTo` path is accepted verbatim — verifying the delivered
+  copy in place is the intended finish.
 - **Preview before exporting** (`preview_render_frame {timeSec}`) so pixel
   questions are answered by `verify_artifact` compares against the PNG.
 - `run` workflow rules: JSONL, one step per line, unique step `id`s, `$ref`

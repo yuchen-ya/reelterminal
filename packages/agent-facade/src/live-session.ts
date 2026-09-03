@@ -51,6 +51,7 @@ import {
 import type { AgentFacade } from "./index";
 import {
   deliverExportArtifact,
+  resolveDeliveredArtifactPath,
   resolveDeliveryDestination,
   type DeliveryDestination,
 } from "./delivery";
@@ -1512,8 +1513,10 @@ export class LiveFacadeSession {
 
   /**
    * verify.artifact (live): read-only inspection of a file inside
-   * artifactRoot. The live session has no mediaRoots, so compare
-   * references must live inside artifactRoot.
+   * artifactRoot, or of a delivered copy at its exact deliveredTo location
+   * (`<deliveryRoot>/jobs/<slug>/output/` — same rule as headless). The
+   * live session has no mediaRoots, so compare references must live inside
+   * artifactRoot.
    */
   async verifyArtifact(
     params: VerifyArtifactParams,
@@ -1545,13 +1548,24 @@ export class LiveFacadeSession {
           { path: valid.path },
         );
       }
-      const target = resolveContainedPathDetailed(valid.path, [artifactRoot]);
+      let target = resolveContainedPathDetailed(valid.path, [artifactRoot]);
       if (target.kind === "outside") {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "verify.artifact: path escapes the configured artifactRoot",
-          { path: valid.path },
+        // The delivered copy of a verified artifact lives outside
+        // artifactRoot BY CONTRACT: accept it at its exact deliveredTo
+        // location when the path sits in a delivery root's job output
+        // directory (the export.start destinationPath containment rule).
+        const delivered = await resolveDeliveredArtifactPath(
+          valid.path,
+          this.config.deliveryRoots ?? [],
         );
+        if (delivered === null) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            "verify.artifact: path escapes the configured artifactRoot and every delivery root's job deliverables directory (<deliveryRoot>/jobs/<slug>/output/)",
+            { path: valid.path },
+          );
+        }
+        target = { kind: "ok", path: delivered };
       }
       if (target.kind === "unresolvable") {
         throw new FacadeError(

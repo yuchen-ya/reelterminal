@@ -5,7 +5,7 @@
  * live-session.test.ts.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -15,6 +15,7 @@ import {
   resolveDeliveryDestination,
 } from "./delivery";
 import type {
+  ArtifactVerifier,
   ExportCallbacks,
   ExportProvider,
   ExportVideoRequest,
@@ -203,6 +204,33 @@ async function makeProjectWithMedia(facade: AgentFacade) {
   if (!edited.ok) throw new Error("edit failed");
 }
 
+/** Stub verifier that records the paths it was asked to probe. */
+function stubArtifactVerifier(seenPaths: string[]): ArtifactVerifier {
+  return {
+    id: "stub-verifier",
+    preflight: async () => ({ available: true }),
+    verify: async (request) => {
+      seenPaths.push(request.path);
+      return {
+        pass: true,
+        probe: {
+          container: "mp4",
+          videoCodec: "h264",
+          audioCodec: "aac",
+          width: 320,
+          height: 180,
+          durationSec: 5,
+          frameCount: 150,
+          frameRate: 30,
+          sizeBytes: (await stat(request.path)).size,
+          sha256: "stub-sha256",
+        },
+        checks: [{ name: "container", pass: true, details: "stub probe" }],
+      };
+    },
+  };
+}
+
 describe("export.start destinationPath (headless end-to-end)", () => {
   it("delivers the verified artifact into the workspace output directory", async () => {
     const facade = createAgentFacade({
@@ -332,5 +360,75 @@ describe("export.start destinationPath (headless end-to-end)", () => {
     expect(details.destinationPathRule).toEqual(
       expect.stringContaining("destinationPath"),
     );
+  });
+});
+
+/* --------------- verify.artifact on delivered paths ----------------- */
+
+describe("verify.artifact accepts deliveredTo (headless)", () => {
+  it("verifies the delivered copy at its exact deliveredTo location", async () => {
+    const seenPaths: string[] = [];
+    const facade = createAgentFacade({
+      mediaRoots: [mediaRoot],
+      artifactRoot,
+      deliveryRoots: [deliveryRoot],
+      exportProvider: stubDeliveryExportProvider(),
+      artifactVerifier: stubArtifactVerifier(seenPaths),
+    });
+    await makeProjectWithMedia(facade);
+
+    const started = await facade["export.start"]({ destinationPath: dest() });
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+    const done = await waitForJob(facade, started.value.jobId, true);
+    expect(done.state).toBe("done");
+    expect(done.deliveredTo).not.toBeNull();
+
+    // The contract tells the agent to trust deliveredTo — it must verify
+    // verbatim even though it lives outside artifactRoot.
+    const verified = await facade["verify.artifact"]({ path: done.deliveredTo! });
+    expect(verified.ok).toBe(true);
+    if (!verified.ok) return;
+    expect(verified.value.pass).toBe(true);
+    expect(seenPaths).toEqual([done.deliveredTo]);
+  });
+
+  it("verifies any regular file inside the job output dir — containment, not the .mp4 rule", async () => {
+    const seenPaths: string[] = [];
+    const facade = createAgentFacade({
+      mediaRoots: [mediaRoot],
+      artifactRoot,
+      deliveryRoots: [deliveryRoot],
+      artifactVerifier: stubArtifactVerifier(seenPaths),
+    });
+    const notesPath = path.join(outputDir, "notes.txt");
+    await writeFile(notesPath, "delivered notes");
+    const verified = await facade["verify.artifact"]({ path: notesPath });
+    expect(verified.ok).toBe(true);
+  });
+
+  it("still refuses paths inside the deliveryRoot but outside jobs/<slug>/output, and outside every root", async () => {
+    const facade = createAgentFacade({
+      mediaRoots: [mediaRoot],
+      artifactRoot,
+      deliveryRoots: [deliveryRoot],
+      artifactVerifier: stubArtifactVerifier([]),
+    });
+    // Existing files, so containment (not readability) decides.
+    const workspaceLevel = path.join(deliveryRoot, "stray.mp4");
+    const jobSibling = path.join(deliveryRoot, "jobs", "2026-09-03-demo", "generated", "a.mp4");
+    const outsideAll = path.join(mediaRoot, "outside.mp4");
+    await mkdir(path.dirname(jobSibling), { recursive: true });
+    await writeFile(workspaceLevel, "x");
+    await writeFile(jobSibling, "x");
+    await writeFile(outsideAll, "x");
+
+    for (const candidate of [workspaceLevel, jobSibling, outsideAll]) {
+      const res = await facade["verify.artifact"]({ path: candidate });
+      expect(res.ok, candidate).toBe(false);
+      if (res.ok) continue;
+      expect(res.error.code).toBe("INVALID_PARAMS");
+      expect(res.error.message).toContain("artifactRoot");
+    }
   });
 });

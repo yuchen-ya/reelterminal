@@ -49,6 +49,16 @@ selection, playhead, context revision, and stable numbered references (`#1`,
 `#2`, …). If a referenced item has been deleted, it remains visibly stale and
 its number is never rebound.
 
+## Interactive edits stay light; delivery is explicit
+
+An interactive change request gets the light loop: read only what the edit
+needs, apply one atomic `edit_apply` batch, confirm once (the user is watching
+the GUI), and reply. Do not save, export, poll jobs, run ffprobe, or extract
+frame batches unless the user explicitly asked for a deliverable. The full
+save → export → poll → verify → evidence pipeline runs only on that explicit
+delivery request; the contract details live in
+[`SKILL.md`](../SKILL.md#two-engagement-tiers-interactive-edits-vs-delivery).
+
 ## Keep every creation task in one workspace
 
 Start by calling `capabilities_get`. Create one task directory under

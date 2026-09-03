@@ -246,7 +246,10 @@ export interface PixelCompareRequest {
 }
 
 export interface VerifyArtifactRequest {
-  /** Absolute artifact path, already validated inside artifactRoot. */
+  /**
+   * Absolute artifact path, already validated inside artifactRoot or at a
+   * delivered copy's location inside a delivery root's jobs/<slug>/output dir.
+   */
   readonly path: string;
   readonly expect?: ArtifactProbeExpectation;
   readonly compare?: PixelCompareRequest;

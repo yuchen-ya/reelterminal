@@ -34,6 +34,7 @@ import type {
 import { collectEntityIds, diffCreatedIdsByCategory } from "./ops";
 import { createEmptyProject } from "./project-factory";
 import type {
+  ArtifactVerifier,
   ExportCallbacks,
   ExportProvider,
   ExportVideoRequest,
@@ -337,6 +338,33 @@ function stubExportProvider(): ExportStubControl {
   return control;
 }
 
+/** Stub verifier that records the paths it was asked to probe. */
+function stubArtifactVerifier(seenPaths: string[]): ArtifactVerifier {
+  return {
+    id: "stub-verifier",
+    preflight: async () => availablePreflight(),
+    verify: async (request) => {
+      seenPaths.push(request.path);
+      return {
+        pass: true,
+        probe: {
+          container: "mp4",
+          videoCodec: "h264",
+          audioCodec: "aac",
+          width: 320,
+          height: 180,
+          durationSec: 5,
+          frameCount: 60,
+          frameRate: 30,
+          sizeBytes: (await stat(request.path)).size,
+          sha256: "stub-sha256",
+        },
+        checks: [{ name: "container", pass: true, details: "stub probe" }],
+      };
+    },
+  };
+}
+
 /** Poll job.status until the job reaches a terminal state (or time out). */
 async function waitForJob(
   facade: LiveAgentFacade,
@@ -372,6 +400,7 @@ function liveFacade(
     deliveryRoots: readonly string[];
     renderProvider: RenderProvider;
     exportProvider: ExportProvider;
+    artifactVerifier: ArtifactVerifier;
     store: LiveProjectStore;
   }>,
 ): LiveAgentFacade {
@@ -385,6 +414,7 @@ function liveFacade(
     ...(opts?.deliveryRoots ? { deliveryRoots: opts.deliveryRoots } : {}),
     ...(opts?.renderProvider ? { renderProvider: opts.renderProvider } : {}),
     ...(opts?.exportProvider ? { exportProvider: opts.exportProvider } : {}),
+    ...(opts?.artifactVerifier ? { artifactVerifier: opts.artifactVerifier } : {}),
   });
 }
 
@@ -1635,8 +1665,10 @@ describe("live preview/export on a store snapshot (Decision 10)", () => {
     await mkdir(outputDir, { recursive: true });
     try {
       const stub = stubExportProvider();
+      const seenPaths: string[] = [];
       const facade = liveFacade({
         exportProvider: stub.provider,
+        artifactVerifier: stubArtifactVerifier(seenPaths),
         deliveryRoots: [deliveryRoot],
       });
       const destination = path.join(outputDir, "promo.mp4");
@@ -1660,6 +1692,13 @@ describe("live preview/export on a store snapshot (Decision 10)", () => {
       expect(view.state).toBe("done");
       expect(view.deliveryError).toBeNull();
       expect(view.deliveredTo).toContain(path.join("jobs", "2026-09-03-demo", "output", "promo.mp4"));
+
+      // Live/headless parity: verify.artifact accepts the deliveredTo path
+      // verbatim even though it lives outside artifactRoot.
+      const verified = await facade["verify.artifact"]({ path: view.deliveredTo! });
+      expect(verified.ok).toBe(true);
+      if (verified.ok) expect(verified.value.pass).toBe(true);
+      expect(seenPaths).toEqual([view.deliveredTo]);
 
       // Same rules as headless: a path outside jobs/<slug>/output fails fast.
       const bad = await facade["export.start"]({

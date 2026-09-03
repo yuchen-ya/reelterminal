@@ -42,6 +42,7 @@ import {
 import { FacadeError, ok, toFailure, type FacadeResult } from "./errors";
 import {
   deliverExportArtifact,
+  resolveDeliveredArtifactPath,
   resolveDeliveryDestination,
   type DeliveryDestination,
 } from "./delivery";
@@ -172,7 +173,8 @@ export interface AgentFacadeConfig {
   /**
    * Absolute root every generated artifact (preview PNGs, exported videos)
    * is written under. Artifact-producing verbs fail UNSUPPORTED without it;
-   * verify.artifact only inspects files inside it.
+   * verify.artifact inspects files inside it — plus a delivered copy at its
+   * deliveredTo location inside a delivery root's jobs/<slug>/output dir.
    */
   readonly artifactRoot?: string;
   /** Slice-1b preview.render_frame backing (independent capability). */
@@ -1481,9 +1483,11 @@ export class AgentFacadeSession {
 
   /**
    * verify.artifact — read-only inspection (ffprobe-style probe + optional
-   * pixel comparison) of a file inside artifactRoot. A failed assertion is
-   * reported as data (checks[], pass:false), never as a thrown domain error;
-   * only infrastructure problems fail the call.
+   * pixel comparison) of a file inside artifactRoot, or of a delivered copy
+   * at its exact deliveredTo location (`<deliveryRoot>/jobs/<slug>/output/`
+   * — the same containment rule export.start enforces for destinationPath).
+   * A failed assertion is reported as data (checks[], pass:false), never as
+   * a thrown domain error; only infrastructure problems fail the call.
    */
   async verifyArtifact(
     params: VerifyArtifactParams,
@@ -1512,13 +1516,24 @@ export class AgentFacadeSession {
           { path: valid.path },
         );
       }
-      const target = resolveContainedPathDetailed(valid.path, [artifactRoot]);
+      let target = resolveContainedPathDetailed(valid.path, [artifactRoot]);
       if (target.kind === "outside") {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "verify.artifact: path escapes the configured artifactRoot",
-          { path: valid.path },
+        // The delivered copy of a verified artifact lives outside
+        // artifactRoot BY CONTRACT: accept it at its exact deliveredTo
+        // location when the path sits in a delivery root's job output
+        // directory (the export.start destinationPath containment rule).
+        const delivered = await resolveDeliveredArtifactPath(
+          valid.path,
+          this.config.deliveryRoots ?? [],
         );
+        if (delivered === null) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            "verify.artifact: path escapes the configured artifactRoot and every delivery root's job deliverables directory (<deliveryRoot>/jobs/<slug>/output/)",
+            { path: valid.path },
+          );
+        }
+        target = { kind: "ok", path: delivered };
       }
       if (target.kind === "unresolvable") {
         throw new FacadeError(

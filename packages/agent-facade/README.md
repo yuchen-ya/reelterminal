@@ -197,8 +197,10 @@ Chromium + system ffmpeg). Semantics owned by the facade itself:
 - `verify.artifact({path, expect?, compare?})` probes container/codec/
   geometry/duration/frame count (ffprobe) and optionally pixel-compares a
   frame against a reference image/video, with containment enforced
-  (`path` inside `artifactRoot`; `referencePath` inside `artifactRoot` or
-  `mediaRoots`). Failed expectations are data (`checks[].pass`), not errors.
+  (`path` inside `artifactRoot`, or a delivered copy at its exact
+  `deliveredTo` location inside `<deliveryRoot>/jobs/<slug>/output/`;
+  `referencePath` inside `artifactRoot` or `mediaRoots`). Failed
+  expectations are data (`checks[].pass`), not errors.
   Duration expectations should tolerate AAC packaging: the audio stream is
   packed into 1024-sample AAC frames (~21 ms at 48 kHz) plus encoder
   priming, so the MP4 container duration can exceed the video stream by up
