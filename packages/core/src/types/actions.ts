@@ -1,4 +1,4 @@
-import type { MediaItem, ProjectSettings } from "./project";
+import type { MediaItem, ProjectMarker, ProjectSettings } from "./project";
 import type {
   Transform,
   EasingType,
@@ -405,6 +405,15 @@ export type MarkerAction =
       type: "marker/update";
       params: { markerId: string; updates: Partial<Marker> };
     };
+
+// Project-marker actions (persisted project metadata — NOT timeline ruler
+// markers). The action creator mints the stable number: add/restore carry
+// the complete marker and the executor max-bumps markers.nextNumber.
+export type ProjectMarkerAction =
+  | { type: "projectMarker/add"; params: { marker: ProjectMarker } }
+  | { type: "projectMarker/remove"; params: { markerId: string } }
+  | { type: "projectMarker/restore"; params: { marker: ProjectMarker } };
+
 // Overlay actions (text / shape / svg / sticker clips, authoritative on the project)
 export type OverlayAction =
   | { type: "text/create"; params: { clip: TextClip } }
@@ -470,4 +479,5 @@ export type TimelineAction =
   | TransitionAction
   | AudioAction
   | SubtitleAction
-  | MarkerAction;
+  | MarkerAction
+  | ProjectMarkerAction;

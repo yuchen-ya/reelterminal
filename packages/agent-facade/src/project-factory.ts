@@ -27,5 +27,6 @@ export function createEmptyProject(
     settings: { ...DEFAULT_PROJECT_SETTINGS, ...settings },
     mediaLibrary: { items: [] },
     timeline: { tracks: [], subtitles: [], duration: 0, markers: [] },
+    markers: { nextNumber: 1, items: [] },
   } as unknown as Project;
 }

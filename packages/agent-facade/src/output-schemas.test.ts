@@ -32,4 +32,19 @@ describe("emitted MCP output schemas", () => {
       items: { type: "string" },
     });
   });
+
+  it("timeline.get reports the sorted project-marker array with the closed target union", () => {
+    const schema = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["timeline.get"] as unknown as Schema;
+    const value = (schema.properties as Schema).value as Schema;
+    expect(value.required).toEqual(["revision", "duration", "tracks", "textOverlays", "markers"]);
+    const markers = (value.properties as Schema).markers as Schema;
+    const item = markers.items as Schema;
+    expect(item.additionalProperties).toBe(false);
+    expect(item.required).toEqual(["number", "id", "target", "createdAt"]);
+    const target = (item.properties as Schema).target as Schema;
+    const variants = target.anyOf as Schema[];
+    expect(variants).toHaveLength(4);
+    expect(variants.map((v) => ((v.properties as Schema).kind as Schema).const))
+      .toEqual(["asset", "clip", "text", "timeRange"]);
+  });
 });

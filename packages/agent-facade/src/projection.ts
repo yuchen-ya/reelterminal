@@ -87,6 +87,16 @@ export function timelineStateView(project: Project, revision: number): TimelineS
       position: { ...clip.transform.position },
       anchor: { ...clip.transform.anchor },
     })),
+    markers: [...(project.markers?.items ?? [])]
+      .sort((a, b) => a.number - b.number)
+      .map((marker) => ({
+        number: marker.number,
+        id: marker.id,
+        target: { ...marker.target },
+        ...(marker.label !== undefined ? { label: marker.label } : {}),
+        ...(marker.color !== undefined ? { color: marker.color } : {}),
+        createdAt: marker.createdAt,
+      })),
   };
 }
 

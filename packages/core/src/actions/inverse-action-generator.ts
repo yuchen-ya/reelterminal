@@ -12,6 +12,7 @@ import type {
   MediaAction,
   ProjectAction,
   MarkerAction,
+  ProjectMarkerAction,
 } from "../types/actions";
 import type { Project, MediaItem } from "../types/project";
 import type { Track, Clip, Transition } from "../types/timeline";
@@ -81,9 +82,42 @@ export class InverseActionGenerator {
         action as MarkerAction & Action,
         projectBefore,
       );
+    } else if (type.startsWith("projectMarker/")) {
+      return this.generateProjectMarkerInverse(
+        action as ProjectMarkerAction & Action,
+        projectBefore,
+      );
     }
 
     return null;
+  }
+
+  private generateProjectMarkerInverse(
+    action: ProjectMarkerAction & Action,
+    projectBefore: Project,
+  ): Action | null {
+    switch (action.type) {
+      case "projectMarker/add":
+        return this.createInverseAction(action, "projectMarker/remove", {
+          markerId: action.params.marker.id,
+        });
+
+      case "projectMarker/remove": {
+        const marker = (projectBefore.markers?.items ?? []).find(
+          (m) => m.id === action.params.markerId,
+        );
+        if (!marker) return null;
+
+        return this.createInverseAction(action, "projectMarker/restore", {
+          marker: { ...marker },
+        });
+      }
+
+      case "projectMarker/restore":
+        return this.createInverseAction(action, "projectMarker/remove", {
+          markerId: action.params.marker.id,
+        });
+    }
   }
 
   private generateMarkerInverse(

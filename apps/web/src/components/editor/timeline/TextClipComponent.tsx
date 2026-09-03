@@ -8,6 +8,8 @@ import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { AgentReferenceBadge } from "./AgentReferenceBadge";
+import { ProjectMarkerBadgeStack } from "../ProjectMarkerBadge";
+import { findMarkersForEntity } from "../../../stores/project/project-marker-selectors";
 
 interface TextClipComponentProps {
   textClip: TextClip;
@@ -33,6 +35,10 @@ export const TextClipComponent: React.FC<TextClipComponentProps> = ({
   const historyGroupOpenRef = useRef(false);
   const { snapSettings } = useUIStore();
   const { playheadPosition } = useTimelineStore();
+  const projectMarkers = useProjectStore((state) => state.project.markers);
+  const reviewMarkers = findMarkersForEntity(projectMarkers, {
+    textClipId: textClip.id,
+  });
   const trimStartRef = useRef<{
     mouseX: number;
     startTime: number;
@@ -215,6 +221,7 @@ export const TextClipComponent: React.FC<TextClipComponentProps> = ({
           }}
         >
           <AgentReferenceBadge kind="text" entityId={textClip.id} />
+          <ProjectMarkerBadgeStack markers={reviewMarkers} selected={isSelected} />
           <div
             className={`absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 flex items-center justify-center transition-opacity ${
               isSelected ? "opacity-100 bg-amber-400" : "opacity-0 group-hover:opacity-100 hover:bg-amber-400/50"

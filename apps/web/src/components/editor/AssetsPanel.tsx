@@ -34,6 +34,9 @@ import { ToolcraftContextMenu as ContextMenu, type ToolcraftContextMenuOption as
 import { StickerPickerPanel } from "./inspector/StickerPickerPanel";
 import { Hash } from "@/icons/lucide-compat";
 import { AgentReferenceBadge } from "./timeline/AgentReferenceBadge";
+import { ProjectMarkerBadgeStack } from "./ProjectMarkerBadge";
+import { useProjectMarkerMenuItems } from "./project-marker-menu";
+import { findMarkersForEntity } from "../../stores/project/project-marker-selectors";
 import { markAgentReferenceForMedia } from "../../stores/editor-context-store";
 
 const formatDuration = (seconds: number): string => {
@@ -261,6 +264,14 @@ const MediaThumbnail: React.FC<{
 }) => {
   const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
+  const projectMarkers = useProjectStore((state) => state.project.markers);
+  const reviewMarkers = findMarkersForEntity(projectMarkers, {
+    mediaId: item.id,
+  });
+  const reviewMarkerMenuItems = useProjectMarkerMenuItems({
+    kind: "asset",
+    mediaId: item.id,
+  });
 
   const contextMenuItems: ContextMenuOption[] = [
     {
@@ -268,6 +279,7 @@ const MediaThumbnail: React.FC<{
       icon: <Hash size={14} aria-hidden />,
       onClick: () => markAgentReferenceForMedia(item),
     },
+    ...reviewMarkerMenuItems,
   ];
 
   const getIcon = () => {
@@ -363,6 +375,7 @@ const MediaThumbnail: React.FC<{
           className={`relative flex items-center gap-3 px-2 py-1.5 rounded-lg border-2 cursor-pointer transition-all group ${borderClass}`}
         >
         <AgentReferenceBadge kind="media" entityId={item.id} className="left-1 top-1" />
+        <ProjectMarkerBadgeStack markers={reviewMarkers} selected={isSelected} />
         {/* Small thumbnail */}
         <div className="w-12 h-8 rounded-md bg-bg-2 relative overflow-hidden flex-shrink-0">
           {item.thumbnailUrl ? (
@@ -463,6 +476,7 @@ const MediaThumbnail: React.FC<{
         className={`h-[78px] bg-bg-2 rounded-lg border relative group cursor-pointer transition-all overflow-hidden ${borderClass}`}
       >
         <AgentReferenceBadge kind="media" entityId={item.id} className="left-1 top-1" />
+        <ProjectMarkerBadgeStack markers={reviewMarkers} selected={isSelected} />
         {/* Thumbnail or placeholder */}
         {item.thumbnailUrl ? (
           <img

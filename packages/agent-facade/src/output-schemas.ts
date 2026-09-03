@@ -308,6 +308,29 @@ const mediaImportResult = (): OutputSchemaNode =>
     ["revision", "mediaId", "name", "type", "metadata", "replayed"],
   );
 
+const projectMarker = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      number: integerSchema(1),
+      id: stringSchema(),
+      target: {
+        anyOf: [
+          objectSchema({ kind: constSchema("asset"), mediaId: stringSchema() }, ["kind", "mediaId"]),
+          objectSchema({ kind: constSchema("clip"), clipId: stringSchema() }, ["kind", "clipId"]),
+          objectSchema({ kind: constSchema("text"), textClipId: stringSchema() }, ["kind", "textClipId"]),
+          objectSchema(
+            { kind: constSchema("timeRange"), start: numberSchema(0), end: numberSchema(0) },
+            ["kind", "start", "end"],
+          ),
+        ],
+      },
+      label: stringSchema(),
+      color: stringSchema(),
+      createdAt: numberSchema(0),
+    },
+    ["number", "id", "target", "createdAt"],
+  );
+
 const timelineResult = (): OutputSchemaNode =>
   objectSchema(
     {
@@ -315,8 +338,9 @@ const timelineResult = (): OutputSchemaNode =>
       duration: numberSchema(0),
       tracks: arraySchema(timelineTrack()),
       textOverlays: arraySchema(textOverlay()),
+      markers: arraySchema(projectMarker()),
     },
-    ["revision", "duration", "tracks", "textOverlays"],
+    ["revision", "duration", "tracks", "textOverlays", "markers"],
   );
 
 const editorContext = (): OutputSchemaNode =>

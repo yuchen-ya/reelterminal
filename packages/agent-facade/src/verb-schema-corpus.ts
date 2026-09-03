@@ -332,6 +332,79 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: true,
     },
     {
+      name: "valid marker.add with an asset target",
+      params: {
+        ops: [{ op: "marker.add", target: { kind: "asset", mediaId: "m1" }, label: "Review shot", color: "#ff0000" }],
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid marker.add with a clip target",
+      params: { ops: [{ op: "marker.add", target: { kind: "clip", clipId: "c1" } }] },
+      expectValid: true,
+    },
+    {
+      name: "valid marker.add with a text target",
+      params: { ops: [{ op: "marker.add", target: { kind: "text", textClipId: "text-1" } }] },
+      expectValid: true,
+    },
+    {
+      name: "valid marker.add with a time range target",
+      params: { ops: [{ op: "marker.add", target: { kind: "timeRange", start: 1.5, end: 4 } }] },
+      expectValid: true,
+    },
+    {
+      name: "valid marker.remove by number",
+      params: { ops: [{ op: "marker.remove", number: 2 }] },
+      expectValid: true,
+    },
+    {
+      name: "marker.add requires a target",
+      params: { ops: [{ op: "marker.add" }] },
+      expectValid: false,
+    },
+    {
+      name: "marker.add rejects an unknown target kind",
+      params: { ops: [{ op: "marker.add", target: { kind: "region", id: "r1" } }] },
+      expectValid: false,
+    },
+    {
+      name: "marker.add rejects an unknown field inside the target",
+      params: { ops: [{ op: "marker.add", target: { kind: "clip", clipId: "c1", trackId: "v1" } }] },
+      expectValid: false,
+    },
+    {
+      name: "marker.add rejects a negative time-range start",
+      params: { ops: [{ op: "marker.add", target: { kind: "timeRange", start: -1, end: 2 } }] },
+      expectValid: false,
+    },
+    {
+      name: "marker.add rejects an unknown op field",
+      params: { ops: [{ op: "marker.add", target: { kind: "clip", clipId: "c1" }, markerId: "m" }] },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: marker.add label over 200 characters",
+      params: { ops: [{ op: "marker.add", target: { kind: "clip", clipId: "c1" }, label: "x".repeat(201) }] },
+      expectValid: false,
+      schemaValid: true,
+    },
+    {
+      name: "marker.remove requires a positive integer number",
+      params: { ops: [{ op: "marker.remove", number: 0 }] },
+      expectValid: false,
+    },
+    {
+      name: "marker.remove rejects a wrong-typed number",
+      params: { ops: [{ op: "marker.remove", number: "2" }] },
+      expectValid: false,
+    },
+    {
+      name: "marker.remove requires number",
+      params: { ops: [{ op: "marker.remove" }] },
+      expectValid: false,
+    },
+    {
       name: "position x above 1",
       params: {
         ops: [{ op: "text.create", text: "x", startTime: 0, duration: 2, position: { x: 1.5, y: 0.5 } }],

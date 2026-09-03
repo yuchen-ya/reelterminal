@@ -24,6 +24,7 @@ import {
   markAgentReferenceForSelection,
 } from "../../../stores/editor-context-store";
 import { getAgentReferenceTargetForClip } from "../../../stores/agent-reference-targets";
+import { useProjectMarkerMenuItems } from "../project-marker-menu";
 
 interface ClipContextMenuProps {
   clip: Clip;
@@ -68,6 +69,10 @@ export function useClipContextMenuItems({
   }, [track.clips, clip.id, clip.startTime]);
 
   const mediaItem = getMediaItem(clip.mediaId);
+  const reviewMarkerMenuItems = useProjectMarkerMenuItems({
+    kind: "clip",
+    clipId: clip.id,
+  });
   const isVideo = track.type === "video";
   const isAudio = track.type === "audio";
   const isImage = track.type === "image";
@@ -187,6 +192,7 @@ export function useClipContextMenuItems({
       icon: <Hash size={14} aria-hidden />,
       onClick: handleAddAgentReference,
     },
+    ...reviewMarkerMenuItems,
     { type: "divider" },
     {
       label: t("Split at Playhead"),

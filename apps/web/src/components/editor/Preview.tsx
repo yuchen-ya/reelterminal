@@ -21,14 +21,26 @@ import {
   Proportions,
   Magnet,
   Crosshair,
+  Flag,
 } from "@/icons/lucide-compat";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { ToolcraftIconButton as IconButton } from "@openreel/ui";
 import { ToolcraftText as Text } from "@openreel/ui";
+import {
+  ToolcraftContextMenu as ContextMenu,
+  type ToolcraftContextMenuOption as ContextMenuOption,
+} from "@openreel/ui";
 import { useProjectStore } from "../../stores/project-store";
 import { useTimelineStore } from "../../stores/timeline-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useEditorContextStore } from "../../stores/editor-context-store";
+import { ProjectMarkerBadge } from "./ProjectMarkerBadge";
+import {
+  findClipMarkersActiveAt,
+  findTimeRangeMarkersAt,
+  markersForSelection,
+} from "../../stores/project/project-marker-selectors";
+import { toast } from "../../stores/notification-store";
 import { useThemeStore } from "../../stores/theme-store";
 import { getRenderBridge } from "../../bridges/render-bridge";
 import { getEffectsBridge } from "../../bridges/effects-bridge";
@@ -59,6 +71,7 @@ import {
   type Mask,
   type AdjustmentLayer,
   type BlendMode,
+  type ProjectMarker,
   getTrackTransitionAudioFades,
 } from "@openreel/core";
 import { useEngineStore } from "../../stores/engine-store";
@@ -93,6 +106,7 @@ import {
   PREVIEW_QUALITY_OPTIONS,
 } from "./preview/index";
 import { snapCanvasPosition } from "./preview/canvas-snapping";
+import { compareTracksForComposite } from "./preview/composite-track-order";
 import { ProcessingOverlay } from "./ProcessingOverlay";
 import {
   getPersonSegmentationEngine,
@@ -1895,12 +1909,11 @@ export const Preview: React.FC = () => {
   );
 
   /**
-   * Render overlay clips (text and shapes) respecting proper z-ordering with video/image tracks.
-   * Track order determines layering: lower track index = rendered on top.
-   *
-   * @param mode - "below-video" renders only overlays that should appear below video tracks
-   * "above-video" renders only overlays that should appear above video tracks
-   * "all" renders all overlays (legacy behavior for when no video is present)
+   * Render overlay clips (text and shapes) above the video/image tracks.
+   * This is the single layering contract shared by every render path
+   * (paused composite, playback, transitions and export): overlays always
+   * composite on top of video, and painter order between overlay tracks
+   * follows track order (lower track index = rendered on top).
    */
   const renderOverlayClipsInTrackOrder = useCallback(
     async (
@@ -1911,45 +1924,17 @@ export const Preview: React.FC = () => {
       time: number,
       canvasWidth: number,
       canvasHeight: number,
-      mode: "below-video" | "above-video" | "all" = "all",
       subjectFrame: ImageBitmap | null = null,
     ) => {
       const subjectStreamId = getBehindSubjectStreamId(tracks, time);
-      const videoImageTrackIndices = tracks
-        .map((t, idx) => ({ track: t, originalIndex: idx }))
-        .filter(
-          ({ track }) =>
-            (track.type === "video" || track.type === "image") && !track.hidden,
-        )
-        .map(({ originalIndex }) => originalIndex);
 
-      const lowestVideoIndex =
-        videoImageTrackIndices.length > 0
-          ? Math.min(...videoImageTrackIndices)
-          : Infinity;
-      const highestVideoIndex =
-        videoImageTrackIndices.length > 0
-          ? Math.max(...videoImageTrackIndices)
-          : -1;
-
-      const overlayTracksWithIndex = tracks
+      const tracksToRender = tracks
         .map((t, idx) => ({ track: t, originalIndex: idx }))
         .filter(
           ({ track }) =>
             (track.type === "text" || track.type === "graphics") &&
             !track.hidden,
         );
-
-      const tracksToRender = overlayTracksWithIndex.filter(
-        ({ originalIndex }) => {
-          if (mode === "below-video") {
-            return originalIndex > highestVideoIndex;
-          } else if (mode === "above-video") {
-            return originalIndex < lowestVideoIndex;
-          }
-          return true;
-        },
-      );
 
       tracksToRender.sort((a, b) => b.originalIndex - a.originalIndex);
 
@@ -2793,16 +2778,6 @@ export const Preview: React.FC = () => {
                 fillPreviewBackground(ctx, time, canvas.width, canvas.height);
                 shouldClearCanvas = false;
               }
-              await renderOverlayClipsInTrackOrder(
-                ctx,
-                timelineTracks,
-                activeShapeClips,
-                activeTextClips,
-                time,
-                canvas.width,
-                canvas.height,
-                "below-video",
-              );
               ctx.drawImage(blendedFrame, 0, 0);
               await renderOverlayClipsInTrackOrder(
                 ctx,
@@ -2812,7 +2787,6 @@ export const Preview: React.FC = () => {
                 time,
                 canvas.width,
                 canvas.height,
-                "above-video",
                 hasBehindSubjectText(activeTextClips) ? blendedFrame : null,
               );
               if (processedA !== clipAFrame) closeOnce(processedA);
@@ -2855,16 +2829,6 @@ export const Preview: React.FC = () => {
               fillPreviewBackground(ctx, time, canvas.width, canvas.height);
               shouldClearCanvas = false;
             }
-            await renderOverlayClipsInTrackOrder(
-              ctx,
-              timelineTracks,
-              activeShapeClips,
-              activeTextClips,
-              time,
-              canvas.width,
-              canvas.height,
-              "below-video",
-            );
             ctx.drawImage(validFrame, 0, 0);
             await renderOverlayClipsInTrackOrder(
               ctx,
@@ -2874,7 +2838,6 @@ export const Preview: React.FC = () => {
               time,
               canvas.width,
               canvas.height,
-              "above-video",
               hasBehindSubjectText(activeTextClips) ? validFrame : null,
             );
             if (processed !== clipAFrame) {
@@ -2895,16 +2858,6 @@ export const Preview: React.FC = () => {
               fillPreviewBackground(ctx, time, canvas.width, canvas.height);
               shouldClearCanvas = false;
             }
-            await renderOverlayClipsInTrackOrder(
-              ctx,
-              timelineTracks,
-              activeShapeClips,
-              activeTextClips,
-              time,
-              canvas.width,
-              canvas.height,
-              "below-video",
-            );
             ctx.drawImage(validFrame, 0, 0);
             await renderOverlayClipsInTrackOrder(
               ctx,
@@ -2914,7 +2867,6 @@ export const Preview: React.FC = () => {
               time,
               canvas.width,
               canvas.height,
-              "above-video",
               hasBehindSubjectText(activeTextClips) ? validFrame : null,
             );
             if (processed !== clipBFrame) {
@@ -2954,8 +2906,12 @@ export const Preview: React.FC = () => {
           shouldClearCanvas = false;
         }
 
-        // Render ALL tracks in layer order using painter's algorithm
-        // Higher index = rendered first (appears behind), Lower index = rendered last (appears on top)
+        // Render ALL tracks in layer order using painter's algorithm.
+        // Video/image tracks paint first, overlay tracks (text/graphics)
+        // always paint on top — the same contract the playing and export
+        // paths use, so a paused frame matches what playback and the
+        // exported file show. Within each group, higher index paints first
+        // (appears behind), lower index last (appears on top).
         const allRenderableTracks = timelineTracks
           .map((track, idx) => ({ track, originalIndex: idx }))
           .filter(
@@ -2966,7 +2922,7 @@ export const Preview: React.FC = () => {
                 track.type === "graphics") &&
               !track.hidden,
           )
-          .sort((a, b) => b.originalIndex - a.originalIndex);
+          .sort(compareTracksForComposite);
 
         let subjectFrame: ImageBitmap | null = null;
         const shouldCompositeSubject = hasBehindSubjectText(activeTextClips);
@@ -3340,7 +3296,7 @@ export const Preview: React.FC = () => {
               track.type === "graphics") &&
             !track.hidden,
         )
-        .sort((a, b) => b.originalIndex - a.originalIndex);
+        .sort(compareTracksForComposite);
 
       for (const { track } of allRenderableTracks) {
         if (track.type === "video" || track.type === "image") {
@@ -4026,7 +3982,6 @@ export const Preview: React.FC = () => {
                     currentPlayhead,
                     canvas.width,
                     canvas.height,
-                    "all",
                     transitionSubjectFrame,
                   );
                 } finally {
@@ -4134,7 +4089,6 @@ export const Preview: React.FC = () => {
               currentPlayhead,
               canvas.width,
               canvas.height,
-              "all",
             );
           }
 
@@ -4390,7 +4344,6 @@ export const Preview: React.FC = () => {
             currentPlayhead,
             canvas.width,
             canvas.height,
-            "all",
             subjectFrame,
           );
         }
@@ -5714,7 +5667,7 @@ export const Preview: React.FC = () => {
                     track.type === "graphics") &&
                   !track.hidden,
               )
-              .sort((a, b) => b.originalIndex - a.originalIndex);
+              .sort(compareTracksForComposite);
 
             if (canvasFillModeRef.current === "blur") {
               for (const { track, originalIndex } of allRenderableTracks) {
@@ -6184,6 +6137,8 @@ export const Preview: React.FC = () => {
 
   const lastModifiedAtRef = useRef<number>(project.modifiedAt);
   const lastPlayheadForRenderRef = useRef<number>(playheadPosition);
+  const projectRevision = useProjectStore((state) => state.projectRevision);
+  const lastRevisionForRenderRef = useRef<number>(projectRevision);
   const modifiedRenderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const renderInFlightRef = useRef<boolean>(false);
   const pendingRenderTimeRef = useRef<number | null>(null);
@@ -6193,6 +6148,7 @@ export const Preview: React.FC = () => {
 
     if (isInteractingRef.current) {
       lastModifiedAtRef.current = project.modifiedAt;
+      lastRevisionForRenderRef.current = projectRevision;
       return;
     }
 
@@ -6201,9 +6157,13 @@ export const Preview: React.FC = () => {
 
     const playheadChanged = playheadPosition !== lastPlayheadForRenderRef.current;
     const modifiedChanged = project.modifiedAt !== lastModifiedAtRef.current;
+    // ADR 0004 Decision 3: projectRevision bumps on every committed mutation
+    // (manual, agent, undo/redo), including paths that never stamp modifiedAt.
+    const revisionChanged = projectRevision !== lastRevisionForRenderRef.current;
 
     lastModifiedAtRef.current = project.modifiedAt;
     lastPlayheadForRenderRef.current = playheadPosition;
+    lastRevisionForRenderRef.current = projectRevision;
 
     const previousRenderTime = lastPreviewRenderTimeRef.current;
     const isLargeJump =
@@ -6242,7 +6202,7 @@ export const Preview: React.FC = () => {
 
     if (playheadChanged) {
       doRender(playheadPosition);
-    } else if (modifiedChanged) {
+    } else if (modifiedChanged || revisionChanged) {
       if (modifiedRenderTimerRef.current) {
         clearTimeout(modifiedRenderTimerRef.current);
       }
@@ -6266,6 +6226,7 @@ export const Preview: React.FC = () => {
     renderFallbackFrame,
     releaseScrubVideoElements,
     project.modifiedAt,
+    projectRevision,
     isDark,
   ]);
 
@@ -6576,6 +6537,71 @@ export const Preview: React.FC = () => {
       top: `${((content.y + agentTargetPoint.y * content.height) / canvasSize.height) * 100}%`,
     };
   }, [agentTargetPoint, canvasSize, settings.width, settings.height]);
+
+  // Persisted project review markers: a top-left stack of amber pills for
+  // markers relevant to the current frame — time ranges containing the
+  // playhead, clip/text markers whose element is active, and markers on
+  // selected entities. DOM overlay only (pointer-events: none), so it can
+  // never leak into export pixels.
+  const addProjectMarker = useProjectStore((state) => state.addProjectMarker);
+  const reviewMarkerPills = useMemo(() => {
+    const frameRate = settings.frameRate > 0 ? settings.frameRate : 30;
+    const byNumber = new Map<
+      number,
+      { marker: ProjectMarker; selected: boolean }
+    >();
+    const collect = (marker: ProjectMarker, selected: boolean) => {
+      const existing = byNumber.get(marker.number);
+      byNumber.set(marker.number, {
+        marker,
+        selected: (existing?.selected ?? false) || selected,
+      });
+    };
+    for (const marker of findTimeRangeMarkersAt(
+      project.markers,
+      playheadPosition,
+      frameRate,
+    )) {
+      collect(marker, false);
+    }
+    for (const marker of findClipMarkersActiveAt(
+      project.markers,
+      project,
+      playheadPosition,
+    )) {
+      collect(marker, false);
+    }
+    for (const marker of markersForSelection(project.markers, selectedItems)) {
+      collect(marker, true);
+    }
+    return [...byNumber.values()].sort(
+      (a, b) => a.marker.number - b.marker.number,
+    );
+  }, [project, playheadPosition, selectedItems, settings.frameRate]);
+
+  const previewMarkerMenuItems = useMemo<ContextMenuOption[]>(
+    () => [
+      {
+        label: tr("reviewMarkers.addAtPlayhead"),
+        icon: <Flag size={14} aria-hidden />,
+        onClick: () => {
+          void addProjectMarker({
+            kind: "timeRange",
+            start: playheadPosition,
+            end: playheadPosition,
+          }).then((result) => {
+            if (!result.success) {
+              toast.error(
+                tr("reviewMarkers.addFailed"),
+                result.error?.message,
+              );
+            }
+          });
+        },
+      },
+    ],
+    [tr, addProjectMarker, playheadPosition],
+  );
 
   const handlePreviewKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -7790,6 +7816,7 @@ export const Preview: React.FC = () => {
         onMouseMove={interactionMode !== "none" ? handleMouseMove : undefined}
         onMouseUp={handleMouseUp}
       >
+        <ContextMenu items={previewMarkerMenuItems} menuWidth={260} size="sm">
         <div
           ref={overlayRef}
           className={`relative bg-[var(--screen-bg)] overflow-visible transition-all duration-300 ${
@@ -7840,6 +7867,30 @@ export const Preview: React.FC = () => {
               style={agentTargetMarkerStyle}
             >
               <span className="absolute -translate-x-1/2 -translate-y-1/2 block h-3 w-3 rounded-full border-2 border-accent bg-accent/30 shadow-[0_0_4px_rgba(0,0,0,0.6)]" />
+            </div>
+          ) : null}
+
+          {!cropMode && reviewMarkerPills.length > 0 ? (
+            <div
+              aria-label={tr("reviewMarkers.ariaLabel")}
+              className="pointer-events-none absolute left-2 top-2 z-30 flex flex-col items-start gap-1"
+            >
+              {reviewMarkerPills.slice(0, 6).map(({ marker, selected }) => (
+                <ProjectMarkerBadge
+                  key={marker.id}
+                  number={marker.number}
+                  label={marker.label}
+                  selected={selected}
+                  size="md"
+                />
+              ))}
+              {reviewMarkerPills.length > 6 ? (
+                <span className="inline-block rounded-[4px] bg-[#f59e0b]/80 px-2 py-1 text-[10px] font-bold leading-none text-[#201300] shadow-[0_1px_5px_rgba(0,0,0,0.35)]">
+                  {tr("reviewMarkers.more", {
+                    count: reviewMarkerPills.length - 6,
+                  })}
+                </span>
+              ) : null}
             </div>
           ) : null}
 
@@ -8256,6 +8307,7 @@ export const Preview: React.FC = () => {
               );
             })}
         </div>
+        </ContextMenu>
       </div>
 
       {/* Player Controls with integrated Scrub Bar */}

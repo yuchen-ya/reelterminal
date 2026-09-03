@@ -18,6 +18,12 @@
   (Decision 7), listener and hard-kill-residue wording corrected to fact
   (Decisions 1/7), paths are absolute-only (Decision 6), and the schema
   story is single-source, not twin hand-written schemas (Decision 4).
+- Format note: checkpoint **v2** (2026-09) — added optional project markers
+  (the `markers` project field: `{nextNumber, items[]}` with the closed
+  4-variant target union) to the `openreel-project` document (Decision 10.2
+  evolution rule: the schema is closed, so the additive change bumped
+  `formatVersion` 1 → 2; v1 documents are refused at the format gate like
+  any unsupported version).
 - Context: ADR 0001 (headless facade; §5 gates transports on Desktop-MCP
   hardening), ADR 0002 (Chromium runtime; containment, watchdog, honest
   capabilities), `audit/transport-audit.md` (debugger-grade verdict on the

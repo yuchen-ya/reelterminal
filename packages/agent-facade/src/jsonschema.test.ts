@@ -125,7 +125,7 @@ describe("emitted schema per-verb structure", () => {
       },
     });
     const anyOf = ((ops.items as Schema).anyOf ?? []) as Schema[];
-    expect(anyOf).toHaveLength(21);
+    expect(anyOf).toHaveLength(23);
     const trackAdd = anyOf[0];
     expect(trackAdd.additionalProperties).toBe(false);
     expect(trackAdd.required).toEqual(["op", "trackType"]);
@@ -249,6 +249,31 @@ describe("emitted schema per-verb structure", () => {
     expect(mediaRemove.required).toEqual(["op", "mediaId"]);
     expect((mediaRemove.properties as Schema).op).toEqual({
       const: "media.remove",
+    });
+    const markerAdd = anyOf[21];
+    expect(markerAdd.required).toEqual(["op", "target"]);
+    expect((markerAdd.properties as Schema).op).toEqual({
+      const: "marker.add",
+    });
+    // The target union is the one nested anyOf below the op: four closed
+    // variants discriminated by `kind`.
+    const markerTarget = (markerAdd.properties as Schema).target as Schema;
+    const targetVariants = markerTarget.anyOf as Schema[];
+    expect(targetVariants).toHaveLength(4);
+    for (const variant of targetVariants) {
+      expect(variant.additionalProperties).toBe(false);
+      expect(variant.required).toContain("kind");
+    }
+    expect((targetVariants[0].properties as Schema).kind).toEqual({ const: "asset" });
+    expect((targetVariants[3].properties as Schema).kind).toEqual({ const: "timeRange" });
+    const markerRemove = anyOf[22];
+    expect(markerRemove.required).toEqual(["op", "number"]);
+    expect((markerRemove.properties as Schema).op).toEqual({
+      const: "marker.remove",
+    });
+    expect((markerRemove.properties as Schema).number).toEqual({
+      type: "integer",
+      minimum: 1,
     });
   });
 

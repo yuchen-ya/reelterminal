@@ -1710,3 +1710,76 @@ describe("live preview/export on a store snapshot (Decision 10)", () => {
     if (!exportRes.ok) expect(exportRes.error.code).toBe("CONFLICT");
   });
 });
+
+/* ----------------------- project markers (live) --------------------- */
+
+describe("project markers over the live store seam", () => {
+  it("mints sequential numbers, projects them sorted, and removes by number — identical to headless", async () => {
+    const facade = liveFacade();
+    const seeded = await facade["edit.apply"]({ ops: [...TEXT_BATCH] });
+    expect(seeded.ok).toBe(true);
+
+    const timeline0 = await facade["timeline.get"]();
+    expect(timeline0.ok).toBe(true);
+    if (!timeline0.ok) return;
+    const textOverlayId = timeline0.value.textOverlays[0]!.id;
+    expect(timeline0.value.markers).toEqual([]);
+
+    const added = await facade["edit.apply"]({
+      ops: [
+        { op: "marker.add", target: { kind: "timeRange", start: 0, end: 1 }, label: "one" },
+        { op: "marker.add", target: { kind: "text", textClipId: textOverlayId } },
+        { op: "marker.add", target: { kind: "timeRange", start: 2, end: 3.5 } },
+      ],
+    });
+    expect(added.ok).toBe(true);
+
+    const timeline = await facade["timeline.get"]();
+    expect(timeline.ok).toBe(true);
+    if (!timeline.ok) return;
+    expect(timeline.value.markers.map((m) => m.number)).toEqual([1, 2, 3]);
+    expect(timeline.value.markers[0]).toMatchObject({
+      target: { kind: "timeRange", start: 0, end: 1 },
+      label: "one",
+      color: "#f59e0b",
+    });
+    expect(timeline.value.markers[1]?.target).toEqual({
+      kind: "text",
+      textClipId: textOverlayId,
+    });
+
+    // The canonical store state carries the same watermark and items.
+    expect(store.project.markers?.nextNumber).toBe(4);
+    expect(store.project.markers?.items).toHaveLength(3);
+
+    const removed = await facade["edit.apply"]({
+      ops: [{ op: "marker.remove", number: 2 }],
+    });
+    expect(removed.ok).toBe(true);
+    const after = await facade["timeline.get"]();
+    expect(after.ok).toBe(true);
+    if (!after.ok) return;
+    expect(after.value.markers.map((m) => m.number)).toEqual([1, 3]);
+
+    const missed = await facade["edit.apply"]({
+      ops: [{ op: "marker.remove", number: 2 }],
+    });
+    expect(missed.ok).toBe(false);
+    if (!missed.ok) {
+      expect(missed.error.code).toBe("NOT_FOUND");
+      expect(missed.error.message).toContain("1, 3");
+    }
+  });
+
+  it("rejects a dangling marker target live without touching the store", async () => {
+    const facade = liveFacade();
+    const revisionBefore = store.revision;
+    const result = await facade["edit.apply"]({
+      ops: [{ op: "marker.add", target: { kind: "clip", clipId: "ghost" } }],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("NOT_FOUND");
+    expect(store.revision).toBe(revisionBefore);
+    expect(store.batches).toHaveLength(0);
+  });
+});

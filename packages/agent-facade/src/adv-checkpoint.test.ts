@@ -139,7 +139,23 @@ describe("ADV checkpoint: open-side corruption & structure refusals", () => {
     if (!opened.ok) {
       expect(opened.error.code).toBe("UNSUPPORTED");
       expect(opened.error.message).toContain("999");
-      expect(opened.error.message).toContain("{1}");
+      expect(opened.error.message).toContain("{2}");
+      expect(opened.error.message).not.toContain(INTEGRITY_WORDING);
+    }
+  });
+
+  it("formatVersion:1 (the pre-markers document) ⇒ the same UNSUPPORTED refusal — no silent downgrade, no guessed migration", async () => {
+    const doc = await readDoc(basePath);
+    doc.formatVersion = 1;
+    const mutated = join(projectRoot, "v1.openreel.json");
+    await writeFile(mutated, JSON.stringify(doc, null, 2), "utf8");
+
+    const opened = await freshSession()["project.open"]({ path: mutated });
+    expect(opened.ok).toBe(false);
+    if (!opened.ok) {
+      expect(opened.error.code).toBe("UNSUPPORTED");
+      expect(opened.error.message).toContain("formatVersion 1");
+      expect(opened.error.message).toContain("{2}");
       expect(opened.error.message).not.toContain(INTEGRITY_WORDING);
     }
   });
@@ -245,6 +261,61 @@ describe("ADV checkpoint: open-side corruption & structure refusals", () => {
       expect(opened.error.code).toBe("INVALID_PARAMS");
       expect(opened.error.message).toContain(STRUCTURE_WORDING);
       expect(opened.error.message).toContain("adjustmentLayers");
+    }
+  });
+
+  it("a v2 document without markers opens and defaults to the empty marker state", async () => {
+    const mutated = join(projectRoot, "no-markers.openreel.json");
+    await writeMutated(basePath, mutated, (doc) => {
+      delete (doc.project as { markers?: unknown }).markers;
+    });
+    const opened = await freshSession()["project.open"]({ path: mutated });
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    expect(opened.value.project.markers).toEqual({ nextNumber: 1, items: [] });
+  });
+
+  it("a malformed markers field (hash recomputed) ⇒ STRUCTURE refusal, never a silent drop", async () => {
+    for (const [name, markers] of [
+      ["markers-array", [{ id: "marker-1" }]],
+      ["markers-bad-next", { nextNumber: 0, items: [] }],
+      ["markers-bad-item", { nextNumber: 2, items: [{ id: "marker-1", number: 1 }] }],
+    ] as const) {
+      const mutated = join(projectRoot, `${name}.openreel.json`);
+      await writeMutated(basePath, mutated, (doc) => {
+        (doc.project as { markers?: unknown }).markers = markers;
+      });
+      const opened = await freshSession()["project.open"]({ path: mutated });
+      expect(opened.ok, name).toBe(false);
+      if (!opened.ok) {
+        expect(opened.error.code).toBe("INVALID_PARAMS");
+        expect(opened.error.message).toContain(STRUCTURE_WORDING);
+        expect(opened.error.message).not.toContain(INTEGRITY_WORDING);
+      }
+    }
+  });
+
+  it("a marker with an unknown target kind (hash recomputed) ⇒ STRUCTURE refusal naming the kind", async () => {
+    const mutated = join(projectRoot, "marker-bad-target.openreel.json");
+    await writeMutated(basePath, mutated, (doc) => {
+      (doc.project as { markers?: unknown }).markers = {
+        nextNumber: 2,
+        items: [
+          {
+            id: "marker-1",
+            number: 1,
+            target: { kind: "region", id: "r1" },
+            createdAt: 1,
+          },
+        ],
+      };
+    });
+    const opened = await freshSession()["project.open"]({ path: mutated });
+    expect(opened.ok).toBe(false);
+    if (!opened.ok) {
+      expect(opened.error.code).toBe("INVALID_PARAMS");
+      expect(opened.error.message).toContain(STRUCTURE_WORDING);
+      expect(opened.error.message).toContain("region");
     }
   });
 

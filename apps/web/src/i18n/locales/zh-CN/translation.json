@@ -289,6 +289,18 @@
     "badgeLabel": "智能助手引用 #{{number}}",
     "staleSuffix": "已失效"
   },
+  "reviewMarkers": {
+    "add": "添加审阅标记",
+    "addAtPoint": "在此添加审阅标记",
+    "addRangeFromPlayhead": "添加区间审阅标记（播放头 → 此处）",
+    "addAtPlayhead": "在播放头添加审阅标记",
+    "remove": "移除审阅标记 #{{number}}",
+    "more": "+{{count}}",
+    "badgeLabel": "审阅标记 #{{number}}",
+    "ariaLabel": "审阅标记",
+    "addFailed": "添加审阅标记失败",
+    "removeFailed": "移除审阅标记失败"
+  },
   "editorRail": {
     "ariaLabel": "编辑器工具",
     "backHome": "返回首页",

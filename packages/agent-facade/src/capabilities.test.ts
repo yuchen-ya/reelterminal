@@ -105,6 +105,8 @@ describe("capabilities.get / session.describe", () => {
       "transition.remove",
       "track.remove",
       "media.remove",
+      "marker.add",
+      "marker.remove",
     ]);
     expect(res.value.editOps).toEqual([...EDIT_OP_TYPES]);
     expect(res.value.stateModel).toEqual({

@@ -1,4 +1,10 @@
-import type { Project, MediaItem } from "../types";
+import type {
+  Project,
+  MediaItem,
+  ProjectMarker,
+  ProjectMarkersState,
+  ProjectMarkerTarget,
+} from "../types";
 import type { IStorageEngine, MediaRecord } from "./types";
 import type { ValidationResult, ProjectFileWithMetadata } from "./schema-types";
 import type {
@@ -155,9 +161,94 @@ export function normalizeProjectGeneratedShaderFields(
   };
 }
 
+function isProjectMarkerTargetShape(value: unknown): value is ProjectMarkerTarget {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const target = value as Record<string, unknown>;
+  switch (target.kind) {
+    case "asset":
+      return typeof target.mediaId === "string" && target.mediaId.length > 0;
+    case "clip":
+      return typeof target.clipId === "string" && target.clipId.length > 0;
+    case "text":
+      return (
+        typeof target.textClipId === "string" && target.textClipId.length > 0
+      );
+    case "timeRange":
+      return (
+        typeof target.start === "number" &&
+        Number.isFinite(target.start) &&
+        target.start >= 0 &&
+        typeof target.end === "number" &&
+        Number.isFinite(target.end) &&
+        target.end >= target.start
+      );
+    default:
+      return false;
+  }
+}
+
+function isProjectMarkerShape(value: unknown): value is ProjectMarker {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const marker = value as Record<string, unknown>;
+  return (
+    typeof marker.id === "string" &&
+    marker.id.length > 0 &&
+    typeof marker.number === "number" &&
+    Number.isInteger(marker.number) &&
+    marker.number >= 1 &&
+    isProjectMarkerTargetShape(marker.target) &&
+    (marker.label === undefined || typeof marker.label === "string") &&
+    (marker.color === undefined || typeof marker.color === "string") &&
+    typeof marker.createdAt === "number" &&
+    Number.isFinite(marker.createdAt) &&
+    marker.createdAt >= 0
+  );
+}
+
+/**
+ * Defensive repair for stored marker state: an absent/invalid `markers`
+ * becomes empty, structurally invalid items are dropped, duplicate ids or
+ * numbers keep the first occurrence, and nextNumber is repaired to stay
+ * above every surviving item's number (deleted numbers stay retired).
+ */
+export function normalizeProjectMarkers(value: unknown): ProjectMarkersState {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { nextNumber: 1, items: [] };
+  }
+  const state = value as { nextNumber?: unknown; items?: unknown };
+  const rawItems = Array.isArray(state.items) ? state.items : [];
+  const seenIds = new Set<string>();
+  const seenNumbers = new Set<number>();
+  const items: ProjectMarker[] = [];
+  for (const raw of rawItems) {
+    if (!isProjectMarkerShape(raw)) continue;
+    if (seenIds.has(raw.id) || seenNumbers.has(raw.number)) continue;
+    seenIds.add(raw.id);
+    seenNumbers.add(raw.number);
+    items.push(raw);
+  }
+  const maxNumber = items.reduce((max, item) => Math.max(max, item.number), 0);
+  const nextNumber =
+    typeof state.nextNumber === "number" &&
+    Number.isInteger(state.nextNumber) &&
+    state.nextNumber >= 1
+      ? state.nextNumber
+      : 1;
+  return { nextNumber: Math.max(nextNumber, maxNumber + 1), items };
+}
+
+export function normalizeProjectMarkerFields(project: Project): Project {
+  return {
+    ...project,
+    markers: normalizeProjectMarkers(project.markers),
+  };
+}
+
 export function normalizeProjectStoredFields(project: Project): Project {
-  return normalizeProjectGeneratedShaderFields(
-    normalizeProjectCreationFields(normalizeProjectMotionFields(project)),
+  return normalizeProjectMarkerFields(
+    normalizeProjectGeneratedShaderFields(
+      normalizeProjectCreationFields(normalizeProjectMotionFields(project)),
+    ),
   );
 }
 

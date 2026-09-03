@@ -15,6 +15,7 @@ import { useUIStore } from "../../../stores/ui-store";
 import { getTimelineTrackSelection } from "../../../utils/timeline-item-actions";
 import { markAgentReferenceForSelection } from "../../../stores/editor-context-store";
 import { getAgentReferenceTargetForGraphic, getAgentReferenceTargetForText } from "../../../stores/agent-reference-targets";
+import { useProjectMarkerMenuItems } from "../project-marker-menu";
 
 type GraphicsClipType = ShapeClip | SVGClip | StickerClip | TextClip;
 
@@ -96,6 +97,14 @@ export function useGraphicsClipContextMenuItems({
     onClose?.();
   };
 
+  // Review markers: the backend target union can only reference text overlays
+  // here (shape/SVG/sticker clips live outside timeline tracks, so a "clip"
+  // target for them fails core validation). Their badges still render from the
+  // shared selectors if a matching marker ever exists.
+  const reviewMarkerMenuItems = useProjectMarkerMenuItems(
+    clipType === "text" ? { kind: "text", textClipId: clip.id } : null,
+  );
+
   const getClipTypeLabel = () => {
     switch (clipType) {
       case "shape":
@@ -159,6 +168,7 @@ export function useGraphicsClipContextMenuItems({
       icon: <Hash size={14} aria-hidden />,
       onClick: handleAddAgentReference,
     },
+    ...reviewMarkerMenuItems,
     { type: "divider" },
   );
 

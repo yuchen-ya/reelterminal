@@ -49,6 +49,7 @@ import {
   resolveEditingTemplate,
 } from "@openreel/core";
 import { createMarkerSlice } from "./project/marker-slice";
+import { createProjectMarkersSlice } from "./project/project-markers-slice";
 import { createSubtitleSlice } from "./project/subtitle-slice";
 import { createTrackSlice } from "./project/track-slice";
 import { createMediaSlice } from "./project/media-slice";
@@ -421,6 +422,15 @@ export interface ProjectState {
   ) => Promise<ActionResult>;
   getMarker: (markerId: string) => import("@openreel/core").Marker | undefined;
   getMarkers: () => import("@openreel/core").Marker[];
+
+  // Project review marker actions (persisted `project.markers`; distinct from
+  // the ruler point markers above). Removal addresses a marker by its stable
+  // number and fails listing the assigned numbers when it is unknown.
+  addProjectMarker: (
+    target: import("@openreel/core").ProjectMarkerTarget,
+    label?: string,
+  ) => Promise<ActionResult>;
+  removeProjectMarker: (number: number) => Promise<ActionResult>;
 
   // Graphics actions
   createShapeClip: (
@@ -2812,7 +2822,9 @@ export const useProjectStore = create<ProjectState>()(
         }
         const result = await actionExecutor.execute(action, project);
         if (result.success) {
-          set({ project: { ...project } });
+          // The executor only stamps modifiedAt for project/* actions, but
+          // Preview's paused re-render and several memos key off it.
+          set({ project: { ...project, modifiedAt: Date.now() } });
         }
         return result;
       },
@@ -3410,6 +3422,9 @@ export const useProjectStore = create<ProjectState>()(
       // Marker actions
 
       ...createMarkerSlice(set, get),
+
+      // Project review marker actions
+      ...createProjectMarkersSlice(set, get),
 
 
       // Photo editing actions

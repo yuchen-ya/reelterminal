@@ -14,8 +14,15 @@ import type {
   MediaAction,
   ProjectAction,
   MarkerAction,
+  ProjectMarkerAction,
 } from "../types/actions";
-import type { Project, Timeline, Track, Clip } from "../types";
+import type {
+  Project,
+  ProjectMarkerTarget,
+  Timeline,
+  Track,
+  Clip,
+} from "../types";
 import { getActionHandler } from "./registry";
 
 export class ActionValidator {
@@ -62,6 +69,11 @@ export class ActionValidator {
 
     if (type.startsWith("project/")) {
       return this.validateProjectAction(action as ProjectAction, project);
+    } else if (type.startsWith("projectMarker/")) {
+      return this.validateProjectMarkerAction(
+        action as ProjectMarkerAction,
+        project,
+      );
     } else if (type.startsWith("media/")) {
       return this.validateMediaAction(action as MediaAction, project);
     } else if (type.startsWith("track/")) {
@@ -490,6 +502,223 @@ export class ActionValidator {
           }
         }
         break;
+    }
+
+    return errors;
+  }
+
+  private validateProjectMarkerAction(
+    action: ProjectMarkerAction,
+    project: Project,
+  ): ValidationError[] {
+    const errors: ValidationError[] = [];
+    const items = project.markers?.items ?? [];
+
+    switch (action.type) {
+      case "projectMarker/add":
+      case "projectMarker/restore": {
+        const marker = action.params.marker as unknown;
+        if (!marker || typeof marker !== "object" || Array.isArray(marker)) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Marker must be an object",
+            path: "params.marker",
+          });
+          break;
+        }
+        const m = marker as {
+          id?: unknown;
+          number?: unknown;
+          target?: unknown;
+          label?: unknown;
+          color?: unknown;
+          createdAt?: unknown;
+        };
+        if (typeof m.id !== "string" || m.id.length === 0) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Marker id is required and must be a non-empty string",
+            path: "params.marker.id",
+          });
+        } else if (items.some((existing) => existing.id === m.id)) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: `Marker with ID ${m.id} already exists`,
+            path: "params.marker.id",
+          });
+        }
+        if (
+          typeof m.number !== "number" ||
+          !Number.isInteger(m.number) ||
+          m.number < 1
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Marker number must be a positive integer",
+            path: "params.marker.number",
+          });
+        }
+        if (
+          typeof m.createdAt !== "number" ||
+          !Number.isFinite(m.createdAt) ||
+          m.createdAt < 0
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Marker createdAt must be a non-negative finite number",
+            path: "params.marker.createdAt",
+          });
+        }
+        if (
+          m.label !== undefined &&
+          (typeof m.label !== "string" || m.label.length > 200)
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Marker label must be a string of at most 200 characters",
+            path: "params.marker.label",
+          });
+        }
+        if (m.color !== undefined && typeof m.color !== "string") {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Marker color must be a string",
+            path: "params.marker.color",
+          });
+        }
+        errors.push(...this.validateProjectMarkerTarget(m.target, project));
+        break;
+      }
+
+      case "projectMarker/remove": {
+        const markerId = action.params.markerId as unknown;
+        if (!markerId || typeof markerId !== "string") {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Marker ID is required and must be a string",
+            path: "params.markerId",
+          });
+        } else if (!items.some((m) => m.id === markerId)) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: `Marker with ID ${markerId} not found`,
+            path: "params.markerId",
+          });
+        }
+        break;
+      }
+    }
+
+    return errors;
+  }
+
+  private validateProjectMarkerTarget(
+    target: unknown,
+    project: Project,
+  ): ValidationError[] {
+    const errors: ValidationError[] = [];
+    const path = "params.marker.target";
+    if (!target || typeof target !== "object" || Array.isArray(target)) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message: "Marker target must be an object",
+        path,
+      });
+      return errors;
+    }
+    const t = target as ProjectMarkerTarget;
+    switch (t.kind) {
+      case "asset":
+        if (typeof t.mediaId !== "string" || t.mediaId.length === 0) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Marker target mediaId must be a non-empty string",
+            path: `${path}.mediaId`,
+          });
+        } else if (
+          !project.mediaLibrary.items.some((item) => item.id === t.mediaId)
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: `Marker target media ${t.mediaId} not found`,
+            path: `${path}.mediaId`,
+          });
+        }
+        break;
+
+      case "clip":
+        if (typeof t.clipId !== "string" || t.clipId.length === 0) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Marker target clipId must be a non-empty string",
+            path: `${path}.clipId`,
+          });
+        } else if (
+          !project.timeline.tracks.some((track) =>
+            track.clips.some((clip) => clip.id === t.clipId),
+          )
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: `Marker target clip ${t.clipId} not found`,
+            path: `${path}.clipId`,
+          });
+        }
+        break;
+
+      case "text":
+        if (typeof t.textClipId !== "string" || t.textClipId.length === 0) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Marker target textClipId must be a non-empty string",
+            path: `${path}.textClipId`,
+          });
+        } else if (
+          !(project.textClips ?? []).some((clip) => clip.id === t.textClipId)
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: `Marker target text overlay ${t.textClipId} not found`,
+            path: `${path}.textClipId`,
+          });
+        }
+        break;
+
+      case "timeRange": {
+        const { start, end } = t;
+        const startValid =
+          typeof start === "number" && Number.isFinite(start) && start >= 0;
+        const endValid = typeof end === "number" && Number.isFinite(end);
+        if (!startValid) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Marker target start must be a non-negative finite number",
+            path: `${path}.start`,
+          });
+        }
+        if (!endValid) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Marker target end must be a finite number",
+            path: `${path}.end`,
+          });
+        }
+        if (startValid && endValid && end < start) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Marker target end must be greater than or equal to start",
+            path: `${path}.end`,
+          });
+        }
+        break;
+      }
+
+      default:
+        errors.push({
+          code: "INVALID_PARAMS",
+          message: `Unknown marker target kind ${JSON.stringify((t as { kind?: unknown }).kind)}`,
+          path: `${path}.kind`,
+        });
     }
 
     return errors;

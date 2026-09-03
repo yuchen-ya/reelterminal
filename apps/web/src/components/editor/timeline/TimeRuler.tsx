@@ -11,6 +11,15 @@ import {
   type BeatSyncState,
 } from "../../../bridges/beat-sync-bridge";
 import { useTranslation } from "react-i18next";
+import {
+  ToolcraftContextMenu as ContextMenu,
+  type ToolcraftContextMenuOption as ContextMenuOption,
+} from "@openreel/ui";
+import { Flag } from "@/icons/lucide-compat";
+import type { ProjectMarker } from "@openreel/core";
+import { useProjectStore } from "../../../stores/project-store";
+import { useTimelineStore } from "../../../stores/timeline-store";
+import { toast } from "../../../stores/notification-store";
 
 interface TimeRulerProps {
   duration: number;
@@ -35,6 +44,13 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
   const { t: tr } = useTranslation();
   const rulerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [contextMenuTime, setContextMenuTime] = useState(0);
+  const projectMarkers = useProjectStore((state) => state.project.markers);
+  const addProjectMarker = useProjectStore((state) => state.addProjectMarker);
+  const removeProjectMarker = useProjectStore(
+    (state) => state.removeProjectMarker,
+  );
+  const playheadPosition = useTimelineStore((state) => state.playheadPosition);
   const [beatState, setBeatState] = useState<BeatSyncState>(() =>
     getBeatSyncBridge().getState(),
   );
@@ -114,6 +130,9 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      // Left button only — right-click belongs to the review-marker menu and
+      // must not scrub the playhead to the click point.
+      if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       setIsDragging(true);
@@ -122,6 +141,65 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
       onSeek(time);
     },
     [getTimeFromEvent, onSeek, onScrubStart],
+  );
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      setContextMenuTime(getTimeFromEvent(e));
+    },
+    [getTimeFromEvent],
+  );
+
+  const handleAddMarkerAt = useCallback(
+    async (start: number, end: number) => {
+      const result = await addProjectMarker({ kind: "timeRange", start, end });
+      if (!result.success) {
+        toast.error(tr("reviewMarkers.addFailed"), result.error?.message);
+      }
+    },
+    [addProjectMarker, tr],
+  );
+
+  const handleRemoveMarker = useCallback(
+    async (number: number) => {
+      const result = await removeProjectMarker(number);
+      if (!result.success) {
+        toast.error(tr("reviewMarkers.removeFailed"), result.error?.message);
+      }
+    },
+    [removeProjectMarker, tr],
+  );
+
+  const rangeDelta = Math.abs(contextMenuTime - playheadPosition);
+  const rulerMenuItems: ContextMenuOption[] = [
+    {
+      label: tr("reviewMarkers.addAtPoint"),
+      icon: <Flag size={14} aria-hidden />,
+      onClick: () => {
+        void handleAddMarkerAt(contextMenuTime, contextMenuTime);
+      },
+    },
+    {
+      label: tr("reviewMarkers.addRangeFromPlayhead"),
+      icon: <Flag size={14} aria-hidden />,
+      isDisabled: rangeDelta < 0.05,
+      onClick: () => {
+        void handleAddMarkerAt(
+          Math.min(playheadPosition, contextMenuTime),
+          Math.max(playheadPosition, contextMenuTime),
+        );
+      },
+    },
+  ];
+
+  const timeRangeMarkers = useMemo(
+    () =>
+      (projectMarkers?.items ?? []).filter(
+        (marker): marker is ProjectMarker & {
+          target: { kind: "timeRange"; start: number; end: number };
+        } => marker.target.kind === "timeRange",
+      ),
+    [projectMarkers],
   );
 
   const snapPointsRef = useRef(snapPoints);
@@ -203,6 +281,7 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
   }, [isDragging, getTimeFromEvent, onSeek, onScrubEnd, safePixelsPerSecond]);
 
   return (
+    <ContextMenu items={rulerMenuItems} menuWidth={280} size="sm">
     <div
       ref={rulerRef}
       data-testid="timeline-time-ruler"
@@ -210,6 +289,7 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
         isDragging ? "cursor-grabbing" : "cursor-pointer"
       }`}
       onMouseDown={handleMouseDown}
+      onContextMenu={handleContextMenu}
       style={{ cursor: isDragging ? "grabbing" : "pointer" }}
     >
       {ticks.map((tick) =>
@@ -236,6 +316,55 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
         />
       ))}
 
+      {/* Persisted review time-range markers: amber span from start→end (a
+          point renders as a thin flag) with its stable #N. Right-clicking a
+          span offers removal of exactly that marker. */}
+      {timeRangeMarkers.map((marker) => {
+        const { start, end } = marker.target;
+        const isPoint = start === end;
+        const left = start * safePixelsPerSecond;
+        const width = Math.max(2, (end - start) * safePixelsPerSecond);
+        const tooltip =
+          marker.label && marker.label.trim().length > 0
+            ? marker.label
+            : tr("reviewMarkers.badgeLabel", { number: marker.number });
+        return (
+          <ContextMenu
+            key={marker.id}
+            menuWidth={220}
+            size="sm"
+            items={[
+              {
+                label: tr("reviewMarkers.remove", { number: marker.number }),
+                icon: <Flag size={14} aria-hidden />,
+                onClick: () => {
+                  void handleRemoveMarker(marker.number);
+                },
+              },
+            ]}
+          >
+            <div
+              data-testid={`review-marker-span-${marker.number}`}
+              className="absolute bottom-0 z-10 h-[34px]"
+              style={{ left: `${left}px`, width: `${width}px` }}
+              title={tooltip}
+              onContextMenu={(e) => e.stopPropagation()}
+            >
+              <div
+                className={`absolute bottom-0 ${
+                  isPoint
+                    ? "h-[16px] w-[2px] bg-[#f59e0b]"
+                    : "inset-x-0 h-[7px] rounded-t-[3px] bg-[#f59e0b]/85"
+                }`}
+              />
+              <span className="pointer-events-none absolute bottom-[7px] left-0 rounded-[3px] bg-[#f59e0b] px-1 py-px text-[8px] font-bold leading-none text-[#201300] shadow-[0_1px_4px_rgba(0,0,0,0.4)]">
+                #{marker.number}
+              </span>
+            </div>
+          </ContextMenu>
+        );
+      })}
+
       {beatState.beatAnalysis && (
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 bg-orange-500/20 px-2 py-0.5 rounded text-[9px] text-orange-400 font-medium pointer-events-none">
           <span className="opacity-70">♪</span>
@@ -243,5 +372,6 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
         </div>
       )}
     </div>
+    </ContextMenu>
   );
 };

@@ -1,6 +1,8 @@
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { createAgentFacade, type AgentFacade } from "./index";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
+import { createEmptyProject } from "./project-factory";
+import { timelineStateView } from "./projection";
 import { makeTempDir, removeTempDir } from "./test-helpers";
 
 describe("finishing edit tools", () => {
@@ -316,5 +318,214 @@ describe("finishing edit tools", () => {
       .flatMap((track) => track.clips)
       .find((candidate) => candidate.id === "c1");
     expect(clip?.startTime).toBe(0);
+  });
+});
+
+
+describe("project markers (marker.add / marker.remove)", () => {
+  let mediaRoot: string;
+  let facade: AgentFacade;
+  let mediaId: string;
+
+  beforeEach(async () => {
+    mediaRoot = await makeTempDir("marker-ops");
+    const inputPath = writeTinyMp4(mediaRoot);
+    facade = createAgentFacade({ mediaRoots: [mediaRoot] });
+    await facade["project.create"]({ name: "Markers" });
+    const imported = await facade["media.import"]({ path: inputPath });
+    expect(imported.ok).toBe(true);
+    if (!imported.ok) throw new Error(imported.error.message);
+    mediaId = imported.value.mediaId;
+
+    const seeded = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v1" },
+        {
+          op: "clip.add",
+          trackId: "v1",
+          mediaId,
+          startTime: 0,
+          duration: 4,
+          inPoint: 0,
+          outPoint: 4,
+          clipId: "c1",
+        },
+        { op: "track.add", trackType: "text", trackId: "t1" },
+        { op: "text.create", trackId: "t1", text: "Title", startTime: 0, duration: 3 },
+      ],
+    });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) throw new Error("seed failed");
+  });
+
+  afterEach(async () => {
+    await removeTempDir(mediaRoot);
+  });
+
+  async function markersViaTimelineGet() {
+    const timeline = await facade["timeline.get"]();
+    expect(timeline.ok).toBe(true);
+    if (!timeline.ok) throw new Error("timeline.get failed");
+    return timeline.value.markers;
+  }
+
+  it("adds markers for all four target kinds with stable sequential numbers", async () => {
+    const timeline = await facade["timeline.get"]();
+    expect(timeline.ok).toBe(true);
+    if (!timeline.ok) throw new Error("timeline.get failed");
+    const textOverlayId = timeline.value.textOverlays[0]!.id;
+
+    const added = await facade["edit.apply"]({
+      ops: [
+        { op: "marker.add", target: { kind: "asset", mediaId }, label: "Source shot", color: "#00ff00" },
+        { op: "marker.add", target: { kind: "clip", clipId: "c1" } },
+        { op: "marker.add", target: { kind: "text", textClipId: textOverlayId } },
+        { op: "marker.add", target: { kind: "timeRange", start: 1, end: 2.5 }, label: "Trim candidate" },
+      ],
+    });
+    expect(added.ok).toBe(true);
+
+    const markers = await markersViaTimelineGet();
+    expect(markers.map((m) => m.number)).toEqual([1, 2, 3, 4]);
+    expect(markers[0]).toMatchObject({
+      target: { kind: "asset", mediaId },
+      label: "Source shot",
+      color: "#00ff00",
+    });
+    expect(markers[1]).toMatchObject({
+      target: { kind: "clip", clipId: "c1" },
+      color: "#f59e0b", // the documented default
+    });
+    expect(markers[1]?.label).toBeUndefined();
+    expect(markers[2]?.target).toEqual({ kind: "text", textClipId: textOverlayId });
+    expect(markers[3]).toMatchObject({
+      target: { kind: "timeRange", start: 1, end: 2.5 },
+      label: "Trim candidate",
+    });
+    for (const marker of markers) {
+      expect(marker.id).toMatch(/^marker-/);
+      expect(marker.createdAt).toBeGreaterThan(0);
+    }
+  });
+
+  it("mints 1,2,3 for three adds in ONE batch", async () => {
+    const added = await facade["edit.apply"]({
+      ops: [
+        { op: "marker.add", target: { kind: "timeRange", start: 0, end: 1 } },
+        { op: "marker.add", target: { kind: "timeRange", start: 1, end: 2 } },
+        { op: "marker.add", target: { kind: "timeRange", start: 2, end: 3 } },
+      ],
+    });
+    expect(added.ok).toBe(true);
+
+    const markers = await markersViaTimelineGet();
+    expect(markers.map((m) => m.number)).toEqual([1, 2, 3]);
+  });
+
+  it("rejects dangling references and inverted ranges without changing the project", async () => {
+    const before = await facade["project.get_state"]();
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+
+    const cases = [
+      ["unknown media", [{ op: "marker.add", target: { kind: "asset", mediaId: "ghost" } }], "NOT_FOUND"],
+      ["unknown clip", [{ op: "marker.add", target: { kind: "clip", clipId: "ghost" } }], "NOT_FOUND"],
+      ["unknown text overlay", [{ op: "marker.add", target: { kind: "text", textClipId: "ghost" } }], "NOT_FOUND"],
+      ["end before start", [{ op: "marker.add", target: { kind: "timeRange", start: 3, end: 2 } }], "INVALID_PARAMS"],
+    ] as const;
+    for (const [label, ops, code] of cases) {
+      const result = await facade["edit.apply"]({ ops });
+      expect(result.ok, label).toBe(false);
+      if (!result.ok) expect(result.error.code, label).toBe(code);
+    }
+
+    const after = await facade["project.get_state"]();
+    expect(after.ok).toBe(true);
+    if (!after.ok) return;
+    expect(after.value.revision).toBe(before.value.revision);
+    expect(after.value.project).toEqual(before.value.project);
+  });
+
+  it("removes by number, never reuses a number, and lists assigned numbers on a miss", async () => {
+    await facade["edit.apply"]({
+      ops: [
+        { op: "marker.add", target: { kind: "timeRange", start: 0, end: 1 }, label: "one" },
+        { op: "marker.add", target: { kind: "timeRange", start: 1, end: 2 }, label: "two" },
+        { op: "marker.add", target: { kind: "timeRange", start: 2, end: 3 }, label: "three" },
+      ],
+    });
+
+    const removed = await facade["edit.apply"]({
+      ops: [{ op: "marker.remove", number: 2 }],
+    });
+    expect(removed.ok).toBe(true);
+    expect((await markersViaTimelineGet()).map((m) => m.number)).toEqual([1, 3]);
+
+    // The next add continues past the high-water mark — 2 is never reused.
+    const added = await facade["edit.apply"]({
+      ops: [{ op: "marker.add", target: { kind: "timeRange", start: 3, end: 4 }, label: "four" }],
+    });
+    expect(added.ok).toBe(true);
+    expect((await markersViaTimelineGet()).map((m) => m.number)).toEqual([1, 3, 4]);
+
+    const missed = await facade["edit.apply"]({
+      ops: [{ op: "marker.remove", number: 2 }],
+    });
+    expect(missed.ok).toBe(false);
+    if (!missed.ok) {
+      expect(missed.error.code).toBe("NOT_FOUND");
+      expect(missed.error.message).toContain("2");
+      expect(missed.error.message).toContain("1, 3, 4");
+      expect((missed.error.details as { assignedNumbers: number[] }).assignedNumbers)
+        .toEqual([1, 3, 4]);
+    }
+
+    const emptyMiss = await facade["edit.apply"]({
+      ops: [
+        { op: "marker.remove", number: 1 },
+        { op: "marker.remove", number: 3 },
+        { op: "marker.remove", number: 4 },
+      ],
+    });
+    expect(emptyMiss.ok).toBe(true);
+    const none = await facade["edit.apply"]({
+      ops: [{ op: "marker.remove", number: 5 }],
+    });
+    expect(none.ok).toBe(false);
+    if (!none.ok) expect(none.error.message).toContain("(none)");
+  });
+});
+
+describe("timeline.get marker projection", () => {
+  it("sorts markers by number even when stored out of order", () => {
+    const project = createEmptyProject("Projection");
+    (project as { markers?: unknown }).markers = {
+      nextNumber: 4,
+      items: [
+        { id: "marker-3", number: 3, target: { kind: "timeRange", start: 2, end: 3 }, createdAt: 3 },
+        { id: "marker-1", number: 1, target: { kind: "clip", clipId: "c1" }, label: "first", createdAt: 1 },
+        { id: "marker-2", number: 2, target: { kind: "asset", mediaId: "m1" }, color: "#123456", createdAt: 2 },
+      ],
+    };
+
+    const view = timelineStateView(project, 7);
+
+    expect(view.revision).toBe(7);
+    expect(view.markers.map((m) => m.number)).toEqual([1, 2, 3]);
+    expect(view.markers[0]).toEqual({
+      number: 1,
+      id: "marker-1",
+      target: { kind: "clip", clipId: "c1" },
+      label: "first",
+      createdAt: 1,
+    });
+    expect(view.markers[1]).toMatchObject({ color: "#123456" });
+  });
+
+  it("projects an empty array when the project has no markers state", () => {
+    const project = createEmptyProject("Projection");
+    delete (project as { markers?: unknown }).markers;
+
+    expect(timelineStateView(project, 0).markers).toEqual([]);
   });
 });

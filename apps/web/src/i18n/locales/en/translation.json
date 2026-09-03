@@ -289,6 +289,18 @@
     "badgeLabel": "Agent reference #{{number}}",
     "staleSuffix": "stale"
   },
+  "reviewMarkers": {
+    "add": "Add review marker",
+    "addAtPoint": "Add review marker here",
+    "addRangeFromPlayhead": "Add range review marker (playhead → here)",
+    "addAtPlayhead": "Add review marker at playhead",
+    "remove": "Remove review marker #{{number}}",
+    "more": "+{{count}}",
+    "badgeLabel": "Review marker #{{number}}",
+    "ariaLabel": "Review markers",
+    "addFailed": "Failed to add review marker",
+    "removeFailed": "Failed to remove review marker"
+  },
   "editorRail": {
     "ariaLabel": "Editor tools",
     "backHome": "Back to home",

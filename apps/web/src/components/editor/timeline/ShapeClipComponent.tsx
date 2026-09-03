@@ -8,6 +8,8 @@ import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { AgentReferenceBadge } from "./AgentReferenceBadge";
+import { ProjectMarkerBadgeStack } from "../ProjectMarkerBadge";
+import { findMarkersForEntity } from "../../../stores/project/project-marker-selectors";
 
 type GraphicClipUnion = ShapeClip | SVGClip | StickerClip;
 
@@ -35,6 +37,10 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
   const historyGroupOpenRef = useRef(false);
   const { snapSettings } = useUIStore();
   const { playheadPosition } = useTimelineStore();
+  const projectMarkers = useProjectStore((state) => state.project.markers);
+  const reviewMarkers = findMarkersForEntity(projectMarkers, {
+    clipId: shapeClip.id,
+  });
   const trimStartRef = useRef<{
     mouseX: number;
     startTime: number;
@@ -231,6 +237,7 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
           }}
         >
           <AgentReferenceBadge kind="media" entityId={shapeClip.id} />
+          <ProjectMarkerBadgeStack markers={reviewMarkers} selected={isSelected} />
           <div
             className={`absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize z-20 flex items-center justify-center transition-opacity ${
               isSelected ? "opacity-100 bg-green-400" : `opacity-0 group-hover:opacity-100 hover:bg-${colorClass}-400/50`

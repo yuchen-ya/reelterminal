@@ -1,6 +1,13 @@
 /**
- * `openreel-project@1` — the one honest checkpoint format behind
+ * `openreel-project@2` — the one honest checkpoint format behind
  * project.save / project.open (ADR 0003 Decision 10, r2.2).
+ *
+ * Format history: v1 was the initial closed document; v2 (2026-09) added
+ * the OPTIONAL `markers` project field (persisted project markers — pure
+ * metadata, never rendered or exported). The schema is closed, so the
+ * additive change required the bump (10.2 evolution rule); v1 documents
+ * are refused at the format gate like any other unsupported version —
+ * honest refusal, never a silent downgrade or a guessed migration.
  *
  * A checkpoint is data the agent can see and the facade re-validates —
  * never session magic. Exactly one thing is durable: this file. The
@@ -27,7 +34,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, open, realpath, rename, link, rm, unlink } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
-import type { Project } from "@openreel/core/types/project";
+import type {
+  Project,
+  ProjectMarker,
+  ProjectMarkersState,
+} from "@openreel/core/types/project";
 
 import { FACADE_CONTRACT_VERSION, TRACK_TYPES } from "./types";
 import { FacadeError } from "./errors";
@@ -40,6 +51,7 @@ import {
   isNonNegativeNumber,
   isNonEmptyString,
   isPlainObject,
+  isPositiveInteger,
   isString,
   oneOf,
   validateObject,
@@ -52,7 +64,7 @@ import { PROJECT_SETTINGS_SCHEMA } from "./verb-schemas";
 /* ------------------------------------------------------------------ */
 
 export const CHECKPOINT_FORMAT = "openreel-project" as const;
-export const CHECKPOINT_FORMAT_VERSION = 1 as const;
+export const CHECKPOINT_FORMAT_VERSION = 2 as const;
 /** The only supported document version in this slice (10.4 step 2). */
 export const SUPPORTED_CHECKPOINT_FORMAT_VERSIONS: readonly number[] = [
   CHECKPOINT_FORMAT_VERSION,
@@ -74,7 +86,7 @@ export interface CheckpointMediaRef {
   readonly metadata: Record<string, unknown>;
 }
 
-/** The `openreel-project@1` top-level document (10.2). */
+/** The `openreel-project@2` top-level document (10.2). */
 export interface CheckpointDocument {
   readonly format: typeof CHECKPOINT_FORMAT;
   readonly formatVersion: number;
@@ -182,6 +194,12 @@ export function buildCheckpointDocument(
  * unknown field fails the STRUCTURE step. Because the schema is closed, ANY change
  * to the document shape — even purely additive — requires a formatVersion
  * bump (10.2 evolution rule).
+ *
+ * v2 (2026-09): added the OPTIONAL `markers` project field — the persisted
+ * project-marker state the marker.add/marker.remove ops produce
+ * ({nextNumber, items[]} with the closed 4-variant target union). Optional
+ * so v2 documents written before any marker existed still open; a missing
+ * field defaults to {nextNumber:1, items:[]} on open.
  *
  * Validation-only predicates beyond the schema: none — cross-field rules
  * are not needed here; everything below is shape and type.
@@ -337,6 +355,43 @@ export const TIMELINE_SCHEMA: ObjectSchema = {
   markers: { check: isEmptyArray, describe: "an empty array (no headless marker op exists)", required: true },
 };
 
+/** Project-marker target variants (v2): one closed object per kind. */
+export const MARKER_TARGET_ASSET_SCHEMA: ObjectSchema = {
+  kind: { check: (v) => v === "asset", describe: '"asset"', required: true },
+  mediaId: { check: isNonEmptyString, describe: "a non-empty string", required: true },
+};
+
+export const MARKER_TARGET_CLIP_SCHEMA: ObjectSchema = {
+  kind: { check: (v) => v === "clip", describe: '"clip"', required: true },
+  clipId: { check: isNonEmptyString, describe: "a non-empty string", required: true },
+};
+
+export const MARKER_TARGET_TEXT_SCHEMA: ObjectSchema = {
+  kind: { check: (v) => v === "text", describe: '"text"', required: true },
+  textClipId: { check: isNonEmptyString, describe: "a non-empty string", required: true },
+};
+
+export const MARKER_TARGET_TIME_RANGE_SCHEMA: ObjectSchema = {
+  kind: { check: (v) => v === "timeRange", describe: '"timeRange"', required: true },
+  start: { check: isNonNegativeNumber, describe: "a non-negative finite number", required: true },
+  end: { check: isNonNegativeNumber, describe: "a non-negative finite number", required: true },
+};
+
+/** Persisted ProjectMarker items exactly as marker.add mints them. */
+export const PROJECT_MARKER_SCHEMA: ObjectSchema = {
+  id: { check: isNonEmptyString, describe: "a non-empty string", required: true },
+  number: { check: isPositiveInteger, describe: "a positive integer", required: true },
+  target: { check: isPlainObject, describe: "an object", required: true },
+  label: { check: isString, describe: "a string" },
+  color: { check: isString, describe: "a string" },
+  createdAt: { check: isNonNegativeNumber, describe: "a non-negative finite number", required: true },
+};
+
+export const PROJECT_MARKERS_STATE_SCHEMA: ObjectSchema = {
+  nextNumber: { check: isPositiveInteger, describe: "a positive integer", required: true },
+  items: { check: (v) => Array.isArray(v), describe: "an array of project markers", required: true },
+};
+
 /** Top level of the canonical Project — headless-reachable fields only. */
 export const PROJECT_DOCUMENT_SCHEMA: ObjectSchema = {
   id: { check: isNonEmptyString, describe: "a non-empty string", required: true },
@@ -347,6 +402,7 @@ export const PROJECT_DOCUMENT_SCHEMA: ObjectSchema = {
   mediaLibrary: { check: isPlainObject, describe: "an object", required: true },
   timeline: { check: isPlainObject, describe: "an object", required: true },
   textClips: { check: (v) => Array.isArray(v), describe: "an array of text clips" },
+  markers: { check: isPlainObject, describe: "an object (v2; defaults to an empty state when absent)" },
 };
 
 /** One mediaRefs entry (checked again against the project at step 5). */
@@ -360,7 +416,7 @@ export const MEDIA_REF_SCHEMA: ObjectSchema = {
 /** All top-level checkpoint fields are schema-checked (10.4 step 4). */
 export const CHECKPOINT_DOCUMENT_SCHEMA: ObjectSchema = {
   format: { check: (v) => v === CHECKPOINT_FORMAT, describe: `"${CHECKPOINT_FORMAT}"`, required: true },
-  formatVersion: { check: (v) => v === CHECKPOINT_FORMAT_VERSION, describe: "1 (the only supported version)", required: true },
+  formatVersion: { check: (v) => v === CHECKPOINT_FORMAT_VERSION, describe: `${CHECKPOINT_FORMAT_VERSION} (the only supported version)`, required: true },
   contract: { check: isString, describe: "a string (informational provenance)", required: true },
   savedAt: { check: isNonNegativeInteger, describe: "a non-negative integer", required: true },
   revision: { check: isCheckpointRevision, describe: "an integer in 0..Number.MAX_SAFE_INTEGER", required: true },
@@ -388,11 +444,12 @@ interface ParsedCheckpointFields {
 
 /**
  * Step 2 (Format): JSON parses, `format === "openreel-project"`,
- * `formatVersion ∈ {1}`. Anything else ⇒ UNSUPPORTED naming found vs
+ * `formatVersion ∈ {2}`. Anything else ⇒ UNSUPPORTED naming found vs
  * supported — an honest refusal, never a silent downgrade or a guessed
  * migration. (A truncated/garbage file fails here as not-valid-JSON.)
  */
 export function parseCheckpointText(text: string): ParsedCheckpointFields {
+  const supported = `{${SUPPORTED_CHECKPOINT_FORMAT_VERSIONS.join(", ")}}`;
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -401,27 +458,27 @@ export function parseCheckpointText(text: string): ParsedCheckpointFields {
       "UNSUPPORTED",
       `project.open: checkpoint is not valid JSON (${
         error instanceof Error ? error.message : String(error)
-      }) — supported: format ${JSON.stringify(CHECKPOINT_FORMAT)}, formatVersion {1}`,
+      }) — supported: format ${JSON.stringify(CHECKPOINT_FORMAT)}, formatVersion ${supported}`,
     );
   }
   if (!isPlainObject(parsed)) {
     throw new FacadeError(
       "UNSUPPORTED",
-      `project.open: checkpoint root is not a JSON object — supported: format ${JSON.stringify(CHECKPOINT_FORMAT)}, formatVersion {1}`,
+      `project.open: checkpoint root is not a JSON object — supported: format ${JSON.stringify(CHECKPOINT_FORMAT)}, formatVersion ${supported}`,
     );
   }
   const doc = parsed as Record<string, unknown>;
   if (doc.format !== CHECKPOINT_FORMAT) {
     throw new FacadeError(
       "UNSUPPORTED",
-      `project.open: unsupported checkpoint format ${JSON.stringify(doc.format)} — supported: format ${JSON.stringify(CHECKPOINT_FORMAT)}, formatVersion {1}`,
+      `project.open: unsupported checkpoint format ${JSON.stringify(doc.format)} — supported: format ${JSON.stringify(CHECKPOINT_FORMAT)}, formatVersion ${supported}`,
       { found: doc.format === undefined ? null : doc.format },
     );
   }
   if (doc.formatVersion !== CHECKPOINT_FORMAT_VERSION) {
     throw new FacadeError(
       "UNSUPPORTED",
-      `project.open: unsupported checkpoint formatVersion ${JSON.stringify(doc.formatVersion)} — supported formatVersions: {1}`,
+      `project.open: unsupported checkpoint formatVersion ${JSON.stringify(doc.formatVersion)} — supported formatVersions: ${supported}`,
       { found: doc.formatVersion === undefined ? null : doc.formatVersion, supported: [...SUPPORTED_CHECKPOINT_FORMAT_VERSIONS] },
     );
   }
@@ -510,6 +567,7 @@ function validateProjectDocument(raw: unknown): Project {
     mediaLibrary: { items: unknown[] };
     timeline: unknown;
     textClips?: unknown[];
+    markers?: unknown;
   }>(raw, PROJECT_DOCUMENT_SCHEMA, label);
   const settings = validateObject(top.settings, PROJECT_SETTINGS_SCHEMA, `${label}.settings`);
   const mediaLibrary = validateObject<{ items: unknown[] }>(
@@ -587,6 +645,12 @@ function validateProjectDocument(raw: unknown): Project {
           return { ...tc, style, transform };
         })
       : undefined;
+  // v2: optional persisted project markers; absent defaults to the empty
+  // state so the opened session always has a defined markers field.
+  const markers: ProjectMarkersState =
+    top.markers !== undefined
+      ? validateProjectMarkersDocument(top.markers, `${label}.markers`)
+      : { nextNumber: 1, items: [] };
   return {
     id: top.id,
     name: top.name,
@@ -596,7 +660,61 @@ function validateProjectDocument(raw: unknown): Project {
     mediaLibrary: { items },
     timeline: { ...timelineRaw, tracks },
     ...(textClips !== undefined ? { textClips } : {}),
+    markers,
   } as unknown as Project;
+}
+
+const MARKER_TARGET_VARIANTS_BY_KIND: Readonly<Record<string, ObjectSchema>> = {
+  asset: MARKER_TARGET_ASSET_SCHEMA,
+  clip: MARKER_TARGET_CLIP_SCHEMA,
+  text: MARKER_TARGET_TEXT_SCHEMA,
+  timeRange: MARKER_TARGET_TIME_RANGE_SCHEMA,
+};
+
+/** Dispatch to the closed target variant selected by `kind`. */
+function validateMarkerTargetDocument(
+  raw: unknown,
+  label: string,
+): Record<string, unknown> {
+  if (!isPlainObject(raw)) {
+    throw new FacadeError("INVALID_PARAMS", `${label} must be an object`, {
+      received: raw === null ? "null" : typeof raw,
+    });
+  }
+  const variant = MARKER_TARGET_VARIANTS_BY_KIND[raw.kind as string];
+  if (!variant) {
+    throw new FacadeError(
+      "INVALID_PARAMS",
+      `${label}: unknown marker target kind ${JSON.stringify(raw.kind)} — expected one of asset, clip, text, timeRange`,
+      { field: "kind", received: raw.kind },
+    );
+  }
+  return validateObject(raw, variant, label);
+}
+
+function validateProjectMarkersDocument(
+  raw: unknown,
+  label: string,
+): ProjectMarkersState {
+  const state = validateObject<{ nextNumber: number; items: unknown[] }>(
+    raw,
+    PROJECT_MARKERS_STATE_SCHEMA,
+    label,
+  );
+  const items = state.items.map((item, index) => {
+    const itemLabel = `${label}.items[${index}]`;
+    const marker = validateObject<Record<string, unknown> & { target: unknown }>(
+      item,
+      PROJECT_MARKER_SCHEMA,
+      itemLabel,
+    );
+    const target = validateMarkerTargetDocument(
+      marker.target,
+      `${itemLabel}.target`,
+    );
+    return { ...marker, target };
+  });
+  return { nextNumber: state.nextNumber, items: items as unknown as ProjectMarker[] };
 }
 
 /** position/scale/anchor are {x, y} pairs of finite numbers in the model. */

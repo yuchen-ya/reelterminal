@@ -242,6 +242,20 @@ describe("ProjectStore", () => {
       });
       expect(result.success).toBe(true);
     });
+
+    it("stamps modifiedAt on a successful executeAction", async () => {
+      useProjectStore.setState((state) => ({
+        project: { ...state.project, modifiedAt: 1 },
+      }));
+      const result = await useProjectStore.getState().executeAction({
+        type: "track/add",
+        id: "mod-stamp-1",
+        timestamp: Date.now(),
+        params: { trackType: "video" },
+      });
+      expect(result.success).toBe(true);
+      expect(useProjectStore.getState().project.modifiedAt).toBeGreaterThan(1);
+    });
   });
 
   describe("text overlay clips (project-authoritative)", () => {

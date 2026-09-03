@@ -394,6 +394,23 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     );
   });
 
+  it("applyActions dispatches openreel:preview-invalidate after a successful batch", async () => {
+    const seen: string[] = [];
+    const listener = () => seen.push("openreel:preview-invalidate");
+    window.addEventListener("openreel:preview-invalidate", listener);
+    try {
+      const res = await handleLiveBridgeRequest(
+        req("applyActions", {
+          actions: [act("track/add", { trackType: "video" })],
+        }),
+      );
+      expect(res.ok).toBe(true);
+      expect(seen).toEqual(["openreel:preview-invalidate"]);
+    } finally {
+      window.removeEventListener("openreel:preview-invalidate", listener);
+    }
+  });
+
   it("returns created clip ids in action order across different tracks", async () => {
     const initial = useProjectStore.getState().project;
     useProjectStore.setState({

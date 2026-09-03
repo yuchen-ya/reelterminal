@@ -310,7 +310,7 @@ and `{projectId, projectName, windowId}`.
 
 ### The `edit_apply` op vocabulary
 
-Twenty-one ops, one atomic batch each call (the exact fields and bounds live in
+Twenty-three ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
 - `track.add` — create a track (`trackType`); `track.remove` — remove an empty
@@ -367,6 +367,15 @@ Twenty-one ops, one atomic batch each call (the exact fields and bounds live in
   returned. `transition.update` changes its type and/or duration, and
   `transition.remove` restores the hard cut. Read transition ids from each
   `timeline_get` track's `transitions` array.
+- `marker.add` — attach a persisted project marker (metadata only, never
+  rendered or exported) to exactly one target: `{kind:"asset",mediaId}`,
+  `{kind:"clip",clipId}`, `{kind:"text",textClipId}`, or
+  `{kind:"timeRange",start,end}`; optional `label`/`color`. Markers get
+  auto-assigned stable numbers (1,2,3,… — a marker keeps its number for its
+  lifetime and deleted numbers are never reused). `marker.remove` removes
+  one marker by its `number`; an unknown number fails `NOT_FOUND` listing
+  the assigned numbers. Read markers (sorted by number) from
+  `timeline_get`'s `markers` array.
 
 Ops in one batch see each other's results, and a failure anywhere rolls
 the whole batch back; a deleted overlay or clip stays deleted after

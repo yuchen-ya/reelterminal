@@ -15,6 +15,8 @@ import {
 } from "../panels/EffectsTransitionsPanel";
 import { parseEditorEffectDropPayload } from "./effect-drop";
 import { AgentReferenceBadge } from "./AgentReferenceBadge";
+import { ProjectMarkerBadgeStack } from "../ProjectMarkerBadge";
+import { findMarkersForEntity } from "../../../stores/project/project-marker-selectors";
 import { agentReferenceKindForTrack } from "../../../stores/agent-reference-targets";
 
 interface ClipComponentProps {
@@ -57,6 +59,10 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   onTrimClip,
 }) => {
   const { getMediaItem } = useProjectStore();
+  const projectMarkers = useProjectStore((state) => state.project.markers);
+  const reviewMarkers = findMarkersForEntity(projectMarkers, {
+    clipId: clip.id,
+  });
   const { snapSettings } = useUIStore();
   const effectApplicationClipId = useUIStore(
     (state) => state.effectApplicationClipId,
@@ -769,6 +775,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         kind={agentReferenceKindForTrack(track.type) ?? "media"}
         entityId={clip.id}
       />
+      <ProjectMarkerBadgeStack markers={reviewMarkers} selected={isSelected} />
 
       {/* Drag-drop hover indicators for effects/transitions */}
       {dragHover === "effect" && (

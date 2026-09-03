@@ -1324,3 +1324,347 @@ describe("ActionExecutor project/registerGeneratedShader", () => {
     ).toEqual(["ai-example-abcd1234"]);
   });
 });
+
+
+/* ------------------------------------------------------------------ */
+/* Project markers (persisted project metadata — projectMarker/*)       */
+/* ------------------------------------------------------------------ */
+
+function makeMarker(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "marker-1",
+    number: 1,
+    target: { kind: "timeRange", start: 0, end: 2 },
+    createdAt: 1000,
+    ...overrides,
+  };
+}
+
+function markerAction(type: string, params: Record<string, unknown>): Action {
+  return {
+    id: `a-${type}-${Math.random()}`,
+    type,
+    params,
+    timestamp: Date.now(),
+  } as unknown as Action;
+}
+
+function makeProjectWithMedia(): Project {
+  const project = makeProject();
+  project.mediaLibrary.items.push({
+    id: "m1",
+    name: "shot.mp4",
+    type: "video",
+    fileHandle: null,
+    blob: null,
+    metadata: {
+      duration: 6,
+      width: 1920,
+      height: 1080,
+      frameRate: 30,
+      codec: "h264",
+      sampleRate: 48000,
+      channels: 2,
+      fileSize: 1024,
+    },
+    thumbnailUrl: null,
+    waveformData: null,
+  });
+  return project;
+}
+
+describe("ActionExecutor projectMarker actions", () => {
+  it("adds a marker on a project whose markers field is undefined and mints nextNumber", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+    expect(project.markers).toBeUndefined();
+
+    const result = await executor.execute(
+      markerAction("projectMarker/add", {
+        marker: makeMarker({ label: "Intro", color: "#ff0000" }),
+      }),
+      project,
+    );
+
+    expect(result.success).toBe(true);
+    expect(project.markers?.nextNumber).toBe(2);
+    expect(project.markers?.items).toHaveLength(1);
+    expect(project.markers?.items[0]).toMatchObject({
+      id: "marker-1",
+      number: 1,
+      label: "Intro",
+      color: "#ff0000",
+      target: { kind: "timeRange", start: 0, end: 2 },
+    });
+  });
+
+  it("max-bumps nextNumber: a lower-numbered add never lowers the watermark", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+
+    await executor.execute(
+      markerAction("projectMarker/add", {
+        marker: makeMarker({ id: "marker-5", number: 5 }),
+      }),
+      project,
+    );
+    expect(project.markers?.nextNumber).toBe(6);
+
+    await executor.execute(
+      markerAction("projectMarker/add", {
+        marker: makeMarker({ id: "marker-2", number: 2 }),
+      }),
+      project,
+    );
+    expect(project.markers?.nextNumber).toBe(6);
+    expect(project.markers?.items.map((m) => m.number)).toEqual([5, 2]);
+  });
+
+  it("remove leaves the gap: nextNumber is never decremented", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+
+    await executor.execute(
+      markerAction("projectMarker/add", { marker: makeMarker() }),
+      project,
+    );
+    await executor.execute(
+      markerAction("projectMarker/add", {
+        marker: makeMarker({ id: "marker-2", number: 2 }),
+      }),
+      project,
+    );
+    expect(project.markers?.nextNumber).toBe(3);
+
+    const removed = await executor.execute(
+      markerAction("projectMarker/remove", { markerId: "marker-1" }),
+      project,
+    );
+    expect(removed.success).toBe(true);
+    expect(project.markers?.items.map((m) => m.id)).toEqual(["marker-2"]);
+    expect(project.markers?.nextNumber).toBe(3);
+  });
+
+  it("undo of add removes the marker but keeps nextNumber (numbers are never reused)", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+
+    await executor.execute(
+      markerAction("projectMarker/add", { marker: makeMarker() }),
+      project,
+    );
+    await executor.execute(
+      markerAction("projectMarker/add", {
+        marker: makeMarker({ id: "marker-2", number: 2 }),
+      }),
+      project,
+    );
+
+    const undo = await executor.undo(project);
+    expect(undo.success).toBe(true);
+    expect(project.markers?.items.map((m) => m.id)).toEqual(["marker-1"]);
+    expect(project.markers?.nextNumber).toBe(3);
+
+    const redo = await executor.redo(project);
+    expect(redo.success).toBe(true);
+    expect(project.markers?.items.map((m) => [m.id, m.number])).toEqual([
+      ["marker-1", 1],
+      ["marker-2", 2],
+    ]);
+    expect(project.markers?.nextNumber).toBe(3);
+  });
+
+  it("undo of remove restores the original marker with its stable number", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+
+    await executor.execute(
+      markerAction("projectMarker/add", { marker: makeMarker() }),
+      project,
+    );
+    await executor.execute(
+      markerAction("projectMarker/add", {
+        marker: makeMarker({ id: "marker-2", number: 2, label: "Keep me" }),
+      }),
+      project,
+    );
+    await executor.execute(
+      markerAction("projectMarker/remove", { markerId: "marker-1" }),
+      project,
+    );
+    expect(project.markers?.items.map((m) => m.id)).toEqual(["marker-2"]);
+
+    const undo = await executor.undo(project);
+    expect(undo.success).toBe(true);
+    expect(project.markers?.items.map((m) => [m.id, m.number])).toEqual([
+      ["marker-2", 2],
+      ["marker-1", 1],
+    ]);
+    expect(project.markers?.items[1]).toMatchObject({
+      target: { kind: "timeRange", start: 0, end: 2 },
+    });
+    expect(project.markers?.nextNumber).toBe(3);
+
+    const redo = await executor.redo(project);
+    expect(redo.success).toBe(true);
+    expect(project.markers?.items.map((m) => m.id)).toEqual(["marker-2"]);
+    expect(project.markers?.nextNumber).toBe(3);
+  });
+
+  it("accepts asset/clip/text targets whose references exist", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProjectWithMedia();
+    (project as { textClips?: unknown[] }).textClips = [
+      { id: "text-1" },
+    ];
+    project.timeline.tracks.push({
+      id: "t1",
+      type: "video",
+      name: "V1",
+      clips: [
+        {
+          id: "c1",
+          mediaId: "m1",
+          trackId: "t1",
+          startTime: 0,
+          duration: 5,
+          inPoint: 0,
+          outPoint: 5,
+          effects: [],
+          audioEffects: [],
+          transform: {
+            position: { x: 0, y: 0 },
+            scale: { x: 1, y: 1 },
+            anchor: { x: 0.5, y: 0.5 },
+            rotation: 0,
+            opacity: 1,
+          },
+          volume: 1,
+          keyframes: [],
+        },
+      ],
+      transitions: [],
+      locked: false,
+      hidden: false,
+      muted: false,
+      solo: false,
+    } as never);
+
+    for (const [id, number, target] of [
+      ["marker-a", 1, { kind: "asset", mediaId: "m1" }],
+      ["marker-c", 2, { kind: "clip", clipId: "c1" }],
+      ["marker-t", 3, { kind: "text", textClipId: "text-1" }],
+    ] as const) {
+      const result = await executor.execute(
+        markerAction("projectMarker/add", {
+          marker: makeMarker({ id, number, target }),
+        }),
+        project,
+      );
+      expect(result.success, id).toBe(true);
+    }
+    expect(project.markers?.items.map((m) => m.id)).toEqual([
+      "marker-a",
+      "marker-c",
+      "marker-t",
+    ]);
+  });
+});
+
+describe("ActionValidator projectMarker actions", () => {
+  it("rejects markers referencing missing asset/clip/text targets", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+
+    for (const target of [
+      { kind: "asset", mediaId: "ghost" },
+      { kind: "clip", clipId: "ghost" },
+      { kind: "text", textClipId: "ghost" },
+    ]) {
+      const result = await executor.execute(
+        markerAction("projectMarker/add", { marker: makeMarker({ target }) }),
+        project,
+      );
+      expect(result.success, JSON.stringify(target)).toBe(false);
+      expect(result.error?.code).toBe("INVALID_PARAMS");
+    }
+    expect(project.markers?.items ?? []).toHaveLength(0);
+  });
+
+  it("rejects invalid time ranges and unknown target kinds", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+
+    for (const target of [
+      { kind: "timeRange", start: 3, end: 2 },
+      { kind: "timeRange", start: -1, end: 2 },
+      { kind: "timeRange", start: 0, end: Number.NaN },
+      { kind: "region", id: "r1" },
+    ]) {
+      const result = await executor.execute(
+        markerAction("projectMarker/add", { marker: makeMarker({ target }) }),
+        project,
+      );
+      expect(result.success, JSON.stringify(target)).toBe(false);
+      expect(result.error?.code).toBe("INVALID_PARAMS");
+    }
+  });
+
+  it("rejects duplicate ids, bad numbers, over-long labels and bad createdAt", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+    await executor.execute(
+      markerAction("projectMarker/add", { marker: makeMarker() }),
+      project,
+    );
+
+    for (const marker of [
+      makeMarker(), // duplicate id
+      makeMarker({ id: "marker-2", number: 0 }),
+      makeMarker({ id: "marker-2", number: 1.5 }),
+      makeMarker({ id: "marker-2", label: "x".repeat(201) }),
+      makeMarker({ id: "marker-2", label: 42 }),
+      makeMarker({ id: "marker-2", color: 7 }),
+      makeMarker({ id: "marker-2", createdAt: -1 }),
+      makeMarker({ id: "marker-2", createdAt: "now" }),
+      "not-an-object",
+    ]) {
+      const result = await executor.execute(
+        markerAction("projectMarker/add", { marker }),
+        project,
+      );
+      expect(result.success, JSON.stringify(marker)).toBe(false);
+      expect(result.error?.code).toBe("INVALID_PARAMS");
+    }
+    expect(project.markers?.items).toHaveLength(1);
+  });
+
+  it("rejects removing an unknown marker id", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+
+    const result = await executor.execute(
+      markerAction("projectMarker/remove", { markerId: "ghost" }),
+      project,
+    );
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe("INVALID_PARAMS");
+    expect(result.error?.message).toContain("ghost");
+  });
+
+  it("rejects a restore whose id is already present", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+    await executor.execute(
+      markerAction("projectMarker/add", { marker: makeMarker() }),
+      project,
+    );
+
+    const result = await executor.execute(
+      markerAction("projectMarker/restore", { marker: makeMarker() }),
+      project,
+    );
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe("INVALID_PARAMS");
+  });
+});

@@ -11,7 +11,7 @@
  * Slice 1b verbs (ADR 0002): preview.render_frame · export.start ·
  *   job.status · job.cancel · verify.artifact
  * Slice 2a verbs (ADR 0003 Decision 10): project.open · project.save —
- *   the openreel-project@1 checkpoint pair (cross-session persistence).
+ *   the openreel-project@2 checkpoint pair (cross-session persistence).
  * Slice 3 verbs (ADR 0004 Decision 4): editor.get_context — the live/
  *   headless-honest editor-context read plus the read-only visual.inspect
  *   slice (17 verbs).
@@ -25,7 +25,11 @@
  * ArtifactVerifier); the facade itself never imports Chromium or ffmpeg.
  * MCP/CLI transports remain out of scope.
  */
-import type { Project, ProjectSettings } from "@openreel/core/types/project";
+import type {
+  Project,
+  ProjectMarkerTarget,
+  ProjectSettings,
+} from "@openreel/core/types/project";
 import {
   TRANSITION_TYPES as CORE_TRANSITION_TYPES,
   type TransitionType,
@@ -451,11 +455,23 @@ export interface TextOverlayView {
   readonly anchor: NormalizedPoint;
 }
 
+/** One persisted project marker as timeline.get reports it. */
+export interface ProjectMarkerView {
+  readonly number: number;
+  readonly id: string;
+  readonly target: ProjectMarkerTarget;
+  readonly label?: string;
+  readonly color?: string;
+  readonly createdAt: number;
+}
+
 export interface TimelineState {
   readonly revision: number;
   readonly duration: number;
   readonly tracks: readonly TimelineTrackView[];
   readonly textOverlays: readonly TextOverlayView[];
+  /** Project markers sorted by their stable number. */
+  readonly markers: readonly ProjectMarkerView[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -527,6 +543,8 @@ export const EDIT_OP_TYPES = [
   "transition.remove",
   "track.remove",
   "media.remove",
+  "marker.add",
+  "marker.remove",
 ] as const;
 
 export type EditOpType = (typeof EDIT_OP_TYPES)[number];
@@ -768,6 +786,29 @@ export interface TransitionRemoveOp {
   readonly transitionId: string;
 }
 
+/**
+ * marker.add — attach one PROJECT marker (persisted metadata, never
+ * rendered or exported) to exactly one target: a media-library asset, a
+ * timeline clip, a text overlay, or an absolute timeline time range. The
+ * facade mints the marker id and its STABLE number (1,2,3,… — kept for the
+ * marker's lifetime, never reused after removal); timeline.get reports the
+ * markers sorted by number.
+ */
+export interface MarkerAddOp {
+  readonly op: "marker.add";
+  readonly target: ProjectMarkerTarget;
+  /** Optional free text (at most 200 characters). */
+  readonly label?: string;
+  /** Optional CSS color; "#f59e0b" when omitted. */
+  readonly color?: string;
+}
+
+/** marker.remove — remove one project marker by its stable number. */
+export interface MarkerRemoveOp {
+  readonly op: "marker.remove";
+  readonly number: number;
+}
+
 export type EditOp =
   | TrackAddOp
   | TrackRemoveOp
@@ -789,7 +830,9 @@ export type EditOp =
   | ClipRemoveOp
   | TransitionAddOp
   | TransitionUpdateOp
-  | TransitionRemoveOp;
+  | TransitionRemoveOp
+  | MarkerAddOp
+  | MarkerRemoveOp;
 
 export interface EditApplyParams {
   readonly ops: readonly EditOp[];

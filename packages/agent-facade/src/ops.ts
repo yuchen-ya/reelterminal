@@ -6,7 +6,8 @@
  * executor sees is already sane.
  */
 import type { Action } from "@openreel/core/types/actions";
-import type { Project } from "@openreel/core/types/project";
+import type { Project, ProjectMarker } from "@openreel/core/types/project";
+import { DEFAULT_PROJECT_MARKER_COLOR } from "@openreel/core/types/project";
 import type { Transform, Transition } from "@openreel/core/types/timeline";
 import { TransitionEngine } from "@openreel/core/video/transition-engine";
 import type { TextClip } from "@openreel/core/text/types";
@@ -19,9 +20,12 @@ import { invalidParams } from "./validate";
 import {
   isNonEmptyString,
   isNonNegativeNumber,
+  isPlainObject,
+  isPositiveInteger,
   isPositiveNumber,
   isBoolean,
   isFiniteNumber,
+  isString,
   oneOf,
   validateObject,
   type ObjectSchema,
@@ -52,6 +56,8 @@ import {
   type TrackAddOp,
   type TrackRemoveOp,
   type MediaRemoveOp,
+  type MarkerAddOp,
+  type MarkerRemoveOp,
   type TransitionAddOp,
   type TransitionRemoveOp,
   type TransitionUpdateOp,
@@ -757,6 +763,143 @@ export const TRANSITION_REMOVE_SCHEMA: ObjectSchema = {
   },
 };
 
+/* marker.add target: the closed 4-variant union (one object per kind). */
+export const MARKER_TARGET_ASSET_SCHEMA: ObjectSchema = {
+  kind: {
+    check: (v) => v === "asset",
+    describe: '"asset"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "asset" } },
+  },
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const MARKER_TARGET_CLIP_SCHEMA: ObjectSchema = {
+  kind: {
+    check: (v) => v === "clip",
+    describe: '"clip"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const MARKER_TARGET_TEXT_SCHEMA: ObjectSchema = {
+  kind: {
+    check: (v) => v === "text",
+    describe: '"text"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "text" } },
+  },
+  textClipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const MARKER_TARGET_TIME_RANGE_SCHEMA: ObjectSchema = {
+  kind: {
+    check: (v) => v === "timeRange",
+    describe: '"timeRange"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "timeRange" } },
+  },
+  start: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  end: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+};
+
+const MARKER_TARGET_VARIANTS = [
+  MARKER_TARGET_ASSET_SCHEMA,
+  MARKER_TARGET_CLIP_SCHEMA,
+  MARKER_TARGET_TEXT_SCHEMA,
+  MARKER_TARGET_TIME_RANGE_SCHEMA,
+] as const;
+
+/**
+ * Structural target check: exactly one closed variant by `kind`. Reference
+ * existence and the end >= start ordering are semantic rules owned by
+ * opToCoreActions / the core validator, not this boundary shape check.
+ */
+function isMarkerTarget(value: unknown): boolean {
+  if (!isPlainObject(value)) return false;
+  const variant = MARKER_TARGET_VARIANTS.find(
+    (schema) => schema.kind?.check(value.kind) ?? false,
+  );
+  if (!variant) return false;
+  try {
+    validateObject(value, variant, "target");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The 200-character label cap is validation-only (not emitted). */
+const isMarkerLabel = (v: unknown): boolean =>
+  typeof v === "string" && v.length <= 200;
+
+export const MARKER_ADD_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "marker.add",
+    describe: '"marker.add"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "marker.add" } },
+  },
+  target: {
+    check: isMarkerTarget,
+    describe: "a marker target object ({kind:\"asset\",mediaId}, {kind:\"clip\",clipId}, {kind:\"text\",textClipId}, or {kind:\"timeRange\",start,end})",
+    required: true,
+    emits: { kind: "anyOfObjects", variants: MARKER_TARGET_VARIANTS },
+  },
+  label: {
+    check: isMarkerLabel,
+    describe: "a string of at most 200 characters",
+    emits: { kind: "leaf", schema: { type: "string" } },
+  },
+  color: {
+    check: isString,
+    describe: "a string",
+    emits: { kind: "leaf", schema: { type: "string" } },
+  },
+};
+
+export const MARKER_REMOVE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "marker.remove",
+    describe: '"marker.remove"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "marker.remove" } },
+  },
+  number: {
+    check: isPositiveInteger,
+    describe: "a positive integer",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } },
+  },
+};
+
 /**
  * Rebind nested style/position/anchor to SANITIZED copies: opToCoreActions
  * spreads them into the canonical TextClip, so what flows downstream must be
@@ -964,6 +1107,10 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
         TRANSITION_REMOVE_SCHEMA,
         label,
       );
+    case "marker.add":
+      return validateObject<MarkerAddOp>(raw, MARKER_ADD_SCHEMA, label);
+    case "marker.remove":
+      return validateObject<MarkerRemoveOp>(raw, MARKER_REMOVE_SCHEMA, label);
     default:
       // Unreachable: opType was allowlist-checked above. Keeps the function
       // total for the compiler and fail-closed for the runtime.
@@ -1808,6 +1955,88 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       return [
         makeAction("transition/remove", { transitionId: op.transitionId }),
       ];
+    }
+
+    case "marker.add": {
+      const target = op.target;
+      switch (target.kind) {
+        case "asset":
+          if (
+            !draft.mediaLibrary.items.some((item) => item.id === target.mediaId)
+          ) {
+            throw new FacadeError(
+              "NOT_FOUND",
+              `marker.add: media "${target.mediaId}" not found`,
+              { mediaId: target.mediaId },
+            );
+          }
+          break;
+        case "clip":
+          if (
+            !draft.timeline.tracks.some((track) =>
+              track.clips.some((clip) => clip.id === target.clipId),
+            )
+          ) {
+            throw new FacadeError(
+              "NOT_FOUND",
+              `marker.add: clip "${target.clipId}" not found`,
+              { clipId: target.clipId },
+            );
+          }
+          break;
+        case "text":
+          if (
+            !(draft.textClips ?? []).some(
+              (clip) => clip.id === target.textClipId,
+            )
+          ) {
+            throw new FacadeError(
+              "NOT_FOUND",
+              `marker.add: text overlay "${target.textClipId}" not found`,
+              { textClipId: target.textClipId },
+            );
+          }
+          break;
+        case "timeRange":
+          if (target.end < target.start) {
+            throw invalidParams(
+              "marker.add: target.end must be greater than or equal to target.start",
+              { start: target.start, end: target.end },
+            );
+          }
+          break;
+      }
+      // The number comes from the DRAFT's watermark: ops in one batch are
+      // translated and executed sequentially against the same in-flight
+      // draft and every applied add raises nextNumber, so N marker.add ops
+      // in ONE batch mint N consecutive numbers — identically in headless
+      // and live (one translator, one dry-run executor). Removes never free
+      // numbers, so no per-batch counter is needed.
+      const marker: ProjectMarker = {
+        id: `marker-${crypto.randomUUID()}`,
+        number: draft.markers?.nextNumber ?? 1,
+        target: { ...target },
+        ...(op.label !== undefined ? { label: op.label } : {}),
+        color: op.color ?? DEFAULT_PROJECT_MARKER_COLOR,
+        createdAt: Date.now(),
+      };
+      return [makeAction("projectMarker/add", { marker })];
+    }
+
+    case "marker.remove": {
+      const items = draft.markers?.items ?? [];
+      const marker = items.find((m) => m.number === op.number);
+      if (!marker) {
+        const assigned = items.map((m) => m.number).sort((a, b) => a - b);
+        throw new FacadeError(
+          "NOT_FOUND",
+          `marker.remove: no marker with number ${op.number} — assigned marker numbers: ${
+            assigned.length > 0 ? assigned.join(", ") : "(none)"
+          }`,
+          { number: op.number, assignedNumbers: assigned },
+        );
+      }
+      return [makeAction("projectMarker/remove", { markerId: marker.id })];
     }
   }
 }

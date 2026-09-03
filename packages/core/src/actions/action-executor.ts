@@ -13,6 +13,7 @@ import type {
   MediaAction,
   ProjectAction,
   MarkerAction,
+  ProjectMarkerAction,
 } from "../types/actions";
 import type {
   Project,
@@ -27,6 +28,8 @@ import type {
   MediaItem,
   TransitionType,
   Marker,
+  ProjectMarker,
+  ProjectMarkersState,
 } from "../types";
 import type {
   MutableTimeline,
@@ -271,6 +274,8 @@ export class ActionExecutor {
 
     if (type.startsWith("project/")) {
       this.applyProjectAction(action as ProjectAction, project);
+    } else if (type.startsWith("projectMarker/")) {
+      this.applyProjectMarkerAction(action as ProjectMarkerAction, project);
     } else if (type.startsWith("media/")) {
       await this.applyMediaAction(action as MediaAction, project);
     } else if (type.startsWith("track/")) {
@@ -662,6 +667,46 @@ export class ActionExecutor {
         timeline.markers = timeline.markers.map((m) =>
           m.id === params.markerId ? { ...m, ...params.updates } : m,
         );
+        break;
+      }
+    }
+  }
+
+  private applyProjectMarkerAction(
+    action:
+      | ProjectMarkerAction
+      | { type: string; params: Record<string, unknown> },
+    project: Project,
+  ): void {
+    const mutable = project as { markers?: ProjectMarkersState };
+
+    switch (action.type) {
+      case "projectMarker/add":
+      case "projectMarker/restore": {
+        const params = action.params as { marker: ProjectMarker };
+        const existing = mutable.markers ?? { nextNumber: 1, items: [] };
+        // The action creator mints the number; applying only raises the
+        // watermark, so undo/redo keeps numbers stable and a deleted number
+        // is never reused.
+        mutable.markers = {
+          nextNumber: Math.max(
+            existing.nextNumber ?? 1,
+            params.marker.number + 1,
+          ),
+          items: [...existing.items, { ...params.marker }],
+        };
+        break;
+      }
+
+      case "projectMarker/remove": {
+        const params = action.params as { markerId: string };
+        const existing = mutable.markers;
+        if (!existing) break;
+        // nextNumber is NOT decremented: numbers are never reused.
+        mutable.markers = {
+          nextNumber: existing.nextNumber,
+          items: existing.items.filter((m) => m.id !== params.markerId),
+        };
         break;
       }
     }

@@ -31,6 +31,7 @@ export interface Project {
   readonly settings: ProjectSettings;
   readonly mediaLibrary: MediaLibrary;
   readonly timeline: Timeline;
+  readonly markers?: ProjectMarkersState;
   readonly textClips?: TextClip[];
   readonly shapeClips?: ShapeClip[];
   readonly svgClips?: SVGClip[];
@@ -48,6 +49,38 @@ export interface Project {
 
 export interface MediaLibrary {
   readonly items: MediaItem[];
+}
+
+/**
+ * What a project marker points at — exactly one of: a media-library asset,
+ * a timeline clip, a text overlay, or an absolute timeline time range.
+ */
+export type ProjectMarkerTarget =
+  | { readonly kind: "asset"; readonly mediaId: string }
+  | { readonly kind: "clip"; readonly clipId: string }
+  | { readonly kind: "text"; readonly textClipId: string }
+  | { readonly kind: "timeRange"; readonly start: number; readonly end: number };
+
+/**
+ * Persisted project metadata (never rendered or exported). `number` is
+ * stable for the marker's lifetime and is never reused after deletion.
+ * Distinct from `Timeline.markers` (ruler point markers).
+ */
+export interface ProjectMarker {
+  readonly id: string;
+  readonly number: number;
+  readonly target: ProjectMarkerTarget;
+  readonly label?: string;
+  readonly color?: string;
+  readonly createdAt: number;
+}
+
+export const DEFAULT_PROJECT_MARKER_COLOR = "#f59e0b";
+
+export interface ProjectMarkersState {
+  /** Next number to assign — starts at 1, monotonic (gaps are never reused). */
+  readonly nextNumber: number;
+  readonly items: ProjectMarker[];
 }
 
 export interface MediaItem {

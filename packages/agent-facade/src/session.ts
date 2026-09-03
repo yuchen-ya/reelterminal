@@ -415,7 +415,7 @@ export class AgentFacadeSession {
 
   /**
    * project.open — the lifecycle verb of Decision 10.4: adopts an
-   * `openreel-project@1` checkpoint only after EVERY step validates
+   * `openreel-project@2` checkpoint only after EVERY step validates
    * (containment → format → integrity → structure → media references);
    * any failure leaves the session empty and unchanged. The project is
    * adopted AT THE SAVED REVISION — the next committed mutation bumps

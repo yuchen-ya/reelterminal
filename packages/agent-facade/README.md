@@ -31,7 +31,9 @@ await facade["edit.apply"]({
 // Later batches: track.remove (empty tracks only), media.remove (unreferenced
 // media only), clip.move, clip.split, clip.duplicate, clip.rippleDelete,
 // clip.setSpeed, clip.setReverse, clip.setTransform, clip.setFade,
-// transition.add/update/remove,
+// transition.add/update/remove, marker.add (stable-numbered project markers:
+// asset/clip/text/timeRange targets, metadata only — never rendered),
+// marker.remove (by number),
 // text.update (style/position MERGE — omitted keys keep their values),
 // text.delete, clip.setVolume (linear gain 0..4; 0 = mute, 1 = unity) —
 // ids come from timeline.get/project.get_state. track.remove rejects a track

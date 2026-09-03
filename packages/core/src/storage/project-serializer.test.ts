@@ -19,6 +19,8 @@ import {
   ProjectSerializer,
   normalizeMotionComposition,
   normalizeProjectCreationFields,
+  normalizeProjectMarkerFields,
+  normalizeProjectMarkers,
   normalizeProjectMotionFields,
 } from "./project-serializer";
 import { createCreationScene, createEmptyCreationState } from "../creation";
@@ -358,5 +360,126 @@ describe("ProjectSerializer generatedShaders", () => {
     const imported = serializer.importFromJson(serializer.exportToJson(project));
 
     expect(imported.generatedShaders).toEqual([]);
+  });
+});
+
+describe("ProjectSerializer project markers", () => {
+  const makeMarker = (
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> => ({
+    id: "marker-1",
+    number: 1,
+    target: { kind: "timeRange", start: 0, end: 2 },
+    createdAt: 1000,
+    ...overrides,
+  });
+
+  it("round-trips markers through export/import", () => {
+    const serializer = new ProjectSerializer(new MemoryStorageEngine());
+    const project = makeProject({
+      markers: {
+        nextNumber: 3,
+        items: [
+          makeMarker({
+            label: "Intro",
+            color: "#ff0000",
+            target: { kind: "asset", mediaId: "m1" },
+          }),
+          makeMarker({
+            id: "marker-2",
+            number: 2,
+            target: { kind: "timeRange", start: 1.5, end: 4 },
+          }),
+        ],
+      } as unknown as Project["markers"],
+    });
+
+    const imported = serializer.importFromJson(serializer.exportToJson(project));
+
+    expect(imported.markers).toEqual(project.markers);
+  });
+
+  it("defaults markers to the empty state when the stored project lacks them", () => {
+    const serializer = new ProjectSerializer(new MemoryStorageEngine());
+    const project = makeProject();
+
+    const imported = serializer.importFromJson(serializer.exportToJson(project));
+
+    expect(imported.markers).toEqual({ nextNumber: 1, items: [] });
+  });
+
+  it("repairs nextNumber above the highest stored number and drops invalid items", () => {
+    const serializer = new ProjectSerializer(new MemoryStorageEngine());
+    const project = makeProject({
+      markers: {
+        nextNumber: 1,
+        items: [
+          makeMarker({ id: "marker-3", number: 3 }),
+          makeMarker({ id: "marker-3", number: 4 }), // duplicate id
+          makeMarker({ id: "marker-4", number: 3 }), // duplicate number
+          makeMarker({ id: "", number: 9 }), // invalid id
+          makeMarker({ id: "marker-5", number: 1.5 }), // non-integer number
+          makeMarker({ id: "marker-6", number: 6, target: { kind: "region" } }), // bad target
+          makeMarker({ id: "marker-7", number: 7, createdAt: -1 }), // bad createdAt
+          "garbage",
+        ],
+      } as unknown as Project["markers"],
+    });
+
+    const imported = serializer.importFromJson(serializer.exportToJson(project));
+
+    expect(imported.markers?.items.map((m) => m.id)).toEqual(["marker-3"]);
+    expect(imported.markers?.nextNumber).toBe(4);
+  });
+
+  it("keeps a valid nextNumber above every item (deleted numbers stay retired)", () => {
+    const normalized = normalizeProjectMarkers({
+      nextNumber: 9,
+      items: [makeMarker({ id: "marker-3", number: 3 })],
+    });
+
+    expect(normalized.nextNumber).toBe(9);
+  });
+
+  it("replaces an invalid markers shape with the empty state", () => {
+    expect(normalizeProjectMarkers([1, 2, 3])).toEqual({
+      nextNumber: 1,
+      items: [],
+    });
+    expect(normalizeProjectMarkers("nope")).toEqual({
+      nextNumber: 1,
+      items: [],
+    });
+    expect(
+      normalizeProjectMarkers({ nextNumber: "x", items: "nope" }),
+    ).toEqual({ nextNumber: 1, items: [] });
+  });
+
+  it("normalizeProjectMarkerFields always leaves a defined markers state", () => {
+    const normalized = normalizeProjectMarkerFields(makeProject());
+
+    expect(normalized.markers).toEqual({ nextNumber: 1, items: [] });
+  });
+
+  it("validates all four target kinds structurally", () => {
+    const normalized = normalizeProjectMarkers({
+      nextNumber: 1,
+      items: [
+        makeMarker({ id: "marker-a", number: 1, target: { kind: "asset", mediaId: "m1" } }),
+        makeMarker({ id: "marker-c", number: 2, target: { kind: "clip", clipId: "c1" } }),
+        makeMarker({ id: "marker-t", number: 3, target: { kind: "text", textClipId: "text-1" } }),
+        makeMarker({ id: "marker-r", number: 4, target: { kind: "timeRange", start: 0, end: 0 } }),
+        makeMarker({ id: "marker-bad", number: 5, target: { kind: "timeRange", start: 2, end: 1 } }),
+        makeMarker({ id: "marker-bad2", number: 6, target: { kind: "asset" } }),
+      ],
+    });
+
+    expect(normalized.items.map((m) => m.id)).toEqual([
+      "marker-a",
+      "marker-c",
+      "marker-t",
+      "marker-r",
+    ]);
+    expect(normalized.nextNumber).toBe(5);
   });
 });

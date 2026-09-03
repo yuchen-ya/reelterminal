@@ -512,3 +512,102 @@ describe("persistence: save → fresh session open → continue", () => {
     expect(res.value.errorCodes).toHaveLength(9);
   });
 });
+
+describe("persistence: project markers survive the checkpoint boundary (v2)", () => {
+  let mediaRoot: string;
+  let projectRoot: string;
+
+  beforeEach(async () => {
+    mediaRoot = await makeTempDir("pm-media");
+    projectRoot = await makeTempDir("pm-proj");
+    writeTinyMp4(mediaRoot);
+  });
+
+  afterEach(async () => {
+    await removeTempDir(mediaRoot);
+    await removeTempDir(projectRoot);
+  });
+
+  function newSession(): AgentFacade {
+    return createAgentFacade({
+      mediaRoots: [mediaRoot],
+      projectRoots: [projectRoot],
+    });
+  }
+
+  it("markers round-trip with stable numbers and a continuous watermark", async () => {
+    const sessionA = newSession();
+    await sessionA["project.create"]({ name: "Marked" });
+    const imported = await sessionA["media.import"]({
+      path: join(mediaRoot, "tiny-6s.mp4"),
+    });
+    expect(imported.ok).toBe(true);
+    if (!imported.ok) throw new Error("import failed");
+    const mediaId = imported.value.mediaId;
+    const seeded = await sessionA["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v1" },
+        { op: "clip.add", trackId: "v1", mediaId, startTime: 0, clipId: "c1" },
+      ],
+    });
+    expect(seeded.ok).toBe(true);
+
+    const marked = await sessionA["edit.apply"]({
+      ops: [
+        { op: "marker.add", target: { kind: "asset", mediaId }, label: "source" },
+        { op: "marker.add", target: { kind: "clip", clipId: "c1" }, color: "#00ff00" },
+        { op: "marker.add", target: { kind: "timeRange", start: 1, end: 2 }, label: "range" },
+      ],
+    });
+    expect(marked.ok).toBe(true);
+    const removed = await sessionA["edit.apply"]({
+      ops: [{ op: "marker.remove", number: 2 }],
+    });
+    expect(removed.ok).toBe(true);
+
+    const cpPath = join(projectRoot, "marked-v2.openreel.json");
+    const saved = await sessionA["project.save"]({ path: cpPath });
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) return;
+
+    const doc = JSON.parse(await readFile(cpPath, "utf8")) as {
+      formatVersion: number;
+      project: { markers?: { nextNumber: number; items: unknown[] } };
+    };
+    expect(doc.formatVersion).toBe(CHECKPOINT_FORMAT_VERSION);
+    expect(doc.formatVersion).toBe(2);
+    expect(doc.project.markers?.nextNumber).toBe(4);
+    expect(doc.project.markers?.items).toHaveLength(2);
+
+    const sessionB = newSession();
+    const opened = await sessionB["project.open"]({ path: cpPath });
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    expect(opened.value.project.markers?.items.map((m) => m.number)).toEqual([1, 3]);
+
+    const timeline = await sessionB["timeline.get"]();
+    expect(timeline.ok).toBe(true);
+    if (!timeline.ok) return;
+    expect(timeline.value.markers.map((m) => m.number)).toEqual([1, 3]);
+    expect(timeline.value.markers[0]).toMatchObject({
+      target: { kind: "asset", mediaId },
+      label: "source",
+      color: "#f59e0b",
+    });
+    expect(timeline.value.markers[1]).toMatchObject({
+      target: { kind: "timeRange", start: 1, end: 2 },
+      label: "range",
+    });
+
+    // The watermark is continuous across the boundary: 2 stays retired and
+    // the next marker mints 4.
+    const added = await sessionB["edit.apply"]({
+      ops: [{ op: "marker.add", target: { kind: "timeRange", start: 4, end: 5 } }],
+    });
+    expect(added.ok).toBe(true);
+    const after = await sessionB["timeline.get"]();
+    expect(after.ok).toBe(true);
+    if (!after.ok) return;
+    expect(after.value.markers.map((m) => m.number)).toEqual([1, 3, 4]);
+  });
+});

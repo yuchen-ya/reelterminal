@@ -416,6 +416,11 @@ async function handleApplyActions(
       };
     }
 
+    // Agent edits land outside the GUI gesture paths, so nudge the preview
+    // explicitly: clears processed-audio caches and forces a paused re-render
+    // with the new project state.
+    window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
+
     return {
       ok: true,
       result: { revision: getProjectRevision(), createdIds },
