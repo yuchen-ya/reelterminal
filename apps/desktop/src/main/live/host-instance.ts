@@ -30,6 +30,18 @@ import {
 let host: LiveSessionHost | null = null;
 
 /**
+ * The one Agent workspace root under the OS Videos folder (`jobs` + `shared`
+ * are created eagerly so a user can open it before any Agent ran). Shared by
+ * the media-roots default and the "open workspace" IPC — single source.
+ */
+export function agentWorkspaceRoot(): string {
+  return path.join(
+    app.getPath("videos"),
+    "ReelTerminal Agent Workspace",
+  );
+}
+
+/**
  * Local roots exposed by `capabilities_get.mediaImport.mediaRoots`.
  *
  * The default deliberately avoids granting the whole home directory. It
@@ -48,10 +60,7 @@ function liveMediaRoots(): readonly string[] {
       .filter((entry) => path.isAbsolute(entry) && isDirectory(entry));
   }
 
-  const workspace = path.join(
-    app.getPath("videos"),
-    "ReelTerminal Agent Workspace",
-  );
+  const workspace = agentWorkspaceRoot();
   mkdirSync(path.join(workspace, "jobs"), { recursive: true });
   mkdirSync(path.join(workspace, "shared"), { recursive: true });
 

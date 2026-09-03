@@ -1,10 +1,29 @@
 import type { JSX } from "react";
-import { useEffect } from "react";
-import { Bot, MessageSquare, Power } from "@/icons/lucide-compat";
+import { useEffect, useState } from "react";
+import { Bot, CircleHelp, FolderOpen, MessageSquare, Power, X } from "@/icons/lucide-compat";
 import { useCollabStore, installCollabEventListener, type CollabMode } from "../../stores/collab-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useAgentReferencesStore } from "../../stores/agent-references-store";
 import { useTranslation } from "react-i18next";
+
+/** localStorage flag: first-run Agent Session intro bubble has been dismissed. */
+const INTRO_SEEN_KEY = "reelterminal.agentSessionIntroSeen";
+
+function readIntroSeen(): boolean {
+  try {
+    return window.localStorage.getItem(INTRO_SEEN_KEY) === "1";
+  } catch {
+    return true; // storage unavailable → don't nag
+  }
+}
+
+function markIntroSeen(): void {
+  try {
+    window.localStorage.setItem(INTRO_SEEN_KEY, "1");
+  } catch {
+    /* non-persistent dismissal is fine */
+  }
+}
 
 const MODES: ReadonlyArray<{
   id: CollabMode;
@@ -37,10 +56,22 @@ export function CollabStatusBar(): JSX.Element {
     Object.values(s.references).sort((a, b) => a.number - b.number),
   );
 
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [introSeen, setIntroSeen] = useState(readIntroSeen);
+
   useEffect(() => {
     void useCollabStore.getState().refresh();
     return installCollabEventListener();
   }, []);
+
+  const openWorkspace = () => {
+    void window.openreel?.collabControl?.openWorkspace?.();
+  };
+
+  const dismissIntro = () => {
+    markIntroSeen();
+    setIntroSeen(true);
+  };
 
   const statusText = !enabled
     ? t("desktop.collaboration.disabled")
@@ -52,21 +83,93 @@ export function CollabStatusBar(): JSX.Element {
 
   return (
     <div className="flex h-full items-center gap-3 border-b border-border bg-bg-1 px-3 text-[11px] text-fg-2">
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label={t("desktop.collaboration.agentSession")}
-        onClick={() => void (enabled ? disable() : enable())}
-        className={`flex items-center gap-1.5 rounded-[7px] px-2 py-1 font-medium transition-colors ${
-          enabled
-            ? "bg-accent-soft text-accent"
-            : "bg-bg-2 text-fg-2 hover:bg-bg-3 hover:text-fg"
-        }`}
-      >
-        <Power size={11} aria-hidden />
-        {t("desktop.collaboration.agentSession")}
-      </button>
+      <div className="relative flex items-center gap-1">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-label={t("desktop.collaboration.agentSession")}
+          onClick={() => void (enabled ? disable() : enable())}
+          className={`flex items-center gap-1.5 rounded-[7px] px-2 py-1 font-medium transition-colors ${
+            enabled
+              ? "bg-accent-soft text-accent"
+              : "bg-bg-2 text-fg-2 hover:bg-bg-3 hover:text-fg"
+          }`}
+        >
+          <Power size={11} aria-hidden />
+          {t("desktop.collaboration.agentSession")}
+        </button>
+
+        <button
+          type="button"
+          aria-label={t("desktop.collaboration.helpAria")}
+          aria-expanded={helpOpen}
+          onClick={() => setHelpOpen((open) => !open)}
+          className="flex h-5 w-5 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-hover hover:text-fg"
+        >
+          <CircleHelp size={12} aria-hidden />
+        </button>
+
+        {!enabled && !introSeen && (
+          <div
+            role="status"
+            className="absolute left-0 top-full z-50 mt-1.5 w-64 rounded-md border border-border bg-bg-elev p-3 text-fg-2 shadow-lg"
+          >
+            <p className="font-medium text-fg">{t("desktop.collaboration.introTitle")}</p>
+            <p className="mt-1 leading-snug">{t("desktop.collaboration.introBody")}</p>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setHelpOpen(true);
+                  dismissIntro();
+                }}
+                className="rounded-[5px] bg-accent-soft px-2 py-0.5 font-medium text-accent hover:opacity-90"
+              >
+                {t("desktop.collaboration.introLearnMore")}
+              </button>
+              <button
+                type="button"
+                onClick={dismissIntro}
+                className="rounded-[5px] px-2 py-0.5 text-fg-muted hover:text-fg"
+              >
+                {t("desktop.collaboration.introDismiss")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {helpOpen && (
+          <div
+            role="dialog"
+            aria-label={t("desktop.collaboration.helpTitle")}
+            className="absolute left-0 top-full z-50 mt-1.5 w-72 rounded-md border border-border bg-bg-elev p-3 text-fg-2 shadow-lg"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-medium text-fg">{t("desktop.collaboration.helpTitle")}</p>
+              <button
+                type="button"
+                aria-label={t("desktop.collaboration.helpClose")}
+                onClick={() => setHelpOpen(false)}
+                className="flex h-4 w-4 items-center justify-center rounded text-fg-muted hover:text-fg"
+              >
+                <X size={11} aria-hidden />
+              </button>
+            </div>
+            <p className="mt-1.5 leading-snug">{t("desktop.collaboration.helpLine1")}</p>
+            <p className="mt-1 leading-snug">{t("desktop.collaboration.helpLine2")}</p>
+            <p className="mt-1 leading-snug">{t("desktop.collaboration.helpLine3")}</p>
+            <button
+              type="button"
+              onClick={openWorkspace}
+              className="mt-2 flex items-center gap-1.5 rounded-[5px] bg-bg-2 px-2 py-1 font-medium text-fg hover:bg-bg-3"
+            >
+              <FolderOpen size={12} aria-hidden />
+              {t("desktop.collaboration.openWorkspace")}
+            </button>
+          </div>
+        )}
+      </div>
 
       <span className="flex items-center gap-1.5 text-fg-muted">
         <span

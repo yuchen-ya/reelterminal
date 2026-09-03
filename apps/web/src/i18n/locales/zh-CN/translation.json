@@ -82,7 +82,18 @@
       "agentWorking": "智能助手工作中…",
       "cancel": "取消",
       "closeChat": "关闭智能助手面板",
-      "openChat": "打开智能助手面板"
+      "openChat": "打开智能助手面板",
+      "introTitle": "让智能助手帮你剪辑",
+      "introBody": "打开「智能助手会话」后，智能助手可以和你一起处理当前项目——添加素材、排列时间线、渲染成片。",
+      "introLearnMore": "了解更多",
+      "introDismiss": "知道了",
+      "helpAria": "了解智能助手会话",
+      "helpTitle": "什么是智能助手会话？",
+      "helpLine1": "开启后，本机上的智能助手可以连接 ReelTerminal，帮你编辑当前项目。它的修改和你自己的操作在同一个撤销历史里，随时可以撤销。",
+      "helpLine2": "需要先在编辑器里创建或打开一个项目——助手只能处理你当前打开的项目。",
+      "helpLine3": "助手用到的素材和渲染出的成片，都保存在本机的「Agent 工作区」文件夹中。",
+      "openWorkspace": "打开 Agent 工作区",
+      "helpClose": "关闭"
     }
   },
   "settingsDialog": {

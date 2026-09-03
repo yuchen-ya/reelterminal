@@ -47,6 +47,7 @@ export const CHANNELS = {
   collabDisable: "openreel:collab:disable",
   collabGetStatus: "openreel:collab:getStatus",
   collabSetMode: "openreel:collab:setMode",
+  collabOpenWorkspace: "openreel:collab:openWorkspace",
   conversationGetState: "openreel:conversation:getState",
   conversationAttach: "openreel:conversation:attach",
   conversationPrompt: "openreel:conversation:prompt",

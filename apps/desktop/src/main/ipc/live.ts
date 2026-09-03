@@ -6,10 +6,13 @@
  * reasoning and tool calls arrive through the external live endpoint; this
  * IPC surface only controls that session and reports its status.
  */
-import { ipcMain } from "electron";
+import { ipcMain, shell } from "electron";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 import { CHANNELS } from "../../shared/channels";
 import { liveTargetWebContents } from "../live/renderer-store-adapter";
+import { agentWorkspaceRoot } from "../live/host-instance";
 import type { LiveSessionHost } from "../live/live-session-host";
 
 const setModeArgsSchema = z.object({
@@ -45,5 +48,20 @@ export function registerLiveIpc(host: LiveSessionHost): void {
     assertMainWindowSender(event.sender);
     const { mode } = setModeArgsSchema.parse(raw);
     return host.setMode(mode);
+  });
+
+  /**
+   * "Open Agent Workspace" (GUI discoverability): reveal the workspace root
+   * (jobs/shared — where Agent-imported media and exported deliverables live)
+   * in the OS file manager. Created on demand so the entry works before any
+   * Agent ran. Returns the absolute path so the UI can show it.
+   */
+  ipcMain.handle(CHANNELS.collabOpenWorkspace, async (event) => {
+    assertMainWindowSender(event.sender);
+    const workspace = agentWorkspaceRoot();
+    mkdirSync(path.join(workspace, "jobs"), { recursive: true });
+    mkdirSync(path.join(workspace, "shared"), { recursive: true });
+    await shell.openPath(workspace);
+    return workspace;
   });
 }

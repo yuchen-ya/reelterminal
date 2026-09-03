@@ -325,6 +325,8 @@ declare global {
         disable(): Promise<OpenReelCollabStatus>;
         getStatus(): Promise<OpenReelCollabStatus>;
         setMode(mode: OpenReelCollabMode): Promise<OpenReelCollabStatus>;
+        /** Reveal the Agent workspace root (jobs/shared) in the OS file manager. */
+        openWorkspace(): Promise<string>;
       };
       /** Optional GUI attachment to an externally-owned Agent conversation. */
       conversation?: {

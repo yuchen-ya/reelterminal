@@ -82,7 +82,18 @@
       "agentWorking": "Agent working…",
       "cancel": "Cancel",
       "closeChat": "Close agent panel",
-      "openChat": "Open agent panel"
+      "openChat": "Open agent panel",
+      "introTitle": "Let an AI assistant help you edit",
+      "introBody": "Turn on Agent Session and an AI assistant can work on this project with you — adding clips, arranging the timeline, and rendering videos.",
+      "introLearnMore": "Learn more",
+      "introDismiss": "Got it",
+      "helpAria": "About Agent Session",
+      "helpTitle": "What is Agent Session?",
+      "helpLine1": "When it's on, an AI assistant on this computer can connect to ReelTerminal and help you edit the current project. Its changes land in the same undo history as yours, so you can always undo them.",
+      "helpLine2": "Create or open a project first — the assistant can only work on the project you have open.",
+      "helpLine3": "Footage the assistant uses and videos it renders are kept in the Agent Workspace folder on this computer.",
+      "openWorkspace": "Open Agent Workspace",
+      "helpClose": "Close"
     }
   },
   "settingsDialog": {

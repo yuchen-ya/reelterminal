@@ -131,6 +131,7 @@ contextBridge.exposeInMainWorld("openreel", {
     getStatus: () => ipcRenderer.invoke(CHANNELS.collabGetStatus, undefined),
     setMode: (mode: string) =>
       ipcRenderer.invoke(CHANNELS.collabSetMode, { mode }),
+    openWorkspace: () => ipcRenderer.invoke(CHANNELS.collabOpenWorkspace, undefined),
   },
   conversation: {
     getState: () => ipcRenderer.invoke(CHANNELS.conversationGetState, undefined),
