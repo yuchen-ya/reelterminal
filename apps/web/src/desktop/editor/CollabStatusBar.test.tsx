@@ -21,10 +21,10 @@ describe("CollabStatusBar Agent Session onboarding", () => {
   it("shows the first-run intro bubble until dismissed, then remembers", () => {
     render(<CollabStatusBar />);
 
-    expect(screen.getByText("Let an AI assistant help you edit")).toBeInTheDocument();
+    expect(screen.getByText("Let an AI agent help you edit")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Got it" }));
-    expect(screen.queryByText("Let an AI assistant help you edit")).not.toBeInTheDocument();
+    expect(screen.queryByText("Let an AI agent help you edit")).not.toBeInTheDocument();
     expect(window.localStorage.getItem(INTRO_SEEN_KEY)).toBe("1");
   });
 
@@ -32,7 +32,7 @@ describe("CollabStatusBar Agent Session onboarding", () => {
     window.localStorage.setItem(INTRO_SEEN_KEY, "1");
     render(<CollabStatusBar />);
 
-    expect(screen.queryByText("Let an AI assistant help you edit")).not.toBeInTheDocument();
+    expect(screen.queryByText("Let an AI agent help you edit")).not.toBeInTheDocument();
   });
 
   it("opens the help popover from the intro and from the help button", () => {
@@ -41,7 +41,7 @@ describe("CollabStatusBar Agent Session onboarding", () => {
     fireEvent.click(screen.getByRole("button", { name: "Learn more" }));
     expect(screen.getByText("What is Agent Session?")).toBeInTheDocument();
     expect(window.localStorage.getItem(INTRO_SEEN_KEY)).toBe("1");
-    expect(screen.queryByText("Let an AI assistant help you edit")).not.toBeInTheDocument();
+    expect(screen.queryByText("Let an AI agent help you edit")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByText("What is Agent Session?")).not.toBeInTheDocument();

@@ -42,11 +42,25 @@ export interface SnapSettings {
   snapThreshold: number;
 }
 
+export interface PanelBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type PanelGeometry = Partial<PanelBounds>;
+
 export interface PanelState {
   visible: boolean;
   width?: number;
   height?: number;
   collapsed?: boolean;
+  x?: number;
+  y?: number;
+  minimized?: boolean;
+  maximized?: boolean;
+  restoreBounds?: PanelBounds | null;
 }
 
 export interface KeyboardShortcuts {
@@ -119,6 +133,13 @@ export interface UIState {
   setPanelVisible: (panelId: PanelId, visible: boolean) => void;
   setPanelWidth: (panelId: PanelId, width: number) => void;
   setPanelCollapsed: (panelId: PanelId, collapsed: boolean) => void;
+  setPanelGeometry: (panelId: PanelId, geometry: PanelGeometry) => void;
+  setPanelMinimized: (panelId: PanelId, minimized: boolean) => void;
+  setPanelMaximized: (
+    panelId: PanelId,
+    maximized: boolean,
+    restoreBounds?: PanelBounds | null,
+  ) => void;
   setShortcut: (action: keyof KeyboardShortcuts, shortcut: string) => void;
   resetShortcuts: () => void;
   setTheme: (theme: "light" | "dark" | "system") => void;
@@ -202,7 +223,13 @@ const DEFAULT_PANELS: Record<PanelId, PanelState> = {
   audioMixer: { visible: false, width: 300 },
   colorGrading: { visible: false, width: 400 },
   subtitles: { visible: false, width: 300 },
-  externalAgent: { visible: false, width: 380 },
+  externalAgent: {
+    visible: false,
+    width: 400,
+    height: 560,
+    minimized: false,
+    maximized: false,
+  },
 };
 
 export const useUIStore = create<UIState>()(
@@ -411,16 +438,29 @@ export const useUIStore = create<UIState>()(
         },
 
         togglePanel: (panelId: PanelId) => {
-          set((state) => ({
-            // Use spread operator to create new panels object (immutability for Zustand reactivity)
-            panels: {
-              ...state.panels,
-              [panelId]: {
-                ...state.panels[panelId], // Shallow copy existing panel state
-                visible: !state.panels[panelId].visible, // Toggle visibility
+          set((state) => {
+            const panel = state.panels[panelId];
+            // The externalAgent surface floats; toggling it while it is open
+            // but minimized restores the window instead of hiding it.
+            if (panelId === "externalAgent" && panel.visible && panel.minimized) {
+              return {
+                panels: {
+                  ...state.panels,
+                  [panelId]: { ...panel, minimized: false },
+                },
+              };
+            }
+            return {
+              // Use spread operator to create new panels object (immutability for Zustand reactivity)
+              panels: {
+                ...state.panels,
+                [panelId]: {
+                  ...panel, // Shallow copy existing panel state
+                  visible: !panel.visible, // Toggle visibility
+                },
               },
-            },
-          }));
+            };
+          });
         },
 
         setPanelVisible: (panelId: PanelId, visible: boolean) => {
@@ -459,6 +499,68 @@ export const useUIStore = create<UIState>()(
               },
             },
           }));
+        },
+
+        setPanelGeometry: (panelId: PanelId, geometry: PanelGeometry) => {
+          set((state) => {
+            const next = { ...state.panels[panelId] };
+            if (geometry.x !== undefined) next.x = geometry.x;
+            if (geometry.y !== undefined) next.y = geometry.y;
+            if (geometry.width !== undefined) next.width = geometry.width;
+            if (geometry.height !== undefined) next.height = geometry.height;
+            return {
+              panels: {
+                ...state.panels,
+                [panelId]: next,
+              },
+            };
+          });
+        },
+
+        setPanelMinimized: (panelId: PanelId, minimized: boolean) => {
+          set((state) => ({
+            panels: {
+              ...state.panels,
+              [panelId]: {
+                ...state.panels[panelId],
+                minimized,
+              },
+            },
+          }));
+        },
+
+        setPanelMaximized: (
+          panelId: PanelId,
+          maximized: boolean,
+          restoreBounds?: PanelBounds | null,
+        ) => {
+          set((state) => {
+            const panel = state.panels[panelId];
+            const next: PanelState = { ...panel, maximized };
+            if (maximized) {
+              next.restoreBounds = restoreBounds ?? {
+                x: panel.x ?? 0,
+                y: panel.y ?? 0,
+                width: panel.width ?? 400,
+                height: panel.height ?? 560,
+              };
+            } else {
+              const restore = restoreBounds ?? panel.restoreBounds;
+              if (restore) {
+                next.x = restore.x;
+                next.y = restore.y;
+                next.width = restore.width;
+                next.height = restore.height;
+              }
+              next.restoreBounds = null;
+            }
+            return {
+              panels: {
+                ...state.panels,
+                [panelId]: next,
+              },
+            };
+          });
         },
 
         setShortcut: (action: keyof KeyboardShortcuts, shortcut: string) => {
@@ -593,7 +695,7 @@ export const useUIStore = create<UIState>()(
       }),
       {
         name: "openreel-ui-preferences",
-        version: 3,
+        version: 4,
         migrate: (persisted: unknown, version: number) => {
           const state = persisted as Record<string, unknown>;
           if (version === 0) {
@@ -612,6 +714,21 @@ export const useUIStore = create<UIState>()(
               panels.agentChat ?? DEFAULT_PANELS.externalAgent;
             delete panels.agentChat;
             state.panels = panels;
+          }
+          if (version < 4) {
+            const panels = (state.panels ?? {}) as Record<string, PanelState>;
+            // v4 adds floating-window geometry to the externalAgent panel;
+            // keep the persisted visible/width and fill the new fields.
+            state.panels = {
+              ...DEFAULT_PANELS,
+              ...panels,
+              externalAgent: {
+                ...DEFAULT_PANELS.externalAgent,
+                ...panels.externalAgent,
+                minimized: panels.externalAgent?.minimized ?? false,
+                maximized: panels.externalAgent?.maximized ?? false,
+              },
+            };
           }
           return state;
         },

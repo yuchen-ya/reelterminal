@@ -6,22 +6,17 @@ import { ToolcraftText as Text } from "@openreel/ui";
 
 import { AssetsPanel } from "../../components/editor/AssetsPanel";
 import { InspectorPanel } from "../../components/editor/InspectorPanel";
+import { ExternalAgentFloatingWindow } from "../../components/editor/agent/ExternalAgentFloatingWindow";
 import { PanelErrorBoundary } from "../../components/ErrorBoundary";
 import { CollabStatusBar } from "../editor/CollabStatusBar";
 import { Icon } from "@/icons/Icon";
 import { useResizable } from "../editor/useResizable";
-import { useUIStore } from "../../stores/ui-store";
 
 const Preview = lazy(() =>
   import("../../components/editor/Preview").then((m) => ({ default: m.Preview })),
 );
 const Timeline = lazy(() =>
   import("../../components/editor/Timeline").then((m) => ({ default: m.Timeline })),
-);
-const ExternalAgentPanel = lazy(() =>
-  import("../../components/editor/agent/ExternalAgentPanelContainer").then((m) => ({
-    default: m.ExternalAgentPanelContainer,
-  })),
 );
 
 function PanelLoading(): JSX.Element {
@@ -128,25 +123,15 @@ export function EditPage(): JSX.Element {
     storageKey: "openreel-desktop-timeline-h",
   });
 
-  // The optional external-session surface mounts as a collapsible right-side
-  // dock region; ReelTerminal does not own its model or conversation history.
-  const chatOpen = useUIStore((state) => state.panels.externalAgent.visible);
-  const chatWidth = useUIStore((state) => state.panels.externalAgent.width) ?? 380;
-  const togglePanel = useUIStore((state) => state.togglePanel);
-
-  const gridStyle: React.CSSProperties = chatOpen
-    ? {
-        gridTemplateColumns: `${mediaW.value}px 1fr ${inspectorW.value}px ${chatWidth}px`,
-        gridTemplateRows: `1fr auto ${timelineH.value}px`,
-        gridTemplateAreas:
-          "'media stage inspector chat' 'collab collab collab collab' 'timeline timeline timeline timeline'",
-      }
-    : {
-        gridTemplateColumns: `${mediaW.value}px 1fr ${inspectorW.value}px`,
-        gridTemplateRows: `1fr auto ${timelineH.value}px`,
-        gridTemplateAreas:
-          "'media stage inspector' 'collab collab collab' 'timeline timeline timeline'",
-      };
+  // The optional external-session surface floats above the editor as a
+  // draggable window; ReelTerminal does not own its model or conversation
+  // history. The grid below is always the three-column editor layout.
+  const gridStyle: React.CSSProperties = {
+    gridTemplateColumns: `${mediaW.value}px 1fr ${inspectorW.value}px`,
+    gridTemplateRows: `1fr auto ${timelineH.value}px`,
+    gridTemplateAreas:
+      "'media stage inspector' 'collab collab collab' 'timeline timeline timeline'",
+  };
 
   return (
     <div className="grid h-full min-h-0 w-full gap-px overflow-hidden bg-border" style={gridStyle}>
@@ -166,19 +151,6 @@ export function EditPage(): JSX.Element {
         <ColumnHandle edge="left" onPointerDown={inspectorW.onHandlePointerDown} />
       </DockRegion>
 
-      {chatOpen && (
-        <DockRegion
-          label={t("desktop.editor.agent")}
-          name={t("desktop.editor.agent")}
-          area="chat"
-          icon="bubble.left.and.text.bubble.right"
-        >
-          <Suspense fallback={<PanelLoading />}>
-            <ExternalAgentPanel onClose={() => togglePanel("externalAgent")} />
-          </Suspense>
-        </DockRegion>
-      )}
-
       <div className="h-8 min-h-0" style={{ gridArea: "collab" }}>
         <CollabStatusBar />
       </div>
@@ -189,6 +161,8 @@ export function EditPage(): JSX.Element {
         </Suspense>
         <RowHandle onPointerDown={timelineH.onHandlePointerDown} />
       </DockRegion>
+
+      <ExternalAgentFloatingWindow />
     </div>
   );
 }

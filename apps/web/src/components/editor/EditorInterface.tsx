@@ -13,6 +13,7 @@ import { AudioMixer } from "../audio-mixer";
 import { KeyboardShortcutsOverlay } from "./KeyboardShortcutsOverlay";
 import { PanelErrorBoundary } from "../ErrorBoundary";
 import { SpotlightTour, MoGraphTour } from "./tour";
+import { ExternalAgentFloatingWindow } from "./agent/ExternalAgentFloatingWindow";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useEngineStore } from "../../stores/engine-store";
@@ -39,12 +40,6 @@ import {
   syncTransitionBridgeFromProject,
 } from "../../bridges/transition-bridge";
 
-const ExternalAgentPanel = React.lazy(() =>
-  import("./agent/ExternalAgentPanelContainer").then((module) => ({
-    default: module.ExternalAgentPanelContainer,
-  })),
-);
-
 // Timeline area (bottom band) is sized as a vh fraction so the
 // top workspace (media | stage | inspector) gets the rest. The grid
 // from the mockup is `1fr var(--tl-height)` rows — by default
@@ -63,14 +58,10 @@ const DEFAULT_INSPECTOR_W = 360;
 const MIN_INSPECTOR_W = 280;
 const MAX_INSPECTOR_W = 560;
 
-const DEFAULT_CHAT_W = 380;
-const MIN_CHAT_W = 320;
-const MAX_CHAT_W = 560;
-
 const MIN_STAGE_W = 380;
 const RESIZE_HANDLE = 10;
 
-type ResizeTarget = "timeline" | "media" | "inspector" | "chat";
+type ResizeTarget = "timeline" | "media" | "inspector";
 
 const clamp = (value: number, min: number, max: number): number => {
   return Math.min(Math.max(value, min), max);
@@ -328,23 +319,16 @@ export const EditorInterface: React.FC = () => {
   const resizeRef = useRef<ResizeTarget | null>(null);
   const [mediaWidth, setMediaWidth] = useState(DEFAULT_MEDIA_W);
   const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_W);
-  const [chatWidth, setChatWidth] = useState(DEFAULT_CHAT_W);
   const [timelineVh, setTimelineVh] = useState(DEFAULT_TIMELINE_VH);
-
-  const chatVisible = panels.externalAgent?.visible ?? false;
 
   const mediaRef = useRef(mediaWidth);
   const inspectorRef = useRef(inspectorWidth);
-  const chatRef = useRef(chatWidth);
   useEffect(() => {
     mediaRef.current = mediaWidth;
   }, [mediaWidth]);
   useEffect(() => {
     inspectorRef.current = inspectorWidth;
   }, [inspectorWidth]);
-  useEffect(() => {
-    chatRef.current = chatWidth;
-  }, [chatWidth]);
 
   const beginResize = useCallback(
     (target: ResizeTarget) => (e: React.MouseEvent) => {
@@ -363,13 +347,10 @@ export const EditorInterface: React.FC = () => {
       const target = resizeRef.current;
       if (!root || !target) return;
       const rect = root.getBoundingClientRect();
-      const chatOpen =
-        useUIStore.getState().panels.externalAgent?.visible ?? false;
-      const chatOffset = chatOpen ? chatRef.current + RESIZE_HANDLE : 0;
 
       if (target === "media") {
         const maxByStage =
-          rect.width - inspectorRef.current - chatOffset - MIN_STAGE_W;
+          rect.width - inspectorRef.current - MIN_STAGE_W;
         setMediaWidth(
           clamp(e.clientX - rect.left, MIN_MEDIA_W, Math.min(MAX_MEDIA_W, maxByStage)),
         );
@@ -377,28 +358,12 @@ export const EditorInterface: React.FC = () => {
       }
       if (target === "inspector") {
         const maxByStage =
-          rect.width - mediaRef.current - chatOffset - MIN_STAGE_W;
+          rect.width - mediaRef.current - MIN_STAGE_W;
         setInspectorWidth(
           clamp(
-            rect.right - chatOffset - e.clientX,
+            rect.right - e.clientX,
             MIN_INSPECTOR_W,
             Math.min(MAX_INSPECTOR_W, maxByStage),
-          ),
-        );
-        return;
-      }
-      if (target === "chat") {
-        const maxByStage =
-          rect.width -
-          mediaRef.current -
-          inspectorRef.current -
-          2 * RESIZE_HANDLE -
-          MIN_STAGE_W;
-        setChatWidth(
-          clamp(
-            rect.right - e.clientX,
-            MIN_CHAT_W,
-            Math.min(MAX_CHAT_W, maxByStage),
           ),
         );
         return;
@@ -430,9 +395,8 @@ export const EditorInterface: React.FC = () => {
     const tlVh = timelineMaximized ? COMPACT_TIMELINE_VH : timelineVh;
     r.style.setProperty("--media-w", `${mediaWidth}px`);
     r.style.setProperty("--inspector-w", `${inspectorWidth}px`);
-    r.style.setProperty("--chat-w", `${chatWidth}px`);
     r.style.setProperty("--tl-height", `${tlVh}vh`);
-  }, [mediaWidth, inspectorWidth, chatWidth, timelineVh, timelineMaximized]);
+  }, [mediaWidth, inspectorWidth, timelineVh, timelineMaximized]);
 
   if (initializing || !initialized) {
     return (
@@ -456,19 +420,12 @@ export const EditorInterface: React.FC = () => {
   const effectiveTimelineVh = timelineMaximized
     ? COMPACT_TIMELINE_VH
     : timelineVh;
-  const gridStyle: React.CSSProperties = chatVisible
-    ? {
-        gridTemplateColumns: `${mediaWidth}px ${RESIZE_HANDLE}px 1fr ${RESIZE_HANDLE}px ${inspectorWidth}px ${RESIZE_HANDLE}px ${chatWidth}px`,
-        gridTemplateRows: `1fr ${RESIZE_HANDLE}px ${effectiveTimelineVh}vh`,
-        gridTemplateAreas:
-          "'media mh stage ih inspector ch chat' 'th th th th th th th' 'timeline timeline timeline timeline timeline timeline timeline'",
-      }
-    : {
-        gridTemplateColumns: `${mediaWidth}px ${RESIZE_HANDLE}px 1fr ${RESIZE_HANDLE}px ${inspectorWidth}px`,
-        gridTemplateRows: `1fr ${RESIZE_HANDLE}px ${effectiveTimelineVh}vh`,
-        gridTemplateAreas:
-          "'media mh stage ih inspector' 'th th th th th' 'timeline timeline timeline timeline timeline'",
-      };
+  const gridStyle: React.CSSProperties = {
+    gridTemplateColumns: `${mediaWidth}px ${RESIZE_HANDLE}px 1fr ${RESIZE_HANDLE}px ${inspectorWidth}px`,
+    gridTemplateRows: `1fr ${RESIZE_HANDLE}px ${effectiveTimelineVh}vh`,
+    gridTemplateAreas:
+      "'media mh stage ih inspector' 'th th th th th' 'timeline timeline timeline timeline timeline'",
+  };
 
   return (
     <div
@@ -526,37 +483,6 @@ export const EditorInterface: React.FC = () => {
           </PanelErrorBoundary>
         </div>
 
-        {chatVisible && (
-          <>
-            <div
-              className="grid place-items-center cursor-col-resize group/h"
-              style={{ gridArea: "ch" }}
-              onMouseDown={beginResize("chat")}
-            >
-              <span className="h-10 w-1 rounded-full bg-transparent group-hover/h:bg-accent/40 transition-colors" />
-            </div>
-
-            <div
-              className="bg-bg-1 min-w-0 min-h-0 overflow-hidden rounded-xl border border-border shadow-sm"
-              style={{ gridArea: "chat" }}
-            >
-              <PanelErrorBoundary name={t("externalAgent.title")}>
-                <React.Suspense
-                  fallback={
-                    <div className="grid h-full place-items-center text-xs text-fg-muted">
-                      {t("externalAgent.loading")}
-                    </div>
-                  }
-                >
-                  <ExternalAgentPanel
-                    onClose={() => setPanelVisible("externalAgent", false)}
-                  />
-                </React.Suspense>
-              </PanelErrorBoundary>
-            </div>
-          </>
-        )}
-
         <div
           className="grid place-items-center cursor-row-resize group/h"
           style={{ gridArea: "th" }}
@@ -613,6 +539,8 @@ export const EditorInterface: React.FC = () => {
         isOpen={showShortcutsOverlay}
         onClose={() => setShowShortcutsOverlay(false)}
       />
+
+      <ExternalAgentFloatingWindow />
 
       <SpotlightTour />
       <MoGraphTour />

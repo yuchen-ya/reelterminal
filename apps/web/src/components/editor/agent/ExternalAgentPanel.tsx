@@ -62,6 +62,8 @@ export interface ExternalAgentPanelProps {
   readonly cancelling?: boolean;
   readonly copyingReferences?: boolean;
   readonly sending?: boolean;
+  /** Hides the panel's own header when a host window already provides chrome. */
+  readonly hideHeader?: boolean;
 }
 
 const DEFAULT_CONNECTION: AgentConnectionView = { state: "disconnected" };
@@ -843,6 +845,7 @@ export function ExternalAgentPanel({
   cancelling = false,
   copyingReferences = false,
   sending = false,
+  hideHeader = false,
 }: ExternalAgentPanelProps): JSX.Element {
   const { t } = useTranslation();
   const connection = viewModel?.connection ?? connectionProp;
@@ -920,23 +923,25 @@ export function ExternalAgentPanel({
 
   return (
     <div className="flex h-full flex-col bg-bg-1">
-      <header className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <Bot size={15} className="shrink-0 text-accent" aria-hidden />
-        <span className="text-[13px] font-medium text-fg">{t("externalAgent.title")}</span>
-        {connection.agentName ? (
-          <span className="max-w-[150px] truncate text-[10px] text-fg-muted">· {connection.agentName}</span>
-        ) : null}
-        {onClose ? (
-          <IconButton
-            label={t("common.close")}
-            icon={<X size={14} aria-hidden />}
-            size="sm"
-            variant="ghost"
-            onClick={onClose}
-            className="ml-auto grid h-7 w-7 place-items-center rounded-md text-fg-2 hover:bg-hover hover:text-fg"
-          />
-        ) : null}
-      </header>
+      {hideHeader ? null : (
+        <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+          <Bot size={15} className="shrink-0 text-accent" aria-hidden />
+          <span className="text-[13px] font-medium text-fg">{t("externalAgent.title")}</span>
+          {connection.agentName ? (
+            <span className="max-w-[150px] truncate text-[10px] text-fg-muted">· {connection.agentName}</span>
+          ) : null}
+          {onClose ? (
+            <IconButton
+              label={t("common.close")}
+              icon={<X size={14} aria-hidden />}
+              size="sm"
+              variant="ghost"
+              onClick={onClose}
+              className="ml-auto grid h-7 w-7 place-items-center rounded-md text-fg-2 hover:bg-hover hover:text-fg"
+            />
+          ) : null}
+        </header>
+      )}
 
       <div
         ref={panelRef}
@@ -1006,7 +1011,7 @@ export function ExternalAgentPanel({
         />
       </div>
 
-      <footer className="space-y-2 border-t border-border bg-bg-1 px-3 py-2.5">
+      <footer className="max-h-[55%] shrink-0 space-y-2 overflow-y-auto border-t border-border bg-bg-1 px-3 py-2.5">
         <section className="space-y-1.5">
           <SectionHeading
             icon={<Hash size={13} aria-hidden />}

@@ -83,15 +83,15 @@
       "cancel": "Cancel",
       "closeChat": "Close agent panel",
       "openChat": "Open agent panel",
-      "introTitle": "Let an AI assistant help you edit",
-      "introBody": "Turn on Agent Session and an AI assistant can work on this project with you — adding clips, arranging the timeline, and rendering videos.",
+      "introTitle": "Let an AI agent help you edit",
+      "introBody": "Turn on Agent Session and an AI agent can work on this project with you — adding clips, arranging the timeline, and rendering videos.",
       "introLearnMore": "Learn more",
       "introDismiss": "Got it",
       "helpAria": "About Agent Session",
       "helpTitle": "What is Agent Session?",
-      "helpLine1": "When it's on, an AI assistant on this computer can connect to ReelTerminal and help you edit the current project. Its changes land in the same undo history as yours, so you can always undo them.",
-      "helpLine2": "Create or open a project first — the assistant can only work on the project you have open.",
-      "helpLine3": "Footage the assistant uses and videos it renders are kept in the Agent Workspace folder on this computer.",
+      "helpLine1": "When it's on, an AI agent on this computer can connect to ReelTerminal and help you edit the current project. Its changes land in the same undo history as yours, so you can always undo them.",
+      "helpLine2": "Create or open a project first — the agent can only work on the project you have open.",
+      "helpLine3": "Footage the agent uses and videos it renders are kept in the Agent Workspace folder on this computer.",
       "openWorkspace": "Open Agent Workspace",
       "helpClose": "Close"
     }
@@ -164,7 +164,7 @@
     "goToStep": "Go to step {{number}}"
   },
   "externalAgent": {
-    "title": "External Agent",
+    "title": "Agent",
     "statusDisabled": "Agent session is disabled",
     "statusConnected": "External agent connected",
     "statusWaiting": "Waiting for an external agent",
@@ -289,6 +289,12 @@
     "badgeLabel": "Agent reference #{{number}}",
     "staleSuffix": "stale"
   },
+  "floatingWindow": {
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close"
+  },
   "reviewMarkers": {
     "add": "Add review marker",
     "addAtPoint": "Add review marker here",
@@ -311,7 +317,7 @@
     "actionHistory": "Action history",
     "keyframeEditor": "Keyframe editor",
     "audioMixer": "Audio mixer",
-    "externalAgent": "External Agent",
+    "externalAgent": "Agent",
     "projectData": "Project JSON / Comments",
     "moreActions": "More editor actions",
     "screenRecorder": "Screen recorder",

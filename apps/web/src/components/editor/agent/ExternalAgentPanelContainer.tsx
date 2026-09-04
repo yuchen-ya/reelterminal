@@ -16,10 +16,12 @@ import {
 
 export interface ExternalAgentPanelContainerProps {
   readonly onClose?: ExternalAgentPanelProps["onClose"];
+  readonly hideHeader?: ExternalAgentPanelProps["hideHeader"];
 }
 
 export function ExternalAgentPanelContainer({
   onClose,
+  hideHeader,
 }: ExternalAgentPanelContainerProps): JSX.Element {
   const { t, i18n } = useTranslation();
   const state = useExternalConversationStore((value) => value.state);
@@ -130,6 +132,7 @@ export function ExternalAgentPanelContainer({
       viewModel={viewModel}
       references={references}
       onClose={onClose}
+      hideHeader={hideHeader}
       onConnect={busy ? undefined : () => void connect().catch(() => undefined)}
       onDisconnect={busy ? undefined : () => void detach().catch(() => undefined)}
       onSend={(text) => prompt(text)}
