@@ -223,6 +223,38 @@ export interface OpenReelConversationEvent {
   state: OpenReelConversationState;
 }
 
+export interface OpenReelConversationVisualStateCapture {
+  version: 1;
+  stateRef: string;
+  baseRef?: string;
+  kind: "keyframe" | "delta" | "metadata";
+  projectRevision: number;
+  contextRevision: number;
+  playheadSeconds: number;
+  selectedClipIds: readonly string[];
+  selectedTextIds: readonly string[];
+  selectedMediaIds: readonly string[];
+  changed: readonly (
+    | "project"
+    | "preview"
+    | "timeline"
+    | "playhead"
+    | "selection"
+    | "references"
+  )[];
+  imagePngBase64?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  regions?: readonly {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    imageX: number;
+    imageY: number;
+  }[];
+}
+
 declare global {
   interface Window {
     openreel?: {
@@ -345,7 +377,10 @@ declare global {
       conversation?: {
         getState(): Promise<OpenReelConversationState>;
         attach(): Promise<OpenReelConversationState>;
-        prompt(text: string): Promise<OpenReelConversationState>;
+        prompt(
+          text: string,
+          visualState?: OpenReelConversationVisualStateCapture,
+        ): Promise<OpenReelConversationState>;
         resolveApproval(
           requestId: string,
           decision: "approved" | "denied",

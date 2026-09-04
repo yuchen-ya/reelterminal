@@ -150,10 +150,56 @@ export type ExternalAgentContent = {
   readonly text: string;
 };
 
+/**
+ * A compact, application-authored view of the open editor state.
+ *
+ * The image path is produced by the trusted desktop host inside its private
+ * runtime directory. External adapters must validate that containment before
+ * forwarding it to a model. Exact revisions and ids stay structured because
+ * pixels are context, not a concurrency-control mechanism.
+ */
+export interface ExternalAgentVisualState {
+  readonly version: 1;
+  readonly stateRef: string;
+  readonly baseRef?: string;
+  readonly kind: "keyframe" | "delta" | "metadata";
+  readonly projectRevision: number;
+  readonly contextRevision: number;
+  readonly playheadSeconds: number;
+  readonly selectedClipIds: readonly string[];
+  readonly selectedTextIds: readonly string[];
+  readonly selectedMediaIds: readonly string[];
+  readonly changed: readonly (
+    | "project"
+    | "preview"
+    | "timeline"
+    | "playhead"
+    | "selection"
+    | "references"
+  )[];
+  readonly image?: {
+    readonly type: "localImage";
+    readonly path: string;
+    readonly width: number;
+    readonly height: number;
+    readonly sha256: string;
+    /** Delta atlas tiles mapped back into the 960x540 logical state board. */
+    readonly regions?: readonly {
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+      readonly imageX: number;
+      readonly imageY: number;
+    }[];
+  };
+}
+
 export interface ExternalAgentPromptParams {
   readonly sessionId: string;
   readonly prompt: readonly ExternalAgentContent[];
   readonly clientContext?: ExternalAgentWorkModeContext;
+  readonly visualState?: ExternalAgentVisualState;
 }
 
 export interface ExternalAgentWorkModeParams {

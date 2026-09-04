@@ -74,7 +74,9 @@ test("handshakes, frames turns, and retains early completion notifications", asy
 
     const thread = await client.startThread({ approvalsReviewer: "user" });
     assert.equal(thread.thread.id, "thread-1");
-    const turn = await client.startTurn("thread-1", "Inspect the live project.");
+    const turn = await client.startTurn("thread-1", "Inspect the live project.", {
+      localImagePaths: ["/tmp/reelterminal-state.png"],
+    });
     assert.equal(turn.id, "turn-1");
     assert.deepEqual(await client.waitForTurn(turn.id), {
       id: "turn-1",
@@ -86,7 +88,11 @@ test("handshakes, frames turns, and retains early completion notifications", asy
     assert.equal(child.messages[1].method, "initialized");
     assert.ok(child.messages.some((message) => message.result?.decision === "decline"));
     assert.ok(child.messages.some((message) => message.method === "thread/start"));
-    assert.ok(child.messages.some((message) => message.method === "turn/start"));
+    const turnRequest = child.messages.find((message) => message.method === "turn/start");
+    assert.deepEqual(turnRequest.params.input, [
+      { type: "text", text: "Inspect the live project.", text_elements: [] },
+      { type: "localImage", path: "/tmp/reelterminal-state.png" },
+    ]);
   } finally {
     await client.close();
   }

@@ -28,6 +28,7 @@ import {
   type ExternalAgentNotification,
   type ExternalAgentPairing,
   type ExternalAgentTransport,
+  type ExternalAgentVisualState,
   type ExternalConversationDisplayState,
   type ExternalConversationCapabilitySupport,
   type ExternalConversationDisconnectReason,
@@ -399,6 +400,7 @@ export class ExternalConversationBridge {
 
   async prompt(
     content: string | readonly ExternalAgentContent[],
+    visualState?: ExternalAgentVisualState,
   ): Promise<ExternalConversationPromptReceipt> {
     if (this.promptInFlight) {
       throw new ExternalConversationBridgeError(
@@ -414,7 +416,7 @@ export class ExternalConversationBridge {
       sessionId,
       connectionId: this.connectionIdValue,
     };
-    const operation = this.performPrompt(content, attachment);
+    const operation = this.performPrompt(content, attachment, visualState);
     this.promptInFlight = operation;
     try {
       return await operation;
@@ -431,6 +433,7 @@ export class ExternalConversationBridge {
       readonly sessionId: string;
       readonly connectionId: string | null;
     },
+    visualState?: ExternalAgentVisualState,
   ): Promise<ExternalConversationPromptReceipt> {
     const { transport, sessionId } = attachment;
     const prompt: readonly ExternalAgentContent[] =
@@ -450,7 +453,12 @@ export class ExternalConversationBridge {
     try {
       const raw = await transport.request(
         EXTERNAL_CONVERSATION_METHODS.prompt,
-        { sessionId, prompt, clientContext: this.workModeContext() },
+        {
+          sessionId,
+          prompt,
+          clientContext: this.workModeContext(),
+          ...(visualState ? { visualState } : {}),
+        },
       );
       if (!this.isCurrentAttachment(attachment)) {
         throw new ExternalConversationBridgeError(

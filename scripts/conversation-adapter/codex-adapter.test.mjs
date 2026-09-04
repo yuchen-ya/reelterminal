@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -197,15 +198,30 @@ async function notify(descriptor, method, params) {
 async function fixture() {
   const directory = await mkdtemp(path.join(tmpdir(), "reelterminal-codex-adapter-"));
   const descriptorPath = path.join(directory, "conversation-endpoint.json");
+  const visualStateRoot = path.join(directory, "visual-state");
+  const visualImagePath = path.join(visualStateRoot, "state.png");
+  const visualImageBytes = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  await mkdir(visualStateRoot, { recursive: true });
+  await writeFile(visualImagePath, visualImageBytes);
   const client = new FakeCodexClient();
   const adapter = await startCodexConversationAdapter({
     client,
     createThread: true,
     configureLiveMcp: false,
     descriptorPath,
+    visualStateRoot,
   });
   const descriptor = JSON.parse(await readFile(descriptorPath, "utf8"));
-  return { adapter, client, descriptor };
+  return {
+    adapter,
+    client,
+    descriptor,
+    visualImagePath,
+    visualImageSha256: createHash("sha256").update(visualImageBytes).digest("hex"),
+  };
 }
 
 async function connect(descriptor) {
@@ -220,8 +236,8 @@ async function connect(descriptor) {
   assert.equal(resumed.result.sessionId, descriptor.sessionId);
 }
 
-test("projects a real Codex turn into safe streaming conversation updates", async () => {
-  const { adapter, client, descriptor } = await fixture();
+test("projects a real Codex turn with trusted visual state into safe streaming updates", async () => {
+  const { adapter, client, descriptor, visualImagePath, visualImageSha256 } = await fixture();
   try {
     await connect(descriptor);
     const prompted = await rpc(descriptor, "session/prompt", {
@@ -236,10 +252,32 @@ test("projects a real Codex turn into safe streaming conversation updates", asyn
           deliveryRequiresExplicitAuthorization: true,
         },
       },
+      visualState: {
+        version: 1,
+        stateRef: "vs-test-1",
+        kind: "keyframe",
+        projectRevision: 7,
+        contextRevision: 3,
+        playheadSeconds: 1.25,
+        selectedClipIds: ["clip-1"],
+        selectedTextIds: [],
+        selectedMediaIds: [],
+        changed: ["preview", "timeline", "selection"],
+        image: {
+          type: "localImage",
+          path: visualImagePath,
+          width: 1,
+          height: 1,
+          sha256: visualImageSha256,
+        },
+      },
     });
     assert.equal(prompted.result.messageId, "agent-1");
     assert.match(client.lastTurn?.text ?? "", /openreel_live MCP/);
     assert.match(client.lastTurn?.text ?? "", /User request from ReelTerminal/);
+    assert.match(client.lastTurn?.text ?? "", /"projectRevision":7/);
+    assert.match(client.lastTurn?.text ?? "", /do not call capabilities_get/i);
+    assert.deepEqual(client.lastTurn?.options?.localImagePaths, [await realpath(visualImagePath)]);
 
     const updates = await rpc(descriptor, "openreel/session/updates", {
       sessionId: descriptor.sessionId,
@@ -261,6 +299,92 @@ test("projects a real Codex turn into safe streaming conversation updates", asyn
     await adapter.close();
   }
   assert.equal(client.closed, true);
+});
+
+test("drops a local image outside the trusted visual-state root", async () => {
+  const { adapter, client, descriptor, visualImageSha256 } = await fixture();
+  try {
+    await connect(descriptor);
+    const outsidePath = path.join(tmpdir(), "outside-reelterminal-state.png");
+    await writeFile(
+      outsidePath,
+      Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    );
+    const prompted = await rpc(descriptor, "session/prompt", {
+      sessionId: descriptor.sessionId,
+      prompt: [{ type: "text", text: "Inspect safely." }],
+      visualState: {
+        version: 1,
+        stateRef: "vs-test-outside",
+        kind: "keyframe",
+        projectRevision: 1,
+        contextRevision: 1,
+        playheadSeconds: 0,
+        selectedClipIds: [],
+        selectedTextIds: [],
+        selectedMediaIds: [],
+        changed: ["preview"],
+        image: {
+          type: "localImage",
+          path: outsidePath,
+          width: 1,
+          height: 1,
+          sha256: visualImageSha256,
+        },
+      },
+    });
+    assert.ok(prompted.result);
+    assert.deepEqual(client.lastTurn?.options ?? {}, {});
+    assert.match(client.lastTurn?.text ?? "", /"imageAttached":false/);
+    assert.doesNotMatch(client.lastTurn?.text ?? "", /outside-reelterminal-state/);
+  } finally {
+    await adapter.close();
+  }
+});
+
+test("forwards a trusted delta atlas with explicit board mappings", async () => {
+  const { adapter, client, descriptor, visualImagePath, visualImageSha256 } = await fixture();
+  try {
+    await connect(descriptor);
+    const prompted = await rpc(descriptor, "session/prompt", {
+      sessionId: descriptor.sessionId,
+      prompt: [{ type: "text", text: "Continue from the visual delta." }],
+      visualState: {
+        version: 1,
+        stateRef: "vs-test-2",
+        baseRef: "vs-test-1",
+        kind: "delta",
+        projectRevision: 8,
+        contextRevision: 4,
+        playheadSeconds: 1.25,
+        selectedClipIds: ["clip-1"],
+        selectedTextIds: [],
+        selectedMediaIds: [],
+        changed: ["preview"],
+        image: {
+          type: "localImage",
+          path: visualImagePath,
+          width: 1,
+          height: 1,
+          sha256: visualImageSha256,
+          regions: [
+            { x: 32, y: 64, width: 1, height: 1, imageX: 0, imageY: 0 },
+          ],
+        },
+      },
+    });
+    assert.ok(prompted.result);
+    assert.match(client.lastTurn?.text ?? "", /"deltaRegions":\[/);
+    assert.match(client.lastTurn?.text ?? "", /"imageX":0/);
+    assert.deepEqual(client.lastTurn?.options?.localImagePaths, [
+      await realpath(visualImagePath),
+    ]);
+  } finally {
+    await adapter.close();
+  }
 });
 
 test("keeps cancel out-of-band and settles the pending prompt", async () => {

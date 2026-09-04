@@ -1,5 +1,9 @@
 import { create } from "zustand";
 import { createConversationDisplayState } from "@openreel/agent-facade/conversation-state";
+import {
+  captureConversationVisualState,
+  resetConversationVisualState,
+} from "../services/agent/visual-state";
 
 type ConversationApi = NonNullable<NonNullable<Window["openreel"]>["conversation"]>;
 type ConversationState = Awaited<ReturnType<ConversationApi["getState"]>>;
@@ -99,11 +103,23 @@ export const useExternalConversationStore =
         ),
       initialize: () => run((api) => api.getState()),
       attach: () => run((api) => api.attach()),
-      prompt: (text) => run((api) => api.prompt(text), "sending"),
+      prompt: (text) =>
+        run((api) => {
+          const sessionId = get().state.adapter.sessionId;
+          const visualState = sessionId
+            ? captureConversationVisualState(sessionId)
+            : undefined;
+          return visualState
+            ? api.prompt(text, visualState)
+            : api.prompt(text);
+        }, "sending"),
       resolveApproval: (requestId, decision) =>
         run((api) => api.resolveApproval(requestId, decision)),
       cancel: () => run((api) => api.cancel(), "cancelling"),
-      detach: () => run((api) => api.detach()),
+      detach: () => {
+        resetConversationVisualState();
+        return run((api) => api.detach());
+      },
     };
   });
 

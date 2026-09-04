@@ -207,6 +207,7 @@ export type {
   ExternalAgentToolDisplayFields,
   ExternalAgentToolStatus,
   ExternalAgentTransport,
+  ExternalAgentVisualState,
   ExternalAgentWorkModeContext,
   ExternalAgentWorkModeParams,
   ExternalAgentConversationCapabilities,

@@ -43,6 +43,7 @@ describe.skipIf(!REAL_CODEX)("real Codex conversation → MCP → GUI", () => {
   let observer: ExternalAgent;
   let evidence: EvidenceRecord;
   const codexUpdates: unknown[] = [];
+  const visualStateInputs: unknown[] = [];
 
   beforeAll(async () => {
     launched = await launchApp();
@@ -58,15 +59,24 @@ describe.skipIf(!REAL_CODEX)("real Codex conversation → MCP → GUI", () => {
       env: {
         ...process.env,
         OPENREEL_LIVE_ENDPOINT_FILE: launched.endpointFile,
+        OPENREEL_CONVERSATION_VISUAL_STATE_ROOT:
+          launched.conversationVisualStateRoot,
       },
       onDisplayUpdate: (event: unknown) => {
         codexUpdates.push(event);
+      },
+      onVisualState: (state: unknown) => {
+        visualStateInputs.push(state);
       },
     });
   }, 300_000);
 
   afterAll(async () => {
-    evidence?.flush({ codexThreadId: adapter?.threadId, codexUpdates });
+    evidence?.flush({
+      codexThreadId: adapter?.threadId,
+      codexUpdates,
+      visualStateInputs,
+    });
     await observer?.close();
     await adapter?.close();
     await launched?.close();
@@ -83,8 +93,9 @@ describe.skipIf(!REAL_CODEX)("real Codex conversation → MCP → GUI", () => {
 
     const composer = page.getByRole("textbox", { name: "Message the external Agent" });
     await composer.fill(
-      `Use only the configured ReelTerminal openreel_live MCP tools. ` +
-        `Read the current editor/timeline, then add one text overlay with the exact text ` +
+      `Use the attached ReelTerminal visual-state keyframe and its exact revision fields. ` +
+        `Do not bootstrap-read the editor or timeline unless an exact required field is missing. ` +
+        `Use only the configured ReelTerminal openreel_live MCP tools and add one text overlay with the exact text ` +
         `"${TITLE}" at 0 seconds for 3 seconds. Do not run shell commands and do not edit files. ` +
         `After the GUI edit succeeds, reply with exactly "${TITLE} complete".`,
     );
@@ -107,11 +118,23 @@ describe.skipIf(!REAL_CODEX)("real Codex conversation → MCP → GUI", () => {
     });
     await titleClip.waitFor({ timeout: 30_000 });
     await page.getByText(`${TITLE} complete`, { exact: true }).waitFor({ timeout: 240_000 });
+    expect(visualStateInputs).toEqual([
+      expect.objectContaining({
+        kind: "keyframe",
+        imageAttached: true,
+        projectRevision: before.value!.projectRevision,
+      }),
+    ]);
     const safeUpdates = JSON.stringify(codexUpdates);
     expect(safeUpdates).not.toMatch(
       /"(?:authorization|arguments|result|command|cwd|path|url|rawReasoning)"\s*:/i,
     );
     expect(safeUpdates).not.toMatch(/Bearer\s+|\b[a-f0-9]{64}\b|raw chain of thought/i);
+    const toolStarts = codexUpdates.filter((event) =>
+      JSON.stringify(event).includes('"sessionUpdate":"tool_call"'),
+    );
+    expect(toolStarts).toHaveLength(1);
+    expect(safeUpdates).toMatch(/ReelTerminal: edit apply/);
     const after = await observer.callTool<EditorContext>("editor_get_context");
     expect(after.ok).toBe(true);
     expect(after.value!.projectRevision).toBe(before.value!.projectRevision + 1);

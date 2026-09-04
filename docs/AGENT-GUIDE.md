@@ -122,6 +122,13 @@ explicit approval events in the conversation panel. See the
 [`scripts/conversation-adapter` guide](../scripts/conversation-adapter/README.md)
 for setup and acceptance tests.
 
+At each user turn, ReelTerminal gives Codex a visual-state keyframe or compact
+changed-region atlas plus exact revision/selection/playhead fields. Treat that packet as the
+normal starting context: for a routine edit, go directly to one atomic
+`edit_apply` call when it contains everything required. Use
+`editor_get_context`, `timeline_get`, or `project_get_state` only to recover an
+exact field that is absent or stale. The image never relaxes revision checks.
+
 For deterministic headless workflows without a GUI, the optional
 `agent-video serve/run` facade transport remains documented in
 [`SKILL.md`](../SKILL.md). It exposes editor tools; it does not choose a model,

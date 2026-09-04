@@ -264,6 +264,44 @@ describe("ExternalConversationBridge", () => {
     expect(JSON.stringify(updateEvents)).not.toContain("stale replay");
   });
 
+  it("forwards an ephemeral visual-state packet without projecting it into display memory", async () => {
+    const transport = new FakeTransport();
+    const bridge = new ExternalConversationBridge({
+      connector: connectorFor(transport),
+      connectionId: () => "attachment-visual",
+    });
+    await bridge.connect({ sessionId: "agent-session-visual" });
+    await bridge.prompt("Add a title", {
+      version: 1,
+      stateRef: "vs-1",
+      kind: "keyframe",
+      projectRevision: 12,
+      contextRevision: 4,
+      playheadSeconds: 2.5,
+      selectedClipIds: ["clip-1"],
+      selectedTextIds: [],
+      selectedMediaIds: [],
+      changed: ["preview", "timeline"],
+      image: {
+        type: "localImage",
+        path: "/private/runtime/state.png",
+        width: 960,
+        height: 540,
+        sha256: "a".repeat(64),
+      },
+    });
+    expect(transport.requests.at(-1)?.params).toMatchObject({
+      visualState: {
+        stateRef: "vs-1",
+        projectRevision: 12,
+        image: { path: "/private/runtime/state.png" },
+      },
+    });
+    expect(JSON.stringify(bridge.getDisplayState())).not.toContain(
+      "/private/runtime/state.png",
+    );
+  });
+
   it("delivers cancel and work-mode notifications while a prompt is still in flight", async () => {
     const transport = new FakeTransport();
     let finishPrompt!: (value: unknown) => void;

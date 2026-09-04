@@ -9,6 +9,7 @@ import type {
   ConversationAdapterSummary,
   DesktopConversationEvent,
   DesktopConversationState,
+  ConversationVisualStateCapture,
 } from "../../shared/conversation";
 import {
   ConversationDescriptorError,
@@ -17,6 +18,7 @@ import {
   readConversationEndpointDescriptor,
   type ConversationEndpointDescriptor,
 } from "./loopback-connector";
+import type { ConversationVisualStateStore } from "./visual-state-store";
 
 const missingAdapter = (): ConversationAdapterSummary => ({
   availability: "missing",
@@ -31,12 +33,16 @@ export interface ConversationHostDeps {
   readonly descriptorFilePath: string;
   readonly emitEvent: (event: DesktopConversationEvent) => void;
   readonly getWorkMode: () => AgentWorkMode;
+  readonly visualStateStore?: ConversationVisualStateStore;
 }
 
 export interface ConversationHost {
   getState(): Promise<DesktopConversationState>;
   attach(): Promise<DesktopConversationState>;
-  prompt(text: string): Promise<DesktopConversationState>;
+  prompt(
+    text: string,
+    visualState?: ConversationVisualStateCapture,
+  ): Promise<DesktopConversationState>;
   resolveApproval(
     requestId: string,
     decision: "approved" | "denied",
@@ -105,6 +111,7 @@ export function createConversationHost(deps: ConversationHostDeps): Conversation
     unsubscribe?.();
     unsubscribe = null;
     if (current) await current.disconnect(reason).catch(() => undefined);
+    await deps.visualStateStore?.clear().catch(() => undefined);
   };
 
   const host: ConversationHost = {
@@ -149,15 +156,23 @@ export function createConversationHost(deps: ConversationHostDeps): Conversation
       });
     },
 
-    async prompt(text: string) {
+    async prompt(text: string, visualStateCapture?: ConversationVisualStateCapture) {
       const value = text.trim();
       if (!value) throw new Error("A non-empty message is required");
       if (value.length > 32_000) throw new Error("Message is too long");
       const current = bridge;
       if (!current) throw new Error("No external Agent conversation is attached");
+      // Visual state is an optimization/context aid. A capture or filesystem
+      // failure must not make the conversation unusable; continue with exact
+      // text and the regular MCP fallback when persistence is unavailable.
+      const visualState = visualStateCapture
+        ? await deps.visualStateStore
+            ?.persist(visualStateCapture)
+            .catch(() => undefined)
+        : undefined;
       // The active turn deliberately does not occupy the lifecycle queue:
       // cancel, detach, and work-mode notifications must remain responsive.
-      await current.prompt(value);
+      await current.prompt(value, visualState);
       emit();
       return snapshot();
     },

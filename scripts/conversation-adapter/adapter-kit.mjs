@@ -8,7 +8,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { createServer } from "node:http";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 export const MAX_REQUEST_BYTES = 256 * 1024;
 export const CONVERSATION_ENDPOINT_PATH = "/conversation";
@@ -20,6 +20,15 @@ const MAX_VERSION_LENGTH = 128;
 const MAX_DESCRIPTOR_LENGTH = 64 * 1024;
 const CAPABILITY_LEVELS = new Set(["basic", "streaming", "observable"]);
 const WORK_MODES = new Set(["guided", "collaborative", "autonomous"]);
+const VISUAL_STATE_KINDS = new Set(["keyframe", "delta", "metadata"]);
+const VISUAL_STATE_CHANGES = new Set([
+  "project",
+  "preview",
+  "timeline",
+  "playhead",
+  "selection",
+  "references",
+]);
 
 class RpcFault extends Error {
   constructor(code, message) {
@@ -219,7 +228,95 @@ function validatePromptParams(params, sessionId) {
   ) {
     throw new RpcFault(-32602, "Invalid params");
   }
+  if (params.visualState !== undefined) validateVisualState(params.visualState);
   return params;
+}
+
+function validBoundedIds(value) {
+  return (
+    Array.isArray(value) &&
+    value.length <= 64 &&
+    value.every(
+      (item) => typeof item === "string" && item.length > 0 && item.length <= 256,
+    )
+  );
+}
+
+function validRevision(value) {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
+function validRegion(value) {
+  return (
+    isRecord(value) &&
+    [value.x, value.y, value.imageX, value.imageY].every(
+      (item) => Number.isSafeInteger(item) && item >= 0 && item <= 2_048,
+    ) &&
+    [value.width, value.height].every(
+      (item) => Number.isSafeInteger(item) && item >= 1 && item <= 2_048,
+    )
+  );
+}
+
+function validateVisualState(value) {
+  if (
+    !isRecord(value) ||
+    value.version !== 1 ||
+    typeof value.stateRef !== "string" ||
+    !/^[A-Za-z0-9._:-]{1,128}$/.test(value.stateRef) ||
+    (value.baseRef !== undefined &&
+      (typeof value.baseRef !== "string" ||
+        !/^[A-Za-z0-9._:-]{1,128}$/.test(value.baseRef))) ||
+    !VISUAL_STATE_KINDS.has(value.kind) ||
+    !validRevision(value.projectRevision) ||
+    !validRevision(value.contextRevision) ||
+    typeof value.playheadSeconds !== "number" ||
+    !Number.isFinite(value.playheadSeconds) ||
+    value.playheadSeconds < 0 ||
+    !validBoundedIds(value.selectedClipIds) ||
+    !validBoundedIds(value.selectedTextIds) ||
+    !validBoundedIds(value.selectedMediaIds) ||
+    !Array.isArray(value.changed) ||
+    value.changed.length > VISUAL_STATE_CHANGES.size ||
+    !value.changed.every((item) => VISUAL_STATE_CHANGES.has(item))
+  ) {
+    throw new RpcFault(-32602, "Invalid params");
+  }
+  const image = value.image;
+  if (value.kind === "metadata") {
+    if (image !== undefined) throw new RpcFault(-32602, "Invalid params");
+    return;
+  }
+  if (
+    !isRecord(image) ||
+    image.type !== "localImage" ||
+    typeof image.path !== "string" ||
+    image.path.length > 2_048 ||
+    !isAbsolute(image.path) ||
+    !Number.isSafeInteger(image.width) ||
+    image.width < 1 ||
+    image.width > 2_048 ||
+    !Number.isSafeInteger(image.height) ||
+    image.height < 1 ||
+    image.height > 2_048 ||
+    typeof image.sha256 !== "string" ||
+    !/^[a-f0-9]{64}$/.test(image.sha256) ||
+    (value.kind === "delta" &&
+      (!Array.isArray(image.regions) ||
+        image.regions.length < 1 ||
+        image.regions.length > 4 ||
+        image.regions.some(
+          (region) =>
+            !validRegion(region) ||
+            region.x + region.width > 960 ||
+            region.y + region.height > 540 ||
+            region.imageX + region.width > image.width ||
+            region.imageY + region.height > image.height,
+        ))) ||
+    (value.kind === "keyframe" && image.regions !== undefined)
+  ) {
+    throw new RpcFault(-32602, "Invalid params");
+  }
 }
 
 function validateApprovalParams(params, sessionId) {

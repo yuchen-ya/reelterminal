@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { access } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { access, readFile, realpath, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +18,13 @@ const DEFAULT_DESCRIPTOR = path.join(
   ".openreel",
   "conversation-endpoint.json",
 );
+const DEFAULT_VISUAL_STATE_ROOT = path.join(
+  os.homedir(),
+  ".openreel",
+  "conversation-visual-state",
+);
 const EVENT_LIMIT = 500;
+const MAX_VISUAL_STATE_BYTES = 4 * 1024 * 1024;
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -34,6 +41,69 @@ function boundedChunk(value, max = 4_000) {
   return typeof value === "string" && value.length > 0
     ? value.slice(0, max)
     : undefined;
+}
+
+function isPathInside(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+async function trustedVisualStateImage(visualState, visualStateRoot) {
+  const image = isRecord(visualState?.image) ? visualState.image : null;
+  if (image?.type !== "localImage" || typeof image.path !== "string") return undefined;
+  try {
+    const [root, candidate] = await Promise.all([
+      realpath(visualStateRoot),
+      realpath(image.path),
+    ]);
+    if (!isPathInside(root, candidate) || path.extname(candidate).toLowerCase() !== ".png") {
+      return undefined;
+    }
+    const info = await stat(candidate);
+    if (!info.isFile() || info.size < 24 || info.size > MAX_VISUAL_STATE_BYTES) {
+      return undefined;
+    }
+    const bytes = await readFile(candidate);
+    const signature = bytes.subarray(0, 8);
+    if (!signature.equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+      return undefined;
+    }
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    if (sha256 !== image.sha256) return undefined;
+    return candidate;
+  } catch {
+    return undefined;
+  }
+}
+
+function visualStateContext(visualState, imageAttached) {
+  if (!isRecord(visualState)) return "";
+  const exact = {
+    stateRef: visualState.stateRef,
+    ...(visualState.baseRef ? { baseRef: visualState.baseRef } : {}),
+    kind: visualState.kind,
+    projectRevision: visualState.projectRevision,
+    contextRevision: visualState.contextRevision,
+    playheadSeconds: visualState.playheadSeconds,
+    selectedClipIds: visualState.selectedClipIds,
+    selectedTextIds: visualState.selectedTextIds,
+    selectedMediaIds: visualState.selectedMediaIds,
+    changed: visualState.changed,
+    ...(visualState.kind === "delta" && Array.isArray(visualState.image?.regions)
+      ? { deltaRegions: visualState.image.regions, boardSize: { width: 960, height: 540 } }
+      : {}),
+    imageAttached,
+  };
+  const imageMeaning = imageAttached
+    ? visualState.kind === "keyframe"
+      ? "The attached image is the full visual-state keyframe."
+      : "The attached image is a compact atlas of changed tiles at deltaRegions; each tile maps imageX/imageY in the atlas back to x/y in the baseRef board."
+    : "No image is attached for this packet; use the structured changes and prior visual state.";
+  return [
+    `Current ReelTerminal visual state: ${JSON.stringify(exact)}`,
+    imageMeaning,
+    "Use projectRevision/contextRevision as edit preconditions. A trusted visual packet establishes that the live edit session and edit_apply are available: do not call capabilities_get, session_describe, or bootstrap-read the editor for a routine edit when this packet already contains the facts needed for the request. Read through MCP only when a required exact field is missing or stale.",
+  ].join(" ");
 }
 
 function statusForItem(item) {
@@ -116,6 +186,8 @@ export class CodexConversationSession {
     this.threadId = threadId;
     this.buffer = new CodexDisplayBuffer(threadId, options.onDisplayUpdate);
     this.onError = options.onError;
+    this.onVisualState = options.onVisualState;
+    this.visualStateRoot = options.visualStateRoot ?? DEFAULT_VISUAL_STATE_ROOT;
     this.activeTurnId = null;
     this.lastAgentMessageId = null;
     this.pendingApprovals = new Map();
@@ -138,8 +210,30 @@ export class CodexConversationSession {
 
     let turn;
     try {
-      const codexPrompt = `${this.additionalContext()}\n\nUser request from ReelTerminal:\n${prompt}`;
-      turn = await this.client.startTurn(this.threadId, codexPrompt);
+      const localImagePath = await trustedVisualStateImage(
+        params.visualState,
+        this.visualStateRoot,
+      );
+      const visualContext = visualStateContext(params.visualState, Boolean(localImagePath));
+      try {
+        this.onVisualState?.({
+          stateRef: params.visualState?.stateRef,
+          kind: params.visualState?.kind,
+          imageAttached: Boolean(localImagePath),
+          projectRevision: params.visualState?.projectRevision,
+          contextRevision: params.visualState?.contextRevision,
+        });
+      } catch {
+        // Optional diagnostics must never interrupt the provider turn.
+      }
+      const codexPrompt = [
+        this.additionalContext(),
+        visualContext,
+        `User request from ReelTerminal:\n${prompt}`,
+      ].filter(Boolean).join("\n\n");
+      turn = await this.client.startTurn(this.threadId, codexPrompt, {
+        ...(localImagePath ? { localImagePaths: [localImagePath] } : {}),
+      });
       this.activeTurnId = turn.id;
       const completed = await this.client.waitForTurn(turn.id);
       if (completed.status === "failed") throw new Error("Codex turn failed");
@@ -477,6 +571,21 @@ function codexMcpOverrides(connectorPath, environment) {
     "-c",
     'mcp_servers.openreel_live.default_tools_approval_mode="approve"',
   ];
+  // Visual state replaces routine bootstrap reads. When an exact fallback
+  // read is still necessary, keep its response bounded so one inspection
+  // cannot dominate the next model request.
+  for (const [tool, limit] of [
+    ["project_get_state", 4_000],
+    ["timeline_get", 2_500],
+    ["editor_get_context", 1_200],
+    ["visual_inspect", 3_000],
+    ["job_status", 1_200],
+  ]) {
+    overrides.push(
+      "-c",
+      `mcp_servers.openreel_live.tools.${tool}.output_token_limit=${limit}`,
+    );
+  }
   const endpointFile = environment?.OPENREEL_LIVE_ENDPOINT_FILE;
   if (typeof endpointFile === "string" && endpointFile.length > 0) {
     overrides.push(
@@ -491,6 +600,12 @@ export async function startCodexConversationAdapter(options = {}) {
   const descriptorPath = path.resolve(options.descriptorPath ?? DEFAULT_DESCRIPTOR);
   const liveMcpConnector = path.resolve(
     options.liveMcpConnector ?? DEFAULT_LIVE_MCP_CONNECTOR,
+  );
+  const visualStateRoot = path.resolve(
+    options.visualStateRoot ??
+      options.env?.OPENREEL_CONVERSATION_VISUAL_STATE_ROOT ??
+      process.env.OPENREEL_CONVERSATION_VISUAL_STATE_ROOT ??
+      DEFAULT_VISUAL_STATE_ROOT,
   );
   if (options.configureLiveMcp !== false) await access(liveMcpConnector);
 
@@ -533,6 +648,8 @@ export async function startCodexConversationAdapter(options = {}) {
   const session = new CodexConversationSession(client, threadId, {
     onDisplayUpdate: options.onDisplayUpdate,
     onError: options.onError,
+    onVisualState: options.onVisualState,
+    visualStateRoot,
   });
   let carrier;
   try {
@@ -616,6 +733,7 @@ function parseArgs(argv) {
     else if (arg === "--descriptor") options.descriptorPath = value();
     else if (arg === "--codex-command") options.codexCommand = value();
     else if (arg === "--live-mcp-connector") options.liveMcpConnector = value();
+    else if (arg === "--visual-state-root") options.visualStateRoot = value();
     else if (arg === "--no-live-mcp") options.configureLiveMcp = false;
     else if (arg === "--help" || arg === "-h") options.help = true;
     else throw new Error(`Unknown option: ${arg}`);
@@ -634,6 +752,7 @@ function helpText() {
     `  --descriptor PATH         Conversation descriptor destination\n` +
     `  --codex-command PATH      Codex CLI executable (default: codex)\n` +
     `  --live-mcp-connector PATH Built openreel-live-mcp connector\n` +
+    `  --visual-state-root PATH  Trusted ReelTerminal visual-state directory\n` +
     `  --no-live-mcp             Do not inject the ReelTerminal MCP server\n`;
 }
 

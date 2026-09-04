@@ -5,6 +5,7 @@ import {
   createConversationHost,
   type ConversationHost,
 } from "./conversation-host";
+import { createConversationVisualStateStore } from "./visual-state-store";
 import { getAgentModePreferenceStore } from "../live/work-mode-instance";
 
 let host: ConversationHost | null = null;
@@ -15,6 +16,13 @@ export function conversationEndpointFilePath(): string {
   return override && path.isAbsolute(override)
     ? override
     : path.join(app.getPath("home"), ".openreel", "conversation-endpoint.json");
+}
+
+export function conversationVisualStateRoot(): string {
+  const override = process.env.OPENREEL_CONVERSATION_VISUAL_STATE_ROOT;
+  return override && path.isAbsolute(override)
+    ? override
+    : path.join(app.getPath("home"), ".openreel", "conversation-visual-state");
 }
 
 function emitToEditor(payload: unknown): void {
@@ -36,6 +44,9 @@ export function getConversationHost(): ConversationHost {
       descriptorFilePath: conversationEndpointFilePath(),
       emitEvent: emitToEditor,
       getWorkMode: () => preferences.get().workMode,
+      visualStateStore: createConversationVisualStateStore(
+        conversationVisualStateRoot(),
+      ),
     });
     const current = host;
     unsubscribeWorkMode = preferences.subscribe(() => {

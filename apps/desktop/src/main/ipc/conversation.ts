@@ -3,7 +3,47 @@ import { z } from "zod";
 import { CHANNELS } from "../../shared/channels";
 import type { ConversationHost } from "../conversation/conversation-host";
 
-const promptSchema = z.object({ text: z.string().min(1).max(32_000) });
+const visualIdSchema = z.string().min(1).max(256);
+const visualRegionSchema = z.object({
+  x: z.number().int().min(0).max(2_048),
+  y: z.number().int().min(0).max(2_048),
+  width: z.number().int().min(1).max(2_048),
+  height: z.number().int().min(1).max(2_048),
+  imageX: z.number().int().min(0).max(2_048),
+  imageY: z.number().int().min(0).max(2_048),
+});
+const visualStateSchema = z.object({
+  version: z.literal(1),
+  stateRef: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/),
+  baseRef: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/).optional(),
+  kind: z.enum(["keyframe", "delta", "metadata"]),
+  projectRevision: z.number().int().nonnegative(),
+  contextRevision: z.number().int().nonnegative(),
+  playheadSeconds: z.number().finite().nonnegative(),
+  selectedClipIds: z.array(visualIdSchema).max(64),
+  selectedTextIds: z.array(visualIdSchema).max(64),
+  selectedMediaIds: z.array(visualIdSchema).max(64),
+  changed: z
+    .array(
+      z.enum([
+        "project",
+        "preview",
+        "timeline",
+        "playhead",
+        "selection",
+        "references",
+      ]),
+    )
+    .max(6),
+  imagePngBase64: z.string().max(5_592_408).optional(),
+  imageWidth: z.number().int().min(1).max(2_048).optional(),
+  imageHeight: z.number().int().min(1).max(2_048).optional(),
+  regions: z.array(visualRegionSchema).min(1).max(4).optional(),
+});
+const promptSchema = z.object({
+  text: z.string().min(1).max(32_000),
+  visualState: visualStateSchema.optional(),
+});
 const approvalSchema = z.object({
   requestId: z.string().min(1).max(512),
   decision: z.enum(["approved", "denied"]),
@@ -29,8 +69,8 @@ export function registerConversationIpc(host: ConversationHost): void {
   });
   ipcMain.handle(CHANNELS.conversationPrompt, async (event, raw) => {
     assertEditorSender(event.sender);
-    const { text } = promptSchema.parse(raw);
-    return host.prompt(text);
+    const { text, visualState } = promptSchema.parse(raw);
+    return host.prompt(text, visualState);
   });
   ipcMain.handle(CHANNELS.conversationResolveApproval, async (event, raw) => {
     assertEditorSender(event.sender);

@@ -36,6 +36,8 @@ export interface LaunchedApp {
   readonly endpointFile: string;
   /** External conversation descriptor path (isolated from the user's home). */
   readonly conversationEndpointFile: string;
+  /** Main-owned visual-state image root shared only with the test adapter. */
+  readonly conversationVisualStateRoot: string;
   readonly output: {
     readonly mainStdout: string[];
     readonly mainStderr: string[];
@@ -61,6 +63,7 @@ function makeRunDirs(runDir?: string): {
   userDataDir: string;
   endpointFile: string;
   conversationEndpointFile: string;
+  conversationVisualStateRoot: string;
 } {
   const dir = runDir ?? mkdtempSync(path.join(tmpdir(), "openreel-e2e-"));
   mkdirSync(dir, { recursive: true });
@@ -69,6 +72,7 @@ function makeRunDirs(runDir?: string): {
     userDataDir: path.join(dir, "user-data"),
     endpointFile: path.join(dir, "live-endpoint.json"),
     conversationEndpointFile: path.join(dir, "conversation-endpoint.json"),
+    conversationVisualStateRoot: path.join(dir, "conversation-visual-state"),
   };
 }
 
@@ -93,6 +97,7 @@ async function launch(paths: ReturnType<typeof makeRunDirs>): Promise<LaunchedAp
       // every other spec simply observes the additional honest capability.
       OPENREEL_LIVE_MEDIA_ROOTS: paths.runDir,
       OPENREEL_CONVERSATION_ENDPOINT_FILE: paths.conversationEndpointFile,
+      OPENREEL_CONVERSATION_VISUAL_STATE_ROOT: paths.conversationVisualStateRoot,
     },
     timeout: 120_000,
   });
@@ -122,6 +127,7 @@ async function launch(paths: ReturnType<typeof makeRunDirs>): Promise<LaunchedAp
     userDataDir: paths.userDataDir,
     endpointFile: paths.endpointFile,
     conversationEndpointFile: paths.conversationEndpointFile,
+    conversationVisualStateRoot: paths.conversationVisualStateRoot,
     output: { mainStdout, mainStderr, rendererConsole },
 
     async waitForEndpointFile(timeoutMs = 30_000) {

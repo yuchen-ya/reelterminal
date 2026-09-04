@@ -145,8 +145,11 @@ contextBridge.exposeInMainWorld("openreel", {
   conversation: {
     getState: () => ipcRenderer.invoke(CHANNELS.conversationGetState, undefined),
     attach: () => ipcRenderer.invoke(CHANNELS.conversationAttach, undefined),
-    prompt: (text: string) =>
-      ipcRenderer.invoke(CHANNELS.conversationPrompt, { text }),
+    prompt: (text: string, visualState?: unknown) =>
+      ipcRenderer.invoke(CHANNELS.conversationPrompt, {
+        text,
+        ...(visualState ? { visualState } : {}),
+      }),
     resolveApproval: (requestId: string, decision: "approved" | "denied") =>
       ipcRenderer.invoke(CHANNELS.conversationResolveApproval, {
         requestId,

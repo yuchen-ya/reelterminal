@@ -90,6 +90,15 @@ The ReelTerminal facade still enforces its access level, work-mode context,
 single-writer lease, revision checks, and shared undo. Codex command and file
 changes remain explicit approval events.
 
+Each GUI prompt also supplies a visual-state packet. Codex receives a full
+960×540 keyframe on the first turn, a compact atlas of aligned changed regions for later visual
+changes, or only revision/selection/playhead metadata when pixels are unchanged.
+The adapter accepts image paths only under the desktop's private visual-state
+root, verifies their digest, and never exposes those paths in display events.
+Set `OPENREEL_CONVERSATION_VISUAL_STATE_ROOT` (or `--visual-state-root`) only
+when the desktop and adapter intentionally share a non-default runtime
+directory, such as an isolated E2E run.
+
 The real acceptance spec is opt-in because it launches Electron and consumes a
 live model turn from the signed-in Codex account:
 

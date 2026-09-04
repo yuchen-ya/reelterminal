@@ -146,6 +146,20 @@ access, bypass approvals, transfer conversation ownership, or authorize export
 or delivery. MCP `session.describe` separately reports the live session's
 `access` and writer-lease state.
 
+### 2.3 Visual-state context
+
+Desktop prompts may also carry a bounded `visualState`. A full `keyframe`
+contains a 960×540 overview of the current preview, timeline, playhead,
+selection, and references. A `delta` contains a compact atlas of up to four
+32px-aligned changed regions and identifies the preceding `baseRef`; `metadata` means the pixels are
+unchanged and carries no image. A new keyframe is emitted after seven image
+deltas, on project/conversation change, or when the changed crop is large.
+
+The structured fields are authoritative for ids and concurrency. The image is
+only for global visual understanding: adapters MUST keep `projectRevision` and
+`contextRevision` available to mutations and MUST use an MCP read when an exact
+required field is missing or stale.
+
 ## 3. Existing-session attachment
 
 The Agent MUST mint and own the opaque `sessionId`. ReelTerminal MUST attach to an
@@ -308,6 +322,29 @@ the prompt into durable project or conversation state:
         "summary": "Propose sensible defaults, explain consequential choices, and invite review.",
         "deliveryRequiresExplicitAuthorization": true
       }
+    },
+    "visualState": {
+      "version": 1,
+      "stateRef": "vs-window-7",
+      "baseRef": "vs-window-6",
+      "kind": "delta",
+      "projectRevision": 12,
+      "contextRevision": 4,
+      "playheadSeconds": 2.5,
+      "selectedClipIds": ["clip-1"],
+      "selectedTextIds": [],
+      "selectedMediaIds": [],
+      "changed": ["preview", "timeline"],
+      "image": {
+        "type": "localImage",
+        "path": "/main-owned-runtime/0007-state.png",
+        "width": 320,
+        "height": 192,
+        "sha256": "<64 lowercase hex characters>",
+        "regions": [
+          { "x": 320, "y": 0, "width": 320, "height": 192, "imageX": 0, "imageY": 0 }
+        ]
+      }
     }
   }
 }
@@ -327,6 +364,13 @@ Agent returns from `session/prompt` only after the turn finishes. ReelTerminal
 does not impose the ordinary 30-second request timeout on `session/prompt`;
 transport close, fatal update polling, detach/replacement, and an explicit
 caller abort remain termination boundaries.
+
+The `visualState.image.path` is ephemeral application context, not an arbitrary
+file attachment. Provider adapters MUST accept it only from a configured,
+main-owned visual-state root and SHOULD verify file type, size, and digest before
+mapping it to their native image-input form. Invalid or unavailable images are
+dropped; the text prompt and MCP fallback remain usable. Paths and digests MUST
+NOT appear in display updates or durable project state.
 
 ### 5.2 Long-poll updates
 
@@ -650,6 +694,12 @@ safe reasoning summaries, sanitized tool names and states, usage, plans, and
 approval state. Raw reasoning, command output, tool arguments/results, paths,
 URLs, provider metadata, and credentials are dropped. The adapter keeps
 cancel and work-mode updates on the protocol's out-of-band control lane.
+
+For Codex, a trusted keyframe/delta is forwarded as a `localImage` item beside
+the text in `turn/start`. The small structured packet is added to the turn text,
+including revision preconditions and delta-atlas coordinates, but never the local
+path. Routine turns are told to skip redundant bootstrap reads; bounded MCP
+output limits protect the fallback path.
 
 Enabling Agent Session in the GUI is the coarse authorization for the dedicated
 ReelTerminal MCP server, so the adapter configures that one server as approved.

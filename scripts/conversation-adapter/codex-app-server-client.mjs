@@ -176,9 +176,20 @@ export class CodexAppServerClient {
   }
 
   async startTurn(threadId, text, options = {}) {
+    const localImagePaths = Array.isArray(options.localImagePaths)
+      ? options.localImagePaths.filter(
+          (value) => typeof value === "string" && value.length > 0,
+        )
+      : [];
     const params = {
       threadId,
-      input: [{ type: "text", text, text_elements: [] }],
+      input: [
+        { type: "text", text, text_elements: [] },
+        ...localImagePaths.map((imagePath) => ({
+          type: "localImage",
+          path: imagePath,
+        })),
+      ],
       ...(options.additionalContext
         ? {
             additionalContext: {
