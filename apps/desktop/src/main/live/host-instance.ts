@@ -26,6 +26,7 @@ import {
   installLiveStoreBridge,
   liveTargetWebContents,
 } from "./renderer-store-adapter";
+import { getAgentModePreferenceStore } from "./work-mode-instance";
 
 let host: LiveSessionHost | null = null;
 
@@ -134,6 +135,7 @@ export function getLiveSessionHost(): LiveSessionHost {
         }
       },
       serverInfo: { name: "openreel-live", version: app.getVersion() },
+      modePreferenceStore: getAgentModePreferenceStore(),
     });
   }
   return host;

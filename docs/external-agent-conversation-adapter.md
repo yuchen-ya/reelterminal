@@ -3,7 +3,7 @@
 **Protocol:** `openreel-conversation/1`
 
 **Status:** open contract for the landed loopback reference transport; each
-external Agent or host supplies a thin adapter (2026-09-02)
+external Agent or host supplies a thin adapter (updated 2026-09-04)
 
 **Related:** [ADR 0005](adr/0005-external-agent-conversation-bridge.md),
 [product scope](product-scope.md)
@@ -70,6 +70,15 @@ authoritative capabilities for this session:
   "params": {
     "protocolVersion": "openreel-conversation/1",
     "clientInfo": { "name": "ReelTerminal", "version": "0.1.0" },
+    "clientContext": {
+      "workMode": "collaborative",
+      "semantics": {
+        "id": "collaborative",
+        "label": "Collaborative",
+        "summary": "Work as the user's peer: perform low-risk reversible actions, align on uncertain creative direction, high cost, or large changes, and follow complete user plans without tutorial detours.",
+        "deliveryRequiresExplicitAuthorization": true
+      }
+    },
     "clientCapabilities": {
       "sessionUpdate": true,
       "conversation": {
@@ -120,6 +129,23 @@ API keys, bearer tokens, model secrets, or raw prompts. Unknown capability keys
 are ignored. If no supported level can be negotiated, the adapter reports
 `unsupported` and uses the `mcp-only` fallback.
 
+### 2.2 Work-mode context
+
+ReelTerminal sends the current `clientContext` during `initialize`,
+`session/resume`, and every `session/prompt`. It also sends an
+`openreel/work_mode` JSON-RPC notification whenever the user changes modes
+while the attachment is live. An adapter may ignore the notification, because
+the next prompt repeats the complete current context; the reference adapter's
+optional `onWorkMode` hook receives it immediately.
+
+`workMode` is one of `guided`, `collaborative`, or `autonomous`. The accompanying
+`semantics` object is the authoritative, user-visible meaning for that mode.
+It always states `deliveryRequiresExplicitAuthorization: true`. Work mode
+controls initiative and alignment density only: it does not grant editor write
+access, bypass approvals, transfer conversation ownership, or authorize export
+or delivery. MCP `session.describe` separately reports the live session's
+`access` and writer-lease state.
+
 ## 3. Existing-session attachment
 
 The Agent MUST mint and own the opaque `sessionId`. ReelTerminal MUST attach to an
@@ -142,7 +168,16 @@ sent separately on `openreel/session/updates`:
   "id": "resume-1",
   "method": "session/resume",
   "params": {
-    "sessionId": "agent-session-opaque"
+    "sessionId": "agent-session-opaque",
+    "clientContext": {
+      "workMode": "collaborative",
+      "semantics": {
+        "id": "collaborative",
+        "label": "Collaborative",
+        "summary": "Work as the user's peer while aligning on uncertainty, high cost, or large changes.",
+        "deliveryRequiresExplicitAuthorization": true
+      }
+    }
   }
 }
 ```
@@ -249,6 +284,7 @@ The required method set is:
 | `session/resume` | basic | Attach to the existing external session by `sessionId`. |
 | `session/prompt` | basic | Forward a user prompt to that session. |
 | `session/cancel` | basic | Request cancellation of the current turn. |
+| `openreel/work_mode` | basic notification | Report a changed work mode immediately; the complete context is repeated with every prompt. |
 | `openreel/session/updates` | basic | Long-poll updates after an opaque `after` cursor. Returns `{cursor,notifications}`. |
 | `session/approval` | observable | Return an explicit user decision for an approval request. |
 | `session/close` | reserved, not called by the shipped UI | A future explicit operation may end the remote session; normal detach never calls it. |
@@ -263,7 +299,16 @@ the prompt into durable project or conversation state:
   "method": "session/prompt",
   "params": {
     "sessionId": "agent-session-opaque",
-    "prompt": [{ "type": "text", "text": "Review reference #2." }]
+    "prompt": [{ "type": "text", "text": "Review reference #2." }],
+    "clientContext": {
+      "workMode": "guided",
+      "semantics": {
+        "id": "guided",
+        "label": "Guided",
+        "summary": "Propose sensible defaults, explain consequential choices, and invite review.",
+        "deliveryRequiresExplicitAuthorization": true
+      }
+    }
   }
 }
 ```

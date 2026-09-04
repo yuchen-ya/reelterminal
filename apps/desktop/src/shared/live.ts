@@ -6,7 +6,8 @@
  * `collabControl` members of window.openreel). Keep the two in sync.
  */
 
-export type LiveCollabMode = "observe" | "assist" | "autonomous";
+export type AgentWorkMode = "guided" | "collaborative" | "autonomous";
+export type AgentAccessMode = "read-only" | "write";
 
 /** collabControl.getStatus / the `{type:"status"}` live event payload. */
 export interface LiveCollabStatus {
@@ -14,14 +15,16 @@ export interface LiveCollabStatus {
   readonly externalConnected: boolean;
   /** The external agent session currently holding the writer lease. */
   readonly writer: "external" | null;
-  readonly mode: LiveCollabMode;
+  readonly workMode: AgentWorkMode;
+  /** Independent authorization boundary; switching work mode never changes it. */
+  readonly access: AgentAccessMode;
   /** Verb currently in flight, or null when the agent is idle. */
   readonly currentAction: string | null;
 }
 
-/** collabControl.setMode args (renderer → main). */
-export interface LiveCollabSetModeArgs {
-  readonly mode: LiveCollabMode;
+/** collabControl.setWorkMode args (renderer → main). */
+export interface LiveCollabSetWorkModeArgs {
+  readonly mode: AgentWorkMode;
 }
 
 /* ---- liveBridge: main → renderer store seam (ADR 0004 Decision 1) ------- */

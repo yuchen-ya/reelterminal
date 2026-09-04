@@ -16,7 +16,7 @@ import { agentWorkspaceRoot } from "../live/host-instance";
 import type { LiveSessionHost } from "../live/live-session-host";
 
 const setModeArgsSchema = z.object({
-  mode: z.enum(["observe", "assist", "autonomous"]),
+  mode: z.enum(["guided", "collaborative", "autonomous"]),
 });
 
 function assertMainWindowSender(sender: unknown): void {
@@ -47,7 +47,7 @@ export function registerLiveIpc(host: LiveSessionHost): void {
   ipcMain.handle(CHANNELS.collabSetMode, async (event, raw) => {
     assertMainWindowSender(event.sender);
     const { mode } = setModeArgsSchema.parse(raw);
-    return host.setMode(mode);
+    return host.setWorkMode(mode);
   });
 
   /**

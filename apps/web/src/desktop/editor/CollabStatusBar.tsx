@@ -27,11 +27,30 @@ function markIntroSeen(): void {
 
 const MODES: ReadonlyArray<{
   id: CollabMode;
-  labelKey: "desktop.collaboration.observe" | "desktop.collaboration.assist" | "desktop.collaboration.autonomous";
+  labelKey:
+    | "desktop.collaboration.guided"
+    | "desktop.collaboration.collaborative"
+    | "desktop.collaboration.autonomous";
+  descriptionKey:
+    | "desktop.collaboration.guidedDescription"
+    | "desktop.collaboration.collaborativeDescription"
+    | "desktop.collaboration.autonomousDescription";
 }> = [
-  { id: "observe", labelKey: "desktop.collaboration.observe" },
-  { id: "assist", labelKey: "desktop.collaboration.assist" },
-  { id: "autonomous", labelKey: "desktop.collaboration.autonomous" },
+  {
+    id: "guided",
+    labelKey: "desktop.collaboration.guided",
+    descriptionKey: "desktop.collaboration.guidedDescription",
+  },
+  {
+    id: "collaborative",
+    labelKey: "desktop.collaboration.collaborative",
+    descriptionKey: "desktop.collaboration.collaborativeDescription",
+  },
+  {
+    id: "autonomous",
+    labelKey: "desktop.collaboration.autonomous",
+    descriptionKey: "desktop.collaboration.autonomousDescription",
+  },
 ];
 
 /**
@@ -44,11 +63,12 @@ export function CollabStatusBar(): JSX.Element {
   const enabled = useCollabStore((s) => s.enabled);
   const externalConnected = useCollabStore((s) => s.externalConnected);
   const writer = useCollabStore((s) => s.writer);
-  const mode = useCollabStore((s) => s.mode);
+  const workMode = useCollabStore((s) => s.workMode);
+  const access = useCollabStore((s) => s.access);
   const currentAction = useCollabStore((s) => s.currentAction);
   const enable = useCollabStore((s) => s.enable);
   const disable = useCollabStore((s) => s.disable);
-  const setMode = useCollabStore((s) => s.setMode);
+  const setWorkMode = useCollabStore((s) => s.setWorkMode);
 
   const chatOpen = useUIStore((s) => s.panels.externalAgent.visible);
   const togglePanel = useUIStore((s) => s.togglePanel);
@@ -188,11 +208,11 @@ export function CollabStatusBar(): JSX.Element {
             key={m.id}
             type="button"
             role="radio"
-            aria-checked={mode === m.id}
-            disabled={!enabled}
-            onClick={() => void setMode(m.id)}
-            className={`rounded-[5px] px-2 py-0.5 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-              mode === m.id
+            aria-checked={workMode === m.id}
+            title={t(m.descriptionKey)}
+            onClick={() => void setWorkMode(m.id)}
+            className={`rounded-[5px] px-2 py-0.5 transition-colors ${
+              workMode === m.id
                 ? "bg-bg-elev text-fg"
                 : "text-fg-muted hover:text-fg"
             }`}
@@ -201,6 +221,15 @@ export function CollabStatusBar(): JSX.Element {
           </button>
         ))}
       </div>
+
+      {access === "read-only" && (
+        <span
+          className="rounded-[5px] bg-bg-2 px-1.5 py-0.5 text-fg-muted"
+          title={t("desktop.collaboration.readOnlyDescription")}
+        >
+          {t("desktop.collaboration.readOnly")}
+        </span>
+      )}
 
       {currentAction && (
         <span className="flex min-w-0 items-center gap-1.5 text-accent">

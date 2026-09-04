@@ -150,6 +150,28 @@ states it up front instead of letting integrators discover it at runtime:
   of the snapshot the ops were translated against (unconditional CAS), so a
   human edit landing between read and apply fails `CONFLICT`.
 
+## Agent work mode and authorization are separate
+
+`session.describe` and `editor.get_context` return `workMode` plus an explicit
+`workModeSemantics` object in both live and headless sessions. The values are
+`guided`, `collaborative` (default), and `autonomous`. They describe default
+initiative and alignment density only; they are deliberately not a workflow
+state machine and may change at any time.
+
+Live sessions report the independent `access` field (`read-only` or `write`) and
+the writer-lease fields. The verb gate reads `access`, never `workMode`, so
+selecting Autonomous cannot grant a write verb and selecting Guided cannot
+remove an existing authorization. Legacy combined values migrate as follows:
+`observe` → Guided + read-only, `assist` → Collaborative + write, and
+`autonomous` → Autonomous + write. This preserves the old read-only boundary.
+Headless sessions expose the same work-mode fields and default to Collaborative;
+they omit the live-only access/writer fields.
+
+The optional external-conversation attachment carries this same context in
+`initialize`, `session/resume`, every `session/prompt`, and the namespaced
+`openreel/work_mode` change notification. ReelTerminal still retains no model,
+provider credential, inference loop, or long-term conversation history.
+
 ## Slice 1b: preview / export / verify
 
 The facade stays pure Node; pixel/export/verify backing arrives through the

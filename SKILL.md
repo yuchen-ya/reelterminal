@@ -103,25 +103,65 @@ reported roots instead of asking the user to import them manually. For every
 new creation task, use `capabilities_get.mediaImport.recommendedRoot` and the
 job layout in [`docs/AGENT-WORKSPACE.md`](docs/AGENT-WORKSPACE.md); never scatter
 generated media, helper scripts, or deliverables across the source repository.
-`editor_get_context` includes the live selection, playhead, ranges, canvas
-target, context revision, and stable Agent-reference mapping. References are
+`session_describe` and `editor_get_context` include the current Agent work
+mode and its explicit semantics. `editor_get_context` also includes the live
+selection, playhead, ranges, canvas target, context revision, and stable
+Agent-reference mapping. References are
 session-local (`#1`, `#2`, `#3`, …), deterministic for multi-selection, never
 renumbered/reused, and stale after deletion rather than silently rebinding.
 The context revision changes on meaningful selection or explicit seek/scrub
 changes; ordinary playback ticks do not invalidate a context CAS guard every
 frame.
 
-### Short creative briefs are complete requests
+### Elastic professional collaboration
 
 When the user gives only an outcome (for example, “make a 30-second promo”),
 the default still means the live desktop workflow; never infer headless mode
-from a missing endpoint. Treat the open project's settings as part of that
-brief. Own the finishing workflow: read capabilities and current context, use
-the Agent host's available creation/search/audio tools to prepare suitable assets
-inside a reported media root, import them, build the timeline, preview and
-visually inspect, iterate, export, and verify the result. Every edit must go
-through the live facade so it appears in the open GUI. Ask the user only for a
-genuine creative decision or a capability blocker—not for tool choreography.
+from a missing endpoint. A short brief is a complete request, not a command to
+skip professional judgment. Treat the open project's settings as part of the
+brief, propose a concrete interpretation, and ask only about decisions that
+materially change the result, cost, or risk. A complete user script, storyboard,
+or edit plan takes priority and should not be routed through unnecessary
+tutorial questions.
+
+Use these as flexible heuristics, not a wizard or required state machine. The
+creative process may loop, skip, reorder, or return to any of them:
+
+- Understand the goal and available material before expensive production.
+- When material is missing, first establish what the user can provide, which
+  sources are trustworthy, and only then what must be generated.
+- Prefer a complete, low-cost, watchable previsualization before committing to
+  expensive finished animation or media generation.
+- Preserve a recoverable version before a broad or destructive rebuild.
+- Develop sound with picture from the previsualization onward; file-level audio
+  presence is not a substitute for listening through time.
+- Review the complete cut with sound. Evaluate narrative progress, audiovisual
+  coordination, composition, continuity, information/brand fidelity, and pace.
+
+Every edit still goes through the live facade so it appears in the open GUI.
+
+### Agent work modes
+
+Work mode changes default initiative and alignment density only. It never grants
+write permission, bypasses the writer lease, authorizes destructive actions, or
+turns a draft request into delivery.
+
+- **Guided** — propose sensible defaults first; ask a few high-value questions;
+  explain consequential choices; preview before expensive work; explicitly
+  invite a full review of the first cut.
+- **Collaborative** — the default peer mode; perform low-risk reversible work;
+  align on uncertain creative direction, high cost, or broad changes; follow a
+  complete user plan directly.
+- **Autonomous** — make most research, selection, and production decisions;
+  surface important assumptions and watchable results; preserve recovery points;
+  stop at capability or major-risk boundaries.
+
+The GUI mode is persisted by the desktop main process and may change at any
+time. Re-read `session_describe` or `editor_get_context` instead of caching it.
+The optional conversation transport carries the same value and semantics during
+initialize/resume, on changes, and with each prompt. Headless sessions expose
+the same fields and default to Collaborative unless their host explicitly
+configures another work mode.
 
 ### Two engagement tiers: interactive edits vs delivery
 
@@ -269,7 +309,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 
 | Tool | Purpose |
 |---|---|
-| `session_describe` | Facade self-description (verbs, error codes, step letters) — distinct from MCP `initialize` |
+| `session_describe` | Facade self-description (work mode + semantics, live access/writer state, verbs, error codes, step letters) — distinct from MCP `initialize` |
 | `capabilities_get` | Live provider preflights |
 | `project_create` | Create this session's single project (single-initialization lifecycle verb) |
 | `project_open` | Open a checkpoint file into this session's empty project slot (single-initialization lifecycle verb) |
@@ -277,7 +317,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `project_get_state` | Full canonical dump (Decision 8) |
 | `media_import` | Path inside `mediaRoots`; URLs refused |
 | `timeline_get` | Compact view — preferred read |
-| `editor_get_context` | Editor context (selection, playhead, canvas point); headless-honest — see below |
+| `editor_get_context` | Current work mode plus editor context (selection, playhead, canvas point); headless-honest — see below |
 | `editor_control` | Ephemeral live playback and selection/reveal control; never changes project revision or undo history |
 | `edit_apply` | Closed op set; atomic; `expectedRevision` (+`expectedContextRevision` live) + `idempotencyKey` |
 | `preview_render_frame` | Replay/ledger only; artifact to `artifactRoot`; raster defaults to project size, explicit even `width`/`height` scale-render the same frame |
@@ -304,7 +344,7 @@ envelopes plus artifact refs; it does not attach MCP image blocks.
 ### `editor_get_context` — live vs headless honesty
 
 The verb exists so an agent collaborating with a human can read the
-ephemeral editor context: playhead, selected clip/text ids, selected time
+current work mode and the ephemeral editor context: playhead, selected clip/text ids, selected time
 range, the normalized canvas target point, a monotonic `contextRevision`,
 and `{projectId, projectName, windowId}`.
 

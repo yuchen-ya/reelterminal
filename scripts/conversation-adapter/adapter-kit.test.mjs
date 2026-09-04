@@ -103,6 +103,9 @@ test("routes safe JSON-RPC requests and returns 204 for cancel notifications", a
       calls.push(["approval", params.decision]);
       return { accepted: true };
     },
+    onWorkMode: (params) => {
+      calls.push(["work-mode", params.clientContext.workMode]);
+    },
     onUpdates: (params) => {
       calls.push(["updates", params.after ?? null]);
       return {
@@ -170,6 +173,25 @@ test("routes safe JSON-RPC requests and returns 204 for cancel notifications", a
     assert.equal(cancel.status, 204);
     assert.equal(await cancel.text(), "");
 
+    const workMode = await request(descriptor.endpoint, descriptor.token, {
+      jsonrpc: "2.0",
+      method: "openreel/work_mode",
+      params: {
+        sessionId: descriptor.sessionId,
+        clientContext: {
+          workMode: "guided",
+          semantics: {
+            id: "guided",
+            label: "Guided",
+            summary: "Explain consequential choices and invite review.",
+            deliveryRequiresExplicitAuthorization: true,
+          },
+        },
+      },
+    });
+    assert.equal(workMode.status, 204);
+    assert.equal(await workMode.text(), "");
+
     const approval = await request(descriptor.endpoint, descriptor.token, {
       jsonrpc: "2.0",
       id: 2,
@@ -212,6 +234,7 @@ test("routes safe JSON-RPC requests and returns 204 for cancel notifications", a
       ["initialize", "ReelTerminal"],
       ["prompt", "Review the selected cut."],
       ["cancel", descriptor.sessionId],
+      ["work-mode", "guided"],
       ["approval", "approved"],
       ["updates", "cursor-0"],
     ]);

@@ -5,7 +5,7 @@
  * renderer bridge must, records every committed batch, and can simulate a
  * concurrent human edit landing between the agent's snapshot read and its
  * apply. Covered: the visual.inspect read path and live/headless honesty, CAS conflict paths,
- * the observe/assist mode gate, the single-writer lease, live-unavailable
+ * the access gate, work-mode context, the single-writer lease, live-unavailable
  * lifecycle verbs, snapshot preview/export with stub providers, the
  * file-backed-media honesty rule, idempotent replay, and dispose.
  */
@@ -394,7 +394,12 @@ let lease: LiveWriterLease;
 
 function liveFacade(
   opts?: Partial<{
-    mode: "observe" | "assist" | "autonomous";
+    workMode:
+      | "guided"
+      | "collaborative"
+      | "autonomous"
+      | (() => "guided" | "collaborative" | "autonomous");
+    access: "read-only" | "write";
     sessionId: string;
     mediaRoots: readonly string[];
     deliveryRoots: readonly string[];
@@ -408,7 +413,8 @@ function liveFacade(
     store: opts?.store ?? store,
     lease,
     sessionId: opts?.sessionId ?? "agent-1",
-    mode: opts?.mode ?? "assist",
+    workMode: opts?.workMode ?? "collaborative",
+    access: opts?.access ?? "write",
     artifactRoot,
     ...(opts?.mediaRoots ? { mediaRoots: opts.mediaRoots } : {}),
     ...(opts?.deliveryRoots ? { deliveryRoots: opts.deliveryRoots } : {}),
@@ -452,6 +458,11 @@ describe("editor.get_context and visual.inspect read verbs", () => {
     if (!res.ok) return;
     expect(res.value).toEqual({
       mode: "live",
+      workMode: "collaborative",
+      workModeSemantics: expect.objectContaining({
+        id: "collaborative",
+        deliveryRequiresExplicitAuthorization: true,
+      }),
       projectRevision: 0,
       contextAvailable: true,
       contextRevision: 1,
@@ -518,6 +529,8 @@ describe("editor.get_context and visual.inspect read verbs", () => {
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.value.mode).toBe("headless");
+    expect(res.value.workMode).toBe("collaborative");
+    expect(res.value.workModeSemantics.id).toBe("collaborative");
     expect(res.value.projectRevision).toBe(0);
     expect(res.value.contextAvailable).toBe(false);
     expect(res.value.contextRevision).toBeNull();
@@ -1082,47 +1095,74 @@ describe("live edit.apply", () => {
   });
 });
 
-/* --------------------------- session modes --------------------------- */
+/* ---------------------- work mode + access gate ---------------------- */
 
-describe("session modes + writer lease (Decisions 6/7)", () => {
-  it("observe: read-only verbs run, every write verb fails FORBIDDEN", async () => {
-    const facade = liveFacade({ mode: "observe" });
-    // All eight read-only verbs are allowed through the gate.
-    expect((await facade["session.describe"]()).ok).toBe(true);
-    expect((await facade["capabilities.get"]()).ok).toBe(true);
-    expect((await facade["project.get_state"]()).ok).toBe(true);
-    expect((await facade["timeline.get"]()).ok).toBe(true);
-    expect((await facade["editor.get_context"]()).ok).toBe(true);
-    const jobStatus = await facade["job.status"]({ jobId: "job-none" });
-    expect(jobStatus.ok).toBe(false);
-    if (!jobStatus.ok) expect(jobStatus.error.code).toBe("NOT_FOUND"); // gated? no — reached the registry
-    const verify = await facade["verify.artifact"]({ path: "/x.mp4" });
-    expect(verify.ok).toBe(false);
-    if (!verify.ok) expect(verify.error.code).toBe("UNSUPPORTED"); // no verifier — NOT FORBIDDEN
-    expect(READ_ONLY_VERBS).toHaveLength(9);
+describe("work mode + access gate + writer lease", () => {
+  it("reads a switched work mode without recreating the facade or changing access", async () => {
+    let workMode: "guided" | "collaborative" | "autonomous" = "collaborative";
+    const facade = liveFacade({ workMode: () => workMode, access: "write" });
+    const first = await facade["session.describe"]();
+    expect(first.ok && first.value.workMode).toBe("collaborative");
 
-    // Every non-read-only verb is FORBIDDEN, and the gate fires BEFORE
-    // param validation (an empty/invalid payload is still FORBIDDEN).
-    const writeCalls: Array<[string, Promise<{ ok: boolean; error?: { code: string } }>]> = [
-      ["project.create", facade["project.create"]({ name: "X" })],
-      ["project.open", facade["project.open"]({ path: "/x" })],
-      ["project.save", facade["project.save"]()],
-      ["media.import", facade["media.import"]({ path: "/x.mp4" })],
-      ["edit.apply", facade["edit.apply"]({ ops: [{ op: "track.add", trackType: "video" }] })],
-      ["preview.render_frame", facade["preview.render_frame"]({ timeSec: 0 })],
-      ["export.start", facade["export.start"]({})],
-      ["job.cancel", facade["job.cancel"]({ jobId: "job-none" })],
-    ];
-    for (const [verb, call] of writeCalls) {
-      const res = await call;
-      expect(res.ok, verb).toBe(false);
-      if (!res.ok) {
-        expect(res.error?.code, verb).toBe("FORBIDDEN");
-      }
-    }
-    expect(store.batches).toHaveLength(0);
-    expect(store.saveCount).toBe(0);
+    workMode = "guided";
+    const [second, context] = await Promise.all([
+      facade["session.describe"](),
+      facade["editor.get_context"](),
+    ]);
+    expect(second.ok && second.value.workMode).toBe("guided");
+    expect(second.ok && second.value.access).toBe("write");
+    expect(context.ok && context.value.workMode).toBe("guided");
+    expect(lease.holder()).toBe("agent-1");
   });
+
+  it.each(["guided", "collaborative", "autonomous"] as const)(
+    "%s work mode cannot expand read-only access",
+    async (workMode) => {
+      const facade = liveFacade({ workMode, access: "read-only" });
+      // All nine read-only verbs are allowed through the gate.
+      expect((await facade["session.describe"]()).ok).toBe(true);
+      expect((await facade["capabilities.get"]()).ok).toBe(true);
+      expect((await facade["project.get_state"]()).ok).toBe(true);
+      expect((await facade["timeline.get"]()).ok).toBe(true);
+      expect((await facade["editor.get_context"]()).ok).toBe(true);
+      const jobStatus = await facade["job.status"]({ jobId: "job-none" });
+      expect(jobStatus.ok).toBe(false);
+      if (!jobStatus.ok) expect(jobStatus.error.code).toBe("NOT_FOUND");
+      const verify = await facade["verify.artifact"]({ path: "/x.mp4" });
+      expect(verify.ok).toBe(false);
+      if (!verify.ok) expect(verify.error.code).toBe("UNSUPPORTED");
+      expect(READ_ONLY_VERBS).toHaveLength(9);
+
+      // Every non-read-only verb is FORBIDDEN, and the gate fires BEFORE
+      // param validation (an empty/invalid payload is still FORBIDDEN).
+      const writeCalls: Array<
+        [string, Promise<{ ok: boolean; error?: { code: string } }>]
+      > = [
+        ["project.create", facade["project.create"]({ name: "X" })],
+        ["project.open", facade["project.open"]({ path: "/x" })],
+        ["project.save", facade["project.save"]()],
+        ["media.import", facade["media.import"]({ path: "/x.mp4" })],
+        [
+          "edit.apply",
+          facade["edit.apply"]({
+            ops: [{ op: "track.add", trackType: "video" }],
+          }),
+        ],
+        ["preview.render_frame", facade["preview.render_frame"]({ timeSec: 0 })],
+        ["export.start", facade["export.start"]({})],
+        ["job.cancel", facade["job.cancel"]({ jobId: "job-none" })],
+      ];
+      for (const [verb, call] of writeCalls) {
+        const res = await call;
+        expect(res.ok, verb).toBe(false);
+        if (!res.ok) {
+          expect(res.error?.code, verb).toBe("FORBIDDEN");
+        }
+      }
+      expect(store.batches).toHaveLength(0);
+      expect(store.saveCount).toBe(0);
+    },
+  );
 
   it("lease held by another session: write verbs fail CONFLICT naming the holder; reads still work", async () => {
     expect(lease.acquire("agent-other")).toBe(true);
@@ -1132,7 +1172,8 @@ describe("session modes + writer lease (Decisions 6/7)", () => {
     if (describeRes.ok) {
       expect(describeRes.value.writer).toBe(false);
       expect(describeRes.value.leaseHolder).toBe("agent-other");
-      expect(describeRes.value.mode).toBe("assist");
+      expect(describeRes.value.workMode).toBe("collaborative");
+      expect(describeRes.value.access).toBe("write");
       expect(describeRes.value.sessionId).toBe("agent-1");
     }
     const edit = await facade["edit.apply"]({ ops: [...TEXT_BATCH] });
@@ -1210,12 +1251,15 @@ describe("session modes + writer lease (Decisions 6/7)", () => {
   });
 
   it("session.describe mirrors the headless shape plus live fields", async () => {
-    const facade = liveFacade({ mode: "autonomous" });
+    const facade = liveFacade({ workMode: "autonomous" });
     const res = await facade["session.describe"]();
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.value.runtime).toBe("live");
-    expect(res.value.mode).toBe("autonomous");
+    expect(res.value.workMode).toBe("autonomous");
+    expect(res.value.workModeSemantics.id).toBe("autonomous");
+    expect(res.value.workModeSemantics.deliveryRequiresExplicitAuthorization).toBe(true);
+    expect(res.value.access).toBe("write");
     expect(res.value.writer).toBe(true);
     expect(res.value.leaseHolder).toBe("agent-1");
     expect(res.value.sessionId).toBe("agent-1");

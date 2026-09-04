@@ -42,6 +42,8 @@ const adapter = await startConversationAdapter({
   descriptorPath: "/absolute/path/to/.openreel/conversation-endpoint.json",
   onPrompt: ({ prompt }) => existingAgentSession.prompt(prompt),
   onCancel: () => existingAgentSession.cancel(),
+  onWorkMode: ({ clientContext }) =>
+    existingAgentSession.updateWorkMode(clientContext),
   onApproval: ({ requestId, decision }) =>
     existingAgentSession.resolveApproval(requestId, decision),
   onUpdates: ({ after, waitMs }) =>

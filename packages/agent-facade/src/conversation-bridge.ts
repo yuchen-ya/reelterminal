@@ -39,6 +39,11 @@ import {
   type ExternalConversationOwnership,
 } from "./conversation-protocol";
 import {
+  DEFAULT_AGENT_WORK_MODE,
+  agentWorkModeSemantics,
+  type AgentWorkMode,
+} from "./work-mode";
+import {
   createConversationDisplayState,
   DEFAULT_CONVERSATION_DISPLAY_LIMIT,
   reduceConversationDisplayState,
@@ -59,6 +64,8 @@ export interface ExternalConversationBridgeOptions {
   readonly connectionId?: () => string;
   /** Optional protocol version hint; it is not a model/provider setting. */
   readonly protocolVersion?: string;
+  /** Shared desktop preference; read on attach, every prompt, and updates. */
+  readonly getWorkMode?: () => AgentWorkMode;
 }
 
 export interface ExternalConversationPromptReceipt {
@@ -222,6 +229,11 @@ export class ExternalConversationBridge {
     return () => this.listeners.delete(listener);
   }
 
+  private workModeContext() {
+    const workMode = this.options.getWorkMode?.() ?? DEFAULT_AGENT_WORK_MODE;
+    return { workMode, semantics: agentWorkModeSemantics(workMode) };
+  }
+
   async connect(pairing: ExternalAgentPairing): Promise<ExternalConversationDisplayState> {
     return this.enqueue(async () => {
       if (
@@ -306,6 +318,7 @@ export class ExternalConversationBridge {
               subtask: true,
             },
           },
+          clientContext: this.workModeContext(),
         };
         const initializeRaw = await transport.request(
           EXTERNAL_CONVERSATION_METHODS.initialize,
@@ -346,7 +359,7 @@ export class ExternalConversationBridge {
         }
         const resumeRaw = await transport.request(
           EXTERNAL_CONVERSATION_METHODS.resume,
-          { sessionId } satisfies { sessionId: string },
+          { sessionId, clientContext: this.workModeContext() },
         );
         unwrapResult<unknown>(resumeRaw);
         this.emitLifecycle("ready", {
@@ -403,7 +416,7 @@ export class ExternalConversationBridge {
       try {
         const raw = await transport.request(
           EXTERNAL_CONVERSATION_METHODS.prompt,
-          { sessionId, prompt },
+          { sessionId, prompt, clientContext: this.workModeContext() },
         );
         const result = unwrapResult<unknown>(raw);
         this.emitPrompt("accepted");
@@ -438,6 +451,17 @@ export class ExternalConversationBridge {
           asErrorMessage(error),
         );
       }
+    });
+  }
+
+  /** Notify an attached Agent immediately; prompt payloads also carry the mode. */
+  async updateWorkMode(): Promise<void> {
+    return this.enqueue(async () => {
+      if (this.state.lifecycle !== "ready" || !this.transport) return;
+      await this.transport.notify(EXTERNAL_CONVERSATION_METHODS.workMode, {
+        sessionId: this.requireSessionId(),
+        clientContext: this.workModeContext(),
+      });
     });
   }
 

@@ -3,6 +3,7 @@ import {
   OPENREEL_CONVERSATION_PROTOCOL_VERSION,
   createConversationDisplayState,
   type ExternalConversationBridge as ExternalConversationBridgeType,
+  type AgentWorkMode,
 } from "@openreel/agent-facade";
 import type {
   ConversationAdapterSummary,
@@ -29,6 +30,7 @@ const missingAdapter = (): ConversationAdapterSummary => ({
 export interface ConversationHostDeps {
   readonly descriptorFilePath: string;
   readonly emitEvent: (event: DesktopConversationEvent) => void;
+  readonly getWorkMode: () => AgentWorkMode;
 }
 
 export interface ConversationHost {
@@ -41,6 +43,7 @@ export interface ConversationHost {
   ): Promise<DesktopConversationState>;
   cancel(): Promise<DesktopConversationState>;
   detach(): Promise<DesktopConversationState>;
+  workModeChanged(): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -114,6 +117,7 @@ export function createConversationHost(deps: ConversationHostDeps): Conversation
         const next = new ExternalConversationBridge({
           connector: createLoopbackConversationConnector(descriptor),
           protocolVersion: OPENREEL_CONVERSATION_PROTOCOL_VERSION,
+          getWorkMode: deps.getWorkMode,
         });
         bridge = next;
         unsubscribe = next.subscribe(() => emit());
@@ -166,6 +170,12 @@ export function createConversationHost(deps: ConversationHostDeps): Conversation
         await clearBridge("user");
         emit();
         return snapshot();
+      });
+    },
+
+    async workModeChanged() {
+      return enqueue(async () => {
+        await bridge?.updateWorkMode();
       });
     },
 

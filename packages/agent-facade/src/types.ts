@@ -72,23 +72,27 @@ export const FACADE_VERBS = [
 export type FacadeVerb = (typeof FACADE_VERBS)[number];
 
 /* ------------------------------------------------------------------ */
-/* Session modes + the read-only verb gate (ADR 0004 Decision 7)       */
+/* Work mode + the read-only verb gate                                */
 /* ------------------------------------------------------------------ */
 
-/**
- * Live session modes (ADR 0004 Decision 7). Observe runs the read-only
- * verb set only; Assist (the default) and Autonomous share the full verb
- * surface and differ only in step budget, which is a host concern, not a
- * facade one. Headless sessions have no mode — the concept only exists
- * for live sessions (createLiveFacade).
- */
-export type LiveSessionMode = "observe" | "assist" | "autonomous";
+export type {
+  AgentAccessMode,
+  AgentModePreference,
+  AgentWorkMode,
+  AgentWorkModeSemantics,
+  LegacyAgentMode,
+} from "./work-mode";
+
+import type {
+  AgentAccessMode,
+  AgentWorkMode,
+  AgentWorkModeSemantics,
+} from "./work-mode";
 
 /**
- * The read-only verb set every session mode may call (Decision 7). Write
- * verbs are gated at the facade session boundary: Observe rejects them
- * FORBIDDEN; a writer-less Assist/Autonomous session rejects them
- * CONFLICT with holder information (Decision 6).
+ * The read-only verb set every live access mode may call. Work mode never
+ * participates in this gate. A read-only session rejects writes FORBIDDEN;
+ * a writer-less write session rejects them CONFLICT with holder information.
  */
 export const READ_ONLY_VERBS = [
   "session.describe",
@@ -141,8 +145,11 @@ export interface SessionDescription {
   readonly errorCodes: readonly string[];
   readonly stepLetters: StepLetters;
   readonly notes: readonly string[];
-  /* Live-only fields (ADR 0004 Decisions 6/7) — absent in headless sessions. */
-  readonly mode?: LiveSessionMode;
+  /** Current collaboration preference; present in live and headless sessions. */
+  readonly workMode: AgentWorkMode;
+  readonly workModeSemantics: AgentWorkModeSemantics;
+  /** Live-only authorization field. Work mode never changes it. */
+  readonly access?: AgentAccessMode;
   /** True when this session currently holds the writer lease. */
   readonly writer?: boolean;
   /** Current lease holder's sessionId (null when the lease is free). */
@@ -489,6 +496,8 @@ export interface TimelineState {
  */
 export interface EditorGetContextResult {
   readonly mode: "live" | "headless";
+  readonly workMode: AgentWorkMode;
+  readonly workModeSemantics: AgentWorkModeSemantics;
   /** The project revision at the moment of the read. */
   readonly projectRevision: number;
   /**

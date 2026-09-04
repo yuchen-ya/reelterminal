@@ -61,7 +61,7 @@ export const VERB_TO_TOOL: Readonly<Record<FacadeVerb, ToolName>> =
 /** B.2: purpose only — parameter semantics live in the facade/schemas. */
 const TOOL_DESCRIPTIONS: Readonly<Record<ToolName, string>> = {
   session_describe:
-    "Describe the facade session: contract version, the 17 verbs, error codes, runtime step letters.",
+    "Describe the facade session: contract, runtime, current Agent work mode and its semantics, plus live access/writer state when applicable.",
   capabilities_get:
     "Report live provider capabilities and the recommended Agent workspace root/layout, with honest reasons when unavailable.",
   project_create:
@@ -76,7 +76,7 @@ const TOOL_DESCRIPTIONS: Readonly<Record<ToolName, string>> = {
     "Import a local media file from a configured media root into the project.",
   timeline_get: "Return the compact timeline view (tracks, clips, text overlays).",
   editor_get_context:
-    "Return the editor context (selection, playhead, time range, canvas point); headless sessions answer honestly with contextAvailable:false.",
+    "Return the current Agent work mode plus editor context (selection, playhead, time range, canvas point); headless sessions answer honestly with contextAvailable:false.",
   editor_control:
     "Control ephemeral live-editor UI state: play, pause, seek, or select/reveal clip, text, or media targets without changing project revision or undo history.",
   edit_apply:

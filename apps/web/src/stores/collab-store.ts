@@ -1,24 +1,24 @@
 import { create } from "zustand";
 import type {
-  OpenReelCollabMode,
+  OpenReelAgentWorkMode,
   OpenReelCollabStatus,
 } from "../types/global";
 
 /**
  * ADR 0004 Decisions 6+7: mirrors the desktop main-process collaboration
- * status (writer lease, external connection, session mode, current action)
+ * status (writer lease, external connection, work mode, current action)
  * for the CollabStatusBar. All IPC access is guarded so the store is a
  * harmless no-op off desktop.
  */
 
-export type CollabMode = OpenReelCollabMode;
+export type CollabMode = OpenReelAgentWorkMode;
 export type CollabStatus = OpenReelCollabStatus;
 
 interface CollabState extends CollabStatus {
   refresh: () => Promise<void>;
   enable: () => Promise<void>;
   disable: () => Promise<void>;
-  setMode: (mode: CollabMode) => Promise<void>;
+  setWorkMode: (mode: CollabMode) => Promise<void>;
   applyStatus: (status: Partial<CollabStatus>) => void;
   setCurrentAction: (action: string | null) => void;
 }
@@ -32,7 +32,8 @@ export const useCollabStore = create<CollabState>()((set, get) => ({
   enabled: false,
   externalConnected: false,
   writer: null,
-  mode: "assist",
+  workMode: "collaborative",
+  access: "write",
   currentAction: null,
 
   applyStatus: (status) => {
@@ -71,11 +72,11 @@ export const useCollabStore = create<CollabState>()((set, get) => ({
     }
   },
 
-  setMode: async (mode) => {
+  setWorkMode: async (mode) => {
     const control = collabControl();
     if (!control) return;
     try {
-      get().applyStatus(await control.setMode(mode));
+      get().applyStatus(await control.setWorkMode(mode));
     } catch {
       /* ignore */
     }

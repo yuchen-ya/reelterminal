@@ -45,9 +45,34 @@ aspect ratio seems more conventional.
 
 The Agent and GUI edit the same canonical project with revision checks and one
 undo history. Use `editor_get_context` before an edit; it includes current
-selection, playhead, context revision, and stable numbered references (`#1`,
-`#2`, …). If a referenced item has been deleted, it remains visibly stale and
-its number is never rebound.
+work mode and semantics, selection, playhead, context revision, and stable
+numbered references (`#1`, `#2`, …). If a referenced item has been deleted, it
+remains visibly stale and its number is never rebound.
+
+## Work mode is an elastic collaboration preference
+
+The compact GUI selector offers **Guided**, **Collaborative** (default), and
+**Autonomous**. The mode changes how proactively the Agent proposes and acts,
+and how densely it aligns with the user. It does not change tool permissions,
+the writer lease, destructive-action approval, or the explicit delivery
+boundary. `session_describe` and `editor_get_context` expose the current value
+and its semantics; the optional conversation attachment receives the same
+context without creating a second conversation.
+
+- Guided proposes defaults before asking a few consequential questions,
+  explains important tradeoffs, previews before expensive production, and asks
+  the user to review the full first cut.
+- Collaborative acts on low-risk reversible work and aligns on uncertain,
+  costly, or broad changes. A complete user plan is followed directly.
+- Autonomous makes most production decisions while surfacing assumptions and
+  watchable results, preserving recovery points, and respecting capability,
+  risk, and delivery boundaries.
+
+Professional production remains a flexible reasoning loop, not a GUI wizard:
+understand the goal and material before costly work, establish source options
+before generating missing media, prefer a low-cost watchable previsualization,
+develop sound with picture, preserve recovery points before broad changes, and
+review the complete cut with sound. Steps may be skipped, reordered, or revisited.
 
 ## Interactive edits stay light; delivery is explicit
 

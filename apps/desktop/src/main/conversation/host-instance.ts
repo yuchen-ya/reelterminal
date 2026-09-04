@@ -5,8 +5,10 @@ import {
   createConversationHost,
   type ConversationHost,
 } from "./conversation-host";
+import { getAgentModePreferenceStore } from "../live/work-mode-instance";
 
 let host: ConversationHost | null = null;
+let unsubscribeWorkMode: (() => void) | null = null;
 
 export function conversationEndpointFilePath(): string {
   const override = process.env.OPENREEL_CONVERSATION_ENDPOINT_FILE;
@@ -28,15 +30,25 @@ function emitToEditor(payload: unknown): void {
 }
 
 export function getConversationHost(): ConversationHost {
-  host ??= createConversationHost({
-    descriptorFilePath: conversationEndpointFilePath(),
-    emitEvent: emitToEditor,
-  });
+  if (!host) {
+    const preferences = getAgentModePreferenceStore();
+    host = createConversationHost({
+      descriptorFilePath: conversationEndpointFilePath(),
+      emitEvent: emitToEditor,
+      getWorkMode: () => preferences.get().workMode,
+    });
+    const current = host;
+    unsubscribeWorkMode = preferences.subscribe(() => {
+      void current.workModeChanged().catch(() => undefined);
+    });
+  }
   return host;
 }
 
 export async function disposeConversationHost(): Promise<void> {
   const current = host;
   host = null;
+  unsubscribeWorkMode?.();
+  unsubscribeWorkMode = null;
   await current?.dispose().catch(() => undefined);
 }

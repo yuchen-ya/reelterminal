@@ -10,12 +10,12 @@
  *    committed through `store.applyActions` as ONE undo unit with CAS
  *    preconditions (Decisions 3/4).
  *  - One AI writer at a time (Decision 6): construction acquires the
- *    `LiveWriterLease` for non-observe modes; a session without it runs
+ *    `LiveWriterLease` for write-enabled sessions; a session without it runs
  *    read-only and its write verbs fail CONFLICT naming the holder. The
  *    human never takes the lease and can always edit.
- *  - Session modes (Decision 7): observe runs the read-only verb set only
- *    (write verbs fail FORBIDDEN); assist/autonomous share the full live
- *    verb surface. Enforced here, at the facade session boundary.
+ *  - Work mode controls collaboration behavior only. Read/write access is a
+ *    separate facade boundary: read-only access rejects write verbs with
+ *    FORBIDDEN, while every work mode sees the same authorized verb surface.
  *  - Honesty: project.create/project.open remain GUI-owned; media.import
  *    validates and delegates through the explicit live store bridge; preview/export run on a snapshot
  *    and require its media to be file-backed and readable from THIS process
@@ -118,7 +118,6 @@ import {
   type JobParams,
   type JobStatusView,
   type LiveProjectSaveResult,
-  type LiveSessionMode,
   type MediaImportParams,
   type MediaImportResult,
   type OpApplied,
@@ -136,6 +135,13 @@ import {
   type VerifyArtifactParams,
   type VerifyArtifactResult,
 } from "./types";
+import {
+  DEFAULT_AGENT_ACCESS_MODE,
+  DEFAULT_AGENT_WORK_MODE,
+  agentWorkModeSemantics,
+  type AgentAccessMode,
+  type AgentWorkMode,
+} from "./work-mode";
 import {
   buildVisualSamplePlan,
   MAX_VISUAL_CONTACT_SHEET_PIXELS,
@@ -185,8 +191,10 @@ export interface LiveFacadeConfig {
   readonly lease: LiveWriterLease;
   /** Identity of THIS AI session, used as the lease holder id. */
   readonly sessionId: string;
-  /** Decision 7 mode; enforced at this boundary. */
-  readonly mode: LiveSessionMode;
+  /** Collaboration preference; a getter lets the GUI switch without remounting this session. */
+  readonly workMode?: AgentWorkMode | (() => AgentWorkMode);
+  /** Authorization boundary, deliberately independent from work mode. */
+  readonly access?: AgentAccessMode;
   /**
    * Absolute root every generated artifact (preview PNGs, exported videos)
    * is written under, with the same containment discipline as headless.
@@ -283,11 +291,22 @@ export class LiveFacadeSession {
     this.ledger = new IdempotencyLedger(
       () => `live:${config.sessionId}#${this.ledgerProjectId ?? "unresolved"}`,
     );
-    // Decision 6: non-observe sessions take the writer lease at
-    // construction. Failure is not fatal — the session runs read-only and
-    // its write verbs fail CONFLICT naming the current holder.
+    // Write-enabled sessions take the writer lease at construction. Failure
+    // is not fatal — the session runs read-only and its write verbs fail
+    // CONFLICT naming the current holder.
     this.writer =
-      config.mode !== "observe" && config.lease.acquire(config.sessionId);
+      this.accessMode() === "write" && config.lease.acquire(config.sessionId);
+  }
+
+  private workMode(): AgentWorkMode {
+    const configured = this.config.workMode;
+    return typeof configured === "function"
+      ? configured()
+      : configured ?? DEFAULT_AGENT_WORK_MODE;
+  }
+
+  private accessMode(): AgentAccessMode {
+    return this.config.access ?? DEFAULT_AGENT_ACCESS_MODE;
   }
 
   private capabilityContext() {
@@ -297,6 +316,7 @@ export class LiveFacadeSession {
     const unavailableVerbs: FacadeVerb[] = [...LIVE_UNAVAILABLE_VERBS];
     if (!mediaImportAvailable) unavailableVerbs.push("media.import");
     return {
+      workMode: this.workMode(),
       mediaRoots: this.config.mediaRoots ?? [],
       deliveryRoots: this.config.deliveryRoots ?? [],
       ...(this.config.renderProvider
@@ -310,7 +330,7 @@ export class LiveFacadeSession {
         : {}),
       artifactRoot: this.config.artifactRoot,
       live: {
-        mode: this.config.mode,
+        access: this.accessMode(),
         writer: this.writer,
         leaseHolder: this.config.lease.holder(),
         sessionId: this.config.sessionId,
@@ -321,21 +341,25 @@ export class LiveFacadeSession {
   }
 
   /**
-   * The Decision 6/7 verb gate, enforced BEFORE any param validation or
-   * state access: observe rejects every non-read-only verb FORBIDDEN (a
-   * fixed property of the mode); a writer-less assist/autonomous session
-   * first tries to ACQUIRE the lease — it may have been released since
-   * construction (e.g. the previous holder was disposed by a mode switch) —
+   * The authorization gate, enforced BEFORE any param validation or state
+   * access: read-only rejects every non-read-only verb FORBIDDEN; a
+   * writer-less write session first tries to ACQUIRE the lease — it may have
+   * been released since construction (for example, when the previous holder's
+   * session ended) —
    * and only then fails CONFLICT, naming the ACTUAL current holder (or
    * honestly reporting the lease unavailable when there is none).
    */
   private gate(verb: FacadeVerb): void {
     if (isReadOnlyVerb(verb)) return;
-    if (this.config.mode === "observe") {
+    if (this.accessMode() === "read-only") {
       throw new FacadeError(
         "FORBIDDEN",
-        `${verb}: observe sessions are read-only — this verb requires an assist or autonomous session`,
-        { mode: this.config.mode, sessionId: this.config.sessionId },
+        `${verb}: this live session has read-only access — work mode never grants write permission`,
+        {
+          access: this.accessMode(),
+          workMode: this.workMode(),
+          sessionId: this.config.sessionId,
+        },
       );
     }
     if (!this.writer) {
@@ -404,6 +428,8 @@ export class LiveFacadeSession {
       ]);
       return ok<EditorGetContextResult>({
         mode: "live",
+        workMode: this.workMode(),
+        workModeSemantics: agentWorkModeSemantics(this.workMode()),
         projectRevision: state.revision,
         contextAvailable: true,
         contextRevision: context.contextRevision,
@@ -1905,7 +1931,7 @@ function partitionCreatedIds(
 
 /**
  * Create a live facade session over the canonical-store seam. Construction
- * acquires the writer lease for non-observe modes; when another AI session
+ * acquires the writer lease for write-enabled sessions; when another AI session
  * holds it, the returned session still works read-only (session.describe
  * reports `writer: false` and the current holder).
  */

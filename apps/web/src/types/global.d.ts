@@ -165,13 +165,15 @@ export type OpenReelUpdaterStatus =
 
 /* ---- Live collaboration (ADR 0004) --------------------------------------- */
 
-export type OpenReelCollabMode = "observe" | "assist" | "autonomous";
+export type OpenReelAgentWorkMode = "guided" | "collaborative" | "autonomous";
+export type OpenReelAgentAccessMode = "read-only" | "write";
 
 export interface OpenReelCollabStatus {
   enabled: boolean;
   externalConnected: boolean;
   writer: "external" | null;
-  mode: OpenReelCollabMode;
+  workMode: OpenReelAgentWorkMode;
+  access: OpenReelAgentAccessMode;
   currentAction: string | null;
 }
 
@@ -324,7 +326,7 @@ declare global {
         enable(): Promise<OpenReelCollabStatus>;
         disable(): Promise<OpenReelCollabStatus>;
         getStatus(): Promise<OpenReelCollabStatus>;
-        setMode(mode: OpenReelCollabMode): Promise<OpenReelCollabStatus>;
+        setWorkMode(mode: OpenReelAgentWorkMode): Promise<OpenReelCollabStatus>;
         /** Reveal the Agent workspace root (jobs/shared) in the OS file manager. */
         openWorkspace(): Promise<string>;
       };

@@ -75,7 +75,7 @@ a privileged mutation backdoor.
 | Machine-readable live state | **Yes (Slice 3 vertical)** — `editor.get_context` reports selection, playhead, ranges, canvas target, context revision, and stable references. |
 | Observable preview/export/verification | **Yes (provider-scoped)** — live capability preflights determine what this session can honestly render, export, and verify. |
 | Stable Agent references | **Yes** — selected entities receive monotonic session-local numbers; duplicate marks retain their number and deleted entities remain stale. |
-| GUI control and Agent control | **Yes** — the human always retains direct GUI control; observe/assist/autonomous modes and the writer lease make boundaries explicit. |
+| GUI control and Agent control | **Yes** — the human always retains direct GUI control; Guided/Collaborative/Autonomous express interaction preference, while independent access and the writer lease enforce authorization. |
 | GUI buttons ↔ complete Agent command coverage | **Partial** — the 17-tool contract and closed edit-op set cover the live vertical, not every inherited editor feature. |
 | External conversation client in the GUI | **Yes** — the desktop conversation UI and loopback client transport attach to an existing external session; the external Agent/host supplies the server-side adapter and descriptor writer. |
 | Simplified Chinese UI | **Yes (retained product UI)** — `en` and `zh-CN` locale wiring covers the retained static web surfaces, with English fallback for future or missing copy and a dry-run codemod check guarding current coverage. |

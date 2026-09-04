@@ -123,6 +123,24 @@ export type { AgentFacadeConfig } from "./session";
 export { createLiveFacade, LiveFacadeSession, LIVE_UNAVAILABLE_VERBS } from "./live-session";
 export type { LiveAgentFacade, LiveFacadeConfig } from "./live-session";
 export {
+  AGENT_WORK_MODES,
+  AGENT_WORK_MODE_SEMANTICS,
+  DEFAULT_AGENT_ACCESS_MODE,
+  DEFAULT_AGENT_WORK_MODE,
+  agentWorkModeSemantics,
+  isAgentAccessMode,
+  isAgentWorkMode,
+  migrateLegacyAgentMode,
+  normalizeAgentModePreference,
+} from "./work-mode";
+export type {
+  AgentAccessMode,
+  AgentModePreference,
+  AgentWorkMode,
+  AgentWorkModeSemantics,
+  LegacyAgentMode,
+} from "./work-mode";
+export {
   isLiveStoreConflict,
   LiveStoreConflictError,
 } from "./live-store";
@@ -189,6 +207,8 @@ export type {
   ExternalAgentToolDisplayFields,
   ExternalAgentToolStatus,
   ExternalAgentTransport,
+  ExternalAgentWorkModeContext,
+  ExternalAgentWorkModeParams,
   ExternalAgentConversationCapabilities,
   ExternalConversationDisplayState,
   ExternalConversationCapability,

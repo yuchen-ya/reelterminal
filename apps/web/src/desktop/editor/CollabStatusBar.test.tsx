@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CollabStatusBar } from "./CollabStatusBar";
 
@@ -58,12 +58,13 @@ describe("CollabStatusBar Agent Session onboarding", () => {
       collabControl: {
         enable: vi.fn(),
         disable: vi.fn(),
-        setMode: vi.fn(),
+        setWorkMode: vi.fn(),
         getStatus: async () => ({
           enabled: false,
           externalConnected: false,
           writer: null,
-          mode: "assist",
+          workMode: "collaborative",
+          access: "write",
           currentAction: null,
         }),
         openWorkspace,
@@ -76,5 +77,44 @@ describe("CollabStatusBar Agent Session onboarding", () => {
     fireEvent.click(screen.getByRole("button", { name: /Open Agent Workspace/ }));
 
     expect(openWorkspace).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows Guided, Collaborative, and Autonomous and switches them while disabled", async () => {
+    const setWorkMode = vi.fn(async (workMode: "guided" | "collaborative" | "autonomous") => ({
+      enabled: false,
+      externalConnected: false,
+      writer: null,
+      workMode,
+      access: "write" as const,
+      currentAction: null,
+    }));
+    openreelWindow.openreel = {
+      platform: "desktop",
+      collabControl: {
+        enable: vi.fn(),
+        disable: vi.fn(),
+        setWorkMode,
+        getStatus: async () => ({
+          enabled: false,
+          externalConnected: false,
+          writer: null,
+          workMode: "collaborative",
+          access: "write",
+          currentAction: null,
+        }),
+      },
+    } as unknown as NonNullable<OpenReelWindow["openreel"]>;
+    window.localStorage.setItem(INTRO_SEEN_KEY, "1");
+    render(<CollabStatusBar />);
+
+    expect(screen.getByRole("radio", { name: "Guided" })).toBeEnabled();
+    expect(screen.getByRole("radio", { name: "Collaborative" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("radio", { name: "Autonomous" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Guided" }));
+    await waitFor(() => expect(setWorkMode).toHaveBeenCalledWith("guided"));
   });
 });

@@ -180,7 +180,7 @@ export function toolNameForVerb(verb: FacadeVerb): string {
  */
 const TOOL_DESCRIPTIONS: Readonly<Record<FacadeVerb, string>> = {
   "session.describe":
-    "Describe this live collaboration session: runtime, the 17 verbs, error codes, mode and writer state.",
+    "Describe this live collaboration session: runtime, current Agent work mode and explicit semantics, independent access/writer state, verbs, and error codes.",
   "capabilities.get":
     "Report live provider capabilities (preview, visual inspection, export, verify) with honest reasons when unavailable.",
   "project.create":
@@ -196,7 +196,7 @@ const TOOL_DESCRIPTIONS: Readonly<Record<FacadeVerb, string>> = {
   "timeline.get":
     "Return the compact timeline view (tracks, clips, text overlays) at the current revision.",
   "editor.get_context":
-    "Return the live editor context: selection, playhead, time range, canvas point, project/context revisions.",
+    "Return the current Agent work mode plus live editor context: selection, playhead, time range, canvas point, and project/context revisions.",
   "editor.control":
     "Control ephemeral live-editor UI state: play, pause, seek, or select/reveal one or more clip, text, or media targets without changing project revision or undo history.",
   "edit.apply":

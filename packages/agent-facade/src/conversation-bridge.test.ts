@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ExternalConversationBridge,
 } from "./conversation-bridge";
+import { AGENT_WORK_MODE_SEMANTICS } from "./work-mode";
 import {
   normalizeExternalConversationCapabilities,
   projectExternalAgentSessionUpdate,
@@ -133,6 +134,10 @@ describe("ExternalConversationBridge", () => {
       "session/resume",
     ]);
     expect(transport.requests[0]?.params).toMatchObject({
+      clientContext: {
+        workMode: "collaborative",
+        semantics: AGENT_WORK_MODE_SEMANTICS.collaborative,
+      },
       clientCapabilities: {
         sessionUpdate: true,
         conversation: {
@@ -147,7 +152,13 @@ describe("ExternalConversationBridge", () => {
         },
       },
     });
-    expect(transport.requests[1]?.params).toEqual({ sessionId: "agent-session-7" });
+    expect(transport.requests[1]?.params).toEqual({
+      sessionId: "agent-session-7",
+      clientContext: {
+        workMode: "collaborative",
+        semantics: AGENT_WORK_MODE_SEMANTICS.collaborative,
+      },
+    });
     expect(state).toMatchObject({
       lifecycle: "ready",
       sessionId: "agent-session-7",
@@ -187,6 +198,10 @@ describe("ExternalConversationBridge", () => {
       params: {
         sessionId: "agent-session-8",
         prompt: [{ type: "text", text: "Rewrite the selected caption" }],
+        clientContext: {
+          workMode: "collaborative",
+          semantics: AGENT_WORK_MODE_SEMANTICS.collaborative,
+        },
       },
     });
     expect(JSON.stringify(bridge.getDisplayState())).not.toContain(
@@ -241,6 +256,34 @@ describe("ExternalConversationBridge", () => {
       .updates.filter((event) => event.type === "session_update");
     expect(updateEvents.map((event) => event.remoteSequence)).toEqual([3, 4]);
     expect(JSON.stringify(updateEvents)).not.toContain("stale replay");
+  });
+
+  it("reports the current work mode on attach, change notification, and the next prompt", async () => {
+    const transport = new FakeTransport();
+    let workMode: "guided" | "collaborative" | "autonomous" = "guided";
+    const bridge = new ExternalConversationBridge({
+      connector: connectorFor(transport),
+      getWorkMode: () => workMode,
+    });
+    await bridge.connect({ sessionId: "agent-session-mode" });
+    expect(transport.requests[0]?.params).toMatchObject({
+      clientContext: { workMode: "guided" },
+    });
+
+    workMode = "autonomous";
+    await bridge.updateWorkMode();
+    expect(transport.notifications.at(-1)).toMatchObject({
+      method: "openreel/work_mode",
+      params: {
+        sessionId: "agent-session-mode",
+        clientContext: { workMode: "autonomous" },
+      },
+    });
+
+    await bridge.prompt("Continue");
+    expect(transport.requests.at(-1)?.params).toMatchObject({
+      clientContext: { workMode: "autonomous" },
+    });
   });
 
   it("projects a direct formal reply into memory without making ReelTerminal the history owner", async () => {

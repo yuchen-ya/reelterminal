@@ -58,6 +58,10 @@ conversation descriptor.
 - `external-conversation.e2e.ts` — reference adapter → built Electron app;
   prompt forwarding, chronological safe work log, approval round-trip, and
   raw tool-payload exclusion.
+- `work-modes.e2e.ts` — default Collaborative and Chinese Guided /
+  Collaborative / Autonomous UI; switching while disabled; live MCP and
+  conversation-context synchronization; floating-window/draft continuity;
+  and full-relaunch persistence.
 
 ## Evidence
 

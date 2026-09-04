@@ -76,6 +76,17 @@ const nullable = (schema: OutputSchemaNode): OutputSchemaNode => ({
 
 const openObject = (): OutputSchemaNode => objectSchema({}, undefined, true);
 
+const workModeSemantics = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      id: enumSchema(["guided", "collaborative", "autonomous"]),
+      label: enumSchema(["Guided", "Collaborative", "Autonomous"]),
+      summary: stringSchema(),
+      deliveryRequiresExplicitAuthorization: constSchema(true),
+    },
+    ["id", "label", "summary", "deliveryRequiresExplicitAuthorization"],
+  );
+
 const artifactRef = (): OutputSchemaNode =>
   objectSchema(
     {
@@ -226,12 +237,14 @@ const sessionDescription = (): OutputSchemaNode =>
         ],
       ),
       notes: arraySchema(stringSchema()),
-      mode: enumSchema(["observe", "assist", "autonomous"]),
+      workMode: enumSchema(["guided", "collaborative", "autonomous"]),
+      workModeSemantics: workModeSemantics(),
+      access: enumSchema(["read-only", "write"]),
       writer: booleanSchema(),
       leaseHolder: nullable(stringSchema()),
       sessionId: stringSchema(),
     },
-    ["facadeVersion", "contractVersion", "runtime", "verbs", "editOps", "errorCodes", "stepLetters", "notes"],
+    ["facadeVersion", "contractVersion", "runtime", "verbs", "editOps", "errorCodes", "stepLetters", "notes", "workMode", "workModeSemantics"],
   );
 
 const capabilityStatus = (): OutputSchemaNode =>
@@ -347,6 +360,8 @@ const editorContext = (): OutputSchemaNode =>
   objectSchema(
     {
       mode: enumSchema(["live", "headless"]),
+      workMode: enumSchema(["guided", "collaborative", "autonomous"]),
+      workModeSemantics: workModeSemantics(),
       projectRevision: integerSchema(0),
       contextAvailable: booleanSchema(),
       contextRevision: nullable(integerSchema(0)),
@@ -364,6 +379,8 @@ const editorContext = (): OutputSchemaNode =>
     },
     [
       "mode",
+      "workMode",
+      "workModeSemantics",
       "projectRevision",
       "contextAvailable",
       "contextRevision",

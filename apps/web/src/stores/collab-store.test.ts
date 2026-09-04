@@ -4,12 +4,15 @@ import {
   installCollabEventListener,
   type CollabStatus,
 } from "./collab-store";
+import { useUIStore } from "./ui-store";
+import { useExternalConversationStore } from "./external-conversation-store";
 
 const status = (over: Partial<CollabStatus> = {}): CollabStatus => ({
   enabled: true,
   externalConnected: false,
   writer: "external",
-  mode: "assist",
+  workMode: "collaborative",
+  access: "write",
   currentAction: null,
   ...over,
 });
@@ -19,7 +22,7 @@ const mockDesktop = () => {
     enable: vi.fn(async () => status()),
     disable: vi.fn(async () => status({ enabled: false, writer: null })),
     getStatus: vi.fn(async () => status({ enabled: false, writer: null })),
-    setMode: vi.fn(async (mode: string) => status({ mode: mode as never })),
+    setWorkMode: vi.fn(async (workMode: string) => status({ workMode: workMode as never })),
   };
   let listener: ((evt: Record<string, unknown>) => void) | null = null;
   const liveEvents = {
@@ -48,7 +51,8 @@ describe("collab-store (ADR 0004 Decisions 6+7)", () => {
       enabled: false,
       externalConnected: false,
       writer: null,
-      mode: "assist",
+      workMode: "collaborative",
+      access: "write",
       currentAction: null,
     });
   });
@@ -58,26 +62,27 @@ describe("collab-store (ADR 0004 Decisions 6+7)", () => {
     vi.restoreAllMocks();
   });
 
-  it("defaults to disabled/assist and is a no-op off desktop", async () => {
+  it("defaults to disabled/Collaborative and is a no-op off desktop", async () => {
     const s = useCollabStore.getState();
     expect(s.enabled).toBe(false);
-    expect(s.mode).toBe("assist");
+    expect(s.workMode).toBe("collaborative");
+    expect(s.access).toBe("write");
     await expect(s.refresh()).resolves.toBeUndefined();
     await expect(s.enable()).resolves.toBeUndefined();
     expect(useCollabStore.getState().enabled).toBe(false);
     expect(() => installCollabEventListener()).not.toThrow();
   });
 
-  it("enable/disable/setMode route to collabControl and mirror the status", async () => {
+  it("enable/disable/setWorkMode route to collabControl and mirror the status", async () => {
     const { collabControl } = mockDesktop();
     await useCollabStore.getState().enable();
     expect(collabControl.enable).toHaveBeenCalledOnce();
     expect(useCollabStore.getState().enabled).toBe(true);
     expect(useCollabStore.getState().writer).toBe("external");
 
-    await useCollabStore.getState().setMode("autonomous");
-    expect(collabControl.setMode).toHaveBeenCalledWith("autonomous");
-    expect(useCollabStore.getState().mode).toBe("autonomous");
+    await useCollabStore.getState().setWorkMode("autonomous");
+    expect(collabControl.setWorkMode).toHaveBeenCalledWith("autonomous");
+    expect(useCollabStore.getState().workMode).toBe("autonomous");
 
     await useCollabStore.getState().disable();
     expect(useCollabStore.getState().enabled).toBe(false);
@@ -100,11 +105,13 @@ describe("collab-store (ADR 0004 Decisions 6+7)", () => {
       enabled: true,
       externalConnected: true,
       writer: "external",
-      mode: "observe",
+      workMode: "guided",
+      access: "read-only",
     });
     expect(useCollabStore.getState().externalConnected).toBe(true);
     expect(useCollabStore.getState().writer).toBe("external");
-    expect(useCollabStore.getState().mode).toBe("observe");
+    expect(useCollabStore.getState().workMode).toBe("guided");
+    expect(useCollabStore.getState().access).toBe("read-only");
 
     emit({ type: "action", action: "edit.apply" });
     expect(useCollabStore.getState().currentAction).toBe("edit.apply");
@@ -114,5 +121,26 @@ describe("collab-store (ADR 0004 Decisions 6+7)", () => {
     off();
     emit({ type: "action", action: "job.status" });
     expect(useCollabStore.getState().currentAction).toBeNull();
+  });
+
+  it("switches work mode without touching floating geometry or conversation display", async () => {
+    mockDesktop();
+    useUIStore.getState().setPanelGeometry("externalAgent", {
+      x: 48,
+      y: 72,
+      width: 520,
+      height: 640,
+    });
+    const conversation = useExternalConversationStore.getState().state;
+
+    await useCollabStore.getState().setWorkMode("guided");
+
+    expect(useUIStore.getState().panels.externalAgent).toMatchObject({
+      x: 48,
+      y: 72,
+      width: 520,
+      height: 640,
+    });
+    expect(useExternalConversationStore.getState().state).toBe(conversation);
   });
 });

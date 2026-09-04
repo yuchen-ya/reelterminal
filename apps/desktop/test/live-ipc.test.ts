@@ -38,7 +38,7 @@ const stubHost = {
   enable: vi.fn(),
   disable: vi.fn(),
   getStatus: vi.fn(),
-  setMode: vi.fn(),
+  setWorkMode: vi.fn(),
 } as unknown as LiveSessionHost;
 
 describe("collabOpenWorkspace IPC", () => {
@@ -46,6 +46,7 @@ describe("collabOpenWorkspace IPC", () => {
     videosDir = mkdtempSync(path.join(tmpdir(), "orel-videos-"));
     handlers.clear();
     openPath.mockClear();
+    vi.mocked(stubHost.setWorkMode).mockClear();
     registerLiveIpc(stubHost);
   });
 
@@ -73,5 +74,19 @@ describe("collabOpenWorkspace IPC", () => {
       /main editor window/,
     );
     expect(openPath).not.toHaveBeenCalled();
+  });
+
+  it("routes the formal work-mode vocabulary to the live host", async () => {
+    const handler = handlers.get(CHANNELS.collabSetMode)!;
+    await handler({ sender: fakeSender }, { mode: "guided" });
+    expect(stubHost.setWorkMode).toHaveBeenCalledWith("guided");
+  });
+
+  it("rejects the legacy Observe mode at the IPC boundary", async () => {
+    const handler = handlers.get(CHANNELS.collabSetMode)!;
+    await expect(
+      handler({ sender: fakeSender }, { mode: "observe" }),
+    ).rejects.toThrow();
+    expect(stubHost.setWorkMode).not.toHaveBeenCalled();
   });
 });

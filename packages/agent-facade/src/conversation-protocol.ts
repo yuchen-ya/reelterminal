@@ -15,6 +15,10 @@
  * that speaks another protocol use the MCP-only fallback without ReelTerminal
  * inventing a local conversation.
  */
+import type {
+  AgentWorkMode,
+  AgentWorkModeSemantics,
+} from "./work-mode";
 
 export const EXTERNAL_CONVERSATION_METHODS = {
   initialize: "initialize",
@@ -23,6 +27,7 @@ export const EXTERNAL_CONVERSATION_METHODS = {
   cancel: "session/cancel",
   approval: "session/approval",
   close: "session/close",
+  workMode: "openreel/work_mode",
 } as const;
 
 export type ExternalConversationMethod =
@@ -47,6 +52,12 @@ export interface ExternalAgentPairing {
 export interface ExternalAgentClientInfo {
   readonly name: string;
   readonly version: string;
+}
+
+/** Explicit client context supplied at attach time and with every prompt. */
+export interface ExternalAgentWorkModeContext {
+  readonly workMode: AgentWorkMode;
+  readonly semantics: AgentWorkModeSemantics;
 }
 
 /**
@@ -106,6 +117,7 @@ export interface ExternalAgentInitializeParams {
     readonly sessionUpdate?: boolean;
     readonly conversation?: ExternalAgentConversationCapabilities;
   };
+  readonly clientContext?: ExternalAgentWorkModeContext;
 }
 
 export interface ExternalAgentInfo {
@@ -130,6 +142,7 @@ export interface ExternalAgentInitializeResult {
 
 export interface ExternalAgentResumeParams {
   readonly sessionId: string;
+  readonly clientContext?: ExternalAgentWorkModeContext;
 }
 
 export type ExternalAgentContent = {
@@ -140,6 +153,12 @@ export type ExternalAgentContent = {
 export interface ExternalAgentPromptParams {
   readonly sessionId: string;
   readonly prompt: readonly ExternalAgentContent[];
+  readonly clientContext?: ExternalAgentWorkModeContext;
+}
+
+export interface ExternalAgentWorkModeParams {
+  readonly sessionId: string;
+  readonly clientContext: ExternalAgentWorkModeContext;
 }
 
 /** Optional direct response to `session/prompt`; streamed agents may omit it. */

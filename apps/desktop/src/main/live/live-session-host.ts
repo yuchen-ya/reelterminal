@@ -28,7 +28,9 @@ import {
   type FacadeVerb,
   type LiveAgentFacade,
   type LiveFacadeConfig,
-  type LiveSessionMode,
+  type AgentWorkMode,
+  DEFAULT_AGENT_ACCESS_MODE,
+  DEFAULT_AGENT_WORK_MODE,
 } from "@openreel/agent-facade";
 import type {
   ArtifactVerifier,
@@ -44,6 +46,7 @@ import {
   startLiveEndpointServer,
   type RunningLiveEndpoint,
 } from "./live-endpoint-server";
+import type { AgentModePreferenceStore } from "./work-mode-preference";
 
 export const LIVE_SESSION_IDS = {
   external: "external",
@@ -81,13 +84,15 @@ export interface LiveSessionHostDeps {
   readonly port?: number;
   /** Endpoint file override; defaults to ~/.openreel/live-endpoint.json. */
   readonly endpointFilePath?: string;
+  /** Persisted main-process source of truth shared with conversation transport. */
+  readonly modePreferenceStore?: AgentModePreferenceStore;
 }
 
 export interface LiveSessionHost {
   enable(): Promise<LiveCollabStatus>;
   disable(): Promise<LiveCollabStatus>;
   getStatus(): Promise<LiveCollabStatus>;
-  setMode(mode: LiveSessionMode): Promise<LiveCollabStatus>;
+  setWorkMode(mode: AgentWorkMode): Promise<LiveCollabStatus>;
   /** External endpoint → facade (lazy-creates the external session). */
   callExternal(verb: FacadeVerb, params: unknown): Promise<FacadeResult<unknown>>;
   readonly isEnabled: boolean;
@@ -134,7 +139,18 @@ export function createLiveSessionHost(
   let endpoint: RunningLiveEndpoint | null = null;
   let externalSession: LiveAgentFacade | null = null;
   let externalConnected = false;
-  let mode: LiveSessionMode = "assist";
+  let fallbackPreference = {
+    workMode: DEFAULT_AGENT_WORK_MODE,
+    access: DEFAULT_AGENT_ACCESS_MODE,
+  } as const;
+  const modePreferenceStore: AgentModePreferenceStore =
+    deps.modePreferenceStore ?? {
+      get: () => ({ ...fallbackPreference }),
+      set: (preference) => {
+        fallbackPreference = { ...preference };
+      },
+      subscribe: () => () => undefined,
+    };
   /** Verbs currently in flight on the external agent lane. */
   const inFlight: string[] = [];
 
@@ -156,7 +172,8 @@ export function createLiveSessionHost(
       enabled,
       externalConnected,
       writer: enabled ? await currentWriter() : null,
-      mode,
+      workMode: modePreferenceStore.get().workMode,
+      access: modePreferenceStore.get().access,
       currentAction: action,
     };
   };
@@ -192,10 +209,11 @@ export function createLiveSessionHost(
         : {}),
       lease,
       sessionId: LIVE_SESSION_IDS.external,
-      // Mode is bound to the external session. The in-app conversation view,
-      // when present, observes this same session and cannot create a second
-      // inference or writer lane.
-      mode,
+      // Work mode is read dynamically from the shared persisted source, so
+      // switching it never remounts this facade or the conversation view.
+      workMode: () => modePreferenceStore.get().workMode,
+      // Access remains an independent authorization boundary.
+      access: modePreferenceStore.get().access,
       artifactRoot: deps.artifactRoot,
     };
     return deps.createFacade(config);
@@ -345,19 +363,10 @@ export function createLiveSessionHost(
       return status();
     },
 
-    async setMode(nextMode: LiveSessionMode) {
-      if (nextMode === mode) return status();
-      mode = nextMode;
-      // Decision 7: the mode is enforced at the facade session boundary, so
-      // the external session is re-created to bind the new mode — lease
-      // re-acquisition follows facade semantics (dispose releases it; the
-      // new session acquires when free).
-      if (externalSession) {
-        const previous = externalSession;
-        externalSession = null;
-        await disposeSession(previous);
-        if (enabled) externalSession = makeSession();
-      }
+    async setWorkMode(nextMode: AgentWorkMode) {
+      const current = modePreferenceStore.get();
+      if (nextMode === current.workMode) return status();
+      modePreferenceStore.set({ ...current, workMode: nextMode });
       pushStatus();
       return status();
     },

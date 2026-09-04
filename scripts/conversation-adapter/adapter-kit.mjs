@@ -19,6 +19,7 @@ const MAX_NAME_LENGTH = 256;
 const MAX_VERSION_LENGTH = 128;
 const MAX_DESCRIPTOR_LENGTH = 64 * 1024;
 const CAPABILITY_LEVELS = new Set(["basic", "streaming", "observable"]);
+const WORK_MODES = new Set(["guided", "collaborative", "autonomous"]);
 
 class RpcFault extends Error {
   constructor(code, message) {
@@ -98,6 +99,7 @@ function normalizeOptions(options) {
     "onPrompt",
     "onCancel",
     "onApproval",
+    "onWorkMode",
     "onUpdates",
   ]) {
     if (options[name] !== undefined && typeof options[name] !== "function") {
@@ -114,6 +116,7 @@ function normalizeOptions(options) {
     onPrompt: options.onPrompt,
     onCancel: options.onCancel,
     onApproval: options.onApproval,
+    onWorkMode: options.onWorkMode,
     onUpdates: options.onUpdates,
   };
 }
@@ -231,6 +234,23 @@ function validateApprovalParams(params, sessionId) {
   return params;
 }
 
+function validateWorkModeParams(params, sessionId) {
+  requireConversationParams(params, sessionId);
+  const context = params.clientContext;
+  if (
+    !isRecord(context) ||
+    !WORK_MODES.has(context.workMode) ||
+    !isRecord(context.semantics) ||
+    context.semantics.id !== context.workMode ||
+    typeof context.semantics.label !== "string" ||
+    typeof context.semantics.summary !== "string" ||
+    context.semantics.deliveryRequiresExplicitAuthorization !== true
+  ) {
+    throw new RpcFault(-32602, "Invalid params");
+  }
+  return params;
+}
+
 function validateUpdateParams(params, sessionId) {
   requireConversationParams(params, sessionId);
   if (params.after !== undefined && !isCursor(params.after)) {
@@ -284,6 +304,10 @@ async function dispatch(request, options) {
       if (!options.onApproval) throw new RpcFault(-32601, "Method not found");
       const params = validateApprovalParams(requireParams(request), options.sessionId);
       return invokeHook(options.onApproval, params, () => ({}));
+    }
+    case "openreel/work_mode": {
+      const params = validateWorkModeParams(requireParams(request), options.sessionId);
+      return invokeHook(options.onWorkMode, params, () => ({}));
     }
     case "openreel/session/updates": {
       const params = validateUpdateParams(requireParams(request), options.sessionId);

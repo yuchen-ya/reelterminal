@@ -1,7 +1,7 @@
 # ADR 0004: Live Human–Agent Collaboration — Slice 3
 
 - Status: **Accepted** (r1, 2026-09-01); Decision 8 superseded by ADR 0005
-  (2026-09-02)
+  (2026-09-02), Decision 7 superseded by ADR 0006 (2026-09-04)
 - Date: 2026-09-01
 - Branch: `feat/live-collaboration-slice-3` (stacked on `feat/agent-transport-slice-2`, PR #5)
 - Context: ADR 0001 (headless facade), ADR 0002 (Chromium runtime), ADR 0003
@@ -166,6 +166,10 @@ The human never acquires the lease and can always edit; revision CAS
 (Decision 3) is the concurrency guard, per the product rule "Human 始终可以操作".
 
 ### 7. Session modes: Observe / Assist / Autonomous; default Assist
+
+**Superseded by ADR 0006 on 2026-09-04.** The combined mode below is retained
+as decision history. Current implementations separate Guided / Collaborative /
+Autonomous work preference from read-only / write access.
 
 Each AI session is created with a mode:
 
