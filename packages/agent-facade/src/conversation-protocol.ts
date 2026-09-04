@@ -463,8 +463,9 @@ export function normalizeExternalConversationCapabilities(
 ): ExternalConversationCapabilitySupport {
   const capabilities = isRecord(value) ? value : {};
   return {
-    // Formal replies are the base tier. Omitted legacy declarations retain it.
-    formalReply: normalizeCapability(capabilities.formalReply, "supported"),
+    // Formal replies are the base tier and must be declared explicitly during
+    // v1 negotiation; omission is unknown, never silently upgraded.
+    formalReply: normalizeCapability(capabilities.formalReply),
     streaming: normalizeCapability(capabilities.streaming),
     reasoningSummary: normalizeCapability(capabilities.reasoningSummary),
     toolEvents: normalizeCapability(capabilities.toolEvents),

@@ -30,6 +30,12 @@ class FakeTransport implements ExternalAgentTransport {
   initializeResponse: unknown = {
     protocolVersion: 1,
     agentInfo: { name: "External Test Agent", version: "9.0.0" },
+    sessionCapabilities: {
+      resume: true,
+      prompt: true,
+      cancel: true,
+      conversation: { formalReply: true },
+    },
   };
   resumeResponse: unknown = {};
   promptResponse: unknown = { messageId: "agent-message-1" };
@@ -258,6 +264,81 @@ describe("ExternalConversationBridge", () => {
     expect(JSON.stringify(updateEvents)).not.toContain("stale replay");
   });
 
+  it("delivers cancel and work-mode notifications while a prompt is still in flight", async () => {
+    const transport = new FakeTransport();
+    let finishPrompt!: (value: unknown) => void;
+    transport.promptResponse = new Promise((resolve) => {
+      finishPrompt = resolve;
+    });
+    let workMode: "guided" | "collaborative" = "guided";
+    const bridge = new ExternalConversationBridge({
+      connector: connectorFor(transport),
+      getWorkMode: () => workMode,
+    });
+    await bridge.connect({ sessionId: "agent-session-cancellable" });
+
+    const pendingPrompt = bridge.prompt("Keep working until cancelled");
+    await vi.waitFor(() => {
+      expect(transport.requests.at(-1)?.method).toBe("session/prompt");
+    });
+
+    await bridge.cancel();
+    workMode = "collaborative";
+    await bridge.updateWorkMode();
+    expect(transport.notifications).toEqual([
+      {
+        method: "session/cancel",
+        params: { sessionId: "agent-session-cancellable" },
+      },
+      expect.objectContaining({
+        method: "openreel/work_mode",
+        params: expect.objectContaining({
+          sessionId: "agent-session-cancellable",
+          clientContext: expect.objectContaining({ workMode: "collaborative" }),
+        }),
+      }),
+    ]);
+    await expect(bridge.prompt("second prompt")).rejects.toMatchObject({
+      code: "INVALID_STATE",
+    });
+
+    finishPrompt({ messageId: "after-cancel" });
+    await expect(pendingPrompt).resolves.toEqual({
+      sessionId: "agent-session-cancellable",
+      messageId: "after-cancel",
+    });
+  });
+
+  it("discards a prompt completion from an earlier attachment generation", async () => {
+    const transport = new FakeTransport();
+    let finishPrompt!: (value: unknown) => void;
+    transport.promptResponse = new Promise((resolve) => {
+      finishPrompt = resolve;
+    });
+    const bridge = new ExternalConversationBridge({
+      connector: connectorFor(transport),
+    });
+    await bridge.connect({ sessionId: "old-session" });
+    const oldPrompt = bridge.prompt("Old attachment turn");
+    await vi.waitFor(() => {
+      expect(transport.requests.at(-1)?.method).toBe("session/prompt");
+    });
+
+    await bridge.disconnect();
+    await bridge.connect({ sessionId: "new-session" });
+    finishPrompt({
+      messageId: "stale-message",
+      content: [{ type: "text", text: "must not cross generations" }],
+    });
+
+    await expect(oldPrompt).rejects.toMatchObject({ code: "INVALID_STATE" });
+    expect(bridge.getDisplayState()).toMatchObject({
+      lifecycle: "ready",
+      sessionId: "new-session",
+      updates: [],
+    });
+  });
+
   it("reports the current work mode on attach, change notification, and the next prompt", async () => {
     const transport = new FakeTransport();
     let workMode: "guided" | "collaborative" | "autonomous" = "guided";
@@ -443,6 +524,9 @@ describe("ExternalConversationBridge", () => {
     transport.initializeResponse = {
       protocolVersion: 1,
       sessionCapabilities: {
+        resume: true,
+        prompt: true,
+        cancel: true,
         conversation: {
           formalReply: true,
           streaming: false,
@@ -539,6 +623,49 @@ describe("ExternalConversationBridge", () => {
     expect(JSON.stringify(bridge.getDisplayState())).not.toContain("foreign");
     expect(JSON.stringify(bridge.getDisplayState())).not.toContain("one");
     expect(JSON.stringify(bridge.getDisplayState())).toContain("three");
+  });
+
+  it("rejects an adapter that does not explicitly advertise the basic tier", async () => {
+    const transport = new FakeTransport();
+    transport.initializeResponse = {
+      protocolVersion: 1,
+      sessionCapabilities: {},
+    };
+    const bridge = new ExternalConversationBridge({
+      connector: connectorFor(transport),
+    });
+
+    const state = await bridge.connect({ sessionId: "agent-session-implicit" });
+    expect(state).toMatchObject({
+      lifecycle: "unsupported",
+      fallback: "mcp-only",
+      lastError: { code: "UNSUPPORTED" },
+    });
+    expect(transport.requests.map((request) => request.method)).not.toContain(
+      "session/resume",
+    );
+  });
+
+  it("does not infer formal replies from the three basic method booleans", async () => {
+    const transport = new FakeTransport();
+    transport.initializeResponse = {
+      protocolVersion: 1,
+      sessionCapabilities: {
+        resume: true,
+        prompt: true,
+        cancel: true,
+      },
+    };
+    const bridge = new ExternalConversationBridge({
+      connector: connectorFor(transport),
+    });
+
+    const state = await bridge.connect({ sessionId: "agent-session-no-reply" });
+    expect(state).toMatchObject({
+      lifecycle: "unsupported",
+      fallback: "mcp-only",
+      capabilities: { formalReply: "unknown" },
+    });
   });
 
   it("falls back to native MCP-only use when ACP resume is unsupported and releases the lease", async () => {

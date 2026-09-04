@@ -94,11 +94,33 @@ The desktop app creates the recommended `ReelTerminal Agent Workspace`
 automatically; the older `ReelTerminal Agent Imports` path remains readable for
 compatibility only.
 
-## Current limit
+## Attach a Codex conversation
 
-The ReelTerminal-side conversation client is a protocol foundation only and is not
-yet attached to a real external session transport. For now, converse in your
-Agent's native window. ReelTerminal will not fall back to an embedded model.
+The repository ships a reference adapter for the signed-in local Codex CLI. It
+uses Codex App Server for the Agent-owned thread and the live MCP connector for
+editor operations; ReelTerminal remains a view and never owns the model,
+credentials, or history.
+
+After building the desktop main process, opening a project, and enabling
+**Agent Session**, start either a new Codex thread:
+
+```sh
+node scripts/conversation-adapter/codex-adapter.mjs \
+  --new-thread \
+  --cwd /absolute/path/to/agent-video-engine-lab
+```
+
+or resume one with `--thread-id <codex-thread-id>`. Then open the external
+Agent panel and choose **Connect external Agent**. Stop the adapter with
+Ctrl+C; it removes only its private conversation descriptor.
+
+The adapter preapproves the dedicated `openreel_live` MCP server because the
+user already enabled Agent Session in the ReelTerminal GUI. The live facade
+continues to enforce access level, work-mode context, the one-writer lease,
+revision checks, and shared undo. Codex command and file-change requests remain
+explicit approval events in the conversation panel. See the
+[`scripts/conversation-adapter` guide](../scripts/conversation-adapter/README.md)
+for setup and acceptance tests.
 
 For deterministic headless workflows without a GUI, the optional
 `agent-video serve/run` facade transport remains documented in

@@ -58,6 +58,9 @@ conversation descriptor.
 - `external-conversation.e2e.ts` — reference adapter → built Electron app;
   prompt forwarding, chronological safe work log, approval round-trip, and
   raw tool-payload exclusion.
+- `codex-conversation.e2e.ts` — opt-in, real Codex App Server → shipped
+  adapter → live MCP → built Electron app; autonomous text-overlay edit,
+  exact one-revision commit, and real GUI undo/redo.
 - `work-modes.e2e.ts` — default Collaborative and Chinese Guided /
   Collaborative / Autonomous UI; switching while disabled; live MCP and
   conversation-context synchronization; floating-window/draft continuity;
@@ -70,6 +73,15 @@ uploaded in CI with `if-no-files-found: error`): one JSON document per spec
 (requests, revisions, conflict codes, pixel stats, security probes) plus PNG
 screenshots and the rendered frame under test.
 
+The real Codex spec is skipped by default because it uses the host's signed-in
+Codex account and a live model turn. Run it explicitly after the desktop build:
+
+```sh
+OPENREEL_REAL_CODEX_E2E=1 \
+  pnpm --filter @openreel/desktop exec vitest run \
+  --config e2e/vitest.config.ts e2e/codex-conversation.e2e.ts
+```
+
 ## Known product gaps found by this suite (see the delivery report)
 
 - **G-01 (RESOLVED)** — desktop undo/redo existed only as a native NSMenu
@@ -80,7 +92,6 @@ screenshots and the rendered frame under test.
   now runs and passes.
 - **G-03 (low)** — `disable()` blocks for seconds while the endpoint's
   `server.close()` drains any HTTP keep-alive socket.
-- **G-04 (high, ADR 0004 errata — status-event sequencing)** — collab
-  status pushes race: stale `enabled:true` status events can arrive after a
-  disable ack and leave the UI claiming the session is on. Recorded as
-  evidence (inherently racy); the deterministic contract is asserted.
+- **G-04 (RESOLVED)** — main owns a monotonic status-snapshot sequence shared
+  by pushes and control replies; the renderer rejects older snapshots. The
+  cross-cutting flow now asserts UI and endpoint both report disabled.

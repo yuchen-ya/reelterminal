@@ -89,6 +89,21 @@ describe("ExternalAgentPanel", () => {
     expect(composer).toHaveValue("");
   });
 
+  it("keeps cancel available before the first streaming update arrives", () => {
+    const onCancel = vi.fn();
+    render(
+      <ExternalAgentPanel
+        connection={{ state: "connected", agentName: "Remote editor" }}
+        capabilities={{ basic: true, streaming: true, full: true }}
+        sending
+        onCancel={onCancel}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
   it("offers a view-only disconnect without closing the panel", () => {
     const onDisconnect = vi.fn();
     const onClose = vi.fn();

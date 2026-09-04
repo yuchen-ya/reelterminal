@@ -870,6 +870,7 @@ export function ExternalAgentPanel({
   const canCancel = Boolean(
     onCancel &&
       (connection.state === "connecting" ||
+        sending ||
         hasStreamingMessage ||
         hasRunningTool ||
         hasRunningActivity),

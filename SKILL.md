@@ -208,11 +208,13 @@ truly disposable process scratch). Do not delete another job, `source/`,
 `shared/`, or a delivered `output/` unless the user explicitly asks. Full
 rules and headless root mapping: [`docs/AGENT-WORKSPACE.md`](docs/AGENT-WORKSPACE.md).
 
-The desktop conversation panel and loopback client transport are landed. Each
-external Agent/host still runs and configures its thin server-side adapter at
-`/conversation`, atomically writes the private
+The desktop conversation panel and loopback client transport are landed. The
+repository includes a Codex App Server reference adapter at
+`scripts/conversation-adapter/codex-adapter.mjs`. Other external Agent hosts
+run and configure their thin server-side adapter at `/conversation`,
+atomically write the private
 `~/.openreel/conversation-endpoint.json` descriptor with mode `0600`, and
-removes it on exit; ReelTerminal only reads that descriptor. There is no universal
+remove it on exit; ReelTerminal only reads that descriptor. There is no universal
 provider connector and no embedded model. MCP tool access through the live
 facade remains a separate 17-tool integration and must not be confused with
 the conversation transport.

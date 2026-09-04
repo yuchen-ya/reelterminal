@@ -199,7 +199,10 @@ export class ExternalConversationBridge {
     normalizeExternalConversationCapabilities(undefined);
   private lastRemoteSequence: number | null = null;
   private releaseNotified = false;
+  private attachmentGeneration = 0;
   private listeners = new Set<(event: ExternalConversationEvent) => void>();
+  /** Lifecycle mutations serialize; the active turn stays cancellable out-of-band. */
+  private promptInFlight: Promise<ExternalConversationPromptReceipt> | null = null;
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(options: ExternalConversationBridgeOptions) {
@@ -250,6 +253,7 @@ export class ExternalConversationBridge {
       }
 
       const sessionId = validatePairing(pairing);
+      this.attachmentGeneration += 1;
       const connectionId = this.makeConnectionId();
       if (!connectionId.trim()) {
         throw new ExternalConversationBridgeError(
@@ -341,16 +345,16 @@ export class ExternalConversationBridge {
           capabilities: this.capabilitiesValue,
         });
 
-        if (initialize.sessionCapabilities?.resume === false) {
+        if (initialize.sessionCapabilities?.resume !== true) {
           throw new ExternalConversationBridgeError(
             "UNSUPPORTED",
             "The external agent does not support resuming an existing session",
           );
         }
         if (
-          initialize.sessionCapabilities?.prompt === false ||
-          initialize.sessionCapabilities?.cancel === false ||
-          this.capabilitiesValue.formalReply === "unsupported"
+          initialize.sessionCapabilities?.prompt !== true ||
+          initialize.sessionCapabilities?.cancel !== true ||
+          this.capabilitiesValue.formalReply !== "supported"
         ) {
           throw new ExternalConversationBridgeError(
             "UNSUPPORTED",
@@ -396,86 +400,134 @@ export class ExternalConversationBridge {
   async prompt(
     content: string | readonly ExternalAgentContent[],
   ): Promise<ExternalConversationPromptReceipt> {
-    return this.enqueue(async () => {
-      const transport = this.requireReady();
-      const sessionId = this.requireSessionId();
-      const prompt: readonly ExternalAgentContent[] =
-        typeof content === "string" ? [{ type: "text", text: content }] : [...content];
-      if (
-        prompt.length === 0 ||
-        prompt.some((part) => part.type !== "text" || !part.text.trim())
-      ) {
+    if (this.promptInFlight) {
+      throw new ExternalConversationBridgeError(
+        "INVALID_STATE",
+        "An external Agent prompt is already in flight",
+      );
+    }
+    const transport = this.requireReady();
+    const sessionId = this.requireSessionId();
+    const attachment = {
+      generation: this.attachmentGeneration,
+      transport,
+      sessionId,
+      connectionId: this.connectionIdValue,
+    };
+    const operation = this.performPrompt(content, attachment);
+    this.promptInFlight = operation;
+    try {
+      return await operation;
+    } finally {
+      if (this.promptInFlight === operation) this.promptInFlight = null;
+    }
+  }
+
+  private async performPrompt(
+    content: string | readonly ExternalAgentContent[],
+    attachment: {
+      readonly generation: number;
+      readonly transport: ExternalAgentTransport;
+      readonly sessionId: string;
+      readonly connectionId: string | null;
+    },
+  ): Promise<ExternalConversationPromptReceipt> {
+    const { transport, sessionId } = attachment;
+    const prompt: readonly ExternalAgentContent[] =
+      typeof content === "string" ? [{ type: "text", text: content }] : [...content];
+    if (
+      prompt.length === 0 ||
+      prompt.some((part) => part.type !== "text" || !part.text.trim())
+    ) {
+      throw new ExternalConversationBridgeError(
+        "INVALID_PAIRING",
+        "A non-empty text prompt is required",
+      );
+    }
+    // Deliberately emit no prompt text. The external agent is the history
+    // authority and may echo it as a user_message session update.
+    this.emitPrompt("submitted");
+    try {
+      const raw = await transport.request(
+        EXTERNAL_CONVERSATION_METHODS.prompt,
+        { sessionId, prompt, clientContext: this.workModeContext() },
+      );
+      if (!this.isCurrentAttachment(attachment)) {
         throw new ExternalConversationBridgeError(
-          "INVALID_PAIRING",
-          "A non-empty text prompt is required",
+          "INVALID_STATE",
+          "The prompt completed after its conversation attachment changed",
         );
       }
-      // Deliberately emit no prompt text. The external agent is the history
-      // authority and may echo it as a user_message session update.
-      this.emitPrompt("submitted");
-      try {
-        const raw = await transport.request(
-          EXTERNAL_CONVERSATION_METHODS.prompt,
-          { sessionId, prompt, clientContext: this.workModeContext() },
-        );
-        const result = unwrapResult<unknown>(raw);
-        this.emitPrompt("accepted");
-        const projected = projectExternalAgentPromptResult(result);
-        if (!projected) {
-          throw new ExternalConversationBridgeError(
-            "INVALID_RESPONSE",
-            "The external agent returned an invalid prompt response",
-          );
-        }
-        if (projected.content && this.capabilitiesAllow("agent_message")) {
-          this.emitSessionUpdate({
-            sessionUpdate: "agent_message",
-            ...(projected.messageId ? { messageId: projected.messageId } : {}),
-            content: projected.content,
-          });
-        }
-        const messageId = projected.messageId;
-        return { sessionId, ...(messageId ? { messageId } : {}) };
-      } catch (error) {
-        const unsupported = isUnsupportedError(error);
-        if (unsupported) {
-          await this.failUnsupported("session/prompt is not supported by the external agent");
-        }
-        const code: ExternalConversationErrorCode = unsupported
-          ? "UNSUPPORTED"
-          : error instanceof ExternalConversationBridgeError
-            ? error.code
-            : "TRANSPORT";
+      const result = unwrapResult<unknown>(raw);
+      this.emitPrompt("accepted");
+      const projected = projectExternalAgentPromptResult(result);
+      if (!projected) {
         throw new ExternalConversationBridgeError(
-          code,
-          asErrorMessage(error),
+          "INVALID_RESPONSE",
+          "The external agent returned an invalid prompt response",
         );
       }
-    });
+      if (projected.content && this.capabilitiesAllow("agent_message")) {
+        this.emitSessionUpdate({
+          sessionUpdate: "agent_message",
+          ...(projected.messageId ? { messageId: projected.messageId } : {}),
+          content: projected.content,
+        });
+      }
+      const messageId = projected.messageId;
+      return { sessionId, ...(messageId ? { messageId } : {}) };
+    } catch (error) {
+      if (!this.isCurrentAttachment(attachment)) {
+        throw new ExternalConversationBridgeError(
+          "INVALID_STATE",
+          "The prompt was cancelled because its conversation attachment changed",
+        );
+      }
+      const unsupported = isUnsupportedError(error);
+      if (unsupported) {
+        await this.failUnsupported("session/prompt is not supported by the external agent");
+      }
+      const code: ExternalConversationErrorCode = unsupported
+        ? "UNSUPPORTED"
+        : error instanceof ExternalConversationBridgeError
+          ? error.code
+          : "TRANSPORT";
+      throw new ExternalConversationBridgeError(code, asErrorMessage(error));
+    }
+  }
+
+  private isCurrentAttachment(attachment: {
+    readonly generation: number;
+    readonly transport: ExternalAgentTransport;
+    readonly sessionId: string;
+    readonly connectionId: string | null;
+  }): boolean {
+    return (
+      attachment.generation === this.attachmentGeneration &&
+      attachment.transport === this.transport &&
+      attachment.sessionId === this.sessionIdValue &&
+      attachment.connectionId === this.connectionIdValue
+    );
   }
 
   /** Notify an attached Agent immediately; prompt payloads also carry the mode. */
   async updateWorkMode(): Promise<void> {
-    return this.enqueue(async () => {
-      if (this.state.lifecycle !== "ready" || !this.transport) return;
-      await this.transport.notify(EXTERNAL_CONVERSATION_METHODS.workMode, {
-        sessionId: this.requireSessionId(),
-        clientContext: this.workModeContext(),
-      });
+    if (this.state.lifecycle !== "ready" || !this.transport) return;
+    await this.transport.notify(EXTERNAL_CONVERSATION_METHODS.workMode, {
+      sessionId: this.requireSessionId(),
+      clientContext: this.workModeContext(),
     });
   }
 
   async cancel(): Promise<void> {
-    return this.enqueue(async () => {
-      const transport = this.requireReady();
-      const sessionId = this.requireSessionId();
-      try {
-        await transport.notify(EXTERNAL_CONVERSATION_METHODS.cancel, { sessionId });
-        this.emitPrompt("cancel_requested");
-      } catch (error) {
-        throw new ExternalConversationBridgeError("TRANSPORT", asErrorMessage(error));
-      }
-    });
+    const transport = this.requireReady();
+    const sessionId = this.requireSessionId();
+    try {
+      await transport.notify(EXTERNAL_CONVERSATION_METHODS.cancel, { sessionId });
+      this.emitPrompt("cancel_requested");
+    } catch (error) {
+      throw new ExternalConversationBridgeError("TRANSPORT", asErrorMessage(error));
+    }
   }
 
   /** Resolve an agent-owned approval request without creating local history. */
@@ -546,6 +598,7 @@ export class ExternalConversationBridge {
       ) {
         return;
       }
+      this.attachmentGeneration += 1;
       this.emitLifecycle("disconnecting");
       await this.releaseTransport(this.transport);
       await this.releaseAttachment(reason);
@@ -649,6 +702,7 @@ export class ExternalConversationBridge {
   ): Promise<void> {
     await this.enqueue(async () => {
       if (transport !== this.transport) return;
+      this.attachmentGeneration += 1;
       const reason: ExternalConversationDisconnectReason = "transport_closed";
       await this.releaseTransport(transport, false);
       await this.releaseAttachment(reason);
@@ -667,6 +721,7 @@ export class ExternalConversationBridge {
   }
 
   private async failUnsupported(message: string): Promise<void> {
+    this.attachmentGeneration += 1;
     await this.releaseTransport(this.transport);
     await this.releaseAttachment("protocol_error");
     this.connectionIdValue = null;

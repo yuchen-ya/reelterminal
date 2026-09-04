@@ -52,13 +52,24 @@ export function createConversationHost(deps: ConversationHostDeps): Conversation
   let unsubscribe: (() => void) | null = null;
   let adapter = missingAdapter();
   let queue: Promise<unknown> = Promise.resolve();
+  let emitScheduled = false;
+  let snapshotSequence = 0;
 
   const snapshot = (): DesktopConversationState => ({
+    sequence: ++snapshotSequence,
     adapter: { ...adapter },
     conversation: bridge?.getDisplayState() ?? createConversationDisplayState(),
   });
 
   const emit = (): void => deps.emitEvent({ type: "state", state: snapshot() });
+  const scheduleEmit = (): void => {
+    if (emitScheduled) return;
+    emitScheduled = true;
+    queueMicrotask(() => {
+      emitScheduled = false;
+      emit();
+    });
+  };
 
   const inspectAdapter = async (): Promise<ConversationEndpointDescriptor> => {
     try {
@@ -120,7 +131,10 @@ export function createConversationHost(deps: ConversationHostDeps): Conversation
           getWorkMode: deps.getWorkMode,
         });
         bridge = next;
-        unsubscribe = next.subscribe(() => emit());
+        // A transport poll may project many chunks synchronously. Coalesce
+        // that burst into one detached IPC snapshot instead of cloning and
+        // sending the full bounded state once per chunk.
+        unsubscribe = next.subscribe(scheduleEmit);
         try {
           await next.connect({
             sessionId: descriptor.sessionId,
@@ -136,15 +150,16 @@ export function createConversationHost(deps: ConversationHostDeps): Conversation
     },
 
     async prompt(text: string) {
-      return enqueue(async () => {
-        const value = text.trim();
-        if (!value) throw new Error("A non-empty message is required");
-        if (value.length > 32_000) throw new Error("Message is too long");
-        if (!bridge) throw new Error("No external Agent conversation is attached");
-        await bridge.prompt(value);
-        emit();
-        return snapshot();
-      });
+      const value = text.trim();
+      if (!value) throw new Error("A non-empty message is required");
+      if (value.length > 32_000) throw new Error("Message is too long");
+      const current = bridge;
+      if (!current) throw new Error("No external Agent conversation is attached");
+      // The active turn deliberately does not occupy the lifecycle queue:
+      // cancel, detach, and work-mode notifications must remain responsive.
+      await current.prompt(value);
+      emit();
+      return snapshot();
     },
 
     async resolveApproval(requestId, decision) {
@@ -157,12 +172,11 @@ export function createConversationHost(deps: ConversationHostDeps): Conversation
     },
 
     async cancel() {
-      return enqueue(async () => {
-        if (!bridge) throw new Error("No external Agent conversation is attached");
-        await bridge.cancel();
-        emit();
-        return snapshot();
-      });
+      const current = bridge;
+      if (!current) throw new Error("No external Agent conversation is attached");
+      await current.cancel();
+      emit();
+      return snapshot();
     },
 
     async detach() {
@@ -174,9 +188,7 @@ export function createConversationHost(deps: ConversationHostDeps): Conversation
     },
 
     async workModeChanged() {
-      return enqueue(async () => {
-        await bridge?.updateWorkMode();
-      });
+      await bridge?.updateWorkMode();
     },
 
     async dispose() {

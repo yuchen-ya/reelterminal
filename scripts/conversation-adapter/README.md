@@ -14,13 +14,16 @@ These fixtures are minimal, offline examples for the open protocol in
   lifecycle; an external Agent host supplies only session hooks;
 - `adapter-kit.test.mjs` — routing, redaction, and safe-cleanup coverage for
   the reference kit;
+- `codex-app-server-client.mjs` — bounded JSONL client for Codex App Server;
+- `codex-adapter.mjs` — production Codex provider adapter and CLI;
+- `codex-adapter.test.mjs` — safe projection, cancellation, and approval tests;
 - `validate.mjs` — dependency-free shape and safety conformance check.
 
 Run the default check from the repository root:
 
 ```sh
 node scripts/conversation-adapter/validate.mjs
-node --test scripts/conversation-adapter/adapter-kit.test.mjs
+pnpm test:adapters
 ```
 
 Pass custom fixture paths to validate other examples; a conformance run must
@@ -56,3 +59,43 @@ process.once("SIGTERM", () => void adapter.close());
 The host owns `existingAgentSession` and its history. The update hook returns
 only the safe event vocabulary documented above, never raw reasoning, tool
 arguments/results, paths, URLs, provider metadata, or credentials.
+
+## Codex
+
+The Codex reference adapter uses the local signed-in Codex CLI and its official
+[App Server](https://developers.openai.com/codex/app-server/) protocol. It
+creates or resumes a Codex-owned thread, injects the built ReelTerminal live
+MCP connector using Codex's documented
+[MCP configuration](https://developers.openai.com/codex/mcp/), and serves the
+provider-neutral ReelTerminal conversation protocol.
+
+First build the connector, open a desktop project, and enable **Agent Session**:
+
+```sh
+pnpm --filter @openreel/desktop build:main
+node scripts/conversation-adapter/codex-adapter.mjs \
+  --new-thread \
+  --cwd /absolute/path/to/agent-video-engine-lab
+```
+
+Use `--thread-id <id>` instead to resume an existing Codex thread. The adapter
+prints only safe readiness metadata. It atomically publishes the private
+conversation descriptor, removes it on exit, and never prints either endpoint
+token. ReelTerminal attaches through **Connect external Agent**.
+
+Agent Session enablement is the coarse-grained authorization for the dedicated
+`openreel_live` MCP server, which the adapter marks approved using Codex's
+[configuration policy](https://developers.openai.com/codex/config-reference/).
+The ReelTerminal facade still enforces its access level, work-mode context,
+single-writer lease, revision checks, and shared undo. Codex command and file
+changes remain explicit approval events.
+
+The real acceptance spec is opt-in because it launches Electron and consumes a
+live model turn from the signed-in Codex account:
+
+```sh
+pnpm --filter @openreel/desktop build
+OPENREEL_REAL_CODEX_E2E=1 \
+  pnpm --filter @openreel/desktop exec vitest run \
+  --config e2e/vitest.config.ts e2e/codex-conversation.e2e.ts
+```

@@ -103,7 +103,11 @@ metadata and are never used as local ordering authority.
 `prompt` emits only `submitted`/`accepted`/`cancel_requested` phases and the
 opaque ids. Prompt text is not copied into OpenReel state or events. A
 `user_message` update from the external agent is the source of truth for
-displaying an accepted user message. `session/cancel` is a notification.
+displaying an accepted user message. `session/cancel` is a notification sent
+out of band. Prompt execution does not occupy the lifecycle queue and has no
+arbitrary client wall-clock timeout; detach, transport failure, or attachment
+replacement aborts it and stale completions are discarded by attachment
+generation.
 
 The foundation's `sequence` is a local display-event sequence and its optional
 `remoteSequence` records what the Agent supplied. For the open wire adapter
@@ -159,7 +163,8 @@ The foundation lives in three provider-neutral files under
 - `conversation-protocol.ts` — ACP-style wire names, transport/connector
   interfaces, typed ownership/lifecycle/events, and narrow runtime guards;
 - `conversation-state.ts` — pure bounded display projection;
-- `conversation-bridge.ts` — serialized attach/prompt/cancel/detach service.
+- `conversation-bridge.ts` — serialized attachment lifecycle with one
+  cancellable prompt lane and out-of-band cancel/work-mode control.
 
 The transport is injected, so the landed loopback HTTP client remains
 provider/model independent and other carriers can be supplied by a host if
@@ -184,7 +189,7 @@ including:
 - attaching/resuming an existing opaque external session, never creating a
   local OpenReel conversation;
 - the separate conversation endpoint descriptor and its secret-handling
-  rules; the MCP endpoint descriptor remains an independent 15-tool facade;
+  rules; the MCP endpoint descriptor remains an independent 17-tool facade;
 - JSON-RPC request/response framing at `/conversation`,
   `openreel/session/updates` results shaped as `{cursor,notifications}`, and
   monotonic event sequences;

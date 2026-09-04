@@ -318,6 +318,16 @@ committed editor actions are rolled back. `session/approval` is required only
 when the negotiated level advertises approval events. The user decision is
 never inferred from a timeout or a missing capability.
 
+The adapter and client must keep `session/cancel` and `openreel/work_mode` on
+an out-of-band control path: neither may wait behind an unresolved
+`session/prompt` request. Only one prompt may be in flight for an attachment;
+a second prompt fails explicitly instead of being queued invisibly. This keeps
+mid-turn cancellation and collaboration-mode changes responsive even when an
+Agent returns from `session/prompt` only after the turn finishes. ReelTerminal
+does not impose the ordinary 30-second request timeout on `session/prompt`;
+transport close, fatal update polling, detach/replacement, and an explicit
+caller abort remain termination boundaries.
+
 ### 5.2 Long-poll updates
 
 The canonical event sequence uses `openreel/session/updates`, sent as a JSON-
@@ -626,3 +636,24 @@ publication, and safe cleanup; it never creates an Agent session, keeps a
 transcript, calls MCP, or chooses a provider/model.
 
 See `scripts/conversation-adapter/README.md` for a minimal integration.
+
+## 11. Codex reference adapter
+
+`scripts/conversation-adapter/codex-adapter.mjs` is the first production
+provider adapter. It speaks the official Codex App Server JSONL protocol,
+creates or resumes a Codex-owned thread, configures the built
+`openreel-live-mcp` connector for that thread, and publishes the ordinary
+private `/conversation` descriptor consumed by ReelTerminal.
+
+Only bounded display-safe events cross into the editor: user/Agent text,
+safe reasoning summaries, sanitized tool names and states, usage, plans, and
+approval state. Raw reasoning, command output, tool arguments/results, paths,
+URLs, provider metadata, and credentials are dropped. The adapter keeps
+cancel and work-mode updates on the protocol's out-of-band control lane.
+
+Enabling Agent Session in the GUI is the coarse authorization for the dedicated
+ReelTerminal MCP server, so the adapter configures that one server as approved.
+The facade still enforces its own access level, writer lease, context/revision
+CAS, idempotency, atomic batches, and shared undo. Codex command and file-change
+requests remain interactive approvals. Run and test instructions live in
+`scripts/conversation-adapter/README.md`.

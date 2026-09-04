@@ -194,20 +194,29 @@ export function descriptorSummary(
   };
 }
 
-function combineSignal(parent: AbortSignal | undefined, timeoutMs: number): {
+function combineSignals(
+  parents: readonly (AbortSignal | undefined)[],
+  timeoutMs: number | undefined,
+): {
   readonly signal: AbortSignal;
   readonly dispose: () => void;
 } {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  timeout.unref?.();
+  const timeout =
+    timeoutMs === undefined
+      ? null
+      : setTimeout(() => controller.abort(), timeoutMs);
+  timeout?.unref?.();
   const abort = (): void => controller.abort();
-  parent?.addEventListener("abort", abort, { once: true });
+  for (const parent of parents) {
+    if (parent?.aborted) controller.abort();
+    else parent?.addEventListener("abort", abort, { once: true });
+  }
   return {
     signal: controller.signal,
     dispose: () => {
-      clearTimeout(timeout);
-      parent?.removeEventListener("abort", abort);
+      if (timeout !== null) clearTimeout(timeout);
+      for (const parent of parents) parent?.removeEventListener("abort", abort);
     },
   };
 }
@@ -261,7 +270,10 @@ class LoopbackConversationTransport implements ExternalAgentTransport {
       method,
       params,
       options?.signal,
-      REQUEST_TIMEOUT_MS,
+      // A prompt is allowed to settle only when the remote turn completes.
+      // It remains bounded by explicit caller cancellation, detach, transport
+      // close, and fatal poll failure—not an arbitrary wall-clock deadline.
+      method === "session/prompt" ? undefined : REQUEST_TIMEOUT_MS,
     )) as T;
     if (method === "initialize") {
       this.initialized = true;
@@ -308,11 +320,14 @@ class LoopbackConversationTransport implements ExternalAgentTransport {
     method: string,
     params: unknown,
     parentSignal: AbortSignal | undefined,
-    timeoutMs: number,
+    timeoutMs: number | undefined,
     notification = false,
   ): Promise<unknown> {
     if (this.closed) throw new ConversationDescriptorError("Adapter connection is closed");
-    const abort = combineSignal(parentSignal, timeoutMs);
+    const abort = combineSignals(
+      [this.closeController.signal, parentSignal],
+      timeoutMs,
+    );
     try {
       const id = notification ? undefined : this.nextId++;
       const response = await fetch(this.descriptor.endpoint, {
@@ -374,8 +389,15 @@ class LoopbackConversationTransport implements ExternalAgentTransport {
         failures += 1;
         if (failures >= MAX_CONSECUTIVE_POLL_FAILURES) {
           this.closed = true;
+          // This is a transport-wide terminal transition. Abort every other
+          // request before notifying the bridge; releaseTransport(..., false)
+          // correctly assumes the transport has already closed itself.
+          this.closeController.abort();
           const displayError = new ConversationDescriptorError(safeMessage(error));
-          for (const listener of this.closeListeners) listener(displayError);
+          const closeListeners = [...this.closeListeners];
+          this.notificationListeners.clear();
+          this.closeListeners.clear();
+          for (const listener of closeListeners) listener(displayError);
           return;
         }
         await new Promise<void>((resolve) => {

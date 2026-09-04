@@ -5,6 +5,7 @@ type ConversationApi = NonNullable<NonNullable<Window["openreel"]>["conversation
 type ConversationState = Awaited<ReturnType<ConversationApi["getState"]>>;
 
 const unavailableState = (): ConversationState => ({
+  sequence: 0,
   adapter: {
     availability: "missing",
     agentLabel: null,
@@ -18,7 +19,12 @@ const unavailableState = (): ConversationState => ({
 
 interface ExternalConversationStoreState {
   state: ConversationState;
+  /** Attach/detach/approval/initialization lifecycle operation. */
   busy: boolean;
+  /** A prompt request is awaiting the external Agent. */
+  sending: boolean;
+  /** A cancel notification is being delivered out-of-band. */
+  cancelling: boolean;
   error: string | null;
   applyState(state: ConversationState): void;
   initialize(): Promise<void>;
@@ -38,26 +44,43 @@ function errorMessage(error: unknown): string {
 }
 
 export const useExternalConversationStore =
-  create<ExternalConversationStoreState>((set) => {
+  create<ExternalConversationStoreState>((set, get) => {
     const run = async (
       operation: (
         api: NonNullable<ReturnType<typeof conversationApi>>,
       ) => Promise<ConversationState>,
+      pending: "busy" | "sending" | "cancelling" = "busy",
     ): Promise<void> => {
       const api = conversationApi();
       if (!api) {
         set({
           state: unavailableState(),
           busy: false,
+          sending: false,
+          cancelling: false,
           error: "External Agent conversations are available in the desktop app",
         });
         return;
       }
-      set({ busy: true, error: null });
+      const startedAtSequence = get().state.sequence;
+      set({ [pending]: true, error: null });
       try {
-        set({ state: await operation(api), busy: false, error: null });
+        const nextState = await operation(api);
+        set((current) => ({
+          state:
+            nextState.sequence >= current.state.sequence
+              ? nextState
+              : current.state,
+          [pending]: false,
+          error: null,
+        }));
       } catch (error) {
-        set({ busy: false, error: errorMessage(error) });
+        set((current) => ({
+          [pending]: false,
+          ...(current.state.sequence <= startedAtSequence
+            ? { error: errorMessage(error) }
+            : {}),
+        }));
         throw error;
       }
     };
@@ -65,14 +88,21 @@ export const useExternalConversationStore =
     return {
       state: unavailableState(),
       busy: false,
+      sending: false,
+      cancelling: false,
       error: null,
-      applyState: (state) => set({ state, error: null }),
+      applyState: (state) =>
+        set((current) =>
+          state.sequence < current.state.sequence
+            ? current
+            : { state, error: null },
+        ),
       initialize: () => run((api) => api.getState()),
       attach: () => run((api) => api.attach()),
-      prompt: (text) => run((api) => api.prompt(text)),
+      prompt: (text) => run((api) => api.prompt(text), "sending"),
       resolveApproval: (requestId, decision) =>
         run((api) => api.resolveApproval(requestId, decision)),
-      cancel: () => run((api) => api.cancel()),
+      cancel: () => run((api) => api.cancel(), "cancelling"),
       detach: () => run((api) => api.detach()),
     };
   });

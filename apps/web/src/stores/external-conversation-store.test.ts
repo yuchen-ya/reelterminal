@@ -17,7 +17,12 @@ type ConversationEvent = Parameters<ConversationApi["onEvent"]>[0] extends (
   ? Event
   : never;
 
-const state = (lifecycle: ConversationState["conversation"]["lifecycle"] = "idle") => ({
+let nextStateSequence = 0;
+const state = (
+  lifecycle: ConversationState["conversation"]["lifecycle"] = "idle",
+  sequence = ++nextStateSequence,
+) => ({
+  sequence,
   adapter: {
     availability: "available" as const,
     agentLabel: "Test Agent",
@@ -57,8 +62,10 @@ function mockConversation() {
 
 describe("external-conversation-store", () => {
   beforeEach(() => {
+    nextStateSequence = 0;
     useExternalConversationStore.setState({
       state: {
+        sequence: 0,
         adapter: {
           availability: "missing",
           agentLabel: null,
@@ -70,6 +77,8 @@ describe("external-conversation-store", () => {
         conversation: createConversationDisplayState(),
       },
       busy: false,
+      sending: false,
+      cancelling: false,
       error: null,
     });
   });
@@ -102,6 +111,63 @@ describe("external-conversation-store", () => {
     expect(useExternalConversationStore.getState().state.conversation.lifecycle).toBe(
       "disconnected",
     );
+  });
+
+  it("keeps cancel available while a prompt is in flight", async () => {
+    const { conversation } = mockConversation();
+    type PromptState = Awaited<ReturnType<typeof conversation.prompt>>;
+    let finishPrompt!: (value: PromptState) => void;
+    conversation.prompt.mockImplementation(
+      () =>
+        new Promise<PromptState>((resolve) => {
+          finishPrompt = resolve;
+        }),
+    );
+
+    const pendingPrompt = useExternalConversationStore
+      .getState()
+      .prompt("Long-running turn");
+    expect(useExternalConversationStore.getState()).toMatchObject({
+      busy: false,
+      sending: true,
+      cancelling: false,
+    });
+
+    await useExternalConversationStore.getState().cancel();
+    expect(conversation.cancel).toHaveBeenCalledOnce();
+    expect(useExternalConversationStore.getState()).toMatchObject({
+      sending: true,
+      cancelling: false,
+    });
+
+    finishPrompt(state("ready") as PromptState);
+    await pendingPrompt;
+    expect(useExternalConversationStore.getState().sending).toBe(false);
+  });
+
+  it("ignores an old prompt result after a newer attachment snapshot", async () => {
+    const { conversation, emit } = mockConversation();
+    const off = installExternalConversationEventListener();
+    const oldPromptState = state("ready");
+    let finishPrompt!: (value: typeof oldPromptState) => void;
+    conversation.prompt.mockImplementation(
+      () =>
+        new Promise<typeof oldPromptState>((resolve) => {
+          finishPrompt = resolve;
+        }),
+    );
+
+    const pending = useExternalConversationStore.getState().prompt("Old turn");
+    emit(state("disconnected"));
+    finishPrompt(oldPromptState);
+    await pending;
+
+    expect(useExternalConversationStore.getState()).toMatchObject({
+      sending: false,
+      error: null,
+      state: { conversation: { lifecycle: "disconnected" } },
+    });
+    off();
   });
 
   it("accepts event snapshots without writing conversation data to storage", () => {

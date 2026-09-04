@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExternalConversationBridge } from "@openreel/agent-facade";
 import {
   createLoopbackConversationConnector,
@@ -12,6 +12,7 @@ import {
 const tempDirs: string[] = [];
 
 afterEach(() => {
+  vi.useRealTimers();
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -208,6 +209,98 @@ describe("loopback conversation transport", () => {
       await transport.close();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  it("keeps a long turn alive past the ordinary request timeout and aborts it on close", async () => {
+    let markPromptReceived!: () => void;
+    const promptReceived = new Promise<void>((resolve) => {
+      markPromptReceived = resolve;
+    });
+    const server = createServer(async (req) => {
+      const rpc = await readJson(req);
+      if (rpc.method === "session/prompt") markPromptReceived();
+      // Deliberately leave the response open; transport.close must abort it.
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("missing server address");
+    const descriptor = await readConversationEndpointDescriptor(
+      descriptorPath(
+        validDescriptor(`http://127.0.0.1:${address.port}/conversation`),
+      ),
+    );
+    const transport = await createLoopbackConversationConnector(descriptor).connect({
+      sessionId: descriptor.sessionId,
+    });
+    vi.useFakeTimers();
+    const prompt = transport.request("session/prompt", {
+      sessionId: descriptor.sessionId,
+      prompt: [{ type: "text", text: "wait" }],
+    });
+    await promptReceived;
+    let settled = false;
+    void prompt.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await vi.advanceTimersByTimeAsync(30_001);
+    expect(settled).toBe(false);
+    await transport.close();
+    await expect(prompt).rejects.toBeDefined();
+    vi.useRealTimers();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it("aborts a pending prompt when polling reaches a terminal failure", async () => {
+    let markPromptReceived!: () => void;
+    const promptReceived = new Promise<void>((resolve) => {
+      markPromptReceived = resolve;
+    });
+    const server = createServer(async (req, res) => {
+      const rpc = await readJson(req);
+      if (rpc.method === "initialize") {
+        json(res, { jsonrpc: "2.0", id: rpc.id, result: {} });
+        return;
+      }
+      if (rpc.method === "openreel/session/updates") {
+        res.writeHead(500);
+        res.end();
+        return;
+      }
+      if (rpc.method === "session/prompt") {
+        markPromptReceived();
+        // Deliberately leave the response open. Fatal polling must abort it.
+      }
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("missing server address");
+    const descriptor = await readConversationEndpointDescriptor(
+      descriptorPath(
+        validDescriptor(`http://127.0.0.1:${address.port}/conversation`),
+      ),
+    );
+    const transport = await createLoopbackConversationConnector(descriptor).connect({
+      sessionId: descriptor.sessionId,
+    });
+    transport.onNotification(() => undefined);
+    const closed = new Promise<void>((resolve) => {
+      transport.onClose(() => resolve());
+    });
+    await transport.request("initialize", {});
+    const prompt = transport.request("session/prompt", {
+      sessionId: descriptor.sessionId,
+      prompt: [{ type: "text", text: "wait" }],
+    });
+    await promptReceived;
+    await closed;
+    await expect(prompt).rejects.toBeDefined();
+    await transport.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   });
 
   it("validates JSON-RPC ids and removes untrusted error details", async () => {

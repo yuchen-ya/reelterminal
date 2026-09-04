@@ -21,6 +21,8 @@ export interface ConversationAdapterSummary {
 }
 
 export interface DesktopConversationState {
+  /** Main-owned snapshot order; renderer ignores older replies/pushes. */
+  readonly sequence: number;
   readonly adapter: ConversationAdapterSummary;
   readonly conversation: ExternalConversationDisplayState;
 }

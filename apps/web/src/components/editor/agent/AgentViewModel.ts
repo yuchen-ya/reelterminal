@@ -331,12 +331,11 @@ function textFromContent(
   return content?.map((part) => part.text).join("") ?? "";
 }
 
-function activityIndex(
-  activities: readonly AgentActivity[],
+function activityKey(
   type: AgentActivity["type"],
   id: string,
-): number {
-  return activities.findIndex((activity) => activity.type === type && activity.id === id);
+): string {
+  return `${type}\u0000${id}`;
 }
 
 function replaceActivity(
@@ -366,6 +365,19 @@ export function conversationViewModelFromProtocol(
   state: ExternalConversationDisplayState,
 ): AgentConversationViewModel {
   const activities: AgentActivity[] = [];
+  // Mutable protocol entities (messages, tools, approvals, subtasks, and
+  // artifacts) are updated repeatedly while streaming. Index them once so a
+  // long turn does not repeatedly scan the complete activity list.
+  const activityIndexes = new Map<string, number>();
+  const indexFor = (type: AgentActivity["type"], id: string): number =>
+    activityIndexes.get(activityKey(type, id)) ?? -1;
+  const appendIndexed = (activity: AgentActivity): void => {
+    activityIndexes.set(
+      activityKey(activity.type, activity.id),
+      activities.length,
+    );
+    activities.push(activity);
+  };
 
   for (const event of [...state.updates].sort((left, right) => left.sequence - right.sequence)) {
     if (event.type !== "session_update") continue;
@@ -381,14 +393,14 @@ export function conversationViewModelFromProtocol(
           sequence: event.sequence,
           text,
         };
-        const index = activityIndex(activities, "user_message", id);
+        const index = indexFor("user_message", id);
         if (index >= 0) replaceActivity(activities, index, next);
-        else activities.push(next);
+        else appendIndexed(next);
         break;
       }
       case "agent_message_chunk": {
         const id = update.messageId ?? "agent-stream";
-        const index = activityIndex(activities, "agent_message", id);
+        const index = indexFor("agent_message", id);
         if (index >= 0 && activities[index].type === "agent_message") {
           const previous = activities[index];
           replaceActivity(activities, index, {
@@ -397,7 +409,7 @@ export function conversationViewModelFromProtocol(
             streaming: true,
           });
         } else {
-          activities.push({
+          appendIndexed({
             type: "agent_message",
             id,
             sequence: event.sequence,
@@ -418,15 +430,15 @@ export function conversationViewModelFromProtocol(
           text,
           streaming: false,
         };
-        const index = activityIndex(activities, "agent_message", id);
+        const index = indexFor("agent_message", id);
         if (index >= 0) replaceActivity(activities, index, next);
-        else activities.push(next);
+        else appendIndexed(next);
         break;
       }
       case "tool_call":
       case "tool_call_update": {
         const id = update.toolCallId;
-        const index = activityIndex(activities, "tool", id);
+        const index = indexFor("tool", id);
         const previous = index >= 0 && activities[index].type === "tool"
           ? activities[index]
           : undefined;
@@ -440,12 +452,12 @@ export function conversationViewModelFromProtocol(
           detail: update.summary ?? previous?.detail,
         };
         if (index >= 0) replaceActivity(activities, index, next);
-        else activities.push(next);
+        else appendIndexed(next);
         break;
       }
       case "tool_result": {
         const id = update.toolCallId;
-        const index = activityIndex(activities, "tool", id);
+        const index = indexFor("tool", id);
         const previous = index >= 0 && activities[index].type === "tool"
           ? activities[index]
           : undefined;
@@ -459,7 +471,7 @@ export function conversationViewModelFromProtocol(
           detail: update.summary ?? update.error?.message ?? previous?.detail,
         };
         if (index >= 0) replaceActivity(activities, index, next);
-        else activities.push(next);
+        else appendIndexed(next);
         break;
       }
       case "reasoning_summary":
@@ -472,7 +484,7 @@ export function conversationViewModelFromProtocol(
         break;
       case "approval_request": {
         const id = update.requestId;
-        const index = activityIndex(activities, "approval", id);
+        const index = indexFor("approval", id);
         const previous = index >= 0 && activities[index].type === "approval"
           ? activities[index]
           : undefined;
@@ -487,12 +499,12 @@ export function conversationViewModelFromProtocol(
           status: "pending",
         };
         if (index >= 0) replaceActivity(activities, index, next);
-        else activities.push(next);
+        else appendIndexed(next);
         break;
       }
       case "approval_resolution": {
         const id = update.requestId;
-        const index = activityIndex(activities, "approval", id);
+        const index = indexFor("approval", id);
         const previous = index >= 0 && activities[index].type === "approval"
           ? activities[index]
           : undefined;
@@ -507,12 +519,12 @@ export function conversationViewModelFromProtocol(
           status: approvalStatusForOutcome(update.outcome),
         };
         if (index >= 0) replaceActivity(activities, index, next);
-        else activities.push(next);
+        else appendIndexed(next);
         break;
       }
       case "subtask": {
         const id = update.subtaskId;
-        const index = activityIndex(activities, "subtask", id);
+        const index = indexFor("subtask", id);
         const previous = index >= 0 && activities[index].type === "subtask"
           ? activities[index]
           : undefined;
@@ -525,13 +537,13 @@ export function conversationViewModelFromProtocol(
           detail: update.summary ?? previous?.detail,
         };
         if (index >= 0) replaceActivity(activities, index, next);
-        else activities.push(next);
+        else appendIndexed(next);
         break;
       }
       case "artifact": {
         const visual = update as unknown as UnknownRecord;
         const id = projectOpaqueId(update.artifactId) ?? `artifact-${event.sequence}`;
-        const index = activityIndex(activities, "artifact", id);
+        const index = indexFor("artifact", id);
         const previous = index >= 0 && activities[index].type === "artifact"
           ? activities[index]
           : undefined;
@@ -557,7 +569,7 @@ export function conversationViewModelFromProtocol(
           preview: preview ?? previous?.preview,
         };
         if (index >= 0) replaceActivity(activities, index, next);
-        else activities.push(next);
+        else appendIndexed(next);
         break;
       }
       case "plan":

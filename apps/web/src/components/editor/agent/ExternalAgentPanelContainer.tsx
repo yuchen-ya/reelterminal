@@ -26,6 +26,8 @@ export function ExternalAgentPanelContainer({
   const { t, i18n } = useTranslation();
   const state = useExternalConversationStore((value) => value.state);
   const busy = useExternalConversationStore((value) => value.busy);
+  const sending = useExternalConversationStore((value) => value.sending);
+  const cancelling = useExternalConversationStore((value) => value.cancelling);
   const error = useExternalConversationStore((value) => value.error);
   const initialize = useExternalConversationStore((value) => value.initialize);
   const attach = useExternalConversationStore((value) => value.attach);
@@ -116,7 +118,12 @@ export function ExternalAgentPanelContainer({
   };
 
   const inspectVisual = async (): Promise<void> => {
-    if (references.length === 0 || viewModel.connection.state !== "connected" || busy) return;
+    if (
+      references.length === 0 ||
+      viewModel.connection.state !== "connected" ||
+      busy ||
+      sending
+    ) return;
     setInspectingVisual(true);
     try {
       await prompt(buildVisualInspectionPrompt(references, i18n.language.startsWith("zh") ? "zh" : "en"));
@@ -140,12 +147,12 @@ export function ExternalAgentPanelContainer({
         void resolveApproval(requestId, "approved").catch(() => undefined)}
       onDeny={busy ? undefined : (requestId) =>
         void resolveApproval(requestId, "denied").catch(() => undefined)}
-      onCancel={() => void cancel().catch(() => undefined)}
+      onCancel={cancelling ? undefined : () => void cancel().catch(() => undefined)}
       onCopyReferences={() => void copyReferences()}
       onInspectVisual={() => void inspectVisual()}
       inspectingVisual={inspectingVisual}
-      sending={busy}
-      cancelling={busy}
+      sending={sending}
+      cancelling={cancelling}
       copyingReferences={copying}
     />
   );

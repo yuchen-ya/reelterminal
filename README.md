@@ -54,9 +54,9 @@ for concrete external integrations.
   local video and audio from the roots reported by `capabilities.get`; the
   media appears immediately in the open GUI project and uses the shared undo
   history. The other tools operate on that same project through the live bridge.
-- Live revision and context checks, one-writer lease semantics, observe /
-  assist / autonomous modes, shared undo, and action activity status are in
-  place.
+- Live revision and context checks, one-writer lease semantics, independent
+  Guided / Collaborative / Autonomous work modes, shared undo, and action
+  activity status are in place.
 - `visual_inspect` provides bounded, read-only frame sampling by clip or time
   range, with revision-tagged PNG artifacts and a real contact sheet when the
   configured renderer supports native composition.
@@ -74,9 +74,10 @@ for concrete external integrations.
   (`zh-CN`). Current static surfaces are translated, while English remains the
   fallback for newly introduced or missing copy.
 - The desktop GUI conversation panel and loopback client transport are landed.
-  External Agents/hosts still provide the thin server-side adapter that runs
-  `/conversation` and atomically publishes the private
-  `~/.openreel/conversation-endpoint.json` descriptor; ReelTerminal only reads it.
+  The shipped Codex reference adapter creates or resumes a Codex App Server
+  thread, connects that same thread to the 17-tool live MCP facade, and
+  projects only safe display events into the panel. Other Agent hosts can use
+  the provider-neutral adapter kit and conversation protocol.
 - The legacy 304-tool desktop endpoint and the embedded BYOK agent/chat path
   are removed from the ReelTerminal product contract. The extraction audit and
   inherited source remain historical reference material only.
@@ -95,10 +96,10 @@ for concrete external integrations.
 
 ### Remaining integration work
 
-- Each external Agent/host must run and configure its thin `/conversation`
-  server-side adapter, own the descriptor writer lifecycle, and remove the
-  `0600` descriptor on exit. ReelTerminal has no universal provider connector and
-  never embeds a model.
+- External Agent hosts other than Codex must run and configure their thin
+  `/conversation` server-side adapter, own the descriptor writer lifecycle,
+  and remove the `0600` descriptor on exit. ReelTerminal has no universal
+  provider connector and never embeds a model.
 - Wider editing verbs and richer external-agent interoperability will be
   added only when they improve the finishing workflow and preserve the
   product boundary. Generators integrate outside ReelTerminal through the Agent.
@@ -235,8 +236,8 @@ standard source/generated/work/project/output/evidence layout in
 but is not the destination for new work. Set
 `OPENREEL_LIVE_MEDIA_ROOTS` to a platform-delimited list of existing absolute
 directories before launch to replace those defaults. The desktop conversation
-panel and loopback client are also
-landed; the external Agent/host must run its thin `/conversation` adapter and
+panel and loopback client are also landed. Codex users can run the shipped
+reference adapter; other Agent hosts provide a thin `/conversation` adapter and
 publish the private descriptor described in
 [`docs/external-agent-conversation-adapter.md`](docs/external-agent-conversation-adapter.md).
 
