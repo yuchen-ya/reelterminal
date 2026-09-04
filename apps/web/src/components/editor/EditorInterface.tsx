@@ -36,6 +36,7 @@ import {
 import {
   initializeTransitionBridge,
   disposeTransitionBridge,
+  syncTransitionBridgeFromProject,
 } from "../../bridges/transition-bridge";
 
 const ExternalAgentPanel = React.lazy(() =>
@@ -153,6 +154,9 @@ const useEngineInitialization = () => {
         setInitStatus("Initializing transition bridge...");
         try {
           initializeTransitionBridge(width, height);
+          syncTransitionBridgeFromProject(
+            useProjectStore.getState().project,
+          );
         } catch (transitionError) {
           console.error(
             "[EditorInterface] TransitionBridge initialization failed:",

@@ -13,6 +13,7 @@ import {
   type Keyframe,
   type EmphasisAnimation,
   isNeutralColorGrading,
+  type Transition,
   type TransitionEdge,
 } from "@openreel/core";
 import * as THREE from "three";
@@ -1971,6 +1972,7 @@ export interface TransitionRenderInfo {
   } | null;
   edge?: TransitionEdge;
   transitionId: string;
+  transition: Transition;
   progress: number;
 }
 
@@ -1979,6 +1981,7 @@ export const getTransitionAtTime = (
   tracks: Array<{
     id: string;
     type: string;
+    transitions?: Transition[];
     clips: Array<{
       id: string;
       startTime: number;
@@ -1999,7 +2002,11 @@ export const getTransitionAtTime = (
     );
 
     for (const track of videoTracks) {
-      const transitions = transitionBridge.getTransitionsForTrack(track.id);
+      // Project data is the source of truth: the bridge map is a side copy
+      // that can be empty when the project loaded before the bridge was
+      // initialized (or after a dispose/re-init remount).
+      const transitions =
+        track.transitions ?? transitionBridge.getTransitionsForTrack(track.id);
 
       for (const transition of transitions) {
         const clipA = track.clips.find((c) => c.id === transition.clipAId);
@@ -2040,6 +2047,7 @@ export const getTransitionAtTime = (
               : null,
             edge: transition.edge,
             transitionId: transition.id,
+            transition,
             progress,
           };
         }
@@ -2063,9 +2071,9 @@ export const renderTransitionFrame = async (
       return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
     }
 
-    const transition = transitionBridge.getTransition(
-      transitionInfo.transitionId,
-    );
+    const transition =
+      transitionInfo.transition ??
+      transitionBridge.getTransition(transitionInfo.transitionId);
     if (!transition) {
       return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
     }
@@ -2103,9 +2111,9 @@ export const renderTransitionCanvas = async (
       return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
     }
 
-    const transition = transitionBridge.getTransition(
-      transitionInfo.transitionId,
-    );
+    const transition =
+      transitionInfo.transition ??
+      transitionBridge.getTransition(transitionInfo.transitionId);
     if (!transition) {
       return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
     }

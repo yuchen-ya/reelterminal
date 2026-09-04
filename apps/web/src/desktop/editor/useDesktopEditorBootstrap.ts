@@ -6,7 +6,7 @@ import { initializeMediaBridge } from "../../bridges/media-bridge";
 import { initializePlaybackBridge } from "../../bridges/playback-bridge";
 import { initializeRenderBridge } from "../../bridges/render-bridge";
 import { initializeEffectsBridge } from "../../bridges/effects-bridge";
-import { initializeTransitionBridge } from "../../bridges/transition-bridge";
+import { initializeTransitionBridge, syncTransitionBridgeFromProject } from "../../bridges/transition-bridge";
 
 export interface DesktopEditorBootstrapState {
   ready: boolean;
@@ -66,6 +66,7 @@ const runBootstrap = async (): Promise<void> => {
 
   try {
     initializeTransitionBridge(width, height);
+    syncTransitionBridgeFromProject(useProjectStore.getState().project);
   } catch (transitionError) {
     console.error(
       "[useDesktopEditorBootstrap] TransitionBridge initialization failed:",

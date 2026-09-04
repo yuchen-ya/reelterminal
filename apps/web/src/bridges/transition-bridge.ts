@@ -799,6 +799,27 @@ export function initializeTransitionBridge(
 }
 
 /**
+ * Re-sync the bridge's per-track transition map from project data.
+ *
+ * The map is a side copy of `track.transitions` that goes stale whenever the
+ * project loads before the bridge is initialized, or the bridge is disposed
+ * and re-created (e.g. editor remount): both paths leave it empty while the
+ * project holds transitions, and the preview then renders hard cuts. Call
+ * this right after initializeTransitionBridge and on project load.
+ */
+export function syncTransitionBridgeFromProject(project: {
+  timeline: { tracks: Array<{ id: string; transitions?: Transition[] }> };
+}): void {
+  const bridge = getTransitionBridge();
+  if (!bridge.isInitialized()) {
+    return;
+  }
+  for (const track of project.timeline.tracks) {
+    bridge.setTransitionsForTrack(track.id, track.transitions ?? []);
+  }
+}
+
+/**
  * Dispose of the shared TransitionBridge
  */
 export function disposeTransitionBridge(): void {
