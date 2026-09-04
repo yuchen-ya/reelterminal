@@ -15,6 +15,7 @@ const status = (over: Partial<CollabStatus> = {}): CollabStatus => ({
   access: "write",
   currentAction: null,
   ...over,
+  sequence: over.sequence ?? 1,
 });
 
 const mockDesktop = () => {
@@ -47,7 +48,8 @@ const mockDesktop = () => {
 
 describe("collab-store (ADR 0004 Decisions 6+7)", () => {
   beforeEach(() => {
-    useCollabStore.getState().applyStatus({
+    useCollabStore.setState({
+      sequence: 0,
       enabled: false,
       externalConnected: false,
       writer: null,
@@ -102,6 +104,7 @@ describe("collab-store (ADR 0004 Decisions 6+7)", () => {
 
     emit({
       type: "status",
+      sequence: 1,
       enabled: true,
       externalConnected: true,
       writer: "external",
@@ -121,6 +124,26 @@ describe("collab-store (ADR 0004 Decisions 6+7)", () => {
     off();
     emit({ type: "action", action: "job.status" });
     expect(useCollabStore.getState().currentAction).toBeNull();
+  });
+
+  it("ignores a stale status push that arrives after a newer disable acknowledgement", () => {
+    const { emit } = mockDesktop();
+    const off = installCollabEventListener();
+
+    useCollabStore.getState().applyStatus(
+      status({ sequence: 12, enabled: false, writer: null }),
+    );
+    emit({
+      type: "status",
+      ...status({ sequence: 11, enabled: true, writer: "external" }),
+    });
+
+    expect(useCollabStore.getState()).toMatchObject({
+      sequence: 12,
+      enabled: false,
+      writer: null,
+    });
+    off();
   });
 
   it("switches work mode without touching floating geometry or conversation display", async () => {

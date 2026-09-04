@@ -272,14 +272,21 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "marker.remove": MARKER_REMOVE_SCHEMA,
 };
 
+/**
+ * Keeps one edit transaction comfortably below ActionHistory's 1000-entry
+ * retention window, even when one facade op expands to multiple core actions.
+ */
+export const MAX_EDIT_OPS_PER_BATCH = 100;
+
 export const EDIT_APPLY_SCHEMA: ObjectSchema = {
   ops: {
-    check: (v) => Array.isArray(v),
-    describe: "an array of ops",
+    check: (v) => Array.isArray(v) && v.length <= MAX_EDIT_OPS_PER_BATCH,
+    describe: `an array of at most ${MAX_EDIT_OPS_PER_BATCH} ops`,
     required: true,
     emits: {
       kind: "array",
       minItems: 1,
+      maxItems: MAX_EDIT_OPS_PER_BATCH,
       items: {
         kind: "anyOfObjects",
         variants: EDIT_OP_TYPES.map((opType) => EDIT_OP_SCHEMAS[opType]),

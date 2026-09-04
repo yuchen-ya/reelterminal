@@ -37,6 +37,7 @@ import {
   disposeConversationHost,
   getConversationHost,
 } from "./conversation/host-instance";
+import { registerEditorWindow } from "./editor-window";
 import {
   fileWriters,
   showSaveDialog,
@@ -133,6 +134,7 @@ function createWindow(): void {
       webSecurity: true,
     },
   });
+  registerEditorWindow(win);
   attachUnsavedGuard(win);
   installNavigationGuard(win, APP_INDEX);
   win.loadURL(APP_INDEX);

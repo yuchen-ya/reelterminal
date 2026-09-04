@@ -62,6 +62,7 @@ export type JsonSchemaNode =
       readonly type: "array";
       readonly items: JsonSchemaNode;
       readonly minItems?: number;
+      readonly maxItems?: number;
     }
   /**
    * The one nested `anyOf` the client constraints allow: the discriminated
@@ -94,6 +95,7 @@ export type FieldEmits =
       readonly kind: "array";
       readonly items: FieldEmits;
       readonly minItems?: number;
+      readonly maxItems?: number;
     }
   /** Discriminated union of closed objects (edit.apply's op set). */
   | { readonly kind: "anyOfObjects"; readonly variants: readonly ObjectSchema[] };

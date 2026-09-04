@@ -1,13 +1,13 @@
 import type { Action } from "@openreel/core/types/actions";
-import type { TextClip, Transform, Transition } from "@openreel/core";
 import type {
   LiveEditorControlParams,
   LiveEditorControlResult,
   LiveEditorControlTarget,
 } from "@openreel/agent-facade/live-store";
-import type { TextStyle } from "@openreel/core/text/types";
-import { v4 as uuidv4 } from "uuid";
-import { useProjectStore, getProjectRevision } from "../../stores/project-store";
+import {
+  useProjectStore,
+  getProjectRevision,
+} from "../../stores/project-store";
 import { getLiveEditorContext } from "../../stores/editor-context-store";
 import { useUIStore, type SelectionItem } from "../../stores/ui-store";
 import { useTimelineStore } from "../../stores/timeline-store";
@@ -100,213 +100,6 @@ const noProject = (): { ok: false; error: LiveBridgeError } => ({
   error: { code: "NO_PROJECT", message: "No project is open" },
 });
 
-/**
- * Entity ids the live facade cares about, partitioned by category (the
- * LiveCreatedIds seam contract: tracks / clips / text overlays / transitions).
- * `createdIds` is computed as the after/before diff per category around the committed
- * batch (LiveApplyActionsResult contract: "the ids that genuinely exist in
- * the canonical project" — core mints entity ids; the store diffs canonical
- * state). The facade assigns one id per creating op from the op's OWN
- * category, so a mixed batch can't cross-assign ids.
- */
-interface EntityIdsByCategory {
-  readonly tracks: string[];
-  readonly clips: string[];
-  readonly textClips: string[];
-  readonly transitions: string[];
-}
-
-function entityIdsByCategory(): EntityIdsByCategory {
-  const project = useProjectStore.getState().project;
-  return {
-    tracks: project.timeline.tracks.map((t) => t.id),
-    clips: project.timeline.tracks.flatMap((t) => t.clips.map((c) => c.id)),
-    textClips: (project.textClips ?? []).map((c) => c.id),
-    transitions: project.timeline.tracks.flatMap((track) =>
-      (track.transitions ?? []).map((transition) => transition.id),
-    ),
-  };
-}
-
-function diffByCategory(
-  before: EntityIdsByCategory,
-  after: EntityIdsByCategory,
-): EntityIdsByCategory {
-  const beforeTracks = new Set(before.tracks);
-  const beforeClips = new Set(before.clips);
-  const beforeText = new Set(before.textClips);
-  const beforeTransitions = new Set(before.transitions);
-  return {
-    tracks: after.tracks.filter((id) => !beforeTracks.has(id)),
-    clips: after.clips.filter((id) => !beforeClips.has(id)),
-    textClips: after.textClips.filter((id) => !beforeText.has(id)),
-    transitions: after.transitions.filter(
-      (id) => !beforeTransitions.has(id),
-    ),
-  };
-}
-
-function appendCreatedIds(
-  target: EntityIdsByCategory,
-  created: EntityIdsByCategory,
-): void {
-  target.tracks.push(...created.tracks);
-  target.clips.push(...created.clips);
-  target.textClips.push(...created.textClips);
-  target.transitions.push(...created.transitions);
-}
-
-/**
- * Engine-aware text routing (ADR 0004 Decision 2): overlay actions must go
- * through the TitleEngine-backed store methods — raw executor application
- * writes only the project mirror and renders nothing. Everything else goes
- * through the same executeAction path as manual GUI edits.
- */
-async function applyOneAction(
-  action: Action,
-): Promise<void> {
-  const store = useProjectStore.getState();
-
-  if (action.type === "text/create") {
-    const clip = (action.params as { clip: TextClip }).clip;
-    const tracks = store.project.timeline.tracks;
-    let trackId =
-      clip.trackId && tracks.some((t) => t.id === clip.trackId)
-        ? clip.trackId
-        : undefined;
-    if (!trackId) {
-      // Mirror the editor's text-overlay track resolution.
-      const existing = tracks.find((t) => t.type === "text");
-      if (existing) {
-        trackId = existing.id;
-      } else {
-        await store.executeAction({
-          type: "track/add",
-          id: uuidv4(),
-          timestamp: Date.now(),
-          params: { trackType: "text" },
-        } as Action);
-        const created = useProjectStore
-          .getState()
-          .project.timeline.tracks.find((t) => t.type === "text");
-        if (!created) throw new Error("Failed to create a text track");
-        trackId = created.id;
-      }
-    }
-    const created = useProjectStore
-      .getState()
-      .createTextClip(
-        trackId,
-        clip.startTime,
-        clip.text,
-        clip.duration,
-        clip.style as Partial<TextStyle> | undefined,
-        clip.metadata,
-        {
-          // The facade translator minted this id; keep it so createdIds and
-          // follow-up verbs (text.update et al.) address the same clip.
-          id: clip.id,
-          ...(clip.transform !== undefined
-            ? { transform: clip.transform as Partial<Transform> }
-            : {}),
-        },
-      );
-    if (!created) throw new Error("Failed to create text overlay");
-    return;
-  }
-
-  if (action.type === "text/update") {
-    const { clipId, updates } = action.params as {
-      clipId: string;
-      updates: Partial<TextClip>;
-    };
-    if (!store.getTextClip(clipId)) {
-      throw new Error(`Text overlay "${clipId}" not found`);
-    }
-    if (updates.text !== undefined) {
-      if (!store.updateTextContent(clipId, updates.text)) {
-        throw new Error(`Failed to update text overlay "${clipId}" content`);
-      }
-    }
-    if (updates.style !== undefined) {
-      if (!store.updateTextStyle(clipId, updates.style)) {
-        throw new Error(`Failed to update text overlay "${clipId}" style`);
-      }
-    }
-    if (updates.transform !== undefined) {
-      if (!store.updateTextTransform(clipId, updates.transform)) {
-        throw new Error(`Failed to update text overlay "${clipId}" transform`);
-      }
-    }
-    if (
-      updates.startTime !== undefined ||
-      updates.duration !== undefined ||
-      updates.keyframes !== undefined
-    ) {
-      const timing: {
-        startTime?: number;
-        duration?: number;
-        keyframes?: TextClip["keyframes"];
-      } = {};
-      if (updates.startTime !== undefined) timing.startTime = updates.startTime;
-      if (updates.duration !== undefined) timing.duration = updates.duration;
-      if (updates.keyframes !== undefined) timing.keyframes = updates.keyframes;
-      if (!store.updateOverlayClipTiming(clipId, timing)) {
-        throw new Error(`Failed to update text overlay "${clipId}" timing`);
-      }
-    }
-    return;
-  }
-
-  if (action.type === "text/remove") {
-    const { clipId } = action.params as { clipId: string };
-    if (!store.deleteTextClip(clipId)) {
-      throw new Error(`Failed to delete text overlay "${clipId}"`);
-    }
-    return;
-  }
-
-  // Transition actions use the editor's transition-aware store methods so
-  // the project model and TransitionBridge stay synchronized for preview,
-  // inspection, undo/redo, and export. A raw executor call would update the
-  // project array but leave the renderer bridge stale until a later reload.
-  if (action.type === "transition/set") {
-    const { transition } = action.params as { transition: Transition };
-    const created = await store.addClipTransition(transition);
-    if (!created) {
-      throw new Error(`Failed to add transition "${transition.id}"`);
-    }
-    return;
-  }
-
-  if (action.type === "transition/update") {
-    const { transitionId, ...updates } = action.params as {
-      transitionId: string;
-      type?: Transition["type"];
-      duration?: number;
-      params?: Record<string, unknown>;
-    };
-    const updated = await store.updateClipTransition(transitionId, updates);
-    if (!updated) {
-      throw new Error(`Failed to update transition "${transitionId}"`);
-    }
-    return;
-  }
-
-  if (action.type === "transition/remove") {
-    const { transitionId } = action.params as { transitionId: string };
-    if (!(await store.removeClipTransition(transitionId))) {
-      throw new Error(`Failed to remove transition "${transitionId}"`);
-    }
-    return;
-  }
-
-  const result = await store.executeAction(action);
-  if (!result.success) {
-    throw new Error(result.error?.message ?? `Action ${action.type} failed`);
-  }
-}
-
 async function handleApplyActions(
   req: LiveBridgeRequest,
 ): Promise<Omit<LiveBridgeReply, "callId">> {
@@ -358,60 +151,17 @@ async function handleApplyActions(
       }
     }
 
-    // Accumulate per action rather than diffing once after the whole batch.
-    // Project traversal order is not creation order when, for example, a
-    // later action adds a clip to an earlier track. The live facade consumes
-    // each category bucket in op order, so this ordering is part of the seam.
-    const createdIds: EntityIdsByCategory = {
-      tracks: [],
-      clips: [],
-      textClips: [],
-      transitions: [],
-    };
-    let applied = 0;
-    const executor = store.actionExecutor;
-    executor.setPushOwner(AGENT_HISTORY_OWNER);
-    store.beginHistoryGroup(groupLabel, AGENT_HISTORY_OWNER);
-    let applyError: unknown;
-    let applyFailed = false;
-    try {
-      for (const action of actions) {
-        const idsBeforeAction = entityIdsByCategory();
-        await applyOneAction(action);
-        appendCreatedIds(
-          createdIds,
-          diffByCategory(idsBeforeAction, entityIdsByCategory()),
-        );
-        applied += 1;
-      }
-    } catch (error) {
-      applyFailed = true;
-      applyError = error;
-    } finally {
-      // ALWAYS reset the push owner and close the group — even when the
-      // rollback below throws — otherwise a stranded "agent" owner would
-      // misattribute later human edits to the agent (Decision 12).
-      useProjectStore.getState().endHistoryGroup();
-      executor.setPushOwner(undefined);
-    }
-    if (applyFailed) {
-      // A group undo reverts
-      // everything this batch applied — but only when something was
-      // actually applied, otherwise the undo would eat a pre-existing user
-      // edit. If this undo itself throws, the bridge reports BRIDGE_ERROR
-      // (the push owner is already reset above).
-      if (applied > 0) {
-        await useProjectStore.getState().undo();
-      }
+    const batch = store.executeActionBatch(actions, {
+      groupLabel,
+      historyOwner: AGENT_HISTORY_OWNER,
+    });
+    if (!batch.result.success) {
       return {
         ok: false,
         error: {
           code: "APPLY_FAILED",
-          message:
-            applyError instanceof Error
-              ? applyError.message
-              : "applyActions failed",
-          details: { appliedBeforeError: applied },
+          message: batch.result.error?.message ?? "applyActions failed",
+          details: { appliedBeforeError: batch.applied },
         },
       };
     }
@@ -423,7 +173,7 @@ async function handleApplyActions(
 
     return {
       ok: true,
-      result: { revision: getProjectRevision(), createdIds },
+      result: { revision: getProjectRevision(), createdIds: batch.createdIds },
     };
   });
 }
@@ -828,9 +578,8 @@ export function installLiveBridge(): () => void {
   if (typeof window === "undefined") return () => {};
   const bridge = window.openreel?.liveBridge;
   if (!bridge) return () => {};
-  bridge.onRequest(async (req) => {
+  return bridge.onRequest(async (req) => {
     const reply = await handleLiveBridgeRequest(req);
     window.openreel?.liveBridge?.respond({ callId: req.callId, ...reply });
   });
-  return () => {};
 }

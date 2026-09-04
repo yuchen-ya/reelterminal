@@ -11,7 +11,10 @@ import {
   EMITTED_VERB_JSON_SCHEMAS,
   LIVE_VERB_INPUT_SCHEMA_OVERRIDES,
 } from "./jsonschema";
-import { EDIT_OP_SCHEMAS } from "./verb-schemas";
+import {
+  EDIT_OP_SCHEMAS,
+  MAX_EDIT_OPS_PER_BATCH,
+} from "./verb-schemas";
 import { EDIT_OP_TYPES, FACADE_VERBS } from "./types";
 import { VERB_SCHEMA_CORPUS } from "./verb-schema-corpus";
 
@@ -118,6 +121,7 @@ describe("emitted schema per-verb structure", () => {
     expect(ops).toEqual({
       type: "array",
       minItems: 1,
+      maxItems: MAX_EDIT_OPS_PER_BATCH,
       items: {
         anyOf: EDIT_OP_TYPES.map(
           (opType) => emitObjectSchema(EDIT_OP_SCHEMAS[opType]) as unknown as Schema,

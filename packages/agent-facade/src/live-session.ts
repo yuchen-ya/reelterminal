@@ -214,6 +214,8 @@ export interface LiveAgentFacade extends Omit<AgentFacade, "project.save"> {
   readonly "project.save": (
     params?: Record<string, never>,
   ) => Promise<FacadeResult<LiveProjectSaveResult>>;
+  /** Release write ownership without losing jobs or idempotency state. */
+  releaseWriterLease(): void;
   dispose(): Promise<void>;
 }
 
@@ -1684,6 +1686,16 @@ export class LiveFacadeSession {
   /* ---------------------------- lifecycle ----------------------------- */
 
   /**
+   * Drop only write ownership. The session remains usable and preserves its
+   * job registry and idempotency ledger; the next write may lazily reacquire.
+   */
+  releaseWriterLease(): void {
+    if (!this.writer) return;
+    this.config.lease.release(this.config.sessionId);
+    this.writer = false;
+  }
+
+  /**
    * Release the writer lease (if held) and cooperatively cancel every live
    * job. Best-effort and idempotent; in-flight provider work still settles
    * through its callbacks but the jobs are marked cancelled here.
@@ -1701,10 +1713,7 @@ export class LiveFacadeSession {
         this.jobs.markCancelled(job.jobId);
       }
     }
-    if (this.writer) {
-      this.config.lease.release(this.config.sessionId);
-      this.writer = false;
-    }
+    this.releaseWriterLease();
     // Let the serialized lane drain (a verb in flight finishes first).
     await this.chain.catch(() => undefined);
   }
@@ -1955,6 +1964,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "job.status": (params) => session.jobStatus(params),
     "job.cancel": (params) => session.jobCancel(params),
     "verify.artifact": (params) => session.verifyArtifact(params),
+    releaseWriterLease: () => session.releaseWriterLease(),
     dispose: () => session.dispose(),
   };
 }

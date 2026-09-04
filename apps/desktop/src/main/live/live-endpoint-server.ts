@@ -30,7 +30,20 @@ import {
   type ServerResponse,
 } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -51,6 +64,7 @@ const SUPPORTED_PROTOCOL_VERSIONS = new Set([
   "2024-11-05",
   "2025-03-26",
   "2025-06-18",
+  "2025-11-25",
 ]);
 
 class BodyTooLargeError extends Error {}
@@ -264,13 +278,43 @@ export function liveEndpointFilePath(): string {
 }
 
 function writeEndpointFile(file: string, endpoint: LiveEndpointFile): void {
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(endpoint, null, 2), { mode: 0o600 });
-  // mode in writeFileSync only applies on create; enforce 0600 if it pre-existed.
+  const parent = path.dirname(file);
+  mkdirSync(parent, { recursive: true, mode: 0o700 });
+  const temporaryFile = `${file}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
+  const payload = `${JSON.stringify(endpoint, null, 2)}\n`;
+  let descriptorFd: number | undefined;
   try {
+    descriptorFd = openSync(temporaryFile, "wx", 0o600);
+    writeFileSync(descriptorFd, payload, "utf8");
+    chmodSync(temporaryFile, 0o600);
+    fsyncSync(descriptorFd);
+    closeSync(descriptorFd);
+    descriptorFd = undefined;
+    // Publishing is one rename, so a racing connector sees either the old
+    // complete descriptor or the new complete descriptor, never partial JSON.
+    renameSync(temporaryFile, file);
     chmodSync(file, 0o600);
-  } catch {
-    // best-effort
+
+    // Best-effort directory sync makes the rename crash-durable on platforms
+    // that permit opening directories. Descriptor correctness never depends on
+    // this optional durability step.
+    let parentFd: number | undefined;
+    try {
+      parentFd = openSync(parent, "r");
+      fsyncSync(parentFd);
+    } catch {
+      // Directory fsync is not supported everywhere (notably Windows).
+    } finally {
+      if (parentFd !== undefined) closeSync(parentFd);
+    }
+  } catch (error) {
+    if (descriptorFd !== undefined) closeSync(descriptorFd);
+    try {
+      unlinkSync(temporaryFile);
+    } catch {
+      // The rename may already have published the descriptor.
+    }
+    throw error;
   }
 }
 
@@ -304,7 +348,7 @@ export interface LiveEndpointOptions {
     verb: FacadeVerb,
     params: unknown,
   ) => Promise<FacadeResult<unknown>>;
-  /** Fires on the first initialize / tools/call (externalConnected). */
+  /** Fires on authenticated initialize, ping, or tools/call activity. */
   readonly onExternalActivity?: () => void;
   readonly serverInfo: { name: string; version: string };
   /** Facade-verified image artifacts may be embedded only from this root. */
@@ -368,6 +412,7 @@ async function handleLiveMessage(
       case "notifications/cancelled":
         return null;
       case "ping":
+        options.onExternalActivity?.();
         return reply({});
       case "tools/list":
         return reply({ tools: LIVE_TOOLS });

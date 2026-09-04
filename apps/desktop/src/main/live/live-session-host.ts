@@ -41,6 +41,7 @@ import type {
   LiveCollabStatus,
   LiveEvent,
 } from "../../shared/live";
+import { LIVE_ACTIVITY_TIMEOUT_MS } from "../../shared/live";
 import type { LiveStoreBridge } from "./renderer-store-adapter";
 import {
   startLiveEndpointServer,
@@ -51,6 +52,12 @@ import type { AgentModePreferenceStore } from "./work-mode-preference";
 export const LIVE_SESSION_IDS = {
   external: "external",
 } as const;
+
+// The desktop main process is the sole status-order authority. Keeping the
+// counter outside a host instance also preserves monotonicity if the singleton
+// is ever disposed and recreated without restarting the renderer process.
+let liveStatusSequence = 0;
+const nextLiveStatusSequence = (): number => ++liveStatusSequence;
 
 export interface LiveProviders {
   readonly renderProvider?: RenderProvider;
@@ -86,6 +93,14 @@ export interface LiveSessionHostDeps {
   readonly endpointFilePath?: string;
   /** Persisted main-process source of truth shared with conversation transport. */
   readonly modePreferenceStore?: AgentModePreferenceStore;
+  /** Activity lease duration override for deterministic tests. */
+  readonly activityTimeoutMs?: number;
+  /** Timer seam for deterministic activity-lease tests. */
+  readonly setActivityTimeout?: (
+    callback: () => void,
+    delayMs: number,
+  ) => ReturnType<typeof setTimeout>;
+  readonly clearActivityTimeout?: (timer: ReturnType<typeof setTimeout>) => void;
 }
 
 export interface LiveSessionHost {
@@ -139,6 +154,26 @@ export function createLiveSessionHost(
   let endpoint: RunningLiveEndpoint | null = null;
   let externalSession: LiveAgentFacade | null = null;
   let externalConnected = false;
+  // Enable/disable are one lifecycle lane. In particular, `enabled` cannot be
+  // used as an in-progress lock because it flips only after endpoint startup.
+  // Keep this queue settled after failures so a later toggle can recover.
+  let lifecycleTail: Promise<void> = Promise.resolve();
+  const enqueueLifecycle = <T>(operation: () => Promise<T>): Promise<T> => {
+    const result = lifecycleTail.then(operation, operation);
+    lifecycleTail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
+  const activityTimeoutMs = Math.max(
+    1,
+    deps.activityTimeoutMs ?? LIVE_ACTIVITY_TIMEOUT_MS,
+  );
+  const setActivityTimeout = deps.setActivityTimeout ?? setTimeout;
+  const clearActivityTimeout = deps.clearActivityTimeout ?? clearTimeout;
+  let activityTimer: ReturnType<typeof setTimeout> | null = null;
+  let activityGeneration = 0;
   let fallbackPreference = {
     workMode: DEFAULT_AGENT_WORK_MODE,
     access: DEFAULT_AGENT_ACCESS_MODE,
@@ -158,23 +193,32 @@ export function createLiveSessionHost(
     inFlight.length > 0 ? inFlight[inFlight.length - 1]! : null;
 
   /** Writer from the external session's session.describe (Decision 6). */
-  const currentWriter = async (): Promise<"external" | null> => {
-    if (!externalSession) return null;
-    const description = await externalSession["session.describe"]();
+  const currentWriter = async (
+    session: LiveAgentFacade | null,
+  ): Promise<"external" | null> => {
+    if (!session) return null;
+    const description = await session["session.describe"]();
     return description.ok && description.value.writer === true ? "external" : null;
   };
 
   const status = async (): Promise<LiveCollabStatus> => {
-    // Snapshot the in-flight action BEFORE the async writer lookup so a fast
-    // verb is still reported in its own action-start status push.
-    const action = currentAction();
+    // Capture every synchronous field and allocate its order BEFORE the async
+    // writer lookup. Reading mutable host state after the await would attach a
+    // new value to an old sequence and defeat the ordering contract.
+    const sequence = nextLiveStatusSequence();
+    const snapshotEnabled = enabled;
+    const snapshotExternalConnected = externalConnected;
+    const snapshotSession = externalSession;
+    const snapshotPreference = modePreferenceStore.get();
+    const snapshotAction = currentAction();
     return {
-      enabled,
-      externalConnected,
-      writer: enabled ? await currentWriter() : null,
-      workMode: modePreferenceStore.get().workMode,
-      access: modePreferenceStore.get().access,
-      currentAction: action,
+      sequence,
+      enabled: snapshotEnabled,
+      externalConnected: snapshotExternalConnected,
+      writer: snapshotEnabled ? await currentWriter(snapshotSession) : null,
+      workMode: snapshotPreference.workMode,
+      access: snapshotPreference.access,
+      currentAction: snapshotAction,
     };
   };
 
@@ -184,10 +228,47 @@ export function createLiveSessionHost(
       .catch(() => undefined);
   };
 
+  const clearActivityLease = (): void => {
+    activityGeneration += 1;
+    if (activityTimer !== null) clearActivityTimeout(activityTimer);
+    activityTimer = null;
+  };
+
   const onExternalActivity = (): void => {
-    if (externalConnected || !enabled) return;
+    if (!enabled) return;
+    const becameConnected = !externalConnected;
     externalConnected = true;
-    pushStatus();
+    const generation = ++activityGeneration;
+    if (activityTimer !== null) clearActivityTimeout(activityTimer);
+    activityTimer = setActivityTimeout(() => {
+      // Run expiry on the lifecycle lane so it cannot tear down a session in
+      // parallel with disable. A newer heartbeat invalidates queued expiry.
+      void enqueueLifecycle(async () => {
+        if (!enabled || generation !== activityGeneration) return;
+        // A direct HTTP client may not run the shipped heartbeat. Never tear
+        // down a facade underneath an authenticated verb that is still
+        // settling; treat the active request itself as liveness and retry.
+        if (inFlight.length > 0) {
+          onExternalActivity();
+          return;
+        }
+        activityTimer = null;
+        externalConnected = false;
+        // Release only writer ownership. Keep the facade alive so export jobs
+        // remain queryable and idempotency retries cannot duplicate a commit
+        // after a transient connector outage.
+        externalSession?.releaseWriterLease();
+        pushStatus();
+      });
+    }, activityTimeoutMs);
+    if (
+      typeof activityTimer === "object" &&
+      activityTimer !== null &&
+      "unref" in activityTimer
+    ) {
+      activityTimer.unref();
+    }
+    if (becameConnected) pushStatus();
   };
 
   const makeSession = (): LiveAgentFacade => {
@@ -296,67 +377,72 @@ export function createLiveSessionHost(
       return enabled;
     },
 
-    async enable() {
-      if (enabled) return status();
-      mkdirSync(deps.artifactRoot, { recursive: true });
-      const installedBridge = deps.installStoreBridge();
-      const createdLease = new LiveWriterLease();
-      const createdProviders = deps.createProviders();
-      try {
-        endpoint = await startLiveEndpointServer({
-          callVerb: (verb, params) => host.callExternal(verb, params),
-          onExternalActivity,
-          serverInfo: deps.serverInfo,
-          artifactRoot: deps.artifactRoot,
-          ...(deps.port !== undefined ? { port: deps.port } : {}),
-          ...(deps.endpointFilePath !== undefined
-            ? { endpointFilePath: deps.endpointFilePath }
-            : {}),
-        });
-      } catch (error) {
-        // Roll back partially-initialized state so a failed enable leaves no
-        // bridge listener or provider runtime behind.
-        installedBridge.teardown("live collaboration enable failed");
-        await createdProviders.close().catch(() => undefined);
-        throw error;
-      }
-      bridge = installedBridge;
-      lease = createdLease;
-      providers = createdProviders;
-      enabled = true;
-      pushStatus();
-      return status();
+    enable() {
+      return enqueueLifecycle(async () => {
+        if (enabled) return status();
+        mkdirSync(deps.artifactRoot, { recursive: true });
+        const installedBridge = deps.installStoreBridge();
+        const createdLease = new LiveWriterLease();
+        const createdProviders = deps.createProviders();
+        try {
+          endpoint = await startLiveEndpointServer({
+            callVerb: (verb, params) => host.callExternal(verb, params),
+            onExternalActivity,
+            serverInfo: deps.serverInfo,
+            artifactRoot: deps.artifactRoot,
+            ...(deps.port !== undefined ? { port: deps.port } : {}),
+            ...(deps.endpointFilePath !== undefined
+              ? { endpointFilePath: deps.endpointFilePath }
+              : {}),
+          });
+        } catch (error) {
+          // Roll back partially-initialized state so a failed enable leaves no
+          // bridge listener or provider runtime behind.
+          installedBridge.teardown("live collaboration enable failed");
+          await createdProviders.close().catch(() => undefined);
+          throw error;
+        }
+        bridge = installedBridge;
+        lease = createdLease;
+        providers = createdProviders;
+        enabled = true;
+        pushStatus();
+        return status();
+      });
     },
 
-    async disable() {
-      if (!enabled) return status();
-      enabled = false;
-      externalConnected = false;
-      const sessions = [externalSession];
-      externalSession = null;
-      await Promise.all(sessions.map(disposeSession));
-      const runningEndpoint = endpoint;
-      endpoint = null;
-      if (runningEndpoint) await runningEndpoint.close();
-      const liveProviders = providers;
-      providers = null;
-      if (liveProviders) {
-        // Bounded close (the provider runtime's own teardown is bounded; the
-        // race only guards a wedged close).
-        await Promise.race([
-          liveProviders.close().catch(() => undefined),
-          new Promise<void>((resolveClose) => {
-            setTimeout(resolveClose, 30_000).unref();
-          }),
-        ]);
-      }
-      const liveBridge = bridge;
-      bridge = null;
-      lease = null;
-      liveBridge?.teardown("live collaboration disabled");
-      inFlight.length = 0;
-      pushStatus();
-      return status();
+    disable() {
+      return enqueueLifecycle(async () => {
+        if (!enabled) return status();
+        enabled = false;
+        externalConnected = false;
+        clearActivityLease();
+        const sessions = [externalSession];
+        externalSession = null;
+        await Promise.all(sessions.map(disposeSession));
+        const runningEndpoint = endpoint;
+        endpoint = null;
+        if (runningEndpoint) await runningEndpoint.close();
+        const liveProviders = providers;
+        providers = null;
+        if (liveProviders) {
+          // Bounded close (the provider runtime's own teardown is bounded; the
+          // race only guards a wedged close).
+          await Promise.race([
+            liveProviders.close().catch(() => undefined),
+            new Promise<void>((resolveClose) => {
+              setTimeout(resolveClose, 30_000).unref();
+            }),
+          ]);
+        }
+        const liveBridge = bridge;
+        bridge = null;
+        lease = null;
+        liveBridge?.teardown("live collaboration disabled");
+        inFlight.length = 0;
+        pushStatus();
+        return status();
+      });
     },
 
     async getStatus() {

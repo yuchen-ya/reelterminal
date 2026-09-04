@@ -41,6 +41,7 @@ export function makeOverlayHandlers(
 ): ActionHandler[] {
   const create: ActionHandler = {
     type: `${prefix}/create`,
+    synchronous: true,
     validate(action: Action): ValidationResult {
       const clip = (action.params as { clip?: OverlayItem }).clip;
       return clip && typeof clip.id === "string"
@@ -64,6 +65,7 @@ export function makeOverlayHandlers(
 
   const update: ActionHandler = {
     type: `${prefix}/update`,
+    synchronous: true,
     validate(action: Action, project: Project): ValidationResult {
       const clipId = (action.params as { clipId?: string }).clipId;
       return getOverlays(project, field).some((c) => c.id === clipId)
@@ -100,6 +102,7 @@ export function makeOverlayHandlers(
 
   const remove: ActionHandler = {
     type: `${prefix}/remove`,
+    synchronous: true,
     validate(action: Action, project: Project): ValidationResult {
       const clipId = (action.params as { clipId?: string }).clipId;
       return getOverlays(project, field).some((c) => c.id === clipId)

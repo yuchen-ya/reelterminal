@@ -52,6 +52,7 @@ function emitFieldEmits(field: FieldEmits): JsonSchemaNode {
         type: "array",
         items: emitFieldEmits(field.items),
         ...(field.minItems !== undefined ? { minItems: field.minItems } : {}),
+        ...(field.maxItems !== undefined ? { maxItems: field.maxItems } : {}),
       };
     case "anyOfObjects":
       return { anyOf: field.variants.map(emitObjectSchema) };

@@ -64,7 +64,8 @@ export interface LiveProjectStore {
   getState(): Promise<{ project: Project; revision: number }>; // on-demand snapshot read
   getContext(): Promise<LiveEditorContext>;
   /** CAS-checked: rejects CONFLICT when expectedRevision is stale.
-      The batch executes as ONE history group (one undo unit).
+      The batch commits atomically as ONE history group (one undo unit)
+      and ONE project revision.
       Returns the new revision plus the ids that genuinely exist
       afterwards (core mints entity ids; the store diffs canonical state). */
   applyActions(
@@ -87,24 +88,29 @@ never pushes snapshots into the renderer. The renderer is never overwritten
 from main; mutations only ever originate as actions applied by the renderer
 itself.
 
-### 2. One write path for mutations; overlay actions route engine-aware
+### 2. One write path for mutations; live batches stage before commit
 
 `edit.apply` in live mode validates ops and translates them to core actions
 with the **same** `ops.ts` translator as headless mode (single contract).
-The renderer bridge dispatches each translated action:
+The renderer bridge sends the translated actions to
+`store.executeActionBatch`. That store method clones the canonical project,
+validates and applies every supported action synchronously with
+`ActionExecutor` against the isolated draft, and publishes the draft only
+after every action succeeds. Text-track dependencies are also created inside
+the draft. A failure discards the draft without touching canonical project or
+history state; a success publishes the project once, synchronizes the derived
+overlay/effect/transition engines, and copies the draft history into one
+owner-scoped group.
 
-- `text/create`, `text/update`, `text/remove` → the engine-aware store
-  methods (`createTextClip`, `updateTextContent`/`updateTextStyle`,
-  `deleteTextClip` — the same ones `LiveEditorHost` uses), because raw
-  executor application of overlay actions writes only the project mirror and
-  renders nothing (dual TitleEngine/project-mirror authority, verified in
-  the audit).
-- everything else → `store.executeAction` (the same path as manual GUI
-  edits).
-
-Every batch runs inside one `beginHistoryGroup(label)`/`endHistoryGroup()`
-pair ⇒ **one agent `edit.apply` batch is exactly one GUI undo unit**, and
-the user can undo/redo it with the normal Cmd+Z path.
+Therefore **one Agent `edit.apply` batch is one atomic project commit, one
+project revision, and exactly one GUI undo unit**. The user can undo/redo it
+through the normal Cmd+Z path. Actions with asynchronous handlers are rejected
+by this transaction path before their handler runs instead of being presented
+as atomic. The public facade accepts at most 100 ops and the renderer accepts at
+most 256 expanded core actions, keeping a batch below retained history bounds.
+History eviction removes complete oldest groups. Derived engine/cache refresh
+failures are diagnostic and never turn an already committed batch into a
+reported failure that an idempotent caller might retry.
 
 ### 3. Shared revision: one monotonic counter, CAS at the choke point
 
@@ -225,7 +231,7 @@ External Codex/Claude-style agents keep working over stdio MCP. The path:
 
 ```
 external agent (MCP stdio client)
-  → openreel-mcp shim (spawned by the agent; reads endpoint file itself)
+  → openreel-live-mcp shim (spawned by the agent; reads endpoint file itself)
   → HTTP POST 127.0.0.1:<port> with Authorization: Bearer <token>
   → desktop main live endpoint (MCP: initialize/ping/tools/list/tools/call)
   → the same main-process live facade session
@@ -240,7 +246,7 @@ Security boundary (within the local user account):
   via `getMcpStatus` — DESK-04; the new path does not repeat that.)
 - Loopback-only bind, POST-only, body-capped, no GET/SSE — same hardened
   shape as the existing `http-server.ts`.
-- The endpoint serves **only the 15 facade tools** (`tools/list` answered in
+- The endpoint serves **only the 17 facade tools** (`tools/list` answered in
   main from the facade schema; no renderer round-trip needed to list).
 - The legacy 304-tool desktop MCP stays an internal/debug surface and is
   **not** resurrected as a public entry point; the internal registry remains
@@ -274,14 +280,14 @@ undoable edit.
 
 ### 12. Undo-unit integrity: history groups gain an owner
 
-Verified hazard: `ActionHistory.beginGroup` is proximity-based — any push
-while a group token is open joins that group, so a human edit landing
-mid-agent-batch would join the agent's undo unit (and vice versa).
-`ActionHistory` gains a minimal ownership rule: a push from a different
-owner while a group is open auto-closes the open group first. Agent batches
-label their group; GUI edits carry the default owner. One agent batch stays
-exactly one undo unit even under interleaving; human edits keep their own
-units.
+Verified hazard: the original `ActionHistory.beginGroup` was proximity-based —
+any push while a group token was open joined that group, so overlapping human
+and Agent work could corrupt undo boundaries. `ActionHistory` now maintains an
+owner-scoped stack of group handles. Callers that cross an async boundary close
+the exact handle they opened, and each push carries its owner explicitly.
+Additionally, a live Agent batch runs synchronously on an isolated draft and
+publishes once, so human work cannot interleave inside its commit. One Agent
+batch remains exactly one undo unit; human gestures keep their own units.
 
 ### 13. What this slice deliberately does NOT build
 
@@ -350,6 +356,34 @@ re-verified green afterwards.
 - **M5 (project.save honesty).** All descriptions now state plainly: live
   `project.save` flushes the GUI's autosave/recovery snapshot; it does not
   write a `.openreel` project file.
+- **G-04 (status/lifecycle ordering).** The main-owned host now serializes
+  enable/disable and stamps every status snapshot in capture order; renderer
+  state ignores older replies or pushes. Concurrent toggles cannot leave a
+  second endpoint or roll the UI back after a disable acknowledgement.
+- **External lease expiry.** The shipped stdio connector heartbeats the
+  authenticated endpoint. After the activity timeout, main marks it
+  disconnected and releases only its writer lease. The facade, completed jobs,
+  and idempotency ledger remain intact; the next authenticated write lazily
+  reacquires the lease. In-flight verbs are never expired.
+- **Desktop imports are file-backed.** The preload resolves an OS-backed
+  `File` with Electron `webUtils.getPathForFile`; the canonical media item
+  records that absolute path as `originalUrl`, so main-process snapshot
+  preview/export can read real GUI-imported video and audio. Browser and
+  synthetic `File` imports remain safely blob-only.
+- **Playback-safe context CAS.** The timeline now separates explicit
+  seek/scrub intent from ordinary playback clock ticks. Playback still updates
+  the reported playhead but no longer invalidates a context guard every frame.
+- **Owner-scoped history groups.** ActionHistory keeps overlapping human and
+  Agent groups by owner and supports exact group handles. Live actions pass
+  their owner per push instead of leaving a global Agent owner set across
+  awaited work, so an overlapping GUI gesture is neither overwritten nor
+  mis-attributed.
+- **Live bridge cleanup.** The preload returns a real unsubscribe function and
+  renderer teardown removes the IPC listener, preventing StrictMode or hot
+  reload from processing one request more than once.
+- **Live shim default.** The shipped `openreel-live-mcp` connector reads the
+  17-tool live endpoint descriptor by default; no legacy endpoint override is
+  required.
 - **L2–L6, L9.** Idempotency ledger scoped per project; endpoint 404s
   non-`/mcp` POST paths; preview replay keeps `artifact.sourceRevision` as
   the truth carrier (mirrors headless, pinned by test); `getFullProject`/
@@ -359,36 +393,11 @@ re-verified green afterwards.
 
 ### Known limitations and follow-ups (accepted for this slice)
 
-- **Playback vs context CAS.** Every playhead tick bumps `contextRevision`,
-  so an `expectedContextRevision` guard issued during playback is stale
-  within a frame and fails closed (CONFLICT → re-read → retry or pause).
-  This is safe-by-design but agents should read context while paused.
-  Follow-up: exclude playback ticks from the context fingerprint.
-- **Live preview/export needs file-backed media.** GUI-imported media held
-  as renderer blobs (no absolute path) makes the main-process snapshot
-  render fail honestly with UNSUPPORTED naming the media ids; text-only
-  projects and file-backed media render fine. Follow-up: record the source
-  path at desktop import (Electron `File.path`) so the honesty gate passes
-  for real user projects.
-- **Lease after external disconnect.** The HTTP endpoint is stateless; an
-  external agent that vanishes keeps the writer lease until the user
-  toggles the Agent Session off/on (the status bar always shows the
-  current holder). Follow-up: lease TTL or heartbeat.
-- **Status event ordering.** Rapid enable/disable can deliver out-of-order
-  status pushes that leave the UI claiming the session is on after a
-  disable ack (E2E G-04). Follow-up: sequence-stamp status events.
-- **Drag-gesture groups.** `beginGroup` during a human drag gesture
-  overwrites the gesture's group id (the drag tail becomes ungrouped).
-  Follow-up: nest or auto-close-and-remember in `ActionHistory`.
-- **Same-owner attribution inside one renderer transaction.** A GUI edit
-  landing *inside* a single `LiveEditorHost` transaction window inherits
-  the `"agent"` owner (the H1/M4 checks fail safe here — they stop at
-  anything not `"agent"`). Follow-up: per-push owner tagging in the store.
-- **Shim default endpoint.** `openreel-mcp` still defaults to the legacy
-  (internal) endpoint file; reaching the 15-verb live endpoint requires
-  `OPENREEL_MCP_ENDPOINT_FILE=~/.openreel/live-endpoint.json`. Deliberate
-  this slice (legacy MCP untouched per Decision 9); flip the default when
-  the legacy path is retired.
+- **Live preview/export still requires readable source files.** Desktop
+  imports now retain their absolute native path, but browser/synthetic media
+  is still blob-only and a source file moved or deleted after import is no
+  longer readable. Snapshot rendering continues to fail honestly with
+  UNSUPPORTED naming those media ids.
 - **Conversation-channel trust (updated by ADR 0005).** The renderer receives
   only a bounded display projection over narrow IPC methods. Loopback endpoint
   credentials remain in the desktop main process and never cross into the

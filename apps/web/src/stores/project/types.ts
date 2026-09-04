@@ -39,6 +39,7 @@ import type {
   ColorGradingSettings,
 } from "../../bridges/effects-bridge";
 import type { AutoSaveMetadata } from "../../services/auto-save";
+import type { ExecuteActionBatch } from "./action-batch";
 
 export type ClipHistoryEntryType = "shape" | "text" | "svg" | "sticker";
 
@@ -465,6 +466,7 @@ export interface ProjectState {
   canUndo: () => boolean;
   canRedo: () => boolean;
 
+  executeActionBatch: ExecuteActionBatch;
   executeAction: (action: Action) => Promise<ActionResult>;
   getTimelineDuration: () => number;
 

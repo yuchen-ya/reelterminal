@@ -29,6 +29,7 @@ describe("action registry", () => {
   it("registers and resolves a handler", () => {
     registerActionHandler({
       type: "test/noop",
+      synchronous: true,
       apply: () => {},
       validate: () => ({ valid: true, errors: [] }),
       invert: () => null,
@@ -41,6 +42,7 @@ describe("action registry", () => {
     let applied = false;
     registerActionHandler({
       type: "test/flag",
+      synchronous: true,
       apply: (_action, project) => {
         (project as unknown as Record<string, unknown>).__flag = true;
         applied = true;
@@ -69,6 +71,7 @@ describe("action registry", () => {
   it("rejects a registered action whose validate fails", async () => {
     registerActionHandler({
       type: "test/invalid",
+      synchronous: true,
       apply: () => {},
       validate: () => ({
         valid: false,

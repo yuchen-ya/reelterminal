@@ -123,29 +123,23 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
   });
 
   test("disable mid-connection fails MCP calls cleanly; re-enable reconnects with state intact", async () => {
-    // Human: disable the Agent Session via the real toggle. Ground-truth sync
-    // (endpoint file deletion) — the store's own state can lag behind main
-    // under fast agent activity (G-04, recorded below).
+    // Human: disable the Agent Session via the real toggle. Both main's
+    // endpoint lifecycle and the renderer's sequenced status must converge.
     await disableAgentSessionViaUI(launched.page, launched.endpointFile);
     expect(existsSync(launched.endpointFile)).toBe(false);
 
-    // G-04 (reported, severity high): stale out-of-order status pushes
-    // (pushStatus emits in promise-resolution order, not call order) can
-    // leave the renderer store/UI claiming the session is ON after the
-    // disable ack — main is the truth; the UI is not, here.
-    // TODO(ADR 0004 errata — status-event sequencing): when pushes are
-    // ordered/stamped, assert the store reports disabled too. The mismatch
-    // is inherently racy (depends on push timing), so it is RECORDED, not
-    // asserted — the deterministic contract (endpoint down, MCP fails,
-    // state survives re-enable) is what this test pins.
     const uiState = await launched.page.evaluate(() => ({
       ariaChecked: document.querySelector('[role="switch"]')?.getAttribute("aria-checked"),
       showsExternalConnected: document.body.innerText.includes("External agent connected"),
     }));
+    expect(uiState).toEqual({
+      ariaChecked: "false",
+      showsExternalConnected: false,
+    });
     evidence.record("g04_store_vs_main_after_disable", {
       mainDisabled: true,
       rendererShows: uiState,
-      note: "G-04: stale out-of-order status pushes can leave the store/UI claiming the session is on after disable ack.",
+      statusSequenceContract: "renderer rejects status snapshots older than the disable acknowledgement",
     });
 
     // Subsequent MCP calls fail cleanly (a surfaced error, never a hang).

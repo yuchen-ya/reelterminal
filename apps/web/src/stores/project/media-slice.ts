@@ -55,6 +55,27 @@ function isAbsoluteLocalPath(value: string): boolean {
   return value.startsWith("/") || /^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\");
 }
 
+/**
+ * Recover provenance for a user-selected Electron File without making the
+ * browser build depend on Electron. The preload is the trust boundary: it
+ * resolves the path from the native File object via webUtils. Synthetic Files
+ * and ordinary browser imports deliberately remain blob-only.
+ */
+function desktopFileSourcePath(file: File): string | undefined {
+  const getPathForFile =
+    typeof window === "undefined" ? undefined : window.openreel?.fs?.getPathForFile;
+  if (!getPathForFile) return undefined;
+
+  try {
+    const sourcePath = getPathForFile(file);
+    return sourcePath && isAbsoluteLocalPath(sourcePath) ? sourcePath : undefined;
+  } catch {
+    // A synthetic File is a valid import even though Electron cannot map it
+    // back to disk. Preserve browser-compatible blob-only behavior.
+    return undefined;
+  }
+}
+
 function pathBasename(value: string): string {
   const normalized = value.replaceAll("\\", "/");
   return normalized.slice(normalized.lastIndexOf("/") + 1) || "media";
@@ -123,6 +144,19 @@ function importError(
 export function createMediaSlice(set: Set, get: Get): MediaSlice {
   return {
     importMedia: async (file: File, options: ImportMediaOptions = {}) => {
+      if (options.sourcePath !== undefined && !isAbsoluteLocalPath(options.sourcePath)) {
+        return importError(
+          "INVALID_PARAMS",
+          "Media sourcePath must be an absolute local file path",
+          { path: options.sourcePath },
+        );
+      }
+
+      // Resolve this synchronously while the original native File is in hand.
+      // All GUI entry points funnel through importMedia, so file-picker and OS
+      // drag/drop imports receive identical file-backed provenance.
+      const sourcePath = options.sourcePath ?? desktopFileSourcePath(file);
+
       if (
         options.expectedRevision !== undefined &&
         options.expectedRevision !== get().projectRevision
@@ -248,7 +282,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
             size: file.size,
             lastModified: file.lastModified,
           },
-          ...(options.sourcePath ? { originalUrl: options.sourcePath } : {}),
+          ...(sourcePath ? { originalUrl: sourcePath } : {}),
         };
         let committedMediaId = newMediaItem.id;
 
@@ -266,78 +300,116 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
           );
         }
 
-        // Import decoding is asynchronous. Merge into the project that is
-        // current at commit time so a concurrent GUI/agent edit is not lost.
-        const commitProject = get().project;
-        let updatedProject = {
-          ...commitProject,
-          mediaLibrary: {
-            ...commitProject.mediaLibrary,
-            items: [...commitProject.mediaLibrary.items, newMediaItem],
-          },
-          modifiedAt: Date.now(),
-        };
-
-        if (options.historyOwner) {
-          // Media import is not serializable as a wire action, but the
-          // renderer already has the File bytes and fully-probed MediaItem.
-          // Execute the canonical core action with that stable item so the
-          // normal GUI undo/redo path removes and restores the same identity.
-          const action: Action = {
-            type: "media/import",
-            id: uuidv4(),
-            timestamp: Date.now(),
-            // The complete item is part of the history action so redo keeps
-            // the same id, metadata and file provenance. The persisted blob
-            // remains under that stable id while the import is undone.
-            params: { file, mediaItem: newMediaItem },
-          };
-          const executor = get().actionExecutor;
-          const history = executor.getHistory();
-          const beforeIds = new Set(
-            commitProject.mediaLibrary.items.map((item) => item.id),
-          );
-          executor.setPushOwner(options.historyOwner);
-          history.beginGroup(options.historyGroupLabel, options.historyOwner);
-          let actionResult: Awaited<ReturnType<typeof executor.execute>>;
-          try {
-            actionResult = await executor.execute(action, get().project);
-          } finally {
-            history.endGroup();
-            executor.setPushOwner(undefined);
-          }
-          if (!actionResult.success) {
-            return actionResult;
-          }
-
-          const currentProject = get().project;
-          const created = currentProject.mediaLibrary.items.find(
-            (item) => !beforeIds.has(item.id),
-          );
-          if (!created) {
-            return importError(
-              "DECODE_ERROR",
-              "Media import completed without creating a canonical media item",
-            );
-          }
-          committedMediaId = created.id;
-          updatedProject = {
-            ...currentProject,
-            modifiedAt: Date.now(),
-          };
-        }
-
-        set({ project: updatedProject });
-
+        // Persistence is part of the import transaction. Saving after the
+        // canonical commit used to report success even when IndexedDB failed,
+        // leaving a media card that could not survive reload. Persist first;
+        // only publish the project/history mutation after durable bytes exist.
+        const persistenceProjectId = get().project.id;
         try {
           await saveMediaBlob(
-            updatedProject.id,
-            committedMediaId,
+            persistenceProjectId,
+            newMediaItem.id,
             file,
             newMediaItem.metadata,
           );
         } catch (err) {
           console.error("[ProjectStore] Failed to persist media blob:", err);
+          return importError(
+            "DECODE_ERROR",
+            "Failed to persist imported media for project recovery",
+          );
+        }
+
+        let discardPersistedBlob = true;
+        const discardUncommittedBlob = async (): Promise<void> => {
+          if (!discardPersistedBlob) return;
+          discardPersistedBlob = false;
+          await deleteMediaBlob(newMediaItem.id).catch((error) =>
+            console.warn("[ProjectStore] Failed to discard uncommitted media blob:", error),
+          );
+        };
+
+        try {
+          // The user may switch projects while persistence is in flight. A
+          // stored blob must never be committed into a different project.
+          const commitProject = get().project;
+          if (commitProject.id !== persistenceProjectId) {
+            await discardUncommittedBlob();
+            return importError(
+              "DECODE_ERROR",
+              "The active project changed while media was being persisted",
+            );
+          }
+          if (
+            options.expectedRevision !== undefined &&
+            options.expectedRevision !== get().projectRevision
+          ) {
+            await discardUncommittedBlob();
+            return importError(
+              "INVALID_PARAMS",
+              `Project revision mismatch: expected ${options.expectedRevision}, current ${get().projectRevision}`,
+              { reason: "CONFLICT", currentRevision: get().projectRevision },
+            );
+          }
+
+          // Import decoding and persistence are asynchronous. Merge into the
+          // project current at commit time so an intervening GUI edit is kept.
+          let updatedProject = {
+            ...commitProject,
+            mediaLibrary: {
+              ...commitProject.mediaLibrary,
+              items: [...commitProject.mediaLibrary.items, newMediaItem],
+            },
+            modifiedAt: Date.now(),
+          };
+
+          if (options.historyOwner) {
+            // Media import is not serializable as a wire action, but the
+            // renderer already has the File bytes and fully-probed MediaItem.
+            // Execute the canonical core action with that stable item so the
+            // normal GUI undo/redo path removes and restores the same identity.
+            const action: Action = {
+              type: "media/import",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              // The complete item is part of the history action so redo keeps
+              // the same id, metadata and file provenance. The persisted blob
+              // remains under that stable id while the import is undone.
+              params: { file, mediaItem: newMediaItem },
+            };
+            const executor = get().actionExecutor;
+            const history = executor.getHistory();
+            const groupId = history.beginGroup(
+              options.historyGroupLabel,
+              options.historyOwner,
+            );
+            let actionResult: Awaited<ReturnType<typeof executor.execute>>;
+            try {
+              actionResult = await executor.execute(
+                action,
+                get().project,
+                options.historyOwner,
+              );
+            } finally {
+              history.endGroup(groupId);
+            }
+            if (!actionResult.success) {
+              await discardUncommittedBlob();
+              return actionResult;
+            }
+
+            committedMediaId = newMediaItem.id;
+            updatedProject = {
+              ...get().project,
+              modifiedAt: Date.now(),
+            };
+          }
+
+          set({ project: updatedProject });
+          discardPersistedBlob = false;
+        } catch (error) {
+          await discardUncommittedBlob();
+          throw error;
         }
 
         if (mediaType === "video" && !thumbnailUrl) {

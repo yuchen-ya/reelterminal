@@ -7,6 +7,12 @@ export interface ActionHandlerContext {
 
 export interface ActionHandler {
   readonly type: string;
+  /**
+   * Explicit transaction capability. ActionExecutor checks this before
+   * invoking a handler on an atomic draft, so an async handler cannot run a
+   * synchronous prefix and only then be discovered as unsafe.
+   */
+  readonly synchronous: boolean;
   apply(
     action: Action,
     project: Project,

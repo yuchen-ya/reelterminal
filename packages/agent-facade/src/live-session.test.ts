@@ -1213,6 +1213,33 @@ describe("work mode + access gate + writer lease", () => {
     expect(res.ok).toBe(true);
   });
 
+  it("an inactivity release preserves the session ledger and lazily reacquires", async () => {
+    const facade = liveFacade({ sessionId: "agent-1" });
+    const params = {
+      idempotencyKey: "survives-heartbeat-gap",
+      ops: [...TEXT_BATCH],
+    };
+    const first = await facade["edit.apply"](params);
+    expect(first.ok).toBe(true);
+    expect(store.batches).toHaveLength(1);
+
+    facade.releaseWriterLease();
+    expect(lease.holder()).toBeNull();
+    const idle = await facade["session.describe"]();
+    expect(idle.ok && idle.value.writer).toBe(false);
+
+    const replay = await facade["edit.apply"](params);
+    expect(replay.ok).toBe(true);
+    if (!replay.ok || !first.ok) return;
+    expect(replay.value).toMatchObject({
+      replayed: true,
+      revision: first.value.revision,
+      applied: first.value.applied,
+    });
+    expect(store.batches).toHaveLength(1);
+    expect(lease.holder()).toBe("agent-1");
+  });
+
   it("a writer-less session acquires the freed lease at its next write (no re-creation)", async () => {
     const first = liveFacade({ sessionId: "agent-1" });
     // Constructed while agent-1 holds the lease: writer-less.
@@ -1600,6 +1627,68 @@ describe("live preview/export on a store snapshot (Decision 10)", () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe("CONFLICT");
     expect(await stat(path.join(artifactRoot, "visual")).catch(() => null)).toBeNull();
+  });
+
+  it("passes a readable GUI-imported source path to the snapshot renderer", async () => {
+    const sourcePath = path.join(artifactRoot, "human-shot.mp4");
+    await writeFile(sourcePath, Buffer.from("desktop-imported-media"));
+    const project = structuredClone(store.project) as unknown as {
+      mediaLibrary: { items: Array<Record<string, unknown>> };
+      timeline: {
+        tracks: Array<Record<string, unknown>>;
+        duration: number;
+      };
+    };
+    project.mediaLibrary.items.push({
+      id: "m-file",
+      name: "human-shot.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      originalUrl: sourcePath,
+      sourceFile: {
+        name: "human-shot.mp4",
+        size: 22,
+        lastModified: Date.now(),
+      },
+      metadata: { duration: 5, width: 1920, height: 1080, frameRate: 30 },
+      thumbnailUrl: null,
+      waveformData: null,
+    });
+    project.timeline.tracks.push({
+      id: "v1",
+      type: "video",
+      name: "Video 1",
+      clips: [
+        {
+          id: "c1",
+          trackId: "v1",
+          mediaId: "m-file",
+          startTime: 0,
+          duration: 5,
+          inPoint: 0,
+          outPoint: 5,
+        },
+      ],
+    });
+    store.project = project as unknown as Project;
+
+    const baseProvider = stubRenderProvider();
+    const seenMediaFiles: Array<Readonly<Record<string, string>>> = [];
+    const provider: RenderProvider = {
+      ...baseProvider,
+      renderFramePng: async (request) => {
+        seenMediaFiles.push(request.mediaFiles);
+        return baseProvider.renderFramePng(request);
+      },
+    };
+
+    const res = await liveFacade({ renderProvider: provider })[
+      "preview.render_frame"
+    ]({ timeSec: 1 });
+
+    expect(res.ok).toBe(true);
+    expect(seenMediaFiles).toEqual([{ "m-file": sourcePath }]);
   });
 
   it("pixel-reading verbs reject blob/GUI-only media instead of rendering wrong pixels", async () => {

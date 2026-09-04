@@ -8,9 +8,8 @@ export interface HistoryEntry {
   readonly groupId?: string;
   /**
    * Undo-unit owner (ADR 0004 Decision 12): "agent" for AI batches, undefined
-   * for human edits. A push whose owner differs from the open group's owner
-   * auto-closes that group first, so a human edit can never join an agent's
-   * undo unit (and vice versa).
+   * for human edits. Open groups are owner-scoped, so a human edit can never
+   * join an Agent undo unit (and vice versa), even when their gestures overlap.
    */
   readonly owner?: string;
 }
@@ -27,6 +26,11 @@ export interface HistorySnapshot {
   name: string;
   timestamp: number;
   stackIndex: number;
+}
+
+interface OpenActionGroup {
+  readonly id: string;
+  readonly owner?: string;
 }
 
 const ACTION_DESCRIPTIONS: Record<
@@ -145,12 +149,18 @@ export class ActionHistory {
   private undoStack: HistoryEntry[] = [];
   private redoStack: HistoryEntry[] = [];
   private maxHistorySize: number;
-  private currentGroupId: string | null = null;
-  private currentGroupOwner: string | undefined = undefined;
+  /**
+   * Groups may overlap when a live Agent batch lands during a human gesture.
+   * Keep them as owner-scoped frames instead of one global slot: replacing a
+   * human frame with an Agent frame used to strand the tail of the gesture.
+   */
+  private openGroups: OpenActionGroup[] = [];
   private activeOwner: string | undefined = undefined;
   private groupCounter = 0;
   private snapshots: HistorySnapshot[] = [];
   private listeners: Set<() => void> = new Set();
+  private notificationBatchDepth = 0;
+  private notificationPending = false;
   private lastActionTime: number = 0;
   private autoGroupWindow: number = 100;
 
@@ -177,7 +187,58 @@ export class ActionHistory {
   }
 
   private notify(): void {
-    this.listeners.forEach((listener) => listener());
+    if (this.notificationBatchDepth > 0) {
+      this.notificationPending = true;
+      return;
+    }
+    // History is already committed when observers run. A faulty view
+    // subscriber must not turn that commit into an apparent action failure.
+    this.listeners.forEach((listener) => {
+      try {
+        listener();
+      } catch {
+        // Subscribers are observational; they cannot roll history back.
+      }
+    });
+  }
+
+  private batchNotifications(operation: () => void): void {
+    this.notificationBatchDepth += 1;
+    try {
+      operation();
+    } finally {
+      this.notificationBatchDepth -= 1;
+      if (this.notificationBatchDepth === 0 && this.notificationPending) {
+        this.notificationPending = false;
+        this.notify();
+      }
+    }
+  }
+
+  private trimToHistoryLimit(): void {
+    while (this.undoStack.length > this.maxHistorySize) {
+      const firstGroupId = this.undoStack[0]?.groupId;
+      let removeCount = 1;
+      if (firstGroupId) {
+        while (
+          removeCount < this.undoStack.length &&
+          this.undoStack[removeCount]?.groupId === firstGroupId
+        ) {
+          removeCount += 1;
+        }
+      }
+      // Preserve one complete undo unit even if a caller deliberately made a
+      // group larger than the nominal entry limit. Atomic undo is more
+      // important than enforcing the cap by retaining an unusable tail.
+      if (removeCount === this.undoStack.length) break;
+      this.undoStack.splice(0, removeCount);
+      this.snapshots = this.snapshots
+        .map((snapshot) => ({
+          ...snapshot,
+          stackIndex: snapshot.stackIndex - removeCount,
+        }))
+        .filter((snapshot) => snapshot.stackIndex >= 0);
+    }
   }
 
   push(
@@ -189,17 +250,6 @@ export class ActionHistory {
     const now = Date.now();
     const timeSinceLastAction = now - this.lastActionTime;
     this.lastActionTime = now;
-
-    // Ownership rule: a push from a different owner auto-closes the open group
-    // before pushing, so an interleaved foreign edit keeps its own undo unit
-    // instead of silently joining the open one.
-    if (
-      this.currentGroupId !== null &&
-      this.currentGroupOwner !== effectiveOwner
-    ) {
-      this.currentGroupId = null;
-      this.currentGroupOwner = undefined;
-    }
 
     const lastEntry =
       this.undoStack.length > 0
@@ -214,7 +264,12 @@ export class ActionHistory {
     //   collapse just because they happened back-to-back.
     // - The previous entry belongs to the same owner, so an agent batch and a
     //   human drag on the same entity don't coalesce across owners.
-    let groupId = this.currentGroupId;
+    // Pick the newest open group owned by this push. A human gesture and an
+    // Agent transaction can therefore overlap without either stealing or
+    // closing the other's grouping context.
+    let groupId = [...this.openGroups]
+      .reverse()
+      .find((group) => group.owner === effectiveOwner)?.id ?? null;
     if (
       !groupId &&
       lastEntry &&
@@ -249,27 +304,62 @@ export class ActionHistory {
       (s) => s.stackIndex <= this.undoStack.length,
     );
 
-    if (this.undoStack.length > this.maxHistorySize) {
-      this.undoStack.shift();
-      this.snapshots = this.snapshots
-        .map((s) => ({ ...s, stackIndex: s.stackIndex - 1 }))
-        .filter((s) => s.stackIndex >= 0);
-    }
+    this.trimToHistoryLimit();
 
     this.notify();
+  }
+
+  /** Append one complete undo unit and publish a single observer event. */
+  pushGroup(
+    entries: readonly Pick<HistoryEntry, "action" | "inverseAction">[],
+    description?: string,
+    owner?: string,
+  ): string | null {
+    if (entries.length === 0) return null;
+    let groupId: string | null = null;
+    this.batchNotifications(() => {
+      const openedGroupId = this.beginGroup(description, owner);
+      groupId = openedGroupId;
+      try {
+        for (const entry of entries) {
+          this.push(entry.action, entry.inverseAction, owner);
+        }
+      } finally {
+        this.endGroup(openedGroupId);
+      }
+    });
+    return groupId;
   }
 
   beginGroup(_description?: string, owner?: string): string {
     // The counter suffix keeps group ids unique even for two groups begun in
     // the same millisecond (e.g. back-to-back agent batches).
-    this.currentGroupId = `group-${Date.now()}-${++this.groupCounter}`;
-    this.currentGroupOwner = owner ?? this.activeOwner;
-    return this.currentGroupId;
+    const group = {
+      id: `group-${Date.now()}-${++this.groupCounter}`,
+      owner: owner ?? this.activeOwner,
+    };
+    this.openGroups.push(group);
+    return group.id;
   }
 
-  endGroup(): void {
-    this.currentGroupId = null;
-    this.currentGroupOwner = undefined;
+  /**
+   * Close one group. A caller that crosses an async boundary should pass the
+   * handle returned by beginGroup; legacy synchronous GUI callers may omit it,
+   * in which case only their current owner's newest group is closed.
+   */
+  endGroup(groupId?: string): void {
+    let index = -1;
+    if (groupId === undefined) {
+      for (let i = this.openGroups.length - 1; i >= 0; i -= 1) {
+        if (this.openGroups[i]?.owner === this.activeOwner) {
+          index = i;
+          break;
+        }
+      }
+    } else {
+      index = this.openGroups.findIndex((group) => group.id === groupId);
+    }
+    if (index >= 0) this.openGroups.splice(index, 1);
     this.notify();
   }
 
@@ -369,17 +459,21 @@ export class ActionHistory {
 
   getDisplayHistory(): Array<{ entry: HistoryEntry; isCurrent: boolean }> {
     const result: Array<{ entry: HistoryEntry; isCurrent: boolean }> = [];
-    const seen = new Set<string>();
+    let newerGroupId: string | undefined;
 
     for (let i = this.undoStack.length - 1; i >= 0; i--) {
       const entry = this.undoStack[i];
       if (entry.groupId) {
-        if (!seen.has(entry.groupId)) {
-          seen.add(entry.groupId);
+        // One display row must match one contiguous undo unit. Overlapping
+        // owner groups can legitimately reuse their id on both sides of a
+        // foreign entry; collapsing those fragments would hide undo steps.
+        if (entry.groupId !== newerGroupId) {
           result.push({ entry, isCurrent: i === this.undoStack.length - 1 });
         }
+        newerGroupId = entry.groupId;
       } else {
         result.push({ entry, isCurrent: i === this.undoStack.length - 1 });
+        newerGroupId = undefined;
       }
     }
     return result.reverse();
@@ -409,8 +503,7 @@ export class ActionHistory {
     this.undoStack = [];
     this.redoStack = [];
     this.snapshots = [];
-    this.currentGroupId = null;
-    this.currentGroupOwner = undefined;
+    this.openGroups = [];
     this.notify();
   }
 

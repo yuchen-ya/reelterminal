@@ -53,6 +53,7 @@ function removeMotionInstance(project: Project, instanceId: string): Project {
 
 const createComposition: ActionHandler = {
   type: "motion/createComposition",
+  synchronous: true,
   validate(action: Action): ValidationResult {
     const composition = (action.params as { composition?: MotionComposition })
       .composition;
@@ -79,6 +80,7 @@ const createComposition: ActionHandler = {
 
 const upsertComposition: ActionHandler = {
   type: "motion/upsertComposition",
+  synchronous: true,
   validate(action: Action): ValidationResult {
     const composition = (action.params as { composition?: MotionComposition })
       .composition;
@@ -108,6 +110,7 @@ const upsertComposition: ActionHandler = {
 
 const removeComposition: ActionHandler = {
   type: "motion/removeComposition",
+  synchronous: true,
   validate(action: Action, project: Project): ValidationResult {
     const compositionId = (action.params as { compositionId?: string })
       .compositionId;
@@ -156,6 +159,7 @@ const removeComposition: ActionHandler = {
 
 const insertInstance: ActionHandler = {
   type: "motion/insertInstance",
+  synchronous: true,
   validate(action: Action, project: Project): ValidationResult {
     const instance = (action.params as { instance?: MotionCompositionInstance })
       .instance;
@@ -187,6 +191,7 @@ const insertInstance: ActionHandler = {
 
 const removeInstance: ActionHandler = {
   type: "motion/removeInstance",
+  synchronous: true,
   validate(action: Action, project: Project): ValidationResult {
     const instanceId = (action.params as { instanceId?: string }).instanceId;
     return (project.motionInstances ?? []).some(

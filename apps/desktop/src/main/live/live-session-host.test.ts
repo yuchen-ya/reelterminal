@@ -55,6 +55,9 @@ function makeFacadeFactory(
     for (const verb of FACADE_VERBS) {
       verbs[verb] = async (params?: unknown) => {
         session.calls.push({ verb, params });
+        if (verb === "edit.apply" && config.lease.holder() === null) {
+          config.lease.acquire(config.sessionId);
+        }
         return (
           verbResults?.[verb] ?? {
             ok: true,
@@ -66,7 +69,8 @@ function makeFacadeFactory(
     verbs["session.describe"] = async () => ({
       ok: true,
       value: {
-        writer: session.isWriter && !session.disposed,
+        writer:
+          !session.disposed && config.lease.holder() === config.sessionId,
         leaseHolder: config.lease.holder(),
         sessionId: config.sessionId,
         workMode:
@@ -78,6 +82,9 @@ function makeFacadeFactory(
     });
     const facade = {
       ...verbs,
+      releaseWriterLease: () => {
+        config.lease.release(config.sessionId);
+      },
       dispose: async () => {
         session.disposed = true;
         config.lease.release(config.sessionId);
@@ -222,7 +229,7 @@ describe("live session host enable/status/disable", () => {
     const host = createLiveSessionHost(fixture.deps);
 
     const status = await host.enable();
-    expect(status).toEqual({
+    expect(status).toMatchObject({
       enabled: true,
       externalConnected: false,
       writer: null,
@@ -273,7 +280,7 @@ describe("live session host enable/status/disable", () => {
     expect(fixture.sessions).toHaveLength(1);
 
     const status = await host.disable();
-    expect(status).toEqual({
+    expect(status).toMatchObject({
       enabled: false,
       externalConnected: false,
       writer: null,
@@ -288,6 +295,78 @@ describe("live session host enable/status/disable", () => {
     await flushPushes();
     const lastStatus = statusEvents(fixture.events).at(-1);
     expect(lastStatus).toMatchObject({ type: "status", enabled: false });
+  });
+
+  it("serializes enable followed immediately by disable and ends fully disabled", async () => {
+    const fixture = makeFixture();
+    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
+    const host = createLiveSessionHost(fixture.deps);
+
+    const enabling = host.enable();
+    const disabling = host.disable();
+    await expect(enabling).resolves.toMatchObject({ enabled: true });
+    await expect(disabling).resolves.toMatchObject({ enabled: false });
+
+    expect(host.isEnabled).toBe(false);
+    expect(existsSync(fixture.endpointFile)).toBe(false);
+    expect(fixture.closeProviders).toHaveBeenCalledOnce();
+    expect(fixture.teardown).toHaveBeenCalledOnce();
+  });
+
+  it("coalesces concurrent enables onto one bridge, provider set, and endpoint", async () => {
+    const fixture = makeFixture();
+    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
+    const installStoreBridge = vi.fn(fixture.deps.installStoreBridge);
+    const createProviders = vi.fn(fixture.deps.createProviders);
+    const host = createLiveSessionHost({
+      ...fixture.deps,
+      installStoreBridge,
+      createProviders,
+    });
+
+    const [first, second] = await Promise.all([host.enable(), host.enable()]);
+    expect(first.enabled).toBe(true);
+    expect(second.enabled).toBe(true);
+    expect(second.sequence).toBeGreaterThan(first.sequence);
+    expect(installStoreBridge).toHaveBeenCalledOnce();
+    expect(createProviders).toHaveBeenCalledOnce();
+
+    await host.disable();
+  });
+
+  it("stamps snapshots in capture order even when an older writer lookup resolves last", async () => {
+    const fixture = makeFixture();
+    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
+    let releaseWriterLookup!: () => void;
+    const writerLookupGate = new Promise<void>((resolve) => {
+      releaseWriterLookup = resolve;
+    });
+    const createFacade = fixture.deps.createFacade;
+    const host = createLiveSessionHost({
+      ...fixture.deps,
+      createFacade: (config) => {
+        const facade = createFacade(config);
+        const describe = facade["session.describe"].bind(facade);
+        return {
+          ...facade,
+          "session.describe": async () => {
+            await writerLookupGate;
+            return describe();
+          },
+        } as LiveAgentFacade;
+      },
+    });
+
+    await host.enable();
+    await host.callExternal("timeline.get", undefined);
+    const disabled = await host.disable();
+    expect(disabled).toMatchObject({ enabled: false, writer: null });
+
+    releaseWriterLookup();
+    await flushPushes();
+    const lateEnabled = statusEvents(fixture.events).at(-1);
+    expect(lateEnabled).toMatchObject({ type: "status", enabled: true });
+    expect(lateEnabled!.sequence).toBeLessThan(disabled.sequence);
   });
 
   it("rejects verb calls while disabled and creates no session", async () => {
@@ -381,6 +460,135 @@ describe("live session host verb dispatch + events", () => {
 
     await host.disable();
     expect((await host.getStatus()).externalConnected).toBe(false);
+  });
+
+  it("expires an inactive external connection, releases its lease, and lazily reconnects", async () => {
+    const fixture = makeFixture();
+    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
+    const scheduled: Array<() => void> = [];
+    const timerHandle = { unref: vi.fn() } as unknown as ReturnType<
+      typeof setTimeout
+    >;
+    const clearActivityTimeout = vi.fn();
+    const host = createLiveSessionHost({
+      ...fixture.deps,
+      activityTimeoutMs: 50,
+      setActivityTimeout: (callback, delayMs) => {
+        expect(delayMs).toBe(50);
+        scheduled.push(callback);
+        return timerHandle;
+      },
+      clearActivityTimeout,
+    });
+    await host.enable();
+
+    const file = JSON.parse(readFileSync(fixture.endpointFile, "utf8")) as {
+      url: string;
+      token: string;
+    };
+    const post = (method: string) =>
+      fetch(file.url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${file.token}`,
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params: {} }),
+      });
+
+    await post("initialize");
+    await host.callExternal("timeline.get", undefined);
+    expect((await host.getStatus()).externalConnected).toBe(true);
+    expect((await host.getStatus()).writer).toBe("external");
+    expect(fixture.sessions).toHaveLength(1);
+
+    // A newer authenticated heartbeat invalidates an already-queued expiry.
+    const staleExpiry = scheduled.at(-1)!;
+    await post("ping");
+    staleExpiry();
+    await flushPushes();
+    expect((await host.getStatus()).externalConnected).toBe(true);
+    expect((await host.getStatus()).writer).toBe("external");
+
+    scheduled.at(-1)!();
+    await flushPushes();
+    await flushPushes();
+    expect((await host.getStatus()).externalConnected).toBe(false);
+    expect((await host.getStatus()).writer).toBeNull();
+    expect(fixture.sessions[0]!.disposed).toBe(false);
+
+    await post("ping");
+    await host.callExternal("edit.apply", { ops: [] });
+    expect((await host.getStatus()).externalConnected).toBe(true);
+    expect((await host.getStatus()).writer).toBe("external");
+    expect(fixture.sessions).toHaveLength(1);
+
+    await host.disable();
+    expect(clearActivityTimeout).toHaveBeenCalledWith(timerHandle);
+  });
+
+  it("does not expire the writer while an authenticated verb is still in flight", async () => {
+    const fixture = makeFixture();
+    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
+    const scheduled: Array<() => void> = [];
+    const timerHandle = { unref: vi.fn() } as unknown as ReturnType<
+      typeof setTimeout
+    >;
+    let finishVerb!: () => void;
+    const verbGate = new Promise<void>((resolve) => {
+      finishVerb = resolve;
+    });
+    const baseFactory = fixture.deps.createFacade;
+    const host = createLiveSessionHost({
+      ...fixture.deps,
+      setActivityTimeout: (callback) => {
+        scheduled.push(callback);
+        return timerHandle;
+      },
+      clearActivityTimeout: vi.fn(),
+      createFacade: (config) => {
+        const facade = baseFactory(config);
+        const timelineGet = facade["timeline.get"].bind(facade);
+        return {
+          ...facade,
+          "timeline.get": async () => {
+            await verbGate;
+            return timelineGet();
+          },
+        };
+      },
+    });
+    await host.enable();
+
+    const file = JSON.parse(readFileSync(fixture.endpointFile, "utf8")) as {
+      url: string;
+      token: string;
+    };
+    await fetch(file.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${file.token}`,
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" }),
+    });
+    const pendingVerb = host.callExternal("timeline.get", undefined);
+    await flushPushes();
+
+    scheduled.at(-1)!();
+    await flushPushes();
+    expect((await host.getStatus()).externalConnected).toBe(true);
+    expect(fixture.sessions[0]?.disposed).toBe(false);
+    expect(scheduled).toHaveLength(2);
+
+    finishVerb();
+    await pendingVerb;
+    scheduled.at(-1)!();
+    await flushPushes();
+    await flushPushes();
+    expect((await host.getStatus()).externalConnected).toBe(false);
+    expect(fixture.sessions[0]?.disposed).toBe(false);
+    await host.disable();
   });
 
   it("a failing verb ends the action with ok:false and a one-line summary", async () => {

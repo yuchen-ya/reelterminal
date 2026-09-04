@@ -14,7 +14,12 @@ if (typeof window.PointerEvent === "undefined") {
   class PointerEventPolyfill extends MouseEvent {
     readonly pointerId: number;
 
-    constructor(type: string, init: PointerEventInit = {}) {
+    constructor(
+      type: string,
+      init: ConstructorParameters<typeof MouseEvent>[1] & {
+        pointerId?: number;
+      } = {},
+    ) {
       super(type, init);
       this.pointerId = init.pointerId ?? 0;
     }

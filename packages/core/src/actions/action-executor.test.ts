@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { ActionExecutor } from "./action-executor";
 import type { Project } from "../types/project";
 import type { Action } from "../types/actions";
+import { registerActionHandler } from "./registry";
 
 function makeProject(): Project {
   return {
@@ -116,6 +117,91 @@ describe("ActionExecutor media/import undo", () => {
     expect(redo.success).toBe(true);
     expect(project.mediaLibrary.items).toHaveLength(1);
     expect(project.mediaLibrary.items[0]!.id).toBe(imported.id);
+  });
+});
+
+describe("ActionExecutor synchronous draft execution", () => {
+  it("applies a core action and records an explicitly owned inverse", () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+    const result = executor.executeSync(
+      {
+        id: "track-sync",
+        type: "track/add",
+        timestamp: Date.now(),
+        params: { trackType: "video", trackId: "sync-track" },
+      } as Action,
+      project,
+      "agent",
+    );
+
+    expect(result.success).toBe(true);
+    expect(project.timeline.tracks.map((track) => track.id)).toEqual([
+      "sync-track",
+    ]);
+    expect(executor.getHistory().peekUndo()).toMatchObject({
+      owner: "agent",
+      inverseAction: { type: "track/remove" },
+    });
+  });
+
+  it("runs registered synchronous overlay handlers on an isolated draft", () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+    const result = executor.executeSync(
+      {
+        id: "text-sync",
+        type: "text/create",
+        timestamp: Date.now(),
+        params: {
+          clip: {
+            id: "text-1",
+            trackId: "text-track",
+            text: "Draft title",
+            startTime: 0,
+            duration: 2,
+            keyframes: [],
+          },
+        },
+      } as Action,
+      project,
+      "agent",
+    );
+
+    expect(result.success).toBe(true);
+    expect(project.textClips?.[0]).toMatchObject({
+      id: "text-1",
+      text: "Draft title",
+    });
+  });
+
+  it("rejects an asynchronous handler before any synchronous prefix runs", () => {
+    registerActionHandler({
+      type: "test/async-draft-handler",
+      synchronous: false,
+      validate: () => ({ valid: true, errors: [] }),
+      apply: async (_action, project) => {
+        (project as unknown as { name: string }).name = "mutated before await";
+        await Promise.resolve();
+      },
+      invert: () => null,
+    });
+    const executor = new ActionExecutor();
+    const project = makeProject();
+
+    const result = executor.executeSync(
+      {
+        id: "async-handler",
+        type: "test/async-draft-handler",
+        timestamp: Date.now(),
+        params: {},
+      } as Action,
+      project,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error?.message).toContain("requires an asynchronous handler");
+    expect(project.name).toBe("Test");
   });
 });
 

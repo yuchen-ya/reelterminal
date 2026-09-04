@@ -63,11 +63,11 @@ export function createHistorySlice(
 
   return {
     beginHistoryGroup: (description?: string, owner?: string) => {
-      get().actionExecutor.getHistory().beginGroup(description, owner);
+      return get().actionExecutor.getHistory().beginGroup(description, owner);
     },
 
-    endHistoryGroup: () => {
-      get().actionExecutor.getHistory().endGroup();
+    endHistoryGroup: (groupId?: string) => {
+      get().actionExecutor.getHistory().endGroup(groupId);
     },
 
     undo: async () => {

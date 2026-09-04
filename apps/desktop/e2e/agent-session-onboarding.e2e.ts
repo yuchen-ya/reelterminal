@@ -46,7 +46,7 @@ describe("agent session onboarding (GUI)", () => {
 
     // Fresh profile → the first-run intro bubble shows next to the toggle.
     const intro = page.getByRole("status").filter({
-      hasText: "Let an AI assistant help you edit",
+      hasText: "Let an AI agent help you edit",
     });
     await intro.waitFor({ timeout: 30_000 });
 

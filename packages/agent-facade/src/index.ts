@@ -282,6 +282,7 @@ export type { JsonSchemaNode, JsonSchemaObject } from "./jsonschema";
 export { EMITTED_VERB_OUTPUT_JSON_SCHEMAS } from "./output-schemas";
 export type { OutputSchemaNode, OutputSchemaObject } from "./output-schemas";
 export {
+  MAX_EDIT_OPS_PER_BATCH,
   VERB_PARAM_SCHEMAS,
   PROJECT_SETTINGS_SCHEMA,
 } from "./verb-schemas";

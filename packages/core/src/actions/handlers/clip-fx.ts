@@ -15,6 +15,7 @@ const isNumber = (v: unknown): v is number =>
 // restores the prior speed.
 const clipSetSpeed: ActionHandler = {
   type: "clip/setSpeed",
+  synchronous: true,
   validate(action: Action, project: Project): ValidationResult {
     const params = action.params as { clipId?: string; speed?: unknown };
     const errors = [];
@@ -57,6 +58,7 @@ const clipSetSpeed: ActionHandler = {
 // undoable unit (the ramp UI mutates the speed engine, then persists here).
 const speedSetRampData: ActionHandler = {
   type: "speed/setRampData",
+  synchronous: true,
   validate(action: Action, project: Project): ValidationResult {
     const params = action.params as { clipId?: string };
     return typeof params.clipId === "string" && findClip(project, params.clipId)

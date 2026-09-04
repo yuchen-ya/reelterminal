@@ -25,6 +25,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
+    // Several browser/media modules keep worker-local handles after cleanup.
+    // Process isolation lets Vitest reclaim them deterministically; the thread
+    // pool can otherwise pass every assertion and never terminate.
+    pool: "forks",
     include: [
       "src/**/*.test.ts",
       "src/**/*.test.tsx",

@@ -19,6 +19,7 @@ const keyframeSetAll = makeClipFieldHandler({
 
 const effectSetOrder: ActionHandler = {
   type: "effect/setOrder",
+  synchronous: true,
   validate(action: Action, project: Project): ValidationResult {
     const params = action.params as { clipId?: string; effectIds?: unknown };
     const errors = [];
@@ -74,6 +75,7 @@ const effectSetOrder: ActionHandler = {
 
 const effectSetStack: ActionHandler = {
   type: "effect/setStack",
+  synchronous: true,
   validate(action: Action, project: Project): ValidationResult {
     const params = action.params as { clipId?: string; effects?: unknown };
     const errors = [];
@@ -122,6 +124,7 @@ function findSubtitle(project: Project, id: string): Subtitle | undefined {
 
 const subtitleReplace: ActionHandler = {
   type: "subtitle/replace",
+  synchronous: true,
   validate(action: Action, project: Project): ValidationResult {
     const params = action.params as { subtitleId?: string };
     const errors = [];
@@ -161,6 +164,7 @@ const subtitleReplace: ActionHandler = {
 
 const subtitleSetAll: ActionHandler = {
   type: "subtitle/setAll",
+  synchronous: true,
   validate(): ValidationResult {
     return { valid: true, errors: [] };
   },
@@ -182,6 +186,7 @@ const subtitleSetAll: ActionHandler = {
 
 const adjustmentSetAll: ActionHandler = {
   type: "adjustment/setAll",
+  synchronous: true,
   validate(): ValidationResult {
     return { valid: true, errors: [] };
   },
@@ -205,6 +210,7 @@ const adjustmentSetAll: ActionHandler = {
 
 const maskSetAll: ActionHandler = {
   type: "mask/setAll",
+  synchronous: true,
   validate(): ValidationResult {
     return { valid: true, errors: [] };
   },
@@ -228,6 +234,7 @@ const maskSetAll: ActionHandler = {
 
 const multicamSetAll: ActionHandler = {
   type: "multicam/setAll",
+  synchronous: true,
   validate(): ValidationResult {
     return { valid: true, errors: [] };
   },
@@ -251,6 +258,7 @@ const multicamSetAll: ActionHandler = {
 
 const nestedSetAll: ActionHandler = {
   type: "nested/setAll",
+  synchronous: true,
   validate(): ValidationResult {
     return { valid: true, errors: [] };
   },

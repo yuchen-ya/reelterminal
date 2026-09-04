@@ -17,6 +17,7 @@ import {
 } from "./harness/ui";
 
 const FILE_NAME = "agent-tone.wav";
+const GUI_FILE_NAME = "gui-tone.wav";
 
 function writeTone(filePath: string): void {
   const sampleRate = 8_000;
@@ -61,6 +62,7 @@ describe("live media import: external Agent → visible GUI project", () => {
   beforeAll(async () => {
     launched = await launchApp();
     writeTone(path.join(launched.runDir, FILE_NAME));
+    writeTone(path.join(launched.runDir, GUI_FILE_NAME));
     await createProjectViaUI(launched.page);
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
     await launched.waitForEndpointFile();
@@ -74,6 +76,37 @@ describe("live media import: external Agent → visible GUI project", () => {
 
   test("import is visible, undoable, editable and persistent", async () => {
     const sourcePath = path.join(launched.runDir, FILE_NAME);
+    const guiSourcePath = path.join(launched.runDir, GUI_FILE_NAME);
+
+    // Real Electron file input → preload webUtils.getPathForFile → canonical
+    // media provenance. This is the native boundary that unit tests can only
+    // mock; keep it before the Agent import so preview/export snapshots can
+    // trust GUI-selected files too.
+    await launched.page
+      .locator('input[type="file"][aria-label="Import media"]')
+      .setInputFiles(guiSourcePath);
+    await launched.page
+      .getByTitle(GUI_FILE_NAME, { exact: true })
+      .waitFor({ timeout: 30_000 });
+    const guiImportState = await agent.callTool<{
+      revision: number;
+      project: {
+        mediaLibrary: {
+          items: Array<{ id: string; name: string; originalUrl?: string }>;
+        };
+      };
+    }>("project_get_state");
+    expect(guiImportState.ok).toBe(true);
+    const guiItem = guiImportState.value!.project.mediaLibrary.items.find(
+      (item) => item.name === GUI_FILE_NAME,
+    );
+    expect(guiItem?.originalUrl).toBe(guiSourcePath);
+    const removedGuiImport = await agent.callTool("edit_apply", {
+      ops: [{ op: "media.remove", mediaId: guiItem!.id }],
+      expectedRevision: guiImportState.value!.revision,
+    });
+    expect(removedGuiImport.ok).toBe(true);
+
     const caps = await agent.callTool<{
       mediaImport: { available: boolean; mediaRoots: string[] };
     }>("capabilities_get");

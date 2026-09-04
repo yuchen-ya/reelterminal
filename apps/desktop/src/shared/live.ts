@@ -9,8 +9,19 @@
 export type AgentWorkMode = "guided" | "collaborative" | "autonomous";
 export type AgentAccessMode = "read-only" | "write";
 
+/** Shipped connector cadence; comfortably below the host activity lease. */
+export const LIVE_HEARTBEAT_INTERVAL_MS = 10_000;
+/** No authenticated activity for this long releases the external writer. */
+export const LIVE_ACTIVITY_TIMEOUT_MS = 45_000;
+
 /** collabControl.getStatus / the `{type:"status"}` live event payload. */
 export interface LiveCollabStatus {
+  /**
+   * Main-process-owned, monotonically increasing snapshot sequence.
+   * Consumers must ignore a status whose sequence is lower than the newest
+   * one they have applied. The sequence is scoped to this desktop process.
+   */
+  readonly sequence: number;
   readonly enabled: boolean;
   readonly externalConnected: boolean;
   /** The external agent session currently holding the writer lease. */
@@ -102,8 +113,9 @@ export interface LiveBridgeReply {
 /* ---- liveEvents: main → renderer pushes ---------------------------------- */
 
 /**
- * Status pushes spread the CollabStatus fields at the top level (the
- * renderer's collab-store merges everything except `type` into its state).
+ * Status pushes spread the CollabStatus fields at the top level. Their
+ * main-owned sequence lets the renderer reject asynchronously delayed
+ * snapshots rather than applying them in delivery order.
  */
 export type LiveEvent =
   | ({ readonly type: "status" } & LiveCollabStatus)

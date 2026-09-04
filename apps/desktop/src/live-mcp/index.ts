@@ -14,6 +14,7 @@ import { request as httpRequest } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { LIVE_HEARTBEAT_INTERVAL_MS } from "../shared/live";
 
 interface RpcMessage {
   readonly jsonrpc?: string;
@@ -124,6 +125,35 @@ export interface ProgressNotification {
 export interface ProgressWatch {
   readonly done: Promise<void>;
   stop(): void;
+}
+
+export interface LiveHeartbeat {
+  stop(): void;
+}
+
+/**
+ * Keep the host-side external writer lease alive while this stdio connector
+ * exists. Heartbeats use a private request id and never enter MCP stdout.
+ */
+export function startLiveHeartbeat(
+  post: RpcPoster,
+  intervalMs = LIVE_HEARTBEAT_INTERVAL_MS,
+): LiveHeartbeat {
+  let sequence = 0;
+  const timer = setInterval(() => {
+    sequence += 1;
+    void Promise.resolve()
+      .then(() =>
+        post({
+          jsonrpc: "2.0",
+          id: `openreel-heartbeat-${sequence}`,
+          method: "ping",
+        }),
+      )
+      .catch(() => undefined);
+  }, Math.max(1, intervalMs));
+  if (typeof timer === "object" && "unref" in timer) timer.unref();
+  return { stop: () => clearInterval(timer) };
 }
 
 export interface ProgressWatchOptions {
@@ -418,6 +448,7 @@ function main(): void {
     process.exit(1);
   }
   const post: RpcPoster = (message) => postRpc(endpoint, message);
+  const heartbeat = startLiveHeartbeat(post);
   const writeLine = createSerializedLineWriter(
     (line) =>
       new Promise<void>((resolve, reject) => {
@@ -430,6 +461,7 @@ function main(): void {
     JSON.stringify([jobId, progressToken]);
   const stopProgressWatches = (): void => {
     closing = true;
+    heartbeat.stop();
     for (const watch of progressWatches.values()) watch.stop();
     progressWatches.clear();
   };

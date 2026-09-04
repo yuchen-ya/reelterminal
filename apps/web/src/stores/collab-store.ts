@@ -19,7 +19,7 @@ interface CollabState extends CollabStatus {
   enable: () => Promise<void>;
   disable: () => Promise<void>;
   setWorkMode: (mode: CollabMode) => Promise<void>;
-  applyStatus: (status: Partial<CollabStatus>) => void;
+  applyStatus: (status: CollabStatus) => void;
   setCurrentAction: (action: string | null) => void;
 }
 
@@ -29,6 +29,7 @@ const collabControl = () =>
     : undefined;
 
 export const useCollabStore = create<CollabState>()((set, get) => ({
+  sequence: 0,
   enabled: false,
   externalConnected: false,
   writer: null,
@@ -37,7 +38,15 @@ export const useCollabStore = create<CollabState>()((set, get) => ({
   currentAction: null,
 
   applyStatus: (status) => {
-    set((state) => ({ ...state, ...status }));
+    set((state) => {
+      // IPC replies and pushes share the same main-owned sequence space.
+      // Promise/event delivery may reorder them, so only captured order is
+      // authoritative.
+      if (status.sequence < state.sequence) {
+        return state;
+      }
+      return { ...state, ...status };
+    });
   },
 
   setCurrentAction: (action) => set({ currentAction: action }),

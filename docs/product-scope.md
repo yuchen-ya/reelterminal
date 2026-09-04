@@ -88,7 +88,7 @@ The first cleanup pass is intentionally vertical rather than cosmetic:
 
 | Keep | Remove |
 |---|---|
-| Slice 3 live facade and its 15 focused tools | Legacy desktop MCP registry and its 304-tool endpoint |
+| Slice 3 live facade and its 17 focused tools | Legacy desktop MCP registry and its 304-tool endpoint |
 | External-agent connection, status, permissions, cancellation, and editor activity | Embedded OpenAI/Anthropic clients, inference loop, system prompt, token accounting, and local chat history |
 | Timeline, media import, effects, transitions, titles, audio alignment, preview, verification, and export | Provider/model pickers, LLM API-key settings, auto-confirm/dry-run settings that apply only to the embedded agent |
 | Optional external-session conversation client | Any silent fallback to a bundled model or project-owned conversation |

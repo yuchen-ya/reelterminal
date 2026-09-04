@@ -85,7 +85,11 @@ export class ActionExecutor {
     this.inverseGenerator = new InverseActionGenerator();
   }
 
-  async execute(action: Action, project: Project): Promise<ActionResult> {
+  async execute(
+    action: Action,
+    project: Project,
+    historyOwner?: string,
+  ): Promise<ActionResult> {
     const validationResult = this.validator.validate(action, project);
 
     if (!validationResult.valid) {
@@ -111,7 +115,7 @@ export class ActionExecutor {
       const resolvedInverseAction = inverseAction
         ? this.resolveSpecialMarkers(inverseAction)
         : null;
-      this.history.push(action, resolvedInverseAction);
+      this.history.push(action, resolvedInverseAction, historyOwner);
 
       return {
         success: true,
@@ -129,14 +133,58 @@ export class ActionExecutor {
     }
   }
 
+  /**
+   * Execute a fully synchronous action against an isolated project draft.
+   * This is used by renderer transactions that must validate/apply a complete
+   * batch before publishing one canonical store commit. Async handlers fail
+   * explicitly; callers must never pretend such an action was atomic.
+   */
+  executeSync(
+    action: Action,
+    project: Project,
+    historyOwner?: string,
+  ): ActionResult {
+    const validationResult = this.validator.validate(action, project);
+    if (!validationResult.valid) {
+      return {
+        success: false,
+        error: {
+          code: "INVALID_PARAMS",
+          message: validationResult.errors.map((error) => error.message).join("; "),
+          details: { errors: validationResult.errors },
+        },
+      };
+    }
+    const projectSnapshot = JSON.parse(JSON.stringify(project));
+    const inverseAction = this.inverseGenerator.generate(action, projectSnapshot);
+    try {
+      this.applyActionSync(action as TimelineAction, project);
+      const resolvedInverseAction = inverseAction
+        ? this.resolveSpecialMarkers(inverseAction)
+        : null;
+      this.history.push(action, resolvedInverseAction, historyOwner);
+      return { success: true, actionId: action.id };
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          code: "INVALID_PARAMS",
+          message:
+            error instanceof Error ? error.message : "Unknown error occurred",
+        },
+      };
+    }
+  }
+
   async executeMany(
     actions: Action[],
     project: Project,
+    historyOwner?: string,
   ): Promise<ActionResult[]> {
     const results: ActionResult[] = [];
 
     for (const action of actions) {
-      const result = await this.execute(action, project);
+      const result = await this.execute(action, project, historyOwner);
       results.push(result);
       if (!result.success) {
         break;
@@ -228,11 +276,10 @@ export class ActionExecutor {
   }
 
   /**
-   * Attributes history pushes made while the owner is set (ADR 0004 Decision
-   * 12). LiveEditorHost sets "agent" around a transaction so an interleaved
-   * human edit auto-closes the agent's group instead of joining it; GUI paths
-   * never set it (the human/default owner). Forwarded to the history because
-   * engine-aware overlay helpers push there directly, bypassing execute().
+   * Attributes synchronous helper pushes made while the owner is set. Never
+   * hold this process-local context across an await; async callers should pass
+   * `historyOwner` to execute/executeMany so unrelated GUI work cannot inherit
+   * it. Retained for engine-aware helpers that push directly to history.
    */
   setPushOwner(owner: string | undefined): void {
     this.history.setActiveOwner(owner);
@@ -272,12 +319,43 @@ export class ActionExecutor {
       return;
     }
 
+    this.applyBuiltInAction(action, project);
+    this.recalculateTimelineDuration(project);
+  }
+
+  private applyActionSync(action: TimelineAction, project: Project): void {
+    const type = action.type;
+    const handler = getActionHandler(type);
+    if (handler) {
+      if (!handler.synchronous) {
+        throw new Error(`Action ${type} requires an asynchronous handler`);
+      }
+      const applied = handler.apply(action as Action, project, {
+        lastAddedIds: this.lastAddedIds,
+      });
+      if (
+        applied !== undefined &&
+        typeof (applied as PromiseLike<void>).then === "function"
+      ) {
+        throw new Error(`Action ${type} requires an asynchronous handler`);
+      }
+      this.recalculateTimelineDuration(project);
+      return;
+    }
+
+    this.applyBuiltInAction(action, project);
+    this.recalculateTimelineDuration(project);
+  }
+
+  /** Shared synchronous dispatcher used by both ordinary and draft execution. */
+  private applyBuiltInAction(action: TimelineAction, project: Project): void {
+    const type = action.type;
     if (type.startsWith("project/")) {
       this.applyProjectAction(action as ProjectAction, project);
     } else if (type.startsWith("projectMarker/")) {
       this.applyProjectMarkerAction(action as ProjectMarkerAction, project);
     } else if (type.startsWith("media/")) {
-      await this.applyMediaAction(action as MediaAction, project);
+      this.applyMediaAction(action as MediaAction, project);
     } else if (type.startsWith("track/")) {
       this.applyTrackAction(action as TrackAction, project);
     } else if (type.startsWith("clip/")) {
@@ -297,9 +375,6 @@ export class ActionExecutor {
     } else if (type.startsWith("marker/")) {
       this.applyMarkerAction(action as MarkerAction, project);
     }
-
-    // Recompute timeline duration from clips after any action that may affect it
-    this.recalculateTimelineDuration(project);
   }
 
   private recalculateTimelineDuration(project: Project): void {
@@ -366,10 +441,10 @@ export class ActionExecutor {
     }
   }
 
-  private async applyMediaAction(
+  private applyMediaAction(
     action: MediaAction | { type: string; params: Record<string, unknown> },
     project: Project,
-  ): Promise<void> {
+  ): void {
     const mediaLibrary = project.mediaLibrary as any;
 
     switch (action.type) {

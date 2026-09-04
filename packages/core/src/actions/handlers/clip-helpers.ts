@@ -46,6 +46,7 @@ export interface ClipFieldHandlerSpec {
 export function makeClipFieldHandler(spec: ClipFieldHandlerSpec): ActionHandler {
   return {
     type: spec.type,
+    synchronous: true,
     validate(action: Action, project: Project): ValidationResult {
       const params = action.params as Record<string, unknown>;
       const clipId = params.clipId;

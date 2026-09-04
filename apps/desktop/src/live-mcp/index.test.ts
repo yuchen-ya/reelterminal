@@ -5,6 +5,7 @@ import {
   createSerializedLineWriter,
   endpointFilePath,
   forwardLine,
+  startLiveHeartbeat,
   startProgressWatch,
   validateLiveEndpointUrl,
   type ProgressNotification,
@@ -234,5 +235,29 @@ describe("live MCP progress forwarding", () => {
     releaseFirst();
     await Promise.all([firstWrite, secondWrite]);
     expect(writes).toEqual(["response-1", "progress-1"]);
+  });
+});
+
+describe("live MCP activity heartbeat", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("pings privately on the shipped cadence and stops with the connector", async () => {
+    vi.useFakeTimers();
+    const post = vi.fn().mockResolvedValue({ jsonrpc: "2.0", result: {} });
+    const heartbeat = startLiveHeartbeat(post, 25);
+
+    await vi.advanceTimersByTimeAsync(75);
+    expect(post).toHaveBeenCalledTimes(3);
+    expect(post).toHaveBeenLastCalledWith({
+      jsonrpc: "2.0",
+      id: "openreel-heartbeat-3",
+      method: "ping",
+    });
+
+    heartbeat.stop();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(post).toHaveBeenCalledTimes(3);
   });
 });

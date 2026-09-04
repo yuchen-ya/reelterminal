@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, existsSync, statSync, writeFileSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -121,6 +130,33 @@ describe("live endpoint auth + transport", () => {
     expect(existsSync(closed.endpointFile)).toBe(false);
   });
 
+  it("atomically replaces a stale descriptor without leaving temporary files", async () => {
+    const staleFile = path.join(tempDir, "stale-endpoint.json");
+    writeFileSync(staleFile, '{"stale":true}\n', { mode: 0o644 });
+    const replacement = await startLiveEndpointServer({
+      callVerb: async () => ({ ok: true, value: {} }),
+      serverInfo: { name: "openreel-live", version: "test" },
+      port: 0,
+      endpointFilePath: staleFile,
+    });
+    try {
+      const descriptor = JSON.parse(readFileSync(staleFile, "utf8")) as {
+        url: string;
+        port: number;
+        token: string;
+      };
+      expect(descriptor.url).toBe(replacement.url);
+      expect(descriptor.port).toBe(replacement.port);
+      expect(descriptor.token).toHaveLength(64);
+      expect(statSync(staleFile).mode & 0o777).toBe(0o600);
+      expect(
+        readdirSync(tempDir).filter((name) => name.startsWith("stale-endpoint.json.")),
+      ).toEqual([]);
+    } finally {
+      await replacement.close();
+    }
+  });
+
   it("never leaks the token into any response body", async () => {
     const bodies: unknown[] = [];
     const init = await rpc(
@@ -141,13 +177,13 @@ describe("live endpoint auth + transport", () => {
 describe("live endpoint MCP protocol", () => {
   it("negotiates initialize: echoes a supported version, defaults an unknown one", async () => {
     const supported = await rpc(
-      { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } },
+      { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25" } },
       token,
     );
     const supportedJson = (await supported.json()) as {
       result: { protocolVersion: string; serverInfo: { name: string } };
     };
-    expect(supportedJson.result.protocolVersion).toBe("2025-06-18");
+    expect(supportedJson.result.protocolVersion).toBe("2025-11-25");
     expect(supportedJson.result.serverInfo.name).toBe("openreel-live");
 
     const unknown = await rpc(
@@ -160,10 +196,12 @@ describe("live endpoint MCP protocol", () => {
     expect(unknownJson.result.protocolVersion).toBe("2024-11-05");
   });
 
-  it("answers ping", async () => {
+  it("answers ping and counts it as authenticated external activity", async () => {
+    const before = activity;
     const res = await rpc({ jsonrpc: "2.0", id: 1, method: "ping" }, token);
     const json = (await res.json()) as { result: Record<string, never> };
     expect(json.result).toEqual({});
+    expect(activity).toBe(before + 1);
   });
 
   it("tools/list returns exactly the 17 facade tools, schemas verbatim, no renderer round-trip", async () => {

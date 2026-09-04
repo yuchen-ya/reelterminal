@@ -66,10 +66,8 @@ export async function enableAgentSessionViaUI(page: Page, endpointFile?: string)
   const isOn = async (): Promise<boolean> =>
     (await toggle.getAttribute("aria-checked")) === "true" &&
     (endpointFile === undefined || existsSync(endpointFile));
-  // G-04: a stale status push can leave the store thinking the session is on
-  // while main has it off — the first click then goes to the store's
-  // disable() and a second click actually enables, exactly what a real user
-  // would do. Ground truth = aria-checked AND the endpoint file present.
+  // Both the visible status and main-owned endpoint must agree before callers
+  // proceed. Retries tolerate ordinary startup latency, not stale state.
   for (let attempt = 0; attempt < 4; attempt += 1) {
     if (await isOn()) return;
     await toggle.click();
@@ -89,8 +87,7 @@ export async function disableAgentSessionViaUI(page: Page, endpointFile?: string
     await toggle.click();
   }
   if (endpointFile !== undefined) {
-    // Ground truth, immune to the G-04 stale-status race: main deletes the
-    // endpoint file on stop. (disable() also blocks for seconds in main:
+    // Main deletes the endpoint file on stop. (disable() can also block while
     // the endpoint's server.close() drains the shim's HTTP keep-alive
     // socket first — G-03. 60 s is headroom, not a weakened assertion.)
     await waitFor(
@@ -98,7 +95,6 @@ export async function disableAgentSessionViaUI(page: Page, endpointFile?: string
       60_000,
       "live endpoint file to be removed on disable",
     );
-    return;
   }
   await waitFor(
     async () => (await toggle.getAttribute("aria-checked")) === "false",

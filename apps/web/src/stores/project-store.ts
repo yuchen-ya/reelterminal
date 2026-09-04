@@ -57,6 +57,13 @@ import { createProjectStoreHelpers } from "./project/store-helpers";
 import { createTextGraphicsSlice } from "./project/text-graphics-slice";
 import { createHistorySlice } from "./project/history-slice";
 import { createClipSlice } from "./project/clip-slice";
+import {
+  appendCreatedIdDiff,
+  emptyActionBatchCreatedIds,
+  MAX_ACTIONS_PER_BATCH,
+  projectEntityIds,
+  type ExecuteActionBatch,
+} from "./project/action-batch";
 import { v4 as uuidv4 } from "uuid";
 import type {
   VideoEffect,
@@ -208,8 +215,8 @@ export interface ProjectState {
   moveClips: (
     moves: Array<{ clipId: string; startTime: number; trackId?: string }>,
   ) => Promise<ActionResult>;
-  beginHistoryGroup: (description?: string, owner?: string) => void;
-  endHistoryGroup: () => void;
+  beginHistoryGroup: (description?: string, owner?: string) => string;
+  endHistoryGroup: (groupId?: string) => void;
   closeGapBeforeClip: (clipId: string) => Promise<ActionResult>;
   consolidateTrack: (trackId: string) => Promise<ActionResult>;
   trimClip: (
@@ -614,6 +621,7 @@ export interface ProjectState {
   canRedo: () => boolean;
 
   // Execute arbitrary action
+  executeActionBatch: ExecuteActionBatch;
   executeAction: (action: Action) => Promise<ActionResult>;
 
   // Computed values
@@ -2809,6 +2817,163 @@ export const useProjectStore = create<ProjectState>()(
       }),
 
       // Execute arbitrary action
+      executeActionBatch: (actions, options) => {
+        if (actions.length === 0 || actions.length > MAX_ACTIONS_PER_BATCH) {
+          return {
+            result: {
+              success: false,
+              error: {
+                code: "INVALID_PARAMS",
+                message:
+                  actions.length === 0
+                    ? "Action batch must not be empty"
+                    : `Action batch exceeds the ${MAX_ACTIONS_PER_BATCH}-action limit`,
+              },
+            },
+            applied: 0,
+            createdIds: emptyActionBatchCreatedIds(),
+          };
+        }
+        const sourceState = get();
+        const sourceProject = sourceState.project;
+        const draft = structuredClone(sourceProject);
+        const draftHistory = new ActionHistory();
+        const draftExecutor = new ActionExecutor(draftHistory);
+        const createdIds = emptyActionBatchCreatedIds();
+        let applied = 0;
+
+        const syncDerivedState = (
+          nextProject: Project,
+          previousProject: Project,
+        ): void => {
+          const syncSteps: ReadonlyArray<readonly [string, () => void]> = [
+            ["effects", () => syncProjectEffectsBridge(nextProject, previousProject)],
+            [
+              "transitions",
+              () => syncProjectTransitionsBridge(nextProject, previousProject),
+            ],
+            ["overlay engines", syncOverlayEnginesFromProject],
+          ];
+          for (const [label, syncStep] of syncSteps) {
+            try {
+              syncStep();
+            } catch (error) {
+              // These bridges are derived caches/views. Once canonical state
+              // commits, a refresh failure must not report the edit as failed
+              // and invite an idempotency retry that would duplicate it.
+              console.warn(`Failed to synchronize ${label} after action batch`, error);
+            }
+          }
+        };
+
+        const restoreDerivedState = (): void => {
+          syncDerivedState(sourceProject, sourceProject);
+        };
+
+        for (const originalAction of actions) {
+          const idsBeforeAction = projectEntityIds(draft);
+          let action = structuredClone(originalAction);
+
+          // Text overlays must belong to a real text track. Resolve or create
+          // that dependency inside the draft so it commits and undoes with the
+          // same all-or-nothing batch.
+          if (action.type === "text/create") {
+            const clip = (action.params as { clip: TextClip }).clip;
+            let trackId = draft.timeline.tracks.some(
+              (track) => track.id === clip.trackId,
+            )
+              ? clip.trackId
+              : draft.timeline.tracks.find((track) => track.type === "text")?.id;
+            if (!trackId) {
+              trackId = `track-${uuidv4()}`;
+              const trackResult = draftExecutor.executeSync(
+                {
+                  type: "track/add",
+                  id: uuidv4(),
+                  timestamp: Date.now(),
+                  params: { trackType: "text", trackId },
+                } as Action,
+                draft,
+                options.historyOwner,
+              );
+              if (!trackResult.success) {
+                restoreDerivedState();
+                return { result: trackResult, applied, createdIds };
+              }
+            }
+            action = {
+              ...action,
+              params: {
+                ...action.params,
+                clip: { ...clip, trackId },
+              },
+            } as Action;
+          }
+
+          const result = draftExecutor.executeSync(
+            action,
+            draft,
+            options.historyOwner,
+          );
+          if (!result.success) {
+            restoreDerivedState();
+            return { result, applied, createdIds };
+          }
+          appendCreatedIdDiff(
+            createdIds,
+            idsBeforeAction,
+            projectEntityIds(draft),
+          );
+          applied += 1;
+        }
+
+        // No await occurs above: validation and mutation happen on an isolated
+        // draft in one JS turn. Publish project + history only after every
+        // action succeeds, giving live edit.apply a real atomic commit.
+        const committedProject = { ...draft, modifiedAt: Date.now() };
+        try {
+          set({
+            project: committedProject,
+            clipRedoStack: [],
+            templateRedoStack: [],
+          });
+        } catch (error) {
+          // Zustand assigns state before notifying subscribers. Treat a
+          // subscriber exception as an observer failure when the canonical
+          // project reference proves the commit landed; otherwise report a
+          // genuine non-commit and leave history untouched.
+          if (get().project !== committedProject) {
+            return {
+              result: {
+                success: false,
+                error: {
+                  code: "INVALID_PARAMS",
+                  message:
+                    error instanceof Error
+                      ? error.message
+                      : "Could not commit action batch",
+                },
+              },
+              applied: 0,
+              createdIds: emptyActionBatchCreatedIds(),
+            };
+          }
+          console.warn("A project observer failed after the action batch committed", error);
+        }
+
+        sourceState.actionExecutor.getHistory().pushGroup(
+          draftHistory.getHistoryEntries(),
+          options.groupLabel,
+          options.historyOwner,
+        );
+        syncDerivedState(committedProject, sourceProject);
+        return {
+          result: { success: true, actionId: actions[0]?.id },
+          applied,
+          createdIds,
+        };
+      },
+
       executeAction: async (action: Action) => {
         const { project, actionExecutor, hasOpenProject } = get();
         if (!hasOpenProject) {

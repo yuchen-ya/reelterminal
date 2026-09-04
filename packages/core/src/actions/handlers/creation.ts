@@ -78,6 +78,7 @@ function applyCreationState(project: Project, state: CreationProjectState | unde
 
 const replaceState: ActionHandler = {
   type: "creation/replaceState",
+  synchronous: true,
   validate(action: Action): ValidationResult {
     return creationValidationResult(stateFrom(action));
   },
@@ -96,6 +97,7 @@ const replaceState: ActionHandler = {
 
 const applyOperation: ActionHandler = {
   type: "creation/applyOperation",
+  synchronous: true,
   validate(action: Action, project: Project): ValidationResult {
     const operation = operationFrom(action);
     if (!operation) {

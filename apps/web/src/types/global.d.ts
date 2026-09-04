@@ -169,6 +169,8 @@ export type OpenReelAgentWorkMode = "guided" | "collaborative" | "autonomous";
 export type OpenReelAgentAccessMode = "read-only" | "write";
 
 export interface OpenReelCollabStatus {
+  /** Main-owned status snapshot order, scoped to the desktop process. */
+  sequence: number;
   enabled: boolean;
   externalConnected: boolean;
   writer: "external" | null;
@@ -190,10 +192,16 @@ export interface OpenReelLiveBridgeReply {
   error?: { code: string; message: string; details?: unknown };
 }
 
-export interface OpenReelLiveEvent {
-  type: "status" | "action";
-  [key: string]: unknown;
-}
+export type OpenReelLiveEvent =
+  | ({ type: "status" } & OpenReelCollabStatus)
+  | { type: "action"; phase: "start"; verb: string }
+  | {
+      type: "action";
+      phase: "end";
+      verb: string;
+      ok: boolean;
+      summary: string;
+    };
 
 export interface OpenReelConversationAdapterSummary {
   availability: "missing" | "available" | "invalid";
@@ -205,6 +213,7 @@ export interface OpenReelConversationAdapterSummary {
 }
 
 export interface OpenReelConversationState {
+  sequence: number;
   adapter: OpenReelConversationAdapterSummary;
   conversation: ExternalConversationDisplayState;
 }
@@ -222,6 +231,8 @@ declare global {
       probeHardware(): Promise<OpenReelHardwareInfo>;
       onMenuAction(cb: (id: string) => void): () => void;
       fs: {
+        /** Absolute OS path for an Electron-backed File; empty for synthetic Files. */
+        getPathForFile(file: File): string;
         showSaveDialog(opts: {
           defaultPath: string;
           filters: { name: string; extensions: string[] }[];
@@ -314,7 +325,7 @@ declare global {
       liveBridge?: {
         onRequest(
           handler: (req: OpenReelLiveBridgeRequest) => Promise<void>,
-        ): void;
+        ): () => void;
         respond(reply: OpenReelLiveBridgeReply): void;
       };
       /** Main→renderer push: collaboration status + current agent action. */

@@ -4,7 +4,11 @@
  * effects — never an `ok: true` silent no-op (audit CORE-08 / ADV-03 / NF-3).
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createAgentFacade, type AgentFacade } from "./index";
+import {
+  createAgentFacade,
+  MAX_EDIT_OPS_PER_BATCH,
+  type AgentFacade,
+} from "./index";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 import { makeTempDir, projectJson, removeTempDir } from "./test-helpers";
 
@@ -71,6 +75,20 @@ describe("strict params", () => {
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.error.code).toBe("INVALID_PARAMS");
+    await expectZeroSideEffects(0);
+  });
+
+  it("rejects a batch above the advertised operation limit", async () => {
+    const res = await facade["edit.apply"]({
+      ops: Array.from({ length: MAX_EDIT_OPS_PER_BATCH + 1 }, () => ({
+        op: "track.add" as const,
+        trackType: "video" as const,
+      })),
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("INVALID_PARAMS");
+    expect(res.error.message).toContain(String(MAX_EDIT_OPS_PER_BATCH));
     await expectZeroSideEffects(0);
   });
 

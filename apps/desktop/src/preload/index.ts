@@ -1,5 +1,6 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { CHANNELS } from "../shared/channels";
+import type { LiveCollabStatus, LiveEvent } from "../shared/live";
 
 contextBridge.exposeInMainWorld("openreel", {
   platform: "desktop",
@@ -11,6 +12,10 @@ contextBridge.exposeInMainWorld("openreel", {
     return () => ipcRenderer.removeListener("openreel:menu:action", handler);
   },
   fs: {
+    // File.path was removed from Electron's renderer File object. Resolve the
+    // OS-backed path in the privileged preload instead; synthetic/browser
+    // Files intentionally produce an empty string.
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
     showSaveDialog: (opts: unknown) => ipcRenderer.invoke(CHANNELS.fsShowSaveDialog, opts),
     showOpenDialog: (opts: unknown) => ipcRenderer.invoke(CHANNELS.fsShowOpenDialog, opts),
     readFile: (p: string) => ipcRenderer.invoke(CHANNELS.fsReadFile, { path: p }),
@@ -114,23 +119,27 @@ contextBridge.exposeInMainWorld("openreel", {
         void handler(req);
       };
       ipcRenderer.on(CHANNELS.liveRequest, listener);
+      return () => ipcRenderer.removeListener(CHANNELS.liveRequest, listener);
     },
     respond: (reply: unknown) => ipcRenderer.send(CHANNELS.liveResponse, reply),
   },
   liveEvents: {
     // Main→renderer push: collaboration status + current agent action.
-    onEvent: (cb: (evt: unknown) => void) => {
-      const handler = (_event: unknown, payload: unknown) => cb(payload);
+    onEvent: (cb: (evt: LiveEvent) => void) => {
+      const handler = (_event: unknown, payload: LiveEvent) => cb(payload);
       ipcRenderer.on(CHANNELS.liveEvent, handler);
       return () => ipcRenderer.removeListener(CHANNELS.liveEvent, handler);
     },
   },
   collabControl: {
-    enable: () => ipcRenderer.invoke(CHANNELS.collabEnable, undefined),
-    disable: () => ipcRenderer.invoke(CHANNELS.collabDisable, undefined),
-    getStatus: () => ipcRenderer.invoke(CHANNELS.collabGetStatus, undefined),
+    enable: (): Promise<LiveCollabStatus> =>
+      ipcRenderer.invoke(CHANNELS.collabEnable, undefined),
+    disable: (): Promise<LiveCollabStatus> =>
+      ipcRenderer.invoke(CHANNELS.collabDisable, undefined),
+    getStatus: (): Promise<LiveCollabStatus> =>
+      ipcRenderer.invoke(CHANNELS.collabGetStatus, undefined),
     setWorkMode: (mode: string) =>
-      ipcRenderer.invoke(CHANNELS.collabSetMode, { mode }),
+      ipcRenderer.invoke(CHANNELS.collabSetMode, { mode }) as Promise<LiveCollabStatus>,
     openWorkspace: () => ipcRenderer.invoke(CHANNELS.collabOpenWorkspace, undefined),
   },
   conversation: {

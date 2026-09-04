@@ -12,6 +12,7 @@ import {
   type LiveBridgeRequest,
 } from "./live-bridge";
 import { getTransitionBridge } from "../../bridges/transition-bridge";
+import { MAX_ACTIONS_PER_BATCH } from "../../stores/project/action-batch";
 
 const { mockSaveMediaBlob, mockImportFile } = vi.hoisted(() => ({
   mockSaveMediaBlob: vi.fn(async () => undefined),
@@ -243,6 +244,47 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     expect(getProjectRevision()).toBe(beforeRevision + 3);
   });
 
+  it("does not commit media or history when durable blob persistence fails", async () => {
+    const readFileBytes = vi.fn(async () => new ArrayBuffer(4));
+    (window as unknown as { openreel: unknown }).openreel = {
+      fs: { readFileBytes },
+    };
+    mockSaveMediaBlob.mockRejectedValueOnce(new Error("simulated storage failure"));
+    const revisionBefore = getProjectRevision();
+    const historyBefore = undoSize();
+
+    const result = await handleLiveBridgeRequest(
+      req("importMedia", {
+        path: "/media-root/not-durable.mp4",
+        name: "Not durable",
+        type: "video",
+        metadata: {
+          durationSec: 7,
+          width: 640,
+          height: 360,
+          frameRate: 30,
+          codec: "h264",
+          fileSize: 4,
+        },
+        sourceFile: {
+          name: "not-durable.mp4",
+          size: 4,
+          lastModified: 123,
+        },
+        expectedRevision: revisionBefore,
+      }),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatchObject({
+      code: "DECODE_ERROR",
+      message: "Failed to persist imported media for project recovery",
+    });
+    expect(getProjectRevision()).toBe(revisionBefore);
+    expect(undoSize()).toBe(historyBefore);
+    expect(useProjectStore.getState().project.mediaLibrary.items).toHaveLength(0);
+  });
+
   it("keeps an intervening edit when a manual media decode finishes later", async () => {
     let finishDecode!: (value: unknown) => void;
     mockImportFile.mockImplementationOnce(
@@ -291,6 +333,55 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
       useProjectStore.getState().project.timeline.tracks.some((item) => item.id === trackId),
     ).toBe(true);
     expect(useProjectStore.getState().project.mediaLibrary.items).toHaveLength(1);
+  });
+
+  it("records the native source path for a manual desktop media import", async () => {
+    const sourcePath = "/Users/editor/Footage/human-shot.mp4";
+    const getPathForFile = vi.fn(() => sourcePath);
+    (window as unknown as { openreel: unknown }).openreel = {
+      fs: { getPathForFile },
+    };
+    const file = new File([new Uint8Array([1, 2, 3, 4])], "human-shot.mp4", {
+      type: "video/mp4",
+      lastModified: 456,
+    });
+
+    const imported = await useProjectStore.getState().importMedia(file);
+
+    expect(imported.success).toBe(true);
+    expect(getPathForFile).toHaveBeenCalledWith(file);
+    expect(useProjectStore.getState().getMediaItem(imported.actionId!)).toMatchObject({
+      originalUrl: sourcePath,
+      sourceFile: { name: "human-shot.mp4", size: 4, lastModified: 456 },
+    });
+  });
+
+  it("keeps browser and synthetic File imports blob-only", async () => {
+    const file = new File([new Uint8Array([1, 2, 3, 4])], "generated.mp4", {
+      type: "video/mp4",
+    });
+
+    const imported = await useProjectStore.getState().importMedia(file);
+
+    expect(imported.success).toBe(true);
+    expect(useProjectStore.getState().getMediaItem(imported.actionId!)).not.toHaveProperty(
+      "originalUrl",
+    );
+  });
+
+  it("rejects an explicit relative sourcePath instead of persisting it", async () => {
+    const file = new File([new Uint8Array([1, 2, 3, 4])], "untrusted.mp4", {
+      type: "video/mp4",
+    });
+
+    const imported = await useProjectStore.getState().importMedia(file, {
+      sourcePath: "../untrusted.mp4",
+    });
+
+    expect(imported.success).toBe(false);
+    expect(imported.error?.code).toBe("INVALID_PARAMS");
+    expect(mockImportFile).not.toHaveBeenCalled();
+    expect(useProjectStore.getState().project.mediaLibrary.items).toHaveLength(0);
   });
 
   it("replays a committed import key without reading or inserting the file twice", async () => {
@@ -351,6 +442,11 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
   it("applyActions routes plain actions through executeAction as one undo unit", async () => {
     const tracksBefore =
       useProjectStore.getState().project.timeline.tracks.length;
+    const revisionBefore = getProjectRevision();
+    let projectCommits = 0;
+    const unsubscribe = useProjectStore.subscribe((state, previous) => {
+      if (state.project !== previous.project) projectCommits += 1;
+    });
     const res = await handleLiveBridgeRequest(
       req("applyActions", {
         groupLabel: "agent batch",
@@ -359,13 +455,15 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
           act("track/add", { trackType: "audio" }),
         ],
       }),
-    );
+    ).finally(unsubscribe);
     expect(res.ok).toBe(true);
     const { revision, createdIds } = res.result as {
       revision: number;
       createdIds: { tracks: string[]; clips: string[]; textClips: string[] };
     };
     expect(revision).toBe(getProjectRevision());
+    expect(revision).toBe(revisionBefore + 1);
+    expect(projectCommits).toBe(1);
     // createdIds is the before/after diff of the canonical project, per
     // category — the two genuinely-created tracks, not translator guesses.
     const trackIds = useProjectStore
@@ -392,6 +490,68 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     expect(useProjectStore.getState().project.timeline.tracks.length).toBe(
       tracksBefore,
     );
+  });
+
+  it("rejects empty and oversized store batches without a revision or history change", () => {
+    const store = useProjectStore.getState();
+    const revisionBefore = getProjectRevision();
+    const undoBefore = undoSize();
+    const options = { groupLabel: "invalid", historyOwner: "agent" };
+
+    expect(store.executeActionBatch([], options).result.success).toBe(false);
+    expect(
+      store.executeActionBatch(
+        Array.from({ length: MAX_ACTIONS_PER_BATCH + 1 }, () =>
+          act("track/add", { trackType: "video" }),
+        ),
+        options,
+      ).result.success,
+    ).toBe(false);
+    expect(getProjectRevision()).toBe(revisionBefore);
+    expect(undoSize()).toBe(undoBefore);
+  });
+
+  it("keeps a committed batch successful when a history observer throws", async () => {
+    const revisionBefore = getProjectRevision();
+    const off = useProjectStore
+      .getState()
+      .actionExecutor.getHistory()
+      .subscribe(() => {
+        throw new Error("broken history observer");
+      });
+    try {
+      const res = await handleLiveBridgeRequest(
+        req("applyActions", {
+          actions: [act("track/add", { trackType: "video" })],
+        }),
+      );
+      expect(res.ok).toBe(true);
+      expect(getProjectRevision()).toBe(revisionBefore + 1);
+    } finally {
+      off();
+    }
+  });
+
+  it("does not misreport a commit when a derived transition refresh throws", async () => {
+    const transitionBridge = getTransitionBridge();
+    transitionBridge.initialize(320, 180);
+    vi.spyOn(transitionBridge, "setTransitionsForTrack").mockImplementationOnce(
+      () => {
+        throw new Error("derived refresh failed");
+      },
+    );
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const revisionBefore = getProjectRevision();
+
+    const res = await handleLiveBridgeRequest(
+      req("applyActions", {
+        actions: [act("track/add", { trackType: "video" })],
+      }),
+    );
+
+    expect(res.ok).toBe(true);
+    expect(getProjectRevision()).toBe(revisionBefore + 1);
+    expect(undoSize()).toBeGreaterThan(0);
   });
 
   it("applyActions dispatches openreel:preview-invalidate after a successful batch", async () => {
@@ -694,6 +854,7 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     const tracksBefore =
       useProjectStore.getState().project.timeline.tracks.length;
     const undoBefore = undoSize();
+    const revisionBefore = getProjectRevision();
     const res = await handleLiveBridgeRequest(
       req("applyActions", {
         groupLabel: "doomed batch",
@@ -712,6 +873,7 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     );
     // …and the failed batch left no entries on the undo stack.
     expect(undoSize()).toBe(undoBefore);
+    expect(getProjectRevision()).toBe(revisionBefore);
   });
 
   it("does not undo user history when the batch fails before applying anything", async () => {
@@ -733,17 +895,15 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     );
   });
 
-  it("resets the push owner even when the failure rollback itself throws", async () => {
+  it("a failed draft never calls GUI undo or leaks an Agent push owner", async () => {
     const originalUndo = useProjectStore.getState().undo;
-    // A batch that applies one action then fails triggers the catch-path
-    // rollback; make that rollback throw.
-    useProjectStore.setState({
-      undo: async () => {
-        throw new Error("undo exploded");
-      },
+    const undo = vi.fn(async () => {
+      throw new Error("GUI undo must not run for an isolated draft");
     });
+    useProjectStore.setState({ undo });
+    let res: Awaited<ReturnType<typeof handleLiveBridgeRequest>>;
     try {
-      const res = await handleLiveBridgeRequest(
+      res = await handleLiveBridgeRequest(
         req("applyActions", {
           groupLabel: "doomed batch",
           actions: [
@@ -752,18 +912,16 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
           ],
         }),
       );
-      expect(res.ok).toBe(false);
-      expect(res.error?.code).toBe("BRIDGE_ERROR");
-      expect(res.error?.message).toContain("undo exploded");
     } finally {
       useProjectStore.setState({ undo: originalUndo });
     }
-    // The push owner was reset despite the exploding rollback…
+    expect(res.ok).toBe(false);
+    expect(res.error?.code).toBe("APPLY_FAILED");
+    expect(undo).not.toHaveBeenCalled();
     expect(
       useProjectStore.getState().actionExecutor.getPushOwner(),
     ).toBeUndefined();
-    // …so a later human edit keeps its own (human) undo unit instead of
-    // becoming agent-owned.
+    // A later human edit keeps its own (human) undo unit.
     await useProjectStore
       .getState()
       .executeAction(act("track/add", { trackType: "audio" }));
@@ -785,6 +943,7 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
 
   it("installLiveBridge wires onRequest → respond with the call id", async () => {
     const replies: unknown[] = [];
+    let subscribed = true;
     let handler:
       | ((request: { callId: string; kind: string }) => Promise<void>)
       | null = null;
@@ -793,6 +952,10 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
       liveBridge: {
         onRequest: (h: typeof handler) => {
           handler = h;
+          return () => {
+            subscribed = false;
+            handler = null;
+          };
         },
         respond: (reply: unknown) => replies.push(reply),
       },
@@ -804,6 +967,8 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     expect(replies).toHaveLength(1);
     expect(replies[0]).toMatchObject({ callId: "call-42", ok: true });
     cleanup();
+    expect(subscribed).toBe(false);
+    expect(handler).toBeNull();
   });
 
   it("installLiveBridge is a no-op without the desktop bridge", () => {

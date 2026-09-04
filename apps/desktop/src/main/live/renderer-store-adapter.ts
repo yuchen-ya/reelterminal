@@ -14,7 +14,7 @@
  * reject honestly and clean the pending map; teardown (renderer gone /
  * collab disabled) rejects every pending call.
  */
-import { BrowserWindow, ipcMain, type IpcMainEvent, type WebContents } from "electron";
+import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
 import { randomUUID } from "node:crypto";
 import {
   LiveStoreConflictError,
@@ -34,6 +34,7 @@ import type {
   LiveMediaImportRequest,
   LiveMediaImportResult,
 } from "../../shared/live";
+import { getEditorWebContents } from "../editor-window";
 
 /** Reads + requestSave are quick store operations. */
 const READ_TIMEOUT_MS = 10_000;
@@ -223,14 +224,9 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
   };
 }
 
-function targetWindow(): BrowserWindow | null {
-  const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
-  return win ?? null;
-}
-
 /** The webContents entitled to resolve live-bridge calls right now. */
 export function liveTargetWebContents(): WebContents | null {
-  return targetWindow()?.webContents ?? null;
+  return getEditorWebContents();
 }
 
 /**
@@ -241,9 +237,9 @@ export function liveTargetWebContents(): WebContents | null {
 export function installLiveStoreBridge(): LiveStoreBridge {
   const bridge = createLiveStoreBridge({
     send: (request) => {
-      const win = targetWindow();
-      if (!win) throw new Error("No editor window is open");
-      win.webContents.send(CHANNELS.liveRequest, request);
+      const contents = getEditorWebContents();
+      if (!contents) throw new Error("No editor window is open");
+      contents.send(CHANNELS.liveRequest, request);
     },
     isValidSender: (sender) => {
       const contents = liveTargetWebContents();
