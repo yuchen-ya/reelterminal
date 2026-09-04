@@ -46,15 +46,32 @@ export function parseAudioStreams(stderr: string): AudioStreamInfo[] {
   return streams;
 }
 
+export class FFmpegProbeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FFmpegProbeError";
+  }
+}
+
 export function probeAudioStreams(srcPath: string): Promise<AudioStreamInfo[]> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let stderr = "";
-    const proc = spawn(resolveFfmpegPath(), ["-hide_banner", "-i", srcPath]);
+    const ffmpegPath = resolveFfmpegPath();
+    const proc = spawn(ffmpegPath, ["-hide_banner", "-i", srcPath]);
     proc.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
     });
+    // A spawn failure (e.g. missing sidecar binary) must surface as an error.
+    // Resolving with [] here would be indistinguishable from "the media has no
+    // audio streams" and silently kills all preview audio downstream.
+    proc.on("error", (error) =>
+      reject(
+        new FFmpegProbeError(
+          `failed to run ffmpeg sidecar at ${ffmpegPath}: ${error.message}`,
+        ),
+      ),
+    );
     // ffmpeg with no output exits non-zero but prints stream info to stderr; parse regardless.
-    proc.on("error", () => resolve([]));
     proc.on("close", () => resolve(parseAudioStreams(stderr)));
   });
 }

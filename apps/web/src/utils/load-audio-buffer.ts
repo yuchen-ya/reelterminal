@@ -6,6 +6,13 @@ export interface AudioLoadProgress {
 
 export interface LoadAudioBufferOptions {
   audioTrackIndex?: number;
+  /**
+   * When true, a `NoAudioStreamError` from the extractor is trusted (the media
+   * genuinely has no matching audio stream) and returned as null without the
+   * source-decode fallback. Any other extraction failure (e.g. native sidecar
+   * unavailable) still falls back to decoding the source blob directly.
+   */
+  respectNoAudioStream?: boolean;
   onProgress?: (progress: AudioLoadProgress) => void;
 }
 
@@ -15,6 +22,7 @@ export const loadAudioBuffer = async (
   options: LoadAudioBufferOptions = {},
 ): Promise<AudioBuffer | null> => {
   const audioTrackIndex = options.audioTrackIndex ?? 0;
+  let extractError: unknown = null;
 
   try {
     const { extractAudioWav } = await import("@openreel/core/media");
@@ -45,7 +53,15 @@ export const loadAudioBuffer = async (
       message: "Audio ready for analysis",
     });
     return decoded;
-  } catch {
+  } catch (error) {
+    if (
+      options.respectNoAudioStream &&
+      error instanceof Error &&
+      error.name === "NoAudioStreamError"
+    ) {
+      return null;
+    }
+    extractError = error;
     options.onProgress?.({
       stage: "decoding",
       progress: 0.45,
@@ -69,9 +85,17 @@ export const loadAudioBuffer = async (
       });
       return decoded;
     } catch {
+      // Both extraction and the direct source decode failed — the clip will be
+      // silent. Surface the original extraction error so a broken decode
+      // pipeline is visible instead of failing silently.
+      console.warn("[audio] failed to decode audio; clip stays silent:", extractError);
       return null;
     }
   }
 
+  console.warn(
+    `[audio] failed to extract audio track ${audioTrackIndex}; clip stays silent:`,
+    extractError,
+  );
   return null;
 };

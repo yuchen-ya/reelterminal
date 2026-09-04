@@ -1,5 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { parseAudioStreams } from "../src/main/sidecar/probe-streams";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { EventEmitter } from "node:events";
+import { spawn } from "node:child_process";
+import { parseAudioStreams, probeAudioStreams } from "../src/main/sidecar/probe-streams";
+
+vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
+vi.mock("../src/main/sidecar/ffmpeg-path", () => ({
+  resolveFfmpegPath: () => "/fake/sidecar/ffmpeg",
+}));
 
 const SAMPLE = `
 Input #0, mov,mp4,m4a, from 'in.mp4':
@@ -27,5 +34,59 @@ describe("parseAudioStreams", () => {
 
   it("returns [] when there are no audio streams", () => {
     expect(parseAudioStreams("  Stream #0:0: Video: h264, yuv420p, 1920x1080\n")).toEqual([]);
+  });
+});
+
+function fakeProc() {
+  const proc = new EventEmitter() as EventEmitter & { stderr: EventEmitter };
+  proc.stderr = new EventEmitter();
+  vi.mocked(spawn).mockReturnValue(proc as never);
+  return proc;
+}
+
+describe("probeAudioStreams", () => {
+  afterEach(() => vi.mocked(spawn).mockReset());
+
+  it("rejects when the ffmpeg sidecar cannot be spawned", async () => {
+    const proc = fakeProc();
+    const pending = probeAudioStreams("/tmp/in.mp4");
+    const assertion = expect(pending).rejects.toThrow(/ffmpeg sidecar/i);
+    proc.emit("error", new Error("spawn ENOENT"));
+    await assertion;
+  });
+
+  it("does not resolve with [] on spawn failure (would mimic a silent media file)", async () => {
+    const proc = fakeProc();
+    let resolved: unknown = null;
+    const pending = probeAudioStreams("/tmp/in.mp4").then((streams) => {
+      resolved = streams;
+    });
+    proc.emit("error", new Error("spawn ENOENT"));
+    await pending.catch(() => {});
+    expect(resolved).toBeNull();
+  });
+
+  it("resolves with parsed streams once ffmpeg actually ran", async () => {
+    const proc = fakeProc();
+    const pending = probeAudioStreams("/tmp/in.mp4");
+    proc.stderr.emit(
+      "data",
+      Buffer.from("  Stream #0:1: Audio: aac, 48000 Hz, stereo, fltp, 128 kb/s\n"),
+    );
+    proc.emit("close", 1);
+    await expect(pending).resolves.toEqual([
+      { index: 1, codec: "aac", channels: 2, sampleRate: 48000 },
+    ]);
+  });
+
+  it("resolves with [] only when ffmpeg ran and reported no audio streams", async () => {
+    const proc = fakeProc();
+    const pending = probeAudioStreams("/tmp/silent.mp4");
+    proc.stderr.emit(
+      "data",
+      Buffer.from("  Stream #0:0: Video: h264, yuv420p, 1920x1080\n"),
+    );
+    proc.emit("close", 1);
+    await expect(pending).resolves.toEqual([]);
   });
 });

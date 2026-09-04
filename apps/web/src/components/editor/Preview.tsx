@@ -75,6 +75,7 @@ import {
   getTrackTransitionAudioFades,
 } from "@openreel/core";
 import { useEngineStore } from "../../stores/engine-store";
+import { loadAudioBuffer as loadDecodedAudioBuffer } from "../../utils/load-audio-buffer";
 import {
   type HandlePosition,
   type InteractionMode,
@@ -919,32 +920,15 @@ export const Preview: React.FC = () => {
   const getAudioBufferCacheKey = (mediaId: string, audioTrackIndex?: number): string =>
     `${mediaId}:${audioTrackIndex ?? 0}`;
 
-  const loadAudioBuffer = async (
+  const loadAudioBuffer = (
     audioContext: AudioContext | BaseAudioContext,
     blob: Blob,
     audioTrackIndex: number = 0,
-  ): Promise<AudioBuffer | null> => {
-    try {
-      const { extractAudioWav } = await import("@openreel/core/media");
-      const wavBlob = await extractAudioWav(blob, audioTrackIndex);
-      const arrayBuffer = await wavBlob.arrayBuffer();
-      return await audioContext.decodeAudioData(arrayBuffer);
-    } catch (error) {
-      if (error instanceof Error && error.name === "NoAudioStreamError") {
-        return null;
-      }
-    }
-
-    if (audioTrackIndex === 0) {
-      try {
-        const arrayBuffer = await blob.arrayBuffer();
-        return await audioContext.decodeAudioData(arrayBuffer);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  };
+  ): Promise<AudioBuffer | null> =>
+    loadDecodedAudioBuffer(audioContext, blob, {
+      audioTrackIndex,
+      respectNoAudioStream: true,
+    });
 
   const getAudioEffectSignature = useCallback((effects: Effect[]): string =>
     JSON.stringify(
