@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState, type JSX } from "react";
+import { useEffect, useMemo, type JSX } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "../../../stores/notification-store";
 import { useCollabStore } from "../../../stores/collab-store";
 import { useAgentReferencesStore } from "../../../stores/agent-references-store";
 import {
@@ -11,7 +10,6 @@ import { conversationViewModelFromProtocol } from "./AgentViewModel";
 import {
   ExternalAgentPanel,
   type ExternalAgentPanelProps,
-  buildVisualInspectionPrompt,
 } from "./ExternalAgentPanel";
 
 export interface ExternalAgentPanelContainerProps {
@@ -23,7 +21,7 @@ export function ExternalAgentPanelContainer({
   onClose,
   hideHeader,
 }: ExternalAgentPanelContainerProps): JSX.Element {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const state = useExternalConversationStore((value) => value.state);
   const busy = useExternalConversationStore((value) => value.busy);
   const sending = useExternalConversationStore((value) => value.sending);
@@ -40,8 +38,6 @@ export function ExternalAgentPanelContainer({
   const collabEnabled = useCollabStore((value) => value.enabled);
   const enableCollab = useCollabStore((value) => value.enable);
   const referencesByNumber = useAgentReferencesStore((value) => value.references);
-  const [copying, setCopying] = useState(false);
-  const [inspectingVisual, setInspectingVisual] = useState(false);
 
   useEffect(() => {
     const off = installExternalConversationEventListener();
@@ -95,45 +91,6 @@ export function ExternalAgentPanelContainer({
     await attach();
   };
 
-  const copyReferences = async (): Promise<void> => {
-    if (references.length === 0) return;
-    setCopying(true);
-    try {
-      const text = references
-        .map((reference) => {
-          const timing =
-            reference.startSeconds == null || reference.endSeconds == null
-              ? ""
-              : ` ${reference.startSeconds.toFixed(2)}s–${reference.endSeconds.toFixed(2)}s`;
-          return `#${reference.number} [${reference.kind ?? "item"}] ${reference.label}${timing}${reference.stale ? ` (${t("externalAgent.staleReference")})` : ""}`;
-        })
-        .join("\n");
-      await navigator.clipboard.writeText(text);
-      toast.success(t("externalAgent.referencesCopied"));
-    } catch {
-      toast.error(t("externalAgent.copyFailed"));
-    } finally {
-      setCopying(false);
-    }
-  };
-
-  const inspectVisual = async (): Promise<void> => {
-    if (
-      references.length === 0 ||
-      viewModel.connection.state !== "connected" ||
-      busy ||
-      sending
-    ) return;
-    setInspectingVisual(true);
-    try {
-      await prompt(buildVisualInspectionPrompt(references, i18n.language.startsWith("zh") ? "zh" : "en"));
-    } catch {
-      // The conversation store already exposes a localized connection error.
-    } finally {
-      setInspectingVisual(false);
-    }
-  };
-
   return (
     <ExternalAgentPanel
       viewModel={viewModel}
@@ -148,12 +105,8 @@ export function ExternalAgentPanelContainer({
       onDeny={busy ? undefined : (requestId) =>
         void resolveApproval(requestId, "denied").catch(() => undefined)}
       onCancel={cancelling ? undefined : () => void cancel().catch(() => undefined)}
-      onCopyReferences={() => void copyReferences()}
-      onInspectVisual={() => void inspectVisual()}
-      inspectingVisual={inspectingVisual}
       sending={sending}
       cancelling={cancelling}
-      copyingReferences={copying}
     />
   );
 }

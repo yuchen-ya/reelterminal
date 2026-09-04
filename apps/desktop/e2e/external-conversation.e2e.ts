@@ -82,6 +82,12 @@ describe("external Agent conversation panel", () => {
           content: [{ type: "text", text: "I can join #2 and #3 now." }],
         });
         pushUpdate({
+          sessionUpdate: "usage",
+          inputTokens: 1_200,
+          outputTokens: 34,
+          totalTokens: 1_234,
+        });
+        pushUpdate({
           sessionUpdate: "approval_request",
           requestId: "approval-1",
           title: "Apply the edit?",
@@ -161,6 +167,15 @@ describe("external Agent conversation panel", () => {
     await page.getByText("Inspect timeline", { exact: true }).waitFor();
     await page.getByText("I can join #2 and #3 now.", { exact: true }).waitFor();
     await page.getByText("Apply the edit?", { exact: true }).waitFor();
+    expect(await page.getByTestId("session-token-total").textContent()).toBe(
+      "1,234 tokens total",
+    );
+    expect(await page.getByTestId("session-run-time").textContent()).toContain(
+      "Last run",
+    );
+    expect(await page.getByText("Usage", { exact: true }).count()).toBe(0);
+    expect(await page.getByText("Numbered references", { exact: true }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: "Ask Agent to inspect visuals" }).count()).toBe(0);
     expect(visualStates).toHaveLength(1);
     expect(visualStates[0]).toMatchObject({
       version: 1,
