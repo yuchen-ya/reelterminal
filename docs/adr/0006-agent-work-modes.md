@@ -55,6 +55,14 @@ Legacy persisted values migrate without expanding authority:
 | `assist` | `collaborative` | `write` |
 | `autonomous` | `autonomous` | `write` |
 
+A migrated `observe` preference therefore displays an explicit **Enable
+editing** action beside the read-only badge. This calls the separate
+`collabControl.setAccess("write")` authorization IPC and persists the choice;
+changing Guided/Collaborative/Autonomous never calls it. Revoking access
+releases the external writer lease immediately. Restoring access keeps the
+same live facade, jobs, and idempotency ledger and reacquires the writer lease
+lazily on the next write verb.
+
 ## Consequences
 
 - Guided, Collaborative, and Autonomous can share one authorized tool surface.
@@ -66,3 +74,6 @@ Legacy persisted values migrate without expanding authority:
 - Future selects, storyboard, animatic, transactional assembly, comparison,
   mixing, and review-cut systems can be added without encoding them as work
   mode states.
+- A safely migrated read-only preference has a discoverable recovery path,
+  while recovery remains an explicit user authorization rather than an
+  incidental mode rename.

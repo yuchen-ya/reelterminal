@@ -38,7 +38,7 @@ function requestFromRenderer(
     const onReply = (event: IpcMainEvent, payload: unknown): void => {
       if (event.sender === win.webContents) finish(payload);
     };
-    const timer = setTimeout(() => finish(undefined), timeoutMs);
+    const timer = setTimeout(() => finish(NO_REPLY), timeoutMs);
     ipcMain.on(replyChannel, onReply);
     if (win.isDestroyed()) {
       finish(NO_REPLY);

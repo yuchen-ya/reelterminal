@@ -48,7 +48,10 @@ export const Transform3DSection: React.FC<Transform3DSectionProps> = ({
     project.modifiedAt,
   ]);
 
-  const rotate3d = clip?.transform.rotate3d ?? { x: 0, y: 0, z: 0 };
+  const rotate3d = useMemo(
+    () => clip?.transform.rotate3d ?? { x: 0, y: 0, z: 0 },
+    [clip?.transform.rotate3d],
+  );
   const perspective = clip?.transform.perspective ?? 1000;
   const transformStyle = clip?.transform.transformStyle ?? "flat";
 

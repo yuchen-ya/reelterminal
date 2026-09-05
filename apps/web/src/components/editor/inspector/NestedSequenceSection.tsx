@@ -62,7 +62,10 @@ export const NestedSequenceSection: React.FC<NestedSequenceSectionProps> = ({
     );
   }, [nestedSequenceEngine, project.compoundClips, project.nestedInstances]);
 
-  const allCompoundClips = project.compoundClips ?? [];
+  const allCompoundClips = useMemo(
+    () => project.compoundClips ?? [],
+    [project.compoundClips],
+  );
 
   const currentInstance = useMemo(() => {
     return (project.nestedInstances ?? []).find((instance) => instance.id === clipId) ?? null;

@@ -482,7 +482,7 @@ export const TransitionInspector: React.FC<TransitionInspectorProps> = ({
   const bridge = getTransitionBridge();
   const transitionTypes = useMemo(
     () => bridge.getAvailableTransitionTypes(),
-    [],
+    [bridge],
   );
 
   // Local state for creating new transitions
@@ -602,7 +602,7 @@ export const TransitionInspector: React.FC<TransitionInspectorProps> = ({
       onTransitionRemove?.(transition.id);
       toast.success("Transition Removed");
     }
-  }, [transition, onTransitionRemove]);
+  }, [bridge, transition, onTransitionRemove]);
 
   // Render type-specific parameters
   const renderTypeParams = () => {

@@ -202,7 +202,16 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
         // Silently ignore parse errors
       }
     },
-    [track.id, track.name, pixelsPerSecond, scrollX, onDropMedia],
+    [
+      track.id,
+      track.name,
+      pixelsPerSecond,
+      scrollX,
+      onDropMedia,
+      allTracks,
+      playheadPosition,
+      snapSettings,
+    ],
   );
 
   const handleResizeStart = useCallback(

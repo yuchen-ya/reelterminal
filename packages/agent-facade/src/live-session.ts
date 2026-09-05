@@ -1,6 +1,6 @@
 /**
  * LiveFacadeSession — the live human–agent collaboration facade
- * (ADR 0004: Slice 3). A SEPARATE implementation of the same 17-verb
+ * (ADR 0004: Slice 3). A SEPARATE implementation of the same 24-verb
  * contract as AgentFacadeSession (Decision 11: headless is untouched):
  *
  *  - It holds NO project copy. The renderer's store stays canonical
@@ -57,6 +57,8 @@ import {
 } from "./delivery";
 import { IdempotencyLedger, stableStringify } from "./idempotency";
 import { JobRegistry, jobStatusView } from "./jobs";
+import { queryTimeline } from "./timeline-query";
+import { validateEditPlan } from "./edit-validation";
 import type { LiveWriterLease } from "./live-lease";
 import {
   isLiveStoreConflict,
@@ -72,7 +74,7 @@ import {
 } from "./live-store";
 import { hasUrlScheme, resolveContainedPathDetailed } from "./media/path-roots";
 import { probeLocalMediaFile } from "./media/node-media-adapter";
-import { opToCoreActions, validateEditOp } from "./ops";
+import { opToCoreActions, validateEditBatch, validateEditOp } from "./ops";
 import {
   projectStateView,
   timelineDurationSec,
@@ -95,7 +97,10 @@ import {
   isEvenDimension,
   JOB_PARAMS_SCHEMA,
   MEDIA_IMPORT_SCHEMA,
+  MEDIA_ANALYZE_START_SCHEMA,
+  normalizeProjectName,
   PREVIEW_RENDER_FRAME_SCHEMA,
+  PROJECT_RENAME_SCHEMA,
   VISUAL_INSPECT_RANGE_SCHEMA,
   VISUAL_INSPECT_SCHEMA,
   VERIFY_ARTIFACT_SCHEMA,
@@ -104,6 +109,12 @@ import {
   VERIFY_REGION_SCHEMA,
   EDITOR_CONTROL_SCHEMA,
   EDITOR_CONTROL_TARGET_SCHEMA,
+  PROJECT_CHANGES_SCHEMA,
+  TIMELINE_QUERY_SCHEMA,
+  TIMELINE_QUERY_RANGE_SCHEMA,
+  EDIT_VALIDATE_SCHEMA,
+  HISTORY_GET_SCHEMA,
+  HISTORY_CONTROL_SCHEMA,
 } from "./verb-schemas";
 import {
   isReadOnlyVerb,
@@ -120,6 +131,8 @@ import {
   type LiveProjectSaveResult,
   type MediaImportParams,
   type MediaImportResult,
+  type MediaAnalyzeStartParams,
+  type MediaAnalyzeStartResult,
   type OpApplied,
   type PreviewRenderFrameParams,
   type PreviewRenderFrameResult,
@@ -129,9 +142,21 @@ import {
   type ProjectCreateResult,
   type ProjectOpenParams,
   type ProjectOpenResult,
+  type ProjectRenameParams,
+  type ProjectRenameResult,
   type ProjectState,
   type SessionDescription,
   type TimelineState,
+  type ProjectChangesParams,
+  type ProjectChangesResult,
+  type TimelineQueryParams,
+  type TimelineQueryResult,
+  type EditValidateParams,
+  type EditValidateResult,
+  type HistoryGetParams,
+  type HistoryGetResult,
+  type HistoryControlParams,
+  type HistoryControlResult,
   type VerifyArtifactParams,
   type VerifyArtifactResult,
 } from "./types";
@@ -193,8 +218,12 @@ export interface LiveFacadeConfig {
   readonly sessionId: string;
   /** Collaboration preference; a getter lets the GUI switch without remounting this session. */
   readonly workMode?: AgentWorkMode | (() => AgentWorkMode);
-  /** Authorization boundary, deliberately independent from work mode. */
-  readonly access?: AgentAccessMode;
+  /**
+   * Authorization boundary, deliberately independent from work mode. A
+   * getter lets the desktop recover a safely migrated read-only preference
+   * without replacing the facade (and losing jobs/idempotency state).
+   */
+  readonly access?: AgentAccessMode | (() => AgentAccessMode);
   /**
    * Absolute root every generated artifact (preview PNGs, exported videos)
    * is written under, with the same containment discipline as headless.
@@ -205,7 +234,7 @@ export interface LiveFacadeConfig {
 }
 
 /**
- * The live facade contract: the same 17 verbs as AgentFacade, with
+ * The live facade contract: the same 24 verbs as AgentFacade, with
  * project.save honestly re-shaped for live mode (the GUI's save path
  * reports a revision, not a checkpoint file — see LiveProjectSaveResult)
  * plus dispose() (release the lease, cancel jobs).
@@ -227,6 +256,7 @@ const CREATING_OPS: ReadonlySet<EditOp["op"]> = new Set([
   "clip.duplicate",
   "text.create",
   "transition.add",
+  "subtitle.importSrt",
 ]);
 
 interface EditApplyPayload {
@@ -285,6 +315,7 @@ export class LiveFacadeSession {
   /** True while this session holds the writer lease. */
   private writer: boolean;
   private disposed = false;
+  private readonly analysisControllers = new Map<string, AbortController>();
   private chain: Promise<unknown> = Promise.resolve();
 
   constructor(config: LiveFacadeConfig) {
@@ -308,7 +339,10 @@ export class LiveFacadeSession {
   }
 
   private accessMode(): AgentAccessMode {
-    return this.config.access ?? DEFAULT_AGENT_ACCESS_MODE;
+    const configured = this.config.access;
+    return typeof configured === "function"
+      ? configured()
+      : configured ?? DEFAULT_AGENT_ACCESS_MODE;
   }
 
   private capabilityContext() {
@@ -415,6 +449,173 @@ export class LiveFacadeSession {
     return this.enqueue(async () => {
       const { project, revision } = await this.config.store.getState();
       return ok(timelineStateView(project, revision));
+    });
+  }
+
+  async projectChanges(
+    params: ProjectChangesParams,
+  ): Promise<FacadeResult<ProjectChangesResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<ProjectChangesParams>(
+        params,
+        PROJECT_CHANGES_SCHEMA,
+        "project.changes params",
+      );
+      const { revision } = await this.config.store.getState();
+      if (valid.sinceRevision > revision) {
+        throw new FacadeError(
+          "CONFLICT",
+          `project.changes: sinceRevision ${valid.sinceRevision} is newer than current revision ${revision}`,
+          { currentRevision: revision },
+        );
+      }
+      return ok(await this.config.store.getProjectChanges(valid));
+    });
+  }
+
+  async timelineQuery(
+    params: TimelineQueryParams = {},
+  ): Promise<FacadeResult<TimelineQueryResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<TimelineQueryParams>(
+        params,
+        TIMELINE_QUERY_SCHEMA,
+        "timeline.query params",
+      );
+      if (valid.timeRange !== undefined) {
+        const range = validateObject<{ startSec: number; endSec: number }>(
+          valid.timeRange,
+          TIMELINE_QUERY_RANGE_SCHEMA,
+          "timeline.query params.timeRange",
+        );
+        if (range.endSec <= range.startSec) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            "timeline.query: timeRange.endSec must be greater than startSec",
+          );
+        }
+      }
+      const [state, context] = await Promise.all([
+        this.config.store.getState(),
+        this.config.store.getContext(),
+      ]);
+      return ok(queryTimeline(state.project, state.revision, valid, context.references ?? {}));
+    });
+  }
+
+  async editValidate(
+    params: EditValidateParams,
+  ): Promise<FacadeResult<EditValidateResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<EditValidateParams>(
+        params,
+        EDIT_VALIDATE_SCHEMA,
+        "edit.validate params",
+      );
+      const ops = valid.ops.map((raw, index) => validateEditOp(raw, index));
+      validateEditBatch(ops);
+      if (ops.length === 0) {
+        throw new FacadeError("INVALID_PARAMS", "edit.validate: ops must contain at least one op");
+      }
+      const [state, context] = await Promise.all([
+        this.config.store.getState(),
+        this.config.store.getContext(),
+      ]);
+      return ok(
+        await validateEditPlan(state.project, ops, {
+          mode: "live",
+          revision: state.revision,
+          contextRevision: context.contextRevision,
+          ...(valid.expectedRevision !== undefined
+            ? { expectedRevision: valid.expectedRevision }
+            : {}),
+          ...(valid.expectedContextRevision !== undefined
+            ? { expectedContextRevision: valid.expectedContextRevision }
+            : {}),
+        }),
+      );
+    });
+  }
+
+  async historyGet(
+    params: HistoryGetParams = {},
+  ): Promise<FacadeResult<HistoryGetResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<HistoryGetParams>(
+        params,
+        HISTORY_GET_SCHEMA,
+        "history.get params",
+      );
+      return ok(await this.config.store.getHistory(valid));
+    });
+  }
+
+  async historyControl(
+    params: HistoryControlParams,
+  ): Promise<FacadeResult<HistoryControlResult>> {
+    return this.enqueue(async () => {
+      this.gate("history.control");
+      const valid = validateObject<HistoryControlParams>(
+        params,
+        HISTORY_CONTROL_SCHEMA,
+        "history.control params",
+      );
+      const payload = { action: valid.action };
+      const prior = await this.replayLookup<
+        Omit<HistoryControlResult, "replayed">
+      >("history.control", valid.idempotencyKey, payload);
+      if (prior) return ok({ ...prior.value, revision: prior.revision, replayed: true });
+
+      const state = await this.config.store.getState();
+      if (
+        valid.expectedRevision !== undefined &&
+        valid.expectedRevision !== state.revision &&
+        valid.idempotencyKey === undefined
+      ) {
+        throw new FacadeError(
+          "CONFLICT",
+          `revision conflict: expected ${valid.expectedRevision}, current is ${state.revision}`,
+          { currentRevision: state.revision },
+        );
+      }
+      try {
+        const controlled = await this.config.store.historyControl(valid.action, {
+          expectedRevision: valid.expectedRevision ?? state.revision,
+          ...(valid.idempotencyKey !== undefined
+            ? { idempotencyKey: valid.idempotencyKey }
+            : {}),
+        });
+        const value = {
+          action: valid.action,
+          revision: controlled.revision,
+          canUndo: controlled.canUndo,
+          canRedo: controlled.canRedo,
+        };
+        if (valid.idempotencyKey !== undefined) {
+          this.ledger.set("history.control", valid.idempotencyKey, {
+            revision: controlled.revision,
+            value,
+            payloadHash: stableStringify(payload),
+          });
+        }
+        return ok({ ...value, replayed: controlled.replayed });
+      } catch (error) {
+        if (isLiveStoreConflict(error)) {
+          throw new FacadeError(
+            "CONFLICT",
+            `history.control: ${error instanceof Error ? error.message : String(error)}`,
+            error instanceof LiveStoreConflictError ? error.details : undefined,
+          );
+        }
+        const code =
+          typeof error === "object" && error !== null
+            ? (error as { code?: unknown }).code
+            : undefined;
+        if (code === "NOT_FOUND") {
+          throw new FacadeError("NOT_FOUND", error instanceof Error ? error.message : String(error));
+        }
+        throw error;
+      }
     });
   }
 
@@ -539,6 +740,74 @@ export class LiveFacadeSession {
         "project.open",
         "the GUI owns the project lifecycle — a live session attaches to the project already open in the editor",
       );
+    });
+  }
+
+  async projectRename(
+    params: ProjectRenameParams,
+  ): Promise<FacadeResult<ProjectRenameResult>> {
+    return this.enqueue(async () => {
+      this.gate("project.rename");
+      const valid = validateObject<ProjectRenameParams>(
+        params,
+        PROJECT_RENAME_SCHEMA,
+        "project.rename params",
+      );
+      const name = normalizeProjectName(valid.name);
+      const payload = { name };
+      const prior = await this.replayLookup<
+        Omit<ProjectRenameResult, "revision" | "replayed">
+      >("project.rename", valid.idempotencyKey, payload);
+      if (prior) {
+        return ok<ProjectRenameResult>({
+          ...prior.value,
+          revision: prior.revision,
+          replayed: true,
+        });
+      }
+
+      const { project, revision } = await this.config.store.getState();
+      const value = {
+        projectId: project.id,
+        previousName: project.name,
+        name,
+      };
+      let committed: LiveApplyActionsResult;
+      try {
+        committed = await this.config.store.applyActions(
+          [{
+            type: "project/rename",
+            id: crypto.randomUUID(),
+            timestamp: Date.now(),
+            params: { name },
+          }],
+          {
+            groupLabel: "agent: project.rename",
+            expectedRevision: valid.expectedRevision ?? revision,
+          },
+        );
+      } catch (error) {
+        if (isLiveStoreConflict(error)) {
+          throw new FacadeError(
+            "CONFLICT",
+            `project.rename: ${error instanceof Error ? error.message : String(error)}`,
+            error instanceof LiveStoreConflictError ? error.details : undefined,
+          );
+        }
+        throw error;
+      }
+      if (valid.idempotencyKey !== undefined) {
+        this.ledger.set("project.rename", valid.idempotencyKey, {
+          revision: committed.revision,
+          value,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok<ProjectRenameResult>({
+        ...value,
+        revision: committed.revision,
+        replayed: false,
+      });
     });
   }
 
@@ -775,6 +1044,116 @@ export class LiveFacadeSession {
     });
   }
 
+  async mediaAnalyzeStart(
+    params: MediaAnalyzeStartParams,
+  ): Promise<FacadeResult<MediaAnalyzeStartResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<MediaAnalyzeStartParams>(
+        params,
+        MEDIA_ANALYZE_START_SCHEMA,
+        "media.analyze_start params",
+      );
+      const unavailable = valid.analysisTypes.filter(
+        (type) => type !== "technicalQuality",
+      );
+      if (unavailable.length > 0) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          `media.analyze_start: unavailable analysis types: ${unavailable.join(", ")}`,
+          { unavailableTypes: unavailable, availableTypes: ["technicalQuality"] },
+        );
+      }
+      const state = await this.config.store.getState();
+      const media = state.project.mediaLibrary.items.find(
+        (item) => item.id === valid.mediaId,
+      );
+      if (!media) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `media.analyze_start: media "${valid.mediaId}" not found`,
+          { mediaId: valid.mediaId },
+        );
+      }
+      const payload = {
+        mediaId: valid.mediaId,
+        analysisTypes: [...valid.analysisTypes].sort(),
+      };
+      const prior = await this.replayLookup<{
+        jobId: string;
+        sourceRevision: number;
+        analysisTypes: readonly import("./types").MediaAnalysisType[];
+      }>("media.analyze_start", valid.idempotencyKey, payload);
+      if (prior && this.jobs.has(prior.value.jobId)) {
+        return ok<MediaAnalyzeStartResult>({
+          ...prior.value,
+          kind: "analysis",
+          state: this.jobs.get(prior.value.jobId)?.state ?? "queued",
+          replayed: true,
+        });
+      }
+      if (
+        valid.expectedRevision !== undefined &&
+        valid.expectedRevision !== state.revision
+      ) {
+        throw new FacadeError(
+          "CONFLICT",
+          `revision conflict: expected ${valid.expectedRevision}, current is ${state.revision}`,
+          { currentRevision: state.revision },
+        );
+      }
+      const originalUrl = typeof media.originalUrl === "string" ? media.originalUrl : "";
+      const resolution = resolveContainedPathDetailed(
+        originalUrl,
+        this.config.mediaRoots ?? [],
+      );
+      if (resolution.kind !== "ok") {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          `media.analyze_start: media "${valid.mediaId}" is outside configured media roots or unreadable`,
+        );
+      }
+      const sourceStat = await stat(resolution.path).catch(() => null);
+      if (!sourceStat?.isFile() || sourceStat.size > MAX_MEDIA_FILE_BYTES) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          `media.analyze_start: media "${valid.mediaId}" is not file-backed and readable from the desktop host`,
+        );
+      }
+      const sourcePath = resolution.path;
+      const jobId = `job-${crypto.randomUUID()}`;
+      const analysisTypes = [...valid.analysisTypes];
+      this.jobs.create(jobId, state.revision, "analysis");
+      const controller = new AbortController();
+      this.analysisControllers.set(jobId, controller);
+      const ledgerValue = {
+        jobId,
+        sourceRevision: state.revision,
+        analysisTypes,
+      };
+      if (valid.idempotencyKey !== undefined) {
+        this.ledger.set("media.analyze_start", valid.idempotencyKey, {
+          revision: state.revision,
+          value: ledgerValue,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      void this.runTechnicalQualityAnalysis(
+        jobId,
+        sourcePath,
+        media.id,
+        media.name,
+        analysisTypes,
+        controller,
+      );
+      return ok<MediaAnalyzeStartResult>({
+        ...ledgerValue,
+        kind: "analysis",
+        state: "queued",
+        replayed: false,
+      });
+    });
+  }
+
   /* ---------------------------- edit.apply ---------------------------- */
 
   async editApply(
@@ -790,6 +1169,7 @@ export class LiveFacadeSession {
       // Pre-validate EVERY op's closed schema before any state access —
       // same zero-side-effect ordering as headless.
       const ops = valid.ops.map((raw, index) => validateEditOp(raw, index));
+      validateEditBatch(ops);
       if (ops.length === 0) {
         throw new FacadeError(
           "INVALID_PARAMS",
@@ -1512,6 +1892,12 @@ export class LiveFacadeSession {
       if (job.state === "done" || job.state === "error" || job.state === "cancelled") {
         return ok(jobStatusView(job));
       }
+      if (job.kind === "analysis") {
+        this.jobs.markCancelRequested(valid.jobId);
+        this.analysisControllers.get(valid.jobId)?.abort();
+        this.jobs.markCancelled(valid.jobId);
+        return ok(jobStatusView(this.jobs.get(valid.jobId) ?? job));
+      }
       const provider = this.config.exportProvider;
       if (!provider) {
         throw new FacadeError(
@@ -1707,7 +2093,9 @@ export class LiveFacadeSession {
     for (const job of this.jobs.list()) {
       if (job.state === "queued" || job.state === "running") {
         this.jobs.markCancelRequested(job.jobId);
-        if (provider) {
+        if (job.kind === "analysis") {
+          this.analysisControllers.get(job.jobId)?.abort();
+        } else if (provider) {
           await provider.cancel(job.jobId).catch(() => undefined);
         }
         this.jobs.markCancelled(job.jobId);
@@ -1769,6 +2157,60 @@ export class LiveFacadeSession {
    * honest pixels here, so the verb fails UNSUPPORTED instead of silently
    * rendering without them. Text-only projects pass trivially.
    */
+  private async runTechnicalQualityAnalysis(
+    jobId: string,
+    sourcePath: string,
+    mediaId: string,
+    name: string,
+    analysisTypes: readonly import("./types").MediaAnalysisType[],
+    controller: AbortController,
+  ): Promise<void> {
+    try {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (controller.signal.aborted) {
+        this.jobs.markCancelled(jobId);
+        return;
+      }
+      this.jobs.markRunning(jobId);
+      const [probe, file] = await Promise.all([
+        probeLocalMediaFile(sourcePath),
+        stat(sourcePath),
+      ]);
+      if (controller.signal.aborted) {
+        this.jobs.markCancelled(jobId);
+        return;
+      }
+      this.jobs.markAnalysisDone(jobId, {
+        analysisTypes,
+        summary: {
+          technicalQuality: {
+            mediaId,
+            name,
+            readable: true,
+            durationSec: probe.durationSec,
+            width: probe.width,
+            height: probe.height,
+            frameRate: probe.frameRate,
+            codec: probe.codec,
+            fileSize: probe.fileSize,
+            sourceFingerprint: {
+              size: file.size,
+              lastModified: Math.round(file.mtimeMs),
+            },
+          },
+        },
+        artifacts: [],
+      });
+    } catch (error) {
+      this.jobs.markError(jobId, {
+        code: error instanceof FacadeError ? error.code : "JOB_FAILED",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      this.analysisControllers.delete(jobId);
+    }
+  }
+
   private async buildLiveMediaFiles(
     project: Project,
     verb: string,
@@ -1904,6 +2346,7 @@ function partitionCreatedIds(
     clips: 0,
     textClips: 0,
     transitions: 0,
+    subtitles: 0,
   };
   return ops.map((op, index) => {
     if (!CREATING_OPS.has(op.op)) return { op: op.op, createdIds: [] };
@@ -1926,6 +2369,9 @@ function partitionCreatedIds(
       const id = createdIds.textClips[cursors.textClips];
       cursors.textClips += 1;
       if (id !== undefined) ids.push(id);
+    } else if (op.op === "subtitle.importSrt") {
+      ids.push(...createdIds.subtitles.slice(cursors.subtitles));
+      cursors.subtitles = createdIds.subtitles.length;
     } else {
       const category = categories[op.op as keyof typeof categories];
       const id = createdIds[category][cursors[category]];
@@ -1952,12 +2398,19 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "project.create": (params) => session.projectCreate(params),
     "project.open": (params) => session.projectOpen(params),
     "project.save": (params) => session.projectSave(params),
+    "project.rename": (params) => session.projectRename(params),
     "project.get_state": () => session.projectGetState(),
+    "project.changes": (params) => session.projectChanges(params),
     "media.import": (params) => session.mediaImport(params),
+    "media.analyze_start": (params) => session.mediaAnalyzeStart(params),
     "timeline.get": () => session.timelineGet(),
+    "timeline.query": (params) => session.timelineQuery(params),
     "editor.get_context": (params) => session.editorGetContext(params),
     "editor.control": (params) => session.editorControl(params),
     "edit.apply": (params) => session.editApply(params),
+    "edit.validate": (params) => session.editValidate(params),
+    "history.get": (params) => session.historyGet(params),
+    "history.control": (params) => session.historyControl(params),
     "preview.render_frame": (params) => session.previewRenderFrame(params),
     "visual.inspect": (params) => session.visualInspect(params),
     "export.start": (params) => session.exportStart(params),

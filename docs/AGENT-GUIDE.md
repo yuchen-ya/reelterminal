@@ -21,7 +21,7 @@ connect that Agent to the open ReelTerminal desktop project through MCP.
    ```
 
 The connector reads `~/.openreel/live-endpoint.json`, forwards stdio MCP to
-the authenticated loopback endpoint, and exposes exactly the 17 live tools
+the authenticated loopback endpoint, and exposes exactly the 24 live tools
 listed in the root [`SKILL.md`](../SKILL.md). Do not copy the endpoint token
 into prompts, project files, or logs.
 
@@ -46,7 +46,8 @@ aspect ratio seems more conventional.
 The Agent and GUI edit the same canonical project with revision checks and one
 undo history. Use `editor_get_context` before an edit; it includes current
 work mode and semantics, selection, playhead, context revision, and stable
-numbered references (`#1`, `#2`, …). If a referenced item has been deleted, it
+numbered Agent references (`@A1`, `@A2`, …) and persisted review markers
+(`R1`, `R2`, …). If a referenced item has been deleted, it
 remains visibly stale and its number is never rebound.
 
 ## Work mode is an elastic collaboration preference

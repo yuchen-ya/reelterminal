@@ -31,6 +31,10 @@ class FakeAppServerProcess extends EventEmitter {
       this.send({ id: message.id, result: { userAgent: "codex-cli/test" } });
     } else if (message.method === "thread/start") {
       this.send({ id: message.id, result: { thread: { id: "thread-1" } } });
+    } else if (message.method === "account/read") {
+      this.send({ id: message.id, result: { account: { type: "chatgpt" }, requiresOpenaiAuth: true } });
+    } else if (message.method === "thread/list") {
+      this.send({ id: message.id, result: { data: [{ id: "thread-1", name: "Demo" }], nextCursor: null } });
     } else if (message.method === "turn/start") {
       this.send({ id: message.id, result: { turn: { id: "turn-1", status: "inProgress" } } });
       this.send({
@@ -41,6 +45,8 @@ class FakeAppServerProcess extends EventEmitter {
         },
       });
     } else if (message.method === "turn/interrupt") {
+      this.send({ id: message.id, result: {} });
+    } else if (message.method === "thread/compact/start") {
       this.send({ id: message.id, result: {} });
     }
   }
@@ -74,6 +80,8 @@ test("handshakes, frames turns, and retains early completion notifications", asy
 
     const thread = await client.startThread({ approvalsReviewer: "user" });
     assert.equal(thread.thread.id, "thread-1");
+    assert.equal((await client.readAccount()).account.type, "chatgpt");
+    assert.equal((await client.listThreads({ limit: 30 })).data[0].id, "thread-1");
     const turn = await client.startTurn("thread-1", "Inspect the live project.", {
       localImagePaths: ["/tmp/reelterminal-state.png"],
     });
@@ -93,6 +101,10 @@ test("handshakes, frames turns, and retains early completion notifications", asy
       { type: "text", text: "Inspect the live project.", text_elements: [] },
       { type: "localImage", path: "/tmp/reelterminal-state.png" },
     ]);
+    await client.compactThread("thread-1");
+    assert.ok(child.messages.some((message) =>
+      message.method === "thread/compact/start" && message.params.threadId === "thread-1"
+    ));
   } finally {
     await client.close();
   }

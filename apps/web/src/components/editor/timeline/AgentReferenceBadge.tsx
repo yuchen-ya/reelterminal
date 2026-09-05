@@ -32,7 +32,7 @@ export function AgentReferenceBadge({
       aria-label={t("agentReferences.badgeLabel", { number: reference.number })}
       title={t("agentReferences.badgeLabel", { number: reference.number })}
     >
-      #{reference.number}
+      A{reference.number}
     </span>
   );
 }

@@ -5,6 +5,7 @@ import {
   getInitialLanguagePreference,
   type LanguagePreference,
 } from "../i18n";
+import { autoSaveManager } from "../services/auto-save";
 
 export type SettingsTab = "general";
 
@@ -40,7 +41,11 @@ export const useSettingsStore = create<SettingsState>()(
         setAutoSave: (enabled: boolean) => set({ autoSave: enabled }),
 
         setAutoSaveInterval: (minutes: number) =>
-          set({ autoSaveInterval: Math.max(1, Math.min(30, minutes)) }),
+          set({
+            autoSaveInterval: Number.isFinite(minutes)
+              ? Math.max(1, Math.min(30, minutes))
+              : get().autoSaveInterval,
+          }),
 
         setLanguage: (language: LanguagePreference) => {
           set({ language });
@@ -74,4 +79,22 @@ export const useSettingsStore = create<SettingsState>()(
       },
     ),
   ),
+);
+
+const applyAutoSaveSettings = (): void => {
+  const { autoSave, autoSaveInterval } = useSettingsStore.getState();
+  autoSaveManager.updateConfig({
+    enabled: autoSave,
+    interval: autoSaveInterval * 60_000,
+  });
+};
+
+// Keep persisted preferences and runtime scheduling on the same source of
+// truth. updateConfig reschedules pending dirty work, so toggles and interval
+// changes take effect without reopening the editor.
+applyAutoSaveSettings();
+useSettingsStore.subscribe((state) => state.autoSave, applyAutoSaveSettings);
+useSettingsStore.subscribe(
+  (state) => state.autoSaveInterval,
+  applyAutoSaveSettings,
 );

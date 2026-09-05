@@ -8,6 +8,7 @@ export interface ActionBatchCreatedIds {
   readonly clips: string[];
   readonly textClips: string[];
   readonly transitions: string[];
+  readonly subtitles: string[];
 }
 
 export interface ActionBatchOptions {
@@ -27,7 +28,7 @@ export type ExecuteActionBatch = (
 ) => ActionBatchResult;
 
 export function emptyActionBatchCreatedIds(): ActionBatchCreatedIds {
-  return { tracks: [], clips: [], textClips: [], transitions: [] };
+  return { tracks: [], clips: [], textClips: [], transitions: [], subtitles: [] };
 }
 
 export function projectEntityIds(project: Project): ActionBatchCreatedIds {
@@ -40,6 +41,7 @@ export function projectEntityIds(project: Project): ActionBatchCreatedIds {
     transitions: project.timeline.tracks.flatMap((track) =>
       (track.transitions ?? []).map((transition) => transition.id),
     ),
+    subtitles: (project.timeline.subtitles ?? []).map((subtitle) => subtitle.id),
   };
 }
 
@@ -52,6 +54,7 @@ export function appendCreatedIdDiff(
   const beforeClips = new Set(before.clips);
   const beforeText = new Set(before.textClips);
   const beforeTransitions = new Set(before.transitions);
+  const beforeSubtitles = new Set(before.subtitles);
   target.tracks.push(...after.tracks.filter((id) => !beforeTracks.has(id)));
   target.clips.push(...after.clips.filter((id) => !beforeClips.has(id)));
   target.textClips.push(
@@ -59,5 +62,8 @@ export function appendCreatedIdDiff(
   );
   target.transitions.push(
     ...after.transitions.filter((id) => !beforeTransitions.has(id)),
+  );
+  target.subtitles.push(
+    ...after.subtitles.filter((id) => !beforeSubtitles.has(id)),
   );
 }

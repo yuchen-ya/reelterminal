@@ -317,8 +317,8 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
       ))}
 
       {/* Persisted review time-range markers: amber span from start→end (a
-          point renders as a thin flag) with its stable #N. Right-clicking a
-          span offers removal of exactly that marker. */}
+          point renders as a thin flag) with its stable RN id. Right-clicking a
+          span offers removal of exactly that R-numbered marker. */}
       {timeRangeMarkers.map((marker) => {
         const { start, end } = marker.target;
         const isPoint = start === end;
@@ -358,7 +358,7 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
                 }`}
               />
               <span className="pointer-events-none absolute bottom-[7px] left-0 rounded-[3px] bg-[#f59e0b] px-1 py-px text-[8px] font-bold leading-none text-[#201300] shadow-[0_1px_4px_rgba(0,0,0,0.4)]">
-                #{marker.number}
+                R{marker.number}
               </span>
             </div>
           </ContextMenu>

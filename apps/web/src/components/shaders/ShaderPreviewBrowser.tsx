@@ -96,30 +96,42 @@ function ShaderPreviewCanvas({
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    try {
-      const input = makePreviewInput(canvas.width, canvas.height, sample);
-      const result = previewRenderer().render(def, {
-        width: canvas.width,
-        height: canvas.height,
-        time: 0.72,
-        progress: 0.65,
-        params: defaultMotionShaderParams(def),
-        inputCanvas: input,
-      });
-      if (!result) return;
+    if (!canvas || typeof IntersectionObserver === "undefined") return;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(result, 0, 0, canvas.width, canvas.height);
-      if (sample !== "effect" && def.category !== "text") {
-        ctx.globalCompositeOperation = "destination-in";
-        ctx.drawImage(input, 0, 0, canvas.width, canvas.height);
-        ctx.globalCompositeOperation = "source-over";
+    const renderVisiblePreview = (): void => {
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      try {
+        const input = makePreviewInput(canvas.width, canvas.height, sample);
+        const result = previewRenderer().render(def, {
+          width: canvas.width,
+          height: canvas.height,
+          time: 0.72,
+          progress: 0.65,
+          params: defaultMotionShaderParams(def),
+          inputCanvas: input,
+        });
+        if (!result) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(result, 0, 0, canvas.width, canvas.height);
+        if (sample !== "effect" && def.category !== "text") {
+          ctx.globalCompositeOperation = "destination-in";
+          ctx.drawImage(input, 0, 0, canvas.width, canvas.height);
+          ctx.globalCompositeOperation = "source-over";
+        }
+      } catch {
+        // The CSS fallback remains visible when a shader cannot render.
       }
-    } catch {
-      // The CSS fallback remains visible when canvas APIs are unavailable.
-    }
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      renderVisiblePreview();
+    }, { rootMargin: "80px" });
+    observer.observe(canvas);
+    return () => observer.disconnect();
   }, [def, sample]);
 
   return (

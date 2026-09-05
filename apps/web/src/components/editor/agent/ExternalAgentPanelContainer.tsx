@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type JSX } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { useTranslation } from "react-i18next";
 import { useCollabStore } from "../../../stores/collab-store";
 import { useAgentReferencesStore } from "../../../stores/agent-references-store";
@@ -11,6 +11,11 @@ import {
   ExternalAgentPanel,
   type ExternalAgentPanelProps,
 } from "./ExternalAgentPanel";
+import { AgentConnectionGuide } from "./AgentConnectionGuide";
+import type {
+  OpenReelConversationSetupProvider,
+  OpenReelConversationSetupState,
+} from "../../../types/global";
 
 export interface ExternalAgentPanelContainerProps {
   readonly onClose?: ExternalAgentPanelProps["onClose"];
@@ -38,12 +43,55 @@ export function ExternalAgentPanelContainer({
   const collabEnabled = useCollabStore((value) => value.enabled);
   const enableCollab = useCollabStore((value) => value.enable);
   const referencesByNumber = useAgentReferencesStore((value) => value.references);
+  const [setup, setSetup] = useState<OpenReelConversationSetupState | null>(null);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupFailed, setSetupFailed] = useState(false);
+  const [provider, setProvider] = useState<OpenReelConversationSetupProvider>("codex");
+  const [selectedThread, setSelectedThread] = useState("new");
+  const setupInitialized = useRef(false);
+
+  const applySetup = useCallback((next: OpenReelConversationSetupState) => {
+    setSetup(next);
+    setSelectedThread((current) => {
+      if (current !== "new" && next.threads.some((thread) => thread.id === current)) {
+        return current;
+      }
+      if (next.managedSessionId && next.threads.some((thread) => thread.id === next.managedSessionId)) {
+        return next.managedSessionId;
+      }
+      return next.threads[0]?.id ?? "new";
+    });
+    if (!setupInitialized.current) {
+      setupInitialized.current = true;
+      if (next.externalAdapter.state === "ready" && !next.managedSessionId) {
+        setProvider("external");
+      }
+    }
+  }, []);
+
+  const refreshSetup = useCallback(async () => {
+    const api = window.openreel?.conversation;
+    if (!api?.inspectSetup) return;
+    setSetupBusy(true);
+    setSetupFailed(false);
+    try {
+      applySetup(await api.inspectSetup());
+    } catch {
+      setSetupFailed(true);
+    } finally {
+      setSetupBusy(false);
+    }
+  }, [applySetup]);
 
   useEffect(() => {
     const off = installExternalConversationEventListener();
     void initialize().catch(() => undefined);
     return off;
   }, [initialize]);
+
+  useEffect(() => {
+    void refreshSetup();
+  }, [refreshSetup]);
 
   const viewModel = useMemo(() => {
     const projected = conversationViewModelFromProtocol(state.conversation);
@@ -87,8 +135,31 @@ export function ExternalAgentPanelContainer({
   );
 
   const connect = async (): Promise<void> => {
-    if (!collabEnabled) await enableCollab();
-    await attach();
+    const api = window.openreel?.conversation;
+    if (!api?.startSetup) return;
+    setSetupBusy(true);
+    setSetupFailed(false);
+    try {
+      if (!useCollabStore.getState().enabled) {
+        await enableCollab();
+      }
+      if (!useCollabStore.getState().enabled) {
+        throw new Error("Agent Session did not start");
+      }
+      const next = await api.startSetup(
+        provider === "external"
+          ? { provider }
+          : selectedThread === "new"
+            ? { provider, createThread: true }
+            : { provider, threadId: selectedThread },
+      );
+      applySetup(next);
+      await attach();
+    } catch {
+      setSetupFailed(true);
+    } finally {
+      setSetupBusy(false);
+    }
   };
 
   return (
@@ -97,7 +168,20 @@ export function ExternalAgentPanelContainer({
       references={references}
       onClose={onClose}
       hideHeader={hideHeader}
-      onConnect={busy ? undefined : () => void connect().catch(() => undefined)}
+      connectionGuide={
+        <AgentConnectionGuide
+          provider={provider}
+          setup={setup}
+          selectedThread={selectedThread}
+          collabEnabled={collabEnabled}
+          busy={setupBusy || busy}
+          error={setupFailed}
+          onProviderChange={setProvider}
+          onSelectThread={setSelectedThread}
+          onRefresh={() => void refreshSetup()}
+          onConnect={() => void connect()}
+        />
+      }
       onDisconnect={busy ? undefined : () => void detach().catch(() => undefined)}
       onSend={(text) => prompt(text)}
       onApprove={busy ? undefined : (requestId) =>

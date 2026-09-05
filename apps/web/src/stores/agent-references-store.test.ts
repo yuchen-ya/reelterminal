@@ -41,6 +41,7 @@ describe("agent reference numbering", () => {
       .getState()
       .mark(sorted, 12);
     expect(marked.map((item) => item.number)).toEqual([1, 2, 3]);
+    expect(marked.map((item) => item.ref)).toEqual(["A1", "A2", "A3"]);
     expect(marked.map((item) => item.entityId)).toEqual([
       "track-0-early",
       "track-1-early",

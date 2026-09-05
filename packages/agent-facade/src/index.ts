@@ -3,7 +3,7 @@
  * Slice 2a persistence + Slice 3 live collaboration).
  *
  * Pure-Node, in-process, transport-agnostic. The public surface is the
- * seventeen-verb `AgentFacade` object returned by createAgentFacade(); verb
+ * 24-verb `AgentFacade` object returned by createAgentFacade(); verb
  * names mirror audit/facade-v0.md + ADR 0003 Appendix B.1 + ADR 0004
  * (editor.get_context/editor.control). All verbs return FacadeResult<T> and never throw
  * for domain errors. Pixel/export/verify backing arrives via the
@@ -28,6 +28,8 @@ import type {
   JobStatusView,
   MediaImportParams,
   MediaImportResult,
+  MediaAnalyzeStartParams,
+  MediaAnalyzeStartResult,
   PreviewRenderFrameParams,
   PreviewRenderFrameResult,
   VisualInspectParams,
@@ -36,11 +38,23 @@ import type {
   ProjectCreateResult,
   ProjectOpenParams,
   ProjectOpenResult,
+  ProjectRenameParams,
+  ProjectRenameResult,
   ProjectSaveParams,
   ProjectSaveResult,
   ProjectState,
+  ProjectChangesParams,
+  ProjectChangesResult,
   SessionDescription,
   TimelineState,
+  TimelineQueryParams,
+  TimelineQueryResult,
+  EditValidateParams,
+  EditValidateResult,
+  HistoryGetParams,
+  HistoryGetResult,
+  HistoryControlParams,
+  HistoryControlResult,
   VerifyArtifactParams,
   VerifyArtifactResult,
 } from "./types";
@@ -57,11 +71,23 @@ export interface AgentFacade {
   readonly "project.save": (
     params: ProjectSaveParams,
   ) => Promise<FacadeResult<ProjectSaveResult>>;
+  readonly "project.rename": (
+    params: ProjectRenameParams,
+  ) => Promise<FacadeResult<ProjectRenameResult>>;
   readonly "project.get_state": () => Promise<FacadeResult<ProjectState>>;
+  readonly "project.changes": (
+    params: ProjectChangesParams,
+  ) => Promise<FacadeResult<ProjectChangesResult>>;
   readonly "media.import": (
     params: MediaImportParams,
   ) => Promise<FacadeResult<MediaImportResult>>;
+  readonly "media.analyze_start": (
+    params: MediaAnalyzeStartParams,
+  ) => Promise<FacadeResult<MediaAnalyzeStartResult>>;
   readonly "timeline.get": () => Promise<FacadeResult<TimelineState>>;
+  readonly "timeline.query": (
+    params?: TimelineQueryParams,
+  ) => Promise<FacadeResult<TimelineQueryResult>>;
   readonly "editor.get_context": (
     params?: Record<string, never>,
   ) => Promise<FacadeResult<EditorGetContextResult>>;
@@ -71,6 +97,15 @@ export interface AgentFacade {
   readonly "edit.apply": (
     params: EditApplyParams,
   ) => Promise<FacadeResult<EditApplyResult>>;
+  readonly "edit.validate": (
+    params: EditValidateParams,
+  ) => Promise<FacadeResult<EditValidateResult>>;
+  readonly "history.get": (
+    params?: HistoryGetParams,
+  ) => Promise<FacadeResult<HistoryGetResult>>;
+  readonly "history.control": (
+    params: HistoryControlParams,
+  ) => Promise<FacadeResult<HistoryControlResult>>;
   readonly "preview.render_frame": (
     params: PreviewRenderFrameParams,
   ) => Promise<FacadeResult<PreviewRenderFrameResult>>;
@@ -103,12 +138,19 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "project.create": (params) => session.projectCreate(params),
     "project.open": (params) => session.projectOpen(params),
     "project.save": (params) => session.projectSave(params),
+    "project.rename": (params) => session.projectRename(params),
     "project.get_state": () => session.projectGetState(),
+    "project.changes": (params) => session.projectChanges(params),
     "media.import": (params) => session.mediaImport(params),
+    "media.analyze_start": (params) => session.mediaAnalyzeStart(params),
     "timeline.get": () => session.timelineGet(),
+    "timeline.query": (params) => session.timelineQuery(params),
     "editor.get_context": (params) => session.editorGetContext(params),
     "editor.control": (params) => session.editorControl(params),
     "edit.apply": (params) => session.editApply(params),
+    "edit.validate": (params) => session.editValidate(params),
+    "history.get": (params) => session.historyGet(params),
+    "history.control": (params) => session.historyControl(params),
     "preview.render_frame": (params) => session.previewRenderFrame(params),
     "visual.inspect": (params) => session.visualInspect(params),
     "export.start": (params) => session.exportStart(params),
@@ -144,6 +186,29 @@ export {
   isLiveStoreConflict,
   LiveStoreConflictError,
 } from "./live-store";
+export {
+  LIVE_ACTIVITY_TIMEOUT_MS,
+  LIVE_HEARTBEAT_INTERVAL_MS,
+} from "./desktop-protocol";
+export type {
+  ConversationAdapterAvailability,
+  ConversationCapabilityLevel,
+  DesktopCollabControlApi,
+  DesktopCollabSetAccessArgs,
+  DesktopCollabSetWorkModeArgs,
+  DesktopCollabStatus,
+  DesktopConversationAdapterSummary,
+  DesktopConversationApi,
+  DesktopConversationEvent,
+  DesktopConversationState,
+  DesktopLiveBridgeApi,
+  DesktopLiveBridgeError,
+  DesktopLiveBridgeKind,
+  DesktopLiveBridgeReply,
+  DesktopLiveBridgeRequest,
+  DesktopLiveEvent,
+  DesktopLiveEventsApi,
+} from "./desktop-protocol";
 export type {
   LiveApplyActionsOptions,
   LiveApplyActionsResult,
@@ -167,6 +232,14 @@ export {
   ExternalConversationBridgeError,
   createExternalConversationBridge,
 } from "./conversation-bridge";
+export {
+  ExternalConversationAdapterError,
+  createExternalConversationAdapterRouter,
+} from "./conversation-adapter";
+export type {
+  ExternalConversationAdapterRouter,
+  ExternalConversationProviderAdapter,
+} from "./conversation-adapter";
 export type {
   ExternalConversationBridgeOptions,
   ExternalConversationPromptReceipt,

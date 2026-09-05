@@ -216,12 +216,21 @@ The runtime example covers create → import → edit → preview → export →
 
 ## Desktop live workflow
 
-Start the desktop editor, open a project, and enable **Agent Session** in the
-collaboration bar. The desktop app then exposes the live project's 17-tool
-MCP interface through a token-authenticated loopback endpoint. Configure an
-external Agent with the built `apps/desktop/dist/live-mcp/index.js` MCP server
-(`pnpm --filter @openreel/desktop build:main`); by default it reads
-`~/.openreel/live-endpoint.json` to discover the current URL and token.
+Start the desktop editor, open a project, and open the **Agent** panel. The
+connection guide can enable **Agent Session**, check a locally installed and
+signed-in Codex, list its real stored conversations, and either resume the
+selected conversation or create a Codex-owned one for the Agent workspace.
+ReelTerminal starts its packaged adapter and live MCP connector, then shows the
+conversation only after the external-session handshake succeeds. No connector
+build or terminal command is part of the normal Codex desktop flow.
+
+For another Agent host, choose **Other Agent** in the same guide. That host
+still owns and starts its thin conversation adapter; the guide detects the
+private descriptor, verifies the session, and explains how to repair a missing
+or invalid adapter. Adapter authors and headless integrations can configure the
+built `apps/desktop/dist/live-mcp/index.js` MCP server manually. By default it
+reads `~/.openreel/live-endpoint.json` inside the connector process to discover
+the current loopback endpoint.
 
 The external Agent and the user remain equal peers over the same GUI project.
 The Agent can import local video/audio, inspect context, use stable references,
@@ -235,10 +244,8 @@ standard source/generated/work/project/output/evidence layout in
 `ReelTerminal Agent Imports` folder remains readable for backward compatibility
 but is not the destination for new work. Set
 `OPENREEL_LIVE_MEDIA_ROOTS` to a platform-delimited list of existing absolute
-directories before launch to replace those defaults. The desktop conversation
-panel and loopback client are also landed. Codex users can run the shipped
-reference adapter; other Agent hosts provide a thin `/conversation` adapter and
-publish the private descriptor described in
+directories before launch to replace those defaults. Other Agent hosts provide
+a thin `/conversation` adapter and publish the private descriptor described in
 [`docs/external-agent-conversation-adapter.md`](docs/external-agent-conversation-adapter.md).
 
 For a standalone, headless workflow, use the optional `agent-video serve` or

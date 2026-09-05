@@ -59,6 +59,7 @@ describe("CollabStatusBar Agent Session onboarding", () => {
         enable: vi.fn(),
         disable: vi.fn(),
         setWorkMode: vi.fn(),
+        setAccess: vi.fn(),
         getStatus: async () => ({
           enabled: false,
           externalConnected: false,
@@ -94,6 +95,7 @@ describe("CollabStatusBar Agent Session onboarding", () => {
         enable: vi.fn(),
         disable: vi.fn(),
         setWorkMode,
+        setAccess: vi.fn(),
         getStatus: async () => ({
           enabled: false,
           externalConnected: false,
@@ -116,5 +118,43 @@ describe("CollabStatusBar Agent Session onboarding", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "Guided" }));
     await waitFor(() => expect(setWorkMode).toHaveBeenCalledWith("guided"));
+  });
+
+  it("offers an explicit recovery action for migrated read-only access", async () => {
+    const setAccess = vi.fn(async () => ({
+      sequence: 2,
+      enabled: true,
+      externalConnected: false,
+      writer: null,
+      workMode: "guided" as const,
+      access: "write" as const,
+      currentAction: null,
+    }));
+    openreelWindow.openreel = {
+      platform: "desktop",
+      collabControl: {
+        enable: vi.fn(),
+        disable: vi.fn(),
+        setWorkMode: vi.fn(),
+        setAccess,
+        getStatus: async () => ({
+          sequence: 1,
+          enabled: true,
+          externalConnected: false,
+          writer: null,
+          workMode: "guided",
+          access: "read-only",
+          currentAction: null,
+        }),
+        openWorkspace: vi.fn(),
+      },
+    } as unknown as NonNullable<OpenReelWindow["openreel"]>;
+    window.localStorage.setItem(INTRO_SEEN_KEY, "1");
+    render(<CollabStatusBar />);
+
+    const restore = await screen.findByRole("button", { name: "Enable editing" });
+    fireEvent.click(restore);
+
+    await waitFor(() => expect(setAccess).toHaveBeenCalledWith("write"));
   });
 });

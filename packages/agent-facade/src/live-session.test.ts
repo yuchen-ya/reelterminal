@@ -113,6 +113,49 @@ class FakeLiveStore implements LiveProjectStore {
     };
   }
 
+  async getProjectChanges(params: import("./types").ProjectChangesParams) {
+    return {
+      fromRevision: params.sinceRevision,
+      toRevision: this.revision,
+      changes: [],
+      nextCursor: null,
+      requiresFullRefresh: params.sinceRevision < this.revision,
+    };
+  }
+
+  async getHistory(params: import("./types").HistoryGetParams) {
+    void params;
+    return {
+      revision: this.revision,
+      available: true,
+      canUndo: false,
+      canRedo: false,
+      undoCount: 0,
+      redoCount: 0,
+      entries: [],
+    };
+  }
+
+  async historyControl(
+    action: "undo" | "redo",
+    opts: { expectedRevision: number; idempotencyKey?: string },
+  ): Promise<Omit<import("./types").HistoryControlResult, "action">> {
+    void action;
+    void opts.idempotencyKey;
+    if (opts.expectedRevision !== this.revision) {
+      throw new LiveStoreConflictError("history revision conflict", {
+        currentRevision: this.revision,
+      });
+    }
+    this.revision += 1;
+    return {
+      revision: this.revision,
+      canUndo: false,
+      canRedo: true,
+      replayed: false,
+    };
+  }
+
   async applyActions(
     actions: readonly Action[],
     opts: LiveApplyActionsOptions,
@@ -140,6 +183,7 @@ class FakeLiveStore implements LiveProjectStore {
       clips: [] as string[],
       textClips: [] as string[],
       transitions: [] as string[],
+      subtitles: [] as string[],
     };
     const executor = new ActionExecutor(new ActionHistory());
     for (const action of actions) {
@@ -158,6 +202,7 @@ class FakeLiveStore implements LiveProjectStore {
       createdIds.clips.push(...actionCreated.clips);
       createdIds.textClips.push(...actionCreated.textClips);
       createdIds.transitions.push(...actionCreated.transitions);
+      createdIds.subtitles.push(...actionCreated.subtitles);
     }
     this.project = draft;
     this.revision += 1;
@@ -399,7 +444,7 @@ function liveFacade(
       | "collaborative"
       | "autonomous"
       | (() => "guided" | "collaborative" | "autonomous");
-    access: "read-only" | "write";
+    access: "read-only" | "write" | (() => "read-only" | "write");
     sessionId: string;
     mediaRoots: readonly string[];
     deliveryRoots: readonly string[];
@@ -1115,6 +1160,28 @@ describe("work mode + access gate + writer lease", () => {
     expect(lease.holder()).toBe("agent-1");
   });
 
+  it("observes an explicit read-only to write recovery and acquires lazily", async () => {
+    let access: "read-only" | "write" = "read-only";
+    const facade = liveFacade({ access: () => access });
+
+    const denied = await facade["edit.apply"]({
+      ops: [{ op: "track.add", trackType: "video" }],
+    });
+    expect(denied.ok).toBe(false);
+    if (!denied.ok) expect(denied.error.code).toBe("FORBIDDEN");
+    expect(lease.holder()).toBeNull();
+
+    access = "write";
+    const applied = await facade["edit.apply"]({
+      ops: [{ op: "track.add", trackType: "video" }],
+    });
+    expect(applied.ok).toBe(true);
+    expect(lease.holder()).toBe("agent-1");
+    const described = await facade["session.describe"]();
+    expect(described.ok && described.value.access).toBe("write");
+    expect(described.ok && described.value.writer).toBe(true);
+  });
+
   it.each(["guided", "collaborative", "autonomous"] as const)(
     "%s work mode cannot expand read-only access",
     async (workMode) => {
@@ -1131,7 +1198,7 @@ describe("work mode + access gate + writer lease", () => {
       const verify = await facade["verify.artifact"]({ path: "/x.mp4" });
       expect(verify.ok).toBe(false);
       if (!verify.ok) expect(verify.error.code).toBe("UNSUPPORTED");
-      expect(READ_ONLY_VERBS).toHaveLength(9);
+      expect(READ_ONLY_VERBS).toHaveLength(14);
 
       // Every non-read-only verb is FORBIDDEN, and the gate fires BEFORE
       // param validation (an empty/invalid payload is still FORBIDDEN).
@@ -1141,6 +1208,7 @@ describe("work mode + access gate + writer lease", () => {
         ["project.create", facade["project.create"]({ name: "X" })],
         ["project.open", facade["project.open"]({ path: "/x" })],
         ["project.save", facade["project.save"]()],
+        ["project.rename", facade["project.rename"]({ name: "Nope" })],
         ["media.import", facade["media.import"]({ path: "/x.mp4" })],
         [
           "edit.apply",
@@ -1290,7 +1358,7 @@ describe("work mode + access gate + writer lease", () => {
     expect(res.value.writer).toBe(true);
     expect(res.value.leaseHolder).toBe("agent-1");
     expect(res.value.sessionId).toBe("agent-1");
-    expect(res.value.verbs).toHaveLength(17);
+    expect(res.value.verbs).toHaveLength(24);
     expect(res.value.stepLetters.createProject).toBe("X");
     expect(res.value.stepLetters.importLocalMedia).toBe("X");
   });
@@ -1341,6 +1409,41 @@ describe("live-unavailable verbs (Decision 11)", () => {
     expect(store.saveCount).toBe(1);
     // Saving is a snapshot, not a mutation: no revision bump.
     expect(store.revision).toBe(1);
+  });
+
+  it("project.rename uses the canonical store action, CAS, and idempotency", async () => {
+    const facade = liveFacade();
+    const renamed = await facade["project.rename"]({
+      name: "  Renamed Live Project  ",
+      expectedRevision: 0,
+      idempotencyKey: "rename-live-1",
+    });
+    expect(renamed.ok).toBe(true);
+    if (!renamed.ok) return;
+    expect(renamed.value).toMatchObject({
+      revision: 1,
+      previousName: "Live Demo",
+      name: "Renamed Live Project",
+      replayed: false,
+    });
+    expect(store.project.name).toBe("Renamed Live Project");
+    expect(store.batches.at(-1)?.actions[0]?.type).toBe("project/rename");
+
+    const replay = await facade["project.rename"]({
+      name: "Renamed Live Project",
+      expectedRevision: 0,
+      idempotencyKey: "rename-live-1",
+    });
+    expect(replay.ok && replay.value.replayed).toBe(true);
+    expect(store.revision).toBe(1);
+
+    const stale = await facade["project.rename"]({
+      name: "Stale Name",
+      expectedRevision: 0,
+    });
+    expect(stale.ok).toBe(false);
+    if (!stale.ok) expect(stale.error.code).toBe("CONFLICT");
+    expect(store.project.name).toBe("Renamed Live Project");
   });
 });
 
@@ -1953,5 +2056,38 @@ describe("project markers over the live store seam", () => {
     if (!result.ok) expect(result.error.code).toBe("NOT_FOUND");
     expect(store.revision).toBe(revisionBefore);
     expect(store.batches).toHaveLength(0);
+  });
+});
+
+describe("live state-efficiency and history facade verbs", () => {
+  it("dry-runs against a live snapshot without calling applyActions", async () => {
+    const facade = liveFacade();
+    const result = await facade["edit.validate"]({
+      ops: [{ op: "track.add", trackType: "audio" }],
+      expectedRevision: 0,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value).toMatchObject({ valid: true, estimatedRevision: 1 });
+    expect(store.batches).toHaveLength(0);
+    expect(store.revision).toBe(0);
+  });
+
+  it("delegates history control with unconditional CAS and facade replay", async () => {
+    const facade = liveFacade();
+    const first = await facade["history.control"]({
+      action: "undo",
+      expectedRevision: 0,
+      idempotencyKey: "live-undo-1",
+    });
+    expect(first.ok).toBe(true);
+    if (first.ok) expect(first.value).toMatchObject({ revision: 1, replayed: false });
+    const replay = await facade["history.control"]({
+      action: "undo",
+      expectedRevision: 0,
+      idempotencyKey: "live-undo-1",
+    });
+    expect(replay.ok).toBe(true);
+    if (replay.ok) expect(replay.value).toMatchObject({ revision: 1, replayed: true });
+    expect(store.revision).toBe(1);
   });
 });

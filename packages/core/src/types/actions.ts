@@ -161,6 +161,10 @@ export type ClipAction =
         trackId: string;
         mediaId: string;
         startTime: number;
+        /** Explicit timeline duration; otherwise derived from the source range. */
+        duration?: number;
+        inPoint?: number;
+        outPoint?: number;
         sourceClip?: Clip;
       };
     }

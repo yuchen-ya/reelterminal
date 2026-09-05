@@ -30,7 +30,16 @@ describe("conversationViewModelFromProtocol", () => {
       sessionEvent(8, { sessionUpdate: "artifact", artifactId: "artifact-1", label: "Title preview", kind: "contact_sheet", mimeType: "image/png", status: "available" }),
       sessionEvent(9, { sessionUpdate: "subtask", subtaskId: "subtask-1", title: "Render preview", status: "running", summary: "Rendering" }),
       sessionEvent(10, { sessionUpdate: "plan", entries: [{ content: "Add a title", status: "completed" }] }),
-      sessionEvent(11, { sessionUpdate: "usage", inputTokens: 3, outputTokens: 5, totalTokens: 8 }),
+      sessionEvent(11, {
+        sessionUpdate: "usage",
+        inputTokens: 3,
+        cachedInputTokens: 2,
+        outputTokens: 5,
+        reasoningOutputTokens: 1,
+        totalTokens: 8,
+        turnTotalTokens: 8,
+        currentContextTokens: 3,
+      }),
       sessionEvent(12, { sessionUpdate: "tool_result", toolCallId: "tool-1", status: "completed", summary: "Timeline updated" }),
       sessionEvent(13, { sessionUpdate: "approval_resolution", requestId: "approval-1", outcome: "approved", summary: "Approved by you" }),
       sessionEvent(14, { sessionUpdate: "agent_message", messageId: "a1", content: [{ type: "text", text: "First the timeline." }] }),
@@ -86,6 +95,13 @@ describe("conversationViewModelFromProtocol", () => {
       kind: "contact_sheet",
       mimeType: "image/png",
       status: "available",
+    });
+    const usage = viewModel.activities.find((activity) => activity.type === "usage");
+    expect(usage).toMatchObject({
+      cachedInputTokens: 2,
+      reasoningOutputTokens: 1,
+      turnTotalTokens: 8,
+      currentContextTokens: 3,
     });
 
     const message = viewModel.activities.find((activity) => activity.type === "agent_message");

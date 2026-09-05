@@ -156,7 +156,10 @@ describe("external Agent conversation panel", () => {
   test("attaches the same remote session and renders its chronological work log", async () => {
     const page = launched.page;
     await page.getByRole("button", { name: "Open external agent panel" }).click();
-    await page.getByRole("button", { name: "Connect external Agent" }).click();
+    await page
+      .getByRole("region", { name: "Connect an Agent" })
+      .getByRole("button", { name: "Connect", exact: true })
+      .click();
     await page.getByText("External Agent connected", { exact: true }).waitFor();
 
     const composer = page.getByRole("textbox", { name: "Message the external Agent" });

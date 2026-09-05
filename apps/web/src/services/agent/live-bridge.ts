@@ -1,4 +1,8 @@
-import type { Action } from "@openreel/core/types/actions";
+import type {
+  DesktopLiveBridgeError as LiveBridgeError,
+  DesktopLiveBridgeReply as LiveBridgeReply,
+  DesktopLiveBridgeRequest as LiveBridgeRequest,
+} from "@openreel/agent-facade/desktop-protocol";
 import type {
   LiveEditorControlParams,
   LiveEditorControlResult,
@@ -6,8 +10,14 @@ import type {
 } from "@openreel/agent-facade/live-store";
 import {
   useProjectStore,
+  getProjectChanges,
   getProjectRevision,
 } from "../../stores/project-store";
+import type {
+  HistoryEntrySummary,
+  HistoryGetResult,
+  ProjectChangesParams,
+} from "@openreel/agent-facade";
 import { getLiveEditorContext } from "../../stores/editor-context-store";
 import { useUIStore, type SelectionItem } from "../../stores/ui-store";
 import { useTimelineStore } from "../../stores/timeline-store";
@@ -23,43 +33,7 @@ import { runExclusiveLiveWrite } from "./live-write-lock";
 
 export const AGENT_HISTORY_OWNER = "agent";
 
-export interface LiveBridgeRequest {
-  readonly callId: string;
-  readonly kind:
-    | "getIdentity"
-    | "getState"
-    | "getContext"
-    | "editorControl"
-    | "applyActions"
-    | "importMedia"
-    | "requestSave";
-  readonly actions?: readonly Action[];
-  readonly groupLabel?: string;
-  readonly expectedRevision?: number;
-  readonly expectedContextRevision?: number;
-  readonly action?: LiveEditorControlParams["action"];
-  readonly timeSeconds?: number;
-  readonly targets?: readonly LiveEditorControlTarget[];
-  readonly selectionMode?: LiveEditorControlParams["selectionMode"];
-  /** `importMedia` payload; path must be absolute and local. */
-  readonly path?: string;
-  readonly name?: string;
-  readonly type?: "video" | "audio";
-  readonly metadata?: {
-    readonly durationSec: number;
-    readonly width: number;
-    readonly height: number;
-    readonly frameRate: number;
-    readonly codec: string;
-    readonly fileSize: number;
-  };
-  readonly sourceFile?: {
-    readonly name: string;
-    readonly size: number;
-    readonly lastModified: number;
-  };
-  readonly idempotencyKey?: string;
-}
+export type { LiveBridgeError, LiveBridgeReply, LiveBridgeRequest };
 
 interface MediaImportLedgerEntry {
   readonly payload: string;
@@ -82,23 +56,162 @@ interface MediaImportLedgerEntry {
 /** Renderer-side commit ledger closes the timeout/retry duplicate window. */
 const mediaImportLedger = new Map<string, Map<string, MediaImportLedgerEntry>>();
 
-export interface LiveBridgeError {
-  readonly code: string;
-  readonly message: string;
-  readonly details?: Record<string, unknown>;
+interface HistoryControlLedgerEntry {
+  readonly payload: string;
+  readonly result: {
+    readonly revision: number;
+    readonly canUndo: boolean;
+    readonly canRedo: boolean;
+    readonly replayed: boolean;
+  };
 }
 
-export interface LiveBridgeReply {
-  readonly callId: string;
-  readonly ok: boolean;
-  readonly result?: unknown;
-  readonly error?: LiveBridgeError;
-}
+const historyControlLedger = new Map<
+  string,
+  Map<string, HistoryControlLedgerEntry>
+>();
 
 const noProject = (): { ok: false; error: LiveBridgeError } => ({
   ok: false,
   error: { code: "NO_PROJECT", message: "No project is open" },
 });
+
+function historySummary(limit: number): HistoryGetResult {
+  const store = useProjectStore.getState();
+  const actionEntries = [
+    ...store.actionHistory.getHistoryEntries().map((entry) => ({
+      direction: "undo" as const,
+      description: entry.description,
+      actionType: entry.action.type,
+      owner: entry.owner === AGENT_HISTORY_OWNER ? "agent" as const : "human" as const,
+      timestamp: entry.timestamp,
+      groupId: entry.groupId ?? null,
+    })),
+    ...store.actionHistory.getRedoEntries().map((entry) => ({
+      direction: "redo" as const,
+      description: entry.description,
+      actionType: entry.action.type,
+      owner: entry.owner === AGENT_HISTORY_OWNER ? "agent" as const : "human" as const,
+      timestamp: entry.timestamp,
+      groupId: entry.groupId ?? null,
+    })),
+  ];
+  const auxiliary: HistoryEntrySummary[] = [
+    ...store.clipUndoStack.map((entry) => ({
+      direction: "undo" as const,
+      description: `${entry.op === "update" ? "Update" : "Create"} ${entry.type} overlay`,
+      actionType: `overlay/${entry.op}`,
+      owner: "human" as const,
+      timestamp: entry.timestamp,
+      groupId: null,
+    })),
+    ...store.clipRedoStack.map((entry) => ({
+      direction: "redo" as const,
+      description: `${entry.op === "update" ? "Update" : "Create"} ${entry.type} overlay`,
+      actionType: `overlay/${entry.op}`,
+      owner: "human" as const,
+      timestamp: entry.timestamp,
+      groupId: null,
+    })),
+    ...store.templateUndoStack.map((entry) => ({
+      direction: "undo" as const,
+      description: "Apply editing template",
+      actionType: "template/apply",
+      owner: "human" as const,
+      timestamp: entry.timestamp,
+      groupId: null,
+    })),
+    ...store.templateRedoStack.map((entry) => ({
+      direction: "redo" as const,
+      description: "Apply editing template",
+      actionType: "template/apply",
+      owner: "human" as const,
+      timestamp: entry.timestamp,
+      groupId: null,
+    })),
+  ];
+  return {
+    revision: getProjectRevision(),
+    available: true,
+    canUndo: store.canUndo(),
+    canRedo: store.canRedo(),
+    undoCount:
+      store.actionHistory.getUndoStackSize() +
+      store.clipUndoStack.length +
+      store.templateUndoStack.length,
+    redoCount:
+      store.actionHistory.getRedoStackSize() +
+      store.clipRedoStack.length +
+      store.templateRedoStack.length,
+    entries: [...actionEntries, ...auxiliary]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, limit),
+  };
+}
+
+async function handleHistoryControl(
+  req: LiveBridgeRequest,
+): Promise<Omit<LiveBridgeReply, "callId">> {
+  return runExclusiveLiveWrite(async () => {
+    const store = useProjectStore.getState();
+    if (!store.hasOpenProject) return noProject();
+    if (req.historyAction !== "undo" && req.historyAction !== "redo") {
+      return {
+        ok: false,
+        error: { code: "INVALID_PARAMS", message: "historyControl requires undo or redo" },
+      };
+    }
+    const expectedRevision = req.expectedRevision;
+    const key = req.idempotencyKey;
+    const payload = JSON.stringify({ action: req.historyAction });
+    const projectLedger = key ? historyControlLedger.get(store.project.id) : undefined;
+    const prior = key ? projectLedger?.get(key) : undefined;
+    if (prior) {
+      if (prior.payload !== payload) {
+        return {
+          ok: false,
+          error: {
+            code: "CONFLICT",
+            message: `idempotency key "${key}" was already committed with a different payload`,
+          },
+        };
+      }
+      return { ok: true, result: { ...prior.result, replayed: true } };
+    }
+    if (expectedRevision === undefined || expectedRevision !== getProjectRevision()) {
+      return {
+        ok: false,
+        error: {
+          code: "CONFLICT",
+          message: `Project revision mismatch: expected ${String(expectedRevision)}, current ${getProjectRevision()}`,
+          details: { currentRevision: getProjectRevision() },
+        },
+      };
+    }
+    const result = await store[req.historyAction]();
+    if (!result.success) {
+      return {
+        ok: false,
+        error: {
+          code: result.error?.code === "INVALID_PARAMS" ? "NOT_FOUND" : "ACTION_FAILED",
+          message: result.error?.message ?? `${req.historyAction} failed`,
+        },
+      };
+    }
+    const value = {
+      revision: getProjectRevision(),
+      canUndo: useProjectStore.getState().canUndo(),
+      canRedo: useProjectStore.getState().canRedo(),
+      replayed: false,
+    };
+    if (key) {
+      const ledger = projectLedger ?? new Map<string, HistoryControlLedgerEntry>();
+      ledger.set(key, { payload, result: value });
+      historyControlLedger.set(store.project.id, ledger);
+    }
+    return { ok: true, result: value };
+  });
+}
 
 async function handleApplyActions(
   req: LiveBridgeRequest,
@@ -532,6 +645,28 @@ export async function handleLiveBridgeRequest(
       }
       case "getContext": {
         return { ok: true, result: detach(getLiveEditorContext()) };
+      }
+      case "getProjectChanges": {
+        const store = useProjectStore.getState();
+        if (!store.hasOpenProject) return noProject();
+        return {
+          ok: true,
+          result: detach(
+            getProjectChanges({
+              sinceRevision: req.sinceRevision as number,
+              ...(req.limit !== undefined ? { limit: req.limit } : {}),
+              ...(req.cursor !== undefined ? { cursor: req.cursor } : {}),
+            } satisfies ProjectChangesParams),
+          ),
+        };
+      }
+      case "getHistory": {
+        const store = useProjectStore.getState();
+        if (!store.hasOpenProject) return noProject();
+        return { ok: true, result: detach(historySummary(req.limit ?? 20)) };
+      }
+      case "historyControl": {
+        return await handleHistoryControl(req);
       }
       case "editorControl": {
         return await handleEditorControl(req);

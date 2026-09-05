@@ -24,6 +24,7 @@ const mockDesktop = () => {
     disable: vi.fn(async () => status({ enabled: false, writer: null })),
     getStatus: vi.fn(async () => status({ enabled: false, writer: null })),
     setWorkMode: vi.fn(async (workMode: string) => status({ workMode: workMode as never })),
+    setAccess: vi.fn(async (access: "read-only" | "write") => status({ access })),
   };
   let listener: ((evt: Record<string, unknown>) => void) | null = null;
   const liveEvents = {
@@ -75,7 +76,7 @@ describe("collab-store (ADR 0004 Decisions 6+7)", () => {
     expect(() => installCollabEventListener()).not.toThrow();
   });
 
-  it("enable/disable/setWorkMode route to collabControl and mirror the status", async () => {
+  it("enable/disable/mode/access changes route to main and mirror status", async () => {
     const { collabControl } = mockDesktop();
     await useCollabStore.getState().enable();
     expect(collabControl.enable).toHaveBeenCalledOnce();
@@ -85,6 +86,10 @@ describe("collab-store (ADR 0004 Decisions 6+7)", () => {
     await useCollabStore.getState().setWorkMode("autonomous");
     expect(collabControl.setWorkMode).toHaveBeenCalledWith("autonomous");
     expect(useCollabStore.getState().workMode).toBe("autonomous");
+
+    await useCollabStore.getState().setAccess("read-only");
+    expect(collabControl.setAccess).toHaveBeenCalledWith("read-only");
+    expect(useCollabStore.getState().access).toBe("read-only");
 
     await useCollabStore.getState().disable();
     expect(useCollabStore.getState().enabled).toBe(false);

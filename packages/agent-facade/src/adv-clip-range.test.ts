@@ -2,15 +2,14 @@
  * ADV REGRESSION (from adversarial review defect D1): clip.add must REJECT
  * ranges that would commit inverted/degenerate clips.
  *
- * Core's clip/add handler defaults duration → outPoint with inPoint
- * defaulting independently, so {inPoint:5, duration:3} or {inPoint:8} on 6s
- * media would silently commit outPoint < inPoint without the facade guard
- * (packages/core/src/actions/action-executor.ts:706-712). The facade
- * reproduces core's defaulting and rejects the degenerate result.
+ * Facade and Core share source-range defaults. Invalid ranges are rejected,
+ * and a valid source range without duration derives its timeline span.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAgentFacade, type AgentFacade } from "./index";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
+import { opToCoreActions } from "./ops";
+import { createEmptyProject } from "./project-factory";
 import { makeTempDir, projectJson, removeTempDir } from "./test-helpers";
 
 describe("ADV: clip.add range sanity (inPoint vs defaulted outPoint)", () => {
@@ -45,6 +44,38 @@ describe("ADV: clip.add range sanity (inPoint vs defaulted outPoint)", () => {
     expect(state.value.revision).toBe(beforeRevision);
     expect(projectJson(state.value.project)).toBe(beforeJson);
   }
+
+  it("translates a 10s source with inPoint=2 to outPoint=10 and duration=8", () => {
+    const project = createEmptyProject("Range translation");
+    project.timeline.tracks.push({
+      id: "v1",
+      type: "video",
+      name: "Video 1",
+      clips: [],
+    } as never);
+    project.mediaLibrary.items.push({
+      id: "m10",
+      metadata: { duration: 10 },
+    } as never);
+
+    const actions = opToCoreActions(
+      {
+        op: "clip.add",
+        trackId: "v1",
+        mediaId: "m10",
+        startTime: 0,
+        inPoint: 2,
+      },
+      project,
+    );
+
+    expect(actions).toHaveLength(1);
+    expect(actions[0]?.params).toMatchObject({
+      inPoint: 2,
+      outPoint: 10,
+      duration: 8,
+    });
+  });
 
   it("CASE A: inPoint=5, duration=3 (defaulted outPoint < inPoint) is rejected", async () => {
     const before = await facade["project.get_state"]();
@@ -102,6 +133,53 @@ describe("ADV: clip.add range sanity (inPoint vs defaulted outPoint)", () => {
     const state = await facade["project.get_state"]();
     if (!state.ok) throw new Error();
     const clip = state.value.project.timeline.tracks[0]?.clips[0];
-    expect(clip).toMatchObject({ inPoint: 1, outPoint: 5 });
+    expect(clip).toMatchObject({ inPoint: 1, outPoint: 5, duration: 4 });
+    expect(state.value.project.timeline.duration).toBe(4);
+  });
+
+  it("inPoint-only add preserves the defaulted source outPoint", async () => {
+    const r = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "clip.add",
+          trackId: "v1",
+          mediaId,
+          startTime: 0,
+          inPoint: 2,
+        },
+      ],
+    });
+    expect(r.ok).toBe(true);
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error();
+    expect(state.value.project.timeline.tracks[0]?.clips[0]).toMatchObject({
+      inPoint: 2,
+      outPoint: 6,
+      duration: 4,
+    });
+  });
+
+  it("keeps an explicit timeline duration authoritative over the source span", async () => {
+    const r = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "clip.add",
+          trackId: "v1",
+          mediaId,
+          startTime: 0,
+          duration: 2,
+          inPoint: 1,
+          outPoint: 5,
+        },
+      ],
+    });
+    expect(r.ok).toBe(true);
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error();
+    expect(state.value.project.timeline.tracks[0]?.clips[0]).toMatchObject({
+      inPoint: 1,
+      outPoint: 5,
+      duration: 2,
+    });
   });
 });

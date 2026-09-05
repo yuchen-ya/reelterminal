@@ -14,6 +14,11 @@ const facade = createAgentFacade({ mediaRoots: ["/abs/path/to/media"] });
 // An exact retry (same idempotencyKey + same payload) replays the creation
 // result without resetting anything; any other second create is a CONFLICT.
 await facade["project.create"]({ name: "Demo", idempotencyKey: "create-demo" });
+await facade["project.rename"]({
+  name: "Dam Letter",
+  expectedRevision: 0,
+  idempotencyKey: "rename-demo",
+});
 await facade["media.import"]({ path: "/abs/path/to/media/input.mp4" });
 await facade["edit.apply"]({
   ops: [
@@ -56,7 +61,8 @@ const state = await facade["project.get_state"]();
 ## Verbs
 
 Slice 1: `session.describe` · `capabilities.get` · `project.create` ·
-`project.get_state` · `media.import` · `timeline.get` · `edit.apply`
+`project.rename` · `project.get_state` · `media.import` · `timeline.get` ·
+`edit.apply`
 
 Slice 1b: `preview.render_frame` · `export.start` · `job.status` ·
 `job.cancel` · `verify.artifact`
@@ -65,8 +71,15 @@ Slice 2a: `project.open` · `project.save`
 
 Slice 3 (ADR 0004): `editor.get_context` — the live/headless-honest
 editor-context read. `editor.control` adds ephemeral live playback and
-selection/reveal controls; live sessions (createLiveFacade) implement the same
-17-verb contract over a `LiveProjectStore` seam with no project copy.
+selection/reveal controls.
+
+Slice 6: `project.changes` · `timeline.query` · `edit.validate` ·
+`history.get` · `history.control` add bounded delta recovery, scoped reads,
+side-effect-free preflight, and canonical live undo/redo. `media.analyze_start`
+adds asynchronous media analysis over the generalized `job.status`/
+`job.cancel` path. Live and headless sessions implement the same 24-verb
+contract over a `LiveProjectStore` seam with no live project copy; headless
+history control reports `UNSUPPORTED` because it has no GUI/Core history stack.
 
 Visual slice: `visual.inspect` — a read-only sample of 1–12 frames selected
 by exactly one of `clipId` (a timeline clip id from `timeline.get`) or an
@@ -128,7 +141,7 @@ no-op with `ok: true`.
 
 ## Live-mode contract differences (ADR 0004)
 
-Live sessions (`createLiveFacade`) implement the same 17 verbs against the
+Live sessions (`createLiveFacade`) implement the same 24 verbs against the
 open GUI project. Where a verb's behavior must differ by mode, the contract
 states it up front instead of letting integrators discover it at runtime:
 
@@ -249,6 +262,31 @@ canonical media-library insertion through `LiveProjectStore.importMedia`.
 The live host must provide absolute `mediaRoots` and implement that JSON-safe
 bridge; its revision CAS and one undo group are part of the seam contract.
 The facade does not send browser `File`/`Blob` objects across the bridge.
+
+## Bounded state, analysis, and finishing additions
+
+- `project.changes` retains 256 revision batches and returns at most 200
+  entity-field changes per page. A missing/evicted base is explicit via
+  `requiresFullRefresh:true`; the renderer journal observes every canonical
+  project replacement, including human GUI edits and Agent commits.
+- `timeline.query` filters by `@A<n>`/`R<n>` refs, ids, time, tracks/entity
+  types, and allowlisted fields. Limits, cursors, and neighbor expansion are
+  hard bounded; bare `#N` references are invalid.
+- `edit.validate` validates and executes the exact `edit.apply` op translator
+  against a discarded project clone, returning conflicts, warnings, entity
+  impact, and estimated revision/duration without touching project/history.
+- Live `history.get`/`history.control` delegate to the GUI's canonical history
+  and preserve writer gate, revision CAS, renderer-side timeout replay, and
+  one project revision per undo/redo. Headless never guesses inverse ops.
+- `media.analyze_start` currently supports only the real built-in
+  `technicalQuality` probe (mediabunny + file stat). The other declared types
+  are individually unavailable in `capabilities.get`; they fail
+  `UNSUPPORTED` before job creation.
+- New closed edit ops with Core/GUI/renderer parity are `track.update`
+  (name/lock/hide/mute/solo), `subtitle.importSrt` (256 KiB/500 cues),
+  `clip.setColorGrade` (temperature/tint), and `clip.setKeyframes` (renderer-
+  supported transform/opacity properties). Capability data names the remaining
+  professional gaps instead of exposing no-op schemas.
 
 ## Slice boundaries (what this is NOT)
 

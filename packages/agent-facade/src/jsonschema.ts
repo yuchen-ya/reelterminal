@@ -102,7 +102,7 @@ function emitVerbSchema(verb: FacadeVerb): JsonSchemaObject {
 
 /**
  * The emitted draft-2020-12 input schema per facade verb, keyed by verb
- * name (B.1 tool map, 17 verbs). The transport imports this map and assigns
+ * name (B.1 tool map, 24 verbs). The transport imports this map and assigns
  * `tool.inputSchema = EMITTED_VERB_JSON_SCHEMAS[verb]` verbatim; a CI
  * assertion there deep-equals it against the running `tools/list` payload,
  * so any drift between the two surfaces dies in CI.
@@ -118,7 +118,7 @@ export const EMITTED_VERB_JSON_SCHEMAS: Readonly<
 
 /**
  * Live-mode input-schema overrides (ADR 0004). The live facade implements the
- * same 17 verbs, but live `project.save` is NOT a checkpoint write: it takes
+ * same 24 verbs, but live `project.save` is NOT a checkpoint write: it takes
  * no params (the GUI owns the save target) and flushes the GUI's autosave
  * snapshot, reporting only the revision. Advertising the headless checkpoint
  * schema (`path` required) on the live `tools/list` would instruct

@@ -240,7 +240,7 @@ export const RetouchingSection: React.FC<RetouchingSectionProps> = ({
         description: t("Remove red-eye from photos"),
       },
     ],
-    [],
+    [t],
   );
 
   return (

@@ -56,6 +56,8 @@ export interface LaunchOptions {
   runDir?: string;
   /** Keep the temp dir after close (debugging). */
   keepRunDir?: boolean;
+  /** Additional process env for hermetic provider fixtures. Isolation paths win. */
+  env?: NodeJS.ProcessEnv;
 }
 
 function makeRunDirs(runDir?: string): {
@@ -76,7 +78,10 @@ function makeRunDirs(runDir?: string): {
   };
 }
 
-async function launch(paths: ReturnType<typeof makeRunDirs>): Promise<LaunchedApp> {
+async function launch(
+  paths: ReturnType<typeof makeRunDirs>,
+  extraEnv: NodeJS.ProcessEnv = {},
+): Promise<LaunchedApp> {
   if (!existsSync(MAIN_BUNDLE_PATH) || !existsSync(LIVE_MCP_CONNECTOR_PATH)) {
     throw new Error(
       "desktop build missing — run `pnpm --filter @openreel/desktop build` before test:e2e",
@@ -92,10 +97,12 @@ async function launch(paths: ReturnType<typeof makeRunDirs>): Promise<LaunchedAp
     cwd: DESKTOP_DIR,
     env: {
       ...process.env,
+      ...extraEnv,
       OPENREEL_LIVE_ENDPOINT_FILE: paths.endpointFile,
       // The per-run directory is the only media root needed by import E2E;
       // every other spec simply observes the additional honest capability.
       OPENREEL_LIVE_MEDIA_ROOTS: paths.runDir,
+      OPENREEL_AGENT_WORKSPACE_ROOT: path.join(paths.runDir, "agent-workspace"),
       OPENREEL_CONVERSATION_ENDPOINT_FILE: paths.conversationEndpointFile,
       OPENREEL_CONVERSATION_VISUAL_STATE_ROOT: paths.conversationVisualStateRoot,
     },
@@ -141,7 +148,7 @@ async function launch(paths: ReturnType<typeof makeRunDirs>): Promise<LaunchedAp
 
     async relaunch() {
       await handle.close({ keepRunDir: true });
-      return launch(paths);
+      return launch(paths, extraEnv);
     },
 
     close(options = {}) {
@@ -247,5 +254,5 @@ async function launch(paths: ReturnType<typeof makeRunDirs>): Promise<LaunchedAp
 
 export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedApp> {
   const paths = makeRunDirs(options.runDir);
-  return launch(paths);
+  return launch(paths, options.env);
 }

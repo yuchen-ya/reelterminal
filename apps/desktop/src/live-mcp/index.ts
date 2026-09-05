@@ -2,8 +2,8 @@
 /**
  * openreel-live-mcp — stdio to the external-agent live endpoint.
  *
- * This deliberately forwards only the MCP methods implemented by the
- * 17-tool live endpoint. It never imports a registry, provider,
+ * This deliberately forwards only the MCP methods and facade-owned tool
+ * names implemented by the live endpoint. It never imports a provider,
  * model, keychain, or conversation service. The descriptor is written by
  * the desktop live host while collaboration is enabled:
  *   default: ~/.openreel/live-endpoint.json
@@ -14,6 +14,7 @@ import { request as httpRequest } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
+import { FACADE_TOOL_NAMES } from "@openreel/agent-facade";
 import { LIVE_HEARTBEAT_INTERVAL_MS } from "../shared/live";
 
 interface RpcMessage {
@@ -48,25 +49,7 @@ const LIVE_METHODS = new Set([
   "tools/list",
   "tools/call",
 ]);
-const LIVE_TOOL_NAMES = new Set([
-  "session_describe",
-  "capabilities_get",
-  "project_create",
-  "project_open",
-  "project_save",
-  "project_get_state",
-  "media_import",
-  "timeline_get",
-  "editor_get_context",
-  "editor_control",
-  "edit_apply",
-  "preview_render_frame",
-  "visual_inspect",
-  "export_start",
-  "job_status",
-  "job_cancel",
-  "verify_artifact",
-]);
+const LIVE_TOOL_NAMES = new Set<string>(FACADE_TOOL_NAMES);
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 const REQUEST_TIMEOUT_MS = 30_000;
 

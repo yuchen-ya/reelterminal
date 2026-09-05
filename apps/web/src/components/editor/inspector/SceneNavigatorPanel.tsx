@@ -77,7 +77,7 @@ export const SceneNavigatorPanel: React.FC<SceneNavigatorPanelProps> = ({
     }
 
     return sceneList;
-  }, [markers, duration]);
+  }, [markers, duration, t]);
 
   const currentScene = scenes[currentSceneIndex] || scenes[0];
 

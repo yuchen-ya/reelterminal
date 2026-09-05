@@ -24,6 +24,8 @@ import {
   type LiveEditorControlResult,
   type LiveProjectIdentity,
   type LiveProjectStore,
+  type HistoryGetResult,
+  type ProjectChangesResult,
 } from "@openreel/agent-facade";
 import type { Action } from "@openreel/core/types/actions";
 import type { Project } from "@openreel/core/types/project";
@@ -162,6 +164,34 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
       }>,
     getContext: () =>
       request("getContext", {}, READ_TIMEOUT_MS) as Promise<LiveEditorContext>,
+    getProjectChanges: (params) =>
+      request(
+        "getProjectChanges",
+        {
+          sinceRevision: params.sinceRevision,
+          ...(params.limit !== undefined ? { limit: params.limit } : {}),
+          ...(params.cursor !== undefined ? { cursor: params.cursor } : {}),
+        },
+        READ_TIMEOUT_MS,
+      ) as Promise<ProjectChangesResult>,
+    getHistory: (params) =>
+      request(
+        "getHistory",
+        { ...(params.limit !== undefined ? { limit: params.limit } : {}) },
+        READ_TIMEOUT_MS,
+      ) as Promise<HistoryGetResult>,
+    historyControl: (action, opts) =>
+      request(
+        "historyControl",
+        {
+          historyAction: action,
+          expectedRevision: opts.expectedRevision,
+          ...(opts.idempotencyKey !== undefined
+            ? { idempotencyKey: opts.idempotencyKey }
+            : {}),
+        },
+        APPLY_TIMEOUT_MS,
+      ) as ReturnType<LiveProjectStore["historyControl"]>,
     editorControl: (params: LiveEditorControlParams) =>
       request(
         "editorControl",

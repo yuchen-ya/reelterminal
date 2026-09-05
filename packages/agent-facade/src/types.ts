@@ -14,7 +14,7 @@
  *   the openreel-project@2 checkpoint pair (cross-session persistence).
  * Slice 3 verbs (ADR 0004 Decision 4): editor.get_context — the live/
  *   headless-honest editor-context read plus the read-only visual.inspect
- *   slice (17 verbs).
+ *   slice. Slice 6 grows the compact contract to 24 verbs.
  * Slice 4 widens edit.apply's closed finishing vocabulary to include clip
  *   move/split/duplicate/ripple-delete, constant speed/reverse, visual
  *   transforms/crop, audio fades, and clip transitions without adding new
@@ -37,12 +37,11 @@ import {
 import type { LiveEditorReferences } from "./live-store";
 import type {
   ArtifactRef,
-  ExportProgressEvent,
   VerifyReport,
 } from "./providers";
 
-export const FACADE_VERSION = "0.4.0" as const;
-export const FACADE_CONTRACT_VERSION = "facade-slice-4" as const;
+export const FACADE_VERSION = "0.6.0" as const;
+export const FACADE_CONTRACT_VERSION = "facade-slice-6" as const;
 export const FACADE_RUNTIME = "node-headless" as const;
 
 /* ------------------------------------------------------------------ */
@@ -55,12 +54,19 @@ export const FACADE_VERBS = [
   "project.create",
   "project.open",
   "project.save",
+  "project.rename",
   "project.get_state",
+  "project.changes",
   "media.import",
+  "media.analyze_start",
   "timeline.get",
+  "timeline.query",
   "editor.get_context",
   "editor.control",
+  "edit.validate",
   "edit.apply",
+  "history.get",
+  "history.control",
   "preview.render_frame",
   "visual.inspect",
   "export.start",
@@ -70,6 +76,40 @@ export const FACADE_VERBS = [
 ] as const;
 
 export type FacadeVerb = (typeof FACADE_VERBS)[number];
+
+type DotsToUnderscores<Value extends string> =
+  Value extends `${infer Head}.${infer Tail}`
+    ? `${Head}_${DotsToUnderscores<Tail>}`
+    : Value;
+
+/** Canonical MCP spelling for one facade verb. */
+export type FacadeToolName = DotsToUnderscores<FacadeVerb>;
+
+/**
+ * The facade owns the verb-to-tool spelling as well as the schemas. Desktop
+ * live, stdio live-mcp, and agent-transport consume this registry so a newly
+ * added facade verb cannot be advertised by one transport and rejected by
+ * another stale allowlist.
+ */
+export function facadeToolNameForVerb(verb: FacadeVerb): FacadeToolName {
+  return verb.replace(/\./g, "_") as FacadeToolName;
+}
+
+export const FACADE_TOOL_NAMES = FACADE_VERBS.map(
+  facadeToolNameForVerb,
+) as readonly FacadeToolName[];
+
+export const FACADE_TOOL_TO_VERB: Readonly<
+  Record<FacadeToolName, FacadeVerb>
+> = Object.fromEntries(
+  FACADE_VERBS.map((verb) => [facadeToolNameForVerb(verb), verb]),
+) as Readonly<Record<FacadeToolName, FacadeVerb>>;
+
+export const FACADE_VERB_TO_TOOL: Readonly<
+  Record<FacadeVerb, FacadeToolName>
+> = Object.fromEntries(
+  FACADE_VERBS.map((verb) => [verb, facadeToolNameForVerb(verb)]),
+) as Readonly<Record<FacadeVerb, FacadeToolName>>;
 
 /* ------------------------------------------------------------------ */
 /* Work mode + the read-only verb gate                                */
@@ -98,9 +138,14 @@ export const READ_ONLY_VERBS = [
   "session.describe",
   "capabilities.get",
   "project.get_state",
+  "project.changes",
+  "media.analyze_start",
   "timeline.get",
+  "timeline.query",
   "editor.get_context",
   "editor.control",
+  "edit.validate",
+  "history.get",
   "visual.inspect",
   "job.status",
   "verify.artifact",
@@ -227,6 +272,30 @@ export interface Capabilities {
     readonly urlImport: false;
     readonly metadata: readonly ["duration", "width", "height", "mediaType"];
   };
+  readonly projectChanges: CapabilityStatus;
+  readonly history: CapabilityStatus;
+  readonly mediaAnalysis: {
+    readonly asynchronous: true;
+    readonly types: Readonly<Record<MediaAnalysisType, CapabilityStatus>>;
+    readonly largeResultsAsArtifacts: true;
+  };
+  readonly professionalEditing: Readonly<{
+    subtitles: CapabilityStatus;
+    trackControls: CapabilityStatus;
+    transformKeyframes: CapabilityStatus;
+    volumeKeyframes: CapabilityStatus;
+    basicColorGrade: CapabilityStatus;
+    lut: CapabilityStatus;
+    audioNormalization: CapabilityStatus;
+    audioDucking: CapabilityStatus;
+    vocalIsolation: CapabilityStatus;
+    stabilization: CapabilityStatus;
+    smartReframe: CapabilityStatus;
+    proxyMedia: CapabilityStatus;
+    relink: CapabilityStatus;
+    exportPresets: CapabilityStatus;
+    exportPreflight: CapabilityStatus;
+  }>;
   readonly editOps: readonly EditOpType[];
   readonly textOverlay: {
     readonly modelState: true;
@@ -364,6 +433,59 @@ export interface LiveProjectSaveResult {
   readonly revision: number;
 }
 
+/** Rename the open project without changing its backing checkpoint path. */
+export interface ProjectRenameParams {
+  readonly name: string;
+  readonly expectedRevision?: number;
+  readonly idempotencyKey?: string;
+}
+
+export interface ProjectRenameResult {
+  readonly revision: number;
+  readonly projectId: string;
+  readonly previousName: string;
+  readonly name: string;
+  readonly replayed: boolean;
+}
+
+/* ------------------------------------------------------------------ */
+/* project.changes — bounded structural deltas                         */
+/* ------------------------------------------------------------------ */
+
+export type ProjectChangeEntityType =
+  | "project"
+  | "track"
+  | "clip"
+  | "text"
+  | "media"
+  | "transition"
+  | "marker"
+  | "subtitle";
+
+export interface ProjectChange {
+  readonly revision: number;
+  readonly change: "added" | "updated" | "removed";
+  readonly entityType: ProjectChangeEntityType;
+  readonly entityId: string;
+  /** Changed top-level fields; ["*"] denotes creation or removal. */
+  readonly fields: readonly string[];
+}
+
+export interface ProjectChangesParams {
+  readonly sinceRevision: number;
+  readonly limit?: number;
+  readonly cursor?: string;
+}
+
+export interface ProjectChangesResult {
+  readonly fromRevision: number;
+  readonly toRevision: number;
+  readonly changes: readonly ProjectChange[];
+  readonly nextCursor: string | null;
+  /** True when the requested base predates the retained in-memory journal. */
+  readonly requiresFullRefresh: boolean;
+}
+
 /* ------------------------------------------------------------------ */
 /* media.import                                                        */
 /* ------------------------------------------------------------------ */
@@ -395,6 +517,43 @@ export interface MediaImportResult {
   readonly replayed: boolean;
 }
 
+export const MEDIA_ANALYSIS_TYPES = [
+  "technicalQuality",
+  "sceneCuts",
+  "silence",
+  "speechTranscript",
+  "loudness",
+  "blackFrames",
+  "duplicateFrames",
+  "motion",
+  "faces",
+] as const;
+
+export type MediaAnalysisType = (typeof MEDIA_ANALYSIS_TYPES)[number];
+
+export interface MediaAnalyzeStartParams {
+  readonly mediaId: string;
+  readonly analysisTypes: readonly MediaAnalysisType[];
+  readonly expectedRevision?: number;
+  readonly idempotencyKey?: string;
+}
+
+export interface MediaAnalyzeStartResult {
+  readonly jobId: string;
+  readonly kind: "analysis";
+  readonly state: "queued" | "running" | "done" | "error" | "cancelled";
+  readonly sourceRevision: number;
+  readonly analysisTypes: readonly MediaAnalysisType[];
+  readonly replayed: boolean;
+}
+
+export interface AnalysisJobResult {
+  readonly analysisTypes: readonly MediaAnalysisType[];
+  /** Bounded result summary. Large providers must return ArtifactRefs instead. */
+  readonly summary: Readonly<Record<string, unknown>>;
+  readonly artifacts: readonly ArtifactRef[];
+}
+
 /* ------------------------------------------------------------------ */
 /* timeline.get                                                        */
 /* ------------------------------------------------------------------ */
@@ -414,6 +573,15 @@ export interface TimelineClipView {
   readonly reversed: boolean;
   /** Effective audio fades in seconds; missing model values normalize to 0. */
   readonly fade: { readonly fadeIn: number; readonly fadeOut: number };
+  /** Persisted basic/LUT grade; null when none is applied. */
+  readonly colorGrading: Readonly<Record<string, unknown>> | null;
+  readonly keyframes: readonly {
+    readonly id: string;
+    readonly property: string;
+    readonly time: number;
+    readonly value: unknown;
+    readonly easing: string;
+  }[];
   readonly transform: {
     /** Pixel offset from the project-frame center. */
     readonly position: { readonly x: number; readonly y: number };
@@ -437,6 +605,10 @@ export interface TimelineTrackView {
   readonly id: string;
   readonly type: string;
   readonly name: string;
+  readonly locked: boolean;
+  readonly hidden: boolean;
+  readonly muted: boolean;
+  readonly solo: boolean;
   readonly clips: readonly TimelineClipView[];
   readonly transitions: readonly TimelineTransitionView[];
 }
@@ -464,6 +636,8 @@ export interface TextOverlayView {
 
 /** One persisted project marker as timeline.get reports it. */
 export interface ProjectMarkerView {
+  /** Namespaced persisted review-marker id (R1, R2, ...). */
+  readonly ref: string;
   readonly number: number;
   readonly id: string;
   readonly target: ProjectMarkerTarget;
@@ -472,13 +646,90 @@ export interface ProjectMarkerView {
   readonly createdAt: number;
 }
 
+export interface TimelineSubtitleView {
+  readonly id: string;
+  readonly text: string;
+  readonly startTime: number;
+  readonly endTime: number;
+  readonly style: Readonly<Record<string, unknown>> | null;
+}
+
 export interface TimelineState {
   readonly revision: number;
   readonly duration: number;
   readonly tracks: readonly TimelineTrackView[];
   readonly textOverlays: readonly TextOverlayView[];
+  readonly subtitles: readonly TimelineSubtitleView[];
   /** Project markers sorted by their stable number. */
   readonly markers: readonly ProjectMarkerView[];
+}
+
+/* ------------------------------------------------------------------ */
+/* timeline.query — bounded local timeline reads                       */
+/* ------------------------------------------------------------------ */
+
+export type TimelineQueryEntityType =
+  | "track"
+  | "clip"
+  | "text"
+  | "media"
+  | "transition"
+  | "marker"
+  | "subtitle";
+
+export type TimelineQueryField =
+  | "name"
+  | "type"
+  | "trackId"
+  | "mediaId"
+  | "startTime"
+  | "duration"
+  | "inPoint"
+  | "outPoint"
+  | "text"
+  | "volume"
+  | "speed"
+  | "reversed"
+  | "transform"
+  | "keyframes"
+  | "automation"
+  | "locked"
+  | "muted"
+  | "hidden"
+  | "solo"
+  | "target"
+  | "style"
+  | "color"
+  | "colorGrading";
+
+export interface TimelineQueryParams {
+  /** Only ephemeral @A<n> refs and persisted R<n> review refs are accepted. */
+  readonly refs?: readonly string[];
+  readonly entityIds?: readonly string[];
+  readonly timeRange?: { readonly startSec: number; readonly endSec: number };
+  readonly trackIds?: readonly string[];
+  readonly trackTypes?: readonly TrackType[];
+  readonly entityTypes?: readonly TimelineQueryEntityType[];
+  readonly fields?: readonly TimelineQueryField[];
+  readonly limit?: number;
+  readonly cursor?: string;
+  readonly includeNeighbors?: number;
+}
+
+export interface TimelineQueryEntity {
+  readonly entityType: TimelineQueryEntityType;
+  readonly id: string;
+  readonly ref: string | null;
+  readonly trackId: string | null;
+  readonly startTime: number | null;
+  readonly endTime: number | null;
+  readonly data: Readonly<Record<string, unknown>>;
+}
+
+export interface TimelineQueryResult {
+  readonly revision: number;
+  readonly items: readonly TimelineQueryEntity[];
+  readonly nextCursor: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -554,6 +805,10 @@ export const EDIT_OP_TYPES = [
   "media.remove",
   "marker.add",
   "marker.remove",
+  "track.update",
+  "subtitle.importSrt",
+  "clip.setColorGrade",
+  "clip.setKeyframes",
 ] as const;
 
 export type EditOpType = (typeof EDIT_OP_TYPES)[number];
@@ -573,6 +828,17 @@ export interface TrackAddOp {
   readonly trackType: TrackType;
   /** Optional deterministic id; a fresh one is minted when omitted. */
   readonly trackId?: string;
+}
+
+/** Rename or change canonical track state through the same actions as the GUI. */
+export interface TrackUpdateOp {
+  readonly op: "track.update";
+  readonly trackId: string;
+  readonly name?: string;
+  readonly locked?: boolean;
+  readonly hidden?: boolean;
+  readonly muted?: boolean;
+  readonly solo?: boolean;
 }
 
 /** Remove one existing, empty timeline track. Content must be removed first. */
@@ -818,8 +1084,47 @@ export interface MarkerRemoveOp {
   readonly number: number;
 }
 
+export interface SubtitleImportSrtOp {
+  readonly op: "subtitle.importSrt";
+  /** Inline SRT text, capped at 256 KiB and 500 cues. */
+  readonly srtContent: string;
+}
+
+export interface ClipSetColorGradeOp {
+  readonly op: "clip.setColorGrade";
+  readonly clipId: string;
+  readonly temperature?: number;
+  readonly tint?: number;
+  /** Remove all persisted color grading. Cannot be combined with values. */
+  readonly clear?: true;
+}
+
+export type FacadeKeyframeProperty =
+  | "opacity"
+  | "position.x"
+  | "position.y"
+  | "scale.x"
+  | "scale.y"
+  | "rotation";
+
+export interface FacadeKeyframeInput {
+  readonly property: FacadeKeyframeProperty;
+  /** Clip-local seconds. */
+  readonly time: number;
+  readonly value: number;
+  readonly easing?: "linear" | "ease" | "ease-in" | "ease-out" | "ease-in-out" | "hold" | "smoothstep" | "smootherstep";
+}
+
+export interface ClipSetKeyframesOp {
+  readonly op: "clip.setKeyframes";
+  readonly clipId: string;
+  /** Replaces this clip's complete keyframe set; empty clears it. */
+  readonly keyframes: readonly FacadeKeyframeInput[];
+}
+
 export type EditOp =
   | TrackAddOp
+  | TrackUpdateOp
   | TrackRemoveOp
   | MediaRemoveOp
   | ClipAddOp
@@ -841,7 +1146,10 @@ export type EditOp =
   | TransitionUpdateOp
   | TransitionRemoveOp
   | MarkerAddOp
-  | MarkerRemoveOp;
+  | MarkerRemoveOp
+  | SubtitleImportSrtOp
+  | ClipSetColorGradeOp
+  | ClipSetKeyframesOp;
 
 export interface EditApplyParams {
   readonly ops: readonly EditOp[];
@@ -874,6 +1182,83 @@ export interface OpApplied {
 export interface EditApplyResult {
   readonly revision: number;
   readonly applied: readonly OpApplied[];
+  readonly replayed: boolean;
+}
+
+/* ------------------------------------------------------------------ */
+/* edit.validate — exact dry-run of the edit.apply vocabulary          */
+/* ------------------------------------------------------------------ */
+
+export interface EditValidateParams {
+  readonly ops: readonly EditOp[];
+  readonly expectedRevision?: number;
+  readonly expectedContextRevision?: number;
+}
+
+export interface EditValidationIssue {
+  readonly code: string;
+  readonly message: string;
+  readonly opIndex?: number;
+  readonly details?: Readonly<Record<string, unknown>>;
+}
+
+export interface EditAffectedEntity {
+  readonly entityType: ProjectChangeEntityType;
+  readonly entityId: string;
+  readonly fields: readonly string[];
+}
+
+export interface EditValidateResult {
+  readonly valid: boolean;
+  readonly normalizedOps: readonly EditOp[];
+  readonly conflicts: readonly EditValidationIssue[];
+  readonly warnings: readonly EditValidationIssue[];
+  readonly affected: readonly EditAffectedEntity[];
+  readonly created: readonly Pick<EditAffectedEntity, "entityType" | "entityId">[];
+  readonly deleted: readonly Pick<EditAffectedEntity, "entityType" | "entityId">[];
+  readonly estimatedDuration: number;
+  readonly estimatedRevision: number;
+}
+
+/* ------------------------------------------------------------------ */
+/* history.get / history.control                                      */
+/* ------------------------------------------------------------------ */
+
+export interface HistoryGetParams {
+  readonly limit?: number;
+}
+
+export interface HistoryEntrySummary {
+  readonly direction: "undo" | "redo";
+  readonly description: string;
+  readonly actionType: string;
+  readonly owner: "agent" | "human";
+  readonly timestamp: number;
+  readonly groupId: string | null;
+}
+
+export interface HistoryGetResult {
+  readonly revision: number;
+  readonly available: boolean;
+  readonly reason?: string;
+  readonly canUndo: boolean;
+  readonly canRedo: boolean;
+  readonly undoCount: number;
+  readonly redoCount: number;
+  readonly entries: readonly HistoryEntrySummary[];
+}
+
+export interface HistoryControlParams {
+  readonly action: "undo" | "redo";
+  readonly expectedRevision?: number;
+  readonly idempotencyKey?: string;
+}
+
+export interface HistoryControlResult {
+  readonly action: "undo" | "redo";
+  readonly revision: number;
+  readonly canUndo: boolean;
+  readonly canRedo: boolean;
   readonly replayed: boolean;
 }
 
@@ -1017,10 +1402,10 @@ export interface JobParams {
 
 export interface JobStatusView {
   readonly jobId: string;
-  readonly kind: "export";
+  readonly kind: "export" | "analysis";
   readonly state: "queued" | "running" | "done" | "error" | "cancelled";
   readonly progress: {
-    readonly phase: ExportProgressEvent["phase"];
+    readonly phase: string;
     readonly percent: number;
     readonly currentFrame?: number;
     readonly totalFrames?: number;
@@ -1031,6 +1416,8 @@ export interface JobStatusView {
    * artifact (no partial file is ever presented as a result).
    */
   readonly artifact: ArtifactRef | null;
+  /** Present for completed analysis jobs; null for export/non-done jobs. */
+  readonly result: AnalysisJobResult | null;
   readonly error: { readonly code: string; readonly message: string } | null;
   /**
    * export.start destinationPath outcome (both null when no destination was

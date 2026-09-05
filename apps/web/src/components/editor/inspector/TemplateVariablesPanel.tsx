@@ -120,10 +120,10 @@ const MediaPlaceholderInput: React.FC<PlaceholderInputProps> = ({
   const project = useProjectStore((state) => state.project);
   const [selectedMediaId, setSelectedMediaId] = useState(value?.value || "");
 
-  const allowedTypes = placeholder.constraints?.mediaTypes || [
-    "video",
-    "image",
-  ];
+  const allowedTypes = useMemo(
+    () => placeholder.constraints?.mediaTypes ?? ["video", "image"],
+    [placeholder.constraints?.mediaTypes],
+  );
 
   const availableMedia = useMemo(() => {
     return project.mediaLibrary.items.filter((item) => {

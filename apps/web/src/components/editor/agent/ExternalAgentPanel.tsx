@@ -45,6 +45,8 @@ export interface ExternalAgentPanelProps {
   readonly capabilities?: AgentCapabilityAvailability;
   readonly onClose?: () => void;
   readonly onConnect?: () => void;
+  /** First-run connection workflow supplied by the desktop host. */
+  readonly connectionGuide?: ReactNode;
   /** Disconnects only this ReelTerminal view; it does not end the external session. */
   readonly onDisconnect?: () => void;
   readonly onCancel?: () => void;
@@ -355,7 +357,7 @@ function ReferenceChips({
             onClick={() => onReferenceClick?.(reference)}
             disabled={!onReferenceClick}
           >
-            <span className="font-bold text-violet-300">#{reference.number}</span>
+            <span className="font-bold text-violet-300">A{reference.number}</span>
             <span className="truncate">{label}</span>
           </button>
         );
@@ -786,6 +788,7 @@ export function ExternalAgentPanel({
   capabilities: capabilitiesProp = DEFAULT_CAPABILITIES,
   onClose,
   onConnect,
+  connectionGuide,
   onDisconnect,
   onCancel,
   onSend,
@@ -799,6 +802,9 @@ export function ExternalAgentPanel({
 }: ExternalAgentPanelProps): JSX.Element {
   const { t } = useTranslation();
   const connection = viewModel?.connection ?? connectionProp;
+  const showConnectionGuide = Boolean(
+    connectionGuide && connection.state !== "connected" && connection.state !== "connecting",
+  );
   const messages = viewModel?.messages ?? messagesProp;
   const thinkingSummary = viewModel?.thinkingSummary ?? thinkingSummaryProp;
   const toolCalls = viewModel?.toolCalls ?? toolCallsProp;
@@ -816,6 +822,22 @@ export function ExternalAgentPanel({
     ? latestUsage.totalTokens ??
       (latestUsage.inputTokens ?? 0) + (latestUsage.outputTokens ?? 0)
     : 0;
+  const turnTokens = latestUsage?.type === "usage"
+    ? latestUsage.turnTotalTokens
+    : undefined;
+  const tokenMetricTitle = latestUsage?.type === "usage"
+    ? [
+        latestUsage.currentContextTokens !== undefined
+          ? t("externalAgent.usageContext", { count: latestUsage.currentContextTokens })
+          : null,
+        latestUsage.cachedInputTokens !== undefined
+          ? t("externalAgent.usageCached", { count: latestUsage.cachedInputTokens })
+          : null,
+        latestUsage.reasoningOutputTokens !== undefined
+          ? t("externalAgent.usageReasoning", { count: latestUsage.reasoningOutputTokens })
+          : null,
+      ].filter(Boolean).join(" · ")
+    : "";
   const references = referencesProp;
   const capabilities = viewModel?.capabilities ?? capabilitiesProp;
   const [draft, setDraft] = useState("");
@@ -824,11 +846,19 @@ export function ExternalAgentPanel({
   const statusKey = connectionStatusKey(connection.state);
   const hasStreamingMessage = messages.some((message) => message.streaming);
   const hasRunningTool = toolCalls.some((tool) => tool.status === "running");
-  const hasRunningActivity = activities.some(
-    (activity) =>
-      (activity.type === "state" && activity.state === "working") ||
-      (activity.type === "subtask" && activity.status === "running"),
+  const latestSessionState = useMemo(
+    () => [...activities].reverse().find((activity) => activity.type === "state"),
+    [activities],
   );
+  const hasRunningSubtask = activities.some(
+    (activity) => activity.type === "subtask" && activity.status === "running",
+  );
+  // State events are an append-only history. A terminal state for the latest
+  // turn must override an earlier `working` event (and any stale running
+  // subtask), otherwise Cancel and the elapsed timer remain active forever.
+  const hasRunningActivity = latestSessionState?.type === "state"
+    ? latestSessionState.state === "working"
+    : hasRunningSubtask;
   const turnRunning = sending || hasStreamingMessage || hasRunningTool || hasRunningActivity;
   const runStartedAt = useRef<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -867,7 +897,7 @@ export function ExternalAgentPanel({
   const insertReference = (reference: AgentReferenceChip): void => {
     setDraft((current) => {
       const trimmed = current.trimEnd();
-      return `${trimmed}${trimmed ? " " : ""}#${reference.number} `;
+      return `${trimmed}${trimmed ? " " : ""}@A${reference.number} `;
     });
     onReferenceClick?.(reference);
   };
@@ -875,9 +905,9 @@ export function ExternalAgentPanel({
     const value = draft.trim();
     if (!value || !onSend || sending || connection.state !== "connected") return;
     shouldStickToBottom.current = true;
-    // session/prompt resolves only when the Agent turn finishes. Clear on
-    // submission so the composer reflects that the message was accepted,
-    // then restore it only when delivery itself fails.
+    // Clear on submission so the composer reflects immediate delivery
+    // acknowledgement; restore only when the adapter rejects the message
+    // before the external Agent accepts it.
     setDraft("");
     try {
       await onSend(value);
@@ -939,9 +969,11 @@ export function ExternalAgentPanel({
       <div
         ref={panelRef}
         onScroll={handlePanelScroll}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3"
+        className={showConnectionGuide
+          ? "min-h-0 flex-1 overflow-hidden p-3"
+          : "min-h-0 flex-1 space-y-3 overflow-y-auto p-3"}
       >
-        <section className="rounded-lg border border-border bg-bg-2/60 p-3">
+        {showConnectionGuide ? connectionGuide : <section className="rounded-lg border border-border bg-bg-2/60 p-3">
           <div className="flex items-center gap-2">
             <span
               className={`h-2 w-2 rounded-full ${
@@ -992,19 +1024,19 @@ export function ExternalAgentPanel({
               </Text>
             </div>
           ) : null}
-        </section>
+        </section>}
 
-        <CapabilityNotice capabilities={capabilities} />
+        {showConnectionGuide ? null : <CapabilityNotice capabilities={capabilities} />}
 
-        <WorkLog
+        {showConnectionGuide ? null : <WorkLog
           activities={visibleActivities}
           onApprove={onApprove}
           onDeny={onDeny}
           resolveArtifactPreview={resolveArtifactPreview}
-        />
+        />}
       </div>
 
-      <footer className="shrink-0 space-y-2 border-t border-border bg-bg-1 px-3 py-2.5">
+      {showConnectionGuide ? null : <footer className="shrink-0 space-y-2 border-t border-border bg-bg-1 px-3 py-2.5">
         {sortedReferences.length > 0 ? (
           <div className="flex min-w-0 items-center gap-1.5" aria-label={t("externalAgent.referencesTitle")}>
             <Hash size={12} aria-hidden className="shrink-0 text-violet-400" />
@@ -1058,10 +1090,15 @@ export function ExternalAgentPanel({
           className="flex items-center justify-between border-t border-border/70 pt-2 font-mono text-[9px] tabular-nums text-fg-muted"
           aria-label={t("externalAgent.sessionMetrics")}
         >
-          <span data-testid="session-token-total">
-            {t("externalAgent.sessionTokenTotal", {
-              total: totalTokens.toLocaleString(),
-            })}
+          <span data-testid="session-token-total" title={tokenMetricTitle || undefined}>
+            {turnTokens !== undefined
+              ? t("externalAgent.sessionTokenSummary", {
+                  turn: turnTokens.toLocaleString(),
+                  total: totalTokens.toLocaleString(),
+                })
+              : t("externalAgent.sessionTokenTotal", {
+                  total: totalTokens.toLocaleString(),
+                })}
           </span>
           <span className="inline-flex items-center gap-1" data-testid="session-run-time" aria-live="polite">
             <Clock size={10} aria-hidden className={turnRunning ? "text-accent" : undefined} />
@@ -1070,7 +1107,7 @@ export function ExternalAgentPanel({
             })}
           </span>
         </div>
-      </footer>
+      </footer>}
     </div>
   );
 }

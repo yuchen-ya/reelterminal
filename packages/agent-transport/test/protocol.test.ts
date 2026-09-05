@@ -3,10 +3,10 @@
  * `agent-video serve` binary and drive the MCP handshake end to end.
  *
  *  - initialize (serverInfo carries the transport's own facts)
- *  - tools/list: exactly the 17 tools of the facade contract, inputSchemas deep-equal the
+ *  - tools/list: exactly the 24 tools of the facade contract, inputSchemas deep-equal the
  *    facade emission EMITTED_VERB_JSON_SCHEMAS verbatim (Decision 4)
- *  - tools/call round-trips: session_describe contract `facade-slice-4`
- *    + 17 verbs; project_create/edit_apply happy path with exact revision
+ *  - tools/call round-trips: session_describe contract `facade-slice-6`
+ *    + 24 verbs; project_create/edit_apply happy path with exact revision
  *    arithmetic; CONFLICT and NOT_FOUND surface as tool-result
  *    `isError:true` with the facade's error codes — never protocol errors
  *    (Decision 5); unknown tool IS a protocol error (-32602)
@@ -63,7 +63,7 @@ describe("agent-video serve (real binary)", () => {
     expect(info.version).toBe("0.1.0");
     expect(typeof info.pid).toBe("number");
     expect(Array.isArray(info.args)).toBe(true);
-    expect(info.facadeContract).toBe("facade-slice-4");
+    expect(info.facadeContract).toBe("facade-slice-6");
     // Decision 5: capabilities carry ONLY the standard protocol
     // advertisement — never the server's own facts.
     const capsJson = JSON.stringify(init.result.capabilities);
@@ -71,7 +71,7 @@ describe("agent-video serve (real binary)", () => {
     expect(capsJson).not.toContain("facadeContract");
   });
 
-  it("tools/list exposes exactly the 17 tools in order, with facade inputSchemas verbatim", async () => {
+  it("tools/list exposes exactly the 24 tools in order, with facade inputSchemas verbatim", async () => {
     const c = await getClient();
     c.send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
     const reply = await c.read();
@@ -82,12 +82,19 @@ describe("agent-video serve (real binary)", () => {
       "project_create",
       "project_open",
       "project_save",
+      "project_rename",
       "project_get_state",
+      "project_changes",
       "media_import",
+      "media_analyze_start",
       "timeline_get",
+      "timeline_query",
       "editor_get_context",
       "editor_control",
+      "edit_validate",
       "edit_apply",
+      "history_get",
+      "history_control",
       "preview_render_frame",
       "visual_inspect",
       "export_start",
@@ -98,10 +105,12 @@ describe("agent-video serve (real binary)", () => {
     // Decision 4: inputSchema is the facade emission VERBATIM (CI deep-equal).
     const verbOrder = [
       "session.describe", "capabilities.get", "project.create", "project.open",
-      "project.save", "project.get_state", "media.import", "timeline.get",
+      "project.save", "project.rename", "project.get_state", "project.changes",
+      "media.import", "media.analyze_start", "timeline.get", "timeline.query",
       "editor.get_context",
       "editor.control",
-      "edit.apply", "preview.render_frame", "visual.inspect", "export.start", "job.status",
+      "edit.validate", "edit.apply", "history.get", "history.control",
+      "preview.render_frame", "visual.inspect", "export.start", "job.status",
       "job.cancel", "verify.artifact",
     ];
     tools.forEach((tool, i) => {
@@ -109,18 +118,18 @@ describe("agent-video serve (real binary)", () => {
     });
   });
 
-  it("session_describe passthrough: contract facade-slice-4, 17 verbs, 9 error codes", async () => {
+  it("session_describe passthrough: contract facade-slice-6, 24 verbs, 9 error codes", async () => {
     const reply = await callTool("session_describe", {});
     expect(reply.error).toBeUndefined();
     expect(reply.result.isError).toBeFalsy();
     const text = reply.result.content[0].text as string;
     const parsed = JSON.parse(text);
     expect(parsed.ok).toBe(true);
-    expect(parsed.value.contractVersion).toBe("facade-slice-4");
-    expect(parsed.value.verbs).toHaveLength(17);
+    expect(parsed.value.contractVersion).toBe("facade-slice-6");
+    expect(parsed.value.verbs).toHaveLength(24);
     expect(parsed.value.errorCodes).toHaveLength(9);
     // structuredContent populated too (SDK 1.30.0 supports it)
-    expect(reply.result.structuredContent.value.contractVersion).toBe("facade-slice-4");
+    expect(reply.result.structuredContent.value.contractVersion).toBe("facade-slice-6");
   });
 
   it("project_create + edit_apply happy path with exact revision arithmetic", async () => {
@@ -157,6 +166,23 @@ describe("agent-video serve (real binary)", () => {
     const editedBody = JSON.parse(edited.result.content[0].text);
     expect(editedBody.ok).toBe(true);
     expect(editedBody.value.revision).toBe(1);
+  });
+
+  it("project_rename is an ordinary guarded tool result, not a lifecycle replacement", async () => {
+    const reply = await callTool("project_rename", {
+      name: "Renamed protocol project",
+      expectedRevision: 1,
+      idempotencyKey: "proto-rename-1",
+    });
+    expect(reply.error).toBeUndefined();
+    expect(reply.result.isError).toBeFalsy();
+    const body = JSON.parse(reply.result.content[0].text);
+    expect(body.value).toMatchObject({
+      revision: 2,
+      previousName: "Protocol smoke",
+      name: "Renamed protocol project",
+      replayed: false,
+    });
   });
 
   it("expectedRevision conflict surfaces as isError tool result with code CONFLICT — never a protocol error", async () => {

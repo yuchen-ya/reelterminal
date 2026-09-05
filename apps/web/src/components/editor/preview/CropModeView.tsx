@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { ToolcraftIconButton as IconButton } from "@openreel/ui";
 import { Check, X, Maximize2 } from "@/icons/lucide-compat";
@@ -144,7 +144,21 @@ export const CropModeView: React.FC<CropModeViewProps> = ({
     setCropStart(crop);
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
+  const displaySize =
+    videoSize.width > 0 && canvasWidth > 0 && canvasHeight > 0
+      ? (() => {
+          const videoAspect = videoSize.width / videoSize.height;
+          const canvasAspect = canvasWidth / canvasHeight;
+          if (videoAspect > canvasAspect) {
+            return { width: canvasWidth, height: canvasWidth / videoAspect };
+          }
+          return { height: canvasHeight, width: canvasHeight * videoAspect };
+        })()
+      : { width: canvasWidth, height: canvasHeight };
+
+  const scale = videoSize.width > 0 ? displaySize.width / videoSize.width : 1;
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isDragging || !dragHandle || !containerRef.current) return;
 
     const deltaX = (e.clientX - dragStart.x) / (videoSize.width * scale);
@@ -262,30 +276,16 @@ export const CropModeView: React.FC<CropModeViewProps> = ({
     newCrop.y = Math.max(0, Math.min(1 - newCrop.height, newCrop.y));
 
     setCrop(newCrop);
-  };
-
-  const displaySize =
-    videoSize.width > 0 && canvasWidth > 0 && canvasHeight > 0
-      ? (() => {
-          const videoAspect = videoSize.width / videoSize.height;
-          const canvasAspect = canvasWidth / canvasHeight;
-
-          let width: number;
-          let height: number;
-
-          if (videoAspect > canvasAspect) {
-            width = canvasWidth;
-            height = canvasWidth / videoAspect;
-          } else {
-            height = canvasHeight;
-            width = canvasHeight * videoAspect;
-          }
-
-          return { width, height };
-        })()
-      : { width: canvasWidth, height: canvasHeight };
-
-  const scale = videoSize.width > 0 ? displaySize.width / videoSize.width : 1;
+  }, [
+    isDragging,
+    dragHandle,
+    dragStart,
+    cropStart,
+    lockedAspect,
+    videoSize.width,
+    videoSize.height,
+    scale,
+  ]);
 
   const cropPixels =
     videoSize.width > 0
@@ -297,13 +297,15 @@ export const CropModeView: React.FC<CropModeViewProps> = ({
         }
       : { x: 0, y: 0, width: 0, height: 0 };
 
-  const handleMouseUp = () => {
+  const cropRef = useRef(crop);
+  cropRef.current = crop;
+  const handleMouseUp = useCallback(() => {
     if (isDragging && dragHandle) {
-      onCropChange(crop);
+      onCropChange(cropRef.current);
     }
     setIsDragging(false);
     setDragHandle(null);
-  };
+  }, [isDragging, dragHandle, onCropChange]);
 
   useEffect(() => {
     if (isDragging) {
@@ -314,15 +316,7 @@ export const CropModeView: React.FC<CropModeViewProps> = ({
         window.removeEventListener("mouseup", handleMouseUp);
       };
     }
-  }, [
-    isDragging,
-    dragHandle,
-    dragStart,
-    cropStart,
-    lockedAspect,
-    videoSize,
-    scale,
-  ]);
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   const handleAspectRatio = (ratio: number | null) => {
     setLockedAspect(ratio);

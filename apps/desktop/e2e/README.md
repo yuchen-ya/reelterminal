@@ -53,7 +53,7 @@ conversation descriptor.
   relaunch → autosave recovery; token
   security boundary (no renderer accessor, 0600 endpoint file, renderer fetch
   denied, 401 enforcement, token never in any captured output).
-- `tools-list.e2e.ts` — `tools/list` is EXACTLY the 17 facade tools (no
+- `tools-list.e2e.ts` — `tools/list` is EXACTLY the 24 facade tools (no
   `execute_action`); unknown tool → protocol error.
 - `external-conversation.e2e.ts` — reference adapter → built Electron app;
   prompt forwarding, chronological safe work log, approval round-trip, and

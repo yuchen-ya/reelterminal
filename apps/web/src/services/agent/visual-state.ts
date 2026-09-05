@@ -141,11 +141,20 @@ function semanticSnapshot(
       context.selectedMediaIds,
     ]),
     references: JSON.stringify(
-      Object.values(context.references ?? {}).map((reference) => [
-        reference.number,
-        reference.kind,
-        reference.stale,
-      ]),
+      {
+        agent: Object.values(context.references ?? {}).map((reference) => [
+          reference.number,
+          reference.kind,
+          reference.entityId,
+          reference.stale,
+        ]),
+        review: (project.markers?.items ?? []).map((marker) => [
+          marker.number,
+          marker.id,
+          marker.target,
+          marker.label,
+        ]),
+      },
     ),
   };
 }
@@ -554,6 +563,31 @@ export function captureConversationVisualState(
     selectedClipIds: [...context.selectedClipIds],
     selectedTextIds: [...context.selectedTextIds],
     selectedMediaIds: [...context.selectedMediaIds],
+    projectId: store.project.id,
+    projectName: store.project.name,
+    references: Object.values(context.references ?? {})
+      .sort((a, b) => a.number - b.number)
+      .slice(0, 64)
+      .map((reference) => ({
+        ref: `A${reference.number}`,
+        number: reference.number,
+        kind: reference.kind,
+        entityId: reference.entityId,
+        label: reference.label,
+        timing: { ...reference.timing },
+        revisionAtMark: reference.revisionAtMark,
+        stale: reference.stale,
+      })),
+    reviewMarkers: [...(store.project.markers?.items ?? [])]
+      .sort((a, b) => a.number - b.number)
+      .slice(0, 64)
+      .map((marker) => ({
+        ref: `R${marker.number}`,
+        number: marker.number,
+        id: marker.id,
+        target: { ...marker.target },
+        ...(marker.label !== undefined ? { label: marker.label } : {}),
+      })),
   };
 
   if (!captured) {

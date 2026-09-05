@@ -105,6 +105,24 @@ export function createConversationVisualStateStore(
         selectedClipIds: [...capture.selectedClipIds],
         selectedTextIds: [...capture.selectedTextIds],
         selectedMediaIds: [...capture.selectedMediaIds],
+        ...(capture.projectId !== undefined ? { projectId: capture.projectId } : {}),
+        ...(capture.projectName !== undefined ? { projectName: capture.projectName } : {}),
+        ...(capture.references !== undefined
+          ? {
+              references: capture.references.map((reference) => ({
+                ...reference,
+                timing: { ...reference.timing },
+              })),
+            }
+          : {}),
+        ...(capture.reviewMarkers !== undefined
+          ? {
+              reviewMarkers: capture.reviewMarkers.map((marker) => ({
+                ...marker,
+                target: { ...marker.target },
+              })),
+            }
+          : {}),
         changed: [...capture.changed],
       };
       if (capture.imagePngBase64 === undefined) return common;

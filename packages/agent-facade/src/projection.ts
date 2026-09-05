@@ -44,6 +44,10 @@ export function timelineStateView(project: Project, revision: number): TimelineS
       id: track.id,
       type: track.type,
       name: track.name,
+      locked: track.locked,
+      hidden: track.hidden,
+      muted: track.muted,
+      solo: track.solo,
       clips: track.clips.map((clip) => ({
         id: clip.id,
         trackId: clip.trackId,
@@ -59,6 +63,10 @@ export function timelineStateView(project: Project, revision: number): TimelineS
           fadeIn: clip.fade?.fadeIn ?? 0,
           fadeOut: clip.fade?.fadeOut ?? 0,
         },
+        colorGrading: clip.colorGrading
+          ? structuredClone(clip.colorGrading) as unknown as Record<string, unknown>
+          : null,
+        keyframes: structuredClone(clip.keyframes ?? []),
         transform: {
           position: { ...clip.transform.position },
           scale: { ...clip.transform.scale },
@@ -87,9 +95,17 @@ export function timelineStateView(project: Project, revision: number): TimelineS
       position: { ...clip.transform.position },
       anchor: { ...clip.transform.anchor },
     })),
+    subtitles: (project.timeline.subtitles ?? []).map((subtitle) => ({
+      id: subtitle.id,
+      text: subtitle.text,
+      startTime: subtitle.startTime,
+      endTime: subtitle.endTime,
+      style: subtitle.style ? { ...subtitle.style } : null,
+    })),
     markers: [...(project.markers?.items ?? [])]
       .sort((a, b) => a.number - b.number)
       .map((marker) => ({
+        ref: `R${marker.number}`,
         number: marker.number,
         id: marker.id,
         target: { ...marker.target },
@@ -110,6 +126,9 @@ export function timelineDurationSec(project: Project): number {
   }
   for (const clip of project.textClips ?? []) {
     maxEnd = Math.max(maxEnd, clip.startTime + clip.duration);
+  }
+  for (const subtitle of project.timeline.subtitles ?? []) {
+    maxEnd = Math.max(maxEnd, subtitle.endTime);
   }
   return maxEnd;
 }

@@ -9,6 +9,7 @@ function status(state: JobStatusView["state"], percent: number | null, phase = "
     state,
     progress: percent === null ? null : { phase: phase as "rendering", percent },
     artifact: null,
+    result: null,
     error: null,
     deliveredTo: null,
     deliveryError: null,

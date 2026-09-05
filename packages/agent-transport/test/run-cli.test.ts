@@ -154,13 +154,13 @@ describe("run: static validation failures (exit 2, no steps executed)", () => {
     await expectStaticFailure([{ id: "a", verb: "timeline.destroy" }], "unknown verb");
   });
 
-  it("await.jobId referencing a non-export.start step", async () => {
+  it("await.jobId referencing a non-job-start step", async () => {
     await expectStaticFailure(
       [
         { id: "t", verb: "timeline.get" },
         { id: "w", await: { jobId: { $ref: "t" }, timeoutMs: 1000 } },
       ],
-      "may only reference an earlier export.start step",
+      "may only reference an earlier export.start or media.analyze_start step",
     );
   });
 

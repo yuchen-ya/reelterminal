@@ -610,9 +610,23 @@ function VisualEffectPreview({
   onSelect: (def: EditorEffectPreviewDef) => void;
 }): React.ReactElement {
   const { t } = useTranslation();
-  const effectedStyle = def.previewStyle(0.82);
+  const previewRef = React.useRef<HTMLButtonElement>(null);
+  const [previewVisible, setPreviewVisible] = React.useState(false);
+  React.useEffect(() => {
+    const preview = previewRef.current;
+    if (!preview || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      observer.disconnect();
+      setPreviewVisible(true);
+    }, { rootMargin: "80px" });
+    observer.observe(preview);
+    return () => observer.disconnect();
+  }, []);
+  const effectedStyle = previewVisible ? def.previewStyle(0.82) : {};
   return (
     <button
+      ref={previewRef}
       type="button"
       aria-label={`Preview and add ${def.label}`}
       onClick={() => onSelect(def)}
@@ -646,10 +660,16 @@ function VisualEffectPreview({
   );
 }
 
-const EffectTypeSelector: React.FC<{
+interface EffectPickerProps {
   onSelect: (def: EditorEffectPreviewDef) => void;
   onSelectShader: (shaderId: string) => void;
-}> = ({ onSelect, onSelectShader }) => {
+}
+
+/** Picker content is independent from its portalled popover shell. */
+export const EffectPickerContent: React.FC<EffectPickerProps> = ({
+  onSelect,
+  onSelectShader,
+}) => {
   const { t } = useTranslation();
   const [pickerTab, setPickerTab] = React.useState<"effects" | "shaders">(
     "effects",
@@ -666,95 +686,100 @@ const EffectTypeSelector: React.FC<{
     );
   }, [query]);
   return (
+    <div className="w-[430px] max-w-[calc(100vw-32px)] space-y-2.5 p-2.5">
+      <div className="flex items-center gap-1 rounded-[8px] bg-bg-2 p-1">
+        {([
+          ["effects", `Effects · ${EDITOR_EFFECT_PREVIEWS.length}`],
+          ["shaders", `Shaders · ${shaderDefs.length}`],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={pickerTab === id}
+            onClick={() => setPickerTab(id)}
+            className={`h-7 flex-1 rounded-[6px] px-2 text-[11px] font-semibold transition-colors ${
+              pickerTab === id
+                ? "bg-bg-1 text-fg shadow-sm"
+                : "text-fg-3 hover:text-fg"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {pickerTab === "effects" ? (
+        <>
+          <label className="relative block">
+            <Search
+              size={13}
+              aria-hidden
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-4"
+            />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t("Search visual effects")}
+              aria-label={t("Search visual effects")}
+              className="h-8 w-full rounded-[7px] border border-border bg-bg-2 pl-8 pr-2.5 text-xs text-fg outline-none placeholder:text-fg-4 focus:border-accent"
+            />
+          </label>
+          <div className="max-h-[390px] space-y-3 overflow-y-auto pr-1">
+            {EDITOR_EFFECT_CATEGORIES.map((category) => {
+              const effects = visibleEffects.filter(
+                (effect) => effect.category === category,
+              );
+              if (effects.length === 0) return null;
+              return (
+                <section key={category} aria-label={`${category} effects`}>
+                  <div className="mb-1.5 flex items-center justify-between px-0.5">
+                    <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-fg-4">
+                      {category}
+                    </span>
+                    <span className="text-[9px] tabular-nums text-fg-4">
+                      {effects.length}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {effects.map((effect) => (
+                      <VisualEffectPreview
+                        key={effect.id ?? effect.type}
+                        def={effect}
+                        onSelect={onSelect}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+            {visibleEffects.length === 0 ? (
+              <div className="rounded-[8px] border border-dashed border-border px-3 py-8 text-center text-[11px] text-fg-4">
+                {t("No effects match “")}{query}”.
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <ShaderPreviewBrowser
+          defs={shaderDefs}
+          onSelect={onSelectShader}
+          sample="effect"
+          label={t("Shader effect previews")}
+        />
+      )}
+    </div>
+  );
+};
+
+const EffectTypeSelector: React.FC<EffectPickerProps> = (props) => {
+  const { t } = useTranslation();
+  return (
     <Popover
       placement="below"
       alignment="end"
       width={430}
       label={t("Add video effect")}
-      content={
-        <div className="w-[430px] max-w-[calc(100vw-32px)] space-y-2.5 p-2.5">
-          <div className="flex items-center gap-1 rounded-[8px] bg-bg-2 p-1">
-            {([
-              ["effects", `Effects · ${EDITOR_EFFECT_PREVIEWS.length}`],
-              ["shaders", `Shaders · ${shaderDefs.length}`],
-            ] as const).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={pickerTab === id}
-                onClick={() => setPickerTab(id)}
-                className={`h-7 flex-1 rounded-[6px] px-2 text-[11px] font-semibold transition-colors ${
-                  pickerTab === id
-                    ? "bg-bg-1 text-fg shadow-sm"
-                    : "text-fg-3 hover:text-fg"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {pickerTab === "effects" ? (
-            <>
-              <label className="relative block">
-                <Search
-                  size={13}
-                  aria-hidden
-                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-4"
-                />
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={t("Search visual effects")}
-                  aria-label={t("Search visual effects")}
-                  className="h-8 w-full rounded-[7px] border border-border bg-bg-2 pl-8 pr-2.5 text-xs text-fg outline-none placeholder:text-fg-4 focus:border-accent"
-                />
-              </label>
-              <div className="max-h-[390px] space-y-3 overflow-y-auto pr-1">
-                {EDITOR_EFFECT_CATEGORIES.map((category) => {
-                  const effects = visibleEffects.filter(
-                    (effect) => effect.category === category,
-                  );
-                  if (effects.length === 0) return null;
-                  return (
-                    <section key={category} aria-label={`${category} effects`}>
-                      <div className="mb-1.5 flex items-center justify-between px-0.5">
-                        <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-fg-4">
-                          {category}
-                        </span>
-                        <span className="text-[9px] tabular-nums text-fg-4">
-                          {effects.length}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        {effects.map((effect) => (
-                          <VisualEffectPreview
-                            key={effect.id ?? effect.type}
-                            def={effect}
-                            onSelect={onSelect}
-                          />
-                        ))}
-                      </div>
-                    </section>
-                  );
-                })}
-                {visibleEffects.length === 0 ? (
-                  <div className="rounded-[8px] border border-dashed border-border px-3 py-8 text-center text-[11px] text-fg-4">
-                    {t("No effects match “")}{query}”.
-                  </div>
-                ) : null}
-              </div>
-            </>
-          ) : (
-            <ShaderPreviewBrowser
-              defs={shaderDefs}
-              onSelect={onSelectShader}
-              sample="effect"
-              label={t("Shader effect previews")}
-            />
-          )}
-        </div>
-      }
+      content={<EffectPickerContent {...props} />}
     >
       <Button
         label={t("Add Effect")}

@@ -513,6 +513,7 @@ describe("timeline.get marker projection", () => {
     expect(view.revision).toBe(7);
     expect(view.markers.map((m) => m.number)).toEqual([1, 2, 3]);
     expect(view.markers[0]).toEqual({
+      ref: "R1",
       number: 1,
       id: "marker-1",
       target: { kind: "clip", clipId: "c1" },

@@ -27,7 +27,7 @@ function queryForTarget(
 /**
  * Context-menu items for persisted project review markers on one entity:
  * "Add review marker" while the entity is unmarked, otherwise one
- * "Remove review marker #N" entry per marker on it. Returns [] for targets
+ * "Remove review marker RN" entry per marker on it. Returns [] for targets
  * that cannot carry entity markers (time ranges).
  */
 export function useProjectMarkerMenuItems(

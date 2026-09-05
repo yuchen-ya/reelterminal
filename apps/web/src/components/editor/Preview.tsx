@@ -43,7 +43,6 @@ import {
 import { toast } from "../../stores/notification-store";
 import { useThemeStore } from "../../stores/theme-store";
 import { getRenderBridge } from "../../bridges/render-bridge";
-import { getEffectsBridge } from "../../bridges/effects-bridge";
 import {
   RendererFactory,
   type Renderer,
@@ -69,8 +68,6 @@ import {
   type Track,
   type MotionAsset,
   type Mask,
-  type AdjustmentLayer,
-  type BlendMode,
   type ProjectMarker,
   getTrackTransitionAudioFades,
 } from "@openreel/core";
@@ -85,13 +82,11 @@ import {
   renderTextClipToCanvas,
   getActiveTextClips,
   getActiveShapeClips,
-  renderShapeClipToCanvas,
   getActiveSubtitles,
   renderSubtitleToCanvas,
   drawFrameWithTransform,
   drawFrameWithMasks,
   applyEffectsToFrame,
-  applyEffectsToFrameCanvas,
   getTransitionAtTime,
   setImageLoadCallback,
   renderTransitionFrame,
@@ -106,770 +101,48 @@ import {
   previewQualityScale,
   PREVIEW_QUALITY_OPTIONS,
 } from "./preview/index";
-import { snapCanvasPosition } from "./preview/canvas-snapping";
+import {
+  calculateClipTransform,
+  calculateOverlayTransform,
+  commitPendingCanvasTransform,
+  type PendingCanvasTransform,
+} from "./preview/canvas-transform";
+import { createPreviewTrackIndex } from "./preview/track-index";
 import { compareTracksForComposite } from "./preview/composite-track-order";
 import { ProcessingOverlay } from "./ProcessingOverlay";
 import {
-  getPersonSegmentationEngine,
   getBackgroundRemovalEngine,
-  createMotionAwareOcclusionMask,
-  getStabilizedTransform,
   getVidstabEngine,
 } from "@openreel/core";
 import type {
   GSAPMotionPathPoint,
   MotionPathConfig,
-  SegmentationResult,
 } from "@openreel/core";
 import { useTranslation } from "react-i18next";
+import {
+  applyPreviewAdjustmentLayers,
+  applyStabilizationTransform,
+  captureSubjectFrame,
+  clipCssFilterOnly,
+  clipNeedsFrameProcessing,
+  createTransparentCanvasSource,
+  createTransparentImageBitmap,
+  drawBlurredBackdrop,
+  getBehindSubjectStreamId,
+  hasBehindSubjectText,
+  preparePreviewFrame,
+  projectFrameContentRect,
+  renderAllLayersWithGPU,
+  renderFrameWithGPU,
+  renderShapeClipWithEffects,
+  renderTextClipWithSubjectMask,
+  scaleTransformPositionForPreview,
+  type GPULayer,
+  type PreviewClip,
+  type PreviewFrameSource,
+} from "./preview/frame-compositor";
+import { ASPECT_PRESETS, aspectLabelFor } from "./preview/display-options";
 
-interface GPULayer {
-  bitmap: ImageBitmap;
-  transform: ClipTransform;
-}
-
-interface PreparedPreviewFrame {
-  frame: ImageBitmap | HTMLCanvasElement | OffscreenCanvas;
-  cleanup: () => void;
-}
-
-type PreviewClip = Track["clips"][number];
-type PreviewFrameSource = Parameters<typeof drawFrameWithTransform>[1];
-type PreviewCompositeOperation =
-  CanvasRenderingContext2D["globalCompositeOperation"];
-
-const adjustmentBlendOperation = (mode: BlendMode): PreviewCompositeOperation =>
-  mode === "add" || mode === "linear-dodge"
-    ? "lighter"
-    : (mode as PreviewCompositeOperation);
-
-const applyPreviewAdjustmentLayers = async (
-  canvas: OffscreenCanvas,
-  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-  layers: readonly AdjustmentLayer[],
-  time: number,
-): Promise<boolean> => {
-  let applied = false;
-  const effectsBridge = getEffectsBridge();
-  if (!effectsBridge.isInitialized()) return false;
-  for (const layer of layers) {
-    if (
-      !layer.enabled ||
-      layer.opacity <= 0 ||
-      time < layer.startTime ||
-      time >= layer.startTime + layer.duration
-    ) continue;
-    const effects = layer.effects.filter((effect) => effect.enabled !== false);
-    if (effects.length === 0) continue;
-    let source: ImageBitmap | null = null;
-    let processed: ImageBitmap | null = null;
-    try {
-      source = await createImageBitmap(canvas);
-      processed = await effectsBridge.processEffectList(source, effects);
-      if (processed.width <= 0 || processed.height <= 0) continue;
-      ctx.save();
-      ctx.globalAlpha = Math.max(0, Math.min(1, layer.opacity));
-      ctx.globalCompositeOperation = adjustmentBlendOperation(layer.blendMode);
-      ctx.drawImage(processed, 0, 0, canvas.width, canvas.height);
-      ctx.restore();
-      applied = true;
-    } catch (error) {
-      console.warn(`[Preview] Adjustment layer ${layer.id} failed:`, error);
-    } finally {
-      if (processed && processed !== source) processed.close();
-      source?.close();
-    }
-  }
-  return applied;
-};
-
-const clipNeedsFrameProcessing = (clipId: string): boolean => {
-  const bgEngine = getBackgroundRemovalEngine();
-  if (bgEngine?.isInitialized() && bgEngine.getSettings(clipId).enabled) {
-    return true;
-  }
-
-  const effectsBridge = getEffectsBridge();
-  if (!effectsBridge.isInitialized()) {
-    return false;
-  }
-
-  if (effectsBridge.getEffects(clipId).some((effect) => effect.enabled)) {
-    return true;
-  }
-
-  return Object.keys(effectsBridge.getColorGrading(clipId)).length > 0;
-};
-
-const clipCssFilterOnly = (clipId: string): string | null => {
-  const bgEngine = getBackgroundRemovalEngine();
-  if (bgEngine?.isInitialized() && bgEngine.getSettings(clipId).enabled) {
-    return null;
-  }
-  const effectsBridge = getEffectsBridge();
-  if (!effectsBridge.isInitialized()) {
-    return null;
-  }
-  return effectsBridge.getNativeCssFilter(clipId);
-};
-
-const preparePreviewFrame = async (
-  clipId: string,
-  frameCanvas: HTMLCanvasElement | OffscreenCanvas,
-  preferBitmap: boolean,
-  allowCanvasByRef = false,
-): Promise<PreparedPreviewFrame> => {
-  const needsProcessing = clipNeedsFrameProcessing(clipId);
-  if (!preferBitmap && !needsProcessing) {
-    return {
-      frame: frameCanvas,
-      cleanup: () => {},
-    };
-  }
-
-  let frameBitmap: ImageBitmap | null = null;
-  let processedFrame: ImageBitmap | null = null;
-
-  try {
-    frameBitmap = await createImageBitmap(frameCanvas);
-
-    if (!needsProcessing) {
-      return {
-        frame: frameBitmap,
-        cleanup: () => {
-          frameBitmap?.close();
-        },
-      };
-    }
-
-    if (allowCanvasByRef) {
-      const effectsCanvas = await applyEffectsToFrameCanvas(
-        clipId,
-        frameBitmap,
-      );
-      if (effectsCanvas) {
-        const sourceBitmap = frameBitmap;
-        return {
-          frame: effectsCanvas,
-          cleanup: () => {
-            sourceBitmap.close();
-          },
-        };
-      }
-    }
-
-    processedFrame = await applyEffectsToFrame(clipId, frameBitmap);
-    if (processedFrame === frameBitmap) {
-      return {
-        frame: frameBitmap,
-        cleanup: () => {
-          frameBitmap?.close();
-        },
-      };
-    }
-
-    return {
-      frame: processedFrame,
-      cleanup: () => {
-        processedFrame?.close();
-        frameBitmap?.close();
-      },
-    };
-  } catch {
-    processedFrame?.close();
-    frameBitmap?.close();
-
-    return {
-      frame: frameCanvas,
-      cleanup: () => {},
-    };
-  }
-};
-
-const scaleTransformPositionForPreview = (
-  transform: ClipTransform,
-  scale: number,
-): ClipTransform => {
-  if (scale === 1) {
-    return transform;
-  }
-  return {
-    ...transform,
-    position: {
-      x: transform.position.x * scale,
-      y: transform.position.y * scale,
-    },
-  };
-};
-
-// The rendered project frame is letterboxed ("contain") inside the canvas
-// element. Returns the content rect (CSS px, relative to the element's
-// top-left) that maps 1:1 onto the project frame, so pointer coordinates can
-// be normalized against the frame — the same geometry the selection bounds
-// helpers compute inline.
-const projectFrameContentRect = (
-  frameWidth: number,
-  frameHeight: number,
-  elementWidth: number,
-  elementHeight: number,
-): { x: number; y: number; width: number; height: number } => {
-  const frameAspect = frameWidth / frameHeight;
-  const elementAspect = elementWidth / elementHeight;
-  if (elementAspect > frameAspect) {
-    const width = elementHeight * frameAspect;
-    return { x: (elementWidth - width) / 2, y: 0, width, height: elementHeight };
-  }
-  const height = elementWidth / frameAspect;
-  return { x: 0, y: (elementHeight - height) / 2, width: elementWidth, height };
-};
-
-const applyStabilizationTransform = (
-  clip: Track["clips"][number],
-  transform: ClipTransform,
-  sourceTime: number,
-  canvasWidth: number,
-  canvasHeight: number,
-  frameWidth: number,
-  frameHeight: number,
-): ClipTransform => {
-  return getStabilizedTransform(
-    clip,
-    transform,
-    sourceTime,
-    {
-      canvasWidth,
-      canvasHeight,
-      sourceWidth: frameWidth,
-      sourceHeight: frameHeight,
-    },
-  ) as ClipTransform;
-};
-
-// The WebGPU renderer maps a layer's texture onto a full-canvas quad, so a
-// scale of {1,1} stretches the source to the canvas. Bake the aspect-fit
-// ratio into the layer scale so GPU compositing letterboxes ("contain") like
-// the Canvas2D path instead of distorting mismatched-aspect clips.
-const computeFitScale = (
-  fitMode: ClipTransform["fitMode"],
-  sourceWidth: number,
-  sourceHeight: number,
-  canvasWidth: number,
-  canvasHeight: number,
-): { x: number; y: number } => {
-  const mode = !fitMode || fitMode === "none" ? "contain" : fitMode;
-  if (
-    mode === "stretch" ||
-    sourceWidth <= 0 ||
-    sourceHeight <= 0 ||
-    canvasWidth <= 0 ||
-    canvasHeight <= 0
-  ) {
-    return { x: 1, y: 1 };
-  }
-  const sourceAspect = sourceWidth / sourceHeight;
-  const canvasAspect = canvasWidth / canvasHeight;
-  let drawWidth: number;
-  let drawHeight: number;
-  if (mode === "cover") {
-    if (sourceAspect > canvasAspect) {
-      drawHeight = canvasHeight;
-      drawWidth = canvasHeight * sourceAspect;
-    } else {
-      drawWidth = canvasWidth;
-      drawHeight = canvasWidth / sourceAspect;
-    }
-  } else {
-    if (sourceAspect > canvasAspect) {
-      drawWidth = canvasWidth;
-      drawHeight = canvasWidth / sourceAspect;
-    } else {
-      drawHeight = canvasHeight;
-      drawWidth = canvasHeight * sourceAspect;
-    }
-  }
-  return { x: drawWidth / canvasWidth, y: drawHeight / canvasHeight };
-};
-
-const ASPECT_PRESETS: Array<{
-  label: string;
-  width: number;
-  height: number;
-}> = [
-  { label: "16:9", width: 1920, height: 1080 },
-  { label: "9:16", width: 1080, height: 1920 },
-  { label: "1:1", width: 1080, height: 1080 },
-  { label: "4:5", width: 1080, height: 1350 },
-  { label: "4:3", width: 1440, height: 1080 },
-  { label: "21:9", width: 2560, height: 1080 },
-];
-
-const aspectLabelFor = (width: number, height: number): string => {
-  const ratio = width / height;
-  let closest = ASPECT_PRESETS[0];
-  let smallestDelta = Infinity;
-  for (const preset of ASPECT_PRESETS) {
-    const delta = Math.abs(preset.width / preset.height - ratio);
-    if (delta < smallestDelta) {
-      smallestDelta = delta;
-      closest = preset;
-    }
-  }
-  return smallestDelta < 0.01 ? closest.label : "Custom";
-};
-
-// Draws `source` cover-fit and Gaussian-blurred across the whole canvas — the
-// blurred letterbox backdrop. Called inline with the live decoded base frame
-// (ImageBitmap or video element) so it always has real pixels, then the
-// contained clip is drawn on top.
-const drawBlurredBackdrop = (
-  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-  source: HTMLVideoElement | HTMLCanvasElement | OffscreenCanvas | ImageBitmap,
-  sourceWidth: number,
-  sourceHeight: number,
-  width: number,
-  height: number,
-): void => {
-  if (sourceWidth <= 0 || sourceHeight <= 0) return;
-  const sourceAspect = sourceWidth / sourceHeight;
-  const canvasAspect = width / height;
-  let drawWidth = width;
-  let drawHeight = height;
-  if (sourceAspect > canvasAspect) {
-    drawHeight = height;
-    drawWidth = height * sourceAspect;
-  } else {
-    drawWidth = width;
-    drawHeight = width / sourceAspect;
-  }
-  const drawX = (width - drawWidth) / 2;
-  const drawY = (height - drawHeight) / 2;
-  const blurPx = Math.max(Math.min(width, height) / 32, 8);
-  ctx.save();
-  ctx.filter = `blur(${blurPx}px)`;
-  ctx.drawImage(source, drawX, drawY, drawWidth, drawHeight);
-  ctx.restore();
-};
-
-const renderFrameWithGPU = async (
-  renderer: Renderer,
-  frame: ImageBitmap,
-  transform: ClipTransform,
-  canvasWidth: number,
-  canvasHeight: number,
-): Promise<ImageBitmap | null> => {
-  try {
-    const device = renderer.getDevice();
-    if (!device) {
-      return null;
-    }
-
-    renderer.beginFrame();
-
-    const texture = renderer.createTextureFromImage(frame);
-
-    const fitScale = computeFitScale(
-      transform.fitMode,
-      frame.width,
-      frame.height,
-      canvasWidth,
-      canvasHeight,
-    );
-    const gpuTransform = {
-      position: transform.position,
-      scale: {
-        x: transform.scale.x * fitScale.x,
-        y: transform.scale.y * fitScale.y,
-      },
-      rotation: transform.rotation,
-      anchor: transform.anchor,
-      opacity: transform.opacity,
-      borderRadius: transform.borderRadius,
-    };
-
-    renderer.renderLayer({
-      texture,
-      transform: gpuTransform,
-      effects: [],
-      opacity: transform.opacity,
-      borderRadius: transform.borderRadius || 0,
-    });
-
-    const result = await renderer.endFrame();
-    renderer.releaseTexture(texture);
-
-    return result;
-  } catch {
-    return null;
-  }
-};
-
-const renderAllLayersWithGPU = async (
-  renderer: Renderer,
-  layers: GPULayer[],
-  canvasWidth: number,
-  canvasHeight: number,
-): Promise<ImageBitmap | null> => {
-  try {
-    const device = renderer.getDevice();
-
-    if (!device || layers.length === 0) {
-      return null;
-    }
-
-    renderer.beginFrame();
-
-    const textures: ReturnType<typeof renderer.createTextureFromImage>[] = [];
-
-    for (let i = 0; i < layers.length; i++) {
-      const layer = layers[i];
-
-      const texture = renderer.createTextureFromImage(layer.bitmap);
-      textures.push(texture);
-
-      const fitScale = computeFitScale(
-        layer.transform.fitMode,
-        layer.bitmap.width,
-        layer.bitmap.height,
-        canvasWidth,
-        canvasHeight,
-      );
-      const gpuTransform = {
-        position: layer.transform.position,
-        scale: {
-          x: layer.transform.scale.x * fitScale.x,
-          y: layer.transform.scale.y * fitScale.y,
-        },
-        rotation: layer.transform.rotation,
-        anchor: layer.transform.anchor,
-        opacity: layer.transform.opacity,
-        borderRadius: layer.transform.borderRadius,
-      };
-
-      renderer.renderLayer({
-        texture,
-        transform: gpuTransform,
-        effects: [],
-        opacity: layer.transform.opacity,
-        borderRadius: layer.transform.borderRadius || 0,
-      });
-    }
-
-    const result = await renderer.endFrame();
-
-    for (const texture of textures) {
-      renderer.releaseTexture(texture);
-    }
-
-    return result;
-  } catch (e) {
-    console.error("[renderAllLayersWithGPU] Error:", e);
-    return null;
-  }
-};
-
-const hasBehindSubjectText = (textClips: TextClip[]): boolean =>
-  textClips.some((textClip) => textClip.behindSubject);
-
-const getBehindSubjectStreamId = (
-  tracks: readonly Track[],
-  time: number,
-): string => {
-  const activeSourceIds = tracks
-    .filter(
-      (track) =>
-        (track.type === "video" || track.type === "image") && !track.hidden,
-    )
-    .flatMap((track) =>
-      track.clips
-        .filter(
-          (clip) =>
-            time >= clip.startTime && time < clip.startTime + clip.duration,
-        )
-        .map((clip) => clip.id),
-    )
-    .sort();
-  return `editor:text-behind-subject:${activeSourceIds.join("|") || "canvas"}`;
-};
-
-const subjectMaskRequestCache = new WeakMap<
-  ImageBitmap,
-  Map<string, Promise<SegmentationResult | null>>
->();
-const subjectOcclusionMaskCache = new WeakMap<
-  ImageBitmap,
-  WeakMap<SegmentationResult, ImageData>
->();
-
-const getSubjectMaskForFrame = (
-  subjectFrame: ImageBitmap,
-  time: number,
-  realtime: boolean,
-  streamId: string,
-): Promise<SegmentationResult | null> => {
-  let requests = subjectMaskRequestCache.get(subjectFrame);
-  if (!requests) {
-    requests = new Map();
-    subjectMaskRequestCache.set(subjectFrame, requests);
-  }
-  const key = `${streamId}:${time}:${Number(realtime)}`;
-  const cached = requests.get(key);
-  if (cached) return cached;
-  const request = getPersonSegmentationEngine().getPersonMask(subjectFrame, {
-    timestampMs: time * 1000,
-    streamId,
-    realtime,
-  });
-  requests.set(key, request);
-  return request;
-};
-
-const createTransparentCanvasSource = (
-  width: number,
-  height: number,
-): HTMLCanvasElement => {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  canvas.getContext("2d")?.clearRect(0, 0, width, height);
-  return canvas;
-};
-
-const createTransparentImageBitmap = async (
-  width: number,
-  height: number,
-): Promise<ImageBitmap | null> => {
-  try {
-    return await createImageBitmap(createTransparentCanvasSource(width, height));
-  } catch {
-    return null;
-  }
-};
-
-const captureSubjectFrame = async (
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-): Promise<ImageBitmap | null> => {
-  try {
-    return await createImageBitmap(
-      ctx.canvas as HTMLCanvasElement | OffscreenCanvas,
-      0,
-      0,
-      width,
-      height,
-    );
-  } catch {
-    return null;
-  }
-};
-
-const applySubjectOcclusionMask = (
-  textCtx: CanvasRenderingContext2D,
-  subjectFrame: ImageBitmap | null,
-  canvasWidth: number,
-  canvasHeight: number,
-  maskResult: SegmentationResult | null,
-): boolean => {
-  if (!subjectFrame || !maskResult) return false;
-
-  try {
-    const maskCanvas = new OffscreenCanvas(maskResult.width, maskResult.height);
-    const maskCtx = maskCanvas.getContext("2d");
-    if (!maskCtx) return false;
-
-    let occlusionMask = subjectOcclusionMaskCache
-      .get(subjectFrame)
-      ?.get(maskResult);
-    if (!occlusionMask) {
-      occlusionMask = maskResult.mask;
-    }
-    if (
-      !subjectOcclusionMaskCache.get(subjectFrame)?.has(maskResult) &&
-      maskResult.referenceWidth > 0 &&
-      maskResult.referenceHeight > 0 &&
-      maskResult.referenceRgba.length ===
-        maskResult.referenceWidth * maskResult.referenceHeight * 4
-    ) {
-      try {
-        const currentReferenceCanvas = new OffscreenCanvas(
-          maskResult.referenceWidth,
-          maskResult.referenceHeight,
-        );
-        const currentReferenceCtx = currentReferenceCanvas.getContext("2d", {
-          willReadFrequently: true,
-        });
-        if (currentReferenceCtx) {
-          currentReferenceCtx.drawImage(
-            subjectFrame,
-            0,
-            0,
-            maskResult.referenceWidth,
-            maskResult.referenceHeight,
-          );
-          const currentRgba = currentReferenceCtx.getImageData(
-            0,
-            0,
-            maskResult.referenceWidth,
-            maskResult.referenceHeight,
-          ).data;
-          const motionAwareMaskRgba = createMotionAwareOcclusionMask(
-            maskResult.mask.data,
-            maskResult.width,
-            maskResult.height,
-            maskResult.referenceRgba,
-            currentRgba,
-            maskResult.referenceWidth,
-            maskResult.referenceHeight,
-          );
-          occlusionMask = new ImageData(maskResult.width, maskResult.height);
-          occlusionMask.data.set(motionAwareMaskRgba);
-        }
-      } catch {
-        // Keep using the exact matte if frame readback or motion estimation
-        // fails. Dropping the whole text layer here creates a visible blink.
-        occlusionMask = maskResult.mask;
-      }
-    }
-
-    let frameMasks = subjectOcclusionMaskCache.get(subjectFrame);
-    if (!frameMasks) {
-      frameMasks = new WeakMap();
-      subjectOcclusionMaskCache.set(subjectFrame, frameMasks);
-    }
-    frameMasks.set(maskResult, occlusionMask);
-
-    maskCtx.putImageData(occlusionMask, 0, 0);
-    textCtx.save();
-    textCtx.globalCompositeOperation = "destination-out";
-    textCtx.imageSmoothingEnabled = true;
-    textCtx.imageSmoothingQuality = "high";
-    textCtx.drawImage(maskCanvas, 0, 0, canvasWidth, canvasHeight);
-    textCtx.restore();
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const renderOverlayLayerWithEffects = async (
-  ctx: CanvasRenderingContext2D,
-  clipId: string,
-  canvasWidth: number,
-  canvasHeight: number,
-  render: (layerCtx: CanvasRenderingContext2D) => void | Promise<void>,
-): Promise<void> => {
-  if (!clipNeedsFrameProcessing(clipId)) {
-    await render(ctx);
-    return;
-  }
-  const layerCanvas = document.createElement("canvas");
-  layerCanvas.width = canvasWidth;
-  layerCanvas.height = canvasHeight;
-  const layerCtx = layerCanvas.getContext("2d");
-  if (!layerCtx) return;
-  await render(layerCtx);
-  const prepared = await preparePreviewFrame(
-    clipId,
-    layerCanvas,
-    false,
-    true,
-  );
-  try {
-    ctx.drawImage(prepared.frame, 0, 0, canvasWidth, canvasHeight);
-  } finally {
-    prepared.cleanup();
-  }
-};
-
-const renderShapeClipWithEffects = async (
-  ctx: CanvasRenderingContext2D,
-  shapeClip: ShapeClip | SVGClip | StickerClip,
-  canvasWidth: number,
-  canvasHeight: number,
-  time: number,
-): Promise<void> => {
-  await renderOverlayLayerWithEffects(
-    ctx,
-    shapeClip.id,
-    canvasWidth,
-    canvasHeight,
-    (layerCtx) =>
-      renderShapeClipToCanvas(
-        layerCtx,
-        shapeClip,
-        canvasWidth,
-        canvasHeight,
-        time,
-      ),
-  );
-};
-
-const renderTextClipWithSubjectMask = async (
-  ctx: CanvasRenderingContext2D,
-  textClip: TextClip,
-  canvasWidth: number,
-  canvasHeight: number,
-  time: number,
-  subjectFrame: ImageBitmap | null,
-  realtime = true,
-  streamId = "editor:text-behind-subject:canvas",
-): Promise<void> => {
-  let subjectMask: SegmentationResult | null = null;
-  if (textClip.behindSubject && subjectFrame) {
-    const segEngine = getPersonSegmentationEngine();
-    if (segEngine.isInitialized()) {
-      subjectMask = await getSubjectMaskForFrame(
-        subjectFrame,
-        time,
-        realtime,
-        streamId,
-      );
-    }
-    // During the worker's first realtime inference, keep the text hidden
-    // instead of flashing it in front of the subject for one or two frames.
-    if (!subjectMask && realtime) return;
-  }
-
-  const renderTextLayer = (targetCtx: CanvasRenderingContext2D) =>
-    renderOverlayLayerWithEffects(
-      targetCtx,
-      textClip.id,
-      canvasWidth,
-      canvasHeight,
-      (layerCtx) =>
-        renderTextClipToCanvas(
-          layerCtx,
-          textClip,
-          canvasWidth,
-          canvasHeight,
-          time,
-        ),
-    );
-
-  if (!textClip.behindSubject || !subjectFrame || !subjectMask) {
-    await renderTextLayer(ctx);
-    return;
-  }
-
-  const textLayerCanvas = document.createElement("canvas");
-  textLayerCanvas.width = canvasWidth;
-  textLayerCanvas.height = canvasHeight;
-  const textLayerCtx = textLayerCanvas.getContext("2d");
-  if (!textLayerCtx) return;
-  await renderTextLayer(textLayerCtx);
-  if (
-    !applySubjectOcclusionMask(
-      textLayerCtx,
-      subjectFrame,
-      canvasWidth,
-      canvasHeight,
-      subjectMask,
-    )
-  ) {
-    return;
-  }
-  ctx.drawImage(textLayerCanvas, 0, 0, canvasWidth, canvasHeight);
-};
 
 interface ClipWithPlaceholder {
   isPlaceholder?: boolean;
@@ -1064,13 +337,7 @@ export const Preview: React.FC = () => {
     y: number;
     transform: { x: number; y: number; scaleX: number; scaleY: number };
   } | null>(null);
-  const pendingTransformRef = useRef<{
-    clipId: string;
-    transform: {
-      position?: { x: number; y: number };
-      scale?: { x: number; y: number };
-    };
-  } | null>(null);
+  const pendingTransformRef = useRef<PendingCanvasTransform | null>(null);
   const rafIdRef = useRef<number | null>(null);
 
   // Track if we're currently interacting to prevent re-renders during resize/move
@@ -1098,7 +365,6 @@ export const Preview: React.FC = () => {
   const [interactionTargetType, setInteractionTargetType] = useState<
     "clip" | "text-clip" | "shape-clip" | null
   >(null);
-  const interactionTargetIdRef = useRef<string | null>(null);
 
   // Video element cache for native hardware-accelerated frame decoding (thumbnails/scrubbing)
   // Much more reliable than MediaBunny's CanvasSink for random-access seeking
@@ -1318,6 +584,10 @@ export const Preview: React.FC = () => {
   const endHistoryGroup = useProjectStore((state) => state.endHistoryGroup);
   const updateSettings = useProjectStore((state) => state.updateSettings);
   const timelineTracks = project.timeline.tracks;
+  const previewTrackIndex = useMemo(
+    () => createPreviewTrackIndex(timelineTracks),
+    [timelineTracks],
+  );
   const settings = project.settings;
 
   const canvasFillMode = project.timeline.backgroundFillMode;
@@ -1575,11 +845,14 @@ export const Preview: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const decoderCache = decoderCacheRef.current;
+    const nativeVideoCache = nativeVideoCacheRef.current;
+    const nativeImageBitmapCache = nativeImageBitmapCacheRef.current;
     return () => {
-      for (const entry of decoderCacheRef.current.values()) {
+      for (const entry of decoderCache.values()) {
         entry.input[Symbol.dispose]?.();
       }
-      decoderCacheRef.current.clear();
+      decoderCache.clear();
 
       releaseScrubVideoElements();
 
@@ -1595,17 +868,17 @@ export const Preview: React.FC = () => {
       }
       currentVideoMediaIdRef.current = null;
 
-      for (const [, entry] of nativeVideoCacheRef.current) {
+      for (const [, entry] of nativeVideoCache) {
         releaseVideoElement(entry);
       }
-      nativeVideoCacheRef.current.clear();
+      nativeVideoCache.clear();
 
-      for (const [, bitmap] of nativeImageBitmapCacheRef.current) {
+      for (const [, bitmap] of nativeImageBitmapCache) {
         bitmap.close();
       }
-      nativeImageBitmapCacheRef.current.clear();
+      nativeImageBitmapCache.clear();
     };
-  }, [releaseScrubVideoElements]);
+  }, [releaseScrubVideoElements, releaseVideoElement]);
 
   // Set canvas internal resolution ONLY when project settings change
   // This follows the WebGPU best practice of keeping internal resolution fixed
@@ -1646,8 +919,9 @@ export const Preview: React.FC = () => {
         const factory = RendererFactory.getInstance();
         const renderer = await factory.createRenderer({
           canvas,
-          width: previewRes.width,
-          height: previewRes.height,
+          // Later resolution changes are handled by the resize effect below.
+          width: canvas.width,
+          height: canvas.height,
           preferredRenderer: isWebGPUSupported() ? "webgpu" : "canvas2d",
         });
 
@@ -6241,12 +5515,8 @@ export const Preview: React.FC = () => {
 
   const selectedClip = useMemo(() => {
     if (!selectedClipId) return null;
-    for (const track of timelineTracks) {
-      const clip = track.clips.find((c) => c.id === selectedClipId);
-      if (clip) return clip;
-    }
-    return null;
-  }, [selectedClipId, timelineTracks]);
+    return previewTrackIndex.clipsById.get(selectedClipId) ?? null;
+  }, [selectedClipId, previewTrackIndex]);
 
   const clipAtPlayhead = useMemo(() => {
     const videoTracks = timelineTracks.filter(
@@ -7049,7 +6319,6 @@ export const Preview: React.FC = () => {
       isInteractingRef.current = true;
       setInteractionMode("move");
       setInteractionTargetType("text-clip");
-      interactionTargetIdRef.current = activeTextClip.id;
       interactionStartRef.current = {
         x: e.clientX,
         y: e.clientY,
@@ -7077,7 +6346,6 @@ export const Preview: React.FC = () => {
       setInteractionMode("resize");
       setActiveHandle(handle);
       setInteractionTargetType("text-clip");
-      interactionTargetIdRef.current = activeTextClip.id;
       interactionStartRef.current = {
         x: e.clientX,
         y: e.clientY,
@@ -7104,7 +6372,6 @@ export const Preview: React.FC = () => {
       isInteractingRef.current = true;
       setInteractionMode("move");
       setInteractionTargetType("shape-clip");
-      interactionTargetIdRef.current = activeShapeClip.id;
       interactionStartRef.current = {
         x: e.clientX,
         y: e.clientY,
@@ -7132,7 +6399,6 @@ export const Preview: React.FC = () => {
       setInteractionMode("resize");
       setActiveHandle(handle);
       setInteractionTargetType("shape-clip");
-      interactionTargetIdRef.current = activeShapeClip.id;
       interactionStartRef.current = {
         x: e.clientX,
         y: e.clientY,
@@ -7173,6 +6439,16 @@ export const Preview: React.FC = () => {
     [interactionMode, findGraphicClipAtPoint, select],
   );
 
+  const commitPendingTransform = useCallback(
+    (): boolean =>
+      commitPendingCanvasTransform(pendingTransformRef, {
+        clip: updateClipTransform,
+        text: updateTextTransform,
+        shape: updateShapeTransform,
+      }),
+    [updateClipTransform, updateTextTransform, updateShapeTransform],
+  );
+
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (interactionMode === "none" || !interactionStartRef.current) return;
@@ -7186,88 +6462,36 @@ export const Preview: React.FC = () => {
         const deltaY = e.clientY - interactionStartRef.current.y;
         const { displayScale } = textClipBounds;
 
-        let newTransform: {
-          position?: { x: number; y: number };
-          scale?: { x: number; y: number };
-        } = {};
-
-        if (interactionMode === "move") {
-          const rawX =
-            interactionStartRef.current.transform.x +
-            deltaX / displayScale / settings.width;
-          const rawY =
-            interactionStartRef.current.transform.y +
-            deltaY / displayScale / settings.height;
-          const halfWidth =
-            textClipBounds.width / displayScale / settings.width / 2;
-          const halfHeight =
-            textClipBounds.height / displayScale / settings.height / 2;
-          const snapped = snapCanvasPosition({
-            x: rawX,
-            y: rawY,
-            xCandidates: [
-              { value: halfWidth, guide: 0 },
-              { value: 0.5, guide: 0.5 },
-              { value: 1 - halfWidth, guide: 1 },
-            ],
-            yCandidates: [
-              { value: halfHeight, guide: 0 },
-              { value: 0.5, guide: 0.5 },
-              { value: 1 - halfHeight, guide: 1 },
-            ],
-            thresholdX: 8 / displayScale / settings.width,
-            thresholdY: 8 / displayScale / settings.height,
-            enabled: canvasSnappingEnabled && !e.altKey,
-          });
-          setCanvasSnapGuides({ x: snapped.guideX, y: snapped.guideY });
-          newTransform = { position: { x: snapped.x, y: snapped.y } };
-        } else if (interactionMode === "resize" && activeHandle) {
-          setCanvasSnapGuides({ x: null, y: null });
-          const startTransform = interactionStartRef.current.transform;
-          let newScaleX = startTransform.scaleX;
-          let newScaleY = startTransform.scaleY;
-
-          const scaleDeltaX = deltaX / displayScale / 100;
-          const scaleDeltaY = deltaY / displayScale / 100;
-
-          switch (activeHandle) {
-            case "e":
-            case "se":
-            case "ne":
-              newScaleX = Math.max(0.1, startTransform.scaleX + scaleDeltaX);
-              if (lockAspectRatio) newScaleY = newScaleX;
-              break;
-            case "w":
-            case "sw":
-            case "nw":
-              newScaleX = Math.max(0.1, startTransform.scaleX - scaleDeltaX);
-              if (lockAspectRatio) newScaleY = newScaleX;
-              break;
-            case "s":
-              newScaleY = Math.max(0.1, startTransform.scaleY + scaleDeltaY);
-              if (lockAspectRatio) newScaleX = newScaleY;
-              break;
-            case "n":
-              newScaleY = Math.max(0.1, startTransform.scaleY - scaleDeltaY);
-              if (lockAspectRatio) newScaleX = newScaleY;
-              break;
-          }
-
-          newTransform = {
-            position: { x: startTransform.x, y: startTransform.y },
-            scale: { x: newScaleX, y: newScaleY },
-          };
-        }
+        const calculated = calculateOverlayTransform({
+          mode: interactionMode,
+          handle: activeHandle,
+          start: interactionStartRef.current.transform,
+          deltaX,
+          deltaY,
+          displayScale,
+          boundsWidth: textClipBounds.width,
+          boundsHeight: textClipBounds.height,
+          canvasWidth: settings.width,
+          canvasHeight: settings.height,
+          lockAspectRatio,
+          snappingEnabled: canvasSnappingEnabled && !e.altKey,
+        });
+        const newTransform = calculated.transform;
+        setCanvasSnapGuides(calculated.guides);
+        pendingTransformRef.current = {
+          target: "text-clip",
+          targetId: activeTextClip.id,
+          transform: newTransform,
+        };
 
         if (!rafIdRef.current) {
           rafIdRef.current = requestAnimationFrame(() => {
             const now = performance.now();
             if (
-              now - lastStoreUpdateRef.current >= STORE_UPDATE_THROTTLE_MS &&
-              interactionTargetIdRef.current
+              now - lastStoreUpdateRef.current >= STORE_UPDATE_THROTTLE_MS
             ) {
               lastStoreUpdateRef.current = now;
-              updateTextTransform(interactionTargetIdRef.current, newTransform);
+              commitPendingTransform();
             }
             rafIdRef.current = null;
           });
@@ -7284,91 +6508,36 @@ export const Preview: React.FC = () => {
         const deltaY = e.clientY - interactionStartRef.current.y;
         const { displayScale } = shapeClipBounds;
 
-        let newTransform: {
-          position?: { x: number; y: number };
-          scale?: { x: number; y: number };
-        } = {};
-
-        if (interactionMode === "move") {
-          const rawX =
-            interactionStartRef.current.transform.x +
-            deltaX / displayScale / settings.width;
-          const rawY =
-            interactionStartRef.current.transform.y +
-            deltaY / displayScale / settings.height;
-          const halfWidth =
-            shapeClipBounds.width / displayScale / settings.width / 2;
-          const halfHeight =
-            shapeClipBounds.height / displayScale / settings.height / 2;
-          const snapped = snapCanvasPosition({
-            x: rawX,
-            y: rawY,
-            xCandidates: [
-              { value: halfWidth, guide: 0 },
-              { value: 0.5, guide: 0.5 },
-              { value: 1 - halfWidth, guide: 1 },
-            ],
-            yCandidates: [
-              { value: halfHeight, guide: 0 },
-              { value: 0.5, guide: 0.5 },
-              { value: 1 - halfHeight, guide: 1 },
-            ],
-            thresholdX: 8 / displayScale / settings.width,
-            thresholdY: 8 / displayScale / settings.height,
-            enabled: canvasSnappingEnabled && !e.altKey,
-          });
-          setCanvasSnapGuides({ x: snapped.guideX, y: snapped.guideY });
-          newTransform = { position: { x: snapped.x, y: snapped.y } };
-        } else if (interactionMode === "resize" && activeHandle) {
-          setCanvasSnapGuides({ x: null, y: null });
-          const startTransform = interactionStartRef.current.transform;
-          let newScaleX = startTransform.scaleX;
-          let newScaleY = startTransform.scaleY;
-
-          const scaleDeltaX = deltaX / displayScale / 100;
-          const scaleDeltaY = deltaY / displayScale / 100;
-
-          switch (activeHandle) {
-            case "e":
-            case "se":
-            case "ne":
-              newScaleX = Math.max(0.1, startTransform.scaleX + scaleDeltaX);
-              if (lockAspectRatio) newScaleY = newScaleX;
-              break;
-            case "w":
-            case "sw":
-            case "nw":
-              newScaleX = Math.max(0.1, startTransform.scaleX - scaleDeltaX);
-              if (lockAspectRatio) newScaleY = newScaleX;
-              break;
-            case "s":
-              newScaleY = Math.max(0.1, startTransform.scaleY + scaleDeltaY);
-              if (lockAspectRatio) newScaleX = newScaleY;
-              break;
-            case "n":
-              newScaleY = Math.max(0.1, startTransform.scaleY - scaleDeltaY);
-              if (lockAspectRatio) newScaleX = newScaleY;
-              break;
-          }
-
-          newTransform = {
-            position: { x: startTransform.x, y: startTransform.y },
-            scale: { x: newScaleX, y: newScaleY },
-          };
-        }
+        const calculated = calculateOverlayTransform({
+          mode: interactionMode,
+          handle: activeHandle,
+          start: interactionStartRef.current.transform,
+          deltaX,
+          deltaY,
+          displayScale,
+          boundsWidth: shapeClipBounds.width,
+          boundsHeight: shapeClipBounds.height,
+          canvasWidth: settings.width,
+          canvasHeight: settings.height,
+          lockAspectRatio,
+          snappingEnabled: canvasSnappingEnabled && !e.altKey,
+        });
+        const newTransform = calculated.transform;
+        setCanvasSnapGuides(calculated.guides);
+        pendingTransformRef.current = {
+          target: "shape-clip",
+          targetId: activeShapeClip.id,
+          transform: newTransform,
+        };
 
         if (!rafIdRef.current) {
           rafIdRef.current = requestAnimationFrame(() => {
             const now = performance.now();
             if (
-              now - lastStoreUpdateRef.current >= STORE_UPDATE_THROTTLE_MS &&
-              interactionTargetIdRef.current
+              now - lastStoreUpdateRef.current >= STORE_UPDATE_THROTTLE_MS
             ) {
               lastStoreUpdateRef.current = now;
-              updateShapeTransform(
-                interactionTargetIdRef.current,
-                newTransform,
-              );
+              commitPendingTransform();
             }
             rafIdRef.current = null;
           });
@@ -7384,130 +6553,26 @@ export const Preview: React.FC = () => {
       const deltaY = e.clientY - interactionStartRef.current.y;
       const { displayScale } = clipBounds;
 
-      let newTransform: {
-        position?: { x: number; y: number };
-        scale?: { x: number; y: number };
-      } = {};
-
-      if (interactionMode === "move") {
-        const rawX =
-          interactionStartRef.current.transform.x + deltaX / displayScale;
-        const rawY =
-          interactionStartRef.current.transform.y + deltaY / displayScale;
-        const halfWidth = clipBounds.width / displayScale / 2;
-        const halfHeight = clipBounds.height / displayScale / 2;
-        const snapped = snapCanvasPosition({
-          x: rawX,
-          y: rawY,
-          xCandidates: [
-            { value: -settings.width / 2 + halfWidth, guide: 0 },
-            { value: 0, guide: 0.5 },
-            { value: settings.width / 2 - halfWidth, guide: 1 },
-          ],
-          yCandidates: [
-            { value: -settings.height / 2 + halfHeight, guide: 0 },
-            { value: 0, guide: 0.5 },
-            { value: settings.height / 2 - halfHeight, guide: 1 },
-          ],
-          thresholdX: 8 / displayScale,
-          thresholdY: 8 / displayScale,
-          enabled: canvasSnappingEnabled && !e.altKey,
-        });
-        setCanvasSnapGuides({ x: snapped.guideX, y: snapped.guideY });
-        newTransform = { position: { x: snapped.x, y: snapped.y } };
-      } else if (interactionMode === "resize" && activeHandle) {
-        setCanvasSnapGuides({ x: null, y: null });
-        const startTransform = interactionStartRef.current.transform;
-        let newScaleX = startTransform.scaleX;
-        let newScaleY = startTransform.scaleY;
-        let newX = startTransform.x;
-        let newY = startTransform.y;
-
-        // Base dimensions match how the clip is actually rendered so resize
-        // handles track the cursor regardless of fit mode.
-        const baseScaleW =
-          (clipBounds.width / displayScale) /
-          Math.max(0.001, startTransform.scaleX);
-        const baseScaleH =
-          (clipBounds.height / displayScale) /
-          Math.max(0.001, startTransform.scaleY);
-
-        const scaleDeltaX = deltaX / displayScale / (baseScaleW / 2);
-        const scaleDeltaY = deltaY / displayScale / (baseScaleH / 2);
-
-        switch (activeHandle) {
-          case "e":
-            newScaleX = Math.max(0.1, startTransform.scaleX + scaleDeltaX);
-            if (lockAspectRatio) newScaleY = newScaleX;
-            break;
-          case "w":
-            newScaleX = Math.max(0.1, startTransform.scaleX - scaleDeltaX);
-            if (lockAspectRatio) newScaleY = newScaleX;
-            newX = startTransform.x + deltaX / displayScale / 2;
-            break;
-          case "s":
-            newScaleY = Math.max(0.1, startTransform.scaleY + scaleDeltaY);
-            if (lockAspectRatio) newScaleX = newScaleY;
-            break;
-          case "n":
-            newScaleY = Math.max(0.1, startTransform.scaleY - scaleDeltaY);
-            if (lockAspectRatio) newScaleX = newScaleY;
-            newY = startTransform.y + deltaY / displayScale / 2;
-            break;
-          case "se":
-            if (lockAspectRatio) {
-              const avgDelta = (scaleDeltaX + scaleDeltaY) / 2;
-              newScaleX = Math.max(0.1, startTransform.scaleX + avgDelta);
-              newScaleY = newScaleX;
-            } else {
-              newScaleX = Math.max(0.1, startTransform.scaleX + scaleDeltaX);
-              newScaleY = Math.max(0.1, startTransform.scaleY + scaleDeltaY);
-            }
-            break;
-          case "sw":
-            if (lockAspectRatio) {
-              const avgDelta = (-scaleDeltaX + scaleDeltaY) / 2;
-              newScaleX = Math.max(0.1, startTransform.scaleX + avgDelta);
-              newScaleY = newScaleX;
-            } else {
-              newScaleX = Math.max(0.1, startTransform.scaleX - scaleDeltaX);
-              newScaleY = Math.max(0.1, startTransform.scaleY + scaleDeltaY);
-            }
-            newX = startTransform.x + deltaX / displayScale / 2;
-            break;
-          case "ne":
-            if (lockAspectRatio) {
-              const avgDelta = (scaleDeltaX - scaleDeltaY) / 2;
-              newScaleX = Math.max(0.1, startTransform.scaleX + avgDelta);
-              newScaleY = newScaleX;
-            } else {
-              newScaleX = Math.max(0.1, startTransform.scaleX + scaleDeltaX);
-              newScaleY = Math.max(0.1, startTransform.scaleY - scaleDeltaY);
-            }
-            newY = startTransform.y + deltaY / displayScale / 2;
-            break;
-          case "nw":
-            if (lockAspectRatio) {
-              const avgDelta = (-scaleDeltaX - scaleDeltaY) / 2;
-              newScaleX = Math.max(0.1, startTransform.scaleX + avgDelta);
-              newScaleY = newScaleX;
-            } else {
-              newScaleX = Math.max(0.1, startTransform.scaleX - scaleDeltaX);
-              newScaleY = Math.max(0.1, startTransform.scaleY - scaleDeltaY);
-            }
-            newX = startTransform.x + deltaX / displayScale / 2;
-            newY = startTransform.y + deltaY / displayScale / 2;
-            break;
-        }
-
-        newTransform = {
-          position: { x: newX, y: newY },
-          scale: { x: newScaleX, y: newScaleY },
-        };
-      }
+      const calculated = calculateClipTransform({
+        mode: interactionMode,
+        handle: activeHandle,
+        start: interactionStartRef.current.transform,
+        deltaX,
+        deltaY,
+        displayScale,
+        boundsWidth: clipBounds.width,
+        boundsHeight: clipBounds.height,
+        canvasWidth: settings.width,
+        canvasHeight: settings.height,
+        lockAspectRatio,
+        snappingEnabled: canvasSnappingEnabled && !e.altKey,
+      });
+      const newTransform = calculated.transform;
+      setCanvasSnapGuides(calculated.guides);
 
       pendingTransformRef.current = {
-        clipId: clip.id,
+        target: "clip",
+        targetId: clip.id,
         transform: newTransform,
       };
 
@@ -7523,15 +6588,9 @@ export const Preview: React.FC = () => {
       if (!rafIdRef.current) {
         rafIdRef.current = requestAnimationFrame(() => {
           const now = performance.now();
-          if (
-            pendingTransformRef.current &&
-            now - lastStoreUpdateRef.current >= STORE_UPDATE_THROTTLE_MS
-          ) {
+          if (now - lastStoreUpdateRef.current >= STORE_UPDATE_THROTTLE_MS) {
             lastStoreUpdateRef.current = now;
-            updateClipTransform(
-              pendingTransformRef.current.clipId,
-              pendingTransformRef.current.transform,
-            );
+            commitPendingTransform();
           }
           rafIdRef.current = null;
         });
@@ -7552,19 +6611,16 @@ export const Preview: React.FC = () => {
       textClipBounds,
       activeTextClip,
       updateTextTransform,
+      shapeClipBounds,
+      activeShapeClip,
+      updateShapeTransform,
+      commitPendingTransform,
     ],
   );
 
   const handleMouseUp = useCallback(() => {
-    if (pendingTransformRef.current) {
-      updateClipTransform(
-        pendingTransformRef.current.clipId,
-        pendingTransformRef.current.transform,
-      );
-      pendingTransformRef.current = null;
-    }
+    commitPendingTransform();
     setInteractionTargetType(null);
-    interactionTargetIdRef.current = null;
     if (rafIdRef.current) {
       cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
@@ -7581,7 +6637,7 @@ export const Preview: React.FC = () => {
     if (wasInteracting) {
       renderFrameDirectly(playheadPosition);
     }
-  }, [updateClipTransform, renderFrameDirectly, playheadPosition]);
+  }, [commitPendingTransform, renderFrameDirectly, playheadPosition]);
 
   const handleCropChange = useCallback(
     (crop: { x: number; y: number; width: number; height: number }) => {
@@ -7603,13 +6659,7 @@ export const Preview: React.FC = () => {
   useEffect(() => {
     if (interactionMode !== "none") {
       const handleGlobalMouseUp = () => {
-        if (pendingTransformRef.current) {
-          updateClipTransform(
-            pendingTransformRef.current.clipId,
-            pendingTransformRef.current.transform,
-          );
-          pendingTransformRef.current = null;
-        }
+        commitPendingTransform();
         if (rafIdRef.current) {
           cancelAnimationFrame(rafIdRef.current);
           rafIdRef.current = null;
@@ -7634,7 +6684,7 @@ export const Preview: React.FC = () => {
     interactionMode,
     renderFrameDirectly,
     playheadPosition,
-    updateClipTransform,
+    commitPendingTransform,
   ]);
 
   const handleScrubClick = useCallback(

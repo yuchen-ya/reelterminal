@@ -8,7 +8,7 @@
  *   createChromiumProviders() + FfmpegArtifactVerifier + createAgentFacade
  *
  * Disposal is BOUNDED and goes through PUBLIC verb paths only: request
- * cancel on every non-terminal export job via the public `job.cancel` verb
+ * cancel on every non-terminal export or analysis job via the public `job.cancel` verb
  * (bounded by the facade's own 10 s cancel race, queued behind any
  * in-flight verb), then dispose the provider runtime (the runtime's bounded
  * teardown). The second-signal hard exit is the operator's escape hatch.

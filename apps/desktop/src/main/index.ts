@@ -35,6 +35,7 @@ import {
 } from "./live/host-instance";
 import {
   disposeConversationHost,
+  getCodexOnboardingHost,
   getConversationHost,
 } from "./conversation/host-instance";
 import { registerEditorWindow } from "./editor-window";
@@ -112,6 +113,10 @@ function rendererRoot(): string {
     : path.join(__dirname, "../../../web/dist");
 }
 
+function developmentIconPath(): string {
+  return path.join(__dirname, "../../build/icon.png");
+}
+
 function createWindow(): void {
   const isMac = process.platform === "darwin";
   const win = new BrowserWindow({
@@ -123,7 +128,7 @@ function createWindow(): void {
     titleBarStyle: isMac ? "hiddenInset" : "hidden",
     titleBarOverlay: false,
     trafficLightPosition: isMac ? { x: 16, y: 14 } : undefined,
-    icon: isMac ? undefined : path.join(__dirname, "../../build/icon.png"),
+    icon: isMac ? undefined : developmentIconPath(),
     vibrancy: isMac ? "under-window" : undefined,
     visualEffectState: isMac ? "active" : undefined,
     webPreferences: {
@@ -142,6 +147,9 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   if (!hasSingleInstanceLock) return;
+  if (process.platform === "darwin" && !app.isPackaged) {
+    app.dock?.setIcon(developmentIconPath());
+  }
   handleAppScheme(rendererRoot());
   handle(CHANNELS.probeHardware, z.undefined(), () => collectHardwareInfo());
   handle(CHANNELS.fsShowSaveDialog, saveDialogArgsSchema, showSaveDialog);
@@ -255,7 +263,7 @@ app.whenReady().then(() => {
   // Live human–agent collaboration (ADR 0004 Slice 3): external MCP endpoint
   // plus collabControl behind the main-process session host.
   registerLiveIpc(getLiveSessionHost());
-  registerConversationIpc(getConversationHost());
+  registerConversationIpc(getConversationHost(), getCodexOnboardingHost());
   createWindow();
   initAutoUpdater();
   installApplicationMenu(process.platform, (id) => {

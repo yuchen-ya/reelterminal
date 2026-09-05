@@ -1,10 +1,46 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Project } from "@openreel/core";
 import { getMotionShaderDef, getMotionShaderEffectDefs } from "@openreel/core";
 import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { useProjectStore } from "../../../stores/project-store";
-import { VideoEffectsSection } from "./VideoEffectsSection";
+import {
+  EffectPickerContent,
+  VideoEffectsSection,
+} from "./VideoEffectsSection";
+
+const { testEffectsBridge } = vi.hoisted(() => ({
+  testEffectsBridge: { isInitialized: () => false },
+}));
+
+// Persistence/catalog behavior does not need a GPU renderer. Keeping the
+// bridge unavailable also verifies the project-backed fallback used in jsdom.
+vi.mock("../../../bridges/effects-bridge", () => ({
+  getEffectsBridge: () => testEffectsBridge,
+}));
+
+// ShaderPreviewBrowser owns its canvas-rendering tests. This inspector test
+// exercises catalog/tab wiring without compiling every shader in jsdom.
+vi.mock("../../shaders/ShaderPreviewBrowser", () => ({
+  ShaderPreviewBrowser: ({
+    defs,
+    onSelect,
+  }: {
+    defs: readonly { id: string; name: string }[];
+    onSelect: (id: string) => void;
+  }) => (
+    <div>
+      {defs.map((def) => (
+        <button
+          key={def.id}
+          type="button"
+          aria-label={`Preview and apply ${def.name}`}
+          onClick={() => onSelect(def.id)}
+        />
+      ))}
+    </div>
+  ),
+}));
 
 const clipId = "clip-shader";
 
@@ -91,7 +127,9 @@ const createProjectWithOrderedEffects = (): Project => {
 
 describe("VideoEffectsSection shader effect", () => {
   beforeEach(() => {
-    useProjectStore.setState({ project: createProjectWithShaderEffect() });
+    // Use the real project boundary so each test gets fresh action/history
+    // state instead of retaining undo entries from the preceding test.
+    useProjectStore.getState().loadProject(createProjectWithShaderEffect());
   });
 
   afterEach(() => {
@@ -160,10 +198,10 @@ describe("VideoEffectsSection shader effect", () => {
     });
   });
 
-  it("opens a searchable visual picker for standard and shader effects", () => {
-    render(<VideoEffectsSection clipId={clipId} />);
-
-    fireEvent.click(screen.getByText("Add Effect"));
+  it("filters the visual picker across standard and shader effects", () => {
+    render(
+      <EffectPickerContent onSelect={vi.fn()} onSelectShader={vi.fn()} />,
+    );
     expect(
       screen.getByRole("button", { name: "Preview and add Brightness" }),
     ).toBeInTheDocument();
@@ -206,7 +244,7 @@ describe("VideoEffectsSection shader effect", () => {
   });
 
   it("reorders the authored effect stack from accessible controls", () => {
-    useProjectStore.setState({ project: createProjectWithOrderedEffects() });
+    useProjectStore.getState().loadProject(createProjectWithOrderedEffects());
     render(<VideoEffectsSection clipId={clipId} />);
     const shaderName = getMotionShaderDef("paper-halftone-dots")!.name;
 

@@ -171,6 +171,13 @@ gets read-only verbs; write verbs fail `CONFLICT` with holder information.
 The human never acquires the lease and can always edit; revision CAS
 (Decision 3) is the concurrency guard, per the product rule "Human 始终可以操作".
 
+The JSON-safe Electron contract for status, live-store requests/replies,
+events, control APIs, and external-conversation snapshots is defined once in
+`packages/agent-facade/src/desktop-protocol.ts`. Desktop shared modules expose
+compatibility aliases and the renderer's `global.d.ts` references those types;
+neither side maintains a structural mirror. Runtime validation and sender
+authorization remain main-process responsibilities.
+
 ### 7. Session modes: Observe / Assist / Autonomous; default Assist
 
 **Superseded by ADR 0006 on 2026-09-04.** The combined mode below is retained

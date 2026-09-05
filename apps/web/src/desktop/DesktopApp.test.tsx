@@ -104,6 +104,36 @@ describe("DesktopApp", () => {
     expect(view.getByTestId("desktop-settings-dialog")).toBeTruthy();
   });
 
+  it("lets a lifecycle flush observe a durable-save rejection", async () => {
+    mockHasProject(false);
+    const failure = new Error("IndexedDB transaction aborted");
+    const forceSave = vi.fn().mockRejectedValue(failure);
+    let flush: (() => Promise<void>) | undefined;
+    (mockedUseProjectStore as unknown as { getState: () => unknown }).getState =
+      () => ({ forceSave });
+    (window as unknown as { openreel: unknown }).openreel = {
+      platform: "desktop",
+      win: {
+        minimize: () => {},
+        toggleMaximize: () => {},
+        close: () => {},
+        isMaximized: async () => false,
+      },
+      lifecycle: {
+        onQueryUnsaved: () => () => {},
+        onFlush: (handler: () => Promise<void>) => {
+          flush = handler;
+          return () => {};
+        },
+      },
+    };
+    render(<DesktopApp />);
+
+    expect(flush).toBeTypeOf("function");
+    await expect(flush?.()).rejects.toBe(failure);
+    expect(forceSave).toHaveBeenCalledOnce();
+  });
+
   describe("DOM-level undo/redo keyboard handler (G-01)", () => {
     function mockUndoRedo(): { undo: ReturnType<typeof vi.fn>; redo: ReturnType<typeof vi.fn> } {
       const undo = vi.fn();

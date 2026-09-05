@@ -48,12 +48,16 @@ import {
 } from "./delivery";
 import { IdempotencyLedger, stableStringify } from "./idempotency";
 import { JobRegistry, jobStatusView } from "./jobs";
+import { ProjectChangeJournal } from "./project-changes";
+import { queryTimeline } from "./timeline-query";
+import { validateEditPlan } from "./edit-validation";
 import {
   applyClipIdOverride,
   collectEntityIds,
   diffCreatedIds,
   opToCoreActions,
   validateEditOp,
+  validateEditBatch,
 } from "./ops";
 import {
   projectStateView,
@@ -86,19 +90,28 @@ import {
   isEvenDimension,
   JOB_PARAMS_SCHEMA,
   MEDIA_IMPORT_SCHEMA,
+  MEDIA_ANALYZE_START_SCHEMA,
   PREVIEW_RENDER_FRAME_SCHEMA,
   VISUAL_INSPECT_RANGE_SCHEMA,
   VISUAL_INSPECT_SCHEMA,
   PROJECT_CREATE_SCHEMA,
   PROJECT_OPEN_SCHEMA,
+  PROJECT_RENAME_SCHEMA,
   PROJECT_SAVE_SCHEMA,
   PROJECT_SETTINGS_SCHEMA,
+  normalizeProjectName,
   VERIFY_ARTIFACT_SCHEMA,
   VERIFY_COMPARE_SCHEMA,
   VERIFY_EXPECT_SCHEMA,
   VERIFY_REGION_SCHEMA,
   EDITOR_CONTROL_SCHEMA,
   EDITOR_CONTROL_TARGET_SCHEMA,
+  PROJECT_CHANGES_SCHEMA,
+  TIMELINE_QUERY_SCHEMA,
+  TIMELINE_QUERY_RANGE_SCHEMA,
+  EDIT_VALIDATE_SCHEMA,
+  HISTORY_GET_SCHEMA,
+  HISTORY_CONTROL_SCHEMA,
 } from "./verb-schemas";
 import type {
   LiveEditorControlParams,
@@ -116,6 +129,8 @@ import type {
   JobStatusView,
   MediaImportParams,
   MediaImportResult,
+  MediaAnalyzeStartParams,
+  MediaAnalyzeStartResult,
   OpApplied,
   PreviewRenderFrameParams,
   PreviewRenderFrameResult,
@@ -125,11 +140,23 @@ import type {
   ProjectCreateResult,
   ProjectOpenParams,
   ProjectOpenResult,
+  ProjectRenameParams,
+  ProjectRenameResult,
   ProjectSaveParams,
   ProjectSaveResult,
   ProjectState,
   SessionDescription,
   TimelineState,
+  ProjectChangesParams,
+  ProjectChangesResult,
+  TimelineQueryParams,
+  TimelineQueryResult,
+  EditValidateParams,
+  EditValidateResult,
+  HistoryGetParams,
+  HistoryGetResult,
+  HistoryControlParams,
+  HistoryControlResult,
   VerifyArtifactParams,
   VerifyArtifactResult,
 } from "./types";
@@ -219,6 +246,8 @@ export class AgentFacadeSession {
   private revision = 0;
   private ledger = new IdempotencyLedger(() => this.project?.id ?? "no-project");
   private readonly jobs = new JobRegistry();
+  private readonly changes = new ProjectChangeJournal();
+  private readonly analysisControllers = new Map<string, AbortController>();
   private chain: Promise<unknown> = Promise.resolve();
 
   constructor(config: AgentFacadeConfig = {}) {
@@ -274,6 +303,122 @@ export class AgentFacadeSession {
   async timelineGet(): Promise<FacadeResult<TimelineState>> {
     if (!this.project) return this.noProject();
     return ok(timelineStateView(this.project, this.revision));
+  }
+
+  async projectChanges(
+    params: ProjectChangesParams,
+  ): Promise<FacadeResult<ProjectChangesResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<ProjectChangesParams>(
+        params,
+        PROJECT_CHANGES_SCHEMA,
+        "project.changes params",
+      );
+      if (!this.project) return this.noProject();
+      if (valid.sinceRevision > this.revision) {
+        throw new FacadeError(
+          "CONFLICT",
+          `project.changes: sinceRevision ${valid.sinceRevision} is newer than current revision ${this.revision}`,
+          { currentRevision: this.revision },
+        );
+      }
+      return ok(this.changes.query(valid, this.revision));
+    });
+  }
+
+  async timelineQuery(
+    params: TimelineQueryParams = {},
+  ): Promise<FacadeResult<TimelineQueryResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<TimelineQueryParams>(
+        params,
+        TIMELINE_QUERY_SCHEMA,
+        "timeline.query params",
+      );
+      if (valid.timeRange !== undefined) {
+        const range = validateObject<{ startSec: number; endSec: number }>(
+          valid.timeRange,
+          TIMELINE_QUERY_RANGE_SCHEMA,
+          "timeline.query params.timeRange",
+        );
+        if (range.endSec <= range.startSec) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            "timeline.query: timeRange.endSec must be greater than startSec",
+          );
+        }
+      }
+      if (!this.project) return this.noProject();
+      return ok(queryTimeline(this.project, this.revision, valid));
+    });
+  }
+
+  async editValidate(
+    params: EditValidateParams,
+  ): Promise<FacadeResult<EditValidateResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<EditValidateParams>(
+        params,
+        EDIT_VALIDATE_SCHEMA,
+        "edit.validate params",
+      );
+      if (!this.project) return this.noProject();
+      const ops = valid.ops.map((raw, index) => validateEditOp(raw, index));
+      validateEditBatch(ops);
+      if (ops.length === 0) {
+        throw new FacadeError("INVALID_PARAMS", "edit.validate: ops must contain at least one op");
+      }
+      return ok(
+        await validateEditPlan(this.project, ops, {
+          mode: "headless",
+          revision: this.revision,
+          ...(valid.expectedRevision !== undefined
+            ? { expectedRevision: valid.expectedRevision }
+            : {}),
+          ...(valid.expectedContextRevision !== undefined
+            ? { expectedContextRevision: valid.expectedContextRevision }
+            : {}),
+        }),
+      );
+    });
+  }
+
+  async historyGet(
+    params: HistoryGetParams = {},
+  ): Promise<FacadeResult<HistoryGetResult>> {
+    return this.enqueue(async () => {
+      validateObject<HistoryGetParams>(params, HISTORY_GET_SCHEMA, "history.get params");
+      if (!this.project) return this.noProject();
+      return ok({
+        revision: this.revision,
+        available: false,
+        reason:
+          "Headless sessions commit snapshot transactions and do not retain a canonical Core undo/redo stack; history.control is available only against the live GUI history.",
+        canUndo: false,
+        canRedo: false,
+        undoCount: 0,
+        redoCount: 0,
+        entries: [],
+      });
+    });
+  }
+
+  async historyControl(
+    params: HistoryControlParams,
+  ): Promise<FacadeResult<HistoryControlResult>> {
+    return this.enqueue(async () => {
+      validateObject<HistoryControlParams>(
+        params,
+        HISTORY_CONTROL_SCHEMA,
+        "history.control params",
+      );
+      if (!this.project) return this.noProject();
+      throw new FacadeError(
+        "UNSUPPORTED",
+        "history.control: headless sessions have no canonical Core undo/redo stack; use revisioned checkpoints for recovery",
+        { runtime: "node-headless" },
+      );
+    });
   }
 
   /**
@@ -413,6 +558,7 @@ export class AgentFacadeSession {
 
       this.project = createEmptyProject(valid.name, settings);
       this.revision = 0;
+      this.changes.reset();
       const state = this.projectState();
       if (valid.idempotencyKey !== undefined) {
         // Recorded AFTER the swap so the entry is scoped to the NEW project
@@ -478,6 +624,7 @@ export class AgentFacadeSession {
       // Single-commit adoption inside the lane: from here nothing can fail.
       this.project = adopted.project;
       this.revision = adopted.revision;
+      this.changes.reset();
       const state = this.projectState();
       if (valid.idempotencyKey !== undefined) {
         // Recorded AFTER the swap so the entry is scoped to the adopted
@@ -489,6 +636,68 @@ export class AgentFacadeSession {
         });
       }
       return ok<ProjectOpenResult>({ ...state, replayed: false });
+    });
+  }
+
+  async projectRename(
+    params: ProjectRenameParams,
+  ): Promise<FacadeResult<ProjectRenameResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<ProjectRenameParams>(
+        params,
+        PROJECT_RENAME_SCHEMA,
+        "project.rename params",
+      );
+      if (!this.project) return this.noProject();
+      const name = normalizeProjectName(valid.name);
+      const payload = { name };
+      const prior = this.beginMutation<Omit<ProjectRenameResult, "revision" | "replayed">>(
+        "project.rename",
+        valid.expectedRevision,
+        valid.idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        return ok<ProjectRenameResult>({
+          ...prior.value,
+          revision: prior.revision,
+          replayed: true,
+        });
+      }
+
+      const outcome = await this.commitMutation<
+        Omit<ProjectRenameResult, "revision" | "replayed">
+      >({
+        verb: "project.rename",
+        idempotencyKey: valid.idempotencyKey,
+        payload,
+        apply: async (draft) => {
+          const previousName = draft.name;
+          const executor = new ActionExecutor(new ActionHistory());
+          const result = await executor.execute(
+            {
+              type: "project/rename",
+              id: crypto.randomUUID(),
+              timestamp: Date.now(),
+              params: { name },
+            },
+            draft,
+          );
+          if (!result.success) {
+            throw new FacadeError(
+              "ACTION_FAILED",
+              `project.rename: ${result.error?.message ?? "core action failed"}`,
+              { coreCode: result.error?.code },
+            );
+          }
+          return { projectId: draft.id, previousName, name };
+        },
+      });
+      return ok<ProjectRenameResult>({
+        ...outcome.value,
+        revision: outcome.revision,
+        replayed: outcome.replayed,
+      });
     });
   }
 
@@ -814,6 +1023,113 @@ export class AgentFacadeSession {
     });
   }
 
+  async mediaAnalyzeStart(
+    params: MediaAnalyzeStartParams,
+  ): Promise<FacadeResult<MediaAnalyzeStartResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<MediaAnalyzeStartParams>(
+        params,
+        MEDIA_ANALYZE_START_SCHEMA,
+        "media.analyze_start params",
+      );
+      if (!this.project) return this.noProject();
+      const unavailable = valid.analysisTypes.filter(
+        (type) => type !== "technicalQuality",
+      );
+      if (unavailable.length > 0) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          `media.analyze_start: unavailable analysis types: ${unavailable.join(", ")}`,
+          {
+            unavailableTypes: unavailable,
+            availableTypes: ["technicalQuality"],
+          },
+        );
+      }
+      const media = this.project.mediaLibrary.items.find(
+        (item) => item.id === valid.mediaId,
+      );
+      if (!media) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `media.analyze_start: media "${valid.mediaId}" not found`,
+          { mediaId: valid.mediaId },
+        );
+      }
+      const payload = {
+        mediaId: valid.mediaId,
+        analysisTypes: [...valid.analysisTypes].sort(),
+      };
+      const prior = this.beginMutation<{
+        jobId: string;
+        sourceRevision: number;
+        analysisTypes: readonly typeof valid.analysisTypes[number][];
+      }>(
+        "media.analyze_start",
+        valid.expectedRevision,
+        valid.idempotencyKey,
+        payload,
+      );
+      if (prior && this.jobs.has(prior.value.jobId)) {
+        return ok<MediaAnalyzeStartResult>({
+          jobId: prior.value.jobId,
+          kind: "analysis",
+          state: this.jobs.get(prior.value.jobId)?.state ?? "queued",
+          sourceRevision: prior.value.sourceRevision,
+          analysisTypes: prior.value.analysisTypes,
+          replayed: true,
+        });
+      }
+      const originalUrl = typeof media.originalUrl === "string" ? media.originalUrl : "";
+      const resolution = resolveContainedPathDetailed(
+        originalUrl,
+        this.config.mediaRoots ?? [],
+      );
+      if (resolution.kind !== "ok") {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          `media.analyze_start: media "${valid.mediaId}" is outside configured media roots or unreadable`,
+        );
+      }
+      const sourceStat = await stat(resolution.path).catch(() => null);
+      if (!sourceStat?.isFile() || sourceStat.size > MAX_MEDIA_FILE_BYTES) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          `media.analyze_start: media "${valid.mediaId}" is not backed by a readable source file`,
+        );
+      }
+      const sourcePath = resolution.path;
+      const sourceRevision = this.revision;
+      const jobId = `job-${crypto.randomUUID()}`;
+      const analysisTypes = [...valid.analysisTypes];
+      this.jobs.create(jobId, sourceRevision, "analysis");
+      const controller = new AbortController();
+      this.analysisControllers.set(jobId, controller);
+      const ledgerValue = { jobId, sourceRevision, analysisTypes };
+      if (valid.idempotencyKey !== undefined) {
+        this.ledger.set("media.analyze_start", valid.idempotencyKey, {
+          revision: sourceRevision,
+          value: ledgerValue,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      void this.runTechnicalQualityAnalysis(
+        jobId,
+        sourcePath,
+        media.id,
+        media.name,
+        analysisTypes,
+        controller,
+      );
+      return ok<MediaAnalyzeStartResult>({
+        ...ledgerValue,
+        kind: "analysis",
+        state: "queued",
+        replayed: false,
+      });
+    });
+  }
+
   async editApply(
     params: EditApplyParams,
   ): Promise<FacadeResult<EditApplyResult>> {
@@ -838,6 +1154,7 @@ export class AgentFacadeSession {
       // access — a malformed op anywhere fails the whole call with zero
       // side effects, and can never become an ok:true silent no-op.
       const ops = valid.ops.map((raw, index) => validateEditOp(raw, index));
+      validateEditBatch(ops);
       if (ops.length === 0) {
         throw new FacadeError(
           "INVALID_PARAMS",
@@ -1464,6 +1781,12 @@ export class AgentFacadeSession {
       if (job.state === "done" || job.state === "error" || job.state === "cancelled") {
         return ok(jobStatusView(job));
       }
+      if (job.kind === "analysis") {
+        this.jobs.markCancelRequested(valid.jobId);
+        this.analysisControllers.get(valid.jobId)?.abort();
+        this.jobs.markCancelled(valid.jobId);
+        return ok(jobStatusView(this.jobs.get(valid.jobId) ?? job));
+      }
       const provider = this.config.exportProvider;
       if (!provider) {
         throw new FacadeError(
@@ -1650,6 +1973,60 @@ export class AgentFacadeSession {
 
   /* ---------------------------- internals ---------------------------- */
 
+  private async runTechnicalQualityAnalysis(
+    jobId: string,
+    sourcePath: string,
+    mediaId: string,
+    name: string,
+    analysisTypes: readonly import("./types").MediaAnalysisType[],
+    controller: AbortController,
+  ): Promise<void> {
+    try {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (controller.signal.aborted) {
+        this.jobs.markCancelled(jobId);
+        return;
+      }
+      this.jobs.markRunning(jobId);
+      const [probe, file] = await Promise.all([
+        this.probeMedia(sourcePath),
+        stat(sourcePath),
+      ]);
+      if (controller.signal.aborted) {
+        this.jobs.markCancelled(jobId);
+        return;
+      }
+      this.jobs.markAnalysisDone(jobId, {
+        analysisTypes,
+        summary: {
+          technicalQuality: {
+            mediaId,
+            name,
+            readable: true,
+            durationSec: probe.durationSec,
+            width: probe.width,
+            height: probe.height,
+            frameRate: probe.frameRate,
+            codec: probe.codec,
+            fileSize: probe.fileSize,
+            sourceFingerprint: {
+              size: file.size,
+              lastModified: Math.round(file.mtimeMs),
+            },
+          },
+        },
+        artifacts: [],
+      });
+    } catch (error) {
+      this.jobs.markError(jobId, {
+        code: error instanceof FacadeError ? error.code : "JOB_FAILED",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      this.analysisControllers.delete(jobId);
+    }
+  }
+
   private async probeMedia(resolvedPath: string) {
     try {
       return await probeLocalMediaFile(resolvedPath);
@@ -1828,8 +2205,10 @@ export class AgentFacadeSession {
     readonly payload: unknown;
     readonly apply: (draft: Project) => T | Promise<T>;
   }): Promise<MutationOutcome<T>> {
-    const draft = structuredClone(this.project) as Project;
+    const before = this.project as Project;
+    const draft = structuredClone(before) as Project;
     const value = await opts.apply(draft);
+    this.changes.record(before, draft, this.revision, this.revision + 1);
     this.project = draft;
     this.revision += 1;
     const outcome: MutationOutcome<T> = {

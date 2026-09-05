@@ -36,7 +36,7 @@ function fakeSession(overrides: {
   const calls: { verb: string; params: unknown }[] = [];
   let statusPointer = 0;
   const facade: AgentFacade = {
-    "session.describe": () => Promise.resolve({ ok: true, value: { contractVersion: "facade-slice-4" } as any }),
+    "session.describe": () => Promise.resolve({ ok: true, value: { contractVersion: "facade-slice-6" } as any }),
     "capabilities.get": () => Promise.resolve({ ok: true, value: {} as any }),
     "project.create": (params: unknown) => { calls.push({ verb: "project.create", params }); return Promise.resolve(overrides.verbResults?.["project.create"] ?? { ok: true, value: { revision: 0, replayed: false } as any }); },
     "project.open": () => { calls.push({ verb: "project.open", params: {} }); return Promise.resolve({ ok: true, value: { revision: 0 } as any }); },
@@ -130,7 +130,7 @@ describe("static validation (B.6): reject before step 1", () => {
     expect(staticValidate(steps).some((e) => e.message.includes("no sibling keys"))).toBe(true);
   });
 
-  it("await jobIds may only reference earlier export.start steps", () => {
+  it("await jobIds may only reference earlier export or analysis job-start steps", () => {
     const { steps, errors } = parseWorkflowLines(
       [
         JSON.stringify({ id: "t", verb: "timeline.get" }),
@@ -139,7 +139,7 @@ describe("static validation (B.6): reject before step 1", () => {
     );
     expect(errors).toEqual([]);
     const staticErrors = staticValidate(steps);
-    expect(staticErrors.some((e) => e.message.includes("may only reference an earlier export.start step"))).toBe(true);
+    expect(staticErrors.some((e) => e.message.includes("may only reference an earlier export.start or media.analyze_start step"))).toBe(true);
   });
 
   it("await bounds: timeoutMs required and ≤ 3 600 000; pollMs bounded 250–30 000", () => {

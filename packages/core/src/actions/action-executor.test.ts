@@ -121,6 +121,114 @@ describe("ActionExecutor media/import undo", () => {
 });
 
 describe("ActionExecutor synchronous draft execution", () => {
+  it("derives clip/add timeline duration from an explicit source range", () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+    project.timeline.tracks.push({
+      id: "t1",
+      type: "video",
+      name: "V1",
+      clips: [],
+      transitions: [],
+      locked: false,
+      hidden: false,
+      muted: false,
+      solo: false,
+    });
+    project.mediaLibrary.items.push({
+      id: "m1",
+      name: "long.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      metadata: {
+        duration: 340.117,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+        codec: "h264",
+        sampleRate: 48_000,
+        channels: 2,
+        fileSize: 1,
+      },
+      thumbnailUrl: null,
+      waveformData: null,
+    });
+
+    const result = executor.executeSync(
+      {
+        id: "ranged-add",
+        type: "clip/add",
+        timestamp: Date.now(),
+        params: {
+          trackId: "t1",
+          mediaId: "m1",
+          startTime: 0,
+          inPoint: 8,
+          outPoint: 12,
+        },
+      },
+      project,
+    );
+
+    expect(result.success).toBe(true);
+    expect(project.timeline.tracks[0]?.clips[0]).toMatchObject({
+      inPoint: 8,
+      outPoint: 12,
+      duration: 4,
+    });
+  });
+
+  it("keeps explicit clip/add duration authoritative over the source range", () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+    project.timeline.tracks.push({
+      id: "t1",
+      type: "video",
+      name: "V1",
+      clips: [],
+      transitions: [],
+      locked: false,
+      hidden: false,
+      muted: false,
+      solo: false,
+    });
+    project.mediaLibrary.items.push({
+      id: "m1",
+      name: "clip.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      metadata: { duration: 10 },
+      thumbnailUrl: null,
+      waveformData: null,
+    } as Project["mediaLibrary"]["items"][number]);
+
+    const result = executor.executeSync(
+      {
+        id: "explicit-duration-add",
+        type: "clip/add",
+        timestamp: Date.now(),
+        params: {
+          trackId: "t1",
+          mediaId: "m1",
+          startTime: 0,
+          duration: 2,
+          inPoint: 1,
+          outPoint: 5,
+        },
+      },
+      project,
+    );
+
+    expect(result.success).toBe(true);
+    expect(project.timeline.tracks[0]?.clips[0]).toMatchObject({
+      inPoint: 1,
+      outPoint: 5,
+      duration: 2,
+    });
+  });
+
   it("applies a core action and records an explicitly owned inverse", () => {
     const executor = new ActionExecutor();
     const project = makeProject();

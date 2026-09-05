@@ -11,8 +11,8 @@
  *    create-after-open CONFLICT;
  *  - honest refusals: NOT_FOUND / UNSUPPORTED / INVALID_PARAMS;
  *  - the ledger after open is empty (keys minted pre-save do not replay);
- *  - contract bump: facade-slice-4, 17 verbs, 9 error codes (visual.inspect
- *    adds bounded read-only visual artifacts).
+ *  - contract bump: facade-slice-6, 24 verbs, 9 error codes (including the
+ *    guarded project.rename mutation and the six Slice 6 verbs).
  */
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -500,14 +500,14 @@ describe("persistence: save → fresh session open → continue", () => {
     expect(overlayClip?.transform.position).toEqual({ x: 0.5, y: 0.15 });
   });
 
-  it("session.describe reports the slice-4 contract with 17 verbs and 9 error codes", async () => {
+  it("session.describe reports the slice-6 contract with 24 verbs and 9 error codes", async () => {
     const facade = newSession();
     const res = await facade["session.describe"]();
     expect(res.ok).toBe(true);
     if (!res.ok) return;
-    expect(res.value.contractVersion).toBe("facade-slice-4");
+    expect(res.value.contractVersion).toBe("facade-slice-6");
     expect(res.value.verbs).toEqual([...FACADE_VERBS]);
-    expect(res.value.verbs).toHaveLength(17);
+    expect(res.value.verbs).toHaveLength(24);
     expect(res.value.errorCodes).toEqual([...FACADE_ERROR_CODES]);
     expect(res.value.errorCodes).toHaveLength(9);
   });

@@ -2,7 +2,7 @@
  * `agent-video serve` — the MCP stdio server (ADR 0003 Decisions 1/2/5/7).
  *
  * One long-lived stdio MCP server process == one AgentFacadeSession. The
- * public surface is exactly the 17 tools of the facade contract (including
+ * public surface is exactly the 24 tools of the facade contract (including
  * `editor_get_context` and `visual_inspect`); every result is the facade
  * `FacadeResult` JSON as a single text content block (B.4), `ok:false` ⇒
  * `isError:true` — domain failures are never JSON-RPC protocol errors and
@@ -250,12 +250,14 @@ export async function serveCommand(argv: readonly string[]): Promise<never> {
         p: unknown,
       ) => Promise<FacadeResult<unknown>>;
       const result = await call(params);
-      if (verb === "export.start" && result.ok) {
+      if ((verb === "export.start" || verb === "media.analyze_start") && result.ok) {
         const value = result.value as { readonly jobId?: unknown };
         if (typeof value?.jobId === "string") {
           session.trackJob(value.jobId);
           const progressToken = progressTokenFor(request);
-          if (progressToken !== undefined) watchExportProgress(value.jobId, progressToken);
+          if (verb === "export.start" && progressToken !== undefined) {
+            watchExportProgress(value.jobId, progressToken);
+          }
         }
       }
       logInfo("serve", "tool call", { tool: toolName, ok: result.ok });
@@ -286,14 +288,6 @@ export async function serveCommand(argv: readonly string[]): Promise<never> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  logInfo("serve", "MCP stdio server listening", {
-    pid: process.pid,
-    tools: TOOLS.length,
-    contract: FACADE_CONTRACT_VERSION,
-    mediaRoots: [...config.mediaRoots],
-    artifactRoot: config.artifactRoot,
-    projectRoots: [...config.projectRoots],
-  });
 
   let disposalStarted = false;
   const runBoundedShutdown = async (trigger: string, exitCode: number): Promise<void> => {
@@ -347,6 +341,18 @@ export async function serveCommand(argv: readonly string[]): Promise<never> {
     void runBoundedShutdown("stdin-error", 0);
   };
   stdin.once("error", onStdinError);
+
+  // Readiness means the process can now honor every documented shutdown
+  // path. Emit this only after signal and stdin handlers are installed so a
+  // client cannot observe "listening" and race into the default OS handler.
+  logInfo("serve", "MCP stdio server listening", {
+    pid: process.pid,
+    tools: TOOLS.length,
+    contract: FACADE_CONTRACT_VERSION,
+    mediaRoots: [...config.mediaRoots],
+    artifactRoot: config.artifactRoot,
+    projectRoots: [...config.projectRoots],
+  });
 
   // The server runs until a signal, stdin EOF, or a hard exit above.
   return new Promise<never>(() => {});

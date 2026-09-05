@@ -614,6 +614,8 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     dragOffset,
     pixelsPerSecond,
     clip.id,
+    clip.startTime,
+    clip.duration,
     track.id,
     track.type,
     allTracks,

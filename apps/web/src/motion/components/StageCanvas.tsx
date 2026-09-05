@@ -4981,6 +4981,8 @@ function RendererBackedStagePreview({
   const hasReportedVisibleFrameRef = useRef(false);
   const inFlightRef = useRef(false);
   const pendingTimeRef = useRef<number | null>(null);
+  const currentTimeRef = useRef(time);
+  currentTimeRef.current = time;
   const renderFnRef = useRef<((time: number) => void) | null>(null);
   const cacheRef = useRef<MotionFrameCache | null>(null);
   if (cacheRef.current === null) {
@@ -5204,7 +5206,7 @@ function RendererBackedStagePreview({
         });
     };
     renderFnRef.current = renderAt;
-    renderAt(time);
+    renderAt(currentTimeRef.current);
 
     return () => {
       disposed = true;

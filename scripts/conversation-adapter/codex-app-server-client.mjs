@@ -175,6 +175,22 @@ export class CodexAppServerClient {
     return result;
   }
 
+  async readAccount() {
+    const result = await this.request("account/read", { refreshToken: false });
+    if (!isRecord(result) || !("account" in result)) {
+      throw new CodexAppServerError("INVALID_RESPONSE", "Codex returned an invalid account/read response");
+    }
+    return result;
+  }
+
+  async listThreads(params = {}) {
+    const result = await this.request("thread/list", params);
+    if (!isRecord(result) || !Array.isArray(result.data)) {
+      throw new CodexAppServerError("INVALID_RESPONSE", "Codex returned an invalid thread/list response");
+    }
+    return result;
+  }
+
   async startTurn(threadId, text, options = {}) {
     const localImagePaths = Array.isArray(options.localImagePaths)
       ? options.localImagePaths.filter(
@@ -221,6 +237,10 @@ export class CodexAppServerClient {
 
   interruptTurn(threadId, turnId) {
     return this.request("turn/interrupt", { threadId, turnId });
+  }
+
+  compactThread(threadId) {
+    return this.request("thread/compact/start", { threadId });
   }
 
   async close() {

@@ -16,7 +16,7 @@
  * success-looking artifact can survive a non-done state.
  */
 import type { ArtifactRef, ExportProgressEvent } from "./providers";
-import type { JobStatusView } from "./types";
+import type { AnalysisJobResult, JobStatusView } from "./types";
 
 /** The public job.status view of a registry record (a fresh copy). */
 export function jobStatusView(job: JobRecord): JobStatusView {
@@ -26,6 +26,7 @@ export function jobStatusView(job: JobRecord): JobStatusView {
     state: job.state,
     progress: job.progress ? { ...job.progress } : null,
     artifact: job.artifact ? { ...job.artifact } : null,
+    result: job.result ? structuredClone(job.result) : null,
     error: job.error ? { ...job.error } : null,
     deliveredTo: job.deliveredTo,
     deliveryError: job.deliveryError,
@@ -50,10 +51,11 @@ export interface JobProgressView {
 
 export interface JobRecord {
   readonly jobId: string;
-  readonly kind: "export";
+  readonly kind: "export" | "analysis";
   readonly state: JobState;
   readonly progress: JobProgressView | null;
   readonly artifact: ArtifactRef | null;
+  readonly result: AnalysisJobResult | null;
   readonly error: { readonly code: string; readonly message: string } | null;
   /** destinationPath delivery outcome (both null when none was requested). */
   readonly deliveredTo: string | null;
@@ -74,14 +76,19 @@ const TERMINAL: ReadonlySet<JobState> = new Set(["done", "error", "cancelled"]);
 export class JobRegistry {
   private readonly jobs = new Map<string, JobRecord>();
 
-  create(jobId: string, sourceRevision: number): JobRecord {
+  create(
+    jobId: string,
+    sourceRevision: number,
+    kind: JobRecord["kind"] = "export",
+  ): JobRecord {
     const now = new Date().toISOString();
     const record: JobRecord = {
       jobId,
-      kind: "export",
+      kind,
       state: "queued",
       progress: null,
       artifact: null,
+      result: null,
       error: null,
       deliveredTo: null,
       deliveryError: null,
@@ -150,6 +157,20 @@ export class JobRegistry {
     });
   }
 
+  markAnalysisDone(jobId: string, result: AnalysisJobResult): void {
+    this.transition(jobId, (job) => {
+      if (TERMINAL.has(job.state)) return job;
+      return {
+        ...job,
+        state: "done" as JobState,
+        result: structuredClone(result),
+        artifact: null,
+        route: "built-in-technical-quality",
+        error: null,
+      };
+    });
+  }
+
   /** destinationPath copy succeeded (post-done bookkeeping only). */
   markDelivered(jobId: string, deliveredTo: string): void {
     this.transition(jobId, (job) =>
@@ -172,14 +193,14 @@ export class JobRegistry {
     this.transition(jobId, (job) => {
       if (TERMINAL.has(job.state)) return job;
       // A failed job never exposes an artifact, even a partial one.
-      return { ...job, state: "error" as JobState, error, artifact: null };
+      return { ...job, state: "error" as JobState, error, artifact: null, result: null };
     });
   }
 
   markCancelled(jobId: string): void {
     this.transition(jobId, (job) => {
       if (TERMINAL.has(job.state)) return job;
-      return { ...job, state: "cancelled" as JobState, artifact: null };
+      return { ...job, state: "cancelled" as JobState, artifact: null, result: null };
     });
   }
 

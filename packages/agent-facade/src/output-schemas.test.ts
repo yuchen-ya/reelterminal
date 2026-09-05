@@ -36,11 +36,11 @@ describe("emitted MCP output schemas", () => {
   it("timeline.get reports the sorted project-marker array with the closed target union", () => {
     const schema = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["timeline.get"] as unknown as Schema;
     const value = (schema.properties as Schema).value as Schema;
-    expect(value.required).toEqual(["revision", "duration", "tracks", "textOverlays", "markers"]);
+    expect(value.required).toEqual(["revision", "duration", "tracks", "textOverlays", "subtitles", "markers"]);
     const markers = (value.properties as Schema).markers as Schema;
     const item = markers.items as Schema;
     expect(item.additionalProperties).toBe(false);
-    expect(item.required).toEqual(["number", "id", "target", "createdAt"]);
+    expect(item.required).toEqual(["ref", "number", "id", "target", "createdAt"]);
     const target = (item.properties as Schema).target as Schema;
     const variants = target.anyOf as Schema[];
     expect(variants).toHaveLength(4);

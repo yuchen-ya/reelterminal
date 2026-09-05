@@ -531,6 +531,7 @@ export const ScopesPanel: React.FC<ScopesPanelProps> = ({
     vectorscopeData,
     histogramData,
     showRGBWaveform,
+    t,
   ]);
 
   return (

@@ -46,7 +46,7 @@ describe("ExternalAgentPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     fireEvent.click(screen.getByRole("button", { name: "Deny" }));
-    fireEvent.click(screen.getByRole("button", { name: /Reference #7/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Agent reference A7/ }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onApprove).toHaveBeenCalledWith("approval-1");
     expect(onDeny).toHaveBeenCalledWith("approval-1");
@@ -147,6 +147,30 @@ describe("ExternalAgentPanel", () => {
     expect(onCancel).toHaveBeenCalledOnce();
   });
 
+  it("uses the latest session state instead of a historical working event", () => {
+    const onCancel = vi.fn();
+    render(
+      <ExternalAgentPanel
+        viewModel={{
+          connection: { state: "connected" },
+          capabilities: { basic: true, streaming: true, full: true },
+          messages: [],
+          thinkingSummary: null,
+          toolCalls: [],
+          approvals: [],
+          activities: [
+            { type: "state", id: "state-1", sequence: 1, state: "working" },
+            { type: "state", id: "state-2", sequence: 2, state: "idle" },
+          ],
+        }}
+        onCancel={onCancel}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("session-run-time")).toHaveTextContent("Last run");
+  });
+
   it("offers a view-only disconnect without closing the panel", () => {
     const onDisconnect = vi.fn();
     const onClose = vi.fn();
@@ -166,6 +190,7 @@ describe("ExternalAgentPanel", () => {
   });
 
   it("keeps numbered references to one compact row and removes visual-inspection controls", () => {
+    const onReferenceClick = vi.fn();
     render(
       <ExternalAgentPanel
         connection={{ state: "connected", agentName: "Remote editor" }}
@@ -174,10 +199,13 @@ describe("ExternalAgentPanel", () => {
           { number: 2, label: "Hero shot", kind: "video", startSeconds: 2, endSeconds: 4.5 },
           { number: 3, label: "Room tone", kind: "audio" },
         ]}
+        onReferenceClick={onReferenceClick}
       />,
     );
     expect(screen.getByLabelText("Numbered references")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Reference #2/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Agent reference A2/ }));
+    expect(screen.getByRole("textbox", { name: "Message the external Agent" })).toHaveValue("@A2 ");
+    expect(onReferenceClick).toHaveBeenCalledWith(expect.objectContaining({ number: 2 }));
     expect(screen.queryByRole("button", { name: /inspect visuals/i })).not.toBeInTheDocument();
   });
 
@@ -212,9 +240,42 @@ describe("ExternalAgentPanel", () => {
       />,
     );
     expect(screen.getByTestId("session-token-total")).toHaveTextContent(
-      "1,200 tokens total",
+      "1,200 tokens processed",
     );
     expect(screen.queryByText("Usage")).not.toBeInTheDocument();
+  });
+
+  it("separates current-turn usage from cumulative processed tokens", () => {
+    render(
+      <ExternalAgentPanel
+        viewModel={{
+          connection: { state: "connected" },
+          capabilities: { basic: true, streaming: true, full: true },
+          messages: [],
+          thinkingSummary: null,
+          toolCalls: [],
+          approvals: [],
+          activities: [{
+            type: "usage",
+            id: "usage-1",
+            sequence: 1,
+            inputTokens: 7_230_541,
+            cachedInputTokens: 7_058_176,
+            outputTokens: 30_945,
+            reasoningOutputTokens: 18_519,
+            totalTokens: 7_261_486,
+            turnTotalTokens: 2_004_773,
+            currentContextTokens: 172_624,
+          }],
+        }}
+      />,
+    );
+    const metric = screen.getByTestId("session-token-total");
+    expect(metric).toHaveTextContent("Turn 2,004,773 · 7,261,486 tokens processed");
+    expect(metric).toHaveAttribute(
+      "title",
+      "Current context: 172624 · Cached input: 7058176 · Reasoning output: 18519",
+    );
   });
 
   it("shows visual artifact metadata and blocks an unsafe preview URL", () => {

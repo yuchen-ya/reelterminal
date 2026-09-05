@@ -2,7 +2,7 @@ import type { JSX } from "react";
 import type React from "react";
 import { useTranslation } from "react-i18next";
 
-import { OpenReelMark } from "../brand/OpenReelMark";
+import { ReelTerminalMark } from "@/components/brand/ReelTerminalMark";
 import { useDesktopEditorBootstrap } from "./useDesktopEditorBootstrap";
 
 export function EditorBootstrapGate({
@@ -23,7 +23,7 @@ export function EditorBootstrapGate({
     return (
       <div className="grid h-full place-items-center bg-bg">
         <div className="flex flex-col items-center gap-4">
-          <OpenReelMark
+          <ReelTerminalMark
             size={48}
             className="animate-spin text-accent"
           />

@@ -47,6 +47,7 @@ export const CHANNELS = {
   collabDisable: "openreel:collab:disable",
   collabGetStatus: "openreel:collab:getStatus",
   collabSetMode: "openreel:collab:setMode",
+  collabSetAccess: "openreel:collab:setAccess",
   collabOpenWorkspace: "openreel:collab:openWorkspace",
   conversationGetState: "openreel:conversation:getState",
   conversationAttach: "openreel:conversation:attach",
@@ -54,5 +55,7 @@ export const CHANNELS = {
   conversationResolveApproval: "openreel:conversation:resolveApproval",
   conversationCancel: "openreel:conversation:cancel",
   conversationDetach: "openreel:conversation:detach",
+  conversationSetupInspect: "openreel:conversation:setup:inspect",
+  conversationSetupStart: "openreel:conversation:setup:start",
   conversationEvent: "openreel:conversation:event",
 } as const;

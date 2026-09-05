@@ -101,9 +101,28 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     },
     { name: "unknown field (idempotencyKey is not a save param)", params: { path: "/c/x", idempotencyKey: "k" }, expectValid: false },
   ],
+  "project.rename": [
+    { name: "valid", params: { name: "Dam Letter" }, expectValid: true },
+    {
+      name: "valid with concurrency and idempotency",
+      params: { name: "Dam Letter", expectedRevision: 3, idempotencyKey: "rename-1" },
+      expectValid: true,
+    },
+    { name: "missing name", params: {}, expectValid: false },
+    { name: "empty name", params: { name: "   " }, schemaValid: true, expectValid: false },
+    { name: "wrong type", params: { name: 7 }, expectValid: false },
+    { name: "unknown field", params: { name: "Demo", path: "/tmp/demo" }, expectValid: false },
+  ],
   "project.get_state": [
     { name: "no params is valid", params: {}, expectValid: true },
     { name: "unknown field", params: { summary: true }, expectValid: false },
+  ],
+  "project.changes": [
+    { name: "valid", params: { sinceRevision: 0, limit: 50 }, expectValid: true },
+    { name: "missing sinceRevision", params: {}, expectValid: false },
+    { name: "negative revision", params: { sinceRevision: -1 }, expectValid: false },
+    { name: "limit above ceiling", params: { sinceRevision: 0, limit: 201 }, expectValid: false },
+    { name: "unknown field", params: { sinceRevision: 0, verbose: true }, expectValid: false },
   ],
   "media.import": [
     { name: "valid", params: { path: "/media/input.mp4" }, expectValid: true },
@@ -121,9 +140,24 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     },
     { name: "unknown field", params: { path: "/media/input.mp4", url: "https://x" }, expectValid: false },
   ],
+  "media.analyze_start": [
+    { name: "valid technical analysis", params: { mediaId: "m1", analysisTypes: ["technicalQuality"] }, expectValid: true },
+    { name: "valid multiple declared types", params: { mediaId: "m1", analysisTypes: ["sceneCuts", "silence"] }, expectValid: true },
+    { name: "missing mediaId", params: { analysisTypes: ["technicalQuality"] }, expectValid: false },
+    { name: "empty analysisTypes", params: { mediaId: "m1", analysisTypes: [] }, expectValid: false },
+    { name: "unknown analysis type", params: { mediaId: "m1", analysisTypes: ["sentiment"] }, expectValid: false },
+    { name: "unknown field", params: { mediaId: "m1", analysisTypes: ["technicalQuality"], path: "/tmp/x" }, expectValid: false },
+  ],
   "timeline.get": [
     { name: "no params is valid", params: {}, expectValid: true },
     { name: "unknown field", params: { trackId: "v1" }, expectValid: false },
+  ],
+  "timeline.query": [
+    { name: "empty bounded query is valid", params: {}, expectValid: true },
+    { name: "valid namespaced refs", params: { refs: ["@A1", "R2"], limit: 20 }, expectValid: true },
+    { name: "bare hash ref forbidden", params: { refs: ["#1"] }, schemaValid: true, expectValid: false },
+    { name: "unknown field projection", params: { fields: ["rawProject"] }, expectValid: false },
+    { name: "unknown envelope field", params: { query: "clip" }, expectValid: false },
   ],
   "editor.get_context": [
     { name: "no params is valid", params: {}, expectValid: true },
@@ -147,11 +181,68 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "seek requires timeSeconds (runtime cross-field rule)", params: { action: "seek" }, schemaValid: true, expectValid: false },
     { name: "unknown field", params: { action: "pause", speed: 2 }, expectValid: false },
   ],
+  "edit.validate": [
+    {
+      name: "valid dry-run",
+      params: { ops: [{ op: "track.add", trackType: "video" }], expectedRevision: 0 },
+      expectValid: true,
+    },
+    { name: "missing ops", params: {}, expectValid: false },
+    { name: "empty ops", params: { ops: [] }, expectValid: false },
+    {
+      name: "idempotency is mutation-only",
+      params: { ops: [{ op: "track.add", trackType: "video" }], idempotencyKey: "x" },
+      expectValid: false,
+    },
+  ],
   "edit.apply": [
     {
       name: "valid track.add without optional id",
       params: { ops: [{ op: "track.add", trackType: "video" }] },
       expectValid: true,
+    },
+    {
+      name: "valid track.update",
+      params: { ops: [{ op: "track.update", trackId: "v1", name: "Picture", locked: true, muted: false }] },
+      expectValid: true,
+    },
+    {
+      name: "schema-valid but facade-rejected: track.update needs a change",
+      params: { ops: [{ op: "track.update", trackId: "v1" }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "valid subtitle.importSrt",
+      params: { ops: [{ op: "subtitle.importSrt", srtContent: "1\n00:00:00,000 --> 00:00:01,000\nHello" }] },
+      expectValid: true,
+    },
+    {
+      name: "schema-valid but facade-rejected: malformed SRT",
+      params: { ops: [{ op: "subtitle.importSrt", srtContent: "not srt" }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "valid clip.setColorGrade",
+      params: { ops: [{ op: "clip.setColorGrade", clipId: "c1", temperature: 25, tint: -10 }] },
+      expectValid: true,
+    },
+    {
+      name: "schema-valid but facade-rejected: empty color grade",
+      params: { ops: [{ op: "clip.setColorGrade", clipId: "c1" }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "valid clip.setKeyframes",
+      params: { ops: [{ op: "clip.setKeyframes", clipId: "c1", keyframes: [{ property: "opacity", time: 0, value: 0 }, { property: "opacity", time: 1, value: 1, easing: "ease-out" }] }] },
+      expectValid: true,
+    },
+    {
+      name: "keyframe property is allowlisted",
+      params: { ops: [{ op: "clip.setKeyframes", clipId: "c1", keyframes: [{ property: "audio.volume", time: 0, value: 1 }] }] },
+      expectValid: false,
     },
     {
       name: "valid track.remove",
@@ -613,6 +704,19 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
       schemaValid: true,
     },
+  ],
+  "history.get": [
+    { name: "empty params valid", params: {}, expectValid: true },
+    { name: "bounded limit valid", params: { limit: 20 }, expectValid: true },
+    { name: "limit above ceiling", params: { limit: 101 }, expectValid: false },
+    { name: "unknown field", params: { full: true }, expectValid: false },
+  ],
+  "history.control": [
+    { name: "valid undo", params: { action: "undo", expectedRevision: 2, idempotencyKey: "u1" }, expectValid: true },
+    { name: "valid redo", params: { action: "redo" }, expectValid: true },
+    { name: "missing action", params: {}, expectValid: false },
+    { name: "action enum violation", params: { action: "reset" }, expectValid: false },
+    { name: "unknown field", params: { action: "undo", count: 2 }, expectValid: false },
   ],
   "preview.render_frame": [
     { name: "valid", params: { timeSec: 2.5 }, expectValid: true },

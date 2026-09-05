@@ -1050,7 +1050,7 @@ export const ClipTransitionSection: React.FC<ClipTransitionSectionProps> = ({
     }
 
     return transitions;
-  }, [timelineClipContext]);
+  }, [timelineClipContext, t]);
 
   const edgeTransitions = useMemo<EdgeTransitionConfig[]>(() => {
     if (
@@ -1077,7 +1077,7 @@ export const ClipTransitionSection: React.FC<ClipTransitionSectionProps> = ({
         transition: timelineClipContext.outroTransition,
       },
     ];
-  }, [timelineClipContext]);
+  }, [timelineClipContext, t]);
 
   const handleTransitionCreate = useCallback(
     (transition: Transition) => {
@@ -1203,6 +1203,7 @@ export const ClipTransitionSection: React.FC<ClipTransitionSectionProps> = ({
     exitEasing,
     updateClipKeyframes,
     updateTextClipKeyframes,
+    getGraphicsEngine,
     settings,
   ]);
 

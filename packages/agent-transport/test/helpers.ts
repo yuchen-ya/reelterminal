@@ -121,9 +121,12 @@ export function startServe(
   const handle = spawnCli(["serve", ...args], env);
   const pending: Record<string, any>[] = [];
   let notify: (() => void) | null = null;
+  let stdoutRemainder = "";
   handle.child.stdout.on("data", (chunk: string) => {
-    handle.stdout += chunk;
-    for (const line of chunk.split("\n")) {
+    const framed = stdoutRemainder + chunk;
+    const lines = framed.split("\n");
+    stdoutRemainder = lines.pop() ?? "";
+    for (const line of lines) {
       if (line.trim().length === 0) continue;
       try {
         const parsed = JSON.parse(line);

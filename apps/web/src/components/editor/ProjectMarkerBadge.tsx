@@ -40,7 +40,7 @@ export function ProjectMarkerBadge({
       aria-label={tooltip}
       title={tooltip}
     >
-      #{number}
+      R{number}
     </span>
   );
 }

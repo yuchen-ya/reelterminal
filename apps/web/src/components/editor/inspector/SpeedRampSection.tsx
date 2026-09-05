@@ -396,8 +396,14 @@ export const SpeedRampSection: React.FC<SpeedRampSectionProps> = ({ clip }) => {
 
   const currentSpeed = speedData?.baseSpeed ?? 1;
   const isReverse = speedData?.reverse ?? false;
-  const keyframes = speedData?.keyframes ?? [];
-  const freezeFrames = speedData?.freezeFrames ?? [];
+  const keyframes = useMemo(
+    () => speedData?.keyframes ?? [],
+    [speedData?.keyframes],
+  );
+  const freezeFrames = useMemo(
+    () => speedData?.freezeFrames ?? [],
+    [speedData?.freezeFrames],
+  );
   const pitchCorrection = speedData?.pitchCorrection ?? true;
 
   const handleSpeedChange = useCallback(

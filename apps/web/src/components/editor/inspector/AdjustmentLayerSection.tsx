@@ -209,7 +209,10 @@ export const AdjustmentLayerSection: React.FC<AdjustmentLayerSectionProps> = ({
     return null;
   }, [project.timeline.tracks, clipId]);
 
-  const allLayers = project.adjustmentLayers ?? [];
+  const allLayers = useMemo(
+    () => project.adjustmentLayers ?? [],
+    [project.adjustmentLayers],
+  );
   const trackLayers = useMemo(
     () => currentTrack
       ? allLayers.filter((layer) => layer.trackId === currentTrack.id)

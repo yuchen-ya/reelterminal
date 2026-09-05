@@ -2,7 +2,7 @@
 name: agent-video
 description: >-
   Drive ReelTerminal through its live desktop MCP interface by default: connect
-  the external Agent to the open GUI project's 17-tool openreel-live-mcp
+  the external Agent to the open GUI project's 24-tool openreel-live-mcp
   facade, inspect context, edit, preview, export, and verify. The optional
   agent-video serve/run transport remains available for headless workflows.
 ---
@@ -78,11 +78,13 @@ Use an explicit endpoint-file option only if the connector or host requires
 one; the default is already `~/.openreel/live-endpoint.json`. Do not copy the
 token into project files, prompts, or logs.
 
-This connector exposes the same open GUI project through exactly **17 tools**:
+This connector exposes the same open GUI project through exactly **24 tools**:
 
 `session_describe` · `capabilities_get` · `project_create` · `project_open` ·
-`project_save` · `project_get_state` · `media_import` · `timeline_get` ·
-`editor_get_context` · `editor_control` · `edit_apply` · `preview_render_frame` ·
+`project_save` · `project_rename` · `project_get_state` · `project_changes` ·
+`media_import` · `media_analyze_start` · `timeline_get` · `timeline_query` ·
+`editor_get_context` · `editor_control` · `edit_validate` · `edit_apply` ·
+`history_get` · `history_control` · `preview_render_frame` ·
 `visual_inspect` ·
 `export_start` · `job_status` · `job_cancel` · `verify_artifact`.
 
@@ -91,6 +93,24 @@ MCP wire each dot becomes an underscore (`session.describe` →
 `session_describe`, `editor.control` → `editor_control`). `session_describe`'s
 verb list, documentation, and error messages use the dotted form; `tools/call`
 takes the underscored tool name.
+
+Use `project_changes {sinceRevision}` to resume from a known revision; when it
+returns `requiresFullRefresh:true`, recover with bounded `timeline_query`
+calls (or `project_get_state` only when a full hydration dump is genuinely
+required). `timeline_query` accepts only namespaced `@A<n>` and `R<n>` refs,
+explicit ids/ranges/types, an allowlisted `fields` projection, and bounded
+pagination. Never send a bare `#N` guess. Before a broad edit, call
+`edit_validate` with the same ops as `edit_apply`; validation never mutates the
+project. In live mode, `history_get` summarizes the canonical GUI history and
+`history_control` performs revision-guarded, idempotent undo/redo through that
+same history. Headless history control is honestly unavailable.
+
+`media_analyze_start` is asynchronous and returns a generalized job id.
+Inspect `capabilities_get.mediaAnalysis.types` before requesting analysis,
+then use `job_status`/`job_cancel` exactly as for export. At this contract
+revision only `technicalQuality` has a built-in real provider; unsupported
+types fail before a job is created. Large future transcript/frame results must
+remain artifact references rather than inline responses.
 
 The live facade reports GUI-owned project lifecycle operations honestly as
 unavailable (`project_create` and `project_open`). `media_import` accepts an
@@ -107,7 +127,7 @@ generated media, helper scripts, or deliverables across the source repository.
 mode and its explicit semantics. `editor_get_context` also includes the live
 selection, playhead, ranges, canvas target, context revision, and stable
 Agent-reference mapping. References are
-session-local (`#1`, `#2`, `#3`, …), deterministic for multi-selection, never
+session-local (`@A1`, `@A2`, `@A3`, …), deterministic for multi-selection, never
 renumbered/reused, and stale after deletion rather than silently rebinding.
 The context revision changes on meaningful selection or explicit seek/scrub
 changes; ordinary playback ticks do not invalidate a context CAS guard every
@@ -187,7 +207,7 @@ pipeline: `project_save` → `export_start` (with `destinationPath` into the
 job's `output/`) → `job_status` to a terminal state → `verify_artifact` (a
 reported `deliveredTo` path is accepted verbatim) → evidence frames/contact
 sheets into `evidence/` → report the paths. Waiting on a creative decision
-("want me to change #2?") is never a delivery trigger.
+("want me to change @A2?") is never a delivery trigger.
 
 ### Agent workspace discipline
 
@@ -216,7 +236,7 @@ atomically write the private
 `~/.openreel/conversation-endpoint.json` descriptor with mode `0600`, and
 remove it on exit; ReelTerminal only reads that descriptor. There is no universal
 provider connector and no embedded model. MCP tool access through the live
-facade remains a separate 17-tool integration and must not be confused with
+facade remains a separate 24-tool integration and must not be confused with
 the conversation transport.
 
 One `agent-video` process owns exactly **one facade session** and that
@@ -256,7 +276,7 @@ about why; there is no skill-level workaround. Missing capability ⇒ read
 
 ## 2. Optional headless `serve` workflow (configuration, not variants)
 
-The same 17 tools exist on every client. Clients must spawn the server
+The same 24 tools exist on every client. Clients must spawn the server
 **directly** (no `sh -c` wrapper — a wrapper that holds stdin open defeats
 disconnect detection). Set the `OPENREEL_AVE_*` env vars in the server's
 environment; every root value must be an absolute path to an existing
@@ -307,7 +327,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
   `~` are refused, never resolved against any cwd. Paths must resolve
   inside the matching root class; escapes and URLs fail.
 
-## 4. The 17 tools
+## 4. The 24 tools
 
 | Tool | Purpose |
 |---|---|
@@ -316,12 +336,19 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `project_create` | Create this session's single project (single-initialization lifecycle verb) |
 | `project_open` | Open a checkpoint file into this session's empty project slot (single-initialization lifecycle verb) |
 | `project_save` | Save the active project to a checkpoint file (a snapshot, not a mutation) |
+| `project_rename` | Rename the open project through the canonical action path |
 | `project_get_state` | Full canonical dump (Decision 8) |
+| `project_changes` | Bounded paged entity/field changes since a revision; explicit full-refresh fallback |
 | `media_import` | Path inside `mediaRoots`; URLs refused |
+| `media_analyze_start` | Start a generalized async analysis job after checking per-type capabilities |
 | `timeline_get` | Compact view — preferred read |
+| `timeline_query` | Bounded local query by @A/R refs, ids, ranges, types, fields, and cursor |
 | `editor_get_context` | Current work mode plus editor context (selection, playhead, canvas point); headless-honest — see below |
 | `editor_control` | Ephemeral live playback and selection/reveal control; never changes project revision or undo history |
+| `edit_validate` | Side-effect-free dry-run of the exact `edit_apply` op schema and Core semantics |
 | `edit_apply` | Closed op set; atomic; `expectedRevision` (+`expectedContextRevision` live) + `idempotencyKey` |
+| `history_get` | Bounded canonical undo/redo availability and summaries |
+| `history_control` | Live canonical undo/redo with writer gate, CAS, and idempotency; headless unsupported |
 | `preview_render_frame` | Replay/ledger only; artifact to `artifactRoot`; raster defaults to project size, explicit even `width`/`height` scale-render the same frame |
 | `visual_inspect` | Sample 1–12 real Chromium frames for a clip (`clipId`) or explicit time range (`timeRange: {startSec, endSec}`, exactly one of the two); return PNG artifacts and a contact sheet when supported; default raster 640 px wide, aspect-preserved (bounds in facade README) |
 | `export_start` | Snapshot job; returns `jobId` immediately |
@@ -378,7 +405,7 @@ and `{projectId, projectName, windowId}`.
 
 ### The `edit_apply` op vocabulary
 
-Twenty-three ops, one atomic batch each call (the exact fields and bounds live in
+Twenty-seven ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
 - `track.add` — create a track (`trackType`); `track.remove` — remove an empty
@@ -392,6 +419,9 @@ Twenty-three ops, one atomic batch each call (the exact fields and bounds live i
   differences); `clip.move` — move it to an absolute timeline
   `startTime` and optionally another track; `clip.trim` — move a clip's `inPoint`/`outPoint` (at
   least one, `outPoint` must exceed `inPoint`).
+- `track.update` — rename a track or set its lock, hidden, muted, and solo
+  state through the same Core actions as the GUI. Hidden picture tracks and
+  muted audio tracks carry through preview/export semantics.
 - `clip.split` — cut a clip at an absolute timeline time strictly inside
   its bounds; the result reports the new right-hand `clipId`. Constant-speed
   and reversed clips preserve the correct source ranges; variable-speed and
@@ -423,6 +453,13 @@ Twenty-three ops, one atomic batch each call (the exact fields and bounds live i
 - `clip.setTransform` — patch visual composition fields: pixel offset from
   frame center, X/Y scale, rotation, normalized anchor, opacity, fit mode,
   and normalized source crop. Use `clearCrop:true` to restore the full source.
+- `clip.setKeyframes` — replace a clip's bounded transform/opacity animation
+  (`opacity`, `position.x/y`, `scale.x/y`, `rotation`) in clip-local time.
+  Audio-volume keyframes remain unavailable until preview/export share an
+  automation evaluator; use constant `clip.setVolume` meanwhile.
+- `clip.setColorGrade` — merge temperature/tint into the persisted clip grade,
+  or `clear:true`; the Core compositor applies the same grade in preview and
+  export. LUT import is not exposed until a bounded contained parser lands.
 - `clip.setVolume` — linear gain `0..4` on any clip (audio or video
   track): `0` = mute, `1` = unity; it flows into the exported audio.
 - `clip.setFade` — set `fadeIn` and/or `fadeOut` in seconds; each value
@@ -444,6 +481,9 @@ Twenty-three ops, one atomic batch each call (the exact fields and bounds live i
   one marker by its `number`; an unknown number fails `NOT_FOUND` listing
   the assigned numbers. Read markers (sorted by number) from
   `timeline_get`'s `markers` array.
+- `subtitle.importSrt` — parse one inline SRT document (≤256 KiB, ≤500 cues)
+  into the canonical subtitle model used by the GUI, preview, and export.
+  Malformed or partially invalid SRT fails the whole atomic batch.
 
 Ops in one batch see each other's results, and a failure anywhere rolls
 the whole batch back; a deleted overlay or clip stays deleted after

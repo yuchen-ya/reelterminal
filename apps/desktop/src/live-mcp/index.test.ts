@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import os from "node:os";
 import path from "node:path";
+import { FACADE_TOOL_NAMES } from "@openreel/agent-facade";
 import {
   createSerializedLineWriter,
   endpointFilePath,
@@ -64,6 +65,35 @@ describe("forwardLine", () => {
     );
     expect(JSON.parse(result!)).toMatchObject({ id: 9, error: { code: -32602 } });
     expect(post).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "project_rename",
+    "project_changes",
+    "media_analyze_start",
+    "timeline_query",
+    "edit_validate",
+    "history_get",
+    "history_control",
+  ] as const)("forwards the live facade tool %s", async (name) => {
+    expect(FACADE_TOOL_NAMES).toContain(name);
+    const upstream = {
+      jsonrpc: "2.0",
+      id: 24,
+      result: { structuredContent: { ok: true, value: { tool: name } } },
+    };
+    const post = vi.fn().mockResolvedValue(upstream);
+    const request = {
+      jsonrpc: "2.0",
+      id: 24,
+      method: "tools/call",
+      params: { name, arguments: {} },
+    };
+
+    const result = await forwardLine(JSON.stringify(request), post);
+
+    expect(post).toHaveBeenCalledWith(request);
+    expect(JSON.parse(result!)).toEqual(upstream);
   });
 
   it("turns upstream failures into concise JSON-RPC errors", async () => {

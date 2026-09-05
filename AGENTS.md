@@ -30,3 +30,11 @@ should contain product source and documentation, not an Agent's job contents.
 
 When only changing ReelTerminal's source code, this workspace rule does not
 move normal fixtures or tests out of their package-specific locations.
+
+## Use one source checkout
+
+The sole development checkout is
+`/Users/macbuke/my-project/agent-video-engine-lab`.
+Work in this directory, including delegated source-code tasks. Do not create
+another checkout or Git worktree unless the user explicitly requests one.
+Generated media still belongs in the external Agent workspace described above.

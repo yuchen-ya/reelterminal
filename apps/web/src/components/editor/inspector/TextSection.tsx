@@ -193,7 +193,10 @@ export const TextSection: React.FC<TextSectionProps> = ({ clipId, clipIds }) => 
     project,
   } = useProjectStore();
   const [fontFile, setFontFile] = useState<File | null>(null);
-  const targetClipIds = clipIds?.length ? clipIds : [clipId];
+  const targetClipIds = useMemo(
+    () => (clipIds?.length ? clipIds : [clipId]),
+    [clipId, clipIds],
+  );
   const isBatch = targetClipIds.length > 1;
 
   const textClips = useMemo(
@@ -604,7 +607,7 @@ const TextShaderControls: React.FC<{
         materialDefs,
         [{ value: "", label: t("None") }],
       ),
-    [materialDefs],
+    [materialDefs, t],
   );
 
   const def = shader ? getMotionShaderDef(shader.shaderId) : undefined;
@@ -728,7 +731,10 @@ const Text3DControls: React.FC<Text3DControlsProps> = ({ clipId, clipIds }) => {
     beginHistoryGroup,
     endHistoryGroup,
   } = useProjectStore();
-  const targetClipIds = clipIds?.length ? clipIds : [clipId];
+  const targetClipIds = useMemo(
+    () => (clipIds?.length ? clipIds : [clipId]),
+    [clipId, clipIds],
+  );
   const isBatch = targetClipIds.length > 1;
   const textClip = useMemo(
     () => getTextClip(clipId),

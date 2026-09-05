@@ -204,7 +204,7 @@ describe("live endpoint MCP protocol", () => {
     expect(activity).toBe(before + 1);
   });
 
-  it("tools/list returns exactly the 17 facade tools, schemas verbatim, no renderer round-trip", async () => {
+  it("tools/list returns exactly the 24 facade tools, schemas verbatim, no renderer round-trip", async () => {
     const res = await rpc({ jsonrpc: "2.0", id: 1, method: "tools/list" }, token);
     const json = (await res.json()) as {
       result: {
@@ -212,7 +212,7 @@ describe("live endpoint MCP protocol", () => {
       };
     };
     const tools = json.result.tools;
-    expect(tools).toHaveLength(17);
+    expect(tools).toHaveLength(24);
     expect(tools.map((t) => t.name)).toEqual(FACADE_VERBS.map(toolNameForVerb));
     expect(tools.some((t) => t.name === "editor_get_context")).toBe(true);
     // The inputSchema is the facade emission, verbatim (no copy drift) —
@@ -269,6 +269,35 @@ describe("live endpoint MCP protocol", () => {
     );
     const failedJson = (await failed.json()) as { result: { isError: boolean } };
     expect(failedJson.result.isError).toBe(true);
+  });
+
+  it.each([
+    ["project_rename", "project.rename"],
+    ["project_changes", "project.changes"],
+    ["media_analyze_start", "media.analyze_start"],
+    ["timeline_query", "timeline.query"],
+    ["edit_validate", "edit.validate"],
+    ["history_get", "history.get"],
+    ["history_control", "history.control"],
+  ] as const)("routes %s through the live facade as %s", async (name, verb) => {
+    calls.length = 0;
+    nextResult = { ok: true, value: { routed: verb } };
+    const res = await rpc(
+      {
+        jsonrpc: "2.0",
+        id: 24,
+        method: "tools/call",
+        params: { name, arguments: {} },
+      },
+      token,
+    );
+    const json = (await res.json()) as {
+      result: { structuredContent: FacadeResult<unknown>; isError: boolean };
+    };
+
+    expect(calls).toEqual([{ verb, params: {} }]);
+    expect(json.result.structuredContent).toEqual(nextResult);
+    expect(json.result.isError).toBe(false);
   });
 
   it("embeds a facade-contained visual PNG as an MCP image block", async () => {

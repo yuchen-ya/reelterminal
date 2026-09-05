@@ -374,10 +374,14 @@ export function staticValidate(steps: readonly WorkflowStep[]): readonly StaticE
       // await.jobId must target an export.start step, single-hop.
       if (step.kind === "await") {
         const target = steps.find((s) => s.id === parsed.stepId);
-        if (target !== undefined && (target.kind !== "verb" || target.verb !== "export.start")) {
+        if (
+          target !== undefined &&
+          (target.kind !== "verb" ||
+            (target.verb !== "export.start" && target.verb !== "media.analyze_start"))
+        ) {
           errors.push({
             line: step.line,
-            message: `step "${step.id}": await.jobId may only reference an earlier export.start step (got "${parsed.stepId}", which is a ${target.kind === "verb" ? `"${target.verb}" step` : '"await" step'})`,
+            message: `step "${step.id}": await.jobId may only reference an earlier export.start or media.analyze_start step (got "${parsed.stepId}", which is a ${target.kind === "verb" ? `"${target.verb}" step` : '"await" step'})`,
           });
         }
       }
@@ -650,7 +654,10 @@ export async function executeWorkflow(
         p: unknown,
       ) => Promise<FacadeResult<unknown>>;
       const result = await call(substituted.value);
-      if (step.verb === "export.start" && result.ok) {
+      if (
+        (step.verb === "export.start" || step.verb === "media.analyze_start") &&
+        result.ok
+      ) {
         const value = result.value as { readonly jobId?: unknown };
         if (typeof value?.jobId === "string") session.trackJob(value.jobId);
       }

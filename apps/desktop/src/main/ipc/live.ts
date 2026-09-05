@@ -18,6 +18,9 @@ import type { LiveSessionHost } from "../live/live-session-host";
 const setModeArgsSchema = z.object({
   mode: z.enum(["guided", "collaborative", "autonomous"]),
 });
+const setAccessArgsSchema = z.object({
+  access: z.enum(["read-only", "write"]),
+});
 
 function assertMainWindowSender(sender: unknown): void {
   const contents = liveTargetWebContents();
@@ -48,6 +51,12 @@ export function registerLiveIpc(host: LiveSessionHost): void {
     assertMainWindowSender(event.sender);
     const { mode } = setModeArgsSchema.parse(raw);
     return host.setWorkMode(mode);
+  });
+
+  ipcMain.handle(CHANNELS.collabSetAccess, async (event, raw) => {
+    assertMainWindowSender(event.sender);
+    const { access } = setAccessArgsSchema.parse(raw);
+    return host.setAccess(access);
   });
 
   /**

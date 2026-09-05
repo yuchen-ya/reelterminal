@@ -1,6 +1,5 @@
 import { useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { ToastContainer } from "./components/Toast";
-import { ScriptViewDialog } from "./components/editor/ScriptViewDialog";
 import { SearchModal } from "./components/editor/SearchModal";
 import { MobileBlocker } from "./components/MobileBlocker";
 import { WelcomeScreen } from "./components/welcome";
@@ -22,6 +21,11 @@ const MotionCreatorApp = lazy(() =>
   import("./motion/MotionCreatorApp").then((module) => ({
     default: module.MotionCreatorApp,
   }))
+);
+const ScriptViewDialog = lazy(() =>
+  import("./components/editor/ScriptViewDialog").then((module) => ({
+    default: module.ScriptViewDialog,
+  })),
 );
 
 const LoadingSpinner: React.FC<{ message: string }> = ({ message }) => (
@@ -158,10 +162,11 @@ function App() {
         </Suspense>
       )}
       <ToastContainer />
-      <ScriptViewDialog
-        isOpen={activeModal === "scriptView"}
-        onClose={closeModal}
-      />
+      {activeModal === "scriptView" && (
+        <Suspense fallback={null}>
+          <ScriptViewDialog isOpen onClose={closeModal} />
+        </Suspense>
+      )}
       <SearchModal isOpen={activeModal === "search"} onClose={closeModal} />
       {showDialog && availableSaves.length > 0 && (
         <RecoveryDialog

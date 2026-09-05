@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   MOTION_OBJECT_3D_KINDS,
   type MotionObject3DKind,
@@ -65,7 +65,7 @@ export function Scene3DInspector({
   replaceLayer,
 }: Scene3DInspectorProps): JSX.Element {
   const { t } = useTranslation();
-  const objects = layer.objects ?? [];
+  const objects = useMemo(() => layer.objects ?? [], [layer.objects]);
   const [activeId, setActiveId] = useState<string>(objects[0]?.id ?? "");
 
   useEffect(() => {

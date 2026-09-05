@@ -42,10 +42,7 @@ import {
   getBuiltInEditingTemplates,
   getMotionPreset,
   motionEngine,
-  normalizeGeneratedShaders,
-  normalizeProjectMotionFields,
   reflowMotionAutoLayoutGroups,
-  registerProjectGeneratedShaders,
   resolveEditingTemplate,
 } from "@openreel/core";
 import { createMarkerSlice } from "./project/marker-slice";
@@ -57,6 +54,8 @@ import { createProjectStoreHelpers } from "./project/store-helpers";
 import { createTextGraphicsSlice } from "./project/text-graphics-slice";
 import { createHistorySlice } from "./project/history-slice";
 import { createClipSlice } from "./project/clip-slice";
+import { createProjectLifecycleSlice } from "./project/lifecycle-slice";
+import { createProjectPersistenceSlice } from "./project/persistence-slice";
 import {
   appendCreatedIdDiff,
   emptyActionBatchCreatedIds,
@@ -72,11 +71,7 @@ import type {
 } from "../bridges/effects-bridge";
 import { getEffectsBridge } from "../bridges/effects-bridge";
 import { getTransitionBridge } from "../bridges/transition-bridge";
-import {
-  autoSaveManager,
-  initializeAutoSave,
-  type AutoSaveMetadata,
-} from "../services/auto-save";
+import type { AutoSaveMetadata } from "../services/auto-save";
 import { useEngineStore } from "./engine-store";
 import {
   createEmptyProject,
@@ -88,13 +83,6 @@ import {
   type TimelineClipboardItem,
 } from "./project/index";
 import {
-  loadProjectMedia,
-  loadFileHandle,
-  loadDirectoryHandle,
-} from "../services/media-storage";
-import { restoreMediaItem } from "../utils/media-recovery";
-import { projectManager } from "../services/project-manager";
-import {
   planCreationObjectEdit,
   type CreationObjectEditPatch,
 } from "../motion/creation-object-editing";
@@ -103,6 +91,11 @@ import {
   type CreationCameraEditPatch,
 } from "../motion/creation-camera-editing";
 import { planRecoverMotionScene3DLayer } from "../motion/creation-recovery";
+import { ProjectChangeJournal } from "@openreel/agent-facade/project-changes";
+import type {
+  ProjectChangesParams,
+  ProjectChangesResult,
+} from "@openreel/agent-facade";
 
 /**
  * ProjectState - Complete state interface for project management
@@ -643,16 +636,11 @@ function motionCompositionsEqual(
   return JSON.stringify(strip(a)) === JSON.stringify(strip(b));
 }
 
-// Guards against re-running auto-save setup (which subscribes to the store and
-// starts the interval) more than once across editor mount/unmount cycles, which
-// would otherwise leak a store subscription and fire markDirty repeatedly.
-let autoSaveInitialized = false;
-
 /**
  * Create the project store
  */
 export const useProjectStore = create<ProjectState>()(
-  subscribeWithSelector((set, get) => {
+  subscribeWithSelector((set, get, api) => {
     const actionHistory = new ActionHistory();
     const actionExecutor = new ActionExecutor(actionHistory);
 
@@ -1743,194 +1731,10 @@ export const useProjectStore = create<ProjectState>()(
       lastPastedClipIds: [] as string[],
       copiedEffects: [] as Effect[],
 
-      createNewProject: (
-        name?: string,
-        settings?: Partial<ProjectSettings>,
-      ) => {
-        const newHistory = new ActionHistory();
-        const newExecutor = new ActionExecutor(newHistory);
-        const previousProject = get().project;
-        const nextProject = createEmptyProject(name, settings);
-
-        syncProjectEffectsBridge(nextProject, previousProject);
-        syncProjectTransitionsBridge(nextProject, previousProject);
-
-        registerProjectGeneratedShaders(nextProject);
-
-        useEngineStore.getState().getTitleEngine()?.loadTextClips([]);
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
-        graphicsEngine?.loadShapeClips([]);
-        graphicsEngine?.loadSVGClips([]);
-        graphicsEngine?.loadStickerClips([]);
-
-        set({
-          project: nextProject,
-          hasOpenProject: true,
-          actionHistory: newHistory,
-          actionExecutor: newExecutor,
-          clipUndoStack: [],
-          clipRedoStack: [],
-          templateUndoStack: [],
-          templateRedoStack: [],
-          clipboard: [],
-          lastPastedClipIds: [],
-          error: null,
-        });
-      },
-
-      loadProject: (incomingProject: Project) => {
-        const motionNormalized = normalizeProjectMotionFields(incomingProject);
-        const project: Project = {
-          ...motionNormalized,
-          generatedShaders: normalizeGeneratedShaders(
-            motionNormalized.generatedShaders,
-          ),
-        };
-        const previousProject = get().project;
-        const titleEngine = useEngineStore.getState().getTitleEngine();
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
-
-        titleEngine?.loadTextClips(project.textClips ?? []);
-        if (graphicsEngine) {
-          graphicsEngine.loadShapeClips(project.shapeClips ?? []);
-          graphicsEngine.loadSVGClips(project.svgClips ?? []);
-          graphicsEngine.loadStickerClips(project.stickerClips ?? []);
-        }
-
-        const newHistory = new ActionHistory();
-        const newExecutor = new ActionExecutor(newHistory);
-
-        // Fix legacy projects where timeline.duration was never persisted
-        const computedDuration = calculateTimelineDuration(project);
-        const fixedProject = computedDuration !== project.timeline.duration
-          ? { ...project, timeline: { ...project.timeline, duration: computedDuration } }
-          : project;
-
-        syncProjectEffectsBridge(fixedProject, previousProject);
-        syncProjectTransitionsBridge(fixedProject, previousProject);
-
-        registerProjectGeneratedShaders(fixedProject);
-
-        set({
-          project: fixedProject,
-          hasOpenProject: true,
-          actionHistory: newHistory,
-          actionExecutor: newExecutor,
-          clipUndoStack: [],
-          clipRedoStack: [],
-          templateUndoStack: [],
-          templateRedoStack: [],
-          clipboard: [],
-          lastPastedClipIds: [],
-          error: null,
-        });
-
-        // Auto-restore placeholder assets from saved FileSystemFileHandles (same machine)
-        const placeholders = fixedProject.mediaLibrary.items.filter(
-          (item) => item.isPlaceholder && item.sourceFile,
-        );
-        if (placeholders.length > 0 && "FileSystemFileHandle" in window) {
-          (async () => {
-            let restored = 0;
-            const stillMissing: typeof placeholders = [];
-
-            // Tier 1: try individual file handles (follow file across folder moves)
-            for (const item of placeholders) {
-              if (!item.sourceFile) continue;
-              try {
-                const handle = await loadFileHandle(item.sourceFile.name, item.sourceFile.size);
-                if (!handle) { stillMissing.push(item); continue; }
-                const file = await handle.getFile();
-                await get().replaceMediaAsset(item.id, file, item.sourceFile.folder);
-                restored++;
-              } catch {
-                stillMissing.push(item); // stale handle
-              }
-            }
-
-            // Tier 2: scan the stored relink folder for files not found via handle
-            if (stillMissing.length > 0) {
-              try {
-                const dirInfo = await loadDirectoryHandle(fixedProject.id);
-                if (dirInfo) {
-                  const fileMap = new Map<string, { file: File; folder: string }>();
-                  const entries = (dirInfo.handle as unknown as { entries: () => AsyncIterableIterator<[string, FileSystemHandle]> }).entries();
-                  for await (const [, fh] of entries) {
-                    if ((fh as FileSystemHandle).kind === "file") {
-                      const f = await (fh as FileSystemFileHandle).getFile();
-                      fileMap.set(`${f.name.toLowerCase()}:${f.size}`, { file: f, folder: dirInfo.folderName });
-                    }
-                  }
-                  for (const item of stillMissing) {
-                    if (!item.sourceFile) continue;
-                    const entry = fileMap.get(`${item.sourceFile.name.toLowerCase()}:${item.sourceFile.size}`);
-                    if (entry) {
-                      try {
-                        await get().replaceMediaAsset(item.id, entry.file, entry.folder);
-                        restored++;
-                      } catch { /* skip */ }
-                    }
-                  }
-                }
-              } catch { /* dir handle stale or unavailable */ }
-            }
-
-            if (restored > 0) {
-              console.info(`[ProjectStore] Auto-restored ${restored} asset(s) from file handles`);
-            }
-          })();
-        }
-      },
-
-      // Rename project
-      renameProject: async (name: string) => {
-        const { project, actionExecutor } = get();
-        const action: Action = {
-          type: "project/rename",
-          id: uuidv4(),
-          timestamp: Date.now(),
-          params: { name },
-        };
-        const result = await actionExecutor.execute(action, project);
-        if (result.success) {
-          set({ project: { ...project } });
-        }
-        return result;
-      },
-
-      // Update project settings
-      updateSettings: async (settings: Partial<ProjectSettings>) => {
-        const { project, actionExecutor } = get();
-        const action: Action = {
-          type: "project/updateSettings",
-          id: uuidv4(),
-          timestamp: Date.now(),
-          params: settings,
-        };
-        const result = await actionExecutor.execute(action, project);
-        if (result.success) {
-          set({ project: { ...project } });
-        }
-        return result;
-      },
-
-      setCanvasBackground: async (mode, color) => {
-        const { project, actionExecutor } = get();
-        const action: Action = {
-          type: "project/setCanvasBackground",
-          id: uuidv4(),
-          timestamp: Date.now(),
-          params: {
-            backgroundFillMode: mode,
-            layoutBackgroundColor: color,
-          },
-        };
-        const result = await actionExecutor.execute(action, project);
-        if (result.success) {
-          set({ project: { ...project } });
-        }
-        return result;
-      },
+      ...createProjectLifecycleSlice(set, get, {
+        syncProjectEffectsBridge,
+        syncProjectTransitionsBridge,
+      }),
 
       // Media library actions
       ...createMediaSlice(set, get),
@@ -3001,141 +2805,12 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       // Auto-save methods
-      initializeAutoSave: async () => {
-        if (autoSaveInitialized) return;
-        autoSaveInitialized = true;
-        await initializeAutoSave();
-        autoSaveManager.start(() => {
-          const { project } = get();
-          const titleEngine = useEngineStore.getState().getTitleEngine();
-          const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
-
-          return {
-            ...project,
-            textClips: titleEngine?.getAllTextClips() || [],
-            shapeClips: graphicsEngine?.getAllShapeClips() || [],
-            svgClips: graphicsEngine?.getAllSVGClips() || [],
-            stickerClips: graphicsEngine?.getAllStickerClips() || [],
-          };
-        });
-
-        // Subscribe to project state changes to mark as dirty for auto-save
-        // Uses Zustand's subscribeWithSelector middleware to detect changes to project object only
-        // Trigger auto-save when any project field changes (timeline, media, settings, etc.)
-        useProjectStore.subscribe(
-          (state) => state.project,
-          () => {
-            autoSaveManager.markDirty(get().getFullProject());
-          },
-        );
-      },
-
-      checkForRecovery: async () => {
-        const { project } = get();
-        return autoSaveManager.checkForRecovery(project.id);
-      },
-
-      recoverFromAutoSave: async (saveId: string) => {
-        const recoveredProject = await autoSaveManager.recover(saveId);
-        if (recoveredProject) {
-          const storedMedia = await loadProjectMedia(recoveredProject.id);
-          const blobMap = new Map(storedMedia.map((m) => [m.id, m.blob]));
-
-          const restoredItems = await Promise.all(
-            recoveredProject.mediaLibrary.items.map((item) =>
-              restoreMediaItem(item, blobMap.get(item.id)),
-            ),
-          );
-
-          const projectWithMedia: Project = {
-            ...recoveredProject,
-            generatedShaders: normalizeGeneratedShaders(
-              recoveredProject.generatedShaders,
-            ),
-            mediaLibrary: {
-              ...recoveredProject.mediaLibrary,
-              items: restoredItems,
-            },
-          };
-
-          const titleEngine = useEngineStore.getState().getTitleEngine();
-          const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
-
-          if (titleEngine && recoveredProject.textClips) {
-            titleEngine.loadTextClips(recoveredProject.textClips);
-          }
-          if (graphicsEngine) {
-            if (recoveredProject.shapeClips) {
-              graphicsEngine.loadShapeClips(recoveredProject.shapeClips);
-            }
-            if (recoveredProject.svgClips) {
-              graphicsEngine.loadSVGClips(recoveredProject.svgClips);
-            }
-            if (recoveredProject.stickerClips) {
-              graphicsEngine.loadStickerClips(recoveredProject.stickerClips);
-            }
-          }
-
-          const newHistory = new ActionHistory();
-          const newExecutor = new ActionExecutor(newHistory);
-
-          registerProjectGeneratedShaders(projectWithMedia);
-
-          set({
-            project: projectWithMedia,
-            hasOpenProject: true,
-            actionHistory: newHistory,
-            actionExecutor: newExecutor,
-            clipUndoStack: [],
-            clipRedoStack: [],
-            templateUndoStack: [],
-            templateRedoStack: [],
-            error: null,
-          });
-
-          await projectManager.addToRecent(projectWithMedia);
-          return true;
-        }
-        return false;
-      },
-
-      forceSave: async () => {
-        const { project } = get();
-        const titleEngine = useEngineStore.getState().getTitleEngine();
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
-
-        const fullProject: Project = {
-          ...project,
-          // Engines are the overlay authority while alive; a momentarily-null
-          // engine (mount/unmount races) must not drop overlays from the
-          // snapshot — fall back to the project's own mirror arrays.
-          textClips: titleEngine?.getAllTextClips() ?? project.textClips ?? [],
-          shapeClips:
-            graphicsEngine?.getAllShapeClips() ?? project.shapeClips ?? [],
-          svgClips: graphicsEngine?.getAllSVGClips() ?? project.svgClips ?? [],
-          stickerClips:
-            graphicsEngine?.getAllStickerClips() ?? project.stickerClips ?? [],
-        };
-        await autoSaveManager.forceSave(fullProject);
-      },
-
-      getFullProject: (): Project => {
-        const { project } = get();
-        const titleEngine = useEngineStore.getState().getTitleEngine();
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
-
-        return {
-          ...project,
-          // Same engine-null fallback as forceSave: never silently drop
-          // overlays from a snapshot.
-          textClips: titleEngine?.getAllTextClips() ?? project.textClips ?? [],
-          shapeClips:
-            graphicsEngine?.getAllShapeClips() ?? project.shapeClips ?? [],
-          svgClips: graphicsEngine?.getAllSVGClips() ?? project.svgClips ?? [],
-          stickerClips:
-            graphicsEngine?.getAllStickerClips() ?? project.stickerClips ?? [],
-        };
-      },
+      ...createProjectPersistenceSlice(set, get, {
+        subscribeToProject: (listener): (() => void) =>
+          api.subscribe((state, previousState) => {
+            if (state.project !== previousState.project) listener();
+          }),
+      }),
 
       getEditingTemplates: () => [...getBuiltInEditingTemplates()],
 
@@ -4597,10 +4272,39 @@ export const useProjectStore = create<ProjectState>()(
 // Every committed mutation path (manual edits, agent edits, engine-aware
 // overlay edits, undo, redo, project load) replaces the `project` reference,
 // so one reference comparison here covers them all. In-memory only.
+const projectChangeJournal = new ProjectChangeJournal();
+// Core ActionExecutor mutates the current Project before the store publishes
+// a replacement reference, so Zustand's prevState may share already-mutated
+// nested arrays. Keep one detached observer snapshot to diff the actual
+// before/after worlds for both GUI and Agent edits. Project documents are JSON
+// data at the persistence boundary. Using that same boundary here also keeps
+// test-only spies or other non-document values from breaking the observer.
+function snapshotProjectForChanges(project: Project): Project {
+  return JSON.parse(JSON.stringify(project)) as Project;
+}
+
+let projectChangeSnapshot = snapshotProjectForChanges(
+  useProjectStore.getState().project,
+);
+
 useProjectStore.subscribe((state, prevState) => {
   if (state.project !== prevState.project) {
+    const nextRevision = prevState.projectRevision + 1;
+    if (state.project.id !== prevState.project.id) {
+      // A project switch is a new fact world, not a giant cross-project diff.
+      // Any caller holding the old revision receives requiresFullRefresh.
+      projectChangeJournal.reset();
+    } else {
+      projectChangeJournal.record(
+        projectChangeSnapshot,
+        state.project,
+        prevState.projectRevision,
+        nextRevision,
+      );
+    }
+    projectChangeSnapshot = snapshotProjectForChanges(state.project);
     useProjectStore.setState({
-      projectRevision: prevState.projectRevision + 1,
+      projectRevision: nextRevision,
     });
   }
 });
@@ -4608,4 +4312,11 @@ useProjectStore.subscribe((state, prevState) => {
 /** Current shared project revision (ADR 0004 Decision 3). */
 export function getProjectRevision(): number {
   return useProjectStore.getState().projectRevision;
+}
+
+/** Renderer-owned bounded delta journal; covers both GUI and Agent commits. */
+export function getProjectChanges(
+  params: ProjectChangesParams,
+): ProjectChangesResult {
+  return projectChangeJournal.query(params, getProjectRevision());
 }

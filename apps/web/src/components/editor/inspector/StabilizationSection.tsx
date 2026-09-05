@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { ToolcraftCard as Card } from "@openreel/ui";
 import { ToolcraftText as Text } from "@openreel/ui";
@@ -24,12 +24,16 @@ export const StabilizationSection: React.FC<StabilizationSectionProps> = ({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  const stabilization = clip.stabilization ?? {
-    enabled: false,
-    strength: 50,
-    cropMode: "auto" as const,
-    analyzed: false,
-  };
+  const stabilization = useMemo(
+    () =>
+      clip.stabilization ?? {
+        enabled: false,
+        strength: 50,
+        cropMode: "auto" as const,
+        analyzed: false,
+      },
+    [clip.stabilization],
+  );
 
   const vidstabEngine = getVidstabEngine();
   const isStabilized = vidstabEngine.hasStabilized(clip.id);
@@ -92,6 +96,8 @@ export const StabilizationSection: React.FC<StabilizationSectionProps> = ({
   }, [
     clip.id,
     clip.mediaId,
+    clip.inPoint,
+    clip.outPoint,
     getMediaItem,
     vidstabEngine,
     stabilization.strength,

@@ -1,8 +1,9 @@
-import React, { useCallback, useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect, useRef } from "react";
 import {
   X,
   Settings,
   MoreHorizontal,
+  Pencil,
   Video,
 } from "@/icons/lucide-compat";
 import { useProjectStore } from "../../stores/project-store";
@@ -71,6 +72,7 @@ export const Toolbar: React.FC = () => {
   const [isCompressOpen, setIsCompressOpen] = useState(false);
   const { importMedia } = useProjectStore();
   const { track } = useAnalytics();
+  const projectNameRef = useRef<HTMLInputElement>(null);
 
   // Local editable project name (committed onBlur / Enter)
   const [projectNameDraft, setProjectNameDraft] = useState(project.name);
@@ -78,14 +80,18 @@ export const Toolbar: React.FC = () => {
     setProjectNameDraft(project.name);
   }, [project.name]);
 
-  const commitProjectName = useCallback(() => {
+  const commitProjectName = useCallback(async () => {
     const next = projectNameDraft.trim();
     if (next && next !== project.name) {
-      void renameProject(next);
+      const result = await renameProject(next);
+      if (!result.success) {
+        setProjectNameDraft(project.name);
+        toast.error(t("Rename project"), result.error?.message);
+      }
     } else {
       setProjectNameDraft(project.name);
     }
-  }, [projectNameDraft, project.name, renameProject]);
+  }, [projectNameDraft, project.name, renameProject, t]);
 
   const handleWorkspaceModeSelect = useCallback(
     (mode: WorkspaceMode) => {
@@ -428,11 +434,12 @@ export const Toolbar: React.FC = () => {
       {/* ─── Center: project name ─────────────────────────────── */}
       <div className="flex flex-1 min-w-0 items-center justify-center gap-1.5">
         <ToolcraftTextInputControl
+          ref={projectNameRef}
           label={t("Project name")}
           isLabelHidden
           value={projectNameDraft}
           onChange={setProjectNameDraft}
-          onBlur={commitProjectName}
+          onBlur={() => void commitProjectName()}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               (e.currentTarget as HTMLElement).blur();
@@ -442,7 +449,19 @@ export const Toolbar: React.FC = () => {
             }
           }}
           width={Math.min(Math.max(projectNameDraft.length, 6) * 8 + 40, 220)}
-          className="max-w-[220px] bg-transparent border-0 text-center font-medium text-[14px] tracking-tight text-fg-2 px-2 py-0.5 rounded-md min-w-[60px] focus:bg-bg-2 focus:outline-none"
+          title={t("Rename project")}
+          className="max-w-[220px] border border-transparent bg-transparent text-center font-medium text-[14px] tracking-tight text-fg-2 px-2 py-0.5 rounded-md min-w-[60px] hover:border-border hover:bg-bg-2/60 focus-within:border-accent focus-within:bg-bg-2"
+        />
+        <ToolcraftIconButton
+          label={t("Rename project")}
+          icon={<Pencil size={13} aria-hidden />}
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            projectNameRef.current?.focus();
+            projectNameRef.current?.select();
+          }}
+          className="h-7 w-7 rounded-md text-fg-muted hover:bg-bg-2 hover:text-fg"
         />
         <ProjectSwitcher />
       </div>

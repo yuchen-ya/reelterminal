@@ -492,8 +492,17 @@ describe("ExternalConversationBridge", () => {
     emit({
       sessionUpdate: "usage",
       inputTokens: 10,
+      cachedInputTokens: 8,
       outputTokens: 20,
+      reasoningOutputTokens: 5,
       totalTokens: 30,
+      turnInputTokens: 10,
+      turnCachedInputTokens: 8,
+      turnOutputTokens: 20,
+      turnReasoningOutputTokens: 5,
+      turnTotalTokens: 30,
+      currentContextTokens: 24,
+      contextWindowTokens: 500_000,
       model: "must-not-cross-the-boundary",
     });
     emit({
@@ -553,6 +562,17 @@ describe("ExternalConversationBridge", () => {
       update: {
         sessionUpdate: "approval_request",
         options: [{ id: "approve", label: "Apply" }, { id: "deny", label: "Skip" }],
+      },
+    });
+    expect(state.updates.at(6)).toMatchObject({
+      type: "session_update",
+      update: {
+        sessionUpdate: "usage",
+        cachedInputTokens: 8,
+        reasoningOutputTokens: 5,
+        turnTotalTokens: 30,
+        currentContextTokens: 24,
+        contextWindowTokens: 500_000,
       },
     });
   });

@@ -1,4 +1,18 @@
-import type { ExternalConversationDisplayState } from "@openreel/agent-facade";
+import type {
+  AgentAccessMode,
+  AgentWorkMode,
+  DesktopCollabControlApi,
+  DesktopCollabStatus,
+  DesktopConversationAdapterSummary,
+  DesktopConversationApi,
+  DesktopConversationEvent,
+  DesktopConversationState,
+  DesktopLiveBridgeApi,
+  DesktopLiveBridgeReply,
+  DesktopLiveBridgeRequest,
+  DesktopLiveEvent,
+  DesktopLiveEventsApi,
+} from "@openreel/agent-facade/desktop-protocol";
 
 export {};
 
@@ -165,63 +179,40 @@ export type OpenReelUpdaterStatus =
 
 /* ---- Live collaboration (ADR 0004) --------------------------------------- */
 
-export type OpenReelAgentWorkMode = "guided" | "collaborative" | "autonomous";
-export type OpenReelAgentAccessMode = "read-only" | "write";
+/* Compatibility aliases for existing renderer imports. Definitions live in
+ * @openreel/agent-facade/desktop-protocol. */
+export type OpenReelAgentWorkMode = AgentWorkMode;
+export type OpenReelAgentAccessMode = AgentAccessMode;
+export type OpenReelCollabStatus = DesktopCollabStatus;
+export type OpenReelLiveBridgeRequest = DesktopLiveBridgeRequest;
+export type OpenReelLiveBridgeReply = DesktopLiveBridgeReply;
+export type OpenReelLiveEvent = DesktopLiveEvent;
+export type OpenReelConversationAdapterSummary =
+  DesktopConversationAdapterSummary;
+export type OpenReelConversationState = DesktopConversationState;
 
-export interface OpenReelCollabStatus {
-  /** Main-owned status snapshot order, scoped to the desktop process. */
-  sequence: number;
-  enabled: boolean;
-  externalConnected: boolean;
-  writer: "external" | null;
-  workMode: OpenReelAgentWorkMode;
-  access: OpenReelAgentAccessMode;
-  currentAction: string | null;
+export type OpenReelConversationSetupProvider = "codex" | "external";
+export interface OpenReelConversationSetupCheck {
+  state: "ready" | "missing" | "error";
+  code: string;
+}
+export interface OpenReelCodexThreadSummary {
+  id: string;
+  title: string;
+  preview: string | null;
+  updatedAt: number | null;
+  active: boolean;
+}
+export interface OpenReelConversationSetupState {
+  codex: OpenReelConversationSetupCheck;
+  authentication: OpenReelConversationSetupCheck;
+  liveConnector: OpenReelConversationSetupCheck;
+  externalAdapter: OpenReelConversationSetupCheck;
+  threads: readonly OpenReelCodexThreadSummary[];
+  managedSessionId: string | null;
 }
 
-export interface OpenReelLiveBridgeRequest {
-  callId: string;
-  kind: "getIdentity" | "getState" | "getContext" | "editorControl" | "applyActions" | "importMedia" | "requestSave";
-  [key: string]: unknown;
-}
-
-export interface OpenReelLiveBridgeReply {
-  callId: string;
-  ok: boolean;
-  result?: unknown;
-  error?: { code: string; message: string; details?: unknown };
-}
-
-export type OpenReelLiveEvent =
-  | ({ type: "status" } & OpenReelCollabStatus)
-  | { type: "action"; phase: "start"; verb: string }
-  | {
-      type: "action";
-      phase: "end";
-      verb: string;
-      ok: boolean;
-      summary: string;
-    };
-
-export interface OpenReelConversationAdapterSummary {
-  availability: "missing" | "available" | "invalid";
-  agentLabel: string | null;
-  adapterName: string | null;
-  sessionId: string | null;
-  capabilityLevel: "basic" | "streaming" | "observable" | null;
-  message: string | null;
-}
-
-export interface OpenReelConversationState {
-  sequence: number;
-  adapter: OpenReelConversationAdapterSummary;
-  conversation: ExternalConversationDisplayState;
-}
-
-export interface OpenReelConversationEvent {
-  type: "state";
-  state: OpenReelConversationState;
-}
+export type OpenReelConversationEvent = DesktopConversationEvent;
 
 export interface OpenReelConversationVisualStateCapture {
   version: 1;
@@ -234,6 +225,25 @@ export interface OpenReelConversationVisualStateCapture {
   selectedClipIds: readonly string[];
   selectedTextIds: readonly string[];
   selectedMediaIds: readonly string[];
+  projectId?: string;
+  projectName?: string;
+  references?: readonly {
+    ref: string;
+    number: number;
+    kind: "video" | "audio" | "text" | "media";
+    entityId: string;
+    label: string;
+    timing: { startSeconds: number | null; endSeconds: number | null };
+    revisionAtMark: number;
+    stale: boolean;
+  }[];
+  reviewMarkers?: readonly {
+    ref: string;
+    number: number;
+    id: string;
+    target: Record<string, unknown>;
+    label?: string;
+  }[];
   changed: readonly (
     | "project"
     | "preview"
@@ -354,40 +364,23 @@ declare global {
         ): Promise<OpenReelRigHumanoidModelResult>;
       };
       /** Main→renderer live-store requests (ADR 0004 Decision 1 seam). */
-      liveBridge?: {
-        onRequest(
-          handler: (req: OpenReelLiveBridgeRequest) => Promise<void>,
-        ): () => void;
-        respond(reply: OpenReelLiveBridgeReply): void;
-      };
+      liveBridge?: DesktopLiveBridgeApi;
       /** Main→renderer push: collaboration status + current agent action. */
-      liveEvents?: {
-        onEvent(cb: (evt: OpenReelLiveEvent) => void): () => void;
-      };
+      liveEvents?: DesktopLiveEventsApi;
       /** Live collaboration session control (desktop main session host). */
-      collabControl?: {
-        enable(): Promise<OpenReelCollabStatus>;
-        disable(): Promise<OpenReelCollabStatus>;
-        getStatus(): Promise<OpenReelCollabStatus>;
-        setWorkMode(mode: OpenReelAgentWorkMode): Promise<OpenReelCollabStatus>;
-        /** Reveal the Agent workspace root (jobs/shared) in the OS file manager. */
-        openWorkspace(): Promise<string>;
-      };
+      collabControl?: DesktopCollabControlApi;
       /** Optional GUI attachment to an externally-owned Agent conversation. */
-      conversation?: {
-        getState(): Promise<OpenReelConversationState>;
-        attach(): Promise<OpenReelConversationState>;
+      conversation?: Omit<DesktopConversationApi, "prompt"> & {
         prompt(
           text: string,
           visualState?: OpenReelConversationVisualStateCapture,
         ): Promise<OpenReelConversationState>;
-        resolveApproval(
-          requestId: string,
-          decision: "approved" | "denied",
-        ): Promise<OpenReelConversationState>;
-        cancel(): Promise<OpenReelConversationState>;
-        detach(): Promise<OpenReelConversationState>;
-        onEvent(cb: (event: OpenReelConversationEvent) => void): () => void;
+        inspectSetup(): Promise<OpenReelConversationSetupState>;
+        startSetup(args: {
+          provider: OpenReelConversationSetupProvider;
+          threadId?: string;
+          createThread?: boolean;
+        }): Promise<OpenReelConversationSetupState>;
       };
     };
   }

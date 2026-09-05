@@ -81,6 +81,39 @@ describe("createLiveStoreBridge", () => {
     ]);
   });
 
+  it("forwards bounded change/history reads and CAS/idempotent history control", async () => {
+    const { bridge, sent, validSender } = makeBridge();
+    const changes = bridge.store.getProjectChanges({ sinceRevision: 4, limit: 10, cursor: "pc" });
+    const history = bridge.store.getHistory({ limit: 8 });
+    const control = bridge.store.historyControl("undo", {
+      expectedRevision: 7,
+      idempotencyKey: "undo-7",
+    });
+    expect(sent).toEqual([
+      { callId: "call-1", kind: "getProjectChanges", sinceRevision: 4, limit: 10, cursor: "pc" },
+      { callId: "call-2", kind: "getHistory", limit: 8 },
+      { callId: "call-3", kind: "historyControl", historyAction: "undo", expectedRevision: 7, idempotencyKey: "undo-7" },
+    ]);
+    bridge.handleResponse(validSender, {
+      callId: "call-1",
+      ok: true,
+      result: { fromRevision: 4, toRevision: 7, changes: [], nextCursor: null, requiresFullRefresh: false },
+    });
+    bridge.handleResponse(validSender, {
+      callId: "call-2",
+      ok: true,
+      result: { revision: 7, available: true, canUndo: true, canRedo: false, undoCount: 1, redoCount: 0, entries: [] },
+    });
+    bridge.handleResponse(validSender, {
+      callId: "call-3",
+      ok: true,
+      result: { revision: 8, canUndo: false, canRedo: true, replayed: false },
+    });
+    await expect(changes).resolves.toMatchObject({ fromRevision: 4, toRevision: 7 });
+    await expect(history).resolves.toMatchObject({ available: true, undoCount: 1 });
+    await expect(control).resolves.toMatchObject({ revision: 8, canRedo: true });
+  });
+
   it("applyActions forwards actions, groupLabel and CAS preconditions", async () => {
     const { bridge, sent, validSender } = makeBridge();
     const pending = bridge.store.applyActions([fakeAction], {

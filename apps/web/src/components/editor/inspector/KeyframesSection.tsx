@@ -441,7 +441,7 @@ export const KeyframesSection: React.FC<KeyframesSectionProps> = ({
 
     return undefined;
   }, [clipId, getClip, getGraphicsEngine, getTitleEngine, project.modifiedAt]);
-  const keyframes = clip?.keyframes || [];
+  const keyframes = useMemo(() => clip?.keyframes ?? [], [clip?.keyframes]);
 
   const propertiesWithKeyframes = useMemo(() => {
     return [...new Set(keyframes.map((kf) => kf.property))];

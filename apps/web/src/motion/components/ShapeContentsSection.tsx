@@ -130,7 +130,7 @@ export function ShapeContentsSection({
     useState<MotionShapeModifierType>("offset-paths");
 
   const explicit = hasExplicitShapeContents(layer);
-  const contents = layer.contents ?? [];
+  const contents = useMemo(() => layer.contents ?? [], [layer.contents]);
 
   const rows = useMemo(
     () => flattenRows(contents, expanded, 0, null),

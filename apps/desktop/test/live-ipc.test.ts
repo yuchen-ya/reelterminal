@@ -39,6 +39,7 @@ const stubHost = {
   disable: vi.fn(),
   getStatus: vi.fn(),
   setWorkMode: vi.fn(),
+  setAccess: vi.fn(),
 } as unknown as LiveSessionHost;
 
 describe("collabOpenWorkspace IPC", () => {
@@ -47,6 +48,7 @@ describe("collabOpenWorkspace IPC", () => {
     handlers.clear();
     openPath.mockClear();
     vi.mocked(stubHost.setWorkMode).mockClear();
+    vi.mocked(stubHost.setAccess).mockClear();
     registerLiveIpc(stubHost);
   });
 
@@ -88,5 +90,19 @@ describe("collabOpenWorkspace IPC", () => {
       handler({ sender: fakeSender }, { mode: "observe" }),
     ).rejects.toThrow();
     expect(stubHost.setWorkMode).not.toHaveBeenCalled();
+  });
+
+  it("routes an explicit write-access recovery to the live host", async () => {
+    const handler = handlers.get(CHANNELS.collabSetAccess)!;
+    await handler({ sender: fakeSender }, { access: "write" });
+    expect(stubHost.setAccess).toHaveBeenCalledWith("write");
+  });
+
+  it("rejects an unknown access value at the IPC boundary", async () => {
+    const handler = handlers.get(CHANNELS.collabSetAccess)!;
+    await expect(
+      handler({ sender: fakeSender }, { access: "owner" }),
+    ).rejects.toThrow();
+    expect(stubHost.setAccess).not.toHaveBeenCalled();
   });
 });

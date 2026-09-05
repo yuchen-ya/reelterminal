@@ -347,7 +347,20 @@ function assertUpdateShape(update, path, fixtureLevel) {
       }
       break;
     case "usage":
-      for (const key of ["inputTokens", "outputTokens", "totalTokens"]) {
+      for (const key of [
+        "inputTokens",
+        "cachedInputTokens",
+        "outputTokens",
+        "reasoningOutputTokens",
+        "totalTokens",
+        "turnInputTokens",
+        "turnCachedInputTokens",
+        "turnOutputTokens",
+        "turnReasoningOutputTokens",
+        "turnTotalTokens",
+        "currentContextTokens",
+        "contextWindowTokens",
+      ]) {
         if (update[key] !== undefined) {
           assert(Number.isInteger(update[key]) && update[key] >= 0,
             `${path}.${key}: must be a non-negative integer`);

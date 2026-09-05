@@ -29,7 +29,14 @@
  */
 import type { Action } from "@openreel/core/types/actions";
 import type { Project } from "@openreel/core/types/project";
-import type { ImportedMediaMetadata } from "./types";
+import type {
+  HistoryControlResult,
+  HistoryGetParams,
+  HistoryGetResult,
+  ImportedMediaMetadata,
+  ProjectChangesParams,
+  ProjectChangesResult,
+} from "./types";
 
 /**
  * Ephemeral editor context (Decision 4): monotonic in-memory
@@ -45,6 +52,8 @@ import type { ImportedMediaMetadata } from "./types";
 export type LiveEditorReferenceKind = "video" | "audio" | "text" | "media";
 
 export interface LiveEditorReference {
+  /** Namespaced human/model reference id (A1, A2, ...). */
+  readonly ref?: string;
   /** The entity category the editor exposed to the agent. */
   readonly kind: LiveEditorReferenceKind;
   readonly entityId: string;
@@ -147,6 +156,7 @@ export interface LiveCreatedIds {
   readonly clips: readonly string[];
   readonly textClips: readonly string[];
   readonly transitions: readonly string[];
+  readonly subtitles: readonly string[];
 }
 
 export interface LiveApplyActionsResult {
@@ -192,6 +202,18 @@ export interface LiveProjectStore {
   /** On-demand snapshot read: a detached project clone plus its revision. */
   getState(): Promise<{ project: Project; revision: number }>;
   getContext(): Promise<LiveEditorContext>;
+  /** Bounded renderer-owned journal covering every canonical project replacement. */
+  getProjectChanges(params: ProjectChangesParams): Promise<ProjectChangesResult>;
+  /** Bounded summary of the canonical GUI/Core undo and redo stacks. */
+  getHistory(params: HistoryGetParams): Promise<HistoryGetResult>;
+  /** Execute the canonical GUI/Core undo or redo path with revision CAS. */
+  historyControl(
+    action: "undo" | "redo",
+    opts: {
+      readonly expectedRevision: number;
+      readonly idempotencyKey?: string;
+    },
+  ): Promise<Omit<HistoryControlResult, "action">>;
   /** Apply one ephemeral playback/selection control to the live editor. */
   editorControl(
     params: LiveEditorControlParams,

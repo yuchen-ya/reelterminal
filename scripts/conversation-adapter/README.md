@@ -69,7 +69,16 @@ MCP connector using Codex's documented
 [MCP configuration](https://developers.openai.com/codex/mcp/), and serves the
 provider-neutral ReelTerminal conversation protocol.
 
-First build the connector, open a desktop project, and enable **Agent Session**:
+Normal desktop users open the ReelTerminal **Agent** panel and choose **Codex**.
+The connection guide checks the local Codex installation and account, lists
+stored conversations, enables Agent Session, starts the packaged adapter and
+connector, and verifies `initialize → session/resume` before showing the
+conversation. The guide can also create a new Codex-owned conversation; it does
+not create a ReelTerminal-owned transcript or replace the open project.
+
+The command below is the manual path for adapter development, debugging, and
+custom hosts. Build the connector, open a desktop project, and enable **Agent
+Session** before running it:
 
 ```sh
 pnpm --filter @openreel/desktop build:main
@@ -81,7 +90,8 @@ node scripts/conversation-adapter/codex-adapter.mjs \
 Use `--thread-id <id>` instead to resume an existing Codex thread. The adapter
 prints only safe readiness metadata. It atomically publishes the private
 conversation descriptor, removes it on exit, and never prints either endpoint
-token. ReelTerminal attaches through **Connect external Agent**.
+token. ReelTerminal attaches through the Agent panel's **Other Agent** path
+when this manual process owns the descriptor.
 
 Agent Session enablement is the coarse-grained authorization for the dedicated
 `openreel_live` MCP server, which the adapter marks approved using Codex's

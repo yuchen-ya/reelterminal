@@ -31,6 +31,7 @@ import {
   FACADE_RUNTIME,
   FACADE_VERBS,
   FACADE_VERSION,
+  MEDIA_ANALYSIS_TYPES,
   type Capabilities,
   type CapabilityStatus,
   type FacadeVerb,
@@ -250,6 +251,132 @@ export async function buildCapabilities(
       },
       urlImport: false,
       metadata: ["duration", "width", "height", "mediaType"],
+    },
+    projectChanges: {
+      available: true,
+      details: {
+        retainedRevisions: 256,
+        maxPageSize: 200,
+        coversHumanAndAgentEdits: Boolean(ctx.live),
+        requiresFullRefreshOnGap: true,
+      },
+    },
+    history: ctx.live
+      ? {
+          available: true,
+          details: {
+            canonicalGuiCorePath: true,
+            revisionCas: true,
+            idempotentControl: true,
+            maxSummaryEntries: 100,
+          },
+        }
+      : {
+          available: false,
+          reason:
+            "Headless snapshot transactions do not retain the GUI/Core undo stack; history.get reports this state and history.control fails UNSUPPORTED.",
+          requires: "a live desktop session with the canonical GUI/Core history",
+        },
+    mediaAnalysis: {
+      asynchronous: true,
+      types: Object.fromEntries(
+        MEDIA_ANALYSIS_TYPES.map((type) => [
+          type,
+          type === "technicalQuality" && ctx.mediaRoots.length > 0
+            ? {
+                available: true,
+                details: {
+                  provider: "built-in-mediabunny-stat",
+                  fields: ["containerMetadata", "duration", "geometry", "codec", "fileSize", "sourceFingerprint"],
+                },
+              }
+            : {
+                available: false,
+                reason:
+                  type === "technicalQuality"
+                    ? "No media roots are configured, so the source file cannot be revalidated for analysis."
+                    : `${type} has no installed analysis provider in this runtime.`,
+                requires:
+                  type === "technicalQuality"
+                    ? "a configured media root containing the source"
+                    : `a MediaAnalysisProvider that genuinely implements ${type}`,
+              },
+        ]),
+      ) as Capabilities["mediaAnalysis"]["types"],
+      largeResultsAsArtifacts: true,
+    },
+    professionalEditing: {
+      subtitles: {
+        available: true,
+        details: { ops: ["subtitle.importSrt"], maxSrtBytes: 262144, maxCues: 500 },
+      },
+      trackControls: {
+        available: true,
+        details: { op: "track.update", fields: ["name", "locked", "hidden", "muted", "solo"] },
+      },
+      transformKeyframes: {
+        available: true,
+        details: { op: "clip.setKeyframes", properties: ["opacity", "position.x", "position.y", "scale.x", "scale.y", "rotation"], maxKeyframes: 100 },
+      },
+      volumeKeyframes: {
+        available: false,
+        reason: "The current preview/export audio path does not evaluate per-clip volume keyframes; constant clip.setVolume remains available.",
+        requires: "shared realtime/export automation evaluation for audio.volume",
+      },
+      basicColorGrade: {
+        available: true,
+        details: { op: "clip.setColorGrade", fields: ["temperature", "tint", "clear"] },
+      },
+      lut: {
+        available: false,
+        reason: "Core can persist LUT samples, but the facade has no bounded, path-contained LUT import contract yet.",
+        requires: "a contained LUT artifact parser and preview/export parity tests",
+      },
+      audioNormalization: {
+        available: false,
+        reason: "No canonical persisted normalization model/provider is wired through edit.apply.",
+        requires: "an analysis-backed gain plan plus shared preview/export semantics",
+      },
+      audioDucking: {
+        available: false,
+        reason: "The GUI has a direct automation helper, but it is not yet a canonical atomic Core action shared with the facade.",
+        requires: "a Core automation action with undo and export parity",
+      },
+      vocalIsolation: {
+        available: false,
+        reason: "No installed provider produces a contained isolated-vocal media artifact.",
+        requires: "an asynchronous provider and explicit imported result artifact",
+      },
+      stabilization: {
+        available: false,
+        reason: "Stabilization lacks a validated facade op and end-to-end preview/export test in this contract.",
+        requires: "canonical Core action plus renderer parity evidence",
+      },
+      smartReframe: {
+        available: false,
+        reason: "No subject-tracking/reframe provider is installed for this runtime.",
+        requires: "an analysis provider and keyframed transform output",
+      },
+      proxyMedia: {
+        available: false,
+        reason: "Proxy generation is not exposed through the canonical project/job facade.",
+        requires: "a contained asynchronous proxy provider and persisted proxy binding",
+      },
+      relink: {
+        available: false,
+        reason: "Media relink remains unavailable; moved checkpoint media fails open honestly.",
+        requires: "a root-contained relink mutation with fingerprint validation",
+      },
+      exportPresets: {
+        available: false,
+        reason: "The facade currently exposes one closed MP4/H.264 settings shape, not a preset catalog.",
+        requires: "a versioned preset enum shared with GUI and runtime",
+      },
+      exportPreflight: {
+        available: false,
+        reason: "Provider readiness is reported by capabilities.get, but no project-specific export preflight verb exists.",
+        requires: "a bounded project/media/codec preflight result shared with export.start",
+      },
     },
     editOps: EDIT_OP_TYPES,
     textOverlay: {

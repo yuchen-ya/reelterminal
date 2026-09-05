@@ -7,7 +7,7 @@
  * intentionally outside successful-output validation. Keep this declaration
  * small and JSON-only: it is shared by stdio and live MCP transports.
  */
-import { EDIT_OP_TYPES, type FacadeVerb } from "./types";
+import { EDIT_OP_TYPES, MEDIA_ANALYSIS_TYPES, type FacadeVerb } from "./types";
 
 export type OutputSchemaNode =
   | {
@@ -153,6 +153,8 @@ const timelineClip = (): OutputSchemaNode =>
         { fadeIn: numberSchema(0), fadeOut: numberSchema(0) },
         ["fadeIn", "fadeOut"],
       ),
+      colorGrading: nullable(openObject()),
+      keyframes: arraySchema(openObject(), { maxItems: 100 }),
       transform: openObject(),
     },
     [
@@ -167,6 +169,8 @@ const timelineClip = (): OutputSchemaNode =>
       "speed",
       "reversed",
       "fade",
+      "colorGrading",
+      "keyframes",
       "transform",
     ],
   );
@@ -177,10 +181,14 @@ const timelineTrack = (): OutputSchemaNode =>
       id: stringSchema(),
       type: stringSchema(),
       name: stringSchema(),
+      locked: booleanSchema(),
+      hidden: booleanSchema(),
+      muted: booleanSchema(),
+      solo: booleanSchema(),
       clips: arraySchema(timelineClip()),
       transitions: arraySchema(openObject()),
     },
-    ["id", "type", "name", "clips", "transitions"],
+    ["id", "type", "name", "locked", "hidden", "muted", "solo", "clips", "transitions"],
   );
 
 const textOverlay = (): OutputSchemaNode =>
@@ -297,6 +305,55 @@ const capabilities = (): OutputSchemaNode =>
         },
         ["available", "sources", "mediaRoots", "recommendedRoot", "workspaceLayout", "urlImport", "metadata"],
       ),
+      projectChanges: capabilityStatus(),
+      history: capabilityStatus(),
+      mediaAnalysis: objectSchema(
+        {
+          asynchronous: constSchema(true),
+          types: objectSchema(
+            Object.fromEntries(MEDIA_ANALYSIS_TYPES.map((type) => [type, capabilityStatus()])),
+            MEDIA_ANALYSIS_TYPES,
+          ),
+          largeResultsAsArtifacts: constSchema(true),
+        },
+        ["asynchronous", "types", "largeResultsAsArtifacts"],
+      ),
+      professionalEditing: objectSchema(
+        Object.fromEntries([
+          "subtitles",
+          "trackControls",
+          "transformKeyframes",
+          "volumeKeyframes",
+          "basicColorGrade",
+          "lut",
+          "audioNormalization",
+          "audioDucking",
+          "vocalIsolation",
+          "stabilization",
+          "smartReframe",
+          "proxyMedia",
+          "relink",
+          "exportPresets",
+          "exportPreflight",
+        ].map((name) => [name, capabilityStatus()])),
+        [
+          "subtitles",
+          "trackControls",
+          "transformKeyframes",
+          "volumeKeyframes",
+          "basicColorGrade",
+          "lut",
+          "audioNormalization",
+          "audioDucking",
+          "vocalIsolation",
+          "stabilization",
+          "smartReframe",
+          "proxyMedia",
+          "relink",
+          "exportPresets",
+          "exportPreflight",
+        ],
+      ),
       editOps: arraySchema(stringSchema()),
       textOverlay: objectSchema({ modelState: constSchema(true), pixelRendering: booleanSchema() }, ["modelState", "pixelRendering"]),
       preview: capabilityStatus(),
@@ -305,7 +362,7 @@ const capabilities = (): OutputSchemaNode =>
       export: capabilityStatus(),
       verify: capabilityStatus(),
     },
-    ["runtime", "stateModel", "mediaImport", "editOps", "textOverlay", "preview", "visualInspection", "editorControl", "export", "verify"],
+    ["runtime", "stateModel", "mediaImport", "projectChanges", "history", "mediaAnalysis", "professionalEditing", "editOps", "textOverlay", "preview", "visualInspection", "editorControl", "export", "verify"],
   );
 
 const mediaImportResult = (): OutputSchemaNode =>
@@ -324,6 +381,7 @@ const mediaImportResult = (): OutputSchemaNode =>
 const projectMarker = (): OutputSchemaNode =>
   objectSchema(
     {
+      ref: stringSchema(),
       number: integerSchema(1),
       id: stringSchema(),
       target: {
@@ -341,7 +399,7 @@ const projectMarker = (): OutputSchemaNode =>
       color: stringSchema(),
       createdAt: numberSchema(0),
     },
-    ["number", "id", "target", "createdAt"],
+    ["ref", "number", "id", "target", "createdAt"],
   );
 
 const timelineResult = (): OutputSchemaNode =>
@@ -351,9 +409,10 @@ const timelineResult = (): OutputSchemaNode =>
       duration: numberSchema(0),
       tracks: arraySchema(timelineTrack()),
       textOverlays: arraySchema(textOverlay()),
+      subtitles: arraySchema(openObject()),
       markers: arraySchema(projectMarker()),
     },
-    ["revision", "duration", "tracks", "textOverlays", "markers"],
+    ["revision", "duration", "tracks", "textOverlays", "subtitles", "markers"],
   );
 
 const editorContext = (): OutputSchemaNode =>
@@ -467,10 +526,11 @@ const jobStatus = (): OutputSchemaNode =>
   objectSchema(
     {
       jobId: stringSchema(),
-      kind: constSchema("export"),
+      kind: enumSchema(["export", "analysis"]),
       state: enumSchema(["queued", "running", "done", "error", "cancelled"]),
       progress: nullable(jobProgress()),
       artifact: nullable(artifactRef()),
+      result: nullable(openObject()),
       error: nullable(objectSchema({ code: stringSchema(), message: stringSchema() }, ["code", "message"])),
       deliveredTo: nullable(stringSchema()),
       deliveryError: nullable(stringSchema()),
@@ -480,7 +540,7 @@ const jobStatus = (): OutputSchemaNode =>
       createdAt: stringSchema(),
       updatedAt: stringSchema(),
     },
-    ["jobId", "kind", "state", "progress", "artifact", "error", "deliveredTo", "deliveryError", "sourceRevision", "route", "cancelRequested", "createdAt", "updatedAt"],
+    ["jobId", "kind", "state", "progress", "artifact", "result", "error", "deliveredTo", "deliveryError", "sourceRevision", "route", "cancelRequested", "createdAt", "updatedAt"],
   );
 
 const verifyResult = (): OutputSchemaNode =>
@@ -509,18 +569,135 @@ const projectSaveResult = (): OutputSchemaNode =>
     ["revision"],
   );
 
+const projectChangesResult = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      fromRevision: integerSchema(0),
+      toRevision: integerSchema(0),
+      changes: arraySchema(
+        objectSchema(
+          {
+            revision: integerSchema(0),
+            change: enumSchema(["added", "updated", "removed"]),
+            entityType: enumSchema(["project", "track", "clip", "text", "media", "transition", "marker", "subtitle"]),
+            entityId: stringSchema(),
+            fields: arraySchema(stringSchema()),
+          },
+          ["revision", "change", "entityType", "entityId", "fields"],
+        ),
+        { maxItems: 200 },
+      ),
+      nextCursor: nullable(stringSchema()),
+      requiresFullRefresh: booleanSchema(),
+    },
+    ["fromRevision", "toRevision", "changes", "nextCursor", "requiresFullRefresh"],
+  );
+
+const timelineQueryResult = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      revision: integerSchema(0),
+      items: arraySchema(
+        objectSchema(
+          {
+            entityType: enumSchema(["track", "clip", "text", "media", "transition", "marker", "subtitle"]),
+            id: stringSchema(),
+            ref: nullable(stringSchema()),
+            trackId: nullable(stringSchema()),
+            startTime: nullable(numberSchema(0)),
+            endTime: nullable(numberSchema(0)),
+            data: openObject(),
+          },
+          ["entityType", "id", "ref", "trackId", "startTime", "endTime", "data"],
+        ),
+        { maxItems: 200 },
+      ),
+      nextCursor: nullable(stringSchema()),
+    },
+    ["revision", "items", "nextCursor"],
+  );
+
+const editValidateResult = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      valid: booleanSchema(),
+      normalizedOps: arraySchema(openObject(), { minItems: 1, maxItems: 100 }),
+      conflicts: arraySchema(openObject()),
+      warnings: arraySchema(openObject()),
+      affected: arraySchema(openObject()),
+      created: arraySchema(openObject()),
+      deleted: arraySchema(openObject()),
+      estimatedDuration: numberSchema(0),
+      estimatedRevision: integerSchema(0),
+    },
+    ["valid", "normalizedOps", "conflicts", "warnings", "affected", "created", "deleted", "estimatedDuration", "estimatedRevision"],
+  );
+
+const historyGetResult = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      revision: integerSchema(0),
+      available: booleanSchema(),
+      reason: stringSchema(),
+      canUndo: booleanSchema(),
+      canRedo: booleanSchema(),
+      undoCount: integerSchema(0),
+      redoCount: integerSchema(0),
+      entries: arraySchema(openObject(), { maxItems: 100 }),
+    },
+    ["revision", "available", "canUndo", "canRedo", "undoCount", "redoCount", "entries"],
+  );
+
+const historyControlResult = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      action: enumSchema(["undo", "redo"]),
+      revision: integerSchema(0),
+      canUndo: booleanSchema(),
+      canRedo: booleanSchema(),
+      replayed: booleanSchema(),
+    },
+    ["action", "revision", "canUndo", "canRedo", "replayed"],
+  );
+
 const valueSchemas: Readonly<Record<FacadeVerb, OutputSchemaNode>> = {
   "session.describe": sessionDescription(),
   "capabilities.get": capabilities(),
   "project.create": objectSchema({ ...projectState()["properties"], replayed: booleanSchema() }, ["revision", "project", "counts", "replayed"]),
   "project.open": objectSchema({ ...projectState()["properties"], replayed: booleanSchema() }, ["revision", "project", "counts", "replayed"]),
   "project.save": projectSaveResult(),
+  "project.rename": objectSchema(
+    {
+      revision: integerSchema(0),
+      projectId: stringSchema(),
+      previousName: stringSchema(),
+      name: stringSchema(),
+      replayed: booleanSchema(),
+    },
+    ["revision", "projectId", "previousName", "name", "replayed"],
+  ),
   "project.get_state": projectState(),
+  "project.changes": projectChangesResult(),
   "media.import": mediaImportResult(),
+  "media.analyze_start": objectSchema(
+    {
+      jobId: stringSchema(),
+      kind: constSchema("analysis"),
+      state: enumSchema(["queued", "running", "done", "error", "cancelled"]),
+      sourceRevision: integerSchema(0),
+      analysisTypes: arraySchema(enumSchema(MEDIA_ANALYSIS_TYPES), { minItems: 1, maxItems: MEDIA_ANALYSIS_TYPES.length }),
+      replayed: booleanSchema(),
+    },
+    ["jobId", "kind", "state", "sourceRevision", "analysisTypes", "replayed"],
+  ),
   "timeline.get": timelineResult(),
+  "timeline.query": timelineQueryResult(),
   "editor.get_context": editorContext(),
   "editor.control": editorControlResult(),
+  "edit.validate": editValidateResult(),
   "edit.apply": editApplyResult(),
+  "history.get": historyGetResult(),
+  "history.control": historyControlResult(),
   "preview.render_frame": objectSchema({ revision: integerSchema(0), timeSec: numberSchema(0), width: integerSchema(0), height: integerSchema(0), artifact: artifactRef(), replayed: booleanSchema() }, ["revision", "timeSec", "width", "height", "artifact", "replayed"]),
   "visual.inspect": objectSchema({ revision: integerSchema(0), sourceRevision: integerSchema(0), selection: openObject(), sampleCount: integerSchema(1, 12), width: integerSchema(2), height: integerSchema(2), frames: arraySchema(openObject(), { minItems: 1, maxItems: 12 }), contactSheet: nullable(artifactRef()), limitations: arraySchema(stringSchema()), replayed: booleanSchema() }, ["revision", "sourceRevision", "selection", "sampleCount", "width", "height", "frames", "contactSheet", "limitations", "replayed"]),
   "export.start": exportStartResult(),

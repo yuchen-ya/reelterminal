@@ -31,6 +31,7 @@ import {
   VERB_PARAM_SCHEMAS,
   PROJECT_SETTINGS_SCHEMA,
   EDITOR_CONTROL_TARGET_SCHEMA,
+  TIMELINE_QUERY_RANGE_SCHEMA,
 } from "@openreel/agent-facade/verb-schemas";
 
 const ajv = new Ajv2020({ strict: false, allErrors: true });
@@ -62,10 +63,22 @@ function facadeRuntimeValidation(verb: string, params: unknown): boolean {
         }
         return true;
       }
-      case "edit.apply": {
+      case "edit.apply":
+      case "edit.validate": {
         const ops = valid.ops as unknown[];
         if (ops.length === 0) return false; // minItems 1 is enforced at runtime
         ops.forEach((op, index) => validateEditOp(op, index)); // cross-field: trim in/out
+        return true;
+      }
+      case "timeline.query": {
+        if (valid.timeRange !== undefined) {
+          const range = validateObject<Record<string, number>>(
+            valid.timeRange,
+            TIMELINE_QUERY_RANGE_SCHEMA,
+            "timeline.query params.timeRange",
+          );
+          if (range.endSec <= range.startSec) return false;
+        }
         return true;
       }
       case "export.start": {
@@ -120,14 +133,16 @@ describe("Decision 4 item 2: transport assigns facade schemas verbatim", () => {
   it("TOOLS inputSchemas are the EMITTED_VERB_JSON_SCHEMAS objects (deep-equal, by reference)", () => {
     const verbOrder: string[] = [
       "session.describe", "capabilities.get", "project.create", "project.open",
-      "project.save", "project.get_state", "media.import", "timeline.get",
+      "project.save", "project.rename", "project.get_state", "project.changes",
+      "media.import", "media.analyze_start", "timeline.get", "timeline.query",
       "editor.get_context",
       "editor.control",
-      "edit.apply", "preview.render_frame", "visual.inspect", "export.start", "job.status",
+      "edit.validate", "edit.apply", "history.get", "history.control",
+      "preview.render_frame", "visual.inspect", "export.start", "job.status",
       "job.cancel", "verify.artifact",
     ];
     const emitted = EMITTED_VERB_JSON_SCHEMAS as Record<string, unknown>;
-    expect(TOOLS).toHaveLength(17);
+    expect(TOOLS).toHaveLength(24);
     TOOLS.forEach((tool, i) => {
       expect(tool.inputSchema).toBe(emitted[verbOrder[i]]);
       expect(tool.inputSchema).toEqual(emitted[verbOrder[i]]);

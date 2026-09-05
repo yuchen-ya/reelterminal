@@ -176,8 +176,17 @@ export type AgentActivity =
       readonly id: string;
       readonly sequence: number;
       readonly inputTokens?: number;
+      readonly cachedInputTokens?: number;
       readonly outputTokens?: number;
+      readonly reasoningOutputTokens?: number;
       readonly totalTokens?: number;
+      readonly turnInputTokens?: number;
+      readonly turnCachedInputTokens?: number;
+      readonly turnOutputTokens?: number;
+      readonly turnReasoningOutputTokens?: number;
+      readonly turnTotalTokens?: number;
+      readonly currentContextTokens?: number;
+      readonly contextWindowTokens?: number;
     }
   | {
       readonly type: "state";
@@ -586,8 +595,17 @@ export function conversationViewModelFromProtocol(
           id: `usage-${event.sequence}`,
           sequence: event.sequence,
           inputTokens: update.inputTokens,
+          cachedInputTokens: update.cachedInputTokens,
           outputTokens: update.outputTokens,
+          reasoningOutputTokens: update.reasoningOutputTokens,
           totalTokens: update.totalTokens,
+          turnInputTokens: update.turnInputTokens,
+          turnCachedInputTokens: update.turnCachedInputTokens,
+          turnOutputTokens: update.turnOutputTokens,
+          turnReasoningOutputTokens: update.turnReasoningOutputTokens,
+          turnTotalTokens: update.turnTotalTokens,
+          currentContextTokens: update.currentContextTokens,
+          contextWindowTokens: update.contextWindowTokens,
         });
         break;
       case "state_update":

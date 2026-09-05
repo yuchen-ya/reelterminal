@@ -17,6 +17,8 @@ import { SettingsDialog } from "../components/editor/settings/SettingsDialog";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { Settings } from "@/icons/lucide-compat";
 import { useTranslation } from "react-i18next";
+import { toast } from "../stores/notification-store";
+import { ToastContainer } from "../components/Toast";
 import "./theme/desktop-theme.css";
 
 function detectPlatform(): string {
@@ -102,6 +104,21 @@ export function DesktopApp(): JSX.Element {
   // canonical renderer store. No-op off desktop.
   useEffect(() => installLiveBridge(), []);
 
+  // Saving errors must be visible even when the Settings dialog is closed.
+  // The dirty revision remains set, so this notification reflects recoverable
+  // unsaved work rather than claiming the failed write succeeded.
+  useEffect(() => {
+    const onAutoSaveError = (): void => {
+      toast.error(
+        t("settings.autoSaveFailed"),
+        t("settings.autoSaveFailedDescription"),
+      );
+    };
+    autoSaveManager.on("error", onAutoSaveError);
+    if (autoSaveManager.getStatus() === "error") onAutoSaveError();
+    return () => autoSaveManager.off("error", onAutoSaveError);
+  }, [t]);
+
   // Answer the native unsaved-changes guard on window close / quit: report
   // dirty state and flush pending changes on request.
   useEffect(() => {
@@ -154,6 +171,7 @@ export function DesktopApp(): JSX.Element {
       </div>
       <UpdateBanner />
       <SettingsDialog />
+      <ToastContainer />
     </div>
   );
 }

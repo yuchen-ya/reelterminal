@@ -9,6 +9,10 @@ import { ToolcraftText as Text } from "@openreel/ui";
 import { useSettingsStore } from "../../../stores/settings-store";
 import { useProjectStore } from "../../../stores/project-store";
 import type { LanguagePreference } from "../../../i18n";
+import {
+  autoSaveManager,
+  type AutoSaveStatus,
+} from "../../../services/auto-save";
 
 const ASPECT_PRESETS: Array<{ labelKey: string; width: number; height: number }> = [
   { labelKey: "settings.presetLandscape", width: 1920, height: 1080 },
@@ -57,11 +61,30 @@ export const GeneralPanel: React.FC = () => {
 
   const [draftWidth, setDraftWidth] = React.useState(String(projectWidth));
   const [draftHeight, setDraftHeight] = React.useState(String(projectHeight));
+  const [autoSaveStatus, setAutoSaveStatus] =
+    React.useState<AutoSaveStatus>(() => autoSaveManager.getStatus());
 
   React.useEffect(() => {
     setDraftWidth(String(projectWidth));
     setDraftHeight(String(projectHeight));
   }, [projectWidth, projectHeight]);
+
+  React.useEffect(() => {
+    const onSaving = (): void => setAutoSaveStatus("saving");
+    const onPending = (): void => setAutoSaveStatus("pending");
+    const onSaved = (): void => setAutoSaveStatus("saved");
+    const onError = (): void => setAutoSaveStatus("error");
+    autoSaveManager.on("pending", onPending);
+    autoSaveManager.on("saving", onSaving);
+    autoSaveManager.on("saved", onSaved);
+    autoSaveManager.on("error", onError);
+    return () => {
+      autoSaveManager.off("pending", onPending);
+      autoSaveManager.off("saving", onSaving);
+      autoSaveManager.off("saved", onSaved);
+      autoSaveManager.off("error", onError);
+    };
+  }, []);
 
   const applyDimensions = useCallback(
     async (width: number, height: number) => {
@@ -257,26 +280,49 @@ export const GeneralPanel: React.FC = () => {
         </div>
 
         {autoSave && (
-          <div className="flex items-center gap-3">
-            <Text type="supporting" color="secondary" className="whitespace-nowrap text-sm">
-              {t("settings.saveEvery")}
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <Text type="supporting" color="secondary" className="whitespace-nowrap text-sm">
+                {t("settings.saveEvery")}
+              </Text>
+              <Selector
+                label={t("settings.autoSaveInterval")}
+                isLabelHidden
+                size="md"
+                width={150}
+                value={String(autoSaveInterval)}
+                onChange={(value) => setAutoSaveInterval(Number(value))}
+                options={[
+                  { label: t("settings.minute", { count: 1 }), value: "1" },
+                  { label: t("settings.minute", { count: 2 }), value: "2" },
+                  { label: t("settings.minute", { count: 5 }), value: "5" },
+                  { label: t("settings.minute", { count: 10 }), value: "10" },
+                  { label: t("settings.minute", { count: 15 }), value: "15" },
+                  { label: t("settings.minute", { count: 30 }), value: "30" },
+                ]}
+              />
+            </div>
+            <Text type="supporting" color="secondary" className="text-xs">
+              {t("settings.autoSaveTimingDescription")}
             </Text>
-            <Selector
-              label={t("settings.autoSaveInterval")}
-              isLabelHidden
-              size="md"
-              width={150}
-              value={String(autoSaveInterval)}
-              onChange={(value) => setAutoSaveInterval(Number(value))}
-              options={[
-                { label: t("settings.minute", { count: 1 }), value: "1" },
-                { label: t("settings.minute", { count: 2 }), value: "2" },
-                { label: t("settings.minute", { count: 5 }), value: "5" },
-                { label: t("settings.minute", { count: 10 }), value: "10" },
-                { label: t("settings.minute", { count: 15 }), value: "15" },
-                { label: t("settings.minute", { count: 30 }), value: "30" },
-              ]}
-            />
+            {autoSaveStatus !== "idle" && (
+              <Text
+                type="supporting"
+                color={autoSaveStatus === "error" ? "danger" : "secondary"}
+                className="text-xs"
+                role="status"
+              >
+                {t(`settings.autoSave${
+                  autoSaveStatus === "saving"
+                    ? "Saving"
+                    : autoSaveStatus === "saved"
+                      ? "Saved"
+                      : autoSaveStatus === "pending"
+                        ? "Pending"
+                        : "Failed"
+                }`)}
+              </Text>
+            )}
           </div>
         )}
       </div>

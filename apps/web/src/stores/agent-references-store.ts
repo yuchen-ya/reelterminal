@@ -80,6 +80,7 @@ export const useAgentReferencesStore = create<AgentReferencesState>()((set, get)
 
       const number = nextNumber++;
       const reference: MarkedAgentReference = {
+        ref: `A${number}`,
         number,
         kind: target.kind,
         entityId: target.entityId,

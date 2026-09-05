@@ -820,13 +820,18 @@ export class ActionExecutor {
           const mediaItem = project.mediaLibrary.items.find(
             (item) => item.id === params.mediaId,
           );
-          // Use provided duration, or fall back to media duration (if > 0), or default to 5
-          // Images and graphics have duration: 0, so we use the 5-second default for them
-          const clipDuration =
-            params.duration ??
-            (mediaItem?.metadata.duration && mediaItem.metadata.duration > 0
+          // Explicit duration remains authoritative. Without one, derive the
+          // timeline duration from the effective source range so a ranged
+          // add cannot commit a full-media timeline span with shorter
+          // in/out points. Images and graphics use the existing 5s default.
+          const defaultSourceOut =
+            mediaItem?.metadata.duration && mediaItem.metadata.duration > 0
               ? mediaItem.metadata.duration
-              : 5);
+              : 5;
+          const sourceIn = params.inPoint ?? 0;
+          const sourceOut =
+            params.outPoint ?? params.duration ?? defaultSourceOut;
+          const clipDuration = params.duration ?? sourceOut - sourceIn;
           const defaultTransform = {
             position: { x: 0, y: 0 },
             scale: { x: 1, y: 1 },
@@ -848,8 +853,8 @@ export class ActionExecutor {
                 trackId: params.trackId,
                 startTime: params.startTime,
                 duration: clipDuration,
-                inPoint: params.inPoint ?? 0,
-                outPoint: params.outPoint ?? clipDuration,
+                inPoint: sourceIn,
+                outPoint: sourceOut,
                 effects: (params.effects as never[]) ?? [],
                 audioEffects: (params.audioEffects as never[]) ?? [],
                 transform: params.transform

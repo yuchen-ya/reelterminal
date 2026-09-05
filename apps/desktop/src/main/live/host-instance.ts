@@ -36,6 +36,8 @@ let host: LiveSessionHost | null = null;
  * the media-roots default and the "open workspace" IPC — single source.
  */
 export function agentWorkspaceRoot(): string {
+  const configured = process.env.OPENREEL_AGENT_WORKSPACE_ROOT;
+  if (configured && path.isAbsolute(configured)) return configured;
   return path.join(
     app.getPath("videos"),
     "ReelTerminal Agent Workspace",

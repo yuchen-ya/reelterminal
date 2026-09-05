@@ -88,7 +88,10 @@ describe.skipIf(!REAL_CODEX)("real Codex conversation → MCP → GUI", () => {
 
     const page = launched.page;
     await page.getByRole("button", { name: "Open external agent panel" }).click();
-    await page.getByRole("button", { name: "Connect external Agent" }).click();
+    await page
+      .getByRole("region", { name: "Connect an Agent" })
+      .getByRole("button", { name: "Connect", exact: true })
+      .click();
     await page.getByText("External Agent connected", { exact: true }).waitFor({ timeout: 30_000 });
 
     const composer = page.getByRole("textbox", { name: "Message the external Agent" });

@@ -52,7 +52,17 @@ interface ImportResult {
 
 interface TimelineResult {
   revision: number;
-  tracks: Array<{ id: string; type: string }>;
+  duration: number;
+  tracks: Array<{
+    id: string;
+    type: string;
+    clips: Array<{
+      id: string;
+      duration: number;
+      inPoint: number;
+      outPoint: number;
+    }>;
+  }>;
 }
 
 describe("live media import: external Agent → visible GUI project", () => {
@@ -178,11 +188,19 @@ describe("live media import: external Agent → visible GUI project", () => {
           trackId: audioTrack!.id,
           mediaId: imported.value!.mediaId,
           startTime: 0,
+          inPoint: 0.2,
+          outPoint: 0.6,
         },
       ],
       expectedRevision: timeline.value!.revision,
     });
     expect(clipAdded.ok).toBe(true);
+    const rangedTimeline = await agent.callTool<TimelineResult>("timeline_get");
+    const rangedClip = rangedTimeline.value!.tracks
+      .find((track) => track.id === audioTrack!.id)?.clips[0];
+    expect(rangedClip).toMatchObject({ inPoint: 0.2, outPoint: 0.6 });
+    expect(rangedClip!.duration).toBeCloseTo(0.4, 9);
+    expect(rangedTimeline.value!.duration).toBeCloseTo(0.4, 9);
     await launched.page
       .getByRole("button", { name: `Select clip ${FILE_NAME}`, exact: true })
       .waitFor({ timeout: 30_000 });

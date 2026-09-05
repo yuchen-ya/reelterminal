@@ -43,8 +43,12 @@ function makeFacadeFactory(
   verbResults?: Partial<Record<FacadeVerb, FacadeResult<unknown>>>,
 ) {
   return (config: LiveFacadeConfig): LiveAgentFacade => {
+    const access = () =>
+      typeof config.access === "function"
+        ? config.access()
+        : config.access ?? "write";
     const isWriter =
-      (config.access ?? "write") === "write" && config.lease.acquire(config.sessionId);
+      access() === "write" && config.lease.acquire(config.sessionId);
     const session: StubSession = {
       config,
       isWriter,
@@ -77,7 +81,7 @@ function makeFacadeFactory(
           typeof config.workMode === "function"
             ? config.workMode()
             : config.workMode ?? "collaborative",
-        access: config.access ?? "write",
+        access: access(),
       },
     });
     const facade = {
@@ -107,6 +111,25 @@ function makeBridgeStub() {
       throw new Error("not exercised by host tests");
     },
     getContext: async () => {
+      throw new Error("not exercised by host tests");
+    },
+    getProjectChanges: async (params) => ({
+      fromRevision: params.sinceRevision,
+      toRevision: params.sinceRevision,
+      changes: [],
+      nextCursor: null,
+      requiresFullRefresh: false,
+    }),
+    getHistory: async () => ({
+      revision: 0,
+      available: true,
+      canUndo: false,
+      canRedo: false,
+      undoCount: 0,
+      redoCount: 0,
+      entries: [],
+    }),
+    historyControl: async () => {
       throw new Error("not exercised by host tests");
     },
     editorControl: async () => {
@@ -180,7 +203,10 @@ function makeFixture(
           typeof config.workMode === "function"
             ? config.workMode()
             : config.workMode ?? "collaborative",
-        access: config.access ?? "write",
+        access:
+          typeof config.access === "function"
+            ? config.access()
+            : config.access ?? "write",
       });
       return factory(config);
     },
@@ -675,5 +701,47 @@ describe("live session host setWorkMode", () => {
     expect(fixture.factoryCalls).toEqual([
       { sessionId: "external", workMode: "guided", access: "read-only" },
     ]);
+  });
+
+  it("explicitly restores migrated write access without replacing the session", async () => {
+    const fixture = makeFixture();
+    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
+    fixture.deps.modePreferenceStore?.set({
+      workMode: "guided",
+      access: "read-only",
+    });
+    const host = createLiveSessionHost(fixture.deps);
+    await host.enable();
+    cleanups.push(() => void host.disable());
+
+    await host.callExternal("timeline.get", undefined);
+    const restored = await host.setAccess("write");
+
+    expect(restored).toMatchObject({ access: "write", writer: null });
+    expect(fixture.deps.modePreferenceStore?.get()).toEqual({
+      workMode: "guided",
+      access: "write",
+    });
+    expect(fixture.factoryCalls).toHaveLength(1);
+    expect(
+      typeof fixture.sessions[0]!.config.access === "function"
+        ? fixture.sessions[0]!.config.access()
+        : fixture.sessions[0]!.config.access,
+    ).toBe("write");
+  });
+
+  it("revokes access immediately and releases the external writer lease", async () => {
+    const fixture = makeFixture();
+    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
+    const host = createLiveSessionHost(fixture.deps);
+    await host.enable();
+    cleanups.push(() => void host.disable());
+
+    await host.callExternal("timeline.get", undefined);
+    expect((await host.getStatus()).writer).toBe("external");
+
+    const revoked = await host.setAccess("read-only");
+    expect(revoked).toMatchObject({ access: "read-only", writer: null });
+    expect(fixture.factoryCalls).toHaveLength(1);
   });
 });

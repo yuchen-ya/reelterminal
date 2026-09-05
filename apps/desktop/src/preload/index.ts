@@ -1,6 +1,18 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { CHANNELS } from "../shared/channels";
-import type { LiveCollabStatus, LiveEvent } from "../shared/live";
+import type {
+  AgentAccessMode,
+  AgentWorkMode,
+  LiveBridgeReply,
+  LiveBridgeRequest,
+  LiveCollabStatus,
+  LiveEvent,
+} from "../shared/live";
+import type {
+  ConversationVisualStateCapture,
+  DesktopConversationEvent,
+  DesktopConversationState,
+} from "../shared/conversation";
 
 contextBridge.exposeInMainWorld("openreel", {
   platform: "desktop",
@@ -114,14 +126,15 @@ contextBridge.exposeInMainWorld("openreel", {
   liveBridge: {
     // Main→renderer live-store requests (Decision 1 seam). The handler runs
     // the request against the canonical store and replies via respond().
-    onRequest: (handler: (req: unknown) => Promise<void> | void) => {
-      const listener = (_event: unknown, req: unknown) => {
+    onRequest: (handler: (req: LiveBridgeRequest) => Promise<void> | void) => {
+      const listener = (_event: unknown, req: LiveBridgeRequest) => {
         void handler(req);
       };
       ipcRenderer.on(CHANNELS.liveRequest, listener);
       return () => ipcRenderer.removeListener(CHANNELS.liveRequest, listener);
     },
-    respond: (reply: unknown) => ipcRenderer.send(CHANNELS.liveResponse, reply),
+    respond: (reply: LiveBridgeReply) =>
+      ipcRenderer.send(CHANNELS.liveResponse, reply),
   },
   liveEvents: {
     // Main→renderer push: collaboration status + current agent action.
@@ -138,27 +151,37 @@ contextBridge.exposeInMainWorld("openreel", {
       ipcRenderer.invoke(CHANNELS.collabDisable, undefined),
     getStatus: (): Promise<LiveCollabStatus> =>
       ipcRenderer.invoke(CHANNELS.collabGetStatus, undefined),
-    setWorkMode: (mode: string) =>
+    setWorkMode: (mode: AgentWorkMode) =>
       ipcRenderer.invoke(CHANNELS.collabSetMode, { mode }) as Promise<LiveCollabStatus>,
+    setAccess: (access: AgentAccessMode) =>
+      ipcRenderer.invoke(CHANNELS.collabSetAccess, { access }) as Promise<LiveCollabStatus>,
     openWorkspace: () => ipcRenderer.invoke(CHANNELS.collabOpenWorkspace, undefined),
   },
   conversation: {
-    getState: () => ipcRenderer.invoke(CHANNELS.conversationGetState, undefined),
-    attach: () => ipcRenderer.invoke(CHANNELS.conversationAttach, undefined),
-    prompt: (text: string, visualState?: unknown) =>
+    getState: () =>
+      ipcRenderer.invoke(CHANNELS.conversationGetState, undefined) as Promise<DesktopConversationState>,
+    attach: () =>
+      ipcRenderer.invoke(CHANNELS.conversationAttach, undefined) as Promise<DesktopConversationState>,
+    prompt: (text: string, visualState?: ConversationVisualStateCapture) =>
       ipcRenderer.invoke(CHANNELS.conversationPrompt, {
         text,
         ...(visualState ? { visualState } : {}),
-      }),
+      }) as Promise<DesktopConversationState>,
     resolveApproval: (requestId: string, decision: "approved" | "denied") =>
       ipcRenderer.invoke(CHANNELS.conversationResolveApproval, {
         requestId,
         decision,
-      }),
-    cancel: () => ipcRenderer.invoke(CHANNELS.conversationCancel, undefined),
-    detach: () => ipcRenderer.invoke(CHANNELS.conversationDetach, undefined),
-    onEvent: (cb: (event: unknown) => void) => {
-      const handler = (_event: unknown, payload: unknown) => cb(payload);
+      }) as Promise<DesktopConversationState>,
+    cancel: () =>
+      ipcRenderer.invoke(CHANNELS.conversationCancel, undefined) as Promise<DesktopConversationState>,
+    detach: () =>
+      ipcRenderer.invoke(CHANNELS.conversationDetach, undefined) as Promise<DesktopConversationState>,
+    inspectSetup: () =>
+      ipcRenderer.invoke(CHANNELS.conversationSetupInspect, undefined),
+    startSetup: (args: unknown) =>
+      ipcRenderer.invoke(CHANNELS.conversationSetupStart, args),
+    onEvent: (cb: (event: DesktopConversationEvent) => void) => {
+      const handler = (_event: unknown, payload: DesktopConversationEvent) => cb(payload);
       ipcRenderer.on(CHANNELS.conversationEvent, handler);
       return () => ipcRenderer.removeListener(CHANNELS.conversationEvent, handler);
     },
@@ -168,7 +191,10 @@ contextBridge.exposeInMainWorld("openreel", {
     // changes; the renderer answers synchronously from its dirty state.
     onQueryUnsaved: (handler: () => boolean) => {
       const listener = () => {
-        let dirty = false;
+        // Fail safe if renderer state inspection itself throws. Main will show
+        // the save/discard/cancel prompt instead of treating uncertainty as a
+        // clean project and closing silently.
+        let dirty = true;
         try {
           dirty = handler();
         } catch (error) {

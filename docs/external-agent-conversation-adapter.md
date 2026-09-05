@@ -20,14 +20,14 @@ only reads that descriptor and posts requests/polls updates.
 
 ReelTerminal is the client of this protocol. The external Agent owns the model,
 reasoning, credentials, conversation identity, and durable history. ReelTerminal
-owns the editor, the canonical project, and the separate 17-tool live MCP
+owns the editor, the canonical project, and the separate 24-tool live MCP
 facade. The conversation adapter never becomes a second writer and never
 calls ReelTerminal edit tools on behalf of a chat panel.
 
 ```text
 external Agent conversation ── thin adapter ── optional ReelTerminal view
              │
-             └────────────── 17-tool MCP ────────────── ReelTerminal live project
+             └────────────── 24-tool MCP ────────────── ReelTerminal live project
 ```
 
 The conversation endpoint and the MCP endpoint are separate contracts. The
@@ -54,7 +54,7 @@ silently emulate missing behavior.
 An implementation MAY expose `mcp-only` as a local fallback state when it has
 no conversation attachment. `mcp-only` is not a value for
 `adapter.capabilityLevel`: the Agent can still use ReelTerminal's independent
-17-tool live MCP endpoint and its native chat.
+24-tool live MCP endpoint and its native chat.
 
 ### 2.1 Negotiation
 
@@ -313,7 +313,7 @@ the prompt into durable project or conversation state:
   "method": "session/prompt",
   "params": {
     "sessionId": "agent-session-opaque",
-    "prompt": [{ "type": "text", "text": "Review reference #2." }],
+    "prompt": [{ "type": "text", "text": "Review Agent reference @A2." }],
     "clientContext": {
       "workMode": "guided",
       "semantics": {
@@ -446,7 +446,7 @@ additional families; a host MUST render only events supported by the nested
 
 ```json
 { "sessionUpdate": "user_message", "messageId": "m1", "content": [{ "type": "text", "text": "Make the opening tighter." }] }
-{ "sessionUpdate": "agent_message", "messageId": "m2", "content": [{ "type": "text", "text": "I will compare #1 and #2." }] }
+{ "sessionUpdate": "agent_message", "messageId": "m2", "content": [{ "type": "text", "text": "I will compare @A1 and @A2." }] }
 { "sessionUpdate": "state_update", "state": "working", "stopReason": "tool_use" }
 ```
 
@@ -482,7 +482,7 @@ Tool events describe observable progress, not a second execution channel:
   "toolCallId": "tool-3",
   "title": "Trim opening clip",
   "status": "running",
-  "summary": "Trimming reference #1 to 4.5 seconds."
+  "summary": "Trimming Agent reference A1 to 4.5 seconds."
 }
 ```
 
@@ -571,20 +571,32 @@ for actual artifact access.
 
 ### 6.7 Usage events
 
-An observable Agent MAY expose bounded counters without identifying a provider
-or model:
+An observable Agent MAY expose bounded session totals, turn deltas, cache
+breakdowns, and current-context counters without identifying a provider or
+model:
 
 ```json
 {
   "sessionUpdate": "usage",
   "inputTokens": 120,
+  "cachedInputTokens": 80,
   "outputTokens": 48,
-  "totalTokens": 168
+  "reasoningOutputTokens": 12,
+  "totalTokens": 168,
+  "turnTotalTokens": 68,
+  "currentContextTokens": 96,
+  "contextWindowTokens": 500000
 }
 ```
 
 Each counter, when present, is a non-negative integer. Usage is display-only
 and MUST NOT contain credentials, provider metadata, or raw prompts.
+
+The shipped Codex adapter treats an exact `/compact` prompt as the external
+Agent's explicit context-compaction command. It never triggers compaction from
+token thresholds. After Codex reports `contextCompaction` completion, the next
+turn receives a compact ReelTerminal state capsule containing project identity,
+revisions, selection, and the current A/R reference directories.
 
 ## 7. Sensitive fields and unknown extensions
 
@@ -707,3 +719,34 @@ The facade still enforces its own access level, writer lease, context/revision
 CAS, idempotency, atomic batches, and shared undo. Codex command and file-change
 requests remain interactive approvals. Run and test instructions live in
 `scripts/conversation-adapter/README.md`.
+
+## 12. Typed provider boundary
+
+Hosts that consume the workspace TypeScript packages can implement
+`ExternalConversationProviderAdapter` from
+`@openreel/agent-facade/conversation-adapter`. The companion
+`createExternalConversationAdapterRouter(...)` enforces the existing-session
+identity, one in-flight prompt, out-of-band cancel/work-mode calls, and
+explicit unsupported-operation errors. It contains no HTTP, descriptor,
+credential, model, or provider logic. The dependency-free adapter kit above
+remains the copyable reference loopback carrier for hosts that should not take
+a workspace dependency.
+
+Contract coverage is split intentionally:
+
+- `packages/agent-facade/src/conversation-adapter.test.ts` checks the typed,
+  provider-neutral callback boundary;
+- `scripts/conversation-adapter/adapter-kit.test.mjs` checks loopback auth,
+  routing, redaction, size limits, and descriptor ownership; and
+- `apps/desktop/src/main/conversation/loopback-connector.test.ts` checks the
+  shipped client against a real loopback server.
+
+### 10.2 Remaining external choice
+
+ReelTerminal cannot choose the user's external Agent host. A production
+integration still needs one host-specific mapping from that host's existing
+session APIs to `resume`, `prompt`, `cancel`, optional approval/work-mode
+callbacks, and safe display updates. That mapping also decides how the Agent
+learns ReelTerminal's separate live MCP endpoint. Provider credentials remain
+inside that host and are never added to either descriptor. No credential,
+provider, or model is assumed by this repository.

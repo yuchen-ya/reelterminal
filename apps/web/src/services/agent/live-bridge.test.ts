@@ -123,6 +123,111 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     expect(revision).toBe(getProjectRevision());
   });
 
+  it("commits a ranged clip/add with source-span timeline duration", async () => {
+    const initial = useProjectStore.getState().project;
+    useProjectStore.setState({
+      project: {
+        ...initial,
+        mediaLibrary: {
+          ...initial.mediaLibrary,
+          items: [
+            ...initial.mediaLibrary.items,
+            {
+              id: "media-ranged",
+              name: "long.mp4",
+              type: "video",
+              fileHandle: null,
+              blob: null,
+              metadata: {
+                duration: 340.117,
+                width: 1920,
+                height: 1080,
+                frameRate: 30,
+                codec: "h264",
+                sampleRate: 48_000,
+                channels: 2,
+                fileSize: 1,
+              },
+              thumbnailUrl: null,
+              waveformData: null,
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await handleLiveBridgeRequest(
+      req("applyActions", {
+        actions: [
+          act("track/add", { trackType: "video", trackId: "v-range" }),
+          act("clip/add", {
+            trackId: "v-range",
+            mediaId: "media-ranged",
+            startTime: 0,
+            inPoint: 8,
+            outPoint: 12,
+          }),
+        ],
+      }),
+    );
+
+    expect(result.ok).toBe(true);
+    const clip = useProjectStore.getState().project.timeline.tracks
+      .find((track) => track.id === "v-range")?.clips[0];
+    expect(clip).toMatchObject({ inPoint: 8, outPoint: 12, duration: 4 });
+  });
+
+  it("exposes GUI changes and controls the canonical undo/redo history with CAS + replay", async () => {
+    const base = getProjectRevision();
+    await useProjectStore.getState().executeAction(
+      act("track/add", { trackType: "video", trackId: "human-v1" }),
+    );
+    const changed = await handleLiveBridgeRequest(
+      req("getProjectChanges", { sinceRevision: base, limit: 20 }),
+    );
+    expect(changed.ok).toBe(true);
+    expect((changed.result as { changes: Array<Record<string, unknown>> }).changes)
+      .toContainEqual(expect.objectContaining({ entityType: "track", entityId: "human-v1" }));
+
+    const history = await handleLiveBridgeRequest(req("getHistory", { limit: 10 }));
+    expect(history.ok).toBe(true);
+    expect(history.result).toMatchObject({ available: true, canUndo: true });
+
+    const revision = getProjectRevision();
+    const undo = await handleLiveBridgeRequest(
+      req("historyControl", {
+        historyAction: "undo",
+        expectedRevision: revision,
+        idempotencyKey: "undo-human-v1",
+      }),
+    );
+    expect(undo.ok).toBe(true);
+    expect(useProjectStore.getState().project.timeline.tracks)
+      .not.toContainEqual(expect.objectContaining({ id: "human-v1" }));
+
+    const replay = await handleLiveBridgeRequest(
+      req("historyControl", {
+        historyAction: "undo",
+        expectedRevision: revision,
+        idempotencyKey: "undo-human-v1",
+      }),
+    );
+    expect(replay.ok).toBe(true);
+    expect(replay.result).toMatchObject({ replayed: true });
+
+    const redoRevision = getProjectRevision();
+    const redo = await handleLiveBridgeRequest(
+      req("historyControl", {
+        historyAction: "redo",
+        expectedRevision: redoRevision,
+        idempotencyKey: "redo-human-v1",
+      }),
+    );
+    expect(redo.ok).toBe(true);
+    expect(useProjectStore.getState().project.timeline.tracks)
+      .toContainEqual(expect.objectContaining({ id: "human-v1" }));
+  });
+
   it("getContext returns the live editor context", async () => {
     const res = await handleLiveBridgeRequest(req("getContext"));
     expect(res.ok).toBe(true);
@@ -939,6 +1044,24 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     expect(forceSave).toHaveBeenCalledOnce();
     expect(res.ok).toBe(true);
     expect(res.result).toEqual({ revision: getProjectRevision() });
+  });
+
+  it("requestSave reports a durable-save failure instead of acknowledging it", async () => {
+    const forceSave = vi.fn(async () => {
+      throw new Error("IndexedDB transaction aborted");
+    });
+    useProjectStore.setState({ forceSave });
+
+    const res = await handleLiveBridgeRequest(req("requestSave"));
+
+    expect(forceSave).toHaveBeenCalledOnce();
+    expect(res).toMatchObject({
+      ok: false,
+      error: {
+        code: "BRIDGE_ERROR",
+        message: "IndexedDB transaction aborted",
+      },
+    });
   });
 
   it("installLiveBridge wires onRequest → respond with the call id", async () => {

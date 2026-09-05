@@ -9,7 +9,7 @@
  * initialize / ping / tools/list / tools/call:
  *
  *  - tools/list is answered IN MAIN from the facade's own verb list + emitted
- *    JSON Schemas (no renderer round-trip): 17 tools, verb dots mapped to
+ *    JSON Schemas (no renderer round-trip): 24 tools, verb dots mapped to
  *    underscores (editor.get_context → editor_get_context), same envelope
  *    shape agent-transport produces.
  *  - tools/call returns the FacadeResult as ONE text content block plus
@@ -50,7 +50,10 @@ import {
   EMITTED_VERB_JSON_SCHEMAS,
   EMITTED_VERB_OUTPUT_JSON_SCHEMAS,
   FACADE_VERBS,
+  FACADE_TOOL_TO_VERB,
   LIVE_VERB_INPUT_SCHEMA_OVERRIDES,
+  facadeToolNameForVerb,
+  type FacadeToolName,
   type FacadeResult,
   type FacadeVerb,
   type JsonSchemaObject,
@@ -172,7 +175,7 @@ function visualImageContent(
   return blocks;
 }
 
-/* ------------------------- the 17 facade tools -------------------------- */
+/* ------------------------- the 24 facade tools -------------------------- */
 
 export interface LiveTool {
   readonly name: string;
@@ -182,8 +185,8 @@ export interface LiveTool {
   readonly outputSchema?: Record<string, unknown>;
 }
 
-export function toolNameForVerb(verb: FacadeVerb): string {
-  return verb.replace(/\./g, "_");
+export function toolNameForVerb(verb: FacadeVerb): FacadeToolName {
+  return facadeToolNameForVerb(verb);
 }
 
 /**
@@ -203,27 +206,41 @@ const TOOL_DESCRIPTIONS: Readonly<Record<FacadeVerb, string>> = {
     "Unavailable in live mode — the GUI owns the project lifecycle; a live session attaches to the open project.",
   "project.save":
     "Flush the GUI's autosave/recovery snapshot for the open project and report the current revision; does not write a .openreel project file.",
+  "project.rename":
+    "Rename the open GUI project through the canonical undoable project action. This changes the display name and future suggested export/save names, but never renames an existing project file path.",
   "project.get_state":
     "Return the full canonical project state at the current revision.",
+  "project.changes":
+    "Return bounded structural changes since a project revision, including both GUI and Agent edits, or require a full refresh when retained history is unavailable.",
   "media.import":
     "Import a local video or audio file into the open GUI project. Use an absolute path under one of capabilities_get.mediaImport.mediaRoots; the returned mediaId can be passed to clip.add, the Media panel updates immediately, and the import is undoable in the GUI.",
+  "media.analyze_start":
+    "Start an asynchronous analysis job for an imported file-backed media item; capabilities_get reports each analysis type honestly.",
   "timeline.get":
-    "Return the compact timeline view (tracks, clips, text overlays) at the current revision.",
+    "Return the compact timeline view (tracks, clips, text overlays) at the current revision. Persisted review markers use namespaced ids R1, R2, and so on.",
+  "timeline.query":
+    "Query a bounded local timeline slice by @A/R refs, ids, time, track/entity type, and allowlisted fields without dumping the full project.",
   "editor.get_context":
-    "Return the current Agent work mode plus live editor context: selection, playhead, time range, canvas point, and project/context revisions.",
+    "Return the current Agent work mode plus live editor context: selection, playhead, time range, canvas point, namespaced Agent references A1/A2, and project/context revisions.",
   "editor.control":
     "Control ephemeral live-editor UI state: play, pause, seek, or select/reveal one or more clip, text, or media targets without changing project revision or undo history.",
+  "edit.validate":
+    "Dry-run the exact edit.apply op schema against the current canonical snapshot and report conflicts, warnings, and estimated impact without side effects.",
   "edit.apply":
     "Apply an atomic batch of closed edit ops as ONE undo unit, including safe track.remove (empty tracks only) and media.remove (unreferenced media only). The revision CAS is unconditional in live mode: an omitted expectedRevision is guarded with the revision of the snapshot the ops were translated against; expectedContextRevision remains optional.",
+  "history.get":
+    "Return bounded undo/redo availability and summaries from the canonical GUI/Core history.",
+  "history.control":
+    "Execute undo or redo through the canonical GUI/Core history with writer lease, revision CAS, and idempotency guards.",
   "preview.render_frame":
     "Render one frame of the current project snapshot to a PNG artifact and return its reference.",
   "visual.inspect":
     'Sample 1–12 real frames and return PNG artifacts plus a contact sheet when supported. Pass exactly ONE selector: clipId (a timeline clip id from timeline_get) or timeRange as {"startSec": <number>, "endSec": <number>} in timeline seconds with endSec > startSec ≥ 0. Optional: sampleCount (1–12, default 6), width/height (even, ≤1024).',
   "export.start":
     'Start an export job for a snapshot of the current project; returns a jobId immediately. Optional destinationPath "<deliveryRoot>/jobs/<slug>/output/<name>.mp4" copies the verified artifact into the Agent workspace deliverables directory after completion (never overwrites; see capabilities_get.export.details.deliveryRoots). Poll job.status until done, then check deliveredTo/deliveryError.',
-  "job.status": "Return the current status of an export job.",
+  "job.status": "Return the current status of an export or media-analysis job.",
   "job.cancel":
-    "Request cooperative cancellation of an export job (idempotent on terminal jobs).",
+    "Request cooperative cancellation of an export or media-analysis job (idempotent on terminal jobs).",
   "verify.artifact":
     "Verify an artifact under the session artifactRoot with ffprobe/pixel checks and return the report.",
 };
@@ -252,7 +269,7 @@ function buildLiveTools(): {
         Record<string, unknown>
       >,
     });
-    toolToVerb.set(name, verb);
+    toolToVerb.set(name, FACADE_TOOL_TO_VERB[name]);
   }
   return { tools, toolToVerb };
 }

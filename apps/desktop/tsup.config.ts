@@ -5,8 +5,8 @@ export default defineConfig({
     "main/index": "src/main/index.ts",
     "preload/index": "src/preload/index.ts",
     "aurora-host/index": "src/aurora-host/index.ts",
-    // Standalone stdio→HTTP MCP connector for the external 17-tool live
-    // endpoint. It has no provider/model/registry dependencies.
+    // Standalone stdio→HTTP MCP connector for the external live endpoint.
+    // Tool names are bundled from the facade's canonical registry.
     "live-mcp/index": "src/live-mcp/index.ts",
   },
   format: ["cjs"],

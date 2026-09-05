@@ -3,29 +3,12 @@
  * the "Open Agent Workspace" entry, driven with real UI input on the built
  * app (ADR 0004 human-side red line: Playwright mouse/keyboard only).
  *
- * The workspace click opens the REAL ~/Movies/ReelTerminal Agent Workspace in
- * the OS file manager (app.getPath("videos") is not isolated by
- * --user-data-dir). mkdir is idempotent over the user's existing jobs/shared;
- * the test closes the Finder window it raised.
+ * Filesystem reveal itself is covered by the IPC unit seam. This GUI spec
+ * verifies the entry without opening Finder or changing foreground apps.
  */
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { test, describe, beforeAll, afterAll } from "vitest";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { createProjectViaUI, waitForEditorReady } from "./harness/ui";
-
-const execFileAsync = promisify(execFile);
-
-async function closeFrontFinderWindow(): Promise<void> {
-  try {
-    await execFileAsync("osascript", [
-      "-e",
-      'tell application "Finder" to close front window',
-    ]);
-  } catch {
-    // No Finder window (or automation permission denied) — nothing to clean up.
-  }
-}
 
 describe("agent session onboarding (GUI)", () => {
   let launched: LaunchedApp;
@@ -37,7 +20,6 @@ describe("agent session onboarding (GUI)", () => {
   }, 240_000);
 
   afterAll(async () => {
-    await closeFrontFinderWindow();
     await launched?.close();
   });
 
@@ -57,10 +39,9 @@ describe("agent session onboarding (GUI)", () => {
     await intro.waitFor({ state: "detached", timeout: 10_000 });
     await popover.getByText(/same undo history as yours/).waitFor({ timeout: 10_000 });
 
-    // The workspace entry is wired to the desktop bridge; clicking it reveals
-    // the real workspace root (jobs/shared) in Finder without any error.
-    await popover.getByRole("button", { name: /Open Agent Workspace/ }).click();
-    await popover.waitFor({ timeout: 10_000 }); // popover stays put, app unharmed
+    // Keep GUI acceptance side-effect free. The entry remains discoverable;
+    // its bridge invocation is covered by CollabStatusBar.test.tsx.
+    await popover.getByRole("button", { name: /Open Agent Workspace/ }).waitFor();
 
     // Close + reopen via the help button next to the Agent Session toggle.
     await popover.getByRole("button", { name: "Close" }).click();

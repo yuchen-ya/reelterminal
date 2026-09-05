@@ -11,6 +11,7 @@ import { DEFAULT_PROJECT_MARKER_COLOR } from "@openreel/core/types/project";
 import type { Transform, Transition } from "@openreel/core/types/timeline";
 import { TransitionEngine } from "@openreel/core/video/transition-engine";
 import type { TextClip } from "@openreel/core/text/types";
+import { parseSRT } from "@openreel/core/text/subtitle-engine";
 import {
   DEFAULT_TEXT_STYLE,
   DEFAULT_TEXT_TRANSFORM,
@@ -54,6 +55,7 @@ import {
   type TextUpdateOp,
   type TextStyleInput,
   type TrackAddOp,
+  type TrackUpdateOp,
   type TrackRemoveOp,
   type MediaRemoveOp,
   type MarkerAddOp,
@@ -61,6 +63,10 @@ import {
   type TransitionAddOp,
   type TransitionRemoveOp,
   type TransitionUpdateOp,
+  type SubtitleImportSrtOp,
+  type ClipSetColorGradeOp,
+  type ClipSetKeyframesOp,
+  type FacadeKeyframeInput,
 } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -94,6 +100,47 @@ export const TRACK_ADD_SCHEMA: ObjectSchema = {
     check: isNonEmptyString,
     describe: "a non-empty string",
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const TRACK_UPDATE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "track.update",
+    describe: '"track.update"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "track.update" } },
+  },
+  trackId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  name: {
+    check: (value) =>
+      typeof value === "string" && value.trim().length > 0 && value.length <= 120,
+    describe: "a non-empty track name of at most 120 characters",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  locked: {
+    check: isBoolean,
+    describe: "a boolean",
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  hidden: {
+    check: isBoolean,
+    describe: "a boolean",
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  muted: {
+    check: isBoolean,
+    describe: "a boolean",
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  solo: {
+    check: isBoolean,
+    describe: "a boolean",
+    emits: { kind: "leaf", schema: { type: "boolean" } },
   },
 };
 
@@ -900,6 +947,128 @@ export const MARKER_REMOVE_SCHEMA: ObjectSchema = {
   },
 };
 
+export const SUBTITLE_IMPORT_SRT_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "subtitle.importSrt",
+    describe: '"subtitle.importSrt"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "subtitle.importSrt" } },
+  },
+  srtContent: {
+    check: (value) =>
+      typeof value === "string" &&
+      value.trim().length > 0 &&
+      new TextEncoder().encode(value).byteLength <= 256 * 1024,
+    describe: "non-empty SRT text of at most 256 KiB",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+const isColorTemperature = (value: unknown): boolean =>
+  typeof value === "number" && Number.isFinite(value) && value >= -100 && value <= 100;
+
+export const CLIP_SET_COLOR_GRADE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "clip.setColorGrade",
+    describe: '"clip.setColorGrade"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.setColorGrade" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  temperature: {
+    check: isColorTemperature,
+    describe: "a finite number in [-100, 100]",
+    emits: { kind: "leaf", schema: { type: "number", minimum: -100, maximum: 100 } },
+  },
+  tint: {
+    check: isColorTemperature,
+    describe: "a finite number in [-100, 100]",
+    emits: { kind: "leaf", schema: { type: "number", minimum: -100, maximum: 100 } },
+  },
+  clear: {
+    check: (value) => value === true,
+    describe: "true",
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+};
+
+const KEYFRAME_PROPERTIES = [
+  "opacity",
+  "position.x",
+  "position.y",
+  "scale.x",
+  "scale.y",
+  "rotation",
+] as const;
+
+const KEYFRAME_EASINGS = [
+  "linear",
+  "ease",
+  "ease-in",
+  "ease-out",
+  "ease-in-out",
+  "hold",
+  "smoothstep",
+  "smootherstep",
+] as const;
+
+export const FACADE_KEYFRAME_SCHEMA: ObjectSchema = {
+  property: {
+    check: oneOf(KEYFRAME_PROPERTIES),
+    describe: "a renderer-supported transform/opacity keyframe property",
+    required: true,
+    emits: { kind: "leaf", schema: { enum: KEYFRAME_PROPERTIES } },
+  },
+  time: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative clip-local time",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  value: {
+    check: isFiniteNumber,
+    describe: "a finite numeric value",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number" } },
+  },
+  easing: {
+    check: oneOf(KEYFRAME_EASINGS),
+    describe: "a supported easing",
+    emits: { kind: "leaf", schema: { enum: KEYFRAME_EASINGS } },
+  },
+};
+
+export const CLIP_SET_KEYFRAMES_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "clip.setKeyframes",
+    describe: '"clip.setKeyframes"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.setKeyframes" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  keyframes: {
+    check: (value) => Array.isArray(value) && value.length <= 100,
+    describe: "an array of at most 100 keyframes",
+    required: true,
+    emits: {
+      kind: "array",
+      maxItems: 100,
+      items: { kind: "anyOfObjects", variants: [FACADE_KEYFRAME_SCHEMA] },
+    },
+  },
+};
+
 /**
  * Rebind nested style/position/anchor to SANITIZED copies: opToCoreActions
  * spreads them into the canonical TextClip, so what flows downstream must be
@@ -1004,6 +1173,21 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
   switch (opType as EditOp["op"]) {
     case "track.add":
       return validateObject<TrackAddOp>(raw, TRACK_ADD_SCHEMA, label);
+    case "track.update": {
+      const op = validateObject<TrackUpdateOp>(raw, TRACK_UPDATE_SCHEMA, label);
+      if (
+        op.name === undefined &&
+        op.locked === undefined &&
+        op.hidden === undefined &&
+        op.muted === undefined &&
+        op.solo === undefined
+      ) {
+        throw invalidParams(
+          `${label}: at least one of name/locked/hidden/muted/solo is required`,
+        );
+      }
+      return op;
+    }
     case "track.remove":
       return validateObject<TrackRemoveOp>(raw, TRACK_REMOVE_SCHEMA, label);
     case "media.remove":
@@ -1111,10 +1295,86 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       return validateObject<MarkerAddOp>(raw, MARKER_ADD_SCHEMA, label);
     case "marker.remove":
       return validateObject<MarkerRemoveOp>(raw, MARKER_REMOVE_SCHEMA, label);
+    case "subtitle.importSrt": {
+      const op = validateObject<SubtitleImportSrtOp>(
+        raw,
+        SUBTITLE_IMPORT_SRT_SCHEMA,
+        label,
+      );
+      const parsed = parseSRT(op.srtContent);
+      if (!parsed.success || parsed.subtitles.length === 0 || parsed.errors.length > 0) {
+        throw invalidParams(`${label}: SRT parsing failed`, {
+          errors: parsed.errors.slice(0, 20),
+        });
+      }
+      if (parsed.subtitles.length > 500) {
+        throw invalidParams(`${label}: SRT contains more than 500 cues`);
+      }
+      return op;
+    }
+    case "clip.setColorGrade": {
+      const op = validateObject<ClipSetColorGradeOp>(
+        raw,
+        CLIP_SET_COLOR_GRADE_SCHEMA,
+        label,
+      );
+      if (op.temperature === undefined && op.tint === undefined && op.clear !== true) {
+        throw invalidParams(`${label}: temperature, tint, or clear is required`);
+      }
+      if (op.clear === true && (op.temperature !== undefined || op.tint !== undefined)) {
+        throw invalidParams(`${label}: clear cannot be combined with temperature or tint`);
+      }
+      return op;
+    }
+    case "clip.setKeyframes": {
+      const op = validateObject<ClipSetKeyframesOp>(
+        raw,
+        CLIP_SET_KEYFRAMES_SCHEMA,
+        label,
+      );
+      const keyframes = op.keyframes.map((value, keyframeIndex) =>
+        validateObject<FacadeKeyframeInput>(
+          value,
+          FACADE_KEYFRAME_SCHEMA,
+          `${label}.keyframes[${keyframeIndex}]`,
+        ),
+      );
+      const seen = new Set<string>();
+      for (const keyframe of keyframes) {
+        const key = `${keyframe.property}:${keyframe.time}`;
+        if (seen.has(key)) {
+          throw invalidParams(`${label}: duplicate keyframe at ${key}`);
+        }
+        seen.add(key);
+        const [min, max] =
+          keyframe.property === "opacity"
+            ? [0, 1]
+            : keyframe.property === "scale.x" || keyframe.property === "scale.y"
+              ? [0.01, 20]
+              : keyframe.property === "rotation"
+                ? [-360, 360]
+                : [-8192, 8192];
+        if (keyframe.value < min || keyframe.value > max) {
+          throw invalidParams(
+            `${label}: ${keyframe.property} value must be in [${min}, ${max}]`,
+          );
+        }
+      }
+      return { ...op, keyframes };
+    }
     default:
       // Unreachable: opType was allowlist-checked above. Keeps the function
       // total for the compiler and fail-closed for the runtime.
       throw invalidParams(`${label}: unsupported op ${JSON.stringify(opType)}`);
+  }
+}
+
+/** Cross-op constraints that preserve precise per-op created-id attribution. */
+export function validateEditBatch(ops: readonly EditOp[]): void {
+  if (ops.filter((op) => op.op === "subtitle.importSrt").length > 1) {
+    throw invalidParams(
+      "edit batch may contain at most one subtitle.importSrt op; combine the SRT cues into one document",
+    );
   }
 }
 
@@ -1140,6 +1400,7 @@ export interface EntityIdSets {
   readonly clips: ReadonlySet<string>;
   readonly textOverlays: ReadonlySet<string>;
   readonly transitions: ReadonlySet<string>;
+  readonly subtitles: ReadonlySet<string>;
 }
 
 export function collectEntityIds(project: Project): EntityIdSets {
@@ -1152,7 +1413,8 @@ export function collectEntityIds(project: Project): EntityIdSets {
     for (const transition of track.transitions ?? []) transitions.add(transition.id);
   }
   const textOverlays = new Set((project.textClips ?? []).map((c) => c.id));
-  return { tracks, clips, textOverlays, transitions };
+  const subtitles = new Set((project.timeline.subtitles ?? []).map((subtitle) => subtitle.id));
+  return { tracks, clips, textOverlays, transitions, subtitles };
 }
 
 /** Created entity ids, partitioned by category (the live seam's shape). */
@@ -1161,6 +1423,7 @@ export interface CreatedIdsByCategory {
   readonly clips: readonly string[];
   readonly textClips: readonly string[];
   readonly transitions: readonly string[];
+  readonly subtitles: readonly string[];
 }
 
 export function diffCreatedIdsByCategory(
@@ -1176,6 +1439,7 @@ export function diffCreatedIdsByCategory(
     transitions: [...after.transitions].filter(
       (id) => !before.transitions.has(id),
     ),
+    subtitles: [...after.subtitles].filter((id) => !before.subtitles.has(id)),
   };
 }
 
@@ -1186,6 +1450,7 @@ export function diffCreatedIds(before: EntityIdSets, after: EntityIdSets): strin
     ...byCategory.clips,
     ...byCategory.textClips,
     ...byCategory.transitions,
+    ...byCategory.subtitles,
   ];
 }
 
@@ -1237,6 +1502,36 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           ...(op.trackId !== undefined ? { trackId: op.trackId } : {}),
         }),
       ];
+    }
+
+    case "track.update": {
+      const track = draft.timeline.tracks.find(
+        (candidate) => candidate.id === op.trackId,
+      );
+      if (!track) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `track.update: track "${op.trackId}" not found`,
+          { trackId: op.trackId },
+        );
+      }
+      const actions: Action[] = [];
+      if (op.name !== undefined) {
+        actions.push(makeAction("track/rename", { trackId: op.trackId, name: op.name.trim() }));
+      }
+      if (op.locked !== undefined) {
+        actions.push(makeAction("track/lock", { trackId: op.trackId, locked: op.locked }));
+      }
+      if (op.hidden !== undefined) {
+        actions.push(makeAction("track/hide", { trackId: op.trackId, hidden: op.hidden }));
+      }
+      if (op.muted !== undefined) {
+        actions.push(makeAction("track/mute", { trackId: op.trackId, muted: op.muted }));
+      }
+      if (op.solo !== undefined) {
+        actions.push(makeAction("track/solo", { trackId: op.trackId, solo: op.solo }));
+      }
+      return actions;
     }
 
     case "track.remove": {
@@ -1330,8 +1625,7 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       }
       // Canonical-state invariant: the committed range must satisfy
       // outPoint > inPoint and stay inside the source media. Reproduce core's
-      // own defaulting (action-executor clip/add: duration → outPoint, with
-      // inPoint defaulting independently) so degenerate combinations like
+      // default source range so degenerate combinations like
       // {inPoint:5, duration:3} or {inPoint:8} on 6s media are REJECTED here
       // instead of silently committing inverted ranges.
       // (Media with unknown/zero duration — images, placeholders — is exempt
@@ -1380,9 +1674,17 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           trackId: op.trackId,
           mediaId: op.mediaId,
           startTime: op.startTime,
-          ...(op.duration !== undefined ? { duration: op.duration } : {}),
+          // Explicit duration remains authoritative. Otherwise the source
+          // range defines the timeline span; sending it explicitly also
+          // keeps older/direct Core consumers from re-defaulting to the full
+          // media duration.
+          duration: op.duration ?? effectiveOut - effectiveIn,
           ...(op.inPoint !== undefined ? { inPoint: op.inPoint } : {}),
-          ...(op.outPoint !== undefined ? { outPoint: op.outPoint } : {}),
+          // Always forward the range value validated above. When only
+          // inPoint is supplied, Core would otherwise default outPoint from
+          // the derived timeline duration (for example 8 instead of 10 for
+          // a 10-second source starting at 2 seconds).
+          outPoint: effectiveOut,
         }),
       ];
     }
@@ -2037,6 +2339,84 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         );
       }
       return [makeAction("projectMarker/remove", { markerId: marker.id })];
+    }
+
+    case "subtitle.importSrt": {
+      const parsed = parseSRT(op.srtContent);
+      if (!parsed.success || parsed.subtitles.length === 0 || parsed.errors.length > 0) {
+        throw invalidParams("subtitle.importSrt: SRT parsing failed", {
+          errors: parsed.errors.slice(0, 20),
+        });
+      }
+      return [
+        makeAction("subtitle/setAll", {
+          subtitles: [
+            ...(draft.timeline.subtitles ?? []).map((subtitle) => ({ ...subtitle })),
+            ...parsed.subtitles.map((subtitle) => ({ ...subtitle })),
+          ],
+        }),
+      ];
+    }
+
+    case "clip.setColorGrade": {
+      const clip = draft.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((candidate) => candidate.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.setColorGrade: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      return [
+        makeAction("clip/setColorGrading", {
+          clipId: op.clipId,
+          colorGrading:
+            op.clear === true
+              ? undefined
+              : {
+                  ...(clip.colorGrading ?? {}),
+                  ...(op.temperature !== undefined
+                    ? { temperature: op.temperature }
+                    : {}),
+                  ...(op.tint !== undefined ? { tint: op.tint } : {}),
+                },
+        }),
+      ];
+    }
+
+    case "clip.setKeyframes": {
+      const clip = draft.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((candidate) => candidate.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.setKeyframes: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      for (const keyframe of op.keyframes) {
+        if (keyframe.time > clip.duration) {
+          throw invalidParams(
+            `clip.setKeyframes: keyframe time ${keyframe.time} exceeds clip duration ${clip.duration}`,
+            { clipId: op.clipId, time: keyframe.time, duration: clip.duration },
+          );
+        }
+      }
+      return [
+        makeAction("keyframe/setAll", {
+          clipId: op.clipId,
+          keyframes: op.keyframes.map((keyframe) => ({
+            id: `keyframe-${crypto.randomUUID()}`,
+            property: keyframe.property,
+            time: keyframe.time,
+            value: keyframe.value,
+            easing: keyframe.easing ?? "linear",
+          })),
+        }),
+      ];
     }
   }
 }

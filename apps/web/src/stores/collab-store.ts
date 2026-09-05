@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type {
+  OpenReelAgentAccessMode,
   OpenReelAgentWorkMode,
   OpenReelCollabStatus,
 } from "../types/global";
@@ -19,6 +20,7 @@ interface CollabState extends CollabStatus {
   enable: () => Promise<void>;
   disable: () => Promise<void>;
   setWorkMode: (mode: CollabMode) => Promise<void>;
+  setAccess: (access: OpenReelAgentAccessMode) => Promise<void>;
   applyStatus: (status: CollabStatus) => void;
   setCurrentAction: (action: string | null) => void;
 }
@@ -88,6 +90,16 @@ export const useCollabStore = create<CollabState>()((set, get) => ({
       get().applyStatus(await control.setWorkMode(mode));
     } catch {
       /* ignore */
+    }
+  },
+
+  setAccess: async (access) => {
+    const control = collabControl();
+    if (!control) return;
+    try {
+      get().applyStatus(await control.setAccess(access));
+    } catch {
+      /* the status remains read-only if persistence or IPC rejects */
     }
   },
 }));

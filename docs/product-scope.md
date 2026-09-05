@@ -16,7 +16,7 @@ ReelTerminal owns:
 - direct human editing through the GUI;
 - a compact, typed MCP surface through which an external agent can inspect and
   edit the same project;
-- stable human-readable Agent references such as `#1`, `#2`, and `#3` that map
+- stable human-readable Agent references such as `@A1`, `@A2`, and `@A3` that map
   to real editor entities;
 - an optional conversation *client* that attaches to a session owned by the
   user's external agent;
@@ -66,7 +66,7 @@ permissions, cancellation, and session attachment.
 ## Agent references
 
 Users may mark selected media or timeline entities for the agent. Marks receive
-monotonic session-local numbers (`#1`, `#2`, ...), are visibly badged in the
+monotonic session-local numbers (`@A1`, `@A2`, ...), are visibly badged in the
 editor, and are exposed by `editor.get_context`. Numbers are never rebound or
 renumbered: a deleted entity leaves a stale reference so an earlier message can
 never resolve to a different object.

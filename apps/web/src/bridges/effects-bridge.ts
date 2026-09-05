@@ -1281,6 +1281,9 @@ export class EffectsBridge {
 // Singleton instance
 let effectsBridgeInstance: EffectsBridge | null = null;
 let bridgeInitPromise: Promise<EffectsBridge> | null = null;
+let backgroundInitPromise: Promise<EffectsBridge> | null = null;
+let lastBackgroundInitFailureAt = 0;
+const BACKGROUND_INIT_RETRY_DELAY_MS = 1_000;
 
 // Track initialization dimensions for auto-initialization
 let lastInitWidth = 1920;
@@ -1296,15 +1299,30 @@ export function getEffectsBridge(): EffectsBridge {
     effectsBridgeInstance = new EffectsBridge();
   }
 
-  if (!effectsBridgeInstance.isInitialized()) {
-    effectsBridgeInstance
-      .initialize(lastInitWidth, lastInitHeight)
-      .catch((error) => {
-        console.error(
-          "[EffectsBridge] Background initialization failed:",
-          error,
-        );
-      });
+  if (
+    !effectsBridgeInstance.isInitialized() &&
+    Date.now() - lastBackgroundInitFailureAt >= BACKGROUND_INIT_RETRY_DELAY_MS
+  ) {
+    // Share the same in-flight initialization as async consumers. Project
+    // synchronization can call this getter several times in one commit; each
+    // call must not start another GPU/WebGL initialization.
+    if (!backgroundInitPromise) {
+      const initializing = getEffectsBridgeAsync(lastInitWidth, lastInitHeight);
+      backgroundInitPromise = initializing;
+      void initializing
+        .catch((error) => {
+          lastBackgroundInitFailureAt = Date.now();
+          console.error(
+            "[EffectsBridge] Background initialization failed:",
+            error,
+          );
+        })
+        .finally(() => {
+          if (backgroundInitPromise === initializing) {
+            backgroundInitPromise = null;
+          }
+        });
+    }
   }
 
   return effectsBridgeInstance;
@@ -1326,17 +1344,25 @@ export async function getEffectsBridgeAsync(
     return bridgeInitPromise;
   }
 
-  bridgeInitPromise = (async () => {
-    if (!effectsBridgeInstance) {
-      effectsBridgeInstance = new EffectsBridge();
-    }
-    await effectsBridgeInstance.initialize(width, height);
+  if (!effectsBridgeInstance) {
+    effectsBridgeInstance = new EffectsBridge();
+  }
+  const instance = effectsBridgeInstance;
+  const initializing = (async () => {
+    await instance.initialize(width, height);
+    lastBackgroundInitFailureAt = 0;
     lastInitWidth = width;
     lastInitHeight = height;
-    return effectsBridgeInstance;
+    return instance;
   })();
-
-  return bridgeInitPromise;
+  bridgeInitPromise = initializing;
+  try {
+    return await initializing;
+  } finally {
+    // A failed initialization must remain retryable. A successful one is
+    // found through isInitialized() and no longer needs the promise cache.
+    if (bridgeInitPromise === initializing) bridgeInitPromise = null;
+  }
 }
 
 /**
@@ -1357,4 +1383,7 @@ export function disposeEffectsBridge(): void {
     effectsBridgeInstance.dispose();
     effectsBridgeInstance = null;
   }
+  bridgeInitPromise = null;
+  backgroundInitPromise = null;
+  lastBackgroundInitFailureAt = 0;
 }

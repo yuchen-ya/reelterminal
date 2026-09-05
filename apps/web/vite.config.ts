@@ -6,6 +6,10 @@ import { pruneFontsPlugin } from "./vite-plugins/prune-fonts";
 
 const isDesktop = process.env.OPENREEL_DESKTOP === "1";
 
+const normalizedModuleId = (id: string): string => id.replaceAll("\\", "/");
+const isNodePackage = (id: string, packageName: string): boolean =>
+  normalizedModuleId(id).includes(`/node_modules/${packageName}/`);
+
 function desktopHtmlPlugin() {
   return {
     name: "openreel-desktop-html",
@@ -52,10 +56,30 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) return "react";
-          if (id.includes("node_modules/zustand")) return "zustand";
-          if (id.includes("node_modules/three")) return "three";
-          if (id.includes("node_modules/@radix-ui")) return "radix";
+          // Match the package segment itself. pnpm peer suffixes contain
+          // strings such as `_react@...`; broad substring matching pulled
+          // unrelated i18n and syntax-highlighting modules into `react`.
+          if (
+            isNodePackage(id, "react") ||
+            isNodePackage(id, "react-dom") ||
+            isNodePackage(id, "scheduler")
+          ) return "react";
+          if (isNodePackage(id, "zustand")) return "zustand";
+          if (isNodePackage(id, "three")) return "three";
+          if (isNodePackage(id, "@radix-ui")) return "radix";
+          if (
+            isNodePackage(id, "gsap") ||
+            isNodePackage(id, "framer-motion") ||
+            isNodePackage(id, "motion-dom") ||
+            isNodePackage(id, "motion-utils")
+          ) return "animation-vendor";
+          if (isNodePackage(id, "mediabunny")) return "media-vendor";
+          if (isNodePackage(id, "@paper-design/shaders")) return "shader-vendor";
+          if (
+            isNodePackage(id, "react-syntax-highlighter") ||
+            isNodePackage(id, "highlight.js") ||
+            isNodePackage(id, "lowlight")
+          ) return "syntax-highlighting";
         },
       },
     },

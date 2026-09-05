@@ -69,6 +69,7 @@ export function CollabStatusBar(): JSX.Element {
   const enable = useCollabStore((s) => s.enable);
   const disable = useCollabStore((s) => s.disable);
   const setWorkMode = useCollabStore((s) => s.setWorkMode);
+  const setAccess = useCollabStore((s) => s.setAccess);
 
   const chatOpen = useUIStore((s) => s.panels.externalAgent.visible);
   const togglePanel = useUIStore((s) => s.togglePanel);
@@ -223,12 +224,22 @@ export function CollabStatusBar(): JSX.Element {
       </div>
 
       {access === "read-only" && (
-        <span
-          className="rounded-[5px] bg-bg-2 px-1.5 py-0.5 text-fg-muted"
-          title={t("desktop.collaboration.readOnlyDescription")}
-        >
-          {t("desktop.collaboration.readOnly")}
-        </span>
+        <div className="flex items-center gap-1">
+          <span
+            className="rounded-[5px] bg-bg-2 px-1.5 py-0.5 text-fg-muted"
+            title={t("desktop.collaboration.readOnlyDescription")}
+          >
+            {t("desktop.collaboration.readOnly")}
+          </span>
+          <button
+            type="button"
+            onClick={() => void setAccess("write")}
+            className="rounded-[5px] px-1.5 py-0.5 font-medium text-accent hover:bg-accent-soft"
+            title={t("desktop.collaboration.restoreWriteDescription")}
+          >
+            {t("desktop.collaboration.restoreWrite")}
+          </button>
+        </div>
       )}
 
       {currentAction && (
@@ -259,7 +270,7 @@ export function CollabStatusBar(): JSX.Element {
                 state: reference.stale ? t("agentReferences.staleSuffix") : "",
               })}
             >
-              #{reference.number}
+              A{reference.number}
             </span>
           ))}
         </div>

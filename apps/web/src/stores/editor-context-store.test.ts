@@ -127,8 +127,8 @@ describe("editor-context-store (ADR 0004 Decision 4)", () => {
     const marked = markAgentReferences(targets);
     expect(marked.map((reference) => reference.number)).toEqual([1, 2]);
     expect(getLiveEditorContext().references).toMatchObject({
-      "1": { entityId: "early", kind: "audio", revisionAtMark: getProjectRevision() },
-      "2": { entityId: "late", kind: "video", revisionAtMark: getProjectRevision() },
+      "1": { ref: "A1", entityId: "early", kind: "audio", revisionAtMark: getProjectRevision() },
+      "2": { ref: "A2", entityId: "late", kind: "video", revisionAtMark: getProjectRevision() },
     });
   });
 });

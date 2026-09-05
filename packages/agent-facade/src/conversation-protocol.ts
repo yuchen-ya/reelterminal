@@ -169,6 +169,28 @@ export interface ExternalAgentVisualState {
   readonly selectedClipIds: readonly string[];
   readonly selectedTextIds: readonly string[];
   readonly selectedMediaIds: readonly string[];
+  readonly projectId?: string;
+  readonly projectName?: string;
+  readonly references?: readonly {
+    readonly ref: string;
+    readonly number: number;
+    readonly kind: "video" | "audio" | "text" | "media";
+    readonly entityId: string;
+    readonly label: string;
+    readonly timing: {
+      readonly startSeconds: number | null;
+      readonly endSeconds: number | null;
+    };
+    readonly revisionAtMark: number;
+    readonly stale: boolean;
+  }[];
+  readonly reviewMarkers?: readonly {
+    readonly ref: string;
+    readonly number: number;
+    readonly id: string;
+    readonly target: Record<string, unknown>;
+    readonly label?: string;
+  }[];
   readonly changed: readonly (
     | "project"
     | "preview"
@@ -308,8 +330,17 @@ export type ExternalAgentSessionUpdate =
       /** Optional usage counters; provider/model identity is intentionally absent. */
       readonly sessionUpdate: "usage";
       readonly inputTokens?: number;
+      readonly cachedInputTokens?: number;
       readonly outputTokens?: number;
+      readonly reasoningOutputTokens?: number;
       readonly totalTokens?: number;
+      readonly turnInputTokens?: number;
+      readonly turnCachedInputTokens?: number;
+      readonly turnOutputTokens?: number;
+      readonly turnReasoningOutputTokens?: number;
+      readonly turnTotalTokens?: number;
+      readonly currentContextTokens?: number;
+      readonly contextWindowTokens?: number;
     }
   | {
       readonly sessionUpdate: "artifact";
@@ -630,8 +661,17 @@ export function isExternalAgentSessionUpdate(
       );
     case "usage":
       return isOptionalNonNegativeInteger(value.inputTokens) &&
+        isOptionalNonNegativeInteger(value.cachedInputTokens) &&
         isOptionalNonNegativeInteger(value.outputTokens) &&
-        isOptionalNonNegativeInteger(value.totalTokens);
+        isOptionalNonNegativeInteger(value.reasoningOutputTokens) &&
+        isOptionalNonNegativeInteger(value.totalTokens) &&
+        isOptionalNonNegativeInteger(value.turnInputTokens) &&
+        isOptionalNonNegativeInteger(value.turnCachedInputTokens) &&
+        isOptionalNonNegativeInteger(value.turnOutputTokens) &&
+        isOptionalNonNegativeInteger(value.turnReasoningOutputTokens) &&
+        isOptionalNonNegativeInteger(value.turnTotalTokens) &&
+        isOptionalNonNegativeInteger(value.currentContextTokens) &&
+        isOptionalNonNegativeInteger(value.contextWindowTokens);
     case "artifact":
       return (
         typeof value.artifactId === "string" &&
@@ -933,11 +973,38 @@ export function projectExternalAgentSessionUpdate(
         ...(isOptionalNonNegativeInteger(source.inputTokens) && source.inputTokens !== undefined
           ? { inputTokens: source.inputTokens }
           : {}),
+        ...(isOptionalNonNegativeInteger(source.cachedInputTokens) && source.cachedInputTokens !== undefined
+          ? { cachedInputTokens: source.cachedInputTokens }
+          : {}),
         ...(isOptionalNonNegativeInteger(source.outputTokens) && source.outputTokens !== undefined
           ? { outputTokens: source.outputTokens }
           : {}),
+        ...(isOptionalNonNegativeInteger(source.reasoningOutputTokens) && source.reasoningOutputTokens !== undefined
+          ? { reasoningOutputTokens: source.reasoningOutputTokens }
+          : {}),
         ...(isOptionalNonNegativeInteger(source.totalTokens) && source.totalTokens !== undefined
           ? { totalTokens: source.totalTokens }
+          : {}),
+        ...(isOptionalNonNegativeInteger(source.turnInputTokens) && source.turnInputTokens !== undefined
+          ? { turnInputTokens: source.turnInputTokens }
+          : {}),
+        ...(isOptionalNonNegativeInteger(source.turnCachedInputTokens) && source.turnCachedInputTokens !== undefined
+          ? { turnCachedInputTokens: source.turnCachedInputTokens }
+          : {}),
+        ...(isOptionalNonNegativeInteger(source.turnOutputTokens) && source.turnOutputTokens !== undefined
+          ? { turnOutputTokens: source.turnOutputTokens }
+          : {}),
+        ...(isOptionalNonNegativeInteger(source.turnReasoningOutputTokens) && source.turnReasoningOutputTokens !== undefined
+          ? { turnReasoningOutputTokens: source.turnReasoningOutputTokens }
+          : {}),
+        ...(isOptionalNonNegativeInteger(source.turnTotalTokens) && source.turnTotalTokens !== undefined
+          ? { turnTotalTokens: source.turnTotalTokens }
+          : {}),
+        ...(isOptionalNonNegativeInteger(source.currentContextTokens) && source.currentContextTokens !== undefined
+          ? { currentContextTokens: source.currentContextTokens }
+          : {}),
+        ...(isOptionalNonNegativeInteger(source.contextWindowTokens) && source.contextWindowTokens !== undefined
+          ? { contextWindowTokens: source.contextWindowTokens }
           : {}),
       };
     case "artifact": {

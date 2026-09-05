@@ -9,7 +9,7 @@ import { ToolcraftSelectableCard as SelectableCard } from "@openreel/ui";
 import { ToolcraftText as Text } from "@openreel/ui";
 import { Box, Smartphone, Monitor, Square, Film } from "@/icons/lucide-compat";
 
-import { OpenReelMark } from "../brand/OpenReelMark";
+import { ReelTerminalMark } from "@/components/brand/ReelTerminalMark";
 import { Icon } from "@/icons/Icon";
 import {
   DESKTOP_FORMATS,
@@ -105,7 +105,7 @@ export function DesktopStartScreen(): JSX.Element {
       <div className="mx-auto flex max-w-4xl flex-col gap-10 px-8 py-12">
         <section>
           <div className="flex items-center gap-3">
-            <OpenReelMark size={28} className="text-accent" />
+            <ReelTerminalMark size={28} className="text-accent" />
             <div>
               <Heading level={1}>{t("desktop.appName")}</Heading>
               <Text type="supporting" display="block" className="mt-0.5">

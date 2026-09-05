@@ -922,7 +922,7 @@ export const Timeline: React.FC = () => {
         onClick: () => addTrack("graphics"),
       },
     ],
-    [addTrack],
+    [addTrack, tr],
   );
 
   // Small, mockup-styled timeline tool button

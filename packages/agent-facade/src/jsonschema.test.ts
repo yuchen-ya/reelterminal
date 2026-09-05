@@ -37,11 +37,11 @@ function walk(schema: Schema, visit: (node: Schema) => void): void {
 }
 
 describe("emitted verb JSON Schemas — global client constraints", () => {
-  it("covers exactly the 17 facade verbs, keyed by verb name", () => {
+  it("covers exactly the 24 facade verbs, keyed by verb name", () => {
     expect(Object.keys(EMITTED_VERB_JSON_SCHEMAS).sort()).toEqual(
       [...FACADE_VERBS].sort(),
     );
-    expect(FACADE_VERBS).toHaveLength(17);
+    expect(FACADE_VERBS).toHaveLength(24);
   });
 
   for (const [verb, typedSchema] of Object.entries(EMITTED_VERB_JSON_SCHEMAS)) {
@@ -129,7 +129,7 @@ describe("emitted schema per-verb structure", () => {
       },
     });
     const anyOf = ((ops.items as Schema).anyOf ?? []) as Schema[];
-    expect(anyOf).toHaveLength(23);
+    expect(anyOf).toHaveLength(27);
     const trackAdd = anyOf[0];
     expect(trackAdd.additionalProperties).toBe(false);
     expect(trackAdd.required).toEqual(["op", "trackType"]);

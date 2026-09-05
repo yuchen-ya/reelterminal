@@ -69,7 +69,8 @@ export const ParticleRenderer: React.FC<ParticleRendererProps> = ({
   }, [effects, engine]);
 
   useEffect(() => {
-    if (!containerRef.current || width <= 0 || height <= 0) {
+    const container = containerRef.current;
+    if (!container || width <= 0 || height <= 0) {
       return;
     }
 
@@ -101,7 +102,7 @@ export const ParticleRenderer: React.FC<ParticleRendererProps> = ({
     renderer.domElement.style.position = "absolute";
     renderer.domElement.style.top = "0";
     renderer.domElement.style.left = "0";
-    containerRef.current.appendChild(renderer.domElement);
+    container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     const geometry = new THREE.BufferGeometry();
@@ -136,8 +137,8 @@ export const ParticleRenderer: React.FC<ParticleRendererProps> = ({
       geometry.dispose();
       material.dispose();
       renderer.dispose();
-      if (containerRef.current && renderer.domElement) {
-        containerRef.current.removeChild(renderer.domElement);
+      if (renderer.domElement.parentNode === container) {
+        container.removeChild(renderer.domElement);
       }
     };
   }, [width, height]);

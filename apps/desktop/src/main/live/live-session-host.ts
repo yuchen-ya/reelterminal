@@ -28,6 +28,7 @@ import {
   type FacadeVerb,
   type LiveAgentFacade,
   type LiveFacadeConfig,
+  type AgentAccessMode,
   type AgentWorkMode,
   DEFAULT_AGENT_ACCESS_MODE,
   DEFAULT_AGENT_WORK_MODE,
@@ -108,6 +109,8 @@ export interface LiveSessionHost {
   disable(): Promise<LiveCollabStatus>;
   getStatus(): Promise<LiveCollabStatus>;
   setWorkMode(mode: AgentWorkMode): Promise<LiveCollabStatus>;
+  /** Explicit authorization change; never coupled to work mode. */
+  setAccess(access: AgentAccessMode): Promise<LiveCollabStatus>;
   /** External endpoint → facade (lazy-creates the external session). */
   callExternal(verb: FacadeVerb, params: unknown): Promise<FacadeResult<unknown>>;
   readonly isEnabled: boolean;
@@ -294,7 +297,7 @@ export function createLiveSessionHost(
       // switching it never remounts this facade or the conversation view.
       workMode: () => modePreferenceStore.get().workMode,
       // Access remains an independent authorization boundary.
-      access: modePreferenceStore.get().access,
+      access: () => modePreferenceStore.get().access,
       artifactRoot: deps.artifactRoot,
     };
     return deps.createFacade(config);
@@ -453,6 +456,20 @@ export function createLiveSessionHost(
       const current = modePreferenceStore.get();
       if (nextMode === current.workMode) return status();
       modePreferenceStore.set({ ...current, workMode: nextMode });
+      pushStatus();
+      return status();
+    },
+
+    async setAccess(nextAccess: AgentAccessMode) {
+      const current = modePreferenceStore.get();
+      if (nextAccess === current.access) return status();
+      modePreferenceStore.set({ ...current, access: nextAccess });
+      // Revocation takes effect immediately and also releases the scarce
+      // writer lease. Restoring write access reacquires lazily at the next
+      // write verb, preserving the session's jobs and idempotency ledger.
+      if (nextAccess === "read-only") {
+        externalSession?.releaseWriterLease();
+      }
       pushStatus();
       return status();
     },

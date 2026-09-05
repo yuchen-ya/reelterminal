@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { Action } from "@openreel/core";
-import { useProjectStore, getProjectRevision } from "./project-store";
+import { useProjectStore, getProjectChanges, getProjectRevision } from "./project-store";
 
 const act = (type: string, params: Record<string, unknown>): Action => ({
   type,
@@ -65,5 +65,24 @@ describe("projectRevision (ADR 0004 Decision 3)", () => {
       .executeAction(act("clip/remove", { clipId: "does-not-exist" }));
     expect(result.success).toBe(false);
     expect(getProjectRevision()).toBe(before);
+  });
+
+  it("records a manual GUI mutation in the bounded project delta journal", async () => {
+    const before = getProjectRevision();
+    const result = await useProjectStore
+      .getState()
+      .executeAction(act("track/add", { trackType: "audio", trackId: "manual-a1" }));
+    expect(result.success).toBe(true);
+    const delta = getProjectChanges({ sinceRevision: before });
+    expect(delta.requiresFullRefresh).toBe(false);
+    expect(delta.toRevision).toBe(before + 1);
+    expect(delta.changes).toContainEqual(
+      expect.objectContaining({
+        revision: before + 1,
+        change: "added",
+        entityType: "track",
+        entityId: "manual-a1",
+      }),
+    );
   });
 });

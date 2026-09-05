@@ -22,11 +22,13 @@ import {
   EXPORT_START_SCHEMA,
   JOB_PARAMS_SCHEMA,
   MEDIA_IMPORT_SCHEMA,
+  MEDIA_ANALYZE_START_SCHEMA,
   PREVIEW_RENDER_FRAME_SCHEMA,
   VISUAL_INSPECT_RANGE_SCHEMA,
   VISUAL_INSPECT_SCHEMA,
   PROJECT_CREATE_SCHEMA,
   PROJECT_OPEN_SCHEMA,
+  PROJECT_RENAME_SCHEMA,
   PROJECT_SAVE_SCHEMA,
   PROJECT_SETTINGS_SCHEMA,
   VERIFY_ARTIFACT_SCHEMA,
@@ -35,6 +37,12 @@ import {
   VERIFY_REGION_SCHEMA,
   EDITOR_CONTROL_SCHEMA,
   EDITOR_CONTROL_TARGET_SCHEMA,
+  PROJECT_CHANGES_SCHEMA,
+  TIMELINE_QUERY_SCHEMA,
+  TIMELINE_QUERY_RANGE_SCHEMA,
+  EDIT_VALIDATE_SCHEMA,
+  HISTORY_GET_SCHEMA,
+  HISTORY_CONTROL_SCHEMA,
 } from "./verb-schemas";
 import { VERB_SCHEMA_CORPUS } from "./verb-schema-corpus";
 import { FACADE_VERBS } from "./types";
@@ -109,14 +117,35 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
     case "project.save":
       validateObject(params, PROJECT_SAVE_SCHEMA, "project.save params");
       return;
+    case "project.rename":
+      validateObject(params, PROJECT_RENAME_SCHEMA, "project.rename params");
+      return;
+    case "project.changes":
+      validateObject(params, PROJECT_CHANGES_SCHEMA, "project.changes params");
+      return;
     case "media.import":
       validateObject(params, MEDIA_IMPORT_SCHEMA, "media.import params");
       return;
+    case "media.analyze_start":
+      validateObject(params, MEDIA_ANALYZE_START_SCHEMA, "media.analyze_start params");
+      return;
+    case "timeline.query": {
+      const valid = validateObject<{ timeRange?: unknown }>(
+        params,
+        TIMELINE_QUERY_SCHEMA,
+        "timeline.query params",
+      );
+      if (valid.timeRange !== undefined) {
+        validateObject(valid.timeRange, TIMELINE_QUERY_RANGE_SCHEMA, "timeline.query params.timeRange");
+      }
+      return;
+    }
+    case "edit.validate":
     case "edit.apply": {
       const valid = validateObject<{ ops: unknown[] }>(
         params,
-        EDIT_APPLY_SCHEMA,
-        "edit.apply params",
+        verb === "edit.apply" ? EDIT_APPLY_SCHEMA : EDIT_VALIDATE_SCHEMA,
+        `${verb} params`,
       );
       const ops = valid.ops.map((raw, index) => validateEditOp(raw, index));
       if (ops.length === 0) {
@@ -124,6 +153,12 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
       }
       return;
     }
+    case "history.get":
+      validateObject(params, HISTORY_GET_SCHEMA, "history.get params");
+      return;
+    case "history.control":
+      validateObject(params, HISTORY_CONTROL_SCHEMA, "history.control params");
+      return;
     case "preview.render_frame":
       validateObject(params, PREVIEW_RENDER_FRAME_SCHEMA, "preview.render_frame params");
       return;

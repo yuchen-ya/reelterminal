@@ -258,6 +258,50 @@ function validRegion(value) {
   );
 }
 
+function validAgentReference(value) {
+  return (
+    isRecord(value) &&
+    typeof value.ref === "string" &&
+    /^A[1-9]\d{0,8}$/.test(value.ref) &&
+    Number.isSafeInteger(value.number) &&
+    value.number > 0 &&
+    ["video", "audio", "text", "media"].includes(value.kind) &&
+    typeof value.entityId === "string" &&
+    value.entityId.length > 0 &&
+    value.entityId.length <= 256 &&
+    typeof value.label === "string" &&
+    value.label.length <= 512 &&
+    isRecord(value.timing) &&
+    [value.timing.startSeconds, value.timing.endSeconds].every(
+      (item) => item === null || (typeof item === "number" && Number.isFinite(item) && item >= 0),
+    ) &&
+    validRevision(value.revisionAtMark) &&
+    typeof value.stale === "boolean"
+  );
+}
+
+function validReviewMarker(value) {
+  if (
+    !isRecord(value) ||
+    typeof value.ref !== "string" ||
+    !/^R[1-9]\d{0,8}$/.test(value.ref) ||
+    !Number.isSafeInteger(value.number) ||
+    value.number < 1 ||
+    typeof value.id !== "string" ||
+    value.id.length < 1 ||
+    value.id.length > 256 ||
+    !isRecord(value.target) ||
+    (value.label !== undefined && (typeof value.label !== "string" || value.label.length > 200))
+  ) return false;
+  const target = value.target;
+  if (target.kind === "asset") return typeof target.mediaId === "string" && target.mediaId.length > 0;
+  if (target.kind === "clip") return typeof target.clipId === "string" && target.clipId.length > 0;
+  if (target.kind === "text") return typeof target.textClipId === "string" && target.textClipId.length > 0;
+  return target.kind === "timeRange" &&
+    typeof target.start === "number" && Number.isFinite(target.start) && target.start >= 0 &&
+    typeof target.end === "number" && Number.isFinite(target.end) && target.end >= target.start;
+}
+
 function validateVisualState(value) {
   if (
     !isRecord(value) ||
@@ -276,6 +320,16 @@ function validateVisualState(value) {
     !validBoundedIds(value.selectedClipIds) ||
     !validBoundedIds(value.selectedTextIds) ||
     !validBoundedIds(value.selectedMediaIds) ||
+    (value.projectId !== undefined &&
+      (typeof value.projectId !== "string" || value.projectId.length < 1 || value.projectId.length > 256)) ||
+    (value.projectName !== undefined &&
+      (typeof value.projectName !== "string" || value.projectName.length > 512)) ||
+    (value.references !== undefined &&
+      (!Array.isArray(value.references) || value.references.length > 64 ||
+        !value.references.every(validAgentReference))) ||
+    (value.reviewMarkers !== undefined &&
+      (!Array.isArray(value.reviewMarkers) || value.reviewMarkers.length > 64 ||
+        !value.reviewMarkers.every(validReviewMarker))) ||
     !Array.isArray(value.changed) ||
     value.changed.length > VISUAL_STATE_CHANGES.size ||
     !value.changed.every((item) => VISUAL_STATE_CHANGES.has(item))

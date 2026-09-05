@@ -14,7 +14,16 @@
  * boundary superset filter, and the runtime validators remain the only
  * authority — a payload can be schema-valid and still fail INVALID_PARAMS.
  */
-import { EDIT_OP_TYPES } from "./types";
+import { EDIT_OP_TYPES, MEDIA_ANALYSIS_TYPES } from "./types";
+import {
+  MAX_PROJECT_CHANGES_LIMIT,
+} from "./project-changes";
+import {
+  MAX_TIMELINE_QUERY_LIMIT,
+  MAX_TIMELINE_QUERY_NEIGHBORS,
+  TIMELINE_QUERY_ENTITY_TYPES,
+  TIMELINE_QUERY_FIELDS,
+} from "./timeline-query";
 import {
   CLIP_ADD_SCHEMA,
   CLIP_DUPLICATE_SCHEMA,
@@ -32,6 +41,7 @@ import {
   TEXT_DELETE_SCHEMA,
   TEXT_UPDATE_SCHEMA,
   TRACK_ADD_SCHEMA,
+  TRACK_UPDATE_SCHEMA,
   TRACK_REMOVE_SCHEMA,
   MEDIA_REMOVE_SCHEMA,
   MARKER_ADD_SCHEMA,
@@ -39,6 +49,9 @@ import {
   TRANSITION_ADD_SCHEMA,
   TRANSITION_REMOVE_SCHEMA,
   TRANSITION_UPDATE_SCHEMA,
+  SUBTITLE_IMPORT_SRT_SCHEMA,
+  CLIP_SET_COLOR_GRADE_SCHEMA,
+  CLIP_SET_KEYFRAMES_SCHEMA,
 } from "./ops";
 import {
   isFiniteNumber,
@@ -153,6 +166,38 @@ export const PROJECT_SAVE_SCHEMA: ObjectSchema = {
   },
 };
 
+export const MAX_PROJECT_NAME_LENGTH = 120;
+
+export function normalizeProjectName(value: string): string {
+  return value.trim().normalize("NFC");
+}
+
+export const PROJECT_RENAME_SCHEMA: ObjectSchema = {
+  name: {
+    check: (value) =>
+      isNonEmptyString(value) &&
+      normalizeProjectName(value as string).length > 0 &&
+      normalizeProjectName(value as string).length <= MAX_PROJECT_NAME_LENGTH &&
+      !/[\u0000-\u001f\u007f]/.test(value as string),
+    describe: `a non-empty project name without control characters (at most ${MAX_PROJECT_NAME_LENGTH} characters)`,
+    required: true,
+    emits: {
+      kind: "leaf",
+      schema: { type: "string", minLength: 1 },
+    },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative integer",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
 /* ------------------------------------------------------------------ */
 /* media.import / timeline.get (no params) / edit.apply                */
 /* ------------------------------------------------------------------ */
@@ -178,6 +223,196 @@ export const MEDIA_IMPORT_SCHEMA: ObjectSchema = {
     check: isNonEmptyString,
     describe: "a non-empty string",
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "a non-empty media-library id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  analysisTypes: {
+    check: (value) =>
+      Array.isArray(value) &&
+      value.length > 0 &&
+      value.length <= MEDIA_ANALYSIS_TYPES.length &&
+      new Set(value).size === value.length &&
+      value.every((item) =>
+        (MEDIA_ANALYSIS_TYPES as readonly unknown[]).includes(item),
+      ),
+    describe: "a non-empty unique array of supported analysis type names",
+    required: true,
+    emits: {
+      kind: "array",
+      minItems: 1,
+      maxItems: MEDIA_ANALYSIS_TYPES.length,
+      items: { kind: "leaf", schema: { enum: MEDIA_ANALYSIS_TYPES } },
+    },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative integer",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const PROJECT_CHANGES_SCHEMA: ObjectSchema = {
+  sinceRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative integer",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  limit: {
+    check: (value) =>
+      isPositiveInteger(value) && (value as number) <= MAX_PROJECT_CHANGES_LIMIT,
+    describe: `an integer in [1, ${MAX_PROJECT_CHANGES_LIMIT}]`,
+    emits: {
+      kind: "leaf",
+      schema: { type: "integer", minimum: 1, maximum: MAX_PROJECT_CHANGES_LIMIT },
+    },
+  },
+  cursor: {
+    check: isNonEmptyString,
+    describe: "a non-empty opaque cursor",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const TIMELINE_QUERY_RANGE_SCHEMA: ObjectSchema = {
+  startSec: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative finite number",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  endSec: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative finite number",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+};
+
+const boundedStrings = (value: unknown): value is string[] =>
+  Array.isArray(value) &&
+  value.length <= 100 &&
+  value.every((item) => typeof item === "string" && item.length > 0);
+
+export const TIMELINE_QUERY_SCHEMA: ObjectSchema = {
+  refs: {
+    check: (value) =>
+      boundedStrings(value) &&
+      value.every((ref) => /^@A[1-9]\d*$|^R[1-9]\d*$/.test(ref)),
+    describe: "an array of at most 100 namespaced refs (@A<n> or R<n>; bare #N is forbidden)",
+    emits: {
+      kind: "array",
+      maxItems: 100,
+      items: { kind: "leaf", schema: { type: "string", minLength: 2 } },
+    },
+  },
+  entityIds: {
+    check: boundedStrings,
+    describe: "an array of at most 100 non-empty entity ids",
+    emits: {
+      kind: "array",
+      maxItems: 100,
+      items: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+    },
+  },
+  timeRange: {
+    check: isPlainObject,
+    describe: "a timeline range object",
+    emits: { kind: "object", schema: TIMELINE_QUERY_RANGE_SCHEMA },
+  },
+  trackIds: {
+    check: boundedStrings,
+    describe: "an array of at most 100 non-empty track ids",
+    emits: {
+      kind: "array",
+      maxItems: 100,
+      items: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+    },
+  },
+  trackTypes: {
+    check: (value) =>
+      Array.isArray(value) &&
+      value.length <= 5 &&
+      value.every((item) =>
+        ["video", "audio", "image", "text", "graphics"].includes(item),
+      ),
+    describe: "an array of supported track types",
+    emits: {
+      kind: "array",
+      maxItems: 5,
+      items: {
+        kind: "leaf",
+        schema: { enum: ["video", "audio", "image", "text", "graphics"] },
+      },
+    },
+  },
+  entityTypes: {
+    check: (value) =>
+      Array.isArray(value) &&
+      value.length <= TIMELINE_QUERY_ENTITY_TYPES.length &&
+      value.every((item) =>
+        (TIMELINE_QUERY_ENTITY_TYPES as readonly unknown[]).includes(item),
+      ),
+    describe: "an array of supported timeline entity types",
+    emits: {
+      kind: "array",
+      maxItems: TIMELINE_QUERY_ENTITY_TYPES.length,
+      items: { kind: "leaf", schema: { enum: TIMELINE_QUERY_ENTITY_TYPES } },
+    },
+  },
+  fields: {
+    check: (value) =>
+      Array.isArray(value) &&
+      value.length <= TIMELINE_QUERY_FIELDS.length &&
+      value.every((item) =>
+        (TIMELINE_QUERY_FIELDS as readonly unknown[]).includes(item),
+      ),
+    describe: "an allowlisted field projection",
+    emits: {
+      kind: "array",
+      maxItems: TIMELINE_QUERY_FIELDS.length,
+      items: { kind: "leaf", schema: { enum: TIMELINE_QUERY_FIELDS } },
+    },
+  },
+  limit: {
+    check: (value) =>
+      isPositiveInteger(value) && (value as number) <= MAX_TIMELINE_QUERY_LIMIT,
+    describe: `an integer in [1, ${MAX_TIMELINE_QUERY_LIMIT}]`,
+    emits: {
+      kind: "leaf",
+      schema: { type: "integer", minimum: 1, maximum: MAX_TIMELINE_QUERY_LIMIT },
+    },
+  },
+  cursor: {
+    check: isNonEmptyString,
+    describe: "a non-empty opaque cursor",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  includeNeighbors: {
+    check: (value) =>
+      isNonNegativeInteger(value) &&
+      (value as number) <= MAX_TIMELINE_QUERY_NEIGHBORS,
+    describe: `an integer in [0, ${MAX_TIMELINE_QUERY_NEIGHBORS}]`,
+    emits: {
+      kind: "leaf",
+      schema: {
+        type: "integer",
+        minimum: 0,
+        maximum: MAX_TIMELINE_QUERY_NEIGHBORS,
+      },
+    },
   },
 };
 
@@ -248,6 +483,7 @@ export const EDIT_OP_SCHEMAS: Readonly<
   Record<(typeof EDIT_OP_TYPES)[number], ObjectSchema>
 > = {
   "track.add": TRACK_ADD_SCHEMA,
+  "track.update": TRACK_UPDATE_SCHEMA,
   "clip.add": CLIP_ADD_SCHEMA,
   "clip.move": CLIP_MOVE_SCHEMA,
   "clip.trim": CLIP_TRIM_SCHEMA,
@@ -270,6 +506,9 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "media.remove": MEDIA_REMOVE_SCHEMA,
   "marker.add": MARKER_ADD_SCHEMA,
   "marker.remove": MARKER_REMOVE_SCHEMA,
+  "subtitle.importSrt": SUBTITLE_IMPORT_SRT_SCHEMA,
+  "clip.setColorGrade": CLIP_SET_COLOR_GRADE_SCHEMA,
+  "clip.setKeyframes": CLIP_SET_KEYFRAMES_SCHEMA,
 };
 
 /**
@@ -299,6 +538,51 @@ export const EDIT_APPLY_SCHEMA: ObjectSchema = {
     emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
   },
   expectedContextRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative integer",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+/** Same closed ops declaration as edit.apply, without mutation-only idempotency. */
+export const EDIT_VALIDATE_SCHEMA: ObjectSchema = {
+  ops: EDIT_APPLY_SCHEMA.ops,
+  expectedRevision: EDIT_APPLY_SCHEMA.expectedRevision,
+  expectedContextRevision: EDIT_APPLY_SCHEMA.expectedContextRevision,
+};
+
+export const MAX_HISTORY_SUMMARY_ENTRIES = 100;
+
+export const HISTORY_GET_SCHEMA: ObjectSchema = {
+  limit: {
+    check: (value) =>
+      isPositiveInteger(value) &&
+      (value as number) <= MAX_HISTORY_SUMMARY_ENTRIES,
+    describe: `an integer in [1, ${MAX_HISTORY_SUMMARY_ENTRIES}]`,
+    emits: {
+      kind: "leaf",
+      schema: {
+        type: "integer",
+        minimum: 1,
+        maximum: MAX_HISTORY_SUMMARY_ENTRIES,
+      },
+    },
+  },
+};
+
+export const HISTORY_CONTROL_SCHEMA: ObjectSchema = {
+  action: {
+    check: oneOf(["undo", "redo"] as const),
+    describe: '"undo" or "redo"',
+    required: true,
+    emits: { kind: "leaf", schema: { enum: ["undo", "redo"] } },
+  },
+  expectedRevision: {
     check: isNonNegativeInteger,
     describe: "a non-negative integer",
     emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
@@ -629,7 +913,7 @@ export const VERIFY_ARTIFACT_SCHEMA: ObjectSchema = {
 };
 
 /* ------------------------------------------------------------------ */
-/* The 17-verb declaration map (single source, Decision 4)             */
+/* The 24-verb declaration map (single source, Decision 4)             */
 /* ------------------------------------------------------------------ */
 
 /** Verb param declaration order mirrors FACADE_VERBS (Appendix B.1). */
@@ -641,12 +925,19 @@ export const VERB_PARAM_SCHEMAS: {
   "project.create": PROJECT_CREATE_SCHEMA,
   "project.open": PROJECT_OPEN_SCHEMA,
   "project.save": PROJECT_SAVE_SCHEMA,
+  "project.rename": PROJECT_RENAME_SCHEMA,
   "project.get_state": EMPTY_PARAMS_SCHEMA,
+  "project.changes": PROJECT_CHANGES_SCHEMA,
   "media.import": MEDIA_IMPORT_SCHEMA,
+  "media.analyze_start": MEDIA_ANALYZE_START_SCHEMA,
   "timeline.get": EMPTY_PARAMS_SCHEMA,
+  "timeline.query": TIMELINE_QUERY_SCHEMA,
   "editor.get_context": EMPTY_PARAMS_SCHEMA,
   "editor.control": EDITOR_CONTROL_SCHEMA,
+  "edit.validate": EDIT_VALIDATE_SCHEMA,
   "edit.apply": EDIT_APPLY_SCHEMA,
+  "history.get": HISTORY_GET_SCHEMA,
+  "history.control": HISTORY_CONTROL_SCHEMA,
   "preview.render_frame": PREVIEW_RENDER_FRAME_SCHEMA,
   "visual.inspect": VISUAL_INSPECT_SCHEMA,
   "export.start": EXPORT_START_SCHEMA,
