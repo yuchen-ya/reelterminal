@@ -28,7 +28,8 @@ It does not expose mutable GUI state. `requires` describes runtime prerequisites
 execution must still validate the selected media and provider readiness.
 
 For `presentation: "image-collection"`, return `frames[].artifact` and an
-optional `contactSheet`. The transports embed PNGs through the existing bounded,
+optional `contactSheet`. The transports embed images (lossless PNG, or JPEG
+re-encoded to the per-frame `maxFrameBytes` budget) through the existing bounded,
 root-contained image reader. Live mode also shows those verified images in a
 dismissible GUI panel. Optional `mediaName`, `startSec`, `endSec`, and
 `limitations` fields supply the panel caption and review limitations. Presentation

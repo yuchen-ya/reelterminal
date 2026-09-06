@@ -21,8 +21,9 @@ connect that Agent to the open ReelTerminal desktop project through MCP.
    ```
 
 The connector reads `~/.openreel/live-endpoint.json`, forwards stdio MCP to
-the authenticated loopback endpoint, and exposes exactly the 25 live tools
-listed in the root [`SKILL.md`](../SKILL.md). Do not copy the endpoint token
+the authenticated loopback endpoint, and exposes exactly the 26 live tools
+(24 built-in verbs plus `media_import_preflight` and `media_inspect`) listed in the root
+[`SKILL.md`](../SKILL.md). Do not copy the endpoint token
 into prompts, project files, or logs.
 
 Never print or `cat` the descriptor while diagnosing a connection. Read it only
@@ -88,7 +89,7 @@ Before constructing a highlight timeline, make a feasibility ledger: candidate s
 
 Use meaningful source events as alignment anchors. Preserve enough cause and result to establish what happened. Map source times through trim/speed, check project frame rate and visible clip range, and separately report event localization uncertainty, audio detection uncertainty and nearest-frame rounding. Periodic transients are not proven beats/downbeats. Analysis never edits markers or audio; selected anchors become markers only via canonical `edit_apply`. `clip.add` cannot accept explicit `clipId` live: use returned ids in a dependent transaction. `edit_validate` accepts ops/revision/context preconditions, not `idempotencyKey`; `edit_apply` accepts a fresh key. Multiple dependent transactions and review rounds are appropriate for selection and recutting.
 
-Report review evidence separately: **frames inspected**, **playback executed**, **supported audiovisual review completed**, **export technically verified**. Current MCP transports embed PNG/text and have no audio/video consumption contract. GUI play, a playable file, waveform measurements or mathematical alignment do not establish that the Agent watched/heard a sequence. Perform all inspection the host supports; disclose remaining perceptual limits without treating the user as the default outsourced reviewer. GUI synchronization is collaboration, not a quality certificate.
+Report review evidence separately: **frames inspected**, **playback executed**, **supported audiovisual review completed**, **export technically verified**. Current MCP transports embed images (lossless PNG or budget-fitted JPEG) and text, and have no audio/video consumption contract. GUI play, a playable file, waveform measurements or mathematical alignment do not establish that the Agent watched/heard a sequence. Perform all inspection the host supports; disclose remaining perceptual limits without treating the user as the default outsourced reviewer. GUI synchronization is collaboration, not a quality certificate.
 
 Import first uses `media_import_preflight`: cheap root/stat/size checking, with codec support explicitly unchecked. Capabilities reports the live 256MiB whole-file GUI buffer limit. Preserve originals and source offsets for explicit segments; no automatic proxy/relink pipeline exists. See [material analysis workflow](MATERIAL-ANALYSIS.md) for parameters, limits and a concrete anchor example.
 
@@ -145,13 +146,18 @@ store provider keys, or run an LLM inference loop.
 
 ## Optional cloud video review
 
-`media_analyze_start` also supports `analysisTypes:["videoReview"]`, defaulting to
-`qwen3.5-omni-flash`. It requires the user's own `DASHSCOPE_API_KEY` in the desktop
-host environment and explicit authorization to upload the selected material.
+`media_analyze_start` also supports `analysisTypes:["videoReview"]`. The cloud
+provider is pluggable (default `qwen3.5-omni-flash`; `REELTERMINAL_VIDEO_REVIEW_PROVIDER`
+selects from the registry reported by capabilities). The default provider requires the
+user's own `DASHSCOPE_API_KEY` in the desktop host environment, and every review requires
+explicit authorization to upload the selected material.
 Check capabilities, pass `cloudUpload:true` and explicit source `startSec/endSec`
 (maximum 20 seconds), optionally `reviewQuestion` (1000 characters), and poll/cancel
 the existing job. Never put keys into tool arguments or project files. Local
-inspection and audio analysis do not upload anything.
+inspection and audio analysis do not upload anything. The bounded inspection copy is
+transcoded once and cached under `artifactRoot` (keyed by source fingerprint + range +
+encode recipe, bounded LRU); each review still uploads exactly once to the provider,
+and `result.summary.videoReview.preparation.cached` reports cache reuse.
 
 Use this for cut/transition, audiovisual and final-render observations or general
 video questions. The host prepares a bounded compressed copy (12 MiB maximum),

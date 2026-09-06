@@ -61,8 +61,8 @@ const state = await facade["project.get_state"]();
 
 ## Verbs
 
-The current registry exposes **25 tools: 24 built-in verbs plus
-`media.inspect`**, registered by the bundled source-inspection plugin.
+The current registry exposes **26 tools: 24 built-in verbs plus the two
+bundled plugin tools** (`media_import_preflight`, `media.inspect`).
 `FACADE_VERBS` in `src/types.ts` and `BUNDLED_PLUGINS` in `src/plugins/index.ts`
 are the catalog source of truth. MCP maps dots to underscores.
 
@@ -83,7 +83,7 @@ Slice 6: `project.changes` · `timeline.query` · `edit.validate` ·
 `history.get` · `history.control` add bounded delta recovery, scoped reads,
 side-effect-free preflight, and canonical live undo/redo. `media.analyze_start`
 adds asynchronous media analysis over the generalized `job.status`/
-`job.cancel` path. Live and headless sessions implement the same 25-verb
+`job.cancel` path. Live and headless sessions implement the same 26-tool
 contract over a `LiveProjectStore` seam with no live project copy; headless
 history control reports `UNSUPPORTED` because it has no GUI/Core history stack.
 

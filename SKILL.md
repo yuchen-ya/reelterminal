@@ -211,7 +211,7 @@ Before constructing a highlight timeline, make a feasibility ledger: candidate s
 
 Use meaningful source events as alignment anchors. Preserve enough cause and result to establish what happened. Map source times through trim/speed, check project frame rate and visible clip range, and separately report event localization uncertainty, audio detection uncertainty and nearest-frame rounding. Periodic transients are not proven beats/downbeats. Analysis never edits markers or audio; selected anchors become markers only via canonical `edit_apply`. `clip.add` cannot accept explicit `clipId` live: use returned ids in a dependent transaction. `edit_validate` accepts ops/revision/context preconditions, not `idempotencyKey`; `edit_apply` accepts a fresh key. Multiple dependent transactions and review rounds are appropriate for selection and recutting.
 
-Report review evidence separately: **frames inspected**, **playback executed**, **supported audiovisual review completed**, **export technically verified**. Current MCP transports embed PNG/text and have no audio/video consumption contract. GUI play, a playable file, waveform measurements or mathematical alignment do not establish that the Agent watched/heard a sequence. Perform all inspection the host supports; disclose remaining perceptual limits without treating the user as the default outsourced reviewer. GUI synchronization is collaboration, not a quality certificate.
+Report review evidence separately: **frames inspected**, **playback executed**, **supported audiovisual review completed**, **export technically verified**. Current MCP transports embed images (lossless PNG or budget-fitted JPEG) and text, and have no audio/video consumption contract. GUI play, a playable file, waveform measurements or mathematical alignment do not establish that the Agent watched/heard a sequence. Perform all inspection the host supports; disclose remaining perceptual limits without treating the user as the default outsourced reviewer. GUI synchronization is collaboration, not a quality certificate.
 
 Import first uses `media_import_preflight`: cheap root/stat/size checking, with codec support explicitly unchecked. Capabilities reports the live 256MiB whole-file GUI buffer limit. Preserve originals and source offsets for explicit segments; no automatic proxy/relink pipeline exists. See [material analysis workflow](docs/MATERIAL-ANALYSIS.md) for parameters, limits and a concrete anchor example.
 
@@ -382,8 +382,9 @@ README — this skill does not restate them. Context discipline: orient with
 reverse state, fades, transform, fit, and crop); `project_get_state` is an unbounded full dump; ordinary
 artifacts come back as `{path, sizeBytes, sha256, sourceRevision}` refs. On
 successful `visual_inspect`, the stdio `serve` transport and desktop live MCP
-also attach bounded MCP PNG image content (contact sheet when supported,
-otherwise individual frame blocks). The CLI `run` transport remains JSONL
+also attach bounded MCP image content (contact sheet when supported, otherwise
+individual frame blocks; lossless PNG, or JPEG re-encoded to the `maxFrameBytes`
+budget with `frames[].fidelity` disclosure). The CLI `run` transport remains JSONL
 envelopes plus artifact refs; it does not attach MCP image blocks.
 
 ### `editor_get_context` — live vs headless honesty
