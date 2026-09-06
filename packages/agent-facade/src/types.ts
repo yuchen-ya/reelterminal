@@ -1,3 +1,5 @@
+import { PLUGIN_TOOLS } from "./plugins";
+import { assertUniqueToolNames } from "./plugin-api";
 /**
  * Public contract of the in-process agent facade (Slice 1 + Slice 1b +
  * Slice 2a persistence, ADR 0003 Decision 10).
@@ -73,7 +75,10 @@ export const FACADE_VERBS = [
   "job.status",
   "job.cancel",
   "verify.artifact",
+  ...PLUGIN_TOOLS.map((tool) => tool.name),
 ] as const;
+
+assertUniqueToolNames(FACADE_VERBS);
 
 export type FacadeVerb = (typeof FACADE_VERBS)[number];
 
@@ -149,12 +154,13 @@ export const READ_ONLY_VERBS = [
   "visual.inspect",
   "job.status",
   "verify.artifact",
+  ...PLUGIN_TOOLS.filter((tool) => tool.effect === "read").map((tool) => tool.name),
 ] as const satisfies readonly FacadeVerb[];
 
 export type ReadOnlyVerb = (typeof READ_ONLY_VERBS)[number];
 
 export function isReadOnlyVerb(verb: FacadeVerb): verb is ReadOnlyVerb {
-  return (READ_ONLY_VERBS as readonly string[]).includes(verb);
+  return (READ_ONLY_VERBS as readonly string[]).includes(verb) || PLUGIN_TOOLS.some((tool) => tool.name === verb && tool.effect === "read");
 }
 
 /* ------------------------------------------------------------------ */
@@ -222,6 +228,7 @@ export interface CapabilityStatus {
 }
 
 export interface Capabilities {
+  readonly pluginTools: Readonly<Record<string, CapabilityStatus>>;
   /** "node-headless" for AgentFacadeSession; "live" for createLiveFacade sessions. */
   readonly runtime: typeof FACADE_RUNTIME | "live";
   /**

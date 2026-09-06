@@ -158,6 +158,7 @@ describe("capabilities.get / session.describe", () => {
       "job.status",
       "job.cancel",
       "verify.artifact",
+      "media.inspect",
     ]);
     expect(res.value.stepLetters.facadeToRuntime).toBe("P");
     expect(res.value.stepLetters.createProject).toBe("P");

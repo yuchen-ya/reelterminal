@@ -1,3 +1,4 @@
+import { PLUGIN_TOOLS } from "./plugins";
 /**
  * Machine-readable successful-result schemas for the facade tools.
  *
@@ -307,6 +308,7 @@ const capabilities = (): OutputSchemaNode =>
       ),
       projectChanges: capabilityStatus(),
       history: capabilityStatus(),
+      pluginTools: openObject(),
       mediaAnalysis: objectSchema(
         {
           asynchronous: constSchema(true),
@@ -660,7 +662,7 @@ const historyControlResult = (): OutputSchemaNode =>
     ["action", "revision", "canUndo", "canRedo", "replayed"],
   );
 
-const valueSchemas: Readonly<Record<FacadeVerb, OutputSchemaNode>> = {
+const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "session.describe": sessionDescription(),
   "capabilities.get": capabilities(),
   "project.create": objectSchema({ ...projectState()["properties"], replayed: booleanSchema() }, ["revision", "project", "counts", "replayed"]),
@@ -708,5 +710,5 @@ const valueSchemas: Readonly<Record<FacadeVerb, OutputSchemaNode>> = {
 
 /** Successful `{ok:true,value}` output schema for every MCP facade verb. */
 export const EMITTED_VERB_OUTPUT_JSON_SCHEMAS: Readonly<Record<FacadeVerb, OutputSchemaObject>> = Object.fromEntries(
-  Object.entries(valueSchemas).map(([verb, value]) => [verb, successEnvelope(value)]),
+  Object.entries({ ...valueSchemas, ...Object.fromEntries(PLUGIN_TOOLS.map((tool) => [tool.name, tool.output])) }).map(([verb, value]) => [verb, successEnvelope(value)]),
 ) as Readonly<Record<FacadeVerb, OutputSchemaObject>>;

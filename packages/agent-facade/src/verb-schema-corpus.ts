@@ -1,3 +1,4 @@
+import { PLUGIN_TOOLS } from "./plugins";
 /**
  * Adversarial corpus per verb (ADR 0003 Decision 4 item 3): dependency-free
  * DATA ONLY — no imports, no logic. The transport's differential test
@@ -38,6 +39,7 @@ export interface VerbSchemaCorpusCase {
 export const VERB_SCHEMA_CORPUS: Readonly<
   Record<string, readonly VerbSchemaCorpusCase[]>
 > = {
+  ...Object.fromEntries(PLUGIN_TOOLS.map((tool) => [tool.name, tool.schemaCases])),
   "session.describe": [
     { name: "no params is valid", params: {}, expectValid: true },
     { name: "unknown field", params: { verbose: true }, expectValid: false },

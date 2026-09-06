@@ -43,8 +43,11 @@ you are writing for; do not copy content across rows — link instead.
 
 ## Guides and inherited history
 
+- [`../packages/agent-facade/docs/tool-plugins.md`](../packages/agent-facade/docs/tool-plugins.md)
+  — bundled read-only tool authoring, `media_inspect`, and desktop image evidence.
+
 - [`AGENT-GUIDE.md`](AGENT-GUIDE.md) — current external-Agent desktop
-  connection guide. It describes the 24-tool live facade and explicitly does
+  connection guide. It describes the 25-tool live facade and explicitly does
   not provide embedded BYOK chat.
 - [`superpowers/`](superpowers/) — upstream planning history (2026-05 →
   2026-07 plans and specs). Historical.

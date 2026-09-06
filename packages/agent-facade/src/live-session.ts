@@ -1,6 +1,7 @@
+import { bindBundledTools } from "./plugin-runtime";
 /**
  * LiveFacadeSession — the live human–agent collaboration facade
- * (ADR 0004: Slice 3). A SEPARATE implementation of the same 24-verb
+ * (ADR 0004: Slice 3). A SEPARATE implementation of the same registered
  * contract as AgentFacadeSession (Decision 11: headless is untouched):
  *
  *  - It holds NO project copy. The renderer's store stays canonical
@@ -234,7 +235,7 @@ export interface LiveFacadeConfig {
 }
 
 /**
- * The live facade contract: the same 24 verbs as AgentFacade, with
+ * The live facade contract: the same verbs as AgentFacade, with
  * project.save honestly re-shaped for live mode (the GUI's save path
  * reports a revision, not a checkpoint file — see LiveProjectSaveResult)
  * plus dispose() (release the lease, cancel jobs).
@@ -2393,6 +2394,7 @@ function partitionCreatedIds(
 export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
   const session = new LiveFacadeSession(config);
   return {
+    ...bindBundledTools(session, config, "live"),
     "session.describe": () => session.sessionDescribe(),
     "capabilities.get": () => session.capabilitiesGet(),
     "project.create": (params) => session.projectCreate(params),

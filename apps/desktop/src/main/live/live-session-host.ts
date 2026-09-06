@@ -23,6 +23,7 @@
 import { mkdirSync } from "node:fs";
 import {
   FACADE_VERBS,
+  toolPresentation,
   LiveWriterLease,
   type FacadeResult,
   type FacadeVerb,
@@ -46,6 +47,7 @@ import { LIVE_ACTIVITY_TIMEOUT_MS } from "../../shared/live";
 import type { LiveStoreBridge } from "./renderer-store-adapter";
 import {
   startLiveEndpointServer,
+  visualImageContent,
   type RunningLiveEndpoint,
 } from "./live-endpoint-server";
 import type { AgentModePreferenceStore } from "./work-mode-preference";
@@ -342,6 +344,17 @@ export function createLiveSessionHost(
       // Facade verbs never throw for domain errors; a throw here is an
       // internal failure and is converted, never propagated.
       const result = await call(params ?? {});
+      if (result.ok && toolPresentation(verb) === "image-collection") {
+        const images = visualImageContent(result, deps.artifactRoot)
+          .filter((block) => block.type === "image")
+          .map((block) => `data:image/png;base64,${block.data}`);
+        if (images.length > 0) {
+          const value = result.value as { mediaName?: string; startSec?: number; endSec?: number; limitations?: string[] };
+          deps.emitEvent({ type: "inspection", title: value.mediaName ?? verb,
+            range: typeof value.startSec === "number" && typeof value.endSec === "number" ? `${value.startSec.toFixed(3)}–${value.endSec.toFixed(3)} s` : null,
+            images, limitations: value.limitations ?? [] });
+        }
+      }
       deps.emitEvent({
         type: "action",
         phase: "end",

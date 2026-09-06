@@ -1,3 +1,4 @@
+import { PLUGIN_TOOLS } from "./plugins";
 /**
  * The SINGLE hand-maintained schema declaration per facade verb
  * (ADR 0003 Decision 4). Both consumers derive from these objects:
@@ -940,6 +941,7 @@ export const VERB_PARAM_SCHEMAS: {
   "history.control": HISTORY_CONTROL_SCHEMA,
   "preview.render_frame": PREVIEW_RENDER_FRAME_SCHEMA,
   "visual.inspect": VISUAL_INSPECT_SCHEMA,
+  ...Object.fromEntries(PLUGIN_TOOLS.map((tool) => [tool.name, tool.input])),
   "export.start": EXPORT_START_SCHEMA,
   "job.status": JOB_PARAMS_SCHEMA,
   "job.cancel": JOB_PARAMS_SCHEMA,

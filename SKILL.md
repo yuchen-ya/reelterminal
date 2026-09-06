@@ -2,7 +2,7 @@
 name: agent-video
 description: >-
   Drive ReelTerminal through its live desktop MCP interface by default: connect
-  the external Agent to the open GUI project's 24-tool openreel-live-mcp
+  the external Agent to the open GUI project's 25-tool openreel-live-mcp
   facade, inspect context, edit, preview, export, and verify. The optional
   agent-video serve/run transport remains available for headless workflows.
 ---
@@ -78,11 +78,11 @@ Use an explicit endpoint-file option only if the connector or host requires
 one; the default is already `~/.openreel/live-endpoint.json`. Do not copy the
 token into project files, prompts, or logs.
 
-This connector exposes the same open GUI project through exactly **24 tools**:
+This connector exposes the same open GUI project through exactly **25 tools**:
 
 `session_describe` · `capabilities_get` · `project_create` · `project_open` ·
 `project_save` · `project_rename` · `project_get_state` · `project_changes` ·
-`media_import` · `media_analyze_start` · `timeline_get` · `timeline_query` ·
+`media_import` · `media_analyze_start` · `media_inspect` · `timeline_get` · `timeline_query` ·
 `editor_get_context` · `editor_control` · `edit_validate` · `edit_apply` ·
 `history_get` · `history_control` · `preview_render_frame` ·
 `visual_inspect` ·
@@ -111,6 +111,14 @@ then use `job_status`/`job_cancel` exactly as for export. At this contract
 revision only `technicalQuality` has a built-in real provider; unsupported
 types fail before a job is created. Large future transcript/frame results must
 remain artifact references rather than inline responses.
+
+`media_inspect` is the bundled read-only source inspection tool. Check
+`capabilities_get.pluginTools["media.inspect"]`, then pass an imported video
+`mediaId` with a source-time `startSec`/`endSec` range. It does not change the
+project, selection, or playhead. `visual_inspect` instead samples the edited
+timeline. Both provide sparse visual evidence, not continuous motion, audio,
+transcription, beat detection, or automatic pacing analysis. See
+[Tool plugins](packages/agent-facade/docs/tool-plugins.md) for inputs and limits.
 
 The live facade reports GUI-owned project lifecycle operations honestly as
 unavailable (`project_create` and `project_open`). `media_import` accepts an
@@ -236,7 +244,7 @@ atomically write the private
 `~/.openreel/conversation-endpoint.json` descriptor with mode `0600`, and
 remove it on exit; ReelTerminal only reads that descriptor. There is no universal
 provider connector and no embedded model. MCP tool access through the live
-facade remains a separate 24-tool integration and must not be confused with
+facade remains a separate 25-tool integration and must not be confused with
 the conversation transport.
 
 One `agent-video` process owns exactly **one facade session** and that
@@ -276,7 +284,7 @@ about why; there is no skill-level workaround. Missing capability ⇒ read
 
 ## 2. Optional headless `serve` workflow (configuration, not variants)
 
-The same 24 tools exist on every client. Clients must spawn the server
+The same 25 tools exist on every client. Clients must spawn the server
 **directly** (no `sh -c` wrapper — a wrapper that holds stdin open defeats
 disconnect detection). Set the `OPENREEL_AVE_*` env vars in the server's
 environment; every root value must be an absolute path to an existing
@@ -327,7 +335,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
   `~` are refused, never resolved against any cwd. Paths must resolve
   inside the matching root class; escapes and URLs fail.
 
-## 4. The 24 tools
+## 4. The 25 tools
 
 | Tool | Purpose |
 |---|---|
@@ -341,6 +349,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `project_changes` | Bounded paged entity/field changes since a revision; explicit full-refresh fallback |
 | `media_import` | Path inside `mediaRoots`; URLs refused |
 | `media_analyze_start` | Start a generalized async analysis job after checking per-type capabilities |
+| `media_inspect` | Read-only source-video sampling by `mediaId`, `startSec`, `endSec`; 1–12 PNG frames and optional contact sheet, even before timeline placement |
 | `timeline_get` | Compact view — preferred read |
 | `timeline_query` | Bounded local query by @A/R refs, ids, ranges, types, fields, and cursor |
 | `editor_get_context` | Current work mode plus editor context (selection, playhead, canvas point); headless-honest — see below |

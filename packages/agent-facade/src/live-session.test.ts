@@ -1,3 +1,4 @@
+import { FACADE_VERBS } from "./types";
 /**
  * Live facade session tests (ADR 0004 Slice 3): createLiveFacade over an
  * in-memory FakeLiveStore that owns a real Project, keeps revision and
@@ -1198,7 +1199,7 @@ describe("work mode + access gate + writer lease", () => {
       const verify = await facade["verify.artifact"]({ path: "/x.mp4" });
       expect(verify.ok).toBe(false);
       if (!verify.ok) expect(verify.error.code).toBe("UNSUPPORTED");
-      expect(READ_ONLY_VERBS).toHaveLength(14);
+      expect(READ_ONLY_VERBS).toContain("media.inspect");
 
       // Every non-read-only verb is FORBIDDEN, and the gate fires BEFORE
       // param validation (an empty/invalid payload is still FORBIDDEN).
@@ -1358,7 +1359,7 @@ describe("work mode + access gate + writer lease", () => {
     expect(res.value.writer).toBe(true);
     expect(res.value.leaseHolder).toBe("agent-1");
     expect(res.value.sessionId).toBe("agent-1");
-    expect(res.value.verbs).toHaveLength(24);
+    expect(res.value.verbs).toHaveLength(FACADE_VERBS.length);
     expect(res.value.stepLetters.createProject).toBe("X");
     expect(res.value.stepLetters.importLocalMedia).toBe("X");
   });

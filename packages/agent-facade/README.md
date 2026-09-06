@@ -1,7 +1,8 @@
 # @openreel/agent-facade
 
 Pure-Node, in-process, transport-agnostic agent facade over the ReelTerminal
-canonical `Project` state (Slice 1 + Slice 1b). Design: `audit/facade-v0.md`,
+canonical `Project` state, with headless and live sessions and bundled
+read-only tool extensions. Original design: `audit/facade-v0.md`,
 `docs/adr/0001-headless-facade-slice-1.md`,
 `docs/adr/0002-chromium-runtime-slice-1b.md`.
 
@@ -60,6 +61,11 @@ const state = await facade["project.get_state"]();
 
 ## Verbs
 
+The current registry exposes **25 tools: 24 built-in verbs plus
+`media.inspect`**, registered by the bundled source-inspection plugin.
+`FACADE_VERBS` in `src/types.ts` and `BUNDLED_PLUGINS` in `src/plugins/index.ts`
+are the catalog source of truth. MCP maps dots to underscores.
+
 Slice 1: `session.describe` · `capabilities.get` · `project.create` ·
 `project.rename` · `project.get_state` · `media.import` · `timeline.get` ·
 `edit.apply`
@@ -77,7 +83,7 @@ Slice 6: `project.changes` · `timeline.query` · `edit.validate` ·
 `history.get` · `history.control` add bounded delta recovery, scoped reads,
 side-effect-free preflight, and canonical live undo/redo. `media.analyze_start`
 adds asynchronous media analysis over the generalized `job.status`/
-`job.cancel` path. Live and headless sessions implement the same 24-verb
+`job.cancel` path. Live and headless sessions implement the same 25-verb
 contract over a `LiveProjectStore` seam with no live project copy; headless
 history control reports `UNSUPPORTED` because it has no GUI/Core history stack.
 
@@ -114,8 +120,10 @@ no-op with `ok: true`.
   `structuredClone`d draft; any failure discards the draft and the original
   project is byte-exact untouched. One committed call bumps `revision`
   exactly once.
-- **Serialized execution**: all verbs run through one execution lane;
+- **Serialized execution**: built-in session verbs run through one execution lane;
   `expectedRevision` gives optimistic concurrency (`CONFLICT` on mismatch).
+  Bundled read-only inspection takes a detached snapshot, then renders outside
+  that lane with a unique artifact directory per call.
 - **Idempotency**: `idempotencyKey` replays return the stored committed
   result without re-executing (scoped per session+project+verb; reusing a
   key with a different payload fails `CONFLICT`; not restart-durable).
@@ -141,7 +149,7 @@ no-op with `ok: true`.
 
 ## Live-mode contract differences (ADR 0004)
 
-Live sessions (`createLiveFacade`) implement the same 24 verbs against the
+Live sessions (`createLiveFacade`) implement the same 25 verbs against the
 open GUI project. Where a verb's behavior must differ by mode, the contract
 states it up front instead of letting integrators discover it at runtime:
 
@@ -311,3 +319,13 @@ or `docs/adr/` are repo-root-relative; this one lives inside the package.
 `corepack pnpm test:run` — state-level E2E plus adversarial suites
 (atomicity byte-restore, revision conflicts, idempotent replays, strict
 params, media-root containment, capability truthfulness).
+
+## Bundled tool extensions
+
+See [Tool plugins](docs/tool-plugins.md) for the trusted startup registry and
+`media_inspect`, which samples original video source ranges without editing the
+timeline. Its capability is reported under `pluginTools["media.inspect"]`.
+Both `media.inspect` and `visual.inspect` can present verified PNG evidence in
+the desktop inspection panel. Neither sparse-frame tool evaluates continuous
+motion, audio, semantic scenes, or editing rhythm; the built-in asynchronous
+analysis provider currently supports only `technicalQuality`.

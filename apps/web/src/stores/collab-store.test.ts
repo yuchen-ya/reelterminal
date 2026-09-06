@@ -103,6 +103,18 @@ describe("collab-store (ADR 0004 Decisions 6+7)", () => {
     expect(useCollabStore.getState().enabled).toBe(false);
   });
 
+  it("shows inspection evidence and lets the user dismiss it without changing collaboration status", () => {
+    const { emit } = mockDesktop();
+    const off = installCollabEventListener();
+    const before = useCollabStore.getState().sequence;
+    emit({ type: "inspection", title: "Source", range: "3–8 s", images: ["data:image/png;base64,AA=="], limitations: ["Frames only"] });
+    expect(useCollabStore.getState().inspection?.range).toBe("3–8 s");
+    expect(useCollabStore.getState().sequence).toBe(before);
+    useCollabStore.getState().dismissInspection();
+    expect(useCollabStore.getState().inspection).toBeNull();
+    off();
+  });
+
   it("applies liveEvents status + action pushes", async () => {
     const { emit } = mockDesktop();
     const off = installCollabEventListener();

@@ -1,9 +1,10 @@
+import { FACADE_VERBS } from "@openreel/agent-facade";
 /**
  * Protocol tests (ADR 0003 deliverable 5, slice 2b): spawn the REAL
  * `agent-video serve` binary and drive the MCP handshake end to end.
  *
  *  - initialize (serverInfo carries the transport's own facts)
- *  - tools/list: exactly the 24 tools of the facade contract, inputSchemas deep-equal the
+ *  - tools/list: all registered tools of the facade contract, inputSchemas deep-equal the
  *    facade emission EMITTED_VERB_JSON_SCHEMAS verbatim (Decision 4)
  *  - tools/call round-trips: session_describe contract `facade-slice-6`
  *    + 24 verbs; project_create/edit_apply happy path with exact revision
@@ -71,48 +72,14 @@ describe("agent-video serve (real binary)", () => {
     expect(capsJson).not.toContain("facadeContract");
   });
 
-  it("tools/list exposes exactly the 24 tools in order, with facade inputSchemas verbatim", async () => {
+  it("tools/list exposes all registered tools in order, with facade inputSchemas verbatim", async () => {
     const c = await getClient();
     c.send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
     const reply = await c.read();
     const tools = reply.result.tools as { name: string; inputSchema: unknown }[];
-    expect(tools.map((t) => t.name)).toEqual([
-      "session_describe",
-      "capabilities_get",
-      "project_create",
-      "project_open",
-      "project_save",
-      "project_rename",
-      "project_get_state",
-      "project_changes",
-      "media_import",
-      "media_analyze_start",
-      "timeline_get",
-      "timeline_query",
-      "editor_get_context",
-      "editor_control",
-      "edit_validate",
-      "edit_apply",
-      "history_get",
-      "history_control",
-      "preview_render_frame",
-      "visual_inspect",
-      "export_start",
-      "job_status",
-      "job_cancel",
-      "verify_artifact",
-    ]);
+    expect(tools.map((t) => t.name)).toEqual(FACADE_VERBS.map((verb) => verb.replace(/\./g, "_")));
     // Decision 4: inputSchema is the facade emission VERBATIM (CI deep-equal).
-    const verbOrder = [
-      "session.describe", "capabilities.get", "project.create", "project.open",
-      "project.save", "project.rename", "project.get_state", "project.changes",
-      "media.import", "media.analyze_start", "timeline.get", "timeline.query",
-      "editor.get_context",
-      "editor.control",
-      "edit.validate", "edit.apply", "history.get", "history.control",
-      "preview.render_frame", "visual.inspect", "export.start", "job.status",
-      "job.cancel", "verify.artifact",
-    ];
+    const verbOrder = FACADE_VERBS;
     tools.forEach((tool, i) => {
       expect(tool.inputSchema).toEqual((EMITTED_VERB_JSON_SCHEMAS as Record<string, unknown>)[verbOrder[i]]);
     });
@@ -126,7 +93,7 @@ describe("agent-video serve (real binary)", () => {
     const parsed = JSON.parse(text);
     expect(parsed.ok).toBe(true);
     expect(parsed.value.contractVersion).toBe("facade-slice-6");
-    expect(parsed.value.verbs).toHaveLength(24);
+    expect(parsed.value.verbs).toHaveLength(FACADE_VERBS.length);
     expect(parsed.value.errorCodes).toHaveLength(9);
     // structuredContent populated too (SDK 1.30.0 supports it)
     expect(reply.result.structuredContent.value.contractVersion).toBe("facade-slice-6");

@@ -1,9 +1,10 @@
+import { bindBundledTools, type BundledToolBindings } from "./plugin-runtime";
 /**
  * @openreel/agent-facade — the agent-facing facade (Slice 1 + Slice 1b +
  * Slice 2a persistence + Slice 3 live collaboration).
  *
  * Pure-Node, in-process, transport-agnostic. The public surface is the
- * 24-verb `AgentFacade` object returned by createAgentFacade(); verb
+ * registered `AgentFacade` object returned by createAgentFacade(); verb
  * names mirror audit/facade-v0.md + ADR 0003 Appendix B.1 + ADR 0004
  * (editor.get_context/editor.control). All verbs return FacadeResult<T> and never throw
  * for domain errors. Pixel/export/verify backing arrives via the
@@ -59,7 +60,7 @@ import type {
   VerifyArtifactResult,
 } from "./types";
 
-export interface AgentFacade {
+export interface AgentFacade extends BundledToolBindings {
   readonly "session.describe": () => Promise<FacadeResult<SessionDescription>>;
   readonly "capabilities.get": () => Promise<FacadeResult<Capabilities>>;
   readonly "project.create": (
@@ -133,6 +134,7 @@ export interface AgentFacade {
 export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
   const session = new AgentFacadeSession(config);
   return {
+    ...bindBundledTools(session, config, "headless"),
     "session.describe": () => session.sessionDescribe(),
     "capabilities.get": () => session.capabilitiesGet(),
     "project.create": (params) => session.projectCreate(params),
@@ -365,3 +367,9 @@ export {
   type VerbSchemaCorpusCase,
 } from "./verb-schema-corpus";
 export * from "./types";
+
+export { defineTool, definePlugin, bindTools } from "./plugin-api";
+export type { ToolDefinition, ToolContext, PluginBindings } from "./plugin-api";
+export { toolDescription, toolPresentation } from "./tool-catalog";
+export { BUNDLED_PLUGINS, PLUGIN_TOOLS } from "./plugins";
+export type { SourceInspectInput, SourceInspectResult } from "./plugins/source-inspection";

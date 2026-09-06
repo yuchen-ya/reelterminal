@@ -29,26 +29,33 @@ user-facing brand.
 
 ## Current status
 
-Slice 3 is the current product foundation. The status below intentionally
-separates what is implemented, what is a reusable foundation, and what remains
-for concrete external integrations.
+The current foundation combines live collaboration, scoped editing and analysis
+tools, and bundled read-only tool extensions. The status below separates
+implemented features, reusable foundations, and remaining integration work.
 
 ### Implemented in this checkout
 
 - The browser/desktop editor and the canonical ReelTerminal `Project` model share
   one editing world.
-- A token-authenticated loopback MCP endpoint exposes exactly **17 live-facade
+- A token-authenticated loopback MCP endpoint exposes exactly **25 live-facade
   tools**:
 
   `session.describe` · `capabilities.get` · `project.create` · `project.open` ·
-  `project.save` · `project.get_state` · `media.import` · `timeline.get` ·
-  `editor.get_context` · `editor.control` · `edit.apply` ·
-  `preview.render_frame` · `visual.inspect` · `export.start` · `job.status` ·
-  `job.cancel` · `verify.artifact`.
+  `project.save` · `project.rename` · `project.get_state` · `project.changes` ·
+  `media.import` · `media.analyze_start` · `media.inspect` · `timeline.get` ·
+  `timeline.query` · `editor.get_context` · `editor.control` · `edit.validate` ·
+  `edit.apply` · `history.get` · `history.control` · `preview.render_frame` ·
+  `visual.inspect` · `export.start` · `job.status` · `job.cancel` ·
+  `verify.artifact`.
+
+  This is 24 built-in verbs plus the bundled `media.inspect` plugin. The
+  source of truth is `FACADE_VERBS` in `packages/agent-facade/src/types.ts`
+  together with the startup plugin registry in `packages/agent-facade/src/plugins/`.
+  Registration does not imply runtime availability; read `capabilities.get`.
 
   The facade verbs above use dotted names; on the MCP wire each dot becomes an
   underscore (`session.describe` → `session_describe`, `editor.control` →
-  `editor_control`). `session_describe` reports the same 17 verbs.
+  `editor_control`). `session_describe` reports the same 25 verbs.
 
   In live mode, project creation/open remain GUI-owned. An Agent can import
   local video and audio from the roots reported by `capabilities.get`; the
@@ -60,22 +67,32 @@ for concrete external integrations.
 - `visual_inspect` provides bounded, read-only frame sampling by clip or time
   range, with revision-tagged PNG artifacts and a real contact sheet when the
   configured renderer supports native composition.
+- `media.inspect` samples original imported video ranges, including media not
+  on the timeline, using a detached render composition. Both inspection tools
+  can show verified PNG evidence in the desktop's dismissible inspection panel.
+  Sparse frames do not review continuous motion, audio, or editing rhythm.
+- Scoped `timeline.query` reads, `project.changes` delta recovery,
+  `edit.validate` preflight, and live `history.get`/`history.control` support
+  iterative editing. `media.analyze_start` currently implements only
+  `technicalQuality`; other analysis types report unavailable.
 - The atomic `edit_apply` vocabulary covers placement, moving, trimming,
   splitting, duplication, ripple deletion, constant speed/reverse, visual
   transforms and crop, volume, fades, ordinary removal, clip transitions,
-  and text overlay creation/update/deletion. Creation operations report their
+  text overlay creation/update/deletion, track updates, safe track/media removal,
+  review markers, SRT subtitle import, temperature/tint grading, and supported
+  transform/opacity keyframes. Creation operations report their
   real ids so an Agent can continue editing them in later calls.
 - Users can mark audio, video, text, media, and graphics entities as stable
-  Agent references (`#1`, `#2`, `#3`, …). Multi-selection assignment is
+  Agent references (`@A1`, `@A2`, `@A3`, …). Multi-selection assignment is
   deterministic; repeated marks keep their number; deleted entities remain
   stale and never silently rebind. References are visible in the editor and
   available as a machine-readable mapping from `editor.get_context`.
 - The retained product UI is wired for English and Simplified Chinese
-  (`zh-CN`). Current static surfaces are translated, while English remains the
-  fallback for newly introduced or missing copy.
+  (`zh-CN`). English remains the fallback for newly introduced or missing copy;
+  the new inspection panel currently uses English labels.
 - The desktop GUI conversation panel and loopback client transport are landed.
   The shipped Codex reference adapter creates or resumes a Codex App Server
-  thread, connects that same thread to the 17-tool live MCP facade, and
+  thread, connects that same thread to the 25-tool live MCP facade, and
   projects only safe display events into the panel. Other Agent hosts can use
   the provider-neutral adapter kit and conversation protocol.
 - The legacy 304-tool desktop endpoint and the embedded BYOK agent/chat path
@@ -118,7 +135,7 @@ external Agent via MCP ─┘
 
 ```text
 packages/core              canonical Project model + editing engines
-packages/agent-facade      typed 17-verb facade, headless and live sessions
+packages/agent-facade      typed 25-verb facade, headless and live sessions
 packages/runtime-chromium  Chromium render/export providers + verification
 packages/agent-transport   optional headless MCP/CLI transport foundation
 apps/web                   ReelTerminal editor GUI and renderer-side live bridge
@@ -147,6 +164,8 @@ monotonic: they are never renumbered or reused, including after deletion.
 {
   "references": {
     "1": {
+      "number": 1,
+      "ref": "A1",
       "kind": "video",
       "entityId": "clip-abc",
       "label": "Opening shot",
@@ -160,7 +179,7 @@ monotonic: they are never renumbered or reused, including after deletion.
 
 ## What the facade covers
 
-The 17-tool contract is shared by headless and live facade sessions. In a
+The 25-tool contract is shared by headless and live facade sessions. In a
 headless session, project lifecycle and local media operations are available
 subject to configured roots. In a live session, the GUI owns the open project;
 the facade can import media and edit that shared project while reporting live
@@ -257,7 +276,7 @@ Those commands are not the default ReelTerminal desktop entry point.
 | Path | Role | Current status |
 |---|---|---|
 | `packages/core` | Canonical project and editing engines | Active foundation |
-| `packages/agent-facade` | Headless/live 17-tool contract | Active |
+| `packages/agent-facade` | Headless/live 25-tool contract | Active |
 | `packages/runtime-chromium` | Render, export, and verification providers | Active foundation |
 | `packages/agent-transport` | Headless MCP/CLI transport foundation | Optional |
 | `apps/web` | ReelTerminal editor and live renderer bridge | Active |
@@ -283,7 +302,7 @@ pnpm lint
 ```
 
 Desktop live collaboration tests cover endpoint authentication and MCP shape,
-the 17-tool catalog, the renderer bridge, session host, lease, status events,
+the 25-tool catalog, the renderer bridge, session host, lease, status events,
 and shared revision behavior.
 
 ## License and attribution

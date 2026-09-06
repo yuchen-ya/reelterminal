@@ -1,8 +1,9 @@
+import { toolPresentation } from "@openreel/agent-facade";
 /**
  * `agent-video serve` — the MCP stdio server (ADR 0003 Decisions 1/2/5/7).
  *
  * One long-lived stdio MCP server process == one AgentFacadeSession. The
- * public surface is exactly the 24 tools of the facade contract (including
+ * public surface is the registered tools of the facade contract (including
  * `editor_get_context` and `visual_inspect`); every result is the facade
  * `FacadeResult` JSON as a single text content block (B.4), `ok:false` ⇒
  * `isError:true` — domain failures are never JSON-RPC protocol errors and
@@ -267,7 +268,7 @@ export async function serveCommand(argv: readonly string[]): Promise<never> {
       const content: CallToolResult["content"] = [
         { type: "text", text: JSON.stringify(result) },
       ];
-      if (verb === "visual.inspect" && result.ok) {
+      if (toolPresentation(verb) === "image-collection" && result.ok) {
         await appendVisualImageContent(content, result, config.artifactRoot);
       }
       return {

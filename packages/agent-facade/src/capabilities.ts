@@ -1,3 +1,4 @@
+import { PLUGIN_TOOLS } from "./plugins";
 /**
  * Live capability reporting (fixes RUNNER-06 "capability lies by omission" —
  * and its twin, capability inflation): every claim is derived from what THIS
@@ -277,6 +278,10 @@ export async function buildCapabilities(
             "Headless snapshot transactions do not retain the GUI/Core undo stack; history.get reports this state and history.control fails UNSUPPORTED.",
           requires: "a live desktop session with the canonical GUI/Core history",
         },
+    pluginTools: Object.fromEntries(PLUGIN_TOOLS.map((tool) => {
+      const missing = (tool.requires ?? []).filter((requirement) => requirement === "render" ? !previewRaw.available : requirement === "artifactRoot" ? noArtifactRoot : ctx.mediaRoots.length === 0);
+      return [tool.name, { available: missing.length === 0, ...(missing.length ? { reason: `Missing plugin prerequisites: ${missing.join(", ")}`, requires: missing.join(", ") } : {}), details: { effect: tool.effect, presentation: tool.presentation ?? "text" } }];
+    })),
     mediaAnalysis: {
       asynchronous: true,
       types: Object.fromEntries(

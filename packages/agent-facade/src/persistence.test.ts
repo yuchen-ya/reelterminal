@@ -500,14 +500,14 @@ describe("persistence: save → fresh session open → continue", () => {
     expect(overlayClip?.transform.position).toEqual({ x: 0.5, y: 0.15 });
   });
 
-  it("session.describe reports the slice-6 contract with 24 verbs and 9 error codes", async () => {
+  it("session.describe reports the slice-6 contract with registered verbs and 9 error codes", async () => {
     const facade = newSession();
     const res = await facade["session.describe"]();
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.value.contractVersion).toBe("facade-slice-6");
     expect(res.value.verbs).toEqual([...FACADE_VERBS]);
-    expect(res.value.verbs).toHaveLength(24);
+    expect(res.value.verbs).toHaveLength(FACADE_VERBS.length);
     expect(res.value.errorCodes).toEqual([...FACADE_ERROR_CODES]);
     expect(res.value.errorCodes).toHaveLength(9);
   });

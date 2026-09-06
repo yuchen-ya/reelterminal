@@ -1,3 +1,4 @@
+import { FACADE_VERBS } from "@openreel/agent-facade";
 /**
  * Schema differential tests (ADR 0003 Decision 4 items 2/3/5):
  *
@@ -131,18 +132,9 @@ function facadeRuntimeValidation(verb: string, params: unknown): boolean {
 
 describe("Decision 4 item 2: transport assigns facade schemas verbatim", () => {
   it("TOOLS inputSchemas are the EMITTED_VERB_JSON_SCHEMAS objects (deep-equal, by reference)", () => {
-    const verbOrder: string[] = [
-      "session.describe", "capabilities.get", "project.create", "project.open",
-      "project.save", "project.rename", "project.get_state", "project.changes",
-      "media.import", "media.analyze_start", "timeline.get", "timeline.query",
-      "editor.get_context",
-      "editor.control",
-      "edit.validate", "edit.apply", "history.get", "history.control",
-      "preview.render_frame", "visual.inspect", "export.start", "job.status",
-      "job.cancel", "verify.artifact",
-    ];
+    const verbOrder = FACADE_VERBS;
     const emitted = EMITTED_VERB_JSON_SCHEMAS as Record<string, unknown>;
-    expect(TOOLS).toHaveLength(24);
+    expect(TOOLS).toHaveLength(FACADE_VERBS.length);
     TOOLS.forEach((tool, i) => {
       expect(tool.inputSchema).toBe(emitted[verbOrder[i]]);
       expect(tool.inputSchema).toEqual(emitted[verbOrder[i]]);

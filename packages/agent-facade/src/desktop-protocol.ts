@@ -96,7 +96,15 @@ export interface DesktopLiveBridgeReply {
   readonly error?: DesktopLiveBridgeError;
 }
 
+export interface DesktopInspection {
+  readonly title: string;
+  readonly range: string | null;
+  readonly images: readonly string[];
+  readonly limitations: readonly string[];
+}
+
 export type DesktopLiveEvent =
+  | ({ readonly type: "inspection" } & DesktopInspection)
   | ({ readonly type: "status" } & DesktopCollabStatus)
   | { readonly type: "action"; readonly phase: "start"; readonly verb: string }
   | {

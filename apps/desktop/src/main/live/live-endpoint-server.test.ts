@@ -204,7 +204,7 @@ describe("live endpoint MCP protocol", () => {
     expect(activity).toBe(before + 1);
   });
 
-  it("tools/list returns exactly the 24 facade tools, schemas verbatim, no renderer round-trip", async () => {
+  it("tools/list returns all registered facade tools, schemas verbatim, no renderer round-trip", async () => {
     const res = await rpc({ jsonrpc: "2.0", id: 1, method: "tools/list" }, token);
     const json = (await res.json()) as {
       result: {
@@ -212,7 +212,7 @@ describe("live endpoint MCP protocol", () => {
       };
     };
     const tools = json.result.tools;
-    expect(tools).toHaveLength(24);
+    expect(tools).toHaveLength(FACADE_VERBS.length);
     expect(tools.map((t) => t.name)).toEqual(FACADE_VERBS.map(toolNameForVerb));
     expect(tools.some((t) => t.name === "editor_get_context")).toBe(true);
     // The inputSchema is the facade emission, verbatim (no copy drift) —
@@ -300,7 +300,7 @@ describe("live endpoint MCP protocol", () => {
     expect(json.result.isError).toBe(false);
   });
 
-  it("embeds a facade-contained visual PNG as an MCP image block", async () => {
+  it.each(["visual_inspect", "media_inspect"])("embeds a contained PNG for %s through shared presentation", async (name) => {
     const sheetPath = path.join(tempDir, "visual", "contact-sheet.png");
     const sheetDir = path.dirname(sheetPath);
     // The endpoint only exposes files beneath the configured artifact root;
@@ -317,7 +317,7 @@ describe("live endpoint MCP protocol", () => {
       },
     };
     const res = await rpc(
-      { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "visual_inspect", arguments: { clipId: "c1" } } },
+      { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name, arguments: {} } },
       token,
     );
     const json = (await res.json()) as {

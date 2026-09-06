@@ -1,3 +1,4 @@
+import { AgentInspectionPanel } from "../editor/AgentInspectionPanel";
 import type { JSX } from "react";
 import type React from "react";
 import { lazy, Suspense } from "react";
@@ -153,6 +154,7 @@ export function EditPage(): JSX.Element {
 
       <div className="h-8 min-h-0" style={{ gridArea: "collab" }}>
         <CollabStatusBar />
+        <AgentInspectionPanel />
       </div>
 
       <DockRegion label={t("desktop.editor.timeline")} name={t("desktop.editor.timeline")} area="timeline" icon="rectangle.split.3x1" className="bg-tl-bg">

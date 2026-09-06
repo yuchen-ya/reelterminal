@@ -1,3 +1,4 @@
+import { PLUGIN_TOOLS } from "./plugins";
 /**
  * Facade-side half of the Decision-4 differential corpus (the ajv half
  * belongs to the transport). Every corpus case is classified by the SAME
@@ -226,6 +227,8 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
       return;
     }
     default:
+      { const tool = PLUGIN_TOOLS.find((tool) => tool.name === verb);
+        if (tool) { validateObject(params, tool.input, `${verb} params`); return; } }
       throw new Error(`corpus driver: no boundary layers for verb "${verb}"`);
   }
 }

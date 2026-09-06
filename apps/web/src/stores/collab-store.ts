@@ -1,3 +1,4 @@
+import type { DesktopInspection } from "@openreel/agent-facade/desktop-protocol";
 import { create } from "zustand";
 import type {
   OpenReelAgentAccessMode,
@@ -16,6 +17,8 @@ export type CollabMode = OpenReelAgentWorkMode;
 export type CollabStatus = OpenReelCollabStatus;
 
 interface CollabState extends CollabStatus {
+  inspection: DesktopInspection | null;
+  dismissInspection: () => void;
   refresh: () => Promise<void>;
   enable: () => Promise<void>;
   disable: () => Promise<void>;
@@ -31,6 +34,8 @@ const collabControl = () =>
     : undefined;
 
 export const useCollabStore = create<CollabState>()((set, get) => ({
+  inspection: null,
+  dismissInspection: () => set({ inspection: null }),
   sequence: 0,
   enabled: false,
   externalConnected: false,
@@ -126,6 +131,8 @@ export function installCollabEventListener(): () => void {
     if (evt.type === "status") {
       const { type: _type, ...status } = evt;
       useCollabStore.getState().applyStatus(status);
+    } else if (evt.type === "inspection") {
+      useCollabStore.setState({ inspection: evt });
     } else if (evt.type === "action") {
       useCollabStore.getState().setCurrentAction(eventActionLabel(evt));
     }
