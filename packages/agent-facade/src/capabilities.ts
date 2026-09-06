@@ -1,3 +1,4 @@
+import { audioAnalysisPreflight, AUDIO_LIMITS } from "./audio-analysis";
 import { PLUGIN_TOOLS } from "./plugins";
 /**
  * Live capability reporting (fixes RUNNER-06 "capability lies by omission" —
@@ -143,6 +144,7 @@ async function preflightOf(
 export async function buildCapabilities(
   ctx: CapabilityContext,
 ): Promise<Capabilities> {
+  const audioReady = await audioAnalysisPreflight();
   const mediaImportAvailable = ctx.live
     ? ctx.live.mediaImportAvailable && ctx.mediaRoots.length > 0
     : ctx.mediaRoots.length > 0;
@@ -178,6 +180,10 @@ export async function buildCapabilities(
       fileBackedMediaRequired: true,
       contactSheet: typeof ctx.renderProvider?.renderContactSheetPng === "function",
       maxSamples: 12,
+      explicitSourceTimes: true,
+      sourceRegion: Boolean(ctx.renderProvider?.supportsRegion),
+      regionDecodeMaxDimension: 4096,
+      agentTransport: "PNG images and text only; no audio/video consumption claim",
       maxCellDimension: 1024,
     },
   };
@@ -233,6 +239,7 @@ export async function buildCapabilities(
                 : "Live mode: the host did not provide the live-store media import bridge; media.import is unavailable in this session."
               : "No media roots are configured for this session; every media.import would fail until roots are provided.",
           }),
+      limits: { maxFileBytes: ctx.live ? 256 * 1024 * 1024 : null, formatPolicy: "Container/track probing by mediabunny; GUI codec decode support must also succeed. No URL import.", buffering: ctx.live ? "GUI bridge currently reads the complete file into an ArrayBuffer/File" : "streamed metadata probing", overLimitAdvice: "Use explicit source segments under the byte limit while retaining originals and recording each segment source offset. No automatic proxy binding; do not silently change frame rate or treat a proxy as final-quality source." },
       sources: ["file"],
       mediaRoots: ctx.mediaRoots,
       recommendedRoot: ctx.mediaRoots[0] ?? null,
@@ -287,7 +294,7 @@ export async function buildCapabilities(
       types: Object.fromEntries(
         MEDIA_ANALYSIS_TYPES.map((type) => [
           type,
-          type === "technicalQuality" && ctx.mediaRoots.length > 0
+          type === "audioSummary" && ctx.mediaRoots.length > 0 ? { ...audioReady, details: { ...audioReady.details, ...AUDIO_LIMITS, maxSourceFileBytes: 2 * 1024 * 1024 * 1024, coordinateSpace: "source", changesProject: false, agentAudioConsumption: false } } : type === "technicalQuality" && ctx.mediaRoots.length > 0
             ? {
                 available: true,
                 details: {

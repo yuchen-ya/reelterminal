@@ -229,13 +229,7 @@ export function createProjectStoreHelpers(
       graphicsEngine.loadStickerClips(project.stickerClips ?? []);
     }
     const speedEngine = getSpeedEngine();
-    for (const track of project.timeline.tracks) {
-      for (const c of track.clips) {
-        const sourceSpan = c.outPoint - c.inPoint;
-        speedEngine.setClipSpeed(c.id, c.speed ?? 1, sourceSpan);
-        speedEngine.setReverse(c.id, c.reversed ?? false, sourceSpan);
-      }
-    }
+    speedEngine.loadClips(project.timeline.tracks.flatMap((track) => track.clips));
     const chromaClips = project.timeline.tracks
       .flatMap((t) => t.clips)
       .filter((c) => c.chromaKey);

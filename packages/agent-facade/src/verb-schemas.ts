@@ -228,6 +228,8 @@ export const MEDIA_IMPORT_SCHEMA: ObjectSchema = {
 };
 
 export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
+  startSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0, describe: "nonnegative source seconds", emits: { kind: "leaf", schema: { type: "number", minimum: 0 } } },
+  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audio range at most 120 seconds", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
   mediaId: {
     check: isNonEmptyString,
     describe: "a non-empty media-library id",

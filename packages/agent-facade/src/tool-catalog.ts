@@ -30,7 +30,7 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   editor_control:
     "Control ephemeral live-editor UI state: play, pause, seek, or select/reveal clip, text, or media targets without changing project revision or undo history.",
   edit_validate:
-    "Dry-run the exact edit.apply op vocabulary without side effects and report conflicts, warnings, and estimated impact.",
+    "Dry-run edit.apply ops (top-level input omits idempotencyKey) without side effects and report conflicts, warnings, and estimated impact.",
   edit_apply:
     "Apply an atomic batch of closed edit ops to the project, including safe removal of empty tracks and unreferenced media.",
   history_get:
@@ -69,7 +69,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "media.import":
     "Import a local video or audio file into the open GUI project. Use an absolute path under one of capabilities_get.mediaImport.mediaRoots; the returned mediaId can be passed to clip.add, the Media panel updates immediately, and the import is undoable in the GUI.",
   "media.analyze_start":
-    "Start an asynchronous analysis job for an imported file-backed media item; capabilities_get reports each analysis type honestly.",
+    "Start a read-only asynchronous analysis job; audioSummary uses local FFmpeg for LUFS, true peak, waveforms, silence and onset/periodicity candidates with explicit source startSec/endSec (max 120s), without listening or editing; capabilities_get reports each analysis type honestly.",
   "timeline.get":
     "Return the compact timeline view (tracks, clips, text overlays) at the current revision. Persisted review markers use namespaced ids R1, R2, and so on.",
   "timeline.query":
@@ -79,9 +79,9 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "editor.control":
     "Control ephemeral live-editor UI state: play, pause, seek, or select/reveal one or more clip, text, or media targets without changing project revision or undo history.",
   "edit.validate":
-    "Dry-run the exact edit.apply op schema against the current canonical snapshot and report conflicts, warnings, and estimated impact without side effects.",
+    "Dry-run edit.apply ops (top-level input omits idempotencyKey) against the current canonical snapshot and report conflicts, warnings, and estimated impact without side effects.",
   "edit.apply":
-    "Apply an atomic batch of closed edit ops as ONE undo unit, including safe track.remove (empty tracks only) and media.remove (unreferenced media only). The revision CAS is unconditional in live mode: an omitted expectedRevision is guarded with the revision of the snapshot the ops were translated against; expectedContextRevision remains optional.",
+    "Apply an atomic batch of closed edit ops as ONE undo unit. Live clip.add forbids explicit clipId; use the returned createdIds for dependent transactions, including safe track.remove (empty tracks only) and media.remove (unreferenced media only). The revision CAS is unconditional in live mode: an omitted expectedRevision is guarded with the revision of the snapshot the ops were translated against; expectedContextRevision remains optional.",
   "history.get":
     "Return bounded undo/redo availability and summaries from the canonical GUI/Core history.",
   "history.control":

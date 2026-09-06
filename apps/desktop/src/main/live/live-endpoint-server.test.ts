@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   EMITTED_VERB_JSON_SCHEMAS,
+  LIVE_VERB_INPUT_SCHEMA_OVERRIDES,
   FACADE_VERBS,
   type FacadeResult,
   type FacadeVerb,
@@ -220,7 +221,7 @@ describe("live endpoint MCP protocol", () => {
     // GUI owns the save target), so the checkpoint schema with required
     // `path` must NOT be advertised.
     const editApply = tools.find((t) => t.name === "edit_apply");
-    expect(editApply?.inputSchema).toEqual(EMITTED_VERB_JSON_SCHEMAS["edit.apply"]);
+    expect(editApply?.inputSchema).toEqual(LIVE_VERB_INPUT_SCHEMA_OVERRIDES["edit.apply"]);
     const projectSave = tools.find((t) => t.name === "project_save");
     expect(projectSave?.inputSchema).toEqual({
       type: "object",

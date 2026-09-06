@@ -118,18 +118,33 @@ export const EMITTED_VERB_JSON_SCHEMAS: Readonly<
 
 /**
  * Live-mode input-schema overrides (ADR 0004). The live facade implements the
- * same 24 verbs, but live `project.save` is NOT a checkpoint write: it takes
+ * same bundled verbs, but live `project.save` is NOT a checkpoint write: it takes
  * no params (the GUI owns the save target) and flushes the GUI's autosave
  * snapshot, reporting only the revision. Advertising the headless checkpoint
  * schema (`path` required) on the live `tools/list` would instruct
  * integrators to pass a param the live runtime must reject — a contract
  * self-contradiction. Live endpoints assign
  * `LIVE_VERB_INPUT_SCHEMA_OVERRIDES[verb] ?? EMITTED_VERB_JSON_SCHEMAS[verb]`.
- * Everything else stays verbatim across both modes.
+ * Live edit schemas also omit clip.add.clipId because the canonical GUI store
+ * mints ids. Top-level validate/apply parameter differences remain intact.
  */
+function liveEditSchema(verb: "edit.apply" | "edit.validate"): JsonSchemaObject {
+  const schema = structuredClone(EMITTED_VERB_JSON_SCHEMAS[verb]);
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== "object") return;
+    const value = node as Record<string, any>;
+    if (value.properties?.op?.const === "clip.add") delete value.properties.clipId;
+    for (const child of Object.values(value)) visit(child);
+  };
+  visit(schema);
+  return schema;
+}
+
 export const LIVE_VERB_INPUT_SCHEMA_OVERRIDES: Readonly<
   Partial<Record<FacadeVerb, JsonSchemaObject>>
 > = {
+  "edit.apply": liveEditSchema("edit.apply"),
+  "edit.validate": liveEditSchema("edit.validate"),
   "project.save": {
     type: "object",
     additionalProperties: false,

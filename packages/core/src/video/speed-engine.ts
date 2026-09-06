@@ -1,4 +1,5 @@
 import type {
+  Clip,
   EasingType,
   SpeedKeyframe,
   FreezeFrame,
@@ -27,6 +28,20 @@ export class SpeedEngine {
   constructor(animationEngine?: AnimationEngine) {
     this.animationEngine = animationEngine || new AnimationEngine();
   }
+  /** Restore canonical state for GUI undo/open and isolated render/export snapshots. */
+  loadClips(clips: readonly Clip[]): void {
+    this.clipSpeedData.clear();
+    for (const clip of clips) this.clipSpeedData.set(clip.id, {
+      clipId: clip.id,
+      baseSpeed: this.clampSpeed(clip.speed ?? 1),
+      reverse: clip.reversed ?? false,
+      originalDuration: Math.max(0, clip.outPoint - clip.inPoint),
+      keyframes: structuredClone(clip.speedKeyframes ?? []),
+      freezeFrames: structuredClone(clip.freezeFrames ?? []),
+      pitchCorrection: clip.pitchCorrection ?? true,
+    });
+  }
+
   // Speed Control (Requirement 19.1)
   setClipSpeed(clipId: string, speed: number, originalDuration: number): void {
     const clampedSpeed = this.clampSpeed(speed);

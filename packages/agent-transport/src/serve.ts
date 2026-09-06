@@ -70,22 +70,23 @@ export async function appendVisualImageContent(
   if (!result.ok || artifactRoot === undefined) return;
   const value = result.value as {
     readonly contactSheet?: { readonly path?: unknown } | null;
-    readonly frames?: readonly { readonly artifact?: { readonly path?: unknown } }[];
+    readonly frames?: readonly { readonly artifact?: { readonly path?: unknown }; readonly regionArtifact?: { readonly path?: unknown } }[];
   };
   const contactPath = typeof value.contactSheet?.path === "string"
     ? value.contactSheet.path
     : undefined;
   const framePaths = (value.frames ?? [])
-    .map((frame) => frame.artifact?.path)
+    .flatMap((frame) => [frame.artifact?.path, frame.regionArtifact?.path].filter(Boolean))
     .filter((path): path is string => typeof path === "string")
     .slice(0, 12);
   // Prefer the single sheet, but keep the verified frame artifacts as a
   // recovery path when the sheet was deleted, malformed, or too large.
-  const paths = contactPath === undefined ? framePaths : [contactPath, ...framePaths];
+  const hasRegions = value.frames?.some((frame) => frame.regionArtifact);
+  const paths = hasRegions || contactPath === undefined ? framePaths : [contactPath, ...framePaths];
   const root = await realpath(resolvePath(artifactRoot)).catch(() => null);
   if (root === null) return;
   let totalBase64 = 0;
-  let skipped = false;
+  let skipped = (value.frames ?? []).reduce((count, frame) => count + (frame.regionArtifact ? 2 : 1), 0) > 12;
   for (const filePath of paths) {
     if (!isAbsolute(filePath)) {
       skipped = true;

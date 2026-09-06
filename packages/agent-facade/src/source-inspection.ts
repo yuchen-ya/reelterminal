@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
-import { rm } from "node:fs/promises";
+import { rm, stat } from "node:fs/promises";
 import type { Project } from "@openreel/core/types/project";
 import { FacadeError } from "./errors";
 import type { ToolContext } from "./plugin-api";
@@ -46,10 +46,14 @@ export async function inspectSource(input: SourceInspectInput, context: ToolCont
     }] },
   };
   const { width, height } = visualRasterSize(source, input.width, undefined);
-  const count = input.sampleCount ?? 6;
+  if (input.timesSec && input.sampleCount !== undefined) throw new FacadeError("INVALID_PARAMS", "Use timesSec or sampleCount, not both");
+  if (input.timesSec?.some((t) => t < input.startSec || t >= input.endSec)) throw new FacadeError("INVALID_PARAMS", "Explicit timestamps must lie in [startSec, endSec)");
+  if (input.roi && !provider.supportsRegion) throw new FacadeError("UNSUPPORTED", "This render provider does not implement detail regions");
+  const file = await stat(sourcePath);
+  const count = input.timesSec?.length ?? input.sampleCount ?? 6;
   const safeEnd = Math.max(input.startSec, input.endSec - 1 / (2 * source.settings.frameRate));
   const samples = Array.from({ length: count }, (_, i) => {
-    const timeSec = Math.min(safeEnd, input.startSec + (input.endSec - input.startSec) * (count === 1 ? 0.5 : i / (count - 1)));
+    const timeSec = input.timesSec?.[i] ?? Math.min(safeEnd, input.startSec + (input.endSec - input.startSec) * (count === 1 ? 0.5 : i / (count - 1)));
     return { timeSec, label: `${media.name} · source ${timeSec.toFixed(3)}s` };
   });
   // Unique per request, including concurrent calls and identical-revision ranges.
@@ -67,10 +71,17 @@ export async function inspectSource(input: SourceInspectInput, context: ToolCont
     for (const [index, sample] of samples.entries()) {
       const destPath = resolve(dir, `frame-${index}.png`);
       const rendered = await provider.renderFramePng({ project: structuredClone(source), sourceRevision: revision, ...sample, width, height, destPath, mediaFiles });
-      frames.push({ ...sample, artifact: await makeArtifact(destPath, rendered.bytesWritten) });
+      const artifact = await makeArtifact(destPath, rendered.bytesWritten);
+      let regionArtifact;
+      if (input.roi) {
+        const regionPath = resolve(dir, `region-${index}.png`);
+        const region = await provider.renderFramePng({ project: structuredClone(source), sourceRevision: revision, ...sample, width, height, destPath: regionPath, mediaFiles, region: input.roi });
+        regionArtifact = await makeArtifact(regionPath, region.bytesWritten);
+      }
+      frames.push({ ...sample, artifact, ...(regionArtifact ? { regionArtifact } : {}) });
     }
     let contactSheet: SourceInspectResult["contactSheet"] = null;
-    const limitations = ["Sparse source frames only; motion continuity and audio have not been reviewed."];
+    const limitations = ["Static source frames only; motion continuity and audio have not been reviewed.", "Clip mappings apply to constant speed. A null formula means speed ramps/freeze frames need a nonlinear mapping and must not use the linear alignment example."];
     if (provider.renderContactSheetPng) {
       const destPath = resolve(dir, "contact-sheet.png");
       try {
@@ -81,7 +92,12 @@ export async function inspectSource(input: SourceInspectInput, context: ToolCont
         limitations.push("Contact sheet unavailable; individual frames are returned.");
       }
     } else limitations.push("Provider has no contact-sheet support; individual frames are returned.");
-    return { revision, sourceRevision: revision, mediaId: media.id, mediaName: media.name, startSec: input.startSec, endSec: input.endSec, width, height, frames, contactSheet, limitations };
+    const after = await stat(sourcePath);
+    if (after.size !== file.size || after.mtimeMs !== file.mtimeMs) throw new FacadeError("CONFLICT", "Source changed during inspection; retry against its new version");
+    if (input.roi) limitations.push(`ROI ${JSON.stringify(input.roi)}; source raster capped at 4096 pixels per side. Full/detail pairs share source timestamps; MCP may embed only the first 12 images.`);
+    return { coordinateSpace: "source", sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) },
+      timeMappings: project.timeline.tracks.flatMap((track) => track.clips.filter((clip) => clip.mediaId === media.id).map((clip) => ({ clipId: clip.id, timelineStartSec: clip.startTime, timelineEndSec: clip.startTime + clip.duration, sourceInSec: clip.inPoint, sourceOutSec: clip.outPoint, speed: clip.speed ?? 1, reversed: clip.reversed ?? false, formula: clip.speedKeyframes?.length || clip.freezeFrames?.length ? null : clip.reversed ? "timeline = start + (outPoint - source) / speed" : "timeline = start + (source - inPoint) / speed", frameRate: project.settings.frameRate, maxNearestFrameRoundingSec: .5 / project.settings.frameRate, eventLocalizationUncertaintySec: null }))),
+      revision, sourceRevision: revision, mediaId: media.id, mediaName: media.name, startSec: input.startSec, endSec: input.endSec, width, height, frames, contactSheet, limitations };
   } catch (error) {
     await rm(dir, { recursive: true, force: true });
     throw error;

@@ -2,7 +2,7 @@
 name: agent-video
 description: >-
   Drive ReelTerminal through its live desktop MCP interface by default: connect
-  the external Agent to the open GUI project's 25-tool openreel-live-mcp
+  the external Agent to the open GUI project's tool-plugin openreel-live-mcp
   facade, inspect context, edit, preview, export, and verify. The optional
   agent-video serve/run transport remains available for headless workflows.
 ---
@@ -78,11 +78,11 @@ Use an explicit endpoint-file option only if the connector or host requires
 one; the default is already `~/.openreel/live-endpoint.json`. Do not copy the
 token into project files, prompts, or logs.
 
-This connector exposes the same open GUI project through exactly **25 tools**:
+This connector exposes the same open GUI project through the following tools:
 
 `session_describe` · `capabilities_get` · `project_create` · `project_open` ·
 `project_save` · `project_rename` · `project_get_state` · `project_changes` ·
-`media_import` · `media_analyze_start` · `media_inspect` · `timeline_get` · `timeline_query` ·
+`media_import_preflight` · `media_import` · `media_analyze_start` · `media_inspect` · `timeline_get` · `timeline_query` ·
 `editor_get_context` · `editor_control` · `edit_validate` · `edit_apply` ·
 `history_get` · `history_control` · `preview_render_frame` ·
 `visual_inspect` ·
@@ -108,13 +108,14 @@ same history. Headless history control is honestly unavailable.
 `media_analyze_start` is asynchronous and returns a generalized job id.
 Inspect `capabilities_get.mediaAnalysis.types` before requesting analysis,
 then use `job_status`/`job_cancel` exactly as for export. At this contract
-revision only `technicalQuality` has a built-in real provider; unsupported
-types fail before a job is created. Large future transcript/frame results must
+revision `technicalQuality` is built in, and `audioSummary` uses locally installed
+FFmpeg/ffprobe after a real preflight; unsupported types fail before a job is created. Large future transcript/frame results must
 remain artifact references rather than inline responses.
 
 `media_inspect` is the bundled read-only source inspection tool. Check
 `capabilities_get.pluginTools["media.inspect"]`, then pass an imported video
-`mediaId` with a source-time `startSec`/`endSec` range. It does not change the
+`mediaId` with a source-time `startSec`/`endSec` range. Use explicit `timesSec`
+and normalized `roi` for candidate detail inspection. It does not change the
 project, selection, or playhead. `visual_inspect` instead samples the edited
 timeline. Both provide sparse visual evidence, not continuous motion, audio,
 transcription, beat detection, or automatic pacing analysis. See
@@ -163,8 +164,10 @@ creative process may loop, skip, reorder, or return to any of them:
 - Preserve a recoverable version before a broad or destructive rebuild.
 - Develop sound with picture from the previsualization onward; file-level audio
   presence is not a substitute for listening through time.
-- Review the complete cut with sound. Evaluate narrative progress, audiovisual
-  coordination, composition, continuity, information/brand fidelity, and pace.
+- Review the complete cut with sound when the host genuinely supports audiovisual
+  consumption; otherwise perform supported frame/measurement checks and report
+  the unresolved perceptual gap. Evaluate narrative progress, composition and
+  continuity only to the extent supported by actual evidence.
 
 Every edit still goes through the live facade so it appears in the open GUI.
 
@@ -191,23 +194,22 @@ initialize/resume, on changes, and with each prompt. Headless sessions expose
 the same fields and default to Collaborative unless their host explicitly
 configures another work mode.
 
-### Two engagement tiers: interactive edits vs delivery
+## Task-dependent inspection and review
 
-**Interactive editing is the default.** When the user asks for a change to the
-open project — trim this, move that, add a marker, tweak a title — keep the
-loop light:
+Choose inspection depth by task, not by whether export was requested:
 
-1. Read only what the edit needs (`timeline_get` and/or `editor_get_context`;
-   not a full `project_get_state` dump for a routine edit).
-2. Apply the whole change as ONE atomic `edit_apply` batch with one fresh
-   idempotency key.
-3. Confirm ONCE, lightly — the user is watching the GUI, so add at most a
-   single `preview_render_frame` (or a 1–2 frame `visual_inspect`) when the
-   change is visual. Then reply immediately with what changed.
+- Mechanical adjustment: read bounded context, apply one atomic batch when dependencies allow, and inspect the changed area.
+- Semantic selection: overview each source, record candidate ranges, evidence and uncertainty, then inspect candidates densely with `media_inspect` `timesSec` and paired `roi` crops. Static frames can miss brief events and cannot establish continuous action or audio. No game HUD rule or kill detector is built in.
+- Rhythm/structure recut: repeat candidate inspection and source audio analysis as needed. Use `media_analyze_start` with `analysisTypes:["audioSummary"]`, explicit source `startSec/endSec` (at most 120 seconds), and poll/cancel through jobs. Local FFmpeg must pass capabilities preflight. Inspect meaningful visual events and their lead-in/result, not only cut boundaries; clips may span different numbers of beats.
+- Export delivery: only on request, save/export/poll/verify the artifact. Technical export verification does not replace content review.
 
-Never during interactive edits: `project_save`, `export_start`, `job_status`
-polling, ffprobe/ffmpeg shell-outs, or batch frame extraction. Do not
-"save for safety" either — the live GUI owns persistence and autosave.
+Before constructing a highlight timeline, make a feasibility ledger: candidate source ranges, evidence, confidence/uncertainty, useful action duration, and whether the requested duration would require low-value filler. Raw source duration is not usable-content duration. A short first selection is not the maximum possible cut. Investigate uncertain candidates; when content conflicts with target duration, propose concrete alternatives (shorter strong cut, wider definition of highlights, or additional source). Do not silently pad with irrelevant action or ask the user to pre-judge feasibility.
+
+Use meaningful source events as alignment anchors. Preserve enough cause and result to establish what happened. Map source times through trim/speed, check project frame rate and visible clip range, and separately report event localization uncertainty, audio detection uncertainty and nearest-frame rounding. Periodic transients are not proven beats/downbeats. Analysis never edits markers or audio; selected anchors become markers only via canonical `edit_apply`. `clip.add` cannot accept explicit `clipId` live: use returned ids in a dependent transaction. `edit_validate` accepts ops/revision/context preconditions, not `idempotencyKey`; `edit_apply` accepts a fresh key. Multiple dependent transactions and review rounds are appropriate for selection and recutting.
+
+Report review evidence separately: **frames inspected**, **playback executed**, **supported audiovisual review completed**, **export technically verified**. Current MCP transports embed PNG/text and have no audio/video consumption contract. GUI play, a playable file, waveform measurements or mathematical alignment do not establish that the Agent watched/heard a sequence. Perform all inspection the host supports; disclose remaining perceptual limits without treating the user as the default outsourced reviewer. GUI synchronization is collaboration, not a quality certificate.
+
+Import first uses `media_import_preflight`: cheap root/stat/size checking, with codec support explicitly unchecked. Capabilities reports the live 256MiB whole-file GUI buffer limit. Preserve originals and source offsets for explicit segments; no automatic proxy/relink pipeline exists. See [material analysis workflow](docs/MATERIAL-ANALYSIS.md) for parameters, limits and a concrete anchor example.
 
 **Delivery runs only on explicit request.** Only when the user asks for a
 finished artifact ("export it", "deliver the final mp4") run the full
@@ -244,7 +246,7 @@ atomically write the private
 `~/.openreel/conversation-endpoint.json` descriptor with mode `0600`, and
 remove it on exit; ReelTerminal only reads that descriptor. There is no universal
 provider connector and no embedded model. MCP tool access through the live
-facade remains a separate 25-tool integration and must not be confused with
+facade remains a separate tool-plugin integration and must not be confused with
 the conversation transport.
 
 One `agent-video` process owns exactly **one facade session** and that
@@ -284,7 +286,7 @@ about why; there is no skill-level workaround. Missing capability ⇒ read
 
 ## 2. Optional headless `serve` workflow (configuration, not variants)
 
-The same 25 tools exist on every client. Clients must spawn the server
+The same bundled tools exist on every client. Clients must spawn the server
 **directly** (no `sh -c` wrapper — a wrapper that holds stdin open defeats
 disconnect detection). Set the `OPENREEL_AVE_*` env vars in the server's
 environment; every root value must be an absolute path to an existing
@@ -335,7 +337,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
   `~` are refused, never resolved against any cwd. Paths must resolve
   inside the matching root class; escapes and URLs fail.
 
-## 4. The 25 tools
+## 4. The bundled tools
 
 | Tool | Purpose |
 |---|---|
@@ -347,6 +349,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `project_rename` | Rename the open project through the canonical action path |
 | `project_get_state` | Full canonical dump (Decision 8) |
 | `project_changes` | Bounded paged entity/field changes since a revision; explicit full-refresh fallback |
+| `media_import_preflight` | Cheap root/stat/size precheck; codec decodability remains unchecked |
 | `media_import` | Path inside `mediaRoots`; URLs refused |
 | `media_analyze_start` | Start a generalized async analysis job after checking per-type capabilities |
 | `media_inspect` | Read-only source-video sampling by `mediaId`, `startSec`, `endSec`; 1–12 PNG frames and optional contact sheet, even before timeline placement |

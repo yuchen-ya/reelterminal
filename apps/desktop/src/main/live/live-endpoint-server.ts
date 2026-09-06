@@ -87,18 +87,19 @@ export function visualImageContent(
   if (!result.ok || artifactRoot === undefined) return [];
   const value = result.value as {
     readonly contactSheet?: { readonly path?: unknown } | null;
-    readonly frames?: readonly { readonly artifact?: { readonly path?: unknown } }[];
+    readonly frames?: readonly { readonly artifact?: { readonly path?: unknown }; readonly regionArtifact?: { readonly path?: unknown } }[];
   };
   const contactPath = typeof value.contactSheet?.path === "string"
     ? value.contactSheet.path
     : undefined;
   const framePaths = (value.frames ?? [])
-    .map((frame) => frame.artifact?.path)
+    .flatMap((frame) => [frame.artifact?.path, frame.regionArtifact?.path].filter(Boolean))
     .filter((candidate): candidate is string => typeof candidate === "string")
     .slice(0, 12);
   // Prefer the single sheet, but fall back to frames if that artifact is no
   // longer readable, fails PNG validation, or exceeds the image budget.
-  const paths = contactPath === undefined ? framePaths : [contactPath, ...framePaths];
+  const hasRegions = value.frames?.some((frame) => frame.regionArtifact);
+  const paths = hasRegions || contactPath === undefined ? framePaths : [contactPath, ...framePaths];
   let root: string;
   try {
     root = realpathSync(path.resolve(artifactRoot));
@@ -110,7 +111,7 @@ export function visualImageContent(
     | { type: "text"; text: string }
   )[] = [];
   let totalBase64 = 0;
-  let skipped = false;
+  let skipped = (value.frames ?? []).reduce((count, frame) => count + (frame.regionArtifact ? 2 : 1), 0) > 12;
   for (const filePath of paths) {
     if (!path.isAbsolute(filePath)) {
       skipped = true;

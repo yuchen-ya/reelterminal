@@ -1,3 +1,4 @@
+import type { Clip } from "../types/timeline";
 import { describe, it, expect, beforeEach } from "vitest";
 import { SpeedEngine } from "./speed-engine";
 
@@ -6,6 +7,17 @@ describe("SpeedEngine", () => {
 
   beforeEach(() => {
     speedEngine = new SpeedEngine();
+  });
+
+  it("hydrates trim/speed/reverse from canonical snapshots and clears stale clip state", () => {
+    const clip = { id: "canonical", inPoint: 2, outPoint: 6, speed: 2, reversed: false } as Clip;
+    speedEngine.loadClips([clip]);
+    expect(speedEngine.getSourceTimeAtPlaybackTime(clip.id, 1)).toBe(2);
+    speedEngine.loadClips([{ ...clip, outPoint: 4, reversed: true }]);
+    expect(speedEngine.getSourceTimeAtPlaybackTime(clip.id, .25)).toBe(1.5);
+    expect(speedEngine.getEffectiveDuration(clip.id)).toBe(1);
+    speedEngine.loadClips([]);
+    expect(speedEngine.getClipIds()).toEqual([]);
   });
 
   describe("Basic Speed Operations", () => {

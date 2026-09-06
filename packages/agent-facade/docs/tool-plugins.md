@@ -68,3 +68,10 @@ installable packages can be added when a concrete plugin needs them.
 
 The acceptance test in `plugin-tools.test.ts` composes a second example plugin
 with the bundled plugin without adding routes or tool-name entries.
+
+
+## Source detail and import preflight
+
+`media.inspect` now accepts explicit `timesSec` (1–12, exclusive with `sampleCount`) and an optional normalized `roi` contained within the frame. Chromium returns full/detail PNG pairs at the same source times, a stat fingerprint and constant-speed clip mappings. Null mapping formulas denote nonlinear speed/freeze state. Image transports enforce a 12-image/byte bound and disclose omitted embeddings; artifacts are not proof of consumption. `media.import_preflight` performs local root/stat/size checks before import without probing codecs or changing project state.
+
+Local audio measurements reuse `media.analyze_start` jobs with `analysisTypes:["audioSummary"]` and explicit source ranges ≤120s. See [material analysis](../../../docs/MATERIAL-ANALYSIS.md) for algorithms, resource bounds, review boundaries and the executed fixture loop.

@@ -64,6 +64,7 @@ export interface ArtifactRef {
 /* ------------------------------------------------------------------ */
 
 export interface RenderFrameRequest {
+  readonly region?: { x: number; y: number; width: number; height: number };
   /** Canonical serialized project snapshot (deep clone; provider may mutate). */
   readonly project: Project;
   readonly sourceRevision: number;
@@ -114,6 +115,7 @@ export interface RenderedContactSheetInfo {
 }
 
 export interface RenderProvider {
+  readonly supportsRegion?: boolean;
   readonly id: string;
   /**
    * Real runtime preflight (e.g. launch the browser, run the probe). May be

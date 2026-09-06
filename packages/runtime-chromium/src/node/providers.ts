@@ -215,6 +215,8 @@ export class ChromiumRenderProvider implements RenderProvider {
     };
   }
 
+  readonly supportsRegion = true;
+
   async renderFramePng(request: RenderFrameRequest): Promise<RenderedFrameInfo> {
     const probe = await this.providers.probe();
     if (!probe.summary.renderAvailable) {
@@ -226,6 +228,7 @@ export class ChromiumRenderProvider implements RenderProvider {
       request.timeSec,
       request.width,
       request.height,
+      request.region,
     );
     if (png.length === 0) {
       throw new Error("Chromium returned an empty PNG frame");

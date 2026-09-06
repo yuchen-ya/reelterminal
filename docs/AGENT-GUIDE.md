@@ -75,15 +75,22 @@ before generating missing media, prefer a low-cost watchable previsualization,
 develop sound with picture, preserve recovery points before broad changes, and
 review the complete cut with sound. Steps may be skipped, reordered, or revisited.
 
-## Interactive edits stay light; delivery is explicit
+## Task-dependent inspection and review
 
-An interactive change request gets the light loop: read only what the edit
-needs, apply one atomic `edit_apply` batch, confirm once (the user is watching
-the GUI), and reply. Do not save, export, poll jobs, run ffprobe, or extract
-frame batches unless the user explicitly asked for a deliverable. The full
-save → export → poll → verify → evidence pipeline runs only on that explicit
-delivery request; the contract details live in
-[`SKILL.md`](../SKILL.md#two-engagement-tiers-interactive-edits-vs-delivery).
+Choose inspection depth by task, not by whether export was requested:
+
+- Mechanical adjustment: read bounded context, apply one atomic batch when dependencies allow, and inspect the changed area.
+- Semantic selection: overview each source, record candidate ranges, evidence and uncertainty, then inspect candidates densely with `media_inspect` `timesSec` and paired `roi` crops. Static frames can miss brief events and cannot establish continuous action or audio. No game HUD rule or kill detector is built in.
+- Rhythm/structure recut: repeat candidate inspection and source audio analysis as needed. Use `media_analyze_start` with `analysisTypes:["audioSummary"]`, explicit source `startSec/endSec` (at most 120 seconds), and poll/cancel through jobs. Local FFmpeg must pass capabilities preflight. Inspect meaningful visual events and their lead-in/result, not only cut boundaries; clips may span different numbers of beats.
+- Export delivery: only on request, save/export/poll/verify the artifact. Technical export verification does not replace content review.
+
+Before constructing a highlight timeline, make a feasibility ledger: candidate source ranges, evidence, confidence/uncertainty, useful action duration, and whether the requested duration would require low-value filler. Raw source duration is not usable-content duration. A short first selection is not the maximum possible cut. Investigate uncertain candidates; when content conflicts with target duration, propose concrete alternatives (shorter strong cut, wider definition of highlights, or additional source). Do not silently pad with irrelevant action or ask the user to pre-judge feasibility.
+
+Use meaningful source events as alignment anchors. Preserve enough cause and result to establish what happened. Map source times through trim/speed, check project frame rate and visible clip range, and separately report event localization uncertainty, audio detection uncertainty and nearest-frame rounding. Periodic transients are not proven beats/downbeats. Analysis never edits markers or audio; selected anchors become markers only via canonical `edit_apply`. `clip.add` cannot accept explicit `clipId` live: use returned ids in a dependent transaction. `edit_validate` accepts ops/revision/context preconditions, not `idempotencyKey`; `edit_apply` accepts a fresh key. Multiple dependent transactions and review rounds are appropriate for selection and recutting.
+
+Report review evidence separately: **frames inspected**, **playback executed**, **supported audiovisual review completed**, **export technically verified**. Current MCP transports embed PNG/text and have no audio/video consumption contract. GUI play, a playable file, waveform measurements or mathematical alignment do not establish that the Agent watched/heard a sequence. Perform all inspection the host supports; disclose remaining perceptual limits without treating the user as the default outsourced reviewer. GUI synchronization is collaboration, not a quality certificate.
+
+Import first uses `media_import_preflight`: cheap root/stat/size checking, with codec support explicitly unchecked. Capabilities reports the live 256MiB whole-file GUI buffer limit. Preserve originals and source offsets for explicit segments; no automatic proxy/relink pipeline exists. See [material analysis workflow](MATERIAL-ANALYSIS.md) for parameters, limits and a concrete anchor example.
 
 ## Keep every creation task in one workspace
 

@@ -248,6 +248,7 @@ export interface Capabilities {
     readonly serializedExecution: true;
   };
   readonly mediaImport: {
+    readonly limits: Readonly<Record<string, unknown>>;
     /** False when no media roots are configured (imports would all fail). */
     readonly available: boolean;
     /** Present when unavailable: why, in plain language. */
@@ -526,6 +527,7 @@ export interface MediaImportResult {
 
 export const MEDIA_ANALYSIS_TYPES = [
   "technicalQuality",
+  "audioSummary",
   "sceneCuts",
   "silence",
   "speechTranscript",
@@ -539,6 +541,9 @@ export const MEDIA_ANALYSIS_TYPES = [
 export type MediaAnalysisType = (typeof MEDIA_ANALYSIS_TYPES)[number];
 
 export interface MediaAnalyzeStartParams {
+  /** Original media seconds; bounded local audio analysis (maximum 120s). */
+  readonly startSec?: number;
+  readonly endSec?: number;
   readonly mediaId: string;
   readonly analysisTypes: readonly MediaAnalysisType[];
   readonly expectedRevision?: number;

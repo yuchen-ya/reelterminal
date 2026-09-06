@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useTimelineStore } from "../../stores/timeline-store";
 import { useCollabStore } from "../../stores/collab-store";
 import { X } from "@/icons/lucide-compat";
 
@@ -5,13 +7,15 @@ import { X } from "@/icons/lucide-compat";
 export function AgentInspectionPanel() {
   const inspection = useCollabStore((state) => state.inspection);
   const dismiss = useCollabStore((state) => state.dismissInspection);
-  if (!inspection) return null;
+  const playing = useTimelineStore((state) => state.playbackState === "playing");
+  useEffect(() => { if (playing) dismiss(); }, [playing, inspection, dismiss]);
+  if (!inspection || playing) return null;
   return (
     <section aria-label="Agent source inspection" className="absolute right-4 top-16 z-40 flex max-h-[70vh] w-[min(720px,80vw)] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl">
       <header className="flex items-center justify-between gap-4 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-medium">{inspection.title}</h2>
-          <p className="text-xs text-muted-foreground">Source inspection{inspection.range ? ` · ${inspection.range}` : ""}</p>
+          <p className="text-xs text-muted-foreground">Static frame inspection · not audiovisual review{inspection.range ? ` · ${inspection.range}` : ""}</p>
         </div>
         <button type="button" onClick={dismiss} aria-label="Close source inspection" className="rounded p-1 hover:bg-muted"><X size={16} /></button>
       </header>

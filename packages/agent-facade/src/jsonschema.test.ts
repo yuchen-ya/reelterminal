@@ -365,13 +365,20 @@ describe("emitted schema per-verb structure", () => {
     }
   });
 
-  it("live input-schema overrides: only project.save, as a closed empty object", () => {
+  it("live schema overrides cover save and canonical store-minted clip ids", () => {
     // Live project.save takes no params (the GUI owns the save target), so
     // the live tools/list must not advertise the headless checkpoint schema
-    // with required `path`. Every other verb serves the shared emission.
+    // with required `path`. Live edit ops additionally omit explicit clip ids.
     expect(Object.keys(LIVE_VERB_INPUT_SCHEMA_OVERRIDES).sort()).toEqual([
-      "project.save",
+      "edit.apply", "edit.validate", "project.save",
     ]);
+    for (const verb of ["edit.apply", "edit.validate"] as const) {
+      const schema = LIVE_VERB_INPUT_SCHEMA_OVERRIDES[verb] as any;
+      const clipAdd = schema.properties.ops.items.anyOf.find((entry: any) => entry.properties.op.const === "clip.add");
+      expect(clipAdd.properties.clipId).toBeUndefined();
+      expect(clipAdd.additionalProperties).toBe(false);
+    }
+    expect((LIVE_VERB_INPUT_SCHEMA_OVERRIDES["edit.validate"] as any).properties.idempotencyKey).toBeUndefined();
     expect(LIVE_VERB_INPUT_SCHEMA_OVERRIDES["project.save"]).toEqual({
       type: "object",
       additionalProperties: false,

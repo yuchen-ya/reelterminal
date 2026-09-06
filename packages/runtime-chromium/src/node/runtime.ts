@@ -600,17 +600,18 @@ export class ChromiumRuntime {
     timeSec: number,
     width: number,
     height: number,
+    region?: { x: number; y: number; width: number; height: number },
   ): Promise<Buffer> {
     const base64 = await this.boundedEvaluate(
       page,
-      ({ timeSec: t, width: w, height: h }: { timeSec: number; width: number; height: number }) =>
+      ({ timeSec: t, width: w, height: h, region: r }: { timeSec: number; width: number; height: number; region?: { x: number; y: number; width: number; height: number } }) =>
         (window as never as {
           __openreelRender: {
-            renderPngBase64(t: number, w: number, h: number): Promise<string>;
+            renderPngBase64(t: number, w: number, h: number, r?: { x: number; y: number; width: number; height: number }): Promise<string>;
           };
-        }).__openreelRender.renderPngBase64(t, w, h),
+        }).__openreelRender.renderPngBase64(t, w, h, r),
       "renderPng",
-      { timeSec, width, height },
+      { timeSec, width, height, region },
     );
     return Buffer.from(base64, "base64");
   }
@@ -631,7 +632,7 @@ export class ChromiumRuntime {
     project: Project,
     mediaFiles: Readonly<Record<string, string>>,
     fn: (session: {
-      renderPng(timeSec: number, width: number, height: number): Promise<Buffer>;
+      renderPng(timeSec: number, width: number, height: number, region?: { x: number; y: number; width: number; height: number }): Promise<Buffer>;
     }) => Promise<T>,
     options: { cancelCheck?: () => boolean } = {},
   ): Promise<T> {
@@ -641,8 +642,8 @@ export class ChromiumRuntime {
       }
       await this.hydrateOnPage(page, project, mediaFiles);
       return fn({
-        renderPng: (timeSec, width, height) =>
-          this.renderPngOnPage(page, timeSec, width, height),
+        renderPng: (timeSec, width, height, region) =>
+          this.renderPngOnPage(page, timeSec, width, height, region),
       });
     });
   }
@@ -656,9 +657,10 @@ export class ChromiumRuntime {
     timeSec: number,
     width: number,
     height: number,
+    region?: { x: number; y: number; width: number; height: number },
   ): Promise<Buffer> {
     return this.withHydratedSession(project, mediaFiles, (session) =>
-      session.renderPng(timeSec, width, height),
+      session.renderPng(timeSec, width, height, region),
     );
   }
 

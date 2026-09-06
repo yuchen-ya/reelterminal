@@ -284,6 +284,7 @@ const capabilities = (): OutputSchemaNode =>
       ),
       mediaImport: objectSchema(
         {
+          limits: openObject(),
           available: booleanSchema(),
           reason: stringSchema(),
           sources: arraySchema(enumSchema(["file"]), { minItems: 1, maxItems: 1 }),

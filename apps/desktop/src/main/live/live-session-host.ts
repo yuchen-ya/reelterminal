@@ -349,10 +349,10 @@ export function createLiveSessionHost(
           .filter((block) => block.type === "image")
           .map((block) => `data:image/png;base64,${block.data}`);
         if (images.length > 0) {
-          const value = result.value as { mediaName?: string; startSec?: number; endSec?: number; limitations?: string[] };
-          deps.emitEvent({ type: "inspection", title: value.mediaName ?? verb,
+          const value = result.value as { mediaId?: string; sourceRevision?: number; frames?: { timeSec: number }[]; mediaName?: string; startSec?: number; endSec?: number; limitations?: string[] };
+          deps.emitEvent({ type: "inspection", title: `${value.mediaName ?? verb}${value.mediaId ? ` · ${value.mediaId}` : ""}${value.sourceRevision !== undefined ? ` · revision ${value.sourceRevision}` : ""}`,
             range: typeof value.startSec === "number" && typeof value.endSec === "number" ? `${value.startSec.toFixed(3)}–${value.endSec.toFixed(3)} s` : null,
-            images, limitations: value.limitations ?? [] });
+            images, limitations: [...(value.limitations ?? []), ...(value.frames ? [`Sample times: ${value.frames.map((frame) => frame.timeSec.toFixed(3)).join(", ")} s`] : [])] });
         }
       }
       deps.emitEvent({

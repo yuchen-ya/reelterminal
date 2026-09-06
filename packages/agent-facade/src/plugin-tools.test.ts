@@ -55,6 +55,29 @@ describe("bundled tool plugins", () => {
     expect(await facade["project.get_state"]()).toEqual(before);
   });
 
+  it("dense explicit times and paired ROI expose short events missed by a uniform overview", async () => {
+    const { facade, input, requests, config } = await setup();
+    Object.assign(config.renderProvider, { supportsRegion: true });
+    const overview = await facade["media.inspect"]({ ...input, sampleCount: 2 });
+    if (!overview.ok) throw new Error(overview.error.message);
+    expect(overview.value.frames.some((f) => f.timeSec >= .29 && f.timeSec <= .31)).toBe(false);
+    const detailed = await facade["media.inspect"]({ mediaId: input.mediaId, startSec: .25, endSec: .35, timesSec: [.29, .3, .31], roi: { x: .7, y: 0, width: .3, height: .2 } });
+    expect(detailed).toMatchObject({ ok: true, value: { coordinateSpace: "source", frames: [{ timeSec: .29, regionArtifact: { format: "png" } }, { timeSec: .3 }, { timeSec: .31 }] } });
+    expect(requests.filter((r) => r.region).map((r) => r.timeSec)).toEqual([.29, .3, .31]);
+    expect(await facade["media.inspect"]({ ...input, timesSec: [.3] })).toMatchObject({ ok: false });
+    expect(await facade["media.inspect"]({ mediaId: input.mediaId, startSec: .1, endSec: .5, timesSec: [.5] })).toMatchObject({ ok: false });
+    expect(await facade["media.inspect"]({ ...input, roi: { x: .9, y: 0, width: .5, height: .2 } })).toMatchObject({ ok: false });
+  });
+
+  it("reports source trim/speed mapping without mutating project state", async () => {
+    const { facade, input } = await setup();
+    await facade["edit.apply"]({ ops: [{ op: "track.add", trackType: "video", trackId: "v1" }, { op: "clip.add", trackId: "v1", mediaId: input.mediaId, startTime: 2, inPoint: .1, outPoint: .5, clipId: "c1" }, { op: "clip.setSpeed", clipId: "c1", speed: 2 }] });
+    const before = await facade["project.get_state"]();
+    const result = await facade["media.inspect"](input);
+    expect(result).toMatchObject({ ok: true, value: { timeMappings: [{ clipId: "c1", sourceInSec: .1, sourceOutSec: .5, timelineStartSec: 2, speed: 2 }] } });
+    expect(await facade["project.get_state"]()).toEqual(before);
+  });
+
   it("rejects invalid ranges, stale revisions and unsupported media before rendering", async () => {
     const { facade, input, requests } = await setup();
     for (const bad of [{ ...input, startSec: 0.5 }, { ...input, endSec: 100 }, { ...input, width: 3 }]) {

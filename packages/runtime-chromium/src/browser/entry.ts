@@ -19,6 +19,7 @@
  * All output bytes flow OUT through these bindings as bounded chunks and are
  * written to disk by the Node host.
  */
+import { getSpeedEngine } from "@openreel/core/video/speed-engine";
 import { getVideoEngine } from "@openreel/core/video/video-engine";
 import { getExportEngine } from "@openreel/core/export/export-engine";
 import { titleEngine } from "@openreel/core/text/title-engine";
@@ -104,6 +105,7 @@ async function hydrate(
     titleEngine.loadTextClips(project.textClips ?? []);
     titleEngine.initialize(project.settings.width, project.settings.height);
 
+    getSpeedEngine().loadClips(project.timeline.tracks.flatMap((track) => track.clips));
     const videoEngine = getVideoEngine();
     await videoEngine.initialize();
     // Drop every cached decode: mediaIds repeat across projects, and a stale
@@ -137,15 +139,24 @@ async function renderPngBase64(
   timeSec: number,
   width: number,
   height: number,
+  region?: { x: number; y: number; width: number; height: number },
 ): Promise<string> {
   if (!currentProject) throw new Error("hydrate() must be called first");
   const engine = getVideoEngine();
-  const rendered = await engine.renderFrame(currentProject, timeSec, width, height);
+  if (region && (![region.x, region.y, region.width, region.height].every(Number.isFinite) || region.x < 0 || region.y < 0 || region.width <= 0 || region.height <= 0 || region.x + region.width > 1 || region.y + region.height > 1)) throw new Error("Invalid normalized region");
+  const scale = Math.min(1, 4096 / Math.max(currentProject.settings.width, currentProject.settings.height));
+  const rw = region ? Math.max(2, Math.round(currentProject.settings.width * scale)) : width;
+  const rh = region ? Math.max(2, Math.round(currentProject.settings.height * scale)) : height;
+  const rendered = await engine.renderFrame(currentProject, timeSec, rw, rh);
   try {
     const canvas = new OffscreenCanvas(width, height);
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("no 2d context on OffscreenCanvas");
-    ctx.drawImage(rendered.image, 0, 0, width, height);
+    if (region) {
+      const sw = rw * region.width, sh = rh * region.height;
+      const fit = Math.min(width / sw, height / sh);
+      ctx.drawImage(rendered.image, rw * region.x, rh * region.y, sw, sh, (width - sw * fit) / 2, (height - sh * fit) / 2, sw * fit, sh * fit);
+    } else ctx.drawImage(rendered.image, 0, 0, width, height);
     const blob = await canvas.convertToBlob({ type: "image/png" });
     return await blobToBase64(blob);
   } finally {
