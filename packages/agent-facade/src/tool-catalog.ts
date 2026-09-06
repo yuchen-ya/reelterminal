@@ -40,7 +40,7 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   preview_render_frame:
     "Render one frame of the project to a PNG artifact and return its artifact reference.",
   visual_inspect:
-    "Sample 1–12 real frames for a clip or time range and return PNG artifacts plus a contact sheet when supported.",
+    "Sample 1–12 real frames for a clip or time range; each frame is fitted into a per-frame byte budget (default 1.5 MiB, maxFrameBytes tunes it) — lossless PNG when it fits, otherwise a JPEG quality/width ladder — with per-frame fidelity metadata plus a contact sheet when supported.",
   export_start:
     "Start an export job for a snapshot of the current project; returns a jobId immediately.",
   job_status: "Return the current status of an export or media-analysis job.",
@@ -69,7 +69,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "media.import":
     "Import a local video or audio file into the open GUI project. Use an absolute path under one of capabilities_get.mediaImport.mediaRoots; the returned mediaId can be passed to clip.add, the Media panel updates immediately, and the import is undoable in the GUI.",
   "media.analyze_start":
-    "Start a read-only asynchronous analysis job. videoReview sends an explicit <=20s source range to Alibaba qwen3.5-omni-flash, requires user-configured DASHSCOPE_API_KEY, artifactRoot and cloudUpload:true; optional reviewQuestion (<=1000 chars). Returns fallible cloud opinions, not acceptance; no automatic retry. audioSummary uses local FFmpeg for LUFS, true peak, waveforms, silence and onset/periodicity candidates with explicit source startSec/endSec (max 120s), without listening or editing; capabilities_get reports each analysis type honestly.",
+    "Start a read-only asynchronous analysis job. videoReview sends an explicit <=20s source range to the selected cloud provider (default Alibaba qwen3.5-omni-flash via DASHSCOPE_API_KEY; REELTERMINAL_VIDEO_REVIEW_PROVIDER selects the provider), requires artifactRoot and cloudUpload:true; optional reviewQuestion (<=1000 chars). The bounded inspection copy is transcoded once and cached (source fingerprint + range keyed); each review still uploads once. Returns fallible cloud opinions, not acceptance; no automatic retry. audioSummary uses local FFmpeg for LUFS, true peak, waveforms, silence and onset/periodicity candidates with explicit source startSec/endSec (max 120s), without listening or editing; capabilities_get reports each analysis type honestly.",
   "timeline.get":
     "Return the compact timeline view (tracks, clips, text overlays) at the current revision. Persisted review markers use namespaced ids R1, R2, and so on.",
   "timeline.query":
@@ -89,7 +89,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "preview.render_frame":
     "Render one frame of the current project snapshot to a PNG artifact and return its reference.",
   "visual.inspect":
-    'Sample 1–12 real frames and return PNG artifacts plus a contact sheet when supported. Pass exactly ONE selector: clipId (a timeline clip id from timeline_get) or timeRange as {"startSec": <number>, "endSec": <number>} in timeline seconds with endSec > startSec ≥ 0. Optional: sampleCount (1–12, default 6), width/height (even, ≤1024).',
+    'Sample 1–12 real frames plus a contact sheet when supported. Pass exactly ONE selector: clipId (a timeline clip id from timeline_get) or timeRange as {"startSec": <number>, "endSec": <number>} in timeline seconds with endSec > startSec ≥ 0. Optional: sampleCount (1–12, default 6), width/height (even, ≤1024), maxFrameBytes (per-frame byte budget, 32768–8388608, default 1572864; oversized PNGs are JPEG-re-encoded to fit, with frames[].fidelity disclosing the delivered raster/format).',
   "export.start":
     'Start an export job for a snapshot of the current project; returns a jobId immediately. Optional destinationPath "<deliveryRoot>/jobs/<slug>/output/<name>.mp4" copies the verified artifact into the Agent workspace deliverables directory after completion (never overwrites; see capabilities_get.export.details.deliveryRoots). Poll job.status until done, then check deliveredTo/deliveryError.',
   "job.status": "Return the current status of an export or media-analysis job.",

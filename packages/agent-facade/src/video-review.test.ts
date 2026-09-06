@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAgentFacade } from "./index";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
-import { reviewVideo, readReviewStream, videoReviewConfig, videoReviewPreflight, VIDEO_REVIEW_LIMITS } from "./video-review";
+import { reviewVideo, readReviewStream, videoReviewConfig, videoReviewPreflight, videoReviewProvider, VIDEO_REVIEW_LIMITS } from "./video-review";
 
 function response(finish = "stop") {
   return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: "0–1s: static bars; no audible evidence. Inconclusive sync." }, finish_reason: finish }] })}\n\ndata: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120}}\n\ndata: [DONE]\n\n`);
@@ -68,10 +68,15 @@ describe("Alibaba video review", () => {
       expect(await facade["media.analyze_start"]({ ...args, reviewQuestion: "different" })).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
       expect(network).toHaveBeenCalledTimes(1);
       expect(await facade["project.get_state"]()).toEqual(before);
-      // Provider cleanup completes before markAnalysisDone.
-      expect(await readdir(join(root, "video-review"))).toEqual([]);
+      // The inspection copy is cached (not deleted) under artifactRoot, keyed
+      // by source fingerprint + range; no partial files remain.
+      const cacheFiles = await readdir(join(root, "video-review-cache"));
+      expect(cacheFiles.filter((name) => name.endsWith(".mp4"))).toHaveLength(1);
+      expect(cacheFiles.filter((name) => name.endsWith(".json"))).toHaveLength(1);
+      expect(cacheFiles.some((name) => name.includes(".part."))).toBe(false);
       vi.stubEnv("DASHSCOPE_API_KEY", "unit-test-only");
-      const cancelled = await facade["media.analyze_start"]({ ...args, idempotencyKey: "cancel" });
+      // A DIFFERENT range so cancellation races a real transcode, not a cache hit.
+      const cancelled = await facade["media.analyze_start"]({ ...args, startSec: 0, idempotencyKey: "cancel" });
       if (!cancelled.ok) throw new Error(cancelled.error.message);
       await facade["job.cancel"]({ jobId: cancelled.value.jobId });
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -111,7 +116,11 @@ it("preserves audible transient offsets in the actual uploaded excerpt and abort
     vi.stubGlobal("fetch", pendingNetwork);
     await expect(reviewVideo(source, { startSec: 1, endSec: 3 }, root, controller.signal)).rejects.toThrow("Cancelled");
     expect(pendingNetwork).toHaveBeenCalledTimes(1);
-    expect(await readdir(join(root, "video-review"))).toEqual([]);
+    // Second call hit the preparation cache (same source + range): no partial
+    // files remain in the cache directory.
+    const cacheFiles = await readdir(join(root, "video-review-cache"));
+    expect(cacheFiles.some((name) => name.includes(".part."))).toBe(false);
+    expect(cacheFiles.filter((name) => name.endsWith(".mp4"))).toHaveLength(1);
   } finally { await rm(root, { recursive: true, force: true }); }
 }, 15000);
 
@@ -119,4 +128,45 @@ it("decodes split UTF-8 SSE chunks without changing evidence text", async () => 
   const bytes = new TextEncoder().encode('data: {"choices":[{"delta":{"content":"画面证据"},"finish_reason":"stop"}]}\n');
   const stream = new ReadableStream({ start(controller) { for (const byte of bytes) controller.enqueue(Uint8Array.of(byte)); controller.close(); } });
   expect(await readReviewStream(new Response(stream))).toMatchObject({ text: "画面证据", status: "opinion" });
+});
+
+describe("video review provider seam and preparation cache", () => {
+  it("selects providers through the host environment and refuses unknown ids", () => {
+    expect(videoReviewProvider().id).toBe("qwen3.5-omni-flash");
+    expect(videoReviewProvider({ REELTERMINAL_VIDEO_REVIEW_PROVIDER: "qwen3.5-omni-flash" }).id).toBe("qwen3.5-omni-flash");
+    expect(() => videoReviewProvider({ REELTERMINAL_VIDEO_REVIEW_PROVIDER: "gpt-5-video" })).toThrow(/Unknown video review provider/);
+  });
+
+  it("reuses the cached inspection copy for the same source range and reports it", async () => {
+    vi.stubEnv("DASHSCOPE_API_KEY", "unit-test-only");
+    const root = await mkdtemp(join(tmpdir(), "rt-review-cache-"));
+    const source = join(root, "fixture.mp4");
+    const execute = promisify(execFile);
+    const calls: number[] = [];
+    const network = vi.fn(async (_url: string, init: RequestInit) => {
+      const request = JSON.parse(init.body as string);
+      calls.push(request.messages[1].content[0].video_url.url.length);
+      return response();
+    });
+    vi.stubGlobal("fetch", network);
+    try {
+      await execute("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=black:s=320x180:r=30:d=4", "-c:v", "libx264", "-y", source]);
+      const first = await reviewVideo(source, { startSec: 1, endSec: 3 }, root, new AbortController().signal);
+      expect(first.preparation.cached).toBe(false);
+      // Different range → different cache key → fresh transcode.
+      const second = await reviewVideo(source, { startSec: 2, endSec: 3 }, root, new AbortController().signal);
+      expect(second.preparation.cached).toBe(false);
+      // Same range as the first → cache hit, identical evidence copy.
+      const third = await reviewVideo(source, { startSec: 1, endSec: 3 }, root, new AbortController().signal);
+      expect(third.preparation.cached).toBe(true);
+      expect(third.preparation.sha256).toBe(first.preparation.sha256);
+      // Every review still uploads once to the provider.
+      expect(network).toHaveBeenCalledTimes(3);
+      const cacheFiles = await readdir(join(root, "video-review-cache"));
+      expect(cacheFiles.filter((name) => name.endsWith(".mp4"))).toHaveLength(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      vi.unstubAllGlobals();
+    }
+  }, 15000);
 });

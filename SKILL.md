@@ -115,9 +115,13 @@ remain artifact references rather than inline responses.
 `media_inspect` is the bundled read-only source inspection tool. Check
 `capabilities_get.pluginTools["media.inspect"]`, then pass an imported video
 `mediaId` with a source-time `startSec`/`endSec` range. Use explicit `timesSec`
-and normalized `roi` for candidate detail inspection. It does not change the
+and normalized `roi` for candidate detail inspection. Every delivered frame is
+fitted into a per-frame byte budget (`maxFrameBytes`, default 1.5 MiB): lossless
+PNG when it fits, otherwise a deterministic JPEG quality/width ladder, with
+`frames[].fidelity` disclosing source vs delivered raster, format and outcome.
+It does not change the
 project, selection, or playhead. `visual_inspect` instead samples the edited
-timeline. Both provide sparse visual evidence, not continuous motion, audio,
+timeline with the same budget/fidelity contract. Both provide sparse visual evidence, not continuous motion, audio,
 transcription, beat detection, or automatic pacing analysis. See
 [Tool plugins](packages/agent-facade/docs/tool-plugins.md) for inputs and limits.
 
@@ -352,7 +356,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `media_import_preflight` | Cheap root/stat/size precheck; codec decodability remains unchecked |
 | `media_import` | Path inside `mediaRoots`; URLs refused |
 | `media_analyze_start` | Start a generalized async analysis job after checking per-type capabilities |
-| `media_inspect` | Read-only source-video sampling by `mediaId`, `startSec`, `endSec`; 1–12 PNG frames and optional contact sheet, even before timeline placement |
+| `media_inspect` | Read-only source-video sampling by `mediaId`, `startSec`, `endSec`; 1–12 budget-fitted frames (PNG, or JPEG per `maxFrameBytes`) with `frames[].fidelity`, and optional contact sheet, even before timeline placement |
 | `timeline_get` | Compact view — preferred read |
 | `timeline_query` | Bounded local query by @A/R refs, ids, ranges, types, fields, and cursor |
 | `editor_get_context` | Current work mode plus editor context (selection, playhead, canvas point); headless-honest — see below |
@@ -362,7 +366,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `history_get` | Bounded canonical undo/redo availability and summaries |
 | `history_control` | Live canonical undo/redo with writer gate, CAS, and idempotency; headless unsupported |
 | `preview_render_frame` | Replay/ledger only; artifact to `artifactRoot`; raster defaults to project size, explicit even `width`/`height` scale-render the same frame |
-| `visual_inspect` | Sample 1–12 real Chromium frames for a clip (`clipId`) or explicit time range (`timeRange: {startSec, endSec}`, exactly one of the two); return PNG artifacts and a contact sheet when supported; default raster 640 px wide, aspect-preserved (bounds in facade README) |
+| `visual_inspect` | Sample 1–12 real Chromium frames for a clip (`clipId`) or explicit time range (`timeRange: {startSec, endSec}`, exactly one of the two); each frame is fitted into a per-frame byte budget (`maxFrameBytes` 32768–8388608, default 1572864: lossless PNG when it fits, else JPEG quality/width ladder) with `frames[].fidelity` disclosure; contact sheet when supported; default raster 640 px wide, aspect-preserved (bounds in facade README) |
 | `export_start` | Snapshot job; returns `jobId` immediately |
 | `job_status` | Poll to terminal |
 | `job_cancel` | Cooperative; idempotent on terminal jobs |
@@ -580,13 +584,18 @@ retries, or workarounds the facade does not have.
 
 ## Optional cloud video review
 
-`media_analyze_start` also supports `analysisTypes:["videoReview"]`, defaulting to
-`qwen3.5-omni-flash`. It requires the user's own `DASHSCOPE_API_KEY` in the desktop
-host environment and explicit authorization to upload the selected material.
+`media_analyze_start` also supports `analysisTypes:["videoReview"]`. The cloud
+provider is pluggable (default `qwen3.5-omni-flash`; `REELTERMINAL_VIDEO_REVIEW_PROVIDER`
+selects from the registry reported by capabilities). The default provider requires the
+user's own `DASHSCOPE_API_KEY` in the desktop host environment, and every review requires
+explicit authorization to upload the selected material.
 Check capabilities, pass `cloudUpload:true` and explicit source `startSec/endSec`
 (maximum 20 seconds), optionally `reviewQuestion` (1000 characters), and poll/cancel
 the existing job. Never put keys into tool arguments or project files. Local
-inspection and audio analysis do not upload anything.
+inspection and audio analysis do not upload anything. The bounded inspection copy is
+transcoded once and cached under `artifactRoot` (keyed by source fingerprint + range +
+encode recipe, bounded LRU); each review still uploads exactly once to the provider,
+and `result.summary.videoReview.preparation.cached` reports cache reuse.
 
 Use this for cut/transition, audiovisual and final-render observations or general
 video questions. The host prepares a bounded compressed copy (12 MiB maximum),

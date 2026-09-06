@@ -92,7 +92,7 @@ const artifactRef = (): OutputSchemaNode =>
   objectSchema(
     {
       kind: enumSchema(["image", "video"]),
-      format: enumSchema(["png", "mp4"]),
+      format: enumSchema(["png", "jpeg", "mp4"]),
       path: stringSchema(),
       sizeBytes: integerSchema(0),
       sha256: stringSchema(),
@@ -702,7 +702,7 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "history.get": historyGetResult(),
   "history.control": historyControlResult(),
   "preview.render_frame": objectSchema({ revision: integerSchema(0), timeSec: numberSchema(0), width: integerSchema(0), height: integerSchema(0), artifact: artifactRef(), replayed: booleanSchema() }, ["revision", "timeSec", "width", "height", "artifact", "replayed"]),
-  "visual.inspect": objectSchema({ revision: integerSchema(0), sourceRevision: integerSchema(0), selection: openObject(), sampleCount: integerSchema(1, 12), width: integerSchema(2), height: integerSchema(2), frames: arraySchema(openObject(), { minItems: 1, maxItems: 12 }), contactSheet: nullable(artifactRef()), limitations: arraySchema(stringSchema()), replayed: booleanSchema() }, ["revision", "sourceRevision", "selection", "sampleCount", "width", "height", "frames", "contactSheet", "limitations", "replayed"]),
+  "visual.inspect": objectSchema({ revision: integerSchema(0), sourceRevision: integerSchema(0), selection: openObject(), sampleCount: integerSchema(1, 12), width: integerSchema(2), height: integerSchema(2), frameBudgetBytes: integerSchema(1), frames: arraySchema(openObject(), { minItems: 1, maxItems: 12 }), contactSheet: nullable(artifactRef()), limitations: arraySchema(stringSchema()), replayed: booleanSchema() }, ["revision", "sourceRevision", "selection", "sampleCount", "width", "height", "frameBudgetBytes", "frames", "contactSheet", "limitations", "replayed"]),
   "export.start": exportStartResult(),
   "job.status": jobStatus(),
   "job.cancel": jobStatus(),

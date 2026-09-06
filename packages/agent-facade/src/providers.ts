@@ -43,8 +43,11 @@ export type MediaFilesMap = Readonly<Record<string, string>>;
  */
 export interface ArtifactRef {
   readonly kind: "image" | "video";
-  /** Image artifacts are PNG; video artifacts are MP4/H.264 in this slice. */
-  readonly format: "png" | "mp4";
+  /**
+   * Image artifacts are PNG (lossless) or JPEG (budget-fitted re-encode —
+   * see frame-budget.ts); video artifacts are MP4/H.264 in this slice.
+   */
+  readonly format: "png" | "jpeg" | "mp4";
   /**
    * Absolute local path inside the session's artifactRoot. This is the
    * VERIFIED REALPATH (what the facade hashed after the post-write

@@ -169,6 +169,7 @@ import {
   MAX_VISUAL_PNG_BYTES,
   visualRasterSize,
 } from "./visual-inspect";
+import { DEFAULT_FRAME_BUDGET_BYTES, fitFrameToBudget } from "./frame-budget";
 import {
   DEFAULT_AGENT_WORK_MODE,
   agentWorkModeSemantics,
@@ -1036,7 +1037,7 @@ export class AgentFacadeSession {
       );
       if (!this.project) return this.noProject();
       if (valid.analysisTypes.includes("videoReview")) {
-        if (valid.cloudUpload !== true) throw new FacadeError("INVALID_PARAMS", "videoReview uploads media to Alibaba; cloudUpload must explicitly be true after user authorization.");
+        if (valid.cloudUpload !== true) throw new FacadeError("INVALID_PARAMS", "videoReview uploads media to the selected cloud provider; cloudUpload must explicitly be true after user authorization.");
         if (valid.startSec === undefined || valid.endSec === undefined || valid.endSec - valid.startSec > 20) throw new FacadeError("INVALID_PARAMS", "videoReview requires explicit startSec/endSec, at most 20 source seconds.");
         if (!this.config.artifactRoot) throw new FacadeError("UNSUPPORTED", "videoReview requires artifactRoot for bounded inspection copies.");
       } else if (valid.reviewQuestion !== undefined || valid.cloudUpload !== undefined) {
@@ -1447,6 +1448,7 @@ export class AgentFacadeSession {
         sampleCount,
         width,
         height,
+        maxFrameBytes: valid.maxFrameBytes ?? DEFAULT_FRAME_BUDGET_BYTES,
       };
       const prior = this.beginMutation<VisualInspectResult>(
         "visual.inspect",
@@ -1475,7 +1477,11 @@ export class AgentFacadeSession {
       const mediaFiles = await this.buildMediaFiles(project, "visual.inspect");
       const framesDir = resolvePath(artifactRoot, "visual", "frames");
       await prepareArtifactDir(framesDir, artifactRoot, "visual.inspect");
+      const frameBudgetBytes = valid.maxFrameBytes ?? DEFAULT_FRAME_BUDGET_BYTES;
+      const limitations: string[] = [];
       const frames = [] as VisualInspectResult["frames"][number][];
+      let reencoded = 0;
+      let overBudget = 0;
       for (const [index, sample] of plan.samples.entries()) {
         const destPath = resolvePath(
           framesDir,
@@ -1503,31 +1509,52 @@ export class AgentFacadeSession {
           artifactRoot,
           "visual.inspect",
         );
+        // Tool results land in the caller agent's context: fit every frame
+        // into the per-frame byte budget (lossless PNG when it already fits,
+        // otherwise the deterministic JPEG ladder) and disclose the outcome.
+        const fitted = await fitFrameToBudget({
+          pngPath: verifiedPath,
+          width,
+          height,
+          budgetBytes: frameBudgetBytes,
+          sourceWidth: project.settings.width,
+          sourceHeight: project.settings.height,
+        });
+        const fittedPath = fitted.path === verifiedPath
+          ? verifiedPath
+          : await assertContainedWrittenFile(fitted.path, artifactRoot, "visual.inspect");
         const artifact = await artifactRefFor(
-          verifiedPath,
+          fittedPath,
           "image",
-          "png",
+          fitted.format,
           sourceRevision,
-          rendered.bytesWritten,
+          fitted.format === "png" ? rendered.bytesWritten : undefined,
         );
         if (artifact.sizeBytes > MAX_VISUAL_PNG_BYTES) {
-          await rm(verifiedPath, { force: true });
+          await rm(fittedPath, { force: true });
           throw new FacadeError(
             "JOB_FAILED",
-            `visual.inspect: frame PNG exceeds the ${MAX_VISUAL_PNG_BYTES}-byte artifact limit`,
+            `visual.inspect: frame artifact exceeds the ${MAX_VISUAL_PNG_BYTES}-byte artifact limit`,
             { index },
           );
         }
+        if (!fitted.fidelity.withinBudget) overBudget++;
+        if (fitted.format === "jpeg") reencoded++;
         frames.push({
           index,
           timeSec: sample.timeSec,
           label: sample.label,
           sourceRevision,
           artifact,
+          fidelity: fitted.fidelity,
         });
       }
+      if (reencoded > 0) {
+        limitations.push(
+          `${reencoded} of ${frames.length} frame artifact(s) exceeded the ${frameBudgetBytes}-byte lossless budget and were re-encoded as lossy JPEG${overBudget > 0 ? `; ${overBudget} still did not fit and were delivered oversized` : ""}. See frames[].fidelity for the delivered raster and quality; re-request with roi, a smaller width, or a larger maxFrameBytes for finer detail.`,
+        );
+      }
 
-      const limitations: string[] = [];
       let contactSheet: VisualInspectResult["contactSheet"] = null;
       if (provider.renderContactSheetPng) {
         const contactDir = resolvePath(artifactRoot, "visual", "contact-sheets");
@@ -1597,6 +1624,7 @@ export class AgentFacadeSession {
         sampleCount,
         width,
         height,
+        frameBudgetBytes,
         frames,
         contactSheet,
         limitations,

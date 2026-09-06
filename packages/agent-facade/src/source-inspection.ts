@@ -7,6 +7,7 @@ import type { ToolContext } from "./plugin-api";
 import type { SourceInspectInput, SourceInspectResult } from "./plugins/source-inspection";
 import { createEmptyProject } from "./project-factory";
 import { artifactRefFor, assertContainedWrittenFile, prepareArtifactDir, requireArtifactRoot, requireProviderPreflight } from "./artifact-io";
+import { DEFAULT_FRAME_BUDGET_BYTES, fitFrameToBudget, type FrameFidelity } from "./frame-budget";
 import { MAX_VISUAL_PNG_BYTES, visualRasterSize } from "./visual-inspect";
 
 /** Render-only composition of one source. Never passed to the live store. */
@@ -60,33 +61,51 @@ export async function inspectSource(input: SourceInspectInput, context: ToolCont
   const dir = resolve(root, "source-inspection", randomUUID());
   await prepareArtifactDir(dir, root, "media.inspect");
   const mediaFiles = { [media.id]: sourcePath };
-  const makeArtifact = async (file: string, bytes: number) => {
-    const verified = await assertContainedWrittenFile(file, root, "media.inspect");
-    const artifact = await artifactRefFor(verified, "image", "png", revision, bytes);
+  const frameBudgetBytes = input.maxFrameBytes ?? DEFAULT_FRAME_BUDGET_BYTES;
+  const sourceWidth = media.metadata.width || 1920;
+  const sourceHeight = media.metadata.height || 1080;
+  const renderAndFit = async (destPath: string, sample: { timeSec: number; label: string }, region?: NonNullable<SourceInspectInput["roi"]>) => {
+    const rendered = await provider.renderFramePng({ project: structuredClone(source), sourceRevision: revision, ...sample, width, height, destPath, mediaFiles, ...(region ? { region } : {}) });
+    if (rendered.bytesWritten > MAX_VISUAL_PNG_BYTES) throw new FacadeError("JOB_FAILED", "Source image exceeds artifact size limit");
+    const verified = await assertContainedWrittenFile(destPath, root, "media.inspect");
+    const fitted = await fitFrameToBudget({
+      pngPath: verified, width, height, budgetBytes: frameBudgetBytes,
+      sourceWidth, sourceHeight,
+      ...(region ? { regionLabel: `the roi ${JSON.stringify(region)} crop` } : {}),
+    });
+    const fittedPath = fitted.path === verified ? verified : await assertContainedWrittenFile(fitted.path, root, "media.inspect");
+    const artifact = await artifactRefFor(fittedPath, "image", fitted.format, revision, fitted.format === "png" ? rendered.bytesWritten : undefined);
     if (artifact.sizeBytes > MAX_VISUAL_PNG_BYTES) throw new FacadeError("JOB_FAILED", "Source image exceeds artifact size limit");
-    return artifact;
+    return { artifact, fidelity: fitted.fidelity };
   };
   try {
     const frames: SourceInspectResult["frames"][number][] = [];
+    let overBudget = 0;
+    const countFidelity = (fidelity: FrameFidelity) => { if (!fidelity.withinBudget) overBudget++; };
     for (const [index, sample] of samples.entries()) {
-      const destPath = resolve(dir, `frame-${index}.png`);
-      const rendered = await provider.renderFramePng({ project: structuredClone(source), sourceRevision: revision, ...sample, width, height, destPath, mediaFiles });
-      const artifact = await makeArtifact(destPath, rendered.bytesWritten);
-      let regionArtifact;
+      const { artifact, fidelity } = await renderAndFit(resolve(dir, `frame-${index}.png`), sample);
+      countFidelity(fidelity);
+      let regionArtifact: SourceInspectResult["frames"][number]["regionArtifact"];
+      let regionFidelity: FrameFidelity | undefined;
       if (input.roi) {
-        const regionPath = resolve(dir, `region-${index}.png`);
-        const region = await provider.renderFramePng({ project: structuredClone(source), sourceRevision: revision, ...sample, width, height, destPath: regionPath, mediaFiles, region: input.roi });
-        regionArtifact = await makeArtifact(regionPath, region.bytesWritten);
+        const fitted = await renderAndFit(resolve(dir, `region-${index}.png`), sample, input.roi);
+        regionArtifact = fitted.artifact;
+        regionFidelity = fitted.fidelity;
+        countFidelity(fitted.fidelity);
       }
-      frames.push({ ...sample, artifact, ...(regionArtifact ? { regionArtifact } : {}) });
+      frames.push({ ...sample, artifact, fidelity, ...(regionArtifact && regionFidelity ? { regionArtifact, regionFidelity } : {}) });
     }
     let contactSheet: SourceInspectResult["contactSheet"] = null;
     const limitations = ["Static source frames only; motion continuity and audio have not been reviewed.", "Clip mappings apply to constant speed. A null formula means speed ramps/freeze frames need a nonlinear mapping and must not use the linear alignment example."];
+    if (overBudget > 0) limitations.push(`${overBudget} artifact(s) could not meet the ${frameBudgetBytes}-byte per-frame budget and were re-encoded (JPEG quality/width ladder) or delivered oversized; see frames[].fidelity / regionFidelity and re-request with roi, a smaller width, or a larger maxFrameBytes.`);
     if (provider.renderContactSheetPng) {
       const destPath = resolve(dir, "contact-sheet.png");
       try {
         const rendered = await provider.renderContactSheetPng({ project: structuredClone(source), sourceRevision: revision, samples, width, height, destPath, mediaFiles });
-        contactSheet = await makeArtifact(destPath, rendered.bytesWritten);
+        const verified = await assertContainedWrittenFile(destPath, root, "media.inspect");
+        const artifact = await artifactRefFor(verified, "image", "png", revision, rendered.bytesWritten);
+        if (artifact.sizeBytes > MAX_VISUAL_PNG_BYTES) throw new FacadeError("JOB_FAILED", "Contact sheet exceeds artifact size limit");
+        contactSheet = artifact;
       } catch {
         await rm(destPath, { force: true });
         limitations.push("Contact sheet unavailable; individual frames are returned.");
@@ -97,7 +116,7 @@ export async function inspectSource(input: SourceInspectInput, context: ToolCont
     if (input.roi) limitations.push(`ROI ${JSON.stringify(input.roi)}; source raster capped at 4096 pixels per side. Full/detail pairs share source timestamps; MCP may embed only the first 12 images.`);
     return { coordinateSpace: "source", sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) },
       timeMappings: project.timeline.tracks.flatMap((track) => track.clips.filter((clip) => clip.mediaId === media.id).map((clip) => ({ clipId: clip.id, timelineStartSec: clip.startTime, timelineEndSec: clip.startTime + clip.duration, sourceInSec: clip.inPoint, sourceOutSec: clip.outPoint, speed: clip.speed ?? 1, reversed: clip.reversed ?? false, formula: clip.speedKeyframes?.length || clip.freezeFrames?.length ? null : clip.reversed ? "timeline = start + (outPoint - source) / speed" : "timeline = start + (source - inPoint) / speed", frameRate: project.settings.frameRate, maxNearestFrameRoundingSec: .5 / project.settings.frameRate, eventLocalizationUncertaintySec: null }))),
-      revision, sourceRevision: revision, mediaId: media.id, mediaName: media.name, startSec: input.startSec, endSec: input.endSec, width, height, frames, contactSheet, limitations };
+      revision, sourceRevision: revision, mediaId: media.id, mediaName: media.name, startSec: input.startSec, endSec: input.endSec, width, height, frameBudgetBytes, frames, contactSheet, limitations };
   } catch (error) {
     await rm(dir, { recursive: true, force: true });
     throw error;

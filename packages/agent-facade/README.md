@@ -91,12 +91,14 @@ Visual slice: `visual.inspect` — a read-only sample of 1–12 frames selected
 by exactly one of `clipId` (a timeline clip id from `timeline.get`) or an
 explicit `timeRange` of the shape `{"startSec": <number ≥ 0>, "endSec":
 <number > startSec>}` in timeline seconds. Each frame is a real
-provider-rendered
-PNG artifact with `timeSec`, a deterministic label, and the source revision
-(the default runtime provider is Chromium). Runtimes with contact-sheet support also return one real PNG contact-sheet
+provider-rendered artifact (lossless PNG, or a JPEG re-encode when the
+`maxFrameBytes` budget — default 1.5 MiB — would be exceeded) with `timeSec`,
+a deterministic label, the source revision, and a per-frame `fidelity` record
+(source vs delivered raster, format, budget outcome; see `frame-budget.ts`).
+The default runtime provider is Chromium. Runtimes with contact-sheet support also return one real PNG contact-sheet
 artifact; otherwise `limitations` explains why individual frame artifacts are
 the honest fallback. Raster cells are bounded to 1024×1024, with bounded
-pixel and PNG-byte budgets. The raster defaults to 640 px wide (or the
+pixel and byte budgets. The raster defaults to 640 px wide (or the
 project width when smaller) with the project aspect preserved, even-rounded;
 explicit `width`/`height` must be even integers in [2, 1024]. Frames, cells,
 and `preview.render_frame` output all share one compositor and one coordinate
@@ -325,7 +327,8 @@ params, media-root containment, capability truthfulness).
 See [Tool plugins](docs/tool-plugins.md) for the trusted startup registry and
 `media_inspect`, which samples original video source ranges without editing the
 timeline. Its capability is reported under `pluginTools["media.inspect"]`.
-Both `media.inspect` and `visual.inspect` can present verified PNG evidence in
-the desktop inspection panel. Neither sparse-frame tool evaluates continuous
+Both `media.inspect` and `visual.inspect` can present verified frame evidence in
+the desktop inspection panel (lossless PNG, or budget-fitted JPEG with
+`fidelity` disclosure). Neither sparse-frame tool evaluates continuous
 motion, audio, semantic scenes, or editing rhythm; the built-in asynchronous
 analysis provider currently supports only `technicalQuality`.

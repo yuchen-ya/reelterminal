@@ -112,13 +112,15 @@ export async function appendVisualImageContent(
       skipped = true;
       continue;
     }
-    // Re-check the PNG signature at the transport boundary before exposing
-    // bytes as an image content block.
-    if (
-      bytes.length < 8 ||
-      bytes.readUInt32BE(0) !== 0x89504e47 ||
-      bytes.readUInt32BE(4) !== 0x0d0a1a0a
-    ) {
+    // Re-check the image signature at the transport boundary before exposing
+    // bytes as an image content block (frames are lossless PNG or the
+    // facade's budget-fitted JPEG re-encodes).
+    const isPng = bytes.length >= 8
+      && bytes.readUInt32BE(0) === 0x89504e47
+      && bytes.readUInt32BE(4) === 0x0d0a1a0a;
+    const isJpeg = bytes.length >= 3
+      && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    if (!isPng && !isJpeg) {
       skipped = true;
       continue;
     }
@@ -134,7 +136,7 @@ export async function appendVisualImageContent(
     content.push({
       type: "image",
       data: encoded,
-      mimeType: "image/png",
+      mimeType: isPng ? "image/png" : "image/jpeg",
     });
     totalBase64 += encoded.length;
     if (contactPath !== undefined && filePath === contactPath) break;
@@ -144,7 +146,7 @@ export async function appendVisualImageContent(
       type: "text",
       text: JSON.stringify({
         visualImageLimitation:
-          "Some visual PNG artifacts were not embedded because the MCP image containment, PNG, or response-size limit was reached; structuredContent retains every artifact reference.",
+          "Some visual image artifacts were not embedded because the MCP image containment, signature, or response-size limit was reached; structuredContent retains every artifact reference.",
       }),
     });
   }

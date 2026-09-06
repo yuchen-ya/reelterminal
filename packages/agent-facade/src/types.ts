@@ -1325,6 +1325,12 @@ export interface VisualInspectParams {
   /** Optional even thumbnail raster size. Defaults to a bounded project-scaled size. */
   readonly width?: number;
   readonly height?: number;
+  /**
+   * Per-frame byte budget for the delivered artifacts. Frames whose lossless
+   * PNG exceeds it are re-encoded through a deterministic JPEG ladder
+   * (frame-budget.ts). Defaults to 1.5 MiB; bounded [32 KiB, 8 MiB].
+   */
+  readonly maxFrameBytes?: number;
   readonly expectedRevision?: number;
   readonly idempotencyKey?: string;
 }
@@ -1337,8 +1343,10 @@ export interface VisualInspectFrame {
   readonly label: string;
   /** Revision of the canonical snapshot that produced this frame. */
   readonly sourceRevision: number;
-  /** Real PNG frame artifact. Always present, including when a contact sheet is available. */
+  /** Real frame artifact (PNG, or JPEG when the byte-budget ladder ran). */
   readonly artifact: ArtifactRef;
+  /** Per-artifact fidelity disclosure: delivered raster/format vs source, budget outcome. */
+  readonly fidelity: import("./frame-budget").FrameFidelity;
 }
 
 export interface VisualInspectResult {
@@ -1352,6 +1360,8 @@ export interface VisualInspectResult {
   readonly sampleCount: number;
   readonly width: number;
   readonly height: number;
+  /** Per-frame byte budget applied to every delivered frame artifact. */
+  readonly frameBudgetBytes: number;
   readonly frames: readonly VisualInspectFrame[];
   /** Real PNG contact sheet when the runtime can safely compose one; null on honest fallback. */
   readonly contactSheet: ArtifactRef | null;

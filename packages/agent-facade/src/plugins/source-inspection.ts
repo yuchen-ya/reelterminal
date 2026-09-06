@@ -1,5 +1,6 @@
 import { definePlugin, defineTool } from "../plugin-api";
 import type { ArtifactRef } from "../providers";
+import { FRAME_BUDGET_EMITS, isFrameBudget, type FrameFidelity } from "../frame-budget";
 
 export interface SourceInspectInput {
   readonly timesSec?: readonly number[];
@@ -9,6 +10,8 @@ export interface SourceInspectInput {
   readonly endSec: number;
   readonly sampleCount?: number;
   readonly width?: number;
+  /** Per-frame byte budget for delivered artifacts (default 1572864; [32768, 8388608]). */
+  readonly maxFrameBytes?: number;
   readonly expectedRevision?: number;
 }
 
@@ -24,7 +27,9 @@ export interface SourceInspectResult {
   readonly endSec: number;
   readonly width: number;
   readonly height: number;
-  readonly frames: readonly { timeSec: number; label: string; artifact: ArtifactRef; regionArtifact?: ArtifactRef }[];
+  /** Per-frame byte budget applied to every delivered frame/region artifact. */
+  readonly frameBudgetBytes: number;
+  readonly frames: readonly { timeSec: number; label: string; artifact: ArtifactRef; fidelity: FrameFidelity; regionArtifact?: ArtifactRef; regionFidelity?: FrameFidelity }[];
   readonly contactSheet: ArtifactRef | null;
   readonly limitations: readonly string[];
 }
@@ -35,17 +40,20 @@ const nonnegative = {
   emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
 } as const;
 const artifact = { type: "object", additionalProperties: true, properties: {} } as const;
+const fidelity = { type: "object", additionalProperties: true, properties: {} } as const;
 
 export const sourceInspectionPlugin = definePlugin({
   id: "source-inspection",
   tools: [defineTool({
     name: "media.inspect",
-    description: "Sample an imported source video between startSec and endSec in ORIGINAL MEDIA seconds. Returns timestamped PNG frames and an optional contact sheet, without changing the timeline. Use timesSec for explicit candidate-centered dense sampling (1–12 source timestamps), roi for paired normalized detail crops. Results include source fingerprints and clip time mappings. Static visual samples do not review motion or audio.",
+    description: "Sample an imported source video between startSec and endSec in ORIGINAL MEDIA seconds. Returns timestamped frames (lossless PNG, or budget-fitted JPEG per maxFrameBytes) with per-artifact fidelity metadata, and an optional contact sheet, without changing the timeline. Use timesSec for explicit candidate-centered dense sampling (1–12 source timestamps), roi for paired normalized detail crops. Results include source fingerprints and clip time mappings. Static visual samples do not review motion or audio.",
     schemaCases: [
       { name: "source range", params: { mediaId: "source", startSec: 0, endSec: 1 }, expectValid: true },
       { name: "missing source", params: { startSec: 0, endSec: 1 }, expectValid: false },
       { name: "negative start", params: { mediaId: "source", startSec: -1, endSec: 1 }, expectValid: false },
       { name: "too many frames", params: { mediaId: "source", startSec: 0, endSec: 1, sampleCount: 13 }, expectValid: false },
+      { name: "frame budget", params: { mediaId: "source", startSec: 0, endSec: 1, maxFrameBytes: 65536 }, expectValid: true },
+      { name: "frame budget out of range", params: { mediaId: "source", startSec: 0, endSec: 1, maxFrameBytes: 1000 }, expectValid: false },
       { name: "unknown field", params: { mediaId: "source", startSec: 0, endSec: 1, path: "/tmp/source" }, expectValid: false },
     ],
     effect: "read",
@@ -59,6 +67,7 @@ export const sourceInspectionPlugin = definePlugin({
       endSec: { ...nonnegative, required: true },
       sampleCount: { check: (v) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 12, describe: "an integer from 1 to 12", emits: { kind: "leaf", schema: { type: "integer", minimum: 1, maximum: 12 } } },
       width: { check: (v) => Number.isInteger(v) && (v as number) >= 2 && (v as number) <= 1024 && (v as number) % 2 === 0, describe: "an even integer from 2 to 1024", emits: { kind: "leaf", schema: { type: "integer", minimum: 2, maximum: 1024 } } },
+      maxFrameBytes: { check: isFrameBudget, describe: "an integer in [32768, 8388608] — per-frame byte budget (default 1572864)", emits: FRAME_BUDGET_EMITS },
       expectedRevision: { check: (v) => Number.isInteger(v) && (v as number) >= 0, describe: "a non-negative integer", emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } } },
     },
     output: {
@@ -69,11 +78,12 @@ export const sourceInspectionPlugin = definePlugin({
         mediaId: { type: "string" }, mediaName: { type: "string" },
         startSec: { type: "number", minimum: 0 }, endSec: { type: "number", minimum: 0 },
         width: { type: "integer", minimum: 2 }, height: { type: "integer", minimum: 2 },
-        frames: { type: "array", minItems: 1, maxItems: 12, items: { type: "object", additionalProperties: false, properties: { timeSec: { type: "number", minimum: 0 }, label: { type: "string" }, artifact, regionArtifact: artifact }, required: ["timeSec", "label", "artifact"] } },
+        frameBudgetBytes: { type: "integer", minimum: 1 },
+        frames: { type: "array", minItems: 1, maxItems: 12, items: { type: "object", additionalProperties: false, properties: { timeSec: { type: "number", minimum: 0 }, label: { type: "string" }, artifact, fidelity, regionArtifact: artifact, regionFidelity: fidelity }, required: ["timeSec", "label", "artifact", "fidelity"] } },
         contactSheet: { anyOf: [artifact, { const: null }] },
         limitations: { type: "array", items: { type: "string" } },
       },
-      required: ["revision", "sourceRevision", "mediaId", "mediaName", "startSec", "endSec", "width", "height", "frames", "contactSheet", "limitations"],
+      required: ["revision", "sourceRevision", "mediaId", "mediaName", "startSec", "endSec", "width", "height", "frameBudgetBytes", "frames", "contactSheet", "limitations"],
     },
     async execute(input: SourceInspectInput, context): Promise<SourceInspectResult> {
       const { inspectSource } = await import("../source-inspection");

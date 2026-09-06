@@ -25,6 +25,7 @@ import {
   TIMELINE_QUERY_ENTITY_TYPES,
   TIMELINE_QUERY_FIELDS,
 } from "./timeline-query";
+import { FRAME_BUDGET_EMITS, isFrameBudget } from "./frame-budget";
 import {
   CLIP_ADD_SCHEMA,
   CLIP_DUPLICATE_SCHEMA,
@@ -703,6 +704,11 @@ export const VISUAL_INSPECT_SCHEMA: ObjectSchema = {
     check: isVisualDimension,
     describe: "an even integer in [2, 1024]",
     emits: VISUAL_DIMENSION_EMITS,
+  },
+  maxFrameBytes: {
+    check: isFrameBudget,
+    describe: "an integer in [32768, 8388608] — per-frame byte budget (default 1572864)",
+    emits: FRAME_BUDGET_EMITS,
   },
   expectedRevision: {
     check: isNonNegativeInteger,

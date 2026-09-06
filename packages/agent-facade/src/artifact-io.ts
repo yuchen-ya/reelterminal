@@ -158,7 +158,7 @@ export async function sha256File(absPath: string): Promise<string> {
 export async function artifactRefFor(
   absPath: string,
   kind: "image" | "video",
-  format: "png" | "mp4",
+  format: "png" | "jpeg" | "mp4",
   sourceRevision: number,
   expectedBytes?: number,
 ): Promise<ArtifactRef> {

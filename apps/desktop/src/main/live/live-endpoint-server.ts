@@ -76,12 +76,12 @@ class BodyTooLargeError extends Error {}
 
 const MAX_MCP_IMAGE_BYTES = 8 * 1024 * 1024;
 
-/** Read only facade-verified PNGs under the host artifact root. */
+/** Read only facade-verified images (PNG or budget-fitted JPEG) under the host artifact root. */
 export function visualImageContent(
   result: FacadeResult<unknown>,
   artifactRoot: string | undefined,
 ): (
-  | { type: "image"; data: string; mimeType: "image/png" }
+  | { type: "image"; data: string; mimeType: "image/png" | "image/jpeg" }
   | { type: "text"; text: string }
 )[] {
   if (!result.ok || artifactRoot === undefined) return [];
@@ -107,7 +107,7 @@ export function visualImageContent(
     return [];
   }
   const blocks: (
-    | { type: "image"; data: string; mimeType: "image/png" }
+    | { type: "image"; data: string; mimeType: "image/png" | "image/jpeg" }
     | { type: "text"; text: string }
   )[] = [];
   let totalBase64 = 0;
@@ -145,11 +145,14 @@ export function visualImageContent(
       skipped = true;
       continue;
     }
-    if (
-      bytes.length < 8 ||
-      bytes.readUInt32BE(0) !== 0x89504e47 ||
-      bytes.readUInt32BE(4) !== 0x0d0a1a0a
-    ) {
+    // Image signature check at the transport boundary: frames are lossless
+    // PNG or the facade's budget-fitted JPEG re-encodes.
+    const isPng = bytes.length >= 8
+      && bytes.readUInt32BE(0) === 0x89504e47
+      && bytes.readUInt32BE(4) === 0x0d0a1a0a;
+    const isJpeg = bytes.length >= 3
+      && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    if (!isPng && !isJpeg) {
       skipped = true;
       continue;
     }
@@ -162,7 +165,7 @@ export function visualImageContent(
       skipped = true;
       break;
     }
-    blocks.push({ type: "image", data: encoded, mimeType: "image/png" });
+    blocks.push({ type: "image", data: encoded, mimeType: isPng ? "image/png" : "image/jpeg" });
     totalBase64 += encoded.length;
     if (contactPath !== undefined && filePath === contactPath) break;
   }
@@ -171,7 +174,7 @@ export function visualImageContent(
       type: "text",
       text: JSON.stringify({
         visualImageLimitation:
-          "Some visual PNG artifacts were not embedded because the MCP image containment, PNG, or response-size limit was reached; structuredContent retains every artifact reference.",
+          "Some visual image artifacts were not embedded because the MCP image containment, signature, or response-size limit was reached; structuredContent retains every artifact reference.",
       }),
     });
   }
@@ -408,7 +411,7 @@ async function handleLiveMessage(
         // protocol errors.
         const content: Array<
           | { type: "text"; text: string }
-          | { type: "image"; data: string; mimeType: "image/png" }
+          | { type: "image"; data: string; mimeType: "image/png" | "image/jpeg" }
         > = [{ type: "text", text: JSON.stringify(result) }];
         if (toolPresentation(verb) === "image-collection" && result.ok) {
           content.push(...visualImageContent(result, options.artifactRoot));

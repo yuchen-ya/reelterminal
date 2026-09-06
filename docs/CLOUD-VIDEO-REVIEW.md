@@ -1,6 +1,10 @@
 # Cloud video review
 
-`media_analyze_start` with `analysisTypes:["videoReview"]` wraps **qwen3.5-omni-flash**. It is optional and requires the user's own Alibaba key. Local source inspection and audio analysis remain local. No key, subscription or paid quota is bundled. The tool returns model opinions about cuts, transitions, audiovisual relationships and general video content; it is not a reliable acceptance judge or a frame-accurate sync detector.
+`media_analyze_start` with `analysisTypes:["videoReview"]` sends a bounded excerpt to a **pluggable cloud review provider**; the default and currently only bundled provider is **qwen3.5-omni-flash** (Alibaba). It is optional and requires the user's own provider key. Local source inspection and audio analysis remain local. No key, subscription or paid quota is bundled. The tool returns model opinions about cuts, transitions, audiovisual relationships and general video content; it is not a reliable acceptance judge or a frame-accurate sync detector.
+
+## Provider seam
+
+Everything cloud-specific (credential env var, endpoint allowlist, request shape, SSE parsing) lives behind the `VideoReviewProvider` interface in `packages/agent-facade/src/video-review.ts`; local preparation, verification, caching and result framing are provider-agnostic. `REELTERMINAL_VIDEO_REVIEW_PROVIDER` selects a provider from the registry (capabilities reports the available ids); an unknown id fails preflight with the valid list. Adding a provider is one object in `VIDEO_REVIEW_PROVIDERS` — no orchestration changes.
 
 ## Configure the desktop host
 
@@ -48,7 +52,8 @@ Default endpoint: `https://dashscope.aliyuncs.com/compatible-mode/v1` (Beijing).
 
 - Explicit 0–20 second source range; no automatic full-source upload. At most two cloud jobs per process and two analysis jobs per session. Maximum source file remains the facade's 2 GiB analysis limit; live import still has its separately reported 256 MiB limit.
 - H.264 inspection copy, CRF 25, at most 1280×720 preserving aspect ratio; no fps filter. Report actual encoded average FPS, duration, geometry and audio presence. First source audio stream is encoded to AAC 96 kbit/s; no audio is invented for silent/video-only files. Other audio streams are not included. Source cadence can be variable; encoded average FPS is not proof of model sampling.
-- Verify duration and 12 MiB file limit before upload. Base64 buffering is bounded by that file limit. FFmpeg has two encoding threads; one 120-second deadline covers preparation, upload and response. FFprobe has a 10-second bound. Temporary files live under configured artifactRoot and are removed on success, failure and cancellation.
+- Verify duration and 12 MiB file limit before upload. Base64 buffering is bounded by that file limit. FFmpeg has two encoding threads; one 120-second deadline covers preparation, upload and response. FFprobe has a 10-second bound.
+- Inspection copies are **cached** under `artifactRoot/video-review-cache/`, keyed by source fingerprint + range + encode recipe (sidecar JSON carries the ffprobe facts so cache hits skip ffmpeg and ffprobe entirely). The cache is bounded (512 MiB / 64 entries, oldest evicted) and `preparation.cached` reports reuse. Each review still uploads the excerpt to the provider exactly once per request — the cache saves local transcoding, not cloud traffic or billing.
 - Direct HTTPS request; no public bucket or URL is created. Sending to Alibaba is a cloud disclosure subject to the selected service's retention terms; deleting the local copy does not delete provider records. Cancellation cannot undo an upload or billing already incurred.
 - Maximum 1,200 output tokens, 128 KiB SSE, 10,000 text characters; no retry or automatic JSON repair. Results stay bounded in the existing job summary rather than creating a large transcript artifact. Actual charge and remaining quota are not estimated or queried.
 - Provider sampling FPS is unknown. Compression and sampling may miss brief flashes, HUD details or sync offsets. The earlier controlled cloud experiment missed a known 600ms mismatch; a confident model opinion is not sufficient acceptance evidence. Local dense frames/ROI and deterministic audio measurements remain necessary.
