@@ -228,8 +228,10 @@ export const MEDIA_IMPORT_SCHEMA: ObjectSchema = {
 };
 
 export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
+  cloudUpload: { check: (v) => typeof v === "boolean", describe: "must be true for videoReview: uploads the selected range to Alibaba", emits: { kind: "leaf", schema: { type: "boolean" } } },
+  reviewQuestion: { check: (v) => typeof v === "string" && v.length <= 1000, describe: "optional video review focus, at most 1000 characters", emits: { kind: "leaf", schema: { type: "string", maxLength: 1000 } } },
   startSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0, describe: "nonnegative source seconds", emits: { kind: "leaf", schema: { type: "number", minimum: 0 } } },
-  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audio range at most 120 seconds", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
+  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audioSummary range ≤120s; videoReview requires explicit start/end and range ≤20s", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
   mediaId: {
     check: isNonEmptyString,
     describe: "a non-empty media-library id",

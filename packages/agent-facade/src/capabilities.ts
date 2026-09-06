@@ -1,3 +1,4 @@
+import { videoReviewPreflight } from "./video-review";
 import { audioAnalysisPreflight, AUDIO_LIMITS } from "./audio-analysis";
 import { PLUGIN_TOOLS } from "./plugins";
 /**
@@ -145,6 +146,7 @@ export async function buildCapabilities(
   ctx: CapabilityContext,
 ): Promise<Capabilities> {
   const audioReady = await audioAnalysisPreflight();
+  const videoReady = await videoReviewPreflight();
   const mediaImportAvailable = ctx.live
     ? ctx.live.mediaImportAvailable && ctx.mediaRoots.length > 0
     : ctx.mediaRoots.length > 0;
@@ -294,7 +296,7 @@ export async function buildCapabilities(
       types: Object.fromEntries(
         MEDIA_ANALYSIS_TYPES.map((type) => [
           type,
-          type === "audioSummary" && ctx.mediaRoots.length > 0 ? { ...audioReady, details: { ...audioReady.details, ...AUDIO_LIMITS, maxSourceFileBytes: 2 * 1024 * 1024 * 1024, coordinateSpace: "source", changesProject: false, agentAudioConsumption: false } } : type === "technicalQuality" && ctx.mediaRoots.length > 0
+          type === "videoReview" ? (ctx.mediaRoots.length > 0 && !noArtifactRoot ? videoReady : { available: false, reason: "videoReview needs media roots, artifactRoot, local FFmpeg and user-provided DASHSCOPE_API_KEY" }) : type === "audioSummary" && ctx.mediaRoots.length > 0 ? { ...audioReady, details: { ...audioReady.details, ...AUDIO_LIMITS, maxSourceFileBytes: 2 * 1024 * 1024 * 1024, coordinateSpace: "source", changesProject: false, agentAudioConsumption: false } } : type === "technicalQuality" && ctx.mediaRoots.length > 0
             ? {
                 available: true,
                 details: {

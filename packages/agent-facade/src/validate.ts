@@ -38,7 +38,7 @@ export type ObjectSchema = Record<string, FieldRule>;
  * (`additionalProperties: false`) and never places a combinator at a root.
  */
 export type JsonSchemaNode =
-  | { readonly type: "string"; readonly minLength?: number }
+  | { readonly type: "string"; readonly minLength?: number; readonly maxLength?: number }
   | {
       readonly type: "number";
       readonly minimum?: number;

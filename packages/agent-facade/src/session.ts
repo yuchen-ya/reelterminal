@@ -1,3 +1,4 @@
+import { reviewVideo, videoReviewPreflight } from "./video-review";
 import { analyzeLocalAudio, audioAnalysisPreflight } from "./audio-analysis";
 /**
  * AgentFacadeSession — the Slice-1 in-process facade.
@@ -1034,12 +1035,19 @@ export class AgentFacadeSession {
         "media.analyze_start params",
       );
       if (!this.project) return this.noProject();
+      if (valid.analysisTypes.includes("videoReview")) {
+        if (valid.cloudUpload !== true) throw new FacadeError("INVALID_PARAMS", "videoReview uploads media to Alibaba; cloudUpload must explicitly be true after user authorization.");
+        if (valid.startSec === undefined || valid.endSec === undefined || valid.endSec - valid.startSec > 20) throw new FacadeError("INVALID_PARAMS", "videoReview requires explicit startSec/endSec, at most 20 source seconds.");
+        if (!this.config.artifactRoot) throw new FacadeError("UNSUPPORTED", "videoReview requires artifactRoot for bounded inspection copies.");
+      } else if (valid.reviewQuestion !== undefined || valid.cloudUpload !== undefined) {
+        throw new FacadeError("INVALID_PARAMS", "cloudUpload/reviewQuestion apply only to videoReview");
+      }
       if (valid.analysisTypes.includes("audioSummary")) {
         const ready = await audioAnalysisPreflight();
         if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
       }
       const unavailable = valid.analysisTypes.filter(
-        (type) => type !== "technicalQuality" && type !== "audioSummary",
+        (type) => type !== "technicalQuality" && type !== "audioSummary" && type !== "videoReview",
       );
       if (unavailable.length > 0) {
         throw new FacadeError(
@@ -1061,6 +1069,7 @@ export class AgentFacadeSession {
           { mediaId: valid.mediaId },
         );
       }
+      if (valid.analysisTypes.includes("videoReview") && media.type !== "video") throw new FacadeError("UNSUPPORTED", "videoReview requires video media");
       const startSec = valid.startSec ?? 0;
       const endSec = valid.endSec ?? media.metadata.duration;
       if (!(endSec > startSec) || endSec > media.metadata.duration ||
@@ -1070,7 +1079,7 @@ export class AgentFacadeSession {
       const payload = {
         mediaId: valid.mediaId,
         analysisTypes: [...valid.analysisTypes].sort(),
-        startSec: valid.startSec, endSec: valid.endSec,
+        startSec: valid.startSec, endSec: valid.endSec, cloudUpload: valid.cloudUpload, reviewQuestion: valid.reviewQuestion,
       };
       const prior = this.beginMutation<{
         jobId: string;
@@ -1110,6 +1119,10 @@ export class AgentFacadeSession {
           `media.analyze_start: media "${valid.mediaId}" is not backed by a readable source file`,
         );
       }
+      if (valid.analysisTypes.includes("videoReview")) {
+        const ready = await videoReviewPreflight();
+        if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
+      }
       if (this.analysisControllers.size >= 2) throw new FacadeError("UNSUPPORTED", "At most two analysis jobs per session; wait or cancel an existing job.");
       const sourcePath = resolution.path;
       const sourceRevision = this.revision;
@@ -1134,6 +1147,7 @@ export class AgentFacadeSession {
         analysisTypes,
         controller,
         { startSec, endSec },
+        valid.reviewQuestion,
       );
       return ok<MediaAnalyzeStartResult>({
         ...ledgerValue,
@@ -1995,6 +2009,7 @@ export class AgentFacadeSession {
     analysisTypes: readonly import("./types").MediaAnalysisType[],
     controller: AbortController,
     range: { startSec: number; endSec: number },
+    reviewQuestion?: string,
   ): Promise<void> {
     try {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -2012,14 +2027,17 @@ export class AgentFacadeSession {
         return;
       }
       this.jobs.markProgress(jobId, { phase: "preparing", percent: .1 });
+      const video = analysisTypes.includes("videoReview")
+        ? await reviewVideo(sourcePath, range, this.config.artifactRoot!, controller.signal, reviewQuestion, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: .1 + percent * .7 })) : undefined;
       const audio = analysisTypes.includes("audioSummary")
-        ? await analyzeLocalAudio(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent })) : undefined;
+        ? await analyzeLocalAudio(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .8 + percent * .15 : percent })) : undefined;
       if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
       const after = await stat(sourcePath);
       if (after.size !== file.size || after.mtimeMs !== file.mtimeMs) throw new FacadeError("CONFLICT", "Source changed during analysis; retry");
       this.jobs.markAnalysisDone(jobId, {
         analysisTypes,
         summary: {
+          ...(video ? { videoReview: { ...video, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
           ...(audio ? { audioSummary: { ...audio, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
           technicalQuality: {
             mediaId,

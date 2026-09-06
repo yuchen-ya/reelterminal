@@ -143,6 +143,9 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "unknown field", params: { path: "/media/input.mp4", url: "https://x" }, expectValid: false },
   ],
   "media.analyze_start": [
+    { name: "cloud review", params: { mediaId: "m1", analysisTypes: ["videoReview"], startSec: 0, endSec: 6, cloudUpload: true, reviewQuestion: "Check transitions" }, expectValid: true },
+    { name: "review question bounded", params: { mediaId: "m1", analysisTypes: ["videoReview"], reviewQuestion: "x".repeat(1001) }, expectValid: false },
+    { name: "no credential tool argument", params: { mediaId: "m1", analysisTypes: ["videoReview"], apiKey: "not-allowed" }, expectValid: false },
     { name: "valid technical analysis", params: { mediaId: "m1", analysisTypes: ["technicalQuality"] }, expectValid: true },
     { name: "valid multiple declared types", params: { mediaId: "m1", analysisTypes: ["sceneCuts", "silence"] }, expectValid: true },
     { name: "missing mediaId", params: { analysisTypes: ["technicalQuality"] }, expectValid: false },

@@ -528,6 +528,7 @@ export interface MediaImportResult {
 export const MEDIA_ANALYSIS_TYPES = [
   "technicalQuality",
   "audioSummary",
+  "videoReview",
   "sceneCuts",
   "silence",
   "speechTranscript",
@@ -541,7 +542,10 @@ export const MEDIA_ANALYSIS_TYPES = [
 export type MediaAnalysisType = (typeof MEDIA_ANALYSIS_TYPES)[number];
 
 export interface MediaAnalyzeStartParams {
-  /** Original media seconds; bounded local audio analysis (maximum 120s). */
+  /** Explicit consent to send this range to the configured Alibaba cloud service. */
+  readonly cloudUpload?: boolean;
+  readonly reviewQuestion?: string;
+  /** Original media seconds; audioSummary maximum 120s, videoReview explicit range maximum 20s. */
   readonly startSec?: number;
   readonly endSec?: number;
   readonly mediaId: string;

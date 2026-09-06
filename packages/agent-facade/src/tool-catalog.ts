@@ -69,7 +69,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "media.import":
     "Import a local video or audio file into the open GUI project. Use an absolute path under one of capabilities_get.mediaImport.mediaRoots; the returned mediaId can be passed to clip.add, the Media panel updates immediately, and the import is undoable in the GUI.",
   "media.analyze_start":
-    "Start a read-only asynchronous analysis job; audioSummary uses local FFmpeg for LUFS, true peak, waveforms, silence and onset/periodicity candidates with explicit source startSec/endSec (max 120s), without listening or editing; capabilities_get reports each analysis type honestly.",
+    "Start a read-only asynchronous analysis job. videoReview sends an explicit <=20s source range to Alibaba qwen3.5-omni-flash, requires user-configured DASHSCOPE_API_KEY, artifactRoot and cloudUpload:true; optional reviewQuestion (<=1000 chars). Returns fallible cloud opinions, not acceptance; no automatic retry. audioSummary uses local FFmpeg for LUFS, true peak, waveforms, silence and onset/periodicity candidates with explicit source startSec/endSec (max 120s), without listening or editing; capabilities_get reports each analysis type honestly.",
   "timeline.get":
     "Return the compact timeline view (tracks, clips, text overlays) at the current revision. Persisted review markers use namespaced ids R1, R2, and so on.",
   "timeline.query":

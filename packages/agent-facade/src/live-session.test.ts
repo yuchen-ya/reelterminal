@@ -10,7 +10,7 @@ import { FACADE_VERBS } from "./types";
  * lifecycle verbs, snapshot preview/export with stub providers, the
  * file-backed-media honesty rule, idempotent replay, and dispose.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -2090,5 +2090,37 @@ describe("live state-efficiency and history facade verbs", () => {
     expect(replay.ok).toBe(true);
     if (replay.ok) expect(replay.value).toMatchObject({ revision: 1, replayed: true });
     expect(store.revision).toBe(1);
+  });
+});
+
+
+describe("live cloud review is read-only", () => {
+  it("uses a source snapshot without calling the canonical edit or playback path", async () => {
+    vi.stubEnv("DASHSCOPE_API_KEY", "unit-test-only");
+    const network = vi.fn(async () => new Response('data: {"choices":[{"delta":{"content":"No reliable sync conclusion."},"finish_reason":"stop"}]}\n\ndata: [DONE]\n'));
+    vi.stubGlobal("fetch", network);
+    const source = writeTinyMp4(artifactRoot);
+    const importedStore = new FakeLiveStore();
+    const facade = liveFacade({ store: importedStore, mediaRoots: [artifactRoot] });
+    try {
+      const imported = await facade["media.import"]({ path: source });
+      if (!imported.ok) throw new Error(imported.error.message);
+      const state = await importedStore.getState();
+      const context = await facade["editor.get_context"]({});
+      const request = { mediaId: imported.value.mediaId, analysisTypes: ["videoReview"] as const, startSec: 0, endSec: 1, cloudUpload: true, expectedRevision: state.revision, idempotencyKey: "cloud-live" };
+      const started = await facade["media.analyze_start"](request);
+      if (!started.ok) throw new Error(started.error.message);
+      let job;
+      for (let i = 0; i < 200; i++) {
+        job = await facade["job.status"]({ jobId: started.value.jobId });
+        if (job.ok && ["done", "error", "cancelled"].includes(job.value.state)) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(job).toMatchObject({ ok: true, value: { state: "done", sourceRevision: state.revision, result: { summary: { videoReview: { provider: "qwen3.5-omni-flash" } } } } });
+      expect(await importedStore.getState()).toEqual(state);
+      expect(await facade["editor.get_context"]({})).toEqual(context);
+      expect(await facade["media.analyze_start"](request)).toMatchObject({ ok: true, value: { replayed: true, jobId: started.value.jobId } });
+      expect(network).toHaveBeenCalledTimes(1);
+    } finally { facade.dispose(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
   });
 });

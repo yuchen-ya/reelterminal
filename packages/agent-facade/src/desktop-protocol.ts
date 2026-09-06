@@ -97,6 +97,8 @@ export interface DesktopLiveBridgeReply {
 }
 
 export interface DesktopInspection {
+  readonly kind?: "frames" | "cloud-opinion";
+  readonly text?: string;
   readonly title: string;
   readonly range: string | null;
   readonly images: readonly string[];

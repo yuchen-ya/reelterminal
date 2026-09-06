@@ -1,6 +1,6 @@
 # Material inspection and audio anchors
 
-This increment adds read-only source evidence and local measurements. It does not claim automatic action understanding or Agent listening. No external models, uploads or paid dependencies are used.
+This increment adds read-only source evidence and local measurements. It does not claim automatic action understanding or Agent listening. These local tools use no external models, uploads or paid dependencies. Optional `videoReview` separately wraps qwen3.5-omni-flash using a user-provided Alibaba key and explicit upload authorization; see [CLOUD-VIDEO-REVIEW.md](CLOUD-VIDEO-REVIEW.md).
 
 ## Available endpoints
 

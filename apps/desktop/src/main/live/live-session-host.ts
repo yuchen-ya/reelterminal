@@ -159,6 +159,7 @@ export function createLiveSessionHost(
   let endpoint: RunningLiveEndpoint | null = null;
   let externalSession: LiveAgentFacade | null = null;
   let externalConnected = false;
+  const shownReviews = new Set<string>();
   // Enable/disable are one lifecycle lane. In particular, `enabled` cannot be
   // used as an in-progress lock because it flips only after endpoint startup.
   // Keep this queue settled after failures so a later toggle can recover.
@@ -344,6 +345,16 @@ export function createLiveSessionHost(
       // Facade verbs never throw for domain errors; a throw here is an
       // internal failure and is converted, never propagated.
       const result = await call(params ?? {});
+      if (result.ok && verb === "job.status") {
+        const job = result.value as { jobId: string; state: string; sourceRevision: number; result?: { summary?: { videoReview?: { text: string; status: string; mediaId: string; startSec: number; endSec: number; limitations: string[] } } } };
+        const review = job.result?.summary?.videoReview;
+        if (job.state === "done" && review && !shownReviews.has(job.jobId)) {
+          shownReviews.add(job.jobId);
+          if (shownReviews.size > 100) shownReviews.delete(shownReviews.values().next().value!);
+          deps.emitEvent({ type: "inspection", kind: "cloud-opinion", title: `Qwen cloud opinion · ${review.mediaId} · revision ${job.sourceRevision}`,
+            range: `source ${review.startSec}–${review.endSec} s · ${review.status}`, text: review.text, images: [], limitations: review.limitations });
+        }
+      }
       if (result.ok && toolPresentation(verb) === "image-collection") {
         const images = visualImageContent(result, deps.artifactRoot)
           .filter((block) => block.type === "image")
