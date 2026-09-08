@@ -23,6 +23,7 @@ import { useUIStore, type SelectionItem } from "../../stores/ui-store";
 import { useTimelineStore } from "../../stores/timeline-store";
 import { getPlaybackBridge } from "../../bridges/playback-bridge";
 import { runExclusiveLiveWrite } from "./live-write-lock";
+import { handleMaterialLibraryRequest } from "./material-bridge";
 
 /**
  * Renderer side of the ADR 0004 Decision 1 seam: the desktop main-process live
@@ -676,6 +677,15 @@ export async function handleLiveBridgeRequest(
       }
       case "importMedia": {
         return await handleImportMedia(req);
+      }
+      case "materialLibrary": {
+        // The canonical user-level material library lives renderer-side;
+        // the facade only validated/guarded the verb before forwarding.
+        const reply = await handleMaterialLibraryRequest({
+          verb: req.materialVerb,
+          params: req.materialParams,
+        });
+        return reply as Omit<LiveBridgeReply, "callId">;
       }
       case "requestSave": {
         const store = useProjectStore.getState();

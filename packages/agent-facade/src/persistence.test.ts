@@ -11,19 +11,20 @@
  *    create-after-open CONFLICT;
  *  - honest refusals: NOT_FOUND / UNSUPPORTED / INVALID_PARAMS;
  *  - the ledger after open is empty (keys minted pre-save do not replay);
- *  - contract bump: facade-slice-6, 24 verbs, 9 error codes (including the
+ *  - contract bump: facade-slice-6, 24 verbs, 9 error codes (superseded by slice-7; see below)
  *    guarded project.rename mutation and the six Slice 6 verbs).
  */
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAgentFacade, type AgentFacade } from "./index";
+import { FACADE_CONTRACT_VERSION } from "./types";
 import { computeStateSha256, CHECKPOINT_FORMAT, CHECKPOINT_FORMAT_VERSION } from "./checkpoint";
 import { FACADE_ERROR_CODES } from "./errors";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 import { stableStringify } from "./idempotency";
 import { makeTempDir, removeTempDir } from "./test-helpers";
-import { FACADE_CONTRACT_VERSION, FACADE_VERBS } from "./types";
+import { FACADE_VERBS } from "./types";
 
 describe("persistence: save → fresh session open → continue", () => {
   let mediaRoot: string;
@@ -500,12 +501,12 @@ describe("persistence: save → fresh session open → continue", () => {
     expect(overlayClip?.transform.position).toEqual({ x: 0.5, y: 0.15 });
   });
 
-  it("session.describe reports the slice-6 contract with registered verbs and 9 error codes", async () => {
+  it("session.describe reports the slice-7 contract with registered verbs and 9 error codes", async () => {
     const facade = newSession();
     const res = await facade["session.describe"]();
     expect(res.ok).toBe(true);
     if (!res.ok) return;
-    expect(res.value.contractVersion).toBe("facade-slice-6");
+    expect(res.value.contractVersion).toBe(FACADE_CONTRACT_VERSION);
     expect(res.value.verbs).toEqual([...FACADE_VERBS]);
     expect(res.value.verbs).toHaveLength(FACADE_VERBS.length);
     expect(res.value.errorCodes).toEqual([...FACADE_ERROR_CODES]);

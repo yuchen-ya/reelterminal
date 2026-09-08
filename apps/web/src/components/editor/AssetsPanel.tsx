@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   Image as ImageIcon, Film, Music, Plus, Upload, Trash2,
   Square, Circle, Triangle, Star, ArrowRight, Hexagon, FileCode, AlertTriangle,
-  RefreshCw, Palette, Video,
+  RefreshCw, Palette, Video, BookMarked,
   Type, Shapes, Wand2, LayoutTemplate, Zap, Shuffle,
 } from "@/icons/lucide-compat";
 import {
@@ -38,6 +38,8 @@ import { ProjectMarkerBadgeStack } from "./ProjectMarkerBadge";
 import { useProjectMarkerMenuItems } from "./project-marker-menu";
 import { findMarkersForEntity } from "../../stores/project/project-marker-selectors";
 import { markAgentReferenceForMedia } from "../../stores/editor-context-store";
+import { MaterialLibraryPanel } from "./material/MaterialLibraryPanel";
+import { saveProjectMediaToLibrary } from "../../services/material-library/project-save";
 
 const formatDuration = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
@@ -54,6 +56,7 @@ const formatDuration = (seconds: number): string => {
 type MediaViewMode = "large" | "small" | "list";
 type AssetsTab =
   | "media"
+  | "library"
   | "text"
   | "graphics"
   | "effects"
@@ -71,6 +74,11 @@ const ASSETS_TABS: ReadonlyArray<{
     value: "media",
     labelKey: "assets.tabs.media",
     descriptionKey: "assets.descriptions.media",
+  },
+  {
+    value: "library",
+    labelKey: "assets.tabs.library",
+    descriptionKey: "assets.descriptions.library",
   },
   {
     value: "text",
@@ -195,6 +203,7 @@ export const TEXT_STYLE_PRESETS: ReadonlyArray<{
 
 const TAB_ICONS: Record<AssetsTab, React.ElementType> = {
   media: Video,
+  library: BookMarked,
   text: Type,
   graphics: Shapes,
   effects: Zap,
@@ -278,6 +287,26 @@ const MediaThumbnail: React.FC<{
       label: t("agentReferences.add"),
       icon: <Hash size={14} aria-hidden />,
       onClick: () => markAgentReferenceForMedia(item),
+    },
+    {
+      label: t("material.saveToLibrary"),
+      icon: <BookMarked size={14} aria-hidden />,
+      onClick: () => {
+        void (async () => {
+          const result = await saveProjectMediaToLibrary(item);
+          if (result.ok) {
+            toast.success(t("material.savedToLibrary"), result.material?.title ?? "");
+            window.dispatchEvent(
+              new CustomEvent("openreel:material-library-changed"),
+            );
+          } else {
+            toast.error(
+              t("material.saveToLibraryFailed"),
+              result.error?.message ?? "failed",
+            );
+          }
+        })();
+      },
     },
     ...reviewMarkerMenuItems,
   ];
@@ -927,6 +956,8 @@ export const AssetsPanel: React.FC = () => {
 
   const renderSectionContent = (tab: AssetsTab): React.ReactNode => {
     switch (tab) {
+      case "library":
+        return <MaterialLibraryPanel />;
       case "media":
         return (
           <div className="flex min-h-0 flex-1 flex-col">

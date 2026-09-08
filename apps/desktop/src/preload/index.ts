@@ -33,6 +33,13 @@ contextBridge.exposeInMainWorld("openreel", {
     readFile: (p: string) => ipcRenderer.invoke(CHANNELS.fsReadFile, { path: p }),
     readFileBytes: (p: string, maxBytes?: number) =>
       ipcRenderer.invoke(CHANNELS.fsReadFileBytes, { path: p, maxBytes }),
+    pathStatus: (p: string) =>
+      ipcRenderer.invoke(CHANNELS.fsPathStatus, { path: p }) as Promise<{
+        exists: boolean;
+        isFile: boolean;
+        sizeBytes: number | null;
+        lastModifiedMs: number | null;
+      }>,
     tempFilePath: (ext: string) => ipcRenderer.invoke(CHANNELS.fsTempFilePath, { ext }),
     writeFile: (p: string, data: string) => ipcRenderer.invoke(CHANNELS.fsWriteFile, { path: p, data }),
     openWrite: (p: string) => ipcRenderer.invoke(CHANNELS.fsOpenWrite, { path: p }),

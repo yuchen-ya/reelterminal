@@ -36,6 +36,10 @@ you are writing for; do not copy content across rows — link instead.
   validator.
 - [`design-principles.md`](design-principles.md) — Principle 1:
   Human–Agent Operational Parity.
+- [`MATERIAL-LIBRARY.md`](MATERIAL-LIBRARY.md) — the user-level material
+  library: resource model (media/segments/links/methods), file-reference
+  policy, IndexedDB persistence + journal undo, the `material_*` agent tools,
+  and the search → batch-organize → attach workflow.
 - [`slice-1b/runtime-probe/`](slice-1b/runtime-probe/) — platform evidence:
   `windows-local.json` (+ `-verify-report.json`), `macos-local.json`
   (+ `-verify-report.json`). Linux evidence lives in the CI

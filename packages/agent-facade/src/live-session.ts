@@ -118,7 +118,37 @@ import {
   EDIT_VALIDATE_SCHEMA,
   HISTORY_GET_SCHEMA,
   HISTORY_CONTROL_SCHEMA,
+  MATERIAL_LIST_SCHEMA,
+  MATERIAL_GET_SCHEMA,
+  MATERIAL_CREATE_SCHEMA,
+  MATERIAL_UPDATE_SCHEMA,
+  MATERIAL_BATCH_UPDATE_SCHEMA,
+  MATERIAL_REMOVE_SCHEMA,
+  MATERIAL_ATTACH_SCHEMA,
+  MATERIAL_UNDO_SCHEMA,
 } from "./verb-schemas";
+import {
+  MATERIAL_VERBS,
+  type MaterialLibraryBridge,
+  type MaterialLibraryBridgeReply,
+  type MaterialLibraryBridgeVerb,
+  type MaterialListParams,
+  type MaterialGetParams,
+  type MaterialGetResult,
+  type MaterialCreateParams,
+  type MaterialCreateResult,
+  type MaterialUpdateParams,
+  type MaterialUpdateResult,
+  type MaterialBatchUpdateParams,
+  type MaterialBatchUpdateResult,
+  type MaterialRemoveParams,
+  type MaterialRemoveResult,
+  type MaterialAttachParams,
+  type MaterialAttachResult,
+  type MaterialUndoParams,
+  type MaterialUndoResult,
+} from "./material-library";
+import type { MaterialListResult } from "@openreel/core/material/types";
 import {
   isReadOnlyVerb,
   type Capabilities,
@@ -235,6 +265,12 @@ export interface LiveFacadeConfig {
   readonly artifactRoot: string;
   /** Export job tracking; defaults to a fresh in-memory JobRegistry. */
   readonly jobTracker?: JobRegistry;
+  /**
+   * The user-level material library seam: forwards material.* verbs to the
+   * GUI renderer, which owns the canonical records, journal, and IndexedDB
+   * persistence. Absent ⇒ the material verbs report UNSUPPORTED honestly.
+   */
+  readonly materialLibrary?: MaterialLibraryBridge;
 }
 
 /**
@@ -353,8 +389,11 @@ export class LiveFacadeSession {
     const mediaImportAvailable =
       (this.config.mediaRoots?.length ?? 0) > 0 &&
       typeof this.config.store.importMedia === "function";
+    const materialLibraryAvailable =
+      typeof this.config.materialLibrary === "function";
     const unavailableVerbs: FacadeVerb[] = [...LIVE_UNAVAILABLE_VERBS];
     if (!mediaImportAvailable) unavailableVerbs.push("media.import");
+    if (!materialLibraryAvailable) unavailableVerbs.push(...MATERIAL_VERBS);
     return {
       workMode: this.workMode(),
       mediaRoots: this.config.mediaRoots ?? [],
@@ -375,6 +414,7 @@ export class LiveFacadeSession {
         leaseHolder: this.config.lease.holder(),
         sessionId: this.config.sessionId,
         mediaImportAvailable,
+        materialLibraryAvailable,
         unavailableVerbs,
       },
     };
@@ -2126,6 +2166,498 @@ export class LiveFacadeSession {
     });
   }
 
+  /* ----------------- material.* (user-level library) ------------------ */
+
+  /**
+   * The renderer owns the canonical user-level library (records + journal +
+   * IndexedDB); the facade stays stateless and only validates, guards, and
+   * forwards. Error codes cross the bridge as the facade's public taxonomy.
+   */
+  private materialBridgeFailure(verb: FacadeVerb, error: unknown): FacadeError {
+    const typed =
+      typeof error === "object" && error !== null
+        ? (error as { code?: unknown; message?: unknown; details?: unknown })
+        : undefined;
+    const message =
+      (typeof typed?.message === "string" && typed.message) ||
+      (error instanceof Error ? error.message : String(error));
+    const details =
+      typed?.details && typeof typed.details === "object"
+        ? (typed.details as Record<string, unknown>)
+        : undefined;
+    const code = typeof typed?.code === "string" ? typed.code : undefined;
+    if (isLiveStoreConflict(error) || code === "CONFLICT") {
+      return new FacadeError("CONFLICT", `${verb}: ${message}`, details);
+    }
+    if (code === "NOT_FOUND" || code === "NO_PROJECT") {
+      return new FacadeError(
+        "NOT_FOUND",
+        code === "NO_PROJECT"
+          ? `${verb}: no project is open in the GUI`
+          : `${verb}: ${message}`,
+        details,
+      );
+    }
+    if (code === "INVALID_PARAMS" || code === "UNSUPPORTED") {
+      return new FacadeError(code, `${verb}: ${message}`, details);
+    }
+    if (code === "MISSING_FILE") {
+      return new FacadeError("INVALID_PARAMS", `${verb}: ${message}`, {
+        ...(details ?? {}),
+        reason: "missing_file",
+      });
+    }
+    return new FacadeError("INTERNAL", `${verb}: ${message}`, details);
+  }
+
+  private async callMaterialBridge<T>(
+    verb: FacadeVerb,
+    bridgeVerb: MaterialLibraryBridgeVerb,
+    params: Record<string, unknown>,
+  ): Promise<T> {
+    const bridge = this.config.materialLibrary;
+    if (typeof bridge !== "function") {
+      throw new FacadeError(
+        "UNSUPPORTED",
+        `${verb}: this live host does not expose a material-library bridge`,
+      );
+    }
+    let reply: MaterialLibraryBridgeReply;
+    try {
+      reply = await bridge({ verb: bridgeVerb, params });
+    } catch (error) {
+      throw this.materialBridgeFailure(verb, error);
+    }
+    if (!reply.ok) {
+      throw this.materialBridgeFailure(verb, reply.error);
+    }
+    return reply.result as T;
+  }
+
+  /**
+   * Validate that an agent-supplied media path stays inside the configured
+   * media roots and exists — the same containment rule as media.import, so
+   * the library can never become a side channel for reading arbitrary files
+   * (a later material.attach reads the path through the trusted renderer).
+   */
+  private async resolveMaterialMediaPath(verb: FacadeVerb, filePath: string): Promise<{
+    path: string;
+    sizeBytes: number;
+    lastModifiedMs: number;
+  }> {
+    const roots = this.config.mediaRoots ?? [];
+    if (roots.length === 0) {
+      throw new FacadeError(
+        "UNSUPPORTED",
+        `${verb}: no media roots configured for this live session`,
+      );
+    }
+    if (hasUrlScheme(filePath)) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: URLs are not accepted — pass an absolute local file path inside a configured media root`,
+        { path: filePath },
+      );
+    }
+    if (!isAbsolute(filePath)) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: paths must be absolute — nothing is resolved against the host process cwd`,
+        { path: filePath },
+      );
+    }
+    const resolution = resolveContainedPathDetailed(filePath, roots);
+    if (resolution.kind === "outside") {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: path escapes the configured media roots`,
+        { path: filePath, mediaRoots: [...roots] },
+      );
+    }
+    if (resolution.kind === "unresolvable") {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: source file is missing or unreadable`,
+        { path: filePath, reason: "missing_file" },
+      );
+    }
+    const fileStat = await stat(resolution.path).catch(() => null);
+    if (!fileStat || !fileStat.isFile()) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: source file is missing or not a regular file`,
+        { path: filePath, reason: "missing_file" },
+      );
+    }
+    return {
+      path: resolution.path,
+      sizeBytes: fileStat.size,
+      lastModifiedMs: Math.round(fileStat.mtimeMs),
+    };
+  }
+
+  async materialList(
+    params?: MaterialListParams,
+  ): Promise<FacadeResult<MaterialListResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<MaterialListParams>(
+        params ?? {},
+        MATERIAL_LIST_SCHEMA,
+        "material.list params",
+      );
+      const result = await this.callMaterialBridge<MaterialListResult>(
+        "material.list",
+        "list",
+        valid as unknown as Record<string, unknown>,
+      );
+      return ok(result);
+    });
+  }
+
+  async materialGet(
+    params: MaterialGetParams,
+  ): Promise<FacadeResult<MaterialGetResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<MaterialGetParams>(
+        params,
+        MATERIAL_GET_SCHEMA,
+        "material.get params",
+      );
+      const result = await this.callMaterialBridge<MaterialGetResult>(
+        "material.get",
+        "get",
+        { id: valid.id },
+      );
+      return ok(result);
+    });
+  }
+
+  async materialCreate(
+    params: MaterialCreateParams,
+  ): Promise<FacadeResult<MaterialCreateResult>> {
+    return this.enqueue(async () => {
+      this.gate("material.create");
+      const valid = validateObject<MaterialCreateParams>(
+        params,
+        MATERIAL_CREATE_SCHEMA,
+        "material.create params",
+      );
+      const { idempotencyKey, ...payload } = valid;
+      const prior = await this.replayLookup<MaterialCreateResult>(
+        "material.create",
+        idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        return ok<MaterialCreateResult>({ ...prior.value, replayed: true });
+      }
+
+      const bridgeParams: Record<string, unknown> = {
+        kind: valid.kind,
+        ...(valid.title !== undefined ? { title: valid.title } : {}),
+        ...(valid.tags !== undefined ? { tags: [...valid.tags] } : {}),
+        ...(valid.organizeStatus !== undefined
+          ? { organizeStatus: valid.organizeStatus }
+          : {}),
+        ...(valid.aiSummary !== undefined ? { aiSummary: valid.aiSummary } : {}),
+        ...(valid.origin !== undefined ? { origin: valid.origin } : {}),
+        ...(valid.url !== undefined ? { url: valid.url } : {}),
+        ...(valid.description !== undefined ? { description: valid.description } : {}),
+        ...(valid.parentMaterialId !== undefined
+          ? { parentMaterialId: valid.parentMaterialId }
+          : {}),
+        ...(valid.startSec !== undefined ? { startSec: valid.startSec } : {}),
+        ...(valid.endSec !== undefined ? { endSec: valid.endSec } : {}),
+        ...(valid.skillName !== undefined ? { skillName: valid.skillName } : {}),
+        ...(valid.prompt !== undefined ? { prompt: valid.prompt } : {}),
+        ...(valid.steps !== undefined ? { steps: [...valid.steps] } : {}),
+        ...(valid.inputs !== undefined ? { inputs: [...valid.inputs] } : {}),
+      };
+
+      if (valid.kind === "media") {
+        if (!valid.filePath) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            "material.create: media materials require filePath (an absolute path inside a configured media root)",
+            { kind: "media" },
+          );
+        }
+        if (!valid.mediaType) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            'material.create: media materials require mediaType ("video" | "audio" | "image")',
+            { kind: "media" },
+          );
+        }
+        const resolved = await this.resolveMaterialMediaPath(
+          "material.create",
+          valid.filePath,
+        );
+        // Best-effort technical metadata from the SAME Node probe media.import
+        // uses. A probe failure is fatal only for audio/video claims; images
+        // are accepted without metadata (mediabunny probes audio/video only).
+        let metadata: Record<string, unknown> = {};
+        if (valid.mediaType !== "image") {
+          try {
+            const probed = await probeLocalMediaFile(resolved.path);
+            metadata = {
+              durationSec: probed.durationSec,
+              ...(probed.width !== null ? { width: probed.width } : {}),
+              ...(probed.height !== null ? { height: probed.height } : {}),
+              ...(probed.frameRate !== null ? { frameRate: probed.frameRate } : {}),
+              ...(probed.codec ? { codec: probed.codec } : {}),
+              fileSizeBytes: probed.fileSize,
+            };
+          } catch (error) {
+            throw new FacadeError(
+              "INVALID_PARAMS",
+              `material.create: cannot read media metadata: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+              { path: resolved.path },
+            );
+          }
+        } else {
+          metadata = { fileSizeBytes: resolved.sizeBytes };
+        }
+        bridgeParams.mediaType = valid.mediaType;
+        bridgeParams.fileRef = {
+          type: "path",
+          path: resolved.path,
+          fileName: basename(resolved.path),
+          sizeBytes: resolved.sizeBytes,
+          lastModifiedMs: resolved.lastModifiedMs,
+        };
+        bridgeParams.metadata = metadata;
+      }
+
+      const result = await this.callMaterialBridge<MaterialCreateResult>(
+        "material.create",
+        "create",
+        bridgeParams,
+      );
+      if (idempotencyKey !== undefined) {
+        this.ledger.set("material.create", idempotencyKey, {
+          revision: 0,
+          value: result,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(result);
+    });
+  }
+
+  async materialUpdate(
+    params: MaterialUpdateParams,
+  ): Promise<FacadeResult<MaterialUpdateResult>> {
+    return this.enqueue(async () => {
+      this.gate("material.update");
+      const valid = validateObject<MaterialUpdateParams>(
+        params,
+        MATERIAL_UPDATE_SCHEMA,
+        "material.update params",
+      );
+      const { idempotencyKey, ...payload } = valid;
+      const prior = await this.replayLookup<MaterialUpdateResult>(
+        "material.update",
+        idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        return ok<MaterialUpdateResult>({ ...prior.value, replayed: true });
+      }
+      const result = await this.callMaterialBridge<MaterialUpdateResult>(
+        "material.update",
+        "update",
+        payload as unknown as Record<string, unknown>,
+      );
+      if (idempotencyKey !== undefined) {
+        this.ledger.set("material.update", idempotencyKey, {
+          revision: 0,
+          value: result,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(result);
+    });
+  }
+
+  async materialBatchUpdate(
+    params: MaterialBatchUpdateParams,
+  ): Promise<FacadeResult<MaterialBatchUpdateResult>> {
+    return this.enqueue(async () => {
+      this.gate("material.batch_update");
+      const valid = validateObject<MaterialBatchUpdateParams>(
+        params,
+        MATERIAL_BATCH_UPDATE_SCHEMA,
+        "material.batch_update params",
+      );
+      const { idempotencyKey, ...payload } = valid;
+      const prior = await this.replayLookup<MaterialBatchUpdateResult>(
+        "material.batch_update",
+        idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        return ok<MaterialBatchUpdateResult>({
+          ...prior.value,
+          replayed: true,
+        });
+      }
+      const result = await this.callMaterialBridge<MaterialBatchUpdateResult>(
+        "material.batch_update",
+        "batchUpdate",
+        {
+          updates: valid.updates.map((item) => ({
+            ...item,
+            ...(item.tags !== undefined ? { tags: [...item.tags] } : {}),
+          })),
+        },
+      );
+      if (idempotencyKey !== undefined) {
+        this.ledger.set("material.batch_update", idempotencyKey, {
+          revision: 0,
+          value: result,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(result);
+    });
+  }
+
+  async materialRemove(
+    params: MaterialRemoveParams,
+  ): Promise<FacadeResult<MaterialRemoveResult>> {
+    return this.enqueue(async () => {
+      this.gate("material.remove");
+      const valid = validateObject<MaterialRemoveParams>(
+        params,
+        MATERIAL_REMOVE_SCHEMA,
+        "material.remove params",
+      );
+      const { idempotencyKey, ...payload } = valid;
+      const prior = await this.replayLookup<MaterialRemoveResult>(
+        "material.remove",
+        idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        return ok<MaterialRemoveResult>({ ...prior.value, replayed: true });
+      }
+      const result = await this.callMaterialBridge<MaterialRemoveResult>(
+        "material.remove",
+        "remove",
+        { id: valid.id, ...(valid.force !== undefined ? { force: valid.force } : {}) },
+      );
+      if (idempotencyKey !== undefined) {
+        this.ledger.set("material.remove", idempotencyKey, {
+          revision: 0,
+          value: result,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(result);
+    });
+  }
+
+  async materialAttach(
+    params: MaterialAttachParams,
+  ): Promise<FacadeResult<MaterialAttachResult>> {
+    return this.enqueue(async () => {
+      this.gate("material.attach");
+      const valid = validateObject<MaterialAttachParams>(
+        params,
+        MATERIAL_ATTACH_SCHEMA,
+        "material.attach params",
+      );
+      const { idempotencyKey, expectedRevision, ...payload } = valid;
+      const prior = await this.replayLookup<MaterialAttachResult>(
+        "material.attach",
+        idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        return ok<MaterialAttachResult>({ ...prior.value, replayed: true });
+      }
+      // Precedence contract mirrors media.import: a stale caller revision is
+      // CONFLICT even before the renderer is involved; the renderer repeats
+      // the CAS at commit time.
+      const { revision } = await this.config.store.getState();
+      if (
+        expectedRevision !== undefined &&
+        expectedRevision !== revision
+      ) {
+        throw new FacadeError(
+          "CONFLICT",
+          `revision conflict: expected ${expectedRevision}, current is ${revision}`,
+          { currentRevision: revision },
+        );
+      }
+      const result = await this.callMaterialBridge<MaterialAttachResult>(
+        "material.attach",
+        "attach",
+        {
+          materialId: valid.materialId,
+          ...(valid.startSec !== undefined ? { startSec: valid.startSec } : {}),
+          ...(valid.endSec !== undefined ? { endSec: valid.endSec } : {}),
+          ...(valid.addClip !== undefined ? { addClip: valid.addClip } : {}),
+          // Unconditional CAS like live edit.apply: omitted still guards
+          // with the revision we just read.
+          expectedRevision: expectedRevision ?? revision,
+          ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+        },
+      );
+      if (idempotencyKey !== undefined) {
+        this.ledger.set("material.attach", idempotencyKey, {
+          revision: result.revision,
+          value: result,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(result);
+    });
+  }
+
+  async materialUndo(
+    params?: MaterialUndoParams,
+  ): Promise<FacadeResult<MaterialUndoResult>> {
+    return this.enqueue(async () => {
+      this.gate("material.undo");
+      const valid = validateObject<MaterialUndoParams>(
+        params ?? {},
+        MATERIAL_UNDO_SCHEMA,
+        "material.undo params",
+      );
+      const { idempotencyKey, ...payload } = valid;
+      // Undo without a key is dangerous to retry (a retry would undo the
+      // NEXT entry), so replay protection matters most here.
+      const prior = await this.replayLookup<MaterialUndoResult>(
+        "material.undo",
+        idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        return ok<MaterialUndoResult>({ ...prior.value, replayed: true });
+      }
+      const result = await this.callMaterialBridge<MaterialUndoResult>(
+        "material.undo",
+        "undo",
+        {
+          ...(valid.entryId !== undefined ? { entryId: valid.entryId } : {}),
+          actor: "agent",
+        },
+      );
+      if (idempotencyKey !== undefined) {
+        this.ledger.set("material.undo", idempotencyKey, {
+          revision: 0,
+          value: result,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(result);
+    });
+  }
+
   /* ---------------------------- lifecycle ----------------------------- */
 
   /**
@@ -2488,6 +3020,14 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "job.status": (params) => session.jobStatus(params),
     "job.cancel": (params) => session.jobCancel(params),
     "verify.artifact": (params) => session.verifyArtifact(params),
+    "material.list": (params) => session.materialList(params),
+    "material.get": (params) => session.materialGet(params),
+    "material.create": (params) => session.materialCreate(params),
+    "material.update": (params) => session.materialUpdate(params),
+    "material.batch_update": (params) => session.materialBatchUpdate(params),
+    "material.remove": (params) => session.materialRemove(params),
+    "material.attach": (params) => session.materialAttach(params),
+    "material.undo": (params) => session.materialUndo(params),
     releaseWriterLease: () => session.releaseWriterLease(),
     dispose: () => session.dispose(),
   };

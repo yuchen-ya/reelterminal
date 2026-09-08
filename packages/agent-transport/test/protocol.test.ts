@@ -1,4 +1,4 @@
-import { FACADE_VERBS } from "@openreel/agent-facade";
+import { FACADE_VERBS, FACADE_CONTRACT_VERSION } from "@openreel/agent-facade";
 /**
  * Protocol tests (ADR 0003 deliverable 5, slice 2b): spawn the REAL
  * `agent-video serve` binary and drive the MCP handshake end to end.
@@ -6,8 +6,8 @@ import { FACADE_VERBS } from "@openreel/agent-facade";
  *  - initialize (serverInfo carries the transport's own facts)
  *  - tools/list: all registered tools of the facade contract, inputSchemas deep-equal the
  *    facade emission EMITTED_VERB_JSON_SCHEMAS verbatim (Decision 4)
- *  - tools/call round-trips: session_describe contract `facade-slice-6`
- *    + 24 verbs; project_create/edit_apply happy path with exact revision
+ *  - tools/call round-trips: session_describe contract version
+ *    (imported constant) + full verb list; project_create/edit_apply happy path with exact revision
  *    arithmetic; CONFLICT and NOT_FOUND surface as tool-result
  *    `isError:true` with the facade's error codes — never protocol errors
  *    (Decision 5); unknown tool IS a protocol error (-32602)
@@ -64,7 +64,7 @@ describe("agent-video serve (real binary)", () => {
     expect(info.version).toBe("0.1.0");
     expect(typeof info.pid).toBe("number");
     expect(Array.isArray(info.args)).toBe(true);
-    expect(info.facadeContract).toBe("facade-slice-6");
+    expect(info.facadeContract).toBe(FACADE_CONTRACT_VERSION);
     // Decision 5: capabilities carry ONLY the standard protocol
     // advertisement — never the server's own facts.
     const capsJson = JSON.stringify(init.result.capabilities);
@@ -85,18 +85,18 @@ describe("agent-video serve (real binary)", () => {
     });
   });
 
-  it("session_describe passthrough: contract facade-slice-6, 24 verbs, 9 error codes", async () => {
+  it("session_describe passthrough: contract facade-slice-7, 9 error codes", async () => {
     const reply = await callTool("session_describe", {});
     expect(reply.error).toBeUndefined();
     expect(reply.result.isError).toBeFalsy();
     const text = reply.result.content[0].text as string;
     const parsed = JSON.parse(text);
     expect(parsed.ok).toBe(true);
-    expect(parsed.value.contractVersion).toBe("facade-slice-6");
+    expect(parsed.value.contractVersion).toBe(FACADE_CONTRACT_VERSION);
     expect(parsed.value.verbs).toHaveLength(FACADE_VERBS.length);
     expect(parsed.value.errorCodes).toHaveLength(9);
     // structuredContent populated too (SDK 1.30.0 supports it)
-    expect(reply.result.structuredContent.value.contractVersion).toBe("facade-slice-6");
+    expect(reply.result.structuredContent.value.contractVersion).toBe(FACADE_CONTRACT_VERSION);
   });
 
   it("project_create + edit_apply happy path with exact revision arithmetic", async () => {

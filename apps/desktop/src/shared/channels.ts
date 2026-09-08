@@ -10,6 +10,7 @@ export const CHANNELS = {
   fsAbortWrite: "openreel:fs:abortWrite",
   fsRevealInFolder: "openreel:fs:revealInFolder",
   fsReadFileBytes: "openreel:fs:readFileBytes",
+  fsPathStatus: "openreel:fs:pathStatus",
   fsTempFilePath: "openreel:fs:tempFilePath",
   exportStart: "openreel:export:start",
   exportWriteAudioWav: "openreel:export:writeAudioWav",

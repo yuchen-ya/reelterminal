@@ -44,6 +44,14 @@ import {
   EDIT_VALIDATE_SCHEMA,
   HISTORY_GET_SCHEMA,
   HISTORY_CONTROL_SCHEMA,
+  MATERIAL_LIST_SCHEMA,
+  MATERIAL_GET_SCHEMA,
+  MATERIAL_CREATE_SCHEMA,
+  MATERIAL_UPDATE_SCHEMA,
+  MATERIAL_BATCH_UPDATE_SCHEMA,
+  MATERIAL_REMOVE_SCHEMA,
+  MATERIAL_ATTACH_SCHEMA,
+  MATERIAL_UNDO_SCHEMA,
 } from "./verb-schemas";
 import { VERB_SCHEMA_CORPUS } from "./verb-schema-corpus";
 import { FACADE_VERBS } from "./types";
@@ -226,6 +234,44 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
       }
       return;
     }
+    case "material.list":
+      validateObject(params, MATERIAL_LIST_SCHEMA, "material.list params");
+      return;
+    case "material.get":
+      validateObject(params, MATERIAL_GET_SCHEMA, "material.get params");
+      return;
+    case "material.create": {
+      const valid = validateObject<Record<string, unknown>>(
+        params,
+        MATERIAL_CREATE_SCHEMA,
+        "material.create params",
+      );
+      // Validator-only predicate, mirrored from live-session: media requires
+      // a probeable local path; the kind-specific requirements for the other
+      // kinds are canonically validated renderer-side.
+      if (valid.kind === "media" && (valid.filePath === undefined || valid.mediaType === undefined)) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "material.create: media materials require filePath and mediaType",
+        );
+      }
+      return;
+    }
+    case "material.update":
+      validateObject(params, MATERIAL_UPDATE_SCHEMA, "material.update params");
+      return;
+    case "material.batch_update":
+      validateObject(params, MATERIAL_BATCH_UPDATE_SCHEMA, "material.batch_update params");
+      return;
+    case "material.remove":
+      validateObject(params, MATERIAL_REMOVE_SCHEMA, "material.remove params");
+      return;
+    case "material.attach":
+      validateObject(params, MATERIAL_ATTACH_SCHEMA, "material.attach params");
+      return;
+    case "material.undo":
+      validateObject(params, MATERIAL_UNDO_SCHEMA, "material.undo params");
+      return;
     default:
       { const tool = PLUGIN_TOOLS.find((tool) => tool.name === verb);
         if (tool) { validateObject(params, tool.input, `${verb} params`); return; } }

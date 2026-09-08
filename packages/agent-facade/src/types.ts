@@ -1,5 +1,6 @@
 import { PLUGIN_TOOLS } from "./plugins";
 import { assertUniqueToolNames } from "./plugin-api";
+import { MATERIAL_VERBS } from "./material-library";
 /**
  * Public contract of the in-process agent facade (Slice 1 + Slice 1b +
  * Slice 2a persistence, ADR 0003 Decision 10).
@@ -42,8 +43,8 @@ import type {
   VerifyReport,
 } from "./providers";
 
-export const FACADE_VERSION = "0.6.0" as const;
-export const FACADE_CONTRACT_VERSION = "facade-slice-6" as const;
+export const FACADE_VERSION = "0.7.0" as const;
+export const FACADE_CONTRACT_VERSION = "facade-slice-7" as const;
 export const FACADE_RUNTIME = "node-headless" as const;
 
 /* ------------------------------------------------------------------ */
@@ -75,6 +76,7 @@ export const FACADE_VERBS = [
   "job.status",
   "job.cancel",
   "verify.artifact",
+  ...MATERIAL_VERBS,
   ...PLUGIN_TOOLS.map((tool) => tool.name),
 ] as const;
 
@@ -151,6 +153,8 @@ export const READ_ONLY_VERBS = [
   "editor.control",
   "edit.validate",
   "history.get",
+  "material.list",
+  "material.get",
   "visual.inspect",
   "job.status",
   "verify.artifact",
@@ -282,6 +286,8 @@ export interface Capabilities {
   };
   readonly projectChanges: CapabilityStatus;
   readonly history: CapabilityStatus;
+  /** User-level material library (material.* verbs); headless reports unavailable. */
+  readonly materialLibrary: import("./material-library").MaterialLibraryCapability;
   readonly mediaAnalysis: {
     readonly asynchronous: true;
     readonly types: Readonly<Record<MediaAnalysisType, CapabilityStatus>>;
@@ -1499,3 +1505,35 @@ export interface VerifyArtifactParams {
 }
 
 export type VerifyArtifactResult = VerifyReport;
+
+/* ------------------------------------------------------------------ */
+/* material.* (user-level material library)                            */
+/* ------------------------------------------------------------------ */
+
+export type {
+  MaterialVerb,
+  MaterialListParams,
+  MaterialGetParams,
+  MaterialCreateParams,
+  MaterialUpdateParams,
+  MaterialBatchUpdateParams,
+  MaterialBatchUpdateItem,
+  MaterialRemoveParams,
+  MaterialAttachParams,
+  MaterialUndoParams,
+  MaterialGetResult,
+  MaterialCreateResult,
+  MaterialUpdateResult,
+  MaterialBatchUpdateResult,
+  MaterialRemoveResult,
+  MaterialAttachResult,
+  MaterialUndoResult,
+  MaterialJournalResult,
+  MaterialLibraryBridge,
+  MaterialLibraryBridgeRequest,
+  MaterialLibraryBridgeReply,
+  MaterialLibraryBridgeVerb,
+  MaterialLibraryCapability,
+  MaterialSortOrder,
+} from "./material-library";
+export { MATERIAL_VERBS, MATERIAL_LIBRARY_LIMITS } from "./material-library";

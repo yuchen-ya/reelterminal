@@ -45,6 +45,7 @@ import {
   showOpenDialog,
   readTextFile,
   readFileBytes,
+  pathStatus,
   writeTextFile,
   revealInFolder,
   tempFilePath,
@@ -63,6 +64,7 @@ import {
   openDialogArgsSchema,
   readFileArgsSchema,
   readFileBytesArgsSchema,
+  pathStatusArgsSchema,
   writeFileArgsSchema,
   proxyArgsSchema,
   transcodeArgsSchema,
@@ -89,6 +91,15 @@ import type {
 } from "../shared/ipc-contract";
 
 registerAppSchemePrivileges();
+
+// Isolated-test seam: redirect EVERYTHING user-scoped (IndexedDB origin data
+// included) to a scratch directory before any path is resolved. Production
+// launches never set it; smoke tests use it so they cannot touch the user's
+// real material library, autosave, or workspace.
+const isolatedUserDataDir = process.env.OPENREEL_USER_DATA_DIR;
+if (isolatedUserDataDir && path.isAbsolute(isolatedUserDataDir)) {
+  app.setPath("userData", isolatedUserDataDir);
+}
 
 // Register crash/error reporting as early as possible so main-process faults and
 // process-gone events during startup are captured (POST to the cloud worker).
@@ -174,6 +185,7 @@ app.whenReady().then(() => {
   );
   handle(CHANNELS.fsRevealInFolder, readFileArgsSchema, revealInFolder);
   handle(CHANNELS.fsReadFileBytes, readFileBytesArgsSchema, readFileBytes);
+  handle(CHANNELS.fsPathStatus, pathStatusArgsSchema, pathStatus);
   handle(CHANNELS.fsTempFilePath, z.object({ ext: z.string() }), tempFilePath);
   handle(CHANNELS.mediaGenerateProxy, proxyArgsSchema, generateProxy);
   handle(CHANNELS.mediaTranscode, transcodeArgsSchema, transcode);

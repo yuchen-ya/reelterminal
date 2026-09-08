@@ -284,6 +284,12 @@ declare global {
         }): Promise<string | null>;
         readFile(path: string): Promise<string>;
         readFileBytes(path: string, maxBytes?: number): Promise<ArrayBuffer>;
+        pathStatus(path: string): Promise<{
+          exists: boolean;
+          isFile: boolean;
+          sizeBytes: number | null;
+          lastModifiedMs: number | null;
+        }>;
         tempFilePath(ext: string): Promise<string>;
         writeFile(path: string, data: string): Promise<void>;
         openWrite(path: string): Promise<string>;

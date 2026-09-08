@@ -128,6 +128,27 @@ export async function readFileBytes(args: {
   }
 }
 
+export async function pathStatus(args: {
+  path: string;
+}): Promise<{
+  exists: boolean;
+  isFile: boolean;
+  sizeBytes: number | null;
+  lastModifiedMs: number | null;
+}> {
+  try {
+    const stat = await fs.stat(args.path);
+    return {
+      exists: true,
+      isFile: stat.isFile(),
+      sizeBytes: Number.isFinite(stat.size) ? stat.size : null,
+      lastModifiedMs: Number.isFinite(stat.mtimeMs) ? Math.round(stat.mtimeMs) : null,
+    };
+  } catch {
+    return { exists: false, isFile: false, sizeBytes: null, lastModifiedMs: null };
+  }
+}
+
 export async function writeTextFile(args: { path: string; data: string }): Promise<void> {
   await fs.writeFile(args.path, args.data, "utf8");
 }

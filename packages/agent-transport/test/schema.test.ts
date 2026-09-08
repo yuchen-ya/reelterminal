@@ -122,6 +122,13 @@ function facadeRuntimeValidation(verb: string, params: unknown): boolean {
         }
         return true;
       }
+      case "material.create": {
+        // Cross-field predicate mirrored from the live facade boundary.
+        if (valid.kind === "media" && (valid.filePath === undefined || valid.mediaType === undefined)) {
+          return false;
+        }
+        return true;
+      }
       default:
         return true;
     }

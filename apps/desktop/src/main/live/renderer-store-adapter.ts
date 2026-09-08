@@ -26,6 +26,7 @@ import {
   type LiveProjectStore,
   type HistoryGetResult,
   type ProjectChangesResult,
+  type MaterialLibraryBridge,
 } from "@openreel/agent-facade";
 import type { Action } from "@openreel/core/types/actions";
 import type { Project } from "@openreel/core/types/project";
@@ -71,6 +72,8 @@ export interface LiveStoreBridgeDeps {
 
 export interface LiveStoreBridge {
   readonly store: LiveProjectStore;
+  /** Optional material-library seam (material.* verbs → renderer library). */
+  readonly materialLibrary?: MaterialLibraryBridge;
   /** Feed one "openreel:live:response" message; unknown/foreign replies drop. */
   handleResponse(sender: unknown, response: LiveBridgeReply): void;
   /** Reject every pending call (bridge teardown / renderer gone). */
@@ -244,8 +247,38 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
       ) as Promise<LiveMediaImportResult>,
   };
 
+  // The correlation core rejects typed bridge errors; the facade's
+  // MaterialLibraryBridge contract expects a resolved envelope instead.
+  const materialLibrary: MaterialLibraryBridge = async (materialRequest) => {
+    try {
+      const result = await request(
+        "materialLibrary",
+        {
+          materialVerb: materialRequest.verb,
+          materialParams: materialRequest.params,
+        },
+        APPLY_TIMEOUT_MS,
+      );
+      return { ok: true, result };
+    } catch (error) {
+      const typed = error as {
+        code?: string;
+        details?: Record<string, unknown>;
+      };
+      return {
+        ok: false,
+        error: {
+          code: typed?.code ?? "BRIDGE_ERROR",
+          message: error instanceof Error ? error.message : String(error),
+          ...(typed?.details ? { details: typed.details } : {}),
+        },
+      };
+    }
+  };
+
   return {
     store,
+    materialLibrary,
     handleResponse,
     teardown,
     get pendingCount() {
@@ -282,6 +315,7 @@ export function installLiveStoreBridge(): LiveStoreBridge {
   ipcMain.on(CHANNELS.liveResponse, listener);
   return {
     store: bridge.store,
+    materialLibrary: bridge.materialLibrary,
     handleResponse: bridge.handleResponse,
     get pendingCount() {
       return bridge.pendingCount;

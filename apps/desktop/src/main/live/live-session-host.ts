@@ -283,6 +283,9 @@ export function createLiveSessionHost(
     }
     const config: LiveFacadeConfig = {
       store: bridge.store,
+      ...(bridge.materialLibrary
+        ? { materialLibrary: bridge.materialLibrary }
+        : {}),
       ...(deps.mediaRoots ? { mediaRoots: deps.mediaRoots } : {}),
       ...(deps.deliveryRoots ? { deliveryRoots: deps.deliveryRoots } : {}),
       ...(providers.renderProvider

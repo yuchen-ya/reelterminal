@@ -38,6 +38,15 @@ export const readFileBytesArgsSchema = z.object({
   maxBytes: z.number().int().positive().optional(),
 });
 
+export const pathStatusArgsSchema = z.object({ path: z.string() });
+export const pathStatusResultSchema = z.object({
+  exists: z.boolean(),
+  isFile: z.boolean(),
+  sizeBytes: z.number().nonnegative().nullable(),
+  lastModifiedMs: z.number().nonnegative().nullable(),
+});
+export type PathStatusResult = z.infer<typeof pathStatusResultSchema>;
+
 export const proxyArgsSchema = z.object({
   srcPath: z.string(),
   preset: z.enum(["low", "medium", "high"]),

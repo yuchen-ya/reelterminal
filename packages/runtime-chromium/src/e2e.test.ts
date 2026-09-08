@@ -18,6 +18,7 @@ import {
   createAgentFacade,
   type AgentFacade,
   type JobStatusView,
+  FACADE_CONTRACT_VERSION,
 } from "@openreel/agent-facade";
 import { writeTinyMp4 } from "@openreel/agent-facade/media/fixtures/tiny-mp4";
 
@@ -132,7 +133,7 @@ describe("slice-1b chromium E2E", () => {
     expect(desc.value.stepLetters.textOverlayPixels).toBe("C");
     expect(desc.value.stepLetters.exportVideo).toBe("C");
     expect(desc.value.stepLetters.verifyArtifact).toBe("A");
-    expect(desc.value.contractVersion).toBe("facade-slice-4");
+    expect(desc.value.contractVersion).toBe(FACADE_CONTRACT_VERSION);
 
     // 1) project.create 320x180@30 ---------------------------------------
     const created = await facade["project.create"]({

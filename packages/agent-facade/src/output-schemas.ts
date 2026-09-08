@@ -707,6 +707,87 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "job.status": jobStatus(),
   "job.cancel": jobStatus(),
   "verify.artifact": verifyResult(),
+  "material.list": objectSchema(
+    {
+      items: arraySchema(openObject()),
+      total: integerSchema(0),
+      page: integerSchema(1),
+      pageSize: integerSchema(1),
+      totalPages: integerSchema(1),
+      allTags: arraySchema(stringSchema()),
+    },
+    ["items", "total", "page", "pageSize", "totalPages", "allTags"],
+  ),
+  "material.get": objectSchema({ material: openObject() }, ["material"]),
+  "material.create": objectSchema(
+    {
+      material: openObject(),
+      journalEntryId: stringSchema(),
+      replayed: booleanSchema(),
+    },
+    ["material", "journalEntryId"],
+  ),
+  "material.update": objectSchema(
+    {
+      material: openObject(),
+      journalEntryId: stringSchema(),
+      replayed: booleanSchema(),
+    },
+    ["material", "journalEntryId"],
+  ),
+  "material.batch_update": objectSchema(
+    {
+      materials: arraySchema(openObject(), { minItems: 1 }),
+      journalEntryId: stringSchema(),
+      replayed: booleanSchema(),
+    },
+    ["materials", "journalEntryId"],
+  ),
+  "material.remove": objectSchema(
+    {
+      id: stringSchema(),
+      removedIds: arraySchema(stringSchema(), { minItems: 1 }),
+      journalEntryId: stringSchema(),
+      replayed: booleanSchema(),
+    },
+    ["id", "removedIds", "journalEntryId"],
+  ),
+  "material.attach": objectSchema(
+    {
+      materialId: stringSchema(),
+      mediaIdInProject: stringSchema(),
+      projectId: stringSchema(),
+      projectName: stringSchema(),
+      clipId: nullable(stringSchema()),
+      rangeSec: nullable(
+        objectSchema(
+          { startSec: numberSchema(0), endSec: numberSchema(0) },
+          ["startSec", "endSec"],
+        ),
+      ),
+      revision: integerSchema(0),
+      replayed: booleanSchema(),
+    },
+    [
+      "materialId",
+      "mediaIdInProject",
+      "projectId",
+      "projectName",
+      "clipId",
+      "rangeSec",
+      "revision",
+    ],
+  ),
+  "material.undo": objectSchema(
+    {
+      entryId: stringSchema(),
+      undoneEntryId: stringSchema(),
+      restored: arraySchema(stringSchema()),
+      removed: arraySchema(stringSchema()),
+      replayed: booleanSchema(),
+    },
+    ["entryId", "undoneEntryId", "restored", "removed"],
+  ),
 };
 
 /** Successful `{ok:true,value}` output schema for every MCP facade verb. */

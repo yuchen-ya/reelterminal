@@ -21,6 +21,8 @@ import { ActionExecutor } from "@openreel/core/actions/action-executor";
 import { ActionHistory } from "@openreel/core/actions/action-history";
 import type { Project, ProjectSettings } from "@openreel/core/types/project";
 import type { MediaItem } from "@openreel/core/types/project";
+import type { MaterialListResult } from "@openreel/core/material/types";
+import type { FacadeVerb } from "./types";
 import { basename, isAbsolute, resolve as resolvePath } from "node:path";
 import { readFile, rm, stat } from "node:fs/promises";
 
@@ -114,7 +116,32 @@ import {
   EDIT_VALIDATE_SCHEMA,
   HISTORY_GET_SCHEMA,
   HISTORY_CONTROL_SCHEMA,
+  MATERIAL_LIST_SCHEMA,
+  MATERIAL_GET_SCHEMA,
+  MATERIAL_CREATE_SCHEMA,
+  MATERIAL_UPDATE_SCHEMA,
+  MATERIAL_BATCH_UPDATE_SCHEMA,
+  MATERIAL_REMOVE_SCHEMA,
+  MATERIAL_ATTACH_SCHEMA,
+  MATERIAL_UNDO_SCHEMA,
 } from "./verb-schemas";
+import type {
+  MaterialListParams,
+  MaterialGetParams,
+  MaterialGetResult,
+  MaterialCreateParams,
+  MaterialCreateResult,
+  MaterialUpdateParams,
+  MaterialUpdateResult,
+  MaterialBatchUpdateParams,
+  MaterialBatchUpdateResult,
+  MaterialRemoveParams,
+  MaterialRemoveResult,
+  MaterialAttachParams,
+  MaterialAttachResult,
+  MaterialUndoParams,
+  MaterialUndoResult,
+} from "./material-library";
 import type {
   LiveEditorControlParams,
   LiveEditorControlResult,
@@ -2024,6 +2051,94 @@ export class AgentFacadeSession {
 
       const report = await verifier.verify(request);
       return ok(report);
+    });
+  }
+
+  /* ----------------- material.* (headless: UNSUPPORTED) --------------- */
+
+  /**
+   * The user-level material library lives in the desktop GUI renderer's
+   * IndexedDB (cross-project, human-visible). Headless sessions have no GUI
+   * renderer, so every material.* verb answers honestly UNSUPPORTED — the
+   * same policy as the canonical-history verbs.
+   */
+  private materialUnsupported(verb: FacadeVerb): never {
+    throw new FacadeError(
+      "UNSUPPORTED",
+      `${verb}: the user-level material library is available only in live desktop sessions (it lives in the GUI renderer's persistent storage, not the headless project checkpoint)`,
+      { runtime: "node-headless" },
+    );
+  }
+
+  async materialList(
+    params?: MaterialListParams,
+  ): Promise<FacadeResult<MaterialListResult>> {
+    return this.enqueue(async () => {
+      validateObject<MaterialListParams>(params ?? {}, MATERIAL_LIST_SCHEMA, "material.list params");
+      this.materialUnsupported("material.list");
+    });
+  }
+
+  async materialGet(
+    params: MaterialGetParams,
+  ): Promise<FacadeResult<MaterialGetResult>> {
+    return this.enqueue(async () => {
+      validateObject<MaterialGetParams>(params, MATERIAL_GET_SCHEMA, "material.get params");
+      this.materialUnsupported("material.get");
+    });
+  }
+
+  async materialCreate(
+    params: MaterialCreateParams,
+  ): Promise<FacadeResult<MaterialCreateResult>> {
+    return this.enqueue(async () => {
+      validateObject<MaterialCreateParams>(params, MATERIAL_CREATE_SCHEMA, "material.create params");
+      this.materialUnsupported("material.create");
+    });
+  }
+
+  async materialUpdate(
+    params: MaterialUpdateParams,
+  ): Promise<FacadeResult<MaterialUpdateResult>> {
+    return this.enqueue(async () => {
+      validateObject<MaterialUpdateParams>(params, MATERIAL_UPDATE_SCHEMA, "material.update params");
+      this.materialUnsupported("material.update");
+    });
+  }
+
+  async materialBatchUpdate(
+    params: MaterialBatchUpdateParams,
+  ): Promise<FacadeResult<MaterialBatchUpdateResult>> {
+    return this.enqueue(async () => {
+      validateObject<MaterialBatchUpdateParams>(params, MATERIAL_BATCH_UPDATE_SCHEMA, "material.batch_update params");
+      this.materialUnsupported("material.batch_update");
+    });
+  }
+
+  async materialRemove(
+    params: MaterialRemoveParams,
+  ): Promise<FacadeResult<MaterialRemoveResult>> {
+    return this.enqueue(async () => {
+      validateObject<MaterialRemoveParams>(params, MATERIAL_REMOVE_SCHEMA, "material.remove params");
+      this.materialUnsupported("material.remove");
+    });
+  }
+
+  async materialAttach(
+    params: MaterialAttachParams,
+  ): Promise<FacadeResult<MaterialAttachResult>> {
+    return this.enqueue(async () => {
+      validateObject<MaterialAttachParams>(params, MATERIAL_ATTACH_SCHEMA, "material.attach params");
+      this.materialUnsupported("material.attach");
+    });
+  }
+
+  async materialUndo(
+    params?: MaterialUndoParams,
+  ): Promise<FacadeResult<MaterialUndoResult>> {
+    return this.enqueue(async () => {
+      validateObject<MaterialUndoParams>(params ?? {}, MATERIAL_UNDO_SCHEMA, "material.undo params");
+      this.materialUnsupported("material.undo");
     });
   }
 

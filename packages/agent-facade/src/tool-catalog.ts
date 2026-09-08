@@ -47,6 +47,22 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   job_cancel: "Request cooperative cancellation of an export or media-analysis job (idempotent on terminal jobs).",
   verify_artifact:
     "Verify an artifact with ffprobe/pixel checks and return the report as data.",
+  material_list:
+    "Unavailable headless — the user-level material library lives in the desktop GUI renderer.",
+  material_get:
+    "Unavailable headless — the user-level material library lives in the desktop GUI renderer.",
+  material_create:
+    "Unavailable headless — the user-level material library lives in the desktop GUI renderer.",
+  material_update:
+    "Unavailable headless — the user-level material library lives in the desktop GUI renderer.",
+  material_batch_update:
+    "Unavailable headless — the user-level material library lives in the desktop GUI renderer.",
+  material_remove:
+    "Unavailable headless — the user-level material library lives in the desktop GUI renderer.",
+  material_attach:
+    "Unavailable headless — the user-level material library lives in the desktop GUI renderer.",
+  material_undo:
+    "Unavailable headless — the user-level material library lives in the desktop GUI renderer.",
 };
 
 const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
@@ -97,6 +113,22 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Request cooperative cancellation of an export or media-analysis job (idempotent on terminal jobs).",
   "verify.artifact":
     "Verify an artifact under the session artifactRoot with ffprobe/pixel checks and return the report.",
+  "material.list":
+    "Search and paginate the user-level material library (media, segments, links, methods) by kind, tag, organize status and free-text query. The library is user state, independent of the open project.",
+  "material.get":
+    "Return one material-library entry in full: title, tags, organize status, separate user notes and AI summary, kind-specific fields (file reference, segment range, url, method prompt), provenance, and project usages.",
+  "material.create":
+    "Create a material-library entry: media (absolute path inside a configured media root; the original file is referenced, never moved), a time-range segment of an existing media material, an http(s) link, or a reusable skill+prompt method. Saving never installs skills or executes prompts.",
+  "material.update":
+    "Update one material's title, AI summary, tags, organize status, or link description. User notes are intentionally not writable by agents; pass expectedRevision (the material's revision) for CAS protection.",
+  "material.batch_update":
+    "Apply updates to many materials in ONE all-or-nothing batch (also one undoable journal entry). Any missing id or revision conflict rejects the whole batch with per-item details and applies nothing.",
+  "material.remove":
+    "Remove entries from the user-level material library. Removing an entry never deletes the original file; materials still referenced by projects require force:true (project copies are unaffected). Cascades a media material's segments.",
+  "material.attach":
+    "Reference a material into the CURRENT project through the canonical import path: media imports into the project library; segments (or an explicit startSec/endSec range) additionally add a timeline clip with those in/out points. One undo unit in the GUI history; use a fresh idempotencyKey.",
+  "material.undo":
+    "Undo one user-level library journal entry (default: the latest undoable change — e.g. an agent batch organize). Library undo is independent of project undo and survives project switches; use a fresh idempotencyKey.",
 };
 
 export function toolDescription(verb: FacadeVerb, mode: "live" | "headless"): string {

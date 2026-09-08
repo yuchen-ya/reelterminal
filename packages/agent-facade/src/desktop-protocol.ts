@@ -56,6 +56,7 @@ export type DesktopLiveBridgeKind =
   | "editorControl"
   | "applyActions"
   | "importMedia"
+  | "materialLibrary"
   | "requestSave";
 
 /** Main-to-renderer request on `openreel:live:request`. */
@@ -80,6 +81,10 @@ export interface DesktopLiveBridgeRequest {
   readonly metadata?: LiveMediaImportRequest["metadata"];
   readonly sourceFile?: LiveMediaImportRequest["sourceFile"];
   readonly idempotencyKey?: LiveMediaImportRequest["idempotencyKey"];
+  /** materialLibrary: the material-library verb to execute in the renderer. */
+  readonly materialVerb?: string;
+  /** materialLibrary: JSON-safe parameters for that verb. */
+  readonly materialParams?: Record<string, unknown>;
 }
 
 export interface DesktopLiveBridgeError {

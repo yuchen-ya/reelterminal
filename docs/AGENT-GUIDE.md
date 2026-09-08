@@ -21,8 +21,8 @@ connect that Agent to the open ReelTerminal desktop project through MCP.
    ```
 
 The connector reads `~/.openreel/live-endpoint.json`, forwards stdio MCP to
-the authenticated loopback endpoint, and exposes exactly the 26 live tools
-(24 built-in verbs plus `media_import_preflight` and `media_inspect`) listed in the root
+the authenticated loopback endpoint, and exposes exactly the 34 live tools
+(32 built-in verbs plus `media_import_preflight` and `media_inspect`) listed in the root
 [`SKILL.md`](../SKILL.md). Do not copy the endpoint token
 into prompts, project files, or logs.
 
@@ -92,6 +92,32 @@ Use meaningful source events as alignment anchors. Preserve enough cause and res
 Report review evidence separately: **frames inspected**, **playback executed**, **supported audiovisual review completed**, **export technically verified**. Current MCP transports embed images (lossless PNG or budget-fitted JPEG) and text, and have no audio/video consumption contract. GUI play, a playable file, waveform measurements or mathematical alignment do not establish that the Agent watched/heard a sequence. Perform all inspection the host supports; disclose remaining perceptual limits without treating the user as the default outsourced reviewer. GUI synchronization is collaboration, not a quality certificate.
 
 Import first uses `media_import_preflight`: cheap root/stat/size checking, with codec support explicitly unchecked. Capabilities reports the live 256MiB whole-file GUI buffer limit. Preserve originals and source offsets for explicit segments; no automatic proxy/relink pipeline exists. See [material analysis workflow](MATERIAL-ANALYSIS.md) for parameters, limits and a concrete anchor example.
+
+## The user-level material library
+
+The `material_*` tools manage the user's CROSS-PROJECT library of creative
+resources: media files, time-range segments of media, links, and reusable
+skill+prompt methods. It is user state, not project state — entries survive
+project switches and restarts; projects only reference materials; removing an
+entry never deletes the original file. Check `capabilities_get.materialLibrary`
+first (live sessions only; headless is honestly UNSUPPORTED). Key rules:
+
+- `material_create` media paths must stay inside the configured `mediaRoots`;
+  the original file is referenced, never copied or moved.
+- User notes are never agent-writable: update `aiSummary`, `tags`, `title`,
+  `organizeStatus` only. Everything you write is badged "Agent" in the UI.
+- `material_batch_update` is all-or-nothing and one undo unit — the user can
+  revert your whole batch with one click (`material_undo` mirrors it; always
+  pass a fresh `idempotencyKey`).
+- `expectedRevision` in update verbs is the MATERIAL record's revision (from
+  `material_list`/`material_get`); in `material_attach` it is the PROJECT
+  revision. A mismatch is `CONFLICT` with the current value — re-read, retry.
+- Segments carry their range on the material; `material_attach` of a segment
+  (or with explicit `startSec`/`endSec`) imports the source and adds a
+  timeline clip scoped to exactly that range.
+
+See [`MATERIAL-LIBRARY.md`](MATERIAL-LIBRARY.md) for the full model, persistence
+format, and a worked search → batch-organize → attach example.
 
 ## Keep every creation task in one workspace
 

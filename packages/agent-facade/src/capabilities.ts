@@ -40,6 +40,8 @@ import {
   type FacadeVerb,
   type SessionDescription,
 } from "./types";
+import { MATERIAL_LIBRARY_LIMITS } from "./material-library";
+import { MATERIAL_KINDS } from "@openreel/core/material/types";
 import {
   DEFAULT_AGENT_WORK_MODE,
   agentWorkModeSemantics,
@@ -85,6 +87,7 @@ export interface CapabilityContext {
     readonly leaseHolder: string | null;
     readonly sessionId: string;
     readonly mediaImportAvailable: boolean;
+    readonly materialLibraryAvailable?: boolean;
     readonly unavailableVerbs: readonly FacadeVerb[];
   };
 }
@@ -150,6 +153,9 @@ export async function buildCapabilities(
   const mediaImportAvailable = ctx.live
     ? ctx.live.mediaImportAvailable && ctx.mediaRoots.length > 0
     : ctx.mediaRoots.length > 0;
+  const materialLibraryAvailable = ctx.live
+    ? ctx.live.materialLibraryAvailable === true
+    : false;
   const noArtifactRoot = ctx.artifactRoot === undefined || ctx.artifactRoot.length === 0;
   const gateArtifactProducing = (
     status: CapabilityStatus,
@@ -261,6 +267,48 @@ export async function buildCapabilities(
       },
       urlImport: false,
       metadata: ["duration", "width", "height", "mediaType"],
+    },
+    materialLibrary: {
+      available: materialLibraryAvailable,
+      ...(materialLibraryAvailable
+        ? {}
+        : {
+            reason: ctx.live
+              ? "Live mode: the host did not provide the material-library bridge; the material.* verbs report UNSUPPORTED in this session."
+              : "Headless sessions have no GUI renderer, so the user-level material library (records, journal, IndexedDB persistence) is not reachable; material.* verbs report UNSUPPORTED.",
+          }),
+      kinds: MATERIAL_KINDS,
+      statusValues: ["inbox", "organized"],
+      searchableFields: [
+        "title",
+        "userNotes",
+        "aiSummary",
+        "tags",
+        "url",
+        "description",
+        "skillName",
+        "prompt",
+        "steps",
+        "inputs",
+        "fileName",
+      ],
+      limits: {
+        maxPageSize: MATERIAL_LIBRARY_LIMITS.maxPageSize,
+        maxBatchItems: MATERIAL_LIBRARY_LIMITS.maxBatchItems,
+        journalEntriesRetained: MATERIAL_LIBRARY_LIMITS.maxJournalEntries,
+      },
+      filePolicy: "reference-original",
+      undo: {
+        available: materialLibraryAvailable,
+        scope: "user-library",
+      },
+      attach: {
+        available: materialLibraryAvailable,
+        supportsRange: true,
+        ...(materialLibraryAvailable
+          ? {}
+          : { reason: "requires the live material-library bridge" }),
+      },
     },
     projectChanges: {
       available: true,

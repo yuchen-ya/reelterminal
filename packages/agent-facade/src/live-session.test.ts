@@ -1374,6 +1374,14 @@ describe("work mode + access gate + writer lease", () => {
       "project.create",
       "project.open",
       "media.import",
+      "material.list",
+      "material.get",
+      "material.create",
+      "material.update",
+      "material.batch_update",
+      "material.remove",
+      "material.attach",
+      "material.undo",
     ]);
     expect(res.value.mediaImport.available).toBe(false);
     expect(res.value.mediaImport.reason).toContain("media roots");
@@ -1459,6 +1467,14 @@ describe("live media.import through the canonical store bridge", () => {
     expect(caps.ok && caps.value.unavailableVerbs).toEqual([
       "project.create",
       "project.open",
+      "material.list",
+      "material.get",
+      "material.create",
+      "material.update",
+      "material.batch_update",
+      "material.remove",
+      "material.attach",
+      "material.undo",
     ]);
 
     const res = await facade["media.import"]({

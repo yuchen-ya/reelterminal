@@ -16,6 +16,13 @@ import { PLUGIN_TOOLS } from "./plugins";
  * authority — a payload can be schema-valid and still fail INVALID_PARAMS.
  */
 import { EDIT_OP_TYPES, MEDIA_ANALYSIS_TYPES } from "./types";
+import { MATERIAL_LIBRARY_LIMITS } from "./material-library";
+import { MATERIAL_KINDS, MATERIAL_MEDIA_TYPES } from "@openreel/core/material/types";
+import {
+  MAX_MATERIAL_METHOD_STEPS,
+  MAX_MATERIAL_TAGS,
+  MAX_MATERIAL_TEXT_LENGTH,
+} from "@openreel/core/material/logic";
 import {
   MAX_PROJECT_CHANGES_LIMIT,
 } from "./project-changes";
@@ -924,7 +931,327 @@ export const VERIFY_ARTIFACT_SCHEMA: ObjectSchema = {
 };
 
 /* ------------------------------------------------------------------ */
-/* The 24-verb declaration map (single source, Decision 4)             */
+/* material.* — user-level material library (live-only)                */
+/*                                                                     */
+/* Kind-specific requirements (media needs filePath+mediaType, segment  */
+/* needs parent+range, link needs url, method needs prompt) stay in the */
+/* renderer's canonical validation; the emitted schema is a boundary    */
+/* superset filter, same policy as the rest of the facade.              */
+/* ------------------------------------------------------------------ */
+
+const materialTagsField = (value: unknown): value is string[] =>
+  Array.isArray(value) &&
+  value.length <= MAX_MATERIAL_TAGS &&
+  value.every((item) => typeof item === "string" && item.length > 0);
+
+const materialStepsField = (value: unknown): value is string[] =>
+  Array.isArray(value) &&
+  value.length <= MAX_MATERIAL_METHOD_STEPS &&
+  value.every((item) => typeof item === "string" && item.length > 0);
+
+export const MATERIAL_LIST_SCHEMA: ObjectSchema = {
+  kind: {
+    check: (v) => (MATERIAL_KINDS as readonly unknown[]).includes(v),
+    describe: '"media" | "segment" | "link" | "method"',
+    emits: { kind: "leaf", schema: { enum: MATERIAL_KINDS } },
+  },
+  status: {
+    check: (v) => v === "inbox" || v === "organized",
+    describe: '"inbox" | "organized"',
+    emits: { kind: "leaf", schema: { enum: ["inbox", "organized"] } },
+  },
+  tag: {
+    check: isNonEmptyString,
+    describe: "a non-empty tag string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  query: {
+    check: (v) => typeof v === "string" && v.length <= 200,
+    describe: "a search string of at most 200 characters (matched over title, notes, summary, tags, url and method text)",
+    emits: { kind: "leaf", schema: { type: "string", maxLength: 200 } },
+  },
+  page: {
+    check: isPositiveInteger,
+    describe: "a positive 1-based page number",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } },
+  },
+  pageSize: {
+    check: (v) => isPositiveInteger(v) && (v as number) <= MATERIAL_LIBRARY_LIMITS.maxPageSize,
+    describe: `a positive page size of at most ${MATERIAL_LIBRARY_LIMITS.maxPageSize}`,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1, maximum: MATERIAL_LIBRARY_LIMITS.maxPageSize } },
+  },
+  sort: {
+    check: (v) => v === "updated" || v === "created" || v === "title",
+    describe: '"updated" (default) | "created" | "title"',
+    emits: { kind: "leaf", schema: { enum: ["updated", "created", "title"] } },
+  },
+};
+
+export const MATERIAL_GET_SCHEMA: ObjectSchema = {
+  id: {
+    check: isNonEmptyString,
+    describe: "a non-empty material id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const MATERIAL_CREATE_SCHEMA: ObjectSchema = {
+  kind: {
+    check: (v) => (MATERIAL_KINDS as readonly unknown[]).includes(v),
+    describe: '"media" | "segment" | "link" | "method"',
+    required: true,
+    emits: { kind: "leaf", schema: { enum: MATERIAL_KINDS } },
+  },
+  title: {
+    check: isNonEmptyString,
+    describe: "a non-empty title (defaults per kind: file name, url host, skill name)",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1, maxLength: 300 } },
+  },
+  tags: {
+    check: materialTagsField,
+    describe: `an array of at most ${MAX_MATERIAL_TAGS} non-empty tag strings`,
+    emits: {
+      kind: "array",
+      maxItems: MAX_MATERIAL_TAGS,
+      items: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+    },
+  },
+  organizeStatus: {
+    check: (v) => v === "inbox" || v === "organized",
+    describe: '"inbox" (default) | "organized"',
+    emits: { kind: "leaf", schema: { enum: ["inbox", "organized"] } },
+  },
+  aiSummary: {
+    check: (v) => typeof v === "string" && v.length <= MAX_MATERIAL_TEXT_LENGTH,
+    describe: `an agent-written summary of at most ${MAX_MATERIAL_TEXT_LENGTH} characters (user notes are never writable here)`,
+    emits: { kind: "leaf", schema: { type: "string", maxLength: MAX_MATERIAL_TEXT_LENGTH } },
+  },
+  origin: {
+    check: (v) => typeof v === "string" && v.length <= 500,
+    describe: "a free-form origin note of at most 500 characters",
+    emits: { kind: "leaf", schema: { type: "string", maxLength: 500 } },
+  },
+  filePath: {
+    check: isNonEmptyString,
+    describe: "media: an absolute local path inside one of the configured media roots",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  mediaType: {
+    check: (v) => (MATERIAL_MEDIA_TYPES as readonly unknown[]).includes(v),
+    describe: 'media: "video" | "audio" | "image"',
+    emits: { kind: "leaf", schema: { enum: MATERIAL_MEDIA_TYPES } },
+  },
+  parentMaterialId: {
+    check: isNonEmptyString,
+    describe: "segment: the parent media material id",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  startSec: {
+    check: isNonNegativeNumber,
+    describe: "segment: non-negative start seconds",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  endSec: {
+    check: isPositiveNumber,
+    describe: "segment: positive end seconds (0 <= startSec < endSec within the parent duration)",
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  url: {
+    check: isNonEmptyString,
+    describe: "link: an http(s) URL",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  description: {
+    check: (v) => typeof v === "string" && v.length <= MAX_MATERIAL_TEXT_LENGTH,
+    describe: "link: a note about the URL's content",
+    emits: { kind: "leaf", schema: { type: "string", maxLength: MAX_MATERIAL_TEXT_LENGTH } },
+  },
+  skillName: {
+    check: isNonEmptyString,
+    describe: "method: an optional skill/tool identifier",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1, maxLength: 200 } },
+  },
+  prompt: {
+    check: (v) => typeof v === "string" && v.length <= MAX_MATERIAL_TEXT_LENGTH,
+    describe: "method: the reusable prompt (non-empty)",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1, maxLength: MAX_MATERIAL_TEXT_LENGTH } },
+  },
+  steps: {
+    check: materialStepsField,
+    describe: `method: an array of at most ${MAX_MATERIAL_METHOD_STEPS} step descriptions`,
+    emits: {
+      kind: "array",
+      maxItems: MAX_MATERIAL_METHOD_STEPS,
+      items: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+    },
+  },
+  inputs: {
+    check: materialStepsField,
+    describe: `method: an array of at most ${MAX_MATERIAL_METHOD_STEPS} input requirement descriptions`,
+    emits: {
+      kind: "array",
+      maxItems: MAX_MATERIAL_METHOD_STEPS,
+      items: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+    },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty retry key; retries replay the committed result instead of duplicating",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const MATERIAL_BATCH_UPDATE_ITEM_SCHEMA: ObjectSchema = {
+  id: {
+    check: isNonEmptyString,
+    describe: "a non-empty material id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  title: {
+    check: isNonEmptyString,
+    describe: "a non-empty title",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1, maxLength: 300 } },
+  },
+  aiSummary: {
+    check: (v) => typeof v === "string" && v.length <= MAX_MATERIAL_TEXT_LENGTH,
+    describe: `an agent-written summary of at most ${MAX_MATERIAL_TEXT_LENGTH} characters`,
+    emits: { kind: "leaf", schema: { type: "string", maxLength: MAX_MATERIAL_TEXT_LENGTH } },
+  },
+  tags: {
+    check: materialTagsField,
+    describe: `an array of at most ${MAX_MATERIAL_TAGS} non-empty tag strings (replaces existing tags)`,
+    emits: {
+      kind: "array",
+      maxItems: MAX_MATERIAL_TAGS,
+      items: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+    },
+  },
+  organizeStatus: {
+    check: (v) => v === "inbox" || v === "organized",
+    describe: '"inbox" | "organized"',
+    emits: { kind: "leaf", schema: { enum: ["inbox", "organized"] } },
+  },
+  description: {
+    check: (v) => typeof v === "string" && v.length <= MAX_MATERIAL_TEXT_LENGTH,
+    describe: "link materials only: a note about the URL's content",
+    emits: { kind: "leaf", schema: { type: "string", maxLength: MAX_MATERIAL_TEXT_LENGTH } },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "optional CAS guard: the material record's revision observed by the caller",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+};
+
+export const MATERIAL_UPDATE_SCHEMA: ObjectSchema = {
+  ...MATERIAL_BATCH_UPDATE_ITEM_SCHEMA,
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty retry key",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const MATERIAL_BATCH_UPDATE_SCHEMA: ObjectSchema = {
+  updates: {
+    check: (value) =>
+      Array.isArray(value) &&
+      value.length > 0 &&
+      value.length <= MATERIAL_LIBRARY_LIMITS.maxBatchItems &&
+      value.every((item) => {
+        if (!isPlainObject(item)) return false;
+        for (const [key, rule] of Object.entries(MATERIAL_BATCH_UPDATE_ITEM_SCHEMA)) {
+          if (rule.required && !(key in item)) return false;
+          if (key in item && !rule.check((item as Record<string, unknown>)[key])) return false;
+        }
+        return true;
+      }),
+    describe: `a non-empty array of at most ${MATERIAL_LIBRARY_LIMITS.maxBatchItems} per-material updates`,
+    required: true,
+    emits: {
+      kind: "array",
+      minItems: 1,
+      maxItems: MATERIAL_LIBRARY_LIMITS.maxBatchItems,
+      items: { kind: "object", schema: MATERIAL_BATCH_UPDATE_ITEM_SCHEMA },
+    },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty retry key; retries replay the committed result instead of re-applying",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const MATERIAL_REMOVE_SCHEMA: ObjectSchema = {
+  id: {
+    check: isNonEmptyString,
+    describe: "a non-empty material id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  force: {
+    check: (v) => typeof v === "boolean",
+    describe: "required to remove a material that still has project references (project copies are unaffected)",
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty retry key",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const MATERIAL_ATTACH_SCHEMA: ObjectSchema = {
+  materialId: {
+    check: isNonEmptyString,
+    describe: "a non-empty material id (media or segment)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  startSec: {
+    check: isNonNegativeNumber,
+    describe: "media materials only: optional range start seconds",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  endSec: {
+    check: isPositiveNumber,
+    describe: "media materials only: optional range end seconds (segments always use their stored range)",
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  addClip: {
+    check: (v) => typeof v === "boolean",
+    describe: "add a timeline clip (default: true for segments/ranges, false for whole-media imports)",
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "PROJECT revision CAS; an omitted value is guarded with the current revision",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty retry key; retries replay instead of double-importing",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const MATERIAL_UNDO_SCHEMA: ObjectSchema = {
+  entryId: {
+    check: isNonEmptyString,
+    describe: "a journal entry id; default: the latest undoable library change",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty retry key; strongly recommended — a retried undo without one would undo the NEXT entry",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* The verb declaration map (single source, Decision 4)                */
 /* ------------------------------------------------------------------ */
 
 /** Verb param declaration order mirrors FACADE_VERBS (Appendix B.1). */
@@ -956,4 +1283,12 @@ export const VERB_PARAM_SCHEMAS: {
   "job.status": JOB_PARAMS_SCHEMA,
   "job.cancel": JOB_PARAMS_SCHEMA,
   "verify.artifact": VERIFY_ARTIFACT_SCHEMA,
+  "material.list": MATERIAL_LIST_SCHEMA,
+  "material.get": MATERIAL_GET_SCHEMA,
+  "material.create": MATERIAL_CREATE_SCHEMA,
+  "material.update": MATERIAL_UPDATE_SCHEMA,
+  "material.batch_update": MATERIAL_BATCH_UPDATE_SCHEMA,
+  "material.remove": MATERIAL_REMOVE_SCHEMA,
+  "material.attach": MATERIAL_ATTACH_SCHEMA,
+  "material.undo": MATERIAL_UNDO_SCHEMA,
 };

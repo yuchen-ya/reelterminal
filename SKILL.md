@@ -86,7 +86,9 @@ This connector exposes the same open GUI project through the following tools:
 `editor_get_context` · `editor_control` · `edit_validate` · `edit_apply` ·
 `history_get` · `history_control` · `preview_render_frame` ·
 `visual_inspect` ·
-`export_start` · `job_status` · `job_cancel` · `verify_artifact`.
+`export_start` · `job_status` · `job_cancel` · `verify_artifact` ·
+`material_list` · `material_get` · `material_create` · `material_update` ·
+`material_batch_update` · `material_remove` · `material_attach` · `material_undo`.
 
 The facade verbs are dot-named (`session.describe`, `editor.control`); on the
 MCP wire each dot becomes an underscore (`session.describe` →
@@ -371,6 +373,14 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `job_status` | Poll to terminal |
 | `job_cancel` | Cooperative; idempotent on terminal jobs |
 | `verify_artifact` | ffprobe/pixel checks as data; `path` inside `artifactRoot` or the reported `deliveredTo` verbatim; container duration may exceed the video stream by up to ~0.1 s from AAC packaging (expected — see facade README) |
+| `material_list` | Search/paginate the user-level material library (live only): media, segments, links, reusable skill+prompt methods — user state, independent of the open project |
+| `material_get` | Full detail of one material: separate user notes and AI summary, provenance, project usages |
+| `material_create` | Save a new material: media (path inside `mediaRoots`, original referenced not copied), segment (time range of an existing media material), http(s) link, or skill+prompt method; saving never installs/execute anything |
+| `material_update` | Update title / AI summary / tags / organize status (user notes are not agent-writable); optional per-record `expectedRevision` CAS |
+| `material_batch_update` | All-or-nothing batch of updates — one undoable library journal entry; per-item conflicts reject the whole batch |
+| `material_remove` | Remove from the library (original files are never deleted); referenced materials require `force`; cascades a media material's segments |
+| `material_attach` | Reference a material into the CURRENT project via the canonical import path; segments/ranges add a timeline clip with those in/out points; fresh `idempotencyKey` + project `expectedRevision` |
+| `material_undo` | Undo one library journal entry (default: latest — e.g. one agent batch organize); pass `idempotencyKey`; independent of project history |
 
 Every result is one JSON envelope: `{ok:true, value}` or
 `{ok:false, error:{code, message, details}}` with `isError:true` — match on

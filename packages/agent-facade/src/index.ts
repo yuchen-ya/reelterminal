@@ -125,6 +125,30 @@ export interface AgentFacade extends BundledToolBindings {
   readonly "verify.artifact": (
     params: VerifyArtifactParams,
   ) => Promise<FacadeResult<VerifyArtifactResult>>;
+  readonly "material.list": (
+    params?: import("./types").MaterialListParams,
+  ) => Promise<FacadeResult<import("@openreel/core").MaterialListResult>>;
+  readonly "material.get": (
+    params: import("./types").MaterialGetParams,
+  ) => Promise<FacadeResult<import("./types").MaterialGetResult>>;
+  readonly "material.create": (
+    params: import("./types").MaterialCreateParams,
+  ) => Promise<FacadeResult<import("./types").MaterialCreateResult>>;
+  readonly "material.update": (
+    params: import("./types").MaterialUpdateParams,
+  ) => Promise<FacadeResult<import("./types").MaterialUpdateResult>>;
+  readonly "material.batch_update": (
+    params: import("./types").MaterialBatchUpdateParams,
+  ) => Promise<FacadeResult<import("./types").MaterialBatchUpdateResult>>;
+  readonly "material.remove": (
+    params: import("./types").MaterialRemoveParams,
+  ) => Promise<FacadeResult<import("./types").MaterialRemoveResult>>;
+  readonly "material.attach": (
+    params: import("./types").MaterialAttachParams,
+  ) => Promise<FacadeResult<import("./types").MaterialAttachResult>>;
+  readonly "material.undo": (
+    params?: import("./types").MaterialUndoParams,
+  ) => Promise<FacadeResult<import("./types").MaterialUndoResult>>;
 }
 
 /**
@@ -159,6 +183,14 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "job.status": (params) => session.jobStatus(params),
     "job.cancel": (params) => session.jobCancel(params),
     "verify.artifact": (params) => session.verifyArtifact(params),
+    "material.list": (params) => session.materialList(params),
+    "material.get": (params) => session.materialGet(params),
+    "material.create": (params) => session.materialCreate(params),
+    "material.update": (params) => session.materialUpdate(params),
+    "material.batch_update": (params) => session.materialBatchUpdate(params),
+    "material.remove": (params) => session.materialRemove(params),
+    "material.attach": (params) => session.materialAttach(params),
+    "material.undo": (params) => session.materialUndo(params),
   };
 }
 
