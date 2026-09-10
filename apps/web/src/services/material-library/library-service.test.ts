@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type {
   MaterialJournalEntry,
   MaterialRecord,
+  MediaItem,
+  Project,
 } from "@openreel/core";
 import { MaterialLibraryService } from "./library-service";
 import type { MaterialStorage, MaterialStorageCommit } from "./storage";
@@ -69,6 +71,78 @@ describe("MaterialLibraryService", () => {
     );
     if (!result.ok) throw new Error(result.message);
     return result.value.material;
+  }
+
+  function projectSnapshot(
+    mediaItems: readonly MediaItem[],
+    referencedMediaIds: readonly string[],
+  ): Pick<Project, "id" | "name" | "mediaLibrary" | "timeline"> {
+    return {
+      id: "project-version-test",
+      name: "Version test",
+      mediaLibrary: { items: [...mediaItems] },
+      timeline: {
+        duration: 10,
+        tracks: [
+          {
+            id: "track-1",
+            name: "Video 1",
+            type: "video",
+            clips: referencedMediaIds.map((mediaId, index) => ({
+              id: `clip-${index}`,
+              mediaId,
+              trackId: "track-1",
+              startTime: index,
+              duration: 1,
+              inPoint: 0,
+              outPoint: 1,
+              transform: {
+                position: { x: 0, y: 0 },
+                scale: { x: 1, y: 1 },
+                rotation: 0,
+                opacity: 1,
+              },
+              effects: [],
+              keyframes: [],
+              enabled: true,
+              volume: 1,
+            })),
+            muted: false,
+            locked: false,
+            visible: true,
+            volume: 1,
+          },
+        ],
+      },
+    } as unknown as Pick<Project, "id" | "name" | "mediaLibrary" | "timeline">;
+  }
+
+  function projectMedia(
+    id: string,
+    path: string,
+    extra: Partial<MediaItem> = {},
+  ): MediaItem {
+    return {
+      id,
+      name: path.split("/").pop() ?? path,
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      originalUrl: path,
+      metadata: {
+        duration: 10,
+        width: 320,
+        height: 180,
+        frameRate: 30,
+        codec: "h264",
+        sampleRate: 0,
+        channels: 0,
+        fileSize: 10,
+      },
+      thumbnailUrl: null,
+      waveformData: null,
+      ...extra,
+    };
   }
 
   it("creates records, journals them, and persists in one transaction", async () => {
@@ -293,6 +367,7 @@ describe("MaterialLibraryService", () => {
       mediaIdInProject: "m9",
       attachedAt: NOW,
       attachedBy: "agent",
+      status: "current",
     });
     const undo = await service.undo(undefined, "user");
     expect(undo.ok).toBe(true);
@@ -333,6 +408,7 @@ describe("MaterialLibraryService", () => {
       mediaIdInProject: "m1",
       attachedAt: NOW,
       attachedBy: "user",
+      status: "current",
     });
 
     const blocked = await service.remove(media.id, {}, "user");
@@ -388,23 +464,175 @@ describe("MaterialLibraryService", () => {
       mediaIdInProject: "m1",
       attachedAt: NOW,
       attachedBy: "user",
+      status: "current",
     });
     await service.recordUsage(media.id, {
       projectId: "p1",
       mediaIdInProject: "m1",
       attachedAt: NOW,
       attachedBy: "agent",
+      status: "current",
     });
     await service.recordUsage(media.id, {
       projectId: "p2",
       mediaIdInProject: "m2",
       attachedAt: NOW,
       attachedBy: "user",
+      status: "current",
     });
     const after = await service.get(media.id);
     if (!after.ok) throw new Error(after.message);
     expect(after.value.usages).toHaveLength(2);
     expect(after.value.usages[0].attachedBy).toBe("agent");
+  });
+
+  it("reconciles project replacements into current and historical usages", async () => {
+    const oldMaterial = await seedMedia();
+    const nextCreated = await service.create(
+      {
+        kind: "media",
+        title: "Trip footage v2",
+        mediaType: "video",
+        fileRef: {
+          type: "path",
+          path: "/Volumes/media/trip-v2.mp4",
+          fileName: "trip-v2.mp4",
+        },
+        metadata: { durationSec: 60 },
+        nowIso: NOW,
+      },
+      "user",
+    );
+    if (!nextCreated.ok) throw new Error(nextCreated.message);
+    const nextMaterial = nextCreated.value.material;
+    await service.recordUsage(oldMaterial.id, {
+      projectId: "project-version-test",
+      projectName: "Version test",
+      mediaIdInProject: "project-media-v1",
+      attachedAt: NOW,
+      attachedBy: "agent",
+      status: "current",
+    });
+
+    const oldProjectMedia = projectMedia(
+      "project-media-v1",
+      "/Volumes/media/trip.mp4",
+      {
+        materialSource: {
+          materialId: oldMaterial.id,
+          materialRevision: oldMaterial.revision,
+          attachedAt: NOW,
+        },
+      },
+    );
+    const nextProjectMedia = projectMedia(
+      "project-media-v2",
+      "/Volumes/media/trip-v2.mp4",
+      {
+        versionSource: {
+          supersedesMediaIdInProject: oldProjectMedia.id,
+          supersedesMaterialId: oldMaterial.id,
+          replacedAt: NOW,
+        },
+      },
+    );
+    const reconciled = await service.reconcileProjectUsages(
+      projectSnapshot([oldProjectMedia, nextProjectMedia], [nextProjectMedia.id]),
+    );
+    expect(reconciled.ok).toBe(true);
+
+    const oldAfter = await service.get(oldMaterial.id);
+    const nextAfter = await service.get(nextMaterial.id);
+    if (!oldAfter.ok || !nextAfter.ok) throw new Error("reconcile lookup failed");
+    expect(oldAfter.value.usages[0]).toMatchObject({
+      status: "historical",
+      historicalReason: "replaced",
+      replacedByMediaIdInProject: nextProjectMedia.id,
+      replacedByMaterialId: nextMaterial.id,
+    });
+    expect(nextAfter.value.usages[0]).toMatchObject({
+      status: "current",
+      mediaIdInProject: nextProjectMedia.id,
+      replacesMediaIdInProject: oldProjectMedia.id,
+      replacesMaterialId: oldMaterial.id,
+    });
+
+    // Undo removes the successor and restores the old project reference. A
+    // fresh reconciliation repairs both library records without deleting the
+    // version history.
+    const afterUndo = await service.reconcileProjectUsages(
+      projectSnapshot([oldProjectMedia], [oldProjectMedia.id]),
+    );
+    expect(afterUndo.ok).toBe(true);
+    const oldRestored = await service.get(oldMaterial.id);
+    const nextHistorical = await service.get(nextMaterial.id);
+    if (!oldRestored.ok || !nextHistorical.ok) throw new Error("undo lookup failed");
+    expect(oldRestored.value.usages[0].status).toBe("current");
+    expect(oldRestored.value.usages[0].historicalReason).toBeUndefined();
+    expect(nextHistorical.value.usages[0]).toMatchObject({
+      status: "historical",
+      historicalReason: "removed",
+    });
+  });
+
+  it("keeps an old material usage current when a clip-scoped replace leaves references", async () => {
+    const oldMaterial = await seedMedia();
+    await service.recordUsage(oldMaterial.id, {
+      projectId: "project-version-test",
+      mediaIdInProject: "project-media-v1",
+      attachedAt: NOW,
+      attachedBy: "agent",
+      status: "current",
+    });
+    const oldProjectMedia = projectMedia(
+      "project-media-v1",
+      "/Volumes/media/trip.mp4",
+      {
+        materialSource: {
+          materialId: oldMaterial.id,
+          materialRevision: oldMaterial.revision,
+          attachedAt: NOW,
+        },
+      },
+    );
+    const nextProjectMedia = projectMedia(
+      "project-media-v2",
+      "/Volumes/media/untracked-v2.mp4",
+      {
+        versionSource: {
+          supersedesMediaIdInProject: oldProjectMedia.id,
+          supersedesMaterialId: oldMaterial.id,
+          replacedAt: NOW,
+        },
+      },
+    );
+    await service.reconcileProjectUsages(
+      projectSnapshot(
+        [oldProjectMedia, nextProjectMedia],
+        [oldProjectMedia.id, nextProjectMedia.id],
+      ),
+    );
+    const oldAfter = await service.get(oldMaterial.id);
+    if (!oldAfter.ok) throw new Error(oldAfter.message);
+    expect(oldAfter.value.usages[0].status).toBe("current");
+  });
+
+  it("does not treat a historical usage as a live removal blocker", async () => {
+    const media = await seedMedia();
+    await service.recordUsage(media.id, {
+      projectId: "project-version-test",
+      mediaIdInProject: "removed-media",
+      attachedAt: NOW,
+      attachedBy: "agent",
+      status: "current",
+    });
+    await service.reconcileProjectUsages(projectSnapshot([], []));
+    const historical = await service.get(media.id);
+    if (!historical.ok) throw new Error(historical.message);
+    expect(historical.value.usages[0].status).toBe("historical");
+
+    const removed = await service.remove(media.id, {}, "user");
+    expect(removed.ok).toBe(true);
   });
 
   it("lists with search, filters, and pagination without touching blobs", async () => {

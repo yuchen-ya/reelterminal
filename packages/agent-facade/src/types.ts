@@ -62,6 +62,8 @@ export const FACADE_VERBS = [
   "project.changes",
   "media.import",
   "media.analyze_start",
+  "analysis.list",
+  "analysis.get",
   "timeline.get",
   "timeline.query",
   "editor.get_context",
@@ -71,6 +73,7 @@ export const FACADE_VERBS = [
   "history.get",
   "history.control",
   "preview.render_frame",
+  "preview.render_comparison",
   "visual.inspect",
   "export.start",
   "job.status",
@@ -147,6 +150,8 @@ export const READ_ONLY_VERBS = [
   "project.get_state",
   "project.changes",
   "media.analyze_start",
+  "analysis.list",
+  "analysis.get",
   "timeline.get",
   "timeline.query",
   "editor.get_context",
@@ -156,6 +161,9 @@ export const READ_ONLY_VERBS = [
   "material.list",
   "material.get",
   "visual.inspect",
+  "preview.render_comparison",
+  "analysis.list",
+  "analysis.get",
   "job.status",
   "verify.artifact",
   ...PLUGIN_TOOLS.filter((tool) => tool.effect === "read").map((tool) => tool.name),
@@ -556,6 +564,12 @@ export interface MediaAnalyzeStartParams {
   readonly endSec?: number;
   readonly mediaId: string;
   readonly analysisTypes: readonly MediaAnalysisType[];
+  /**
+   * Re-check linkage: the id of a previous analysis record. The new run uses
+   * the same configuration discipline and its record links back via
+   * recheckOf, giving before/after evidence in one analysis.list query.
+   */
+  readonly recheckOfRecordId?: string;
   readonly expectedRevision?: number;
   readonly idempotencyKey?: string;
 }
@@ -799,6 +813,58 @@ export interface EditorGetContextResult {
   };
 }
 
+export interface ReferenceSetComparisonOp {
+  readonly op: "reference.setComparison";
+  readonly config: {
+    readonly referenceMediaId: string;
+    readonly refStartSec: number;
+    readonly refEndSec: number;
+    readonly timelineStartSec: number;
+    readonly rate: 1;
+    readonly audioSide: "timeline" | "reference" | "none";
+    readonly layout: "side-by-side" | "overlay";
+    readonly overlayOpacity?: number;
+  };
+}
+
+export interface ReferenceClearComparisonOp {
+  readonly op: "reference.clearComparison";
+}
+
+/**
+ * Replace the SOURCE of timeline references with a new production version:
+ * the new file imports as its own media item (the old file is never
+ * overwritten or removed), clips are repointed with their edits preserved,
+ * and timing is clamped to the new source's duration — the timeline never
+ * extends. One edit.apply batch = one atomic undo unit.
+ */
+export interface MediaReplaceOp {
+  readonly op: "media.replace";
+  /** Media item whose source the references switch away from. */
+  readonly mediaId: string;
+  /** Absolute path of the new version, inside a configured media root. */
+  readonly filePath: string;
+  /** "project" repoints every clip referencing mediaId; "clip" only clipId. */
+  readonly scope: "project" | "clip";
+  /** Required when scope is "clip". */
+  readonly clipId?: string;
+  /** Internal: probed media item injected by the session's async pre-pass. */
+  readonly probedMediaItem?: unknown;
+}
+
+/**
+ * Relink a missing/moved source FILE for one media item — same content, new
+ * location. Deliberately NOT a version replacement (use media.replace).
+ */
+export interface MediaRelinkOp {
+  readonly op: "media.relink";
+  readonly mediaId: string;
+  /** Absolute path of the same content's new location, inside a media root. */
+  readonly filePath: string;
+  /** Internal: file facts injected by the session's async pre-pass. */
+  readonly probedFileFacts?: { name: string; size: number; lastModified: number };
+}
+
 /* ------------------------------------------------------------------ */
 /* edit.apply — closed op set (Slice 1 + widened op vocabulary)        */
 /* ------------------------------------------------------------------ */
@@ -831,6 +897,10 @@ export const EDIT_OP_TYPES = [
   "subtitle.importSrt",
   "clip.setColorGrade",
   "clip.setKeyframes",
+  "reference.setComparison",
+  "reference.clearComparison",
+  "media.replace",
+  "media.relink",
 ] as const;
 
 export type EditOpType = (typeof EDIT_OP_TYPES)[number];
@@ -850,6 +920,13 @@ export interface TrackAddOp {
   readonly trackType: TrackType;
   /** Optional deterministic id; a fresh one is minted when omitted. */
   readonly trackId?: string;
+  /**
+   * Zero-based insertion index in project.timeline.tracks — the z-order
+   * (later tracks composite ON TOP of earlier ones). Omitted appends on top.
+   * Needed to layer a foreground track above background tracks that cut
+   * underneath it (cross-shot continuity).
+   */
+  readonly position?: number;
 }
 
 /** Rename or change canonical track state through the same actions as the GUI. */
@@ -1171,7 +1248,11 @@ export type EditOp =
   | MarkerRemoveOp
   | SubtitleImportSrtOp
   | ClipSetColorGradeOp
-  | ClipSetKeyframesOp;
+  | ClipSetKeyframesOp
+  | ReferenceSetComparisonOp
+  | ReferenceClearComparisonOp
+  | MediaReplaceOp
+  | MediaRelinkOp;
 
 export interface EditApplyParams {
   readonly ops: readonly EditOp[];
@@ -1396,6 +1477,17 @@ export interface ExportStartSettings {
 export interface ExportStartParams {
   readonly settings?: ExportStartSettings;
   /**
+   * Reference-comparison export (P1): produce a left(reference)/right(timeline)
+   * or overlay comparison MP4 for an EXPLICIT timeline range, from the shared
+   * project referenceComparison config. The timeline is rendered exactly
+   * once by the canonical export pipeline; one ffmpeg pass composes and
+   * re-tags. Audio comes from exactly one side (config.audioSide).
+   */
+  readonly comparison?: {
+    readonly startSec: number;
+    readonly endSec: number;
+  };
+  /**
    * Optional deliverable copy target: an absolute .mp4 path inside
    * `<deliveryRoot>/jobs/<slug>/output/` (docs/AGENT-WORKSPACE.md). The
    * artifact is still produced and verified inside artifactRoot first; the
@@ -1406,6 +1498,54 @@ export interface ExportStartParams {
   readonly destinationPath?: string;
   readonly expectedRevision?: number;
   readonly idempotencyKey?: string;
+}
+
+export interface AnalysisListParams {
+  readonly mediaId?: string;
+  readonly limit?: number;
+}
+
+export interface AnalysisGetParams {
+  readonly recordId: string;
+}
+
+export type AnalysisListResult = readonly {
+  readonly id: string;
+  readonly finishedAt: string;
+  readonly subject: { readonly mediaId: string; readonly name: string };
+  readonly analysisTypes: readonly string[];
+  readonly stale: { readonly kind: string };
+  readonly recheckOf: string | null;
+}[];
+
+export interface PreviewRenderComparisonParams {
+  /** Timeline time to compare at. */
+  readonly timeSec: number;
+  /** Even raster; defaults to the project settings. */
+  readonly width?: number;
+  readonly height?: number;
+  /** Render-time layout override (defaults to the canonical config layout). */
+  readonly layout?: "side-by-side" | "overlay";
+  readonly maxFrameBytes?: number;
+  readonly expectedRevision?: number;
+  readonly idempotencyKey?: string;
+}
+
+export interface PreviewRenderComparisonResult {
+  readonly revision: number;
+  readonly sourceRevision: number;
+  readonly timeSec: number;
+  /** Reference time the timeline time mapped to. */
+  readonly referenceSec: number;
+  /** Clamp disclosure when the mapping fell outside the reference range. */
+  readonly clamped: "none" | "before" | "after";
+  readonly layout: "side-by-side" | "overlay";
+  readonly width: number;
+  readonly height: number;
+  readonly frameBudgetBytes: number;
+  readonly artifact: ArtifactRef;
+  readonly limitations: readonly string[];
+  readonly replayed: boolean;
 }
 
 export interface ExportStartResult {
@@ -1501,6 +1641,16 @@ export interface VerifyArtifactParams {
     readonly maxMeanAbsDiff?: number;
     readonly minMeanAbsDiff?: number;
     readonly minChangedPixelsRatio?: number;
+    /**
+     * Explicit YUV→RGB decode matrix for BOTH sides, so a similarity verdict
+     * is never computed across a guessed matrix (docs/COLOR.md). Tagged files
+     * decode correctly without this; untagged or externally-precomposed
+     * mixed sources should pin it.
+     */
+    readonly colorMatrix?: "bt601" | "bt709";
+    /** Per-side overrides for mixed-matrix comparisons (win over colorMatrix). */
+    readonly targetColorMatrix?: "bt601" | "bt709";
+    readonly referenceColorMatrix?: "bt601" | "bt709";
   };
 }
 

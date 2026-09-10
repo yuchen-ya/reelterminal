@@ -60,6 +60,10 @@ import {
   TRANSITION_UPDATE_SCHEMA,
   SUBTITLE_IMPORT_SRT_SCHEMA,
   CLIP_SET_COLOR_GRADE_SCHEMA,
+  REFERENCE_SET_COMPARISON_SCHEMA,
+  REFERENCE_CLEAR_COMPARISON_SCHEMA,
+  MEDIA_REPLACE_SCHEMA,
+  MEDIA_RELINK_SCHEMA,
   CLIP_SET_KEYFRAMES_SCHEMA,
 } from "./ops";
 import {
@@ -263,6 +267,11 @@ export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
       maxItems: MEDIA_ANALYSIS_TYPES.length,
       items: { kind: "leaf", schema: { enum: MEDIA_ANALYSIS_TYPES } },
     },
+  },
+  recheckOfRecordId: {
+    check: isNonEmptyString,
+    describe: "optional id of a previous analysis record this run re-checks (links via recheckOf)",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
   },
   expectedRevision: {
     check: isNonNegativeInteger,
@@ -522,6 +531,10 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "subtitle.importSrt": SUBTITLE_IMPORT_SRT_SCHEMA,
   "clip.setColorGrade": CLIP_SET_COLOR_GRADE_SCHEMA,
   "clip.setKeyframes": CLIP_SET_KEYFRAMES_SCHEMA,
+  "reference.setComparison": REFERENCE_SET_COMPARISON_SCHEMA,
+  "reference.clearComparison": REFERENCE_CLEAR_COMPARISON_SCHEMA,
+  "media.replace": MEDIA_REPLACE_SCHEMA,
+  "media.relink": MEDIA_RELINK_SCHEMA,
 };
 
 /**
@@ -729,6 +742,82 @@ export const VISUAL_INSPECT_SCHEMA: ObjectSchema = {
   },
 };
 
+export const ANALYSIS_LIST_SCHEMA: ObjectSchema = {
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "only records whose subject is this media id",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  limit: {
+    check: isPositiveInteger,
+    describe: "an integer ≥1 bounding the listing (newest first)",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } },
+  },
+};
+
+export const ANALYSIS_GET_SCHEMA: ObjectSchema = {
+  recordId: {
+    check: isNonEmptyString,
+    describe: 'an analysis record id ("analysis-<uuid>") from analysis.list',
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const PREVIEW_RENDER_COMPARISON_SCHEMA: ObjectSchema = {
+  timeSec: {
+    check: isNonNegativeNumber,
+    describe: "timeline time (seconds) to compare at",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  width: {
+    check: isEvenDimension,
+    describe: "an even raster width; defaults to the project width",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 2 } },
+  },
+  height: {
+    check: isEvenDimension,
+    describe: "an even raster height; defaults to the project height",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 2 } },
+  },
+  layout: {
+    check: oneOf(["side-by-side", "overlay"]),
+    describe: "render-time layout override; defaults to the shared config's layout",
+    emits: { kind: "leaf", schema: { enum: ["side-by-side", "overlay"] } },
+  },
+  maxFrameBytes: {
+    check: isFrameBudget,
+    describe: "an integer in [32768, 8388608] — per-frame byte budget (default 1572864)",
+    emits: FRAME_BUDGET_EMITS,
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative integer",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const EXPORT_COMPARISON_SCHEMA: ObjectSchema = {
+  startSec: {
+    check: isNonNegativeNumber,
+    describe: "comparison range start (timeline seconds)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  endSec: {
+    check: isNonNegativeNumber,
+    describe: "comparison range end (timeline seconds); must exceed startSec",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+};
+
 export const EXPORT_SETTINGS_SCHEMA: ObjectSchema = {
   format: {
     check: oneOf(["mp4"]),
@@ -767,6 +856,11 @@ export const EXPORT_START_SCHEMA: ObjectSchema = {
     check: isPlainObject,
     describe: "an object",
     emits: { kind: "object", schema: EXPORT_SETTINGS_SCHEMA },
+  },
+  comparison: {
+    check: isPlainObject,
+    describe: "reference-comparison export for an explicit timeline range (requires the shared referenceComparison config)",
+    emits: { kind: "object", schema: EXPORT_COMPARISON_SCHEMA },
   },
   destinationPath: {
     check: isNonEmptyString,
@@ -908,6 +1002,21 @@ export const VERIFY_COMPARE_SCHEMA: ObjectSchema = {
     check: isUnitInterval,
     describe: "a number in [0, 1]",
     emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  colorMatrix: {
+    check: oneOf(["bt601", "bt709"]),
+    describe: '"bt601" or "bt709" — explicit YUV→RGB matrix applied to BOTH sides of the comparison (docs/COLOR.md)',
+    emits: { kind: "leaf", schema: { enum: ["bt601", "bt709"] } },
+  },
+  targetColorMatrix: {
+    check: oneOf(["bt601", "bt709"]),
+    describe: '"bt601" or "bt709" — per-side override for the artifact under verification (use for mixed-matrix comparisons; overrides colorMatrix)',
+    emits: { kind: "leaf", schema: { enum: ["bt601", "bt709"] } },
+  },
+  referenceColorMatrix: {
+    check: oneOf(["bt601", "bt709"]),
+    describe: '"bt601" or "bt709" — per-side override for the reference (use for mixed-matrix comparisons; overrides colorMatrix)',
+    emits: { kind: "leaf", schema: { enum: ["bt601", "bt709"] } },
   },
 };
 
@@ -1278,6 +1387,9 @@ export const VERB_PARAM_SCHEMAS: {
   "history.control": HISTORY_CONTROL_SCHEMA,
   "preview.render_frame": PREVIEW_RENDER_FRAME_SCHEMA,
   "visual.inspect": VISUAL_INSPECT_SCHEMA,
+  "preview.render_comparison": PREVIEW_RENDER_COMPARISON_SCHEMA,
+  "analysis.list": ANALYSIS_LIST_SCHEMA,
+  "analysis.get": ANALYSIS_GET_SCHEMA,
   ...Object.fromEntries(PLUGIN_TOOLS.map((tool) => [tool.name, tool.input])),
   "export.start": EXPORT_START_SCHEMA,
   "job.status": JOB_PARAMS_SCHEMA,

@@ -1,5 +1,6 @@
 import { videoReviewPreflight } from "./video-review";
 import { audioAnalysisPreflight, AUDIO_LIMITS } from "./audio-analysis";
+import { COLOR_POLICY as COLOR_POLICY_DISCLOSURE } from "./color-policy";
 import { PLUGIN_TOOLS } from "./plugins";
 /**
  * Live capability reporting (fixes RUNNER-06 "capability lies by omission" —
@@ -349,7 +350,8 @@ export async function buildCapabilities(
                 available: true,
                 details: {
                   provider: "built-in-mediabunny-stat",
-                  fields: ["containerMetadata", "duration", "geometry", "codec", "fileSize", "sourceFingerprint"],
+                  fields: ["containerMetadata", "duration", "geometry", "codec", "fileSize", "sourceFingerprint", "color"],
+                  color: COLOR_POLICY_DISCLOSURE,
                 },
               }
             : {

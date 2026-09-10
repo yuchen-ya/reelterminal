@@ -14,6 +14,7 @@ import type {
 } from "../motion/types";
 import type { MotionShaderDef } from "../motion/shaders/types";
 import type { CreationProjectState } from "../creation";
+import type { ReferenceComparisonConfig } from "./reference-comparison";
 
 export interface ProjectSettings {
   readonly width: number;
@@ -45,6 +46,11 @@ export interface Project {
   readonly motionInstances?: MotionCompositionInstance[];
   readonly generatedShaders?: readonly MotionShaderDef[];
   readonly creation?: CreationProjectState;
+  /**
+   * Reference comparison (P1): the single shared sync-compare configuration
+   * used by the GUI panel AND the Agent verbs. Absent = no comparison set.
+   */
+  readonly referenceComparison?: ReferenceComparisonConfig;
 }
 
 export interface MediaLibrary {
@@ -97,6 +103,32 @@ export interface MediaItem {
   readonly originalUrl?: string;
   /** File hint stored in JSON for cross-session/cross-machine asset matching */
   readonly sourceFile?: { name: string; size: number; lastModified: number; folder?: string };
+  /**
+   * Stable provenance for media imported from the user-level material
+   * library.  It is project metadata only and never grants ownership of, or
+   * permission to delete, the library record or its source file.
+   */
+  readonly materialSource?: {
+    /** The library entry the user/Agent attached (a media or segment). */
+    readonly materialId: string;
+    /** Underlying media entry when `materialId` names a segment. */
+    readonly sourceMediaMaterialId?: string;
+    /** Library record revision observed at attach time. */
+    readonly materialRevision: number;
+    readonly attachedAt: string;
+    readonly attachedBy?: "user" | "agent";
+  };
+  /**
+   * Immutable project-local version lineage. Present on a media.replace
+   * result even when the replacement file is not itself saved in the user
+   * material library.
+   */
+  readonly versionSource?: {
+    readonly supersedesMediaIdInProject: string;
+    readonly supersedesMaterialId?: string;
+    readonly replacedAt: string;
+    readonly replacedBy?: "user" | "agent";
+  };
 }
 
 /** Thumbnail for filmstrip display in timeline */

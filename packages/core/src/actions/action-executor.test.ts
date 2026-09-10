@@ -121,6 +121,45 @@ describe("ActionExecutor media/import undo", () => {
 });
 
 describe("ActionExecutor synchronous draft execution", () => {
+  it("pins a generated clip id so undo and redo restore the same identity", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+    project.timeline.tracks.push({
+      id: "t1",
+      type: "video",
+      name: "V1",
+      clips: [],
+      transitions: [],
+      locked: false,
+      hidden: false,
+      muted: false,
+      solo: false,
+    });
+    project.mediaLibrary.items.push({
+      id: "m1",
+      name: "clip.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      metadata: { duration: 10 },
+      thumbnailUrl: null,
+      waveformData: null,
+    } as Project["mediaLibrary"]["items"][number]);
+    const action = {
+      id: "stable-clip-add",
+      type: "clip/add",
+      timestamp: Date.now(),
+      params: { trackId: "t1", mediaId: "m1", startTime: 0, duration: 2 },
+    };
+    expect(executor.executeSync(action, project).success).toBe(true);
+    const initialId = project.timeline.tracks[0]!.clips[0]!.id;
+    expect(action.params).toMatchObject({ clipId: initialId });
+    expect((await executor.undo(project)).success).toBe(true);
+    expect(project.timeline.tracks[0]!.clips).toHaveLength(0);
+    expect((await executor.redo(project)).success).toBe(true);
+    expect(project.timeline.tracks[0]!.clips[0]!.id).toBe(initialId);
+  });
+
   it("derives clip/add timeline duration from an explicit source range", () => {
     const executor = new ActionExecutor();
     const project = makeProject();

@@ -51,6 +51,14 @@ import {
   type DeliveryDestination,
 } from "./delivery";
 import { IdempotencyLedger, stableStringify } from "./idempotency";
+import {
+  assertMediaFingerprintsUnchanged,
+  discardArtifact,
+  fingerprintMediaFiles,
+  inspectionRequestKey,
+  pendingArtifactPath,
+  publishArtifact,
+} from "./inspection-artifacts";
 import { JobRegistry, jobStatusView } from "./jobs";
 import { ProjectChangeJournal } from "./project-changes";
 import { queryTimeline } from "./timeline-query";
@@ -59,6 +67,7 @@ import {
   applyClipIdOverride,
   collectEntityIds,
   diffCreatedIds,
+  enrichMediaFileOps,
   opToCoreActions,
   validateEditOp,
   validateEditBatch,
@@ -69,6 +78,13 @@ import {
   timelineStateView,
 } from "./projection";
 import { createEmptyProject, DEFAULT_PROJECT_SETTINGS } from "./project-factory";
+import type {
+  AnalysisGetParams,
+  AnalysisListParams,
+  AnalysisListResult,
+  PreviewRenderComparisonParams,
+  PreviewRenderComparisonResult,
+} from "./types";
 import type {
   ArtifactVerifier,
   ExportCallbacks,
@@ -83,6 +99,21 @@ import {
   resolveContainedPathDetailed,
 } from "./media/path-roots";
 import { probeLocalMediaFile } from "./media/node-media-adapter";
+import { assessColorSupport, probeColorMetadata } from "./color-policy";
+import {
+  loadAnalysisRecord,
+  listAnalysisRecords,
+  resolveRecheckTarget,
+  saveAnalysisRecord,
+} from "./analysis-records";
+import {
+  composeComparisonVideo,
+  referenceFilePath,
+  renderComparisonStill,
+  requireComparisonConfig,
+  validateComparisonRange,
+  withComparisonReference,
+} from "./reference-comparison";
 import {
   validateObject,
 } from "./validate";
@@ -95,6 +126,9 @@ import {
   JOB_PARAMS_SCHEMA,
   MEDIA_IMPORT_SCHEMA,
   MEDIA_ANALYZE_START_SCHEMA,
+  ANALYSIS_GET_SCHEMA,
+  ANALYSIS_LIST_SCHEMA,
+  PREVIEW_RENDER_COMPARISON_SCHEMA,
   PREVIEW_RENDER_FRAME_SCHEMA,
   VISUAL_INSPECT_RANGE_SCHEMA,
   VISUAL_INSPECT_SCHEMA,
@@ -393,7 +427,15 @@ export class AgentFacadeSession {
         "edit.validate params",
       );
       if (!this.project) return this.noProject();
-      const ops = valid.ops.map((raw, index) => validateEditOp(raw, index));
+      const ops = await enrichMediaFileOps(
+        valid.ops.map((raw, index) => validateEditOp(raw, index)),
+        this.config.mediaRoots ?? [],
+        (absPath: string) => this.probeMediaForEnrichment(absPath),
+        async (absPath: string) => {
+          const fileStat = await stat(absPath);
+          return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
+        },
+      );
       validateEditBatch(ops);
       if (ops.length === 0) {
         throw new FacadeError("INVALID_PARAMS", "edit.validate: ops must contain at least one op");
@@ -1154,6 +1196,7 @@ export class AgentFacadeSession {
       if (this.analysisControllers.size >= 2) throw new FacadeError("UNSUPPORTED", "At most two analysis jobs per session; wait or cancel an existing job.");
       const sourcePath = resolution.path;
       const sourceRevision = this.revision;
+      const projectId = this.project.id;
       const jobId = `job-${crypto.randomUUID()}`;
       const analysisTypes = [...valid.analysisTypes];
       this.jobs.create(jobId, sourceRevision, "analysis");
@@ -1175,7 +1218,9 @@ export class AgentFacadeSession {
         analysisTypes,
         controller,
         { startSec, endSec },
+        projectId,
         valid.reviewQuestion,
+        valid.recheckOfRecordId,
       );
       return ok<MediaAnalyzeStartResult>({
         ...ledgerValue,
@@ -1232,6 +1277,16 @@ export class AgentFacadeSession {
         });
       }
 
+      const enrichedOps = await enrichMediaFileOps(
+        ops,
+        this.config.mediaRoots ?? [],
+        (absPath: string) => this.probeMediaForEnrichment(absPath),
+        async (absPath: string) => {
+          const fileStat = await stat(absPath);
+          return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
+        },
+      );
+
       const outcome = await this.commitMutation<EditApplyPayload>({
         verb: "edit.apply",
         idempotencyKey: valid.idempotencyKey,
@@ -1241,7 +1296,7 @@ export class AgentFacadeSession {
           // undo machinery, and a discarded draft leaves no history behind.
           const executor = new ActionExecutor(new ActionHistory());
           const applied: OpApplied[] = [];
-          for (const [index, op] of ops.entries()) {
+          for (const [index, op] of enrichedOps.entries()) {
             const beforeIds = collectEntityIds(draft);
             const actions = opToCoreActions(op, draft);
             for (const action of actions) {
@@ -1358,42 +1413,67 @@ export class AgentFacadeSession {
       }
 
       const mediaFiles = await this.buildMediaFiles(project, "preview.render_frame");
+      const sourceRevision = this.revision;
+      const mediaFingerprints = await fingerprintMediaFiles(mediaFiles);
+      const requestKey = inspectionRequestKey({
+        projectId: project.id,
+        revision: sourceRevision,
+        selector: { kind: "preview", timeSec },
+        sampleTimesMs: [Math.round(timeSec * 1000)],
+        width,
+        height,
+        maxFrameBytes: MAX_VISUAL_PNG_BYTES,
+        media: mediaFingerprints,
+      });
       const rendersDir = resolvePath(artifactRoot, "renders");
       // Containment BEFORE the provider writes: a symlinked/junctioned
       // renders dir (or a linked ancestor) must fail the verb with zero
       // bytes written outside artifactRoot.
       await prepareArtifactDir(rendersDir, artifactRoot, "preview.render_frame");
       const timeMs = Math.round(valid.timeSec * 1000);
-      // Scoped by project id: two sessions sharing one artifactRoot can
-      // never overwrite each other's preview artifacts.
-      const destPath = resolvePath(
-        rendersDir,
-        `frame-${project.id}-r${this.revision}-t${timeMs}-${width}x${height}.png`,
-      );
+      const stem = `frame-${project.id}-r${sourceRevision}-${requestKey}-t${timeMs}-${width}x${height}`;
+      const tempPath = pendingArtifactPath(rendersDir, stem, "png");
+      const finalPath = resolvePath(rendersDir, `${stem}.png`);
 
       const rendered = await provider.renderFramePng({
         project: structuredClone(project),
-        sourceRevision: this.revision,
+        sourceRevision,
         timeSec,
         width,
         height,
-        destPath,
+        destPath: tempPath,
         mediaFiles,
       });
       // Containment AFTER the write: a provider that swapped the output dir
       // for a link mid-render (or wrote through one) is caught here, before
       // the artifact is hashed and published. The VERIFIED real path is
       // what gets hashed — no swap window between check and hash.
-      const verifiedPath = await assertContainedWrittenFile(destPath, artifactRoot, "preview.render_frame");
+      const verifiedTemp = await assertContainedWrittenFile(tempPath, artifactRoot, "preview.render_frame");
+      try {
+        await assertMediaFingerprintsUnchanged(
+          mediaFiles,
+          mediaFingerprints,
+          "preview.render_frame",
+        );
+      } catch (error) {
+        await discardArtifact(verifiedTemp);
+        throw error;
+      }
+      const verifiedPath = await publishArtifact({
+        tempPath: verifiedTemp,
+        finalPath,
+        artifactRoot,
+        verb: "preview.render_frame",
+      });
       const artifact = await artifactRefFor(
         verifiedPath,
         "image",
         "png",
-        this.revision,
+        sourceRevision,
         rendered.bytesWritten,
       );
       const value: PreviewRenderFrameResult = {
-        revision: this.revision,
+        revision: sourceRevision,
         timeSec,
         width,
         height,
@@ -1402,12 +1482,149 @@ export class AgentFacadeSession {
       };
       if (valid.idempotencyKey !== undefined) {
         this.ledger.set("preview.render_frame", valid.idempotencyKey, {
-          revision: this.revision,
+          revision: sourceRevision,
           value,
           payloadHash: stableStringify(payload),
         });
       }
       return ok(value);
+    });
+  }
+
+  /**
+   * preview.render_comparison — one reference-comparison inspection still at
+   * a timeline time: left the decoded reference frame at the MAPPED time,
+   * right the canonical timeline render; letterboxed, never cropped; or a
+   * blended overlay. Mapping, clamping and limitations are disclosed.
+   */
+  async previewRenderComparison(
+    params: PreviewRenderComparisonParams,
+  ): Promise<FacadeResult<PreviewRenderComparisonResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<PreviewRenderComparisonParams>(
+        params,
+        PREVIEW_RENDER_COMPARISON_SCHEMA,
+        "preview.render_comparison params",
+      );
+      if (!this.project) return this.noProject();
+      const provider = this.config.renderProvider;
+      if (!provider) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "preview.render_comparison: no render provider configured for this session",
+          { requires: "RenderProvider (e.g. @openreel/runtime-chromium)" },
+        );
+      }
+      const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "preview.render_comparison");
+      await requireProviderPreflight(provider, "preview.render_comparison");
+
+      const project = this.project;
+      const config = requireComparisonConfig(project, "preview.render_comparison");
+      const duration = timelineDurationSec(project);
+      if (valid.timeSec > duration) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `preview.render_comparison: timeSec ${valid.timeSec} is beyond the timeline duration ${duration}`,
+          { timeSec: valid.timeSec, durationSec: duration },
+        );
+      }
+      const width = valid.width ?? project.settings.width;
+      const height = valid.height ?? project.settings.height;
+      if (!isEvenDimension(width) || !isEvenDimension(height)) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `preview.render_comparison: raster size must be even; project settings are ${project.settings.width}x${project.settings.height} — pass explicit even width/height`,
+        );
+      }
+      const frameRate = project.settings.frameRate;
+      const timeSec =
+        valid.timeSec >= duration
+          ? Math.max(0, duration - 1 / (2 * frameRate))
+          : valid.timeSec;
+      const frameBudgetBytes = valid.maxFrameBytes ?? DEFAULT_FRAME_BUDGET_BYTES;
+
+      const payload = {
+        timeSec: valid.timeSec,
+        width,
+        height,
+        layout: valid.layout ?? config.layout,
+        maxFrameBytes: frameBudgetBytes,
+      };
+      const prior = this.beginMutation<PreviewRenderComparisonResult>(
+        "preview.render_comparison",
+        valid.expectedRevision,
+        valid.idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        const stillThere = await stat(prior.value.artifact.path).then((s) => s.isFile(), () => false);
+        if (stillThere) {
+          return ok<PreviewRenderComparisonResult>({
+            ...prior.value,
+            revision: this.revision,
+            replayed: true,
+          });
+        }
+      }
+
+      const sourceRevision = this.revision;
+      const mediaFiles = await withComparisonReference(
+        project,
+        config,
+        await this.buildMediaFiles(project, "preview.render_comparison"),
+        (item) => this.resolveMediaItemFile(item),
+      );
+      const referencePath = referenceFilePath(project, config, mediaFiles, "preview.render_comparison");
+
+      // Timeline side: the canonical renderer, rendered to a private temp
+      // inside artifactRoot (never published as its own artifact).
+      const rendersDir = resolvePath(artifactRoot, "renders");
+      await prepareArtifactDir(rendersDir, artifactRoot, "preview.render_comparison");
+      const timelineTemp = pendingArtifactPath(rendersDir, `cmp-src-${project.id}-r${sourceRevision}-t${Math.round(timeSec * 1000)}`, "png");
+      try {
+        await provider.renderFramePng({
+          project: structuredClone(project),
+          sourceRevision,
+          timeSec,
+          width,
+          height,
+          destPath: timelineTemp,
+          mediaFiles,
+        });
+        const value = await renderComparisonStill({
+          project,
+          sourceRevision,
+          request: { timeSec, width, height, maxFrameBytes: frameBudgetBytes, layout: valid.layout },
+          config,
+          referencePath,
+          timelineStillPath: timelineTemp,
+          artifactRoot,
+        });
+        const result: PreviewRenderComparisonResult = {
+          revision: this.revision,
+          sourceRevision,
+          timeSec: value.timeSec,
+          referenceSec: value.referenceSec,
+          clamped: value.clamped,
+          layout: value.layout,
+          width: value.width,
+          height: value.height,
+          frameBudgetBytes: value.frameBudgetBytes,
+          artifact: value.artifact,
+          limitations: value.limitations,
+          replayed: false,
+        };
+        if (valid.idempotencyKey !== undefined) {
+          this.ledger.set("preview.render_comparison", valid.idempotencyKey, {
+            revision: sourceRevision,
+            value: result,
+            payloadHash: stableStringify(payload),
+          });
+        }
+        return ok(result);
+      } finally {
+        await discardArtifact(timelineTemp);
+      }
     });
   }
 
@@ -1502,37 +1719,58 @@ export class AgentFacadeSession {
 
       const sourceRevision = this.revision;
       const mediaFiles = await this.buildMediaFiles(project, "visual.inspect");
+      const frameBudgetBytes = valid.maxFrameBytes ?? DEFAULT_FRAME_BUDGET_BYTES;
+      // Immutable evidence: every artifact name embeds a hash of the full
+      // normalized request (selector, sampling plan, raster, budget, revision
+      // and source media fingerprints), so a different inspection — or the
+      // same inspection after a media file changed without a revision bump —
+      // publishes to a fresh path instead of overwriting returned evidence.
+      const mediaFingerprints = await fingerprintMediaFiles(mediaFiles);
+      const requestKey = inspectionRequestKey({
+        projectId: project.id,
+        revision: sourceRevision,
+        selector:
+          valid.clipId !== undefined
+            ? { kind: "clip", clipId: valid.clipId }
+            : {
+              kind: "timeRange",
+              startSec: plan.selection.startSec,
+              endSec: plan.selection.endSec,
+            },
+        sampleTimesMs: plan.samples.map((sample) => Math.round(sample.timeSec * 1000)),
+        width,
+        height,
+        maxFrameBytes: frameBudgetBytes,
+        media: mediaFingerprints,
+      });
       const framesDir = resolvePath(artifactRoot, "visual", "frames");
       await prepareArtifactDir(framesDir, artifactRoot, "visual.inspect");
-      const frameBudgetBytes = valid.maxFrameBytes ?? DEFAULT_FRAME_BUDGET_BYTES;
       const limitations: string[] = [];
       const frames = [] as VisualInspectResult["frames"][number][];
       let reencoded = 0;
       let overBudget = 0;
       for (const [index, sample] of plan.samples.entries()) {
-        const destPath = resolvePath(
-          framesDir,
-          `frame-${project.id}-r${sourceRevision}-${index}-${Math.round(sample.timeSec * 1000)}-${width}x${height}.png`,
-        );
+        const stem = `frame-${project.id}-r${sourceRevision}-${requestKey}-${index}-${Math.round(sample.timeSec * 1000)}-${width}x${height}`;
+        const tempPath = pendingArtifactPath(framesDir, stem, "png");
         const rendered = await provider.renderFramePng({
           project: structuredClone(project),
           sourceRevision,
           timeSec: sample.timeSec,
           width,
           height,
-          destPath,
+          destPath: tempPath,
           mediaFiles,
         });
         if (rendered.bytesWritten > MAX_VISUAL_PNG_BYTES) {
-          await rm(destPath, { force: true });
+          await discardArtifact(tempPath);
           throw new FacadeError(
             "JOB_FAILED",
             `visual.inspect: frame PNG exceeds the ${MAX_VISUAL_PNG_BYTES}-byte artifact limit`,
             { index },
           );
         }
-        const verifiedPath = await assertContainedWrittenFile(
-          destPath,
+        const verifiedTemp = await assertContainedWrittenFile(
+          tempPath,
           artifactRoot,
           "visual.inspect",
         );
@@ -1540,31 +1778,49 @@ export class AgentFacadeSession {
         // into the per-frame byte budget (lossless PNG when it already fits,
         // otherwise the deterministic JPEG ladder) and disclose the outcome.
         const fitted = await fitFrameToBudget({
-          pngPath: verifiedPath,
+          pngPath: verifiedTemp,
           width,
           height,
           budgetBytes: frameBudgetBytes,
           sourceWidth: project.settings.width,
           sourceHeight: project.settings.height,
         });
-        const fittedPath = fitted.path === verifiedPath
-          ? verifiedPath
+        const fittedTempPath = fitted.path === verifiedTemp
+          ? verifiedTemp
           : await assertContainedWrittenFile(fitted.path, artifactRoot, "visual.inspect");
-        const artifact = await artifactRefFor(
-          fittedPath,
-          "image",
-          fitted.format,
-          sourceRevision,
-          fitted.format === "png" ? rendered.bytesWritten : undefined,
-        );
-        if (artifact.sizeBytes > MAX_VISUAL_PNG_BYTES) {
-          await rm(fittedPath, { force: true });
+        if ((await stat(fittedTempPath)).size > MAX_VISUAL_PNG_BYTES) {
+          await discardArtifact(fittedTempPath);
           throw new FacadeError(
             "JOB_FAILED",
             `visual.inspect: frame artifact exceeds the ${MAX_VISUAL_PNG_BYTES}-byte artifact limit`,
             { index },
           );
         }
+        try {
+          await assertMediaFingerprintsUnchanged(
+            mediaFiles,
+            mediaFingerprints,
+            "visual.inspect",
+          );
+        } catch (error) {
+          await discardArtifact(fittedTempPath);
+          throw error;
+        }
+        // Publish only after validation: create-if-absent is atomic and a
+        // failed attempt never deletes an already-published artifact.
+        const publishedPath = await publishArtifact({
+          tempPath: fittedTempPath,
+          finalPath: resolvePath(framesDir, `${stem}.${fitted.format === "jpeg" ? "jpg" : "png"}`),
+          artifactRoot,
+          verb: "visual.inspect",
+        });
+        const artifact = await artifactRefFor(
+          publishedPath,
+          "image",
+          fitted.format,
+          sourceRevision,
+          fitted.format === "png" ? rendered.bytesWritten : undefined,
+        );
         if (!fitted.fidelity.withinBudget) overBudget++;
         if (fitted.format === "jpeg") reencoded++;
         frames.push({
@@ -1586,10 +1842,9 @@ export class AgentFacadeSession {
       if (provider.renderContactSheetPng) {
         const contactDir = resolvePath(artifactRoot, "visual", "contact-sheets");
         await prepareArtifactDir(contactDir, artifactRoot, "visual.inspect");
-        const contactPath = resolvePath(
-          contactDir,
-          `contact-${project.id}-r${sourceRevision}-${sampleCount}-${width}x${height}.png`,
-        );
+        const stem = `contact-${project.id}-r${sourceRevision}-${requestKey}-${sampleCount}-${width}x${height}`;
+        const tempPath = pendingArtifactPath(contactDir, stem, "png");
+        const finalPath = resolvePath(contactDir, `${stem}.png`);
         try {
           const rendered = await provider.renderContactSheetPng({
             project: structuredClone(project),
@@ -1597,43 +1852,50 @@ export class AgentFacadeSession {
             samples: plan.samples,
             width,
             height,
-            destPath: contactPath,
+            destPath: tempPath,
             mediaFiles,
           } satisfies RenderContactSheetRequest);
-          if (rendered.bytesWritten > MAX_VISUAL_PNG_BYTES) {
-            await rm(contactPath, { force: true });
+          const actualBytes = (await stat(tempPath).catch(() => null))?.size ?? 0;
+          if (
+            rendered.bytesWritten > MAX_VISUAL_PNG_BYTES ||
+            actualBytes > MAX_VISUAL_PNG_BYTES ||
+            actualBytes === 0
+          ) {
+            await discardArtifact(tempPath);
             limitations.push(
               `contact sheet exceeded the ${MAX_VISUAL_PNG_BYTES}-byte artifact limit; individual frame PNGs are returned`,
             );
           } else {
-            const verifiedPath = await assertContainedWrittenFile(
-              contactPath,
-              artifactRoot,
+            await assertMediaFingerprintsUnchanged(
+              mediaFiles,
+              mediaFingerprints,
               "visual.inspect",
             );
-            const artifact = await artifactRefFor(
-              verifiedPath,
+            const publishedPath = await publishArtifact({
+              tempPath,
+              finalPath,
+              artifactRoot,
+              verb: "visual.inspect",
+            });
+            contactSheet = await artifactRefFor(
+              publishedPath,
               "image",
               "png",
               sourceRevision,
               rendered.bytesWritten,
             );
-            if (artifact.sizeBytes > MAX_VISUAL_PNG_BYTES) {
-              await rm(verifiedPath, { force: true });
-              limitations.push(
-                `contact sheet exceeded the ${MAX_VISUAL_PNG_BYTES}-byte artifact limit; individual frame PNGs are returned`,
-              );
-            } else {
-              contactSheet = artifact;
-            }
           }
         } catch (error) {
           // Containment failures are security failures, not optional-feature
           // failures. Provider/runtime errors can fall back to real frames.
-          if (error instanceof FacadeError && error.code === "JOB_FAILED") {
+          if (
+            error instanceof FacadeError
+            && (error.code === "JOB_FAILED" || error.code === "CONFLICT")
+          ) {
+            await discardArtifact(tempPath);
             throw error;
           }
-          await rm(contactPath, { force: true }).catch(() => undefined);
+          await discardArtifact(tempPath);
           limitations.push(
             `contact sheet unavailable: ${error instanceof Error ? error.message : String(error)}; individual frame PNGs are returned`,
           );
@@ -1709,6 +1971,7 @@ export class AgentFacadeSession {
       const payload = {
         settings: settingsInput ?? null,
         destinationPath: valid.destinationPath ?? null,
+        comparison: valid.comparison ?? null,
       };
       const prior = this.beginMutation<{ jobId: string; sourceRevision: number }>(
         "export.start",
@@ -1761,12 +2024,29 @@ export class AgentFacadeSession {
         settingsInput?.videoBitrateKbps ??
         Math.min(12000, Math.max(400, Math.round((width * height * frameRate * 0.12) / 1000)));
 
+      // Comparison exports need the shared config and a valid range BEFORE
+      // any job state exists — a bad request fails fast with zero effects.
+      const comparisonConfig = valid.comparison
+        ? requireComparisonConfig(project, "export.start")
+        : null;
+      if (valid.comparison) {
+        validateComparisonRange(project, valid.comparison);
+      }
+
       // The snapshot is the export's entire world: deep-cloned here,
       // synchronously, inside the serialized lane. Later edits can proceed;
       // they never reach this job.
       const snapshot = structuredClone(project);
       const sourceRevision = this.revision;
       const mediaFiles = await this.buildMediaFiles(project, "export.start");
+      if (comparisonConfig) {
+        Object.assign(
+          mediaFiles,
+          await withComparisonReference(project, comparisonConfig, mediaFiles, (item) =>
+            this.resolveMediaItemFile(item),
+          ),
+        );
+      }
 
       const jobId = `job-${crypto.randomUUID()}`;
       const exportsDir = resolvePath(artifactRoot, "exports");
@@ -1785,11 +2065,50 @@ export class AgentFacadeSession {
         });
       }
 
+      const comparisonRange = valid.comparison ?? null;
       const callbacks: ExportCallbacks = {
         onRunning: () => this.jobs.markRunning(jobId),
         onProgress: (event) => this.jobs.markProgress(jobId, event),
         onDone: (completion) => {
-          void this.finalizeExport(jobId, sourceRevision, completion, delivery);
+          if (!comparisonConfig || !comparisonRange) {
+            void this.finalizeExport(jobId, sourceRevision, completion, delivery);
+            return;
+          }
+          // Comparison export: compose the reference against the JUST
+          // FINISHED canonical export (the timeline was rendered exactly
+          // once), then publish the composed file as the job's artifact.
+          void (async () => {
+            try {
+              this.jobs.markProgress(jobId, { phase: "encoding", percent: 0.95 });
+              const composedPath = resolvePath(jobDir, "comparison.mp4");
+              const composed = await composeComparisonVideo({
+                config: comparisonConfig,
+                referencePath: referenceFilePath(
+                  snapshot,
+                  comparisonConfig,
+                  mediaFiles,
+                  "export.start",
+                ),
+                timelineExportPath: completion.path,
+                destPath: composedPath,
+                width,
+                height,
+                frameRate,
+                range: comparisonRange,
+              });
+              await this.finalizeExport(
+                jobId,
+                sourceRevision,
+                { path: composedPath, sizeBytes: composed.sizeBytes, route: "comparison-compose" },
+                delivery,
+              );
+            } catch (error) {
+              this.jobs.markError(jobId, {
+                code: error instanceof FacadeError ? error.code : "JOB_FAILED",
+                message: `comparison export failed: ${error instanceof Error ? error.message : String(error)}`,
+              });
+            }
+          })();
         },
         onError: (error) => this.jobs.markError(jobId, error),
         onCancelled: () => this.jobs.markCancelled(jobId),
@@ -1829,6 +2148,32 @@ export class AgentFacadeSession {
         sourceRevision,
         replayed: false,
       });
+    });
+  }
+
+  /** analysis.list — durable analysis records, newest first, staleness-checked. */
+  async analysisList(params?: AnalysisListParams): Promise<FacadeResult<AnalysisListResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<AnalysisListParams>(params ?? {}, ANALYSIS_LIST_SCHEMA, "analysis.list params");
+      const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "analysis.list");
+      const records = await listAnalysisRecords(artifactRoot, valid);
+      return ok(records.map((record) => ({
+        id: record.id,
+        finishedAt: record.finishedAt,
+        subject: { mediaId: record.subject.mediaId, name: record.subject.name },
+        analysisTypes: record.analysisTypes,
+        stale: { kind: record.stale.kind },
+        recheckOf: record.recheckOf,
+      })));
+    });
+  }
+
+  /** analysis.get — one full record with provenance and staleness. */
+  async analysisGet(params: AnalysisGetParams): Promise<FacadeResult<unknown>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<AnalysisGetParams>(params, ANALYSIS_GET_SCHEMA, "analysis.get params");
+      const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "analysis.get");
+      return ok(await loadAnalysisRecord(artifactRoot, valid.recordId));
     });
   }
 
@@ -2152,7 +2497,9 @@ export class AgentFacadeSession {
     analysisTypes: readonly import("./types").MediaAnalysisType[],
     controller: AbortController,
     range: { startSec: number; endSec: number },
+    projectId: string,
     reviewQuestion?: string,
+    recheckOfRecordId?: string,
   ): Promise<void> {
     try {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -2161,9 +2508,12 @@ export class AgentFacadeSession {
         return;
       }
       this.jobs.markRunning(jobId);
-      const [probe, file] = await Promise.all([
+      const [probe, file, color] = await Promise.all([
         this.probeMedia(sourcePath),
         stat(sourcePath),
+        // Container color facts drive the honest support verdict agents and
+        // users rely on (docs/COLOR.md); best-effort, never a guess.
+        probeColorMetadata(sourcePath),
       ]);
       if (controller.signal.aborted) {
         this.jobs.markCancelled(jobId);
@@ -2177,26 +2527,91 @@ export class AgentFacadeSession {
       if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
       const after = await stat(sourcePath);
       if (after.size !== file.size || after.mtimeMs !== file.mtimeMs) throw new FacadeError("CONFLICT", "Source changed during analysis; retry");
+      const summary = {
+        ...(video ? { videoReview: { ...video, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
+        ...(audio ? { audioSummary: { ...audio, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
+        technicalQuality: {
+          mediaId,
+          name,
+          readable: true,
+          durationSec: probe.durationSec,
+          width: probe.width,
+          height: probe.height,
+          frameRate: probe.frameRate,
+          codec: probe.codec,
+          fileSize: probe.fileSize,
+          color: assessColorSupport(color),
+          sourceFingerprint: {
+            size: file.size,
+            lastModified: Math.round(file.mtimeMs),
+          },
+        },
+      };
+      // Durable, traceable record (P2): observations/inferences/
+      // recommendations stay separated, provenance and honest unknowns are
+      // pinned, and a recheck links to its predecessor. Records need an
+      // artifactRoot; without one the analysis completes exactly as before
+      // (ephemeral job summary only) — never a silent failure of the job.
+      let recordRef: { id: string; recordPath: string; recheckOf: string | null } | null = null;
+      if (this.config.artifactRoot) {
+      let recheckTarget = null;
+      if (recheckOfRecordId) {
+        recheckTarget = await resolveRecheckTarget(this.config.artifactRoot, recheckOfRecordId);
+      }
+      const saved = await saveAnalysisRecord(this.config.artifactRoot, {
+        projectId,
+        subject: {
+          mediaId,
+          name,
+          sourcePath,
+          sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) },
+        },
+        analysisTypes,
+        rangeSec: range,
+        config: {
+          analysisTypes,
+          startSec: range.startSec,
+          endSec: range.endSec,
+          cloudUpload: analysisTypes.includes("videoReview"),
+          ...(reviewQuestion !== undefined ? { reviewQuestion } : {}),
+        },
+        provenance: [
+          ...(analysisTypes.includes("technicalQuality")
+            ? [{ kind: "local-measurement" as const, provider: "built-in-mediabunny-stat+ffprobe-color", analysisType: "technicalQuality" }]
+            : []),
+          ...(analysisTypes.includes("audioSummary")
+            ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-ebur128", analysisType: "audioSummary" }]
+            : []),
+          ...(video ? [{ kind: "cloud-opinion" as const, provider: video.provider, analysisType: "videoReview" }] : []),
+        ],
+        observations: [
+          { source: "technicalQuality", facts: summary.technicalQuality },
+          ...(audio ? [{ source: "audioSummary", facts: audio }] : []),
+        ],
+        inferences: audio?.bpmCandidates
+          ? [{ source: "audioSummary", note: "BPM candidates are analyzer inferences from periodicity, not ground truth", bpmCandidates: audio.bpmCandidates }]
+          : [],
+        recommendations: [],
+        unknowns: [
+          ...(video ? [{ field: "videoReview.serverSamplingFps", note: "The cloud provider does not disclose its sampling rate; short events may be missed" }] : []),
+        ],
+        recheckOf: recheckTarget ? recheckTarget.id : null,
+        cloudOpinion: video
+          ? {
+              provider: video.provider,
+              text: typeof video.text === "string" ? video.text : JSON.stringify(video),
+              status: video.status ?? "opinion",
+              serverSamplingFps: video.preparation?.serverSamplingFps ?? null,
+            }
+          : null,
+      });
+      recordRef = { id: saved.id, recordPath: saved.recordPath, recheckOf: saved.recheckOf };
+      }
       this.jobs.markAnalysisDone(jobId, {
         analysisTypes,
         summary: {
-          ...(video ? { videoReview: { ...video, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
-          ...(audio ? { audioSummary: { ...audio, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
-          technicalQuality: {
-            mediaId,
-            name,
-            readable: true,
-            durationSec: probe.durationSec,
-            width: probe.width,
-            height: probe.height,
-            frameRate: probe.frameRate,
-            codec: probe.codec,
-            fileSize: probe.fileSize,
-            sourceFingerprint: {
-              size: file.size,
-              lastModified: Math.round(file.mtimeMs),
-            },
-          },
+          ...summary,
+          ...(recordRef ? { analysisRecord: recordRef } : {}),
         },
         artifacts: [],
       });
@@ -2224,6 +2639,40 @@ export class AgentFacadeSession {
     }
   }
 
+
+  /** Probe a media file for the media.replace enrichment pre-pass. */
+  private async probeMediaForEnrichment(absPath: string) {
+    const probed = await probeLocalMediaFile(absPath);
+    return {
+      durationSec: probed.durationSec,
+      width: probed.width,
+      height: probed.height,
+      frameRate: probed.frameRate,
+      codec: probed.codec,
+      fileSize: probed.fileSize,
+      mimeType: probed.mimeType,
+      hasVideo: probed.hasVideo,
+      hasAudio: probed.hasAudio,
+      sampleRate: 0,
+      channels: 0,
+    };
+  }
+
+  /** Resolve ONE media item's file with the builder's containment checks. */
+  private async resolveMediaItemFile(itemInput: unknown): Promise<string | null> {
+    const item = itemInput as MediaItem;
+    const originalUrl =
+      typeof (item as { originalUrl?: unknown }).originalUrl === "string"
+        ? ((item as { originalUrl?: string }).originalUrl as string)
+        : null;
+    if (!originalUrl) return null;
+    const roots = this.config.mediaRoots ?? [];
+    const resolution = resolveContainedPathDetailed(originalUrl, roots);
+    if (resolution.kind !== "ok") return null;
+    const fileStat = await stat(resolution.path).catch(() => null);
+    if (!fileStat?.isFile() || fileStat.size > MAX_MEDIA_FILE_BYTES) return null;
+    return resolution.path;
+  }
 
   /**
    * Map every timeline-referenced media item to a re-validated local file.

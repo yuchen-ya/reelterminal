@@ -92,6 +92,7 @@ import {
 } from "../motion/creation-camera-editing";
 import { planRecoverMotionScene3DLayer } from "../motion/creation-recovery";
 import { ProjectChangeJournal } from "@openreel/agent-facade/project-changes";
+import { getMaterialLibraryService } from "../services/material-library/library-service";
 import type {
   ProjectChangesParams,
   ProjectChangesResult,
@@ -4289,6 +4290,7 @@ let projectChangeSnapshot = snapshotProjectForChanges(
 
 useProjectStore.subscribe((state, prevState) => {
   if (state.project !== prevState.project) {
+    const previousSnapshot = projectChangeSnapshot;
     const nextRevision = prevState.projectRevision + 1;
     if (state.project.id !== prevState.project.id) {
       // A project switch is a new fact world, not a giant cross-project diff.
@@ -4306,6 +4308,21 @@ useProjectStore.subscribe((state, prevState) => {
     useProjectStore.setState({
       projectRevision: nextRevision,
     });
+    // Material usage is derived provenance in a separate user-level DB. Only
+    // reconcile projects that currently (or previously, for undo/removal)
+    // carry a stable material/version link. This write is retryable and is
+    // intentionally not described as part of the project transaction.
+    const hasMaterialLinks = (project: Project): boolean =>
+      project.mediaLibrary.items.some(
+        (item) => item.materialSource !== undefined || item.versionSource !== undefined,
+      );
+    if (hasMaterialLinks(state.project) || hasMaterialLinks(previousSnapshot)) {
+      void getMaterialLibraryService()
+        .reconcileProjectUsages(state.project)
+        .catch((error) =>
+          console.warn("Failed to reconcile material usage provenance", error),
+        );
+    }
   }
 });
 

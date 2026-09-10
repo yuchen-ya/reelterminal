@@ -214,6 +214,82 @@ export interface OpenReelConversationSetupState {
 
 export type OpenReelConversationEvent = DesktopConversationEvent;
 
+export type OpenReelAnalysisStaleness =
+  | { kind: "current" }
+  | { kind: "source-missing" }
+  | { kind: "source-changed"; size: number; lastModified: number };
+
+export interface OpenReelAnalysisRecordSummary {
+  id: string;
+  projectId: string;
+  finishedAt: string;
+  subject: { mediaId: string; name: string };
+  analysisTypes: readonly string[];
+  stale: OpenReelAnalysisStaleness;
+  recheckOf: string | null;
+}
+
+export interface OpenReelAnalysisRecord extends OpenReelAnalysisRecordSummary {
+  schemaVersion: number;
+  createdAt: string;
+  rangeSec: { startSec: number; endSec: number };
+  subject: {
+    mediaId: string;
+    name: string;
+    sourcePath: string;
+    sourceFingerprint: { size: number; lastModified: number };
+  };
+  config: {
+    analysisTypes: readonly string[];
+    startSec: number;
+    endSec: number;
+    cloudUpload: boolean;
+    reviewQuestion?: string;
+  };
+  provenance: readonly {
+    kind: "local-measurement" | "static-sampling" | "cloud-opinion";
+    provider: string;
+    analysisType: string;
+  }[];
+  observations: readonly Record<string, unknown>[];
+  inferences: readonly Record<string, unknown>[];
+  recommendations: readonly Record<string, unknown>[];
+  unknowns: readonly { field: string; note: string }[];
+  cloudOpinion: {
+    provider: string;
+    text: string;
+    status: string;
+    serverSamplingFps: number | null;
+  } | null;
+  recordPath: string;
+}
+
+export type OpenReelFacadeReply<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: { code: string; message: string; details?: unknown } };
+
+export interface OpenReelAnalysisJobStart {
+  jobId: string;
+  kind: "analysis";
+  state: "queued" | "running" | "done" | "error" | "cancelled";
+  sourceRevision: number;
+  analysisTypes: readonly string[];
+  replayed: boolean;
+}
+
+export interface OpenReelAnalysisJobStatus {
+  jobId: string;
+  state: "queued" | "running" | "done" | "error" | "cancelled";
+  progress?: { phase?: string; percent?: number };
+  error?: { code?: string; message?: string } | null;
+  result?: {
+    summary?: {
+      analysisRecord?: { id?: string; recordPath?: string; recheckOf?: string | null };
+      [key: string]: unknown;
+    };
+  } | null;
+}
+
 export interface OpenReelConversationVisualStateCapture {
   version: 1;
   stateRef: string;
@@ -375,6 +451,27 @@ declare global {
       liveEvents?: DesktopLiveEventsApi;
       /** Live collaboration session control (desktop main session host). */
       collabControl?: DesktopCollabControlApi;
+      /** Durable analysis records and explicit user-triggered rechecks. */
+      analysisRecords?: {
+        list(args: {
+          projectId: string;
+          mediaId?: string;
+          limit?: number;
+        }): Promise<{
+          records: readonly OpenReelAnalysisRecordSummary[];
+          legacyUnscopedCount: number;
+        }>;
+        get(args: {
+          projectId: string;
+          recordId: string;
+        }): Promise<OpenReelAnalysisRecord>;
+        recheck(args: {
+          projectId: string;
+          recordId: string;
+          allowCloudUpload?: boolean;
+        }): Promise<OpenReelFacadeReply<OpenReelAnalysisJobStart>>;
+        jobStatus(jobId: string): Promise<OpenReelFacadeReply<OpenReelAnalysisJobStatus>>;
+      };
       /** Optional GUI attachment to an externally-owned Agent conversation. */
       conversation?: Omit<DesktopConversationApi, "prompt"> & {
         prompt(

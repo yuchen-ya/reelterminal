@@ -723,7 +723,29 @@ export function normalizeMaterialRecord(raw: unknown): MaterialRecord | null {
           ...(typeof usage.startSec === "number" ? { startSec: usage.startSec } : {}),
           ...(typeof usage.endSec === "number" ? { endSec: usage.endSec } : {}),
           attachedAt: typeof usage.attachedAt === "string" ? usage.attachedAt : nowIso,
-          attachedBy: usage.attachedBy === "agent" ? ("agent" as const) : ("user" as const),
+          attachedBy:
+            usage.attachedBy === "agent" || usage.attachedBy === "user"
+              ? usage.attachedBy
+              : ("unknown" as const),
+          status: usage.status === "historical" ? ("historical" as const) : ("current" as const),
+          ...(typeof usage.historicalAt === "string"
+            ? { historicalAt: usage.historicalAt }
+            : {}),
+          ...(usage.historicalReason === "replaced" || usage.historicalReason === "removed"
+            ? { historicalReason: usage.historicalReason }
+            : {}),
+          ...(typeof usage.replacedByMediaIdInProject === "string"
+            ? { replacedByMediaIdInProject: usage.replacedByMediaIdInProject }
+            : {}),
+          ...(typeof usage.replacedByMaterialId === "string"
+            ? { replacedByMaterialId: usage.replacedByMaterialId }
+            : {}),
+          ...(typeof usage.replacesMediaIdInProject === "string"
+            ? { replacesMediaIdInProject: usage.replacesMediaIdInProject }
+            : {}),
+          ...(typeof usage.replacesMaterialId === "string"
+            ? { replacesMaterialId: usage.replacesMaterialId }
+            : {}),
         }))
       : [],
   };

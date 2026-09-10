@@ -319,6 +319,30 @@ describe("finishing edit tools", () => {
       .find((candidate) => candidate.id === "c1");
     expect(clip?.startTime).toBe(0);
   });
+
+  it("inserts a foreground track at an explicit z-order position and rejects out-of-range positions", async () => {
+    // Seed order is [v1, v2, a1]. Inserting at position 0 puts the new track
+    // at the TOP layer (index 0) — the cross-shot foreground pattern.
+    const inserted = await facade["edit.apply"]({
+      ops: [{ op: "track.add", trackType: "video", trackId: "fg", position: 0 }],
+    });
+    expect(inserted.ok).toBe(true);
+    const state = await facade["project.get_state"]();
+    expect(state.ok).toBe(true);
+    if (!state.ok) return;
+    expect(state.value.project.timeline.tracks.map((t) => t.id)).toEqual([
+      "fg", "v1", "v2", "a1",
+    ]);
+
+    const beyond = await facade["edit.apply"]({
+      ops: [{ op: "track.add", trackType: "video", trackId: "fg2", position: 99 }],
+    });
+    expect(beyond.ok).toBe(false);
+    if (!beyond.ok) {
+      expect(beyond.error.code).toBe("INVALID_PARAMS");
+      expect(beyond.error.message).toContain("beyond the current track count");
+    }
+  });
 });
 
 

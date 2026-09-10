@@ -35,6 +35,8 @@ import {
   type MaterialRecord,
   type MaterialUpdatePatch,
   type MaterialUsage,
+  type MediaItem,
+  type Project,
 } from "@openreel/core";
 import type { MaterialStorage } from "./storage";
 import { createIdbMaterialStorage } from "./storage";
@@ -87,6 +89,12 @@ export interface MaterialUndoResult {
   readonly undoneEntryId: string;
   readonly restored: readonly string[];
   readonly removed: readonly string[];
+}
+
+export interface MaterialUsageReconcileResult {
+  readonly updatedMaterialIds: readonly string[];
+  readonly currentUsageCount: number;
+  readonly historicalUsageCount: number;
 }
 
 export class MaterialLibraryService {
@@ -142,6 +150,7 @@ export class MaterialLibraryService {
     query: MaterialListQuery,
   ): Promise<MaterialServiceResult<MaterialListResult>> {
     try {
+      await this.chain;
       await this.ensureLoaded();
       const pageSize = Math.min(Math.max(1, query.pageSize), 200);
       return {
@@ -157,6 +166,7 @@ export class MaterialLibraryService {
   }
 
   async get(id: string): Promise<MaterialServiceResult<MaterialRecord>> {
+    await this.chain;
     await this.ensureLoaded();
     const record = this.records.get(id);
     if (!record) return fail("NOT_FOUND", `material "${id}" was not found`, { id });
@@ -166,6 +176,7 @@ export class MaterialLibraryService {
   async journal(
     limit = 20,
   ): Promise<MaterialServiceResult<readonly MaterialJournalEntry[]>> {
+    await this.chain;
     await this.ensureLoaded();
     return {
       ok: true,
@@ -176,6 +187,7 @@ export class MaterialLibraryService {
   }
 
   async counts(): Promise<MaterialServiceResult<{ total: number; inbox: number }>> {
+    await this.chain;
     await this.ensureLoaded();
     const all = [...this.records.values()];
     return {
@@ -189,6 +201,7 @@ export class MaterialLibraryService {
 
   /** Read the library-owned blob copy for a media material (null if none). */
   async loadBlobFor(materialId: string): Promise<Blob | null> {
+    await this.chain;
     await this.ensureLoaded();
     return this.storage.loadBlob(materialId);
   }
@@ -420,7 +433,7 @@ export class MaterialLibraryService {
         (candidate) => candidate.kind === "segment" && candidate.parentMaterialId === id,
       );
       const referenced = [record, ...children].filter(
-        (candidate) => candidate.usages.length > 0,
+        (candidate) => candidate.usages.some((usage) => usage.status === "current"),
       );
       if (referenced.length > 0 && !options.force) {
         return fail(
@@ -428,13 +441,20 @@ export class MaterialLibraryService {
           `material "${record.title}"${
             children.length > 0 ? ` (+${children.length} segments)` : ""
           } is referenced by ${referenced.reduce(
-            (sum, candidate) => sum + candidate.usages.length,
+            (sum, candidate) =>
+              sum + candidate.usages.filter((usage) => usage.status === "current").length,
             0,
           )} project attach(es); pass force to remove it from the library (existing project copies are unaffected)`,
           {
-            usageCount: referenced.reduce((sum, c) => sum + c.usages.length, 0),
+            usageCount: referenced.reduce(
+              (sum, candidate) =>
+                sum + candidate.usages.filter((usage) => usage.status === "current").length,
+              0,
+            ),
             projectIds: referenced.flatMap((candidate) =>
-              candidate.usages.map((usage) => usage.projectId),
+              candidate.usages
+                .filter((usage) => usage.status === "current")
+                .map((usage) => usage.projectId),
             ),
             cascadedSegmentIds: children.map((child) => child.id),
           },
@@ -581,7 +601,10 @@ export class MaterialLibraryService {
         (existing) =>
           `${existing.projectId}:${existing.mediaIdInProject ?? ""}` !== dedupeKey,
       );
-      const next: MaterialRecord = { ...record, usages: [...usages, usage] };
+      const next: MaterialRecord = {
+        ...record,
+        usages: [...usages, { ...usage, status: usage.status ?? "current" }],
+      };
       try {
         await this.storage.commit({ materialUpserts: [next] });
       } catch (error) {
@@ -589,6 +612,213 @@ export class MaterialLibraryService {
       }
       this.records.set(materialId, next);
       return { ok: true, value: next };
+    });
+  }
+
+  /**
+   * Reconcile persisted usage provenance with one canonical project snapshot.
+   *
+   * A replace keeps the old project media item for undo and version history,
+   * so media-library membership alone cannot decide whether a usage is still
+   * current.  We consider an old version historical only when a successor is
+   * present AND no timeline clip still points at the old media id. Undo/redo
+   * naturally reverses that result because it changes the canonical snapshot.
+   *
+   * This is deliberately a separate IndexedDB commit from the project edit.
+   * It is derived, retryable provenance; callers must not claim a cross-DB
+   * transaction. A later reconciliation repairs an interrupted write.
+   */
+  async reconcileProjectUsages(
+    project: Pick<Project, "id" | "name" | "mediaLibrary" | "timeline">,
+  ): Promise<MaterialServiceResult<MaterialUsageReconcileResult>> {
+    return this.enqueue(async () => {
+      await this.ensureLoaded();
+      const nowIso = new Date().toISOString();
+      const mediaById = new Map(
+        project.mediaLibrary.items.map((item) => [item.id, item] as const),
+      );
+      const referencedMediaIds = new Set(
+        project.timeline.tracks.flatMap((track) =>
+          track.clips.map((clip) => clip.mediaId),
+        ),
+      );
+      const successors = new Map<string, MediaItem[]>();
+      for (const item of project.mediaLibrary.items) {
+        const previousId = item.versionSource?.supersedesMediaIdInProject;
+        if (previousId) {
+          successors.set(previousId, [...(successors.get(previousId) ?? []), item]);
+        }
+      }
+
+      // Exact path matching is a recovery/convenience path for media.replace.
+      // Ambiguous matches are intentionally ignored rather than guessed.
+      const materialsByPath = new Map<string, MaterialRecord[]>();
+      for (const record of this.records.values()) {
+        if (record.kind !== "media" || record.fileRef.type !== "path") continue;
+        const key = normalizeMaterialPath(record.fileRef.path);
+        materialsByPath.set(key, [...(materialsByPath.get(key) ?? []), record]);
+      }
+      const linkedMaterialId = (
+        item: MediaItem,
+      ): string | undefined => {
+        if (item.materialSource && this.records.has(item.materialSource.materialId)) {
+          return item.materialSource.materialId;
+        }
+        if (!item.originalUrl) return undefined;
+        const candidates = materialsByPath.get(normalizeMaterialPath(item.originalUrl));
+        return candidates?.length === 1 ? candidates[0]?.id : undefined;
+      };
+
+      const nextById = new Map(this.records);
+      const touched = new Set<string>();
+
+      const statusForMedia = (mediaId: string): {
+        status: "current" | "historical";
+        successors?: readonly MediaItem[];
+        reason?: "replaced" | "removed";
+      } => {
+        const item = mediaById.get(mediaId);
+        const replacements = successors.get(mediaId);
+        if (replacements && replacements.length > 0 && !referencedMediaIds.has(mediaId)) {
+          return { status: "historical", successors: replacements, reason: "replaced" };
+        }
+        if (!item) return { status: "historical", reason: "removed" };
+        return { status: "current" };
+      };
+
+      // First refresh every usage already known for this project. Historical
+      // entries remain visible; reconciliation never erases provenance.
+      for (const record of this.records.values()) {
+        let changed = false;
+        const usages = record.usages.map((usage): MaterialUsage => {
+          if (usage.projectId !== project.id || !usage.mediaIdInProject) return usage;
+          const state = statusForMedia(usage.mediaIdInProject);
+          if (state.status === "current") {
+            if (
+              usage.status === "current" &&
+              usage.historicalAt === undefined &&
+              usage.historicalReason === undefined &&
+              usage.replacedByMediaIdInProject === undefined &&
+              usage.replacedByMaterialId === undefined
+            ) {
+              return usage;
+            }
+            changed = true;
+            const {
+              historicalAt: _historicalAt,
+              historicalReason: _historicalReason,
+              replacedByMediaIdInProject: _replacedByMedia,
+              replacedByMaterialId: _replacedByMaterial,
+              ...active
+            } = usage;
+            return { ...active, status: "current" };
+          }
+          // A single successor can be linked precisely. Multiple clip-scoped
+          // branches remain historical without guessing one as canonical.
+          const singleSuccessor = state.successors?.length === 1
+            ? state.successors[0]
+            : undefined;
+          const replacementMaterialId = singleSuccessor
+            ? linkedMaterialId(singleSuccessor)
+            : undefined;
+          if (
+            usage.status === "historical" &&
+            usage.historicalReason === state.reason &&
+            usage.replacedByMediaIdInProject === singleSuccessor?.id &&
+            usage.replacedByMaterialId === replacementMaterialId
+          ) {
+            return usage;
+          }
+          changed = true;
+          const {
+            replacedByMediaIdInProject: _oldReplacementMedia,
+            replacedByMaterialId: _oldReplacementMaterial,
+            ...historical
+          } = usage;
+          return {
+            ...historical,
+            status: "historical",
+            historicalAt: usage.historicalAt ?? nowIso,
+            ...(state.reason ? { historicalReason: state.reason } : {}),
+            ...(singleSuccessor
+              ? { replacedByMediaIdInProject: singleSuccessor.id }
+              : {}),
+            ...(replacementMaterialId
+              ? { replacedByMaterialId: replacementMaterialId }
+              : {}),
+          };
+        });
+        if (changed) {
+          nextById.set(record.id, { ...record, usages });
+          touched.add(record.id);
+        }
+      }
+
+      // Then discover stable links carried by project media items (or a
+      // unique exact path match for a replacement saved in the library).
+      for (const item of project.mediaLibrary.items) {
+        const materialId = linkedMaterialId(item);
+        if (!materialId) continue;
+        const record = nextById.get(materialId);
+        if (!record) continue;
+        const key = `${project.id}:${item.id}`;
+        const existingIndex = record.usages.findIndex(
+          (usage) => `${usage.projectId}:${usage.mediaIdInProject ?? ""}` === key,
+        );
+        if (existingIndex >= 0) continue;
+        const state = statusForMedia(item.id);
+        const previousMediaId = item.versionSource?.supersedesMediaIdInProject;
+        const previousMaterialId = item.versionSource?.supersedesMaterialId;
+        const usage: MaterialUsage = {
+          projectId: project.id,
+          projectName: project.name,
+          mediaIdInProject: item.id,
+          attachedAt: item.materialSource?.attachedAt ?? nowIso,
+          attachedBy:
+            item.materialSource?.attachedBy ??
+            item.versionSource?.replacedBy ??
+            "unknown",
+          status: state.status,
+          ...(state.status === "historical"
+            ? {
+                historicalAt: nowIso,
+                ...(state.reason ? { historicalReason: state.reason } : {}),
+              }
+            : {}),
+          ...(previousMediaId ? { replacesMediaIdInProject: previousMediaId } : {}),
+          ...(previousMaterialId ? { replacesMaterialId: previousMaterialId } : {}),
+        };
+        nextById.set(materialId, { ...record, usages: [...record.usages, usage] });
+        touched.add(materialId);
+      }
+
+      const updates = [...touched]
+        .map((id) => nextById.get(id))
+        .filter((record): record is MaterialRecord => record !== undefined);
+      if (updates.length > 0) {
+        try {
+          await this.storage.commit({ materialUpserts: updates });
+        } catch (error) {
+          return fail(
+            "INTERNAL",
+            `material usage reconciliation failed: ${errorMessage(error)}`,
+          );
+        }
+        for (const record of updates) this.records.set(record.id, record);
+      }
+      const projectUsages = [...this.records.values()].flatMap((record) =>
+        record.usages.filter((usage) => usage.projectId === project.id),
+      );
+      return {
+        ok: true,
+        value: {
+          updatedMaterialIds: [...touched],
+          currentUsageCount: projectUsages.filter((usage) => usage.status === "current").length,
+          historicalUsageCount: projectUsages.filter(
+            (usage) => usage.status === "historical",
+          ).length,
+        },
+      };
     });
   }
 
@@ -657,6 +887,11 @@ function checkRevisionCas(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function normalizeMaterialPath(value: string): string {
+  const normalized = value.trim().replaceAll("\\", "/");
+  return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
 }
 
 let singleton: MaterialLibraryService | null = null;

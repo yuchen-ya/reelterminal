@@ -19,12 +19,15 @@
  */
 
 /** Current record format version persisted in IndexedDB. */
-export const MATERIAL_LIBRARY_SCHEMA_VERSION = 1;
+export const MATERIAL_LIBRARY_SCHEMA_VERSION = 2;
 
 export type MaterialKind = "media" | "segment" | "link" | "method";
 export type MaterialMediaType = "video" | "audio" | "image";
 export type MaterialOrganizeStatus = "inbox" | "organized";
 export type MaterialActor = "user" | "agent";
+export type MaterialUsageActor = MaterialActor | "unknown";
+export type MaterialUsageStatus = "current" | "historical";
+export type MaterialUsageHistoricalReason = "replaced" | "removed";
 
 export const MATERIAL_KINDS: readonly MaterialKind[] = [
   "media",
@@ -97,7 +100,24 @@ export interface MaterialUsage {
   readonly startSec?: number;
   readonly endSec?: number;
   readonly attachedAt: string;
-  readonly attachedBy: MaterialActor;
+  readonly attachedBy: MaterialUsageActor;
+  /**
+   * Whether this project-local media item is still the active version of the
+   * library material.  Old schema-v1 rows omit this field and normalize to
+   * `current`.
+   */
+  readonly status: MaterialUsageStatus;
+  /** Set when reconciliation proves this project use is no longer current. */
+  readonly historicalAt?: string;
+  readonly historicalReason?: MaterialUsageHistoricalReason;
+  /** Project-local media item that replaced this usage. */
+  readonly replacedByMediaIdInProject?: string;
+  /** Library material backing the replacement, when it can be identified. */
+  readonly replacedByMaterialId?: string;
+  /** Previous project-local version for a current replacement usage. */
+  readonly replacesMediaIdInProject?: string;
+  /** Previous library material in the version lineage, when known. */
+  readonly replacesMaterialId?: string;
 }
 
 export interface MaterialRecordBase {

@@ -123,7 +123,19 @@ export type MediaAction =
       };
     }
   | { type: "media/delete"; params: { mediaId: string } }
-  | { type: "media/rename"; params: { mediaId: string; name: string } };
+  | { type: "media/rename"; params: { mediaId: string; name: string } }
+  /**
+   * Relink a missing/moved source FILE: only the file reference changes —
+   * never content, never clip timing. Distinct from media/replace flows.
+   */
+  | {
+      type: "media/relinkSource";
+      params: {
+        mediaId: string;
+        originalUrl: string;
+        sourceFile?: { name: string; size: number; lastModified: number };
+      };
+    };
 
 // Track actions
 export type TrackAction =
@@ -166,6 +178,11 @@ export type ClipAction =
         inPoint?: number;
         outPoint?: number;
         sourceClip?: Clip;
+        /**
+         * Stable identity pinned by the executor after first application so
+         * undo/redo restores the same clip id.
+         */
+        clipId?: string;
       };
     }
   | { type: "clip/remove"; params: { clipId: string } }
@@ -179,6 +196,23 @@ export type ClipAction =
     }
   | { type: "clip/split"; params: { clipId: string; time: number } }
   | { type: "clip/rippleDelete"; params: { clipId: string } }
+  /**
+   * Repoint ONE clip to a different media item (version replacement).
+   * Timing is clamped by the caller to the new source's duration — the
+   * executor keeps in/out explicit so undo/redo are exact.
+   */
+  | {
+      type: "clip/repointSource";
+      params: {
+        clipId: string;
+        mediaId: string;
+        inPoint: number;
+        outPoint: number;
+        duration: number;
+        /** Provenance: the media id this one supersedes for this clip. */
+        supersedesMediaId?: string;
+      };
+    }
   | {
       type: "clip/setBlendMode";
       params: { clipId: string; blendMode: BlendMode };
@@ -484,4 +518,14 @@ export type TimelineAction =
   | AudioAction
   | SubtitleAction
   | MarkerAction
-  | ProjectMarkerAction;
+  | ProjectMarkerAction
+  | ReferenceComparisonAction;
+
+// Reference comparison actions — the ONE shared comparison configuration on
+// the project (GUI panel and Agent verbs both go through these).
+export type ReferenceComparisonAction =
+  | {
+      type: "reference/setComparison";
+      params: { config: import("./reference-comparison").ReferenceComparisonConfig };
+    }
+  | { type: "reference/clearComparison"; params: Record<string, never> };

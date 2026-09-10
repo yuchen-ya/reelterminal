@@ -29,7 +29,7 @@ Every record (`packages/core/src/material/types.ts`) carries:
 | `source` | Origin note, captured-from, `addedBy` (`user`/`agent`), `addedAt` |
 | `updatedBy` / `lastAgentEditAt` | Provenance of the last write; the UI badges agent-written records |
 | `revision` | Monotonic per-record counter — the CAS guard for concurrent updates |
-| `usages[]` | Informational project references (projectId, mediaIdInProject, range, attachedAt/By) |
+| `usages[]` | Informational project references, including `current`/`historical` state and replacement lineage |
 
 Kind-specific fields:
 
@@ -63,12 +63,18 @@ library.
 
 - Storage: dedicated IndexedDB database `openreel-material-library`
   (stores: `materials`, `journal`, `blobs`), separate from the project
-  database `openreel-db` so project schemas are untouched.
+  database `openreel-db`. Project media may carry optional `materialSource`
+  and `versionSource` provenance; old project documents remain valid.
 - Every mutation batch is one IDB transaction (record(s) + journal entry
   commit atomically) and one journal entry (one undo unit).
-- Records and journal entries carry `schemaVersion` (currently `1`). Reads
+- Records and journal entries carry `schemaVersion` (currently `2`). Reads
   normalize defensively: missing optional fields are filled, corrupt rows are
-  skipped, never fatal. A future format bump migrates by version.
+  skipped, never fatal. Schema-v1 usages normalize to `status:"current"`.
+- Project edits and the user-level library live in different databases. A
+  project commit is authoritative; usage reconciliation is a separate,
+  serialized, retryable derived write. This is not presented as a cross-DB
+  transaction. Library reads wait for already-queued reconciliation so an
+  Agent does not immediately observe stale provenance after a replacement.
 
 ## Undo, batches, and concurrency
 
@@ -87,6 +93,18 @@ library.
 - Removing a material that still has project `usages` requires `force:true`
   (the UI asks explicitly). Existing project copies are unaffected. Removing
   a media material cascades its segments (both restore on undo).
+- A segment/ranged attach persists the imported bytes first, then validates
+  `media/import + track/add + clip/add` on one isolated project draft. It
+  publishes one project commit and one undo unit; any failed follow-up removes
+  the uncommitted blob and leaves no project media, track, clip, or history
+  fragment behind.
+- Project media imported from the library carries a stable `materialSource`.
+  `media.replace` writes a separate version lineage. Reconciliation marks the
+  old usage `historical` only after all timeline references have moved; a
+  clip-scoped replacement that leaves an old reference keeps both versions
+  current. Undo/redo/reload reconcile from canonical project state. An exact,
+  unique replacement path can link the new version to an existing library
+  material; ambiguous paths remain unlinked instead of being guessed.
 
 ## Agent workflow example: search → batch organize → attach
 
@@ -116,8 +134,8 @@ material_attach {
   "idempotencyKey": "attach-ab-1"
 }
 // → { mediaIdInProject: "…", clipId: null, revision: 13 }
-// A segment (or explicit startSec/endSec) instead adds a timeline clip
-// scoped to that range as one additional undo unit.
+// A segment (or explicit startSec/endSec) atomically imports and adds a
+// ranged timeline clip as one project undo unit.
 
 // If step 3 went wrong: material_undo { "idempotencyKey": "u1" }
 // undoes the latest library entry; project edits use the normal GUI history.

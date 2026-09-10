@@ -256,6 +256,26 @@ export class InverseActionGenerator {
           name: media.name,
         });
       }
+
+      case "media/relinkSource": {
+        const media = projectBefore.mediaLibrary.items.find(
+          (item) => item.id === action.params.mediaId,
+        );
+        if (!media?.originalUrl) return null;
+        return this.createInverseAction(action, "media/relinkSource", {
+          mediaId: action.params.mediaId,
+          originalUrl: media.originalUrl,
+          ...(media.sourceFile
+            ? {
+                sourceFile: {
+                  name: media.sourceFile.name,
+                  size: media.sourceFile.size,
+                  lastModified: media.sourceFile.lastModified,
+                },
+              }
+            : {}),
+        });
+      }
     }
   }
 
@@ -416,6 +436,20 @@ export class InverseActionGenerator {
           clipId: action.params.clipId,
           startTime: clip.startTime,
           trackId: clip.trackId,
+        });
+      }
+
+      case "clip/repointSource": {
+        const clip = projectBefore.timeline.tracks
+          .flatMap((track) => track.clips)
+          .find((candidate) => candidate.id === action.params.clipId);
+        if (!clip) return null;
+        return this.createInverseAction(action, "clip/repointSource", {
+          clipId: action.params.clipId,
+          mediaId: clip.mediaId,
+          inPoint: clip.inPoint,
+          outPoint: clip.outPoint,
+          duration: clip.duration,
         });
       }
 

@@ -8,7 +8,7 @@
 import type { Action } from "@openreel/core/types/actions";
 import type { Project, ProjectMarker } from "@openreel/core/types/project";
 import { DEFAULT_PROJECT_MARKER_COLOR } from "@openreel/core/types/project";
-import type { Transform, Transition } from "@openreel/core/types/timeline";
+import type { Clip, Transform, Transition } from "@openreel/core/types/timeline";
 import { TransitionEngine } from "@openreel/core/video/transition-engine";
 import type { TextClip } from "@openreel/core/text/types";
 import { parseSRT } from "@openreel/core/text/subtitle-engine";
@@ -20,6 +20,7 @@ import { FacadeError } from "./errors";
 import { invalidParams } from "./validate";
 import {
   isNonEmptyString,
+  isNonNegativeInteger,
   isNonNegativeNumber,
   isPlainObject,
   isPositiveInteger,
@@ -67,7 +68,15 @@ import {
   type ClipSetColorGradeOp,
   type ClipSetKeyframesOp,
   type FacadeKeyframeInput,
+  type ReferenceSetComparisonOp,
+  type ReferenceClearComparisonOp,
+  type MediaReplaceOp,
+  type MediaRelinkOp,
 } from "./types";
+import { validateReferenceComparisonConfig } from "@openreel/core/types/reference-comparison";
+import { timelineDurationSec } from "./projection";
+import { basename } from "node:path";
+import { resolveContainedPathDetailed } from "./media/path-roots";
 
 /* ------------------------------------------------------------------ */
 /* Strict op validation                                                */
@@ -100,6 +109,11 @@ export const TRACK_ADD_SCHEMA: ObjectSchema = {
     check: isNonEmptyString,
     describe: "a non-empty string",
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  position: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative integer — zero-based z-order insertion index in project.timeline.tracks (later tracks composite on top); omit to append on top",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
   },
 };
 
@@ -1044,6 +1058,133 @@ export const FACADE_KEYFRAME_SCHEMA: ObjectSchema = {
   },
 };
 
+export const REFERENCE_COMPARISON_CONFIG_SCHEMA: ObjectSchema = {
+  referenceMediaId: {
+    check: isNonEmptyString,
+    describe: "a non-empty project media id (the reference source)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  refStartSec: {
+    check: isNonNegativeNumber,
+    describe: "reference in-point (seconds) aligned to timelineStartSec",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  refEndSec: {
+    check: isNonNegativeNumber,
+    describe: "reference out-point (seconds); beyond it comparisons clamp onto the last frame and say so",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  timelineStartSec: {
+    check: isNonNegativeNumber,
+    describe: "timeline time (seconds) aligned to refStartSec",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  rate: {
+    check: (v) => v === 1,
+    describe: "exactly 1 — only constant-rate mapping with a start offset is supported",
+    required: true,
+    emits: { kind: "leaf", schema: { enum: [1] } },
+  },
+  audioSide: {
+    check: oneOf(["timeline", "reference", "none"]),
+    describe: "which side's audio the comparison uses — exactly one side, never both",
+    required: true,
+    emits: { kind: "leaf", schema: { enum: ["timeline", "reference", "none"] } },
+  },
+  layout: {
+    check: oneOf(["side-by-side", "overlay"]),
+    describe: "side-by-side (left reference / right timeline) or transparent overlay",
+    required: true,
+    emits: { kind: "leaf", schema: { enum: ["side-by-side", "overlay"] } },
+  },
+  overlayOpacity: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 1,
+    describe: "overlay layout only: reference opacity over the timeline frame, in (0, 1]",
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0, maximum: 1 } },
+  },
+};
+
+export const MEDIA_REPLACE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "media.replace",
+    describe: '"media.replace"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "media.replace" } },
+  },
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "the media item whose source the references switch away from",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  filePath: {
+    check: isNonEmptyString,
+    describe: "absolute path of the new production version, inside a configured media root",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  scope: {
+    check: oneOf(["project", "clip"]),
+    describe: '"project" repoints every clip referencing mediaId; "clip" only the clip named by clipId',
+    required: true,
+    emits: { kind: "leaf", schema: { enum: ["project", "clip"] } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "required when scope is clip: the single clip to repoint",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const MEDIA_RELINK_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "media.relink",
+    describe: '"media.relink"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "media.relink" } },
+  },
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "the media item whose source file moved",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  filePath: {
+    check: isNonEmptyString,
+    describe: "absolute path of the SAME content at its new location, inside a configured media root",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const REFERENCE_SET_COMPARISON_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "reference.setComparison",
+    describe: '"reference.setComparison"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "reference.setComparison" } },
+  },
+  config: {
+    check: isPlainObject,
+    describe: "the shared reference-comparison configuration",
+    required: true,
+    emits: { kind: "object", schema: REFERENCE_COMPARISON_CONFIG_SCHEMA },
+  },
+};
+
+export const REFERENCE_CLEAR_COMPARISON_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "reference.clearComparison",
+    describe: '"reference.clearComparison"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "reference.clearComparison" } },
+  },
+};
+
 export const CLIP_SET_KEYFRAMES_SCHEMA: ObjectSchema = {
   op: {
     check: (value) => value === "clip.setKeyframes",
@@ -1362,11 +1503,138 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       }
       return { ...op, keyframes };
     }
+    case "reference.setComparison": {
+      const op = validateObject<ReferenceSetComparisonOp>(
+        raw,
+        REFERENCE_SET_COMPARISON_SCHEMA,
+        label,
+      );
+      const config = validateObject<ReferenceSetComparisonOp["config"]>(
+        op.config,
+        REFERENCE_COMPARISON_CONFIG_SCHEMA,
+        `${label}.config`,
+      );
+      return { ...op, config };
+    }
+    case "reference.clearComparison": {
+      return validateObject<ReferenceClearComparisonOp>(
+        raw,
+        REFERENCE_CLEAR_COMPARISON_SCHEMA,
+        label,
+      );
+    }
+    case "media.replace": {
+      const op = validateObject<MediaReplaceOp>(raw, MEDIA_REPLACE_SCHEMA, label);
+      if (op.scope === "clip" && !op.clipId) {
+        throw invalidParams(`${label}: clipId is required when scope is "clip"`);
+      }
+      return op;
+    }
+    case "media.relink": {
+      return validateObject<MediaRelinkOp>(raw, MEDIA_RELINK_SCHEMA, label);
+    }
     default:
       // Unreachable: opType was allowlist-checked above. Keeps the function
       // total for the compiler and fail-closed for the runtime.
       throw invalidParams(`${label}: unsupported op ${JSON.stringify(opType)}`);
   }
+}
+
+/**
+ * Async pre-pass for ops whose translation needs file facts: media.replace
+ * needs a fully probed media item for the new version; media.relink needs
+ * the file's stat facts. The session calls this BEFORE opToCoreActions and
+ * the enriched ops flow through the ordinary atomic/undoable pipeline.
+ */
+export async function enrichMediaFileOps(
+  ops: readonly EditOp[],
+  mediaRoots: readonly string[],
+  probeFile: (absPath: string) => Promise<{
+    durationSec: number; width: number; height: number; frameRate: number;
+    codec: string; fileSize: number; mimeType: string; hasVideo: boolean; hasAudio: boolean;
+    sampleRate: number; channels: number;
+  }>,
+  statFile: (absPath: string) => Promise<{ name: string; size: number; lastModified: number }>,
+): Promise<readonly EditOp[]> {
+  const out: EditOp[] = [];
+  for (const op of ops) {
+    if (op.op === "media.replace") {
+      const replace = op as MediaReplaceOp;
+      const resolution = resolveContainedPathDetailed(replace.filePath, mediaRoots);
+      if (resolution.kind !== "ok") {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `media.replace: filePath must resolve inside a configured media root: ${replace.filePath}`,
+          { filePath: replace.filePath },
+        );
+      }
+      const probed = await probeFile(resolution.path);
+      const mediaType = probed.hasVideo ? "video" : "audio";
+      out.push({
+        ...replace,
+        probedMediaItem: {
+          id: `media-${crypto.randomUUID()}`,
+          name: basename(resolution.path),
+          type: mediaType,
+          originalUrl: resolution.path,
+          metadata: {
+            duration: probed.durationSec,
+            width: probed.width,
+            height: probed.height,
+            frameRate: probed.frameRate,
+            codec: probed.codec,
+            sampleRate: probed.sampleRate,
+            channels: probed.channels,
+            fileSize: probed.fileSize,
+          },
+        },
+      } as EditOp);
+    } else if (op.op === "media.relink") {
+      const relink = op as MediaRelinkOp;
+      const resolution = resolveContainedPathDetailed(relink.filePath, mediaRoots);
+      if (resolution.kind !== "ok") {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `media.relink: filePath must resolve inside a configured media root: ${relink.filePath}`,
+          { filePath: relink.filePath },
+        );
+      }
+      const facts = await statFile(resolution.path);
+      out.push({
+        ...relink,
+        probedFileFacts: { name: basename(resolution.path), size: facts.size, lastModified: facts.lastModified },
+      } as EditOp);
+    } else {
+      out.push(op);
+    }
+  }
+  return out;
+}
+
+function collectRepointTargets(
+  op: MediaReplaceOp,
+  draft: Project,
+): Clip[] {
+  const clips = draft.timeline.tracks.flatMap((track) => track.clips);
+  if (op.scope === "clip") {
+    const clip = clips.find((candidate) => candidate.id === op.clipId);
+    if (!clip) {
+      throw new FacadeError(
+        "NOT_FOUND",
+        `media.replace: clip "${op.clipId}" not found`,
+        { clipId: op.clipId },
+      );
+    }
+    if (clip.mediaId !== op.mediaId) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `media.replace: clip "${op.clipId}" does not reference media "${op.mediaId}"`,
+        { clipId: op.clipId, mediaId: op.mediaId, clipMediaId: clip.mediaId },
+      );
+    }
+    return [clip];
+  }
+  return clips.filter((clip) => clip.mediaId === op.mediaId);
 }
 
 /** Cross-op constraints that preserve precise per-op created-id attribution. */
@@ -1496,10 +1764,21 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           { trackId: op.trackId },
         );
       }
+      if (
+        op.position !== undefined &&
+        op.position > draft.timeline.tracks.length
+      ) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `track.add: position ${op.position} is beyond the current track count ${draft.timeline.tracks.length} — pass at most ${draft.timeline.tracks.length} (or omit position to append on top)`,
+          { position: op.position, trackCount: draft.timeline.tracks.length },
+        );
+      }
       return [
         makeAction("track/add", {
           trackType: op.trackType,
           ...(op.trackId !== undefined ? { trackId: op.trackId } : {}),
+          ...(op.position !== undefined ? { position: op.position } : {}),
         }),
       ];
     }
@@ -2256,6 +2535,142 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       }
       return [
         makeAction("transition/remove", { transitionId: op.transitionId }),
+      ];
+    }
+
+    case "reference.setComparison": {
+      const media = draft.mediaLibrary.items.find(
+        (item) => item.id === op.config.referenceMediaId,
+      );
+      if (!media) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `reference.setComparison: reference media "${op.config.referenceMediaId}" is not in the project media library`,
+          { referenceMediaId: op.config.referenceMediaId },
+        );
+      }
+      const verdict = validateReferenceComparisonConfig(op.config, {
+        referenceMediaExists: true,
+        referenceDurationSec: media.metadata.duration ?? 0,
+        timelineDurationSec: timelineDurationSec(draft),
+      });
+      if (!verdict.ok) {
+        throw new FacadeError("INVALID_PARAMS", `reference.setComparison: ${verdict.reason}`, {
+          config: op.config,
+        });
+      }
+      return [makeAction("reference/setComparison", { config: op.config })];
+    }
+
+    case "reference.clearComparison": {
+      if (!draft.referenceComparison) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          "reference.clearComparison: no reference comparison is configured",
+        );
+      }
+      return [makeAction("reference/clearComparison", {})];
+    }
+
+    case "media.replace": {
+      const probed = op.probedMediaItem as
+        | {
+            id: string;
+            name: string;
+            type: string;
+            originalUrl: string;
+            metadata: { duration: number; width: number; height: number; frameRate: number; codec: string; sampleRate: number; channels: number; fileSize: number };
+          }
+        | undefined;
+      if (!probed) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "media.replace: missing the async probed media item — this op must go through edit.apply/edit.validate (the session pre-pass probes the new file)",
+        );
+      }
+      const oldItem = draft.mediaLibrary.items.find((item) => item.id === op.mediaId);
+      if (!oldItem) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `media.replace: media "${op.mediaId}" not found`,
+          { mediaId: op.mediaId },
+        );
+      }
+      const targets = collectRepointTargets(op, draft);
+      if (targets.length === 0) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `media.replace: no clips reference media "${op.mediaId}" under the requested scope`,
+          { mediaId: op.mediaId, scope: op.scope },
+        );
+      }
+      const newDuration = probed.metadata.duration ?? 0;
+      const actions: Action[] = [
+        // The new version imports as its OWN item: the old file is never
+        // overwritten, both versions coexist and remain distinguishable.
+        makeAction("media/import", { file: null as never, mediaItem: {
+          ...probed,
+          versionSource: {
+            supersedesMediaIdInProject: op.mediaId,
+            ...(oldItem.materialSource ? { supersedesMaterialId: oldItem.materialSource.materialId } : {}),
+            replacedAt: new Date().toISOString(),
+            replacedBy: "agent",
+          },
+        } as never }),
+      ];
+      for (const clip of targets) {
+        if (newDuration > 0 && clip.inPoint >= newDuration - 1e-6) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            `media.replace: clip "${clip.id}" starts at inPoint ${clip.inPoint}s which is beyond the new source duration ${newDuration}s — trim the clip first or replace a longer source`,
+            { clipId: clip.id, inPoint: clip.inPoint, newDuration },
+          );
+        }
+        // Clamp to the new source; the timeline can only shrink, never extend.
+        const outPoint = newDuration > 0 ? Math.min(clip.outPoint, newDuration) : clip.outPoint;
+        const shortened = outPoint < clip.outPoint - 1e-6;
+        if (shortened && (clip.speedKeyframes?.length || clip.freezeFrames?.length)) {
+          throw new FacadeError("INVALID_PARAMS", "media.replace: shortening a clip with speed ramps or freeze frames requires an explicit trim first", { clipId: clip.id });
+        }
+        const duration = shortened
+          ? Math.min(clip.duration, (outPoint - clip.inPoint) / Math.max(clip.speed ?? 1, 1e-6))
+          : clip.duration;
+        actions.push(
+          makeAction("clip/repointSource", {
+            clipId: clip.id,
+            mediaId: probed.id,
+            inPoint: clip.inPoint,
+            outPoint,
+            duration,
+            supersedesMediaId: op.mediaId,
+          }),
+        );
+      }
+      return actions;
+    }
+
+    case "media.relink": {
+      const facts = op.probedFileFacts;
+      if (!facts) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "media.relink: missing the async file facts — this op must go through edit.apply/edit.validate (the session pre-pass stats the file)",
+        );
+      }
+      const item = draft.mediaLibrary.items.find((entry) => entry.id === op.mediaId);
+      if (!item) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `media.relink: media "${op.mediaId}" not found`,
+          { mediaId: op.mediaId },
+        );
+      }
+      return [
+        makeAction("media/relinkSource", {
+          mediaId: op.mediaId,
+          originalUrl: op.filePath,
+          sourceFile: facts,
+        }),
       ];
     }
 

@@ -703,6 +703,12 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "history.control": historyControlResult(),
   "preview.render_frame": objectSchema({ revision: integerSchema(0), timeSec: numberSchema(0), width: integerSchema(0), height: integerSchema(0), artifact: artifactRef(), replayed: booleanSchema() }, ["revision", "timeSec", "width", "height", "artifact", "replayed"]),
   "visual.inspect": objectSchema({ revision: integerSchema(0), sourceRevision: integerSchema(0), selection: openObject(), sampleCount: integerSchema(1, 12), width: integerSchema(2), height: integerSchema(2), frameBudgetBytes: integerSchema(1), frames: arraySchema(openObject(), { minItems: 1, maxItems: 12 }), contactSheet: nullable(artifactRef()), limitations: arraySchema(stringSchema()), replayed: booleanSchema() }, ["revision", "sourceRevision", "selection", "sampleCount", "width", "height", "frameBudgetBytes", "frames", "contactSheet", "limitations", "replayed"]),
+  "preview.render_comparison": objectSchema({ revision: integerSchema(0), sourceRevision: integerSchema(0), timeSec: numberSchema(0), referenceSec: numberSchema(0), clamped: stringSchema(), layout: stringSchema(), width: integerSchema(2), height: integerSchema(2), frameBudgetBytes: integerSchema(1), artifact: artifactRef(), limitations: arraySchema(stringSchema()), replayed: booleanSchema() }, ["revision", "sourceRevision", "timeSec", "referenceSec", "clamped", "layout", "width", "height", "frameBudgetBytes", "artifact", "limitations", "replayed"]),
+  "analysis.list": arraySchema(
+    objectSchema({ id: stringSchema(), finishedAt: stringSchema(), subject: openObject(), analysisTypes: arraySchema(stringSchema()), stale: openObject(), recheckOf: nullable(stringSchema()) }, ["id", "finishedAt", "subject", "analysisTypes", "stale", "recheckOf"]),
+    { maxItems: 200 },
+  ),
+  "analysis.get": openObject(),
   "export.start": exportStartResult(),
   "job.status": jobStatus(),
   "job.cancel": jobStatus(),

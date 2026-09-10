@@ -31,6 +31,11 @@ import type {
   MediaImportResult,
   MediaAnalyzeStartParams,
   MediaAnalyzeStartResult,
+  AnalysisGetParams,
+  AnalysisListParams,
+  AnalysisListResult,
+  PreviewRenderComparisonParams,
+  PreviewRenderComparisonResult,
   PreviewRenderFrameParams,
   PreviewRenderFrameResult,
   VisualInspectParams,
@@ -110,6 +115,15 @@ export interface AgentFacade extends BundledToolBindings {
   readonly "preview.render_frame": (
     params: PreviewRenderFrameParams,
   ) => Promise<FacadeResult<PreviewRenderFrameResult>>;
+  readonly "preview.render_comparison": (
+    params: PreviewRenderComparisonParams,
+  ) => Promise<FacadeResult<PreviewRenderComparisonResult>>;
+  readonly "analysis.list": (
+    params?: AnalysisListParams,
+  ) => Promise<FacadeResult<AnalysisListResult>>;
+  readonly "analysis.get": (
+    params: AnalysisGetParams,
+  ) => Promise<FacadeResult<unknown>>;
   readonly "visual.inspect": (
     params: VisualInspectParams,
   ) => Promise<FacadeResult<VisualInspectResult>>;
@@ -178,6 +192,9 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "history.get": (params) => session.historyGet(params),
     "history.control": (params) => session.historyControl(params),
     "preview.render_frame": (params) => session.previewRenderFrame(params),
+    "preview.render_comparison": (params) => session.previewRenderComparison(params),
+    "analysis.list": (params) => session.analysisList(params),
+    "analysis.get": (params) => session.analysisGet(params),
     "visual.inspect": (params) => session.visualInspect(params),
     "export.start": (params) => session.exportStart(params),
     "job.status": (params) => session.jobStatus(params),

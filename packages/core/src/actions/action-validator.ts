@@ -15,6 +15,7 @@ import type {
   ProjectAction,
   MarkerAction,
   ProjectMarkerAction,
+  ReferenceComparisonAction,
 } from "../types/actions";
 import type {
   Project,
@@ -94,6 +95,11 @@ export class ActionValidator {
       return this.validateSubtitleAction(action as SubtitleAction, project);
     } else if (type.startsWith("marker/")) {
       return this.validateMarkerAction(action as MarkerAction, project);
+    } else if (type.startsWith("reference/")) {
+      return this.validateReferenceComparisonAction(
+        action as ReferenceComparisonAction,
+        project,
+      );
     }
 
     return [
@@ -102,6 +108,18 @@ export class ActionValidator {
         message: `Unknown action type: ${type}`,
       },
     ];
+  }
+
+  /**
+   * Reference comparison actions carry fully validated configs — the facade
+   * validates them against the owning project's media and durations before
+   * translating; nothing further to check here.
+   */
+  private validateReferenceComparisonAction(
+    _action: ReferenceComparisonAction,
+    _project: Project,
+  ): ValidationError[] {
+    return [];
   }
 
   private validateProjectAction(
@@ -194,7 +212,9 @@ export class ActionValidator {
 
     switch (action.type) {
       case "media/import":
-        if (!action.params.file) {
+        // A fully-formed mediaItem (used by media.replace's version import
+        // and by redo restores) satisfies the action without a File handle.
+        if (!action.params.file && !action.params.mediaItem) {
           errors.push({
             code: "INVALID_PARAMS",
             message: "File is required for media import",
@@ -733,6 +753,27 @@ export class ActionValidator {
 
     switch (action.type) {
       case "clip/add":
+        if (
+          action.params.clipId !== undefined &&
+          (typeof action.params.clipId !== "string" || !action.params.clipId)
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Clip ID must be a non-empty string when provided",
+            path: "params.clipId",
+          });
+        } else if (
+          action.params.clipId !== undefined &&
+          timeline.tracks.some((track) =>
+            track.clips.some((clip) => clip.id === action.params.clipId),
+          )
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: `Clip with ID ${action.params.clipId} already exists`,
+            path: "params.clipId",
+          });
+        }
         if (
           !action.params.trackId ||
           typeof action.params.trackId !== "string"

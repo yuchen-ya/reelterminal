@@ -114,6 +114,28 @@ export function videoEncodeArgs(plan: EncodePlan): string[] {
 
   args.push("-pix_fmt", pixelFormatForCodec(plan.codec));
 
+  if (plan.codec !== "prores") {
+    // Explicit SDR BT.709/limited conversion + tagging (docs/COLOR.md): the
+    // RGBA frames piped from the renderer would otherwise go through
+    // swscale's default BT.601 matrix with no VUI, and every downstream
+    // player would re-guess the matrix — a real shift on saturated colors.
+    // The filter pins the pixels; the codec params tag the stream so pixels
+    // and metadata always agree.
+    args.push(
+      "-vf", "scale=out_color_matrix=bt709:out_range=tv",
+      "-color_range", "tv",
+      "-colorspace", "bt709",
+      "-color_primaries", "bt709",
+      "-color_trc", "bt709",
+    );
+    const family = familyForEncoder(plan.encoder);
+    if (family === "x264") {
+      args.push("-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709");
+    } else if (family === "x265") {
+      args.push("-x265-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709");
+    }
+  }
+
   if (plan.codec === "hevc" || plan.codec === "h265") {
     args.push("-tag:v", "hvc1");
   }

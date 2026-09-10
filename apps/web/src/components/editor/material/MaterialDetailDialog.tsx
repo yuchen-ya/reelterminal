@@ -145,11 +145,14 @@ export function MaterialDetailDialog() {
 
   const remove = async () => {
     if (!record) return;
-    const referenced = record.usages.length > 0;
+    const currentUsageCount = record.usages.filter(
+      (usage) => usage.status === "current",
+    ).length;
+    const referenced = currentUsageCount > 0;
     if (
       referenced &&
       !window.confirm(
-        t("material.removeReferencedConfirm", { count: record.usages.length }),
+        t("material.removeReferencedConfirm", { count: currentUsageCount }),
       )
     ) {
       return;
@@ -366,6 +369,21 @@ export function MaterialDetailDialog() {
                           <FolderOpen size={12} aria-hidden />
                           <span className="text-fg-2">
                             {usage.projectName ?? usage.projectId}
+                          </span>
+                          <span
+                            className={`rounded-full border px-1.5 py-0.5 text-[10px] ${
+                              usage.status === "historical"
+                                ? "border-border text-fg-4"
+                                : "border-status-success/40 text-status-success"
+                            }`}
+                          >
+                            {usage.status === "historical"
+                              ? t(
+                                  usage.historicalReason
+                                    ? `material.usage.${usage.historicalReason}`
+                                    : "material.usage.historical",
+                                )
+                              : t("material.usage.current")}
                           </span>
                           {usage.startSec !== undefined && usage.endSec !== undefined ? (
                             <span>

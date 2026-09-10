@@ -24,6 +24,9 @@ import {
   JOB_PARAMS_SCHEMA,
   MEDIA_IMPORT_SCHEMA,
   MEDIA_ANALYZE_START_SCHEMA,
+  ANALYSIS_GET_SCHEMA,
+  ANALYSIS_LIST_SCHEMA,
+  PREVIEW_RENDER_COMPARISON_SCHEMA,
   PREVIEW_RENDER_FRAME_SCHEMA,
   VISUAL_INSPECT_RANGE_SCHEMA,
   VISUAL_INSPECT_SCHEMA,
@@ -170,6 +173,15 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
       return;
     case "preview.render_frame":
       validateObject(params, PREVIEW_RENDER_FRAME_SCHEMA, "preview.render_frame params");
+      return;
+    case "preview.render_comparison":
+      validateObject(params, PREVIEW_RENDER_COMPARISON_SCHEMA, "preview.render_comparison params");
+      return;
+    case "analysis.list":
+      validateObject(params, ANALYSIS_LIST_SCHEMA, "analysis.list params");
+      return;
+    case "analysis.get":
+      validateObject(params, ANALYSIS_GET_SCHEMA, "analysis.get params");
       return;
     case "visual.inspect": {
       const valid = validateObject<{ clipId?: string; timeRange?: unknown }>(

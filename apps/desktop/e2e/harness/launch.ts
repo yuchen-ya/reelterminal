@@ -98,6 +98,7 @@ async function launch(
     env: {
       ...process.env,
       ...extraEnv,
+      OPENREEL_USER_DATA_DIR: paths.userDataDir,
       OPENREEL_LIVE_ENDPOINT_FILE: paths.endpointFile,
       // The per-run directory is the only media root needed by import E2E;
       // every other spec simply observes the additional honest capability.

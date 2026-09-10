@@ -248,6 +248,11 @@ export interface PixelCompareRequest {
   readonly minMeanAbsDiff?: number;
   /** Ratio of pixels whose max channel diff exceeds ~24, for "different". */
   readonly minChangedPixelsRatio?: number;
+  /** Explicit YUV→RGB decode matrix pinned for BOTH sides (docs/COLOR.md). */
+  readonly colorMatrix?: "bt601" | "bt709";
+  /** Per-side overrides for mixed-matrix comparisons (win over colorMatrix). */
+  readonly targetColorMatrix?: "bt601" | "bt709";
+  readonly referenceColorMatrix?: "bt601" | "bt709";
 }
 
 export interface VerifyArtifactRequest {
@@ -271,6 +276,14 @@ export interface ArtifactProbeReport {
   readonly frameRate: number | null;
   readonly sizeBytes: number;
   readonly sha256: string;
+  /** Container color tags of the video stream (nulls when absent) — docs/COLOR.md. */
+  readonly color?: {
+    readonly matrix: string | null;
+    readonly primaries: string | null;
+    readonly transfer: string | null;
+    readonly range: "tv" | "pc" | null;
+    readonly pixFmt: string | null;
+  };
 }
 
 export interface VerifyCheck {

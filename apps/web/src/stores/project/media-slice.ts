@@ -45,6 +45,21 @@ export interface ImportMediaOptions {
   /** Internal live bridge marker: make this import one agent undo unit. */
   readonly historyOwner?: string;
   readonly historyGroupLabel?: string;
+  /** Stable link back to the user-level material selected for this import. */
+  readonly materialSource?: NonNullable<MediaItem["materialSource"]>;
+  /**
+   * Renderer-only transaction hook used by compound import flows such as a
+   * material segment attach. The returned synchronous core actions are
+   * validated with media/import on one isolated draft and published as one
+   * project commit + one undo unit. A failed action discards the newly
+   * persisted blob and leaves project/history untouched.
+   */
+  readonly atomicFollowUpActions?: (mediaId: string) => readonly Action[];
+  /** Receives ids created by a successful compound import batch. */
+  readonly onAtomicBatchCommitted?: (created: {
+    readonly tracks: readonly string[];
+    readonly clips: readonly string[];
+  }) => void;
 }
 
 /**
@@ -283,6 +298,9 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
             lastModified: file.lastModified,
           },
           ...(sourcePath ? { originalUrl: sourcePath } : {}),
+          ...(options.materialSource
+            ? { materialSource: options.materialSource }
+            : {}),
         };
         let committedMediaId = newMediaItem.id;
 
@@ -363,7 +381,40 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
             modifiedAt: Date.now(),
           };
 
-          if (options.historyOwner) {
+          if (options.atomicFollowUpActions) {
+            const owner = options.historyOwner ?? "human";
+            const importAction: Action = {
+              type: "media/import",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              params: { file, mediaItem: newMediaItem },
+            };
+            const followUps = options.atomicFollowUpActions(newMediaItem.id);
+            const batch = get().executeActionBatch(
+              [importAction, ...followUps],
+              {
+                groupLabel:
+                  options.historyGroupLabel ?? "Import media and add to timeline",
+                historyOwner: owner,
+              },
+            );
+            if (!batch.result.success) {
+              await discardUncommittedBlob();
+              return batch.result;
+            }
+            committedMediaId = newMediaItem.id;
+            updatedProject = get().project;
+            try {
+              options.onAtomicBatchCommitted?.({
+                tracks: batch.createdIds.tracks,
+                clips: batch.createdIds.clips,
+              });
+            } catch (error) {
+              // This callback only reports already-committed ids. Observer
+              // failures cannot turn a durable project commit into a failure.
+              console.warn("Compound media import observer failed", error);
+            }
+          } else if (options.historyOwner) {
             // Media import is not serializable as a wire action, but the
             // renderer already has the File bytes and fully-probed MediaItem.
             // Execute the canonical core action with that stable item so the
@@ -405,7 +456,9 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
             };
           }
 
-          set({ project: updatedProject });
+          // executeActionBatch already published the compound transaction.
+          // The ordinary and history-only paths still publish here.
+          if (!options.atomicFollowUpActions) set({ project: updatedProject });
           discardPersistedBlob = false;
         } catch (error) {
           await discardUncommittedBlob();
@@ -516,6 +569,9 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
           sourceFile: options.sourceFile,
           historyOwner: options.historyOwner,
           historyGroupLabel: options.historyGroupLabel,
+          materialSource: options.materialSource,
+          atomicFollowUpActions: options.atomicFollowUpActions,
+          onAtomicBatchCommitted: options.onAtomicBatchCommitted,
         });
       } catch (error) {
         return importError(

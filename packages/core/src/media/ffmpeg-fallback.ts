@@ -778,7 +778,14 @@ export class FFmpegFallback {
           "-crf", "23",
           "-maxrate", videoBitrate,
           "-bufsize", this.calculateBufsize(videoBitrate),
+          // Explicit SDR BT.709/limited conversion + tagging (docs/COLOR.md):
+          // without this, JPEG (RGB) frames convert through swscale's default
+          // BT.601 matrix and the stream carries no VUI — downstream players
+          // re-guess and saturated colors shift.
+          "-vf", "scale=out_color_matrix=bt709:out_range=tv",
           "-pix_fmt", "yuv420p",
+          "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709",
+          "-color_range", "tv",
         );
       } else {
         ffmpegArgs.push(
@@ -1005,7 +1012,10 @@ export class FFmpegFallback {
       const needsReencode = speed !== 1 || !useStreamCopy;
 
       if (needsReencode) {
-        const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=${frameRate}`;
+        // Explicit BT.709/limited output (docs/COLOR.md): the resize chain
+        // normalizes whatever the input carried into the documented export
+        // space instead of leaving an untagged swscale-default result.
+        const scaleFilter = `scale=${width}:${height}:force_original_aspect_ratio=decrease:out_color_matrix=bt709:out_range=tv,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=${frameRate}`;
 
         if (speed !== 1 && speed > 0) {
           const videoSpeed = 1 / speed;
@@ -1028,6 +1038,8 @@ export class FFmpegFallback {
             "-maxrate", videoBitrate,
             "-bufsize", this.calculateBufsize(videoBitrate),
             "-pix_fmt", "yuv420p",
+            "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709",
+            "-color_range", "tv",
             "-c:a", "aac",
             "-b:a", audioBitrate,
           );

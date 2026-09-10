@@ -164,6 +164,19 @@ contextBridge.exposeInMainWorld("openreel", {
       ipcRenderer.invoke(CHANNELS.collabSetAccess, { access }) as Promise<LiveCollabStatus>,
     openWorkspace: () => ipcRenderer.invoke(CHANNELS.collabOpenWorkspace, undefined),
   },
+  analysisRecords: {
+    list: (args: { projectId: string; mediaId?: string; limit?: number }) =>
+      ipcRenderer.invoke(CHANNELS.analysisRecordsList, args),
+    get: (args: { projectId: string; recordId: string }) =>
+      ipcRenderer.invoke(CHANNELS.analysisRecordsGet, args),
+    recheck: (args: {
+      projectId: string;
+      recordId: string;
+      allowCloudUpload?: boolean;
+    }) => ipcRenderer.invoke(CHANNELS.analysisRecordsRecheck, args),
+    jobStatus: (jobId: string) =>
+      ipcRenderer.invoke(CHANNELS.analysisRecordsJobStatus, { jobId }),
+  },
   conversation: {
     getState: () =>
       ipcRenderer.invoke(CHANNELS.conversationGetState, undefined) as Promise<DesktopConversationState>,

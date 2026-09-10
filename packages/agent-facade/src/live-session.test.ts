@@ -1749,6 +1749,40 @@ describe("live preview/export on a store snapshot (Decision 10)", () => {
     expect(await stat(path.join(artifactRoot, "visual")).catch(() => null)).toBeNull();
   });
 
+  it("visual.inspect keeps published evidence immutable across different live requests", async () => {
+    await seedTextProject();
+    const facade = liveFacade({ renderProvider: stubRenderProvider() });
+    // Same revision, sampleCount and raster; only the interval differs. The
+    // old filename scheme rendered both into one contact-sheet/frame path.
+    const first = await facade["visual.inspect"]({
+      timeRange: { startSec: 0, endSec: 1 },
+      sampleCount: 2,
+      width: 320,
+      height: 180,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const second = await facade["visual.inspect"]({
+      timeRange: { startSec: 1, endSec: 2 },
+      sampleCount: 2,
+      width: 320,
+      height: 180,
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    for (const [index, frame] of second.value.frames.entries()) {
+      expect(frame.artifact.path).not.toBe(first.value.frames[index].artifact.path);
+    }
+    // The earlier response still resolves to exactly the bytes it returned.
+    const { readFile } = await import("node:fs/promises");
+    const { createHash } = await import("node:crypto");
+    for (const artifact of first.value.frames.map((frame) => frame.artifact)) {
+      const bytes = await readFile(artifact.path);
+      expect(bytes.length).toBe(artifact.sizeBytes);
+      expect(createHash("sha256").update(bytes).digest("hex")).toBe(artifact.sha256);
+    }
+  });
+
   it("passes a readable GUI-imported source path to the snapshot renderer", async () => {
     const sourcePath = path.join(artifactRoot, "human-shot.mp4");
     await writeFile(sourcePath, Buffer.from("desktop-imported-media"));
@@ -2133,6 +2167,14 @@ describe("live cloud review is read-only", () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
       expect(job).toMatchObject({ ok: true, value: { state: "done", sourceRevision: state.revision, result: { summary: { videoReview: { provider: "qwen3.5-omni-flash" } } } } });
+      if (!job?.ok) throw new Error("analysis did not finish");
+      const recordId = (job.value.result?.summary.analysisRecord as { id?: string } | undefined)?.id;
+      expect(recordId).toBeTruthy();
+      const analysisRecord = await facade["analysis.get"]({ recordId: recordId! });
+      expect(analysisRecord).toMatchObject({
+        ok: true,
+        value: { projectId: importedStore.project.id },
+      });
       expect(await importedStore.getState()).toEqual(state);
       expect(await facade["editor.get_context"]({})).toEqual(context);
       expect(await facade["media.analyze_start"](request)).toMatchObject({ ok: true, value: { replayed: true, jobId: started.value.jobId } });

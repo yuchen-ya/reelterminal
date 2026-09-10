@@ -28,6 +28,7 @@ import { initAutoUpdater } from "./updater";
 import { initCrashReporter, reportError } from "./crash-reporter";
 import { migrateGpuCacheOnUpgrade } from "./gpu-cache-migration";
 import { registerLiveIpc } from "./ipc/live";
+import { registerAnalysisRecordsIpc } from "./ipc/analysis-records";
 import { registerConversationIpc } from "./ipc/conversation";
 import {
   disposeLiveSessionHost,
@@ -275,6 +276,7 @@ app.whenReady().then(() => {
   // Live human–agent collaboration (ADR 0004 Slice 3): external MCP endpoint
   // plus collabControl behind the main-process session host.
   registerLiveIpc(getLiveSessionHost());
+  registerAnalysisRecordsIpc(getLiveSessionHost());
   registerConversationIpc(getConversationHost(), getCodexOnboardingHost());
   createWindow();
   initAutoUpdater();

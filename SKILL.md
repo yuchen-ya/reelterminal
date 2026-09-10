@@ -85,7 +85,8 @@ This connector exposes the same open GUI project through the following tools:
 `media_import_preflight` · `media_import` · `media_analyze_start` · `media_inspect` · `timeline_get` · `timeline_query` ·
 `editor_get_context` · `editor_control` · `edit_validate` · `edit_apply` ·
 `history_get` · `history_control` · `preview_render_frame` ·
-`visual_inspect` ·
+`preview_render_comparison` ·
+`visual_inspect` · `analysis_list` · `analysis_get` ·
 `export_start` · `job_status` · `job_cancel` · `verify_artifact` ·
 `material_list` · `material_get` · `material_create` · `material_update` ·
 `material_batch_update` · `material_remove` · `material_attach` · `material_undo`.

@@ -24,6 +24,7 @@ import { useTimelineStore } from "../../stores/timeline-store";
 import { getPlaybackBridge } from "../../bridges/playback-bridge";
 import { runExclusiveLiveWrite } from "./live-write-lock";
 import { handleMaterialLibraryRequest } from "./material-bridge";
+import { prepareLiveMedia } from "./prepare-live-media";
 
 /**
  * Renderer side of the ADR 0004 Decision 1 seam: the desktop main-process live
@@ -265,11 +266,21 @@ async function handleApplyActions(
       }
     }
 
-    const batch = store.executeActionBatch(actions, {
+    const prepared = await prepareLiveMedia(actions, store.project);
+    // Reading/persisting replacement bytes is asynchronous. Re-check the
+    // canonical context before committing the entire prepared batch once.
+    if (useProjectStore.getState().project.id !== store.project.id ||
+        (req.expectedRevision !== undefined && getProjectRevision() !== req.expectedRevision) ||
+        (req.expectedContextRevision !== undefined && getLiveEditorContext().contextRevision !== req.expectedContextRevision)) {
+      await prepared.discard();
+      return { ok: false, error: { code: "CONFLICT", message: "Project or editor context changed while preparing media" } };
+    }
+    const batch = store.executeActionBatch(prepared.actions, {
       groupLabel,
       historyOwner: AGENT_HISTORY_OWNER,
     });
     if (!batch.result.success) {
+      await prepared.discard();
       return {
         ok: false,
         error: {

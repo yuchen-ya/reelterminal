@@ -271,16 +271,74 @@ export async function attachMaterialToProject(
   const resolved = await resolveMediaFile(sourceMedia);
   if ("error" in resolved) return resolved.error;
 
+  // Optional timeline clip. Build it as part of the media import transaction:
+  // media/import + track/add + clip/add validate on one draft, publish once,
+  // and share one history group. A failed clip/track action therefore cannot
+  // leave an orphan project-media item behind.
+  const wantClip = options.addClip ?? range !== null;
+  let clipId: string | null = null;
+  const attachedAt = new Date().toISOString();
   const importResult = await useProjectStore.getState().importMedia(resolved.file, {
     ...(resolved.sourcePath ? { sourcePath: resolved.sourcePath } : {}),
     ...(options.expectedRevision !== undefined
       ? { expectedRevision: options.expectedRevision }
       : {}),
     type: sourceMedia.mediaType === "image" ? "image" : sourceMedia.mediaType,
+    materialSource: {
+      materialId: material.id,
+      ...(material.id !== sourceMedia.id
+        ? { sourceMediaMaterialId: sourceMedia.id }
+        : {}),
+      materialRevision: material.revision,
+      attachedAt,
+      attachedBy: options.actor,
+    },
     ...(options.actor === "agent"
       ? {
           historyOwner: "agent",
           historyGroupLabel: "agent: material.attach",
+        }
+      : {
+          historyOwner: "human",
+          historyGroupLabel: "Add material to project",
+        }),
+    ...(wantClip
+      ? {
+          atomicFollowUpActions: (mediaIdInProject: string): readonly Action[] => {
+            const current = useProjectStore.getState();
+            const startTime =
+              options.startTimeSec !== undefined
+                ? Math.max(0, options.startTimeSec)
+                : current.getTimelineDuration();
+            const trackId = `track-${uuidv4()}`;
+            const clipAction: Action = {
+              type: "clip/add",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              params: {
+                trackId,
+                mediaId: mediaIdInProject,
+                startTime,
+                ...(range
+                  ? {
+                      inPoint: range.startSec,
+                      outPoint: range.endSec,
+                      duration: range.endSec - range.startSec,
+                    }
+                  : {}),
+              },
+            };
+            const trackAction: Action = {
+              type: "track/add",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              params: { trackType: trackTypeFor(sourceMedia.mediaType), trackId },
+            };
+            return [trackAction, clipAction];
+          },
+          onAtomicBatchCommitted: (created: { readonly clips: readonly string[] }) => {
+            clipId = created.clips[0] ?? null;
+          },
         }
       : {}),
   });
@@ -294,62 +352,7 @@ export async function attachMaterialToProject(
     };
   }
   const mediaIdInProject = importResult.actionId;
-
-  // Optional timeline clip. Segments default to on (their range is the
-  // point); plain media defaults to import-only, matching the media panel's
-  // import UX.
-  const wantClip = options.addClip ?? range !== null;
-  let clipId: string | null = null;
-  if (wantClip) {
-    const current = useProjectStore.getState();
-    const startTime =
-      options.startTimeSec !== undefined
-        ? Math.max(0, options.startTimeSec)
-        : current.getTimelineDuration();
-    const trackId = `track-${uuidv4()}`;
-    const clipAction: Action = {
-      type: "clip/add",
-      id: uuidv4(),
-      timestamp: Date.now(),
-      params: {
-        trackId,
-        mediaId: mediaIdInProject,
-        startTime,
-        ...(range
-          ? {
-              inPoint: range.startSec,
-              outPoint: range.endSec,
-              duration: range.endSec - range.startSec,
-            }
-          : {}),
-      },
-    };
-    const trackAction: Action = {
-      type: "track/add",
-      id: uuidv4(),
-      timestamp: Date.now(),
-      params: { trackType: trackTypeFor(sourceMedia.mediaType), trackId },
-    };
-    const batch = current.executeActionBatch([trackAction, clipAction], {
-      groupLabel:
-        options.actor === "agent"
-          ? "agent: material.attach clip"
-          : "Add material clip to timeline",
-      historyOwner: options.actor === "agent" ? "agent" : "human",
-    });
-    if (!batch.result.success) {
-      return {
-        ok: false,
-        code: "INTERNAL",
-        message:
-          batch.result.error?.message ??
-          "the material was imported but its timeline clip could not be added",
-        details: { mediaIdInProject },
-      };
-    }
-    clipId = batch.createdIds.clips[0] ?? null;
-    window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
-  }
+  if (wantClip) window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
 
   const finalState = useProjectStore.getState();
   const usage: MaterialUsage = {
@@ -357,8 +360,9 @@ export async function attachMaterialToProject(
     projectName: finalState.project.name,
     mediaIdInProject,
     ...(range ? { startSec: range.startSec, endSec: range.endSec } : {}),
-    attachedAt: new Date().toISOString(),
+    attachedAt,
     attachedBy: options.actor,
+    status: "current",
   };
   await service.recordUsage(material.id, usage);
 

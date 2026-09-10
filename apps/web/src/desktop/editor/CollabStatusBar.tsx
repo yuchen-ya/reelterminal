@@ -5,6 +5,7 @@ import { useCollabStore, installCollabEventListener, type CollabMode } from "../
 import { useUIStore } from "../../stores/ui-store";
 import { useAgentReferencesStore } from "../../stores/agent-references-store";
 import { useTranslation } from "react-i18next";
+import { AnalysisRecordsPanel } from "./AnalysisRecordsPanel";
 
 /** localStorage flag: first-run Agent Session intro bubble has been dismissed. */
 const INTRO_SEEN_KEY = "reelterminal.agentSessionIntroSeen";
@@ -277,6 +278,7 @@ export function CollabStatusBar(): JSX.Element {
       )}
 
       <div className="ml-auto flex items-center">
+        <AnalysisRecordsPanel />
         <button
           type="button"
           aria-label={t(chatOpen ? "externalAgent.closePanel" : "externalAgent.openPanel")}

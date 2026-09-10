@@ -91,6 +91,12 @@ export async function validateEditPlan(
     for (const [opIndex, op] of ops.entries()) {
       try {
         const beforeIds = collectEntityIds(draft);
+        const replacementBefore = op.op === "media.replace"
+          ? draft.timeline.tracks.flatMap((track) => track.clips.map((clip) => ({
+              trackId: track.id, clipId: clip.id, mediaId: clip.mediaId,
+              startTime: clip.startTime, duration: clip.duration, outPoint: clip.outPoint,
+            })))
+          : [];
         const actions = opToCoreActions(op, draft);
         for (const action of actions) {
           const result = await executor.execute(action, draft);
@@ -104,6 +110,25 @@ export async function validateEditPlan(
         }
         const created = diffCreatedIds(beforeIds, collectEntityIds(draft));
         applyClipIdOverride(op, draft, created);
+        if (op.op === "media.replace") {
+          const clips = draft.timeline.tracks.flatMap((track) => track.clips);
+          const impacts = replacementBefore.flatMap((before) => {
+            const after = clips.find((clip) => clip.id === before.clipId);
+            if (!after || before.mediaId === after.mediaId) return [];
+            const shortenedBySec = Math.max(0, before.duration - after.duration);
+            return [{ ...before, newMediaId: after.mediaId, newDurationSec: after.duration,
+              newOutPointSec: after.outPoint, shortenedBySec,
+              vacatedTimelineRange: shortenedBySec > 0
+                ? { startSec: after.startTime + after.duration, endSec: before.startTime + before.duration }
+                : null }];
+          });
+          warnings.push({ code: impacts.some((item) => item.shortenedBySec > 0)
+            ? "REPLACEMENT_SHORTENS_CLIPS" : "REPLACEMENT_IMPACT",
+            message: impacts.some((item) => item.shortenedBySec > 0)
+              ? "Replacement shortens clips and may leave timeline gaps. Inspect per-clip vacated ranges before applying."
+              : "Replacement preserves clip timing. Per-clip source changes are listed in details.",
+            opIndex, details: { clips: impacts } });
+        }
       } catch (error) {
         conflicts.push(issue(error, opIndex));
         break;

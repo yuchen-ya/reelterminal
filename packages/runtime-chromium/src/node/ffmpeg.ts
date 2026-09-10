@@ -190,6 +190,13 @@ export interface FfprobeStream {
   readonly nb_read_frames?: string;
   readonly duration?: string;
   readonly pix_fmt?: string;
+  /** Container/codec color tags — present in every stock ffprobe -show_streams output. */
+  readonly color_space?: string;
+  readonly color_primaries?: string;
+  readonly color_transfer?: string;
+  /** "tv" (limited) or "pc" (full). */
+  readonly color_range?: string;
+  readonly bits_per_raw_sample?: string;
 }
 
 export interface FfprobeOutput {
@@ -233,6 +240,13 @@ const MAX_FRAME_BYTES = 512 * 1024 * 1024;
  * so the extracted frame is the frame AT timeSec, not the nearest keyframe.
  * The frame streams to a temp file (NOT stdout), so arbitrarily large rasters
  * never hit a stdio cap; the byte count is validated exactly.
+ *
+ * Color matrix discipline (docs/COLOR.md): YUV→RGBA conversion is
+ * matrix-SENSITIVE. By default ffmpeg honors the file's own tags, but an
+ * untagged file is decoded through swscale's default matrix — silently wrong
+ * for files whose real matrix differs. Verification and comparison callers
+ * therefore pass `colorMatrix` explicitly ("bt601" | "bt709") so a diff can
+ * never be computed across a guessed matrix.
  */
 export async function extractFrameRgba(
   ffmpegPath: string,
@@ -240,7 +254,12 @@ export async function extractFrameRgba(
   timeSec: number,
   width: number,
   height: number,
-  options: { timeoutMs?: number; scale?: { width: number; height: number } } = {},
+  options: {
+    timeoutMs?: number;
+    scale?: { width: number; height: number };
+    /** Explicit YUV→RGB matrix for the decode; omit to trust the file's tags. */
+    colorMatrix?: "bt601" | "bt709";
+  } = {},
 ): Promise<Buffer> {
   const outWidth = options.scale?.width ?? width;
   const outHeight = options.scale?.height ?? height;
@@ -260,9 +279,17 @@ export async function extractFrameRgba(
       "-ss", String(timeSec),
       "-frames:v", "1",
     ];
-    if (options.scale) {
-      args.push("-vf", `scale=${options.scale.width}:${options.scale.height}`);
+    const filters: string[] = [];
+    if (options.colorMatrix && options.scale) {
+      filters.push(
+        `scale=w=${options.scale.width}:h=${options.scale.height}:in_color_matrix=${options.colorMatrix}`,
+      );
+    } else if (options.colorMatrix) {
+      filters.push(`scale=in_color_matrix=${options.colorMatrix}`);
+    } else if (options.scale) {
+      filters.push(`scale=${options.scale.width}:${options.scale.height}`);
     }
+    if (filters.length > 0) args.push("-vf", filters.join(","));
     args.push("-f", "rawvideo", "-pix_fmt", "rgba", rawPath);
     await runProcess(ffmpegPath, args, options);
     const raw = await readFile(rawPath);
@@ -306,6 +333,13 @@ export interface FramesEncoderHandle {
  * Stream PNG frames into a long-running ffmpeg (`image2pipe` → libx264 →
  * MP4). Frames flow one at a time with write backpressure — the whole video
  * never accumulates in Node memory either.
+ *
+ * Color conversion is EXPLICIT (docs/COLOR.md): swscale's default RGB→YUV
+ * matrix is BT.601 with no VUI written, which downstream players then
+ * re-guess (usually BT.709 for HD) — a real pixel shift on saturated
+ * red/blue. The filter pins the conversion to BT.709 limited range and the
+ * x264 VUI params tag the stream accordingly, so pixels and metadata always
+ * agree.
  */
 export function startFramesEncoder(
   ffmpegPath: string,
@@ -320,7 +354,10 @@ export function startFramesEncoder(
     "-c:v", "libx264",
     "-preset", options.preset ?? "veryfast",
     "-crf", String(options.crf ?? 18),
+    "-vf", "scale=out_color_matrix=bt709:out_range=tv",
     "-pix_fmt", "yuv420p",
+    "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709",
+    "-color_range", "tv",
     "-movflags", "+faststart",
     // Explicit format: destPath may be a `.part` temp name, whose extension
     // would break ffmpeg's format inference.

@@ -198,6 +198,7 @@ export class FfmpegArtifactVerifier implements ArtifactVerifier {
       frameCountRaw !== undefined && frameCountRaw !== "N/A"
         ? Number(frameCountRaw)
         : null;
+    const rangeRaw = videoStream?.color_range?.trim().toLowerCase();
     return {
       container: probed.format?.format_name ?? "unknown",
       videoCodec: videoStream?.codec_name ?? null,
@@ -209,6 +210,13 @@ export class FfmpegArtifactVerifier implements ArtifactVerifier {
       frameRate: parseFrameRate(videoStream?.avg_frame_rate ?? videoStream?.r_frame_rate),
       sizeBytes: fileStat.size,
       sha256: await sha256File(filePath),
+      color: {
+        matrix: videoStream?.color_space ?? null,
+        primaries: videoStream?.color_primaries ?? null,
+        transfer: videoStream?.color_transfer ?? null,
+        range: rangeRaw === "tv" || rangeRaw === "pc" ? rangeRaw : null,
+        pixFmt: videoStream?.pix_fmt ?? null,
+      },
     };
   }
 
@@ -217,6 +225,7 @@ export class FfmpegArtifactVerifier implements ArtifactVerifier {
     filePath: string,
     timeSec: number,
     scaleTo?: { width: number; height: number },
+    colorMatrix?: "bt601" | "bt709",
   ): Promise<PixelImage> {
     const probed = await ffprobeJson(binaries.ffprobe, filePath);
     const stream = probed.streams?.find((s) => s.codec_type === "video");
@@ -225,6 +234,7 @@ export class FfmpegArtifactVerifier implements ArtifactVerifier {
     if (width <= 0 || height <= 0) {
       throw new Error(`cannot determine video dimensions of ${filePath}`);
     }
+    const matrixOptions = colorMatrix ? { colorMatrix } : {};
     if (hasImageExtension(filePath)) {
       const rgba = await extractFrameRgba(
         binaries.ffmpeg,
@@ -232,7 +242,7 @@ export class FfmpegArtifactVerifier implements ArtifactVerifier {
         0,
         width,
         height,
-        scaleTo ? { scale: scaleTo } : {},
+        { ...(scaleTo ? { scale: scaleTo } : {}), ...matrixOptions },
       );
       return { width: scaleTo?.width ?? width, height: scaleTo?.height ?? height, rgba };
     }
@@ -250,7 +260,7 @@ export class FfmpegArtifactVerifier implements ArtifactVerifier {
       t,
       width,
       height,
-      scaleTo ? { scale: scaleTo } : {},
+      { ...(scaleTo ? { scale: scaleTo } : {}), ...matrixOptions },
     );
     return { width: scaleTo?.width ?? width, height: scaleTo?.height ?? height, rgba };
   }
@@ -262,15 +272,24 @@ export class FfmpegArtifactVerifier implements ArtifactVerifier {
   ): Promise<VerifyReport["compare"]> {
     const compare = request.compare;
     if (!compare) return undefined;
+    // Matrix-aware decode (docs/COLOR.md): `colorMatrix` pins BOTH sides to
+    // one explicit YUV→RGB matrix; the per-side overrides exist for
+    // mixed-matrix comparisons (e.g. a BT.601-tagged reference against a
+    // BT.709 export). Without any of these, each side decodes through its own
+    // container tags — correct for tagged files, but a similarity verdict on
+    // untagged files must not be trusted, so the check records what was used.
+    const targetMatrix = compare.targetColorMatrix ?? compare.colorMatrix;
+    const referenceMatrix = compare.referenceColorMatrix ?? compare.colorMatrix;
     // The reference is scaled to the artifact's raster when sizes differ —
     // comparing an export against its full-resolution source is the normal
     // case, never a NaN failure.
-    const target = await this.loadPixels(binaries, request.path, compare.timeSec);
+    const target = await this.loadPixels(binaries, request.path, compare.timeSec, undefined, targetMatrix);
     const reference = await this.loadPixels(
       binaries,
       compare.referencePath,
       compare.referenceTimeSec ?? compare.timeSec,
       { width: target.width, height: target.height },
+      referenceMatrix,
     );
 
     const regionNorm = compare.region ?? { x: 0, y: 0, width: 1, height: 1 };
@@ -298,13 +317,16 @@ export class FfmpegArtifactVerifier implements ArtifactVerifier {
     const changedPixelsRatio = count > 0 ? changed / count : 0;
 
     let pass: boolean;
+    const matrixNote = targetMatrix || referenceMatrix
+      ? ` [decode matrix: target=${targetMatrix ?? "tags"}, reference=${referenceMatrix ?? "tags"}]`
+      : " [decode matrix: tags-default per side]";
     if (compare.mode === "similar") {
       const maxMean = compare.maxMeanAbsDiff ?? DEFAULT_SIMILAR_MAX_MEAN_ABS_DIFF;
       pass = meanAbsDiff <= maxMean;
       checks.push({
         name: "compare.similar",
         pass,
-        details: `mean|Δ|=${meanAbsDiff.toFixed(3)} (threshold ≤${maxMean}), changedPixels=${(changedPixelsRatio * 100).toFixed(2)}%`,
+        details: `mean|Δ|=${meanAbsDiff.toFixed(3)} (threshold ≤${maxMean}), changedPixels=${(changedPixelsRatio * 100).toFixed(2)}%${matrixNote}`,
       });
     } else {
       const minMean = compare.minMeanAbsDiff ?? DEFAULT_DIFFERENT_MIN_MEAN_ABS_DIFF;
@@ -313,7 +335,7 @@ export class FfmpegArtifactVerifier implements ArtifactVerifier {
       checks.push({
         name: "compare.different",
         pass,
-        details: `mean|Δ|=${meanAbsDiff.toFixed(3)} (threshold ≥${minMean}), changedPixels=${(changedPixelsRatio * 100).toFixed(2)}% (threshold ≥${(minRatio * 100).toFixed(1)}%)`,
+        details: `mean|Δ|=${meanAbsDiff.toFixed(3)} (threshold ≥${minMean}), changedPixels=${(changedPixelsRatio * 100).toFixed(2)}% (threshold ≥${(minRatio * 100).toFixed(1)}%)${matrixNote}`,
       });
     }
     return {

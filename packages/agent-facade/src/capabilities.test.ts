@@ -111,6 +111,10 @@ describe("capabilities.get / session.describe", () => {
       "subtitle.importSrt",
       "clip.setColorGrade",
       "clip.setKeyframes",
+      "reference.setComparison",
+      "reference.clearComparison",
+      "media.replace",
+      "media.relink",
     ]);
     expect(res.value.editOps).toEqual([...EDIT_OP_TYPES]);
     expect(res.value.stateModel).toEqual({
@@ -144,6 +148,8 @@ describe("capabilities.get / session.describe", () => {
       "project.changes",
       "media.import",
       "media.analyze_start",
+      "analysis.list",
+      "analysis.get",
       "timeline.get",
       "timeline.query",
       "editor.get_context",
@@ -153,6 +159,7 @@ describe("capabilities.get / session.describe", () => {
       "history.get",
       "history.control",
       "preview.render_frame",
+      "preview.render_comparison",
       "visual.inspect",
       "export.start",
       "job.status",

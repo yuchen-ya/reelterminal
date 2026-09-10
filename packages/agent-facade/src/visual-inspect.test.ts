@@ -198,4 +198,98 @@ describe("visual.inspect", () => {
     expect(invalid.ok).toBe(false);
     if (!invalid.ok) expect(invalid.error.code).toBe("INVALID_PARAMS");
   }, 30000);
+
+  it("never overwrites published evidence across different inspection requests", async () => {
+    const facade = await seeded(true);
+    // Two inspections of DIFFERENT time intervals at the same revision, the
+    // same sampleCount and the same raster — the exact collision case the old
+    // `contact-<project>-r<rev>-<count>-<WxH>.png` scheme could not tell
+    // apart.
+    const first = await facade["visual.inspect"]({
+      timeRange: { startSec: 0, endSec: 0.5 },
+      sampleCount: 3,
+      width: 320,
+      height: 180,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const second = await facade["visual.inspect"]({
+      timeRange: { startSec: 0.5, endSec: 1 },
+      sampleCount: 3,
+      width: 320,
+      height: 180,
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+
+    expect(second.value.contactSheet?.path).not.toBe(first.value.contactSheet?.path);
+    for (const [index, frame] of second.value.frames.entries()) {
+      expect(frame.artifact.path).not.toBe(first.value.frames[index].artifact.path);
+    }
+
+    // The first response's evidence is immutable: same paths, same bytes,
+    // same hashes after the second inspection published its own artifacts.
+    const { readFile } = await import("node:fs/promises");
+    for (const artifact of [
+      ...(first.value.contactSheet ? [first.value.contactSheet] : []),
+      ...first.value.frames.map((frame) => frame.artifact),
+    ]) {
+      const bytes = await readFile(artifact.path);
+      expect(bytes.length).toBe(artifact.sizeBytes);
+      const { createHash } = await import("node:crypto");
+      expect(createHash("sha256").update(bytes).digest("hex")).toBe(artifact.sha256);
+    }
+
+    // The identical request recomputes the same request key and may reuse
+    // the published paths (documented idempotent-reuse semantics).
+    const again = await facade["visual.inspect"]({
+      timeRange: { startSec: 0, endSec: 0.5 },
+      sampleCount: 3,
+      width: 320,
+      height: 180,
+    });
+    expect(again.ok).toBe(true);
+    if (again.ok) {
+      expect(again.value.contactSheet?.path).toBe(first.value.contactSheet?.path);
+      for (const [index, frame] of again.value.frames.entries()) {
+        expect(frame.artifact.path).toBe(first.value.frames[index].artifact.path);
+        expect(frame.artifact.sha256).toBe(first.value.frames[index].artifact.sha256);
+      }
+    }
+  });
+
+  it("keeps distinct evidence when the same request reruns after a media change", async () => {
+    const facade = await seeded(true);
+    const before = await facade["visual.inspect"]({
+      timeRange: { startSec: 0, endSec: 0.5 },
+      sampleCount: 2,
+      width: 320,
+      height: 180,
+    });
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+
+    // Rewrite the media file bytes WITHOUT touching the project revision —
+    // the fingerprints in the request key must force new artifact paths.
+    const mediaPath = writeTinyMp4(mediaRoot);
+    const { appendFile, stat } = await import("node:fs/promises");
+    await appendFile(mediaPath, Buffer.from([0, 0, 0, 1]));
+    expect((await stat(mediaPath)).size).toBeGreaterThan(0);
+
+    const after = await facade["visual.inspect"]({
+      timeRange: { startSec: 0, endSec: 0.5 },
+      sampleCount: 2,
+      width: 320,
+      height: 180,
+    });
+    expect(after.ok).toBe(true);
+    if (!after.ok) return;
+    expect(after.value.contactSheet?.path).not.toBe(before.value.contactSheet?.path);
+    expect(after.value.frames[0].artifact.path).not.toBe(before.value.frames[0].artifact.path);
+    // Earlier evidence still resolves to the bytes it was published with.
+    const { readFile } = await import("node:fs/promises");
+    expect((await readFile(before.value.frames[0].artifact.path)).length).toBe(
+      before.value.frames[0].artifact.sizeBytes,
+    );
+  });
 });

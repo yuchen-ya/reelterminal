@@ -142,6 +142,7 @@ import {
   type PreviewFrameSource,
 } from "./preview/frame-compositor";
 import { ASPECT_PRESETS, aspectLabelFor } from "./preview/display-options";
+import { ReferenceComparisonPanel } from "./preview/ReferenceComparisonPanel";
 
 
 interface ClipWithPlaceholder {
@@ -281,7 +282,9 @@ export const Preview: React.FC = () => {
     motionRendererRef.current = null;
   }, []);
 
-  const [isMuted, setIsMuted] = useState(false);
+  const [userMuted, setIsMuted] = useState(false);
+  const comparisonAudioSide = useProjectStore((state) => state.project?.referenceComparison?.audioSide);
+  const isMuted = userMuted || (comparisonAudioSide !== undefined && comparisonAudioSide !== "timeline");
   const [isRenderBridgeReady, setIsRenderBridgeReady] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [videoAreaSize, setVideoAreaSize] = useState({ width: 0, height: 0 });
@@ -7439,13 +7442,13 @@ export const Preview: React.FC = () => {
             }`}
           />
           <IconButton
-            label={isMuted ? tr("Unmute") : tr("Mute")}
-            icon={isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+            label={userMuted ? tr("Unmute") : tr("Mute")}
+            icon={userMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
             variant="ghost"
             size="sm"
-            onClick={() => setIsMuted(!isMuted)}
+            onClick={() => setIsMuted(!userMuted)}
             className={`w-[34px] h-[34px] grid place-items-center rounded-[7px] transition-colors ${
-              isMuted
+              userMuted
                 ? "bg-bg-2 text-status-error"
                 : "bg-bg-2 text-fg-2 hover:text-fg hover:bg-bg-3"
             }`}
@@ -7657,6 +7660,8 @@ export const Preview: React.FC = () => {
         </div>
         </div>
       </div>
+      {/* Reference comparison (P1) — the GUI surface of the shared config */}
+      <ReferenceComparisonPanel timelineCanvasRef={canvasRef} userMuted={userMuted} />
     </div>
   );
 };

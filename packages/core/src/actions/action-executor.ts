@@ -14,6 +14,7 @@ import type {
   ProjectAction,
   MarkerAction,
   ProjectMarkerAction,
+  ReferenceComparisonAction,
 } from "../types/actions";
 import type {
   Project,
@@ -39,6 +40,7 @@ import type {
 import type { BlendMode } from "../video/types";
 import type { EmphasisAnimation } from "../graphics/types";
 import type { ClipColorGrading } from "../video/color-grading-engine";
+import type { ReferenceComparisonConfig } from "../types/reference-comparison";
 import {
   registerMotionShader,
   unregisterMotionShader,
@@ -374,6 +376,28 @@ export class ActionExecutor {
       this.applySubtitleAction(action as SubtitleAction, project);
     } else if (type.startsWith("marker/")) {
       this.applyMarkerAction(action as MarkerAction, project);
+    } else if (type.startsWith("reference/")) {
+      this.applyReferenceComparisonAction(
+        action as ReferenceComparisonAction,
+        project,
+      );
+    }
+  }
+
+  private applyReferenceComparisonAction(
+    action: ReferenceComparisonAction,
+    project: Project,
+  ): void {
+    const mutable = project as { referenceComparison?: ReferenceComparisonConfig };
+    switch (action.type) {
+      case "reference/setComparison": {
+        mutable.referenceComparison = structuredClone(action.params.config);
+        break;
+      }
+      case "reference/clearComparison": {
+        delete mutable.referenceComparison;
+        break;
+      }
     }
   }
 
@@ -491,6 +515,24 @@ export class ActionExecutor {
         const params = action.params as { mediaId: string; name: string };
         mediaLibrary.items = mediaLibrary.items.map((item: MediaItem) =>
           item.id === params.mediaId ? { ...item, name: params.name } : item,
+        );
+        break;
+      }
+
+      case "media/relinkSource": {
+        const params = action.params as {
+          mediaId: string;
+          originalUrl: string;
+          sourceFile?: { name: string; size: number; lastModified: number };
+        };
+        mediaLibrary.items = mediaLibrary.items.map((item: MediaItem) =>
+          item.id === params.mediaId
+            ? {
+                ...item,
+                originalUrl: params.originalUrl,
+                ...(params.sourceFile ? { sourceFile: params.sourceFile } : {}),
+              }
+            : item,
         );
         break;
       }
@@ -812,6 +854,7 @@ export class ActionExecutor {
           reversed?: boolean;
           audioTrackIndex?: number;
           sourceClip?: Clip;
+          clipId?: string;
         };
         const track = timeline.tracks.find(
           (t: MutableTrack) => t.id === params.trackId,
@@ -843,12 +886,12 @@ export class ActionExecutor {
           const newClip = params.sourceClip
             ? {
                 ...structuredClone(params.sourceClip),
-                id: crypto.randomUUID(),
+                id: params.clipId ?? crypto.randomUUID(),
                 trackId: params.trackId,
                 startTime: params.startTime,
               }
             : {
-                id: crypto.randomUUID(),
+                id: params.clipId ?? crypto.randomUUID(),
                 mediaId: params.mediaId,
                 trackId: params.trackId,
                 startTime: params.startTime,
@@ -872,6 +915,11 @@ export class ActionExecutor {
                   : {}),
               };
           track.clips = [...track.clips, newClip];
+          // Pin the created identity onto the history action. Redo applies
+          // this same action after undo and must restore the same clip id;
+          // otherwise callers holding the committed id (material.attach,
+          // markers, later Agent edits) become disconnected.
+          params.clipId ??= newClip.id;
           this.lastAddedIds.set("clip", newClip.id);
         }
         break;
@@ -1061,6 +1109,38 @@ export class ActionExecutor {
             return track;
           });
         }
+        break;
+      }
+
+      case "clip/repointSource": {
+        const params = action.params as {
+          clipId: string;
+          mediaId: string;
+          inPoint: number;
+          outPoint: number;
+          duration: number;
+          supersedesMediaId?: string;
+        };
+        timeline.tracks = timeline.tracks.map((track: MutableTrack) => ({
+          ...track,
+          clips: track.clips.map((clip: MutableClip) =>
+            clip.id === params.clipId
+              ? {
+                  ...clip,
+                  mediaId: params.mediaId,
+                  inPoint: params.inPoint,
+                  outPoint: params.outPoint,
+                  duration: params.duration,
+                  metadata: {
+                    ...clip.metadata,
+                    ...(params.supersedesMediaId
+                      ? { supersedesMediaId: params.supersedesMediaId }
+                      : {}),
+                  },
+                }
+              : clip,
+          ),
+        }));
         break;
       }
 

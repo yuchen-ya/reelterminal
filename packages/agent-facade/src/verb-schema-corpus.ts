@@ -745,6 +745,30 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     },
     { name: "unknown field", params: { timeSec: 0, format: "png" }, expectValid: false },
   ],
+  "preview.render_comparison": [
+    { name: "valid", params: { timeSec: 2.5 }, expectValid: true },
+    {
+      name: "valid with layout override and raster",
+      params: { timeSec: 0, width: 640, height: 360, layout: "overlay", maxFrameBytes: 262144 },
+      expectValid: true,
+    },
+    { name: "missing required timeSec", params: { width: 640 }, expectValid: false },
+    { name: "timeSec below minimum", params: { timeSec: -0.5 }, expectValid: false },
+    { name: "invalid layout", params: { timeSec: 0, layout: "wipe" }, expectValid: false },
+    { name: "budget under minimum", params: { timeSec: 0, maxFrameBytes: 1000 }, expectValid: false },
+    { name: "unknown field", params: { timeSec: 0, roi: { x: 0 } }, expectValid: false },
+  ],
+  "analysis.list": [
+    { name: "valid empty", params: {}, expectValid: true },
+    { name: "valid with filter", params: { mediaId: "media-1", limit: 10 }, expectValid: true },
+    { name: "limit zero", params: { limit: 0 }, expectValid: false },
+    { name: "unknown field", params: { projectId: "p" }, expectValid: false },
+  ],
+  "analysis.get": [
+    { name: "valid", params: { recordId: "analysis-123e4567-e89b-12d3-a456-426614174000" }, expectValid: true },
+    { name: "missing recordId", params: {}, expectValid: false },
+    { name: "empty recordId", params: { recordId: "" }, expectValid: false },
+  ],
   "visual.inspect": [
     { name: "valid clip selection", params: { clipId: "clip-1" }, expectValid: true },
     {
