@@ -37,25 +37,30 @@ implemented features, reusable foundations, and remaining integration work.
 
 - The browser/desktop editor and the canonical ReelTerminal `Project` model share
   one editing world.
-- A token-authenticated loopback MCP endpoint exposes exactly **25 live-facade
+- A token-authenticated loopback MCP endpoint exposes exactly **37 live-facade
   tools**:
 
   `session.describe` · `capabilities.get` · `project.create` · `project.open` ·
   `project.save` · `project.rename` · `project.get_state` · `project.changes` ·
-  `media.import` · `media.analyze_start` · `media.inspect` · `timeline.get` ·
-  `timeline.query` · `editor.get_context` · `editor.control` · `edit.validate` ·
-  `edit.apply` · `history.get` · `history.control` · `preview.render_frame` ·
-  `visual.inspect` · `export.start` · `job.status` · `job.cancel` ·
-  `verify.artifact`.
+  `media.import` · `media.analyze_start` · `analysis.list` · `analysis.get` ·
+  `timeline.get` · `timeline.query` · `editor.get_context` · `editor.control` ·
+  `edit.validate` · `edit.apply` · `history.get` · `history.control` ·
+  `preview.render_frame` · `preview.render_comparison` · `visual.inspect` ·
+  `export.start` · `job.status` · `job.cancel` · `verify.artifact` ·
+  `material.list` · `material.get` · `material.create` · `material.update` ·
+  `material.batch_update` · `material.remove` · `material.attach` ·
+  `material.undo` · `media.inspect` ·
+  `media.import_preflight`.
 
-  This is 24 built-in verbs plus the bundled `media.inspect` plugin. The
+  This is 35 built-in verbs plus the two bundled plugins
+  `media.import_preflight` and `media.inspect`. The
   source of truth is `FACADE_VERBS` in `packages/agent-facade/src/types.ts`
   together with the startup plugin registry in `packages/agent-facade/src/plugins/`.
   Registration does not imply runtime availability; read `capabilities.get`.
 
   The facade verbs above use dotted names; on the MCP wire each dot becomes an
   underscore (`session.describe` → `session_describe`, `editor.control` →
-  `editor_control`). `session_describe` reports the same 25 verbs.
+  `editor_control`). `session_describe` reports the same 37 verbs.
 
   In live mode, project creation/open remain GUI-owned. An Agent can import
   local video and audio from the roots reported by `capabilities.get`; the
@@ -92,7 +97,7 @@ implemented features, reusable foundations, and remaining integration work.
   the new inspection panel currently uses English labels.
 - The desktop GUI conversation panel and loopback client transport are landed.
   The shipped Codex reference adapter creates or resumes a Codex App Server
-  thread, connects that same thread to the 25-tool live MCP facade, and
+  thread, connects that same thread to the 37-tool live MCP facade, and
   projects only safe display events into the panel. Other Agent hosts can use
   the provider-neutral adapter kit and conversation protocol.
 - The legacy 304-tool desktop endpoint and the embedded BYOK agent/chat path
@@ -124,6 +129,7 @@ implemented features, reusable foundations, and remaining integration work.
 See [`docs/design-principles.md`](docs/design-principles.md) for the enduring
 rules and [`docs/product-scope.md`](docs/product-scope.md) for the product
 boundary and retention rule.
+[`docs/README.md`](docs/README.md) — docs index and house rules.
 
 ## Architecture
 
@@ -135,11 +141,20 @@ external Agent via MCP ─┘
 
 ```text
 packages/core              canonical Project model + editing engines
-packages/agent-facade      typed 25-verb facade, headless and live sessions
+packages/ui                shared React UI component library (Radix + Tailwind)
+packages/agent-facade      typed 37-verb facade, headless and live sessions
 packages/runtime-chromium  Chromium render/export providers + verification
 packages/agent-transport   optional headless MCP/CLI transport foundation
+packages/creation-schema   creation scene schema, primitives, and validation
+packages/creation-agent    creation-scene tools registered for agent tool protocols
+packages/creation-bindings native/WASM creation backend with core CPU fallback
+packages/creation-core     C++20 native creation engine (C ABI; needs cmake/emscripten, outside root -r scripts)
+packages/fxpkg             .fxpkg artifact contract, node graph validation, filter/template compiler
+packages/image-core        imperative image-editing core (adjustments, commands, masks, history)
 apps/web                   ReelTerminal editor GUI and renderer-side live bridge
 apps/desktop               desktop shell and external live MCP endpoint
+apps/studio                experimental VFX/filter creation workbench (local creation usable; publishing targets an out-of-repo worker)
+apps/image                 standalone image editor (experimental/dormant)
 docs/adr/                  point-in-time architecture decisions
 docs/design-principles.md  enduring product and engineering principles
 docs/product-scope.md      product boundary and feature-retention rule
@@ -179,7 +194,7 @@ monotonic: they are never renumbered or reused, including after deletion.
 
 ## What the facade covers
 
-The 25-tool contract is shared by headless and live facade sessions. In a
+The 37-tool contract is shared by headless and live facade sessions. In a
 headless session, project lifecycle and local media operations are available
 subject to configured roots. In a live session, the GUI owns the open project;
 the facade can import media and edit that shared project while reporting live
@@ -205,7 +220,7 @@ Prerequisites:
 - Chromium installed through Playwright for render/export tests
 
 ```bash
-git clone git@github.com:yuchen-ya/reelterminal.git
+git clone https://github.com/yuchen-ya/reelterminal.git
 cd reelterminal
 
 corepack pnpm install
@@ -276,11 +291,20 @@ Those commands are not the default ReelTerminal desktop entry point.
 | Path | Role | Current status |
 |---|---|---|
 | `packages/core` | Canonical project and editing engines | Active foundation |
-| `packages/agent-facade` | Headless/live 25-tool contract | Active |
+| `packages/ui` | Shared React UI component library | Active foundation |
+| `packages/agent-facade` | Headless/live 37-tool contract | Active |
 | `packages/runtime-chromium` | Render, export, and verification providers | Active foundation |
 | `packages/agent-transport` | Headless MCP/CLI transport foundation | Optional |
+| `packages/creation-schema` | Creation scene schema and validation | Active foundation |
+| `packages/creation-agent` | Creation-scene tools for agent tool protocols | Foundation; no in-repo consumer yet |
+| `packages/creation-bindings` | Native/WASM creation backend with core CPU fallback | Active foundation |
+| `packages/creation-core` | C++20 native creation engine (C ABI) | Requires cmake/emscripten; outside root `-r` scripts |
+| `packages/fxpkg` | `.fxpkg` contract, node graph validation, filter/template compiler | Active foundation |
+| `packages/image-core` | Imperative image-editing core (commands, masks, history) | Stable; consumed only by `apps/image` |
 | `apps/web` | ReelTerminal editor and live renderer bridge | Active |
 | `apps/desktop` | Desktop shell and live endpoint host | Active |
+| `apps/studio` | Experimental VFX/filter creation workbench (`pnpm --filter @openreel/studio dev`); local creation, compiling, and tutorials work | Experimental; publishing targets an out-of-repo worker |
+| `apps/image` | Standalone image editor (`pnpm --filter @openreel/image dev`); self-hosted Cloudflare Pages deploy (`openreel-image`), not covered by the root `deploy` | Experimental / dormant; not on the current mainline; low test coverage |
 | `audit/` | 304-tool extraction audit and risk evidence | Frozen historical material |
 | `docs/adr/` | Architecture decisions | Historical record; do not rewrite |
 
@@ -296,13 +320,14 @@ Focused package tests are the primary evidence for the headless facade and
 Chromium runtime. The repository also provides:
 
 ```bash
+# Windows: requires Node >= 21 (Node 22 recommended) for the repo-wide suite
 pnpm test
 pnpm typecheck
 pnpm lint
 ```
 
 Desktop live collaboration tests cover endpoint authentication and MCP shape,
-the 25-tool catalog, the renderer bridge, session host, lease, status events,
+the 37-tool catalog, the renderer bridge, session host, lease, status events,
 and shared revision behavior.
 
 ## License and attribution

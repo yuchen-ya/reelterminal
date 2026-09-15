@@ -61,8 +61,11 @@ const state = await facade["project.get_state"]();
 
 ## Verbs
 
-The current registry exposes **26 tools: 24 built-in verbs plus the two
-bundled plugin tools** (`media_import_preflight`, `media.inspect`).
+The current registry exposes **37 tools: 35 built-in verbs plus the two
+bundled plugin tools** (`media_import_preflight`, `media.inspect`). The
+slice narrative below predates the later additions (the `material.*` and
+`analysis.*` verbs, `preview.render_comparison`, `media.import_preflight`)
+and does not itemize them.
 `FACADE_VERBS` in `src/types.ts` and `BUNDLED_PLUGINS` in `src/plugins/index.ts`
 are the catalog source of truth. MCP maps dots to underscores.
 
@@ -83,7 +86,7 @@ Slice 6: `project.changes` · `timeline.query` · `edit.validate` ·
 `history.get` · `history.control` add bounded delta recovery, scoped reads,
 side-effect-free preflight, and canonical live undo/redo. `media.analyze_start`
 adds asynchronous media analysis over the generalized `job.status`/
-`job.cancel` path. Live and headless sessions implement the same 26-tool
+`job.cancel` path. Live and headless sessions implement the same 37-tool
 contract over a `LiveProjectStore` seam with no live project copy; headless
 history control reports `UNSUPPORTED` because it has no GUI/Core history stack.
 
@@ -151,7 +154,7 @@ no-op with `ok: true`.
 
 ## Live-mode contract differences (ADR 0004)
 
-Live sessions (`createLiveFacade`) implement the same 25 verbs against the
+Live sessions (`createLiveFacade`) implement the same 37 verbs against the
 open GUI project. Where a verb's behavior must differ by mode, the contract
 states it up front instead of letting integrators discover it at runtime:
 

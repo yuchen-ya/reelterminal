@@ -27,7 +27,8 @@ you are writing for; do not copy content across rows — link instead.
   containment, watchdog (incl. amendments A3–A7).
 - [`adr/0005-external-agent-conversation-bridge.md`](adr/0005-external-agent-conversation-bridge.md) —
   provider-neutral external-session attachment foundation, landed loopback
-  reference transport, and the open thin-adapter contract.
+  reference transport, and the open thin-adapter contract. The full decision
+  set lives in [`adr/`](adr/) (0001–0008).
 - [`external-agent-conversation-adapter.md`](external-agent-conversation-adapter.md) —
   capability levels, session attach, loopback descriptor, JSON-RPC/event
   sequencing, ownership, safe event vocabulary, and downgrade rules.
@@ -44,6 +45,26 @@ you are writing for; do not copy content across rows — link instead.
   `windows-local.json` (+ `-verify-report.json`), `macos-local.json`
   (+ `-verify-report.json`). Linux evidence lives in the CI
   `chromium-e2e-evidence` artifact.
+- [`AGENT-WORKSPACE.md`](AGENT-WORKSPACE.md) — the per-task Agent workspace:
+  one self-contained job directory under the live `mediaImport.recommendedRoot`,
+  outside the source repository, with the standard
+  source/generated/work/project/output/evidence layout.
+- [`CLOUD-VIDEO-REVIEW.md`](CLOUD-VIDEO-REVIEW.md) — optional cloud video
+  review through a pluggable provider (default `qwen3.5-omni-flash`) using the
+  user's own key; local source inspection and audio analysis stay local.
+- [`COLOR.md`](COLOR.md) — the SDR color pipeline policy: what import, decode,
+  compositing, preview, export, and verification actually do to color,
+  verified empirically against the shipping Chromium.
+- [`MATERIAL-ANALYSIS.md`](MATERIAL-ANALYSIS.md) — read-only material
+  inspection and local audio measurements (`media_import_preflight`,
+  `media_inspect`, `audioSummary`); no external models, uploads, or paid
+  dependencies.
+- [`P1-P2-WORKFLOWS.md`](P1-P2-WORKFLOWS.md) — how the reference comparison,
+  media replacement, and traceable analysis workflows map onto the product;
+  color policy lives separately in `COLOR.md`.
+- [`build-chunking.md`](build-chunking.md) — web production chunking policy:
+  lazy route/component boundaries stay authoritative; manual chunks only for
+  stable third-party package boundaries.
 
 ## Guides and inherited history
 
@@ -51,8 +72,13 @@ you are writing for; do not copy content across rows — link instead.
   — bundled read-only tool authoring, `media_inspect`, and desktop image evidence.
 
 - [`AGENT-GUIDE.md`](AGENT-GUIDE.md) — current external-Agent desktop
-  connection guide. It describes the 25-tool live facade and explicitly does
+  connection guide. It describes the 37-tool live facade and explicitly does
   not provide embedded BYOK chat.
+- [`slice-2/`](slice-2/) — Slice 2d black-box E2E evidence; start from
+  [`slice-2/REPORT.md`](slice-2/REPORT.md). Historical evidence of its time.
+- [`REPAIR-ACCEPTANCE-2026-09-08.md`](REPAIR-ACCEPTANCE-2026-09-08.md) —
+  historical acceptance record for the combined material library and P0–P2
+  repair delivery.
 - [`superpowers/`](superpowers/) — upstream planning history (2026-05 →
   2026-07 plans and specs). Historical.
 
