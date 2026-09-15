@@ -48,6 +48,33 @@ export class TemplateCloudService {
     }
   }
 
+  /**
+   * Same request as `listTemplates`, but reports failure instead of
+   * collapsing it into an empty list: callers can distinguish
+   * "cloud reachable, no templates" from "cloud unreachable" and offer a
+   * retry (L2, same pattern as `listScriptableTemplatesWithStatus`).
+   * When the cloud is disabled the call short-circuits without a request
+   * and reports `failed: false` (the disabled state is explained
+   * separately by the UI).
+   */
+  async listTemplatesWithStatus(): Promise<{
+    templates: CloudTemplate[];
+    failed: boolean;
+  }> {
+    if (!OPENREEL_CLOUD_ENABLED) return { templates: [], failed: false };
+    try {
+      const response = await fetch(`${this.apiUrl}/templates`);
+      if (!response.ok) {
+        return { templates: [], failed: true };
+      }
+      const data = await response.json();
+      return { templates: data.templates || [], failed: false };
+    } catch (error) {
+      console.error("Failed to list templates from cloud:", error);
+      return { templates: [], failed: true };
+    }
+  }
+
   async getTemplate(id: string): Promise<Template | null> {
     if (!OPENREEL_CLOUD_ENABLED) return null;
     try {
@@ -148,7 +175,7 @@ export class TemplateCloudService {
 
   /**
    * Same request as `listScriptableTemplates`, but reports failure instead
-   * of collapsing it into an empty list (B06): callers can distinguish
+   * of collapsing it into an empty list : callers can distinguish
    * "cloud reachable, no templates" from "cloud unreachable" and offer a
    * retry. When the cloud is disabled the call short-circuits without a
    * request and reports `failed: false` (the disabled state is explained

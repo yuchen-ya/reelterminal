@@ -123,13 +123,16 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
       setHighlights(results);
       setSelected(new Set(results.map((_, i) => i)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Analysis failed");
+      // Localized failure title with the raw message kept as the detail
+      // text — the underlying error stays readable for debugging.
+      const detail = err instanceof Error ? err.message : "Analysis failed";
+      setError(tr("cloud.highlightFailed", { message: detail }));
     } finally {
       setIsProcessing(false);
       setPhase("");
       setProgress(0);
     }
-  }, [clipId, project, getMediaItem, preferences, cloudEnabled]);
+  }, [clipId, project, getMediaItem, preferences, cloudEnabled, tr]);
 
   const handlePreview = useCallback(
     (highlight: HighlightResult) => {

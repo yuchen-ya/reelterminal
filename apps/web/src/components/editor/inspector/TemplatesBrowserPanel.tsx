@@ -16,6 +16,7 @@ import {
   Cloud,
   ChevronLeft,
   Settings2,
+  CloudOff,
 } from "@/icons/lucide-compat";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { ToolcraftSelectableCard as SelectableCard } from "@openreel/ui";
@@ -146,6 +147,10 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
     null,
   );
   const [isLoading, setIsLoading] = useState(true);
+  // Failure-aware cloud fetch : keeps "cloud unreachable"
+  // distinguishable from "no cloud templates" so the panel can offer a
+  // retry instead of a silent empty list.
+  const [cloudLoadFailed, setCloudLoadFailed] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [loadedTemplate, setLoadedTemplate] = useState<Template | null>(null);
@@ -153,35 +158,37 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
     useState<TemplateReplacements>({});
   const [showVariablesPanel, setShowVariablesPanel] = useState(false);
 
-  useEffect(() => {
-    const loadTemplates = async () => {
-      setIsLoading(true);
+  const loadTemplates = useCallback(async () => {
+    setIsLoading(true);
 
-      try {
-        const templateEngine = await getTemplateEngine();
-        await templateEngine.initialize();
-        const localTemplates = await templateEngine.listTemplates();
-        const cloudTemplates = await templateCloudService.listTemplates();
+    try {
+      const templateEngine = await getTemplateEngine();
+      await templateEngine.initialize();
+      const localTemplates = await templateEngine.listTemplates();
+      const { templates: cloudTemplates, failed: cloudFailed } =
+        await templateCloudService.listTemplatesWithStatus();
+      setCloudLoadFailed(cloudFailed);
 
-        const combined = [
-          ...localTemplates.map((t) => ({ ...t, source: "local" as const })),
-          ...cloudTemplates.map((t) => ({ ...t, source: "cloud" as const })),
-        ];
+      const combined = [
+        ...localTemplates.map((t) => ({ ...t, source: "local" as const })),
+        ...cloudTemplates.map((t) => ({ ...t, source: "cloud" as const })),
+      ];
 
-        const unique = Array.from(
-          new Map(combined.map((t) => [t.id, t])).values(),
-        );
+      const unique = Array.from(
+        new Map(combined.map((t) => [t.id, t])).values(),
+      );
 
-        setTemplates(unique);
-      } catch (error) {
-        console.error("Failed to load templates:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadTemplates();
+      setTemplates(unique);
+    } catch (error) {
+      console.error("Failed to load templates:", error);
+    } finally {
+      setIsLoading(false);
+    }
   }, [getTemplateEngine]);
+
+  useEffect(() => {
+    void loadTemplates();
+  }, [loadTemplates]);
 
   const filteredTemplates = useMemo(() => {
     if (selectedCategory === "all") {
@@ -392,6 +399,28 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
         </div>
       )}
 
+      {cloudEnabled && cloudLoadFailed && (
+        <div
+          className="flex items-start gap-2 p-2 rounded-lg border border-border bg-bg-2"
+          data-testid="cloud-templates-failed"
+        >
+          <CloudOff size={12} className="text-fg-3 shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <Text type="supporting" color="primary" display="block" className="text-[10px] text-fg">
+              {tr("templates.cloudFailedTitle")}</Text>
+            <Text type="supporting" color="secondary" display="block" className="text-[9px]">
+              {tr("templates.cloudFailedDetail")}</Text>
+            <button
+              type="button"
+              data-testid="cloud-templates-retry"
+              onClick={() => void loadTemplates()}
+              className="mt-1.5 rounded-md border border-border px-2 py-1 text-[10px] text-fg hover:bg-bg-1 transition-colors"
+            >
+              {tr("templates.retry")}</button>
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1">
         <SelectableCard
           label={tr("All")}
@@ -441,14 +470,39 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
 
       <div className="space-y-2 max-h-80 overflow-y-auto overflow-x-hidden">
         {filteredTemplates.length === 0 ? (
-          <div className="text-center py-8">
-            <FolderOpen
-              size={24}
-              className="mx-auto mb-2 text-fg-3 opacity-50"
-            />
-            <Text type="supporting" color="secondary" display="block" className="text-[10px]">
-              {tr("No templates in this category")}</Text>
-          </div>
+          cloudEnabled && cloudLoadFailed ? (
+            // Failure empty state : distinct from the ordinary empty
+            // state so "cloud unreachable" never reads as "no templates".
+            <div
+              className="flex flex-col items-center justify-center py-6"
+              data-testid="cloud-templates-failed-empty"
+            >
+              <CloudOff
+                size={20}
+                className="mx-auto mb-2 text-fg-3 opacity-50"
+              />
+              <Text type="supporting" color="primary" display="block" className="text-[10px] text-fg">
+                {tr("templates.cloudFailedTitle")}</Text>
+              <Text type="supporting" color="secondary" display="block" className="text-[9px]">
+                {tr("templates.cloudFailedDetail")}</Text>
+              <button
+                type="button"
+                data-testid="cloud-templates-retry-empty"
+                onClick={() => void loadTemplates()}
+                className="mt-2 rounded-md border border-border px-3 py-1.5 text-[10px] text-fg hover:bg-bg-1 transition-colors"
+              >
+                {tr("templates.retry")}</button>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <FolderOpen
+                size={24}
+                className="mx-auto mb-2 text-fg-3 opacity-50"
+              />
+              <Text type="supporting" color="secondary" display="block" className="text-[10px]">
+                {tr("No templates in this category")}</Text>
+            </div>
+          )
         ) : (
           filteredTemplates.map((template) => (
             <TemplateCard
@@ -479,38 +533,7 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
         isOpen={isSaveDialogOpen}
         onClose={() => {
           setIsSaveDialogOpen(false);
-          const loadTemplates = async () => {
-            setIsLoading(true);
-
-            try {
-              const templateEngine = await getTemplateEngine();
-              await templateEngine.initialize();
-              const localTemplates = await templateEngine.listTemplates();
-              const cloudTemplates = await templateCloudService.listTemplates();
-
-              const combined = [
-                ...localTemplates.map((t) => ({
-                  ...t,
-                  source: "local" as const,
-                })),
-                ...cloudTemplates.map((t) => ({
-                  ...t,
-                  source: "cloud" as const,
-                })),
-              ];
-
-              const unique = Array.from(
-                new Map(combined.map((t) => [t.id, t])).values(),
-              );
-
-              setTemplates(unique);
-            } catch (error) {
-              console.error("Failed to load templates:", error);
-            } finally {
-              setIsLoading(false);
-            }
-          };
-          loadTemplates();
+          void loadTemplates();
         }}
       />
     </div>

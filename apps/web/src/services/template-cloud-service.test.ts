@@ -104,3 +104,71 @@ describe("TemplateCloudService cloud opt-out", () => {
     },
   );
 });
+
+describe("TemplateCloudService listTemplatesWithStatus failure reporting (L2)", () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    clearCloudEnv();
+  });
+
+  it("reports failure instead of collapsing to an empty list when the request rejects", async () => {
+    clearCloudEnv();
+    const { templateCloudService } = await loadService();
+    fetchSpy.mockRejectedValue(new Error("network down"));
+
+    await expect(
+      templateCloudService.listTemplatesWithStatus(),
+    ).resolves.toEqual({ templates: [], failed: true });
+  });
+
+  it("reports failure for a non-ok response", async () => {
+    clearCloudEnv();
+    const { templateCloudService } = await loadService();
+    fetchSpy.mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+    });
+
+    await expect(
+      templateCloudService.listTemplatesWithStatus(),
+    ).resolves.toEqual({ templates: [], failed: true });
+  });
+
+  it("returns the templates with failed: false when the cloud responds", async () => {
+    clearCloudEnv();
+    const { templateCloudService } = await loadService();
+    fetchSpy.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ templates: [{ id: "cloud-1", name: "Cloud" }] }),
+    });
+
+    await expect(
+      templateCloudService.listTemplatesWithStatus(),
+    ).resolves.toEqual({
+      templates: [{ id: "cloud-1", name: "Cloud" }],
+      failed: false,
+    });
+    expect(String(fetchSpy.mock.calls[0][0])).toContain("/templates");
+  });
+
+  it("short-circuits with failed: false and zero network when the cloud is off", async () => {
+    clearCloudEnv();
+    vi.stubEnv("VITE_OPENREEL_CLOUD", "off");
+    const { templateCloudService } = await loadService();
+
+    await expect(
+      templateCloudService.listTemplatesWithStatus(),
+    ).resolves.toEqual({ templates: [], failed: false });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});

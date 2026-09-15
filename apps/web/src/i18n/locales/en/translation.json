@@ -34,7 +34,9 @@
     "transcribeDisabled": "Cloud transcription is disabled in this build's configuration.",
     "transcribeButton": "Generate Captions (Cloud)",
     "transcribeUploadNotice": "Generating captions uploads this clip's audio to the OpenReel cloud transcription service.",
-    "highlightDisabled": "AI highlight analysis is disabled in this build's configuration."
+    "transcribeFailed": "Cloud transcription failed: {{message}}",
+    "highlightDisabled": "AI highlight analysis is disabled in this build's configuration.",
+    "highlightFailed": "AI highlight analysis failed: {{message}}"
   },
   "desktop": {
     "appName": "ReelTerminal",

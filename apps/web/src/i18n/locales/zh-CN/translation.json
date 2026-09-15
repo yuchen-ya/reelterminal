@@ -34,7 +34,9 @@
     "transcribeDisabled": "当前构建配置已禁用云转写。",
     "transcribeButton": "生成字幕（云端）",
     "transcribeUploadNotice": "生成字幕会将该片段的音频上传至 OpenReel 云端转写服务。",
-    "highlightDisabled": "当前构建配置已禁用 AI 高光分析。"
+    "transcribeFailed": "云端转写失败：{{message}}",
+    "highlightDisabled": "当前构建配置已禁用 AI 高光分析。",
+    "highlightFailed": "AI 高光分析失败：{{message}}"
   },
   "desktop": {
     "appName": "ReelTerminal",

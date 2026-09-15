@@ -123,8 +123,13 @@ describe("HighlightExtractorPanel cloud opt-out", () => {
     };
     expect(options.apiEndpoint).toContain("/transcribe");
     // The stubbed transcription yields no words, so the panel reports
-    // that instead of reaching the audio/highlight stages.
-    expect(await screen.findByText("No transcript words found")).toBeInTheDocument();
+    // that instead of reaching the audio/highlight stages. L3: the
+    // failure is presented behind a localized title while the raw
+    // message stays readable as the detail text.
+    const failureLine = await screen.findByText(
+      /AI highlight analysis failed/,
+    );
+    expect(failureLine.textContent).toContain("No transcript words found");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

@@ -651,11 +651,14 @@ export const InspectorPanel: React.FC = () => {
       // went out (or failed mid-flight) must stay readable, and the AiTab
       // offers an explicit Retry next to this persistent error.
       setIsTranscribing(false);
+      // Localized failure title with the raw message kept as the detail
+      // text — the underlying error stays readable for debugging.
+      const detail =
+        error instanceof Error ? error.message : "Transcription failed";
       setTranscriptionProgress({
         phase: "error",
         progress: 0,
-        message:
-          error instanceof Error ? error.message : "Transcription failed",
+        message: tr("cloud.transcribeFailed", { message: detail }),
       });
     }
   }, [
@@ -666,6 +669,7 @@ export const InspectorPanel: React.FC = () => {
     addSubtitle,
     defaultAnimationStyle,
     targetLanguage,
+    tr,
   ]);
 
   const handleSRTImport = useCallback(

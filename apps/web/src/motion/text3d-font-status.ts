@@ -7,7 +7,7 @@
  * the rendered frame with no signal reaching the UI. This module lets the
  * web layer observe those fetches without changing them.
  *
- * Design constraints (B06):
+ * Design constraints :
  * - The observer is strictly passive: it wraps `window.fetch` once and
  *   forwards every call untouched, so the success path gains no extra
  *   requests, latency, or UI.

@@ -49,7 +49,7 @@ export const TemplateGallery: React.FC<TemplateGalleryProps> = ({
       const templateEngine = await getTemplateEngine();
       await templateEngine.initialize();
       const builtinTemplates = templateEngine.getBuiltinTemplates();
-      // Failure-aware variant of the mount-time cloud fetch (B06): keeps
+      // Failure-aware variant of the mount-time cloud fetch : keeps
       // "cloud unreachable" distinguishable from "no cloud templates".
       const { templates: cloudTemplates, failed: cloudFailed } =
         await templateCloudService.listScriptableTemplatesWithStatus();
