@@ -6,6 +6,7 @@ artifactName: ${productName}-${version}-${arch}.${ext}
 asar: true
 asarUnpack:
   - dist/live-mcp/**
+  - dist/aurora-host/**
 directories:
   output: release
 # Update feed for electron-updater. Builds embed app-update.yml pointing at the
