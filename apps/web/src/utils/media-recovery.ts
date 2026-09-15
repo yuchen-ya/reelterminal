@@ -79,10 +79,22 @@ export async function restoreMediaItem(
   item: MediaItem,
   storedBlob: Blob | undefined,
 ): Promise<MediaItem> {
-  const blob = storedBlob || item.blob;
+  // An auto-save snapshot stores the project as JSON, so a persisted Blob
+  // deserializes back as a truthy `{}`. Only a real Blob counts as media
+  // bytes; anything else (the fake snapshot object, null, undefined) is a
+  // missing-media condition and must not reach playback or export.
+  const blob =
+    storedBlob instanceof Blob ? storedBlob : item.blob instanceof Blob ? item.blob : null;
 
   if (!blob) {
-    return item;
+    // Same missing-asset state the JSON import path sets
+    // (ProjectSerializer.importFromJson): AssetsPanel renders these items
+    // with the placeholder UI and counts them as missing assets.
+    return {
+      ...item,
+      blob: null,
+      isPlaceholder: true,
+    };
   }
 
   let thumbnailUrl = item.thumbnailUrl;
