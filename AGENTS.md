@@ -33,8 +33,8 @@ move normal fixtures or tests out of their package-specific locations.
 
 ## Use one source checkout
 
-The sole development checkout is
-`/Users/macbuke/my-project/agent-video-engine-lab`.
-Work in this directory, including delegated source-code tasks. Do not create
-another checkout or Git worktree unless the user explicitly requests one.
-Generated media still belongs in the external Agent workspace described above.
+The sole development checkout is the repository workspace that contains this
+AGENTS.md file. Work in this checkout, including delegated source-code tasks.
+Do not create another checkout or Git worktree unless the user explicitly
+requests one. Generated media still belongs in the external Agent workspace
+described above (see [`docs/AGENT-WORKSPACE.md`](docs/AGENT-WORKSPACE.md)).
