@@ -291,6 +291,14 @@ export function MaterialLibraryPanel() {
     { value: "organized", labelKey: "material.status.organized" },
   ];
 
+  // An empty list with active filters means "nothing matches", not "first
+  // use" — and a load failure must never render the welcome copy either.
+  const hasActiveFilters =
+    store.filters.kind !== "all" ||
+    store.filters.status !== "all" ||
+    store.filters.tag !== null ||
+    store.filters.query.trim() !== "";
+
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-live-editor-target-id="material-library-panel">
       {/* header */}
@@ -539,12 +547,19 @@ export function MaterialLibraryPanel() {
             {store.error}
           </div>
         ) : null}
-        {!store.loading && store.items.length === 0 ? (
-          <ToolcraftEmptyState
-            icon={<BookMarked size={26} aria-hidden />}
-            title={t("material.emptyTitle")}
-            description={t("material.emptyDetail")}
-          />
+        {!store.loading && !store.error && store.items.length === 0 ? (
+          hasActiveFilters ? (
+            <ToolcraftEmptyState
+              icon={<Search size={26} aria-hidden />}
+              title={t("material.noResults")}
+            />
+          ) : (
+            <ToolcraftEmptyState
+              icon={<BookMarked size={26} aria-hidden />}
+              title={t("material.emptyTitle")}
+              description={t("material.emptyDetail")}
+            />
+          )
         ) : (
           <div className="flex flex-col gap-1.5">
             {store.items.map((record) => {
