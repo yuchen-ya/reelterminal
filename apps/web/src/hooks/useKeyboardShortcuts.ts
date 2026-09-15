@@ -4,6 +4,8 @@ import {
   type ShortcutHandler,
 } from "../services/keyboard-shortcuts";
 import { useProjectStore } from "../stores/project-store";
+import { toast } from "../stores/notification-store";
+import { t } from "../i18n";
 import { useUIStore } from "../stores/ui-store";
 import { useTimelineStore } from "../stores/timeline-store";
 import {
@@ -265,7 +267,24 @@ export function useKeyboardShortcuts() {
     setShowShortcutsOverlay(true);
   }, []);
 
-  const handleSave = useCallback(() => {}, []);
+  // The shortcut panel promises "Save project", so the handler must
+  // actually persist. This is the same durable store path the desktop
+  // lifecycle flush and the agent requestSave verb use (auto-save manager
+  // force flush, incl. recovery from a failed first-time init).
+  const handleSave = useCallback(() => {
+    void useProjectStore
+      .getState()
+      .forceSave()
+      .then(() => {
+        toast.success(t("settings.autoSaveSaved"));
+      })
+      .catch((error: unknown) => {
+        toast.error(
+          t("settings.autoSaveFailed"),
+          error instanceof Error ? error.message : undefined,
+        );
+      });
+  }, []);
 
   const handleExport = useCallback(() => {}, []);
 

@@ -73,6 +73,20 @@ const historyControlLedger = new Map<
   Map<string, HistoryControlLedgerEntry>
 >();
 
+interface ApplyActionsLedgerEntry {
+  readonly payload: string;
+  readonly result: {
+    readonly revision: number;
+    readonly createdIds: unknown;
+  };
+}
+
+/** Per-project ledger closing the applyActions timeout/retry window. */
+const applyActionsLedger = new Map<
+  string,
+  Map<string, ApplyActionsLedgerEntry>
+>();
+
 const noProject = (): { ok: false; error: LiveBridgeError } => ({
   ok: false,
   error: { code: "NO_PROJECT", message: "No project is open" },
@@ -237,6 +251,33 @@ async function handleApplyActions(
     const store = useProjectStore.getState();
     if (!store.hasOpenProject) return noProject();
 
+    // Commit-ledger replay first (same shape as handleHistoryControl): once
+    // this project has committed the batch under this idempotencyKey, a
+    // retry whose reply was lost replays the recorded result instead of
+    // re-applying the ops — and it wins over the now-stale CAS below.
+    const idempotencyKey =
+      typeof req.idempotencyKey === "string" && req.idempotencyKey.length > 0
+        ? req.idempotencyKey
+        : undefined;
+    const payload = JSON.stringify({ actions: req.actions ?? null, groupLabel });
+    const projectLedger = idempotencyKey
+      ? applyActionsLedger.get(store.project.id)
+      : undefined;
+    const prior = idempotencyKey ? projectLedger?.get(idempotencyKey) : undefined;
+    if (prior) {
+      if (prior.payload !== payload) {
+        return {
+          ok: false,
+          error: {
+            code: "CONFLICT",
+            message: `idempotency key "${idempotencyKey}" was already committed with a different payload`,
+            details: { idempotencyKey },
+          },
+        };
+      }
+      return { ok: true, result: { ...prior.result, replayed: true } };
+    }
+
     // CAS first (ADR 0004 Decisions 3 + 4): a stale expectation rejects the
     // whole batch before anything is applied.
     if (req.expectedRevision !== undefined) {
@@ -296,9 +337,26 @@ async function handleApplyActions(
     // with the new project state.
     window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
 
+    // Record only after the commit landed (a failed batch retries freely).
+    if (idempotencyKey) {
+      let ledger = applyActionsLedger.get(store.project.id);
+      if (!ledger) {
+        ledger = new Map();
+        applyActionsLedger.set(store.project.id, ledger);
+      }
+      ledger.set(idempotencyKey, {
+        payload,
+        result: { revision: getProjectRevision(), createdIds: batch.createdIds },
+      });
+    }
+
     return {
       ok: true,
-      result: { revision: getProjectRevision(), createdIds: batch.createdIds },
+      result: {
+        revision: getProjectRevision(),
+        createdIds: batch.createdIds,
+        replayed: false,
+      },
     };
   });
 }

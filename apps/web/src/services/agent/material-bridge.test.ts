@@ -11,6 +11,28 @@ import {
   setMaterialLibraryServiceForTests,
 } from "../material-library/library-service";
 import { handleMaterialLibraryRequest } from "./material-bridge";
+import { useProjectStore } from "../../stores/project-store";
+
+const { mockSaveMediaBlob, mockImportFile } = vi.hoisted(() => ({
+  mockSaveMediaBlob: vi.fn(async () => undefined),
+  mockImportFile: vi.fn(),
+}));
+
+vi.mock("../../services/media-storage", () => ({
+  saveMediaBlob: mockSaveMediaBlob,
+  deleteMediaBlob: vi.fn(async () => undefined),
+  loadProjectMedia: vi.fn(async () => []),
+  loadFileHandle: vi.fn(async () => null),
+  loadDirectoryHandle: vi.fn(async () => null),
+}));
+
+vi.mock("../../bridges/media-bridge", () => ({
+  getMediaBridge: vi.fn(() => ({
+    isInitialized: vi.fn(() => true),
+    importFile: mockImportFile,
+  })),
+  initializeMediaBridge: vi.fn(async () => undefined),
+}));
 
 class MemoryStorage implements MaterialStorage {
   readonly materials = new Map<string, unknown>();
@@ -203,5 +225,82 @@ describe("handleMaterialLibraryRequest", () => {
     await handleMaterialLibraryRequest({ verb: "list", params: {} });
     expect(listener).toHaveBeenCalledTimes(1);
     window.removeEventListener("openreel:material-library-changed", listener);
+  });
+
+  it("buckets the attach ledger per project so a key replays only in its own project", async () => {
+    mockImportFile.mockImplementation(async (file: File) => ({
+      success: true,
+      media: {
+        blob: file,
+        thumbnails: [],
+        waveformData: null,
+        metadata: {
+          duration: 5,
+          width: 320,
+          height: 180,
+          frameRate: 30,
+          codec: "h264",
+          sampleRate: 0,
+          channels: 0,
+          hasVideo: true,
+          hasAudio: false,
+        },
+      },
+    }));
+    const created = await service.create(
+      {
+        kind: "media",
+        mediaType: "video",
+        fileRef: { type: "blob", fileName: "attach.mp4" },
+        blob: new Blob(["attach-bytes"], { type: "video/mp4" }),
+        metadata: { durationSec: 5 },
+        nowIso: NOW,
+      },
+      "user",
+    );
+    if (!created.ok) throw new Error(created.message);
+    const materialId = created.value.material.id;
+
+    // Project A: the first attach commits, and an in-project retry replays.
+    useProjectStore.getState().createNewProject("Ledger A");
+    const projectAId = useProjectStore.getState().project.id;
+    const first = await handleMaterialLibraryRequest({
+      verb: "attach",
+      params: { materialId, idempotencyKey: "attach-k1" },
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error(first.error.message);
+    expect(
+      (first.result as { projectId: string }).projectId,
+    ).toBe(projectAId);
+
+    const replay = await handleMaterialLibraryRequest({
+      verb: "attach",
+      params: { materialId, idempotencyKey: "attach-k1" },
+    });
+    expect(replay.ok).toBe(true);
+    if (!replay.ok) throw new Error(replay.error.message);
+    expect((replay.result as { replayed?: boolean }).replayed).toBe(true);
+
+    // Switch to project B: the same key must NOT replay project A's commit —
+    // the agent would otherwise read a successful answer about the wrong
+    // project.
+    useProjectStore.getState().createNewProject("Ledger B");
+    const projectBId = useProjectStore.getState().project.id;
+    const other = await handleMaterialLibraryRequest({
+      verb: "attach",
+      params: { materialId, idempotencyKey: "attach-k1" },
+    });
+    expect(other.ok).toBe(true);
+    if (!other.ok) throw new Error(other.error.message);
+    const value = other.result as {
+      projectId: string;
+      projectName: string;
+      replayed?: boolean;
+    };
+    expect(value.replayed).toBeUndefined();
+    expect(value.projectId).toBe(projectBId);
+    expect(value.projectName).toBe("Ledger B");
+    expect(mockImportFile).toHaveBeenCalledTimes(2); // once per project, no replay
   });
 });

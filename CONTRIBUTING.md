@@ -35,6 +35,8 @@ Design background, in reading order:
 
 Prerequisites (as verified on macOS arm64 and Ubuntu CI):
 
+- **Windows**: use Git Bash; `corepack pnpm install` works the same (verified
+  on Windows x64)
 - **Node 22** (CI uses 22; the `engines` floor is 18)
 - **pnpm 11.7** via corepack — the repo pins `packageManager: pnpm@11.7.0`
 - **ffmpeg + ffprobe** on `PATH` — needed by the runtime's artifact verifier
@@ -117,6 +119,7 @@ Keep commits focused and atomic; rebase onto `origin/main` before opening a PR.
 
 ```bash
 pnpm test        # repo-wide, single run
+# Windows: requires Node >= 21 (Node 22 recommended) for the repo-wide suite
 pnpm typecheck
 pnpm lint
 pnpm build       # wasm + web build

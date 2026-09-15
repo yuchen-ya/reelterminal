@@ -17,7 +17,10 @@ import { MATERIAL_VERBS } from "./material-library";
  *   the openreel-project@2 checkpoint pair (cross-session persistence).
  * Slice 3 verbs (ADR 0004 Decision 4): editor.get_context — the live/
  *   headless-honest editor-context read plus the read-only visual.inspect
- *   slice. Slice 6 grows the compact contract to 24 verbs.
+ *   slice. Slice 6 grows the compact contract to 24 verbs. The current
+ *   registry exposes 37 tools (27 base verbs + 8 material verbs + 2 bundled
+ *   plugin tools); FACADE_VERBS, MATERIAL_VERBS, and PLUGIN_TOOLS below are
+ *   the mechanical source of truth for the live catalog.
  * Slice 4 widens edit.apply's closed finishing vocabulary to include clip
  *   move/split/duplicate/ripple-delete, constant speed/reverse, visual
  *   transforms/crop, audio fades, and clip transitions without adding new

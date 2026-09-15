@@ -544,6 +544,55 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     expect(readFileBytes).toHaveBeenCalledTimes(1);
   });
 
+  it("replays a committed applyActions key without applying the batch twice", async () => {
+    const beforeRevision = getProjectRevision();
+    const undoBefore = undoSize();
+    const tracksBefore =
+      useProjectStore.getState().project.timeline.tracks.length;
+    const request = req("applyActions", {
+      groupLabel: "agent retry batch",
+      actions: [act("track/add", { trackType: "video" })],
+      idempotencyKey: "apply-retry-1",
+    });
+
+    const first = await handleLiveBridgeRequest(request);
+    expect(first.ok).toBe(true);
+
+    // The reply was lost after the renderer commit (timeout/reload); the
+    // facade-guided retry carries the same idempotencyKey and a now-stale
+    // transport guard. The committed replay must win over both.
+    const replay = await handleLiveBridgeRequest({
+      ...request,
+      callId: "c2",
+      expectedRevision: beforeRevision + 999,
+    });
+
+    expect(replay.ok).toBe(true);
+    expect(replay.result).toMatchObject({
+      revision: (first.result as { revision: number }).revision,
+      replayed: true,
+    });
+    expect(replay.result).toMatchObject({
+      createdIds: (first.result as { createdIds: unknown }).createdIds,
+    });
+    // Exactly one application: one revision bump, one undo group, one track.
+    expect(getProjectRevision()).toBe(beforeRevision + 1);
+    expect(undoSize()).toBe(undoBefore + 1);
+    expect(
+      useProjectStore.getState().project.timeline.tracks.length,
+    ).toBe(tracksBefore + 1);
+
+    // Same key with a different payload is a CONFLICT, not a blind replay.
+    const conflict = await handleLiveBridgeRequest({
+      ...request,
+      callId: "c3",
+      actions: [act("track/add", { trackType: "audio" })],
+    });
+    expect(conflict.ok).toBe(false);
+    expect(conflict.error?.code).toBe("CONFLICT");
+    expect(getProjectRevision()).toBe(beforeRevision + 1);
+  });
+
   it("applyActions routes plain actions through executeAction as one undo unit", async () => {
     const tracksBefore =
       useProjectStore.getState().project.timeline.tracks.length;

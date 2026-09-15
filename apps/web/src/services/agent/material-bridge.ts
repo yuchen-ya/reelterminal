@@ -6,8 +6,10 @@
  *
  * Concurrency: every library mutation is serialized inside the service's own
  * lane; project mutations run inside runExclusiveLiveWrite. The attach path
- * keeps a renderer commit ledger keyed by idempotencyKey so an IPC
- * timeout→retry cannot double-import a material into the project.
+ * keeps a renderer commit ledger keyed by the open project, then by
+ * idempotencyKey, so an IPC timeout→retry cannot double-import a material
+ * into the project — and a key committed in one project cannot replay into
+ * another after a project switch.
  */
 import type {
   MaterialCreateRequest,
@@ -24,6 +26,7 @@ import type {
   MaterialUpdatePatch,
 } from "@openreel/core";
 import { runExclusiveLiveWrite } from "./live-write-lock";
+import { useProjectStore } from "../../stores/project-store";
 
 export type MaterialBridgeError = {
   readonly code: string;
@@ -40,8 +43,8 @@ interface AttachLedgerEntry {
   readonly result: AttachMaterialSuccess;
 }
 
-/** Renderer-side commit ledger closing the attach timeout/retry window. */
-const attachLedger = new Map<string, AttachLedgerEntry>();
+/** Per-project ledger closing the attach timeout/retry window. */
+const attachLedger = new Map<string, Map<string, AttachLedgerEntry>>();
 
 function toBridgeReply<T>(
   result: MaterialServiceResult<T>,
@@ -231,17 +234,21 @@ async function handleAttach(
   });
 
   return runExclusiveLiveWrite(async () => {
-    if (idempotencyKey) {
-      const prior = attachLedger.get(idempotencyKey);
-      if (prior) {
-        if (prior.payload !== payload) {
-          return bridgeError({
-            code: "CONFLICT",
-            message: `idempotency key "${idempotencyKey}" was already committed with a different payload`,
-          });
-        }
-        return { ok: true, result: { ...prior.result, replayed: true } };
+    // Same per-project bucketing as the live-bridge ledgers: a key committed
+    // in one project must never replay into another after a project switch.
+    const projectId = useProjectStore.getState().project.id;
+    const projectLedger = idempotencyKey
+      ? attachLedger.get(projectId)
+      : undefined;
+    const prior = idempotencyKey ? projectLedger?.get(idempotencyKey) : undefined;
+    if (prior) {
+      if (prior.payload !== payload) {
+        return bridgeError({
+          code: "CONFLICT",
+          message: `idempotency key "${idempotencyKey}" was already committed with a different payload`,
+        });
       }
+      return { ok: true, result: { ...prior.result, replayed: true } };
     }
 
     const result = await attachMaterialToProject({
@@ -262,10 +269,15 @@ async function handleAttach(
       });
     }
     if (idempotencyKey) {
-      attachLedger.set(idempotencyKey, { payload, result: result.value });
-      if (attachLedger.size > 500) {
-        const oldest = attachLedger.keys().next().value;
-        if (oldest !== undefined) attachLedger.delete(oldest);
+      let ledger = attachLedger.get(projectId);
+      if (!ledger) {
+        ledger = new Map();
+        attachLedger.set(projectId, ledger);
+      }
+      ledger.set(idempotencyKey, { payload, result: result.value });
+      if (ledger.size > 500) {
+        const oldest = ledger.keys().next().value;
+        if (oldest !== undefined) ledger.delete(oldest);
       }
     }
     window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));

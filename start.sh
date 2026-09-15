@@ -1,10 +1,10 @@
 #!/bin/bash
-# agent-video-engine-lab - local development start script
+# ReelTerminal - local development start script
 # Starts the inherited OpenReel browser editor (apps/web) via Vite.
 
 set -e
 
-echo "=== agent-video-engine-lab - Dev Setup ==="
+echo "=== ReelTerminal - Dev Setup ==="
 
 # Install dependencies if needed
 if [ ! -d "node_modules" ]; then
