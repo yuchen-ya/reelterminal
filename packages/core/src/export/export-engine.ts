@@ -597,6 +597,20 @@ export class ExportEngine {
     const framesToExport = fullSettings.endFrame - fullSettings.startFrame + 1;
     const blobs: Blob[] = [];
 
+    if (framesToExport <= 0) {
+      return {
+        success: false,
+        error: this.createError(
+          "INVALID_SETTINGS",
+          "Image sequence export requires at least one frame",
+          "preparing",
+        ),
+      };
+    }
+
+    let failedFrames = 0;
+    let firstFailedFrame: number | undefined;
+
     try {
       yield this.createProgress("preparing", 0, framesToExport, 0, 0);
 
@@ -615,6 +629,11 @@ export class ExportEngine {
         const result = await this.exportFrame(project, time, fullSettings);
         if (result.success && result.blob) {
           blobs.push(result.blob);
+        } else {
+          if (firstFailedFrame === undefined) {
+            firstFailedFrame = frameNumber;
+          }
+          failedFrames++;
         }
 
         this.currentExport!.framesRendered = i + 1;
@@ -628,15 +647,48 @@ export class ExportEngine {
         );
       }
 
+      const totalSize = blobs.reduce((sum, b) => sum + b.size, 0);
+
+      // Never report success without a complete sequence: zero produced
+      // frames and partially produced sequences both fail; a partial
+      // sequence still returns its first frame and stats for salvage.
+      if (blobs.length === 0) {
+        return {
+          success: false,
+          error: {
+            ...this.createError(
+              "FRAME_ENCODE_FAILED",
+              `All ${framesToExport} frames failed to render`,
+              "rendering",
+            ),
+            frameNumber: firstFailedFrame,
+          },
+        };
+      }
+
+      if (failedFrames > 0) {
+        return {
+          success: false,
+          error: {
+            ...this.createError(
+              "FRAME_ENCODE_FAILED",
+              `${failedFrames} of ${framesToExport} frames failed to render`,
+              "rendering",
+            ),
+            frameNumber: firstFailedFrame,
+          },
+          blob: blobs[0],
+          stats: this.calculateStats(framesToExport, totalSize),
+        };
+      }
+
       yield this.createProgress(
         "complete",
         1,
         framesToExport,
         framesToExport,
-        0,
+        totalSize,
       );
-
-      const totalSize = blobs.reduce((sum, b) => sum + b.size, 0);
 
       return {
         success: true,

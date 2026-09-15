@@ -166,6 +166,11 @@ import {
   DEFAULT_IMAGE_SETTINGS,
   VIDEO_QUALITY_PRESETS,
 } from "./types";
+import type {
+  ExportProgress,
+  ExportResult,
+  SequenceExportSettings,
+} from "./types";
 import type { Project, Timeline, Track, Clip } from "../types";
 
 const createMockProject = (overrides?: Partial<Project>): Project => ({
@@ -555,6 +560,137 @@ describe("ExportEngine", () => {
       expect(mockVideoSourceConfigs[0]).toMatchObject({
         codec: "hevc",
       });
+    });
+  });
+
+  describe("image sequence export", () => {
+    // C09-D1: a sequence with no produced frames must not be reported as
+    // success, and a partially produced sequence must not be reported as
+    // full success either. Frames are driven through the public exportFrame
+    // boundary so the aggregation semantics are what is under test.
+    const drainImageSequence = async (
+      project: Project,
+      settings?: Partial<SequenceExportSettings>,
+    ): Promise<{ result: ExportResult; progress: ExportProgress[] }> => {
+      const generator = exportEngine.exportImageSequence(project, settings);
+      const progress: ExportProgress[] = [];
+      for (;;) {
+        const step = await generator.next();
+        if (step.done) return { result: step.value, progress };
+        progress.push(step.value);
+      }
+    };
+
+    const sequenceSettings = { startFrame: 0, endFrame: 2 };
+
+    const frameFailure = (): ExportResult => ({
+      success: false,
+      error: {
+        code: "FRAME_ENCODE_FAILED",
+        message: "render boom",
+        phase: "rendering",
+        recoverable: false,
+      },
+    });
+
+    const frameSuccess = (bytes: number): ExportResult => ({
+      success: true,
+      blob: new Blob([new Uint8Array(bytes)], { type: "image/jpeg" }),
+      stats: {
+        duration: 0,
+        framesRendered: 1,
+        averageSpeed: 0,
+        fileSize: bytes,
+        averageBitrate: 0,
+      },
+    });
+
+    it("returns a failure result instead of success when every frame fails", async () => {
+      await exportEngine.initialize();
+      const spy = vi
+        .spyOn(exportEngine, "exportFrame")
+        .mockResolvedValue(frameFailure());
+
+      const { result, progress } = await drainImageSequence(
+        createMockProject(),
+        sequenceSettings,
+      );
+
+      expect(spy).toHaveBeenCalledTimes(3);
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe("FRAME_ENCODE_FAILED");
+      expect(result.blob).toBeUndefined();
+      expect(result.stats).toBeUndefined();
+      expect(progress.map((p) => p.phase)).not.toContain("complete");
+    });
+
+    it("propagates real per-frame render failures into a failed result", async () => {
+      await exportEngine.initialize();
+      mockRenderFrame.mockRejectedValue(new Error("render boom"));
+
+      const { result } = await drainImageSequence(
+        createMockProject(),
+        sequenceSettings,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe("FRAME_ENCODE_FAILED");
+      expect(result.blob).toBeUndefined();
+    });
+
+    it("reports failure with the produced frames when only some frames succeed", async () => {
+      await exportEngine.initialize();
+      vi.spyOn(exportEngine, "exportFrame")
+        .mockResolvedValueOnce(frameSuccess(100))
+        .mockResolvedValueOnce(frameFailure())
+        .mockResolvedValueOnce(frameSuccess(50));
+
+      const { result, progress } = await drainImageSequence(
+        createMockProject(),
+        sequenceSettings,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe("FRAME_ENCODE_FAILED");
+      expect(result.error?.message).toContain("1 of 3");
+      expect(result.error?.frameNumber).toBe(1);
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.stats?.fileSize).toBe(150);
+      expect(progress.map((p) => p.phase)).not.toContain("complete");
+    });
+
+    it("still reports success with complete progress when every frame succeeds", async () => {
+      await exportEngine.initialize();
+      vi.spyOn(exportEngine, "exportFrame")
+        .mockResolvedValueOnce(frameSuccess(100))
+        .mockResolvedValueOnce(frameSuccess(50))
+        .mockResolvedValueOnce(frameSuccess(25));
+
+      const { result, progress } = await drainImageSequence(
+        createMockProject(),
+        sequenceSettings,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.blob).toBeInstanceOf(Blob);
+      expect(result.stats?.fileSize).toBe(175);
+      const complete = progress.find((p) => p.phase === "complete");
+      expect(complete?.progress).toBe(1);
+      expect(complete?.bytesWritten).toBe(175);
+    });
+
+    it("fails instead of reporting success when there are no frames to export", async () => {
+      await exportEngine.initialize();
+      const spy = vi.spyOn(exportEngine, "exportFrame");
+
+      const { result } = await drainImageSequence(createMockProject(), {
+        startFrame: 0,
+        endFrame: -1,
+      });
+
+      expect(spy).not.toHaveBeenCalled();
+      expect(result.success).toBe(false);
+      expect(result.error?.code).toBe("INVALID_SETTINGS");
     });
   });
 
