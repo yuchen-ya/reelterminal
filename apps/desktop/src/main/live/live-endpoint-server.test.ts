@@ -374,3 +374,45 @@ describe("live endpoint MCP protocol", () => {
     expect(activity).toBeGreaterThan(before);
   });
 });
+
+// C05-D1 regression: a descriptor write failure inside the listen callback
+// must reject startLiveEndpointServer (aligning with the bind-failure path)
+// instead of leaving the enable() promise pending forever.
+describe("live endpoint descriptor write failure", () => {
+  it("rejects instead of hanging when the endpoint file cannot be written, and allows retry", async () => {
+    // The descriptor's parent path exists as a FILE, so the mkdirSync inside
+    // writeEndpointFile throws — the same failure shape as an unwritable
+    // ~/.openreel, reached without touching the real home directory.
+    const blocker = path.join(tempDir, "write-blocked");
+    writeFileSync(blocker, "not a directory\n");
+    const blockedFile = path.join(blocker, "live-endpoint.json");
+
+    let failure: unknown;
+    try {
+      await startLiveEndpointServer({
+        callVerb: async () => ({ ok: true, value: {} }),
+        serverInfo: { name: "openreel-live", version: "test" },
+        port: 0,
+        endpointFilePath: blockedFile,
+      });
+      expect.unreachable(
+        "startLiveEndpointServer must reject when the descriptor cannot be written",
+      );
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(Error);
+
+    // The lifecycle is not wedged: a retry against a writable path settles
+    // normally, publishes the descriptor, and closes cleanly.
+    const retried = await startLiveEndpointServer({
+      callVerb: async () => ({ ok: true, value: {} }),
+      serverInfo: { name: "openreel-live", version: "test" },
+      port: 0,
+      endpointFilePath: path.join(tempDir, "retry-endpoint.json"),
+    });
+    expect(existsSync(retried.endpointFile)).toBe(true);
+    await retried.close();
+    expect(existsSync(retried.endpointFile)).toBe(false);
+  });
+});

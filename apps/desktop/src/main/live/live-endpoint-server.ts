@@ -557,7 +557,17 @@ export function startLiveEndpointServer(
       const boundPort =
         typeof address === "object" && address ? address.port : 0;
       const url = `http://127.0.0.1:${boundPort}/mcp`;
-      writeEndpointFile(endpointFile, { url, port: boundPort, token });
+      try {
+        writeEndpointFile(endpointFile, { url, port: boundPort, token });
+      } catch (error) {
+        // A descriptor write failure (e.g. an unwritable ~/.openreel) must
+        // settle like the bind-failure path ("error" → reject): reject so the
+        // caller's enable() can roll back and be retried, and close the
+        // half-started server so no listener is left behind.
+        server.close();
+        reject(error);
+        return;
+      }
       resolve({
         server,
         port: boundPort,
