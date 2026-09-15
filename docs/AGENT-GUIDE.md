@@ -142,10 +142,12 @@ After building the desktop main process, opening a project, and enabling
 ```sh
 node scripts/conversation-adapter/codex-adapter.mjs \
   --new-thread \
-  --cwd /absolute/path/to/agent-video-engine-lab
+  --cwd /absolute/path/to/the-repository-workspace
 ```
 
-or resume one with `--thread-id <codex-thread-id>`. Then open the external
+or resume one with `--thread-id <codex-thread-id>`. Point `--cwd` at the
+repository workspace that contains the checkout's `AGENTS.md` (the sole
+source checkout, per `AGENTS.md`). Then open the external
 Agent panel and choose **Connect external Agent**. Stop the adapter with
 Ctrl+C; it removes only its private conversation descriptor.
 

@@ -19,7 +19,7 @@ pnpm --filter @openreel/desktop start
 unset DASHSCOPE_API_KEY
 ```
 
-Input is hidden and the key is not a command-line argument or shell-history entry. Build the current source before launching (`pnpm --filter @openreel/desktop build`). This version has no GUI credential form or persistent key storage; a Finder launch does not inherit this terminal's environment.
+Input is hidden and the key is not a command-line argument or shell-history entry. On Windows, the `read -s 'VAR?prompt'` block above is zsh-only: from Git Bash use `read -s -p 'Alibaba API key: ' DASHSCOPE_API_KEY && export DASHSCOPE_API_KEY`, or in PowerShell set `$env:DASHSCOPE_API_KEY = Read-Host 'Alibaba API key'`, before launching the desktop process. Build the current source before launching (`pnpm --filter @openreel/desktop build`). This version has no GUI credential form or persistent key storage; a Finder launch does not inherit this terminal's environment.
 
 Default endpoint: `https://dashscope.aliyuncs.com/compatible-mode/v1` (Beijing). Optional `REELTERMINAL_QWEN_BASE_URL` accepts the official Singapore `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`, or an Alibaba workspace endpoint `https://<workspace>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1` / `https://<workspace>.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`. Use a matching regional key and model access. Arbitrary destinations and redirects are rejected to prevent credential forwarding.
 
