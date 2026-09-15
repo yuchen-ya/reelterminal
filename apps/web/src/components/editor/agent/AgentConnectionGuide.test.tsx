@@ -98,4 +98,52 @@ describe("AgentConnectionGuide", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Codex" }));
     expect(onProviderChange).toHaveBeenCalledWith("codex");
   });
+
+  it("explains the desktop requirement instead of checking forever when no desktop conversation API exists", () => {
+    render(
+      <AgentConnectionGuide
+        provider="codex"
+        setup={null}
+        selectedThread="new"
+        collabEnabled={false}
+        busy={false}
+        error={false}
+        desktopUnavailable
+        onProviderChange={vi.fn()}
+        onSelectThread={vi.fn()}
+        onRefresh={vi.fn()}
+        onConnect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("desktop-required-notice")).toBeInTheDocument();
+    expect(screen.getByText(/Agent sessions run in the ReelTerminal desktop app/)).toBeInTheDocument();
+    expect(screen.queryByText(/Checking this computer/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Connect" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Check connection requirements again" }),
+    ).toBeDisabled();
+    expect(screen.queryByRole("tab", { name: "Codex" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the real requirement checks when the desktop conversation API is available", () => {
+    render(
+      <AgentConnectionGuide
+        provider="codex"
+        setup={readySetup}
+        selectedThread="thr_1"
+        collabEnabled
+        busy={false}
+        error={false}
+        onProviderChange={vi.fn()}
+        onSelectThread={vi.fn()}
+        onRefresh={vi.fn()}
+        onConnect={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("desktop-required-notice")).not.toBeInTheDocument();
+    expect(screen.getByText("Codex is installed and its App Server is responding.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Connect" })).toBeEnabled();
+  });
 });

@@ -223,7 +223,9 @@
       "connecting": "Verifying…",
       "connectFailed": "The connection could not be verified. Keep the Agent running, resolve the highlighted requirement, then check again.",
       "codexOwnership": "Codex owns the conversation and history. ReelTerminal attaches the live project tools.",
-      "externalOwnership": "Your Agent keeps ownership of its session. ReelTerminal only attaches this view."
+      "externalOwnership": "Your Agent keeps ownership of its session. ReelTerminal only attaches this view.",
+      "desktopUnavailableTitle": "Agent sessions run in the ReelTerminal desktop app",
+      "desktopUnavailableDetail": "This browser window does not have the desktop connector that local Agent sessions need, so connection requirements cannot be checked here. Open this project in the ReelTerminal desktop app to connect an Agent; browser editing is unaffected."
     },
     "fallbackMcpOnly": "This connection provides editing context through MCP; conversation display is unavailable.",
     "capabilityTitle": "Connection capabilities",

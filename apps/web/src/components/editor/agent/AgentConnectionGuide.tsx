@@ -24,6 +24,12 @@ export interface AgentConnectionGuideProps {
   readonly collabEnabled: boolean;
   readonly busy: boolean;
   readonly error: boolean;
+  /**
+   * True when the host exposes no desktop conversation API at all (the web
+   * build). The requirements cannot even be inspected there, so the guide
+   * states the desktop requirement instead of checking forever.
+   */
+  readonly desktopUnavailable?: boolean;
   readonly onProviderChange: (provider: OpenReelConversationSetupProvider) => void;
   readonly onSelectThread: (threadId: string) => void;
   readonly onRefresh: () => void;
@@ -127,6 +133,7 @@ export function AgentConnectionGuide({
   collabEnabled,
   busy,
   error,
+  desktopUnavailable = false,
   onProviderChange,
   onSelectThread,
   onRefresh,
@@ -161,34 +168,50 @@ export function AgentConnectionGuide({
             type="button"
             aria-label={t("externalAgent.setup.refresh")}
             onClick={onRefresh}
-            disabled={busy}
+            disabled={busy || desktopUnavailable}
             className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-fg-muted transition-colors hover:bg-hover hover:text-fg disabled:opacity-40"
           >
             <RefreshCw size={13} aria-hidden className={busy ? "animate-spin" : undefined} />
           </button>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-1 rounded-md bg-bg-1 p-1" role="tablist">
-          {(["codex", "external"] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              role="tab"
-              aria-selected={provider === option}
-              onClick={() => onProviderChange(option)}
-              className={`flex items-center justify-center gap-1.5 rounded px-2 py-1.5 text-[11px] font-medium transition-colors ${
-                provider === option ? "bg-bg-elev text-fg shadow-sm" : "text-fg-muted hover:text-fg"
-              }`}
-            >
-              {option === "codex" ? <Bot size={12} aria-hidden /> : <Terminal size={12} aria-hidden />}
-              {t(`externalAgent.setup.provider.${option}`)}
-            </button>
-          ))}
-        </div>
+        {desktopUnavailable ? null : (
+          <div className="mt-3 grid grid-cols-2 gap-1 rounded-md bg-bg-1 p-1" role="tablist">
+            {(["codex", "external"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                role="tab"
+                aria-selected={provider === option}
+                onClick={() => onProviderChange(option)}
+                className={`flex items-center justify-center gap-1.5 rounded px-2 py-1.5 text-[11px] font-medium transition-colors ${
+                  provider === option ? "bg-bg-elev text-fg shadow-sm" : "text-fg-muted hover:text-fg"
+                }`}
+              >
+                {option === "codex" ? <Bot size={12} aria-hidden /> : <Terminal size={12} aria-hidden />}
+                {t(`externalAgent.setup.provider.${option}`)}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        <div className="relative before:absolute before:bottom-4 before:left-[9px] before:top-2 before:w-px before:bg-border">
+        {desktopUnavailable ? (
+          <div
+            role="note"
+            data-testid="desktop-required-notice"
+            className="rounded-md border border-status-warning/30 bg-status-warning/8 px-2.5 py-2.5"
+          >
+            <p className="text-xs font-medium text-fg">
+              {t("externalAgent.setup.desktopUnavailableTitle")}
+            </p>
+            <p className="mt-1 text-[11px] leading-relaxed text-fg-muted">
+              {t("externalAgent.setup.desktopUnavailableDetail")}
+            </p>
+          </div>
+        ) : (
+          <div className="relative before:absolute before:bottom-4 before:left-[9px] before:top-2 before:w-px before:bg-border">
           <CheckRow
             state={collabEnabled ? "ready" : "missing"}
             title={t("externalAgent.setup.sessionTitle")}
@@ -249,7 +272,8 @@ export function AgentConnectionGuide({
               )}
             />
           )}
-        </div>
+          </div>
+        )}
 
         {provider === "codex" && codexReady && authReady ? (
           <div className="mt-1 border-t border-border pt-3">

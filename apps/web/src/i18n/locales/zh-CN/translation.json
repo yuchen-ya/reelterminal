@@ -223,7 +223,9 @@
       "connecting": "正在验证…",
       "connectFailed": "连接验证失败。请保持智能体运行，处理高亮的连接条件，然后重新检查。",
       "codexOwnership": "Codex 管理对话和历史记录；ReelTerminal 接入当前项目的实时剪辑工具。",
-      "externalOwnership": "你的智能体继续管理自己的会话；ReelTerminal 只接入此视图。"
+      "externalOwnership": "你的智能体继续管理自己的会话；ReelTerminal 只接入此视图。",
+      "desktopUnavailableTitle": "智能体会话需在 ReelTerminal 桌面应用中使用",
+      "desktopUnavailableDetail": "当前浏览器窗口没有本地智能体会话所需的桌面连接器，因此无法在这里检查连接条件。请在 ReelTerminal 桌面应用中打开此项目来连接智能体；浏览器中的剪辑功能不受影响。"
     },
     "fallbackMcpOnly": "此连接通过 MCP 提供编辑上下文；对话显示不可用。",
     "capabilityTitle": "连接能力",

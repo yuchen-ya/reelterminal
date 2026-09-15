@@ -43,6 +43,13 @@ export function ExternalAgentPanelContainer({
   const collabEnabled = useCollabStore((value) => value.enabled);
   const enableCollab = useCollabStore((value) => value.enable);
   const referencesByNumber = useAgentReferencesStore((value) => value.references);
+  // Capability, not platform sniffing: the desktop preload injects
+  // window.openreel.conversation; a plain browser never has it. Without it
+  // there is nothing to listen to, initialize, or inspect, so the panel skips
+  // those calls and the guide explains the desktop requirement instead of
+  // spinning in its "checking" state forever.
+  const conversationApiAvailable =
+    typeof window !== "undefined" && Boolean(window.openreel?.conversation);
   const [setup, setSetup] = useState<OpenReelConversationSetupState | null>(null);
   const [setupBusy, setSetupBusy] = useState(false);
   const [setupFailed, setSetupFailed] = useState(false);
@@ -84,14 +91,16 @@ export function ExternalAgentPanelContainer({
   }, [applySetup]);
 
   useEffect(() => {
+    if (!conversationApiAvailable) return undefined;
     const off = installExternalConversationEventListener();
     void initialize().catch(() => undefined);
     return off;
-  }, [initialize]);
+  }, [conversationApiAvailable, initialize]);
 
   useEffect(() => {
+    if (!conversationApiAvailable) return;
     void refreshSetup();
-  }, [refreshSetup]);
+  }, [conversationApiAvailable, refreshSetup]);
 
   const viewModel = useMemo(() => {
     const projected = conversationViewModelFromProtocol(state.conversation);
@@ -176,6 +185,7 @@ export function ExternalAgentPanelContainer({
           collabEnabled={collabEnabled}
           busy={setupBusy || busy}
           error={setupFailed}
+          desktopUnavailable={!conversationApiAvailable}
           onProviderChange={setProvider}
           onSelectThread={setSelectedThread}
           onRefresh={() => void refreshSetup()}
