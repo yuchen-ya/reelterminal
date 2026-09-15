@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
-import { Search, Loader2, Layers } from "@/icons/lucide-compat";
+import { Search, Loader2, Layers, CloudOff } from "@/icons/lucide-compat";
 import { ToolcraftText as Text } from "@openreel/ui";
 import { ToolcraftTextInputControl } from "@openreel/ui";
 import { useEngineStore } from "../../stores/engine-store";
@@ -29,6 +29,8 @@ export const TemplateGallery: React.FC<TemplateGalleryProps> = ({
 }) => {
   const { t: tr } = useTranslation();
   const getTemplateEngine = useEngineStore((state) => state.getTemplateEngine);
+  // Read once per render: the build-time cloud opt-out cannot change at runtime.
+  const cloudEnabled = templateCloudService.isCloudEnabled();
 
   const [templates, setTemplates] = useState<ScriptableTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -193,15 +195,34 @@ export const TemplateGallery: React.FC<TemplateGalleryProps> = ({
         categoryStats={categoryStats}
       />
 
+      {!cloudEnabled && (
+        <div
+          className="flex items-start gap-3 p-4 rounded-xl border border-border bg-background-tertiary"
+          data-testid="cloud-templates-disabled"
+        >
+          <CloudOff size={18} className="text-text-muted shrink-0 mt-0.5" />
+          <div>
+            <Text type="supporting" color="primary" weight="medium" className="text-sm text-text-primary">
+              {tr("templates.cloudDisabledTitle")}</Text>
+            <Text type="supporting" color="secondary" display="block" className="text-sm text-text-muted">
+              {tr("templates.cloudDisabledDetail")}</Text>
+          </div>
+        </div>
+      )}
+
       {filteredTemplates.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <div className="w-14 h-14 rounded-2xl bg-background-tertiary flex items-center justify-center mb-4">
             <Layers size={24} className="text-text-muted" />
           </div>
           <Text type="supporting" color="primary" weight="medium" className="text-base text-text-primary mb-1">
-            {tr("No templates found")}</Text>
+            {cloudEnabled
+              ? tr("No templates found")
+              : tr("templates.cloudDisabledTitle")}</Text>
           <Text type="supporting" color="secondary" className="text-sm text-text-muted">
-            {tr("Try adjusting your search or filter")}</Text>
+            {cloudEnabled
+              ? tr("Try adjusting your search or filter")
+              : tr("templates.cloudDisabledDetail")}</Text>
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">

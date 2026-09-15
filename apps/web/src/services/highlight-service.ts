@@ -3,6 +3,7 @@ import {
   type TranscriptWord,
   type AudioSegmentMetrics,
 } from "@openreel/core";
+import { OPENREEL_CLOUD_URL } from "../config/api-endpoints";
 
 export interface HighlightResult {
   start: number;
@@ -28,7 +29,15 @@ const DEFAULT_PREFERENCES: HighlightPreferences = {
 
 type ProgressCallback = (phase: string, progress: number, message: string) => void;
 
-const API_BASE = import.meta.env.VITE_CLOUD_API_URL || "https://api.openreel.video";
+/**
+ * Base URL of the highlight AI, read from the central endpoint registry.
+ * This replaces the former module-private VITE_CLOUD_API_URL read; the
+ * registry still honors that variable as a compatibility alias, and in
+ * dev builds the URL now follows the shared dev/prod switch like every
+ * other first-party cloud service (previously it always pointed at
+ * production).
+ */
+const API_BASE = OPENREEL_CLOUD_URL;
 
 export async function extractHighlights(
   audioBuffer: AudioBuffer,

@@ -8,6 +8,16 @@
     "settings": "设置",
     "systemDefault": "跟随系统"
   },
+  "templates": {
+    "cloudDisabledTitle": "云模板已禁用",
+    "cloudDisabledDetail": "当前构建配置已禁用云模板，内置模板仍可使用。",
+    "cloudActionUnavailable": "当前构建配置已禁用云模板。"
+  },
+  "cloud": {
+    "shareDisabled": "当前构建配置已禁用视频分享。",
+    "transcribeDisabled": "当前构建配置已禁用云转写。",
+    "highlightDisabled": "当前构建配置已禁用 AI 高光分析。"
+  },
   "desktop": {
     "appName": "ReelTerminal",
     "tagline": "你的 AI 视频终点站。生成发生在任何地方，成片发生在这里。",

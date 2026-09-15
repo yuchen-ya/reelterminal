@@ -1,4 +1,17 @@
-import { OPENREEL_CLOUD_URL } from "../config/api-endpoints";
+/**
+ * Sharing upload/read against the OpenReel cloud.
+ *
+ * Every networked function short-circuits when the build opts out of the
+ * first-party cloud (VITE_OPENREEL_CLOUD=off, see api-endpoints.ts): the
+ * upload rejects before any XMLHttpRequest is created, reads resolve to
+ * empty values, the health probe reports false, and nothing falls back
+ * to a different host.
+ */
+import {
+  OPENREEL_CLOUD_ENABLED,
+  OPENREEL_CLOUD_URL,
+} from "../config/api-endpoints";
+import { t } from "../i18n";
 import { shareBaseOrigin } from "./share-origin";
 
 export interface ShareResult {
@@ -26,6 +39,12 @@ export async function uploadForSharing(
   filename: string,
   onProgress?: UploadProgressCallback,
 ): Promise<ShareResult> {
+  if (!OPENREEL_CLOUD_ENABLED) {
+    // Reject before constructing FormData or the XMLHttpRequest so a
+    // cloud-disabled build never issues the upload.
+    throw new Error(t("cloud.shareDisabled"));
+  }
+
   const formData = new FormData();
   formData.append("file", blob, filename);
 
@@ -75,6 +94,7 @@ export async function uploadForSharing(
 }
 
 export async function getShareInfo(shareId: string): Promise<ShareInfo | null> {
+  if (!OPENREEL_CLOUD_ENABLED) return null;
   try {
     const response = await fetch(`${OPENREEL_CLOUD_URL}/shares/${shareId}`);
 
@@ -100,6 +120,7 @@ export async function getShareInfo(shareId: string): Promise<ShareInfo | null> {
 }
 
 export function getShareDownloadUrl(shareId: string): string {
+  if (!OPENREEL_CLOUD_ENABLED) return "";
   return `${OPENREEL_CLOUD_URL}/shares/${shareId}/download`;
 }
 
@@ -130,6 +151,7 @@ export function isShareExpired(expiresAt: number): boolean {
 }
 
 export async function checkShareHealth(): Promise<boolean> {
+  if (!OPENREEL_CLOUD_ENABLED) return false;
   try {
     const response = await fetch(`${OPENREEL_CLOUD_URL}/health`);
     return response.ok;

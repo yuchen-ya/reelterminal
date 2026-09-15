@@ -8,6 +8,16 @@
     "settings": "Settings",
     "systemDefault": "System default"
   },
+  "templates": {
+    "cloudDisabledTitle": "Cloud templates disabled",
+    "cloudDisabledDetail": "Cloud templates are disabled in this build's configuration. Built-in templates are still available.",
+    "cloudActionUnavailable": "Cloud templates are disabled in this build's configuration."
+  },
+  "cloud": {
+    "shareDisabled": "Video sharing is disabled in this build's configuration.",
+    "transcribeDisabled": "Cloud transcription is disabled in this build's configuration.",
+    "highlightDisabled": "AI highlight analysis is disabled in this build's configuration."
+  },
   "desktop": {
     "appName": "ReelTerminal",
     "tagline": "Your AI video's final stop. Generate anywhere; finish here.",

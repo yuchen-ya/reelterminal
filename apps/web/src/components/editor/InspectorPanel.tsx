@@ -13,7 +13,11 @@ import {
   CAPTION_ANIMATION_STYLES,
   getAnimationStyleDisplayName,
 } from "@openreel/core";
-import { OPENREEL_TRANSCRIBE_URL } from "../../config/api-endpoints";
+import {
+  OPENREEL_CLOUD_ENABLED,
+  OPENREEL_TRANSCRIBE_URL,
+} from "../../config/api-endpoints";
+import { t } from "../../i18n";
 import { mergeEditingTemplateControlValues } from "./panels/EditingTemplateControls";
 import {
   getAudioBridgeEffects,
@@ -577,6 +581,22 @@ export const InspectorPanel: React.FC = () => {
 
   const handleGenerateSubtitles = useCallback(async () => {
     if (!selectedClip || isTranscribing) return;
+
+    if (!OPENREEL_CLOUD_ENABLED) {
+      // Cloud-disabled build: surface the explanation through the existing
+      // error progress channel and return before any service is
+      // constructed, so no audio extraction or upload can start.
+      console.error("[Subtitles] Cloud transcription is disabled in this build");
+      setTranscriptionProgress({
+        phase: "error",
+        progress: 0,
+        message: t("cloud.transcribeDisabled"),
+      });
+      setTimeout(() => {
+        setTranscriptionProgress(null);
+      }, 3000);
+      return;
+    }
 
     const mediaItem = getMediaItem(selectedClip.mediaId);
     if (!mediaItem) {

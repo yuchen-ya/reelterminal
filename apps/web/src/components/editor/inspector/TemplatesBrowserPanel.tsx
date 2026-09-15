@@ -133,6 +133,8 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
   const getTemplateEngine = useEngineStore((state) => state.getTemplateEngine);
   const getTitleEngine = useEngineStore((state) => state.getTitleEngine);
   const loadProject = useProjectStore((state) => state.loadProject);
+  // Read once per render: the build-time cloud opt-out cannot change at runtime.
+  const cloudEnabled = templateCloudService.isCloudEnabled();
 
   const [selectedCategory, setSelectedCategory] = useState<
     TemplateCategory | "all"
@@ -378,6 +380,17 @@ export const TemplatesBrowserPanel: React.FC<TemplatesBrowserPanelProps> = ({
             {tr("Start with a pre-made project")}</Text>
         </div>
       </div>
+
+      {!cloudEnabled && (
+        <div
+          className="flex items-start gap-2 p-2 rounded-lg border border-border bg-bg-2"
+          data-testid="cloud-templates-disabled"
+        >
+          <Cloud size={12} className="text-fg-3 shrink-0 mt-0.5" />
+          <Text type="supporting" color="secondary" display="block" className="text-[9px]">
+            {tr("templates.cloudDisabledDetail")}</Text>
+        </div>
+      )}
 
       <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1">
         <SelectableCard

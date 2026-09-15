@@ -12,7 +12,11 @@ import {
   initializeTranscriptionService,
   type TranscriptWord,
 } from "@openreel/core";
-import { OPENREEL_TRANSCRIBE_URL } from "../../../config/api-endpoints";
+import {
+  OPENREEL_CLOUD_ENABLED,
+  OPENREEL_TRANSCRIBE_URL,
+} from "../../../config/api-endpoints";
+import { t } from "../../../i18n";
 import {
   extractHighlights,
   type HighlightResult,
@@ -46,6 +50,10 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
     contentType: "video",
   });
 
+  // Build-time cloud switch: highlight analysis (and its transcription
+  // prerequisite) belongs to the first-party cloud domain.
+  const cloudEnabled = OPENREEL_CLOUD_ENABLED;
+
   const handleAnalyze = useCallback(async () => {
     if (!project) return;
 
@@ -57,6 +65,14 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
     const mediaItem = getMediaItem(clip.mediaId);
     if (!mediaItem?.blob) {
       setError("Media not found or not loaded");
+      return;
+    }
+
+    if (!cloudEnabled) {
+      // Cloud-disabled build: explain through the existing error line and
+      // return before any transcription service, audio extraction, or
+      // highlight request can happen.
+      setError(t("cloud.highlightDisabled"));
       return;
     }
 
@@ -113,7 +129,7 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
       setPhase("");
       setProgress(0);
     }
-  }, [clipId, project, getMediaItem, preferences]);
+  }, [clipId, project, getMediaItem, preferences, cloudEnabled]);
 
   const handlePreview = useCallback(
     (highlight: HighlightResult) => {
@@ -189,9 +205,18 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
           variant="primary"
           size="md"
           onClick={handleAnalyze}
-          isDisabled={isProcessing}
+          isDisabled={isProcessing || !cloudEnabled}
           className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-primary hover:bg-primary/90 text-white rounded text-[11px] font-medium transition-colors disabled:opacity-50"
         />
+
+        {!cloudEnabled && (
+          <Text
+            type="supporting"
+            className="block text-[10px] text-text-muted"
+          >
+            {tr("cloud.highlightDisabled")}
+          </Text>
+        )}
 
         {error && (
           <Text type="supporting" className="text-[10px] text-red-400">{error}</Text>

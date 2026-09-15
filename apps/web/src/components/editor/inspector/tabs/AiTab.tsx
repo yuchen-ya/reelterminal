@@ -18,6 +18,7 @@ import { CaptionEditorPanel } from "../CaptionEditorPanel";
 import { AutoEditPanel } from "../../panels/AutoEditPanel";
 import { HighlightExtractorPanel } from "../../panels/HighlightExtractorPanel";
 import { InspectorSection } from "../shell/InspectorSection";
+import { OPENREEL_CLOUD_ENABLED } from "../../../../config/api-endpoints";
 import { useTranslation } from "react-i18next";
 
 export interface AiTabProps {
@@ -74,6 +75,7 @@ export const AiTab: React.FC<AiTabProps> = ({
   onCaptionWordsPerLineChange,
 }) => {
   const { t } = useTranslation();
+  const cloudTranscribeEnabled = OPENREEL_CLOUD_ENABLED;
   return (
     <>
       {clipType === "video" && (
@@ -177,15 +179,25 @@ export const AiTab: React.FC<AiTabProps> = ({
                   />
                 </div>
               ) : (
-                <Button
-                  label={t("Generate Captions")}
-                  onClick={handleGenerateSubtitles}
-                  isDisabled={isTranscribing}
-                  variant="primary"
-                  size="sm"
-                  icon={<Captions size={14} aria-hidden />}
-                  className="w-full justify-center"
-                />
+                <div className="space-y-1">
+                  <Button
+                    label={t("Generate Captions")}
+                    onClick={handleGenerateSubtitles}
+                    isDisabled={isTranscribing || !cloudTranscribeEnabled}
+                    variant="primary"
+                    size="sm"
+                    icon={<Captions size={14} aria-hidden />}
+                    className="w-full justify-center"
+                  />
+                  {!cloudTranscribeEnabled && (
+                    <Text
+                      type="supporting"
+                      className="block text-[10px] text-text-muted"
+                    >
+                      {t("cloud.transcribeDisabled")}
+                    </Text>
+                  )}
+                </div>
               )}
               <Button
                 label={t("Import SRT / VTT as Text")}

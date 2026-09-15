@@ -1,0 +1,106 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * The service reads the build-time cloud switch at module scope, so the
+ * opt-out cases re-import the module against a stubbed environment.
+ */
+
+type ServiceModule = typeof import("./template-cloud-service");
+
+async function loadService(): Promise<ServiceModule> {
+  vi.resetModules();
+  return import("./template-cloud-service");
+}
+
+function clearCloudEnv(): void {
+  delete (import.meta.env as Record<string, unknown>).VITE_OPENREEL_CLOUD;
+}
+
+describe("TemplateCloudService cloud opt-out", () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    clearCloudEnv();
+  });
+
+  it("short-circuits every method with zero network when VITE_OPENREEL_CLOUD=off", async () => {
+    clearCloudEnv();
+    vi.stubEnv("VITE_OPENREEL_CLOUD", "off");
+    const { templateCloudService } = await loadService();
+
+    await expect(templateCloudService.listTemplates()).resolves.toEqual([]);
+    await expect(templateCloudService.getTemplate("t1")).resolves.toBeNull();
+    await expect(templateCloudService.uploadTemplate({} as never)).resolves.toEqual({
+      success: false,
+      error: expect.any(String),
+    });
+    await expect(templateCloudService.deleteTemplate("t1")).resolves.toEqual({
+      success: false,
+      error: expect.any(String),
+    });
+    await expect(templateCloudService.checkHealth()).resolves.toBe(false);
+    await expect(
+      templateCloudService.listScriptableTemplates(),
+    ).resolves.toEqual([]);
+    await expect(
+      templateCloudService.getScriptableTemplate("t1"),
+    ).resolves.toBeNull();
+
+    expect(templateCloudService.isCloudEnabled()).toBe(false);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("reports write-class operations as unavailable with the localized explanation", async () => {
+    clearCloudEnv();
+    vi.stubEnv("VITE_OPENREEL_CLOUD", "off");
+    const { templateCloudService } = await loadService();
+
+    const upload = await templateCloudService.uploadTemplate({} as never);
+    expect(upload.success).toBe(false);
+    expect(upload.error).toBe(
+      "Cloud templates are disabled in this build's configuration.",
+    );
+  });
+
+  it("keeps the cloud enabled and networked by default (no env set)", async () => {
+    clearCloudEnv();
+    const { templateCloudService } = await loadService();
+
+    expect(templateCloudService.isCloudEnabled()).toBe(true);
+
+    fetchSpy.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ templates: [] }),
+    });
+    await expect(templateCloudService.listTemplates()).resolves.toEqual([]);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0][0])).toContain("/templates");
+  });
+
+  it.each(["", "false", "0", "enabled"])(
+    "stays enabled and networked for non-off values (%s)",
+    async (value) => {
+      clearCloudEnv();
+      vi.stubEnv("VITE_OPENREEL_CLOUD", value);
+      const { templateCloudService } = await loadService();
+
+      expect(templateCloudService.isCloudEnabled()).toBe(true);
+
+      fetchSpy.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ templates: [] }),
+      });
+      await templateCloudService.listTemplates();
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    },
+  );
+});
