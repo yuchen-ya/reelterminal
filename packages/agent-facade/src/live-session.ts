@@ -875,6 +875,9 @@ export class LiveFacadeSession {
           {
             groupLabel: "agent: project.rename",
             expectedRevision: valid.expectedRevision ?? revision,
+            ...(valid.idempotencyKey !== undefined
+              ? { idempotencyKey: valid.idempotencyKey }
+              : {}),
           },
         );
       } catch (error) {
@@ -1412,6 +1415,9 @@ export class LiveFacadeSession {
           expectedRevision: valid.expectedRevision ?? revision,
           ...(valid.expectedContextRevision !== undefined
             ? { expectedContextRevision: valid.expectedContextRevision }
+            : {}),
+          ...(valid.idempotencyKey !== undefined
+            ? { idempotencyKey: valid.idempotencyKey }
             : {}),
         });
       } catch (error) {

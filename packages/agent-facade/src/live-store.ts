@@ -140,6 +140,13 @@ export interface LiveApplyActionsOptions {
   readonly expectedRevision?: number;
   /** CAS precondition on the editor-context revision (Decision 4). */
   readonly expectedContextRevision?: number;
+  /**
+   * Optional replay key carried across the store seam: the desktop adapter
+   * puts it on the bridge request so the renderer's applyActions ledger can
+   * replay a committed batch whose reply was lost in transit (facade-level
+   * edit.apply replay is decided by EditApplyParams.idempotencyKey).
+   */
+  readonly idempotencyKey?: string;
 }
 
 /**

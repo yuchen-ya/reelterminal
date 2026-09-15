@@ -2182,3 +2182,33 @@ describe("live cloud review is read-only", () => {
     } finally { facade.dispose(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
   });
 });
+
+describe("live verbs forward idempotencyKey to the store seam", () => {
+  it("edit.apply passes valid.idempotencyKey into the store applyActions opts", async () => {
+    const facade = liveFacade();
+    const res = await facade["edit.apply"]({
+      ops: [...TEXT_BATCH],
+      idempotencyKey: "edit-opts-1",
+    });
+    expect(res.ok).toBe(true);
+    expect(store.batches.at(-1)?.opts.idempotencyKey).toBe("edit-opts-1");
+
+    // No caller key ⇒ the field is entirely absent from the opts
+    // (conditional spread, mirroring historyControl at the same seam).
+    const plain = await facade["edit.apply"]({
+      ops: [{ op: "track.add", trackType: "video" }],
+    });
+    expect(plain.ok).toBe(true);
+    expect(store.batches.at(-1)?.opts).not.toHaveProperty("idempotencyKey");
+  });
+
+  it("project.rename passes valid.idempotencyKey into the store applyActions opts", async () => {
+    const facade = liveFacade();
+    const res = await facade["project.rename"]({
+      name: "Opts Renamed",
+      idempotencyKey: "rename-opts-1",
+    });
+    expect(res.ok).toBe(true);
+    expect(store.batches.at(-1)?.opts.idempotencyKey).toBe("rename-opts-1");
+  });
+});

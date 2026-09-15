@@ -120,6 +120,7 @@ describe("createLiveStoreBridge", () => {
       groupLabel: "agent: edit.apply",
       expectedRevision: 5,
       expectedContextRevision: 2,
+      idempotencyKey: "edit-batch-5",
     });
     expect(sent[0]).toMatchObject({
       callId: "call-1",
@@ -127,6 +128,7 @@ describe("createLiveStoreBridge", () => {
       groupLabel: "agent: edit.apply",
       expectedRevision: 5,
       expectedContextRevision: 2,
+      idempotencyKey: "edit-batch-5",
     });
     expect((sent[0]!.actions as unknown[]).length).toBe(1);
     bridge.handleResponse(validSender, {
@@ -142,6 +144,22 @@ describe("createLiveStoreBridge", () => {
       revision: 6,
       createdIds: { tracks: [], clips: ["clip-1"], textClips: [] },
     });
+  });
+
+  it("applyActions omits idempotencyKey from the bridge request when the caller sends none", async () => {
+    const { bridge, sent } = makeBridge();
+    const pending = bridge.store.applyActions([fakeAction], {
+      groupLabel: "agent: edit.apply",
+      expectedRevision: 3,
+    });
+    expect(sent[0]).toMatchObject({
+      kind: "applyActions",
+      groupLabel: "agent: edit.apply",
+      expectedRevision: 3,
+    });
+    expect("idempotencyKey" in sent[0]!).toBe(false);
+    bridge.teardown("test finished");
+    await expect(pending).rejects.toThrow("test finished");
   });
 
   it("editorControl forwards ephemeral action and target/CAS fields", async () => {

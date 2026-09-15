@@ -225,6 +225,9 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
           ...(opts.expectedContextRevision !== undefined
             ? { expectedContextRevision: opts.expectedContextRevision }
             : {}),
+          ...(opts.idempotencyKey !== undefined
+            ? { idempotencyKey: opts.idempotencyKey }
+            : {}),
         },
         APPLY_TIMEOUT_MS,
       ) as Promise<LiveApplyActionsResult>,
