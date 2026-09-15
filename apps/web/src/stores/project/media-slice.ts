@@ -721,6 +721,24 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
           item.id === mediaId ? updatedItem : item,
         );
 
+        // Persistence is part of the replacement transaction, with the same
+        // ordering as importMedia: durable bytes for this id must exist before
+        // the project entry is published. Saving only after the commit used to
+        // leave the previous blob in IndexedDB, so a save/reload silently
+        // restored the old content while the entry named the new file.
+        try {
+          await saveMediaBlob(project.id, mediaId, file, updatedItem.metadata);
+        } catch (err) {
+          console.error("[ProjectStore] Failed to persist replaced media blob:", err);
+          return {
+            success: false,
+            error: {
+              code: "DECODE_ERROR" as const,
+              message: "Failed to persist replaced media for project recovery",
+            },
+          };
+        }
+
         set({
           project: {
             ...project,
