@@ -457,6 +457,146 @@ describe("MaterialLibraryService", () => {
     expect(storage.blobs.has(pathMedia.id)).toBe(false);
   });
 
+  it("undoing a removal surfaces the missing library blob bytes (C08-1)", async () => {
+    const blob = new Blob(["fake-bytes"], { type: "video/mp4" });
+    const created = await service.create(
+      {
+        kind: "media",
+        mediaType: "video",
+        fileRef: { type: "blob", fileName: "screen.mp4" },
+        blob,
+        nowIso: NOW,
+      },
+      "user",
+    );
+    if (!created.ok) throw new Error(created.message);
+    const id = created.value.material.id;
+    const removed = await service.remove(id, {}, "user");
+    if (!removed.ok) throw new Error(removed.message);
+    // remove keeps its documented semantics: the library's own copy is
+    // reclaimed immediately (frozen contract, ML "reclaims only that copy").
+    expect(storage.blobs.has(id)).toBe(false);
+
+    const undo = await service.undo(undefined, "user");
+    expect(undo.ok).toBe(true);
+    if (undo.ok) {
+      expect(undo.value.restored).toEqual([id]);
+      // The record is back, but its library-owned bytes were already
+      // reclaimed. The undo result must say so instead of reporting an
+      // unqualified success.
+      expect(undo.value.blobMissingIds).toEqual([id]);
+    }
+    expect(await service.loadBlobFor(id)).toBeNull();
+  });
+
+  it.skip(
+    "undoing a removal restores the library blob bytes themselves "
+      + "(BLOCKED: requires deferring remove's immediate reclaim, which the "
+      + "frozen contract ML:58-59 and the reclaim test above pin — see "
+      + "reports/C08-undo-fix-implementer.md)",
+    async () => {
+      const blob = new Blob(["fake-bytes"], { type: "video/mp4" });
+      const created = await service.create(
+        {
+          kind: "media",
+          mediaType: "video",
+          fileRef: { type: "blob", fileName: "screen.mp4" },
+          blob,
+          nowIso: NOW,
+        },
+        "user",
+      );
+      if (!created.ok) throw new Error(created.message);
+      const id = created.value.material.id;
+      await service.remove(id, {}, "user");
+      await service.undo(undefined, "user");
+      expect(await service.loadBlobFor(id)).not.toBeNull();
+    },
+  );
+
+  it("undoing a creation reclaims the blob copy in the same transaction (C08-3)", async () => {
+    const blob = new Blob(["orphan-bytes"], { type: "video/mp4" });
+    const created = await service.create(
+      {
+        kind: "media",
+        mediaType: "video",
+        fileRef: { type: "blob", fileName: "clip.mp4" },
+        blob,
+        nowIso: NOW,
+      },
+      "user",
+    );
+    if (!created.ok) throw new Error(created.message);
+    const id = created.value.material.id;
+    expect(storage.blobs.has(id)).toBe(true);
+
+    const undo = await service.undo(undefined, "user");
+    expect(undo.ok).toBe(true);
+    if (undo.ok) expect(undo.value.removed).toEqual([id]);
+    // No orphan bytes: the undo's own commit carries the blob delete.
+    const commit = storage.commits[storage.commits.length - 1];
+    expect(commit.blobDeletes).toEqual([id]);
+    expect(storage.blobs.has(id)).toBe(false);
+    expect(await service.loadBlobFor(id)).toBeNull();
+  });
+
+  it("redo of an undone removal re-removes the material (C08-2)", async () => {
+    const media = await seedMedia();
+    const removed = await service.remove(media.id, {}, "user");
+    if (!removed.ok) throw new Error(removed.message);
+
+    const firstUndo = await service.undo(undefined, "user");
+    expect(firstUndo.ok).toBe(true);
+    if (!firstUndo.ok) throw new Error(firstUndo.message);
+    expect(firstUndo.value.restored).toEqual([media.id]);
+
+    // The undo entry must carry the restore as a real change (before: null,
+    // after: restored record) so undoing it is an effective redo.
+    const journal = await service.journal();
+    if (!journal.ok) throw new Error(journal.message);
+    const undoEntry = journal.value.find(
+      (entry) => entry.id === firstUndo.value.entryId,
+    );
+    expect(undoEntry).toBeDefined();
+    expect(undoEntry?.materialIds).toEqual([media.id]);
+    expect(undoEntry?.changes).toHaveLength(1);
+    expect(undoEntry?.changes[0].before).toBeNull();
+    expect(undoEntry?.changes[0].after?.id).toBe(media.id);
+
+    const redo = await service.undo(firstUndo.value.entryId, "user");
+    expect(redo.ok).toBe(true);
+    if (redo.ok) expect(redo.value.removed).toEqual([media.id]);
+    const after = await service.get(media.id);
+    expect(after.ok).toBe(false);
+  });
+
+  it("redoing an undone creation reports the reclaimed blob as missing", async () => {
+    const blob = new Blob(["once-bytes"], { type: "video/mp4" });
+    const created = await service.create(
+      {
+        kind: "media",
+        mediaType: "video",
+        fileRef: { type: "blob", fileName: "take.mp4" },
+        blob,
+        nowIso: NOW,
+      },
+      "user",
+    );
+    if (!created.ok) throw new Error(created.message);
+    const id = created.value.material.id;
+    const firstUndo = await service.undo(undefined, "user");
+    if (!firstUndo.ok) throw new Error(firstUndo.message);
+    expect(storage.blobs.has(id)).toBe(false); // C08-3 reclaimed it
+
+    const redo = await service.undo(firstUndo.value.entryId, "user");
+    expect(redo.ok).toBe(true);
+    if (redo.ok) {
+      expect(redo.value.restored).toEqual([id]);
+      // Bytes are gone for good; the redo must say so honestly.
+      expect(redo.value.blobMissingIds).toEqual([id]);
+    }
+  });
+
   it("recordUsage dedupes per project+media pair", async () => {
     const media = await seedMedia();
     await service.recordUsage(media.id, {

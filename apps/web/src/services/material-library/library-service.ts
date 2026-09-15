@@ -13,6 +13,11 @@
  *  - Removing a referenced material requires `force`; removing an entry
  *    never deletes anything on disk — only the library's own blob copy is
  *    reclaimed.
+ *  - Undo settles records and blobs in one transaction: the inverse of
+ *    every touched record is journalled (so redo is always effective),
+ *    re-removed records' blob copies are reclaimed, and restored blob
+ *    references whose bytes are gone are reported (`blobMissingIds`),
+ *    never silently successful.
  */
 import {
   applyMaterialJournalUndo,
@@ -89,6 +94,16 @@ export interface MaterialUndoResult {
   readonly undoneEntryId: string;
   readonly restored: readonly string[];
   readonly removed: readonly string[];
+  /**
+   * Restored media records whose library-owned blob copy no longer exists.
+   * `remove` reclaims its blob copy immediately (only the library's own
+   * copy — the original file is never touched), so undoing a removal
+   * brings back the record but not the bytes; a redo of an undone create
+   * hits the same state because the undo reclaimed the copy. Callers must
+   * surface these ids: such an undo must never read as an unqualified
+   * success.
+   */
+  readonly blobMissingIds: readonly string[];
 }
 
 export interface MaterialUsageReconcileResult {
@@ -502,7 +517,16 @@ export class MaterialLibraryService {
     });
   }
 
-  /** Undo one journal entry (default: the latest undoable entry). */
+  /**
+   * Undo one journal entry (default: the latest undoable entry).
+   *
+   * One atomic batch across both dimensions: the inverse record changes
+   * are journalled (restores of removed records included, so redoing the
+   * undo is effective), blob copies of records the undo removes are
+   * reclaimed in the same transaction, and restored blob references whose
+   * bytes are already gone are reported via `blobMissingIds` instead of
+   * silently succeeding.
+   */
   async undo(
     entryId?: string,
     actor: MaterialActor = "user",
@@ -538,14 +562,35 @@ export class MaterialLibraryService {
       });
       const undoChanges: MaterialJournalChange[] = [];
       for (const id of outcome.restored) {
-        const before = this.records.get(id);
+        const before = this.records.get(id) ?? null;
         const after = recordsWithUsages.find((candidate) => candidate.id === id);
-        if (before && after) undoChanges.push({ materialId: id, before, after });
+        // A restore whose `before` is null (the record had been removed)
+        // is still journalled: undoing this entry then replays the null
+        // `before` as a removal — an effective redo, never a silent
+        // no-op.
+        if (after) undoChanges.push({ materialId: id, before, after });
       }
       for (const id of outcome.removed) {
         const before = this.records.get(id) ?? null;
         undoChanges.push({ materialId: id, before, after: null });
       }
+      // Blob dimension of the same undo unit, settled in the same
+      // transaction: records this undo removes (an undone create, or a
+      // redo of a removal) take their library blob copies with them —
+      // no orphans. Records this undo restores keep their copies; when a
+      // restored blob reference points at bytes that are already gone
+      // (see MaterialUndoResult.blobMissingIds), the undo reports it
+      // instead of silently succeeding.
+      const removedBlobIds = outcome.removed
+        .map((id) => this.records.get(id))
+        .filter(
+          (record): record is MaterialRecord =>
+            record !== undefined &&
+            record.kind === "media" &&
+            record.fileRef.type === "blob",
+        )
+        .map((record) => record.id);
+      const blobMissingIds: string[] = [];
       const undoEntry = buildMaterialJournalEntry({
         actor,
         label: `undo "${target.label}"`,
@@ -557,11 +602,24 @@ export class MaterialLibraryService {
         undoneAt: new Date().toISOString(),
       };
       try {
+        for (const candidate of recordsWithUsages) {
+          if (
+            !outcome.restored.includes(candidate.id) ||
+            candidate.kind !== "media" ||
+            candidate.fileRef.type !== "blob"
+          ) {
+            continue;
+          }
+          if (!(await this.storage.loadBlob(candidate.id))) {
+            blobMissingIds.push(candidate.id);
+          }
+        }
         await this.storage.commit({
           materialUpserts: recordsWithUsages.filter((candidate) =>
             outcome.restored.includes(candidate.id),
           ),
           materialDeletes: [...outcome.removed],
+          ...(removedBlobIds.length > 0 ? { blobDeletes: removedBlobIds } : {}),
           journalUpserts: [undoneOriginal, undoEntry],
         });
       } catch (error) {
@@ -578,6 +636,7 @@ export class MaterialLibraryService {
           undoneEntryId: target.id,
           restored: outcome.restored,
           removed: outcome.removed,
+          blobMissingIds,
         },
       };
     });
