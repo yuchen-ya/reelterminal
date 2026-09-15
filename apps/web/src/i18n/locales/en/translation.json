@@ -14,7 +14,9 @@
     "cloudActionUnavailable": "Cloud templates are disabled in this build's configuration.",
     "cloudFailedTitle": "Cloud templates failed to load",
     "cloudFailedDetail": "Cloud templates couldn't be reached. Built-in templates are still available.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "cloudSaveNotice": "Publishes this template (name, description, and timeline structure) to the OpenReel public cloud template library, where other users can browse and use it.",
+    "localSaveNotice": "Saved locally in your browser storage"
   },
   "media": {
     "ffmpegLoadFailedTitle": "FFmpeg.wasm core failed to load",
@@ -30,6 +32,8 @@
   "cloud": {
     "shareDisabled": "Video sharing is disabled in this build's configuration.",
     "transcribeDisabled": "Cloud transcription is disabled in this build's configuration.",
+    "transcribeButton": "Generate Captions (Cloud)",
+    "transcribeUploadNotice": "Generating captions uploads this clip's audio to the OpenReel cloud transcription service.",
     "highlightDisabled": "AI highlight analysis is disabled in this build's configuration."
   },
   "desktop": {

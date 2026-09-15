@@ -57,6 +57,12 @@ export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // Read once per render: the build-time cloud opt-out cannot change at
+  // runtime. When the cloud is off, the Cloud option is disabled and any
+  // selection falls back to Local.
+  const cloudEnabled = templateCloudService.isCloudEnabled();
+  const effectiveSaveLocation = cloudEnabled ? saveLocation : "local";
+
   const handleSave = useCallback(async () => {
     if (!name.trim()) {
       setError("Template name is required");
@@ -111,7 +117,10 @@ export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
         }
       }
 
-      if (saveLocation === "cloud") {
+      // Off-build precheck: the Cloud path is disabled in the UI and any
+      // stale "cloud" selection falls back to a purely local save, so no
+      // upload request is ever constructed here.
+      if (saveLocation === "cloud" && cloudEnabled) {
         const result =
           await templateCloudService.uploadTemplate(templateWithMeta);
         if (!result.success) {
@@ -143,6 +152,7 @@ export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
     tags,
     author,
     saveLocation,
+    cloudEnabled,
     project,
     getTemplateEngine,
     getGraphicsEngine,
@@ -242,10 +252,11 @@ export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
             <div className="grid grid-cols-2 gap-2">
               <SelectableCard
                 label={tr("Cloud")}
-                isSelected={saveLocation === "cloud"}
+                isSelected={effectiveSaveLocation === "cloud"}
                 onChange={() => setSaveLocation("cloud")}
+                isDisabled={!cloudEnabled}
                 padding={3}
-                variant={saveLocation === "cloud" ? "green" : "default"}
+                variant={effectiveSaveLocation === "cloud" ? "green" : "default"}
               >
                 <div className="flex items-center justify-center gap-2">
                   <Cloud size={16} aria-hidden />
@@ -254,10 +265,10 @@ export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
               </SelectableCard>
               <SelectableCard
                 label={tr("Local")}
-                isSelected={saveLocation === "local"}
+                isSelected={effectiveSaveLocation === "local"}
                 onChange={() => setSaveLocation("local")}
                 padding={3}
-                variant={saveLocation === "local" ? "green" : "default"}
+                variant={effectiveSaveLocation === "local" ? "green" : "default"}
               >
                 <div className="flex items-center justify-center gap-2">
                   <HardDrive size={16} aria-hidden />
@@ -266,9 +277,11 @@ export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
               </SelectableCard>
             </div>
             <Text type="supporting" color="secondary" display="block" className="text-[10px]">
-              {saveLocation === "cloud"
-                ? "Saved to cloud and accessible from any device"
-                : "Saved locally in your browser storage"}
+              {!cloudEnabled
+                ? tr("templates.cloudActionUnavailable")
+                : effectiveSaveLocation === "cloud"
+                  ? tr("templates.cloudSaveNotice")
+                  : tr("templates.localSaveNotice")}
             </Text>
           </div>
         </div>

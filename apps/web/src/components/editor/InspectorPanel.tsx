@@ -647,16 +647,16 @@ export const InspectorPanel: React.FC = () => {
       }, 2000);
     } catch (error) {
       console.error("[Subtitles] Transcription failed:", error);
+      // Keep the failure on screen: no auto-dismiss. Uploads that already
+      // went out (or failed mid-flight) must stay readable, and the AiTab
+      // offers an explicit Retry next to this persistent error.
+      setIsTranscribing(false);
       setTranscriptionProgress({
         phase: "error",
         progress: 0,
         message:
           error instanceof Error ? error.message : "Transcription failed",
       });
-      setTimeout(() => {
-        setTranscriptionProgress(null);
-        setIsTranscribing(false);
-      }, 3000);
     }
   }, [
     selectedClip,

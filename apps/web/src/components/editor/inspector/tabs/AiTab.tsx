@@ -163,42 +163,64 @@ export const AiTab: React.FC<AiTabProps> = ({
                       {transcriptionProgress.message}
                     </Text>
                   </div>
-                  <ProgressBar
-                    label={t("Caption generation progress")}
-                    isLabelHidden
-                    value={transcriptionProgress.progress}
-                    max={100}
-                    hasValueLabel={false}
-                    variant={
-                      transcriptionProgress.phase === "error"
-                        ? "error"
-                        : transcriptionProgress.phase === "complete"
-                          ? "success"
-                          : "accent"
-                    }
-                  />
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <Button
-                    label={t("Generate Captions")}
-                    onClick={handleGenerateSubtitles}
-                    isDisabled={isTranscribing || !cloudTranscribeEnabled}
-                    variant="primary"
-                    size="sm"
-                    icon={<Captions size={14} aria-hidden />}
-                    className="w-full justify-center"
-                  />
-                  {!cloudTranscribeEnabled && (
-                    <Text
-                      type="supporting"
-                      className="block text-[10px] text-text-muted"
-                    >
-                      {t("cloud.transcribeDisabled")}
-                    </Text>
-                  )}
-                </div>
-              )}
+                    <ProgressBar
+                      label={t("Caption generation progress")}
+                      isLabelHidden
+                      value={transcriptionProgress.progress}
+                      max={100}
+                      hasValueLabel={false}
+                      variant={
+                        transcriptionProgress.phase === "error"
+                          ? "error"
+                          : transcriptionProgress.phase === "complete"
+                            ? "success"
+                            : "accent"
+                      }
+                    />
+                    {transcriptionProgress.phase === "error" &&
+                      cloudTranscribeEnabled && (
+                        // Persistent failure needs an explicit way back in:
+                        // Retry re-issues the transcription once, no auto-retry.
+                        <Button
+                          label={t("templates.retry")}
+                          onClick={handleGenerateSubtitles}
+                          isDisabled={isTranscribing}
+                          variant="secondary"
+                          size="sm"
+                          className="w-full justify-center"
+                        />
+                      )}
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Button
+                      label={t("cloud.transcribeButton")}
+                      onClick={handleGenerateSubtitles}
+                      isDisabled={isTranscribing || !cloudTranscribeEnabled}
+                      variant="primary"
+                      size="sm"
+                      icon={<Captions size={14} aria-hidden />}
+                      className="w-full justify-center"
+                    />
+                    {cloudTranscribeEnabled ? (
+                      // PLAN §5.3: say what is uploaded and to which service
+                      // before the upload can happen (no extra dialog flow).
+                      <Text
+                        type="supporting"
+                        className="block text-[10px] text-text-muted"
+                      >
+                        {t("cloud.transcribeUploadNotice")}
+                      </Text>
+                    ) : (
+                      <Text
+                        type="supporting"
+                        className="block text-[10px] text-text-muted"
+                      >
+                        {t("cloud.transcribeDisabled")}
+                      </Text>
+                    )}
+                  </div>
+                )}
               <Button
                 label={t("Import SRT / VTT as Text")}
                 onClick={() => srtInputRef.current?.click()}
