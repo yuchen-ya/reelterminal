@@ -690,6 +690,16 @@ export const AssetsPanel: React.FC = () => {
 
           const result = await importMedia(file);
 
+          // Surface import failures (e.g. the FFmpeg.wasm transcode fallback
+          // failing to load its remote core) instead of silently dropping
+          // the file. Retry = re-run the import; no automatic retries.
+          if (!result.success) {
+            toast.error(
+              t("media.importFailedTitle"),
+              result.error?.message ?? t("media.importFailedDetail"),
+            );
+          }
+
           // If it's a video with audio, extract audio to separate track
           if (result.success && file.type.startsWith("video/")) {
             setImportProgress(`Extracting audio from ${file.name}...`);

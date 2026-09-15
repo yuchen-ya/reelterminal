@@ -11,7 +11,21 @@
   "templates": {
     "cloudDisabledTitle": "云模板已禁用",
     "cloudDisabledDetail": "当前构建配置已禁用云模板，内置模板仍可使用。",
-    "cloudActionUnavailable": "当前构建配置已禁用云模板。"
+    "cloudActionUnavailable": "当前构建配置已禁用云模板。",
+    "cloudFailedTitle": "云模板加载失败",
+    "cloudFailedDetail": "无法连接云模板服务，内置模板仍可使用。",
+    "retry": "重试"
+  },
+  "media": {
+    "ffmpegLoadFailedTitle": "FFmpeg.wasm 核心加载失败",
+    "ffmpegLoadFailedDetail": "无法检测多音轨。请检查网络连接后重新执行“分离音频”即可重试。",
+    "importFailedTitle": "媒体导入失败",
+    "importFailedDetail": "该文件无法导入。"
+  },
+  "motion": {
+    "text3dFontFailedTitle": "3D 文字字体加载失败",
+    "text3dFontFailedDetail": "无法下载远程 3D 字体，该预览中的 3D 文字可能不会显示。不影响已保存的编辑。",
+    "text3dFontRetry": "重试加载字体"
   },
   "cloud": {
     "shareDisabled": "当前构建配置已禁用视频分享。",

@@ -34,6 +34,7 @@ export const TemplateGallery: React.FC<TemplateGalleryProps> = ({
 
   const [templates, setTemplates] = useState<ScriptableTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [cloudLoadFailed, setCloudLoadFailed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<
     SocialMediaCategory | "all"
@@ -42,72 +43,75 @@ export const TemplateGallery: React.FC<TemplateGalleryProps> = ({
     useState<ScriptableTemplate | null>(null);
   const [showPreview, setShowPreview] = useState(false);
 
-  useEffect(() => {
-    const loadTemplates = async () => {
-      setIsLoading(true);
-      try {
-        const templateEngine = await getTemplateEngine();
-        await templateEngine.initialize();
-        const builtinTemplates = templateEngine.getBuiltinTemplates();
-        const cloudTemplates =
-          await templateCloudService.listScriptableTemplates();
+  const loadTemplates = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const templateEngine = await getTemplateEngine();
+      await templateEngine.initialize();
+      const builtinTemplates = templateEngine.getBuiltinTemplates();
+      // Failure-aware variant of the mount-time cloud fetch (B06): keeps
+      // "cloud unreachable" distinguishable from "no cloud templates".
+      const { templates: cloudTemplates, failed: cloudFailed } =
+        await templateCloudService.listScriptableTemplatesWithStatus();
+      setCloudLoadFailed(cloudFailed);
 
-        const allTemplates = [
-          ...(builtinTemplates.map((t) => {
-            const placeholderClipMap = new Map<
-              string,
-              { clipId: string; trackId: string }
-            >();
-            for (const track of t.timeline.tracks) {
-              for (const clip of track.clips) {
-                const pClip = clip as PlaceholderClip;
-                if (pClip.isPlaceholder && pClip.placeholderId) {
-                  placeholderClipMap.set(pClip.placeholderId, {
-                    clipId: clip.id,
-                    trackId: track.id,
-                  });
-                }
+      const allTemplates = [
+        ...(builtinTemplates.map((t) => {
+          const placeholderClipMap = new Map<
+            string,
+            { clipId: string; trackId: string }
+          >();
+          for (const track of t.timeline.tracks) {
+            for (const clip of track.clips) {
+              const pClip = clip as PlaceholderClip;
+              if (pClip.isPlaceholder && pClip.placeholderId) {
+                placeholderClipMap.set(pClip.placeholderId, {
+                  clipId: clip.id,
+                  trackId: track.id,
+                });
               }
             }
+          }
 
-            return {
-              ...t,
-              placeholders: t.placeholders.map((p) => {
-                const clipInfo = placeholderClipMap.get(p.id);
-                return {
-                  ...p,
-                  targets: clipInfo
-                    ? [
-                        {
-                          clipId: clipInfo.clipId,
-                          trackId: clipInfo.trackId,
-                          property: "content",
-                        },
-                      ]
-                    : [],
-                  defaultValue: p.defaultValue as unknown,
-                };
-              }),
-              socialCategory: mapCategoryToSocial(t.category),
-            };
-          }) as ScriptableTemplate[]),
-          ...cloudTemplates,
-        ];
+          return {
+            ...t,
+            placeholders: t.placeholders.map((p) => {
+              const clipInfo = placeholderClipMap.get(p.id);
+              return {
+                ...p,
+                targets: clipInfo
+                  ? [
+                      {
+                        clipId: clipInfo.clipId,
+                        trackId: clipInfo.trackId,
+                        property: "content",
+                      },
+                    ]
+                  : [],
+                defaultValue: p.defaultValue as unknown,
+              };
+            }),
+            socialCategory: mapCategoryToSocial(t.category),
+          };
+        }) as ScriptableTemplate[]),
+        ...cloudTemplates,
+      ];
 
-        const unique = Array.from(
-          new Map(allTemplates.map((t) => [t.id, t])).values(),
-        );
+      const unique = Array.from(
+        new Map(allTemplates.map((t) => [t.id, t])).values(),
+      );
 
-        setTemplates(unique);
-      } catch (error) {
-        console.error("Failed to load templates:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadTemplates();
+      setTemplates(unique);
+    } catch (error) {
+      console.error("Failed to load templates:", error);
+    } finally {
+      setIsLoading(false);
+    }
   }, [getTemplateEngine]);
+
+  useEffect(() => {
+    void loadTemplates();
+  }, [loadTemplates]);
 
   const filteredTemplates = useMemo(() => {
     let result = templates;
@@ -210,20 +214,64 @@ export const TemplateGallery: React.FC<TemplateGalleryProps> = ({
         </div>
       )}
 
-      {filteredTemplates.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="w-14 h-14 rounded-2xl bg-background-tertiary flex items-center justify-center mb-4">
-            <Layers size={24} className="text-text-muted" />
+      {cloudEnabled && cloudLoadFailed && (
+        <div
+          className="flex items-start gap-3 p-4 rounded-xl border border-border bg-background-tertiary"
+          data-testid="cloud-templates-failed"
+        >
+          <CloudOff size={18} className="text-text-muted shrink-0 mt-0.5" />
+          <div>
+            <Text type="supporting" color="primary" weight="medium" className="text-sm text-text-primary">
+              {tr("templates.cloudFailedTitle")}</Text>
+            <Text type="supporting" color="secondary" display="block" className="text-sm text-text-muted">
+              {tr("templates.cloudFailedDetail")}</Text>
+            <button
+              type="button"
+              data-testid="cloud-templates-retry"
+              onClick={() => void loadTemplates()}
+              className="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs text-text-primary hover:bg-background-secondary"
+            >
+              {tr("templates.retry")}</button>
           </div>
-          <Text type="supporting" color="primary" weight="medium" className="text-base text-text-primary mb-1">
-            {cloudEnabled
-              ? tr("No templates found")
-              : tr("templates.cloudDisabledTitle")}</Text>
-          <Text type="supporting" color="secondary" className="text-sm text-text-muted">
-            {cloudEnabled
-              ? tr("Try adjusting your search or filter")
-              : tr("templates.cloudDisabledDetail")}</Text>
         </div>
+      )}
+
+      {filteredTemplates.length === 0 ? (
+        cloudEnabled && cloudLoadFailed ? (
+          <div
+            className="flex flex-col items-center justify-center py-16"
+            data-testid="cloud-templates-failed-empty"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-background-tertiary flex items-center justify-center mb-4">
+              <CloudOff size={24} className="text-text-muted" />
+            </div>
+            <Text type="supporting" color="primary" weight="medium" className="text-base text-text-primary mb-1">
+              {tr("templates.cloudFailedTitle")}</Text>
+            <Text type="supporting" color="secondary" className="text-sm text-text-muted">
+              {tr("templates.cloudFailedDetail")}</Text>
+            <button
+              type="button"
+              data-testid="cloud-templates-retry-empty"
+              onClick={() => void loadTemplates()}
+              className="mt-4 rounded-lg border border-border bg-background-tertiary px-4 py-2 text-sm text-text-primary hover:bg-background-secondary"
+            >
+              {tr("templates.retry")}</button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="w-14 h-14 rounded-2xl bg-background-tertiary flex items-center justify-center mb-4">
+              <Layers size={24} className="text-text-muted" />
+            </div>
+            <Text type="supporting" color="primary" weight="medium" className="text-base text-text-primary mb-1">
+              {cloudEnabled
+                ? tr("No templates found")
+                : tr("templates.cloudDisabledTitle")}</Text>
+            <Text type="supporting" color="secondary" className="text-sm text-text-muted">
+              {cloudEnabled
+                ? tr("Try adjusting your search or filter")
+                : tr("templates.cloudDisabledDetail")}</Text>
+          </div>
+        )
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {filteredTemplates.map((template) => (

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useProjectStore } from "./project-store";
 import { useEngineStore } from "./engine-store";
+import { useNotificationStore } from "./notification-store";
 import type {
   Project,
   Clip,
@@ -15,6 +16,18 @@ import {
 } from "@openreel/core/motion/shaders";
 import { createEmptyProject } from "./project/project-helpers";
 import { autoSaveManager } from "../services/auto-save";
+
+const { ffmpegProbeMock } = vi.hoisted(() => ({
+  ffmpegProbeMock: {
+    probeAudioStreams: vi.fn(),
+  },
+}));
+
+// B06 fault simulation seam: the separateAudio probe is the browser path
+// that lazily loads FFmpeg.wasm from its remote CDN.
+vi.mock("@openreel/core/media", () => ({
+  getFFmpegFallback: () => ffmpegProbeMock,
+}));
 
 const {
   mockEffectsBridge,
@@ -1919,6 +1932,51 @@ describe("ProjectStore", () => {
 
       expect(result.success).toBe(false);
       expect(result.error?.code).toBe("CLIP_NOT_FOUND");
+    });
+
+    // B06 fault simulation: when the FFmpeg.wasm core cannot be loaded from
+    // its remote CDN, multi-channel detection silently falls back to a
+    // single track. The user must get a visible warning (with the existing
+    // retry entry: re-running Separate Audio), and separation must still
+    // succeed — no hang, no automatic retry.
+    it("warns visibly when the FFmpeg.wasm core fails to load during the probe", async () => {
+      ffmpegProbeMock.probeAudioStreams.mockRejectedValueOnce(
+        new Error("Failed to load FFmpeg.wasm: Failed to fetch"),
+      );
+      const project = createProjectWithVideoClip(undefined);
+      const item = project.mediaLibrary.items[0] as MediaItem & { blob: Blob | null };
+      item.blob = new Blob(["vid"], { type: "video/mp4" });
+      useProjectStore.getState().loadProject(project);
+      useNotificationStore.setState({ notifications: [] });
+
+      const result = await useProjectStore.getState().separateAudio("video-clip-1");
+
+      expect(result.success).toBe(true);
+      const audioTracks = useProjectStore
+        .getState()
+        .project.timeline.tracks.filter((t) => t.type === "audio");
+      expect(audioTracks.length).toBe(1);
+
+      const notifications = useNotificationStore.getState().notifications;
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0].type).toBe("warning");
+      expect(notifications[0].title).toContain("FFmpeg.wasm");
+    });
+
+    it("does not warn when a non-FFmpeg-load probe error occurs", async () => {
+      ffmpegProbeMock.probeAudioStreams.mockRejectedValueOnce(
+        new Error("unexpected probe failure"),
+      );
+      const project = createProjectWithVideoClip(undefined);
+      const item = project.mediaLibrary.items[0] as MediaItem & { blob: Blob | null };
+      item.blob = new Blob(["vid"], { type: "video/mp4" });
+      useProjectStore.getState().loadProject(project);
+      useNotificationStore.setState({ notifications: [] });
+
+      const result = await useProjectStore.getState().separateAudio("video-clip-1");
+
+      expect(result.success).toBe(true);
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
     });
   });
 });

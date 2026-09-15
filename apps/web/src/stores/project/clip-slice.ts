@@ -2,6 +2,8 @@ import { v4 as uuidv4 } from "uuid";
 import type { StoreApi } from "zustand";
 import type { Action, ActionResult } from "@openreel/core";
 import type { ProjectState } from "../project-store";
+import { toast } from "../notification-store";
+import { t } from "../../i18n";
 import { calculateTimelineDuration } from "./index";
 
 type Get = StoreApi<ProjectState>["getState"];
@@ -136,8 +138,23 @@ export function createClipSlice(set: Set, get: Get): ClipSlice {
           if (probeResult.audioStreamCount > 1) {
             audioTrackCount = probeResult.audioStreamCount;
           }
-        } catch {
-          // FFmpeg probe unavailable — proceed with count of 1
+        } catch (error) {
+          // FFmpeg probe unavailable — proceed with count of 1. When the
+          // FFmpeg.wasm core itself failed to load (remote CDN unreachable),
+          // multi-channel audio would silently separate as a single track,
+          // so surface a one-off warning with the existing retry entry
+          // (re-running Separate Audio re-attempts the load; nothing
+          // retries automatically).
+          if (
+            error instanceof Error &&
+            error.message.includes("Failed to load FFmpeg.wasm")
+          ) {
+            console.warn("[clip] FFmpeg.wasm core load failed:", error);
+            toast.warning(
+              t("media.ffmpegLoadFailedTitle"),
+              t("media.ffmpegLoadFailedDetail"),
+            );
+          }
         }
       }
 

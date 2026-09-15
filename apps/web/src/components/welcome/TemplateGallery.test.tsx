@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -107,6 +107,46 @@ describe("TemplateGallery cloud opt-out", () => {
     expect(await screen.findAllByText("Builtin Test Template")).not.toHaveLength(0);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(String(fetchSpy.mock.calls[0][0])).toContain("/templates/scriptable");
+    expect(screen.queryByTestId("cloud-templates-disabled")).toBeNull();
+  });
+
+  // B06 fault simulation: with the cloud enabled, a network failure must
+  // not silently render the ordinary "No templates found" empty state.
+  it("shows a load-failure empty state with retry when the cloud fetch rejects (cloud on)", async () => {
+    clearCloudEnv();
+    const fetchSpy = vi.fn().mockRejectedValue(new Error("network down"));
+    vi.stubGlobal("fetch", fetchSpy);
+
+    await renderGallery();
+
+    // Distinct failure empty state, not the "No templates found" state.
+    expect(await screen.findByTestId("cloud-templates-failed-empty")).toBeInTheDocument();
+    expect(screen.getAllByText("Cloud templates failed to load").length).toBeGreaterThan(0);
+    expect(screen.queryByText("No templates found")).toBeNull();
+
+    // Retry re-runs the load; once the network recovers, the failure state
+    // clears (single user-driven retry, no automatic retry loop).
+    fetchSpy.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ templates: [] }),
+    });
+    fireEvent.click(screen.getByTestId("cloud-templates-retry-empty"));
+
+    expect(await screen.findByText("No templates found")).toBeInTheDocument();
+    expect(screen.queryByTestId("cloud-templates-failed-empty")).toBeNull();
+  });
+
+  it("shows a failure banner beside built-in templates when the cloud is unreachable", async () => {
+    clearCloudEnv();
+    engineStub.state.builtins = [engineStub.makeBuiltin()];
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+
+    await renderGallery();
+
+    expect(await screen.findAllByText("Builtin Test Template")).not.toHaveLength(0);
+    expect(await screen.findByTestId("cloud-templates-failed")).toBeInTheDocument();
+    expect(screen.getByTestId("cloud-templates-retry")).toBeInTheDocument();
     expect(screen.queryByTestId("cloud-templates-disabled")).toBeNull();
   });
 });

@@ -177,6 +177,12 @@ import {
   type CreatableMotionLayerType,
 } from "../motion-layer-factory";
 import { startNativeAuroraStagePreviewSession } from "../native-aurora-preview-session";
+import {
+  clearText3DFontFailure,
+  compositionHasText3DObjects,
+  installText3DFontFetchObserver,
+} from "../text3d-font-status";
+import { Text3DFontFailureNotice } from "./Text3DFontFailureNotice";
 import { ColorInput, IconButton, NumberInput } from "./primitives";
 import { useTranslation } from "react-i18next";
 import { t } from "../../i18n";
@@ -4975,8 +4981,21 @@ function RendererBackedStagePreview({
 }): JSX.Element {
   const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const renderer = useMemo(() => new MotionRenderer(), []);
+  // Bumped only by the explicit 3D-font retry button: recreating the
+  // renderer empties its internal font cache so the next render re-fetches
+  // the font. No automatic retries, no effect on the success path.
+  const [rendererEpoch, setRendererEpoch] = useState(0);
+  const renderer = useMemo(() => {
+    void rendererEpoch;
+    return new MotionRenderer();
+  }, [rendererEpoch]);
   useEffect(() => () => renderer.dispose(), [renderer]);
+  useEffect(() => {
+    // Passive fetch observer for the remote default Text3D font; forwards
+    // every request untouched and only records failures.
+    installText3DFontFetchObserver();
+  }, []);
+  const hasText3DObjects = compositionHasText3DObjects(composition);
   const [renderError, setRenderError] = useState<string | null>(null);
   const hasReportedVisibleFrameRef = useRef(false);
   const inFlightRef = useRef(false);
@@ -5023,6 +5042,13 @@ function RendererBackedStagePreview({
     if (!cache) return;
     setFrameCacheState({ ranges: cache.cachedRanges() });
   }, []);
+
+  const handleText3DFontRetry = useCallback(() => {
+    clearText3DFontFailure();
+    cacheRef.current?.invalidateAll();
+    publishRanges();
+    setRendererEpoch((epoch) => epoch + 1);
+  }, [publishRanges]);
 
   useEffect(() => {
     const cache = cacheRef.current;
@@ -5330,6 +5356,17 @@ function RendererBackedStagePreview({
       {renderError ? (
         <div className="pointer-events-none absolute right-3 top-3 z-[2] max-w-[260px] rounded-md border border-status-warning/40 bg-bg-elev/95 px-2.5 py-2 text-[11px] font-medium leading-snug text-status-warning shadow-lg">
           {t("Preview render failed: ")}{renderError}
+        </div>
+      ) : null}
+      {hasText3DObjects ? (
+        <div
+          className={
+            renderError
+              ? "pointer-events-auto absolute right-3 top-14 z-[3]"
+              : "pointer-events-auto absolute right-3 top-3 z-[3]"
+          }
+        >
+          <Text3DFontFailureNotice onRetry={handleText3DFontRetry} />
         </div>
       ) : null}
     </>

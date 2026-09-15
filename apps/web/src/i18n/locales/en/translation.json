@@ -11,7 +11,21 @@
   "templates": {
     "cloudDisabledTitle": "Cloud templates disabled",
     "cloudDisabledDetail": "Cloud templates are disabled in this build's configuration. Built-in templates are still available.",
-    "cloudActionUnavailable": "Cloud templates are disabled in this build's configuration."
+    "cloudActionUnavailable": "Cloud templates are disabled in this build's configuration.",
+    "cloudFailedTitle": "Cloud templates failed to load",
+    "cloudFailedDetail": "Cloud templates couldn't be reached. Built-in templates are still available.",
+    "retry": "Retry"
+  },
+  "media": {
+    "ffmpegLoadFailedTitle": "FFmpeg.wasm core failed to load",
+    "ffmpegLoadFailedDetail": "Multi-channel audio detection is unavailable. Check your connection, then run Separate Audio again to retry.",
+    "importFailedTitle": "Media import failed",
+    "importFailedDetail": "The file could not be imported."
+  },
+  "motion": {
+    "text3dFontFailedTitle": "3D text font failed to load",
+    "text3dFontFailedDetail": "The remote 3D font couldn't be downloaded, so 3D text may be missing from this preview. Your edits are not affected.",
+    "text3dFontRetry": "Retry font load"
   },
   "cloud": {
     "shareDisabled": "Video sharing is disabled in this build's configuration.",
