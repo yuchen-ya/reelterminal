@@ -23,7 +23,7 @@ const { ffmpegProbeMock } = vi.hoisted(() => ({
   },
 }));
 
-// B06 fault simulation seam: the separateAudio probe is the browser path
+// Fault simulation seam: the separateAudio probe is the browser path
 // that lazily loads FFmpeg.wasm from its remote CDN.
 vi.mock("@openreel/core/media", () => ({
   getFFmpegFallback: () => ffmpegProbeMock,
@@ -1934,7 +1934,7 @@ describe("ProjectStore", () => {
       expect(result.error?.code).toBe("CLIP_NOT_FOUND");
     });
 
-    // B06 fault simulation: when the FFmpeg.wasm core cannot be loaded from
+    // Fault simulation: when the FFmpeg.wasm core cannot be loaded from
     // its remote CDN, multi-channel detection silently falls back to a
     // single track. The user must get a visible warning (with the existing
     // retry entry: re-running Separate Audio), and separation must still

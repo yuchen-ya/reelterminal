@@ -123,7 +123,7 @@ describe("HighlightExtractorPanel cloud opt-out", () => {
     };
     expect(options.apiEndpoint).toContain("/transcribe");
     // The stubbed transcription yields no words, so the panel reports
-    // that instead of reaching the audio/highlight stages. L3: the
+    // that instead of reaching the audio/highlight stages. The
     // failure is presented behind a localized title while the raw
     // message stays readable as the detail text.
     const failureLine = await screen.findByText(

@@ -65,7 +65,7 @@ export interface EngineState {
   initError: string | null;
   /**
    * Whether the parallel decode workers have their mediabunny decoder
-   * available (B06 observable state). `null` = no parallel decoder, i.e.
+   * available (observable state). `null` = no parallel decoder, i.e.
    * the feature is not in use. `false` = workers lost decode capability
    * (bundled + CDN mediabunny both failed to load); playback then falls
    * back to element-based decoding, so this is surfaced as observable
@@ -245,7 +245,7 @@ export const useEngineStore = create<EngineState>()(
         await playbackController.initialize(videoEngine, audioEngine);
         await exportEngine.initialize();
 
-        // B06: decode workers report mediabunnyAvailable on init. When the
+        // Decode workers report mediabunnyAvailable on init. When the
         // bundled import and the CDN fallback both failed, the parallel
         // decoder is present but unusable — record it (with one console
         // warning) instead of failing playback, which still works via the

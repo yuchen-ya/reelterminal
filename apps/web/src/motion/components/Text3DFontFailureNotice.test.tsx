@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
- * B06 fault simulation: when the remote default 3D text font fails to
+ * Fault simulation: when the remote default 3D text font fails to
  * load, the 3D stage shows a degradation notice with an explicit retry
  * entry; the success path renders nothing (no UI change when the font
  * loads normally). No automatic retries happen anywhere.

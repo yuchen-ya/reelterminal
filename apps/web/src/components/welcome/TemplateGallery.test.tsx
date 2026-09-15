@@ -110,7 +110,7 @@ describe("TemplateGallery cloud opt-out", () => {
     expect(screen.queryByTestId("cloud-templates-disabled")).toBeNull();
   });
 
-  // B06 fault simulation: with the cloud enabled, a network failure must
+  // Fault simulation: with the cloud enabled, a network failure must
   // not silently render the ordinary "No templates found" empty state.
   it("shows a load-failure empty state with retry when the cloud fetch rejects (cloud on)", async () => {
     clearCloudEnv();

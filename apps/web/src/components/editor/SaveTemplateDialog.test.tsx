@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
- * B07: the save-template dialog is the upload entry for cloud template
+ * The save-template dialog is the upload entry for cloud template
  * publishing. These tests pin the honest publish copy (what is sent, and
  * that it becomes publicly browsable), and the cloud-off precheck: the
  * Cloud option is disabled with an explanation and any submission falls
@@ -62,7 +62,7 @@ afterEach(() => {
   stubs.cloudEnabled.value = true;
 });
 
-describe("SaveTemplateDialog cloud publish copy (B07 D2)", () => {
+describe("SaveTemplateDialog cloud publish copy", () => {
   it("describes public cloud publishing instead of private device sync", () => {
     renderDialog();
     expect(
@@ -84,7 +84,7 @@ describe("SaveTemplateDialog cloud publish copy (B07 D2)", () => {
   });
 });
 
-describe("SaveTemplateDialog cloud-off precheck (B07 D3)", () => {
+describe("SaveTemplateDialog cloud-off precheck", () => {
   it("disables the Cloud option, selects Local, and explains why", () => {
     stubs.cloudEnabled.value = false;
     renderDialog();

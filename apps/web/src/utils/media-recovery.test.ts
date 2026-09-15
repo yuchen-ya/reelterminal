@@ -6,7 +6,7 @@ import { restoreMediaItem } from "./media-recovery";
  * What JSON.parse of an auto-save snapshot yields for a persisted Blob:
  * JSON.stringify cannot represent Blob and serializes it to `{}`, so a
  * restored item carries a truthy fake that must never reach the playback or
- * export pipeline (R1 / C04-D1).
+ * export pipeline.
  */
 const SNAPSHOT_FAKE_BLOB = {} as Blob;
 

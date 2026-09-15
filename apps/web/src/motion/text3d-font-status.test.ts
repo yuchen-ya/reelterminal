@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
- * B06 fault simulation for the passive Text3D font fetch observer.
+ * Fault simulation for the passive Text3D font fetch observer.
  *
  * The core renderer downloads the default Text3D font from a hardcoded
  * remote URL and silently skips 3D text objects when the download fails.

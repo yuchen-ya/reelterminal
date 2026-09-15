@@ -52,7 +52,7 @@ export class TemplateCloudService {
    * Same request as `listTemplates`, but reports failure instead of
    * collapsing it into an empty list: callers can distinguish
    * "cloud reachable, no templates" from "cloud unreachable" and offer a
-   * retry (L2, same pattern as `listScriptableTemplatesWithStatus`).
+   * retry, the same pattern as `listScriptableTemplatesWithStatus`).
    * When the cloud is disabled the call short-circuits without a request
    * and reports `failed: false` (the disabled state is explained
    * separately by the UI).

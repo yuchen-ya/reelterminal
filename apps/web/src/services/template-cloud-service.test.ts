@@ -105,7 +105,7 @@ describe("TemplateCloudService cloud opt-out", () => {
   );
 });
 
-describe("TemplateCloudService listTemplatesWithStatus failure reporting (L2)", () => {
+describe("TemplateCloudService listTemplatesWithStatus failure reporting", () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {

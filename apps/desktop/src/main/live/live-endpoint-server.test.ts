@@ -118,8 +118,11 @@ describe("live endpoint auth + transport", () => {
   });
 
   it("writes the endpoint file mode 0600 and deletes it on close", async () => {
-    const mode = statSync(endpointFile).mode & 0o777;
-    expect(mode).toBe(0o600);
+    // Windows has no POSIX permission bits; the mode check is POSIX-only.
+    if (process.platform !== "win32") {
+      const mode = statSync(endpointFile).mode & 0o777;
+      expect(mode).toBe(0o600);
+    }
     const closed = await startLiveEndpointServer({
       callVerb: async () => ({ ok: true, value: {} }),
       serverInfo: { name: "openreel-live", version: "test" },
@@ -149,7 +152,9 @@ describe("live endpoint auth + transport", () => {
       expect(descriptor.url).toBe(replacement.url);
       expect(descriptor.port).toBe(replacement.port);
       expect(descriptor.token).toHaveLength(64);
-      expect(statSync(staleFile).mode & 0o777).toBe(0o600);
+      if (process.platform !== "win32") {
+        expect(statSync(staleFile).mode & 0o777).toBe(0o600);
+      }
       expect(
         readdirSync(tempDir).filter((name) => name.startsWith("stale-endpoint.json.")),
       ).toEqual([]);
@@ -375,7 +380,7 @@ describe("live endpoint MCP protocol", () => {
   });
 });
 
-// C05-D1 regression: a descriptor write failure inside the listen callback
+// Regression: a descriptor write failure inside the listen callback
 // must reject startLiveEndpointServer (aligning with the bind-failure path)
 // instead of leaving the enable() promise pending forever.
 describe("live endpoint descriptor write failure", () => {

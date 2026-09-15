@@ -457,7 +457,7 @@ describe("MaterialLibraryService", () => {
     expect(storage.blobs.has(pathMedia.id)).toBe(false);
   });
 
-  it("undoing a removal surfaces the missing library blob bytes (C08-1)", async () => {
+  it("undoing a removal surfaces the missing library blob bytes", async () => {
     const blob = new Blob(["fake-bytes"], { type: "video/mp4" });
     const created = await service.create(
       {
@@ -492,8 +492,8 @@ describe("MaterialLibraryService", () => {
   it.skip(
     "undoing a removal restores the library blob bytes themselves "
       + "(BLOCKED: requires deferring remove's immediate reclaim, which the "
-      + "frozen contract ML:58-59 and the reclaim test above pin — see "
-      + "reports/C08-undo-fix-implementer.md)",
+      + "frozen remove-reclaims-its-copy contract ML:58-59 and the reclaim "
+      + "test above pin)",
     async () => {
       const blob = new Blob(["fake-bytes"], { type: "video/mp4" });
       const created = await service.create(
@@ -514,7 +514,7 @@ describe("MaterialLibraryService", () => {
     },
   );
 
-  it("undoing a creation reclaims the blob copy in the same transaction (C08-3)", async () => {
+  it("undoing a creation reclaims the blob copy in the same transaction", async () => {
     const blob = new Blob(["orphan-bytes"], { type: "video/mp4" });
     const created = await service.create(
       {
@@ -540,7 +540,7 @@ describe("MaterialLibraryService", () => {
     expect(await service.loadBlobFor(id)).toBeNull();
   });
 
-  it("redo of an undone removal re-removes the material (C08-2)", async () => {
+  it("redo of an undone removal re-removes the material", async () => {
     const media = await seedMedia();
     const removed = await service.remove(media.id, {}, "user");
     if (!removed.ok) throw new Error(removed.message);
@@ -586,7 +586,7 @@ describe("MaterialLibraryService", () => {
     const id = created.value.material.id;
     const firstUndo = await service.undo(undefined, "user");
     if (!firstUndo.ok) throw new Error(firstUndo.message);
-    expect(storage.blobs.has(id)).toBe(false); // C08-3 reclaimed it
+    expect(storage.blobs.has(id)).toBe(false); // undo of the creation reclaimed it
 
     const redo = await service.undo(firstUndo.value.entryId, "user");
     expect(redo.ok).toBe(true);

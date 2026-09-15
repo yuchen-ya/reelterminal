@@ -7,7 +7,7 @@ import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 
 /**
- * L3: a persistent cloud-transcription failure must not render the bare
+ * A persistent cloud-transcription failure must not render the bare
  * raw error message. InspectorPanel composes a localized failure title
  * (cloud.transcribeFailed) with the original error message kept as the
  * detail text, and AiTab renders that message next to the explicit Retry.
@@ -114,7 +114,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("InspectorPanel cloud transcription failure presentation (L3)", () => {
+describe("InspectorPanel cloud transcription failure presentation", () => {
   it("renders a localized failure title and keeps the raw error message as the detail text", async () => {
     stubs.core.initializeTranscriptionService.mockReturnValue({
       transcribeClip: async () => {

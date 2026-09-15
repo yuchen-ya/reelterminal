@@ -264,7 +264,9 @@ describe("live session host enable/status/disable", () => {
       currentAction: null,
     });
     expect(existsSync(fixture.endpointFile)).toBe(true);
-    expect(statSync(fixture.endpointFile).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(statSync(fixture.endpointFile).mode & 0o777).toBe(0o600);
+    }
     expect(existsSync(fixture.deps.artifactRoot)).toBe(true);
     // No session exists until a channel is actually used.
     expect(fixture.factoryCalls).toEqual([]);

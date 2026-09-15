@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
- * L2: the inspector templates browser merges local templates with cloud
+ * The inspector templates browser merges local templates with cloud
  * templates through the failure-aware `listTemplatesWithStatus`. These
  * tests pin down that "cloud unreachable" renders a distinct failure
  * state with retry instead of silently reading as "no templates", and
@@ -56,7 +56,7 @@ afterEach(() => {
   engineStub.state.local = [];
 });
 
-describe("TemplatesBrowserPanel cloud load failure (L2)", () => {
+describe("TemplatesBrowserPanel cloud load failure", () => {
   it("shows a failure banner with retry beside local templates when the cloud fetch rejects", async () => {
     clearCloudEnv();
     engineStub.state.local = [engineStub.makeLocal()];

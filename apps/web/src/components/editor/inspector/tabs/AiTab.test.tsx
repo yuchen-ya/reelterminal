@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
- * B07: cloud transcription disclosure and failure feedback.
+ * Cloud transcription disclosure and failure feedback.
  * Child panels are stubbed; this suite only covers the auto-captions
  * section's cloud entry. The build-time cloud switch is read by AiTab
  * on every render from ../../../../config/api-endpoints, which is mocked
@@ -94,7 +94,7 @@ afterEach(() => {
   stubs.cloudEnabled.value = true;
 });
 
-describe("AiTab cloud transcription disclosure (B07 D1)", () => {
+describe("AiTab cloud transcription disclosure", () => {
   it("labels the cloud caption button and explains the upload before it can happen", async () => {
     const { container } = renderAiTab();
     openAutoCaptionsSection(container);
@@ -119,7 +119,7 @@ describe("AiTab cloud transcription disclosure (B07 D1)", () => {
   });
 });
 
-describe("AiTab transcription failure feedback (B07 D4)", () => {
+describe("AiTab transcription failure feedback", () => {
   const errorProgress = {
     phase: "error",
     progress: 0,

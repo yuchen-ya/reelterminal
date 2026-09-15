@@ -564,7 +564,7 @@ describe("ExportEngine", () => {
   });
 
   describe("image sequence export", () => {
-    // C09-D1: a sequence with no produced frames must not be reported as
+    // A sequence with no produced frames must not be reported as
     // success, and a partially produced sequence must not be reported as
     // full success either. Frames are driven through the public exportFrame
     // boundary so the aggregation semantics are what is under test.
