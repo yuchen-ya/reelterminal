@@ -89,7 +89,8 @@ This connector exposes the same open GUI project through the following tools:
 `visual_inspect` · `analysis_list` · `analysis_get` ·
 `export_start` · `job_status` · `job_cancel` · `verify_artifact` ·
 `material_list` · `material_get` · `material_create` · `material_update` ·
-`material_batch_update` · `material_remove` · `material_attach` · `material_undo`.
+`material_batch_update` · `material_remove` · `material_attach` ·
+`material_undo` · `font_upload` · `font_list`.
 
 The facade verbs are dot-named (`session.describe`, `editor.control`); on the
 MCP wire each dot becomes an underscore (`session.describe` →
@@ -382,6 +383,8 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `material_remove` | Remove from the library (original files are never deleted); referenced materials require `force`; cascades a media material's segments |
 | `material_attach` | Reference a material into the CURRENT project via the canonical import path; segments/ranges add a timeline clip with those in/out points; fresh `idempotencyKey` + project `expectedRevision` |
 | `material_undo` | Undo one library journal entry (default: latest — e.g. one agent batch organize); pass `idempotencyKey`; independent of project history |
+| `font_upload` | Register a user-level custom font (live only): `filePath` inside `mediaRoots` or `dataBase64`; ttf/otf/woff/woff2, 10 MiB cap; duplicate family names are deduped with a suffix — use the returned `fontFamily` verbatim |
+| `font_list` | List the installed custom font families (live only; headless honestly `UNSUPPORTED` — check `capabilities_get`) |
 
 Every result is one JSON envelope: `{ok:true, value}` or
 `{ok:false, error:{code, message, details}}` with `isError:true` — match on
@@ -433,7 +436,7 @@ and `{projectId, projectName, windowId}`.
 
 ### The `edit_apply` op vocabulary
 
-Thirty-three ops, one atomic batch each call (the exact fields and bounds live in
+Thirty-seven ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
 - `track.add` — create a track (`trackType`); `track.remove` — remove an empty
@@ -532,6 +535,33 @@ Thirty-three ops, one atomic batch each call (the exact fields and bounds live i
   the tuned parameters. This is the same fixed-key color-distance keyer the
   GUI green-screen panel uses — a deterministic local algorithm, not AI
   matting. Unknown `clipId` fails `NOT_FOUND`.
+- `clip.setNoiseReduction` — set one clip's noise-reduction effect: required
+  `enabled`, optional `preset` (one of `balanced`, `speech`, `whiteNoise`,
+  `music`, `heavy`, `wind`, `hum` — the GUI panel's presets), `threshold`
+  (-80..0 dB), `reduction` (0..1), `attack` (0..100 ms), `release`
+  (0..500 ms), and an optional learned noise `profile` (omitted keeps the
+  clip's learned profile). An existing effect is updated in place, never
+  stacked, and disabling keeps the tuned parameters. This is the same local
+  noise-reduction DSP the GUI panel drives — deterministic local signal
+  processing, not AI or model inference. Unknown `clipId` fails `NOT_FOUND`,
+  as does `enabled:false` when the clip has no effect yet.
+- `svg.create` — place self-contained inline SVG markup on a graphics
+  track: required `svgContent` (non-empty inline SVG markup string),
+  `startTime` (>= 0), and `duration` (> 0); optional `trackId` (must be a
+  graphics track), `position`/`anchor` in the same normalized 0..1 frame
+  coordinates as text. With no `trackId` the first existing graphics track
+  is used; when none exists, one is created in the same atomic batch and
+  the createdIds entry reports `[graphicsTrackId, overlayId]`. Markup
+  crosses the same shared core ingest gate as GUI SVG import: scripts,
+  foreign objects, event-handler attributes, unsafe URL schemes, external
+  references, and documents over 2 MiB or 10,000 elements are rejected and
+  roll back the whole batch (surfaced as `ACTION_FAILED`). Read overlay ids
+  from `timeline_query` svg entities.
+- `svg.update` / `svg.remove` — edit one SVG overlay by `overlayId` (at
+  least one of `svgContent`, `startTime`, `duration`, `position`,
+  `anchor`; omitted fields keep their values) or remove it; unknown ids
+  fail `NOT_FOUND`. Color-style and entry/exit animation edits stay
+  GUI-side for now; capability data names the gap.
 
 Ops in one batch see each other's results, and a failure anywhere rolls
 the whole batch back; a deleted overlay or clip stays deleted after

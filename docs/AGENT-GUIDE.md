@@ -21,8 +21,8 @@ connect that Agent to the open ReelTerminal desktop project through MCP.
    ```
 
 The connector reads `~/.openreel/live-endpoint.json`, forwards stdio MCP to
-the authenticated loopback endpoint, and exposes exactly the 37 live tools
-(35 built-in verbs plus `media_import_preflight` and `media_inspect`) listed in the root
+the authenticated loopback endpoint, and exposes exactly the 39 live tools
+(37 built-in verbs plus `media_import_preflight` and `media_inspect`) listed in the root
 [`SKILL.md`](../SKILL.md). Do not copy the endpoint token
 into prompts, project files, or logs.
 
@@ -87,7 +87,10 @@ Choose inspection depth by task, not by whether export was requested:
 
 Before constructing a highlight timeline, make a feasibility ledger: candidate source ranges, evidence, confidence/uncertainty, useful action duration, and whether the requested duration would require low-value filler. Raw source duration is not usable-content duration. A short first selection is not the maximum possible cut. Investigate uncertain candidates; when content conflicts with target duration, propose concrete alternatives (shorter strong cut, wider definition of highlights, or additional source). Do not silently pad with irrelevant action or ask the user to pre-judge feasibility.
 
-Use meaningful source events as alignment anchors. Preserve enough cause and result to establish what happened. Map source times through trim/speed, check project frame rate and visible clip range, and separately report event localization uncertainty, audio detection uncertainty and nearest-frame rounding. Periodic transients are not proven beats/downbeats. Analysis never edits markers or audio; selected anchors become markers only via canonical `edit_apply`. `clip.add` cannot accept explicit `clipId` live: use returned ids in a dependent transaction. `edit_validate` accepts ops/revision/context preconditions, not `idempotencyKey`; `edit_apply` accepts a fresh key. Multiple dependent transactions and review rounds are appropriate for selection and recutting.
+Use meaningful source events as alignment anchors. Preserve enough cause and result to establish what happened. Map source times through trim/speed, check project frame rate and visible clip range, and separately report event localization uncertainty, audio detection uncertainty and nearest-frame rounding. Periodic transients are not proven beats/downbeats. Analysis never edits markers or audio; selected anchors become markers only via canonical `edit_apply`. `clip.add` cannot accept explicit `clipId` live: use returned ids in a dependent transaction. `edit_validate` accepts ops/revision/context preconditions, not `idempotencyKey`; `edit_apply` accepts a fresh key. Multiple dependent transactions and review rounds are appropriate for selection and recutting. Generated SVG must be fully self-contained inline markup: scripts, event
+handlers, unsafe or external references, and documents over 2 MiB or
+10,000 elements are rejected by the shared ingest gate and roll back the
+whole `edit_apply` batch.
 
 Report review evidence separately: **frames inspected**, **playback executed**, **supported audiovisual review completed**, **export technically verified**. Current MCP transports embed images (lossless PNG or budget-fitted JPEG) and text, and have no audio/video consumption contract. GUI play, a playable file, waveform measurements or mathematical alignment do not establish that the Agent watched/heard a sequence. Perform all inspection the host supports; disclose remaining perceptual limits without treating the user as the default outsourced reviewer. GUI synchronization is collaboration, not a quality certificate.
 
@@ -118,6 +121,16 @@ first (live sessions only; headless is honestly UNSUPPORTED). Key rules:
 
 See [`MATERIAL-LIBRARY.md`](MATERIAL-LIBRARY.md) for the full model, persistence
 format, and a worked search → batch-organize → attach example.
+
+## User-level custom fonts
+
+`font_upload`/`font_list` manage the user's custom font families — user
+state shared with the GUI, not project state (live only; headless is
+honestly `UNSUPPORTED` — check `capabilities_get.fonts`). Upload reads
+`filePath` from the configured media roots or takes `dataBase64`
+(`ttf`/`otf`/`woff`/`woff2`, 10 MiB cap). A duplicate family name is
+deduped with a suffix, never overwritten: always use the returned
+`fontFamily` verbatim when styling text.
 
 ## Keep every creation task in one workspace
 

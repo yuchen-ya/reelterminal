@@ -18,7 +18,7 @@ ReelTerminal owns:
 - the canonical `Project`, timeline, media inventory, editor context,
   revisions, undo/redo, preview, verification, and export;
 - direct human editing through the GUI;
-- a compact, typed **37-tool live facade** for an external Agent to inspect
+- a compact, typed **39-tool live facade** for an external Agent to inspect
   and edit the same open project;
 - stable, human-readable Agent references such as `@A1`, `@A2`, and `@A3`;
 - English and Simplified Chinese (`zh-CN`) product UI.
@@ -53,7 +53,7 @@ external Agent via MCP ─┘
 ```
 
 The user acts directly in the GUI. The external Agent acts through the live
-facade's 37-tool MCP interface. Neither path gets a private project model or
+facade's 39-tool MCP interface. Neither path gets a private project model or
 a privileged mutation backdoor.
 
 ### Requirements
@@ -76,14 +76,14 @@ a privileged mutation backdoor.
 | Observable preview/export/verification | **Yes (provider-scoped)** — live capability preflights determine what this session can honestly render, export, and verify. |
 | Stable Agent references | **Yes** — selected entities receive monotonic session-local numbers; duplicate marks retain their number and deleted entities remain stale. |
 | GUI control and Agent control | **Yes** — the human always retains direct GUI control; Guided/Collaborative/Autonomous express interaction preference, while independent access and the writer lease enforce authorization. |
-| GUI buttons ↔ complete Agent command coverage | **Partial** — the 37-tool contract and closed edit-op set cover the live vertical, not every inherited editor feature. |
+| GUI buttons ↔ complete Agent command coverage | **Partial** — the 39-tool contract and closed edit-op set cover the live vertical, not every inherited editor feature. |
 | External conversation client in the GUI | **Yes** — the desktop conversation UI and loopback client transport attach to an existing external session; the external Agent/host supplies the server-side adapter and descriptor writer. |
 | Simplified Chinese UI | **Yes (retained product UI)** — `en` and `zh-CN` locale wiring covers the retained static web surfaces, with English fallback for future or missing copy and a dry-run codemod check guarding current coverage. |
 
-> Correction note (2026-09-15): the snapshot above was recorded on 2026-09-02,
-> when the live facade exposed 25 tools. The contract now exposes 37 tools
-> (27 base verbs + 8 material verbs + 2 bundled plugins); counts in this
-> document reflect the current contract.
+> Correction note (2026-09-15, updated 2026-09-16): the snapshot above was
+> recorded on 2026-09-02, when the live facade exposed 25 tools. The contract
+> now exposes 39 tools (27 base verbs + 8 material verbs + 2 font verbs +
+> 2 bundled plugins); counts in this document reflect the current contract.
 
 ## Principle 2: One World, Two Interfaces, Three Modes
 
@@ -120,7 +120,7 @@ the live tool/context surface.
 
 ### Current live vertical
 
-The live facade exposes the same 37-tool catalog in the desktop loopback MCP
+The live facade exposes the same 39-tool catalog in the desktop loopback MCP
 endpoint. In live mode, project creation/open are listed but unavailable
 because the GUI owns the open project. Local video/audio import is available
 from the configured media roots and uses the shared GUI undo history.
@@ -183,7 +183,7 @@ Capabilities describe what this session can actually do. A live facade must
 not claim that the GUI-owned lifecycle, a provider, a codec, or a transport is
 available when it is not.
 
-- The 37-tool catalog may include verbs that report `UNSUPPORTED` in live mode;
+- The 39-tool catalog may include verbs that report `UNSUPPORTED` in live mode;
   that is more useful than silently routing around the GUI.
 - Render, export, and verification availability comes from provider preflight
   and remains machine-readable.

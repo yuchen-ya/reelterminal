@@ -61,10 +61,11 @@ const state = await facade["project.get_state"]();
 
 ## Verbs
 
-The current registry exposes **37 tools: 35 built-in verbs plus the two
+The current registry exposes **39 tools: 37 built-in verbs plus the two
 bundled plugin tools** (`media_import_preflight`, `media.inspect`). The
-slice narrative below predates the later additions (the `material.*` and
-`analysis.*` verbs, `preview.render_comparison`, `media.import_preflight`)
+slice narrative below predates the later additions (the `material.*`,
+`analysis.*`, and `font.*` verbs, `preview.render_comparison`,
+`media.import_preflight`)
 and does not itemize them.
 `FACADE_VERBS` in `src/types.ts` and `BUNDLED_PLUGINS` in `src/plugins/index.ts`
 are the catalog source of truth. MCP maps dots to underscores.
@@ -86,7 +87,7 @@ Slice 6: `project.changes` · `timeline.query` · `edit.validate` ·
 `history.get` · `history.control` add bounded delta recovery, scoped reads,
 side-effect-free preflight, and canonical live undo/redo. `media.analyze_start`
 adds asynchronous media analysis over the generalized `job.status`/
-`job.cancel` path. Live and headless sessions implement the same 37-tool
+`job.cancel` path. Live and headless sessions implement the same 39-tool
 contract over a `LiveProjectStore` seam with no live project copy; headless
 history control reports `UNSUPPORTED` because it has no GUI/Core history stack.
 
@@ -154,7 +155,7 @@ no-op with `ok: true`.
 
 ## Live-mode contract differences (ADR 0004)
 
-Live sessions (`createLiveFacade`) implement the same 37 verbs against the
+Live sessions (`createLiveFacade`) implement the same 39 verbs against the
 open GUI project. Where a verb's behavior must differ by mode, the contract
 states it up front instead of letting integrators discover it at runtime:
 
@@ -276,6 +277,22 @@ The live host must provide absolute `mediaRoots` and implement that JSON-safe
 bridge; its revision CAS and one undo group are part of the seam contract.
 The facade does not send browser `File`/`Blob` objects across the bridge.
 
+## Custom fonts (`font.upload` / `font.list`)
+
+`font.upload` registers a user-level custom font through the same renderer
+path the GUI upload button uses (renderer IndexedDB + FontFace activation):
+fonts are user state shared with the GUI across projects, not project
+state. Exactly one of `filePath` (absolute path inside a configured media
+root) or `dataBase64` is required; decoded bytes are capped at 10 MiB and
+formats are `ttf`/`otf`/`woff`/`woff2` (magic-number validated, then
+FontFace-loaded). A duplicate family name never overwrites and never
+fails: the family is deduped with a numeric suffix and the response
+reports the ACTUAL `fontFamily`, which callers must use verbatim in text
+styling. `font.list` projects the installed families without bytes. Live
+sessions require the host's font-library bridge; headless sessions report
+`UNSUPPORTED`. `capabilities.get.fonts` carries availability, reason,
+formats, and limits.
+
 ## Bounded state, analysis, and finishing additions
 
 - `project.changes` retains 256 revision batches and returns at most 200
@@ -300,10 +317,17 @@ The facade does not send browser `File`/`Blob` objects across the bridge.
   `clip.setColorGrade` (temperature/tint), `clip.setKeyframes` (renderer-
   supported transform/opacity properties), `media.rename` (media display-
   name rename, ≤120 characters; the source filename and the file on disk are
-  never touched), and `clip.setChromaKey` (fixed-key chroma keyer for
+  never touched), `clip.setChromaKey` (fixed-key chroma keyer for
   green-screen removal: key color, tolerance, edge softness, spill
-  suppression; a deterministic local algorithm, not AI matting). Capability
-  data names the remaining professional gaps instead of exposing no-op
+  suppression; a deterministic local algorithm, not AI matting),
+  `clip.setNoiseReduction` (local noise-reduction DSP with the GUI panel's
+  presets and parameters; an existing effect is updated in place, never
+  stacked, and learned profiles are preserved; not AI or model inference),
+  and `svg.create`/`svg.update`/`svg.remove` (self-contained inline SVG on
+  graphics tracks — the shared core ingest gate rejects scripts, foreign
+  objects, event handlers, unsafe URL schemes, external references, and
+  documents over 2 MiB or 10,000 elements). Capability data names the
+  remaining professional gaps instead of exposing no-op
   schemas.
 
 ## Slice boundaries (what this is NOT)

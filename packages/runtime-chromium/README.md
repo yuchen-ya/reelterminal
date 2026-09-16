@@ -169,7 +169,8 @@ prerequisites as the `videoOnlyFramesRouteAvailable` fact).
 ## Guarantees and limits
 
 - **Project is authoritative.** The browser hydrates `titleEngine` from
-  `project.textClips`; nothing else drives overlay rendering.
+  `project.textClips` and `graphicsEngine` from `project.svgClips`; text
+  and SVG overlays render from canonical project state only.
 - **Media streams.** Videos reach Chromium as disk-backed `File` objects
   (re-validated inside `mediaRoots`); nothing base64s a video into the page.
   Files >2 GiB are refused at the facade.
