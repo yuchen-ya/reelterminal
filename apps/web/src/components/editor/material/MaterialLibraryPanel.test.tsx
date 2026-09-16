@@ -4,7 +4,7 @@
  * the neutral no-results message, and the unfiltered empty library keeps
  * the first-use copy (with its browser-scope persistence wording).
  */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   MaterialStorage,
@@ -15,6 +15,7 @@ import {
   setMaterialLibraryServiceForTests,
 } from "../../../services/material-library/library-service";
 import { useMaterialLibraryStore } from "../../../stores/material-library-store";
+import { useNotificationStore } from "../../../stores/notification-store";
 import { MaterialLibraryPanel } from "./MaterialLibraryPanel";
 
 class MemoryStorage implements MaterialStorage {
@@ -142,5 +143,47 @@ describe("MaterialLibraryPanel empty states", () => {
       ).toBeInTheDocument();
     });
     expect(screen.queryByText("Collect first, organize later")).not.toBeInTheDocument();
+  });
+
+  it("warns instead of a plain success when an undo restores records with missing blob bytes", async () => {
+    const mem = new MemoryStorage();
+    const seeded = new MaterialLibraryService(mem);
+    setMaterialLibraryServiceForTests(seeded);
+    const created = await seeded.create(
+      {
+        kind: "media",
+        title: "agent import",
+        mediaType: "video",
+        fileRef: { type: "blob", fileName: "screen.mp4" },
+        blob: new Blob(["bytes"], { type: "video/mp4" }),
+        nowIso: "2026-09-08T10:00:00.000Z",
+      },
+      "agent",
+    );
+    if (!created.ok) throw new Error(created.message);
+    // An agent removal is the undo the panel will run; undoing it restores
+    // the record (the probe only covers restored records).
+    const removed = await seeded.remove(created.value.material.id, {}, "agent");
+    if (!removed.ok) throw new Error(removed.message);
+    // Legacy data: the bytes are gone for historical reasons (not because
+    // of the undo). The undo still restores the record, so the panel must
+    // surface a partial-restore warning rather than a success toast.
+    mem.blobs.delete(created.value.material.id);
+    useNotificationStore.getState().clearAll();
+
+    render(<MaterialLibraryPanel />);
+    const undoButton = await screen.findByTitle("agent: remove 1 material(s)");
+    fireEvent.click(undoButton);
+
+    await waitFor(() => {
+      const warning = useNotificationStore
+        .getState()
+        .notifications.find((notification) => notification.type === "warning");
+      expect(warning?.message).toMatch(/missing their library blob bytes/);
+    });
+    const successes = useNotificationStore
+      .getState()
+      .notifications.filter((notification) => notification.type === "success");
+    expect(successes).toHaveLength(0);
   });
 });

@@ -517,6 +517,7 @@
     "undoFailed": "Undo failed",
     "undone": "Library change undone",
     "undoneDetail": "Restored {{restored}}, removed {{removed}}",
+    "undoneBlobMissing": "Restored — but {{count}} restored item(s) are missing their library blob bytes and cannot be previewed or attached",
     "undoneState": "undone",
     "history": "History",
     "historyEmpty": "No library changes yet",

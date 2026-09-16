@@ -28,6 +28,11 @@ class MemoryMaterialStorage implements MaterialStorage {
 
   async commit(change: MaterialStorageCommit): Promise<void> {
     this.commits.push(change);
+    this.apply(change);
+  }
+
+  /** Applies a commit exactly like the service's single IDB transaction. */
+  apply(change: MaterialStorageCommit): void {
     for (const record of change.materialUpserts ?? []) {
       this.materials.set(record.id, JSON.parse(JSON.stringify(record)));
     }
@@ -38,6 +43,35 @@ class MemoryMaterialStorage implements MaterialStorage {
       this.journal.set(entry.id, JSON.parse(JSON.stringify(entry)));
     }
     for (const id of change.journalDeletes ?? []) this.journal.delete(id);
+  }
+}
+
+/**
+ * Failure-injection wrapper: the wrapped commit throws BEFORE any store is
+ * touched, so a half-applied batch is impossible by construction — exactly
+ * what an aborted IndexedDB transaction guarantees.
+ */
+class FailingCommitStorage implements MaterialStorage {
+  constructor(
+    private readonly inner: MemoryMaterialStorage,
+    private readonly shouldFail: (change: MaterialStorageCommit) => boolean,
+  ) {}
+
+  async loadAllMaterials(): Promise<unknown[]> {
+    return this.inner.loadAllMaterials();
+  }
+
+  async loadJournal(): Promise<unknown[]> {
+    return this.inner.loadJournal();
+  }
+
+  async loadBlob(materialId: string): Promise<Blob | null> {
+    return this.inner.loadBlob(materialId);
+  }
+
+  async commit(change: MaterialStorageCommit): Promise<void> {
+    if (this.shouldFail(change)) throw new Error("idb write failed");
+    await this.inner.commit(change);
   }
 }
 
@@ -71,6 +105,41 @@ describe("MaterialLibraryService", () => {
     );
     if (!result.ok) throw new Error(result.message);
     return result.value.material;
+  }
+
+  /** Blob-backed media create: the only kind that stores library bytes. */
+  async function seedBlobMedia(
+    title: string,
+    bytes = "fake-bytes",
+  ): Promise<{ id: string; blob: Blob }> {
+    const blob = new Blob([bytes], { type: "video/mp4" });
+    const result = await service.create(
+      {
+        kind: "media",
+        title,
+        mediaType: "video",
+        fileRef: { type: "blob", fileName: `${title}.mp4` },
+        blob,
+        nowIso: NOW,
+      },
+      "user",
+    );
+    if (!result.ok) throw new Error(result.message);
+    return { id: result.value.material.id, blob };
+  }
+
+  /** One journal entry of unrelated noise (a link create) per call. */
+  async function addNoiseEntries(
+    count: number,
+    via: MaterialLibraryService = service,
+  ): Promise<void> {
+    for (let index = 0; index < count; index += 1) {
+      const noise = await via.create(
+        { kind: "link", url: `https://example.com/noise/${index}`, nowIso: NOW },
+        "user",
+      );
+      if (!noise.ok) throw new Error(noise.message);
+    }
   }
 
   function projectSnapshot(
@@ -435,109 +504,103 @@ describe("MaterialLibraryService", () => {
     expect(restored.value.total).toBe(2);
   });
 
-  it("reclaims only the library's own blob copy on removal, never a path original", async () => {
-    const blob = new Blob(["x"]);
-    const created = await service.create(
-      {
-        kind: "media",
-        mediaType: "image",
-        fileRef: { type: "blob", fileName: "pic.png" },
-        blob,
-        nowIso: NOW,
-      },
-      "user",
-    );
-    if (!created.ok) throw new Error(created.message);
-    await service.remove(created.value.material.id, {}, "user");
-    expect(storage.blobs.has(created.value.material.id)).toBe(false);
+  it("keeps the library's own blob copy while a removal is undoable; path originals are never copied or deleted", async () => {
+    // A removal must stay fully reversible, so the bytes a redo needs
+    // stay in the library during the undo window. Reclamation happens
+    // only at journal eviction (see the eviction tests below).
+    const { id, blob } = await seedBlobMedia("pic");
+    const removed = await service.remove(id, {}, "user");
+    expect(removed.ok).toBe(true);
+    expect(storage.blobs.has(id)).toBe(true);
+    expect(await service.loadBlobFor(id)).toBe(blob);
+    // The remove commit itself carries no blob delete anymore.
+    const removeCommit = storage.commits[storage.commits.length - 1];
+    expect(removeCommit.blobDeletes).toBeUndefined();
 
     const pathMedia = await seedMedia();
-    await service.remove(pathMedia.id, {}, "user");
-    // Nothing to delete for a path reference — the file is the user's.
+    const pathRemoved = await service.remove(pathMedia.id, {}, "user");
+    expect(pathRemoved.ok).toBe(true);
+    // Path references have no library bytes at all — nothing was ever
+    // copied, so nothing may be deleted (the file is the user's).
+    const pathCommit = storage.commits[storage.commits.length - 1];
+    expect(pathCommit.blobDeletes).toBeUndefined();
     expect(storage.blobs.has(pathMedia.id)).toBe(false);
   });
 
-  it("undoing a removal surfaces the missing library blob bytes", async () => {
-    const blob = new Blob(["fake-bytes"], { type: "video/mp4" });
-    const created = await service.create(
-      {
-        kind: "media",
-        mediaType: "video",
-        fileRef: { type: "blob", fileName: "screen.mp4" },
-        blob,
-        nowIso: NOW,
-      },
-      "user",
-    );
-    if (!created.ok) throw new Error(created.message);
-    const id = created.value.material.id;
+  it("undoing a removal restores the record together with its library blob bytes", async () => {
+    const { id, blob } = await seedBlobMedia("screen");
     const removed = await service.remove(id, {}, "user");
     if (!removed.ok) throw new Error(removed.message);
-    // remove keeps its documented semantics: the library's own copy is
-    // reclaimed immediately (frozen contract, ML "reclaims only that copy").
-    expect(storage.blobs.has(id)).toBe(false);
+    // The bytes were kept across the removal (undo window), so the undo
+    // must hand back record AND bytes as one consistent unit.
+    expect(storage.blobs.has(id)).toBe(true);
 
     const undo = await service.undo(undefined, "user");
     expect(undo.ok).toBe(true);
     if (undo.ok) {
       expect(undo.value.restored).toEqual([id]);
-      // The record is back, but its library-owned bytes were already
-      // reclaimed. The undo result must say so instead of reporting an
-      // unqualified success.
+      expect(undo.value.blobMissingIds).toEqual([]);
+    }
+    const after = await service.get(id);
+    expect(after.ok).toBe(true);
+    expect(await service.loadBlobFor(id)).toBe(blob);
+  });
+
+  it("undoing a removal still reports historically missing blob bytes honestly", async () => {
+    const { id } = await seedBlobMedia("legacy");
+    // Simulate bytes lost outside the new contract (e.g. data created
+    // before the library kept bytes for its undo window, or an externally
+    // deleted row): the journal survives, the blob is gone.
+    storage.blobs.delete(id);
+    const removed = await service.remove(id, {}, "user");
+    if (!removed.ok) throw new Error(removed.message);
+
+    const undo = await service.undo(undefined, "user");
+    expect(undo.ok).toBe(true);
+    if (undo.ok) {
+      expect(undo.value.restored).toEqual([id]);
+      // The honest-missing report must keep working for such data: the
+      // record is back but cannot preview/attach, so callers have to
+      // surface a partial restore instead of an unqualified success.
       expect(undo.value.blobMissingIds).toEqual([id]);
     }
     expect(await service.loadBlobFor(id)).toBeNull();
   });
 
-  it.skip(
-    "undoing a removal restores the library blob bytes themselves "
-      + "(BLOCKED: requires deferring remove's immediate reclaim, which the "
-      + "frozen remove-reclaims-its-copy contract ML:58-59 and the reclaim "
-      + "test above pin)",
-    async () => {
-      const blob = new Blob(["fake-bytes"], { type: "video/mp4" });
-      const created = await service.create(
-        {
-          kind: "media",
-          mediaType: "video",
-          fileRef: { type: "blob", fileName: "screen.mp4" },
-          blob,
-          nowIso: NOW,
-        },
-        "user",
-      );
-      if (!created.ok) throw new Error(created.message);
-      const id = created.value.material.id;
-      await service.remove(id, {}, "user");
-      await service.undo(undefined, "user");
-      expect(await service.loadBlobFor(id)).not.toBeNull();
-    },
-  );
+  it("undoing a removal restores the library blob bytes themselves", async () => {
+    const { id, blob } = await seedBlobMedia("take");
+    const removed = await service.remove(id, {}, "user");
+    if (!removed.ok) throw new Error(removed.message);
+    const undo = await service.undo(undefined, "user");
+    expect(undo.ok).toBe(true);
+    const after = await service.get(id);
+    expect(after.ok).toBe(true);
+    expect(await service.loadBlobFor(id)).toBe(blob);
+  });
 
-  it("undoing a creation reclaims the blob copy in the same transaction", async () => {
-    const blob = new Blob(["orphan-bytes"], { type: "video/mp4" });
-    const created = await service.create(
-      {
-        kind: "media",
-        mediaType: "video",
-        fileRef: { type: "blob", fileName: "clip.mp4" },
-        blob,
-        nowIso: NOW,
-      },
-      "user",
-    );
-    if (!created.ok) throw new Error(created.message);
-    const id = created.value.material.id;
+  it("undoing a creation keeps the blob copy so redo restores the bytes", async () => {
+    const { id, blob } = await seedBlobMedia("clip");
     expect(storage.blobs.has(id)).toBe(true);
 
     const undo = await service.undo(undefined, "user");
     expect(undo.ok).toBe(true);
-    if (undo.ok) expect(undo.value.removed).toEqual([id]);
-    // No orphan bytes: the undo's own commit carries the blob delete.
-    const commit = storage.commits[storage.commits.length - 1];
-    expect(commit.blobDeletes).toEqual([id]);
-    expect(storage.blobs.has(id)).toBe(false);
-    expect(await service.loadBlobFor(id)).toBeNull();
+    if (!undo.ok) throw new Error(undo.message);
+    expect(undo.value.removed).toEqual([id]);
+    // The undo must NOT reclaim the bytes: undoing this very undo entry is
+    // a redo that needs them back. Eviction is the only reclaim path now.
+    const undoCommit = storage.commits[storage.commits.length - 1];
+    expect(undoCommit.blobDeletes).toBeUndefined();
+    expect(storage.blobs.has(id)).toBe(true);
+
+    const redo = await service.undo(undo.value.entryId, "user");
+    expect(redo.ok).toBe(true);
+    if (redo.ok) {
+      expect(redo.value.restored).toEqual([id]);
+      expect(redo.value.blobMissingIds).toEqual([]);
+    }
+    const after = await service.get(id);
+    expect(after.ok).toBe(true);
+    expect(await service.loadBlobFor(id)).toBe(blob);
   });
 
   it("redo of an undone removal re-removes the material", async () => {
@@ -570,31 +633,44 @@ describe("MaterialLibraryService", () => {
     expect(after.ok).toBe(false);
   });
 
-  it("redoing an undone creation reports the reclaimed blob as missing", async () => {
-    const blob = new Blob(["once-bytes"], { type: "video/mp4" });
-    const created = await service.create(
-      {
-        kind: "media",
-        mediaType: "video",
-        fileRef: { type: "blob", fileName: "take.mp4" },
-        blob,
-        nowIso: NOW,
-      },
-      "user",
-    );
-    if (!created.ok) throw new Error(created.message);
-    const id = created.value.material.id;
+  it("redo of an undone removal keeps the blob bytes for the next undo", async () => {
+    const { id, blob } = await seedBlobMedia("redoable");
+    const removed = await service.remove(id, {}, "user");
+    if (!removed.ok) throw new Error(removed.message);
     const firstUndo = await service.undo(undefined, "user");
     if (!firstUndo.ok) throw new Error(firstUndo.message);
-    expect(storage.blobs.has(id)).toBe(false); // undo of the creation reclaimed it
+
+    const redo = await service.undo(firstUndo.value.entryId, "user");
+    expect(redo.ok).toBe(true);
+    if (redo.ok) expect(redo.value.removed).toEqual([id]);
+    const after = await service.get(id);
+    expect(after.ok).toBe(false);
+    // The redo only removes the record; the bytes stay pinned by the still
+    // surviving remove/undo journal entries, so the next undo is a full
+    // restore again.
+    expect(storage.blobs.has(id)).toBe(true);
+
+    const undoAgain = await service.undo(undefined, "user");
+    expect(undoAgain.ok).toBe(true);
+    if (undoAgain.ok) expect(undoAgain.value.restored).toEqual([id]);
+    expect(await service.loadBlobFor(id)).toBe(blob);
+  });
+
+  it("redoing an undone creation restores the record with its bytes intact", async () => {
+    const { id, blob } = await seedBlobMedia("once");
+    const firstUndo = await service.undo(undefined, "user");
+    if (!firstUndo.ok) throw new Error(firstUndo.message);
+    // The undo of the creation no longer reclaims anything — the redo of
+    // it must therefore succeed with bytes, not report missing ones.
+    expect(storage.blobs.has(id)).toBe(true);
 
     const redo = await service.undo(firstUndo.value.entryId, "user");
     expect(redo.ok).toBe(true);
     if (redo.ok) {
       expect(redo.value.restored).toEqual([id]);
-      // Bytes are gone for good; the redo must say so honestly.
-      expect(redo.value.blobMissingIds).toEqual([id]);
+      expect(redo.value.blobMissingIds).toEqual([]);
     }
+    expect(await service.loadBlobFor(id)).toBe(blob);
   });
 
   it("recordUsage dedupes per project+media pair", async () => {
@@ -829,5 +905,213 @@ describe("MaterialLibraryService", () => {
     if (!after.ok) throw new Error(after.message);
     expect(after.value.aiSummary).toBe("two");
     expect(after.value.revision).toBe(3);
+  });
+
+  it("keeps undo/redo byte-restorable across a simulated page reload", async () => {
+    // A page reload is exactly this: a fresh service instance over the same
+    // persisted backend (records, journal, and blobs all live in the same
+    // IDB stores, and every mutation above already committed to them).
+    const { id, blob } = await seedBlobMedia("reloadable");
+    const removed = await service.remove(id, {}, "user");
+    if (!removed.ok) throw new Error(removed.message);
+    // Undo the removal entry by id: the reload re-sorts the journal by
+    // (at, id), so "latest" is ambiguous when both entries share a
+    // millisecond — the per-entry undo (the History menu path) is the
+    // deterministic one.
+    const removeEntryId = removed.value.journalEntryId;
+
+    const reloaded = new MaterialLibraryService(storage);
+    const undo = await reloaded.undo(removeEntryId, "user");
+    expect(undo.ok).toBe(true);
+    if (undo.ok) {
+      expect(undo.value.restored).toEqual([id]);
+      expect(undo.value.blobMissingIds).toEqual([]);
+    }
+    const after = await reloaded.get(id);
+    expect(after.ok).toBe(true);
+    expect(await reloaded.loadBlobFor(id)).toBe(blob);
+
+    // Redo across the reload too, and the bytes must survive it for the
+    // next undo.
+    if (!undo.ok) throw new Error("unreachable");
+    const redo = await reloaded.undo(undo.value.entryId, "user");
+    expect(redo.ok).toBe(true);
+    if (redo.ok) expect(redo.value.removed).toEqual([id]);
+    expect(await reloaded.loadBlobFor(id)).toBe(blob);
+  });
+
+  it("a failed remove commit leaves no half-applied state", async () => {
+    const { id } = await seedBlobMedia("atomic-remove");
+    const failing = new MaterialLibraryService(
+      new FailingCommitStorage(storage, () => true),
+    );
+    const removed = await failing.remove(id, {}, "user");
+    expect(removed.ok).toBe(false);
+    if (!removed.ok) expect(removed.code).toBe("INTERNAL");
+    // Nothing moved: the record, its journal entry, and the bytes are all
+    // still there (one aborted transaction, not a partial one).
+    const stillThere = await failing.get(id);
+    expect(stillThere.ok).toBe(true);
+    expect(storage.materials.has(id)).toBe(true);
+    expect(storage.journal.size).toBe(1);
+    expect(storage.blobs.has(id)).toBe(true);
+  });
+
+  it("a failed undo commit leaves no half-applied state", async () => {
+    const { id } = await seedBlobMedia("atomic-undo");
+    const removed = await service.remove(id, {}, "user");
+    if (!removed.ok) throw new Error(removed.message);
+    expect(storage.materials.size).toBe(0);
+    // The create entry and the remove entry.
+    expect(storage.journal.size).toBe(2);
+
+    const failing = new MaterialLibraryService(
+      new FailingCommitStorage(storage, () => true),
+    );
+    const undo = await failing.undo(undefined, "user");
+    expect(undo.ok).toBe(false);
+    if (!undo.ok) expect(undo.code).toBe("INTERNAL");
+    // Still fully removed (with bytes kept for a later undo), journal
+    // untouched — no restored-record-without-journal half state. The two
+    // entries are the create and the remove.
+    expect(storage.materials.size).toBe(0);
+    expect(storage.journal.size).toBe(2);
+    expect(storage.blobs.has(id)).toBe(true);
+    const undone = await service.undo(undefined, "user");
+    expect(undone.ok).toBe(true);
+  });
+
+  it("reclaims a removed material's blob bytes only when its journal entries are evicted", async () => {
+    const { id } = await seedBlobMedia("evict-me");
+    const removed = await service.remove(id, {}, "user");
+    if (!removed.ok) throw new Error(removed.message);
+    expect(storage.blobs.has(id)).toBe(true); // undo window keeps the bytes
+
+    // 100 unrelated entries push both the create and the remove entries
+    // out of the 100-entry window — now nothing references the bytes.
+    await addNoiseEntries(100);
+    expect(storage.blobs.has(id)).toBe(false);
+    const journal = await service.journal(100);
+    if (!journal.ok) throw new Error(journal.message);
+    expect(journal.value.length).toBeLessThanOrEqual(100);
+  });
+
+  it("retries eviction GC after a failed eviction commit without losing bytes early", async () => {
+    // Eviction commits are the only ones carrying journalDeletes, so the
+    // injection fails exactly the eviction transaction.
+    let failEvictions = true;
+    const failing = new MaterialLibraryService(
+      new FailingCommitStorage(
+        storage,
+        (change) => failEvictions && change.journalDeletes !== undefined,
+      ),
+    );
+    const created = await failing.create(
+      {
+        kind: "media",
+        title: "retry-gc",
+        mediaType: "video",
+        fileRef: { type: "blob", fileName: "retry-gc.mp4" },
+        blob: new Blob(["retry-bytes"], { type: "video/mp4" }),
+        nowIso: NOW,
+      },
+      "user",
+    );
+    if (!created.ok) throw new Error(created.message);
+    const id = created.value.material.id;
+    const removed = await failing.remove(id, {}, "user");
+    if (!removed.ok) throw new Error(removed.message);
+
+    // Fill the window on the SAME (failing) service so its pushJournal
+    // runs the eviction GC: the first eviction (of the create entry) fails
+    // atomically — the entry AND the bytes stay in the storage, and the
+    // in-session journal stays capped at 100.
+    await addNoiseEntries(99, failing);
+    expect(storage.journal.size).toBe(101); // evicted row rolled back
+    expect(storage.blobs.has(id)).toBe(true);
+
+    // Next eviction succeeds and retries the whole pending candidate set.
+    failEvictions = false;
+    await addNoiseEntries(1, failing);
+    expect(storage.blobs.has(id)).toBe(false);
+  });
+
+  it("eviction GC never reclaims bytes a surviving record still references", async () => {
+    const a = await seedBlobMedia("removed-a");
+    const b = await seedBlobMedia("kept-b");
+    const removed = await service.remove(a.id, {}, "user");
+    if (!removed.ok) throw new Error(removed.message);
+
+    await addNoiseEntries(100);
+    // A is gone from records and journal — its bytes are reclaimed...
+    expect(storage.blobs.has(a.id)).toBe(false);
+    // ...while B is still a live record: its bytes must survive eviction.
+    expect(storage.blobs.has(b.id)).toBe(true);
+    expect(await service.loadBlobFor(b.id)).toBe(b.blob);
+    const stillThere = await service.get(b.id);
+    expect(stillThere.ok).toBe(true);
+  });
+
+  it("eviction GC keeps bytes that only a surviving journal entry references", async () => {
+    const { id } = await seedBlobMedia("pinned-by-entry");
+    const removed = await service.remove(id, {}, "user");
+    if (!removed.ok) throw new Error(removed.message);
+
+    // 99 noise entries evict the create entry; the remove entry (whose
+    // `before` snapshot references the bytes) stays in the window.
+    await addNoiseEntries(99);
+    expect(storage.blobs.has(id)).toBe(true);
+
+    // One more entry evicts the remove entry too — nothing references the
+    // bytes anymore, so they are finally reclaimed.
+    await addNoiseEntries(1);
+    expect(storage.blobs.has(id)).toBe(false);
+  });
+
+  it("eviction GC keeps bytes referenced by a surviving undo entry", async () => {
+    const { id } = await seedBlobMedia("pinned-by-undo");
+    const removed = await service.remove(id, {}, "user");
+    if (!removed.ok) throw new Error(removed.message);
+    const undo = await service.undo(undefined, "user");
+    expect(undo.ok).toBe(true);
+
+    // Evict the create and remove entries; the undo entry (after-snapshot)
+    // and the restored live record both keep referencing the bytes.
+    await addNoiseEntries(100);
+    expect(storage.blobs.has(id)).toBe(true);
+    const stillThere = await service.get(id);
+    expect(stillThere.ok).toBe(true);
+  });
+
+  it("eviction GC keeps bytes of a project-attached material even with historical-only usages", async () => {
+    const attached = await seedBlobMedia("attached");
+    const usage = await service.recordUsage(attached.id, {
+      projectId: "proj-attach",
+      projectName: "Attach test",
+      mediaIdInProject: "pm-1",
+      attachedAt: NOW,
+      attachedBy: "user",
+      status: "current",
+    });
+    expect(usage.ok).toBe(true);
+    // The attach later becomes historical (project replaced/removed it) —
+    // that must NOT weaken the live-record protection of the bytes.
+    const reconciled = await service.reconcileProjectUsages(
+      projectSnapshot([], []),
+    );
+    expect(reconciled.ok).toBe(true);
+
+    const other = await seedBlobMedia("other-removed");
+    const removed = await service.remove(other.id, {}, "user");
+    if (!removed.ok) throw new Error(removed.message);
+
+    await addNoiseEntries(100);
+    // The unattached removed material's bytes are reclaimed...
+    expect(storage.blobs.has(other.id)).toBe(false);
+    // ...while the attached material — current or historical usage — keeps
+    // them: project copies carry their own bytes, but the library never
+    // breaks a record that still exists.
+    expect(storage.blobs.has(attached.id)).toBe(true);
+    expect(await service.loadBlobFor(attached.id)).toBe(attached.blob);
   });
 });

@@ -114,13 +114,23 @@ export function MaterialLibraryPanel() {
       toast.error(t("material.undoFailed"), result.message);
       return;
     }
-    toast.success(
-      t("material.undone"),
-      t("material.undoneDetail", {
-        restored: result.value.restored.length,
-        removed: result.value.removed.length,
-      }),
-    );
+    // Restored records whose library blob bytes are gone (historical
+    // data) must not read as an unqualified success.
+    const missingCount = result.value.blobMissingIds.length;
+    if (missingCount > 0) {
+      toast.warning(
+        t("material.undone"),
+        t("material.undoneBlobMissing", { count: missingCount }),
+      );
+    } else {
+      toast.success(
+        t("material.undone"),
+        t("material.undoneDetail", {
+          restored: result.value.restored.length,
+          removed: result.value.removed.length,
+        }),
+      );
+    }
     await useMaterialLibraryStore.getState().refresh();
     await useMaterialLibraryStore.getState().refreshJournal();
   };

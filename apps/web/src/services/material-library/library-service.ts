@@ -11,12 +11,15 @@
  *    overwrite.
  *  - Agent writes never touch `userNotes` (also enforced in core logic).
  *  - Removing a referenced material requires `force`; removing an entry
- *    never deletes anything on disk — only the library's own blob copy is
- *    reclaimed.
- *  - Undo settles records and blobs in one transaction: the inverse of
- *    every touched record is journalled (so redo is always effective),
- *    re-removed records' blob copies are reclaimed, and restored blob
- *    references whose bytes are gone are reported (`blobMissingIds`),
+ *    never deletes anything on disk and never touches the user's original
+ *    files. The library's own blob copy of a removed material is kept
+ *    while the removal can still be undone; bytes that no surviving
+ *    record or journal entry references are reclaimed when journal
+ *    entries are evicted from the 100-entry undo window.
+ *  - Undo settles records in one atomic transaction: the inverse of every
+ *    touched record is journalled (so redo is always effective — with the
+ *    blob bytes it needs), and restored blob references whose bytes are
+ *    already gone (historical data) are reported (`blobMissingIds`),
  *    never silently successful.
  */
 import {
@@ -95,13 +98,13 @@ export interface MaterialUndoResult {
   readonly restored: readonly string[];
   readonly removed: readonly string[];
   /**
-   * Restored media records whose library-owned blob copy no longer exists.
-   * `remove` reclaims its blob copy immediately (only the library's own
-   * copy — the original file is never touched), so undoing a removal
-   * brings back the record but not the bytes; a redo of an undone create
-   * hits the same state because the undo reclaimed the copy. Callers must
-   * surface these ids: such an undo must never read as an unqualified
-   * success.
+   * Restored media records whose library-owned blob copy is already absent
+   * (legacy data created before the library kept bytes for its undo
+   * window, or bytes deleted outside the library). Undoable removals keep
+   * their bytes in the library, so a normal remove→undo reports an empty
+   * list here; a non-empty list means the restored records cannot preview
+   * or attach, and callers must surface it instead of reading the undo as
+   * an unqualified success.
    */
   readonly blobMissingIds: readonly string[];
 }
@@ -119,6 +122,13 @@ export class MaterialLibraryService {
   private loaded = false;
   private loadPromise: Promise<void> | null = null;
   private chain: Promise<unknown> = Promise.resolve();
+  /**
+   * Blob ids that eviction GC has not yet proven dead. Survives a failed
+   * eviction commit so the next eviction retries the whole candidate set
+   * within this session (memory-only: a reload recomputes candidates from
+   * the persisted journal via the load-time GC below).
+   */
+  private pendingGcBlobIds = new Set<string>();
 
   constructor(storage: MaterialStorage = createIdbMaterialStorage()) {
     this.storage = storage;
@@ -141,8 +151,16 @@ export class MaterialLibraryService {
           .map((raw) => normalizeMaterialJournalEntry(raw))
           .filter((entry): entry is MaterialJournalEntry => entry !== null && entry.id !== "")
           .sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id));
+        const overflow =
+          entries.length > MAX_MATERIAL_JOURNAL_ENTRIES
+            ? entries.slice(0, entries.length - MAX_MATERIAL_JOURNAL_ENTRIES)
+            : [];
         this.journalEntries = entries.slice(-MAX_MATERIAL_JOURNAL_ENTRIES);
         this.loaded = true;
+        // Load-time GC for rows left behind by a historical failed eviction
+        // commit (or pre-window data): same derivation, same atomic
+        // journal+blob commit as the eviction GC.
+        this.gcEvictedEntries(overflow);
       })().catch((error) => {
         this.loadPromise = null;
         throw error;
@@ -490,15 +508,12 @@ export class MaterialLibraryService {
           after: null,
         })),
       });
-      const blobIds = removedRecords
-        .filter(
-          (removed) => removed.kind === "media" && removed.fileRef.type === "blob",
-        )
-        .map((removed) => removed.id);
+      // No blobDeletes here on purpose: the removal must stay reversible,
+      // so the library's own blob copies are kept for the undo window and
+      // reclaimed by the journal-eviction GC once nothing references them.
       try {
         await this.storage.commit({
           materialDeletes: removedRecords.map((removed) => removed.id),
-          ...(blobIds.length > 0 ? { blobDeletes: blobIds } : {}),
           journalUpserts: [entry],
         });
       } catch (error) {
@@ -520,11 +535,13 @@ export class MaterialLibraryService {
   /**
    * Undo one journal entry (default: the latest undoable entry).
    *
-   * One atomic batch across both dimensions: the inverse record changes
-   * are journalled (restores of removed records included, so redoing the
-   * undo is effective), blob copies of records the undo removes are
-   * reclaimed in the same transaction, and restored blob references whose
-   * bytes are already gone are reported via `blobMissingIds` instead of
+   * One atomic batch: the inverse record changes are journalled (restores
+   * of removed records included, so redoing the undo is effective). The
+   * undo itself never reclaims blob copies — records it removes may be
+   * restored again by undoing this very entry (a redo), so their bytes
+   * stay in the library until journal eviction proves nothing references
+   * them — while restored blob references whose bytes are already gone
+   * (historical data) are reported via `blobMissingIds` instead of
    * silently succeeding.
    */
   async undo(
@@ -574,22 +591,13 @@ export class MaterialLibraryService {
         const before = this.records.get(id) ?? null;
         undoChanges.push({ materialId: id, before, after: null });
       }
-      // Blob dimension of the same undo unit, settled in the same
-      // transaction: records this undo removes (an undone create, or a
-      // redo of a removal) take their library blob copies with them —
-      // no orphans. Records this undo restores keep their copies; when a
-      // restored blob reference points at bytes that are already gone
-      // (see MaterialUndoResult.blobMissingIds), the undo reports it
-      // instead of silently succeeding.
-      const removedBlobIds = outcome.removed
-        .map((id) => this.records.get(id))
-        .filter(
-          (record): record is MaterialRecord =>
-            record !== undefined &&
-            record.kind === "media" &&
-            record.fileRef.type === "blob",
-        )
-        .map((record) => record.id);
+      // The undo deliberately does NOT reclaim blob copies: records this
+      // undo removes (an undone create, or a redo of a removal) are
+      // exactly what undoing this entry restores, so their bytes stay in
+      // the library and journal eviction is the only reclaim path.
+      // Restored blob references pointing at bytes that are already gone
+      // (see MaterialUndoResult.blobMissingIds) are still probed and
+      // reported instead of silently succeeding.
       const blobMissingIds: string[] = [];
       const undoEntry = buildMaterialJournalEntry({
         actor,
@@ -619,7 +627,6 @@ export class MaterialLibraryService {
             outcome.restored.includes(candidate.id),
           ),
           materialDeletes: [...outcome.removed],
-          ...(removedBlobIds.length > 0 ? { blobDeletes: removedBlobIds } : {}),
           journalUpserts: [undoneOriginal, undoEntry],
         });
       } catch (error) {
@@ -915,18 +922,83 @@ export class MaterialLibraryService {
     );
   }
 
+  /**
+   * Blob ids a record snapshot references (media records with a blob
+   * fileRef — the blob store is keyed by the material's own id).
+   */
+  private blobIdsOf(
+    records: ReadonlyArray<MaterialRecord | null>,
+  ): string[] {
+    return records
+      .filter(
+        (record): record is MaterialRecord =>
+          record !== null && record.kind === "media" && record.fileRef.type === "blob",
+      )
+      .map((record) => record.id);
+  }
+
+  /**
+   * Blob ids a journal entry references, derived purely from its embedded
+   * before/after record snapshots (no schema additions needed).
+   */
+  private entryBlobIds(entries: readonly MaterialJournalEntry[]): string[] {
+    return this.blobIdsOf(
+      entries.flatMap((entry) =>
+        entry.changes.flatMap((change) => [change.before, change.after]),
+      ),
+    );
+  }
+
+  /**
+   * Journal-eviction GC — the only place library blob bytes are reclaimed.
+   *
+   * An evicted entry's blob set minus the sets referenced by surviving
+   * records and surviving journal entries is dead and can be dropped in
+   * the SAME transaction that deletes the evicted rows (one IDB commit, so
+   * a failure rolls both back together). The commit is fire-and-forget: a
+   * failure just delays reclamation (never over-deletes), and the
+   * candidate set stays in `pendingGcBlobIds` for the next eviction to
+   * retry. Undone entries count as live references on purpose — the
+   * History menu can re-undo them, which would need the bytes again.
+   */
+  private gcEvictedEntries(evicted: readonly MaterialJournalEntry[]): void {
+    if (evicted.length === 0) return;
+    const candidates = new Set<string>([
+      ...this.pendingGcBlobIds,
+      ...this.entryBlobIds(evicted),
+    ]);
+    const liveRecordBlobs = new Set(this.blobIdsOf([...this.records.values()]));
+    const liveJournalBlobs = new Set(this.entryBlobIds(this.journalEntries));
+    const gc = [...candidates].filter(
+      (id) => !liveRecordBlobs.has(id) && !liveJournalBlobs.has(id),
+    );
+    // Remember everything not yet proven dead: if the commit fails, the
+    // next eviction retries the whole candidate set within this session.
+    this.pendingGcBlobIds = candidates;
+    void this.storage
+      .commit({
+        journalDeletes: evicted.map((entry) => entry.id),
+        ...(gc.length > 0 ? { blobDeletes: gc } : {}),
+      })
+      .then(() => {
+        for (const id of gc) this.pendingGcBlobIds.delete(id);
+      })
+      .catch(() => undefined);
+  }
+
   private pushJournal(entry: MaterialJournalEntry): void {
     this.journalEntries.push(entry);
-    if (this.journalEntries.length > MAX_MATERIAL_JOURNAL_ENTRIES) {
-      const overflow = this.journalEntries.slice(
-        0,
-        this.journalEntries.length - MAX_MATERIAL_JOURNAL_ENTRIES,
-      );
-      this.journalEntries = this.journalEntries.slice(-MAX_MATERIAL_JOURNAL_ENTRIES);
-      void this.storage
-        .commit({ journalDeletes: overflow.map((trimmed) => trimmed.id) })
-        .catch(() => undefined);
-    }
+    if (this.journalEntries.length <= MAX_MATERIAL_JOURNAL_ENTRIES) return;
+    const overflow = this.journalEntries.slice(
+      0,
+      this.journalEntries.length - MAX_MATERIAL_JOURNAL_ENTRIES,
+    );
+    // In-memory slicing stays first (existing behavior): evicted entries
+    // are no longer undoable in this session even if the persistence below
+    // fails — and since the eviction commit is atomic, a failed commit
+    // leaves the rows in IDB so a reload puts them back, bytes intact.
+    this.journalEntries = this.journalEntries.slice(-MAX_MATERIAL_JOURNAL_ENTRIES);
+    this.gcEvictedEntries(overflow);
   }
 }
 

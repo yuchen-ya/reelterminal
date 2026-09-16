@@ -55,9 +55,11 @@ attach/preview with a clear error instead of pretending to work. Agent-side
 (the same containment as `media_import`).
 
 In the browser build (no stable paths), saving a file into the library stores
-**the library's own blob copy** in IndexedDB. Removing a library entry
-reclaims only that copy — original files on disk are never deleted by the
-library.
+**the library's own blob copy** in IndexedDB. Original files on disk are never
+deleted by the library. Removing a library entry does not reclaim that copy
+immediately: the bytes are kept while the removal can still be undone (within
+the library's 100-entry undo window) and are reclaimed automatically once no
+surviving library record or journal entry references them.
 
 ## Persistence and compatibility
 
@@ -79,7 +81,9 @@ library.
 ## Undo, batches, and concurrency
 
 - The library keeps its **own journal** (last 100 entries), independent of
-  project history — undo survives project switches. The Library panel's
+  project history — undo survives project switches (entries leaving the
+  window are no longer undoable and release any blob bytes only they
+  referenced). The Library panel's
   History menu lists entries with actor labels and per-entry undo; the
   header shows one-click "Undo agent batch" for the latest agent entry.
   `material_undo` does the same for agents (pass a fresh `idempotencyKey`).
@@ -92,7 +96,8 @@ library.
   "changed elsewhere" notice instead of overwriting.
 - Removing a material that still has project `usages` requires `force:true`
   (the UI asks explicitly). Existing project copies are unaffected. Removing
-  a media material cascades its segments (both restore on undo).
+  a media material cascades its segments (both restore on undo, including
+  the library's own blob copy of a browser import).
 - A segment/ranged attach persists the imported bytes first, then validates
   `media/import + track/add + clip/add` on one isolated project draft. It
   publishes one project commit and one undo unit; any failed follow-up removes

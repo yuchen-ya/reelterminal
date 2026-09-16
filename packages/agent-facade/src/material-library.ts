@@ -192,6 +192,15 @@ export interface MaterialUndoResult {
   readonly undoneEntryId: string;
   readonly restored: readonly string[];
   readonly removed: readonly string[];
+  /**
+   * Restored media records whose library blob bytes are absent — such an
+   * undo must not read as an unqualified success (those records cannot be
+   * previewed or attached). Optional so older renderers may omit it; the
+   * library keeps bytes across its undo window, so a normal
+   * remove→undo reports an empty list here, and a non-empty list means
+   * historically missing data (never a side effect of the undo itself).
+   */
+  readonly blobMissingIds?: readonly string[];
 }
 
 export interface MaterialJournalResult {

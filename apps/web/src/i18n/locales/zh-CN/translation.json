@@ -517,6 +517,7 @@
     "undoFailed": "撤销失败",
     "undone": "已撤销素材库修改",
     "undoneDetail": "恢复 {{restored}} 项,移除 {{removed}} 项",
+    "undoneBlobMissing": "已撤销——但 {{count}} 项的库内字节副本已缺失,无法预览或附加",
     "undoneState": "已撤销",
     "history": "历史",
     "historyEmpty": "暂无素材库修改记录",
