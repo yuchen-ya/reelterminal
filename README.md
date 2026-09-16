@@ -83,9 +83,11 @@ implemented features, reusable foundations, and remaining integration work.
 - The atomic `edit_apply` vocabulary covers placement, moving, trimming,
   splitting, duplication, ripple deletion, constant speed/reverse, visual
   transforms and crop, volume, fades, ordinary removal, clip transitions,
-  text overlay creation/update/deletion, track updates, safe track/media removal,
-  review markers, SRT subtitle import, temperature/tint grading, and supported
-  transform/opacity keyframes. Creation operations report their
+  text overlay creation/update/deletion, track updates, media display-name
+  renaming, safe track/media removal,
+  review markers, SRT subtitle import, temperature/tint grading, media source
+  replace/relink, review comparisons, and supported transform/opacity
+  keyframes. Creation operations report their
   real ids so an Agent can continue editing them in later calls.
 - Users can mark audio, video, text, media, and graphics entities as stable
   Agent references (`@A1`, `@A2`, `@A3`, …). Multi-selection assignment is

@@ -297,8 +297,10 @@ The facade does not send browser `File`/`Blob` objects across the bridge.
   `UNSUPPORTED` before job creation.
 - New closed edit ops with Core/GUI/renderer parity are `track.update`
   (name/lock/hide/mute/solo), `subtitle.importSrt` (256 KiB/500 cues),
-  `clip.setColorGrade` (temperature/tint), and `clip.setKeyframes` (renderer-
-  supported transform/opacity properties). Capability data names the remaining
+  `clip.setColorGrade` (temperature/tint), `clip.setKeyframes` (renderer-
+  supported transform/opacity properties), and `media.rename` (media display-
+  name rename, ≤120 characters; the source filename and the file on disk are
+  never touched). Capability data names the remaining
   professional gaps instead of exposing no-op schemas.
 
 ## Slice boundaries (what this is NOT)

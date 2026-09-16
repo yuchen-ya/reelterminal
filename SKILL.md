@@ -433,7 +433,7 @@ and `{projectId, projectName, windowId}`.
 
 ### The `edit_apply` op vocabulary
 
-Twenty-seven ops, one atomic batch each call (the exact fields and bounds live in
+Thirty-two ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
 - `track.add` — create a track (`trackType`); `track.remove` — remove an empty
@@ -512,6 +512,19 @@ Twenty-seven ops, one atomic batch each call (the exact fields and bounds live i
 - `subtitle.importSrt` — parse one inline SRT document (≤256 KiB, ≤500 cues)
   into the canonical subtitle model used by the GUI, preview, and export.
   Malformed or partially invalid SRT fails the whole atomic batch.
+- `media.replace` — repoint one media item's references to a new source file
+  (`filePath` inside a configured media root): `scope:"project"` switches
+  every clip referencing it; `scope:"clip"` + `clipId` repoints a single clip.
+- `media.relink` — repoint a media item to the SAME content at a new absolute
+  path after the file moved; the content itself does not change.
+- `reference.setComparison` / `reference.clearComparison` — install or clear
+  the shared reference-comparison configuration (config schema in
+  `edit_apply`'s `inputSchema`).
+- `media.rename` — set one media item's user-facing display name
+  (`displayName`, 1..120 characters after trim). Only the display name
+  changes: the source filename and the file on disk are never touched, and
+  display sites fall back to the source filename when no display name is
+  set. Unknown `mediaId` fails `NOT_FOUND`.
 
 Ops in one batch see each other's results, and a failure anywhere rolls
 the whole batch back; a deleted overlay or clip stays deleted after
