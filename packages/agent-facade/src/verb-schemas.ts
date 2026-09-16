@@ -66,6 +66,7 @@ import {
   MEDIA_RELINK_SCHEMA,
   MEDIA_RENAME_SCHEMA,
   CLIP_SET_KEYFRAMES_SCHEMA,
+  CLIP_SET_CHROMA_KEY_SCHEMA,
 } from "./ops";
 import {
   isFiniteNumber,
@@ -537,6 +538,7 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "media.replace": MEDIA_REPLACE_SCHEMA,
   "media.relink": MEDIA_RELINK_SCHEMA,
   "media.rename": MEDIA_RENAME_SCHEMA,
+  "clip.setChromaKey": CLIP_SET_CHROMA_KEY_SCHEMA,
 };
 
 /**

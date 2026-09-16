@@ -116,6 +116,7 @@ describe("capabilities.get / session.describe", () => {
       "media.replace",
       "media.relink",
       "media.rename",
+      "clip.setChromaKey",
     ]);
     expect(res.value.editOps).toEqual([...EDIT_OP_TYPES]);
     expect(res.value.stateModel).toEqual({

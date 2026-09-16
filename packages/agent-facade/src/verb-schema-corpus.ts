@@ -225,6 +225,10 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     {
       name: "media.rename rejects a blank displayName",
       params: { ops: [{ op: "media.rename", mediaId: "m1", displayName: "   " }] },
+      // Trim-then-check cannot be expressed as minLength: the emitted schema
+      // accepts "   " (length 3) and the facade rejects it — a pin, not a
+      // schema bug (same class as track.update's at-least-one-field).
+      schemaValid: true,
       expectValid: false,
     },
     {
@@ -257,6 +261,36 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     {
       name: "keyframe property is allowlisted",
       params: { ops: [{ op: "clip.setKeyframes", clipId: "c1", keyframes: [{ property: "audio.volume", time: 0, value: 1 }] }] },
+      expectValid: false,
+    },
+    {
+      name: "valid clip.setChromaKey enable with defaults",
+      params: { ops: [{ op: "clip.setChromaKey", clipId: "c1", enabled: true }] },
+      expectValid: true,
+    },
+    {
+      name: "valid clip.setChromaKey full settings",
+      params: { ops: [{ op: "clip.setChromaKey", clipId: "c1", enabled: true, keyColor: { r: 0, g: 0, b: 1 }, tolerance: 0.35, edgeSoftness: 0.05, spillSuppression: 0.6 }] },
+      expectValid: true,
+    },
+    {
+      name: "clip.setChromaKey requires enabled",
+      params: { ops: [{ op: "clip.setChromaKey", clipId: "c1" }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setChromaKey tolerance must be in [0, 1]",
+      params: { ops: [{ op: "clip.setChromaKey", clipId: "c1", enabled: true, tolerance: 1.5 }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setChromaKey keyColor channels must be in [0, 1]",
+      params: { ops: [{ op: "clip.setChromaKey", clipId: "c1", enabled: true, keyColor: { r: 2, g: 0, b: 0 } }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setChromaKey unknown field",
+      params: { ops: [{ op: "clip.setChromaKey", clipId: "c1", enabled: true, preset: "green" }] },
       expectValid: false,
     },
     {

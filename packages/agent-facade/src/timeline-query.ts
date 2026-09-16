@@ -76,6 +76,7 @@ function allCandidates(project: Project): Candidate[] {
           keyframes: clip.keyframes ?? [],
           automation: clip.automation ?? {},
           colorGrading: clip.colorGrading ?? null,
+          chromaKey: clip.chromaKey ?? null,
         },
         trackType: track.type,
       });
@@ -353,4 +354,5 @@ export const TIMELINE_QUERY_FIELDS: readonly TimelineQueryField[] = [
   "style",
   "color",
   "colorGrading",
+  "chromaKey",
 ];

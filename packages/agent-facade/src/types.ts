@@ -311,6 +311,7 @@ export interface Capabilities {
     transformKeyframes: CapabilityStatus;
     volumeKeyframes: CapabilityStatus;
     basicColorGrade: CapabilityStatus;
+    chromaKey: CapabilityStatus;
     lut: CapabilityStatus;
     audioNormalization: CapabilityStatus;
     audioDucking: CapabilityStatus;
@@ -741,7 +742,8 @@ export type TimelineQueryField =
   | "target"
   | "style"
   | "color"
-  | "colorGrading";
+  | "colorGrading"
+  | "chromaKey";
 
 export interface TimelineQueryParams {
   /** Only ephemeral @A<n> refs and persisted R<n> review refs are accepted. */
@@ -907,6 +909,7 @@ export const EDIT_OP_TYPES = [
   "media.replace",
   "media.relink",
   "media.rename",
+  "clip.setChromaKey",
 ] as const;
 
 export type EditOpType = (typeof EDIT_OP_TYPES)[number];
@@ -1240,6 +1243,28 @@ export interface ClipSetKeyframesOp {
   readonly keyframes: readonly FacadeKeyframeInput[];
 }
 
+/**
+ * Enable/disable the fixed-key chroma keyer on ONE clip (green-screen
+ * keying). Omitted tuning fields keep the clip's prior value, falling back
+ * to the engine defaults (green {r:0,g:1,b:0}, tolerance 0.3, edgeSoftness
+ * 0.1, spillSuppression 0.5) — the same settings object the GUI green-screen
+ * panel dispatches via the core clip/setChromaKey action. This is a fixed
+ * color-distance matte, not AI matting.
+ */
+export interface ClipSetChromaKeyOp {
+  readonly op: "clip.setChromaKey";
+  readonly clipId: string;
+  readonly enabled: boolean;
+  /** Key color channels, each in [0, 1]; omitted keeps the prior color. */
+  readonly keyColor?: { readonly r: number; readonly g: number; readonly b: number };
+  /** Similarity radius in [0, 1]; omitted keeps the prior value. */
+  readonly tolerance?: number;
+  /** Edge softness in [0, 1]; omitted keeps the prior value. */
+  readonly edgeSoftness?: number;
+  /** Spill suppression in [0, 1]; omitted keeps the prior value. */
+  readonly spillSuppression?: number;
+}
+
 export type EditOp =
   | TrackAddOp
   | TrackUpdateOp
@@ -1272,7 +1297,8 @@ export type EditOp =
   | ReferenceClearComparisonOp
   | MediaReplaceOp
   | MediaRelinkOp
-  | MediaRenameOp;
+  | MediaRenameOp
+  | ClipSetChromaKeyOp;
 
 export interface EditApplyParams {
   readonly ops: readonly EditOp[];

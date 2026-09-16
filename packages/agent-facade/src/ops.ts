@@ -73,8 +73,10 @@ import {
   type MediaReplaceOp,
   type MediaRelinkOp,
   type MediaRenameOp,
+  type ClipSetChromaKeyOp,
 } from "./types";
 import { validateReferenceComparisonConfig } from "@openreel/core/types/reference-comparison";
+import { DEFAULT_CHROMA_KEY_SETTINGS } from "@openreel/core/video/chroma-key-engine";
 import { timelineDurationSec } from "./projection";
 import { basename } from "node:path";
 import { resolveContainedPathDetailed } from "./media/path-roots";
@@ -1234,6 +1236,71 @@ export const CLIP_SET_KEYFRAMES_SCHEMA: ObjectSchema = {
   },
 };
 
+const CHROMA_KEY_COLOR_SCHEMA: ObjectSchema = {
+  r: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1,
+    describe: "a finite number in [0, 1]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  g: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1,
+    describe: "a finite number in [0, 1]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  b: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1,
+    describe: "a finite number in [0, 1]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+};
+
+const isUnitRange = (v: unknown): boolean =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
+
+export const CLIP_SET_CHROMA_KEY_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "clip.setChromaKey",
+    describe: '"clip.setChromaKey"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.setChromaKey" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  enabled: {
+    check: isBoolean,
+    describe: "a boolean",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  keyColor: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: CHROMA_KEY_COLOR_SCHEMA },
+  },
+  tolerance: {
+    check: isUnitRange,
+    describe: "a finite number in [0, 1]",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  edgeSoftness: {
+    check: isUnitRange,
+    describe: "a finite number in [0, 1]",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  spillSuppression: {
+    check: isUnitRange,
+    describe: "a finite number in [0, 1]",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+};
+
 /**
  * Rebind nested style/position/anchor to SANITIZED copies: opToCoreActions
  * spreads them into the canonical TextClip, so what flows downstream must be
@@ -1526,6 +1593,27 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
         }
       }
       return { ...op, keyframes };
+    }
+    case "clip.setChromaKey": {
+      // No cross-field predicate: `enabled` is required and every tuning
+      // field is independently bounded in the declaration above. Omitted
+      // tuning fields merge onto the clip's prior settings in
+      // opToCoreActions (same full-settings action the GUI panel emits).
+      const op = validateObject<ClipSetChromaKeyOp>(
+        raw,
+        CLIP_SET_CHROMA_KEY_SCHEMA,
+        label,
+      );
+      // keyColor is a nested closed object — its channels are validated at
+      // this same boundary from the SAME declaration the emitted schema
+      // derives from (out-of-range is rejected, never clamped).
+      if (op.keyColor === undefined) return op;
+      const keyColor = validateObject<NonNullable<ClipSetChromaKeyOp["keyColor"]>>(
+        op.keyColor,
+        CHROMA_KEY_COLOR_SCHEMA,
+        `${label}.keyColor`,
+      );
+      return { ...op, keyColor };
     }
     case "reference.setComparison": {
       const op = validateObject<ReferenceSetComparisonOp>(
@@ -2883,6 +2971,45 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
             value: keyframe.value,
             easing: keyframe.easing ?? "linear",
           })),
+        }),
+      ];
+    }
+
+    case "clip.setChromaKey": {
+      const clip = draft.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((candidate) => candidate.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.setChromaKey: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      // core's clip/setChromaKey REPLACES the whole field, so assemble the
+      // complete settings snapshot the GUI green-screen panel also emits:
+      // omitted tuning fields keep the clip's prior value, falling back to
+      // the shared engine defaults (fixed green key). Disabling keeps the
+      // tuning values, matching the GUI toggle.
+      const prior = clip.chromaKey;
+      const keyColor = op.keyColor ?? prior?.keyColor ?? DEFAULT_CHROMA_KEY_SETTINGS.keyColor;
+      return [
+        makeAction("clip/setChromaKey", {
+          clipId: op.clipId,
+          chromaKey: {
+            enabled: op.enabled,
+            keyColor: { ...keyColor },
+            tolerance:
+              op.tolerance ?? prior?.tolerance ?? DEFAULT_CHROMA_KEY_SETTINGS.tolerance,
+            edgeSoftness:
+              op.edgeSoftness ??
+              prior?.edgeSoftness ??
+              DEFAULT_CHROMA_KEY_SETTINGS.edgeSoftness,
+            spillSuppression:
+              op.spillSuppression ??
+              prior?.spillSuppression ??
+              DEFAULT_CHROMA_KEY_SETTINGS.spillSuppression,
+          },
         }),
       ];
     }

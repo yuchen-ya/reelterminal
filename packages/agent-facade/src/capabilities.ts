@@ -43,6 +43,7 @@ import {
 } from "./types";
 import { MATERIAL_LIBRARY_LIMITS } from "./material-library";
 import { MATERIAL_KINDS } from "@openreel/core/material/types";
+import { DEFAULT_CHROMA_KEY_SETTINGS } from "@openreel/core/video/chroma-key-engine";
 import {
   DEFAULT_AGENT_WORK_MODE,
   agentWorkModeSemantics,
@@ -394,6 +395,24 @@ export async function buildCapabilities(
       basicColorGrade: {
         available: true,
         details: { op: "clip.setColorGrade", fields: ["temperature", "tint", "clear"] },
+      },
+      chromaKey: {
+        available: true,
+        details: {
+          op: "clip.setChromaKey",
+          coreAction: "clip/setChromaKey",
+          algorithm:
+            "fixed-key chroma keyer (ChromaKeyEngine color-distance matte) — a deterministic local algorithm, not AI matting",
+          defaultKeyColor: DEFAULT_CHROMA_KEY_SETTINGS.keyColor,
+          defaults: {
+            tolerance: DEFAULT_CHROMA_KEY_SETTINGS.tolerance,
+            edgeSoftness: DEFAULT_CHROMA_KEY_SETTINGS.edgeSoftness,
+            spillSuppression: DEFAULT_CHROMA_KEY_SETTINGS.spillSuppression,
+          },
+          keyColorRange: "each channel in [0, 1]",
+          guiParity:
+            "same core action as the GUI green-screen panel; results are undoable via the action's inverse",
+        },
       },
       lut: {
         available: false,
