@@ -18,10 +18,12 @@ it("labels static evidence and dismisses the overlay when normal playback starts
 
 it("shows cloud text as an opinion without rendering markup or claiming acceptance", () => {
   useCollabStore.setState({ inspection: { kind: "cloud-opinion", title: "Qwen · revision 3", range: "source 1–3 s", text: "<script>untrusted</script>", images: [], limitations: ["Unknown sampling"] } });
-  const { container } = render(<AgentInspectionPanel />);
+  render(<AgentInspectionPanel />);
   expect(screen.getByText(/Cloud model opinion · not audiovisual acceptance/)).toBeTruthy();
   expect(screen.getByText("<script>untrusted</script>")).toBeTruthy();
-  expect(container.querySelector("script")).toBeNull();
+  // The panel portals to document.body, so the no-markup guarantee must
+  // hold in the portal subtree, not the render container.
+  expect(document.body.querySelector("script")).toBeNull();
   act(() => useTimelineStore.setState({ playbackState: "playing" }));
   expect(useCollabStore.getState().inspection).toBeNull();
 });

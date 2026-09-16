@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronDown,
   Plus,
@@ -16,6 +17,7 @@ import { ToolcraftText as Text } from "@openreel/ui";
 import { ToolcraftTextInputControl } from "@openreel/ui";
 import { useProjectStore } from "../../stores/project-store";
 import { autoSaveManager, type AutoSaveMetadata } from "../../services/auto-save";
+import { useAnchoredBelowStyle } from "../../utils/anchored-position";
 import { useTranslation } from "react-i18next";
 
 function formatTimeAgo(timestamp: number): string {
@@ -41,8 +43,13 @@ export const ProjectSwitcher: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(project.name);
   const [isLoading, setIsLoading] = useState(false);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // The dropdown portals to document.body: inside the header it was trapped
+  // in the header's z-30 stacking context (web timeline toolbar z-50 beat it
+  // no matter the value). Portaled, it uses the --z-popover ladder.
+  const dropdownStyle = useAnchoredBelowStyle(triggerRef, isOpen, 8);
 
   useEffect(() => {
     const loadSavedProjects = async () => {
@@ -69,15 +76,32 @@ export const ProjectSwitcher: React.FC = () => {
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-        setIsEditing(false);
-      }
+      const target = e.target as Node;
+      // Both the trigger (document flow) and the portaled dropdown must
+      // count as "inside"; otherwise clicking the portaled menu would close it.
+      if (triggerRef.current?.contains(target)) return;
+      if (dropdownRef.current?.contains(target)) return;
+      setIsOpen(false);
+      setIsEditing(false);
     };
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Escape closes the dropdown; while renaming, the input keeps its own
+  // Escape semantics (cancel the edit, dropdown stays open).
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || isEditing) return;
+      e.stopPropagation();
+      setIsOpen(false);
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isEditing]);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -133,7 +157,7 @@ export const ProjectSwitcher: React.FC = () => {
   const otherProjects = savedProjects.filter((s) => s.projectId !== project.id);
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative" ref={triggerRef}>
       <Button
         label={t(project.name)}
         onClick={() => setIsOpen(!isOpen)}
@@ -151,12 +175,15 @@ export const ProjectSwitcher: React.FC = () => {
         className="max-w-[200px] justify-start truncate hover:bg-background-secondary"
       />
 
-      {isOpen && (
-        <Card
-          variant="default"
-          padding={0}
-          className="absolute left-0 top-full z-50 mt-2 w-72 overflow-hidden border border-border bg-background shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150"
-        >
+      {isOpen &&
+        createPortal(
+          <Card
+            ref={dropdownRef}
+            variant="default"
+            padding={0}
+            style={dropdownStyle}
+            className="z-[var(--z-popover)] w-72 overflow-hidden border border-border bg-background shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150"
+          >
           <div className="p-3 border-b border-border">
             <Text
               type="supporting"
@@ -277,8 +304,9 @@ export const ProjectSwitcher: React.FC = () => {
               </div>
             </>
           )}
-        </Card>
-      )}
+        </Card>,
+          document.body,
+        )}
     </div>
   );
 };

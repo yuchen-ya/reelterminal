@@ -1,10 +1,12 @@
 import type { JSX } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bot, CircleHelp, FolderOpen, MessageSquare, Power, X } from "@/icons/lucide-compat";
 import { useCollabStore, installCollabEventListener, type CollabMode } from "../../stores/collab-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useAgentReferencesStore } from "../../stores/agent-references-store";
 import { useTranslation } from "react-i18next";
+import { useAnchoredBelowStyle } from "../../utils/anchored-position";
 import { AnalysisRecordsPanel } from "./AnalysisRecordsPanel";
 
 /** localStorage flag: first-run Agent Session intro bubble has been dismissed. */
@@ -81,6 +83,17 @@ export function CollabStatusBar(): JSX.Element {
   const [helpOpen, setHelpOpen] = useState(false);
   const [introSeen, setIntroSeen] = useState(readIntroSeen);
 
+  // Both explanation popups portal to document.body: as in-app absolute
+  // layers they were trapped in the desktop shell's single `isolate`
+  // stacking context and lost to the timeline toolbar (same z, later DOM).
+  // Portaled, they take their z from the --z-popover ladder (index.css).
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const helpButtonRef = useRef<HTMLButtonElement>(null);
+  const introPanelRef = useRef<HTMLDivElement>(null);
+  const helpPanelRef = useRef<HTMLDivElement>(null);
+  const introOpen = !enabled && !introSeen;
+  const anchorStyle = useAnchoredBelowStyle(anchorRef, helpOpen || introOpen, 6);
+
   useEffect(() => {
     void useCollabStore.getState().refresh();
     return installCollabEventListener();
@@ -95,6 +108,60 @@ export function CollabStatusBar(): JSX.Element {
     setIntroSeen(true);
   };
 
+  const closeHelp = (restoreFocus: boolean) => {
+    setHelpOpen(false);
+    if (restoreFocus) helpButtonRef.current?.focus();
+  };
+
+  // Escape and outside-click for the help popover; Escape returns focus to
+  // the ⓘ trigger. Clicks inside the anchor container are ignored so the
+  // trigger button keeps handling its own toggle.
+  useEffect(() => {
+    if (!helpOpen) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      closeHelp(true);
+    };
+    const onMouseDown = (event: MouseEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (helpPanelRef.current?.contains(target)) return;
+      if (anchorRef.current?.contains(target)) return;
+      closeHelp(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("mousedown", onMouseDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [helpOpen]);
+
+  // Same dismissal paths for the first-run intro bubble; like the "Got it"
+  // button they count as "seen" so the intro does not nag again.
+  useEffect(() => {
+    if (!introOpen) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      dismissIntro();
+    };
+    const onMouseDown = (event: MouseEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (introPanelRef.current?.contains(target)) return;
+      if (anchorRef.current?.contains(target)) return;
+      dismissIntro();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("mousedown", onMouseDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [introOpen]);
+
   const statusText = !enabled
     ? t("desktop.collaboration.disabled")
     : externalConnected
@@ -105,7 +172,7 @@ export function CollabStatusBar(): JSX.Element {
 
   return (
     <div className="flex h-full items-center gap-3 border-b border-border bg-bg-1 px-3 text-[11px] text-fg-2">
-      <div className="relative flex items-center gap-1">
+      <div className="relative flex items-center gap-1" ref={anchorRef}>
         <button
           type="button"
           role="switch"
@@ -124,6 +191,7 @@ export function CollabStatusBar(): JSX.Element {
 
         <button
           type="button"
+          ref={helpButtonRef}
           aria-label={t("desktop.collaboration.helpAria")}
           aria-expanded={helpOpen}
           onClick={() => setHelpOpen((open) => !open)}
@@ -132,65 +200,73 @@ export function CollabStatusBar(): JSX.Element {
           <CircleHelp size={12} aria-hidden />
         </button>
 
-        {!enabled && !introSeen && (
-          <div
-            role="status"
-            className="absolute left-0 top-full z-50 mt-1.5 w-64 rounded-md border border-border bg-bg-elev p-3 text-fg-2 shadow-lg"
-          >
-            <p className="font-medium text-fg">{t("desktop.collaboration.introTitle")}</p>
-            <p className="mt-1 leading-snug">{t("desktop.collaboration.introBody")}</p>
-            <div className="mt-2 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setHelpOpen(true);
-                  dismissIntro();
-                }}
-                className="rounded-[5px] bg-accent-soft px-2 py-0.5 font-medium text-accent hover:opacity-90"
-              >
-                {t("desktop.collaboration.introLearnMore")}
-              </button>
-              <button
-                type="button"
-                onClick={dismissIntro}
-                className="rounded-[5px] px-2 py-0.5 text-fg-muted hover:text-fg"
-              >
-                {t("desktop.collaboration.introDismiss")}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {helpOpen && (
-          <div
-            role="dialog"
-            aria-label={t("desktop.collaboration.helpTitle")}
-            className="absolute left-0 top-full z-50 mt-1.5 w-72 rounded-md border border-border bg-bg-elev p-3 text-fg-2 shadow-lg"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <p className="font-medium text-fg">{t("desktop.collaboration.helpTitle")}</p>
-              <button
-                type="button"
-                aria-label={t("desktop.collaboration.helpClose")}
-                onClick={() => setHelpOpen(false)}
-                className="flex h-4 w-4 items-center justify-center rounded text-fg-muted hover:text-fg"
-              >
-                <X size={11} aria-hidden />
-              </button>
-            </div>
-            <p className="mt-1.5 leading-snug">{t("desktop.collaboration.helpLine1")}</p>
-            <p className="mt-1 leading-snug">{t("desktop.collaboration.helpLine2")}</p>
-            <p className="mt-1 leading-snug">{t("desktop.collaboration.helpLine3")}</p>
-            <button
-              type="button"
-              onClick={openWorkspace}
-              className="mt-2 flex items-center gap-1.5 rounded-[5px] bg-bg-2 px-2 py-1 font-medium text-fg hover:bg-bg-3"
+        {introOpen &&
+          createPortal(
+            <div
+              ref={introPanelRef}
+              role="status"
+              style={anchorStyle}
+              className="z-[var(--z-popover)] w-64 rounded-md border border-border bg-bg-elev p-3 text-fg-2 shadow-lg"
             >
-              <FolderOpen size={12} aria-hidden />
-              {t("desktop.collaboration.openWorkspace")}
-            </button>
-          </div>
-        )}
+              <p className="font-medium text-fg">{t("desktop.collaboration.introTitle")}</p>
+              <p className="mt-1 leading-snug">{t("desktop.collaboration.introBody")}</p>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHelpOpen(true);
+                    dismissIntro();
+                  }}
+                  className="rounded-[5px] bg-accent-soft px-2 py-0.5 font-medium text-accent hover:opacity-90"
+                >
+                  {t("desktop.collaboration.introLearnMore")}
+                </button>
+                <button
+                  type="button"
+                  onClick={dismissIntro}
+                  className="rounded-[5px] px-2 py-0.5 text-fg-muted hover:text-fg"
+                >
+                  {t("desktop.collaboration.introDismiss")}
+                </button>
+              </div>
+            </div>,
+            document.body,
+          )}
+
+        {helpOpen &&
+          createPortal(
+            <div
+              ref={helpPanelRef}
+              role="dialog"
+              aria-label={t("desktop.collaboration.helpTitle")}
+              style={anchorStyle}
+              className="z-[var(--z-popover)] w-72 rounded-md border border-border bg-bg-elev p-3 text-fg-2 shadow-lg"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-medium text-fg">{t("desktop.collaboration.helpTitle")}</p>
+                <button
+                  type="button"
+                  aria-label={t("desktop.collaboration.helpClose")}
+                  onClick={() => closeHelp(true)}
+                  className="flex h-4 w-4 items-center justify-center rounded text-fg-muted hover:text-fg"
+                >
+                  <X size={11} aria-hidden />
+                </button>
+              </div>
+              <p className="mt-1.5 leading-snug">{t("desktop.collaboration.helpLine1")}</p>
+              <p className="mt-1 leading-snug">{t("desktop.collaboration.helpLine2")}</p>
+              <p className="mt-1 leading-snug">{t("desktop.collaboration.helpLine3")}</p>
+              <button
+                type="button"
+                onClick={openWorkspace}
+                className="mt-2 flex items-center gap-1.5 rounded-[5px] bg-bg-2 px-2 py-1 font-medium text-fg hover:bg-bg-3"
+              >
+                <FolderOpen size={12} aria-hidden />
+                {t("desktop.collaboration.openWorkspace")}
+              </button>
+            </div>,
+            document.body,
+          )}
       </div>
 
       <span className="flex items-center gap-1.5 text-fg-muted">

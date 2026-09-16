@@ -50,6 +50,49 @@ describe("CollabStatusBar Agent Session onboarding", () => {
     expect(screen.getByText("What is Agent Session?")).toBeInTheDocument();
   });
 
+  it("portals the help popover to document.body and closes it on Escape, returning focus to the toggle", () => {
+    render(<CollabStatusBar />);
+
+    fireEvent.click(screen.getByRole("button", { name: "About Agent Session" }));
+    const popover = screen.getByRole("dialog", { name: "What is Agent Session?" });
+    expect(popover.parentElement).toBe(document.body);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByText("What is Agent Session?")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "About Agent Session" })).toHaveFocus();
+  });
+
+  it("closes the help popover on an outside mousedown but not when clicked inside", () => {
+    render(<CollabStatusBar />);
+
+    fireEvent.click(screen.getByRole("button", { name: "About Agent Session" }));
+    expect(screen.getByText("What is Agent Session?")).toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByText("What is Agent Session?"));
+    expect(screen.getByText("What is Agent Session?")).toBeInTheDocument();
+
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByText("What is Agent Session?")).not.toBeInTheDocument();
+  });
+
+  it("dismisses the intro bubble on Escape and on an outside mousedown", () => {
+    const first = render(<CollabStatusBar />);
+    expect(screen.getByText("Let an AI agent help you edit")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByText("Let an AI agent help you edit")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(INTRO_SEEN_KEY)).toBe("1");
+    first.unmount();
+
+    window.localStorage.removeItem(INTRO_SEEN_KEY);
+    const second = render(<CollabStatusBar />);
+    expect(screen.getByText("Let an AI agent help you edit")).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByText("Let an AI agent help you edit")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(INTRO_SEEN_KEY)).toBe("1");
+    second.unmount();
+  });
+
   it("reveals the Agent workspace via the desktop bridge", () => {
     const openWorkspace = vi.fn(async () => "/videos/ReelTerminal Agent Workspace");
     // Partial bridge mock: only the surface this component can touch.

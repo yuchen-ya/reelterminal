@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, CircleCheck, Cloud, FileSearch, RefreshCw, X } from "@/icons/lucide-compat";
 import { useProjectStore } from "../../stores/project-store";
 import { useTimelineStore } from "../../stores/timeline-store";
@@ -277,10 +278,18 @@ export function AnalysisRecordsPanel() {
         )}
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/55 p-6" onMouseDown={(event) => {
-          if (event.currentTarget === event.target) closePanel();
-        }}>
+      {/* Modal overlay portals to document.body: inside the desktop shell's
+          `isolate` stacking context its z-[90] lost to every body-level portal
+          (the Radix portals alone span menus, selects and dialogs) — value
+          order was inverted by context. At body level --z-dialog orders it
+          above drawers, popovers and the floating window; the toast ladder
+          and Radix's z-[9999] menus stay above it, and its backdrop still
+          swallows outside clicks. */}
+      {open &&
+        createPortal(
+          <div className="fixed inset-0 z-[var(--z-dialog)] flex items-center justify-center bg-black/55 p-6" onMouseDown={(event) => {
+            if (event.currentTarget === event.target) closePanel();
+          }}>
           <section
             role="dialog"
             aria-modal="true"
@@ -462,8 +471,9 @@ export function AnalysisRecordsPanel() {
               </div>
             </div>
           </section>
-        </div>
-      )}
+        </div>,
+          document.body,
+        )}
     </>
   );
 }

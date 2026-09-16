@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   Settings,
@@ -626,31 +627,39 @@ export const Toolbar: React.FC = () => {
 
       <SettingsDialog />
 
-      {activeModal === "history" && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/20 z-40"
-            onClick={closeModal}
-          />
-          <div className="fixed top-topbar right-0 bottom-0 w-80 bg-bg-1 border-l border-border z-50 shadow-lg animate-in slide-in-from-right duration-200">
-            <div className="flex items-center justify-between p-3 border-b border-border">
-              <Text type="body" weight="bold" className="text-sm text-fg">
-                {t("Action history")}</Text>
-              <ToolcraftIconButton
-                label={t("Close action history")}
-                icon={<X size={14} aria-hidden />}
-                size="sm"
-                variant="ghost"
-                onClick={closeModal}
-                className="p-1.5 rounded hover:bg-hover text-fg-3 hover:text-fg transition-colors"
-              />
+      {/* The history drawer portals to document.body: rendered inside the
+          header it was trapped in the header's z-30 stacking context, so the
+          web timeline toolbar (z-50) painted above both the drawer and its
+          backdrop, and clicks passed through the backdrop. As a body portal
+          the pair uses the --z-drawer layer (backdrop first in DOM, same z:
+          the drawer paints above it and keeps receiving clicks). */}
+      {activeModal === "history" &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[var(--z-drawer)] bg-black/20"
+              onClick={closeModal}
+            />
+            <div className="fixed top-topbar right-0 bottom-0 w-80 bg-bg-1 border-l border-border z-[var(--z-drawer)] shadow-lg animate-in slide-in-from-right duration-200">
+              <div className="flex items-center justify-between p-3 border-b border-border">
+                <Text type="body" weight="bold" className="text-sm text-fg">
+                  {t("Action history")}</Text>
+                <ToolcraftIconButton
+                  label={t("Close action history")}
+                  icon={<X size={14} aria-hidden />}
+                  size="sm"
+                  variant="ghost"
+                  onClick={closeModal}
+                  className="p-1.5 rounded hover:bg-hover text-fg-3 hover:text-fg transition-colors"
+                />
+              </div>
+              <div className="h-[calc(100%-49px)]">
+                <HistoryPanel />
+              </div>
             </div>
-            <div className="h-[calc(100%-49px)]">
-              <HistoryPanel />
-            </div>
-          </div>
-        </>
-      )}
+          </>,
+          document.body,
+        )}
     </header>
   );
 };

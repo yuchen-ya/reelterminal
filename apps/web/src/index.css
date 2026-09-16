@@ -30,6 +30,19 @@
     --topbar-h: 40px;
     --toolnav-h: 64px;
 
+    /* Cross-region floating layers. Anything that must overlap editor
+       regions portals to document.body and takes its z from this ladder:
+       body portals sit outside every in-app stacking context (desktop shell
+       `isolate`, web header `z-30`, web editor root `z-20`), so in-app z
+       values — however large — can never interleave with them. Regional
+       layers (timeline toolbars, drag overlays, playhead) keep their
+       local z values and never enter this ladder. The remaining magic
+       z-* values are unified into this ladder in a later change. */
+    --z-drawer: 500;  /* side drawers + their click-away backdrop (backdrop first in DOM, same value) */
+    --z-popover: 600; /* cross-region popovers / anchored panels */
+    --z-dialog: 800;  /* app-rendered modal dialogs */
+    --z-toast: 900;   /* toast notifications (topmost app layer) */
+
     color-scheme: dark;
   }
 

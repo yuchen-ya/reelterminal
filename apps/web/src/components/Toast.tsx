@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, CheckCircle2, XCircle, AlertTriangle, Info } from "@/icons/lucide-compat";
 import {
@@ -214,9 +215,14 @@ export const ToastContainer: React.FC = () => {
   const { t } = useTranslation();
   const { notifications, removeNotification } = useNotificationStore();
 
-  return (
+  // Portal to document.body: inside the desktop shell's `isolate` stacking
+  // context any body-level portal (Radix menus, dialogs) painted above the
+  // toast no matter its z value, and Radix's z-[9999] menus outranked it even
+  // in the un-isolated web tree. At body level the --z-toast ladder value
+  // orders it above drawers, popovers, app dialogs and FloatingWindow.
+  return createPortal(
     <div
-      className="fixed top-4 right-4 z-[9999] flex flex-col gap-3"
+      className="fixed top-4 right-4 z-[var(--z-toast)] flex flex-col gap-3"
       role="region"
       aria-label={t("Notifications")}
     >
@@ -229,7 +235,8 @@ export const ToastContainer: React.FC = () => {
           />
         ))}
       </AnimatePresence>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
