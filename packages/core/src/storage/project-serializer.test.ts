@@ -21,6 +21,7 @@ import {
   normalizeProjectCreationFields,
   normalizeProjectMarkerFields,
   normalizeProjectMarkers,
+  normalizeProjectMediaFields,
   normalizeProjectMotionFields,
 } from "./project-serializer";
 import { createCreationScene, createEmptyCreationState } from "../creation";
@@ -481,5 +482,82 @@ describe("ProjectSerializer project markers", () => {
       "marker-r",
     ]);
     expect(normalized.nextNumber).toBe(5);
+  });
+});
+
+const makeMediaItem = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id: "media-1",
+  name: "take-01.mp4",
+  type: "video",
+  fileHandle: null,
+  blob: null,
+  metadata: {
+    duration: 6,
+    width: 320,
+    height: 180,
+    frameRate: 10,
+    codec: "h264",
+    sampleRate: 0,
+    channels: 0,
+    fileSize: 10,
+  },
+  thumbnailUrl: null,
+  waveformData: null,
+  ...overrides,
+});
+
+describe("ProjectSerializer media displayName", () => {
+  it("round-trips a renamed media item through export/import", () => {
+    const serializer = new ProjectSerializer(new MemoryStorageEngine());
+    const project = makeProject({
+      mediaLibrary: {
+        items: [
+          makeMediaItem({ displayName: "中文片头" }),
+          makeMediaItem({ id: "media-2", name: "b-roll.mp4" }),
+        ],
+      } as unknown as Project["mediaLibrary"],
+    });
+
+    const imported = serializer.importFromJson(
+      serializer.exportToJson(project),
+    );
+
+    expect(imported.mediaLibrary.items).toHaveLength(2);
+    expect(imported.mediaLibrary.items[0]?.displayName).toBe("中文片头");
+    expect(imported.mediaLibrary.items[0]?.name).toBe("take-01.mp4");
+    // Old-style item without displayName stays untouched.
+    expect(imported.mediaLibrary.items[1]?.displayName).toBeUndefined();
+  });
+
+  it("drops an invalid displayName on import and keeps the source filename", () => {
+    const serializer = new ProjectSerializer(new MemoryStorageEngine());
+    const project = makeProject({
+      mediaLibrary: {
+        items: [
+          makeMediaItem({ displayName: 42 }),
+          makeMediaItem({ id: "media-2", name: "blank.mp4", displayName: "   " }),
+        ],
+      } as unknown as Project["mediaLibrary"],
+    });
+
+    const imported = serializer.importFromJson(
+      serializer.exportToJson(project),
+    );
+
+    expect(imported.mediaLibrary.items[0]?.displayName).toBeUndefined();
+    expect(imported.mediaLibrary.items[0]?.name).toBe("take-01.mp4");
+    expect(imported.mediaLibrary.items[1]?.displayName).toBeUndefined();
+    expect(imported.mediaLibrary.items[1]?.name).toBe("blank.mp4");
+  });
+
+  it("normalizeProjectMediaFields leaves projects without displayName untouched", () => {
+    const item = makeMediaItem();
+    const project = makeProject({
+      mediaLibrary: { items: [item] } as unknown as Project["mediaLibrary"],
+    });
+
+    const normalized = normalizeProjectMediaFields(project);
+
+    expect(normalized).toBe(project);
   });
 });

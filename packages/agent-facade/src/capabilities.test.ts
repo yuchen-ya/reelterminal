@@ -115,6 +115,7 @@ describe("capabilities.get / session.describe", () => {
       "reference.clearComparison",
       "media.replace",
       "media.relink",
+      "media.rename",
     ]);
     expect(res.value.editOps).toEqual([...EDIT_OP_TYPES]);
     expect(res.value.stateModel).toEqual({

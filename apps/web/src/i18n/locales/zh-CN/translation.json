@@ -22,7 +22,13 @@
     "ffmpegLoadFailedTitle": "FFmpeg.wasm 核心加载失败",
     "ffmpegLoadFailedDetail": "无法检测多音轨。请检查网络连接后重新执行“分离音频”即可重试。",
     "importFailedTitle": "媒体导入失败",
-    "importFailedDetail": "该文件无法导入。"
+    "importFailedDetail": "该文件无法导入。",
+    "renameAction": "重命名",
+    "renameAriaLabel": "重命名媒体",
+    "renameEmpty": "媒体名称不能为空",
+    "renameFailedTitle": "媒体重命名失败",
+    "searchPlaceholder": "搜索项目媒体",
+    "sourceFileLabel": "源文件"
   },
   "motion": {
     "text3dFontFailedTitle": "3D 文字字体加载失败",

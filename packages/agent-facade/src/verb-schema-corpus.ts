@@ -218,6 +218,16 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
     },
     {
+      name: "valid media.rename",
+      params: { ops: [{ op: "media.rename", mediaId: "m1", displayName: "片头配音 v3" }] },
+      expectValid: true,
+    },
+    {
+      name: "media.rename rejects a blank displayName",
+      params: { ops: [{ op: "media.rename", mediaId: "m1", displayName: "   " }] },
+      expectValid: false,
+    },
+    {
       name: "valid subtitle.importSrt",
       params: { ops: [{ op: "subtitle.importSrt", srtContent: "1\n00:00:00,000 --> 00:00:01,000\nHello" }] },
       expectValid: true,

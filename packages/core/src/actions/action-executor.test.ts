@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ActionExecutor } from "./action-executor";
 import type { Project } from "../types/project";
+import { mediaDisplayName } from "../types/project";
 import type { Action } from "../types/actions";
 import { registerActionHandler } from "./registry";
 
@@ -861,6 +862,48 @@ describe("ActionExecutor track/rename", () => {
     const redo = await executor.redo(project);
     expect(redo.success).toBe(true);
     expect(project.timeline.tracks[0].name).toBe("Main Camera");
+  });
+});
+
+describe("ActionExecutor media/rename (display name)", () => {
+  it("writes only the display name and restores the prior display on undo/redo", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProject();
+    project.mediaLibrary.items.push({
+      id: "m1",
+      name: "take-01.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      metadata: {},
+      thumbnailUrl: null,
+      waveformData: null,
+    } as never);
+
+    const result = await executor.execute(
+      {
+        id: "mr-1",
+        type: "media/rename",
+        params: { mediaId: "m1", name: "中文片头" },
+        timestamp: Date.now(),
+      } as unknown as Action,
+      project,
+    );
+    expect(result.success).toBe(true);
+    // Only displayName changes; the source filename is preserved.
+    const renamed = project.mediaLibrary.items[0];
+    expect(renamed.displayName).toBe("中文片头");
+    expect(renamed.name).toBe("take-01.mp4");
+    expect(mediaDisplayName(renamed)).toBe("中文片头");
+
+    await executor.undo(project);
+    const undone = project.mediaLibrary.items[0];
+    expect(mediaDisplayName(undone)).toBe("take-01.mp4");
+    expect(undone.name).toBe("take-01.mp4");
+
+    const redo = await executor.redo(project);
+    expect(redo.success).toBe(true);
+    expect(mediaDisplayName(project.mediaLibrary.items[0])).toBe("中文片头");
   });
 });
 

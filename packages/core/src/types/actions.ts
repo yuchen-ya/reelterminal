@@ -123,6 +123,12 @@ export type MediaAction =
       };
     }
   | { type: "media/delete"; params: { mediaId: string } }
+  /**
+   * Rename a media item's user-facing DISPLAY name. `name` here is the new
+   * display name; the item's source filename (`MediaItem.name`) and the real
+   * file on disk are never touched. Undo restores the previously displayed
+   * name (explicit displayName, or the source filename fallback).
+   */
   | { type: "media/rename"; params: { mediaId: string; name: string } }
   /**
    * Relink a missing/moved source FILE: only the file reference changes —

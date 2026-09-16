@@ -95,6 +95,7 @@ function indexProject(project: Project): Map<string, IndexedEntity> {
   for (const media of project.mediaLibrary.items) {
     put("media", media.id, {
       name: media.name,
+      displayName: media.displayName,
       type: media.type,
       originalUrl: media.originalUrl,
       sourceFile: media.sourceFile,

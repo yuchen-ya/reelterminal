@@ -132,6 +132,7 @@ function allCandidates(project: Project): Candidate[] {
       endTime: null,
       data: {
         name: media.name,
+        ...(media.displayName ? { displayName: media.displayName } : {}),
         type: media.type,
         duration: media.metadata.duration,
       },
@@ -329,6 +330,7 @@ export const TIMELINE_QUERY_ENTITY_TYPES: readonly TimelineQueryEntityType[] = [
 
 export const TIMELINE_QUERY_FIELDS: readonly TimelineQueryField[] = [
   "name",
+  "displayName",
   "type",
   "trackId",
   "mediaId",

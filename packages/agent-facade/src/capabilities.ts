@@ -378,6 +378,10 @@ export async function buildCapabilities(
         available: true,
         details: { op: "track.update", fields: ["name", "locked", "hidden", "muted", "solo"] },
       },
+      mediaRename: {
+        available: true,
+        details: { op: "media.rename", field: "displayName", maxNameLength: 120 },
+      },
       transformKeyframes: {
         available: true,
         details: { op: "clip.setKeyframes", properties: ["opacity", "position.x", "position.y", "scale.x", "scale.y", "rotation"], maxKeyframes: 100 },

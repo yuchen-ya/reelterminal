@@ -64,6 +64,7 @@ import {
   REFERENCE_CLEAR_COMPARISON_SCHEMA,
   MEDIA_REPLACE_SCHEMA,
   MEDIA_RELINK_SCHEMA,
+  MEDIA_RENAME_SCHEMA,
   CLIP_SET_KEYFRAMES_SCHEMA,
 } from "./ops";
 import {
@@ -535,6 +536,7 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "reference.clearComparison": REFERENCE_CLEAR_COMPARISON_SCHEMA,
   "media.replace": MEDIA_REPLACE_SCHEMA,
   "media.relink": MEDIA_RELINK_SCHEMA,
+  "media.rename": MEDIA_RENAME_SCHEMA,
 };
 
 /**

@@ -22,7 +22,13 @@
     "ffmpegLoadFailedTitle": "FFmpeg.wasm core failed to load",
     "ffmpegLoadFailedDetail": "Multi-channel audio detection is unavailable. Check your connection, then run Separate Audio again to retry.",
     "importFailedTitle": "Media import failed",
-    "importFailedDetail": "The file could not be imported."
+    "importFailedDetail": "The file could not be imported.",
+    "renameAction": "Rename",
+    "renameAriaLabel": "Rename media",
+    "renameEmpty": "Media name cannot be empty",
+    "renameFailedTitle": "Rename media failed",
+    "searchPlaceholder": "Search project media",
+    "sourceFileLabel": "Source file"
   },
   "motion": {
     "text3dFontFailedTitle": "3D text font failed to load",

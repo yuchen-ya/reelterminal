@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Image as ImageIcon, Film, Music, Plus, Upload, Trash2,
   Square, Circle, Triangle, Star, ArrowRight, Hexagon, FileCode, AlertTriangle,
-  RefreshCw, Palette, Video, BookMarked,
+  RefreshCw, Palette, Video, BookMarked, Search, Pencil,
   Type, Shapes, Wand2, LayoutTemplate, Zap, Shuffle,
 } from "@/icons/lucide-compat";
 import {
@@ -12,6 +12,7 @@ import {
   type BackgroundPreset,
 } from "../../services/background-generator";
 import type { ShapeType, TextStyle } from "@openreel/core";
+import { mediaDisplayName } from "@openreel/core";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useTimelineStore } from "../../stores/timeline-store";
@@ -256,23 +257,36 @@ const MediaThumbnail: React.FC<{
   item: MediaItem;
   isSelected: boolean;
   viewMode: MediaViewMode;
+  /** True when another project media item resolves to the same display name. */
+  hasNameConflict: boolean;
   onSelect: () => void;
   onDelete: () => void;
   onReplace: () => void;
+  onRename: (name: string) => Promise<boolean>;
   onDragStart: (e: React.DragEvent) => void;
   onAddToTimeline: () => void;
 }> = ({
   item,
   isSelected,
   viewMode,
+  hasNameConflict,
   onSelect,
   onDelete,
   onReplace,
+  onRename,
   onDragStart,
   onAddToTimeline,
 }) => {
   const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const resolvedName = mediaDisplayName(item);
+  // Same-name items are distinguished by a short id suffix next to the label;
+  // the tooltip always carries the full id and the source filename.
+  const nameTitle = item.displayName
+    ? `${resolvedName}\n${t("media.sourceFileLabel")}: ${item.sourceFile?.name ?? item.name}\nID: ${item.id}`
+    : `${resolvedName}\nID: ${item.id}`;
   const projectMarkers = useProjectStore((state) => state.project.markers);
   const reviewMarkers = findMarkersForEntity(projectMarkers, {
     mediaId: item.id,
@@ -282,11 +296,79 @@ const MediaThumbnail: React.FC<{
     mediaId: item.id,
   });
 
+  const startRename = useCallback(() => {
+    setNameDraft(resolvedName);
+    setIsRenaming(true);
+  }, [resolvedName]);
+
+  const commitRename = useCallback(
+    (viaBlur: boolean) => {
+      const trimmed = nameDraft.trim();
+      if (!trimmed) {
+        // Empty names are rejected with an explicit prompt; Enter keeps the
+        // editor open, clicking away closes it without applying anything.
+        toast.error(t("media.renameEmpty"));
+        if (viaBlur) {
+          setIsRenaming(false);
+          setNameDraft("");
+        }
+        return;
+      }
+      setIsRenaming(false);
+      setNameDraft("");
+      void onRename(trimmed);
+    },
+    [nameDraft, onRename, t],
+  );
+
+  const renameKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commitRename(false);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        setIsRenaming(false);
+        setNameDraft("");
+      }
+    },
+    [commitRename],
+  );
+
+  const handleCardKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (event.key === "F2" && !isRenaming) {
+        event.preventDefault();
+        event.stopPropagation();
+        startRename();
+      }
+    },
+    [isRenaming, startRename],
+  );
+
+  const renameInput = (
+    <input
+      autoFocus
+      aria-label={t("media.renameAriaLabel")}
+      maxLength={120}
+      value={nameDraft}
+      onChange={(event) => setNameDraft(event.currentTarget.value)}
+      onBlur={() => commitRename(true)}
+      onKeyDown={renameKeyDown}
+      className="w-full min-w-0 rounded-md border border-accent bg-bg-1 px-1.5 py-0.5 text-[12px] font-medium text-fg outline-none"
+    />
+  );
+
   const contextMenuItems: ContextMenuOption[] = [
     {
       label: t("agentReferences.add"),
       icon: <Hash size={14} aria-hidden />,
       onClick: () => markAgentReferenceForMedia(item),
+    },
+    {
+      label: t("media.renameAction"),
+      icon: <Pencil size={14} aria-hidden />,
+      onClick: startRename,
     },
     {
       label: t("material.saveToLibrary"),
@@ -399,6 +481,7 @@ const MediaThumbnail: React.FC<{
           onDragStart={onDragStart}
           onClick={onSelect}
           onDoubleClick={(e) => { e.stopPropagation(); onAddToTimeline(); }}
+          onKeyDown={handleCardKeyDown}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
           className={`relative flex items-center gap-3 px-2 py-1.5 rounded-lg border-2 cursor-pointer transition-all group ${borderClass}`}
@@ -408,7 +491,7 @@ const MediaThumbnail: React.FC<{
         {/* Small thumbnail */}
         <div className="w-12 h-8 rounded-md bg-bg-2 relative overflow-hidden flex-shrink-0">
           {item.thumbnailUrl ? (
-            <img src={item.thumbnailUrl} alt={t(item.name)} className="w-full h-full object-cover" />
+            <img src={item.thumbnailUrl} alt={resolvedName} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <Icon size={14} className={iconColor} />
@@ -423,12 +506,20 @@ const MediaThumbnail: React.FC<{
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div
-            className={`text-[12px] truncate font-medium ${isSelected ? "text-accent" : "text-fg-2"}`}
-            title={t(item.name)}
-          >
-            {item.name}
-          </div>
+          {isRenaming ? (
+            renameInput
+          ) : (
+            <div
+              className={`text-[12px] truncate font-medium ${isSelected ? "text-accent" : "text-fg-2"}`}
+              title={nameTitle}
+              onDoubleClick={(e) => { e.stopPropagation(); startRename(); }}
+            >
+              {resolvedName}
+              {hasNameConflict && (
+                <span className="ml-1 text-[9px] font-normal text-fg-muted">{item.id.slice(0, 6)}</span>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-1.5 text-[9px] text-fg-muted">
             {item.metadata?.duration && <span>{formatDuration(item.metadata.duration)}</span>}
             {item.metadata?.duration && formatResolution() && <span>•</span>}
@@ -500,6 +591,7 @@ const MediaThumbnail: React.FC<{
           e.stopPropagation();
           onAddToTimeline();
         }}
+        onKeyDown={handleCardKeyDown}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         className={`h-[78px] bg-bg-2 rounded-lg border relative group cursor-pointer transition-all overflow-hidden ${borderClass}`}
@@ -510,7 +602,7 @@ const MediaThumbnail: React.FC<{
         {item.thumbnailUrl ? (
           <img
             src={item.thumbnailUrl}
-            alt={t(item.name)}
+            alt={resolvedName}
             className="w-full h-full object-cover"
           />
         ) : (
@@ -563,12 +655,20 @@ const MediaThumbnail: React.FC<{
       </div>
 
       {/* Filename below thumbnail */}
-      <div
-        className="text-[12px] truncate font-medium text-fg-2 mt-1.5"
-        title={t(item.name)}
-      >
-        {item.name}
-      </div>
+      {isRenaming ? (
+        <div className="mt-1.5">{renameInput}</div>
+      ) : (
+        <div
+          className="text-[12px] truncate font-medium text-fg-2 mt-1.5"
+          title={nameTitle}
+          onDoubleClick={startRename}
+        >
+          {resolvedName}
+          {hasNameConflict && (
+            <span className="ml-1 text-[9px] font-normal text-fg-muted">{item.id.slice(0, 6)}</span>
+          )}
+        </div>
+      )}
     </div>
     </ContextMenu>
   );
@@ -648,6 +748,7 @@ export const AssetsPanel: React.FC = () => {
     project,
     importMedia,
     deleteMedia,
+    renameMedia,
     replaceMediaAsset,
     updateSettings,
   } = useProjectStore();
@@ -661,17 +762,55 @@ export const AssetsPanel: React.FC = () => {
     (item) => item.isPlaceholder,
   ).length;
 
-  // Filter media items by the missing-assets toggle, then optional sort
+  // Project media search: matches the user-facing display name, falling back
+  // to the source filename for items never renamed (mediaDisplayName resolves
+  // displayName ?? name).
+  const [mediaSearch, setMediaSearch] = useState("");
+  const normalizedMediaSearch = mediaSearch.trim().toLowerCase();
+
+  // Filter media items by the missing-assets toggle and the search box, then optional sort
   const baseFilteredItems = mediaItems.filter((item) =>
     showOnlyMissing ? item.isPlaceholder : true,
+  ).filter((item) =>
+    normalizedMediaSearch
+      ? mediaDisplayName(item).toLowerCase().includes(normalizedMediaSearch)
+      : true,
   );
   const filteredItems =
     sortOrder === "none"
       ? baseFilteredItems
       : [...baseFilteredItems].sort((a, b) => {
-          const comparison = a.name.localeCompare(b.name);
+          const comparison = mediaDisplayName(a).localeCompare(mediaDisplayName(b));
           return sortOrder === "desc" ? -comparison : comparison;
         });
+
+  // Items whose resolved display name collides with another item get a short
+  // id suffix so same-named assets stay distinguishable in the panel.
+  const duplicateNameIds = useMemo(() => {
+    const nameCounts = new Map<string, number>();
+    for (const item of mediaItems) {
+      const key = mediaDisplayName(item);
+      nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+    }
+    const ids = new Set<string>();
+    for (const item of mediaItems) {
+      if ((nameCounts.get(mediaDisplayName(item)) ?? 0) > 1) ids.add(item.id);
+    }
+    return ids;
+  }, [mediaItems]);
+
+  // Handle media rename (display name only; source filename and file untouched)
+  const handleRenameMedia = useCallback(
+    async (itemId: string, nextName: string): Promise<boolean> => {
+      const result = await renameMedia(itemId, nextName);
+      if (!result.success) {
+        toast.error(t("media.renameFailedTitle"), result.error?.message ?? "");
+        return false;
+      }
+      return true;
+    },
+    [renameMedia, t],
+  );
 
   // Handle file import with loading state
   const handleFileImport = useCallback(
@@ -1035,6 +1174,16 @@ export const AssetsPanel: React.FC = () => {
                   </svg>
                 </button>
               </div>
+
+              <div className="flex items-center gap-2 mb-[18px] rounded-[9px] border border-border bg-bg px-2.5 py-1.5">
+                <Search size={13} className="shrink-0 text-fg-3" aria-hidden />
+                <input
+                  value={mediaSearch}
+                  placeholder={t("media.searchPlaceholder")}
+                  onChange={(event) => setMediaSearch(event.target.value)}
+                  className="w-full bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-3"
+                />
+              </div>
             </div>
 
             {missingAssetsCount > 0 && (
@@ -1090,9 +1239,11 @@ export const AssetsPanel: React.FC = () => {
                         item={item}
                         isSelected={isSelected(item.id)}
                         viewMode="large"
+                        hasNameConflict={duplicateNameIds.has(item.id)}
                         onSelect={() => handleSelectItem(item.id)}
                         onDelete={() => handleDeleteItem(item.id)}
                         onReplace={() => handleReplaceAsset(item.id)}
+                        onRename={(name) => handleRenameMedia(item.id, name)}
                         onDragStart={(e) => handleItemDragStart(e, item)}
                         onAddToTimeline={() => handleAddToTimeline(item)}
                       />

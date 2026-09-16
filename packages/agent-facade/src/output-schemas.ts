@@ -325,6 +325,7 @@ const capabilities = (): OutputSchemaNode =>
         Object.fromEntries([
           "subtitles",
           "trackControls",
+          "mediaRename",
           "transformKeyframes",
           "volumeKeyframes",
           "basicColorGrade",
@@ -342,6 +343,7 @@ const capabilities = (): OutputSchemaNode =>
         [
           "subtitles",
           "trackControls",
+          "mediaRename",
           "transformKeyframes",
           "volumeKeyframes",
           "basicColorGrade",

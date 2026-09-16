@@ -244,10 +244,36 @@ export function normalizeProjectMarkerFields(project: Project): Project {
   };
 }
 
+/**
+ * Defensive repair for stored media items: an invalid `displayName` (wrong
+ * type or blank after trim) is dropped so display sites fall back to the
+ * source filename. Everything else passes through untouched — old projects
+ * without displayName are unaffected.
+ */
+export function normalizeProjectMediaFields(project: Project): Project {
+  const items = project.mediaLibrary?.items;
+  if (!Array.isArray(items)) return project;
+  let changed = false;
+  const normalizedItems = items.map((item: MediaItem) => {
+    if (
+      item.displayName === undefined ||
+      (typeof item.displayName === "string" && item.displayName.trim().length > 0)
+    ) {
+      return item;
+    }
+    changed = true;
+    const { displayName: _invalid, ...rest } = item;
+    return rest as MediaItem;
+  });
+  return changed ? { ...project, mediaLibrary: { items: normalizedItems } } : project;
+}
+
 export function normalizeProjectStoredFields(project: Project): Project {
-  return normalizeProjectMarkerFields(
-    normalizeProjectGeneratedShaderFields(
-      normalizeProjectCreationFields(normalizeProjectMotionFields(project)),
+  return normalizeProjectMediaFields(
+    normalizeProjectMarkerFields(
+      normalizeProjectGeneratedShaderFields(
+        normalizeProjectCreationFields(normalizeProjectMotionFields(project)),
+      ),
     ),
   );
 }

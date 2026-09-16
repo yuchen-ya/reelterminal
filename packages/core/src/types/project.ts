@@ -92,6 +92,15 @@ export interface ProjectMarkersState {
 export interface MediaItem {
   readonly id: string;
   readonly name: string;
+  /**
+   * User-facing display name, decoupled from `name` (which keeps the
+   * import-time source-filename semantics). Optional for backward
+   * compatibility: projects stored before this field existed fall back to
+   * `name` at every display site (see mediaDisplayName). Renaming never
+   * touches the file on disk or any path resolution — bytes are addressed
+   * by `id`.
+   */
+  readonly displayName?: string;
   readonly type: "video" | "audio" | "image";
   readonly fileHandle: FileSystemFileHandle | null;
   readonly blob: Blob | null;
@@ -129,6 +138,17 @@ export interface MediaItem {
     readonly replacedAt: string;
     readonly replacedBy?: "user" | "agent";
   };
+}
+
+/**
+ * Resolved user-facing label for a media item: the explicit displayName when
+ * one was set, otherwise the source filename. Every display/search site must
+ * go through this helper so old projects without displayName keep working.
+ */
+export function mediaDisplayName(
+  item: Pick<MediaItem, "name" | "displayName">,
+): string {
+  return item.displayName ?? item.name;
 }
 
 /** Thumbnail for filmstrip display in timeline */

@@ -72,6 +72,7 @@ import {
   type ReferenceClearComparisonOp,
   type MediaReplaceOp,
   type MediaRelinkOp,
+  type MediaRenameOp,
 } from "./types";
 import { validateReferenceComparisonConfig } from "@openreel/core/types/reference-comparison";
 import { timelineDurationSec } from "./projection";
@@ -1161,6 +1162,29 @@ export const MEDIA_RELINK_SCHEMA: ObjectSchema = {
   },
 };
 
+export const MEDIA_RENAME_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "media.rename",
+    describe: '"media.rename"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "media.rename" } },
+  },
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "the media item to rename",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  displayName: {
+    check: (value) =>
+      typeof value === "string" && value.trim().length > 0 && value.length <= 120,
+    describe:
+      "new display name, 1-120 characters (trimmed); the source filename and the file on disk are never changed",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1, maxLength: 120 } },
+  },
+};
+
 export const REFERENCE_SET_COMPARISON_SCHEMA: ObjectSchema = {
   op: {
     check: (value) => value === "reference.setComparison",
@@ -1533,6 +1557,8 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
     case "media.relink": {
       return validateObject<MediaRelinkOp>(raw, MEDIA_RELINK_SCHEMA, label);
     }
+    case "media.rename":
+      return validateObject<MediaRenameOp>(raw, MEDIA_RENAME_SCHEMA, label);
     default:
       // Unreachable: opType was allowlist-checked above. Keeps the function
       // total for the compiler and fail-closed for the runtime.
@@ -2670,6 +2696,33 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           mediaId: op.mediaId,
           originalUrl: op.filePath,
           sourceFile: facts,
+        }),
+      ];
+    }
+
+    case "media.rename": {
+      const item = draft.mediaLibrary.items.find((entry) => entry.id === op.mediaId);
+      if (!item) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `media.rename: media "${op.mediaId}" not found`,
+          { mediaId: op.mediaId },
+        );
+      }
+      const displayName = op.displayName.trim();
+      if (!displayName) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "media.rename: displayName cannot be empty",
+          { mediaId: op.mediaId },
+        );
+      }
+      // Same undoable action the GUI rename uses; only the display name
+      // changes — the source filename and the file on disk are untouched.
+      return [
+        makeAction("media/rename", {
+          mediaId: op.mediaId,
+          name: displayName,
         }),
       ];
     }

@@ -251,9 +251,12 @@ export class InverseActionGenerator {
         );
         if (!media) return null;
 
+        // Undo restores exactly what was displayed before the rename: the
+        // previous explicit displayName, or the source filename when no
+        // displayName existed yet.
         return this.createInverseAction(action, "media/rename", {
           mediaId: action.params.mediaId,
-          name: media.name,
+          name: media.displayName ?? media.name,
         });
       }
 

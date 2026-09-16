@@ -513,8 +513,14 @@ export class ActionExecutor {
 
       case "media/rename": {
         const params = action.params as { mediaId: string; name: string };
+        // `name` is the new DISPLAY name. The source filename (`item.name`)
+        // keeps its import-time semantics so relink/restore matching and the
+        // provenance story stay stable; display sites resolve
+        // displayName ?? name.
         mediaLibrary.items = mediaLibrary.items.map((item: MediaItem) =>
-          item.id === params.mediaId ? { ...item, name: params.name } : item,
+          item.id === params.mediaId
+            ? { ...item, displayName: params.name }
+            : item,
         );
         break;
       }

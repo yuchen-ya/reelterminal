@@ -307,6 +307,7 @@ export interface Capabilities {
   readonly professionalEditing: Readonly<{
     subtitles: CapabilityStatus;
     trackControls: CapabilityStatus;
+    mediaRename: CapabilityStatus;
     transformKeyframes: CapabilityStatus;
     volumeKeyframes: CapabilityStatus;
     basicColorGrade: CapabilityStatus;
@@ -718,6 +719,7 @@ export type TimelineQueryEntityType =
 
 export type TimelineQueryField =
   | "name"
+  | "displayName"
   | "type"
   | "trackId"
   | "mediaId"
@@ -904,6 +906,7 @@ export const EDIT_OP_TYPES = [
   "reference.clearComparison",
   "media.replace",
   "media.relink",
+  "media.rename",
 ] as const;
 
 export type EditOpType = (typeof EDIT_OP_TYPES)[number];
@@ -953,6 +956,19 @@ export interface TrackRemoveOp {
 export interface MediaRemoveOp {
   readonly op: "media.remove";
   readonly mediaId: string;
+}
+
+/**
+ * Rename ONE media item's user-facing display name. The source filename
+ * (`MediaItem.name`) and the file on disk are never touched; display sites
+ * resolve displayName ?? name, so old projects without a displayName keep
+ * showing the source filename.
+ */
+export interface MediaRenameOp {
+  readonly op: "media.rename";
+  readonly mediaId: string;
+  /** New display name: 1..120 characters after trim. */
+  readonly displayName: string;
 }
 
 export interface ClipAddOp {
@@ -1255,7 +1271,8 @@ export type EditOp =
   | ReferenceSetComparisonOp
   | ReferenceClearComparisonOp
   | MediaReplaceOp
-  | MediaRelinkOp;
+  | MediaRelinkOp
+  | MediaRenameOp;
 
 export interface EditApplyParams {
   readonly ops: readonly EditOp[];
