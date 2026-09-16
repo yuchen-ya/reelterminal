@@ -63,7 +63,8 @@ implemented features, reusable foundations, and remaining integration work.
   `editor_control`). `session_describe` reports the same 39 verbs.
 
   In live mode, project creation/open remain GUI-owned. An Agent can import
-  local video and audio from the roots reported by `capabilities.get`; the
+  local video, audio, and image files (PNG, JPEG, GIF, WebP) from the roots
+  reported by `capabilities.get`; the
   media appears immediately in the open GUI project and uses the shared undo
   history. The other tools operate on that same project through the live bridge.
 - Live revision and context checks, one-writer lease semantics, independent
@@ -88,7 +89,8 @@ implemented features, reusable foundations, and remaining integration work.
   review markers, SRT subtitle import, temperature/tint grading, fixed-key
   chroma keying (green screen), local audio noise reduction, self-contained
   SVG overlay creation/update/removal on graphics tracks, media source
-  replace/relink, review comparisons, and supported transform/opacity
+  replace/relink, review comparisons, project-scoped work-asset capture
+  and reuse, and supported transform/opacity
   keyframes. Creation operations report their
   real ids so an Agent can continue editing them in later calls.
 - Users can mark audio, video, text, media, and graphics entities as stable
@@ -271,7 +273,7 @@ reads `~/.openreel/live-endpoint.json` inside the connector process to discover
 the current loopback endpoint.
 
 The external Agent and the user remain equal peers over the same GUI project.
-The Agent can import local video/audio, inspect context, use stable references,
+The Agent can import local video/audio/images, inspect context, use stable references,
 edit, preview, export, and verify through the live facade; the user keeps direct
 GUI control and the shared undo path. `capabilities_get` reports the absolute
 media roots allowed by the desktop host. Its `mediaImport.recommendedRoot`

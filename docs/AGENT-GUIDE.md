@@ -122,6 +122,20 @@ first (live sessions only; headless is honestly UNSUPPORTED). Key rules:
 See [`MATERIAL-LIBRARY.md`](MATERIAL-LIBRARY.md) for the full model, persistence
 format, and a worked search → batch-organize → attach example.
 
+## Project-scoped work assets
+
+Work assets are the project-level counterpart of the user-level material
+library: named clip snapshots (source media, range, speed, effects,
+keyframes) stored inside the open project and saved/undone with it — not
+cross-project user state. The GUI offers "Save to work asset" in a clip's
+context menu and a Work tab in the assets panel; Agents use the
+`workAsset.capture`/`rename`/`delete`/`instantiate` edit ops and read
+assets back from `timeline_query` workAsset entities. Instantiating an
+asset whose source media has left the project fails `NOT_FOUND` (the
+message text tells it apart from an unknown id), and neither capture nor
+instantiate carries any cross-session byte-retention promise — do not
+claim one to the user.
+
 ## User-level custom fonts
 
 `font_upload`/`font_list` manage the user's custom font families — user

@@ -277,6 +277,16 @@ The live host must provide absolute `mediaRoots` and implement that JSON-safe
 bridge; its revision CAS and one undo group are part of the seam contract.
 The facade does not send browser `File`/`Blob` objects across the bridge.
 
+Static images are accepted as a third import type: `PNG`, `JPEG`, `GIF`,
+and `WebP`. Image files are classified by extension and then validated by
+content (magic-number sniffing plus header dimension parsing — the
+mediabunny container probe is not used), and report the same metadata
+shape as GUI image imports (`duration` 0, no video/audio tracks).
+Recognized-but-unsupported image extensions (bmp, tiff, avif, svg, …)
+fail with an explicit `Unsupported media:` error naming the supported
+formats; image bytes hidden behind a non-image extension fall through to
+the container path and are rejected there.
+
 ## Custom fonts (`font.upload` / `font.list`)
 
 `font.upload` registers a user-level custom font through the same renderer
@@ -326,7 +336,16 @@ formats, and limits.
   and `svg.create`/`svg.update`/`svg.remove` (self-contained inline SVG on
   graphics tracks — the shared core ingest gate rejects scripts, foreign
   objects, event handlers, unsafe URL schemes, external references, and
-  documents over 2 MiB or 10,000 elements). Capability data names the
+  documents over 2 MiB or 10,000 elements), `workAsset.capture` (snapshot
+  one timeline clip into a project-scoped reusable work asset; read assets
+  back via `timeline.query` workAsset entities — capture reports no
+  createdIds), `workAsset.rename`/`workAsset.delete` (by `workAssetId`;
+  deletion never touches placed instances or project media), and
+  `workAsset.instantiate` (place a fresh independent clip — optional
+  existing same-type `trackId` (`CONFLICT` on mismatch) or a new
+  same-type track, optional `startTime` defaulting to the timeline end;
+  a missing source media fails `NOT_FOUND`, distinguishable from the
+  unknown-id case only by the message text). Capability data names the
   remaining professional gaps instead of exposing no-op
   schemas.
 

@@ -122,7 +122,7 @@ the live tool/context surface.
 
 The live facade exposes the same 39-tool catalog in the desktop loopback MCP
 endpoint. In live mode, project creation/open are listed but unavailable
-because the GUI owns the open project. Local video/audio import is available
+because the GUI owns the open project. Local video/audio/image import is available
 from the configured media roots and uses the shared GUI undo history.
 Live reads and edits travel through the renderer bridge, with context/revision
 checks, a single external writer lease, action activity events, and one shared

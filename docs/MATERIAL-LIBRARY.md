@@ -15,6 +15,21 @@ them.
   `material_undo`). Headless sessions honestly report them UNSUPPORTED —
   the library lives in the GUI renderer's persistent storage.
 
+## Not the same as project work assets
+
+The assets panel also has a project-scoped **Work** tab, fed by
+"Save to work asset" in a timeline clip's context menu (Agent side: the
+`workAsset.*` edit ops). A work asset is a snapshot of one clip — its
+source media, range, speed, effects, and keyframes — stored INSIDE the
+open project: it saves, undoes, and reopens with the project, and
+instantiating it clones the snapshot into a new timeline clip. That is a
+different mechanism from the library on this page, which is user-level
+and cross-project, references original files instead of snapshotting
+clips, and keeps its own journal and undo. The two systems do not copy to
+each other: `material_attach` imports a library record into the project,
+while work-asset instantiation only reuses material that is already in
+the project.
+
 ## Resource model
 
 Every record (`packages/core/src/material/types.ts`) carries:

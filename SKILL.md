@@ -131,7 +131,8 @@ transcription, beat detection, or automatic pacing analysis. See
 
 The live facade reports GUI-owned project lifecycle operations honestly as
 unavailable (`project_create` and `project_open`). `media_import` accepts an
-absolute local video/audio path under a root reported by
+absolute local video, audio, or image path (PNG, JPEG, GIF, WebP) under a
+root reported by
 `capabilities_get.mediaImport.mediaRoots`, imports it into the open canonical
 GUI project, and returns the `mediaId` used by later `clip.add` edits. The media
 panel updates immediately and the user can undo the import through the normal
@@ -358,7 +359,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `project_get_state` | Full canonical dump (Decision 8) |
 | `project_changes` | Bounded paged entity/field changes since a revision; explicit full-refresh fallback |
 | `media_import_preflight` | Cheap root/stat/size precheck; codec decodability remains unchecked |
-| `media_import` | Path inside `mediaRoots`; URLs refused |
+| `media_import` | Path inside `mediaRoots` (video, audio, or image); URLs refused |
 | `media_analyze_start` | Start a generalized async analysis job after checking per-type capabilities |
 | `media_inspect` | Read-only source-video sampling by `mediaId`, `startSec`, `endSec`; 1–12 budget-fitted frames (PNG, or JPEG per `maxFrameBytes`) with `frames[].fidelity`, and optional contact sheet, even before timeline placement |
 | `timeline_get` | Compact view — preferred read |
@@ -436,7 +437,7 @@ and `{projectId, projectName, windowId}`.
 
 ### The `edit_apply` op vocabulary
 
-Thirty-seven ops, one atomic batch each call (the exact fields and bounds live in
+Forty-one ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
 - `track.add` — create a track (`trackType`); `track.remove` — remove an empty
@@ -562,6 +563,33 @@ Thirty-seven ops, one atomic batch each call (the exact fields and bounds live i
   `anchor`; omitted fields keep their values) or remove it; unknown ids
   fail `NOT_FOUND`. Color-style and entry/exit animation edits stay
   GUI-side for now; capability data names the gap.
+- `workAsset.capture` — save one timeline clip as a reusable PROJECT work
+  asset: a named snapshot of its source media, source range, speed,
+  effects, audio effects, keyframes, and transform. Required `clipId`;
+  optional `name` (1..200 characters after trim — derived from the source
+  media's display name when omitted) and optional `captureRequestId`
+  (echoed onto the asset for traceability only; retry safety still comes
+  from `edit_apply`'s `idempotencyKey`). Engine-generated overlays (text,
+  shape, svg, sticker, motion) and placeholder media fail `UNSUPPORTED`;
+  a degenerate source range or empty name fails `INVALID_PARAMS`. Capture
+  creates no timeline entities, so `createdIds` is empty — read the new
+  asset back from `timeline_query` workAsset entities. Work assets are
+  project state (saved, undone, and reopened with the project), unlike
+  the user-level `material_*` library.
+- `workAsset.rename` / `workAsset.delete` — rename or remove one work asset
+  by `workAssetId`; unknown ids fail `NOT_FOUND`. Deleting an asset never
+  touches instances already placed on the timeline or the project media it
+  referenced.
+- `workAsset.instantiate` — place a fresh, independent clip from one work
+  asset: optional `trackId` (an EXISTING track whose type matches the
+  asset's source media — a mismatch fails `CONFLICT`) and optional
+  `startTime` (timeline seconds; defaults to the end of the timeline).
+  With no `trackId` a new same-type track is created in the same atomic
+  batch and `createdIds` reports `[trackId, clipId]` (or `[clipId]`).
+  Editing an instance never writes back to the asset. If the asset's
+  source media has left the project library, instantiation fails
+  `NOT_FOUND` — the underlying missing-media condition (and the plain
+  unknown-id case) is only distinguishable by the error message text.
 
 Ops in one batch see each other's results, and a failure anywhere rolls
 the whole batch back; a deleted overlay or clip stays deleted after
