@@ -7,6 +7,8 @@ export interface ActionBatchCreatedIds {
   readonly tracks: string[];
   readonly clips: string[];
   readonly textClips: string[];
+  /** SVG overlays created by the batch (svg/create actions). */
+  readonly svgClips: string[];
   readonly transitions: string[];
   readonly subtitles: string[];
 }
@@ -28,7 +30,14 @@ export type ExecuteActionBatch = (
 ) => ActionBatchResult;
 
 export function emptyActionBatchCreatedIds(): ActionBatchCreatedIds {
-  return { tracks: [], clips: [], textClips: [], transitions: [], subtitles: [] };
+  return {
+    tracks: [],
+    clips: [],
+    textClips: [],
+    svgClips: [],
+    transitions: [],
+    subtitles: [],
+  };
 }
 
 export function projectEntityIds(project: Project): ActionBatchCreatedIds {
@@ -38,6 +47,7 @@ export function projectEntityIds(project: Project): ActionBatchCreatedIds {
       track.clips.map((clip) => clip.id),
     ),
     textClips: (project.textClips ?? []).map((clip) => clip.id),
+    svgClips: (project.svgClips ?? []).map((clip) => clip.id),
     transitions: project.timeline.tracks.flatMap((track) =>
       (track.transitions ?? []).map((transition) => transition.id),
     ),
@@ -53,6 +63,7 @@ export function appendCreatedIdDiff(
   const beforeTracks = new Set(before.tracks);
   const beforeClips = new Set(before.clips);
   const beforeText = new Set(before.textClips);
+  const beforeSvg = new Set(before.svgClips);
   const beforeTransitions = new Set(before.transitions);
   const beforeSubtitles = new Set(before.subtitles);
   target.tracks.push(...after.tracks.filter((id) => !beforeTracks.has(id)));
@@ -60,6 +71,7 @@ export function appendCreatedIdDiff(
   target.textClips.push(
     ...after.textClips.filter((id) => !beforeText.has(id)),
   );
+  target.svgClips.push(...after.svgClips.filter((id) => !beforeSvg.has(id)));
   target.transitions.push(
     ...after.transitions.filter((id) => !beforeTransitions.has(id)),
   );

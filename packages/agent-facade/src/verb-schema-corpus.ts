@@ -294,6 +294,53 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
     },
     {
+      name: "valid clip.setNoiseReduction preset",
+      params: { ops: [{ op: "clip.setNoiseReduction", clipId: "c1", enabled: true, preset: "speech" }] },
+      expectValid: true,
+    },
+    {
+      name: "valid clip.setNoiseReduction explicit params",
+      params: { ops: [{ op: "clip.setNoiseReduction", clipId: "c1", enabled: true, threshold: -50, reduction: 0.75, attack: 8, release: 180 }] },
+      expectValid: true,
+    },
+    {
+      name: "clip.setNoiseReduction requires enabled",
+      params: { ops: [{ op: "clip.setNoiseReduction", clipId: "c1", preset: "balanced" }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setNoiseReduction threshold must be in [-80, 0]",
+      params: { ops: [{ op: "clip.setNoiseReduction", clipId: "c1", enabled: true, threshold: -90 }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setNoiseReduction reduction must be in [0, 1]",
+      params: { ops: [{ op: "clip.setNoiseReduction", clipId: "c1", enabled: true, reduction: 1.5 }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setNoiseReduction preset id is allowlisted",
+      params: { ops: [{ op: "clip.setNoiseReduction", clipId: "c1", enabled: true, preset: "vocal" }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setNoiseReduction unknown field",
+      params: { ops: [{ op: "clip.setNoiseReduction", clipId: "c1", enabled: true, effectId: "n1" }] },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: profile array lengths must match",
+      params: { ops: [{ op: "clip.setNoiseReduction", clipId: "c1", enabled: true, profile: { frequencyBins: [100, 200], magnitudes: [0.5], sampleRate: 48000 } }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: profile fftSize must be twice magnitudes length",
+      params: { ops: [{ op: "clip.setNoiseReduction", clipId: "c1", enabled: true, profile: { frequencyBins: [100], magnitudes: [0.5], sampleRate: 48000, fftSize: 1024 } }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
       name: "valid track.remove",
       params: { ops: [{ op: "track.remove", trackId: "v1" }] },
       expectValid: true,
@@ -382,6 +429,55 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     {
       name: "valid text.delete",
       params: { ops: [{ op: "text.delete", overlayId: "text-1" }] },
+      expectValid: true,
+    },
+    {
+      name: "valid svg.create without a track (auto graphics lane)",
+      params: {
+        ops: [
+          { op: "svg.create", svgContent: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40"/></svg>', startTime: 0, duration: 4 },
+        ],
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid svg.create with track, position and anchor",
+      params: {
+        ops: [
+          { op: "svg.create", svgContent: '<svg viewBox="0 0 100 100"><rect width="100" height="100"/></svg>', startTime: 1, duration: 3, trackId: "g1", position: { x: 0.5, y: 0.5 }, anchor: { x: 0.5, y: 0.5 } },
+        ],
+      },
+      expectValid: true,
+    },
+    {
+      name: "svg.create requires svgContent",
+      params: { ops: [{ op: "svg.create", startTime: 0, duration: 4 }] },
+      expectValid: false,
+    },
+    {
+      name: "svg.create svgContent must be a non-empty string",
+      params: { ops: [{ op: "svg.create", svgContent: "", startTime: 0, duration: 4 }] },
+      expectValid: false,
+    },
+    {
+      name: "svg.create unknown field",
+      params: { ops: [{ op: "svg.create", svgContent: "<svg/>", startTime: 0, duration: 4, viewBox: "0 0 10 10" }] },
+      expectValid: false,
+    },
+    {
+      name: "valid svg.update with timing only",
+      params: { ops: [{ op: "svg.update", overlayId: "svg-1", startTime: 2, duration: 5 }] },
+      expectValid: true,
+    },
+    {
+      name: "schema-valid but facade-rejected: svg.update needs a change",
+      params: { ops: [{ op: "svg.update", overlayId: "svg-1" }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "valid svg.remove",
+      params: { ops: [{ op: "svg.remove", overlayId: "svg-1" }] },
       expectValid: true,
     },
     {
@@ -945,5 +1041,18 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "valid entryId+key", params: { entryId: "mjr_1", idempotencyKey: "u1" }, expectValid: true },
     { name: "empty entryId", params: { entryId: "" }, expectValid: false },
     { name: "unknown field", params: { force: true }, expectValid: false },
+  ],
+  "font.upload": [
+    { name: "valid filePath", params: { filePath: "/media/job/x.ttf" }, expectValid: true },
+    { name: "valid name+dataBase64", params: { name: "Bar", dataBase64: "AAAA" }, expectValid: true },
+    { name: "missing both inputs (facade rejects, schema is a superset)", params: { name: "Bar" }, expectValid: false, schemaValid: true },
+    { name: "both inputs (facade rejects, schema is a superset)", params: { filePath: "/a.ttf", dataBase64: "AAAA" }, expectValid: false, schemaValid: true },
+    { name: "empty filePath", params: { filePath: "" }, expectValid: false },
+    { name: "name too long", params: { name: "x".repeat(121), dataBase64: "AAAA" }, expectValid: false },
+    { name: "unknown field", params: { filePath: "/a.ttf", force: true }, expectValid: false },
+  ],
+  "font.list": [
+    { name: "no params is valid", params: {}, expectValid: true },
+    { name: "unknown field", params: { filter: "x" }, expectValid: false },
   ],
 } as const;

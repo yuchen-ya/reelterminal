@@ -117,6 +117,10 @@ describe("capabilities.get / session.describe", () => {
       "media.relink",
       "media.rename",
       "clip.setChromaKey",
+      "clip.setNoiseReduction",
+      "svg.create",
+      "svg.update",
+      "svg.remove",
     ]);
     expect(res.value.editOps).toEqual([...EDIT_OP_TYPES]);
     expect(res.value.stateModel).toEqual({
@@ -175,6 +179,8 @@ describe("capabilities.get / session.describe", () => {
       "material.remove",
       "material.attach",
       "material.undo",
+      "font.upload",
+      "font.list",
       "media.inspect",
       "media.import_preflight",
     ]);

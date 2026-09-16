@@ -92,6 +92,23 @@ function indexProject(project: Project): Map<string, IndexedEntity> {
       keyframes: text.keyframes,
     });
   }
+  // SVG overlays diff like every other overlay family; the raw markup is
+  // summarized by its content length so a content swap shows up as a field
+  // change without journaling megabytes of markup.
+  for (const svg of project.svgClips ?? []) {
+    put("svg", svg.id, {
+      trackId: svg.trackId,
+      startTime: svg.startTime,
+      duration: svg.duration,
+      svgContentBytes: svg.svgContent.length,
+      viewBox: svg.viewBox,
+      transform: svg.transform,
+      keyframes: svg.keyframes,
+      colorStyle: svg.colorStyle,
+      entryAnimation: svg.entryAnimation,
+      exitAnimation: svg.exitAnimation,
+    });
+  }
   for (const media of project.mediaLibrary.items) {
     put("media", media.id, {
       name: media.name,

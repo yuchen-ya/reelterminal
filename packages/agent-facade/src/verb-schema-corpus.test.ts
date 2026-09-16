@@ -55,6 +55,7 @@ import {
   MATERIAL_REMOVE_SCHEMA,
   MATERIAL_ATTACH_SCHEMA,
   MATERIAL_UNDO_SCHEMA,
+  FONT_UPLOAD_SCHEMA,
 } from "./verb-schemas";
 import { VERB_SCHEMA_CORPUS } from "./verb-schema-corpus";
 import { FACADE_VERBS } from "./types";
@@ -283,6 +284,26 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
       return;
     case "material.undo":
       validateObject(params, MATERIAL_UNDO_SCHEMA, "material.undo params");
+      return;
+    case "font.upload": {
+      const valid = validateObject<Record<string, unknown>>(
+        params,
+        FONT_UPLOAD_SCHEMA,
+        "font.upload params",
+      );
+      // Validator-only predicate, mirrored from live-session: exactly one
+      // byte input (size budget and media-root containment are live-mode
+      // concerns, enforced by the live session after validation).
+      if ((valid.filePath === undefined) === (valid.dataBase64 === undefined)) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "font.upload: exactly one of filePath or dataBase64 is required",
+        );
+      }
+      return;
+    }
+    case "font.list":
+      validateObject(params, EMPTY_PARAMS_SCHEMA, "font.list params");
       return;
     default:
       { const tool = PLUGIN_TOOLS.find((tool) => tool.name === verb);

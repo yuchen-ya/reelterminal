@@ -152,21 +152,34 @@ const FontSelector: React.FC<{
       : []),
   ];
 
+  // Canvas renders missing fonts with a silent fallback; say so instead.
+  const fontInstalled =
+    Object.values(FONT_CATEGORIES).some((fonts) =>
+      (fonts as readonly string[]).includes(value),
+    ) || customFonts.includes(value);
+
   return (
-    <div className="flex items-center justify-between">
-      <Text type="supporting" color="secondary">
-        {t("Font")}</Text>
-      <Selector
-        label={t("Font")}
-        isLabelHidden
-        size="sm"
-        width={160}
-        value={value}
-        options={options as any}
-        onChange={onChange}
-        hasSearch
-        searchPlaceholder={t("Search fonts")}
-      />
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <Text type="supporting" color="secondary">
+          {t("Font")}</Text>
+        <Selector
+          label={t("Font")}
+          isLabelHidden
+          size="sm"
+          width={160}
+          value={value}
+          options={options as any}
+          onChange={onChange}
+          hasSearch
+          searchPlaceholder={t("Search fonts")}
+        />
+      </div>
+      {!fontInstalled && (
+        <Text type="supporting" display="block" className="text-[10px] text-amber-400">
+          {t("Font not loaded — the preview uses a fallback font.")}
+        </Text>
+      )}
     </div>
   );
 };

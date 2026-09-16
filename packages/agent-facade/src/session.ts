@@ -158,6 +158,7 @@ import {
   MATERIAL_REMOVE_SCHEMA,
   MATERIAL_ATTACH_SCHEMA,
   MATERIAL_UNDO_SCHEMA,
+  FONT_UPLOAD_SCHEMA,
 } from "./verb-schemas";
 import type {
   MaterialListParams,
@@ -2484,6 +2485,48 @@ export class AgentFacadeSession {
     return this.enqueue(async () => {
       validateObject<MaterialUndoParams>(params ?? {}, MATERIAL_UNDO_SCHEMA, "material.undo params");
       this.materialUnsupported("material.undo");
+    });
+  }
+
+  /* ------------------ font.* (headless: UNSUPPORTED) ------------------- */
+
+  /**
+   * Custom fonts live in the desktop GUI renderer's font store (IndexedDB +
+   * FontFace activation) — the same store the GUI upload button writes.
+   * Headless sessions have no GUI renderer, so font.* answers honestly
+   * UNSUPPORTED after validating params (same policy as material.*).
+   */
+  async fontUpload(
+    params: import("./font-library").FontUploadParams,
+  ): Promise<FacadeResult<import("./font-library").FontUploadResult>> {
+    return this.enqueue(async () => {
+      validateObject<import("./font-library").FontUploadParams>(
+        params,
+        FONT_UPLOAD_SCHEMA,
+        "font.upload params",
+      );
+      throw new FacadeError(
+        "UNSUPPORTED",
+        "font.upload: custom fonts are available only in live desktop sessions (they are installed in the GUI renderer's persistent font store, not the headless project checkpoint)",
+        { runtime: "node-headless" },
+      );
+    });
+  }
+
+  async fontList(
+    params?: import("./font-library").FontListParams,
+  ): Promise<FacadeResult<import("./font-library").FontListResult>> {
+    return this.enqueue(async () => {
+      validateObject<import("./font-library").FontListParams>(
+        params ?? {},
+        EMPTY_PARAMS_SCHEMA,
+        "font.list params",
+      );
+      throw new FacadeError(
+        "UNSUPPORTED",
+        "font.list: custom fonts are available only in live desktop sessions (they are installed in the GUI renderer's persistent font store, not the headless project checkpoint)",
+        { runtime: "node-headless" },
+      );
     });
   }
 

@@ -796,6 +796,32 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
     },
     ["entryId", "undoneEntryId", "restored", "removed"],
   ),
+  "font.upload": objectSchema(
+    {
+      fontFamily: stringSchema(),
+      format: stringSchema(),
+      sizeBytes: integerSchema(0),
+      deduped: booleanSchema(),
+    },
+    ["fontFamily", "format", "sizeBytes", "deduped"],
+  ),
+  "font.list": objectSchema(
+    {
+      fonts: arraySchema(
+        objectSchema(
+          {
+            family: stringSchema(),
+            format: nullable(stringSchema()),
+            sizeBytes: nullable(integerSchema(0)),
+            uploadedAt: nullable(integerSchema(0)),
+            loadedInSession: booleanSchema(),
+          },
+          ["family", "format", "sizeBytes", "uploadedAt", "loadedInSession"],
+        ),
+      ),
+    },
+    ["fonts"],
+  ),
 };
 
 /** Successful `{ok:true,value}` output schema for every MCP facade verb. */

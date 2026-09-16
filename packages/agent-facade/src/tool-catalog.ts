@@ -69,6 +69,10 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Unavailable headless — the user-level material library lives in the desktop GUI renderer.",
   material_undo:
     "Unavailable headless — the user-level material library lives in the desktop GUI renderer.",
+  font_upload:
+    "Unavailable headless — custom fonts live in the desktop GUI renderer's font store.",
+  font_list:
+    "Unavailable headless — custom fonts live in the desktop GUI renderer's font store.",
 };
 
 const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
@@ -145,6 +149,10 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Reference a material into the CURRENT project through the canonical import path: media imports into the project library; segments (or an explicit startSec/endSec range) additionally add a timeline clip with those in/out points. One undo unit in the GUI history; use a fresh idempotencyKey.",
   "material.undo":
     "Undo one user-level library journal entry (default: the latest undoable change — e.g. an agent batch organize). Library undo is independent of project undo and survives project switches; use a fresh idempotencyKey.",
+  "font.upload":
+    "Install a custom font for the user: a .ttf, .otf, .woff or .woff2 file (<=10 MiB) read from an absolute path inside a configured media root, or raw base64 bytes. The bytes are validated by signature and activated in the GUI's font store, so the family appears in the GUI font pickers immediately and persists across restarts. The response reports the ACTUAL fontFamily — a duplicate base name is suffixed ('Bar' -> 'Bar 2'), never overwritten; use it verbatim in text styling. font.list first to avoid accidental duplicates.",
+  "font.list":
+    "List the user's installed custom fonts (name, format, size, upload time; never the bytes). These families are usable in text styling right now; built-in fonts are not included.",
 };
 
 export function toolDescription(verb: FacadeVerb, mode: "live" | "headless"): string {

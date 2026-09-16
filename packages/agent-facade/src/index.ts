@@ -163,6 +163,12 @@ export interface AgentFacade extends BundledToolBindings {
   readonly "material.undo": (
     params?: import("./types").MaterialUndoParams,
   ) => Promise<FacadeResult<import("./types").MaterialUndoResult>>;
+  readonly "font.upload": (
+    params: import("./font-library").FontUploadParams,
+  ) => Promise<FacadeResult<import("./font-library").FontUploadResult>>;
+  readonly "font.list": (
+    params?: import("./font-library").FontListParams,
+  ) => Promise<FacadeResult<import("./font-library").FontListResult>>;
 }
 
 /**
@@ -208,6 +214,8 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "material.remove": (params) => session.materialRemove(params),
     "material.attach": (params) => session.materialAttach(params),
     "material.undo": (params) => session.materialUndo(params),
+    "font.upload": (params) => session.fontUpload(params),
+    "font.list": (params) => session.fontList(params),
   };
 }
 

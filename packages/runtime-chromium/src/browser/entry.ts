@@ -8,8 +8,9 @@
  * ExportEngine + WebCodecsBackend + mediabunny (MP4 muxing).
  *
  * Hydration contract: the canonical serialized Project is the authority.
- * `hydrate()` rebuilds engine-side overlay state (titleEngine.loadTextClips)
- * from `project.textClips` and re-attaches media as disk-backed File objects
+ * `hydrate()` rebuilds engine-side overlay state (titleEngine.loadTextClips,
+ * graphicsEngine.loadSVGClips) from `project.textClips` / `project.svgClips`
+ * and re-attaches media as disk-backed File objects
  * (assigned by Playwright to the page's file input — videos are NEVER pushed
  * through evaluate/base64).
  *
@@ -23,6 +24,7 @@ import { getSpeedEngine } from "@openreel/core/video/speed-engine";
 import { getVideoEngine } from "@openreel/core/video/video-engine";
 import { getExportEngine } from "@openreel/core/export/export-engine";
 import { titleEngine } from "@openreel/core/text/title-engine";
+import { graphicsEngine } from "@openreel/core/graphics/graphics-engine";
 import type { Project } from "@openreel/core/types/project";
 
 declare global {
@@ -43,6 +45,7 @@ interface HydrateReport {
   mediaAttached: number;
   mediaMissing: string[];
   textClipsLoaded: number;
+  svgClipsLoaded: number;
   error?: string;
 }
 
@@ -105,6 +108,13 @@ async function hydrate(
     titleEngine.loadTextClips(project.textClips ?? []);
     titleEngine.initialize(project.settings.width, project.settings.height);
 
+    // Same canonical hydration for SVG overlays: the VideoEngine compositor
+    // reads SVG clips ONLY from the graphicsEngine singleton
+    // (getActiveSVGClips), so without this load every preview frame and
+    // export rendered by this headless page silently dropped all SVG
+    // overlays even though they exist in the canonical project.
+    graphicsEngine.loadSVGClips(project.svgClips ?? []);
+
     getSpeedEngine().loadClips(project.timeline.tracks.flatMap((track) => track.clips));
     const videoEngine = getVideoEngine();
     await videoEngine.initialize();
@@ -119,6 +129,7 @@ async function hydrate(
       mediaAttached: attached,
       mediaMissing: missing,
       textClipsLoaded: (project.textClips ?? []).length,
+      svgClipsLoaded: (project.svgClips ?? []).length,
     };
   } catch (error) {
     currentProject = null;
@@ -127,6 +138,7 @@ async function hydrate(
       mediaAttached: 0,
       mediaMissing: [],
       textClipsLoaded: 0,
+      svgClipsLoaded: 0,
       error: error instanceof Error ? error.message : String(error),
     };
   }

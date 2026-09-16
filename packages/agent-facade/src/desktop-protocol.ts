@@ -57,6 +57,7 @@ export type DesktopLiveBridgeKind =
   | "applyActions"
   | "importMedia"
   | "materialLibrary"
+  | "fontLibrary"
   | "requestSave";
 
 /** Main-to-renderer request on `openreel:live:request`. */
@@ -85,6 +86,10 @@ export interface DesktopLiveBridgeRequest {
   readonly materialVerb?: string;
   /** materialLibrary: JSON-safe parameters for that verb. */
   readonly materialParams?: Record<string, unknown>;
+  /** fontLibrary: the font-library verb to execute in the renderer. */
+  readonly fontVerb?: string;
+  /** fontLibrary: JSON-safe parameters for that verb. */
+  readonly fontParams?: Record<string, unknown>;
 }
 
 export interface DesktopLiveBridgeError {

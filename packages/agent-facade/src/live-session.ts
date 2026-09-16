@@ -33,6 +33,7 @@ import { ActionHistory } from "@openreel/core/actions/action-history";
 import type { Action } from "@openreel/core/types/actions";
 import type { Project } from "@openreel/core/types/project";
 import { stat } from "node:fs/promises";
+import { readFile as readFileFontBytes } from "node:fs/promises";
 import { basename, isAbsolute, resolve as resolvePath } from "node:path";
 
 import {
@@ -152,6 +153,7 @@ import {
   MATERIAL_REMOVE_SCHEMA,
   MATERIAL_ATTACH_SCHEMA,
   MATERIAL_UNDO_SCHEMA,
+  FONT_UPLOAD_SCHEMA,
 } from "./verb-schemas";
 import {
   MATERIAL_VERBS,
@@ -174,6 +176,16 @@ import {
   type MaterialUndoParams,
   type MaterialUndoResult,
 } from "./material-library";
+import {
+  FONT_LIBRARY_LIMITS,
+  type FontLibraryBridge,
+  type FontLibraryBridgeReply,
+  type FontLibraryBridgeVerb,
+  type FontListParams,
+  type FontListResult,
+  type FontUploadParams,
+  type FontUploadResult,
+} from "./font-library";
 import type { MaterialListResult } from "@openreel/core/material/types";
 import {
   isReadOnlyVerb,
@@ -302,6 +314,13 @@ export interface LiveFacadeConfig {
    * persistence. Absent ⇒ the material verbs report UNSUPPORTED honestly.
    */
   readonly materialLibrary?: MaterialLibraryBridge;
+  /**
+   * The user-level custom-font seam: forwards font.* verbs to the GUI
+   * renderer, which owns the canonical font store (IndexedDB +
+   * FontFace activation). Absent ⇒ the font verbs report UNSUPPORTED
+   * honestly; capabilities_get reports the same via fonts.available.
+   */
+  readonly fontLibrary?: FontLibraryBridge;
 }
 
 /**
@@ -326,6 +345,7 @@ const CREATING_OPS: ReadonlySet<EditOp["op"]> = new Set([
   "clip.split",
   "clip.duplicate",
   "text.create",
+  "svg.create",
   "transition.add",
   "subtitle.importSrt",
 ]);
@@ -422,6 +442,8 @@ export class LiveFacadeSession {
       typeof this.config.store.importMedia === "function";
     const materialLibraryAvailable =
       typeof this.config.materialLibrary === "function";
+    const fontLibraryAvailable =
+      typeof this.config.fontLibrary === "function";
     const unavailableVerbs: FacadeVerb[] = [...LIVE_UNAVAILABLE_VERBS];
     if (!mediaImportAvailable) unavailableVerbs.push("media.import");
     if (!materialLibraryAvailable) unavailableVerbs.push(...MATERIAL_VERBS);
@@ -446,6 +468,7 @@ export class LiveFacadeSession {
         sessionId: this.config.sessionId,
         mediaImportAvailable,
         materialLibraryAvailable,
+        fontLibraryAvailable,
         unavailableVerbs,
       },
     };
@@ -1373,12 +1396,24 @@ export class LiveFacadeSession {
       const draft = structuredClone(snapshot);
       const executor = new ActionExecutor(new ActionHistory());
       const actions: Action[] = [];
-      const autoTextTrackIds: Array<string | undefined> = [];
+      const autoTrackIds: Array<string | undefined> = [];
       for (const [index, op] of enrichedOps.entries()) {
-        const hadTextTrack =
+        // text.create/svg.create with no explicit track imply their lane;
+        // when that lane is missing, the translator prepends one track/add
+        // whose id partitionCreatedIds must pin for THIS op (an explicit
+        // track.add op in the same batch must not steal or reorder it).
+        const impliedTrackType =
           op.op === "text.create" && op.trackId === undefined
-            ? draft.timeline.tracks.some((track) => track.type === "text")
-            : true;
+            ? "text"
+            : op.op === "svg.create" && op.trackId === undefined
+              ? "graphics"
+              : null;
+        const hadImpliedTrack =
+          impliedTrackType === null
+            ? true
+            : draft.timeline.tracks.some(
+                (track) => track.type === impliedTrackType,
+              );
         const opActions = opToCoreActions(op, draft);
         for (const action of opActions) {
           const result = await executor.execute(action, draft);
@@ -1394,8 +1429,8 @@ export class LiveFacadeSession {
             );
           }
         }
-        autoTextTrackIds[index] =
-          op.op === "text.create" && op.trackId === undefined && !hadTextTrack
+        autoTrackIds[index] =
+          impliedTrackType !== null && !hadImpliedTrack
             ? (opActions.find((action) => action.type === "track/add")?.params
                 .trackId as string | undefined)
             : undefined;
@@ -1436,7 +1471,7 @@ export class LiveFacadeSession {
       // Partition the store-diffed created ids back onto the ops: every
       // creating op consumes one id from its own category bucket (the store
       // diffs per category, so a mixed batch can't cross-assign ids).
-      const applied = partitionCreatedIds(ops, committed.createdIds, autoTextTrackIds);
+      const applied = partitionCreatedIds(ops, committed.createdIds, autoTrackIds);
       const value: EditApplyPayload = { applied };
       if (valid.idempotencyKey !== undefined) {
         this.ledger.set("edit.apply", valid.idempotencyKey, {
@@ -3026,6 +3061,145 @@ export class LiveFacadeSession {
     });
   }
 
+  /* ------------------ font.* (user-level custom fonts) ----------------- */
+
+  /**
+   * The renderer owns the canonical custom-font store (IndexedDB +
+   * FontFace activation); the facade validates params, enforces the byte
+   * budget and path containment, and forwards. Mirrors the material.* seam.
+   */
+  private async callFontBridge<T>(
+    verb: FacadeVerb,
+    bridgeVerb: FontLibraryBridgeVerb,
+    params: Record<string, unknown>,
+  ): Promise<T> {
+    const bridge = this.config.fontLibrary;
+    if (typeof bridge !== "function") {
+      throw new FacadeError(
+        "UNSUPPORTED",
+        `${verb}: this live host does not expose a font-library bridge`,
+      );
+    }
+    let reply: FontLibraryBridgeReply;
+    try {
+      reply = await bridge({ verb: bridgeVerb, params });
+    } catch (error) {
+      throw this.materialBridgeFailure(verb, error);
+    }
+    if (!reply.ok) {
+      throw this.materialBridgeFailure(verb, reply.error);
+    }
+    return reply.result as T;
+  }
+
+  /**
+   * Decode + validate the font bytes for one upload request: exactly one of
+   * filePath/dataBase64, media-root containment for paths, 10 MiB decoded
+   * budget. Returns the bytes plus the base name the family derives from
+   * (matching the renderer's own name derivation).
+   */
+  private async resolveFontUploadBytes(
+    valid: FontUploadParams,
+  ): Promise<{ data: ArrayBuffer; baseName: string }> {
+    const hasPath = valid.filePath !== undefined;
+    const hasBase64 = valid.dataBase64 !== undefined;
+    if (hasPath === hasBase64) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        "font.upload: exactly one of filePath or dataBase64 is required",
+      );
+    }
+
+    let data: ArrayBuffer;
+    let baseName: string;
+    if (hasPath) {
+      // Same containment rule as media.import/material.create: the path can
+      // never become a side channel for reading arbitrary files.
+      const resolved = await this.resolveMaterialMediaPath(
+        "font.upload",
+        valid.filePath as string,
+      );
+      if (resolved.sizeBytes > FONT_LIBRARY_LIMITS.maxFontBytes) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `font.upload: font file is ${resolved.sizeBytes} bytes; the limit is ${FONT_LIBRARY_LIMITS.maxFontBytes} bytes`,
+          {
+            sizeBytes: resolved.sizeBytes,
+            maxFontBytes: FONT_LIBRARY_LIMITS.maxFontBytes,
+          },
+        );
+      }
+      data = await readFileFontBytes(resolved.path).then(bufferToArrayBuffer);
+      baseName = basename(resolved.path);
+    } else {
+      const decoded = decodeBase64ToBuffer(valid.dataBase64 as string);
+      if (decoded === null) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "font.upload: dataBase64 is not valid base64",
+        );
+      }
+      if (
+        decoded.byteLength > FONT_LIBRARY_LIMITS.maxFontBytes
+      ) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `font.upload: decoded font is ${decoded.byteLength} bytes; the limit is ${FONT_LIBRARY_LIMITS.maxFontBytes} bytes`,
+          {
+            sizeBytes: decoded.byteLength,
+            maxFontBytes: FONT_LIBRARY_LIMITS.maxFontBytes,
+          },
+        );
+      }
+      data = decoded;
+      baseName = "";
+    }
+
+    // Pass the renderer the exact base name the family derives from, so the
+    // deduped flag in the response compares against the same string.
+    return {
+      data,
+      baseName: (valid.name ?? baseName).replace(/\.(ttf|otf|woff2?)$/i, ""),
+    };
+  }
+
+  async fontUpload(
+    params: FontUploadParams,
+  ): Promise<FacadeResult<FontUploadResult>> {
+    return this.enqueue(async () => {
+      this.gate("font.upload");
+      const valid = validateObject<FontUploadParams>(
+        params,
+        FONT_UPLOAD_SCHEMA,
+        "font.upload params",
+      );
+      const { data, baseName } = await this.resolveFontUploadBytes(valid);
+      const result = await this.callFontBridge<FontUploadResult>(
+        "font.upload",
+        "upload",
+        { name: baseName, data },
+      );
+      return ok({
+        ...result,
+        deduped: result.fontFamily !== baseName.trim(),
+      });
+    });
+  }
+
+  async fontList(
+    params?: FontListParams,
+  ): Promise<FacadeResult<FontListResult>> {
+    return this.enqueue(async () => {
+      validateObject<FontListParams>(params ?? {}, EMPTY_PARAMS_SCHEMA, "font.list params");
+      const result = await this.callFontBridge<FontListResult>(
+        "font.list",
+        "list",
+        {},
+      );
+      return ok(result);
+    });
+  }
+
   /* ---------------------------- lifecycle ----------------------------- */
 
   /**
@@ -3379,14 +3553,13 @@ export class LiveFacadeSession {
 function partitionCreatedIds(
   ops: readonly EditOp[],
   createdIds: LiveCreatedIds,
-  autoTextTrackIds: readonly (string | undefined)[] = [],
+  autoTrackIds: readonly (string | undefined)[] = [],
 ): OpApplied[] {
   const categories = {
     "track.add": "tracks",
     "clip.add": "clips",
     "clip.split": "clips",
     "clip.duplicate": "clips",
-    "text.create": "textClips",
     "transition.add": "transitions",
   } as const;
   const usedTracks = new Set<string>();
@@ -3394,6 +3567,7 @@ function partitionCreatedIds(
     tracks: 0,
     clips: 0,
     textClips: 0,
+    svgClips: 0,
     transitions: 0,
     subtitles: 0,
   };
@@ -3410,13 +3584,27 @@ function partitionCreatedIds(
       // An implicit text lane is part of this higher-level op. Use the exact
       // id emitted by the translator, so explicit track.add ops in the same
       // batch cannot steal or reorder it.
-      const autoTrackId = autoTextTrackIds[index];
+      const autoTrackId = autoTrackIds[index];
       if (autoTrackId !== undefined && createdIds.tracks.includes(autoTrackId)) {
         usedTracks.add(autoTrackId);
         ids.push(autoTrackId);
       }
       const id = createdIds.textClips[cursors.textClips];
       cursors.textClips += 1;
+      if (id !== undefined) ids.push(id);
+    } else if (op.op === "svg.create") {
+      // Same implicit-lane convention as text.create, including the reported
+      // order [autoTrackId, overlayId]. A seam store without the svgClips
+      // bucket (optional on LiveCreatedIds) reports no clip id here — the
+      // agent falls back to timeline.query's svg projection.
+      const autoTrackId = autoTrackIds[index];
+      if (autoTrackId !== undefined && createdIds.tracks.includes(autoTrackId)) {
+        usedTracks.add(autoTrackId);
+        ids.push(autoTrackId);
+      }
+      const svgClips = createdIds.svgClips ?? [];
+      const id = svgClips[cursors.svgClips];
+      cursors.svgClips += 1;
       if (id !== undefined) ids.push(id);
     } else if (op.op === "subtitle.importSrt") {
       ids.push(...createdIds.subtitles.slice(cursors.subtitles));
@@ -3478,7 +3666,29 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "material.remove": (params) => session.materialRemove(params),
     "material.attach": (params) => session.materialAttach(params),
     "material.undo": (params) => session.materialUndo(params),
+    "font.upload": (params) => session.fontUpload(params as FontUploadParams),
+    "font.list": (params) => session.fontList(params as FontListParams),
     releaseWriterLease: () => session.releaseWriterLease(),
     dispose: () => session.dispose(),
   };
+}
+
+/**
+ * font.upload byte plumbing (module-local): strict-ish base64 decoding and
+ * a Node Buffer → ArrayBuffer transfer so the bytes can cross the bridge
+ * as a structured-cloneable ArrayBuffer.
+ */
+function bufferToArrayBuffer(buffer: Buffer): ArrayBuffer {
+  const out = new ArrayBuffer(buffer.byteLength);
+  new Uint8Array(out).set(buffer);
+  return out;
+}
+
+function decodeBase64ToBuffer(text: string): ArrayBuffer | null {
+  const normalized = text.replace(/\s+/g, "");
+  if (normalized.length === 0 || normalized.length % 4 !== 0) return null;
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) return null;
+  const buffer = Buffer.from(normalized, "base64");
+  if (buffer.length === 0) return null;
+  return bufferToArrayBuffer(buffer);
 }

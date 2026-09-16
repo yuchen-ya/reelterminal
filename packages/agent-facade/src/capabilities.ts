@@ -42,8 +42,14 @@ import {
   type SessionDescription,
 } from "./types";
 import { MATERIAL_LIBRARY_LIMITS } from "./material-library";
+import { FONT_LIBRARY_LIMITS } from "./font-library";
 import { MATERIAL_KINDS } from "@openreel/core/material/types";
 import { DEFAULT_CHROMA_KEY_SETTINGS } from "@openreel/core/video/chroma-key-engine";
+import {
+  DEFAULT_NOISE_REDUCTION_SETTINGS,
+  NOISE_REDUCTION_PRESETS,
+} from "@openreel/core/audio/noise-reduction-presets";
+import { SVG_MAX_CONTENT_BYTES } from "@openreel/core/graphics/svg-validation";
 import {
   DEFAULT_AGENT_WORK_MODE,
   agentWorkModeSemantics,
@@ -90,6 +96,7 @@ export interface CapabilityContext {
     readonly sessionId: string;
     readonly mediaImportAvailable: boolean;
     readonly materialLibraryAvailable?: boolean;
+    readonly fontLibraryAvailable?: boolean;
     readonly unavailableVerbs: readonly FacadeVerb[];
   };
 }
@@ -157,6 +164,9 @@ export async function buildCapabilities(
     : ctx.mediaRoots.length > 0;
   const materialLibraryAvailable = ctx.live
     ? ctx.live.materialLibraryAvailable === true
+    : false;
+  const fontLibraryAvailable = ctx.live
+    ? ctx.live.fontLibraryAvailable === true
     : false;
   const noArtifactRoot = ctx.artifactRoot === undefined || ctx.artifactRoot.length === 0;
   const gateArtifactProducing = (
@@ -312,6 +322,21 @@ export async function buildCapabilities(
           : { reason: "requires the live material-library bridge" }),
       },
     },
+    fonts: {
+      available: fontLibraryAvailable,
+      ...(fontLibraryAvailable
+        ? {}
+        : {
+            reason: ctx.live
+              ? "Live mode: the host did not provide the font-library bridge; the font.* verbs report UNSUPPORTED in this session."
+              : "Headless sessions have no GUI renderer, so the user-level custom fonts (renderer IndexedDB + FontFace activation) are not reachable; font.* verbs report UNSUPPORTED.",
+          }),
+      formats: [...FONT_LIBRARY_LIMITS.formats],
+      maxFontBytes: FONT_LIBRARY_LIMITS.maxFontBytes,
+      inputs: ["filePath", "dataBase64"],
+      duplicatePolicy: "suffix",
+      persistence: "renderer-indexeddb",
+    },
     projectChanges: {
       available: true,
       details: {
@@ -412,6 +437,49 @@ export async function buildCapabilities(
           keyColorRange: "each channel in [0, 1]",
           guiParity:
             "same core action as the GUI green-screen panel; results are undoable via the action's inverse",
+        },
+      },
+      noiseReduction: {
+        available: true,
+        details: {
+          op: "clip.setNoiseReduction",
+          coreActions: [
+            "audio/addEffect",
+            "audio/updateEffect",
+            "audio/toggleEffect",
+          ],
+          algorithm:
+            "local noise-reduction DSP (AudioEffectsEngine noiseReduction chain with per-focus profiles) — deterministic local signal processing, not AI or model inference",
+          defaults: {
+            threshold: DEFAULT_NOISE_REDUCTION_SETTINGS.threshold,
+            reduction: DEFAULT_NOISE_REDUCTION_SETTINGS.reduction,
+            attack: DEFAULT_NOISE_REDUCTION_SETTINGS.attack,
+            release: DEFAULT_NOISE_REDUCTION_SETTINGS.release,
+            focus: DEFAULT_NOISE_REDUCTION_SETTINGS.focus,
+          },
+          presets: NOISE_REDUCTION_PRESETS.map((preset) => preset.id),
+          parameterRanges: {
+            thresholdDb: [-80, 0],
+            reduction: [0, 1],
+            attackMs: [0, 100],
+            releaseMs: [0, 500],
+          },
+          guiParity:
+            "same core audio-effect actions as the GUI noise-reduction panel; an existing noiseReduction effect is updated in place (never stacked), a learned profile is preserved, and undo is the core actions' inverse",
+        },
+      },
+      svgOverlays: {
+        available: true,
+        details: {
+          ops: ["svg.create", "svg.update", "svg.remove"],
+          coreActions: ["svg/create", "svg/update", "svg/remove"],
+          ingestGate:
+            "Agent-supplied markup crosses the same shared core SVG ingest gate as the GUI import: scripts, foreign objects, event handlers, unsafe URL schemes, external references and oversized documents are rejected with a coded error",
+          maxContentBytes: SVG_MAX_CONTENT_BYTES,
+          autoTrack:
+            "svg.create uses the first existing graphics track, or creates one in the same atomic batch when the project has none",
+          guiParity:
+            "the created clip is the same project.svgClips content the GUI SVG import produces (editable in the Inspector, undoable via the core actions' inverses) and is projected by timeline.query as an svg entity",
         },
       },
       lut: {

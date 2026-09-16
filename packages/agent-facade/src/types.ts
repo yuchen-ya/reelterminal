@@ -1,6 +1,7 @@
 import { PLUGIN_TOOLS } from "./plugins";
 import { assertUniqueToolNames } from "./plugin-api";
 import { MATERIAL_VERBS } from "./material-library";
+import { FONT_VERBS } from "./font-library";
 /**
  * Public contract of the in-process agent facade (Slice 1 + Slice 1b +
  * Slice 2a persistence, ADR 0003 Decision 10).
@@ -83,6 +84,7 @@ export const FACADE_VERBS = [
   "job.cancel",
   "verify.artifact",
   ...MATERIAL_VERBS,
+  ...FONT_VERBS,
   ...PLUGIN_TOOLS.map((tool) => tool.name),
 ] as const;
 
@@ -163,6 +165,7 @@ export const READ_ONLY_VERBS = [
   "history.get",
   "material.list",
   "material.get",
+  "font.list",
   "visual.inspect",
   "preview.render_comparison",
   "analysis.list",
@@ -299,6 +302,8 @@ export interface Capabilities {
   readonly history: CapabilityStatus;
   /** User-level material library (material.* verbs); headless reports unavailable. */
   readonly materialLibrary: import("./material-library").MaterialLibraryCapability;
+  /** User-level custom fonts (font.* verbs); headless reports unavailable. */
+  readonly fonts: import("./font-library").FontLibraryCapability;
   readonly mediaAnalysis: {
     readonly asynchronous: true;
     readonly types: Readonly<Record<MediaAnalysisType, CapabilityStatus>>;
@@ -312,6 +317,8 @@ export interface Capabilities {
     volumeKeyframes: CapabilityStatus;
     basicColorGrade: CapabilityStatus;
     chromaKey: CapabilityStatus;
+    noiseReduction: CapabilityStatus;
+    svgOverlays: CapabilityStatus;
     lut: CapabilityStatus;
     audioNormalization: CapabilityStatus;
     audioDucking: CapabilityStatus;
@@ -484,6 +491,7 @@ export type ProjectChangeEntityType =
   | "track"
   | "clip"
   | "text"
+  | "svg"
   | "media"
   | "transition"
   | "marker"
@@ -713,6 +721,7 @@ export type TimelineQueryEntityType =
   | "track"
   | "clip"
   | "text"
+  | "svg"
   | "media"
   | "transition"
   | "marker"
@@ -743,7 +752,10 @@ export type TimelineQueryField =
   | "style"
   | "color"
   | "colorGrading"
-  | "chromaKey";
+  | "chromaKey"
+  | "noiseReduction"
+  | "viewBox"
+  | "colorStyle";
 
 export interface TimelineQueryParams {
   /** Only ephemeral @A<n> refs and persisted R<n> review refs are accepted. */
@@ -910,6 +922,10 @@ export const EDIT_OP_TYPES = [
   "media.relink",
   "media.rename",
   "clip.setChromaKey",
+  "clip.setNoiseReduction",
+  "svg.create",
+  "svg.update",
+  "svg.remove",
 ] as const;
 
 export type EditOpType = (typeof EDIT_OP_TYPES)[number];
@@ -1089,6 +1105,53 @@ export interface TextDeleteOp {
   readonly overlayId: string;
 }
 
+/**
+ * Create ONE SVG overlay from Agent-generated inline markup — the same
+ * project content the GUI SVG import produces. The raw markup crosses the
+ * shared core ingest gate (scripts, foreign objects, event handlers, unsafe
+ * URL schemes, external references and oversized documents are rejected).
+ * When the project has no graphics track yet, edit.apply creates one in the
+ * same atomic batch and undo unit before creating the overlay.
+ */
+export interface SvgCreateOp {
+  readonly op: "svg.create";
+  /** Raw inline SVG markup (`<svg>…</svg>`), checked by the core ingest gate. */
+  readonly svgContent: string;
+  readonly startTime: number;
+  readonly duration: number;
+  /**
+   * Target graphics track. When omitted, the first existing graphics track is
+   * used; if none exists, a graphics track is created in the same batch.
+   */
+  readonly trackId?: string;
+  /** Normalized box position (0.5/0.5 = frame center). */
+  readonly position?: NormalizedPoint;
+  /** Normalized anchor within the artwork box (0.5/0.5 = box center). */
+  readonly anchor?: NormalizedPoint;
+}
+
+/**
+ * Shallow-looking update over ONE existing SVG overlay (id from
+ * timeline.query's svg entities). At least one optional field is required.
+ * position/anchor merge with the existing transform — omitted fields keep
+ * their values; svgContent replaces the whole markup and re-crosses the
+ * core ingest gate.
+ */
+export interface SvgUpdateOp {
+  readonly op: "svg.update";
+  readonly overlayId: string;
+  readonly svgContent?: string;
+  readonly startTime?: number;
+  readonly duration?: number;
+  readonly position?: NormalizedPoint;
+  readonly anchor?: NormalizedPoint;
+}
+
+export interface SvgRemoveOp {
+  readonly op: "svg.remove";
+  readonly overlayId: string;
+}
+
 export interface ClipSetVolumeOp {
   readonly op: "clip.setVolume";
   /** Any existing timeline clip (audio or video track alike). */
@@ -1265,6 +1328,51 @@ export interface ClipSetChromaKeyOp {
   readonly spillSuppression?: number;
 }
 
+/**
+ * Set the noise-reduction state on ONE clip — the same local DSP effect the
+ * GUI noise-reduction panel applies through the core audio effect actions.
+ * Omitted tuning fields keep the clip's prior values, falling back to the
+ * shared preset/defaults module (core noise-reduction-presets.ts); `preset`
+ * selects one of the panel's presets by id and explicit fields override its
+ * values. An existing noiseReduction effect is updated in place (never
+ * stacked) and a learned `profile` is preserved across preset switches, both
+ * matching GUI behavior. Deterministic local signal processing — not AI.
+ */
+export interface ClipSetNoiseReductionOp {
+  readonly op: "clip.setNoiseReduction";
+  readonly clipId: string;
+  /** Required: true applies/enables cleanup, false disables (tuning kept). */
+  readonly enabled: boolean;
+  /** Preset id — the same ids the GUI panel renders. */
+  readonly preset?:
+    | "balanced"
+    | "speech"
+    | "whiteNoise"
+    | "music"
+    | "heavy"
+    | "wind"
+    | "hum";
+  /** Gate threshold in dB, [-80, 0]; omitted keeps prior/preset/default. */
+  readonly threshold?: number;
+  /** Reduction amount in [0, 1]; omitted keeps prior/preset/default. */
+  readonly reduction?: number;
+  /** Attack in ms, [0, 100]; omitted keeps prior/preset/default. */
+  readonly attack?: number;
+  /** Release in ms, [0, 500]; omitted keeps prior/preset/default. */
+  readonly release?: number;
+  /**
+   * Optional learned spectral noise profile (same shape the render chain
+   * persists). Omitted keeps the clip's prior profile.
+   */
+  readonly profile?: {
+    readonly frequencyBins: number[];
+    readonly magnitudes: number[];
+    readonly standardDeviations?: number[];
+    readonly sampleRate: number;
+    readonly fftSize?: number;
+  };
+}
+
 export type EditOp =
   | TrackAddOp
   | TrackUpdateOp
@@ -1279,6 +1387,9 @@ export type EditOp =
   | TextCreateOp
   | TextUpdateOp
   | TextDeleteOp
+  | SvgCreateOp
+  | SvgUpdateOp
+  | SvgRemoveOp
   | ClipSetSpeedOp
   | ClipSetReverseOp
   | ClipSetTransformOp
@@ -1298,7 +1409,8 @@ export type EditOp =
   | MediaReplaceOp
   | MediaRelinkOp
   | MediaRenameOp
-  | ClipSetChromaKeyOp;
+  | ClipSetChromaKeyOp
+  | ClipSetNoiseReductionOp;
 
 export interface EditApplyParams {
   readonly ops: readonly EditOp[];
@@ -1733,3 +1845,18 @@ export type {
   MaterialSortOrder,
 } from "./material-library";
 export { MATERIAL_VERBS, MATERIAL_LIBRARY_LIMITS } from "./material-library";
+export type {
+  FontVerb,
+  FontUploadParams,
+  FontListParams,
+  FontUploadResult,
+  CustomFontListItem,
+  FontListResult,
+  FontLibraryBridge,
+  FontLibraryBridgeRequest,
+  FontLibraryBridgeReply,
+  FontLibraryBridgeVerb,
+  FontLibraryCapability,
+  FontFormat,
+} from "./font-library";
+export { FONT_VERBS, FONT_LIBRARY_LIMITS } from "./font-library";

@@ -32,6 +32,24 @@ const DEFAULT_FIELDS: readonly TimelineQueryField[] = [
   "solo",
 ];
 
+/**
+ * Flattened projection of the clip's noiseReduction effect (the one the
+ * clip.setNoiseReduction op writes): `{ enabled, ...params }` or null when
+ * the clip has no such effect — mirroring how the chromaKey settings are
+ * projected so agents can verify the edit like any other clip field.
+ */
+function projectClipNoiseReduction(
+  clip: Project["timeline"]["tracks"][number]["clips"][number],
+): Record<string, unknown> | null {
+  const effect = (clip.audioEffects ?? []).find(
+    (candidate) => candidate.type === "noiseReduction",
+  );
+  if (!effect) {
+    return null;
+  }
+  return { enabled: effect.enabled, ...effect.params };
+}
+
 function allCandidates(project: Project): Candidate[] {
   const candidates: Candidate[] = [];
   for (const track of project.timeline.tracks) {
@@ -77,6 +95,7 @@ function allCandidates(project: Project): Candidate[] {
           automation: clip.automation ?? {},
           colorGrading: clip.colorGrading ?? null,
           chromaKey: clip.chromaKey ?? null,
+          noiseReduction: projectClipNoiseReduction(clip),
         },
         trackType: track.type,
       });
@@ -121,6 +140,30 @@ function allCandidates(project: Project): Candidate[] {
         keyframes: text.keyframes ?? [],
       },
       trackType: "text",
+    });
+  }
+  // SVG overlays live on graphics tracks (project.svgClips), parallel to
+  // textClips on text tracks. The raw svgContent is deliberately NOT
+  // projected (multi-megabyte markup); agents verify placement/timing and
+  // can correlate by id — the content is whatever the agent itself created.
+  for (const svg of project.svgClips ?? []) {
+    candidates.push({
+      entityType: "svg",
+      id: svg.id,
+      ref: null,
+      trackId: svg.trackId,
+      startTime: svg.startTime,
+      endTime: svg.startTime + svg.duration,
+      data: {
+        trackId: svg.trackId,
+        startTime: svg.startTime,
+        duration: svg.duration,
+        transform: svg.transform,
+        keyframes: svg.keyframes ?? [],
+        viewBox: svg.viewBox,
+        colorStyle: svg.colorStyle ?? null,
+      },
+      trackType: "graphics",
     });
   }
   for (const media of project.mediaLibrary.items) {
@@ -290,7 +333,7 @@ export function queryTimeline(
       );
       for (let delta = 1; delta <= (params.includeNeighbors ?? 0); delta += 1) {
         for (const neighbor of [candidates[index - delta], candidates[index + delta]]) {
-          if (neighbor && ["clip", "text", "transition", "subtitle"].includes(neighbor.entityType)) {
+          if (neighbor && ["clip", "text", "svg", "transition", "subtitle"].includes(neighbor.entityType)) {
             neighborIds.add(`${neighbor.entityType}:${neighbor.id}`);
           }
         }
@@ -323,6 +366,7 @@ export const TIMELINE_QUERY_ENTITY_TYPES: readonly TimelineQueryEntityType[] = [
   "track",
   "clip",
   "text",
+  "svg",
   "media",
   "transition",
   "marker",
@@ -355,4 +399,7 @@ export const TIMELINE_QUERY_FIELDS: readonly TimelineQueryField[] = [
   "color",
   "colorGrading",
   "chromaKey",
+  "noiseReduction",
+  "viewBox",
+  "colorStyle",
 ];

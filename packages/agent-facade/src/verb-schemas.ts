@@ -17,6 +17,7 @@ import { PLUGIN_TOOLS } from "./plugins";
  */
 import { EDIT_OP_TYPES, MEDIA_ANALYSIS_TYPES } from "./types";
 import { MATERIAL_LIBRARY_LIMITS } from "./material-library";
+import { FONT_LIBRARY_LIMITS } from "./font-library";
 import { MATERIAL_KINDS, MATERIAL_MEDIA_TYPES } from "@openreel/core/material/types";
 import {
   MAX_MATERIAL_METHOD_STEPS,
@@ -49,6 +50,9 @@ import {
   TEXT_CREATE_SCHEMA,
   TEXT_DELETE_SCHEMA,
   TEXT_UPDATE_SCHEMA,
+  SVG_CREATE_SCHEMA,
+  SVG_UPDATE_SCHEMA,
+  SVG_REMOVE_SCHEMA,
   TRACK_ADD_SCHEMA,
   TRACK_UPDATE_SCHEMA,
   TRACK_REMOVE_SCHEMA,
@@ -67,6 +71,7 @@ import {
   MEDIA_RENAME_SCHEMA,
   CLIP_SET_KEYFRAMES_SCHEMA,
   CLIP_SET_CHROMA_KEY_SCHEMA,
+  CLIP_SET_NOISE_REDUCTION_SCHEMA,
 } from "./ops";
 import {
   isFiniteNumber,
@@ -517,6 +522,9 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "text.create": TEXT_CREATE_SCHEMA,
   "text.update": TEXT_UPDATE_SCHEMA,
   "text.delete": TEXT_DELETE_SCHEMA,
+  "svg.create": SVG_CREATE_SCHEMA,
+  "svg.update": SVG_UPDATE_SCHEMA,
+  "svg.remove": SVG_REMOVE_SCHEMA,
   "clip.setSpeed": CLIP_SET_SPEED_SCHEMA,
   "clip.setReverse": CLIP_SET_REVERSE_SCHEMA,
   "clip.setTransform": CLIP_SET_TRANSFORM_SCHEMA,
@@ -539,6 +547,7 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "media.relink": MEDIA_RELINK_SCHEMA,
   "media.rename": MEDIA_RENAME_SCHEMA,
   "clip.setChromaKey": CLIP_SET_CHROMA_KEY_SCHEMA,
+  "clip.setNoiseReduction": CLIP_SET_NOISE_REDUCTION_SCHEMA,
 };
 
 /**
@@ -1364,6 +1373,28 @@ export const MATERIAL_UNDO_SCHEMA: ObjectSchema = {
 };
 
 /* ------------------------------------------------------------------ */
+/* font.* (user-level custom fonts)                                    */
+/* ------------------------------------------------------------------ */
+
+export const FONT_UPLOAD_SCHEMA: ObjectSchema = {
+  name: {
+    check: (v) => isNonEmptyString(v) && (v as string).length <= FONT_LIBRARY_LIMITS.maxNameLength,
+    describe: `optional desired font family of at most ${FONT_LIBRARY_LIMITS.maxNameLength} characters; the response reports the ACTUAL family (a duplicate base name gets a numeric suffix, matching the GUI)`,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1, maxLength: FONT_LIBRARY_LIMITS.maxNameLength } },
+  },
+  filePath: {
+    check: isNonEmptyString,
+    describe: "an absolute local path inside one of the configured media roots (exactly one of filePath/dataBase64)",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  dataBase64: {
+    check: isNonEmptyString,
+    describe: `font bytes base64-encoded; decoded size at most ${FONT_LIBRARY_LIMITS.maxFontBytes} bytes (exactly one of filePath/dataBase64)`,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* The verb declaration map (single source, Decision 4)                */
 /* ------------------------------------------------------------------ */
 
@@ -1407,4 +1438,6 @@ export const VERB_PARAM_SCHEMAS: {
   "material.remove": MATERIAL_REMOVE_SCHEMA,
   "material.attach": MATERIAL_ATTACH_SCHEMA,
   "material.undo": MATERIAL_UNDO_SCHEMA,
+  "font.upload": FONT_UPLOAD_SCHEMA,
+  "font.list": EMPTY_PARAMS_SCHEMA,
 };

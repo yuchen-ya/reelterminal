@@ -13,6 +13,12 @@ import { TransitionEngine } from "@openreel/core/video/transition-engine";
 import type { TextClip } from "@openreel/core/text/types";
 import { parseSRT } from "@openreel/core/text/subtitle-engine";
 import {
+  DEFAULT_GRAPHIC_TRANSFORM,
+  DEFAULT_SVG_COLOR_STYLE,
+  type SVGClip,
+  type ViewBox,
+} from "@openreel/core/graphics/types";
+import {
   DEFAULT_TEXT_STYLE,
   DEFAULT_TEXT_TRANSFORM,
 } from "@openreel/core/text/types";
@@ -55,6 +61,9 @@ import {
   type TextDeleteOp,
   type TextUpdateOp,
   type TextStyleInput,
+  type SvgCreateOp,
+  type SvgUpdateOp,
+  type SvgRemoveOp,
   type TrackAddOp,
   type TrackUpdateOp,
   type TrackRemoveOp,
@@ -74,9 +83,16 @@ import {
   type MediaRelinkOp,
   type MediaRenameOp,
   type ClipSetChromaKeyOp,
+  type ClipSetNoiseReductionOp,
 } from "./types";
 import { validateReferenceComparisonConfig } from "@openreel/core/types/reference-comparison";
 import { DEFAULT_CHROMA_KEY_SETTINGS } from "@openreel/core/video/chroma-key-engine";
+import {
+  DEFAULT_NOISE_REDUCTION_SETTINGS,
+  getNoiseReductionPreset,
+  NOISE_REDUCTION_FOCUS_OPTIONS,
+} from "@openreel/core/audio/noise-reduction-presets";
+import { isSerializedNoiseProfile } from "@openreel/core/audio/audio-effect-routing";
 import { timelineDurationSec } from "./projection";
 import { basename } from "node:path";
 import { resolveContainedPathDetailed } from "./media/path-roots";
@@ -520,6 +536,108 @@ export const TEXT_DELETE_SCHEMA: ObjectSchema = {
     describe: '"text.delete"',
     required: true,
     emits: { kind: "leaf", schema: { const: "text.delete" } },
+  },
+  overlayId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const SVG_CREATE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "svg.create",
+    describe: '"svg.create"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "svg.create" } },
+  },
+  // Only string constraints here — the content policy (scripts, foreign
+  // objects, event handlers, unsafe schemes, external references, size) is
+  // owned by the shared core ingest gate that the svg/create action handler
+  // runs on every apply.
+  svgContent: {
+    check: (v) => typeof v === "string" && v.length > 0,
+    describe: "a non-empty string of inline SVG markup",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  startTime: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  duration: {
+    check: isPositiveNumber,
+    describe: "a finite number > 0",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  trackId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  position: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: NORMALIZED_POINT_SCHEMA },
+  },
+  anchor: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: NORMALIZED_POINT_SCHEMA },
+  },
+};
+
+export const SVG_UPDATE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "svg.update",
+    describe: '"svg.update"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "svg.update" } },
+  },
+  // The id surfaced by timeline.query as an svg entity.
+  overlayId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  svgContent: {
+    check: (v) => typeof v === "string" && v.length > 0,
+    describe: "a non-empty string of inline SVG markup",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  startTime: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  duration: {
+    check: isPositiveNumber,
+    describe: "a finite number > 0",
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  position: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: NORMALIZED_POINT_SCHEMA },
+  },
+  anchor: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: NORMALIZED_POINT_SCHEMA },
+  },
+};
+
+export const SVG_REMOVE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "svg.remove",
+    describe: '"svg.remove"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "svg.remove" } },
   },
   overlayId: {
     check: isNonEmptyString,
@@ -1301,6 +1419,115 @@ export const CLIP_SET_CHROMA_KEY_SCHEMA: ObjectSchema = {
   },
 };
 
+/** Upper bound on per-array profile bins (FFT 32768 → 16384 bins). */
+const NOISE_REDUCTION_PROFILE_MAX_BINS = 16384;
+
+const isFiniteArrayBounded = (v: unknown): boolean =>
+  Array.isArray(v) &&
+  v.length > 0 &&
+  v.length <= NOISE_REDUCTION_PROFILE_MAX_BINS &&
+  v.every((entry) => typeof entry === "number" && Number.isFinite(entry));
+
+const isPositiveFiniteNumber = (v: unknown): boolean =>
+  typeof v === "number" && Number.isFinite(v) && v > 0;
+
+const NOISE_REDUCTION_PROFILE_SCHEMA: ObjectSchema = {
+  frequencyBins: {
+    check: isFiniteArrayBounded,
+    describe: `a non-empty array of at most ${NOISE_REDUCTION_PROFILE_MAX_BINS} finite numbers`,
+    required: true,
+    emits: {
+      kind: "array",
+      minItems: 1,
+      maxItems: NOISE_REDUCTION_PROFILE_MAX_BINS,
+      items: { kind: "leaf", schema: { type: "number" } },
+    },
+  },
+  magnitudes: {
+    check: isFiniteArrayBounded,
+    describe: `a non-empty array of at most ${NOISE_REDUCTION_PROFILE_MAX_BINS} finite numbers`,
+    required: true,
+    emits: {
+      kind: "array",
+      minItems: 1,
+      maxItems: NOISE_REDUCTION_PROFILE_MAX_BINS,
+      items: { kind: "leaf", schema: { type: "number" } },
+    },
+  },
+  standardDeviations: {
+    check: isFiniteArrayBounded,
+    describe: `a non-empty array of at most ${NOISE_REDUCTION_PROFILE_MAX_BINS} finite numbers`,
+    emits: {
+      kind: "array",
+      minItems: 1,
+      maxItems: NOISE_REDUCTION_PROFILE_MAX_BINS,
+      items: { kind: "leaf", schema: { type: "number" } },
+    },
+  },
+  sampleRate: {
+    check: isPositiveFiniteNumber,
+    describe: "a positive finite number",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  fftSize: {
+    check: isPositiveInteger,
+    describe: "a positive integer",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } },
+  },
+};
+
+export const CLIP_SET_NOISE_REDUCTION_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "clip.setNoiseReduction",
+    describe: '"clip.setNoiseReduction"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.setNoiseReduction" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  enabled: {
+    check: isBoolean,
+    describe: "a boolean",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  preset: {
+    check: oneOf(NOISE_REDUCTION_FOCUS_OPTIONS),
+    describe: `one of ${NOISE_REDUCTION_FOCUS_OPTIONS.join(", ")}`,
+    emits: { kind: "leaf", schema: { enum: [...NOISE_REDUCTION_FOCUS_OPTIONS] } },
+  },
+  threshold: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= -80 && v <= 0,
+    describe: "a finite number in [-80, 0] (dB)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: -80, maximum: 0 } },
+  },
+  reduction: {
+    check: isUnitRange,
+    describe: "a finite number in [0, 1]",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  attack: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100,
+    describe: "a finite number in [0, 100] (ms)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 100 } },
+  },
+  release: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 500,
+    describe: "a finite number in [0, 500] (ms)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 500 } },
+  },
+  profile: {
+    check: isPlainObjectValue,
+    describe: "an object",
+    emits: { kind: "object", schema: NOISE_REDUCTION_PROFILE_SCHEMA },
+  },
+};
+
 /**
  * Rebind nested style/position/anchor to SANITIZED copies: opToCoreActions
  * spreads them into the canonical TextClip, so what flows downstream must be
@@ -1479,6 +1706,27 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
     }
     case "text.delete":
       return validateObject<TextDeleteOp>(raw, TEXT_DELETE_SCHEMA, label);
+    case "svg.create":
+      return validateObject<SvgCreateOp>(raw, SVG_CREATE_SCHEMA, label);
+    case "svg.update": {
+      const op = validateObject<SvgUpdateOp>(raw, SVG_UPDATE_SCHEMA, label);
+      // "at least one updatable field" is a cross-field predicate enforced
+      // here — deliberately NOT emitted.
+      if (
+        op.svgContent === undefined &&
+        op.startTime === undefined &&
+        op.duration === undefined &&
+        op.position === undefined &&
+        op.anchor === undefined
+      ) {
+        throw invalidParams(
+          `${label}: at least one of svgContent/startTime/duration/position/anchor is required`,
+        );
+      }
+      return op;
+    }
+    case "svg.remove":
+      return validateObject<SvgRemoveOp>(raw, SVG_REMOVE_SCHEMA, label);
     case "clip.setSpeed":
       return validateObject<ClipSetSpeedOp>(raw, CLIP_SET_SPEED_SCHEMA, label);
     case "clip.setReverse":
@@ -1614,6 +1862,30 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
         `${label}.keyColor`,
       );
       return { ...op, keyColor };
+    }
+    case "clip.setNoiseReduction": {
+      const op = validateObject<ClipSetNoiseReductionOp>(
+        raw,
+        CLIP_SET_NOISE_REDUCTION_SCHEMA,
+        label,
+      );
+      // profile is a nested closed object whose cross-field rules (equal
+      // lengths, fftSize = 2 × magnitudes.length and a power of two) cannot
+      // be expressed in the emitted schema — enforce them here with the SAME
+      // core predicate the render chain uses for persisted profiles
+      // (out-of-shape profiles are rejected, never clamped).
+      if (op.profile === undefined) return op;
+      const profile = validateObject<NonNullable<ClipSetNoiseReductionOp["profile"]>>(
+        op.profile,
+        NOISE_REDUCTION_PROFILE_SCHEMA,
+        `${label}.profile`,
+      );
+      if (!isSerializedNoiseProfile(profile)) {
+        throw invalidParams(
+          `${label}.profile: frequencyBins, magnitudes and standardDeviations must be equal-length finite arrays, sampleRate must be finite and fftSize (when present) must be twice magnitudes.length and a power of two`,
+        );
+      }
+      return { ...op, profile };
     }
     case "reference.setComparison": {
       const op = validateObject<ReferenceSetComparisonOp>(
@@ -1781,6 +2053,7 @@ export interface EntityIdSets {
   readonly tracks: ReadonlySet<string>;
   readonly clips: ReadonlySet<string>;
   readonly textOverlays: ReadonlySet<string>;
+  readonly svgClips: ReadonlySet<string>;
   readonly transitions: ReadonlySet<string>;
   readonly subtitles: ReadonlySet<string>;
 }
@@ -1795,8 +2068,9 @@ export function collectEntityIds(project: Project): EntityIdSets {
     for (const transition of track.transitions ?? []) transitions.add(transition.id);
   }
   const textOverlays = new Set((project.textClips ?? []).map((c) => c.id));
+  const svgClips = new Set((project.svgClips ?? []).map((c) => c.id));
   const subtitles = new Set((project.timeline.subtitles ?? []).map((subtitle) => subtitle.id));
-  return { tracks, clips, textOverlays, transitions, subtitles };
+  return { tracks, clips, textOverlays, svgClips, transitions, subtitles };
 }
 
 /** Created entity ids, partitioned by category (the live seam's shape). */
@@ -1804,6 +2078,7 @@ export interface CreatedIdsByCategory {
   readonly tracks: readonly string[];
   readonly clips: readonly string[];
   readonly textClips: readonly string[];
+  readonly svgClips: readonly string[];
   readonly transitions: readonly string[];
   readonly subtitles: readonly string[];
 }
@@ -1818,6 +2093,7 @@ export function diffCreatedIdsByCategory(
     textClips: [...after.textOverlays].filter(
       (id) => !before.textOverlays.has(id),
     ),
+    svgClips: [...after.svgClips].filter((id) => !before.svgClips.has(id)),
     transitions: [...after.transitions].filter(
       (id) => !before.transitions.has(id),
     ),
@@ -1831,6 +2107,7 @@ export function diffCreatedIds(before: EntityIdSets, after: EntityIdSets): strin
     ...byCategory.tracks,
     ...byCategory.clips,
     ...byCategory.textClips,
+    ...byCategory.svgClips,
     ...byCategory.transitions,
     ...byCategory.subtitles,
   ];
@@ -1858,6 +2135,45 @@ export function applyClipIdOverride(
       clip.id === mintedId ? { ...clip, id: op.clipId as string } : clip,
     );
   }
+}
+
+/**
+ * String-level viewBox extraction for svg.create. The facade op translator
+ * runs in the Node host (no DOMParser there), so this mirrors core
+ * parseSVG's fallback ladder on the raw markup: viewBox attribute first,
+ * else width/height attributes, else 100x100 — the same clip the GUI import
+ * of the identical markup would produce. Unparseable numbers fall back to
+ * the default (core's parseSVG would keep NaN there; the renderer clamps to
+ * a drawable box either way, and the content itself is unchanged).
+ */
+function extractSvgViewBox(content: string): ViewBox {
+  const fallback: ViewBox = { minX: 0, minY: 0, width: 100, height: 100 };
+  const rootMatch = /<(?:[a-zA-Z][\w.-]*:)?svg(?=[\s/>])[^>]*>/.exec(content);
+  if (!rootMatch) return fallback;
+  const tag = rootMatch[0];
+  const attr = (name: string): string | null => {
+    const match = new RegExp(`${name}\\s*=\\s*("([^"]*)"|'([^']*)')`).exec(tag);
+    return match ? (match[2] ?? match[3] ?? "") : null;
+  };
+  const viewBoxAttr = attr("viewBox");
+  if (viewBoxAttr !== null) {
+    const parts = viewBoxAttr.split(/[\s,]+/).map(Number);
+    if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {
+      return {
+        minX: parts[0] as number,
+        minY: parts[1] as number,
+        width: parts[2] as number,
+        height: parts[3] as number,
+      };
+    }
+    return fallback;
+  }
+  const width = parseFloat(attr("width") ?? "");
+  const height = parseFloat(attr("height") ?? "");
+  if (Number.isFinite(width) && Number.isFinite(height)) {
+    return { minX: 0, minY: 0, width, height };
+  }
+  return fallback;
 }
 
 /**
@@ -2354,6 +2670,121 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         );
       }
       return [makeAction("text/remove", { clipId: op.overlayId })];
+    }
+
+    case "svg.create": {
+      let trackId = op.trackId;
+      let autoCreatedTrackId: string | undefined;
+      if (trackId !== undefined) {
+        const track = draft.timeline.tracks.find((t) => t.id === trackId);
+        if (!track) {
+          throw new FacadeError(
+            "NOT_FOUND",
+            `svg.create: track "${trackId}" not found`,
+            { trackId },
+          );
+        }
+        if (track.type !== "graphics") {
+          throw invalidParams(
+            `svg.create: track "${trackId}" is a ${track.type} track, expected a graphics track`,
+            { trackId, trackType: track.type },
+          );
+        }
+      } else {
+        const graphicsTrack = draft.timeline.tracks.find(
+          (t) => t.type === "graphics",
+        );
+        if (graphicsTrack) {
+          trackId = graphicsTrack.id;
+        } else {
+          // Same higher-level-intent pattern as text.create: an SVG overlay
+          // implies its graphics lane, so the track is created inside the
+          // same action stream — one atomic edit.apply unit for commit and
+          // undo in both headless drafts and live stores.
+          autoCreatedTrackId = `track-${crypto.randomUUID()}`;
+          trackId = autoCreatedTrackId;
+        }
+      }
+
+      // Mirrors the clip graphicsEngine.importSVG builds for the GUI import
+      // (same defaults for preserveAspectRatio/colorStyle/animations), so an
+      // Agent-created SVG is indistinguishable from a GUI-imported one.
+      const clip: SVGClip = {
+        id: `svg-${crypto.randomUUID()}`,
+        trackId,
+        startTime: op.startTime,
+        duration: op.duration,
+        type: "svg",
+        svgContent: op.svgContent,
+        viewBox: extractSvgViewBox(op.svgContent),
+        preserveAspectRatio: "xMidYMid",
+        transform: {
+          ...DEFAULT_GRAPHIC_TRANSFORM,
+          ...(op.position !== undefined ? { position: { ...op.position } } : {}),
+          ...(op.anchor !== undefined ? { anchor: { ...op.anchor } } : {}),
+        },
+        keyframes: [],
+        colorStyle: { ...DEFAULT_SVG_COLOR_STYLE },
+        entryAnimation: { type: "none", duration: 0.5, easing: "ease-out" },
+        exitAnimation: { type: "none", duration: 0.5, easing: "ease-in" },
+      };
+      return [
+        ...(autoCreatedTrackId !== undefined
+          ? [
+              makeAction("track/add", {
+                trackType: "graphics",
+                trackId: autoCreatedTrackId,
+              }),
+            ]
+          : []),
+        makeAction("svg/create", { clip }),
+      ];
+    }
+
+    case "svg.update": {
+      const existing = (draft.svgClips ?? []).find(
+        (c) => c.id === op.overlayId,
+      );
+      if (!existing) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `svg.update: svg overlay "${op.overlayId}" not found`,
+          { overlayId: op.overlayId },
+        );
+      }
+      // Core svg/update SHALLOW-spreads `updates` onto the clip, so a
+      // position/anchor change must send the merged transform whole — a
+      // partial object would drop the other transform keys. Only keys the
+      // caller actually set go out.
+      const updates: Partial<SVGClip> = {
+        ...(op.svgContent !== undefined ? { svgContent: op.svgContent } : {}),
+        ...(op.startTime !== undefined ? { startTime: op.startTime } : {}),
+        ...(op.duration !== undefined ? { duration: op.duration } : {}),
+        ...(op.position !== undefined || op.anchor !== undefined
+          ? {
+              transform: {
+                ...existing.transform,
+                ...(op.position !== undefined ? { position: { ...op.position } } : {}),
+                ...(op.anchor !== undefined ? { anchor: { ...op.anchor } } : {}),
+              },
+            }
+          : {}),
+      };
+      return [makeAction("svg/update", { clipId: op.overlayId, updates })];
+    }
+
+    case "svg.remove": {
+      const exists = (draft.svgClips ?? []).some(
+        (c) => c.id === op.overlayId,
+      );
+      if (!exists) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `svg.remove: svg overlay "${op.overlayId}" not found`,
+          { overlayId: op.overlayId },
+        );
+      }
+      return [makeAction("svg/remove", { clipId: op.overlayId })];
     }
 
     case "clip.setVolume": {
@@ -3012,6 +3443,108 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           },
         }),
       ];
+    }
+
+    case "clip.setNoiseReduction": {
+      const clip = draft.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((candidate) => candidate.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.setNoiseReduction: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      // The GUI resolves add-vs-update by whether the clip already carries a
+      // noiseReduction effect (panel apply and the Inspector quick cleanup
+      // both do): an existing effect is updated IN PLACE — never stacked.
+      // Assemble the full params snapshot the same way the GUI's full-config
+      // update does: shared defaults ← prior params ← preset ← explicit
+      // fields, and a learned profile survives preset switches.
+      const prior =
+        (clip.audioEffects ?? []).find(
+          (candidate) => candidate.type === "noiseReduction",
+        ) ?? null;
+      const priorParams = (prior?.params ?? {}) as Partial<
+        typeof DEFAULT_NOISE_REDUCTION_SETTINGS
+      >;
+      const presetConfig = op.preset
+        ? getNoiseReductionPreset(op.preset).config
+        : null;
+      const params: Record<string, unknown> = {
+        threshold:
+          op.threshold ??
+          presetConfig?.threshold ??
+          priorParams.threshold ??
+          DEFAULT_NOISE_REDUCTION_SETTINGS.threshold,
+        reduction:
+          op.reduction ??
+          presetConfig?.reduction ??
+          priorParams.reduction ??
+          DEFAULT_NOISE_REDUCTION_SETTINGS.reduction,
+        attack:
+          op.attack ??
+          presetConfig?.attack ??
+          priorParams.attack ??
+          DEFAULT_NOISE_REDUCTION_SETTINGS.attack,
+        release:
+          op.release ??
+          presetConfig?.release ??
+          priorParams.release ??
+          DEFAULT_NOISE_REDUCTION_SETTINGS.release,
+        focus:
+          op.preset ??
+          priorParams.focus ??
+          DEFAULT_NOISE_REDUCTION_SETTINGS.focus,
+      };
+      const resolvedProfile = op.profile ?? priorParams.profile;
+      if (resolvedProfile !== undefined) {
+        params.profile = resolvedProfile;
+      }
+
+      if (!prior) {
+        if (!op.enabled) {
+          throw new FacadeError(
+            "NOT_FOUND",
+            `clip.setNoiseReduction: clip "${op.clipId}" has no noiseReduction effect to disable`,
+            { clipId: op.clipId },
+          );
+        }
+        return [
+          makeAction("audio/addEffect", {
+            clipId: op.clipId,
+            effect: {
+              id: `noiseReduction-${crypto.randomUUID()}`,
+              type: "noiseReduction",
+              params,
+              enabled: true,
+            },
+          }),
+        ];
+      }
+
+      // Always refresh the params snapshot (an idempotent no-op write when
+      // nothing changed — keeps the emitted action batch non-empty, which
+      // the live store requires), then toggle only when the requested
+      // enabled state differs from the current one.
+      const actions: Action[] = [
+        makeAction("audio/updateEffect", {
+          clipId: op.clipId,
+          effectId: prior.id,
+          params,
+        }),
+      ];
+      if (op.enabled !== prior.enabled) {
+        actions.push(
+          makeAction("audio/toggleEffect", {
+            clipId: op.clipId,
+            effectId: prior.id,
+            enabled: op.enabled,
+          }),
+        );
+      }
+      return actions;
     }
   }
 }

@@ -27,6 +27,7 @@ import {
   type HistoryGetResult,
   type ProjectChangesResult,
   type MaterialLibraryBridge,
+  type FontLibraryBridge,
 } from "@openreel/agent-facade";
 import type { Action } from "@openreel/core/types/actions";
 import type { Project } from "@openreel/core/types/project";
@@ -74,6 +75,8 @@ export interface LiveStoreBridge {
   readonly store: LiveProjectStore;
   /** Optional material-library seam (material.* verbs → renderer library). */
   readonly materialLibrary?: MaterialLibraryBridge;
+  /** Optional font-library seam (font.* verbs → renderer font store). */
+  readonly fontLibrary?: FontLibraryBridge;
   /** Feed one "openreel:live:response" message; unknown/foreign replies drop. */
   handleResponse(sender: unknown, response: LiveBridgeReply): void;
   /** Reject every pending call (bridge teardown / renderer gone). */
@@ -279,9 +282,38 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
     }
   };
 
+  // Same envelope discipline as materialLibrary, for the font store.
+  const fontLibrary: FontLibraryBridge = async (fontRequest) => {
+    try {
+      const result = await request(
+        "fontLibrary",
+        {
+          fontVerb: fontRequest.verb,
+          fontParams: fontRequest.params,
+        },
+        APPLY_TIMEOUT_MS,
+      );
+      return { ok: true, result };
+    } catch (error) {
+      const typed = error as {
+        code?: string;
+        details?: Record<string, unknown>;
+      };
+      return {
+        ok: false,
+        error: {
+          code: typed?.code ?? "BRIDGE_ERROR",
+          message: error instanceof Error ? error.message : String(error),
+          ...(typed?.details ? { details: typed.details } : {}),
+        },
+      };
+    }
+  };
+
   return {
     store,
     materialLibrary,
+    fontLibrary,
     handleResponse,
     teardown,
     get pendingCount() {
@@ -319,6 +351,7 @@ export function installLiveStoreBridge(): LiveStoreBridge {
   return {
     store: bridge.store,
     materialLibrary: bridge.materialLibrary,
+    fontLibrary: bridge.fontLibrary,
     handleResponse: bridge.handleResponse,
     get pendingCount() {
       return bridge.pendingCount;

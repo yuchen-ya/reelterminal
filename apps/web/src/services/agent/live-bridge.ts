@@ -24,6 +24,7 @@ import { useTimelineStore } from "../../stores/timeline-store";
 import { getPlaybackBridge } from "../../bridges/playback-bridge";
 import { runExclusiveLiveWrite } from "./live-write-lock";
 import { handleMaterialLibraryRequest } from "./material-bridge";
+import { handleFontLibraryRequest } from "./font-bridge";
 import { prepareLiveMedia } from "./prepare-live-media";
 
 /**
@@ -753,6 +754,15 @@ export async function handleLiveBridgeRequest(
         const reply = await handleMaterialLibraryRequest({
           verb: req.materialVerb,
           params: req.materialParams,
+        });
+        return reply as Omit<LiveBridgeReply, "callId">;
+      }
+      case "fontLibrary": {
+        // The canonical custom-font store lives renderer-side (IndexedDB +
+        // FontFace); the facade only validated/guarded the verb.
+        const reply = await handleFontLibraryRequest({
+          verb: req.fontVerb,
+          params: req.fontParams,
         });
         return reply as Omit<LiveBridgeReply, "callId">;
       }

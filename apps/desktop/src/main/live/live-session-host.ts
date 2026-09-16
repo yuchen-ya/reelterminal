@@ -286,6 +286,9 @@ export function createLiveSessionHost(
       ...(bridge.materialLibrary
         ? { materialLibrary: bridge.materialLibrary }
         : {}),
+      ...(bridge.fontLibrary
+        ? { fontLibrary: bridge.fontLibrary }
+        : {}),
       ...(deps.mediaRoots ? { mediaRoots: deps.mediaRoots } : {}),
       ...(deps.deliveryRoots ? { deliveryRoots: deps.deliveryRoots } : {}),
       ...(providers.renderProvider

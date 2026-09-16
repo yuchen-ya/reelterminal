@@ -151,8 +151,8 @@ export interface LiveApplyActionsOptions {
 
 /**
  * Ids of every entity the batch created, partitioned by entity category
- * (tracks / timeline clips / text overlays / transitions), in creation order within each
- * category — diffed by the store around its own apply, so they are the ids
+ * (tracks / timeline clips / text overlays / SVG overlays / transitions), in creation
+ * order within each category — diffed by the store around its own apply, so they are the ids
  * that genuinely exist in the canonical project (core mints random ids; the
  * facade never guesses them). Category partitioning is load-bearing: a mixed
  * batch (e.g. [text.create, clip.add]) must hand each op the id of ITS
@@ -162,6 +162,14 @@ export interface LiveCreatedIds {
   readonly tracks: readonly string[];
   readonly clips: readonly string[];
   readonly textClips: readonly string[];
+  /**
+   * Optional for seam-compat: stores that diff overlay clips report the
+   * bucket (the canonical GUI store does); an implementation that predates
+   * the bucket omits it, and svg.create ops then report no clip id from it
+   * (an implied lane's track id still arrives via the tracks bucket; agents
+   * fall back to timeline.query's svg projection).
+   */
+  readonly svgClips?: readonly string[];
   readonly transitions: readonly string[];
   readonly subtitles: readonly string[];
 }
