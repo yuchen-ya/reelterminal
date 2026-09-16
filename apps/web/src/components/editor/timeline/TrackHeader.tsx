@@ -54,11 +54,36 @@ export const TrackHeader: React.FC<TrackHeaderProps> = ({
     track.type === "text" ||
     track.type === "graphics";
   const isAudio = track.type === "audio";
-  const hasSoloedAudioTrack = project.timeline.tracks.some(
-    (candidate) => candidate.type === "audio" && candidate.solo,
+  // Video tracks can carry embedded audio, so they get the same mute/solo
+  // controls as audio tracks (image/text/graphics never carry audio).
+  const canCarryAudio = isAudio || track.type === "video";
+  // Solo suppression in both the preview graph and the export mix is computed
+  // across audio and video tracks only, so the UI must use the same set.
+  const hasSoloedAudibleTrack = project.timeline.tracks.some(
+    (candidate) =>
+      (candidate.type === "audio" || candidate.type === "video") &&
+      candidate.solo,
   );
-  const effectivelyMuted =
-    isAudio && (track.muted || (hasSoloedAudioTrack && !track.solo));
+  const mutedBySolo = hasSoloedAudibleTrack && !track.solo;
+  // Grey the mute/solo controls out only when every clip on a video track
+  // provably has no audio stream; when it cannot be judged (no clips yet,
+  // missing media or metadata) the controls stay available. MediaItem.metadata
+  // is persisted as MediaMetadata but carries the import-time MediaTrackInfo at
+  // runtime, so hasAudio is probed defensively instead of via the static type.
+  const hasNoAudioContent = React.useMemo(() => {
+    if (track.type !== "video" || track.clips.length === 0) return false;
+    const mediaItems = project.mediaLibrary?.items ?? [];
+    const clipHasAudio = (clip: { mediaId: string }): boolean | null => {
+      const item = mediaItems.find((media) => media.id === clip.mediaId);
+      const meta: unknown = item?.metadata;
+      if (typeof meta !== "object" || meta === null) return null;
+      const hasAudio: unknown = (meta as { hasAudio?: unknown }).hasAudio;
+      return typeof hasAudio === "boolean" ? hasAudio : null;
+    };
+    return track.clips.every(
+      (clip) => clipHasAudio(clip) === false,
+    );
+  }, [track.type, track.clips, project.mediaLibrary]);
   const groupCandidates = project.timeline.tracks.filter(
     (candidate) =>
       candidate.id !== track.id &&
@@ -162,7 +187,9 @@ export const TrackHeader: React.FC<TrackHeaderProps> = ({
         onDragEnd={onDragEnd}
         style={{ height: getTrackHeight(track.id, track.type) }}
         className={`border-b border-border flex items-center gap-2.5 px-4 relative group transition-colors cursor-grab active:cursor-grabbing ${
-          track.hidden || effectivelyMuted ? "opacity-60" : ""
+          // Dimming is reserved for "picture hidden" (eye) so it never reads as
+          // "sound muted"; mute feedback lives on the speaker control below.
+          track.hidden ? "opacity-60" : ""
         } ${
           track.locked ? "bg-bg-2/50" : "bg-bg-1"
         }`}
@@ -220,15 +247,32 @@ export const TrackHeader: React.FC<TrackHeaderProps> = ({
                 )}
               </button>
             )}
-            {isAudio && (
+            {canCarryAudio && (
               <>
                 <button
                   type="button"
-                  aria-label={track.muted ? `Unmute ${track.name}` : `Mute ${track.name}`}
+                  disabled={hasNoAudioContent}
+                  aria-label={
+                    track.muted ? `Unmute ${track.name}` : `Mute ${track.name}`
+                  }
                   aria-pressed={track.muted}
-                  title={track.muted ? t("Unmute track") : t("Mute track")}
+                  title={
+                    hasNoAudioContent
+                      ? t("Track has no audio")
+                      : track.muted
+                        ? t("Unmute track")
+                        : mutedBySolo
+                          ? t("Silenced by solo")
+                          : t("Mute track")
+                  }
                   className={`transition-colors ${
-                    track.muted ? "text-destructive" : "text-fg-muted hover:text-fg-2"
+                    hasNoAudioContent
+                      ? "text-fg-muted opacity-40 cursor-not-allowed"
+                      : track.muted
+                        ? "text-destructive"
+                        : mutedBySolo
+                          ? "text-fg-muted opacity-50 hover:text-fg-2"
+                          : "text-fg-muted hover:text-fg-2"
                   }`}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -243,13 +287,24 @@ export const TrackHeader: React.FC<TrackHeaderProps> = ({
                 </button>
                 <button
                   type="button"
-                  aria-label={track.solo ? `Clear solo ${track.name}` : `Solo ${track.name}`}
+                  disabled={hasNoAudioContent}
+                  aria-label={
+                    track.solo ? `Clear solo ${track.name}` : `Solo ${track.name}`
+                  }
                   aria-pressed={track.solo}
-                  title={track.solo ? t("Clear solo") : t("Solo track")}
+                  title={
+                    hasNoAudioContent
+                      ? t("Track has no audio")
+                      : track.solo
+                        ? t("Clear solo")
+                        : t("Solo track")
+                  }
                   className={`flex h-[18px] min-w-[18px] items-center justify-center rounded px-1 text-[9px] font-black transition-colors ${
-                    track.solo
-                      ? "bg-status-warning text-black"
-                      : "text-fg-muted hover:bg-hover hover:text-fg-2"
+                    hasNoAudioContent
+                      ? "text-fg-muted opacity-40 cursor-not-allowed"
+                      : track.solo
+                        ? "bg-status-warning text-black"
+                        : "text-fg-muted hover:bg-hover hover:text-fg-2"
                   }`}
                   onClick={(e) => {
                     e.stopPropagation();
