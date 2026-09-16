@@ -5,19 +5,30 @@
  * calls `track.canDecode()`, because `VideoDecoder` does not exist in Node;
  * mediabunny's demuxer-level probing is fully isomorphic.
  *
+ * Images (PNG/JPEG/GIF/WebP — the GUI's accepted set) never reach mediabunny,
+ * which only demuxes audio/video containers: they are classified by the same
+ * extension whitelist as the GUI, content-sniffed via magic bytes, and have
+ * their dimensions parsed from the file header (`./image-probe`). This mirrors
+ * the GUI's `extractImageMetadata` shape: duration 0, frameRate 0, empty
+ * codec, no video/audio tracks, no waveform.
+ *
  * Memory contract: probing STREAMS from disk via mediabunny's FilePathSource
  * (bounded internal cache, 8 MiB by default) — the file is never read into
  * memory in full. The Input is explicitly disposed so the underlying file
  * handle is always released, and the file size comes from `stat`, not from
- * a byte buffer.
+ * a byte buffer. The image branch performs one bounded header read.
  */
 import { stat } from "node:fs/promises";
 import { Input, ALL_FORMATS, FilePathSource } from "mediabunny";
 import type { InputAudioTrack, InputVideoTrack } from "mediabunny";
 import type { ImportedMediaMetadata } from "../types";
+import {
+  classifyImageExtension,
+  readImageHeaderFacts,
+} from "./image-probe";
 
 export interface ProbedMedia extends ImportedMediaMetadata {
-  readonly type: "video" | "audio";
+  readonly type: "video" | "audio" | "image";
   readonly mimeType: string;
   readonly hasVideo: boolean;
   readonly hasAudio: boolean;
@@ -53,6 +64,7 @@ async function videoTrackFacts(
 /**
  * Probes a local file's real container/track metadata via mediabunny,
  * streaming reads from disk (FilePathSource) instead of buffering the file.
+ * Image files take the header-parse branch instead (see the module doc).
  *
  * Throws an `Error` (with a clear, path-bearing message) when the file cannot
  * be read or is not a recognizable media file.
@@ -70,6 +82,28 @@ export async function probeLocalMediaFile(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Cannot read media file "${absPath}": ${message}`);
+  }
+
+  const imageVerdict = classifyImageExtension(absPath);
+  if (imageVerdict.kind === "recognized-unsupported") {
+    throw new Error(
+      `Unsupported media: image format ".${imageVerdict.extension}" is not supported — use PNG, JPEG, GIF, or WebP ("${absPath}")`,
+    );
+  }
+  if (imageVerdict.kind === "supported") {
+    const facts = await readImageHeaderFacts(absPath, fileSize);
+    return {
+      type: "image",
+      durationSec: 0,
+      width: facts.width,
+      height: facts.height,
+      frameRate: 0,
+      codec: "",
+      fileSize,
+      mimeType: facts.mimeType,
+      hasVideo: false,
+      hasAudio: false,
+    };
   }
 
   const input = new Input({

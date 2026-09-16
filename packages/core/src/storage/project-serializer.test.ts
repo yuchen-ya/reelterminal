@@ -23,6 +23,7 @@ import {
   normalizeProjectMarkers,
   normalizeProjectMediaFields,
   normalizeProjectMotionFields,
+  normalizeProjectWorkAssetFields,
 } from "./project-serializer";
 import { createCreationScene, createEmptyCreationState } from "../creation";
 
@@ -562,5 +563,115 @@ describe("ProjectSerializer media displayName", () => {
     const normalized = normalizeProjectMediaFields(project);
 
     expect(normalized).toBe(project);
+  });
+});
+
+const makeWorkAsset = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  schemaVersion: 1,
+  id: "wa-1",
+  kind: "single",
+  name: "Hero trim",
+  sourceMediaId: "m1",
+  sourceRange: { inSec: 2, outSec: 6 },
+  clipSnapshot: {
+    duration: 4,
+    inPoint: 2,
+    outPoint: 6,
+    effects: [],
+    audioEffects: [],
+    transform: {
+      position: { x: 0, y: 0 },
+      scale: { x: 1, y: 1 },
+      rotation: 0,
+      anchor: { x: 0.5, y: 0.5 },
+      opacity: 1,
+    },
+    volume: 1,
+    keyframes: [],
+  },
+  unsupportedParams: [{ field: "stabilization.profile", reason: "recomputed" }],
+  createdAt: 1000,
+  updatedAt: 1000,
+  ...overrides,
+});
+
+describe("ProjectSerializer work assets", () => {
+  it("round-trips work assets through export/import", () => {
+    const serializer = new ProjectSerializer(new MemoryStorageEngine());
+    const project = makeProject({
+      workAssets: [
+        makeWorkAsset(),
+        makeWorkAsset({ id: "wa-2", name: "B-roll" }),
+      ],
+    } as unknown as Project);
+
+    const imported = serializer.importFromJson(serializer.exportToJson(project));
+
+    expect(imported.workAssets).toEqual(project.workAssets);
+  });
+
+  it("keeps old projects without workAssets untouched (field stays absent)", () => {
+    const serializer = new ProjectSerializer(new MemoryStorageEngine());
+    const project = makeProject();
+
+    const imported = serializer.importFromJson(serializer.exportToJson(project));
+
+    expect(imported.workAssets).toBeUndefined();
+  });
+
+  it("normalizeProjectWorkAssetFields leaves an absent field untouched", () => {
+    const project = makeProject();
+
+    const normalized = normalizeProjectWorkAssetFields(project);
+
+    expect(normalized).toBe(project);
+  });
+
+  it("replaces a non-array workAssets value with the empty list", () => {
+    const project = makeProject({
+      workAssets: "garbage",
+    } as unknown as Project);
+
+    const normalized = normalizeProjectWorkAssetFields(project);
+
+    expect(normalized.workAssets).toEqual([]);
+  });
+
+  it("drops structurally invalid entries and keeps the first of duplicate ids", () => {
+    const serializer = new ProjectSerializer(new MemoryStorageEngine());
+    const project = makeProject({
+      workAssets: [
+        makeWorkAsset({ id: "wa-keep" }),
+        makeWorkAsset({ id: "wa-keep", name: "dupe" }), // duplicate id
+        makeWorkAsset({ id: "" }), // empty id
+        makeWorkAsset({ sourceMediaId: "" }), // empty source media
+        makeWorkAsset({ sourceRange: { inSec: 8, outSec: 2 } }), // bad range
+        makeWorkAsset({ unsupportedParams: "nope" }), // bad params list
+        makeWorkAsset({ createdAt: "old" }), // bad createdAt
+        "garbage",
+      ],
+    } as unknown as Project);
+
+    const imported = serializer.importFromJson(serializer.exportToJson(project));
+
+    expect(imported.workAssets?.map((asset) => asset.id)).toEqual(["wa-keep"]);
+  });
+
+  it("keeps an entry whose snapshot is an object without deep-checking it", () => {
+    const project = makeProject({
+      workAssets: [
+        makeWorkAsset(),
+        makeWorkAsset({ id: "wa-shallow", clipSnapshot: { duration: "4" } }),
+      ],
+    } as unknown as Project);
+
+    const normalized = normalizeProjectWorkAssetFields(project);
+
+    // Snapshot internals are validated by the action validator at create
+    // time; normalization only guarantees the entry envelope shape.
+    expect(normalized.workAssets?.map((asset) => asset.id)).toEqual([
+      "wa-1",
+      "wa-shallow",
+    ]);
   });
 });

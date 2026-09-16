@@ -44,7 +44,7 @@ interface MediaImportLedgerEntry {
     readonly revision: number;
     readonly mediaId: string;
     readonly name: string;
-    readonly type: "video" | "audio";
+    readonly type: "video" | "audio" | "image";
     readonly metadata: {
       readonly durationSec: number;
       readonly width: number;
@@ -436,7 +436,7 @@ async function handleImportMedia(
         },
       };
     }
-    if (item.type !== "video" && item.type !== "audio") {
+    if (item.type !== "video" && item.type !== "audio" && item.type !== "image") {
       return {
         ok: false,
         error: {

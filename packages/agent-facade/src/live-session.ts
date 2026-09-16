@@ -348,6 +348,9 @@ const CREATING_OPS: ReadonlySet<EditOp["op"]> = new Set([
   "svg.create",
   "transition.add",
   "subtitle.importSrt",
+  // Instantiation creates exactly one clip (plus its own implicit lane when
+  // the translator prepends a track/add).
+  "workAsset.instantiate",
 ]);
 
 interface EditApplyPayload {
@@ -1433,7 +1436,13 @@ export class LiveFacadeSession {
           impliedTrackType !== null && !hadImpliedTrack
             ? (opActions.find((action) => action.type === "track/add")?.params
                 .trackId as string | undefined)
-            : undefined;
+            : op.op === "workAsset.instantiate"
+              ? // The translator prepends a track/add only when it had to
+                // create the lane; when an explicit trackId was honored the
+                // find returns undefined and nothing is pinned here.
+                (opActions.find((action) => action.type === "track/add")
+                  ?.params.trackId as string | undefined)
+              : undefined;
         actions.push(...opActions);
       }
 
@@ -3609,6 +3618,18 @@ function partitionCreatedIds(
     } else if (op.op === "subtitle.importSrt") {
       ids.push(...createdIds.subtitles.slice(cursors.subtitles));
       cursors.subtitles = createdIds.subtitles.length;
+    } else if (op.op === "workAsset.instantiate") {
+      // Same implicit-lane convention as text.create/svg.create: the
+      // translator's own track/add id is pinned for THIS op, then one clip id
+      // is consumed from the clips bucket in batch order.
+      const autoTrackId = autoTrackIds[index];
+      if (autoTrackId !== undefined && createdIds.tracks.includes(autoTrackId)) {
+        usedTracks.add(autoTrackId);
+        ids.push(autoTrackId);
+      }
+      const id = createdIds.clips[cursors.clips];
+      cursors.clips += 1;
+      if (id !== undefined) ids.push(id);
     } else {
       const category = categories[op.op as keyof typeof categories];
       const id = createdIds[category][cursors[category]];

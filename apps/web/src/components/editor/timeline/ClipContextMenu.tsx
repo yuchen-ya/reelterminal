@@ -10,15 +10,18 @@ import {
   Sparkles,
   Volume2,
   Film,
+  FolderPlus,
   Image,
   ArrowLeftToLine,
   ListChecks,
   Hash,
 } from "@/icons/lucide-compat";
 import type { Clip, Track } from "@openreel/core";
+import { captureWorkAssetFromClip } from "@openreel/core/work-assets/capture";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useUIStore } from "../../../stores/ui-store";
+import { toast } from "../../../stores/notification-store";
 import { getTimelineTrackSelection } from "../../../utils/timeline-item-actions";
 import {
   markAgentReferenceForSelection,
@@ -31,6 +34,33 @@ interface ClipContextMenuProps {
   track: Track;
   onClose?: () => void;
 }
+
+/**
+ * Local fast-path for the menu's disabled state only; the authoritative
+ * prechecks run again inside `captureWorkAssetFromClip` at commit time.
+ * Engine-generated overlay clips draw content the engine regenerates, so a
+ * snapshot of them could never be replayed as a reusable asset.
+ */
+function isEngineGeneratedMediaId(mediaId: string): boolean {
+  return (
+    mediaId.startsWith("text-") ||
+    mediaId.startsWith("shape-") ||
+    mediaId.startsWith("svg-") ||
+    mediaId.startsWith("sticker-") ||
+    mediaId.startsWith("motion-")
+  );
+}
+
+/**
+ * Localized copy for the parameters capture deliberately leaves out. Unknown
+ * fields fall back to the raw reason recorded by the capture function.
+ */
+const UNSUPPORTED_REASON_KEYS: Record<string, string> = {
+  "stabilization.analyzed": "workAssets.unsupportedReasons.recomputed",
+  "stabilization.analysisVersion": "workAssets.unsupportedReasons.recomputed",
+  "stabilization.profile": "workAssets.unsupportedReasons.recomputed",
+  metadata: "workAssets.unsupportedReasons.instanceLocal",
+};
 
 export function useClipContextMenuItems({
   clip,
@@ -145,6 +175,49 @@ export function useClipContextMenuItems({
     onClose?.();
   };
 
+  const canCaptureWorkAsset =
+    mediaItem !== undefined &&
+    mediaItem.isPlaceholder !== true &&
+    !isEngineGeneratedMediaId(clip.mediaId);
+
+  const workAssetDisabledReason = !canCaptureWorkAsset
+    ? t("workAssets.captureDisabled")
+    : undefined;
+
+  const handleSaveToWorkAsset = async () => {
+    onClose?.();
+    // Preview the capture purely so unsupported parameters can be listed for
+    // confirmation BEFORE anything is saved; the slice re-runs the same core
+    // capture at commit time, so the decision is made against the same
+    // prechecks that produce the entry.
+    const { project, saveClipAsWorkAsset } = useProjectStore.getState();
+    const preview = captureWorkAssetFromClip(project, clip.id);
+    if (!preview.ok) {
+      toast.error(t("workAssets.captureFailed"), preview.message);
+      return;
+    }
+    if (preview.asset.unsupportedParams.length > 0) {
+      const lines = preview.asset.unsupportedParams.map((param) => {
+        const reasonKey = UNSUPPORTED_REASON_KEYS[param.field];
+        const reason = reasonKey ? t(reasonKey) : param.reason;
+        return `• ${param.field} — ${reason}`;
+      });
+      const confirmed = window.confirm(
+        `${t("workAssets.unsupportedConfirmTitle")}\n\n${t(
+          "workAssets.unsupportedConfirmBody",
+          { fields: lines.join("\n") },
+        )}`,
+      );
+      if (!confirmed) return;
+    }
+    const saved = await saveClipAsWorkAsset(clip.id);
+    if (saved.ok) {
+      toast.success(t("workAssets.saved"), saved.asset.name);
+    } else {
+      toast.error(t("workAssets.captureFailed"), saved.message);
+    }
+  };
+
   const getClipTypeLabel = () => {
     if (isVideo) return "Video Clip";
     if (isAudio) return "Audio Clip";
@@ -193,6 +266,13 @@ export function useClipContextMenuItems({
       onClick: handleAddAgentReference,
     },
     ...reviewMarkerMenuItems,
+    {
+      label: t("workAssets.saveToWork"),
+      icon: <FolderPlus size={14} aria-hidden />,
+      description: workAssetDisabledReason,
+      isDisabled: !canCaptureWorkAsset,
+      onClick: handleSaveToWorkAsset,
+    },
     { type: "divider" },
     {
       label: t("Split at Playhead"),

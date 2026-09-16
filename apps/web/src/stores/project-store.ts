@@ -47,6 +47,7 @@ import {
 } from "@openreel/core";
 import { createMarkerSlice } from "./project/marker-slice";
 import { createProjectMarkersSlice } from "./project/project-markers-slice";
+import { createWorkAssetsSlice } from "./project/work-assets-slice";
 import { createSubtitleSlice } from "./project/subtitle-slice";
 import { createTrackSlice } from "./project/track-slice";
 import { createMediaSlice } from "./project/media-slice";
@@ -627,6 +628,21 @@ export interface ProjectState {
   recoverFromAutoSave: (saveId: string) => Promise<boolean>;
   forceSave: () => Promise<void>;
   getFullProject: () => Project;
+
+  // Project work assets (project.workAssets); see work-assets-slice
+  saveClipAsWorkAsset: (
+    clipId: string,
+    options?: import("./project/work-assets-slice").SaveClipWorkAssetOptions,
+  ) => Promise<import("./project/work-assets-slice").SaveClipWorkAssetResult>;
+  renameWorkAsset: (
+    workAssetId: string,
+    name: string,
+  ) => Promise<ActionResult>;
+  deleteWorkAsset: (workAssetId: string) => Promise<ActionResult>;
+  instantiateWorkAsset: (
+    workAssetId: string,
+    options?: import("./project/work-assets-slice").InstantiateWorkAssetOptions,
+  ) => Promise<import("./project/work-assets-slice").InstantiateWorkAssetResult>;
 }
 
 function motionCompositionsEqual(
@@ -3266,6 +3282,9 @@ export const useProjectStore = create<ProjectState>()(
 
       // Project review marker actions
       ...createProjectMarkersSlice(set, get),
+
+      // Project work asset actions
+      ...createWorkAssetsSlice(set, get),
 
 
       // Photo editing actions

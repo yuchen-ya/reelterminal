@@ -92,6 +92,13 @@ const ACTION_DESCRIPTIONS: Record<
   "media/import": () => "Import media",
   "media/delete": () => "Delete media",
   "media/rename": () => "Rename media",
+  "workAsset/create": (params) => {
+    const asset = params.asset as { name?: string } | undefined;
+    return asset?.name ? `Save work asset "${asset.name}"` : "Save work asset";
+  },
+  "workAsset/delete": () => "Delete work asset",
+  "workAsset/restore": () => "Restore work asset",
+  "workAsset/rename": () => "Rename work asset",
   "clip/closeGapBefore": () => "Close gap",
   "track/consolidate": () => "Remove gaps",
   "track/restorePositions": () => "Restore positions",

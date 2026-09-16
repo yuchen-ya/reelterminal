@@ -801,6 +801,56 @@ export const Timeline: React.FC = () => {
     [],
   );
 
+  const handleDropWorkAsset = useCallback(
+    async (trackId: string, workAssetId: string, startTime: number) => {
+      const { instantiateWorkAsset } = useProjectStore.getState();
+      const result = await instantiateWorkAsset(workAssetId, {
+        trackId,
+        startTime,
+      });
+      if (!result.ok) {
+        toast.error(
+          tr("workAssets.addFailed"),
+          result.code === "MEDIA_NOT_FOUND"
+            ? tr("workAssets.missingSource")
+            : result.message,
+        );
+        return;
+      }
+      const track = useProjectStore
+        .getState()
+        .project.timeline.tracks.find((candidate) => candidate.id === trackId);
+      toast.success(
+        tr("workAssets.added"),
+        track?.name ?? result.clipId,
+      );
+    },
+    [tr],
+  );
+
+  const handleDropWorkAssetOnNewTrack = useCallback(
+    async (workAssetId: string, startTime: number) => {
+      const { instantiateWorkAsset } = useProjectStore.getState();
+      const result = await instantiateWorkAsset(workAssetId, { startTime });
+      if (!result.ok) {
+        toast.error(
+          tr("workAssets.addFailed"),
+          result.code === "MEDIA_NOT_FOUND"
+            ? tr("workAssets.missingSource")
+            : result.message,
+        );
+        return;
+      }
+      const track = useProjectStore
+        .getState()
+        .project.timeline.tracks.find(
+          (candidate) => candidate.id === result.trackId,
+        );
+      toast.success(tr("workAssets.added"), track?.name ?? result.clipId);
+    },
+    [tr],
+  );
+
   const { moveClip } = useProjectStore();
   const handleMoveClip = useCallback(
     async (clipId: string, newStartTime: number, targetTrackId?: string) => {
@@ -1682,6 +1732,10 @@ export const Timeline: React.FC = () => {
                 const rawData = e.dataTransfer.getData("application/json");
                 if (!rawData) return;
                 const data = JSON.parse(rawData);
+                if (data?.workAssetId) {
+                  void handleDropWorkAssetOnNewTrack(data.workAssetId, snappedTime);
+                  return;
+                }
                 if (!data?.mediaId) return;
                 handleDropMedia("", data.mediaId, snappedTime);
               } catch {
@@ -1706,6 +1760,7 @@ export const Timeline: React.FC = () => {
                   timelineRef={tracksRef}
                   onSelectClip={handleSelectClip}
                   onDropMedia={handleDropMedia}
+                  onDropWorkAsset={handleDropWorkAsset}
                   onMoveClip={handleMoveClip}
                   onSnapIndicator={handleSnapIndicator}
                   onTrimClip={

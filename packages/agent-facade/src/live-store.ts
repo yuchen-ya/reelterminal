@@ -193,7 +193,7 @@ export interface LiveMediaImportRequest {
   /** Absolute, realpathed file inside one of the configured media roots. */
   readonly path: string;
   readonly name: string;
-  readonly type: "video" | "audio";
+  readonly type: "video" | "audio" | "image";
   readonly metadata: ImportedMediaMetadata;
   readonly sourceFile: {
     readonly name: string;

@@ -15,6 +15,7 @@ import type {
   ProjectAction,
   MarkerAction,
   ProjectMarkerAction,
+  WorkAssetAction,
   ReferenceComparisonAction,
 } from "../types/actions";
 import type {
@@ -75,6 +76,8 @@ export class ActionValidator {
         action as ProjectMarkerAction,
         project,
       );
+    } else if (type.startsWith("workAsset/")) {
+      return this.validateWorkAssetAction(action as WorkAssetAction, project);
     } else if (type.startsWith("media/")) {
       return this.validateMediaAction(action as MediaAction, project);
     } else if (type.startsWith("track/")) {
@@ -741,6 +744,393 @@ export class ActionValidator {
         });
     }
 
+    return errors;
+  }
+
+  /**
+   * Work-asset actions. `create` validates against the live environment (the
+   * source media must exist); `restore` is the delete inverse and accepts the
+   * missing-source state as a legal persistent shape — only the entry's own
+   * structure is checked, never the library.
+   */
+  private validateWorkAssetAction(
+    action: WorkAssetAction,
+    project: Project,
+  ): ValidationError[] {
+    const errors: ValidationError[] = [];
+    const items = project.workAssets ?? [];
+
+    switch (action.type) {
+      case "workAsset/create":
+      case "workAsset/restore": {
+        const asset = action.params.asset as unknown;
+        if (!asset || typeof asset !== "object" || Array.isArray(asset)) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Work asset must be an object",
+            path: "params.asset",
+          });
+          break;
+        }
+        const a = asset as {
+          schemaVersion?: unknown;
+          id?: unknown;
+          kind?: unknown;
+          name?: unknown;
+          sourceMediaId?: unknown;
+          sourceRange?: unknown;
+          clipSnapshot?: unknown;
+          unsupportedParams?: unknown;
+          createdAt?: unknown;
+          updatedAt?: unknown;
+        };
+        if (a.schemaVersion !== 1) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Work asset schemaVersion must be 1",
+            path: "params.asset.schemaVersion",
+          });
+        }
+        if (typeof a.id !== "string" || a.id.length === 0) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message:
+              "Work asset id is required and must be a non-empty string",
+            path: "params.asset.id",
+          });
+        } else if (items.some((existing) => existing.id === a.id)) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: `Work asset with ID ${a.id} already exists`,
+            path: "params.asset.id",
+          });
+        }
+        if (a.kind !== "single") {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message:
+              'Work asset kind must be "single" (multi-clip capture is not available yet)',
+            path: "params.asset.kind",
+          });
+        }
+        if (
+          typeof a.name !== "string" ||
+          a.name.trim().length === 0 ||
+          a.name.length > 200
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message:
+              "Work asset name is required and must be a string of at most 200 characters",
+            path: "params.asset.name",
+          });
+        }
+        if (typeof a.sourceMediaId !== "string" || a.sourceMediaId.length === 0) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message:
+              "Work asset sourceMediaId is required and must be a non-empty string",
+            path: "params.asset.sourceMediaId",
+          });
+        } else if (
+          action.type === "workAsset/create" &&
+          !project.mediaLibrary.items.some((item) => item.id === a.sourceMediaId)
+        ) {
+          // Existence is a create-time concern only. A restored asset may
+          // legitimately reference media that was deleted after capture.
+          errors.push({
+            code: "MEDIA_NOT_FOUND",
+            message: `Source media ${a.sourceMediaId} not found`,
+            path: "params.asset.sourceMediaId",
+          });
+        }
+        errors.push(...this.validateWorkAssetSourceRange(a.sourceRange));
+        if (
+          typeof a.createdAt !== "number" ||
+          !Number.isFinite(a.createdAt) ||
+          a.createdAt < 0
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message:
+              "Work asset createdAt must be a non-negative finite number",
+            path: "params.asset.createdAt",
+          });
+        }
+        if (
+          typeof a.updatedAt !== "number" ||
+          !Number.isFinite(a.updatedAt) ||
+          a.updatedAt < 0
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message:
+              "Work asset updatedAt must be a non-negative finite number",
+            path: "params.asset.updatedAt",
+          });
+        }
+        errors.push(
+          ...this.validateWorkAssetUnsupportedParams(a.unsupportedParams),
+        );
+        if (a.clipSnapshot !== undefined) {
+          errors.push(...this.validateWorkAssetClipSnapshot(a.clipSnapshot));
+        }
+        break;
+      }
+
+      case "workAsset/delete": {
+        const workAssetId = action.params.workAssetId as unknown;
+        if (!workAssetId || typeof workAssetId !== "string") {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Work asset ID is required and must be a string",
+            path: "params.workAssetId",
+          });
+        } else if (!items.some((asset) => asset.id === workAssetId)) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: `Work asset with ID ${workAssetId} not found`,
+            path: "params.workAssetId",
+          });
+        }
+        break;
+      }
+
+      case "workAsset/rename": {
+        const workAssetId = action.params.workAssetId as unknown;
+        if (!workAssetId || typeof workAssetId !== "string") {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Work asset ID is required and must be a string",
+            path: "params.workAssetId",
+          });
+        } else if (!items.some((asset) => asset.id === workAssetId)) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: `Work asset with ID ${workAssetId} not found`,
+            path: "params.workAssetId",
+          });
+        }
+        const name = action.params.name as unknown;
+        if (
+          typeof name !== "string" ||
+          name.trim().length === 0 ||
+          name.length > 200
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message:
+              "Work asset name is required and must be a string of at most 200 characters",
+            path: "params.name",
+          });
+        }
+        break;
+      }
+    }
+
+    return errors;
+  }
+
+  private validateWorkAssetSourceRange(range: unknown): ValidationError[] {
+    const errors: ValidationError[] = [];
+    const path = "params.asset.sourceRange";
+    if (!range || typeof range !== "object" || Array.isArray(range)) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message: "Work asset sourceRange must be an object",
+        path,
+      });
+      return errors;
+    }
+    const inSec =
+      typeof (range as { inSec?: unknown }).inSec === "number" &&
+      Number.isFinite((range as { inSec: number }).inSec)
+        ? (range as { inSec: number }).inSec
+        : null;
+    const outSec =
+      typeof (range as { outSec?: unknown }).outSec === "number" &&
+      Number.isFinite((range as { outSec: number }).outSec)
+        ? (range as { outSec: number }).outSec
+        : null;
+    if (inSec === null || inSec < 0) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message:
+          "Work asset sourceRange inSec must be a non-negative finite number",
+        path: `${path}.inSec`,
+      });
+    }
+    if (outSec === null) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message: "Work asset sourceRange outSec must be a finite number",
+        path: `${path}.outSec`,
+      });
+    } else if (inSec !== null && outSec <= inSec) {
+      errors.push({
+        code: "INVALID_TIME_RANGE",
+        message: "Work asset sourceRange outSec must be greater than inSec",
+        path: `${path}.outSec`,
+      });
+    }
+    return errors;
+  }
+
+  private validateWorkAssetUnsupportedParams(
+    value: unknown,
+  ): ValidationError[] {
+    if (!Array.isArray(value)) {
+      return [
+        {
+          code: "INVALID_PARAMS",
+          message: "Work asset unsupportedParams must be an array",
+          path: "params.asset.unsupportedParams",
+        },
+      ];
+    }
+    return value.every(
+      (entry) =>
+        !!entry &&
+        typeof entry === "object" &&
+        !Array.isArray(entry) &&
+        typeof (entry as { field?: unknown }).field === "string" &&
+        typeof (entry as { reason?: unknown }).reason === "string",
+    )
+      ? []
+      : [
+          {
+            code: "INVALID_PARAMS",
+            message:
+              "Each unsupported param must be an object with string field and reason",
+            path: "params.asset.unsupportedParams",
+          },
+        ];
+  }
+
+  /**
+   * Wide structural check of the captured snapshot: identity/number/array
+   * invariants that the executor relies on. Deep effect/transform validation
+   * stays with the existing clip validators applied at instantiate time.
+   */
+  private validateWorkAssetClipSnapshot(
+    snapshot: unknown,
+  ): ValidationError[] {
+    const errors: ValidationError[] = [];
+    const path = "params.asset.clipSnapshot";
+    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message: "Work asset clipSnapshot must be an object",
+        path,
+      });
+      return errors;
+    }
+    const s = snapshot as {
+      duration?: unknown;
+      inPoint?: unknown;
+      outPoint?: unknown;
+      effects?: unknown;
+      audioEffects?: unknown;
+      keyframes?: unknown;
+      transform?: unknown;
+      volume?: unknown;
+      speed?: unknown;
+      stabilization?: unknown;
+    };
+    if (typeof s.duration !== "number" || !Number.isFinite(s.duration) || s.duration < 0) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message:
+          "Work asset clipSnapshot duration must be a non-negative finite number",
+        path: `${path}.duration`,
+      });
+    }
+    const inPoint =
+      typeof s.inPoint === "number" && Number.isFinite(s.inPoint)
+        ? s.inPoint
+        : null;
+    const outPoint =
+      typeof s.outPoint === "number" && Number.isFinite(s.outPoint)
+        ? s.outPoint
+        : null;
+    if (inPoint === null || inPoint < 0) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message:
+          "Work asset clipSnapshot inPoint must be a non-negative finite number",
+        path: `${path}.inPoint`,
+      });
+    }
+    if (outPoint === null) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message: "Work asset clipSnapshot outPoint must be a finite number",
+        path: `${path}.outPoint`,
+      });
+    } else if (inPoint !== null && outPoint <= inPoint) {
+      errors.push({
+        code: "INVALID_TIME_RANGE",
+        message:
+          "Work asset clipSnapshot outPoint must be greater than inPoint",
+        path: `${path}.outPoint`,
+      });
+    }
+    for (const key of ["effects", "audioEffects", "keyframes"] as const) {
+      if (!Array.isArray(s[key])) {
+        errors.push({
+          code: "INVALID_PARAMS",
+          message: `Work asset clipSnapshot ${key} must be an array`,
+          path: `${path}.${key}`,
+        });
+      }
+    }
+    if (!s.transform || typeof s.transform !== "object" || Array.isArray(s.transform)) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message: "Work asset clipSnapshot transform must be an object",
+        path: `${path}.transform`,
+      });
+    }
+    if (typeof s.volume !== "number" || !Number.isFinite(s.volume) || s.volume < 0) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message:
+          "Work asset clipSnapshot volume must be a non-negative finite number",
+        path: `${path}.volume`,
+      });
+    }
+    if (
+      s.speed !== undefined &&
+      (typeof s.speed !== "number" || !Number.isFinite(s.speed) || s.speed <= 0)
+    ) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message: "Work asset clipSnapshot speed must be a positive finite number",
+        path: `${path}.speed`,
+      });
+    }
+    if (s.stabilization !== undefined) {
+      const st = s.stabilization as {
+        enabled?: unknown;
+        strength?: unknown;
+        cropMode?: unknown;
+      };
+      const stable =
+        !!st &&
+        typeof st === "object" &&
+        typeof st.enabled === "boolean" &&
+        typeof st.strength === "number" &&
+        Number.isFinite(st.strength) &&
+        (st.cropMode === "auto" || st.cropMode === "none");
+      if (!stable) {
+        errors.push({
+          code: "INVALID_PARAMS",
+          message:
+            'Work asset clipSnapshot stabilization must be { enabled: boolean, strength: number, cropMode: "auto" | "none" }',
+          path: `${path}.stabilization`,
+        });
+      }
+    }
     return errors;
   }
 

@@ -33,6 +33,12 @@ interface TrackLaneProps {
   timelineRef: React.RefObject<HTMLDivElement | null>;
   onSelectClip: (clipId: string, addToSelection: boolean) => void;
   onDropMedia: (trackId: string, mediaId: string, startTime: number) => void;
+  /** Receives work-asset drags from the assets panel; resolves to a clip batch. */
+  onDropWorkAsset?: (
+    trackId: string,
+    workAssetId: string,
+    startTime: number,
+  ) => void;
   onMoveClip: (
     clipId: string,
     newStartTime: number,
@@ -77,6 +83,7 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
   timelineRef,
   onSelectClip,
   onDropMedia,
+  onDropWorkAsset,
   onMoveClip,
   onMoveTextClip,
   onSnapIndicator,
@@ -181,6 +188,30 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
           typeof data.mediaId !== "string" ||
           !data.mediaId.trim()
         ) {
+          // Work-asset payloads carry workAssetId instead of mediaId; the
+          // media branch above stays untouched for existing media drags.
+          if (
+            data &&
+            typeof data === "object" &&
+            typeof data.workAssetId === "string" &&
+            data.workAssetId.trim() &&
+            onDropWorkAsset
+          ) {
+            const rect = laneRef.current?.getBoundingClientRect();
+            if (rect) {
+              const x = e.clientX - rect.left + scrollX;
+              const rawTime = Math.max(0, x / pixelsPerSecond);
+              const snapResult = calculateSnap(
+                rawTime,
+                "",
+                allTracks,
+                playheadPosition,
+                snapSettings,
+                pixelsPerSecond,
+              );
+              onDropWorkAsset(track.id, data.workAssetId, snapResult.time);
+            }
+          }
           return;
         }
 
@@ -208,6 +239,7 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
       pixelsPerSecond,
       scrollX,
       onDropMedia,
+      onDropWorkAsset,
       allTracks,
       playheadPosition,
       snapSettings,

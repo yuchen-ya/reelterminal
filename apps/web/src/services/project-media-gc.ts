@@ -1,5 +1,8 @@
 import type { Project } from "@openreel/core";
-import { historyRetainsMediaBytes } from "@openreel/core";
+import {
+  historyRetainsMediaBytes,
+  projectRetainsWorkAssetMediaBytes,
+} from "@openreel/core";
 import type { ActionHistory } from "@openreel/core";
 import {
   deleteMediaBlob,
@@ -57,9 +60,9 @@ function liveMediaIds(project: Project): Set<string> {
 }
 
 /**
- * Deletes bytes for `project` that no item references and no history entry can
- * still restore. Safe to call at any time; it never touches live or restorable
- * bytes.
+ * Deletes bytes for `project` that no item references, no history entry can
+ * still restore, and no work asset references. Safe to call at any time; it
+ * never touches live or restorable bytes.
  */
 export async function reconcileProjectMediaBytes(
   project: Project,
@@ -69,7 +72,11 @@ export async function reconcileProjectMediaBytes(
   const storedIds = await listStoredIds(project.id);
   const reclaimable = storedIds.filter(
     (mediaId) =>
-      !liveIds.has(mediaId) && !historyRetainsMediaBytes(history, mediaId),
+      !liveIds.has(mediaId) &&
+      !historyRetainsMediaBytes(history, mediaId) &&
+      // A work asset keeps referencing its source media even in the
+      // missingSource state; its bytes stay until the asset is deleted.
+      !projectRetainsWorkAssetMediaBytes(project, mediaId),
   );
   await reclaimBytes(reclaimable);
 }
@@ -77,7 +84,10 @@ export async function reconcileProjectMediaBytes(
 /**
  * Final pass before a project's history is discarded (project switch or
  * close): without history nothing is restorable, so every byte outside the
- * saved items is orphaned.
+ * saved items is orphaned. Work-asset references are deliberately not
+ * consulted on this side of the history boundary: the asset keeps pointing
+ * at its source media (missingSource), but that item can never re-enter the
+ * library, so keeping the bytes would only leak them.
  */
 export async function flushProjectMediaBytes(project: Project): Promise<void> {
   const liveIds = liveMediaIds(project);
@@ -90,7 +100,9 @@ export async function flushProjectMediaBytes(project: Project): Promise<void> {
  * Crash-safety net run right after a project load. The freshly created session
  * history is empty, so old deletes can never be undone again and every byte
  * outside the loaded items is a leftover orphan (an interrupted import commit
- * included).
+ * included). As with flush, work-asset references are not consulted: a
+ * missingSource asset can never be instantiated, so keeping its bytes would
+ * only leak them.
  */
 export async function sweepOrphanProjectMedia(project: Project): Promise<void> {
   const liveIds = liveMediaIds(project);

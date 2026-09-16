@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   Image as ImageIcon, Film, Music, Plus, Upload, Trash2,
   Square, Circle, Triangle, Star, ArrowRight, Hexagon, FileCode, AlertTriangle,
-  RefreshCw, Palette, Video, BookMarked, Search, Pencil,
+  RefreshCw, Palette, Video, BookMarked, Search, Pencil, FolderPlus,
   Type, Shapes, Wand2, LayoutTemplate, Zap, Shuffle,
 } from "@/icons/lucide-compat";
 import {
@@ -45,6 +45,7 @@ import { findMarkersForEntity } from "../../stores/project/project-marker-select
 import { markAgentReferenceForMedia } from "../../stores/editor-context-store";
 import { MaterialLibraryPanel } from "./material/MaterialLibraryPanel";
 import { saveProjectMediaToLibrary } from "../../services/material-library/project-save";
+import { WorkAssetsTab } from "./panels/WorkAssetsTab";
 
 const formatDuration = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
@@ -76,6 +77,7 @@ const SVG_IMPORT_ERROR_MESSAGE_KEYS: Record<SvgValidationErrorCode, string> = {
 type MediaViewMode = "large" | "small" | "list";
 type AssetsTab =
   | "media"
+  | "work"
   | "library"
   | "text"
   | "graphics"
@@ -94,6 +96,11 @@ const ASSETS_TABS: ReadonlyArray<{
     value: "media",
     labelKey: "assets.tabs.media",
     descriptionKey: "assets.descriptions.media",
+  },
+  {
+    value: "work",
+    labelKey: "assets.tabs.work",
+    descriptionKey: "assets.descriptions.work",
   },
   {
     value: "library",
@@ -223,6 +230,7 @@ export const TEXT_STYLE_PRESETS: ReadonlyArray<{
 
 const TAB_ICONS: Record<AssetsTab, React.ElementType> = {
   media: Video,
+  work: FolderPlus,
   library: BookMarked,
   text: Type,
   graphics: Shapes,
@@ -1124,6 +1132,8 @@ export const AssetsPanel: React.FC = () => {
 
   const renderSectionContent = (tab: AssetsTab): React.ReactNode => {
     switch (tab) {
+      case "work":
+        return <WorkAssetsTab />;
       case "library":
         return <MaterialLibraryPanel />;
       case "media":

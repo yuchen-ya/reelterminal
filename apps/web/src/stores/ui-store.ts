@@ -102,7 +102,7 @@ export interface UIState {
     items: ContextMenuItem[];
   } | null;
   isDragging: boolean;
-  dragType: "clip" | "media" | "effect" | "keyframe" | null;
+  dragType: "clip" | "media" | "effect" | "keyframe" | "workAsset" | null;
   dragData: Record<string, unknown> | null;
   cropMode: boolean;
   cropClipId: string | null;
@@ -155,7 +155,7 @@ export interface UIState {
   showContextMenu: (x: number, y: number, items: ContextMenuItem[]) => void;
   hideContextMenu: () => void;
   startDrag: (
-    type: "clip" | "media" | "effect" | "keyframe",
+    type: "clip" | "media" | "effect" | "keyframe" | "workAsset",
     data: Record<string, unknown>,
   ) => void;
   endDrag: () => void;
@@ -633,7 +633,7 @@ export const useUIStore = create<UIState>()(
         },
 
         startDrag: (
-          type: "clip" | "media" | "effect" | "keyframe",
+          type: "clip" | "media" | "effect" | "keyframe" | "workAsset",
           data: Record<string, unknown>,
         ) => {
           // Store drag metadata to enable drop target validation and visual feedback

@@ -1,4 +1,5 @@
 import type { Action } from "../types/actions";
+import type { Project } from "../types/project";
 import type { HistoryEntry } from "./action-history";
 
 /**
@@ -61,4 +62,22 @@ export function historyRetainsMediaBytes(
     if (entryRetainsMediaBytes(entry, mediaId)) return true;
   }
   return false;
+}
+
+/**
+ * Whether a persisted work asset in `project` references `mediaId`. A work
+ * asset keeps pointing at its source media even after the media item is
+ * removed from the library (missingSource is a legal persistent state), so its
+ * bytes must not be reclaimed while the asset can still be undone back into a
+ * project that contains them. Multi-clip assets (the reserved "multi" kind,
+ * not produced yet) will extend this to `members[].mediaId` — keep that anchor
+ * when evolving the shape.
+ */
+export function projectRetainsWorkAssetMediaBytes(
+  project: Pick<Project, "workAssets">,
+  mediaId: string,
+): boolean {
+  const assets = project.workAssets;
+  if (!Array.isArray(assets)) return false;
+  return assets.some((asset) => asset.sourceMediaId === mediaId);
 }

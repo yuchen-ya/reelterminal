@@ -14,6 +14,7 @@ import type {
   ProjectAction,
   MarkerAction,
   ProjectMarkerAction,
+  WorkAssetAction,
   ReferenceComparisonAction,
 } from "../types/actions";
 import type {
@@ -31,6 +32,7 @@ import type {
   Marker,
   ProjectMarker,
   ProjectMarkersState,
+  WorkAsset,
 } from "../types";
 import type {
   MutableTimeline,
@@ -356,6 +358,8 @@ export class ActionExecutor {
       this.applyProjectAction(action as ProjectAction, project);
     } else if (type.startsWith("projectMarker/")) {
       this.applyProjectMarkerAction(action as ProjectMarkerAction, project);
+    } else if (type.startsWith("workAsset/")) {
+      this.applyWorkAssetAction(action as WorkAssetAction, project);
     } else if (type.startsWith("media/")) {
       this.applyMediaAction(action as MediaAction, project);
     } else if (type.startsWith("track/")) {
@@ -830,6 +834,57 @@ export class ActionExecutor {
           nextNumber: existing.nextNumber,
           items: existing.items.filter((m) => m.id !== params.markerId),
         };
+        break;
+      }
+    }
+  }
+
+  private applyWorkAssetAction(
+    action: WorkAssetAction | { type: string; params: Record<string, unknown> },
+    project: Project,
+  ): void {
+    const mutable = project as { workAssets?: WorkAsset[] };
+
+    switch (action.type) {
+      case "workAsset/create": {
+        const params = action.params as { asset: WorkAsset };
+        mutable.workAssets = [
+          ...(mutable.workAssets ?? []),
+          structuredClone(params.asset),
+        ];
+        break;
+      }
+
+      case "workAsset/restore": {
+        const params = action.params as { asset: WorkAsset };
+        // Dedupe by id so a repeated restore (redo replay) stays idempotent
+        // instead of stacking duplicates.
+        mutable.workAssets = [
+          ...(mutable.workAssets ?? []).filter(
+            (asset) => asset.id !== params.asset.id,
+          ),
+          structuredClone(params.asset),
+        ];
+        break;
+      }
+
+      case "workAsset/delete": {
+        const params = action.params as { workAssetId: string };
+        if (!mutable.workAssets) break;
+        mutable.workAssets = mutable.workAssets.filter(
+          (asset) => asset.id !== params.workAssetId,
+        );
+        break;
+      }
+
+      case "workAsset/rename": {
+        const params = action.params as { workAssetId: string; name: string };
+        if (!mutable.workAssets) break;
+        mutable.workAssets = mutable.workAssets.map((asset) =>
+          asset.id === params.workAssetId
+            ? { ...asset, name: params.name, updatedAt: Date.now() }
+            : asset,
+        );
         break;
       }
     }

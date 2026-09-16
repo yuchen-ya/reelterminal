@@ -40,6 +40,12 @@ import type {
 } from "../../bridges/effects-bridge";
 import type { AutoSaveMetadata } from "../../services/auto-save";
 import type { ExecuteActionBatch } from "./action-batch";
+import type {
+  InstantiateWorkAssetOptions,
+  InstantiateWorkAssetResult,
+  SaveClipWorkAssetOptions,
+  SaveClipWorkAssetResult,
+} from "./work-assets-slice";
 
 export type ClipHistoryEntryType = "shape" | "text" | "svg" | "sticker";
 
@@ -469,6 +475,21 @@ export interface ProjectState {
   executeActionBatch: ExecuteActionBatch;
   executeAction: (action: Action) => Promise<ActionResult>;
   getTimelineDuration: () => number;
+
+  /** Project-scoped work assets (project.workAssets); see work-assets-slice. */
+  saveClipAsWorkAsset: (
+    clipId: string,
+    options?: SaveClipWorkAssetOptions,
+  ) => Promise<SaveClipWorkAssetResult>;
+  renameWorkAsset: (
+    workAssetId: string,
+    name: string,
+  ) => Promise<ActionResult>;
+  deleteWorkAsset: (workAssetId: string) => Promise<ActionResult>;
+  instantiateWorkAsset: (
+    workAssetId: string,
+    options?: InstantiateWorkAssetOptions,
+  ) => Promise<InstantiateWorkAssetResult>;
 
   initializeAutoSave: () => Promise<void>;
   checkForRecovery: () => Promise<AutoSaveMetadata[]>;

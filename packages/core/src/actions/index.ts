@@ -11,4 +11,5 @@ export { InverseActionGenerator } from "./inverse-action-generator";
 export {
   entryRetainsMediaBytes,
   historyRetainsMediaBytes,
+  projectRetainsWorkAssetMediaBytes,
 } from "./media-byte-retention";

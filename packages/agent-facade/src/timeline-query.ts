@@ -214,6 +214,40 @@ function allCandidates(project: Project): Candidate[] {
       },
     });
   }
+  // Work assets live OUTSIDE the timeline (project.workAssets), so they have
+  // no track/time position — same null-position convention as media entries.
+  // The raw clipSnapshot is deliberately NOT projected (it can carry entire
+  // effect/keyframe/freeze-frame sets; same payload discipline as svg
+  // content): agents verify identity, naming, source range, speed, the
+  // declared unsupportedParams and the missing-source state, and observe the
+  // snapshot's effect indirectly through the instances it produces.
+  for (const asset of project.workAssets ?? []) {
+    const snapshot = asset.clipSnapshot;
+    candidates.push({
+      entityType: "workAsset",
+      id: asset.id,
+      ref: null,
+      trackId: null,
+      startTime: null,
+      endTime: null,
+      data: {
+        name: asset.name,
+        type: asset.kind,
+        sourceMediaId: asset.sourceMediaId,
+        sourceRange: asset.sourceRange,
+        speed: snapshot?.speed ?? 1,
+        effectCount: snapshot?.effects.length ?? 0,
+        audioEffectCount: snapshot?.audioEffects.length ?? 0,
+        keyframeCount: snapshot?.keyframes.length ?? 0,
+        unsupportedParams: asset.unsupportedParams,
+        missingSource: !project.mediaLibrary.items.some(
+          (item) => item.id === asset.sourceMediaId,
+        ),
+        captureRequestId: asset.captureRequestId ?? null,
+        createdAt: asset.createdAt,
+      },
+    });
+  }
   return candidates.sort((a, b) =>
     (a.startTime ?? Number.POSITIVE_INFINITY) -
       (b.startTime ?? Number.POSITIVE_INFINITY) ||
@@ -371,6 +405,7 @@ export const TIMELINE_QUERY_ENTITY_TYPES: readonly TimelineQueryEntityType[] = [
   "transition",
   "marker",
   "subtitle",
+  "workAsset",
 ];
 
 export const TIMELINE_QUERY_FIELDS: readonly TimelineQueryField[] = [
@@ -402,4 +437,13 @@ export const TIMELINE_QUERY_FIELDS: readonly TimelineQueryField[] = [
   "noiseReduction",
   "viewBox",
   "colorStyle",
+  "sourceMediaId",
+  "sourceRange",
+  "unsupportedParams",
+  "missingSource",
+  "effectCount",
+  "audioEffectCount",
+  "keyframeCount",
+  "captureRequestId",
+  "createdAt",
 ];

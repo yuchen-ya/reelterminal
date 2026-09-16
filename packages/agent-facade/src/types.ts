@@ -546,8 +546,8 @@ export interface MediaImportResult {
   readonly revision: number;
   readonly mediaId: string;
   readonly name: string;
-  /** The Slice-1 adapter probes containers with video or audio tracks only. */
-  readonly type: "video" | "audio";
+  /** The adapter probes audio/video containers via mediabunny and images via header parsing. */
+  readonly type: "video" | "audio" | "image";
   readonly metadata: ImportedMediaMetadata;
   readonly replayed: boolean;
 }
@@ -725,7 +725,8 @@ export type TimelineQueryEntityType =
   | "media"
   | "transition"
   | "marker"
-  | "subtitle";
+  | "subtitle"
+  | "workAsset";
 
 export type TimelineQueryField =
   | "name"
@@ -755,7 +756,16 @@ export type TimelineQueryField =
   | "chromaKey"
   | "noiseReduction"
   | "viewBox"
-  | "colorStyle";
+  | "colorStyle"
+  | "sourceMediaId"
+  | "sourceRange"
+  | "unsupportedParams"
+  | "missingSource"
+  | "effectCount"
+  | "audioEffectCount"
+  | "keyframeCount"
+  | "captureRequestId"
+  | "createdAt";
 
 export interface TimelineQueryParams {
   /** Only ephemeral @A<n> refs and persisted R<n> review refs are accepted. */
@@ -926,6 +936,10 @@ export const EDIT_OP_TYPES = [
   "svg.create",
   "svg.update",
   "svg.remove",
+  "workAsset.capture",
+  "workAsset.rename",
+  "workAsset.delete",
+  "workAsset.instantiate",
 ] as const;
 
 export type EditOpType = (typeof EDIT_OP_TYPES)[number];
@@ -1373,6 +1387,59 @@ export interface ClipSetNoiseReductionOp {
   };
 }
 
+/**
+ * workAsset.capture — save one timeline clip into the project's work assets
+ * ("saved work"): a named, stable-id reusable reference plus a parameter
+ * snapshot (trim, speed, effects, transform, …). The asset references the
+ * clip's media by id and never copies media bytes. Engine-generated overlay
+ * clips (virtual media ids) and placeholder media are rejected; analysis
+ * artifacts (e.g. stabilization profiles) are stripped and declared on the
+ * asset's unsupportedParams instead of being dropped silently. Names are
+ * search keys, never identities.
+ */
+export interface WorkAssetCaptureOp {
+  readonly op: "workAsset.capture";
+  readonly clipId: string;
+  /** Optional display name; derived from the source media when omitted. */
+  readonly name?: string;
+  /**
+   * Optional echo recorded on the asset for traceability. Retry safety comes
+   * from edit.apply's idempotencyKey ledger — this field never dedupes.
+   */
+  readonly captureRequestId?: string;
+}
+
+/** workAsset.rename — rename one work asset by its stable id. */
+export interface WorkAssetRenameOp {
+  readonly op: "workAsset.rename";
+  readonly workAssetId: string;
+  /** Non-empty, at most 200 characters; need not be unique. */
+  readonly name: string;
+}
+
+/** workAsset.delete — remove one work asset by its stable id. */
+export interface WorkAssetDeleteOp {
+  readonly op: "workAsset.delete";
+  readonly workAssetId: string;
+}
+
+/**
+ * workAsset.instantiate — place a work asset back on the timeline as a NEW
+ * clip built from its snapshot. The asset entry is never modified, so
+ * repeated instantiation keeps producing independent clips. Without trackId
+ * a matching new lane is created (material-attach convention); startTime
+ * defaults to the end of the timeline. The clip id is allocated by the
+ * translator and reported via createdIds.
+ */
+export interface WorkAssetInstantiateOp {
+  readonly op: "workAsset.instantiate";
+  readonly workAssetId: string;
+  /** Existing target lane; must match the source media's type. */
+  readonly trackId?: string;
+  /** Timeline seconds; defaults to the end of the timeline. */
+  readonly startTime?: number;
+}
+
 export type EditOp =
   | TrackAddOp
   | TrackUpdateOp
@@ -1410,7 +1477,11 @@ export type EditOp =
   | MediaRelinkOp
   | MediaRenameOp
   | ClipSetChromaKeyOp
-  | ClipSetNoiseReductionOp;
+  | ClipSetNoiseReductionOp
+  | WorkAssetCaptureOp
+  | WorkAssetRenameOp
+  | WorkAssetDeleteOp
+  | WorkAssetInstantiateOp;
 
 export interface EditApplyParams {
   readonly ops: readonly EditOp[];

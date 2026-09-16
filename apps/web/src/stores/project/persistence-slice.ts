@@ -3,6 +3,7 @@ import {
   ActionExecutor,
   ActionHistory,
   normalizeGeneratedShaders,
+  normalizeProjectWorkAssetFields,
   registerProjectGeneratedShaders,
 } from "@openreel/core";
 import type { StoreApi } from "zustand";
@@ -76,22 +77,28 @@ export function createProjectPersistenceSlice(
     recoverFromAutoSave: async (saveId: string) => {
       const recoveredProject = await autoSaveManager.recover(saveId);
       if (recoveredProject) {
-        const storedMedia = await loadProjectMedia(recoveredProject.id);
+        // Auto-save recovery parses raw JSON and never passes through
+        // normalizeProjectStoredFields, so stored-field repair for fields
+        // without engine loaders (work assets) must run here explicitly.
+        const normalizedProject = normalizeProjectWorkAssetFields(
+          recoveredProject,
+        );
+        const storedMedia = await loadProjectMedia(normalizedProject.id);
         const blobMap = new Map(storedMedia.map((m) => [m.id, m.blob]));
 
         const restoredItems = await Promise.all(
-          recoveredProject.mediaLibrary.items.map((item) =>
+          normalizedProject.mediaLibrary.items.map((item) =>
             restoreMediaItem(item, blobMap.get(item.id)),
           ),
         );
 
         const projectWithMedia: Project = {
-          ...recoveredProject,
+          ...normalizedProject,
           generatedShaders: normalizeGeneratedShaders(
-            recoveredProject.generatedShaders,
+            normalizedProject.generatedShaders,
           ),
           mediaLibrary: {
-            ...recoveredProject.mediaLibrary,
+            ...normalizedProject.mediaLibrary,
             items: restoredItems,
           },
         };

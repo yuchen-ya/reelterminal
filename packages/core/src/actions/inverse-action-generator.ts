@@ -13,8 +13,10 @@ import type {
   ProjectAction,
   MarkerAction,
   ProjectMarkerAction,
+  WorkAssetAction,
 } from "../types/actions";
 import type { Project, MediaItem } from "../types/project";
+import type { WorkAsset } from "../types/work-asset";
 import type { Track, Clip, Transition } from "../types/timeline";
 import { getActionHandler } from "./registry";
 
@@ -87,9 +89,56 @@ export class InverseActionGenerator {
         action as ProjectMarkerAction & Action,
         projectBefore,
       );
+    } else if (type.startsWith("workAsset/")) {
+      return this.generateWorkAssetInverse(
+        action as WorkAssetAction & Action,
+        projectBefore,
+      );
     }
 
     return null;
+  }
+
+  private generateWorkAssetInverse(
+    action: WorkAssetAction & Action,
+    projectBefore: Project,
+  ): Action | null {
+    const items = projectBefore.workAssets ?? [];
+
+    switch (action.type) {
+      case "workAsset/create":
+        return this.createInverseAction(action, "workAsset/delete", {
+          workAssetId: action.params.asset.id,
+        });
+
+      case "workAsset/delete": {
+        const asset = items.find((a) => a.id === action.params.workAssetId);
+        if (!asset) return null;
+
+        return this.createInverseAction(action, "workAsset/restore", {
+          asset: this.cloneWorkAsset(asset),
+        });
+      }
+
+      case "workAsset/restore":
+        return this.createInverseAction(action, "workAsset/delete", {
+          workAssetId: action.params.asset.id,
+        });
+
+      case "workAsset/rename": {
+        const asset = items.find((a) => a.id === action.params.workAssetId);
+        if (!asset) return null;
+
+        return this.createInverseAction(action, "workAsset/rename", {
+          workAssetId: action.params.workAssetId,
+          name: asset.name,
+        });
+      }
+    }
+  }
+
+  private cloneWorkAsset(asset: WorkAsset): WorkAsset {
+    return structuredClone(asset);
   }
 
   private generateProjectMarkerInverse(

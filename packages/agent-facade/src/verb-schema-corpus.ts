@@ -641,6 +641,111 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
     },
     {
+      name: "valid workAsset.capture with a name",
+      params: {
+        ops: [{ op: "workAsset.capture", clipId: "c1", name: "Hero trim" }],
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid workAsset.capture with a captureRequestId echo",
+      params: {
+        ops: [
+          {
+            op: "workAsset.capture",
+            clipId: "c1",
+            captureRequestId: "req-42",
+          },
+        ],
+      },
+      expectValid: true,
+    },
+    {
+      name: "workAsset.capture requires clipId",
+      params: { ops: [{ op: "workAsset.capture", name: "Hero trim" }] },
+      expectValid: false,
+    },
+    {
+      name: "workAsset.capture rejects an unknown field",
+      params: {
+        ops: [{ op: "workAsset.capture", clipId: "c1", mediaId: "m1" }],
+      },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: workAsset.capture name over 200 characters",
+      params: {
+        ops: [{ op: "workAsset.capture", clipId: "c1", name: "x".repeat(201) }],
+      },
+      expectValid: false,
+      schemaValid: true,
+    },
+    {
+      name: "valid workAsset.rename",
+      params: {
+        ops: [{ op: "workAsset.rename", workAssetId: "wa-1", name: "Renamed" }],
+      },
+      expectValid: true,
+    },
+    {
+      name: "workAsset.rename requires a name",
+      params: { ops: [{ op: "workAsset.rename", workAssetId: "wa-1" }] },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: workAsset.rename blank name",
+      params: {
+        ops: [{ op: "workAsset.rename", workAssetId: "wa-1", name: "   " }],
+      },
+      expectValid: false,
+      schemaValid: true,
+    },
+    {
+      name: "valid workAsset.delete",
+      params: { ops: [{ op: "workAsset.delete", workAssetId: "wa-1" }] },
+      expectValid: true,
+    },
+    {
+      name: "workAsset.delete requires workAssetId",
+      params: { ops: [{ op: "workAsset.delete" }] },
+      expectValid: false,
+    },
+    {
+      name: "valid workAsset.instantiate onto an explicit track",
+      params: {
+        ops: [
+          { op: "workAsset.instantiate", workAssetId: "wa-1", trackId: "v1", startTime: 2 },
+        ],
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid workAsset.instantiate with defaults (new lane, timeline end)",
+      params: { ops: [{ op: "workAsset.instantiate", workAssetId: "wa-1" }] },
+      expectValid: true,
+    },
+    {
+      name: "workAsset.instantiate requires workAssetId",
+      params: { ops: [{ op: "workAsset.instantiate", trackId: "v1" }] },
+      expectValid: false,
+    },
+    {
+      name: "workAsset.instantiate rejects a negative start time",
+      params: {
+        ops: [{ op: "workAsset.instantiate", workAssetId: "wa-1", startTime: -1 }],
+      },
+      expectValid: false,
+    },
+    {
+      name: "workAsset.instantiate rejects an unknown field",
+      params: {
+        ops: [
+          { op: "workAsset.instantiate", workAssetId: "wa-1", clipId: "c9" },
+        ],
+      },
+      expectValid: false,
+    },
+    {
       name: "position x above 1",
       params: {
         ops: [{ op: "text.create", text: "x", startTime: 0, duration: 2, position: { x: 1.5, y: 0.5 } }],

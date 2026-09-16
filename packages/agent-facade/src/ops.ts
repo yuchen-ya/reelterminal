@@ -84,6 +84,10 @@ import {
   type MediaRenameOp,
   type ClipSetChromaKeyOp,
   type ClipSetNoiseReductionOp,
+  type WorkAssetCaptureOp,
+  type WorkAssetRenameOp,
+  type WorkAssetDeleteOp,
+  type WorkAssetInstantiateOp,
 } from "./types";
 import { validateReferenceComparisonConfig } from "@openreel/core/types/reference-comparison";
 import { DEFAULT_CHROMA_KEY_SETTINGS } from "@openreel/core/video/chroma-key-engine";
@@ -93,6 +97,8 @@ import {
   NOISE_REDUCTION_FOCUS_OPTIONS,
 } from "@openreel/core/audio/noise-reduction-presets";
 import { isSerializedNoiseProfile } from "@openreel/core/audio/audio-effect-routing";
+import { captureWorkAssetFromClip } from "@openreel/core/work-assets/capture";
+import { buildWorkAssetInstantiateActions } from "@openreel/core/work-assets/instantiate";
 import { timelineDurationSec } from "./projection";
 import { basename } from "node:path";
 import { resolveContainedPathDetailed } from "./media/path-roots";
@@ -1082,6 +1088,96 @@ export const MARKER_REMOVE_SCHEMA: ObjectSchema = {
   },
 };
 
+/** The 200-character name cap is validation-only (not emitted). */
+const isWorkAssetName = (v: unknown): boolean =>
+  typeof v === "string" && v.trim().length > 0 && v.length <= 200;
+
+export const WORK_ASSET_CAPTURE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "workAsset.capture",
+    describe: '"workAsset.capture"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "workAsset.capture" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  name: {
+    check: isWorkAssetName,
+    describe: "a non-empty string of at most 200 characters",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  captureRequestId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string echoed onto the asset for traceability",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const WORK_ASSET_RENAME_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "workAsset.rename",
+    describe: '"workAsset.rename"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "workAsset.rename" } },
+  },
+  workAssetId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  name: {
+    check: isWorkAssetName,
+    describe: "a non-empty string of at most 200 characters",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const WORK_ASSET_DELETE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "workAsset.delete",
+    describe: '"workAsset.delete"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "workAsset.delete" } },
+  },
+  workAssetId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const WORK_ASSET_INSTANTIATE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "workAsset.instantiate",
+    describe: '"workAsset.instantiate"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "workAsset.instantiate" } },
+  },
+  workAssetId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  trackId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string — existing lane matching the source media's type",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  startTime: {
+    check: isNonNegativeNumber,
+    describe: "a finite number >= 0 (timeline seconds; defaults to the timeline end)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+};
+
 export const SUBTITLE_IMPORT_SRT_SCHEMA: ObjectSchema = {
   op: {
     check: (value) => value === "subtitle.importSrt",
@@ -1775,6 +1871,30 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       return validateObject<MarkerAddOp>(raw, MARKER_ADD_SCHEMA, label);
     case "marker.remove":
       return validateObject<MarkerRemoveOp>(raw, MARKER_REMOVE_SCHEMA, label);
+    case "workAsset.capture":
+      return validateObject<WorkAssetCaptureOp>(
+        raw,
+        WORK_ASSET_CAPTURE_SCHEMA,
+        label,
+      );
+    case "workAsset.rename":
+      return validateObject<WorkAssetRenameOp>(
+        raw,
+        WORK_ASSET_RENAME_SCHEMA,
+        label,
+      );
+    case "workAsset.delete":
+      return validateObject<WorkAssetDeleteOp>(
+        raw,
+        WORK_ASSET_DELETE_SCHEMA,
+        label,
+      );
+    case "workAsset.instantiate":
+      return validateObject<WorkAssetInstantiateOp>(
+        raw,
+        WORK_ASSET_INSTANTIATE_SCHEMA,
+        label,
+      );
     case "subtitle.importSrt": {
       const op = validateObject<SubtitleImportSrtOp>(
         raw,
@@ -3326,6 +3446,97 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         );
       }
       return [makeAction("projectMarker/remove", { markerId: marker.id })];
+    }
+
+    case "workAsset.capture": {
+      // The facade mints the stable id (marker.add convention); the asset
+      // itself is created through the same undoable core action the GUI
+      // capture entry uses (only the recorded `createdBy` provenance
+      // differs).
+      const captured = captureWorkAssetFromClip(
+        draft,
+        op.clipId,
+        {
+          ...(op.name !== undefined ? { name: op.name } : {}),
+          ...(op.captureRequestId !== undefined
+            ? { captureRequestId: op.captureRequestId }
+            : {}),
+          assetId: `wa-${crypto.randomUUID()}`,
+          createdBy: "agent",
+        },
+      );
+      if (!captured.ok) {
+        const code =
+          captured.code === "NOT_FOUND" || captured.code === "MEDIA_NOT_FOUND"
+            ? "NOT_FOUND"
+            : captured.code === "UNSUPPORTED"
+              ? "UNSUPPORTED"
+              : "INVALID_PARAMS";
+        throw new FacadeError(
+          code,
+          `workAsset.capture: ${captured.message}`,
+          {
+            clipId: op.clipId,
+            ...(captured.details ?? {}),
+          },
+        );
+      }
+      return [makeAction("workAsset/create", { asset: captured.asset })];
+    }
+
+    case "workAsset.rename": {
+      const asset = (draft.workAssets ?? []).find(
+        (candidate) => candidate.id === op.workAssetId,
+      );
+      if (!asset) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `workAsset.rename: work asset "${op.workAssetId}" not found`,
+          { workAssetId: op.workAssetId },
+        );
+      }
+      return [
+        makeAction("workAsset/rename", {
+          workAssetId: op.workAssetId,
+          name: op.name.trim(),
+        }),
+      ];
+    }
+
+    case "workAsset.delete": {
+      const asset = (draft.workAssets ?? []).find(
+        (candidate) => candidate.id === op.workAssetId,
+      );
+      if (!asset) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `workAsset.delete: work asset "${op.workAssetId}" not found`,
+          { workAssetId: op.workAssetId },
+        );
+      }
+      return [makeAction("workAsset/delete", { workAssetId: op.workAssetId })];
+    }
+
+    case "workAsset.instantiate": {
+      const batch = buildWorkAssetInstantiateActions(draft, op.workAssetId, {
+        ...(op.trackId !== undefined ? { trackId: op.trackId } : {}),
+        ...(op.startTime !== undefined ? { startTime: op.startTime } : {}),
+      });
+      if (!batch.ok) {
+        const code =
+          batch.code === "NOT_FOUND" || batch.code === "MEDIA_NOT_FOUND"
+            ? "NOT_FOUND"
+            : batch.code;
+        throw new FacadeError(
+          code,
+          `workAsset.instantiate: ${batch.message}`,
+          {
+            workAssetId: op.workAssetId,
+            ...(batch.details ?? {}),
+          },
+        );
+      }
+      return [...batch.actions];
     }
 
     case "subtitle.importSrt": {

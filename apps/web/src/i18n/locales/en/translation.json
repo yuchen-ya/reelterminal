@@ -459,6 +459,7 @@
   "assets": {
     "tabs": {
       "media": "Media",
+      "work": "Work Assets",
       "text": "Text",
       "graphics": "Graphics",
       "effects": "Effects",
@@ -470,6 +471,7 @@
     },
     "descriptions": {
       "media": "Import footage, audio, and stills.",
+      "work": "Reusable clip captures stored inside this project. The Library tab keeps your cross-project material.",
       "text": "Add title presets and caption elements.",
       "graphics": "Create shapes, arrows, and SVG overlays.",
       "effects": "Drag effects onto a clip to apply them.",
@@ -601,5 +603,36 @@
     "promptPlaceholder": "The reusable prompt / recipe",
     "stepsPlaceholder": "Steps, one per line (optional)",
     "methodHint": "Saving stores the text for reuse — it never installs a skill or executes the prompt."
+  },
+  "workAssets": {
+    "saveToWork": "Save to Work Assets",
+    "captureDisabled": "Only clips backed by project media can be captured",
+    "captureFailed": "Could not save to work assets",
+    "saved": "Saved to work assets",
+    "unsupportedConfirmTitle": "Some clip parameters are not captured",
+    "unsupportedConfirmBody": "The work asset will not include:\n{{fields}}\n\nCapture anyway?",
+    "unsupportedReasons": {
+      "recomputed": "analysis artifact; recomputed when an instance is created",
+      "instanceLocal": "instance-local clip provenance, not part of the reusable snapshot"
+    },
+    "searchPlaceholder": "Search work assets",
+    "listTitle": "Work Assets",
+    "renameAction": "Rename",
+    "renameAriaLabel": "Work asset name",
+    "renameEmpty": "Work asset name cannot be empty",
+    "renamed": "Work asset renamed",
+    "renameFailed": "Could not rename work asset",
+    "deleteAction": "Delete",
+    "deleteConfirm": "Delete work asset \"{{name}}\"? The project media it references is not affected.",
+    "deleted": "Work asset deleted — undo restores it",
+    "deleteFailed": "Could not delete work asset",
+    "addToTimeline": "Add to timeline",
+    "added": "Added to timeline",
+    "addFailed": "Could not add to timeline",
+    "missingSource": "The source media was deleted — this entry cannot be added to the timeline",
+    "sourceMissingShort": "Source deleted",
+    "emptyTitle": "No work assets yet",
+    "emptyDetail": "Right-click a timeline clip and choose “Save to Work Assets” to reuse it later. Work assets are saved with this project; use the Library tab for assets you want across projects.",
+    "noResults": "No work assets match the search."
   }
 }

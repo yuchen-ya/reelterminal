@@ -4,7 +4,9 @@ import { ActionHistory } from "./action-history";
 import {
   entryRetainsMediaBytes,
   historyRetainsMediaBytes,
+  projectRetainsWorkAssetMediaBytes,
 } from "./media-byte-retention";
+import type { WorkAsset } from "../types";
 
 const act = (type: string, params: Record<string, unknown> = {}): Action => ({
   type,
@@ -90,5 +92,52 @@ describe("media byte retention predicate", () => {
     history.push(act("clip/add", { trackId: "t1" }), act("clip/remove"));
     // The delete entry was evicted: nothing can restore m1 anymore.
     expect(historyRetainsMediaBytes(history, "m1")).toBe(false);
+  });
+});
+
+const workAsset = (overrides: Partial<WorkAsset> = {}): WorkAsset =>
+  ({
+    schemaVersion: 1,
+    id: "wa-1",
+    kind: "single",
+    name: "Hero trim",
+    sourceMediaId: "m1",
+    sourceRange: { inSec: 0, outSec: 2 },
+    unsupportedParams: [],
+    createdAt: 0,
+    updatedAt: 0,
+    ...overrides,
+  }) as WorkAsset;
+
+describe("work asset reference retention", () => {
+  it("retains bytes for media referenced by a project work asset", () => {
+    const project = { workAssets: [workAsset()] };
+
+    expect(projectRetainsWorkAssetMediaBytes(project, "m1")).toBe(true);
+    expect(projectRetainsWorkAssetMediaBytes(project, "other")).toBe(false);
+  });
+
+  it("retains bytes in the missingSource state (referenced media absent)", () => {
+    const project = { workAssets: [workAsset()] };
+
+    // The reference survives the media deletion; only deleting the work
+    // asset itself releases the bytes.
+    expect(projectRetainsWorkAssetMediaBytes(project, "m1")).toBe(true);
+  });
+
+  it("releases bytes once the referencing asset is deleted", () => {
+    const project = { workAssets: [] };
+
+    expect(projectRetainsWorkAssetMediaBytes(project, "m1")).toBe(false);
+  });
+
+  it("tolerates projects without the workAssets field", () => {
+    expect(projectRetainsWorkAssetMediaBytes({}, "m1")).toBe(false);
+    expect(
+      projectRetainsWorkAssetMediaBytes(
+        { workAssets: "garbage" } as unknown as { workAssets?: WorkAsset[] },
+        "m1",
+      ),
+    ).toBe(false);
   });
 });

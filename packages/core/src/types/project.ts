@@ -15,6 +15,7 @@ import type {
 import type { MotionShaderDef } from "../motion/shaders/types";
 import type { CreationProjectState } from "../creation";
 import type { ReferenceComparisonConfig } from "./reference-comparison";
+import type { WorkAsset } from "./work-asset";
 
 export interface ProjectSettings {
   readonly width: number;
@@ -51,6 +52,13 @@ export interface Project {
    * used by the GUI panel AND the Agent verbs. Absent = no comparison set.
    */
   readonly referenceComparison?: ReferenceComparisonConfig;
+  /**
+   * Project-scoped work assets ("saved work"): named reusable spans of project
+   * media with a captured parameter snapshot. Optional for backward
+   * compatibility — absent means the project has no work assets, and old
+   * projects never gain the field unless they are edited.
+   */
+  readonly workAssets?: WorkAsset[];
 }
 
 export interface MediaLibrary {

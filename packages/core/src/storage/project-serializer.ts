@@ -4,6 +4,7 @@ import type {
   ProjectMarker,
   ProjectMarkersState,
   ProjectMarkerTarget,
+  WorkAsset,
 } from "../types";
 import type { IStorageEngine, MediaRecord } from "./types";
 import type { ValidationResult, ProjectFileWithMetadata } from "./schema-types";
@@ -244,6 +245,80 @@ export function normalizeProjectMarkerFields(project: Project): Project {
   };
 }
 
+function isWorkAssetUnsupportedParamShape(value: unknown): boolean {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof (value as { field?: unknown }).field === "string" &&
+    typeof (value as { reason?: unknown }).reason === "string"
+  );
+}
+
+function isWorkAssetShape(value: unknown): value is WorkAsset {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const asset = value as Record<string, unknown>;
+  const range = asset.sourceRange as
+    | { inSec?: unknown; outSec?: unknown }
+    | undefined;
+  const rangeValid =
+    !!range &&
+    typeof range.inSec === "number" &&
+    Number.isFinite(range.inSec) &&
+    range.inSec >= 0 &&
+    typeof range.outSec === "number" &&
+    Number.isFinite(range.outSec) &&
+    range.outSec > range.inSec;
+  return (
+    asset.schemaVersion === 1 &&
+    typeof asset.id === "string" &&
+    asset.id.length > 0 &&
+    (asset.kind === "single" || asset.kind === "multi") &&
+    typeof asset.name === "string" &&
+    typeof asset.sourceMediaId === "string" &&
+    asset.sourceMediaId.length > 0 &&
+    rangeValid &&
+    typeof asset.createdAt === "number" &&
+    Number.isFinite(asset.createdAt) &&
+    asset.createdAt >= 0 &&
+    typeof asset.updatedAt === "number" &&
+    Number.isFinite(asset.updatedAt) &&
+    asset.updatedAt >= 0 &&
+    (asset.clipSnapshot === undefined ||
+      (typeof asset.clipSnapshot === "object" && asset.clipSnapshot !== null)) &&
+    Array.isArray(asset.unsupportedParams) &&
+    asset.unsupportedParams.every(isWorkAssetUnsupportedParamShape) &&
+    (asset.captureRequestId === undefined ||
+      typeof asset.captureRequestId === "string") &&
+    (asset.members === undefined || Array.isArray(asset.members))
+  );
+}
+
+/**
+ * Defensive repair for stored work assets: an absent `workAssets` leaves the
+ * project untouched (old projects keep working with no field at all), a
+ * non-array value is replaced with the empty list, structurally invalid
+ * entries are dropped, and duplicate ids keep the first occurrence.
+ */
+export function normalizeProjectWorkAssetFields(project: Project): Project {
+  const raw = project.workAssets;
+  if (raw === undefined) return project;
+  if (!Array.isArray(raw)) {
+    return { ...project, workAssets: [] };
+  }
+  const seenIds = new Set<string>();
+  const items: WorkAsset[] = [];
+  for (const entry of raw) {
+    if (!isWorkAssetShape(entry) || seenIds.has(entry.id)) continue;
+    seenIds.add(entry.id);
+    items.push(entry);
+  }
+  if (items.length === raw.length) {
+    return project;
+  }
+  return { ...project, workAssets: items };
+}
+
 /**
  * Defensive repair for stored media items: an invalid `displayName` (wrong
  * type or blank after trim) is dropped so display sites fall back to the
@@ -272,7 +347,11 @@ export function normalizeProjectStoredFields(project: Project): Project {
   return normalizeProjectMediaFields(
     normalizeProjectMarkerFields(
       normalizeProjectGeneratedShaderFields(
-        normalizeProjectCreationFields(normalizeProjectMotionFields(project)),
+        normalizeProjectCreationFields(
+          normalizeProjectWorkAssetFields(
+            normalizeProjectMotionFields(project),
+          ),
+        ),
       ),
     ),
   );

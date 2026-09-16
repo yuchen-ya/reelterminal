@@ -72,6 +72,10 @@ import {
   CLIP_SET_KEYFRAMES_SCHEMA,
   CLIP_SET_CHROMA_KEY_SCHEMA,
   CLIP_SET_NOISE_REDUCTION_SCHEMA,
+  WORK_ASSET_CAPTURE_SCHEMA,
+  WORK_ASSET_RENAME_SCHEMA,
+  WORK_ASSET_DELETE_SCHEMA,
+  WORK_ASSET_INSTANTIATE_SCHEMA,
 } from "./ops";
 import {
   isFiniteNumber,
@@ -548,6 +552,10 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "media.rename": MEDIA_RENAME_SCHEMA,
   "clip.setChromaKey": CLIP_SET_CHROMA_KEY_SCHEMA,
   "clip.setNoiseReduction": CLIP_SET_NOISE_REDUCTION_SCHEMA,
+  "workAsset.capture": WORK_ASSET_CAPTURE_SCHEMA,
+  "workAsset.rename": WORK_ASSET_RENAME_SCHEMA,
+  "workAsset.delete": WORK_ASSET_DELETE_SCHEMA,
+  "workAsset.instantiate": WORK_ASSET_INSTANTIATE_SCHEMA,
 };
 
 /**

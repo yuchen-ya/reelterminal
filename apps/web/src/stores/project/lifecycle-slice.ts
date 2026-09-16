@@ -4,6 +4,7 @@ import {
   ActionHistory,
   normalizeGeneratedShaders,
   normalizeProjectMotionFields,
+  normalizeProjectWorkAssetFields,
   registerProjectGeneratedShaders,
 } from "@openreel/core";
 import type { StoreApi } from "zustand";
@@ -86,7 +87,12 @@ export function createProjectLifecycleSlice(
     },
 
     loadProject: (incomingProject: Project) => {
-      const motionNormalized = normalizeProjectMotionFields(incomingProject);
+      // Projects coming from IndexedDB (loadProjectFromDb) bypass
+      // normalizeProjectStoredFields, so stored-field repair for fields
+      // without engine loaders (work assets) runs at this store boundary.
+      const motionNormalized = normalizeProjectWorkAssetFields(
+        normalizeProjectMotionFields(incomingProject),
+      );
       const project: Project = {
         ...motionNormalized,
         generatedShaders: normalizeGeneratedShaders(

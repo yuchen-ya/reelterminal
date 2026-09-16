@@ -153,6 +153,39 @@ describe("project media byte reclamation", () => {
     expect(await loadMediaBlob(mediaId)).toBeNull();
   });
 
+  it("keeps bytes a work asset references even after the delete entry is gone", async () => {
+    const mediaId = await importAsset("referenced", "clip.mp4");
+    const current = useProjectStore.getState().project;
+    useProjectStore.setState({
+      project: {
+        ...current,
+        workAssets: [
+          {
+            schemaVersion: 1,
+            id: "wa-gc-1",
+            kind: "single",
+            name: "Kept trim",
+            sourceMediaId: mediaId,
+            sourceRange: { inSec: 0, outSec: 1 },
+            unsupportedParams: [],
+            createdAt: 0,
+            updatedAt: 0,
+          },
+        ],
+      } as Project,
+    });
+
+    await useProjectStore.getState().deleteMedia(mediaId);
+    await drain();
+    expect(hasItem(mediaId)).toBe(false);
+
+    // Nothing in history can restore the media item anymore, but the work
+    // asset still references it (missingSource state), so the bytes stay.
+    useProjectStore.getState().actionExecutor.getHistory().clear();
+    await drain();
+    expect(storedMedia.has(mediaId)).toBe(true);
+  });
+
   it("keeps bytes for an undone agent import and redoes with data", async () => {
     const mediaId = await importAsset("agent-import", "clip.mp4", {
       historyOwner: "agent",

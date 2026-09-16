@@ -255,11 +255,11 @@ export const SOURCE_FILE_SCHEMA: ObjectSchema = {
   lastModified: { check: isNonNegativeNumber, describe: "a non-negative finite number", required: true },
 };
 
-/** Headless media items: probe-produced video/audio only, runtime fields null. */
+/** Headless media items: probe-produced media (video/audio/image), runtime fields null. */
 export const MEDIA_ITEM_SCHEMA: ObjectSchema = {
   id: { check: isNonEmptyString, describe: "a non-empty string", required: true },
   name: { check: isString, describe: "a string", required: true },
-  type: { check: oneOf(["video", "audio"]), describe: '"video" or "audio"', required: true },
+  type: { check: oneOf(["video", "audio", "image"]), describe: '"video", "audio", or "image"', required: true },
   fileHandle: { check: isNull, describe: "null in headless sessions", required: true },
   blob: { check: isNull, describe: "null in headless sessions", required: true },
   metadata: { check: isPlainObject, describe: "an object", required: true },

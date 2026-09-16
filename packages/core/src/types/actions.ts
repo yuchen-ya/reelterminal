@@ -1,4 +1,5 @@
 import type { MediaItem, ProjectMarker, ProjectSettings } from "./project";
+import type { WorkAsset } from "./work-asset";
 import type {
   Transform,
   EasingType,
@@ -468,6 +469,16 @@ export type ProjectMarkerAction =
   | { type: "projectMarker/remove"; params: { markerId: string } }
   | { type: "projectMarker/restore"; params: { marker: ProjectMarker } };
 
+// Work-asset actions (project-scoped saved work). The action creator mints
+// the complete WorkAsset (id, timestamps, snapshot), mirroring
+// projectMarker/add; restore is the inverse of delete and must stay valid
+// even when the source media no longer exists in the library.
+export type WorkAssetAction =
+  | { type: "workAsset/create"; params: { asset: WorkAsset } }
+  | { type: "workAsset/delete"; params: { workAssetId: string } }
+  | { type: "workAsset/restore"; params: { asset: WorkAsset } }
+  | { type: "workAsset/rename"; params: { workAssetId: string; name: string } };
+
 // Overlay actions (text / shape / svg / sticker clips, authoritative on the project)
 export type OverlayAction =
   | { type: "text/create"; params: { clip: TextClip } }
@@ -535,6 +546,7 @@ export type TimelineAction =
   | SubtitleAction
   | MarkerAction
   | ProjectMarkerAction
+  | WorkAssetAction
   | ReferenceComparisonAction;
 
 // Reference comparison actions — the ONE shared comparison configuration on

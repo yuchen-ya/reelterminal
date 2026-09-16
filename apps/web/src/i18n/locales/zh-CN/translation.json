@@ -459,6 +459,7 @@
   "assets": {
     "tabs": {
       "media": "素材",
+      "work": "工作素材",
       "text": "文字",
       "graphics": "图形",
       "effects": "效果",
@@ -470,6 +471,7 @@
     },
     "descriptions": {
       "media": "导入视频、音频和静态图片。",
+      "work": "项目内暂存的可复用片段捕捉，随项目保存。跨项目素材请使用素材库。",
       "text": "添加标题预设和字幕元素。",
       "graphics": "创建形状、箭头和 SVG 叠加层。",
       "effects": "将效果拖到片段上进行应用。",
@@ -601,5 +603,36 @@
     "promptPlaceholder": "可复用的提示词 / 步骤",
     "stepsPlaceholder": "步骤,每行一条(可选)",
     "methodHint": "保存只是存储文本以便复用 — 不会安装 skill,也不会执行提示词。"
+  },
+  "workAssets": {
+    "saveToWork": "保存到工作素材",
+    "captureDisabled": "仅基于项目媒体的片段可捕捉",
+    "captureFailed": "无法保存到工作素材",
+    "saved": "已保存到工作素材",
+    "unsupportedConfirmTitle": "部分片段参数不会被捕捉",
+    "unsupportedConfirmBody": "工作素材不会包含以下参数：\n{{fields}}\n\n仍要捕捉吗？",
+    "unsupportedReasons": {
+      "recomputed": "分析产物，创建实例时会重新计算",
+      "instanceLocal": "片段实例本地的溯源信息，不属于可复用快照"
+    },
+    "searchPlaceholder": "搜索工作素材",
+    "listTitle": "工作素材",
+    "renameAction": "重命名",
+    "renameAriaLabel": "工作素材名称",
+    "renameEmpty": "工作素材名称不能为空",
+    "renamed": "已重命名工作素材",
+    "renameFailed": "无法重命名工作素材",
+    "deleteAction": "删除",
+    "deleteConfirm": "删除工作素材“{{name}}”？其引用的项目媒体不受影响。",
+    "deleted": "已删除工作素材，撤销可恢复",
+    "deleteFailed": "无法删除工作素材",
+    "addToTimeline": "加入时间线",
+    "added": "已加入时间线",
+    "addFailed": "无法加入时间线",
+    "missingSource": "源媒体已删除，该条目无法加入时间线",
+    "sourceMissingShort": "源媒体已删除",
+    "emptyTitle": "还没有工作素材",
+    "emptyDetail": "在时间线片段上右键选择“保存到工作素材”，之后可再次加入时间线。工作素材随本项目保存；跨项目素材请使用素材库。",
+    "noResults": "没有符合搜索的工作素材。"
   }
 }

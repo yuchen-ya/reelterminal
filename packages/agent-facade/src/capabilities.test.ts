@@ -121,6 +121,10 @@ describe("capabilities.get / session.describe", () => {
       "svg.create",
       "svg.update",
       "svg.remove",
+      "workAsset.capture",
+      "workAsset.rename",
+      "workAsset.delete",
+      "workAsset.instantiate",
     ]);
     expect(res.value.editOps).toEqual([...EDIT_OP_TYPES]);
     expect(res.value.stateModel).toEqual({
