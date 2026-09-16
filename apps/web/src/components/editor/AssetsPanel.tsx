@@ -12,7 +12,11 @@ import {
   type BackgroundPreset,
 } from "../../services/background-generator";
 import type { ShapeType, TextStyle } from "@openreel/core";
-import { mediaDisplayName } from "@openreel/core";
+import {
+  mediaDisplayName,
+  validateSvgContent,
+  type SvgValidationErrorCode,
+} from "@openreel/core";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useTimelineStore } from "../../stores/timeline-store";
@@ -48,6 +52,21 @@ const formatDuration = (seconds: number): string => {
   return `${mins.toString().padStart(2, "0")}:${secs
     .toString()
     .padStart(2, "0")}`;
+};
+
+// Maps shared SVG validation error codes to localized copy so every
+// rejection category (active content, external references, size limits,
+// malformed markup) gets an explicit, user-visible message.
+const SVG_IMPORT_ERROR_MESSAGE_KEYS: Record<SvgValidationErrorCode, string> = {
+  empty: "assets.svgImport.empty",
+  tooLarge: "assets.svgImport.tooLarge",
+  tooComplex: "assets.svgImport.tooComplex",
+  noSvgRoot: "assets.svgImport.noSvgRoot",
+  script: "assets.svgImport.script",
+  foreignObject: "assets.svgImport.foreignObject",
+  eventHandler: "assets.svgImport.eventHandler",
+  unsafeProtocol: "assets.svgImport.unsafeProtocol",
+  externalResource: "assets.svgImport.externalResource",
 };
 
 /**
@@ -1480,6 +1499,19 @@ export const AssetsPanel: React.FC = () => {
                         const file = (e.target as HTMLInputElement).files?.[0];
                         if (file) {
                           const content = await file.text();
+                          // Reject before any track is created so a failed
+                          // import never leaves a half-imported graphics
+                          // track behind.
+                          const validation = validateSvgContent(content);
+                          if (!validation.ok) {
+                            toast.error(
+                              t("assets.svgImport.rejected"),
+                              t(
+                                SVG_IMPORT_ERROR_MESSAGE_KEYS[validation.code],
+                              ),
+                            );
+                            return;
+                          }
                           const state = useProjectStore.getState();
                           const { importSVG, addTrack } = state;
                           const tracksBefore = state.project.timeline.tracks;
@@ -1503,6 +1535,11 @@ export const AssetsPanel: React.FC = () => {
                                 id: created.id,
                                 trackId: newGraphicsTrack.id,
                               });
+                            } else {
+                              toast.error(
+                                t("assets.svgImport.rejected"),
+                                t("assets.svgImport.failed"),
+                              );
                             }
                           }
                         }

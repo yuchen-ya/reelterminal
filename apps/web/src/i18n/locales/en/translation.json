@@ -478,6 +478,19 @@
       "recipes": "Apply clip-scoped looks, overlays, and text stacks.",
       "templates": "Load full-project starter layouts and presets.",
       "library": "Your cross-project material library: media, segments, links and reusable methods"
+    },
+    "svgImport": {
+      "rejected": "SVG import rejected",
+      "failed": "The SVG could not be imported.",
+      "empty": "The file is empty and not a valid SVG.",
+      "noSvgRoot": "No <svg> root element found; this is not a valid SVG file.",
+      "script": "The SVG contains a <script> element, which is not allowed.",
+      "foreignObject": "The SVG contains a <foreignObject> element, which is not allowed.",
+      "eventHandler": "The SVG contains event handler attributes (on*), which are not allowed.",
+      "unsafeProtocol": "The SVG references an unsafe protocol (e.g. javascript: or data:text/html), which is not allowed.",
+      "externalResource": "The SVG references external resources (http(s) URLs), which are not allowed. Embed images as data:image URIs or use relative paths instead.",
+      "tooLarge": "The SVG file is too large (over the 2 MB limit).",
+      "tooComplex": "The SVG is too complex (element count over the limit)."
     }
   },
   "mobile": {

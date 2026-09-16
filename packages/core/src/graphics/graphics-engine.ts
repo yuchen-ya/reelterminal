@@ -20,6 +20,7 @@ import type {
   EmphasisAnimation,
 } from "./types";
 import { DEFAULT_SHAPE_STYLE, DEFAULT_GRAPHIC_TRANSFORM } from "./types";
+import { assertValidSvgContent } from "./svg-validation";
 import type { Transform, Keyframe, ClipMetadata } from "../types/timeline";
 import { AnimationEngine } from "../video/animation-engine";
 import {
@@ -327,7 +328,7 @@ export class GraphicsEngine {
    * @param startTime - Start time in seconds
    * @param duration - Duration in seconds
    * @returns The created SVGClip
-   * @throws Error if SVG content is invalid
+   * @throws SvgValidationError if SVG content violates the ingest policy
    */
   importSVG(
     svgContent: string,
@@ -376,11 +377,20 @@ export class GraphicsEngine {
   /**
    * Parses SVG content and extracts viewBox and dimensions.
    *
+   * Content is first checked through the shared SVG validation
+   * (svg-validation.ts), so every ingest path that funnels through this
+   * method — engine importSVG, the graphics bridge validateSVG, and the GUI
+   * upload flows — rejects scripts, foreign objects, event handlers, unsafe
+   * URL schemes, external references and oversized documents with a coded
+   * {@link SvgValidationError} instead of silently storing them.
+   *
    * @param svgContent - Raw SVG XML string
    * @returns Parsed SVG information including viewBox and dimensions
-   * @throws Error if SVG content is invalid
+   * @throws SvgValidationError if the content violates the SVG ingest policy
    */
   parseSVG(svgContent: string): SVGImportResult {
+    assertValidSvgContent(svgContent);
+
     const parser = new DOMParser();
     const doc = parser.parseFromString(svgContent, "image/svg+xml");
     const svgElement = doc.querySelector("svg");

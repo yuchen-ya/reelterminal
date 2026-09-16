@@ -478,6 +478,19 @@
       "recipes": "应用片段级视觉、叠加层和文字组合。",
       "templates": "载入完整项目的起始布局和预设。",
       "library": "跨项目的个人素材库:媒体、片段、链接和可复用方法"
+    },
+    "svgImport": {
+      "rejected": "SVG 导入已拒绝",
+      "failed": "该 SVG 无法导入。",
+      "empty": "文件为空，不是有效的 SVG。",
+      "noSvgRoot": "未找到 <svg> 根元素，这不是有效的 SVG 文件。",
+      "script": "SVG 包含 <script> 脚本元素，已被拒绝。",
+      "foreignObject": "SVG 包含 <foreignObject> 元素，已被拒绝。",
+      "eventHandler": "SVG 包含事件处理属性（on*），已被拒绝。",
+      "unsafeProtocol": "SVG 引用了不安全的协议（如 javascript: 或 data:text/html），已被拒绝。",
+      "externalResource": "SVG 引用了外部资源（http(s) 链接），已被拒绝。请改用 data:image 内嵌资源或相对路径。",
+      "tooLarge": "SVG 文件过大（超过 2 MB 上限）。",
+      "tooComplex": "SVG 过于复杂（元素数超过上限）。"
     }
   },
   "mobile": {

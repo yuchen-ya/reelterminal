@@ -1,5 +1,6 @@
 import type { Project } from "../../types/project";
 import type { Action, ValidationResult } from "../../types/actions";
+import { validateSvgContent } from "../../graphics/svg-validation";
 import { registerActionHandler } from "../registry";
 import type { ActionHandler } from "../registry";
 
@@ -12,6 +13,32 @@ type OverlayField =
 interface OverlayItem {
   readonly id: string;
   readonly [key: string]: unknown;
+}
+
+// Overlay prefixes whose payload carries raw SVG markup. The create/update
+// handlers re-check that payload through the shared SVG validation so the
+// action layer rejects unsafe content even when a caller bypassed the
+// engine-level import path.
+const SVG_CONTENT_FIELD_BY_PREFIX: Partial<Record<string, string>> = {
+  svg: "svgContent",
+};
+
+function validateOverlayContent(
+  prefix: string,
+  content: unknown,
+): ValidationResult | null {
+  const field = SVG_CONTENT_FIELD_BY_PREFIX[prefix];
+  if (!field) return null;
+  if (typeof content !== "string") {
+    return err(`${prefix} action requires a string ${field}`);
+  }
+  const result = validateSvgContent(content);
+  return result.ok
+    ? null
+    : {
+        valid: false,
+        errors: [{ code: result.code, message: result.message }],
+      };
 }
 
 function getOverlays(project: Project, field: OverlayField): OverlayItem[] {
@@ -44,9 +71,15 @@ export function makeOverlayHandlers(
     synchronous: true,
     validate(action: Action): ValidationResult {
       const clip = (action.params as { clip?: OverlayItem }).clip;
-      return clip && typeof clip.id === "string"
-        ? ok()
-        : err(`${prefix}/create requires a clip with an id`);
+      if (!clip || typeof clip.id !== "string") {
+        return err(`${prefix}/create requires a clip with an id`);
+      }
+      const contentField = SVG_CONTENT_FIELD_BY_PREFIX[prefix];
+      if (contentField) {
+        const contentError = validateOverlayContent(prefix, clip[contentField]);
+        if (contentError) return contentError;
+      }
+      return ok();
     },
     apply(action: Action, project: Project): void {
       const clip = (action.params as { clip: OverlayItem }).clip;
@@ -67,10 +100,22 @@ export function makeOverlayHandlers(
     type: `${prefix}/update`,
     synchronous: true,
     validate(action: Action, project: Project): ValidationResult {
-      const clipId = (action.params as { clipId?: string }).clipId;
-      return getOverlays(project, field).some((c) => c.id === clipId)
-        ? ok()
-        : err(`${prefix} clip not found: ${String(clipId)}`);
+      const { clipId, updates } = action.params as {
+        clipId?: string;
+        updates?: Record<string, unknown>;
+      };
+      if (!getOverlays(project, field).some((c) => c.id === clipId)) {
+        return err(`${prefix} clip not found: ${String(clipId)}`);
+      }
+      const contentField = SVG_CONTENT_FIELD_BY_PREFIX[prefix];
+      if (contentField && updates && contentField in updates) {
+        const contentError = validateOverlayContent(
+          prefix,
+          updates[contentField],
+        );
+        if (contentError) return contentError;
+      }
+      return ok();
     },
     apply(action: Action, project: Project): void {
       const { clipId, updates } = action.params as {
