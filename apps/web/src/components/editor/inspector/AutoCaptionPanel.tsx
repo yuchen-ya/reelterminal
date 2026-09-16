@@ -340,11 +340,12 @@ export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
     const model = WHISPER_MODELS[selectedModel];
     if (workerState === "ready") {
       const backend = modelBackends[selectedModel];
-      return `Downloaded and cached${backend ? ` · ${backend === "webgpu" ? "GPU" : "CPU"}` : ""}`;
+      const backendLabel = backend ? ` · ${backend === "webgpu" ? "GPU" : "CPU"}` : "";
+      return t("Downloaded and cached{{backend}}", { backend: backendLabel });
     }
-    if (workerState === "loading") return progressMessage || "Downloading model…";
-    return `${model.downloadSize} · ${model.description}`;
-  }, [modelBackends, progressMessage, selectedModel, workerState]);
+    if (workerState === "loading") return progressMessage || t("Downloading model…");
+    return `${t(model.downloadSize)} · ${t(model.description)}`;
+  }, [modelBackends, progressMessage, selectedModel, t, workerState]);
 
   return (
     <div className="w-full min-w-0 space-y-3">
@@ -395,7 +396,9 @@ export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
         )}
         {workerState === "idle" && (
           <Button
-            label={`Download ${WHISPER_MODELS[selectedModel].shortLabel}`}
+            label={t("Download {{name}}", {
+              name: WHISPER_MODELS[selectedModel].shortLabel,
+            })}
             icon={<Download size={13} aria-hidden />}
             variant="secondary"
             size="sm"
@@ -438,7 +441,7 @@ export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
             onChange={setSelectedStyle}
             isDisabled={isTranscribing}
             options={CAPTION_STYLE_PRESETS.map((preset) => ({
-              label: preset[0].toUpperCase() + preset.slice(1),
+              label: t(preset[0].toUpperCase() + preset.slice(1)),
               value: preset,
             }))}
           />
@@ -472,7 +475,7 @@ export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
             ))}
           </div>
           <Button
-            label={`Add ${segments.length} as Editable Text`}
+            label={t("Add {{count}} as Editable Text", { count: segments.length })}
             variant="primary"
             size="sm"
             onClick={handleAddToTimeline}

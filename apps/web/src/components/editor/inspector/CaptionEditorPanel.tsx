@@ -153,8 +153,8 @@ export const CaptionEditorPanel: React.FC<CaptionEditorPanelProps> = ({
         <Button
           label={
             selectedCount > 0
-              ? `Make ${selectedCount} selected single-line`
-              : `Make all ${captions.length} single-line`
+              ? t("Make {{count}} selected single-line", { count: selectedCount })
+              : t("Make all {{count}} single-line", { count: captions.length })
           }
           icon={<WrapText size={13} aria-hidden />}
           variant="secondary"
@@ -176,10 +176,10 @@ export const CaptionEditorPanel: React.FC<CaptionEditorPanelProps> = ({
               onClick={toggleAll}
               className="text-[10px] font-semibold text-accent hover:underline"
             >
-              {allSelected ? "Clear selection" : "Select all"}
+              {allSelected ? t("Clear selection") : t("Select all")}
             </button>
             <Text type="supporting" color="secondary" className="text-[9px]">
-              {captions.length} {t(" editable text clip")}{captions.length === 1 ? "" : "s"}
+              {t("{{count}} editable text clips", { count: captions.length })}
             </Text>
           </div>
           <div className="max-h-72 space-y-2 overflow-y-auto pr-1">

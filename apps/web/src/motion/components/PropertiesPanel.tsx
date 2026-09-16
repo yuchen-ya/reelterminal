@@ -1658,7 +1658,7 @@ export function PropertiesPanel({ composition, embedded = false }: PropertiesPan
                       <Field label={t("Path data")}>
                         <TextArea
                           value={selectedLayer.pathData ?? ""}
-                          placeholder={t("M -50 -50 L 50 -50 L 50 50 L -50 50 Z")}
+                          placeholder="M -50 -50 L 50 -50 L 50 50 L -50 50 Z"
                           onChange={(pathData) =>
                             patchLayer({
                               pathData,

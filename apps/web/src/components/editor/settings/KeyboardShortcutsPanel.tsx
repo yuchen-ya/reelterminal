@@ -47,7 +47,7 @@ export const KeyboardShortcutsPanel: React.FC = () => {
               display="block"
               className="text-xs uppercase tracking-wider"
             >
-              {keyboardShortcuts.getCategoryName(category)}
+              {t(keyboardShortcuts.getCategoryName(category))}
             </Text>
             <div className="overflow-hidden rounded-lg border border-border">
               {shortcuts.map((shortcut, index) => (
@@ -61,7 +61,7 @@ export const KeyboardShortcutsPanel: React.FC = () => {
                 >
                   <div className="min-w-0">
                     <Text type="body" display="block">
-                      {shortcut.name}
+                      {t(shortcut.name)}
                     </Text>
                     <Text
                       type="supporting"
@@ -69,7 +69,7 @@ export const KeyboardShortcutsPanel: React.FC = () => {
                       display="block"
                       className="text-[11px]"
                     >
-                      {shortcut.description}
+                      {t(shortcut.description)}
                     </Text>
                   </div>
                   <Text

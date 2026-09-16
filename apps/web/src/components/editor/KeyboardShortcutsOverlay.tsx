@@ -61,10 +61,15 @@ export const KeyboardShortcutsOverlay: React.FC<
   const filteredShortcuts = shortcuts.filter((shortcut) => {
     const matchesCategory =
       activeCategory === "all" || shortcut.category === activeCategory;
+    // Match both the raw English strings and their localized display text so
+    // searching works in either UI language.
+    const query = searchQuery.toLowerCase();
     const matchesSearch =
       searchQuery === "" ||
-      shortcut.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      shortcut.description.toLowerCase().includes(searchQuery.toLowerCase());
+      shortcut.name.toLowerCase().includes(query) ||
+      shortcut.description.toLowerCase().includes(query) ||
+      t(shortcut.name).toLowerCase().includes(query) ||
+      t(shortcut.description).toLowerCase().includes(query);
     return matchesCategory && matchesSearch;
   });
 
@@ -140,7 +145,7 @@ export const KeyboardShortcutsOverlay: React.FC<
     { value: "all", label: t("All") },
     ...categories.map((category) => ({
       value: category,
-      label: keyboardShortcuts.getCategoryName(category),
+      label: t(keyboardShortcuts.getCategoryName(category)),
     })),
   ];
   const presets = keyboardShortcuts.getPresets();
@@ -243,8 +248,10 @@ export const KeyboardShortcutsOverlay: React.FC<
                   display="block"
                   className="mb-3 text-xs uppercase"
                 >
-                  {keyboardShortcuts.getCategoryName(
-                    category as ShortcutCategory,
+                  {t(
+                    keyboardShortcuts.getCategoryName(
+                      category as ShortcutCategory,
+                    ),
                   )}
                 </Text>
                 <div className="space-y-1">
@@ -257,10 +264,10 @@ export const KeyboardShortcutsOverlay: React.FC<
                     >
                       <div className="flex-1">
                         <Text type="body" display="block">
-                          {shortcut.name}
+                          {t(shortcut.name)}
                         </Text>
                         <Text type="supporting" color="secondary" display="block" className="text-[10px]">
-                          {shortcut.description}
+                          {t(shortcut.description)}
                         </Text>
                       </div>
                       <div className="flex items-center gap-2">

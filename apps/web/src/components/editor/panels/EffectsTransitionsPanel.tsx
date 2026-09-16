@@ -1581,7 +1581,7 @@ export const EffectsPanel: React.FC = () => {
           })}
           {filtered.length === 0 && (
             <Text type="supporting" color="secondary" display="block" justify="center" className="text-[10.5px] py-6">
-              {tr("No effects match \"")}{query}".
+              {tr("No effects match \"{{query}}\".", { query })}
             </Text>
           )}
         </div>
@@ -1791,7 +1791,7 @@ export const TransitionsPanel: React.FC = () => {
           })}
           {filtered.length === 0 && (
             <Text type="supporting" color="secondary" display="block" justify="center" className="text-[10.5px] py-6">
-              {tr("No transitions match \"")}{query}".
+              {tr("No transitions match \"{{query}}\".", { query })}
             </Text>
           )}
         </div>

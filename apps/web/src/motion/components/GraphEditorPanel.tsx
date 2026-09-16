@@ -1015,7 +1015,7 @@ export function GraphEditorPanel({
                           code: event.target.value,
                         }))
                       }
-                      placeholder={t("value + wiggle(2, 20)")}
+                      placeholder="value + wiggle(2, 20)"
                       className="w-full resize-y rounded-[7px] border border-border bg-bg-1 px-2.5 py-2 font-mono text-[12px] leading-relaxed text-fg-2 outline-none focus:border-border-strong"
                     />
                   </Field>

@@ -1121,7 +1121,7 @@ export const Timeline: React.FC = () => {
                   className="border-b border-danger/30 bg-danger/10 px-3 py-2.5"
                 >
                   <p className="text-[11px] font-semibold text-danger">
-                    {tr("Delete “")}{pendingTrackDelete.name}”?
+                    {tr("Delete “{{name}}”?", { name: pendingTrackDelete.name })}
                   </p>
                   <p className="mt-0.5 text-[10px] leading-relaxed text-fg-3">
                     {tr("Its clips will be removed. You can undo this action.")}</p>
