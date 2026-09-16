@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { ToolcraftIconButton as IconButton } from "@openreel/ui";
 import { ToolcraftNumberInputControl } from "@openreel/ui";
@@ -22,6 +22,10 @@ import {
   type HighlightResult,
   type HighlightPreferences,
 } from "../../../services/highlight-service";
+import {
+  classifyCloudError,
+  cloudFailureMessage,
+} from "../../../services/cloud-error";
 import { useTranslation } from "react-i18next";
 
 interface HighlightExtractorPanelProps {
@@ -38,10 +42,19 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
   const [progress, setProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [failureDetail, setFailureDetail] = useState<string | null>(null);
 
   const project = useProjectStore((s) => s.project);
   const getMediaItem = useProjectStore((s) => s.getMediaItem);
   const seekTo = useTimelineStore((s) => s.seekTo);
+
+  // The in-flight analysis run is aborted when the panel unmounts, so no
+  // upload or poll loop outlives the component and no setState lands on
+  // a dead component.
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
 
   const [preferences, setPreferences] = useState<HighlightPreferences>({
     targetClipCount: 5,
@@ -78,7 +91,11 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
 
     setIsProcessing(true);
     setError(null);
+    setFailureDetail(null);
     setHighlights([]);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       setPhase("Transcribing audio...");
@@ -91,7 +108,9 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
         clip,
         mediaItem,
         (p) => setProgress(Math.round(p.progress * 20)),
+        controller.signal,
       );
+      if (controller.signal.aborted) return;
 
       const transcript: TranscriptWord[] = subtitles.flatMap((sub) =>
         sub.words
@@ -123,11 +142,23 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
       setHighlights(results);
       setSelected(new Set(results.map((_, i) => i)));
     } catch (err) {
-      // Localized failure title with the raw message kept as the detail
-      // text — the underlying error stays readable for debugging.
-      const detail = err instanceof Error ? err.message : "Analysis failed";
-      setError(tr("cloud.highlightFailed", { message: detail }));
+      // Cloud failures get a categorized, localized title ("service
+      // unreachable", "rate limited", ...) with the raw message kept as
+      // the detail text for debugging. Local failures keep the generic
+      // analysis-failed wording so they are not mistaken for an outage.
+      const classified = classifyCloudError(err);
+      const failure = cloudFailureMessage(classified);
+      if (failure) {
+        setError(tr(failure.key, failure.options));
+        setFailureDetail(failure.showDetail ? classified.detail : null);
+      } else {
+        setError(tr("cloud.highlightFailed", { message: classified.detail }));
+        setFailureDetail(null);
+      }
     } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
       setIsProcessing(false);
       setPhase("");
       setProgress(0);
@@ -222,7 +253,31 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
         )}
 
         {error && (
-          <Text type="supporting" className="text-[10px] text-red-400">{error}</Text>
+          <div className="space-y-1">
+            <Text type="supporting" className="block text-[10px] text-red-400">
+              {error}
+            </Text>
+            {failureDetail && (
+              <Text
+                type="supporting"
+                className="block break-all text-[9px] text-text-muted"
+              >
+                {failureDetail}
+              </Text>
+            )}
+            {cloudEnabled && !isProcessing && (
+              // Same explicit retry contract as the captions entry: the
+              // user re-issues the request once; nothing auto-retries.
+              <Button
+                label={tr("templates.retry")}
+                onClick={handleAnalyze}
+                isDisabled={isProcessing}
+                variant="secondary"
+                size="sm"
+                className="w-full justify-center"
+              />
+            )}
+          </div>
         )}
       </div>
 

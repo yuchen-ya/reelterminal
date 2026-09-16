@@ -133,3 +133,104 @@ describe("HighlightExtractorPanel cloud opt-out", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("HighlightExtractorPanel cloud failure presentation", () => {
+  it("presents an unreachable cloud service with a categorized title, the raw detail, and an explicit Retry", async () => {
+    clearCloudEnv();
+    seedProjectWithMedia();
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    stubs.core.initializeTranscriptionService.mockReturnValue({
+      transcribeClip: vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    });
+
+    await renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Find Highlights" }));
+
+    // Categorized, understandable wording instead of the bare browser
+    // message as the headline…
+    expect(
+      await screen.findByText(
+        "Could not reach the OpenReel cloud service. Check your connection and retry; if it persists, the service may be temporarily unavailable.",
+      ),
+    ).toBeInTheDocument();
+    // …with the raw message demoted to the detail line…
+    expect(screen.getByText("Failed to fetch")).toBeInTheDocument();
+    // …and a manual Retry next to it (no auto-retry ever happens).
+    const retry = screen.getByRole("button", { name: "Retry" });
+    expect(retry).toBeEnabled();
+
+    fireEvent.click(retry);
+    const service = stubs.core.initializeTranscriptionService.mock
+      .results[0].value as { transcribeClip: ReturnType<typeof vi.fn> };
+    await screen.findByText(
+      "Could not reach the OpenReel cloud service. Check your connection and retry; if it persists, the service may be temporarily unavailable.",
+    );
+    expect(service.transcribeClip).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("presents a structured rate-limit failure through the same categorized wording", async () => {
+    clearCloudEnv();
+    seedProjectWithMedia();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(),
+    );
+    // Structured errors are matched by their kind field (the service
+    // layer throws them; duck-typed here because core is fully mocked).
+    stubs.core.initializeTranscriptionService.mockReturnValue({
+      transcribeClip: async () => {
+        throw Object.assign(
+          new Error(
+            "Rate limit reached. Please wait a minute before transcribing more audio.",
+          ),
+          { kind: "rateLimited", detail: "Rate limit reached." },
+        );
+      },
+    });
+
+    await renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Find Highlights" }));
+
+    expect(
+      await screen.findByText(
+        "Too many requests. Please wait about a minute and retry.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Rate limit reached.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
+  });
+
+  it("aborts the in-flight run when the panel unmounts", async () => {
+    clearCloudEnv();
+    seedProjectWithMedia();
+    vi.stubGlobal("fetch", vi.fn());
+    let capturedSignal: AbortSignal | undefined;
+    stubs.core.initializeTranscriptionService.mockReturnValue({
+      transcribeClip: async (
+        _clip: unknown,
+        _media: unknown,
+        _onProgress: unknown,
+        signal: AbortSignal,
+      ) => {
+        capturedSignal = signal;
+        // Upload hangs until aborted.
+        await new Promise(() => {});
+      },
+    });
+
+    const { unmount } = await renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Find Highlights" }));
+    await Promise.resolve();
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal?.aborted).toBe(false);
+
+    unmount();
+
+    // No orphaned upload outlives the panel.
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+});

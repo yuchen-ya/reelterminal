@@ -8,9 +8,10 @@ import { useUIStore } from "../../stores/ui-store";
 
 /**
  * A persistent cloud-transcription failure must not render the bare
- * raw error message. InspectorPanel composes a localized failure title
- * (cloud.transcribeFailed) with the original error message kept as the
- * detail text, and AiTab renders that message next to the explicit Retry.
+ * raw error message. InspectorPanel classifies the failure and composes
+ * a localized title (cloud.failure.*) with the original error message
+ * kept as a secondary detail line, and AiTab renders both next to the
+ * explicit Retry.
  */
 
 const stubs = vi.hoisted(() => ({
@@ -115,7 +116,7 @@ afterEach(() => {
 });
 
 describe("InspectorPanel cloud transcription failure presentation", () => {
-  it("renders a localized failure title and keeps the raw error message as the detail text", async () => {
+  it("renders a categorized failure title and keeps the raw error message as the detail line", async () => {
     stubs.core.initializeTranscriptionService.mockReturnValue({
       transcribeClip: async () => {
         throw new Error("Upload failed with status 500");
@@ -130,17 +131,49 @@ describe("InspectorPanel cloud transcription failure presentation", () => {
       screen.getByRole("button", { name: "Generate Captions (Cloud)" }),
     );
 
-    // The localized failure title is present…
+    // The HTTP status is classified into an understandable title…
     const failureLine = await screen.findByText(
-      /Cloud transcription failed/,
+      /Cloud service error \(500\)/,
     );
-    // …and the raw error message is preserved as the detail text.
-    expect(failureLine.textContent).toContain("Upload failed with status 500");
+    // …and the raw error message is preserved as a separate detail line.
+    expect(failureLine.textContent).toContain("Cloud service error");
+    expect(
+      screen.getByText("Upload failed with status 500"),
+    ).toBeInTheDocument();
 
     // The failure persists with the explicit Retry (no auto-dismiss).
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     expect(stubs.core.initializeTranscriptionService).toHaveBeenCalledTimes(
       1,
     );
+  });
+
+  it("keeps the generic wording for a local (non-cloud) failure", async () => {
+    stubs.core.initializeTranscriptionService.mockReturnValue({
+      transcribeClip: async () => {
+        throw new Error("Media decoder unavailable");
+      },
+    });
+
+    seedVideoClipWithMedia();
+    const { container } = render(<InspectorPanel />);
+
+    openAutoCaptionsSection(container);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Generate Captions (Cloud)" }),
+    );
+
+    // A failure with no cloud fingerprint is not presented as an outage:
+    // the generic localized title stays with the message interpolated,
+    // and no categorized title/detail line is added.
+    const failureLine = await screen.findByText(
+      /Cloud transcription failed/,
+    );
+    expect(failureLine.textContent).toContain("Media decoder unavailable");
+    expect(screen.queryByText(/Cloud service error/)).toBeNull();
+    expect(
+      screen.queryByText("Media decoder unavailable"),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });

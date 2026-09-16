@@ -21,9 +21,105 @@ export interface WhisperTranscriptionProgress {
     | "transcribing"
     | "processing"
     | "complete"
-    | "error";
+    | "error"
+    | "cancelled";
   progress: number;
   message: string;
+  /**
+   * Raw error text kept readable for debugging; rendered as a secondary
+   * detail line under the localized failure title on error phases.
+   */
+  detail?: string;
+}
+
+/**
+ * Machine-readable categories for cloud-request failures. The UI maps
+ * these to localized failure titles instead of surfacing raw browser
+ * error text.
+ */
+export type CloudFailureKind =
+  | "network"
+  | "server"
+  | "rateLimited"
+  | "taskFailed"
+  | "timeout"
+  | "responseInvalid";
+
+/**
+ * A cloud-request failure that carries its classification. `detail`
+ * keeps the original human-readable text (server body, browser message,
+ * etc.) so it stays readable as a secondary line for debugging.
+ */
+export class CloudRequestError extends Error {
+  readonly kind: CloudFailureKind;
+  readonly status?: number | undefined;
+  readonly detail: string;
+
+  constructor(kind: CloudFailureKind, detail: string, status?: number) {
+    super(detail);
+    this.name = "CloudRequestError";
+    this.kind = kind;
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+// The upload request must fail fast instead of hanging on the browser
+// default timeout; the job poll loop keeps its own bounded budget below.
+const SUBMIT_TIMEOUT_MS = 120_000;
+const POLL_MAX_ATTEMPTS = 120;
+const POLL_INTERVAL_MS = 3000;
+// A healthy job poll answers within a couple of attempts; this many
+// consecutive failures (server errors or lost connection) means the
+// service is down and the wait must surface instead of spinning.
+const POLL_MAX_CONSECUTIVE_FAILURES = 5;
+
+function createAbortError(message: string): Error {
+  if (typeof DOMException === "function") {
+    return new DOMException(message, "AbortError");
+  }
+  const err = new Error(message);
+  err.name = "AbortError";
+  return err;
+}
+
+function isTimeoutAbort(err: unknown): boolean {
+  return (err as { name?: unknown } | null)?.name === "TimeoutError";
+}
+
+function isAbortError(err: unknown): boolean {
+  return (err as { name?: unknown } | null)?.name === "AbortError";
+}
+
+/**
+ * Combines optional abort signals into one; the returned signal aborts
+ * when any input aborts. Returns undefined when no signal is given so
+ * fetch stays unabortable exactly as before.
+ */
+function linkAbortSignals(
+  signals: (AbortSignal | undefined)[],
+): AbortSignal | undefined {
+  const composite = new AbortController();
+  let linked = false;
+  for (const signal of signals) {
+    if (!signal) continue;
+    if (signal.aborted) {
+      composite.abort(signal.reason);
+      return composite.signal;
+    }
+    signal.addEventListener("abort", () => composite.abort(signal.reason), {
+      once: true,
+    });
+    linked = true;
+  }
+  return linked ? composite.signal : undefined;
+}
+
+function createSubmitTimeoutSignal(): AbortSignal | undefined {
+  return typeof AbortSignal !== "undefined" &&
+    typeof AbortSignal.timeout === "function"
+    ? AbortSignal.timeout(SUBMIT_TIMEOUT_MS)
+    : undefined;
 }
 
 export interface TranscriptionConfig {
@@ -46,6 +142,7 @@ const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {
 export class TranscriptionService {
   private config: TranscriptionConfig;
   private audioContext: AudioContext | null = null;
+  private activeController: AbortController | null = null;
 
   constructor(config: TranscriptionConfig) {
     this.config = {
@@ -55,11 +152,42 @@ export class TranscriptionService {
     };
   }
 
+  /**
+   * Aborts the in-flight run (upload + result polling). The run unwinds
+   * without an error: transcribeClip resolves with no subtitles and its
+   * caller resets to the pre-run state, so nothing half-finished stays
+   * behind. No-op when nothing is running.
+   */
+  cancelActiveRun(): void {
+    this.activeController?.abort(createAbortError("Transcription cancelled"));
+  }
+
   async transcribeClip(
     clip: Clip,
     mediaItem: MediaItem,
     onProgress?: (progress: WhisperTranscriptionProgress) => void,
+    abortSignal?: AbortSignal,
   ): Promise<Subtitle[]> {
+    const controller = new AbortController();
+    this.activeController = controller;
+    if (abortSignal) {
+      if (abortSignal.aborted) {
+        controller.abort(abortSignal.reason);
+      } else {
+        abortSignal.addEventListener(
+          "abort",
+          () => controller.abort(abortSignal.reason),
+          { once: true },
+        );
+      }
+    }
+    const signal = controller.signal;
+    const throwIfCancelled = () => {
+      if (signal.aborted) {
+        throw createAbortError("Transcription cancelled");
+      }
+    };
+
     try {
       onProgress?.({
         phase: "extracting",
@@ -67,7 +195,9 @@ export class TranscriptionService {
         message: "Extracting audio from video...",
       });
 
+      throwIfCancelled();
       const audioBlob = await this.extractAudioFromClip(clip, mediaItem);
+      throwIfCancelled();
 
       onProgress?.({
         phase: "uploading",
@@ -75,7 +205,12 @@ export class TranscriptionService {
         message: "Uploading audio for transcription...",
       });
 
-      const whisperResponse = await this.sendToWhisper(audioBlob, onProgress);
+      const whisperResponse = await this.sendToWhisper(
+        audioBlob,
+        onProgress,
+        signal,
+      );
+      throwIfCancelled();
 
       onProgress?.({
         phase: "processing",
@@ -93,6 +228,16 @@ export class TranscriptionService {
 
       return subtitles;
     } catch (error) {
+      if (signal.aborted) {
+        // Cancellation is not a failure: unwind with zero subtitles and
+        // no error event, so the caller resets to the pre-run state.
+        onProgress?.({
+          phase: "cancelled",
+          progress: 0,
+          message: "Transcription cancelled",
+        });
+        return [];
+      }
       onProgress?.({
         phase: "error",
         progress: 0,
@@ -100,6 +245,10 @@ export class TranscriptionService {
           error instanceof Error ? error.message : "Transcription failed",
       });
       throw error;
+    } finally {
+      if (this.activeController === controller) {
+        this.activeController = null;
+      }
     }
   }
 
@@ -212,6 +361,7 @@ export class TranscriptionService {
   private async sendToWhisper(
     audioBlob: Blob,
     onProgress?: (progress: WhisperTranscriptionProgress) => void,
+    signal?: AbortSignal,
   ): Promise<CloudflareWhisperResponse> {
     const formData = new FormData();
     formData.append("audio", audioBlob, "audio.wav");
@@ -229,24 +379,55 @@ export class TranscriptionService {
       message: "Uploading audio...",
     });
 
-    const response = await fetch(this.config.apiEndpoint, {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      if (response.status === 429) {
-        throw new Error(
-          "Rate limit reached. Please wait a minute before transcribing more audio. This free service is limited to 10 requests per minute.",
+    const timeoutSignal = createSubmitTimeoutSignal();
+    let response: Response;
+    try {
+      response = await fetch(this.config.apiEndpoint, {
+        method: "POST",
+        body: formData,
+        signal: linkAbortSignals([signal, timeoutSignal]),
+      });
+    } catch (err) {
+      if (signal?.aborted || isAbortError(err)) throw err;
+      if (isTimeoutAbort(err)) {
+        throw new CloudRequestError(
+          "timeout",
+          `Transcription upload timed out after ${Math.round(SUBMIT_TIMEOUT_MS / 1000)} seconds`,
         );
       }
-      const errorText = await response.text();
-      throw new Error(
-        `Transcription failed: ${response.status} - ${errorText}`,
+      throw new CloudRequestError(
+        "network",
+        `Could not reach the transcription service (${err instanceof Error ? err.message : String(err)})`,
       );
     }
 
-    const submitResult = await response.json();
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      if (response.status === 429) {
+        throw new CloudRequestError(
+          "rateLimited",
+          "Rate limit reached. Please wait a minute before transcribing more audio. This free service is limited to 10 requests per minute.",
+          response.status,
+        );
+      }
+      throw new CloudRequestError(
+        "server",
+        `Transcription failed: ${response.status}${errorText ? ` - ${errorText}` : ""}`,
+        response.status,
+      );
+    }
+
+    let submitResult: Partial<CloudflareWhisperResponse> & {
+      jobId?: string;
+    };
+    try {
+      submitResult = await response.json();
+    } catch {
+      throw new CloudRequestError(
+        "responseInvalid",
+        "Transcription service returned a response that is not valid JSON",
+      );
+    }
 
     if (!submitResult.jobId) {
       return submitResult as CloudflareWhisperResponse;
@@ -255,28 +436,71 @@ export class TranscriptionService {
     const baseUrl = this.config.apiEndpoint.replace(/\/transcribe$/, "").replace(/\/$/, "");
     const pollUrl = `${baseUrl}/jobs/${submitResult.jobId}`;
 
-    return this.pollForResult(pollUrl, onProgress);
+    return this.pollForResult(pollUrl, onProgress, signal);
   }
 
   private async pollForResult(
     pollUrl: string,
     onProgress?: (progress: WhisperTranscriptionProgress) => void,
+    signal?: AbortSignal,
   ): Promise<CloudflareWhisperResponse> {
-    const maxAttempts = 120;
-    const pollInterval = 3000;
+    let consecutiveFailures = 0;
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
+      await this.delay(POLL_INTERVAL_MS, signal);
 
-      const response = await fetch(pollUrl);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Transcription job not found");
+      let response: Response;
+      try {
+        response = await fetch(pollUrl, { signal });
+      } catch (err) {
+        if (signal?.aborted || isAbortError(err)) throw err;
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= POLL_MAX_CONSECUTIVE_FAILURES) {
+          // A job poll that keeps failing is a visible outage, not a
+          // reason to keep waiting: surface it instead of spinning.
+          throw new CloudRequestError(
+            "network",
+            `Lost contact with the transcription service while waiting for the job (${err instanceof Error ? err.message : String(err)})`,
+          );
         }
         continue;
       }
 
-      const job = await response.json();
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new CloudRequestError(
+            "server",
+            "Transcription job not found",
+            response.status,
+          );
+        }
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= POLL_MAX_CONSECUTIVE_FAILURES) {
+          throw new CloudRequestError(
+            "server",
+            `Transcription service kept failing while waiting for the job (last status: ${response.status})`,
+            response.status,
+          );
+        }
+        continue;
+      }
+
+      consecutiveFailures = 0;
+
+      let job: {
+        status?: string;
+        progress?: number;
+        result?: CloudflareWhisperResponse;
+        error?: string;
+      };
+      try {
+        job = await response.json();
+      } catch {
+        throw new CloudRequestError(
+          "responseInvalid",
+          "Transcription service returned a job status that is not valid JSON",
+        );
+      }
 
       if (job.status === "processing") {
         const progress = 30 + Math.round((job.progress || 0) * 0.6);
@@ -295,11 +519,35 @@ export class TranscriptionService {
       }
 
       if (job.status === "failed") {
-        throw new Error(job.error || "Transcription failed on server");
+        throw new CloudRequestError(
+          "taskFailed",
+          job.error || "Transcription failed on server",
+        );
       }
     }
 
-    throw new Error("Transcription timed out after 6 minutes");
+    throw new CloudRequestError(
+      "timeout",
+      "Transcription timed out after 6 minutes",
+    );
+  }
+
+  private delay(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(signal.reason ?? createAbortError("Transcription cancelled"));
+        return;
+      }
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(signal?.reason ?? createAbortError("Transcription cancelled"));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
   }
 
   private convertToSubtitles(
@@ -416,6 +664,8 @@ export class TranscriptionService {
   }
 
   dispose(): void {
+    // A disposed service must not leave an orphaned upload or poll loop.
+    this.cancelActiveRun();
     if (this.audioContext) {
       this.audioContext.close();
       this.audioContext = null;

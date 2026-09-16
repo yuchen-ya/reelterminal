@@ -1,5 +1,6 @@
 import {
   analyzeAudioForHighlights,
+  CloudRequestError,
   type TranscriptWord,
   type AudioSegmentMetrics,
 } from "@openreel/core";
@@ -39,6 +40,22 @@ type ProgressCallback = (phase: string, progress: number, message: string) => vo
  */
 const API_BASE = OPENREEL_CLOUD_URL;
 
+// Same budget as the cloud transcription upload: the request must fail
+// fast with an understandable timeout instead of hanging on the browser
+// default. There is no retry loop here — retries stay user-driven.
+const SUBMIT_TIMEOUT_MS = 120_000;
+
+function createSubmitTimeoutSignal(): AbortSignal | undefined {
+  return typeof AbortSignal !== "undefined" &&
+    typeof AbortSignal.timeout === "function"
+    ? AbortSignal.timeout(SUBMIT_TIMEOUT_MS)
+    : undefined;
+}
+
+function isTimeoutAbort(err: unknown): boolean {
+  return (err as { name?: unknown } | null)?.name === "TimeoutError";
+}
+
 export async function extractHighlights(
   audioBuffer: AudioBuffer,
   transcript: TranscriptWord[],
@@ -62,28 +79,63 @@ export async function extractHighlights(
 
   onProgress?.("ai", 40, "Sending to AI for highlight detection...");
 
-  const response = await fetch(`${API_BASE}/highlights`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      transcript: transcript.map((w) => ({
-        text: w.text,
-        start: w.start,
-        end: w.end,
-      })),
-      energy: energyData,
-      duration: analysis.duration,
-      preferences: prefs,
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/highlights`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: transcript.map((w) => ({
+          text: w.text,
+          start: w.start,
+          end: w.end,
+        })),
+        energy: energyData,
+        duration: analysis.duration,
+        preferences: prefs,
+      }),
+      signal: createSubmitTimeoutSignal(),
+    });
+  } catch (err) {
+    if (isTimeoutAbort(err)) {
+      throw new CloudRequestError(
+        "timeout",
+        `Highlight analysis request timed out after ${Math.round(SUBMIT_TIMEOUT_MS / 1000)} seconds`,
+      );
+    }
+    throw new CloudRequestError(
+      "network",
+      `Could not reach the highlight analysis service (${err instanceof Error ? err.message : String(err)})`,
+    );
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error((errorData as { error?: string }).error || `API error: ${response.status}`);
+    const serverMessage = (errorData as { error?: string }).error;
+    throw new CloudRequestError(
+      response.status === 429 ? "rateLimited" : "server",
+      serverMessage || `API error: ${response.status}`,
+      response.status,
+    );
   }
 
   onProgress?.("ai", 80, "Processing AI response...");
-  const data = (await response.json()) as { highlights: HighlightResult[] };
+  let data: { highlights?: HighlightResult[] };
+  try {
+    data = (await response.json()) as { highlights?: HighlightResult[] };
+  } catch {
+    throw new CloudRequestError(
+      "responseInvalid",
+      "Highlight analysis service returned a response that is not valid JSON",
+    );
+  }
+
+  if (!Array.isArray(data.highlights)) {
+    throw new CloudRequestError(
+      "responseInvalid",
+      "Highlight analysis service returned no highlights list",
+    );
+  }
 
   onProgress?.("done", 100, "Highlights ready");
   return data.highlights;

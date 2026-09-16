@@ -42,7 +42,15 @@
     "transcribeUploadNotice": "生成字幕会将该片段的音频上传至 OpenReel 云端转写服务。",
     "transcribeFailed": "云端转写失败：{{message}}",
     "highlightDisabled": "当前构建配置已禁用 AI 高光分析。",
-    "highlightFailed": "AI 高光分析失败：{{message}}"
+    "highlightFailed": "AI 高光分析失败：{{message}}",
+    "failure": {
+      "network": "无法连接 OpenReel 云端服务。请检查网络连接后重试；若持续失败，可能是服务暂时不可用。",
+      "server": "云端服务出错（{{status}}）。服务端暂时故障，请稍后重试。",
+      "rateLimited": "请求过于频繁，请约一分钟后再试。",
+      "taskFailed": "云端任务失败：{{message}}",
+      "timeout": "云端任务超时。请稍后重试，或改用本地字幕（Local Auto-Captions）。",
+      "responseInvalid": "云端返回了无法解析的响应。"
+    }
   },
   "desktop": {
     "appName": "ReelTerminal",

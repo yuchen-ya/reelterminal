@@ -11,6 +11,7 @@ import {
   type CaptionAnimationStyle,
   CAPTION_ANIMATION_STYLES,
   getAnimationStyleDisplayName,
+  getTranscriptionService,
 } from "@openreel/core";
 import { AutoReframeSection } from "../";
 import { AutoCaptionPanel } from "../AutoCaptionPanel";
@@ -76,6 +77,12 @@ export const AiTab: React.FC<AiTabProps> = ({
 }) => {
   const { t } = useTranslation();
   const cloudTranscribeEnabled = OPENREEL_CLOUD_ENABLED;
+  // Explicit cancel for the in-flight run: aborts the upload and the
+  // result polling and resets to the idle state — no half-added
+  // captions, no error, and the request is never re-issued on its own.
+  const handleCancelTranscription = React.useCallback(() => {
+    getTranscriptionService()?.cancelActiveRun();
+  }, []);
   return (
     <>
       {clipType === "video" && (
@@ -163,6 +170,17 @@ export const AiTab: React.FC<AiTabProps> = ({
                       {transcriptionProgress.message}
                     </Text>
                   </div>
+                  {transcriptionProgress.phase === "error" &&
+                    transcriptionProgress.detail && (
+                      // Raw error text under the localized failure title,
+                      // kept readable for debugging.
+                      <Text
+                        type="supporting"
+                        className="block break-all text-[9px] text-text-muted"
+                      >
+                        {transcriptionProgress.detail}
+                      </Text>
+                    )}
                     <ProgressBar
                       label={t("Caption generation progress")}
                       isLabelHidden
@@ -185,6 +203,18 @@ export const AiTab: React.FC<AiTabProps> = ({
                           label={t("templates.retry")}
                           onClick={handleGenerateSubtitles}
                           isDisabled={isTranscribing}
+                          variant="secondary"
+                          size="sm"
+                          className="w-full justify-center"
+                        />
+                      )}
+                    {isTranscribing &&
+                      cloudTranscribeEnabled &&
+                      transcriptionProgress.phase !== "error" &&
+                      transcriptionProgress.phase !== "complete" && (
+                        <Button
+                          label={t("common.cancel")}
+                          onClick={handleCancelTranscription}
                           variant="secondary"
                           size="sm"
                           className="w-full justify-center"

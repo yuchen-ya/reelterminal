@@ -651,14 +651,20 @@ export const InspectorPanel: React.FC = () => {
       // went out (or failed mid-flight) must stay readable, and the AiTab
       // offers an explicit Retry next to this persistent error.
       setIsTranscribing(false);
-      // Localized failure title with the raw message kept as the detail
-      // text — the underlying error stays readable for debugging.
-      const detail =
-        error instanceof Error ? error.message : "Transcription failed";
+      // Categorized, localized failure title (service unreachable, rate
+      // limited, ...) with the raw message kept as a secondary detail
+      // text for debugging. Local (non-cloud) failures keep the generic
+      // transcription-failed wording so they are not mistaken for an
+      // outage.
+      const classified = classifyCloudError(error);
+      const failure = cloudFailureMessage(classified);
       setTranscriptionProgress({
         phase: "error",
         progress: 0,
-        message: tr("cloud.transcribeFailed", { message: detail }),
+        message: failure
+          ? tr(failure.key, failure.options)
+          : tr("cloud.transcribeFailed", { message: classified.detail }),
+        detail: failure?.showDetail ? classified.detail : undefined,
       });
     }
   }, [
