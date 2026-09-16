@@ -65,6 +65,7 @@ you are writing for; do not copy content across rows — link instead.
 - [`build-chunking.md`](build-chunking.md) — web production chunking policy:
   lazy route/component boundaries stay authoritative; manual chunks only for
   stable third-party package boundaries.
+- [`EXTERNAL-DEPENDENCIES.md`](EXTERNAL-DEPENDENCIES.md) — every runtime outbound network destination (web, desktop, studio, image, agent path): triggers, data sent, env overrides, what can and cannot be disabled, and upload disclosures.
 
 ## Guides and inherited history
 
