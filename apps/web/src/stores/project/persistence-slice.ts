@@ -12,6 +12,11 @@ import {
   initializeAutoSave as initializeAutoSaveService,
 } from "../../services/auto-save";
 import { loadProjectMedia } from "../../services/media-storage";
+import {
+  attachProjectMediaGc,
+  flushProjectMediaBytes,
+  sweepOrphanProjectMedia,
+} from "../../services/project-media-gc";
 import { projectManager } from "../../services/project-manager";
 import { restoreMediaItem } from "../../utils/media-recovery";
 import { useEngineStore } from "../engine-store";
@@ -109,7 +114,11 @@ export function createProjectPersistenceSlice(
           }
         }
 
+        // Leaving the previous project state destroys its undo history, so
+        // bytes that only that history could restore are reclaimed now.
+        void flushProjectMediaBytes(get().project);
         const newHistory = new ActionHistory();
+        attachProjectMediaGc(newHistory, () => get().project);
         const newExecutor = new ActionExecutor(newHistory);
 
         registerProjectGeneratedShaders(projectWithMedia);
@@ -125,6 +134,11 @@ export function createProjectPersistenceSlice(
           templateRedoStack: [],
           error: null,
         });
+
+        // A fresh session history is empty, so nothing from before the
+        // recovery can be undone: bytes outside the restored items are
+        // leftovers and are reclaimed.
+        void sweepOrphanProjectMedia(projectWithMedia);
 
         await projectManager.addToRecent(projectWithMedia);
         return true;

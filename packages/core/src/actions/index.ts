@@ -8,3 +8,7 @@ export {
 } from "./action-history";
 export { ActionSerializer } from "./action-serializer";
 export { InverseActionGenerator } from "./inverse-action-generator";
+export {
+  entryRetainsMediaBytes,
+  historyRetainsMediaBytes,
+} from "./media-byte-retention";

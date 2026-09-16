@@ -31,6 +31,7 @@ vi.mock("../../services/media-storage", () => ({
   loadMediaBlob: vi.fn(
     async (mediaId: string) => storedBlobs.get(mediaId) ?? null,
   ),
+  getMediaIdsByProject: vi.fn(async () => []),
   loadProjectMedia: vi.fn(async () => []),
   loadFileHandle: vi.fn(async () => null),
   loadDirectoryHandle: vi.fn(async () => null),

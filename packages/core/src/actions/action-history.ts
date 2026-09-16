@@ -21,6 +21,15 @@ export interface ActionGroup {
   timestamp: number;
 }
 
+/**
+ * Observes entries that leave the history for good: trimmed overflow, the
+ * redo stack dropped by a new push, and clear(). Entries moved between the
+ * undo and redo stacks by undo()/redo() are NOT evictions. Listeners are
+ * observational, like subscribe() listeners: a throw must not disturb the
+ * stack mutation that produced it.
+ */
+export type HistoryEvictionListener = (evicted: readonly HistoryEntry[]) => void;
+
 export interface HistorySnapshot {
   id: string;
   name: string;
@@ -82,6 +91,7 @@ const ACTION_DESCRIPTIONS: Record<
   "project/removeGeneratedShader": () => "Remove generated shader",
   "media/import": () => "Import media",
   "media/delete": () => "Delete media",
+  "media/rename": () => "Rename media",
   "clip/closeGapBefore": () => "Close gap",
   "track/consolidate": () => "Remove gaps",
   "track/restorePositions": () => "Restore positions",
@@ -159,6 +169,7 @@ export class ActionHistory {
   private groupCounter = 0;
   private snapshots: HistorySnapshot[] = [];
   private listeners: Set<() => void> = new Set();
+  private evictionListener: HistoryEvictionListener | null = null;
   private notificationBatchDepth = 0;
   private notificationPending = false;
   private lastActionTime: number = 0;
@@ -184,6 +195,24 @@ export class ActionHistory {
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /**
+   * Registers the single observer for permanently removed entries. Passing
+   * null detaches. Fires after the affected stacks are already final, so a
+   * listener scanning this history sees a consistent state.
+   */
+  setEvictionListener(listener: HistoryEvictionListener | null): void {
+    this.evictionListener = listener;
+  }
+
+  private emitEviction(evicted: readonly HistoryEntry[]): void {
+    if (evicted.length === 0 || !this.evictionListener) return;
+    try {
+      this.evictionListener(evicted);
+    } catch {
+      // Same contract as notify(): observation cannot roll history back.
+    }
   }
 
   private notify(): void {
@@ -215,7 +244,9 @@ export class ActionHistory {
     }
   }
 
-  private trimToHistoryLimit(): void {
+  /** Drops overflow from the oldest end and returns the removed entries. */
+  private trimToHistoryLimit(): HistoryEntry[] {
+    const evicted: HistoryEntry[] = [];
     while (this.undoStack.length > this.maxHistorySize) {
       const firstGroupId = this.undoStack[0]?.groupId;
       let removeCount = 1;
@@ -231,7 +262,7 @@ export class ActionHistory {
       // group larger than the nominal entry limit. Atomic undo is more
       // important than enforcing the cap by retaining an unusable tail.
       if (removeCount === this.undoStack.length) break;
-      this.undoStack.splice(0, removeCount);
+      evicted.push(...this.undoStack.splice(0, removeCount));
       this.snapshots = this.snapshots
         .map((snapshot) => ({
           ...snapshot,
@@ -239,6 +270,7 @@ export class ActionHistory {
         }))
         .filter((snapshot) => snapshot.stackIndex >= 0);
     }
+    return evicted;
   }
 
   push(
@@ -298,13 +330,15 @@ export class ActionHistory {
     };
 
     this.undoStack.push(entry);
+    const evictedRedo = this.redoStack;
     this.redoStack = [];
 
     this.snapshots = this.snapshots.filter(
       (s) => s.stackIndex <= this.undoStack.length,
     );
 
-    this.trimToHistoryLimit();
+    const evicted = [...evictedRedo, ...this.trimToHistoryLimit()];
+    this.emitEviction(evicted);
 
     this.notify();
   }
@@ -500,10 +534,12 @@ export class ActionHistory {
   }
 
   clear(): void {
+    const evicted = [...this.undoStack, ...this.redoStack];
     this.undoStack = [];
     this.redoStack = [];
     this.snapshots = [];
     this.openGroups = [];
+    this.emitEviction(evicted);
     this.notify();
   }
 
@@ -545,7 +581,10 @@ export class ActionHistory {
 
   setMaxHistorySize(size: number): void {
     this.maxHistorySize = size;
-    // Trim if necessary
+    // Trim if necessary. This inline shift is a fourth eviction point that
+    // deliberately does NOT emit evictions: it has no callers today, and any
+    // future caller that can lose restorable entries should route through
+    // trimToHistoryLimit so observers stay informed.
     while (this.undoStack.length > this.maxHistorySize) {
       this.undoStack.shift();
     }

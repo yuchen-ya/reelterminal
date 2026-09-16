@@ -36,6 +36,12 @@ export async function loadProjectMedia(
   return storage.getMediaByProject(projectId);
 }
 
+export async function getMediaIdsByProject(
+  projectId: string,
+): Promise<string[]> {
+  return storage.getMediaIdsByProject(projectId);
+}
+
 export async function deleteMediaBlob(mediaId: string): Promise<void> {
   await storage.deleteMedia(mediaId);
 }

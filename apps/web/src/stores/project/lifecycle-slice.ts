@@ -10,6 +10,11 @@ import type { StoreApi } from "zustand";
 import { v4 as uuidv4 } from "uuid";
 import type { ProjectState } from "../project-store";
 import { loadDirectoryHandle, loadFileHandle } from "../../services/media-storage";
+import {
+  attachProjectMediaGc,
+  flushProjectMediaBytes,
+  sweepOrphanProjectMedia,
+} from "../../services/project-media-gc";
 import { useEngineStore } from "../engine-store";
 import {
   calculateTimelineDuration,
@@ -45,7 +50,11 @@ export function createProjectLifecycleSlice(
       name?: string,
       settings?: Partial<ProjectSettings>,
     ) => {
+      // Leaving the previous project destroys its undo history, so bytes that
+      // only that history could restore are reclaimed now.
+      void flushProjectMediaBytes(get().project);
       const newHistory = new ActionHistory();
+      attachProjectMediaGc(newHistory, () => get().project);
       const newExecutor = new ActionExecutor(newHistory);
       const previousProject = get().project;
       const nextProject = createEmptyProject(name, settings);
@@ -95,7 +104,11 @@ export function createProjectLifecycleSlice(
         graphicsEngine.loadStickerClips(project.stickerClips ?? []);
       }
 
+      // Leaving the previous project destroys its undo history, so bytes that
+      // only that history could restore are reclaimed now.
+      void flushProjectMediaBytes(previousProject);
       const newHistory = new ActionHistory();
+      attachProjectMediaGc(newHistory, () => get().project);
       const newExecutor = new ActionExecutor(newHistory);
 
       // Fix legacy projects where timeline.duration was never persisted
@@ -122,6 +135,11 @@ export function createProjectLifecycleSlice(
         lastPastedClipIds: [],
         error: null,
       });
+
+      // A fresh session history is empty, so nothing from before the load can
+      // be undone: bytes outside the loaded items are leftovers (crashed
+      // imports included) and are reclaimed.
+      void sweepOrphanProjectMedia(fixedProject);
 
       // Auto-restore placeholder assets from saved FileSystemFileHandles (same machine)
       const placeholders = fixedProject.mediaLibrary.items.filter(

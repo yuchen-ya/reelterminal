@@ -11,6 +11,7 @@ const { deleteMediaBlob, importFile, saveMediaBlob } = vi.hoisted(() => ({
 vi.mock("../../services/media-storage", () => ({
   saveMediaBlob,
   deleteMediaBlob,
+  getMediaIdsByProject: vi.fn(async () => []),
   loadProjectMedia: vi.fn(async () => []),
   loadFileHandle: vi.fn(async () => null),
   loadDirectoryHandle: vi.fn(async () => null),

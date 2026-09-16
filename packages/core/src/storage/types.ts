@@ -100,6 +100,8 @@ export interface IStorageEngine {
   loadMedia(id: string): Promise<MediaRecord | null>;
   deleteMedia(id: string): Promise<void>;
   getMediaByProject(projectId: string): Promise<MediaRecord[]>;
+  /** Media ids for a project via the projectId index; blobs are not read. */
+  getMediaIdsByProject(projectId: string): Promise<string[]>;
 
   // Cache operations
   saveCache(record: CacheRecord): Promise<void>;

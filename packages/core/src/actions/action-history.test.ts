@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Action } from "../types/actions";
-import { ActionHistory } from "./action-history";
+import { ActionHistory, type HistoryEntry } from "./action-history";
 
 const act = (type: string, params: Record<string, unknown> = {}): Action => ({
   type,
@@ -230,5 +230,74 @@ describe("ActionHistory group ownership (ADR 0004 Decision 12)", () => {
     expect(history.getUndoStackSize()).toBe(2);
     expect(history.undoGroup()).toHaveLength(2);
     expect(history.canUndo()).toBe(false);
+  });
+});
+
+describe("ActionHistory eviction listener", () => {
+  const collectEvictions = (history: ActionHistory) => {
+    const evictions: HistoryEntry[][] = [];
+    history.setEvictionListener((evicted) => evictions.push([...evicted]));
+    return evictions;
+  };
+
+  it("reports redo entries that a new push drops, not undo moves", () => {
+    const history = new ActionHistory();
+    const evictions = collectEvictions(history);
+
+    history.push(
+      act("media/delete", { mediaId: "m1" }),
+      inv("media/restore", { mediaItem: { id: "m1" } }),
+    );
+    history.undo(); // same entry moves to the redo stack: no eviction
+    expect(evictions).toHaveLength(0);
+    expect(history.getRedoStackSize()).toBe(1);
+
+    history.push(act("clip/add", { trackId: "t1" }), inv("clip/remove"));
+    expect(evictions).toHaveLength(1);
+    expect(evictions[0][0].action.params.mediaId).toBe("m1");
+    expect(history.getRedoStackSize()).toBe(0);
+  });
+
+  it("reports overflow entries dropped by the history limit", () => {
+    const history = new ActionHistory(2);
+    const evictions = collectEvictions(history);
+
+    for (let i = 0; i < 3; i++) {
+      history.push(act("clip/add", { trackId: `t${i}` }), inv("clip/remove"));
+    }
+
+    expect(evictions).toHaveLength(1);
+    expect(evictions[0][0].action.params.trackId).toBe("t0");
+    expect(history.getUndoStackSize()).toBe(2);
+  });
+
+  it("reports every entry on clear() and stays silent on redo()", () => {
+    const history = new ActionHistory();
+    const evictions = collectEvictions(history);
+
+    history.push(act("media/delete", { mediaId: "m1" }), null);
+    history.push(act("media/delete", { mediaId: "m2" }), null);
+    history.undo();
+    history.redo();
+    expect(evictions).toHaveLength(0);
+
+    history.clear();
+    expect(evictions).toHaveLength(1);
+    expect(evictions[0]).toHaveLength(2);
+    expect(history.getUndoStackSize()).toBe(0);
+  });
+
+  it("lets a throwing listener pass without disturbing the stacks", () => {
+    const history = new ActionHistory(1);
+    history.setEvictionListener(() => {
+      throw new Error("observer bug");
+    });
+
+    history.push(act("clip/add", { trackId: "t1" }), inv("clip/remove"));
+    expect(() =>
+      history.push(act("clip/add", { trackId: "t2" }), inv("clip/remove")),
+    ).not.toThrow();
+    expect(history.getUndoStackSize()).toBe(1);
+    expect(history.canUndo()).toBe(true);
   });
 });

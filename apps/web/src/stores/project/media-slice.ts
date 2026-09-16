@@ -4,6 +4,12 @@ import type { Action, MediaItem } from "@openreel/core";
 import type { ProjectState } from "../project-store";
 import { getMediaBridge, initializeMediaBridge } from "../../bridges/media-bridge";
 import { saveMediaBlob, deleteMediaBlob } from "../../services/media-storage";
+import {
+  ensureProjectMediaGc,
+  reconcileProjectMediaBytes,
+  releaseUncommittedMediaBlob,
+  trackUncommittedMediaBlob,
+} from "../../services/project-media-gc";
 
 type Get = StoreApi<ProjectState>["getState"];
 type Set = StoreApi<ProjectState>["setState"];
@@ -159,6 +165,7 @@ function importError(
 export function createMediaSlice(set: Set, get: Get): MediaSlice {
   return {
     importMedia: async (file: File, options: ImportMediaOptions = {}) => {
+      ensureProjectMediaGc(get().actionHistory, () => get().project);
       if (options.sourcePath !== undefined && !isAbsoluteLocalPath(options.sourcePath)) {
         return importError(
           "INVALID_PARAMS",
@@ -323,6 +330,10 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
         // leaving a media card that could not survive reload. Persist first;
         // only publish the project/history mutation after durable bytes exist.
         const persistenceProjectId = get().project.id;
+        // Until the project entry is published the bytes have no other owner.
+        // Concurrent reclamation (eviction, project switch, load sweep) must
+        // treat them as live during this window.
+        trackUncommittedMediaBlob(newMediaItem.id);
         try {
           await saveMediaBlob(
             persistenceProjectId,
@@ -331,6 +342,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
             newMediaItem.metadata,
           );
         } catch (err) {
+          releaseUncommittedMediaBlob(newMediaItem.id);
           console.error("[ProjectStore] Failed to persist media blob:", err);
           return importError(
             "DECODE_ERROR",
@@ -342,6 +354,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
         const discardUncommittedBlob = async (): Promise<void> => {
           if (!discardPersistedBlob) return;
           discardPersistedBlob = false;
+          releaseUncommittedMediaBlob(newMediaItem.id);
           await deleteMediaBlob(newMediaItem.id).catch((error) =>
             console.warn("[ProjectStore] Failed to discard uncommitted media blob:", error),
           );
@@ -460,6 +473,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
           // The ordinary and history-only paths still publish here.
           if (!options.atomicFollowUpActions) set({ project: updatedProject });
           discardPersistedBlob = false;
+          releaseUncommittedMediaBlob(newMediaItem.id);
         } catch (error) {
           await discardUncommittedBlob();
           throw error;
@@ -583,6 +597,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
     },
 
     deleteMedia: async (mediaId: string) => {
+      ensureProjectMediaGc(get().actionHistory, () => get().project);
       const { project, actionExecutor } = get();
       const action: Action = {
         type: "media/delete",
@@ -593,9 +608,11 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
       const result = await actionExecutor.execute(action, project);
       if (result.success) {
         set({ project: { ...project } });
-        deleteMediaBlob(mediaId).catch((err: unknown) =>
-          console.warn("[ProjectStore] Failed to delete media blob:", err),
-        );
+        // The delete entry in the undo history can still restore the item, so
+        // the stored bytes are kept until no history entry references them
+        // anymore. Reconciliation reclaims them once the entry is evicted,
+        // history is cleared, or the project is switched.
+        void reconcileProjectMediaBytes(project, actionExecutor.getHistory());
       }
       return result;
     },

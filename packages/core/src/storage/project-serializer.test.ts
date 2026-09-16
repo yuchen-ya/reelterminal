@@ -123,6 +123,9 @@ class MemoryStorageEngine implements IStorageEngine {
   async getMediaByProject(): Promise<MediaRecord[]> {
     return [];
   }
+  async getMediaIdsByProject(): Promise<string[]> {
+    return [];
+  }
   async saveCache(): Promise<void> {}
   async loadCache(): Promise<CacheRecord | null> {
     return null;

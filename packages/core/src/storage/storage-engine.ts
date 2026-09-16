@@ -288,6 +288,27 @@ export class StorageEngine implements IStorageEngine {
     );
   }
 
+  /**
+   * Media ids stored for a project, read through the projectId index without
+   * materializing any blob bytes. Use this for GC scans over large libraries.
+   */
+  async getMediaIdsByProject(projectId: string): Promise<string[]> {
+    const db = await this.getDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORES.MEDIA, "readonly");
+      const request = tx.objectStore(STORES.MEDIA).index("projectId").getAllKeys(projectId);
+      request.onsuccess = () =>
+        resolve(request.result.map((key) => String(key)));
+      request.onerror = () =>
+        reject(
+          createStorageError(
+            "DATABASE_ERROR",
+            `Failed to list media ids: ${request.error?.message}`,
+          ),
+        );
+    });
+  }
+
   async saveCache(record: CacheRecord): Promise<void> {
     await this.transaction(STORES.CACHE, "readwrite", (stores) =>
       stores[STORES.CACHE].put(record),
