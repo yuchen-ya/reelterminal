@@ -14,7 +14,7 @@ const ERR_ABORTED = -3;
 const MAX_AUTO_RETRIES = 2;
 
 /**
- * Handler for a rejected `app.whenReady()` chain (D1/C02-M2): host construction
+ * Handler for a rejected `app.whenReady()` chain: host construction
  * can throw before `createWindow()` (e.g. `mkdirSync` on an unwritable
  * userData/Videos path), which used to leave a live process with no window and
  * no dialog. Reports, tells the user, and exits with a non-zero code so the
@@ -67,9 +67,9 @@ function loadErrorPageUrl(errorCode: number, errorDescription: string): string {
 }
 
 /**
- * Recovers from main-frame load failures of the editor window (D2/C02-M1:
- * missing renderer assets, AV quarantine, protocol handler faults used to
- * leave a permanent white screen with only Ctrl+R). Registers `did-fail-load`
+ * Recovers from main-frame load failures of the editor window (missing
+ * renderer assets, AV quarantine, protocol handler faults used to leave a
+ * permanent white screen with only Ctrl+R). Registers `did-fail-load`
  * plus a passive `will-navigate` reset that never blocks navigation; the
  * success path is untouched. Auto-retries are limited, after which
  * an inline error page with a working Retry action is shown (manual retries
@@ -115,7 +115,7 @@ export function installLoadFailureRecovery(win: BrowserWindow): void {
 }
 
 /**
- * Honest notification when the preload bridge fails to inject (D3/C02-R1):
+ * Honest notification when the preload bridge fails to inject:
  * without `window.openreel` the renderer silently falls back to the browser
  * shell, so the user used to get a window that looked normal while native
  * menu, native export, updates, and lifecycle flush were all gone. This only

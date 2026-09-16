@@ -306,8 +306,7 @@ app.whenReady().then(() => {
 })
   // Host construction inside the callback can throw before createWindow()
   // (mkdirSync on an unwritable userData/Videos path). Without this catch the
-  // promise rejection leaves a live process with no window and no dialog
-  // (C02-D1).
+  // promise rejection leaves a live process with no window and no dialog.
   .catch(handleStartupFailure);
 
 // A second launch (blocked by the single-instance lock) surfaces the running
