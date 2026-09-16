@@ -129,6 +129,14 @@ function facadeRuntimeValidation(verb: string, params: unknown): boolean {
         }
         return true;
       }
+      case "font.upload": {
+        // Cross-field predicate mirrored from the live facade boundary:
+        // exactly one byte input (size/containment are live-store checks).
+        if ((valid.filePath === undefined) === (valid.dataBase64 === undefined)) {
+          return false;
+        }
+        return true;
+      }
       default:
         return true;
     }
