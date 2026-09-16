@@ -1,14 +1,169 @@
 import type { Action, ValidationResult } from "../../types/actions";
 import type { Project } from "../../types/project";
+import type { ChromaKeySettings, Effect } from "../../types/timeline";
 import { registerActionHandler } from "../registry";
 import type { ActionHandler } from "../registry";
 import { makeClipFieldHandler, findClip, patchClip } from "./clip-helpers";
+import { DEFAULT_CHROMA_KEY_SETTINGS } from "../../video/chroma-key-engine";
 
 const SPEED_MIN = 0.1;
 const SPEED_MAX = 20;
 
 const isNumber = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v);
+
+// The per-frame keyer lives in the clip.effects stack (video-effects-engine
+// consumes the chromaKey effect item in both preview and export), while the
+// clip.chromaKey field feeds the GUI green-screen panel (engine Map resync)
+// and the timeline.query projection. This handler is the only writer of the
+// settings field and the only path that updates BOTH representations
+// together (a chromaKey item added from the Effects panel alone is absorbed
+// in place, never duplicated).
+const CHROMA_KEY_EFFECT_TYPE = "chromaKey";
+
+const fullChromaKeySettings = (
+  raw: unknown,
+): ChromaKeySettings => {
+  const partial = (raw ?? {}) as Partial<ChromaKeySettings>;
+  return {
+    enabled: partial.enabled ?? false,
+    keyColor: partial.keyColor ?? DEFAULT_CHROMA_KEY_SETTINGS.keyColor,
+    tolerance: partial.tolerance ?? DEFAULT_CHROMA_KEY_SETTINGS.tolerance,
+    edgeSoftness:
+      partial.edgeSoftness ?? DEFAULT_CHROMA_KEY_SETTINGS.edgeSoftness,
+    spillSuppression:
+      partial.spillSuppression ??
+      DEFAULT_CHROMA_KEY_SETTINGS.spillSuppression,
+  };
+};
+
+const chromaKeyEffectParams = (settings: ChromaKeySettings): Record<string, unknown> => ({
+  keyColor: { ...settings.keyColor },
+  tolerance: settings.tolerance,
+  edgeSoftness: settings.edgeSoftness,
+  spillSuppression: settings.spillSuppression,
+});
+
+/**
+ * Sync the render-side representation: upsert ONE chromaKey effect item into
+ * the clip's effect stack (update-in-place when any chromaKey item already
+ * exists — including one added from the Effects panel — never stack a
+ * duplicate). Disabling keeps the item with its params at enabled=false,
+ * matching the Effects panel's toggle semantics; a null/undefined settings
+ * payload clears the keyer by removing its item(s).
+ */
+const syncChromaKeyEffectItem = (
+  effects: readonly Effect[],
+  settings: ChromaKeySettings | null,
+): Effect[] => {
+  const index = effects.findIndex((e) => e.type === CHROMA_KEY_EFFECT_TYPE);
+  if (!settings) {
+    return index === -1
+      ? [...effects]
+      : effects.filter((e) => e.type !== CHROMA_KEY_EFFECT_TYPE);
+  }
+  if (index >= 0) {
+    const existing = effects[index]!;
+    const next = [...effects];
+    next[index] = {
+      ...existing,
+      enabled: settings.enabled,
+      params: chromaKeyEffectParams(settings),
+    };
+    return next;
+  }
+  return [
+    ...effects,
+    {
+      id: `effect-chromakey-${Date.now()}`,
+      type: CHROMA_KEY_EFFECT_TYPE,
+      enabled: settings.enabled,
+      params: chromaKeyEffectParams(settings),
+    },
+  ];
+};
+
+// Green-screen keying, persisted as one undoable unit: the clip.chromaKey
+// settings field AND the chromaKey effect item in clip.effects that the frame
+// pipeline actually renders (preview via the effects bridge, export via
+// video-engine). The inverse carries the exact prior field + stack, so undo
+// restores a user-tuned Effects-panel item bit-for-bit (effect/setStack
+// pattern).
+const clipSetChromaKey: ActionHandler = {
+  type: "clip/setChromaKey",
+  synchronous: true,
+  validate(action: Action, project: Project): ValidationResult {
+    const params = action.params as {
+      clipId?: unknown;
+      chromaKey?: unknown;
+      effects?: unknown;
+    };
+    const errors = [];
+    if (
+      typeof params.clipId !== "string" ||
+      !findClip(project, params.clipId)
+    ) {
+      errors.push({
+        code: "CLIP_NOT_FOUND",
+        message: `Clip not found: ${String(params.clipId)}`,
+      });
+    }
+    if (params.chromaKey != null && typeof params.chromaKey !== "object") {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message: "chromaKey must be an object",
+      });
+    }
+    if (params.effects !== undefined && !Array.isArray(params.effects)) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message: "effects must be an array",
+      });
+    }
+    return { valid: errors.length === 0, errors };
+  },
+  apply(action: Action, project: Project): void {
+    const params = action.params as {
+      clipId: string;
+      chromaKey?: ChromaKeySettings | null;
+      effects?: Effect[];
+    };
+    const clip = findClip(project, params.clipId);
+    if (!clip) return;
+
+    if (Array.isArray(params.effects)) {
+      // Inverse restore: put back the exact prior field + effect stack.
+      patchClip(project, params.clipId, {
+        chromaKey: params.chromaKey ?? undefined,
+        effects: structuredClone(params.effects),
+      });
+      return;
+    }
+
+    const settings =
+      params.chromaKey == null ? null : fullChromaKeySettings(params.chromaKey);
+    patchClip(project, params.clipId, {
+      chromaKey: settings ?? undefined,
+      // Defensive default: legacy/persisted clips may omit the effects array.
+      effects: syncChromaKeyEffectItem(clip.effects ?? [], settings),
+    });
+  },
+  invert(action: Action, projectBefore: Project): Action | null {
+    const params = action.params as { clipId: string };
+    const prior = findClip(projectBefore, params.clipId);
+    if (!prior) return null;
+    return {
+      type: "clip/setChromaKey",
+      id: `inverse-${action.id}`,
+      timestamp: Date.now(),
+      params: {
+        clipId: params.clipId,
+        chromaKey: prior.chromaKey,
+        effects: structuredClone(prior.effects),
+      },
+    };
+  },
+};
 
 // Speed changes also recompute the clip's timeline duration from its source
 // span (outPoint - inPoint) / speed. Duration is derived, so the inverse just
@@ -132,13 +287,7 @@ const handlers = [
         ? null
         : "stabilization must be an object",
   }),
-  makeClipFieldHandler({
-    type: "clip/setChromaKey",
-    paramKey: "chromaKey",
-    field: "chromaKey",
-    validateValue: (v) =>
-      v == null || typeof v === "object" ? null : "chromaKey must be an object",
-  }),
+  clipSetChromaKey,
   makeClipFieldHandler({
     type: "speed/setKeyframes",
     paramKey: "keyframes",

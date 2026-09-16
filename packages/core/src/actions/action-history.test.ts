@@ -301,3 +301,68 @@ describe("ActionHistory eviction listener", () => {
     expect(history.canUndo()).toBe(true);
   });
 });
+
+describe("ActionHistory batched pushes (executeActionBatch path)", () => {
+  const chromaAct = (clipId: string, tolerance: number): Action => ({
+    type: "clip/setChromaKey",
+    id: `ck-${Math.random().toString(36).slice(2)}`,
+    timestamp: Date.now(),
+    params: { clipId, chromaKey: { enabled: true, tolerance } },
+  });
+
+  it("a single rapid-update batch coalesces into the previous undo unit", () => {
+    const history = new ActionHistory();
+    history.setAutoGroupWindow(10_000);
+    history.pushGroup(
+      [{ action: chromaAct("c1", 0.3), inverseAction: chromaAct("c1", 0.2) }],
+      "Green screen",
+      "human",
+    );
+    history.pushGroup(
+      [{ action: chromaAct("c1", 0.4), inverseAction: chromaAct("c1", 0.3) }],
+      "Green screen",
+      "human",
+    );
+
+    // Same auto-groupable type + target within the window: one undo step,
+    // matching the legacy bare-execute slider-drag granularity.
+    expect(history.getUndoStackSize()).toBe(2);
+    expect(history.undoGroup()).toHaveLength(2);
+    expect(history.getUndoStackSize()).toBe(0);
+  });
+
+  it("distinct targets and non-rapid-update batches stay separate units", () => {
+    const history = new ActionHistory();
+    history.setAutoGroupWindow(10_000);
+    history.pushGroup(
+      [{ action: chromaAct("c1", 0.3), inverseAction: chromaAct("c1", 0.2) }],
+      "Green screen",
+      "human",
+    );
+    history.pushGroup(
+      [{ action: chromaAct("c2", 0.3), inverseAction: chromaAct("c2", 0.2) }],
+      "Green screen",
+      "human",
+    );
+    history.pushGroup(
+      [
+        {
+          action: act("clip/add", { trackId: "t1" }),
+          inverseAction: inv("clip/remove"),
+        },
+        {
+          action: act("clip/add", { trackId: "t1" }),
+          inverseAction: inv("clip/remove"),
+        },
+      ],
+      "batch",
+      "human",
+    );
+
+    // LIFO: the multi-action batch, then the other clip's keyer step, then
+    // the first keyer step — each its own undo unit.
+    expect(history.undoGroup()).toHaveLength(2);
+    expect(history.undoGroup()).toHaveLength(1);
+    expect(history.undoGroup()).toHaveLength(1);
+  });
+});

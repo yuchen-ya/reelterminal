@@ -7,7 +7,7 @@ import { ToolcraftText as Text } from "@openreel/ui";
 import { MockSlider } from "./shell/InspectorControls";
 import { useProjectStore } from "../../../stores/project-store";
 import { useEngineStore } from "../../../stores/engine-store";
-import type { RGB, ChromaKeySettings } from "@openreel/core";
+import type { RGB, ChromaKeySettings, Action } from "@openreel/core";
 import { useTranslation } from "react-i18next";
 
 interface GreenScreenSectionProps {
@@ -122,18 +122,32 @@ export const GreenScreenSection: React.FC<GreenScreenSectionProps> = ({
     };
   }, [getChromaKeyEngine]);
 
-  const settings = useMemo<ChromaKeySettings>(() => {
-    if (!chromaKeyEngine) {
-      return {
-        enabled: false,
-        keyColor: { r: 0, g: 1, b: 0 },
-        tolerance: 0.3,
-        edgeSoftness: 0.1,
-        spillSuppression: 0.5,
-      };
+  // Reopened projects do not back-fill the chroma engine Map (loadProject
+  // never re-seeds it): seed it from the persisted field on mount and after
+  // every commit, so toggling or dragging here starts from the saved tuning
+  // instead of engine defaults (which would reset the keyer or silently
+  // disable the rendered keying via enabled:false).
+  useEffect(() => {
+    if (!chromaKeyEngine || !clipId) return;
+    const clip = project.timeline.tracks
+      .flatMap((track) => track.clips)
+      .find((candidate) => candidate.id === clipId);
+    if (clip?.chromaKey) {
+      chromaKeyEngine.setSettings(clipId, clip.chromaKey);
     }
+  }, [chromaKeyEngine, clipId, project]);
+
+  // The persisted clip field is the display source of truth (loadProject
+  // never re-seeds the engine Map, so the engine alone can show stale or
+  // default values); the engine Map stays as the fallback for values that are
+  // not committed yet.
+  const settings = useMemo<ChromaKeySettings>(() => {
+    const clip = project.timeline.tracks
+      .flatMap((track) => track.clips)
+      .find((candidate) => candidate.id === clipId);
     return (
-      chromaKeyEngine.getSettings(clipId) || {
+      clip?.chromaKey ??
+      chromaKeyEngine?.getSettings(clipId) ?? {
         enabled: false,
         keyColor: { r: 0, g: 1, b: 0 },
         tolerance: 0.3,
@@ -141,7 +155,27 @@ export const GreenScreenSection: React.FC<GreenScreenSectionProps> = ({
         spillSuppression: 0.5,
       }
     );
-  }, [chromaKeyEngine, clipId, project.modifiedAt]);
+  }, [chromaKeyEngine, clipId, project]);
+
+  // Persist every keyer change through the clip/setChromaKey action so the
+  // green screen is undoable AND rendered: the action writes both the
+  // clip.chromaKey settings field and the chromaKey effect item in clip.effects
+  // that the frame pipeline (preview bridge + export video-engine) consumes.
+  // executeActionBatch (not bare executeAction) keeps the effects bridge in
+  // sync so the preview picks the change up immediately.
+  const persistChromaKeySettings = useCallback(() => {
+    if (!chromaKeyEngine) return;
+    const action: Action = {
+      type: "clip/setChromaKey",
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      params: { clipId, chromaKey: chromaKeyEngine.getSettings(clipId) },
+    };
+    useProjectStore.getState().executeActionBatch([action], {
+      groupLabel: "Green screen",
+      historyOwner: "human",
+    });
+  }, [chromaKeyEngine, clipId]);
 
   const handleToggleEnabled = useCallback(() => {
     if (!chromaKeyEngine) return;
@@ -150,65 +184,43 @@ export const GreenScreenSection: React.FC<GreenScreenSectionProps> = ({
     } else {
       chromaKeyEngine.enableChromaKey(clipId);
     }
-    useProjectStore.setState((state) => ({
-      project: { ...state.project, modifiedAt: Date.now() },
-    }));
-  }, [chromaKeyEngine, clipId, settings.enabled]);
+    persistChromaKeySettings();
+  }, [chromaKeyEngine, clipId, settings.enabled, persistChromaKeySettings]);
 
   const handleSetKeyColor = useCallback(
     (color: RGB) => {
       if (!chromaKeyEngine) return;
       chromaKeyEngine.setKeyColor(clipId, color);
-      void useProjectStore.getState().executeAction({
-        type: "clip/setChromaKey",
-        id: crypto.randomUUID(),
-        timestamp: Date.now(),
-        params: { clipId, chromaKey: chromaKeyEngine.getSettings(clipId) },
-      });
+      persistChromaKeySettings();
     },
-    [chromaKeyEngine, clipId],
+    [chromaKeyEngine, clipId, persistChromaKeySettings],
   );
 
   const handleSetTolerance = useCallback(
     (value: number) => {
       if (!chromaKeyEngine) return;
       chromaKeyEngine.setTolerance(clipId, value);
-      void useProjectStore.getState().executeAction({
-        type: "clip/setChromaKey",
-        id: crypto.randomUUID(),
-        timestamp: Date.now(),
-        params: { clipId, chromaKey: chromaKeyEngine.getSettings(clipId) },
-      });
+      persistChromaKeySettings();
     },
-    [chromaKeyEngine, clipId],
+    [chromaKeyEngine, clipId, persistChromaKeySettings],
   );
 
   const handleSetEdgeSoftness = useCallback(
     (value: number) => {
       if (!chromaKeyEngine) return;
       chromaKeyEngine.setEdgeSoftness(clipId, value);
-      void useProjectStore.getState().executeAction({
-        type: "clip/setChromaKey",
-        id: crypto.randomUUID(),
-        timestamp: Date.now(),
-        params: { clipId, chromaKey: chromaKeyEngine.getSettings(clipId) },
-      });
+      persistChromaKeySettings();
     },
-    [chromaKeyEngine, clipId],
+    [chromaKeyEngine, clipId, persistChromaKeySettings],
   );
 
   const handleSetSpillSuppression = useCallback(
     (value: number) => {
       if (!chromaKeyEngine) return;
       chromaKeyEngine.setSpillSuppression(clipId, value);
-      void useProjectStore.getState().executeAction({
-        type: "clip/setChromaKey",
-        id: crypto.randomUUID(),
-        timestamp: Date.now(),
-        params: { clipId, chromaKey: chromaKeyEngine.getSettings(clipId) },
-      });
+      persistChromaKeySettings();
     },
-    [chromaKeyEngine, clipId],
+    [chromaKeyEngine, clipId, persistChromaKeySettings],
   );
 
   const handleResetToDefaults = useCallback(() => {
@@ -220,10 +232,8 @@ export const GreenScreenSection: React.FC<GreenScreenSectionProps> = ({
       edgeSoftness: 0.1,
       spillSuppression: 0.5,
     });
-    useProjectStore.setState((state) => ({
-      project: { ...state.project, modifiedAt: Date.now() },
-    }));
-  }, [chromaKeyEngine, clipId]);
+    persistChromaKeySettings();
+  }, [chromaKeyEngine, clipId, persistChromaKeySettings]);
 
   const isActiveColor = (preset: RGB) =>
     Math.abs(settings.keyColor.r - preset.r) < 0.1 &&

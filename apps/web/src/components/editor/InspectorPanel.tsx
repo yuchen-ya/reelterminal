@@ -4,7 +4,11 @@ import { useProjectStore } from "../../stores/project-store";
 import { useTimelineStore } from "../../stores/timeline-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useEngineStore } from "../../stores/engine-store";
-import type { Transform, EditingTemplatePrimitive } from "@openreel/core";
+import type {
+  Action,
+  Transform,
+  EditingTemplatePrimitive,
+} from "@openreel/core";
 import {
   ChromaKeyEngine,
   initializeTranscriptionService,
@@ -17,6 +21,10 @@ import {
   OPENREEL_CLOUD_ENABLED,
   OPENREEL_TRANSCRIBE_URL,
 } from "../../config/api-endpoints";
+import {
+  classifyCloudError,
+  cloudFailureMessage,
+} from "../../services/cloud-error";
 import { t } from "../../i18n";
 import { mergeEditingTemplateControlValues } from "./panels/EditingTemplateControls";
 import {
@@ -323,10 +331,15 @@ export const InspectorPanel: React.FC = () => {
   // Get current values from engines - recalculate when updateCounter changes
   const clipId = selectedClip?.id || "";
 
+  // The persisted clip field is the display source of truth (updated by
+  // every chroma action commit, project load, and undo); the module engine
+  // Map stays as a session fallback for values not yet committed.
   const chromaKeySettings = useMemo(() => {
-    return clipId ? chromaKeyEngine.getSettings(clipId) : null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clipId, updateCounter]);
+    if (!clipId) return null;
+    return (
+      getClip(clipId)?.chromaKey ?? chromaKeyEngine.getSettings(clipId) ?? null
+    );
+  }, [clipId, getClip, project.modifiedAt, updateCounter]);
 
   // Get updateClipTransform from store
   const updateClipTransform = useProjectStore(
@@ -369,40 +382,81 @@ export const InspectorPanel: React.FC = () => {
     ],
   );
 
+  // Seed the module engine Map from the persisted field when it has no
+  // entry (e.g. after reload — loadProject never re-seeds the Map), so
+  // toggling here preserves the saved tuning instead of resetting it to
+  // engine defaults.
+  const ensureChromaEngineSettings = useCallback(
+    (cid: string) => {
+      if (chromaKeyEngine.getSettings(cid)) return;
+      const persisted = getClip(cid)?.chromaKey;
+      if (persisted) chromaKeyEngine.setSettings(cid, persisted);
+    },
+    [getClip],
+  );
+
+  // Persist the keyer through clip/setChromaKey so every entry point (this
+  // panel, the AI quick action, the green-screen section, the agent op)
+  // shares one undoable write: the same handler updates BOTH the
+  // clip.chromaKey settings field AND the chromaKey effect item in
+  // clip.effects that the frame pipeline actually renders. executeActionBatch
+  // (not bare executeAction) keeps the effects bridge in sync so the preview
+  // picks the change up immediately.
+  const persistChromaKeySettings = useCallback(() => {
+    const settings = clipId ? chromaKeyEngine.getSettings(clipId) : undefined;
+    if (!clipId || !settings) return;
+    const action: Action = {
+      type: "clip/setChromaKey",
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      params: { clipId, chromaKey: settings },
+    };
+    useProjectStore.getState().executeActionBatch([action], {
+      groupLabel: "Green screen",
+      historyOwner: "human",
+    });
+  }, [clipId]);
+
   // Chroma Key handlers using ChromaKeyEngine
   const handleChromaKeyToggle = useCallback(
     (enabled: boolean) => {
       if (!selectedClip) return;
+      ensureChromaEngineSettings(selectedClip.id);
       if (enabled) {
         chromaKeyEngine.enableChromaKey(selectedClip.id);
       } else {
         chromaKeyEngine.disableChromaKey(selectedClip.id);
       }
+      persistChromaKeySettings();
       forceUpdate();
     },
-    [selectedClip],
+    [ensureChromaEngineSettings, persistChromaKeySettings, selectedClip],
   );
 
   const handleKeyColorChange = useCallback(
     (hexColor: string) => {
       if (!selectedClip) return;
+      ensureChromaEngineSettings(selectedClip.id);
       const hex = hexColor.replace("#", "");
       const r = parseInt(hex.substring(0, 2), 16) / 255;
       const g = parseInt(hex.substring(2, 4), 16) / 255;
       const b = parseInt(hex.substring(4, 6), 16) / 255;
       chromaKeyEngine.setKeyColor(selectedClip.id, { r, g, b });
+      persistChromaKeySettings();
       forceUpdate();
     },
-    [selectedClip],
+    [ensureChromaEngineSettings, persistChromaKeySettings, selectedClip],
   );
 
   const handleToleranceChange = useCallback(
     (tolerance: number) => {
       if (!selectedClip) return;
+      ensureChromaEngineSettings(selectedClip.id);
       chromaKeyEngine.setTolerance(selectedClip.id, tolerance / 100);
+      persistChromaKeySettings();
       forceUpdate();
     },
-    [selectedClip],
+    [ensureChromaEngineSettings, persistChromaKeySettings, selectedClip],
   );
 
   const {
@@ -464,13 +518,21 @@ export const InspectorPanel: React.FC = () => {
       selectedClip.id,
       "Applying background removal",
       () => {
+        ensureChromaEngineSettings(selectedClip.id);
         chromaKeyEngine.enableChromaKey(selectedClip.id);
         chromaKeyEngine.setKeyColor(selectedClip.id, { r: 0, g: 1, b: 0 });
         chromaKeyEngine.setTolerance(selectedClip.id, 0.35);
+        persistChromaKeySettings();
         forceUpdate();
       },
     );
-  }, [applyClipEffectWithPlaybackLock, forceUpdate, selectedClip]);
+  }, [
+    applyClipEffectWithPlaybackLock,
+    ensureChromaEngineSettings,
+    forceUpdate,
+    persistChromaKeySettings,
+    selectedClip,
+  ]);
 
   const handleEnhanceAudio = useCallback(async () => {
     if (!selectedClip) return;

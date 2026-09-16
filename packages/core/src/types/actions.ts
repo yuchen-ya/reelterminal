@@ -272,7 +272,17 @@ export type ClipAction =
     }
   | {
       type: "clip/setChromaKey";
-      params: { clipId: string; chromaKey?: ChromaKeySettings };
+      params: {
+        clipId: string;
+        chromaKey?: ChromaKeySettings;
+        /**
+         * Inverse-restore carryover only (never sent by callers): the exact
+         * prior clip.effects stack, so undo can restore both the settings
+         * field and the chromaKey effect item the render pipeline consumes
+         * (same pattern as effect/setStack's inverse).
+         */
+        effects?: Effect[];
+      };
     };
 
 // Speed / time-remap actions

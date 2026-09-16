@@ -350,6 +350,21 @@ export class ActionHistory {
     owner?: string,
   ): string | null {
     if (entries.length === 0) return null;
+    const effectiveOwner = owner ?? this.activeOwner;
+    // A single rapid-update action (a slider drag arriving through the
+    // batched commit path) falls back to push()'s proximity coalescing,
+    // keeping undo granularity identical to the legacy bare-execute drags.
+    // Multi-action batches — the reason pushGroup exists — keep strict
+    // one-batch-one-unit semantics, as does anything pushed while a group
+    // is open for this owner.
+    if (
+      entries.length === 1 &&
+      AUTO_GROUPABLE_TYPES.has(entries[0]!.action.type) &&
+      !this.openGroups.some((group) => group.owner === effectiveOwner)
+    ) {
+      this.push(entries[0]!.action, entries[0]!.inverseAction, owner);
+      return this.undoStack[this.undoStack.length - 1]?.groupId ?? null;
+    }
     let groupId: string | null = null;
     this.batchNotifications(() => {
       const openedGroupId = this.beginGroup(description, owner);
