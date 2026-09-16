@@ -433,7 +433,7 @@ and `{projectId, projectName, windowId}`.
 
 ### The `edit_apply` op vocabulary
 
-Thirty-two ops, one atomic batch each call (the exact fields and bounds live in
+Thirty-three ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
 - `track.add` — create a track (`trackType`); `track.remove` — remove an empty
@@ -525,6 +525,13 @@ Thirty-two ops, one atomic batch each call (the exact fields and bounds live in
   changes: the source filename and the file on disk are never touched, and
   display sites fall back to the source filename when no display name is
   set. Unknown `mediaId` fails `NOT_FOUND`.
+- `clip.setChromaKey` — set one clip's green-screen chroma key: required
+  `enabled`, optional `keyColor` (`r`/`g`/`b`, each 0..1), `tolerance`,
+  `edgeSoftness`, `spillSuppression` (each 0..1). Omitted fields keep the
+  clip's previous settings (engine defaults on first use); disabling keeps
+  the tuned parameters. This is the same fixed-key color-distance keyer the
+  GUI green-screen panel uses — a deterministic local algorithm, not AI
+  matting. Unknown `clipId` fails `NOT_FOUND`.
 
 Ops in one batch see each other's results, and a failure anywhere rolls
 the whole batch back; a deleted overlay or clip stays deleted after

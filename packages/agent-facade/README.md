@@ -298,10 +298,13 @@ The facade does not send browser `File`/`Blob` objects across the bridge.
 - New closed edit ops with Core/GUI/renderer parity are `track.update`
   (name/lock/hide/mute/solo), `subtitle.importSrt` (256 KiB/500 cues),
   `clip.setColorGrade` (temperature/tint), `clip.setKeyframes` (renderer-
-  supported transform/opacity properties), and `media.rename` (media display-
+  supported transform/opacity properties), `media.rename` (media display-
   name rename, ≤120 characters; the source filename and the file on disk are
-  never touched). Capability data names the remaining
-  professional gaps instead of exposing no-op schemas.
+  never touched), and `clip.setChromaKey` (fixed-key chroma keyer for
+  green-screen removal: key color, tolerance, edge softness, spill
+  suppression; a deterministic local algorithm, not AI matting). Capability
+  data names the remaining professional gaps instead of exposing no-op
+  schemas.
 
 ## Slice boundaries (what this is NOT)
 

@@ -85,7 +85,8 @@ implemented features, reusable foundations, and remaining integration work.
   transforms and crop, volume, fades, ordinary removal, clip transitions,
   text overlay creation/update/deletion, track updates, media display-name
   renaming, safe track/media removal,
-  review markers, SRT subtitle import, temperature/tint grading, media source
+  review markers, SRT subtitle import, temperature/tint grading, fixed-key
+  chroma keying (green screen), media source
   replace/relink, review comparisons, and supported transform/opacity
   keyframes. Creation operations report their
   real ids so an Agent can continue editing them in later calls.
