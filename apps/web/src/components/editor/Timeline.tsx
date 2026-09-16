@@ -29,6 +29,7 @@ import {
   Magnet,
   Rows3,
   Rows2,
+  Focus,
   ZoomIn,
   ZoomOut,
   Eye,
@@ -47,7 +48,14 @@ import {
   ToolcraftText as Text,
 } from "@openreel/ui";
 import { useProjectStore } from "../../stores/project-store";
-import { useTimelineStore, ZOOM_PRESETS } from "../../stores/timeline-store";
+import {
+  sliderPercentToZoom,
+  TIMELINE_TRACK_HEADER_WIDTH_PX,
+  useTimelineStore,
+  zoomToSliderPercent,
+  ZOOM_PRESETS,
+} from "../../stores/timeline-store";
+import { formatKeyComboDisplay } from "../../services/keyboard-shortcuts";
 import { useUIStore } from "../../stores/ui-store";
 import { toast } from "../../stores/notification-store";
 import { useEngineStore } from "../../stores/engine-store";
@@ -219,6 +227,8 @@ export const Timeline: React.FC = () => {
     zoomIn,
     zoomOut,
     setZoom,
+    zoomToFit,
+    autoFitOnFirstLoad,
     trackHeight,
     setTrackHeight,
     setTrackHeightById,
@@ -380,7 +390,7 @@ export const Timeline: React.FC = () => {
         const timeAtCursor = (pointerX + el.scrollLeft) / pps;
         const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
         const next = Math.max(
-          ZOOM_PRESETS.MIN,
+          ZOOM_PRESETS.ABSOLUTE_MIN,
           Math.min(ZOOM_PRESETS.MAX, pps * factor),
         );
         if (next === pps) return;
@@ -445,6 +455,48 @@ export const Timeline: React.FC = () => {
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, [setViewportDimensions]);
+
+  // Content extent used by every "fit" entry point (button, shortcut). Same
+  // computation as useKeyboardShortcuts' Ctrl/Cmd+0 handler; both call the
+  // same zoomToFit action, but only the button passes the measured visible
+  // width — the shortcut path lets the store fall back to
+  // viewportWidth - TIMELINE_TRACK_HEADER_WIDTH_PX.
+  const fitDuration = useMemo(() => {
+    return getTimelineItemRanges(project).reduce(
+      (latest, item) => Math.max(latest, item.startTime + item.duration),
+      0,
+    );
+  }, [project]);
+
+  // Visible time-area width = container minus the track-header column. The
+  // real column is measured from the DOM (offsetWidth of the w-[170px]
+  // track-header scroller); TIMELINE_TRACK_HEADER_WIDTH_PX is only the
+  // fallback when refs are not mounted yet.
+  const getVisibleTimeAreaWidth = useCallback((): number | undefined => {
+    const headerWidth = trackHeadersRef.current?.offsetWidth;
+    const containerWidth = containerRef.current?.clientWidth;
+    if (headerWidth && containerWidth) {
+      return Math.max(0, containerWidth - headerWidth);
+    }
+    return undefined;
+  }, []);
+
+  const handleFitTimeline = useCallback(() => {
+    zoomToFit(fitDuration || 60, getVisibleTimeAreaWidth());
+  }, [fitDuration, getVisibleTimeAreaWidth, zoomToFit]);
+
+  // View policy: zoom/scroll have no persistence, so "first open with no
+  // view record" means the first time a session sees non-empty timeline
+  // content — fit once, then never touch the view again until an explicit
+  // fit (button above or Ctrl/Cmd+0).
+  useEffect(() => {
+    if (fitDuration <= 0) return;
+    const el = containerRef.current;
+    if (el && el.clientWidth > 0) {
+      setViewportDimensions(el.clientWidth, el.clientHeight);
+    }
+    autoFitOnFirstLoad(fitDuration, getVisibleTimeAreaWidth());
+  }, [autoFitOnFirstLoad, fitDuration, getVisibleTimeAreaWidth, setViewportDimensions]);
 
   useEffect(() => {
     if (playbackState !== "playing") return;
@@ -963,10 +1015,18 @@ export const Timeline: React.FC = () => {
     >
       {/* ── Timeline toolbar (mock: 48px line-icon tools + emerald zoom slider) ── */}
       <div className="flex items-center h-12 px-4 gap-4 bg-bg-1 border-b border-border shrink-0 relative z-50">
-        <TLTool onClick={undo} disabled={!canUndo()} title={tr("Undo (⌘Z)")}>
+        <TLTool
+          onClick={undo}
+          disabled={!canUndo()}
+          title={tr(`Undo (${formatKeyComboDisplay("cmd+z")})`)}
+        >
           <Undo2 size={16} aria-hidden />
         </TLTool>
-        <TLTool onClick={redo} disabled={!canRedo()} title={tr("Redo (⇧⌘Z)")}>
+        <TLTool
+          onClick={redo}
+          disabled={!canRedo()}
+          title={tr(`Redo (${formatKeyComboDisplay("cmd+shift+z")})`)}
+        >
           <Redo2 size={16} aria-hidden />
         </TLTool>
 
@@ -1311,6 +1371,9 @@ export const Timeline: React.FC = () => {
         <div className="ml-auto flex items-center gap-3">
           {/* Zoom control (mock: minus / emerald slider track + knob / plus) */}
           <div className="flex items-center gap-2.5">
+            <TLTool onClick={handleFitTimeline} title={tr("Fit all")}>
+              <Focus size={16} aria-hidden />
+            </TLTool>
             <TLTool onClick={zoomOut} title={tr("Zoom out")}>
               <ZoomOut size={16} aria-hidden />
             </TLTool>
@@ -1323,43 +1386,37 @@ export const Timeline: React.FC = () => {
                 aria-hidden="true"
                 className="pointer-events-none absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-accent"
                 style={{
-                  width: `${Math.max(
-                    0,
-                    Math.min(
-                      100,
-                      ((pixelsPerSecond - ZOOM_PRESETS.MIN) /
-                        (ZOOM_PRESETS.MAX - ZOOM_PRESETS.MIN)) *
-                        100,
-                    ),
-                  )}%`,
+                  // Log-mapped position over the shared effective range
+                  // (ZOOM_PRESETS.ABSOLUTE_MIN..MAX), same mapping as the
+                  // input below.
+                  width: `${zoomToSliderPercent(pixelsPerSecond)}%`,
                 }}
               />
               <div
                 aria-hidden="true"
                 className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent shadow-sm"
                 style={{
-                  left: `${Math.max(
-                    0,
-                    Math.min(
-                      100,
-                      ((pixelsPerSecond - ZOOM_PRESETS.MIN) /
-                        (ZOOM_PRESETS.MAX - ZOOM_PRESETS.MIN)) *
-                        100,
-                    ),
-                  )}%`,
+                  left: `${zoomToSliderPercent(pixelsPerSecond)}%`,
                 }}
               />
               <input
                 type="range"
                 aria-label={tr("Timeline zoom")}
                 aria-valuetext={tr("{{count}} pixels per second", {
-                  count: Math.round(pixelsPerSecond),
+                  // Keep one decimal below 10 px/s so fitted long projects
+                  // don't announce as "0 pixels per second".
+                  count:
+                    pixelsPerSecond < 10
+                      ? Math.round(pixelsPerSecond * 10) / 10
+                      : Math.round(pixelsPerSecond),
                 })}
-                min={ZOOM_PRESETS.MIN}
-                max={ZOOM_PRESETS.MAX}
-                step={1}
-                value={pixelsPerSecond}
-                onChange={(event) => setZoom(Number(event.currentTarget.value))}
+                min={0}
+                max={100}
+                step={0.1}
+                value={zoomToSliderPercent(pixelsPerSecond)}
+                onChange={(event) =>
+                  setZoom(sliderPercentToZoom(Number(event.currentTarget.value)))
+                }
                 className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0"
               />
             </div>
@@ -1736,7 +1793,7 @@ export const Timeline: React.FC = () => {
           position={playheadPosition}
           pixelsPerSecond={pixelsPerSecond}
           scrollX={scrollX}
-          headerOffset={170}
+          headerOffset={TIMELINE_TRACK_HEADER_WIDTH_PX}
         />
       </div>
     </div>

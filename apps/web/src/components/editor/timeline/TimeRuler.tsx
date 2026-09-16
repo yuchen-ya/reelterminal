@@ -32,7 +32,36 @@ interface TimeRulerProps {
   snapPoints?: number[];
 }
 
+// ── Adaptive tick ladder ────────────────────────────────────────────────────
+// Nice ruler intervals as used by mainstream editors: 1-2-5-10-15-30 seconds,
+// then minutes, then hours. Effective zoom now spans ~0.01..500 px/s, so the
+// old fixed 10s labels were far too dense at fitted hour-long views and
+// unnecessarily sparse at high zoom. Steps are chosen so minor ticks stay
+// readable and labels never collide in the available width.
+const TICK_STEPS = [
+  0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600,
+  900, 1800, 3600, 7200, 14400,
+] as const;
+const MIN_MINOR_TICK_PX = 10;
+const MIN_LABEL_SPACING_PX = 70;
+
+function getTickConfig(pixelsPerSecond: number): {
+  minor: number;
+  major: number;
+  labelEvery: number;
+} {
+  const findStep = (minPx: number): number =>
+    TICK_STEPS.find((step) => step * pixelsPerSecond >= minPx) ??
+    TICK_STEPS[TICK_STEPS.length - 1];
+  const minor = findStep(MIN_MINOR_TICK_PX);
+  const major =
+    TICK_STEPS.find((step) => step > minor) ?? TICK_STEPS[TICK_STEPS.length - 1];
+  const labelEvery = findStep(MIN_LABEL_SPACING_PX);
+  return { minor, major, labelEvery };
+}
+
 export const TimeRuler: React.FC<TimeRulerProps> = ({
+  duration,
   pixelsPerSecond,
   scrollX,
   viewportWidth,
@@ -75,26 +104,14 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
     );
   }, [beatState.beatMarkers, visibleStart, visibleEnd]);
 
-  const getTickConfig = () => {
-    if (safePixelsPerSecond > 500) {
-      return { minor: 0.01, major: 0.1, labelEvery: 0.5 };
-    }
-    if (safePixelsPerSecond > 200) {
-      return { minor: 0.05, major: 0.5, labelEvery: 1 };
-    }
-    if (safePixelsPerSecond > 100) {
-      return { minor: 0.1, major: 1, labelEvery: 1 };
-    }
-    if (safePixelsPerSecond > 50) {
-      return { minor: 0.5, major: 1, labelEvery: 5 };
-    }
-    if (safePixelsPerSecond > 20) {
-      return { minor: 1, major: 5, labelEvery: 5 };
-    }
-    return { minor: 5, major: 10, labelEvery: 10 };
+  const tickConfig = getTickConfig(safePixelsPerSecond);
+  // Hour-long projects must not label every position as ":00" minutes, so
+  // switch the whole ruler to HH:MM once content crosses one hour.
+  const showHours = duration >= 3600;
+  const formatRulerLabel = (time: number): string => {
+    const timecode = formatTimecode(Math.max(0, time));
+    return showHours ? timecode.slice(0, 5) : timecode.slice(3, 8);
   };
-
-  const tickConfig = getTickConfig();
   const rawStartTick = Math.floor(visibleStart / tickConfig.minor) * tickConfig.minor;
   const startTick = Math.max(0, rawStartTick);
 
@@ -299,7 +316,7 @@ export const TimeRuler: React.FC<TimeRulerProps> = ({
             className="absolute top-[9px] text-[11px] font-medium text-fg-muted whitespace-nowrap pointer-events-none"
             style={{ left: `${tick.time * safePixelsPerSecond + 6}px` }}
           >
-            {formatTimecode(Math.max(0, tick.time)).slice(3, 8)}
+            {formatRulerLabel(tick.time)}
           </span>
         ) : null,
       )}

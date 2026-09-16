@@ -3,11 +3,67 @@ import { persist, subscribeWithSelector } from "zustand/middleware";
 
 export const TIMELINE_WORKSPACE_STORAGE_KEY = "openreel-timeline-workspace";
 
+/**
+ * Single source of the effective timeline zoom range (px per second).
+ * Every zoom entry point (slider, ctrl+wheel, zoomIn/Out, setZoom,
+ * zoomToFit) shares this exact range.
+ *
+ * ABSOLUTE_MIN is a safety floor only (prevents 0/negative/sub-pixel zoom):
+ * fit-to-view must be able to land far below the old 10px/s floor so 8-minute
+ * and hour-long projects fit in one viewport.
+ */
 export const ZOOM_PRESETS = {
-  MIN: 10,
+  ABSOLUTE_MIN: 0.01,
   DEFAULT: 50,
   MAX: 500,
 } as const;
+
+/**
+ * Width of the fixed track-header column left of the ruler/track area.
+ * Mirrors the `w-[170px]` ruler-spacer and track-header-column classes in
+ * Timeline.tsx (which stay literal for Tailwind's static extraction) —
+ * defined here so zoom fitting and the UI layout share one number.
+ * Runtime measurement of the real column is preferred when available.
+ */
+export const TIMELINE_TRACK_HEADER_WIDTH_PX = 170;
+
+const ZOOM_SLIDER_PERCENT_MAX = 100;
+
+/**
+ * The effective range spans ~4.7 decades, so the zoom slider is mapped
+ * logarithmically: uniform perceived speed across the range instead of the
+ * default zoom hugging the far left edge of a linear slider.
+ */
+export function zoomToSliderPercent(pixelsPerSecond: number): number {
+  const { ABSOLUTE_MIN, MAX } = ZOOM_PRESETS;
+  const clamped = Math.max(ABSOLUTE_MIN, Math.min(MAX, pixelsPerSecond));
+  const ratio = Math.log(clamped / ABSOLUTE_MIN) / Math.log(MAX / ABSOLUTE_MIN);
+  return ratio * ZOOM_SLIDER_PERCENT_MAX;
+}
+
+export function sliderPercentToZoom(percent: number): number {
+  const { ABSOLUTE_MIN, MAX } = ZOOM_PRESETS;
+  const ratio =
+    Math.max(0, Math.min(ZOOM_SLIDER_PERCENT_MAX, percent)) /
+    ZOOM_SLIDER_PERCENT_MAX;
+  return ABSOLUTE_MIN * Math.pow(MAX / ABSOLUTE_MIN, ratio);
+}
+
+/**
+ * View policy: zoom/scroll are NOT persisted across sessions. The very
+ * first time a session sees non-empty timeline content, the view auto-fits
+ * once; afterwards the user keeps their view and only an explicit
+ * "Fit all" button press or Ctrl/Cmd+0 changes it. The flag is module-scoped
+ * so it survives editor component remounts within the same session.
+ */
+let hasAutoFittedThisSession = false;
+
+export const hasInitialAutoFitRun = (): boolean => hasAutoFittedThisSession;
+
+/** Test seam: resets the session auto-fit guard between test cases. */
+export const resetInitialAutoFitForTests = (): void => {
+  hasAutoFittedThisSession = false;
+};
 
 export type PlaybackState = "stopped" | "playing" | "paused";
 
@@ -51,7 +107,13 @@ export interface TimelineState {
   zoomIn: () => void;
   zoomOut: () => void;
   setZoom: (pixelsPerSecond: number) => void;
-  zoomToFit: (duration: number) => void;
+  zoomToFit: (duration: number, visibleTimeWidth?: number) => void;
+  /**
+   * Fits the view exactly once per session, the first time content exists.
+   * `visibleTimeWidth` is the measured viewport width excluding the track
+   * header column, when the caller has it.
+   */
+  autoFitOnFirstLoad: (duration: number, visibleTimeWidth?: number) => void;
   resetZoom: () => void;
   setScrollX: (scrollX: number) => void;
   setScrollY: (scrollY: number) => void;
@@ -214,34 +276,53 @@ export const useTimelineStore = create<TimelineState>()(
 
     zoomOut: () => {
       const { pixelsPerSecond } = get();
-      // Scale zoom down by 1.5x but never go below min to prevent blur at extreme zoom out
-      const newZoom = Math.max(pixelsPerSecond / 1.5, ZOOM_PRESETS.MIN);
+      // Scale zoom down by 1.5x, stopping at the absolute floor. Fit-to-view
+      // may sit far below the old 10px/s floor, so zoomOut must stay usable
+      // down to that fitted level.
+      const newZoom = Math.max(pixelsPerSecond / 1.5, ZOOM_PRESETS.ABSOLUTE_MIN);
       set({ pixelsPerSecond: newZoom });
     },
 
     setZoom: (pixelsPerSecond: number) => {
-      // Clamp zoom to valid range to ensure consistent rendering and prevent sub-pixel issues
+      // Clamp zoom to the shared effective range to ensure consistent
+      // rendering and prevent sub-pixel issues
       const clampedZoom = Math.max(
-        ZOOM_PRESETS.MIN,
+        ZOOM_PRESETS.ABSOLUTE_MIN,
         Math.min(ZOOM_PRESETS.MAX, pixelsPerSecond),
       );
       set({ pixelsPerSecond: clampedZoom });
     },
 
-    zoomToFit: (duration: number) => {
+    zoomToFit: (duration: number, visibleTimeWidth?: number) => {
       const { viewportWidth } = get();
       if (duration > 0) {
-        // Calculate zoom that fits entire timeline in viewport, leaving 100px margin for UI
-        // Formula: pixels_per_second = available_width / duration_seconds
+        // Calculate zoom that fits entire timeline in the VISIBLE time area,
+        // i.e. the viewport minus the track-header column (the stored
+        // viewportWidth covers the whole container including that column).
+        // Formula: pixels_per_second = available_width / duration_seconds.
+        // Only the absolute floor applies — hour-long projects must fit, so
+        // this deliberately bypasses any "practical minimum" zoom. A 100px
+        // margin keeps the fitted content clear of the right edge.
+        const measuredWidth =
+          visibleTimeWidth && visibleTimeWidth > 0
+            ? visibleTimeWidth
+            : viewportWidth - TIMELINE_TRACK_HEADER_WIDTH_PX;
+        const availableWidth = Math.max(0, measuredWidth - 100);
         const newZoom = Math.max(
-          ZOOM_PRESETS.MIN,
-          Math.min(ZOOM_PRESETS.MAX, (viewportWidth - 100) / duration),
+          ZOOM_PRESETS.ABSOLUTE_MIN,
+          Math.min(ZOOM_PRESETS.MAX, availableWidth / duration),
         );
         set({
           pixelsPerSecond: newZoom,
           scrollX: 0, // Reset scroll to show beginning of timeline
         });
       }
+    },
+
+    autoFitOnFirstLoad: (duration: number, visibleTimeWidth?: number) => {
+      if (hasAutoFittedThisSession || duration <= 0) return;
+      hasAutoFittedThisSession = true;
+      get().zoomToFit(duration, visibleTimeWidth);
     },
 
     resetZoom: () => {
