@@ -137,7 +137,9 @@
     "title": "Settings",
     "subtitle": "Configure preferences for the editor.",
     "ariaLabel": "Settings",
-    "general": "General"
+    "general": "General",
+    "shortcuts": "Keyboard Shortcuts",
+    "shortcutsDescription": "These shortcuts work throughout the editor. Press ? outside a text field to open the shortcuts overlay."
   },
   "settings": {
     "language": "Language",

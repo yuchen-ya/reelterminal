@@ -1,14 +1,27 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Settings } from "@/icons/lucide-compat";
 import { ToolcraftDialog as Dialog, ToolcraftDialogHeader as DialogHeader } from "@openreel/ui";
+import { ToolcraftSegmentedControl } from "@openreel/ui";
 import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent } from "@openreel/ui";
 import { useSettingsStore } from "../../../stores/settings-store";
 import { GeneralPanel } from "./GeneralPanel";
+import { KeyboardShortcutsPanel } from "./KeyboardShortcutsPanel";
+
+type SettingsPanelId = "general" | "shortcuts";
 
 export const SettingsDialog: React.FC = () => {
   const { t } = useTranslation();
   const { settingsOpen, closeSettings } = useSettingsStore();
+  const [activePanel, setActivePanel] = useState<SettingsPanelId>("general");
+
+  // Every open starts on the General panel so the dialog reads the same way
+  // for users who never visit the shortcuts tab.
+  useEffect(() => {
+    if (settingsOpen) {
+      setActivePanel("general");
+    }
+  }, [settingsOpen]);
 
   return (
     <Dialog
@@ -29,8 +42,21 @@ export const SettingsDialog: React.FC = () => {
         }
         content={
           <LayoutContent className="max-h-[70vh] overflow-y-auto">
-            <div className="mt-4">
-              <GeneralPanel />
+            <div className="mt-4 space-y-4">
+              <ToolcraftSegmentedControl<SettingsPanelId>
+                ariaLabel={t("settingsDialog.ariaLabel")}
+                value={activePanel}
+                onChange={setActivePanel}
+                options={[
+                  { value: "general", label: t("settingsDialog.general") },
+                  { value: "shortcuts", label: t("settingsDialog.shortcuts") },
+                ]}
+              />
+              {activePanel === "general" ? (
+                <GeneralPanel />
+              ) : (
+                <KeyboardShortcutsPanel />
+              )}
             </div>
           </LayoutContent>
         }

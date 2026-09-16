@@ -137,7 +137,9 @@
     "title": "设置",
     "subtitle": "配置编辑器偏好设置。",
     "ariaLabel": "设置",
-    "general": "通用"
+    "general": "通用",
+    "shortcuts": "键盘快捷键",
+    "shortcutsDescription": "这些快捷键在整个编辑器中生效。在文本框外按 ? 可打开快捷键浮层。"
   },
   "settings": {
     "language": "语言",

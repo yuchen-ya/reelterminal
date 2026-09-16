@@ -207,7 +207,7 @@ export const ProjectSwitcher: React.FC = () => {
                   variant="ghost"
                   size="sm"
                   icon={<Pencil className="h-3.5 w-3.5" aria-hidden />}
-                  className="text-text-muted opacity-0 hover:bg-background-tertiary hover:text-text-primary group-hover:opacity-100"
+                  className="text-text-muted hover:bg-background-tertiary hover:text-text-primary"
                 />
               </Card>
             )}

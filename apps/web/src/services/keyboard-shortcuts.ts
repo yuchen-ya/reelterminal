@@ -54,10 +54,14 @@ function formatKeyCombo(combo: {
   shift?: boolean;
   alt?: boolean;
 }): string {
+  // Display-only: match the platform's convention. Shortcut matching itself
+  // treats cmd/ctrl identically, so on Windows and Linux a "cmd+" binding is
+  // shown as the Ctrl combo it actually corresponds to.
+  const apple = isApplePlatform();
   const parts: string[] = [];
-  if (combo.meta || combo.ctrl) parts.push("⌘");
-  if (combo.shift) parts.push("⇧");
-  if (combo.alt) parts.push("⌥");
+  if (combo.meta || combo.ctrl) parts.push(apple ? "⌘" : "Ctrl");
+  if (combo.shift) parts.push(apple ? "⇧" : "Shift");
+  if (combo.alt) parts.push(apple ? "⌥" : "Alt");
 
   const keyMap: Record<string, string> = {
     space: "Space",
@@ -75,7 +79,13 @@ function formatKeyCombo(combo: {
   };
 
   parts.push(keyMap[combo.key] || combo.key.toUpperCase());
-  return parts.join("");
+  return apple ? parts.join("") : parts.join("+");
+}
+
+function isApplePlatform(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const platform = `${navigator.platform || ""} ${navigator.userAgent || ""}`;
+  return /Mac|iPhone|iPad|iPod/i.test(platform);
 }
 
 const DEFAULT_SHORTCUTS: ShortcutDefinition[] = [
