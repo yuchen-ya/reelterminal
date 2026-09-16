@@ -27,6 +27,11 @@ import { attachUnsavedGuard, markQuitting } from "./lifecycle";
 import { initAutoUpdater } from "./updater";
 import { initCrashReporter, reportError } from "./crash-reporter";
 import { migrateGpuCacheOnUpgrade } from "./gpu-cache-migration";
+import {
+  handleStartupFailure,
+  installLoadFailureRecovery,
+  installPreloadFailureNotice,
+} from "./startup-failures";
 import { registerLiveIpc } from "./ipc/live";
 import { registerAnalysisRecordsIpc } from "./ipc/analysis-records";
 import { registerConversationIpc } from "./ipc/conversation";
@@ -154,6 +159,11 @@ function createWindow(): void {
   registerEditorWindow(win);
   attachUnsavedGuard(win);
   installNavigationGuard(win, APP_INDEX);
+  // Failure-only handlers: they only add listeners (did-fail-load,
+  // preload-error, plus a passive will-navigate reset) and leave the success
+  // path unchanged.
+  installLoadFailureRecovery(win);
+  installPreloadFailureNotice(win);
   win.loadURL(APP_INDEX);
 }
 
@@ -293,7 +303,12 @@ app.whenReady().then(() => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-});
+})
+  // Host construction inside the callback can throw before createWindow()
+  // (mkdirSync on an unwritable userData/Videos path). Without this catch the
+  // promise rejection leaves a live process with no window and no dialog
+  // (C02-D1).
+  .catch(handleStartupFailure);
 
 // A second launch (blocked by the single-instance lock) surfaces the running
 // window rather than starting a duplicate process.
