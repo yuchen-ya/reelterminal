@@ -416,7 +416,16 @@ screenshot delivery state.
 - New closed edit ops with Core/GUI/renderer parity are `track.update`
   (name/lock/hide/mute/solo), `subtitle.importSrt` (256 KiB/500 cues),
   `clip.setColorGrade` (temperature/tint), `clip.setKeyframes` (renderer-
-  supported transform/opacity properties), `media.rename` (media display-
+  supported transform/opacity properties), `clip.applyReframe` (apply an
+  Auto Reframe crop plan to one clip: 1–100 source-space crop rectangles
+  whose keyframe times the shared core conversion folds onto the clip-local
+  keyframe clock by `clip.speed`, with the project canvas retargeted in the
+  same atomic batch — one undo unit; each crop's aspect ratio must match the
+  output canvas ratio within ±2% relative drift or the op fails
+  `INVALID_PARAMS`; subject detection is not part of the op — the GUI
+  panel's local skin-region color heuristic (not ML) or the agent's own
+  frame inspection supplies the plan, and hand-written plans must guarantee
+  the ratio themselves), `media.rename` (media display-
   name rename, ≤120 characters; the source filename and the file on disk are
   never touched), `clip.setChromaKey` (fixed-key chroma keyer for
   green-screen removal: key color, tolerance, edge softness, spill

@@ -470,7 +470,7 @@ and `{projectId, projectName, windowId}`.
 
 ### The `edit_apply` op vocabulary
 
-Forty-one ops, one atomic batch each call (the exact fields and bounds live in
+Forty-two ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
 - `track.add` — create a track (`trackType`); `track.remove` — remove an empty
@@ -522,6 +522,22 @@ Forty-one ops, one atomic batch each call (the exact fields and bounds live in
   (`opacity`, `position.x/y`, `scale.x/y`, `rotation`) in clip-local time.
   Audio-volume keyframes remain unavailable until preview/export share an
   automation evaluator; use constant `clip.setVolume` meanwhile.
+- `clip.applyReframe` — apply an Auto Reframe crop plan to one clip:
+  `clipId`, 1–100 keyframed source-space crop rectangles (each `time` in
+  source-analysis seconds from the clip's in-point plus
+  `cropX`/`cropY`/`cropWidth`/`cropHeight` in pixels, staying inside the
+  clip's source span), and the plan's `outputWidth`/`outputHeight`. The
+  shared core conversion the GUI Auto Reframe panel uses turns the crops
+  into scale/position transform keyframes — folding times onto the
+  clip-local keyframe clock by `clip.speed` is the conversion's job, never
+  yours — and resizes the project canvas in the same atomic batch (one
+  revision, one undo unit). Each crop rectangle's aspect ratio must match
+  the output canvas ratio within ±2% relative drift, else `INVALID_PARAMS`.
+  Subject detection is NOT part of the op: prefer the plan from the GUI's
+  Auto Reframe analysis (a local skin-region color heuristic, not ML), or
+  compose your own from `visual_inspect`/`media_inspect` frames — a
+  hand-written plan owns the ratio guarantee itself. Unknown `clipId` fails
+  `NOT_FOUND`.
 - `clip.setColorGrade` — merge temperature/tint into the persisted clip grade,
   or `clear:true`; the Core compositor applies the same grade in preview and
   export. LUT import is not exposed until a bounded contained parser lands.
