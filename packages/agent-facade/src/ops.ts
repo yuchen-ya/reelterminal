@@ -36,12 +36,14 @@ import {
   isString,
   oneOf,
   validateObject,
+  type FieldEmits,
   type ObjectSchema,
 } from "./validate";
 import {
   EDIT_OP_TYPES,
   EDIT_TRANSITION_TYPES,
   TRACK_TYPES,
+  CLIP_VIDEO_EFFECT_TYPES,
   type ClipAddOp,
   type ClipDuplicateOp,
   type ClipMoveOp,
@@ -87,6 +89,8 @@ import {
   type ClipSetNoiseReductionOp,
   type ClipSetDuckingOp,
   type ClipSetBackgroundRemovalOp,
+  type ClipAddVideoEffectOp,
+  type ClipVideoEffectType,
   type WorkAssetCaptureOp,
   type WorkAssetRenameOp,
   type WorkAssetDeleteOp,
@@ -104,6 +108,7 @@ import {
 import { isSerializedNoiseProfile } from "@openreel/core/audio/audio-effect-routing";
 import { generateDuckingKeyframesFromRanges } from "@openreel/core/audio/volume-automation";
 import { resolveAudibleAudioTarget } from "@openreel/core/audio/clip-audio-resolution";
+import { getMotionShaderEffectDefs } from "@openreel/core/motion/shaders";
 import { captureWorkAssetFromClip } from "@openreel/core/work-assets/capture";
 import { buildWorkAssetInstantiateActions } from "@openreel/core/work-assets/instantiate";
 import { timelineDurationSec } from "./projection";
@@ -1899,6 +1904,329 @@ export const CLIP_SET_BACKGROUND_REMOVAL_SCHEMA: ObjectSchema = {
   },
 };
 
+/* ------------------------------------------------------------------ */
+/* clip.addVideoEffect — the clip video-effect stack's add entry       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Per-effect-type parameter rules for clip.addVideoEffect. Keys and ranges
+ * mirror the GUI inspector's effect sliders (VideoEffectsSection) — the same
+ * bounds the GUI enforces when a human drags them — plus the parameter keys
+ * the core video effects engine consumes. The "shader" type validates
+ * against the core motion shader library's own parameter definitions (the
+ * very module the GUI shader controls render from), so a shader parameter
+ * can never drift from what the engine reads.
+ *
+ * `Auto-Color` in the GUI is a FIXED PRESET on top of this op vocabulary —
+ * three effects with constant parameters (saturation 1.15, contrast 1.1,
+ * brightness 5), no image analysis anywhere.
+ */
+type EffectParamRule =
+  | { readonly kind: "number"; readonly min: number; readonly max: number }
+  | { readonly kind: "boolean" }
+  | { readonly kind: "string"; readonly maxLength: number }
+  | { readonly kind: "hexColor" }
+  | { readonly kind: "rgb01" };
+
+const EFFECT_PARAM_RULES: Readonly<
+  Record<ClipVideoEffectType, Readonly<Record<string, EffectParamRule>>>
+> = {
+  brightness: { value: { kind: "number", min: -100, max: 100 } },
+  contrast: { value: { kind: "number", min: 0, max: 2 } },
+  saturation: { value: { kind: "number", min: 0, max: 2 } },
+  grayscale: { amount: { kind: "number", min: 0, max: 1 } },
+  sepia: { amount: { kind: "number", min: 0, max: 1 } },
+  invert: { amount: { kind: "number", min: 0, max: 1 } },
+  hue: { rotation: { kind: "number", min: -360, max: 360 } },
+  blur: { radius: { kind: "number", min: 0, max: 100 } },
+  sharpen: {
+    amount: { kind: "number", min: 0, max: 200 },
+    radius: { kind: "number", min: 0.1, max: 10 },
+  },
+  vignette: {
+    amount: { kind: "number", min: 0, max: 100 },
+    midpoint: { kind: "number", min: 0, max: 1 },
+    feather: { kind: "number", min: 0, max: 1 },
+  },
+  grain: {
+    amount: { kind: "number", min: 0, max: 100 },
+    size: { kind: "number", min: 0.5, max: 5 },
+    roughness: { kind: "number", min: 0, max: 1 },
+    colored: { kind: "boolean" },
+  },
+  temperature: { value: { kind: "number", min: -100, max: 100 } },
+  tint: { value: { kind: "number", min: -100, max: 100 } },
+  tonal: {
+    shadows: { kind: "number", min: -100, max: 100 },
+    midtones: { kind: "number", min: -100, max: 100 },
+    highlights: { kind: "number", min: -100, max: 100 },
+  },
+  chromaKey: {
+    keyColor: { kind: "rgb01" },
+    tolerance: { kind: "number", min: 0, max: 1 },
+    edgeSoftness: { kind: "number", min: 0, max: 1 },
+    spillSuppression: { kind: "number", min: 0, max: 1 },
+  },
+  shadow: {
+    offsetX: { kind: "number", min: -100, max: 100 },
+    offsetY: { kind: "number", min: -100, max: 100 },
+    blur: { kind: "number", min: 0, max: 100 },
+    opacity: { kind: "number", min: 0, max: 1 },
+    color: { kind: "hexColor" },
+  },
+  glow: {
+    radius: { kind: "number", min: 0, max: 100 },
+    intensity: { kind: "number", min: 0, max: 3 },
+    color: { kind: "hexColor" },
+  },
+  "motion-blur": {
+    angle: { kind: "number", min: 0, max: 360 },
+    distance: { kind: "number", min: 0, max: 100 },
+  },
+  "radial-blur": {
+    amount: { kind: "number", min: 0, max: 100 },
+    centerX: { kind: "number", min: 0, max: 100 },
+    centerY: { kind: "number", min: 0, max: 100 },
+  },
+  "chromatic-aberration": {
+    amount: { kind: "number", min: 0, max: 50 },
+    angle: { kind: "number", min: 0, max: 360 },
+  },
+  shader: { shaderId: { kind: "string", maxLength: 64 } },
+};
+
+/** Upper bound on parameter keys per effect (every GUI slider set fits). */
+const MAX_EFFECT_PARAMS = 24;
+
+const isEffectParamsShape = (v: unknown): boolean =>
+  isPlainObjectValue(v) &&
+  Object.keys(v as Record<string, unknown>).length <= MAX_EFFECT_PARAMS &&
+  Object.values(v as Record<string, unknown>).every(
+    (value) =>
+      typeof value === "boolean" ||
+      (typeof value === "string" && value.length <= 256) ||
+      (typeof value === "number" && Number.isFinite(value)),
+  );
+
+const effectParamCheck = (rule: EffectParamRule) => (v: unknown): boolean => {
+  switch (rule.kind) {
+    case "number":
+      return typeof v === "number" && Number.isFinite(v) && v >= rule.min && v <= rule.max;
+    case "boolean":
+      return isBoolean(v);
+    case "string":
+      return typeof v === "string" && v.length > 0 && v.length <= rule.maxLength;
+    case "hexColor":
+      return isCssHexColor(v);
+    case "rgb01":
+      return (
+        isPlainObjectValue(v) &&
+        Object.values(v as Record<string, unknown>).every(isUnitRange)
+      );
+  }
+};
+
+const effectParamEmits = (rule: EffectParamRule): FieldEmits => {
+  switch (rule.kind) {
+    case "number":
+      return {
+        kind: "leaf",
+        schema: { type: "number", minimum: rule.min, maximum: rule.max },
+      };
+    case "boolean":
+      return { kind: "leaf", schema: { type: "boolean" } };
+    case "string":
+      return {
+        kind: "leaf",
+        schema: { type: "string", minLength: 1, maxLength: rule.maxLength },
+      };
+    case "hexColor":
+      // The emitted leaf vocabulary has no `pattern`; the boundary stays the
+      // hex authority (same superset ordering as backgroundColor above).
+      return { kind: "leaf", schema: { type: "string", minLength: 2, maxLength: 9 } };
+    case "rgb01":
+      return { kind: "object", schema: CHROMA_KEY_COLOR_SCHEMA };
+  }
+};
+
+/**
+ * Shader parameter rules straight from the core motion shader library's
+ * effect-category definitions (builtin set — project-generated shaders are
+ * a GUI-session concept and are not addressable through this closed schema).
+ */
+const SHADER_PARAM_RULES: Readonly<Record<string, EffectParamRule>> =
+  Object.fromEntries(
+    getMotionShaderEffectDefs().flatMap((def) =>
+      def.params.map((param): [string, EffectParamRule] => [
+        param.name,
+        param.type === "number"
+          ? { kind: "number", min: param.min, max: param.max }
+          : { kind: "hexColor" },
+      ]),
+    ),
+  );
+
+/**
+ * The EMITTED params schema: closed union of every key any effect type (or
+ * builtin effect shader) accepts, each bounded by its widest declared range.
+ * Deliberately a SUPERSET across types — which keys are legal for WHICH
+ * effectType is a cross-field predicate the emitted vocabulary cannot
+ * express, so the per-type table in validateAddVideoEffectParams stays the
+ * runtime authority (the same schema-valid-but-facade-rejected ordering the
+ * corpus pins elsewhere).
+ */
+const EFFECT_PARAM_BUNDLE_SCHEMA: ObjectSchema = (() => {
+  const merged = new Map<string, EffectParamRule>();
+  const merge = (key: string, rule: EffectParamRule): void => {
+    const existing = merged.get(key);
+    if (
+      existing &&
+      existing.kind === "number" &&
+      rule.kind === "number"
+    ) {
+      merged.set(key, {
+        kind: "number",
+        min: Math.min(existing.min, rule.min),
+        max: Math.max(existing.max, rule.max),
+      });
+      return;
+    }
+    merged.set(key, rule);
+  };
+  for (const rules of Object.values(EFFECT_PARAM_RULES)) {
+    for (const [key, rule] of Object.entries(rules)) merge(key, rule);
+  }
+  for (const [key, rule] of Object.entries(SHADER_PARAM_RULES)) merge(key, rule);
+  return Object.fromEntries(
+    [...merged.entries()].map(([key, rule]) => [
+      key,
+      { check: effectParamCheck(rule), describe: effectParamDescribe(rule), emits: effectParamEmits(rule) },
+    ]),
+  );
+})();
+
+function effectParamDescribe(rule: EffectParamRule): string {
+  switch (rule.kind) {
+    case "number":
+      return `a finite number in [${rule.min}, ${rule.max}]`;
+    case "boolean":
+      return "a boolean";
+    case "string":
+      return `a non-empty string of at most ${rule.maxLength} chars`;
+    case "hexColor":
+      return "a hex color string (#RGB, #RGBA, #RRGGBB or #RRGGBBAA)";
+    case "rgb01":
+      return "an object with r/g/b channels each in [0, 1]";
+  }
+}
+
+/**
+ * Per-type parameter authority for clip.addVideoEffect: keys are closed to
+ * the addressed effect's contract and values to its bounds (rejected, never
+ * clamped); shader effects resolve their parameter contract from the same
+ * core shader definition the GUI renders with. Runs at the validateEditOp
+ * boundary AFTER the top-level schema (which has already shape-checked the
+ * bundle) — this refinement is validation-only and deliberately NOT emitted.
+ */
+function validateAddVideoEffectParams(
+  effectType: ClipVideoEffectType,
+  params: Readonly<Record<string, unknown>>,
+  label: string,
+): Record<string, unknown> {
+  const entries = Object.entries(params);
+  if (entries.length === 0) return { ...params };
+  if (effectType === "shader") {
+    const shaderId = params.shaderId;
+    if (typeof shaderId !== "string" || shaderId.length === 0) {
+      throw invalidParams(
+        `${label}.params.shaderId is required for shader effects (one of the builtin effect shaders)`,
+      );
+    }
+    const def = getMotionShaderEffectDefs().find((candidate) => candidate.id === shaderId);
+    if (!def) {
+      throw invalidParams(
+        `${label}.params.shaderId "${shaderId}" is not a builtin effect shader`,
+      );
+    }
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of entries) {
+      if (key === "shaderId") {
+        out[key] = value;
+        continue;
+      }
+      const paramDef = def.params.find((candidate) => candidate.name === key);
+      if (!paramDef) {
+        throw invalidParams(
+          `${label}.params.${key} is not a parameter of shader "${shaderId}" (accepted: ${def.params.map((p) => p.name).join(", ") || "none"})`,
+        );
+      }
+      const checked = effectParamCheck(
+        paramDef.type === "number"
+          ? { kind: "number", min: paramDef.min, max: paramDef.max }
+          : { kind: "hexColor" },
+      )(value);
+      if (!checked) {
+        throw invalidParams(
+          paramDef.type === "number"
+            ? `${label}.params.${key} must be a finite number in [${paramDef.min}, ${paramDef.max}]`
+            : `${label}.params.${key} must be a hex color string`,
+        );
+      }
+      out[key] = value;
+    }
+    return out;
+  }
+  const rules = EFFECT_PARAM_RULES[effectType];
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of entries) {
+    const rule = rules[key];
+    if (!rule) {
+      const accepted = Object.keys(rules).join(", ") || "none";
+      throw invalidParams(
+        `${label}.params.${key} is not a parameter of the "${effectType}" effect (accepted: ${accepted})`,
+      );
+    }
+    if (!effectParamCheck(rule)(value)) {
+      throw invalidParams(
+        `${label}.params.${key}: ${effectParamDescribe(rule)}`,
+      );
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+export const CLIP_ADD_VIDEO_EFFECT_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "clip.addVideoEffect",
+    describe: '"clip.addVideoEffect"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.addVideoEffect" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  effectType: {
+    check: oneOf(CLIP_VIDEO_EFFECT_TYPES),
+    describe: `one of the GUI effect-stack types: ${CLIP_VIDEO_EFFECT_TYPES.join(", ")}`,
+    required: true,
+    emits: { kind: "leaf", schema: { enum: [...CLIP_VIDEO_EFFECT_TYPES] } },
+  },
+  params: {
+    check: isEffectParamsShape,
+    describe: `an object of at most ${MAX_EFFECT_PARAMS} scalar parameters (keys and ranges depend on effectType)`,
+    emits: { kind: "object", schema: EFFECT_PARAM_BUNDLE_SCHEMA },
+  },
+  effectId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string (deterministic effect id for later ops in the same batch)",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
 function sanitizeTextFields<T extends TextCreateOp | TextUpdateOp>(
   op: T,
   label: string,
@@ -2347,6 +2675,23 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
         CLIP_SET_BACKGROUND_REMOVAL_SCHEMA,
         label,
       );
+    }
+    case "clip.addVideoEffect": {
+      const op = validateObject<ClipAddVideoEffectOp>(
+        raw,
+        CLIP_ADD_VIDEO_EFFECT_SCHEMA,
+        label,
+      );
+      // params keys/ranges depend on the sibling effectType — a cross-field
+      // contract the emitted vocabulary cannot express, enforced here with
+      // the SAME per-type bounds the GUI effect sliders enforce (shader
+      // effects against the core shader library's own definitions). Unknown
+      // keys and out-of-range values are rejected, never clamped.
+      if (op.params === undefined) return op;
+      return {
+        ...op,
+        params: validateAddVideoEffectParams(op.effectType, op.params, `${label}.params`),
+      };
     }
     case "reference.setComparison": {
       const op = validateObject<ReferenceSetComparisonOp>(
@@ -4142,6 +4487,32 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
             threshold:
               op.threshold ?? prior?.threshold ?? DEFAULT_BACKGROUND_SETTINGS.threshold,
           },
+        }),
+      ];
+    }
+
+    case "clip.addVideoEffect": {
+      const clip = draft.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((candidate) => candidate.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.addVideoEffect: clip "${op.clipId}" not found (timeline clips only — text/svg overlays are separate entities)`,
+          { clipId: op.clipId },
+        );
+      }
+      // The SAME core effect/add action the GUI inspector's effect panel
+      // dispatches (one append at the top of the stack, engine defaults for
+      // omitted params, undoable via the action's inverse, persisted with
+      // the clip, evaluated by the shared preview/export render chain).
+      // Note: core mints a fresh id when effectId is omitted.
+      return [
+        makeAction("effect/add", {
+          clipId: op.clipId,
+          effectType: op.effectType,
+          ...(op.params !== undefined ? { params: { ...op.params } } : {}),
+          ...(op.effectId !== undefined ? { effectId: op.effectId } : {}),
         }),
       ];
     }

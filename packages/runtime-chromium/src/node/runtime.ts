@@ -48,6 +48,13 @@ export interface PageProbeFacts {
   readonly exportEngineInit: boolean;
   readonly webCodecsSupported?: boolean;
   readonly mediabunnyLoaded: boolean;
+  /**
+   * Real WebGPU adapter probe (navigator.gpu.requestAdapter) — the fact the
+   * export upscaling pass depends on. Null when the probe could not decide
+   * (older entry build, probe error); false only after a real adapter
+   * request returned null.
+   */
+  readonly webgpuAdapter?: boolean | null;
   readonly firstEncodableVideo: {
     readonly avc: string | null;
     readonly vp9: string | null;
@@ -727,6 +734,11 @@ export class ChromiumRuntime {
       height: number;
       frameRate: number;
       videoBitrateKbps: number;
+      /** Merged straight into the in-page ExportEngine settings (core zero-change path). */
+      upscaling?: {
+        enabled: boolean;
+        quality?: "fast" | "balanced" | "quality";
+      };
     },
     writer: PartFileWriter,
     onProgress: (event: ExportProgressJson) => void,

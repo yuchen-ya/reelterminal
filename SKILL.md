@@ -478,7 +478,7 @@ and `{projectId, projectName, windowId}`.
 
 ### The `edit_apply` op vocabulary
 
-Forty-four ops, one atomic batch each call (the exact fields and bounds live in
+Forty-five ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
 - `track.add` — create a track (`trackType`); `track.remove` — remove an empty
@@ -568,6 +568,23 @@ Forty-four ops, one atomic batch each call (the exact fields and bounds live in
 - `clip.setColorGrade` — merge temperature/tint into the persisted clip grade,
   or `clear:true`; the Core compositor applies the same grade in preview and
   export. LUT import is not exposed until a bounded contained parser lands.
+- `clip.addVideoEffect` — append one effect to a clip's video effect stack:
+  `effectType` (closed to the GUI effect stack — `brightness`, `contrast`,
+  `saturation`, `grayscale`, `sepia`, `invert`, `hue`, `blur`, `sharpen`,
+  `vignette`, `grain`, `temperature`, `tint`, `tonal`, `chromaKey`, `shadow`,
+  `glow`, `motion-blur`, `radial-blur`, `chromatic-aberration`, `shader`),
+  optional `params` (per-type closed key/range contracts mirroring the GUI
+  effect sliders; `shader` effects take a builtin `shaderId` plus that
+  shader's own parameters), and optional `effectId` (deterministic id so a
+  later op in the SAME batch can reference the effect). One batch can stack
+  several effects in order. Named honestly: this op ADDS AN EFFECT with the
+  parameters you give — there is no image analysis. The GUI's "Auto-Color"
+  is a FIXED PRESET you can reproduce exactly with three ops in one batch:
+  `saturation {value:1.15}` + `contrast {value:1.1}` + `brightness
+  {value:5}` — constant values, never frame-adapted. Same core `effect/add`
+  action as the GUI effect panel: undoable, persisted, evaluated identically
+  in preview and export. Unknown `clipId` fails `NOT_FOUND` (timeline clips
+  only — text/svg overlays are separate entities).
 - `clip.setVolume` — linear gain `0..4` on any clip (audio or video
   track): `0` = mute, `1` = unity; it flows into the exported audio.
 - `clip.setFade` — set `fadeIn` and/or `fadeOut` in seconds; each value
@@ -708,7 +725,15 @@ the whole batch back; a deleted overlay or clip stays deleted after
   `deliveredTo`/`deliveryError`. In a `run` workflow the same wait is a
   bounded `await` step (`timeoutMs` required, ≤ 3 600 000; `pollMs`
   250–30 000). Never guess artifact paths — use the `artifact.path` the
-  job reports. Stdio MCP transports (including the desktop
+  job reports. `export_start` accepts `settings.upscaling
+  {enabled, quality:"fast"|"balanced"|"quality"}` for the export-time
+  upscale pass (WebGPU Lanczos + edge-directed interpolation — a
+  deterministic local resampler, NOT a neural-network upscaler; same engine
+  as the GUI ExportDialog). It engages only when the export size exceeds the
+  project canvas size and the runtime has WebGPU: when the pass cannot run,
+  the done job reports `upscalingRequestedButInactive: true` — the artifact
+  is valid and NOT upscaled, never a silent downgrade. Stdio MCP transports
+  (including the desktop
   `openreel-live-mcp` connector) may instead include `_meta.progressToken` on
   `export_start` and receive opt-in `notifications/progress` updates. Direct
   loopback HTTP callers have no server-push channel, so the polling contract

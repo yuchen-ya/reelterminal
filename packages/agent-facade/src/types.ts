@@ -332,6 +332,8 @@ export interface Capabilities {
     transformKeyframes: CapabilityStatus;
     volumeKeyframes: CapabilityStatus;
     basicColorGrade: CapabilityStatus;
+    /** Additive clip video-effect stack op (Auto-Color preset documented as a fixed three-effect combo). */
+    videoEffects: CapabilityStatus;
     chromaKey: CapabilityStatus;
     noiseReduction: CapabilityStatus;
     svgOverlays: CapabilityStatus;
@@ -973,6 +975,7 @@ export const EDIT_OP_TYPES = [
   "svg.create",
   "svg.update",
   "svg.remove",
+  "clip.addVideoEffect",
   "workAsset.capture",
   "workAsset.rename",
   "workAsset.delete",
@@ -1543,6 +1546,73 @@ export interface ClipSetBackgroundRemovalOp {
 }
 
 /**
+ * The clip video effect stack's addable effect types — the SAME closed set
+ * the GUI inspector's effect panel offers (web effects-bridge VideoEffectType)
+ * and the core video effects engine consumes. Declared here (facade-side)
+ * because the GUI type lives behind the web app boundary.
+ */
+export const CLIP_VIDEO_EFFECT_TYPES = [
+  "brightness",
+  "contrast",
+  "saturation",
+  "grayscale",
+  "sepia",
+  "invert",
+  "hue",
+  "blur",
+  "sharpen",
+  "vignette",
+  "grain",
+  "temperature",
+  "tint",
+  "tonal",
+  "chromaKey",
+  "shadow",
+  "glow",
+  "motion-blur",
+  "radial-blur",
+  "chromatic-aberration",
+  "shader",
+] as const;
+
+export type ClipVideoEffectType = (typeof CLIP_VIDEO_EFFECT_TYPES)[number];
+
+/**
+ * clip.addVideoEffect — append ONE effect to a timeline clip's video effect
+ * stack through the same core `effect/add` action the GUI inspector's effect
+ * panel dispatches (undoable, persisted, evaluated by the shared render and
+ * export chain). `effectType` is closed to the GUI effect-stack vocabulary
+ * and `params` are validated per type against the same parameter bounds the
+ * GUI effect sliders enforce (shader effects against the core shader
+ * library's own parameter definitions).
+ *
+ * Named honestly: this op ADDS AN EFFECT with exactly the parameters given —
+ * it performs no image analysis. The GUI's "Auto-Color" button is a FIXED
+ * PRESET expressible as three of these ops in one batch: saturation value
+ * 1.15, contrast value 1.1, brightness value 5 (the same numbers the GUI
+ * Auto-Color handler sends). Nothing analyzes the frame to choose them.
+ */
+export interface ClipAddVideoEffectOp {
+  readonly op: "clip.addVideoEffect";
+  readonly clipId: string;
+  /** Effect type from the GUI effect stack (closed enum). */
+  readonly effectType: ClipVideoEffectType;
+  /**
+   * Initial effect parameters. Flat scalar bundle; the allowed keys and
+   * value ranges depend on effectType and mirror the GUI effect sliders
+   * (shader: the core shader library's parameter definitions). Omitted
+   * leaves every parameter at the engine's default.
+   */
+  readonly params?: Readonly<Record<string, unknown>>;
+  /**
+   * Optional deterministic effect id, so later ops in the SAME batch (e.g.
+   * a second clip.addVideoEffect or a workAsset.capture) can reference the
+   * effect deterministically. A fresh id is minted when omitted.
+   */
+  readonly effectId?: string;
+}
+
+/**
  * workAsset.capture — save one timeline clip into the project's work assets
  * ("saved work"): a named, stable-id reusable reference plus a parameter
  * snapshot (trim, speed, effects, transform, …). The asset references the
@@ -1636,6 +1706,7 @@ export type EditOp =
   | ClipSetNoiseReductionOp
   | ClipSetDuckingOp
   | ClipSetBackgroundRemovalOp
+  | ClipAddVideoEffectOp
   | WorkAssetCaptureOp
   | WorkAssetRenameOp
   | WorkAssetDeleteOp
@@ -1859,6 +1930,21 @@ export interface ExportStartSettings {
   readonly frameRate?: number;
   /** Defaults to a size-appropriate bitrate. */
   readonly videoBitrateKbps?: number;
+  /**
+   * Optional upscale pass on the export render (the same setting the GUI
+   * ExportDialog exposes). `quality` uses the dialog's tiers; omitted keeps
+   * the engine default ("balanced"). Upscaling only engages when the export
+   * size EXCEEDS the project canvas size, and it needs WebGPU: when the
+   * runtime has no WebGPU device the pass is skipped and job.status
+   * discloses `upscalingRequestedButInactive: true` instead of failing or
+   * silently producing an un-upscaled file. Algorithm: WebGPU Lanczos +
+   * edge-directed interpolation — a deterministic local resampler, NOT a
+   * neural-network upscaler.
+   */
+  readonly upscaling?: {
+    readonly enabled: boolean;
+    readonly quality?: "fast" | "balanced" | "quality";
+  };
 }
 
 export interface ExportStartParams {
@@ -1989,6 +2075,15 @@ export interface JobStatusView {
   readonly sourceRevision: number;
   /** Export route that produced the artifact (null until done). */
   readonly route: string | null;
+  /**
+   * Upscale honesty disclosure: true when the export request asked for the
+   * upscaling pass but the producing runtime could not apply it (no WebGPU
+   * device, or a route whose pipeline has no upscale stage). The artifact is
+   * still valid — it is simply NOT upscaled, and the result says so rather
+   * than letting the request silently vanish. Always false when no upscaling
+   * was requested.
+   */
+  readonly upscalingRequestedButInactive: boolean;
   readonly cancelRequested: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;

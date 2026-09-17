@@ -90,6 +90,7 @@ import {
   CLIP_SET_NOISE_REDUCTION_SCHEMA,
   CLIP_SET_DUCKING_SCHEMA,
   CLIP_SET_BACKGROUND_REMOVAL_SCHEMA,
+  CLIP_ADD_VIDEO_EFFECT_SCHEMA,
   WORK_ASSET_CAPTURE_SCHEMA,
   WORK_ASSET_RENAME_SCHEMA,
   WORK_ASSET_DELETE_SCHEMA,
@@ -105,6 +106,7 @@ import {
   isPositiveInteger,
   isPositiveNumber,
   oneOf,
+  validateObject,
   type ObjectSchema,
 } from "./validate";
 
@@ -589,6 +591,7 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "clip.setNoiseReduction": CLIP_SET_NOISE_REDUCTION_SCHEMA,
   "clip.setDucking": CLIP_SET_DUCKING_SCHEMA,
   "clip.setBackgroundRemoval": CLIP_SET_BACKGROUND_REMOVAL_SCHEMA,
+  "clip.addVideoEffect": CLIP_ADD_VIDEO_EFFECT_SCHEMA,
   "workAsset.capture": WORK_ASSET_CAPTURE_SCHEMA,
   "workAsset.rename": WORK_ASSET_RENAME_SCHEMA,
   "workAsset.delete": WORK_ASSET_DELETE_SCHEMA,
@@ -876,6 +879,36 @@ export const EXPORT_COMPARISON_SCHEMA: ObjectSchema = {
   },
 };
 
+/** The GUI ExportDialog's upscale tiers, closed (engine UpscaleQuality). */
+export const EXPORT_UPSCALING_SCHEMA: ObjectSchema = {
+  enabled: {
+    check: isBoolean,
+    describe: "a boolean",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  quality: {
+    check: oneOf(["fast", "balanced", "quality"] as const),
+    describe: 'one of "fast", "balanced", "quality" (defaults to "balanced")',
+    emits: { kind: "leaf", schema: { enum: ["fast", "balanced", "quality"] } },
+  },
+};
+
+/**
+ * Nested-object recursion for the upscaling bundle (validateObject does not
+ * descend into `emits` declarations by itself): the same closed declaration
+ * drives both the emitted schema and this runtime check.
+ */
+export const isExportUpscalingSettings = (v: unknown): boolean => {
+  if (!isPlainObject(v)) return false;
+  try {
+    validateObject(v, EXPORT_UPSCALING_SCHEMA, "settings.upscaling");
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const EXPORT_SETTINGS_SCHEMA: ObjectSchema = {
   format: {
     check: oneOf(["mp4"]),
@@ -906,6 +939,12 @@ export const EXPORT_SETTINGS_SCHEMA: ObjectSchema = {
     check: isPositiveInteger,
     describe: "a positive integer",
     emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } },
+  },
+  upscaling: {
+    check: isExportUpscalingSettings,
+    describe:
+      "upscale pass on the export render ({enabled required, quality fast|balanced|quality}); needs WebGPU and an export size larger than the project canvas — inactive attempts are disclosed on job.status, never silent",
+    emits: { kind: "object", schema: EXPORT_UPSCALING_SCHEMA },
   },
 };
 

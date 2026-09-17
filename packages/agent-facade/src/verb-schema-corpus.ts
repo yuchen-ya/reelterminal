@@ -345,6 +345,61 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
     },
     {
+      name: "valid clip.addVideoEffect auto-color saturation leg",
+      params: { ops: [{ op: "clip.addVideoEffect", clipId: "c1", effectType: "saturation", params: { value: 1.15 } }] },
+      expectValid: true,
+    },
+    {
+      name: "valid clip.addVideoEffect with deterministic effectId and no params",
+      params: { ops: [{ op: "clip.addVideoEffect", clipId: "c1", effectType: "brightness", effectId: "fx-1" }] },
+      expectValid: true,
+    },
+    {
+      name: "valid clip.addVideoEffect blur radius",
+      params: { ops: [{ op: "clip.addVideoEffect", clipId: "c1", effectType: "blur", params: { radius: 12 } }] },
+      expectValid: true,
+    },
+    {
+      name: "clip.addVideoEffect effectType is closed to the GUI effect stack",
+      params: { ops: [{ op: "clip.addVideoEffect", clipId: "c1", effectType: "denoise" }] },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: saturation value must be in [0, 2] (the emitted union carries brightness's wider range)",
+      params: { ops: [{ op: "clip.addVideoEffect", clipId: "c1", effectType: "saturation", params: { value: 5 } }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: params keys are per-effectType (value 5 is brightness-legal, saturation-illegal)",
+      params: { ops: [{ op: "clip.addVideoEffect", clipId: "c1", effectType: "brightness", params: { value: 5 } }, { op: "clip.addVideoEffect", clipId: "c1", effectType: "saturation", params: { value: 5 } }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: unknown param key for the addressed effect",
+      params: { ops: [{ op: "clip.addVideoEffect", clipId: "c1", effectType: "grayscale", params: { radius: 3 } }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: shader params must match the addressed shader definition",
+      params: { ops: [{ op: "clip.addVideoEffect", clipId: "c1", effectType: "shader", params: { shaderId: "vhs", levels: 5 } }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "clip.addVideoEffect shader params reject unknown keys outright",
+      params: { ops: [{ op: "clip.addVideoEffect", clipId: "c1", effectType: "shader", params: { shaderId: "vhs", bogusParam: 1 } }] },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: hex color params must be hex",
+      params: { ops: [{ op: "clip.addVideoEffect", clipId: "c1", effectType: "glow", params: { radius: 20, color: "lavender" } }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
       name: "valid clip.setDucking with pre-computed points",
       params: { ops: [{ op: "clip.setDucking", clipId: "c1", threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2, points: [{ time: 0, value: 1 }, { time: 1, value: 0.4 }] }] },
       expectValid: true,
@@ -1187,6 +1242,31 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     {
       name: "videoBitrateKbps must be a positive integer",
       params: { settings: { videoBitrateKbps: 0 } },
+      expectValid: false,
+    },
+    {
+      name: "valid upscaling request",
+      params: { settings: { upscaling: { enabled: true, quality: "quality" } } },
+      expectValid: true,
+    },
+    {
+      name: "upscaling enabled alone is valid (quality defaults)",
+      params: { settings: { upscaling: { enabled: true } } },
+      expectValid: true,
+    },
+    {
+      name: "upscaling requires enabled",
+      params: { settings: { upscaling: { quality: "fast" } } },
+      expectValid: false,
+    },
+    {
+      name: "upscaling quality is the GUI tier enum",
+      params: { settings: { upscaling: { enabled: true, quality: "ultra" } } },
+      expectValid: false,
+    },
+    {
+      name: "upscaling rejects sharpening (GUI-only slider, not agent surface)",
+      params: { settings: { upscaling: { enabled: true, sharpening: 0.5 } } },
       expectValid: false,
     },
   ],

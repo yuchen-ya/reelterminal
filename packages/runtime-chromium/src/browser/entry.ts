@@ -23,6 +23,7 @@
 import { getSpeedEngine } from "@openreel/core/video/speed-engine";
 import { getVideoEngine } from "@openreel/core/video/video-engine";
 import { getExportEngine } from "@openreel/core/export/export-engine";
+import { DEFAULT_UPSCALING_SETTINGS } from "@openreel/core/export/types";
 import { titleEngine } from "@openreel/core/text/title-engine";
 import { graphicsEngine } from "@openreel/core/graphics/graphics-engine";
 import type { Project } from "@openreel/core/types/project";
@@ -273,6 +274,10 @@ async function exportToMp4Webcodecs(settings: {
   height: number;
   frameRate: number;
   videoBitrateKbps: number;
+  upscaling?: {
+    enabled: boolean;
+    quality?: "fast" | "balanced" | "quality";
+  };
 }): Promise<WebcodecsExportOutcome> {
   if (!currentProject) throw new Error("hydrate() must be called first");
   const engine = getExportEngine();
@@ -288,6 +293,20 @@ async function exportToMp4Webcodecs(settings: {
       height: settings.height,
       frameRate: settings.frameRate,
       bitrate: settings.videoBitrateKbps,
+      // Spread straight into the core VideoExportSettings merge — the
+      // engine consumes upscaling natively; when WebGPU is unavailable the
+      // pass is skipped and the host discloses that on the job (the engine
+      // never fails the export over it). sharpening is not part of the
+      // agent-facing settings surface; the shared engine default applies.
+      ...(settings.upscaling !== undefined
+        ? {
+            upscaling: {
+              enabled: settings.upscaling.enabled,
+              quality: settings.upscaling.quality ?? "balanced",
+              sharpening: DEFAULT_UPSCALING_SETTINGS.sharpening,
+            },
+          }
+        : {}),
     },
     writable as unknown as FileSystemWritableFileStream,
   );
@@ -475,6 +494,23 @@ async function probe(): Promise<Record<string, unknown>> {
   } catch (error) {
     facts.firstEncodableVideo = null;
     errors.push(`mediabunny encode probe: ${error instanceof Error ? error.message : error}`);
+  }
+
+  // WebGPU adapter probe — the fact the export upscaling pass depends on.
+  // A real requestAdapter (the same call the upscaling engine's GPU device
+  // needs), not a mere typeof check; null when it cannot be decided.
+  if (typeof navigator !== "undefined" && "gpu" in navigator) {
+    try {
+      const adapter = await (navigator as never as {
+        gpu: { requestAdapter(): Promise<unknown> };
+      }).gpu.requestAdapter();
+      facts.webgpuAdapter = adapter !== null && adapter !== undefined;
+    } catch (error) {
+      facts.webgpuAdapter = null;
+      errors.push(`webgpu probe: ${error instanceof Error ? error.message : error}`);
+    }
+  } else {
+    facts.webgpuAdapter = null;
   }
 
   facts.decodeSample = await decodeSampleSmoke();

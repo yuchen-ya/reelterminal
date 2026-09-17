@@ -154,6 +154,16 @@ export interface ExportVideoRequest {
     readonly height: number;
     readonly frameRate: number;
     readonly videoBitrateKbps: number;
+    /**
+     * Upscale pass request (absent = not requested). Providers merge it into
+     * the render settings they hand the export engine; when the runtime
+     * cannot apply it (no WebGPU device) they must disclose that on the
+     * completion instead of silently skipping the pass.
+     */
+    readonly upscaling?: {
+      readonly enabled: boolean;
+      readonly quality?: "fast" | "balanced" | "quality";
+    };
   };
   /** Facade-assigned job id; providers key cancellation/progress by it. */
   readonly jobId: string;
@@ -183,6 +193,14 @@ export interface ExportCompletion {
   /** Which honest route produced the file. */
   readonly route: "chromium-webcodecs" | "chromium-frames-ffmpeg";
   readonly framesEncoded: number;
+  /**
+   * The request asked for the upscaling pass but this runtime could not
+   * apply it (no WebGPU device, or the video-only frames route whose
+   * pipeline has no upscale stage). The artifact is valid and NOT upscaled;
+   * reporting this beats silently dropping the request. Only set when
+   * upscaling was actually requested.
+   */
+  readonly upscalingRequestedButInactive?: boolean;
 }
 
 export interface ExportCallbacks {

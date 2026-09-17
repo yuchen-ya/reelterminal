@@ -124,6 +124,7 @@ describe("capabilities.get / session.describe", () => {
       "svg.create",
       "svg.update",
       "svg.remove",
+      "clip.addVideoEffect",
       "workAsset.capture",
       "workAsset.rename",
       "workAsset.delete",

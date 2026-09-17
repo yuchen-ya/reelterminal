@@ -556,11 +556,12 @@ const jobStatus = (): OutputSchemaNode =>
       deliveryError: nullable(stringSchema()),
       sourceRevision: integerSchema(0),
       route: nullable(stringSchema()),
+      upscalingRequestedButInactive: booleanSchema(),
       cancelRequested: booleanSchema(),
       createdAt: stringSchema(),
       updatedAt: stringSchema(),
     },
-    ["jobId", "kind", "state", "progress", "artifact", "result", "error", "deliveredTo", "deliveryError", "sourceRevision", "route", "cancelRequested", "createdAt", "updatedAt"],
+    ["jobId", "kind", "state", "progress", "artifact", "result", "error", "deliveredTo", "deliveryError", "sourceRevision", "route", "upscalingRequestedButInactive", "cancelRequested", "createdAt", "updatedAt"],
   );
 
 const verifyResult = (): OutputSchemaNode =>

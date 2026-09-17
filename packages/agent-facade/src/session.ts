@@ -2122,7 +2122,20 @@ export class AgentFacadeSession {
               await this.finalizeExport(
                 jobId,
                 sourceRevision,
-                { path: composedPath, sizeBytes: composed.sizeBytes, route: "comparison-compose" },
+                {
+                  path: composedPath,
+                  sizeBytes: composed.sizeBytes,
+                  route: "comparison-compose",
+                  // The timeline leg rendered once by the canonical pipeline
+                  // carries the upscale outcome; the composed publish keeps
+                  // that disclosure instead of dropping it.
+                  ...(completion.upscalingRequestedButInactive !== undefined
+                    ? {
+                        upscalingRequestedButInactive:
+                          completion.upscalingRequestedButInactive,
+                      }
+                    : {}),
+                },
                 delivery,
               );
             } catch (error) {
@@ -2151,6 +2164,9 @@ export class AgentFacadeSession {
               height,
               frameRate,
               videoBitrateKbps,
+              ...(settingsInput?.upscaling !== undefined
+                ? { upscaling: settingsInput.upscaling }
+                : {}),
             },
             jobId,
             jobDir,
@@ -2958,7 +2974,12 @@ export class AgentFacadeSession {
   private async finalizeExport(
     jobId: string,
     sourceRevision: number,
-    completion: { path: string; sizeBytes: number; route: string },
+    completion: {
+      path: string;
+      sizeBytes: number;
+      route: string;
+      upscalingRequestedButInactive?: boolean;
+    },
     delivery: DeliveryDestination | null = null,
   ): Promise<void> {
     try {
@@ -2989,7 +3010,12 @@ export class AgentFacadeSession {
         sourceRevision,
         completion.sizeBytes,
       );
-      this.jobs.markDone(jobId, artifact, completion.route);
+      this.jobs.markDone(
+        jobId,
+        artifact,
+        completion.route,
+        completion.upscalingRequestedButInactive === true,
+      );
       if (delivery !== null) {
         // Post-publish copy into the Agent workspace deliverables directory.
         // A delivery failure never downgrades the done job or hides the

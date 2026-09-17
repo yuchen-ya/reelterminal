@@ -30,6 +30,7 @@ import type {
   RenderProvider,
 } from "./providers";
 import {
+  CLIP_VIDEO_EFFECT_TYPES,
   EDIT_OP_TYPES,
   FACADE_CONTRACT_VERSION,
   FACADE_RUNTIME,
@@ -236,6 +237,14 @@ export async function buildCapabilities(
         deliveryRoots.length > 0
           ? 'export.start accepts destinationPath "<deliveryRoot>/jobs/<slug>/output/<name>.mp4"; the verified artifact is copied there after completion (no overwrite) and job.status reports deliveredTo/deliveryError. verify.artifact accepts the reported deliveredTo path verbatim.'
           : "No delivery roots are configured for this session; export.start destinationPath fails INVALID_PARAMS until one is provided.",
+      upscaling: {
+        algorithm:
+          "WebGPU Lanczos + edge-directed interpolation on the export render — a deterministic local resampler, NOT a neural-network upscaler (same engine the GUI ExportDialog drives)",
+        request: 'export.start settings.upscaling {enabled, quality: "fast"|"balanced"|"quality"}; engages only when the export size exceeds the project canvas size',
+        inactiveDisclosure:
+          "when the producing runtime has no WebGPU device (or a route without an upscale stage), job.status reports upscalingRequestedButInactive: true on the done job — the artifact is valid and NOT upscaled, never a silent downgrade",
+        guiParity: "same core UpscalingEngine and quality tiers as the GUI ExportDialog toggle",
+      },
     },
   };
   const verify = gateArtifactProducing(verifyRaw, UNAVAILABLE_NO_VERIFIER);
@@ -514,6 +523,20 @@ export async function buildCapabilities(
       basicColorGrade: {
         available: true,
         details: { op: "clip.setColorGrade", fields: ["temperature", "tint", "clear"] },
+      },
+      videoEffects: {
+        available: true,
+        details: {
+          op: "clip.addVideoEffect",
+          coreAction: "effect/add",
+          effectTypes: [...CLIP_VIDEO_EFFECT_TYPES],
+          autoColor:
+            "the GUI 'Auto-Color' button is a FIXED PRESET expressible as three clip.addVideoEffect ops in one batch: saturation {value:1.15}, contrast {value:1.1}, brightness {value:5} — the exact parameters the GUI sends. It is named honestly: a constant preset, NOT image analysis, and nothing adapts the values to the footage",
+          params:
+            "per-effectType closed parameter contracts mirroring the GUI effect sliders; shader effects validate against the core shader library's own parameter definitions; out-of-range values are rejected, never clamped",
+          guiParity:
+            "same core effect/add action as the GUI inspector's effect panel: appends to clip.effects, undoable via the action's inverse, persisted with the clip, evaluated by the shared preview/export render chain",
+        },
       },
       chromaKey: {
         available: true,

@@ -159,6 +159,7 @@ type RouteOutcome =
       readonly sizeBytes: number;
       readonly route: "chromium-webcodecs" | "chromium-frames-ffmpeg";
       readonly framesEncoded: number;
+      readonly upscalingRequestedButInactive?: boolean;
     } }
   | { readonly kind: "cancelled" };
 
@@ -490,6 +491,25 @@ export class ChromiumExportProvider implements ExportProvider {
 
   /* --------------------------- Route W --------------------------- */
 
+  /**
+   * The upscaling pass is honest, never silent: the in-page engine skips it
+   * when there is no WebGPU device (or the export is not an enlargement),
+   * so a REQUESTED pass that cannot run is disclosed on the completion and
+   * surfaces on job.status — the artifact is valid, just not upscaled.
+   */
+  private async resolveUpscalingInactive(
+    request: ExportVideoRequest,
+  ): Promise<boolean> {
+    const requested = request.settings.upscaling?.enabled === true;
+    if (!requested) return false;
+    const enlarging =
+      request.settings.width > request.project.settings.width ||
+      request.settings.height > request.project.settings.height;
+    if (!enlarging) return true;
+    const probe = await this.providers.probe();
+    return probe.summary.webgpuAdapter !== true;
+  }
+
   private async runWebcodecsRoute(
     request: ExportVideoRequest,
     callbacks: ExportCallbacks,
@@ -509,7 +529,9 @@ export class ChromiumExportProvider implements ExportProvider {
       outcome = await this.providers.runtime.exportWebcodecsStreaming(
         request.project,
         request.mediaFiles,
-        request.settings,
+        request.settings.upscaling !== undefined
+          ? { ...request.settings, upscaling: request.settings.upscaling }
+          : request.settings,
         writer,
         (event) => {
           if (slot.cancelRequested) return;
@@ -547,6 +569,8 @@ export class ChromiumExportProvider implements ExportProvider {
       await writer.discard().catch(() => undefined);
       return { kind: "cancelled" };
     }
+    const upscalingRequestedButInactive =
+      await this.resolveUpscalingInactive(request);
     return {
       kind: "done",
       completion: {
@@ -554,6 +578,7 @@ export class ChromiumExportProvider implements ExportProvider {
         sizeBytes: writer.bytes,
         route: "chromium-webcodecs",
         framesEncoded: outcome.framesRendered ?? 0,
+        ...(upscalingRequestedButInactive ? { upscalingRequestedButInactive } : {}),
       },
     };
   }
@@ -643,6 +668,11 @@ export class ChromiumExportProvider implements ExportProvider {
       // mirror the Route-W post-completion check (see runWebcodecsRoute).
       if (slot.cancelRequested) throw new FramesJobCancelled();
       await rename(partPath, finalPath);
+      // The frames route renders directly at the target size — its pipeline
+      // has no upscale stage at all, so a REQUESTED pass is disclosed as
+      // inactive instead of silently vanishing.
+      const upscalingRequestedButInactive =
+        await this.resolveUpscalingInactive(request);
       return {
         kind: "done",
         completion: {
@@ -650,6 +680,7 @@ export class ChromiumExportProvider implements ExportProvider {
           sizeBytes,
           route: "chromium-frames-ffmpeg",
           framesEncoded: framesFed,
+          ...(upscalingRequestedButInactive ? { upscalingRequestedButInactive } : {}),
         },
       };
     } catch (error) {

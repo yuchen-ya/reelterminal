@@ -32,6 +32,7 @@ export function jobStatusView(job: JobRecord): JobStatusView {
     deliveryError: job.deliveryError,
     sourceRevision: job.sourceRevision,
     route: job.route,
+    upscalingRequestedButInactive: job.upscalingRequestedButInactive,
     cancelRequested: job.cancelRequested,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
@@ -64,6 +65,13 @@ export interface JobRecord {
   readonly sourceRevision: number;
   /** Export route reported on completion (null until done). */
   readonly route: string | null;
+  /**
+   * The export asked for the upscaling pass but the producing runtime could
+   * not apply it (no WebGPU device, or a route without an upscale stage).
+   * Honest disclosure on the done job — the artifact is valid, just not
+   * upscaled. Never true when no upscaling was requested.
+   */
+  readonly upscalingRequestedButInactive: boolean;
   readonly cancelRequested: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -94,6 +102,7 @@ export class JobRegistry {
       deliveryError: null,
       sourceRevision,
       route: null,
+      upscalingRequestedButInactive: false,
       cancelRequested: false,
       createdAt: now,
       updatedAt: now,
@@ -150,10 +159,22 @@ export class JobRegistry {
     });
   }
 
-  markDone(jobId: string, artifact: ArtifactRef, route: string): void {
+  markDone(
+    jobId: string,
+    artifact: ArtifactRef,
+    route: string,
+    upscalingRequestedButInactive = false,
+  ): void {
     this.transition(jobId, (job) => {
       if (TERMINAL.has(job.state)) return job;
-      return { ...job, state: "done" as JobState, artifact, route, error: null };
+      return {
+        ...job,
+        state: "done" as JobState,
+        artifact,
+        route,
+        upscalingRequestedButInactive,
+        error: null,
+      };
     });
   }
 

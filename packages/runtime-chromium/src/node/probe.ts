@@ -64,6 +64,13 @@ export interface RuntimeProbeResult {
      * capability claim — the default export capability never uses it.
      */
     readonly videoOnlyFramesRouteAvailable: boolean;
+    /**
+     * Real WebGPU adapter fact from the probed page (the same navigator.gpu
+     * request the export upscaling pass needs). false = a real adapter
+     * request returned null; null = undecidable (probe error or older entry
+     * build) — treat null as "unknown", never as available.
+     */
+    readonly webgpuAdapter: boolean | null;
   };
   readonly launchError?: string;
 }
@@ -93,6 +100,7 @@ const FALLBACK_FACTS: PageProbeFacts = {
   videoEngineInit: false,
   exportEngineInit: false,
   mediabunnyLoaded: false,
+  webgpuAdapter: null,
   firstEncodableVideo: null,
   decodeSample: null,
   errors: [],
@@ -137,6 +145,7 @@ export function summarizeProbe(
     h264EncodeAvailable,
     exportRoute,
     videoOnlyFramesRouteAvailable,
+    webgpuAdapter: facts.webgpuAdapter ?? null,
     ...(exportUnavailableReason ? { exportUnavailableReason } : {}),
   };
 }
