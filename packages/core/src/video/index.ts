@@ -15,6 +15,7 @@ export * from "./stabilization";
 export * from "./keyframe-engine";
 export * from "./chroma-key-engine";
 export * from "./motion-tracking-engine";
+export * from "./motion-tracking-keyframes";
 export * from "./playback-engine";
 export * from "./types";
 

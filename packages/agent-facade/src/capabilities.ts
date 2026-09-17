@@ -433,7 +433,15 @@ export async function buildCapabilities(
                   color: COLOR_POLICY_DISCLOSURE,
                 },
               }
-            : {
+            : type === "motion"
+              ? {
+                  available: false,
+                  reason:
+                    "Headless motion analysis is not available yet: tracking needs rendered frames. In the desktop GUI the motion-tracking engine already lands its result as transform keyframes via clip.setKeyframes (undoable, persisted, consumed by render and export).",
+                  requires:
+                    "a RenderProvider that supplies frames for the tracked range",
+                }
+              : {
                 available: false,
                 reason:
                   type === "technicalQuality"

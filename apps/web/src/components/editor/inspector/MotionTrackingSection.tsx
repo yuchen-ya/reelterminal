@@ -12,7 +12,6 @@ import {
   Check,
   AlertTriangle,
   Move,
-  RotateCcw,
   Maximize2,
   ChevronDown,
   ChevronRight,
@@ -22,6 +21,9 @@ import {
   getMotionTrackingBridge,
   type MotionTrackingState,
 } from "../../../bridges/motion-tracking-bridge";
+import { trackingPathToKeyframes, type Keyframe } from "@openreel/core";
+import { createAction } from "../../../stores/project/action-helpers";
+import { useProjectStore } from "../../../stores/project-store";
 import type { Rectangle } from "@openreel/core";
 import { useTranslation } from "react-i18next";
 
@@ -72,6 +74,10 @@ export const MotionTrackingSection: React.FC<MotionTrackingSectionProps> = ({
   clipId,
 }) => {
   const { t } = useTranslation();
+  const project = useProjectStore((state) => state.project);
+  const executeActionBatch = useProjectStore(
+    (state) => state.executeActionBatch,
+  );
   const [state, setState] = useState<MotionTrackingState>({
     isTracking: false,
     progress: 0,
@@ -80,6 +86,28 @@ export const MotionTrackingSection: React.FC<MotionTrackingSectionProps> = ({
     lostFrames: [],
     error: null,
   });
+
+  const entry = project.timeline.tracks
+    .flatMap((track) => track.clips)
+    .find((clip) => clip.id === clipId);
+  const fps =
+    project.settings.frameRate > 0 ? project.settings.frameRate : 30;
+  // Track the clip's actual source range instead of a hardcoded 30fps/150
+  // frame window: fps from project settings, source frames from clip
+  // duration × speed.
+  const trackRange = entry
+    ? {
+        frameRate: fps,
+        startFrame: 0,
+        endFrame: Math.max(
+          1,
+          Math.ceil(entry.duration * (entry.speed ?? 1) * fps),
+        ),
+      }
+    : { frameRate: fps, startFrame: 0, endFrame: fps };
+  const mediaItem = entry
+    ? project.mediaLibrary.items.find((item) => item.id === entry.mediaId)
+    : undefined;
 
   const [region, setRegion] = useState<Rectangle>({
     x: 100,
@@ -94,9 +122,11 @@ export const MotionTrackingSection: React.FC<MotionTrackingSectionProps> = ({
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [applyScale, setApplyScale] = useState(true);
-  const [applyRotation, setApplyRotation] = useState(true);
   const [smoothing, setSmoothing] = useState(0);
   const [isApplied, setIsApplied] = useState(false);
+  // Keyframes the clip had before the tracking result was applied, so
+  // "Remove Tracking" can restore them with the same undoable mechanism.
+  const priorKeyframesRef = React.useRef<Keyframe[] | null>(null);
 
   const bridge = getMotionTrackingBridge();
 
@@ -115,16 +145,14 @@ export const MotionTrackingSection: React.FC<MotionTrackingSectionProps> = ({
   const handleStartTracking = useCallback(async () => {
     try {
       await bridge.startTracking(clipId, region, {
-        frameRate: 30,
-        startFrame: 0,
-        endFrame: 150,
+        ...trackRange,
         algorithm,
         confidenceThreshold: confidenceThreshold / 100,
       });
     } catch (error) {
       console.error("Failed to start tracking:", error);
     }
-  }, [bridge, clipId, region, algorithm, confidenceThreshold]);
+  }, [bridge, clipId, region, trackRange, algorithm, confidenceThreshold]);
 
   const handleCancelTracking = useCallback(() => {
     if (state.currentJob) {
@@ -132,38 +160,99 @@ export const MotionTrackingSection: React.FC<MotionTrackingSectionProps> = ({
     }
   }, [bridge, state.currentJob]);
 
-  const handleApplyTracking = useCallback(() => {
-    const success = bridge.applyTrackingToClip(clipId, {
-      x: offsetX,
-      y: offsetY,
-    });
-    if (success) {
+  /**
+   * Landing: the tracked path becomes transform keyframes on the clip
+   * (position.x/y + scale.x/y) through ONE undoable keyframe/setAll batch —
+   * the same persistent channel the renderer's getAnimatedTransform and the
+   * exporter evaluate. The engine's in-memory attachment is only kept as a
+   * session cache for the live-preview channel.
+   */
+  const applyTrackingKeyframes = useCallback(
+    (applyOffset: { x: number; y: number }, isFirstApply: boolean) => {
+      if (!entry) return false;
+      const trackingDataList = bridge.getTrackingDataForClip(clipId);
+      const latest = trackingDataList[trackingDataList.length - 1];
+      if (!latest || latest.keyframes.length === 0) return false;
+      const keyframes = trackingPathToKeyframes(latest, {
+        outputWidth: project.settings.width,
+        outputHeight: project.settings.height,
+        source: {
+          width: mediaItem?.metadata?.width ?? project.settings.width,
+          height: mediaItem?.metadata?.height ?? project.settings.height,
+        },
+        clip: { duration: entry.duration, speed: entry.speed },
+        applyScale,
+        offset: applyOffset,
+      });
+      if (keyframes.length === 0) return false;
+
+      const batch = executeActionBatch(
+        [createAction("keyframe/setAll", { clipId, keyframes })],
+        {
+          groupLabel: "Motion Tracking",
+          historyOwner: "human",
+        },
+      );
+      if (!batch.result.success) return false;
+      if (isFirstApply) {
+        priorKeyframesRef.current = entry.keyframes;
+      }
+      // Session cache for the (GUI-only) live-preview attachment channel.
+      bridge.applyTrackingToClip(clipId, applyOffset);
       bridge.setApplyScale(clipId, applyScale);
-      bridge.setApplyRotation(clipId, applyRotation);
+      return true;
+    },
+    [
+      bridge,
+      clipId,
+      entry,
+      project.settings,
+      mediaItem,
+      applyScale,
+      executeActionBatch,
+    ],
+  );
+
+  const handleApplyTracking = useCallback(() => {
+    if (applyTrackingKeyframes({ x: offsetX, y: offsetY }, true)) {
       setIsApplied(true);
     }
-  }, [bridge, clipId, offsetX, offsetY, applyScale, applyRotation]);
+  }, [applyTrackingKeyframes, offsetX, offsetY]);
 
   const handleRemoveTracking = useCallback(() => {
+    const prior = priorKeyframesRef.current;
+    if (prior && entry) {
+      executeActionBatch(
+        [createAction("keyframe/setAll", { clipId, keyframes: prior })],
+        {
+          groupLabel: "Remove Motion Tracking",
+          historyOwner: "human",
+        },
+      );
+      priorKeyframesRef.current = null;
+    }
     bridge.removeAttachment(clipId);
     setIsApplied(false);
-  }, [bridge, clipId]);
+  }, [bridge, clipId, entry, executeActionBatch]);
 
   const handleOffsetChange = useCallback(
     (axis: "x" | "y", value: number) => {
+      const nextOffset = {
+        x: axis === "x" ? value : offsetX,
+        y: axis === "y" ? value : offsetY,
+      };
       if (axis === "x") {
         setOffsetX(value);
       } else {
         setOffsetY(value);
       }
       if (isApplied) {
-        bridge.setTrackingOffset(clipId, {
-          x: axis === "x" ? value : offsetX,
-          y: axis === "y" ? value : offsetY,
-        });
+        // Re-land with the new offset so the persistent keyframes — not just
+        // the session attachment — follow the slider.
+        applyTrackingKeyframes(nextOffset, false);
       }
     },
-    [bridge, clipId, isApplied, offsetX, offsetY],
+    [applyTrackingKeyframes, isApplied, offsetX, offsetY],
   );
 
   const hasTrackingData =
@@ -171,15 +260,15 @@ export const MotionTrackingSection: React.FC<MotionTrackingSectionProps> = ({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 p-2 bg-primary/10 rounded-lg border border-primary/30">
-        <Target size={16} className="text-primary" />
-        <div className="flex flex-1 flex-col gap-0.5">
-          <Text type="supporting" color="primary" weight="medium">
-            {t("Motion Tracking")}</Text>
-          <Text type="supporting" color="secondary" className="text-[9px]">
-            {t("Track objects to attach elements")}</Text>
-        </div>
-      </div>
+          <div className="flex items-center gap-2 p-2 bg-primary/10 rounded-lg border border-primary/30">
+            <Target size={16} className="text-primary" />
+            <div className="flex flex-1 flex-col gap-0.5">
+              <Text type="supporting" color="primary" weight="medium">
+                {t("Motion Tracking")}</Text>
+              <Text type="supporting" color="secondary" className="text-[9px]">
+                {t("Track a region, apply its motion as transform keyframes")}</Text>
+            </div>
+          </div>
 
       {!state.isTracking && !hasTrackingData && (
         <>
@@ -292,9 +381,9 @@ export const MotionTrackingSection: React.FC<MotionTrackingSectionProps> = ({
             />
           </div>
 
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-[10px]">
-              <Text type="supporting" color="secondary">{t("Analyzing frames...")}</Text>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[10px]">
+                <Text type="supporting" color="secondary">{t("Matching the region frame by frame (correlation)...")}</Text>
               <Text type="supporting" color="primary" className="font-mono">
                 {Math.round(state.progress)}%
               </Text>
@@ -380,28 +469,21 @@ export const MotionTrackingSection: React.FC<MotionTrackingSectionProps> = ({
                   }
                 }}
               />
-              <CheckboxInput
-                label={t("Rotation")}
-                value={applyRotation}
-                labelIcon={<RotateCcw size={10} aria-hidden />}
-                onChange={(value) => {
-                  setApplyRotation(value);
-                  if (isApplied) {
-                    bridge.setApplyRotation(clipId, value);
-                  }
-                }}
-              />
             </div>
           </div>
 
           {!isApplied ? (
-            <Button
-              label={t("Apply Tracking to Clip")}
-              size="md"
-              variant="secondary"
-              onClick={handleApplyTracking}
-              className="w-full py-2.5 bg-primary/20 border border-primary/30 rounded-lg text-[11px] font-medium text-primary hover:bg-primary/30 transition-colors"
-            />
+            <div className="space-y-1.5">
+              <Button
+                label={t("Apply Tracking to Clip")}
+                size="md"
+                variant="secondary"
+                onClick={handleApplyTracking}
+                className="w-full py-2.5 bg-primary/20 border border-primary/30 rounded-lg text-[11px] font-medium text-primary hover:bg-primary/30 transition-colors"
+              />
+              <Text type="supporting" color="secondary" className="text-center text-[9px]">
+                {t("Applied as transform keyframes on this clip — undoable and saved with the project.")}</Text>
+            </div>
           ) : (
             <div className="space-y-2">
               <div className="flex items-center gap-2 p-2 bg-primary/10 border border-primary/20 rounded-lg">
@@ -432,7 +514,7 @@ export const MotionTrackingSection: React.FC<MotionTrackingSectionProps> = ({
 
       <div className="pt-2 border-t border-border">
         <Text type="supporting" color="secondary" className="text-center text-[9px]">
-          {t("Track objects to pin graphics, text, or effects")}</Text>
+          {t("Correlation matching — no AI model; works fully offline")}</Text>
       </div>
     </div>
   );

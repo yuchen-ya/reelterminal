@@ -794,5 +794,9 @@
     "emptyTitle": "No work assets yet",
     "emptyDetail": "Right-click a timeline clip and choose “Save to Work Assets” to reuse it later. Work assets are saved with this project; use the Library tab for assets you want across projects.",
     "noResults": "No work assets match the search."
-  }
+  },
+  "Track a region, apply its motion as transform keyframes": "Track a region, apply its motion as transform keyframes",
+  "Matching the region frame by frame (correlation)...": "Matching the region frame by frame (correlation)...",
+  "Applied as transform keyframes on this clip — undoable and saved with the project.": "Applied as transform keyframes on this clip — undoable and saved with the project.",
+  "Correlation matching — no AI model; works fully offline": "Correlation matching — no AI model; works fully offline"
 }

@@ -794,5 +794,9 @@
     "emptyTitle": "还没有工作素材",
     "emptyDetail": "在时间线片段上右键选择“保存到工作素材”，之后可再次加入时间线。工作素材随本项目保存；跨项目素材请使用素材库。",
     "noResults": "没有符合搜索的工作素材。"
-  }
+  },
+  "Track a region, apply its motion as transform keyframes": "跟踪区域，将其运动应用为变换关键帧",
+  "Matching the region frame by frame (correlation)...": "正在逐帧匹配该区域（相关性匹配）…",
+  "Applied as transform keyframes on this clip — undoable and saved with the project.": "跟踪结果将作为变换关键帧应用，可撤销，并随项目保存。",
+  "Correlation matching — no AI model; works fully offline": "相关性匹配 — 非 AI 模型；完全离线运行"
 }
