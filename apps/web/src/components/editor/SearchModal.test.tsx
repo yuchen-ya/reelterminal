@@ -106,4 +106,18 @@ describe("SearchModal inspector routing", () => {
     expect(screen.queryByText("Visual Effects")).toBeNull();
     expect(screen.getByText(/selected audio clip/i)).toBeInTheDocument();
   });
+
+  it("describes background removal as local model inference instead of AI", () => {
+    useUIStore.setState({ selectedItems: [] });
+
+    render(<SearchModal isOpen onClose={vi.fn()} />);
+
+    expect(screen.getByText("Background Removal")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Remove the background around people with an on-device segmentation model",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/AI-powered background removal/i)).toBeNull();
+  });
 });

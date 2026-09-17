@@ -72,18 +72,22 @@ export const BackgroundRemovalSection: React.FC<
     }
   }, [clipId]);
 
-  const handleInitialize = useCallback(async () => {
-    setIsInitializing(true);
-    try {
-      const engine = initializeBackgroundRemovalEngine();
-      await engine.initialize();
-      setIsInitialized(true);
-    } catch (error) {
-      console.error("Failed to initialize background removal:", error);
-    } finally {
-      setIsInitializing(false);
-    }
-  }, []);
+  const handleInitialize = useCallback(
+    async (onProgress?: (progress: number, message: string) => void) => {
+      setIsInitializing(true);
+      try {
+        const engine = initializeBackgroundRemovalEngine();
+        await engine.initialize(onProgress);
+        setIsInitialized(true);
+      } catch (error) {
+        console.error("Failed to initialize background removal:", error);
+        throw error;
+      } finally {
+        setIsInitializing(false);
+      }
+    },
+    [],
+  );
 
   const updateSettings = useCallback(
     (updates: Partial<BackgroundRemovalSettings>) => {
@@ -106,20 +110,14 @@ export const BackgroundRemovalSection: React.FC<
     setIsProcessing(true);
 
     try {
-      updateTaskProgress(taskId, 10, "Initializing AI model...");
-
       if (!isInitialized) {
-        await handleInitialize();
+        // Progress comes from the engine's real initialization stages
+        // (canvas setup, segmentation model download/load). First use may
+        // download the model from the network, so it can take a while.
+        await handleInitialize((progress, message) => {
+          updateTaskProgress(taskId, progress, message);
+        });
       }
-
-      updateTaskProgress(taskId, 30, "Preparing background detection...");
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      updateTaskProgress(taskId, 60, "Configuring effect pipeline...");
-      await new Promise((resolve) => setTimeout(resolve, 400));
-
-      updateTaskProgress(taskId, 90, "Finalizing setup...");
-      await new Promise((resolve) => setTimeout(resolve, 300));
 
       updateSettings({ enabled: true });
       completeTask(taskId);

@@ -131,7 +131,7 @@ const SEARCHABLE_EFFECTS: SearchItem[] = [
     category: "Video",
     keywords: ["background", "remove", "ai", "mask", "cutout", "person"],
     icon: Wand2,
-    description: "AI-powered background removal",
+    description: "Remove the background around people with an on-device segmentation model",
     sectionId: "background-removal",
     clipTypes: ["video", "image"],
   },
@@ -589,7 +589,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                                 maxLines={1}
                                 className="mt-0.5"
                               >
-                                {effect.description}
+                                {t(effect.description)}
                               </Text>
                             </div>
                             <Kbd keys="enter" />
