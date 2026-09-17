@@ -409,9 +409,16 @@ screenshot delivery state.
 - Live `history.get`/`history.control` delegate to the GUI's canonical history
   and preserve writer gate, revision CAS, renderer-side timeout replay, and
   one project revision per undo/redo. Headless never guesses inverse ops.
-- `media.analyze_start` currently supports only the real built-in
-  `technicalQuality` probe (mediabunny + file stat). The other declared types
-  are individually unavailable in `capabilities.get`; they fail
+- `media.analyze_start` supports the built-in `technicalQuality` probe
+  (mediabunny + file stat), `audioSummary` (local FFmpeg/ffprobe after a
+  real preflight), and the dedicated `silence` and `beatGrid` types:
+  `silence` runs the core `detectSilenceRangesInPcm` kernel with the GUI
+  silence-cut panel's defaults (−40 dBFS threshold, 0.5 s minimum duration,
+  0.1 s padding, tunable via `silenceParams`), and `beatGrid` runs the core
+  beat-detection engine (`bpm`/`confidence`/`beats`; downbeats are not
+  available — no downbeat detector is installed). `audioSummary`'s
+  silence/bpm fields come from the same kernels. The remaining declared
+  types are individually unavailable in `capabilities.get`; they fail
   `UNSUPPORTED` before job creation.
 - New closed edit ops with Core/GUI/renderer parity are `track.update`
   (name/lock/hide/mute/solo), `subtitle.importSrt` (256 KiB/500 cues),
@@ -440,6 +447,17 @@ screenshot delivery state.
   the keyframes persist in `clip.automation.volume` for preview and export
   as one undo unit, an empty synthesis fails `INVALID_PARAMS`, and trigger
   selection is RMS envelope analysis, not AI),
+  `clip.setBackgroundRemoval` (AI background removal on one clip: required
+  `enabled` plus the GUI Background Removal panel's `mode`
+  (`blur`/`color`/`image`/`video`/`transparent`), `blurAmount` (0..50 px),
+  `backgroundColor` (hex), `backgroundImageUrl`/`backgroundVideoUrl`
+  (≤2048 chars), `edgeBlur` (0..10 px), and `threshold` (0..1); omitted
+  tuning fields merge onto the clip's prior settings, disabling keeps them,
+  and the persisted `clip.backgroundRemoval` field is one undoable action
+  shared with the GUI panel. Rendering needs MediaPipe person segmentation
+  inside the desktop-GUI Chromium runtime (the model downloads on first GUI
+  use and is cached); the op persists the setting, but headless-rendered
+  frames keep the original background — verify through the desktop GUI),
   and `svg.create`/`svg.update`/`svg.remove` (self-contained inline SVG on
   graphics tracks — the shared core ingest gate rejects scripts, foreign
   objects, event handlers, unsafe URL schemes, external references, and

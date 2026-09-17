@@ -114,8 +114,16 @@ same history. Headless history control is honestly unavailable.
 `media_analyze_start` is asynchronous and returns a generalized job id.
 Inspect `capabilities_get.mediaAnalysis.types` before requesting analysis,
 then use `job_status`/`job_cancel` exactly as for export. At this contract
-revision `technicalQuality` is built in, and `audioSummary` uses locally installed
-FFmpeg/ffprobe after a real preflight; unsupported types fail before a job is created. Large future transcript/frame results must
+revision `technicalQuality` is built in, `audioSummary` uses locally installed
+FFmpeg/ffprobe after a real preflight, and the dedicated `silence` and
+`beatGrid` types run the same core kernels as the GUI silence-cut and
+beat-sync panels over FFmpeg-extracted mono PCM — `silence` returns
+`silentRegions` with the GUI panel's defaults (−40 dBFS threshold, 0.5 s
+minimum duration, 0.1 s padding; tunable via `silenceParams`), and
+`beatGrid` returns `bpm`/`confidence`/`beats` with downbeats unavailable
+(no downbeat detector is installed). `audioSummary`'s silence/bpm fields
+come from those same kernels. Unsupported types fail before a job is
+created. Large future transcript/frame results must
 remain artifact references rather than inline responses.
 
 `media_inspect` is the bundled read-only source inspection tool. Check
@@ -470,7 +478,7 @@ and `{projectId, projectName, windowId}`.
 
 ### The `edit_apply` op vocabulary
 
-Forty-three ops, one atomic batch each call (the exact fields and bounds live in
+Forty-four ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
 - `track.add` — create a track (`trackType`); `track.remove` — remove an empty
@@ -614,6 +622,23 @@ Forty-three ops, one atomic batch each call (the exact fields and bounds live in
   noise-reduction DSP the GUI panel drives — deterministic local signal
   processing, not AI or model inference. Unknown `clipId` fails `NOT_FOUND`,
   as does `enabled:false` when the clip has no effect yet.
+- `clip.setBackgroundRemoval` — set one clip's AI background removal
+  (matte): required `clipId` and `enabled`; optional `mode` (one of
+  `blur`, `color`, `image`, `video`, `transparent`), `blurAmount`
+  (0..50 px), `backgroundColor` (hex color), `backgroundImageUrl` /
+  `backgroundVideoUrl` (non-empty URLs, at most 2048 chars), `edgeBlur`
+  (0..10 px), and `threshold` (0..1). Omitted tuning fields merge onto the
+  clip's prior settings (engine defaults on first use); disabling keeps the
+  tuned parameters, matching the GUI toggle. The op persists the same
+  `clip.backgroundRemoval` field the GUI Background Removal panel writes —
+  one undoable action, saved with the project. Rendering is MediaPipe
+  person segmentation (local in-browser inference) inside the desktop GUI,
+  where the model downloads on first GUI use; headless runtimes have no
+  MediaPipe runtime, so the op persists the setting but headless-rendered
+  frames keep the original background — verify this effect through the
+  desktop GUI. When the model cannot load, the GUI engine degrades to a
+  non-AI luminance mask and the GUI discloses the degraded mask. Unknown
+  `clipId` fails `NOT_FOUND`.
 - `svg.create` — place self-contained inline SVG markup on a graphics
   track: required `svgContent` (non-empty inline SVG markup string),
   `startTime` (>= 0), and `duration` (> 0); optional `trackId` (must be a

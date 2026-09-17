@@ -81,8 +81,10 @@ implemented features, reusable foundations, and remaining integration work.
   Sparse frames do not review continuous motion, audio, or editing rhythm.
 - Scoped `timeline.query` reads, `project.changes` delta recovery,
   `edit.validate` preflight, and live `history.get`/`history.control` support
-  iterative editing. `media.analyze_start` currently implements only
-  `technicalQuality`; other analysis types report unavailable.
+  iterative editing. `media.analyze_start` implements `technicalQuality`
+  (built-in probe), `audioSummary` (local FFmpeg), and the dedicated
+  `silence` and `beatGrid` types that share the GUI panels' core silence
+  and beat-detection kernels; other analysis types report unavailable.
 - The atomic `edit_apply` vocabulary covers placement, moving, trimming,
   splitting, duplication, ripple deletion, constant speed/reverse, visual
   transforms and crop, volume, fades, ordinary removal, clip transitions,
@@ -90,7 +92,8 @@ implemented features, reusable foundations, and remaining integration work.
   renaming, safe track/media removal,
   review markers, SRT subtitle import, temperature/tint grading, fixed-key
   chroma keying (green screen), local audio noise reduction, audio ducking
-  via envelope keyframes, Auto Reframe
+  via envelope keyframes, AI background removal (matte; rendered inside the
+  desktop GUI via MediaPipe person segmentation), Auto Reframe
   crop-plan application (keyframed single-clip crop with canvas retarget),
   self-contained SVG overlay creation/update/removal on graphics tracks,
   media source
