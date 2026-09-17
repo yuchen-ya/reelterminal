@@ -214,6 +214,40 @@ export interface OpenReelConversationSetupState {
 
 export type OpenReelConversationEvent = DesktopConversationEvent;
 
+/* ---- Agent media tasks (artifact receiving) ------------------------------ */
+
+export interface OpenReelAgentTaskMediaRoots {
+  /** First advertised media root; null when the host advertised none. */
+  recommendedRoot: string | null;
+  mediaRoots: readonly string[];
+}
+
+export interface OpenReelAgentTaskOutputFile {
+  path: string;
+  name: string;
+  sizeBytes: number;
+  lastModifiedMs: number;
+}
+
+export interface OpenReelAgentTaskImportOk {
+  ok: true;
+  value: {
+    mediaId: string;
+    name: string;
+    revision: number;
+    replayed: boolean;
+  };
+}
+
+export interface OpenReelAgentTaskImportError {
+  ok: false;
+  error: { code: string; message: string; details?: unknown };
+}
+
+export type OpenReelAgentTaskImportReply =
+  | OpenReelAgentTaskImportOk
+  | OpenReelAgentTaskImportError;
+
 export type OpenReelAnalysisStaleness =
   | { kind: "current" }
   | { kind: "source-missing" }
@@ -484,6 +518,18 @@ declare global {
           threadId?: string;
           createThread?: boolean;
         }): Promise<OpenReelConversationSetupState>;
+      };
+      /** Agent media tasks: advertised roots + product-side artifact import. */
+      agentTasks?: {
+        getMediaRoots(): Promise<OpenReelAgentTaskMediaRoots>;
+        scanTaskOutput(
+          outputDirectory: string,
+        ): Promise<{ files: readonly OpenReelAgentTaskOutputFile[] }>;
+        importArtifact(args: {
+          path: string;
+          name?: string;
+          idempotencyKey: string;
+        }): Promise<OpenReelAgentTaskImportReply>;
       };
     };
   }

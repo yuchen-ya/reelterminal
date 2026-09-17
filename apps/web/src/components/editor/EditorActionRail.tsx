@@ -18,6 +18,7 @@ import {
   HelpCircle,
   FileCode,
   Command,
+  AudioLines,
 } from "@/icons/lucide-compat";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
@@ -205,6 +206,11 @@ export const EditorActionRail: React.FC = () => {
               />
             ),
             onClick: () => openModal("recorder"),
+          },
+          {
+            label: t("agentMediaTasks.entry"),
+            icon: <AudioLines size={14} aria-hidden />,
+            onClick: () => openModal("agentMediaTask"),
           },
           { type: "divider" },
           {

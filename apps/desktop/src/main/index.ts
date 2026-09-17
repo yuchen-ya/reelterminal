@@ -33,6 +33,7 @@ import {
   installPreloadFailureNotice,
 } from "./startup-failures";
 import { registerLiveIpc } from "./ipc/live";
+import { registerAgentTaskIpc } from "./live/agent-task-channels";
 import { registerAnalysisRecordsIpc } from "./ipc/analysis-records";
 import { registerConversationIpc } from "./ipc/conversation";
 import {
@@ -286,6 +287,7 @@ app.whenReady().then(() => {
   // Live human–agent collaboration (ADR 0004 Slice 3): external MCP endpoint
   // plus collabControl behind the main-process session host.
   registerLiveIpc(getLiveSessionHost());
+  registerAgentTaskIpc(getLiveSessionHost());
   registerAnalysisRecordsIpc(getLiveSessionHost());
   registerConversationIpc(getConversationHost(), getCodexOnboardingHost());
   createWindow();

@@ -206,6 +206,16 @@ contextBridge.exposeInMainWorld("openreel", {
       return () => ipcRenderer.removeListener(CHANNELS.conversationEvent, handler);
     },
   },
+  // Agent media tasks (voiceover/music): read-only view of the advertised
+  // media roots plus the product-side artifact import forward. JSON-safe
+  // payloads only; the import itself runs in the main-process facade.
+  agentTasks: {
+    getMediaRoots: () => ipcRenderer.invoke(CHANNELS.agentTaskMediaRoots, undefined),
+    scanTaskOutput: (outputDirectory: string) =>
+      ipcRenderer.invoke(CHANNELS.agentTaskScanOutput, { outputDirectory }),
+    importArtifact: (args: { path: string; name?: string; idempotencyKey: string }) =>
+      ipcRenderer.invoke(CHANNELS.agentTaskImport, args),
+  },
   lifecycle: {
     // The main process asks (on window close / quit) whether there are unsaved
     // changes; the renderer answers synchronously from its dirty state.

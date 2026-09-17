@@ -54,7 +54,7 @@ export function agentWorkspaceRoot(): string {
  * Advanced hosts can replace the list before launch without changing the
  * MCP contract.
  */
-function liveMediaRoots(): readonly string[] {
+export function liveMediaRoots(): readonly string[] {
   const configured = process.env.OPENREEL_LIVE_MEDIA_ROOTS;
   if (configured?.trim()) {
     return configured

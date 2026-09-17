@@ -12,6 +12,8 @@ import { KeyframeEditorPanel } from "./KeyframeEditorPanel";
 import { AudioMixer } from "../audio-mixer";
 import { KeyboardShortcutsOverlay } from "./KeyboardShortcutsOverlay";
 import { PanelErrorBoundary } from "../ErrorBoundary";
+import { AgentMediaTaskDialog } from "./dialogs/AgentMediaTaskDialog";
+import { AgentMediaTaskRuntime } from "./dialogs/AgentMediaTaskRuntime";
 import { SpotlightTour, MoGraphTour } from "./tour";
 import { ExternalAgentFloatingWindow } from "./agent/ExternalAgentFloatingWindow";
 import { useProjectStore } from "../../stores/project-store";
@@ -541,6 +543,9 @@ export const EditorInterface: React.FC = () => {
       />
 
       <ExternalAgentFloatingWindow />
+
+      <AgentMediaTaskRuntime />
+      <AgentMediaTaskDialog />
 
       <SpotlightTour />
       <MoGraphTour />

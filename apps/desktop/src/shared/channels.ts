@@ -63,4 +63,7 @@ export const CHANNELS = {
   conversationSetupInspect: "openreel:conversation:setup:inspect",
   conversationSetupStart: "openreel:conversation:setup:start",
   conversationEvent: "openreel:conversation:event",
+  agentTaskMediaRoots: "openreel:agentTasks:mediaRoots",
+  agentTaskScanOutput: "openreel:agentTasks:scanOutput",
+  agentTaskImport: "openreel:agentTasks:importArtifact",
 } as const;
