@@ -21,8 +21,8 @@ connect that Agent to the open ReelTerminal desktop project through MCP.
    ```
 
 The connector reads `~/.openreel/live-endpoint.json`, forwards stdio MCP to
-the authenticated loopback endpoint, and exposes exactly the 39 live tools
-(37 built-in verbs plus `media_import_preflight` and `media_inspect`) listed in the root
+the authenticated loopback endpoint, and exposes exactly the 45 live tools
+(43 built-in verbs plus `media_import_preflight` and `media_inspect`) listed in the root
 [`SKILL.md`](../SKILL.md). Do not copy the endpoint token
 into prompts, project files, or logs.
 
@@ -145,6 +145,32 @@ honestly `UNSUPPORTED` — check `capabilities_get.fonts`). Upload reads
 (`ttf`/`otf`/`woff`/`woff2`, 10 MiB cap). A duplicate family name is
 deduped with a suffix, never overwritten: always use the returned
 `fontFamily` verbatim when styling text.
+
+## User-level custom presets
+
+`preset_list`/`preset_get`/`preset_create`/`preset_update`/`preset_remove`/
+`preset_apply` manage the user's custom presets — text styles, clip effect
+stacks, and transition parameter sets — user state shared with the GUI
+across projects, not project state (live only; headless is honestly
+`UNSUPPORTED` — check `capabilities_get.customPresets`). Collaboration
+rules:
+
+- What you create appears in the open preset panels immediately, and what
+  the user saves there is visible to your next `preset_list` — one store,
+  no polling, no import step.
+- Effect presets are closed to the engine's 14 parametered clip-effect
+  types: the GUI stack's extra looks (grayscale, sepia, shader, …) and
+  audio effects are honestly rejected, never approximated — say so instead
+  of promising a saved preset.
+- Applying a preset is one undoable batch the user can revert with one
+  click. Placement limits are hard rejections (`INVALID_PARAMS` with a
+  reason), never silently shortened the way the GUI clamps; `preset.apply`
+  for text restyles an existing text clip — build the clip with
+  `text.create` first.
+- Deleting a preset is permanent and needs no confirmation; clips and cuts
+  already built from it keep their parameter copies. Do not present
+  deletion as reversible, and never claim a preset stores media bytes —
+  it stores parameters only.
 
 ## Keep every creation task in one workspace
 

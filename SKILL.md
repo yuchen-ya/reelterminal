@@ -90,7 +90,8 @@ This connector exposes the same open GUI project through the following tools:
 `export_start` · `job_status` · `job_cancel` · `verify_artifact` ·
 `material_list` · `material_get` · `material_create` · `material_update` ·
 `material_batch_update` · `material_remove` · `material_attach` ·
-`material_undo` · `font_upload` · `font_list`.
+`material_undo` · `font_upload` · `font_list` · `preset_list` · `preset_get` ·
+`preset_create` · `preset_update` · `preset_remove` · `preset_apply`.
 
 The facade verbs are dot-named (`session.describe`, `editor.control`); on the
 MCP wire each dot becomes an underscore (`session.describe` →
@@ -386,6 +387,12 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `material_undo` | Undo one library journal entry (default: latest — e.g. one agent batch organize); pass `idempotencyKey`; independent of project history |
 | `font_upload` | Register a user-level custom font (live only): `filePath` inside `mediaRoots` or `dataBase64`; ttf/otf/woff/woff2, 10 MiB cap; duplicate family names are deduped with a suffix — use the returned `fontFamily` verbatim |
 | `font_list` | List the installed custom font families (live only; headless honestly `UNSUPPORTED` — check `capabilities_get`) |
+| `preset_list` | List the user's saved custom presets (live only): optional `kind` (`text`/`effect`/`transition`/`graphics`) and name+tag `query`; returns metadata with `hasThumbnail` unless `includePayload:true` embeds each parameter bundle — user state, independent of the open project |
+| `preset_get` | Return one preset in full by `id`: kind, name, tags, validated payload, revision; unknown ids fail `NOT_FOUND` |
+| `preset_create` | Save a reusable preset (live only): `text` (whitelisted text-style fields), `effect` (1–8 clip effects — types are CLOSED to the engine's 14 parametered clip-effect types; audio effects and GUI-stack-only kinds such as `grayscale` are honestly rejected, never stored), or `transition` (one of the 24 engine transition types with parameter/duration overrides). Unknown fields and out-of-range values are rejected, never clamped or silently dropped; the preset appears in the matching GUI panel immediately |
+| `preset_update` | Rename a preset, replace its tags/payload/thumbnail; `expectedRevision` is the PRESET record's revision (CAS) — a concurrent GUI edit fails `CONFLICT`, re-read and retry |
+| `preset_remove` | Delete one preset — no confirmation gate, permanent, idempotent on retries (`alreadyGone`); projects already built from it keep their parameter copies and are never affected |
+| `preset_apply` | Apply one preset to the open project as ONE undoable batch: text restyles an EXISTING text clip (`updateStyle` only — create the clip with `text.create` first), effect applies its stack to explicit `clipIds`, transition sets a cut (`clipAId`, optional `clipBId`; omitting it targets the out-point edge). Placement limits are HARD rejections (`INVALID_PARAMS`, `details.reason` names why — never clamped the way the GUI panel pre-clamps). Project `expectedRevision` CAS; mint a fresh `idempotencyKey` |
 
 Every result is one JSON envelope: `{ok:true, value}` or
 `{ok:false, error:{code, message, details}}` with `isError:true` — match on

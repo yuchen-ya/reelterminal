@@ -20,14 +20,14 @@ only reads that descriptor and posts requests/polls updates.
 
 ReelTerminal is the client of this protocol. The external Agent owns the model,
 reasoning, credentials, conversation identity, and durable history. ReelTerminal
-owns the editor, the canonical project, and the separate 39-tool live MCP
+owns the editor, the canonical project, and the separate 45-tool live MCP
 facade. The conversation adapter never becomes a second writer and never
 calls ReelTerminal edit tools on behalf of a chat panel.
 
 ```text
 external Agent conversation ── thin adapter ── optional ReelTerminal view
              │
-             └────────────── 39-tool MCP ────────────── ReelTerminal live project
+             └────────────── 45-tool MCP ────────────── ReelTerminal live project
 ```
 
 The conversation endpoint and the MCP endpoint are separate contracts. The
@@ -54,7 +54,7 @@ silently emulate missing behavior.
 An implementation MAY expose `mcp-only` as a local fallback state when it has
 no conversation attachment. `mcp-only` is not a value for
 `adapter.capabilityLevel`: the Agent can still use ReelTerminal's independent
-39-tool live MCP endpoint and its native chat.
+45-tool live MCP endpoint and its native chat.
 
 ### 2.1 Negotiation
 

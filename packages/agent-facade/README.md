@@ -61,10 +61,10 @@ const state = await facade["project.get_state"]();
 
 ## Verbs
 
-The current registry exposes **39 tools: 37 built-in verbs plus the two
+The current registry exposes **45 tools: 43 built-in verbs plus the two
 bundled plugin tools** (`media_import_preflight`, `media.inspect`). The
 slice narrative below predates the later additions (the `material.*`,
-`analysis.*`, and `font.*` verbs, `preview.render_comparison`,
+`analysis.*`, `font.*`, and `preset.*` verbs, `preview.render_comparison`,
 `media.import_preflight`)
 and does not itemize them.
 `FACADE_VERBS` in `src/types.ts` and `BUNDLED_PLUGINS` in `src/plugins/index.ts`
@@ -87,7 +87,7 @@ Slice 6: `project.changes` · `timeline.query` · `edit.validate` ·
 `history.get` · `history.control` add bounded delta recovery, scoped reads,
 side-effect-free preflight, and canonical live undo/redo. `media.analyze_start`
 adds asynchronous media analysis over the generalized `job.status`/
-`job.cancel` path. Live and headless sessions implement the same 39-tool
+`job.cancel` path. Live and headless sessions implement the same 45-tool
 contract over a `LiveProjectStore` seam with no live project copy; headless
 history control reports `UNSUPPORTED` because it has no GUI/Core history stack.
 
@@ -155,7 +155,7 @@ no-op with `ok: true`.
 
 ## Live-mode contract differences (ADR 0004)
 
-Live sessions (`createLiveFacade`) implement the same 39 verbs against the
+Live sessions (`createLiveFacade`) implement the same 45 verbs against the
 open GUI project. Where a verb's behavior must differ by mode, the contract
 states it up front instead of letting integrators discover it at runtime:
 
@@ -302,6 +302,55 @@ styling. `font.list` projects the installed families without bytes. Live
 sessions require the host's font-library bridge; headless sessions report
 `UNSUPPORTED`. `capabilities.get.fonts` carries availability, reason,
 formats, and limits.
+
+## Custom presets (`preset.*` verbs)
+
+`preset.list`/`preset.get`/`preset.create`/`preset.update`/`preset.remove`/
+`preset.apply` manage the user's saved custom presets — the same records the
+GUI's text, effect, and transition preset panels read and write (renderer
+IndexedDB). Presets are user state shared across projects, not project
+state. Live sessions require the host's preset-library bridge; headless
+sessions report `UNSUPPORTED`. `capabilities.get.customPresets` carries
+availability, reason, kinds, limits, and apply targets.
+
+- Kinds: `text` (whitelisted text-style fields — code-facing fields such as
+  the text shader are excluded), `effect` (1–8 clip effects whose types are
+  closed to the engine's 14 parametered clip-effect types: `blur`, `shadow`,
+  `glow`, `brightness`, `contrast`, `saturation`, `hue-saturation`,
+  `color-balance`, `curves`, `motion-blur`, `radial-blur`, `vignette`,
+  `film-grain`, `chromatic-aberration`; audio effects fail
+  `UNSUPPORTED_EFFECT_TYPE`, and kinds outside the set — the GUI effect
+  stack's `grayscale`, `sepia`, `shader`, and their siblings — fail
+  `UNKNOWN_EFFECT_TYPE`), and `transition` (one of the 24 engine transition
+  types with parameter and duration overrides). Unknown payload fields and
+  out-of-range values are rejected with a stable code, never clamped or
+  silently dropped. A `graphics` kind validates and stores inline SVG, but
+  applying it is not implemented yet and reports an explicit unsupported
+  error at apply time.
+- Payloads are deep-validated in the facade and re-validated by the
+  renderer. `preset.create`/`preset.update`/`preset.remove` accept
+  `idempotencyKey` (retry replays the committed result);
+  `preset.update` CAS-guards the PRESET record's `revision`
+  (`expectedRevision`; stale value fails `CONFLICT`).
+- `preset.remove` needs no confirmation and is permanent: projects already
+  built from a preset keep their parameter copies, because applying a
+  preset copies values into the project and nothing references the preset
+  record.
+- `preset.apply` expands a preset into one undoable core action batch:
+  text targets an EXISTING text clip (`mode:"updateStyle"` — create the
+  clip with `edit.apply text.create` first), effect targets explicit
+  `clipIds`, and transition targets a cut (`clipAId`, optional `clipBId`
+  for the in-point edge; omitting `clipBId` applies at the out-point
+  edge). Placement rules are hard rejections, never clamped: a duration
+  over the cut's placement cap fails `INVALID_PARAMS` with
+  `details.reason` (`PLACEMENT_INVALID`) instead of being shortened — the
+  GUI panels pre-clamp with a warning, the Agent side does not. The
+  project's `expectedRevision` is CAS-guarded, an omitted value is guarded
+  with the current revision, and retries replay through a per-project
+  ledger instead of applying twice.
+- Visibility is immediate in both directions: a GUI save shows up in the
+  next `preset.list`, and an Agent create appears in the open panels
+  without polling — one renderer service is the only writer behind both.
 
 ## Bounded state, analysis, and finishing additions
 

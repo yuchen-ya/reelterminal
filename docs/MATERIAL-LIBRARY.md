@@ -30,6 +30,14 @@ each other: `material_attach` imports a library record into the project,
 while work-asset instantiation only reuses material that is already in
 the project.
 
+Custom presets (text styles, clip effect stacks, transition parameter
+sets in the text/effects/transitions panels) are a third, separate
+user-level store: like this library they are cross-project user state,
+but they hold PARAMETER bundles only — never media files, segments, or
+links — and applying one copies values into the project with no lasting
+reference, so deleting a preset never affects anything already built
+from it. The three systems do not copy to each other.
+
 ## Resource model
 
 Every record (`packages/core/src/material/types.ts`) carries:
