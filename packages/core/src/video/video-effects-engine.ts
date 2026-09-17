@@ -265,12 +265,30 @@ uniform sampler2D u_texture;
 uniform vec3 u_keyColor;
 uniform float u_tolerance;
 uniform float u_softness;
+uniform float u_spillSuppression;
 
 void main() {
  vec4 color = texture(u_texture, v_texCoord);
  float diff = distance(color.rgb, u_keyColor);
  float alpha = smoothstep(u_tolerance - u_softness, u_tolerance + u_softness, diff);
- fragColor = vec4(color.rgb, color.a * alpha);
+ vec3 rgb = color.rgb;
+ if (u_spillSuppression > 0.0 && alpha > 0.0) {
+  // De-spill: pull the key color's dominant channel back toward the average
+  // of the other two, weighted by the suppression amount. Mirrored by the
+  // CPU fallback in applyChromaKey.
+  float maxKey = max(u_keyColor.r, max(u_keyColor.g, u_keyColor.b));
+  if (u_keyColor.g == maxKey) {
+   float avgRB = (rgb.r + rgb.b) * 0.5;
+   rgb.g -= max(0.0, rgb.g - avgRB) * u_spillSuppression;
+  } else if (u_keyColor.b == maxKey) {
+   float avgRG = (rgb.r + rgb.g) * 0.5;
+   rgb.b -= max(0.0, rgb.b - avgRG) * u_spillSuppression;
+  } else {
+   float avgGB = (rgb.g + rgb.b) * 0.5;
+   rgb.r -= max(0.0, rgb.r - avgGB) * u_spillSuppression;
+  }
+ }
+ fragColor = vec4(clamp(rgb, 0.0, 1.0), color.a * alpha);
 }
 `;
 
@@ -964,6 +982,9 @@ export class VideoEffectsEngine {
           gl.uniform1f(toleranceLoc, readEffectNumber(params.tolerance, 0.3));
         if (softnessLoc)
           gl.uniform1f(softnessLoc, readEffectNumber(params.edgeSoftness, 0.1));
+        const spillLoc = shader.uniforms.get("u_spillSuppression");
+        if (spillLoc)
+          gl.uniform1f(spillLoc, readEffectNumber(params.spillSuppression, 0));
         break;
       }
       // Color grading filters
@@ -1285,11 +1306,13 @@ export class VideoEffectsEngine {
           | undefined;
         const tolerance = readEffectNumber(params.tolerance, 0.3);
         const softness = readEffectNumber(params.edgeSoftness, 0.1);
+        const spillSuppression = readEffectNumber(params.spillSuppression, 0);
         this.applyChromaKey(
           data,
           keyColor || { r: 0, g: 1, b: 0 },
           tolerance,
           softness,
+          spillSuppression,
         );
         break;
       }
@@ -1424,12 +1447,22 @@ export class VideoEffectsEngine {
     keyColor: { r: number; g: number; b: number },
     tolerance: number,
     softness: number,
+    spillSuppression = 0,
   ): void {
     const keyR = keyColor.r * 255;
     const keyG = keyColor.g * 255;
     const keyB = keyColor.b * 255;
     const tolDist = tolerance * 441.67; // sqrt(255^2 * 3)
     const softDist = softness * 441.67;
+
+    // De-spill channel selection (keyColor is constant per call): pull the
+    // key color's dominant channel back toward the average of the other two,
+    // weighted by the suppression amount. Mirrors u_spillSuppression in the
+    // GPU chromaKey shader so both paths stay visually identical.
+    const keyMax = Math.max(keyColor.r, keyColor.g, keyColor.b);
+    const suppressGreen = spillSuppression > 0 && keyColor.g === keyMax;
+    const suppressBlue = !suppressGreen && spillSuppression > 0 && keyColor.b === keyMax;
+    const suppressRed = !suppressGreen && !suppressBlue && spillSuppression > 0;
 
     for (let i = 0; i < data.length; i += 4) {
       const dr = data[i] - keyR;
@@ -1442,6 +1475,24 @@ export class VideoEffectsEngine {
         tolDist + softDist,
         dist,
       );
+      if (alpha > 0) {
+        if (suppressGreen) {
+          const avgRB = (data[i] + data[i + 2]) / 2;
+          data[i + 1] = Math.round(
+            data[i + 1] - Math.max(0, data[i + 1] - avgRB) * spillSuppression,
+          );
+        } else if (suppressBlue) {
+          const avgRG = (data[i] + data[i + 1]) / 2;
+          data[i + 2] = Math.round(
+            data[i + 2] - Math.max(0, data[i + 2] - avgRG) * spillSuppression,
+          );
+        } else if (suppressRed) {
+          const avgGB = (data[i + 1] + data[i + 2]) / 2;
+          data[i] = Math.round(
+            data[i] - Math.max(0, data[i] - avgGB) * spillSuppression,
+          );
+        }
+      }
       data[i + 3] = Math.round(data[i + 3] * alpha);
     }
   }
