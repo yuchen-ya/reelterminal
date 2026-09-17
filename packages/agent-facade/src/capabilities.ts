@@ -43,7 +43,14 @@ import {
 } from "./types";
 import { MATERIAL_LIBRARY_LIMITS } from "./material-library";
 import { FONT_LIBRARY_LIMITS } from "./font-library";
+import { PRESET_LIBRARY_LIMITS } from "./preset-verbs";
 import { MATERIAL_KINDS } from "@openreel/core/material/types";
+import { PRESET_KINDS } from "@openreel/core/presets/types";
+import {
+  MAX_EFFECTS_PER_PRESET,
+  MAX_GRAPHICS_SVG_BYTES,
+  MAX_THUMBNAIL_BYTES,
+} from "@openreel/core/presets/validate";
 import { DEFAULT_CHROMA_KEY_SETTINGS } from "@openreel/core/video/chroma-key-engine";
 import {
   DEFAULT_NOISE_REDUCTION_SETTINGS,
@@ -97,6 +104,7 @@ export interface CapabilityContext {
     readonly mediaImportAvailable: boolean;
     readonly materialLibraryAvailable?: boolean;
     readonly fontLibraryAvailable?: boolean;
+    readonly presetLibraryAvailable?: boolean;
     readonly unavailableVerbs: readonly FacadeVerb[];
   };
 }
@@ -167,6 +175,9 @@ export async function buildCapabilities(
     : false;
   const fontLibraryAvailable = ctx.live
     ? ctx.live.fontLibraryAvailable === true
+    : false;
+  const presetLibraryAvailable = ctx.live
+    ? ctx.live.presetLibraryAvailable === true
     : false;
   const noArtifactRoot = ctx.artifactRoot === undefined || ctx.artifactRoot.length === 0;
   const gateArtifactProducing = (
@@ -336,6 +347,32 @@ export async function buildCapabilities(
       inputs: ["filePath", "dataBase64"],
       duplicatePolicy: "suffix",
       persistence: "renderer-indexeddb",
+    },
+    customPresets: {
+      available: presetLibraryAvailable,
+      ...(presetLibraryAvailable
+        ? {}
+        : {
+            reason: ctx.live
+              ? "Live mode: the host did not provide the preset-library bridge; the preset.* verbs report UNSUPPORTED in this session."
+              : "Headless sessions have no GUI renderer, so the user-level custom presets (renderer IndexedDB, shared with the preset panels) are not reachable; preset.* verbs report UNSUPPORTED.",
+          }),
+      kinds: PRESET_KINDS,
+      limits: {
+        maxNameLength: PRESET_LIBRARY_LIMITS.maxNameLength,
+        maxTags: PRESET_LIBRARY_LIMITS.maxTags,
+        maxEffectsPerPreset: MAX_EFFECTS_PER_PRESET,
+        maxThumbnailBytes: MAX_THUMBNAIL_BYTES,
+        maxSvgBytes: MAX_GRAPHICS_SVG_BYTES,
+      },
+      persistence: "renderer-indexeddb",
+      apply: {
+        available: presetLibraryAvailable,
+        targets: ["text:updateStyle", "effect:clipIds", "transition:clipAId"],
+        ...(presetLibraryAvailable
+          ? {}
+          : { reason: "requires the live preset-library bridge" }),
+      },
     },
     projectChanges: {
       available: true,

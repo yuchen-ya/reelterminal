@@ -56,6 +56,14 @@ export type JsonSchemaNode =
   | { readonly enum: readonly (string | number)[] }
   | { readonly const: string }
   | JsonSchemaObjectNode
+  /**
+   * The one open-object leaf (no additionalProperties key = JSON-Schema
+   * default, i.e. any properties): reserved for parameter bundles whose deep
+   * validation lives in a shared validator (the custom-preset payload
+   * whitelist lives in @openreel/core/presets/validate). A closed emission
+   * here would make schema-validating clients unable to send valid payloads.
+   */
+  | { readonly type: "object" }
   /** `maxItems: 0` pins an array the closed verb set can only ever leave empty. */
   | { readonly type: "array"; readonly maxItems: 0 }
   | {

@@ -56,7 +56,14 @@ import {
   MATERIAL_ATTACH_SCHEMA,
   MATERIAL_UNDO_SCHEMA,
   FONT_UPLOAD_SCHEMA,
+  PRESET_LIST_SCHEMA,
+  PRESET_GET_SCHEMA,
+  PRESET_CREATE_SCHEMA,
+  PRESET_UPDATE_SCHEMA,
+  PRESET_REMOVE_SCHEMA,
+  PRESET_APPLY_SCHEMA,
 } from "./verb-schemas";
+import { validatePresetPayload } from "@openreel/core/presets/validate";
 import { VERB_SCHEMA_CORPUS } from "./verb-schema-corpus";
 import { FACADE_VERBS } from "./types";
 
@@ -305,6 +312,80 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
     case "font.list":
       validateObject(params, EMPTY_PARAMS_SCHEMA, "font.list params");
       return;
+    case "preset.list":
+      validateObject(params, PRESET_LIST_SCHEMA, "preset.list params");
+      return;
+    case "preset.get":
+      validateObject(params, PRESET_GET_SCHEMA, "preset.get params");
+      return;
+    case "preset.create": {
+      const valid = validateObject<Record<string, unknown>>(
+        params,
+        PRESET_CREATE_SCHEMA,
+        "preset.create params",
+      );
+      // Validator-only layer mirrored from live-session: the deep per-kind
+      // payload validation runs in the session body (Node-safe core
+      // validator, the SAME function the GUI save path uses).
+      const payload = validatePresetPayload(valid.payload);
+      if (!payload.ok) {
+        throw new FacadeError("INVALID_PARAMS", `preset.create: ${payload.message}`);
+      }
+      return;
+    }
+    case "preset.update":
+      validateObject(params, PRESET_UPDATE_SCHEMA, "preset.update params");
+      return;
+    case "preset.remove":
+      validateObject(params, PRESET_REMOVE_SCHEMA, "preset.remove params");
+      return;
+    case "preset.apply": {
+      const valid = validateObject<Record<string, unknown>>(
+        params,
+        PRESET_APPLY_SCHEMA,
+        "preset.apply params",
+      );
+      // Validator-only predicate, mirrored from live-session: the target
+      // shape is closed structurally before any renderer round-trip.
+      const target = valid.target as Record<string, unknown>;
+      const kind = target.kind;
+      if (kind === "text") {
+        if (target.mode !== "updateStyle" || typeof target.clipId !== "string" || target.clipId.length === 0) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            'preset.apply: text targets support {"kind":"text","mode":"updateStyle","clipId":...}',
+          );
+        }
+        return;
+      }
+      if (kind === "effect") {
+        const clipIds = target.clipIds;
+        if (
+          !Array.isArray(clipIds) ||
+          clipIds.length === 0 ||
+          !clipIds.every((id) => typeof id === "string" && id.length > 0)
+        ) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            "preset.apply: effect target requires a non-empty clipIds array",
+          );
+        }
+        return;
+      }
+      if (kind === "transition") {
+        if (typeof target.clipAId !== "string" || target.clipAId.length === 0) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            "preset.apply: transition target requires clipAId",
+          );
+        }
+        return;
+      }
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `preset.apply: unknown target kind "${String(kind)}"`,
+      );
+    }
     default:
       { const tool = PLUGIN_TOOLS.find((tool) => tool.name === verb);
         if (tool) { validateObject(params, tool.input, `${verb} params`); return; } }

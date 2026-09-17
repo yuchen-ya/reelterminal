@@ -18,7 +18,9 @@ import { PLUGIN_TOOLS } from "./plugins";
 import { EDIT_OP_TYPES, MEDIA_ANALYSIS_TYPES } from "./types";
 import { MATERIAL_LIBRARY_LIMITS } from "./material-library";
 import { FONT_LIBRARY_LIMITS } from "./font-library";
+import { PRESET_LIBRARY_LIMITS } from "./preset-verbs";
 import { MATERIAL_KINDS, MATERIAL_MEDIA_TYPES } from "@openreel/core/material/types";
+import { PRESET_KINDS } from "@openreel/core/presets/types";
 import {
   MAX_MATERIAL_METHOD_STEPS,
   MAX_MATERIAL_TAGS,
@@ -78,6 +80,7 @@ import {
   WORK_ASSET_INSTANTIATE_SCHEMA,
 } from "./ops";
 import {
+  isBoolean,
   isFiniteNumber,
   isNonEmptyString,
   isNonNegativeInteger,
@@ -1403,6 +1406,257 @@ export const FONT_UPLOAD_SCHEMA: ObjectSchema = {
 };
 
 /* ------------------------------------------------------------------ */
+/* preset.* (user-level custom presets)                                */
+/*                                                                     */
+/* The payload bundle gets only a plain-object shape check here; the   */
+/* emitted schema leaf stays open (no additionalProperties key), so    */
+/* schema-validating clients can send any bundle. Deep per-kind        */
+/* validation (whitelists, ranges, no shader, no                       */
+/* external references) runs in the session body against the same      */
+/* core validator the GUI uses, and again renderer-side at persist.    */
+/* ------------------------------------------------------------------ */
+
+const presetTagsField = (value: unknown): value is string[] =>
+  Array.isArray(value) &&
+  value.length <= PRESET_LIBRARY_LIMITS.maxTags &&
+  value.every((item) => typeof item === "string" && item.trim().length > 0);
+
+export const PRESET_LIST_SCHEMA: ObjectSchema = {
+  kind: {
+    check: (v) => (PRESET_KINDS as readonly unknown[]).includes(v),
+    describe: '"text" | "effect" | "transition" | "graphics"',
+    emits: { kind: "leaf", schema: { enum: PRESET_KINDS } },
+  },
+  query: {
+    check: (v) => typeof v === "string" && v.length <= PRESET_LIBRARY_LIMITS.maxQueryLength,
+    describe: `a search string of at most ${PRESET_LIBRARY_LIMITS.maxQueryLength} characters (matched over name and tags)`,
+    emits: { kind: "leaf", schema: { type: "string", maxLength: PRESET_LIBRARY_LIMITS.maxQueryLength } },
+  },
+  includePayload: {
+    check: isBoolean,
+    describe: "embed each preset's full payload in the list items (default: metadata only)",
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+};
+
+export const PRESET_GET_SCHEMA: ObjectSchema = {
+  id: {
+    check: isNonEmptyString,
+    describe: "a non-empty preset id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const PRESET_CREATE_SCHEMA: ObjectSchema = {
+  kind: {
+    check: (v) => (PRESET_KINDS as readonly unknown[]).includes(v),
+    describe: '"text" | "effect" | "transition" | "graphics"',
+    required: true,
+    emits: { kind: "leaf", schema: { enum: PRESET_KINDS } },
+  },
+  name: {
+    check: (v) => isNonEmptyString(v) && (v as string).trim().length <= PRESET_LIBRARY_LIMITS.maxNameLength,
+    describe: `a display name of 1..${PRESET_LIBRARY_LIMITS.maxNameLength} characters (duplicate names are allowed; ids are identity)`,
+    required: true,
+    emits: {
+      kind: "leaf",
+      schema: { type: "string", minLength: 1, maxLength: PRESET_LIBRARY_LIMITS.maxNameLength },
+    },
+  },
+  payload: {
+    check: isPlainObject,
+    describe: "the kind-specific parameter bundle (deep per-kind validation applies)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "object" } },
+  },
+  tags: {
+    check: presetTagsField,
+    describe: `an array of at most ${PRESET_LIBRARY_LIMITS.maxTags} non-empty tag strings`,
+    emits: {
+      kind: "array",
+      maxItems: PRESET_LIBRARY_LIMITS.maxTags,
+      items: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+    },
+  },
+  builtinBaseId: {
+    check: (v) => isNonEmptyString(v) && (v as string).length <= 160,
+    describe: "optional provenance marker when derived from a built-in (e.g. \"text:Heading\")",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1, maxLength: 160 } },
+  },
+  thumbnailDataUrl: {
+    check: isNonEmptyString,
+    describe: "optional inline thumbnail as a data:image/png;base64 URL (<=64 KiB decoded, <=256x160)",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty retry key; retries replay the committed result instead of duplicating",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const PRESET_UPDATE_SCHEMA: ObjectSchema = {
+  id: {
+    check: isNonEmptyString,
+    describe: "a non-empty preset id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  name: {
+    check: (v) => isNonEmptyString(v) && (v as string).trim().length <= PRESET_LIBRARY_LIMITS.maxNameLength,
+    describe: `a new display name of 1..${PRESET_LIBRARY_LIMITS.maxNameLength} characters`,
+    emits: {
+      kind: "leaf",
+      schema: { type: "string", minLength: 1, maxLength: PRESET_LIBRARY_LIMITS.maxNameLength },
+    },
+  },
+  tags: {
+    check: presetTagsField,
+    describe: `an array of at most ${PRESET_LIBRARY_LIMITS.maxTags} non-empty tag strings (replaces existing tags)`,
+    emits: {
+      kind: "array",
+      maxItems: PRESET_LIBRARY_LIMITS.maxTags,
+      items: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+    },
+  },
+  payload: {
+    check: isPlainObject,
+    describe: "a replacement parameter bundle (deep per-kind validation applies)",
+    emits: { kind: "leaf", schema: { type: "object" } },
+  },
+  thumbnailDataUrl: {
+    check: isNonEmptyString,
+    describe: "a replacement inline PNG thumbnail data URL (clearing the thumbnail is not an agent operation)",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "optional CAS guard: the preset record's revision observed by the caller; a mismatch fails CONFLICT",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty retry key",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const PRESET_REMOVE_SCHEMA: ObjectSchema = {
+  id: {
+    check: isNonEmptyString,
+    describe: "a non-empty preset id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty retry key",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+/**
+ * Closed apply-target variants (the one nested anyOf below preset.apply,
+ * discriminated by `kind` like edit.apply's op target union). The runtime
+ * structural check stays a superset: the session body validates the shape
+ * and the renderer pairs the target kind with the payload kind.
+ */
+export const PRESET_TARGET_TEXT_SCHEMA: ObjectSchema = {
+  kind: {
+    check: (v) => v === "text",
+    describe: '"text"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "text" } },
+  },
+  mode: {
+    check: (v) => v === "updateStyle",
+    describe: '"updateStyle" — create a text clip first (edit.apply text.create), then restyle it',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "updateStyle" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "the text clip to restyle",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const PRESET_TARGET_EFFECT_SCHEMA: ObjectSchema = {
+  kind: {
+    check: (v) => v === "effect",
+    describe: '"effect"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "effect" } },
+  },
+  clipIds: {
+    check: (v) =>
+      Array.isArray(v) && v.length > 0 && v.every((id) => typeof id === "string" && id.length > 0),
+    describe: "every timeline clip the effect stack applies to",
+    required: true,
+    emits: {
+      kind: "array",
+      minItems: 1,
+      items: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+    },
+  },
+};
+
+export const PRESET_TARGET_TRANSITION_SCHEMA: ObjectSchema = {
+  kind: {
+    check: (v) => v === "transition",
+    describe: '"transition"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "transition" } },
+  },
+  clipAId: {
+    check: isNonEmptyString,
+    describe: "the clip whose out-point the transition sits on",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  clipBId: {
+    check: isNonEmptyString,
+    describe: "the following clip for a two-sided cut; omitted targets the out-point edge",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const PRESET_APPLY_SCHEMA: ObjectSchema = {
+  presetId: {
+    check: isNonEmptyString,
+    describe: "a non-empty preset id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  target: {
+    check: isPlainObject,
+    describe:
+      'where the parameters land: {"kind":"text","mode":"updateStyle","clipId":...} | {"kind":"effect","clipIds":[...]} | {"kind":"transition","clipAId":...,"clipBId":"..."}',
+    required: true,
+    emits: {
+      kind: "anyOfObjects",
+      variants: [
+        PRESET_TARGET_TEXT_SCHEMA,
+        PRESET_TARGET_EFFECT_SCHEMA,
+        PRESET_TARGET_TRANSITION_SCHEMA,
+      ],
+    },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "PROJECT revision CAS; an omitted value is guarded with the current revision",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty retry key; retries replay instead of double-applying",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* The verb declaration map (single source, Decision 4)                */
 /* ------------------------------------------------------------------ */
 
@@ -1448,4 +1702,10 @@ export const VERB_PARAM_SCHEMAS: {
   "material.undo": MATERIAL_UNDO_SCHEMA,
   "font.upload": FONT_UPLOAD_SCHEMA,
   "font.list": EMPTY_PARAMS_SCHEMA,
+  "preset.list": PRESET_LIST_SCHEMA,
+  "preset.get": PRESET_GET_SCHEMA,
+  "preset.create": PRESET_CREATE_SCHEMA,
+  "preset.update": PRESET_UPDATE_SCHEMA,
+  "preset.remove": PRESET_REMOVE_SCHEMA,
+  "preset.apply": PRESET_APPLY_SCHEMA,
 };

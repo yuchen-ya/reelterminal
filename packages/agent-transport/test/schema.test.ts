@@ -34,6 +34,10 @@ import {
   EDITOR_CONTROL_TARGET_SCHEMA,
   TIMELINE_QUERY_RANGE_SCHEMA,
 } from "@openreel/agent-facade/verb-schemas";
+import {
+  isValidPresetPayload,
+  presetApplyTargetProblem,
+} from "@openreel/agent-facade/preset-verbs";
 
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 const compiled = new Map<string, any>();
@@ -136,6 +140,20 @@ function facadeRuntimeValidation(verb: string, params: unknown): boolean {
           return false;
         }
         return true;
+      }
+      case "preset.create": {
+        // Deep per-kind payload validation mirrors the live session body
+        // (the shared core validator the GUI save path also uses).
+        return isValidPresetPayload(valid.payload);
+      }
+      case "preset.update": {
+        if (valid.payload !== undefined && !isValidPresetPayload(valid.payload)) {
+          return false;
+        }
+        return true;
+      }
+      case "preset.apply": {
+        return presetApplyTargetProblem(valid.target) === null;
       }
       default:
         return true;

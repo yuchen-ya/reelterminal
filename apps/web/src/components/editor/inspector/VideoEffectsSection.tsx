@@ -2,6 +2,7 @@ import React, { useCallback, useMemo } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  BookmarkPlus,
   ChevronDown,
   RotateCcw,
   Eye,
@@ -28,6 +29,7 @@ import {
 } from "@openreel/core";
 import { ColorSelector } from "../../../motion/components/primitives";
 import { ShaderPreviewBrowser } from "../../shaders/ShaderPreviewBrowser";
+import { toast } from "../../../stores/notification-store";
 import {
   EDITOR_EFFECT_CATEGORIES,
   EDITOR_EFFECT_PREVIEWS,
@@ -38,6 +40,14 @@ import {
   copyVideoEffectStack,
   hasVideoEffectStackClipboard,
 } from "../../../utils/video-effect-stack-clipboard";
+import {
+  captureEffectPresetItem,
+  dedupePresetName,
+  saveEffectPreset,
+} from "../panels/effect-transition-preset-controllers";
+import { PresetNameDialog } from "../panels/preset-name-dialog";
+import type { EffectPresetItem } from "@openreel/core/presets/types";
+import { useCustomPresets } from "../../../services/custom-presets/use-custom-presets";
 import { useTranslation } from "react-i18next";
 
 function shaderEffectNumberValue(
@@ -114,6 +124,7 @@ const EffectItem: React.FC<{
   onDuplicate: (effectId: string) => void;
   onMove: (effectId: string, delta: -1 | 1) => void;
   onDropEffect: (sourceEffectId: string, targetEffectId: string) => void;
+  onSaveAsPreset?: () => void;
   canMoveUp: boolean;
   canMoveDown: boolean;
 }> = ({
@@ -124,6 +135,7 @@ const EffectItem: React.FC<{
   onDuplicate,
   onMove,
   onDropEffect,
+  onSaveAsPreset,
   canMoveUp,
   canMoveDown,
 }) => {
@@ -587,6 +599,15 @@ const EffectItem: React.FC<{
             size="sm"
             icon={<Copy size={12} aria-hidden />}
           />
+          {onSaveAsPreset && (
+            <IconButton
+              label={t("Save effect as preset")}
+              onClick={onSaveAsPreset}
+              variant="ghost"
+              size="sm"
+              icon={<BookmarkPlus size={12} aria-hidden />}
+            />
+          )}
           <IconButton
             label={t("Remove effect")}
             onClick={() => onRemove(effect.id)}
@@ -830,11 +851,71 @@ export const VideoEffectsSection: React.FC<VideoEffectsSectionProps> = ({
     hasVideoEffectStackClipboard(),
   );
 
+  const customEffectPresets = useCustomPresets("effect");
+  const existingPresetNames = useMemo(
+    () => customEffectPresets.map((preset) => preset.name),
+    [customEffectPresets],
+  );
+  const [presetSaveDraft, setPresetSaveDraft] = React.useState<{
+    effects: readonly EffectPresetItem[];
+  } | null>(null);
+  const [presetNameDraft, setPresetNameDraft] = React.useState("");
+
   const effects = useMemo(
     () => getVideoEffects(clipId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [clipId, getVideoEffects, modifiedAt],
   );
+
+  const handleSaveEffectAsPreset = useCallback(
+    (effect: VideoEffect) => {
+      const capture = captureEffectPresetItem(effect.type, effect.params);
+      if (!capture.ok) {
+        const reasonText =
+          capture.reason === "unsupported-type"
+            ? t("assets.effectPresets.audioUnsupported")
+            : capture.reason === "unknown-type"
+              ? `${t("assets.effectPresets.unknownType")}\n${capture.message}`
+              : capture.message;
+        toast.error(t("assets.effectPresets.saveFailed"), reasonText);
+        return;
+      }
+      const openDialog = () => {
+        setPresetNameDraft(
+          dedupePresetName(
+            t("assets.effectPresets.defaultName"),
+            existingPresetNames,
+          ),
+        );
+        setPresetSaveDraft({ effects: capture.effects });
+      };
+      if (capture.droppedParams.length > 0) {
+        const lines = capture.droppedParams.map(
+          (key) => `• ${key} — ${t("assets.effectPresets.unsupportedParamReason")}`,
+        );
+        const confirmed = window.confirm(
+          `${t("assets.effectPresets.unsupportedConfirmTitle")}\n\n${t(
+            "assets.effectPresets.unsupportedConfirmBody",
+            { fields: lines.join("\n") },
+          )}`,
+        );
+        if (!confirmed) return;
+      }
+      openDialog();
+    },
+    [existingPresetNames, t],
+  );
+
+  const handlePresetSaveConfirm = useCallback(() => {
+    if (!presetSaveDraft) return;
+    const draft = presetSaveDraft;
+    setPresetSaveDraft(null);
+    void saveEffectPreset({
+      name: presetNameDraft,
+      effects: draft.effects,
+      existingNames: existingPresetNames,
+    });
+  }, [existingPresetNames, presetNameDraft, presetSaveDraft]);
 
   const handleAddEffect = useCallback(
     (def: EditorEffectPreviewDef) => {
@@ -996,6 +1077,7 @@ export const VideoEffectsSection: React.FC<VideoEffectsSectionProps> = ({
               onDuplicate={handleDuplicateEffect}
               onMove={handleMoveEffect}
               onDropEffect={handleDropEffect}
+              onSaveAsPreset={() => handleSaveEffectAsPreset(effect)}
               canMoveUp={index > 0}
               canMoveDown={index < effects.length - 1}
             />
@@ -1006,6 +1088,17 @@ export const VideoEffectsSection: React.FC<VideoEffectsSectionProps> = ({
         onSelect={handleAddEffect}
         onSelectShader={handleAddShaderEffect}
       />
+      {presetSaveDraft && (
+        <PresetNameDialog
+          title={t("assets.effectPresets.dialogTitle")}
+          placeholder={t("assets.effectPresets.namePlaceholder")}
+          confirmLabel={t("assets.effectPresets.save")}
+          value={presetNameDraft}
+          onChange={setPresetNameDraft}
+          onCancel={() => setPresetSaveDraft(null)}
+          onConfirm={handlePresetSaveConfirm}
+        />
+      )}
     </div>
   );
 };

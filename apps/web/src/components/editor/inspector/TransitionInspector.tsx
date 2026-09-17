@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   ArrowUp,
   ArrowDown,
+  BookmarkPlus,
   X,
   Check,
 } from "@/icons/lucide-compat";
@@ -21,6 +22,14 @@ import {
 import type { Transition, Clip, TransitionEdge } from "@openreel/core";
 import type { TransitionType } from "@openreel/core";
 import { toast } from "../../../stores/notification-store";
+import {
+  captureTransitionPreset,
+  dedupePresetName,
+  saveTransitionPreset,
+} from "../panels/effect-transition-preset-controllers";
+import { PresetNameDialog } from "../panels/preset-name-dialog";
+import type { TransitionPresetPayload } from "@openreel/core/presets/types";
+import { useCustomPresets } from "../../../services/custom-presets/use-custom-presets";
 import { useTranslation } from "react-i18next";
 
 const TransitionSlider: React.FC<{
@@ -604,6 +613,67 @@ export const TransitionInspector: React.FC<TransitionInspectorProps> = ({
     }
   }, [bridge, transition, onTransitionRemove]);
 
+  // Save the current configuration (type + duration + params) as a
+  // user-level transition preset. Parameters the engine does not define
+  // (e.g. the audio fade toggle) are confirmed before being left out.
+  const customTransitionPresets = useCustomPresets("transition");
+  const existingPresetNames = useMemo(
+    () => customTransitionPresets.map((preset) => preset.name),
+    [customTransitionPresets],
+  );
+  const [presetSaveDraft, setPresetSaveDraft] =
+    useState<Omit<TransitionPresetPayload, "schemaVersion" | "kind"> | null>(
+      null,
+    );
+  const [presetNameDraft, setPresetNameDraft] = useState("");
+
+  const handleSaveAsPreset = useCallback(() => {
+    const capture = captureTransitionPreset(selectedType, duration, params);
+    if (!capture.ok) {
+      toast.error(
+        tr("assets.transitionPresets.saveFailed"),
+        capture.reason === "unknown-type"
+          ? tr("assets.transitionPresets.unknownType")
+          : capture.message,
+      );
+      return;
+    }
+    const openDialog = () => {
+      setPresetNameDraft(
+        dedupePresetName(
+          tr("assets.transitionPresets.defaultName"),
+          existingPresetNames,
+        ),
+      );
+      setPresetSaveDraft(capture.payload);
+    };
+    if (capture.droppedKeys.length > 0) {
+      const lines = capture.droppedKeys.map(
+        (key) =>
+          `• ${key} — ${tr("assets.transitionPresets.unsupportedParamReason")}`,
+      );
+      const confirmed = window.confirm(
+        `${tr("assets.transitionPresets.unsupportedConfirmTitle")}\n\n${tr(
+          "assets.transitionPresets.unsupportedConfirmBody",
+          { fields: lines.join("\n") },
+        )}`,
+      );
+      if (!confirmed) return;
+    }
+    openDialog();
+  }, [duration, existingPresetNames, params, selectedType, tr]);
+
+  const handlePresetSaveConfirm = useCallback(() => {
+    if (!presetSaveDraft) return;
+    const draft = presetSaveDraft;
+    setPresetSaveDraft(null);
+    void saveTransitionPreset({
+      name: presetNameDraft,
+      payload: draft,
+      existingNames: existingPresetNames,
+    });
+  }, [existingPresetNames, presetNameDraft, presetSaveDraft]);
+
   // Render type-specific parameters
   const renderTypeParams = () => {
     const center =
@@ -1094,6 +1164,14 @@ export const TransitionInspector: React.FC<TransitionInspectorProps> = ({
             }`}
           />
         )}
+        <Button
+          label={tr("assets.transitionPresets.saveTransitionAction")}
+          icon={<BookmarkPlus size={12} aria-hidden />}
+          variant="secondary"
+          size="sm"
+          onClick={handleSaveAsPreset}
+          className="flex-1 py-2 rounded-lg text-[10px] transition-colors flex items-center justify-center gap-1 bg-bg-2 border border-border text-fg-2 hover:text-fg hover:border-text-muted"
+        />
       </div>
 
       {/* Error Message */}
@@ -1101,6 +1179,18 @@ export const TransitionInspector: React.FC<TransitionInspectorProps> = ({
         <Text type="supporting" className="block text-center text-[10px] text-red-400">
           {validation.error}
         </Text>
+      )}
+
+      {presetSaveDraft && (
+        <PresetNameDialog
+          title={tr("assets.transitionPresets.dialogTitle")}
+          placeholder={tr("assets.transitionPresets.namePlaceholder")}
+          confirmLabel={tr("assets.transitionPresets.save")}
+          value={presetNameDraft}
+          onChange={setPresetNameDraft}
+          onCancel={() => setPresetSaveDraft(null)}
+          onConfirm={handlePresetSaveConfirm}
+        />
       )}
     </div>
   );

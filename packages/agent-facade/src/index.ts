@@ -169,6 +169,24 @@ export interface AgentFacade extends BundledToolBindings {
   readonly "font.list": (
     params?: import("./font-library").FontListParams,
   ) => Promise<FacadeResult<import("./font-library").FontListResult>>;
+  readonly "preset.list": (
+    params?: import("./preset-verbs").PresetListParams,
+  ) => Promise<FacadeResult<import("./preset-verbs").PresetListResult>>;
+  readonly "preset.get": (
+    params: import("./preset-verbs").PresetGetParams,
+  ) => Promise<FacadeResult<import("./preset-verbs").PresetGetResult>>;
+  readonly "preset.create": (
+    params: import("./preset-verbs").PresetCreateParams,
+  ) => Promise<FacadeResult<import("./preset-verbs").PresetCreateResult>>;
+  readonly "preset.update": (
+    params: import("./preset-verbs").PresetUpdateParams,
+  ) => Promise<FacadeResult<import("./preset-verbs").PresetUpdateResult>>;
+  readonly "preset.remove": (
+    params: import("./preset-verbs").PresetRemoveParams,
+  ) => Promise<FacadeResult<import("./preset-verbs").PresetRemoveResult>>;
+  readonly "preset.apply": (
+    params: import("./preset-verbs").PresetApplyParams,
+  ) => Promise<FacadeResult<import("./preset-verbs").PresetApplyResult>>;
 }
 
 /**
@@ -216,6 +234,12 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "material.undo": (params) => session.materialUndo(params),
     "font.upload": (params) => session.fontUpload(params),
     "font.list": (params) => session.fontList(params),
+    "preset.list": (params) => session.presetList(params),
+    "preset.get": (params) => session.presetGet(params),
+    "preset.create": (params) => session.presetCreate(params),
+    "preset.update": (params) => session.presetUpdate(params),
+    "preset.remove": (params) => session.presetRemove(params),
+    "preset.apply": (params) => session.presetApply(params),
   };
 }
 

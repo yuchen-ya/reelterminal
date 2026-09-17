@@ -2,6 +2,7 @@ import { PLUGIN_TOOLS } from "./plugins";
 import { assertUniqueToolNames } from "./plugin-api";
 import { MATERIAL_VERBS } from "./material-library";
 import { FONT_VERBS } from "./font-library";
+import { PRESET_VERBS } from "./preset-verbs";
 /**
  * Public contract of the in-process agent facade (Slice 1 + Slice 1b +
  * Slice 2a persistence, ADR 0003 Decision 10).
@@ -85,6 +86,7 @@ export const FACADE_VERBS = [
   "verify.artifact",
   ...MATERIAL_VERBS,
   ...FONT_VERBS,
+  ...PRESET_VERBS,
   ...PLUGIN_TOOLS.map((tool) => tool.name),
 ] as const;
 
@@ -166,6 +168,8 @@ export const READ_ONLY_VERBS = [
   "material.list",
   "material.get",
   "font.list",
+  "preset.list",
+  "preset.get",
   "visual.inspect",
   "preview.render_comparison",
   "analysis.list",
@@ -304,6 +308,8 @@ export interface Capabilities {
   readonly materialLibrary: import("./material-library").MaterialLibraryCapability;
   /** User-level custom fonts (font.* verbs); headless reports unavailable. */
   readonly fonts: import("./font-library").FontLibraryCapability;
+  /** User-level custom presets (preset.* verbs); headless reports unavailable. */
+  readonly customPresets: import("./preset-verbs").CustomPresetCapability;
   readonly mediaAnalysis: {
     readonly asynchronous: true;
     readonly types: Readonly<Record<MediaAnalysisType, CapabilityStatus>>;
@@ -1931,3 +1937,26 @@ export type {
   FontFormat,
 } from "./font-library";
 export { FONT_VERBS, FONT_LIBRARY_LIMITS } from "./font-library";
+export type {
+  PresetVerb,
+  PresetListParams,
+  PresetGetParams,
+  PresetCreateParams,
+  PresetUpdateParams,
+  PresetRemoveParams,
+  PresetApplyParams,
+  PresetApplyTarget,
+  PresetListItem,
+  PresetListResult,
+  PresetGetResult,
+  PresetCreateResult,
+  PresetUpdateResult,
+  PresetRemoveResult,
+  PresetApplyResult,
+  PresetLibraryBridge,
+  PresetLibraryBridgeRequest,
+  PresetLibraryBridgeReply,
+  PresetLibraryBridgeVerb,
+  CustomPresetCapability,
+} from "./preset-verbs";
+export { PRESET_VERBS, PRESET_LIBRARY_LIMITS } from "./preset-verbs";

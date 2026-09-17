@@ -11,7 +11,7 @@ import {
   generateBackgroundBlob,
   type BackgroundPreset,
 } from "../../services/background-generator";
-import type { ShapeType, TextStyle } from "@openreel/core";
+import type { ShapeType } from "@openreel/core";
 import {
   mediaDisplayName,
   validateSvgContent,
@@ -29,6 +29,11 @@ import {
   EffectsPanel,
   TransitionsPanel,
 } from "./panels/EffectsTransitionsPanel";
+import { TextPresetsPanel } from "./panels/TextPresetsPanel";
+import {
+  DEFAULT_TITLE_STYLE,
+  TEXT_STYLE_PRESETS,
+} from "./panels/text-style-presets";
 import { toast } from "../../stores/notification-store";
 import { saveFileHandle, saveDirectoryHandle } from "../../services/media-storage";
 import { ToolcraftButton as Button } from "@openreel/ui";
@@ -144,89 +149,8 @@ const ASSETS_TABS: ReadonlyArray<{
   },
 ] as const;
 
-export const DEFAULT_TITLE_STYLE: Partial<TextStyle> = {
-  fontSize: 96,
-  fontWeight: 800,
-  letterSpacing: -1,
-};
-
-export const TEXT_STYLE_PRESETS: ReadonlyArray<{
-  name: string;
-  text: string;
-  style: Partial<TextStyle>;
-}> = [
-  { name: "Heading", text: "Heading", style: { fontSize: 72, fontWeight: 700 } },
-  { name: "Subtitle", text: "Subtitle text", style: { fontSize: 36, fontWeight: 400 } },
-  {
-    name: "Lower Third",
-    text: "Name Here",
-    style: {
-      fontSize: 32,
-      fontWeight: 600,
-      textAlign: "left",
-      verticalAlign: "bottom",
-      backgroundColor: "rgba(0, 0, 0, 0.7)",
-    },
-  },
-  {
-    name: "Caption",
-    text: "Caption text here",
-    style: {
-      fontSize: 24,
-      fontWeight: 400,
-      verticalAlign: "bottom",
-      shadowColor: "rgba(0, 0, 0, 0.8)",
-      shadowBlur: 4,
-      shadowOffsetX: 1,
-      shadowOffsetY: 1,
-    },
-  },
-  {
-    name: "Hero",
-    text: "MAKE IT MOVE",
-    style: {
-      fontSize: 112,
-      fontWeight: 900,
-      letterSpacing: -2,
-      lineHeight: 0.95,
-      strokeWidth: 3,
-    },
-  },
-  {
-    name: "Quote",
-    text: "“Tell a better story.”",
-    style: {
-      fontSize: 54,
-      fontWeight: 600,
-      fontStyle: "italic",
-      lineHeight: 1.25,
-      shadowColor: "rgba(0, 0, 0, 0.65)",
-      shadowBlur: 10,
-      shadowOffsetY: 4,
-    },
-  },
-  {
-    name: "Outline",
-    text: "OUTLINE",
-    style: {
-      fontSize: 80,
-      fontWeight: 900,
-      letterSpacing: 2,
-      strokeColor: "#111827",
-      strokeWidth: 5,
-    },
-  },
-  {
-    name: "Badge",
-    text: "NEW RELEASE",
-    style: {
-      fontSize: 28,
-      fontWeight: 800,
-      letterSpacing: 3,
-      backgroundColor: "rgba(17, 24, 39, 0.88)",
-    },
-  },
-];
+// Shared with the text presets panel; re-exported for existing consumers.
+export { DEFAULT_TITLE_STYLE, TEXT_STYLE_PRESETS };
 
 const TAB_ICONS: Record<AssetsTab, React.ElementType> = {
   media: Video,
@@ -1623,48 +1547,9 @@ export const AssetsPanel: React.FC = () => {
                   >
                     {t("Click to add text to timeline")}</Text>
                 </PanelButton>
-                <div className="grid min-w-0 grid-cols-2 gap-2">
-                  {TEXT_STYLE_PRESETS.map((preset) => (
-                    <PanelButton
-                      key={preset.name}
-                      label={t(preset.name)}
-                      onClick={async () => {
-                        const state = useProjectStore.getState();
-                        const { createTextClip, addTrack } = state;
-                        const tracksBefore = state.project.timeline.tracks;
-                        await addTrack("text", 0);
-                        const tracksAfter =
-                          useProjectStore.getState().project.timeline.tracks;
-                        const newTextTrack = tracksAfter.find(
-                          (t) =>
-                            t.type === "text" &&
-                            !tracksBefore.some((bt) => bt.id === t.id),
-                        );
-                        if (newTextTrack) {
-                          const created = createTextClip(
-                            newTextTrack.id,
-                            playheadPosition,
-                            preset.text,
-                            5,
-                            preset.style,
-                          );
-                          if (created) {
-                            select({
-                              type: "text-clip",
-                              id: created.id,
-                              trackId: newTextTrack.id,
-                            });
-                          }
-                        }
-                      }}
-                      className="flex min-h-[44px] min-w-0 items-center justify-center rounded-lg border border-border bg-background-tertiary px-2 py-2 text-center text-xs font-medium leading-tight text-text-secondary transition-all hover:border-primary/50 hover:bg-primary/5 hover:text-text-primary"
-                    >
-                      <span className="block max-w-full truncate">
-                        {preset.name}
-                      </span>
-                    </PanelButton>
-                  ))}
-                </div>
+                {/* Merged built-in + custom text presets (custom ones are
+                    user-level, cross-project, managed in place). */}
+                <TextPresetsPanel />
               </div>
             </div>
           </div>

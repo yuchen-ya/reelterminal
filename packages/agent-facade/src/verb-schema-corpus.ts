@@ -1160,4 +1160,100 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "no params is valid", params: {}, expectValid: true },
     { name: "unknown field", params: { filter: "x" }, expectValid: false },
   ],
+  "preset.list": [
+    { name: "empty params valid", params: {}, expectValid: true },
+    { name: "kind filter", params: { kind: "text", includePayload: true }, expectValid: true },
+    { name: "query filter", params: { query: "title" }, expectValid: true },
+    { name: "bad kind enum", params: { kind: "layout" }, expectValid: false },
+    { name: "includePayload not boolean", params: { includePayload: "yes" }, expectValid: false },
+    { name: "unknown field", params: { page: 1 }, expectValid: false },
+  ],
+  "preset.get": [
+    { name: "valid", params: { id: "preset_1" }, expectValid: true },
+    { name: "missing id", params: {}, expectValid: false },
+    { name: "empty id", params: { id: "" }, expectValid: false },
+    { name: "unknown field", params: { id: "p", kind: "text" }, expectValid: false },
+  ],
+  "preset.create": [
+    {
+      name: "valid text preset",
+      params: {
+        kind: "text",
+        name: "Agent Title",
+        payload: { schemaVersion: 1, kind: "text", style: { fontSize: 72, fontWeight: 700 } },
+        tags: ["agent"],
+        idempotencyKey: "pc1",
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid effect preset without tags",
+      params: {
+        kind: "effect",
+        name: "Warm",
+        payload: { schemaVersion: 1, kind: "effect", effects: [{ type: "brightness", params: {} }] },
+      },
+      expectValid: true,
+    },
+    { name: "missing payload", params: { kind: "text", name: "x" }, expectValid: false },
+    { name: "bad kind enum", params: { kind: "layout", name: "x", payload: {} }, expectValid: false },
+    { name: "empty name", params: { kind: "text", name: "", payload: {} }, expectValid: false },
+    { name: "payload not an object", params: { kind: "text", name: "x", payload: "y" }, expectValid: false },
+    { name: "empty tag item", params: { kind: "text", name: "x", payload: {}, tags: [""] }, expectValid: false },
+    {
+      name: "schema-valid but facade-rejected: deep payload validation runs in the session body",
+      params: {
+        kind: "text",
+        name: "Bad",
+        payload: { schemaVersion: 1, kind: "text", style: { notAStyleField: 1 } },
+      },
+      expectValid: false,
+      schemaValid: true,
+    },
+  ],
+  "preset.update": [
+    {
+      name: "valid rename with CAS",
+      params: { id: "preset_1", name: "Renamed", expectedRevision: 2, idempotencyKey: "pu1" },
+      expectValid: true,
+    },
+    { name: "missing id", params: { name: "x" }, expectValid: false },
+    { name: "negative expectedRevision", params: { id: "p", expectedRevision: -1 }, expectValid: false },
+    { name: "empty name", params: { id: "p", name: "" }, expectValid: false },
+    { name: "unknown field", params: { id: "p", builtinBaseId: "text:Heading" }, expectValid: false },
+  ],
+  "preset.remove": [
+    { name: "valid", params: { id: "preset_1", idempotencyKey: "pr1" }, expectValid: true },
+    { name: "missing id", params: {}, expectValid: false },
+    { name: "unknown field", params: { id: "p", force: true }, expectValid: false },
+  ],
+  "preset.apply": [
+    {
+      name: "valid effect target",
+      params: { presetId: "preset_1", target: { kind: "effect", clipIds: ["clip-1"] }, idempotencyKey: "pa1" },
+      expectValid: true,
+    },
+    {
+      name: "valid transition cut",
+      params: {
+        presetId: "preset_1",
+        target: { kind: "transition", clipAId: "a", clipBId: "b" },
+        expectedRevision: 4,
+      },
+      expectValid: true,
+    },
+    { name: "missing target", params: { presetId: "preset_1" }, expectValid: false },
+    { name: "target not an object", params: { presetId: "preset_1", target: "clip-1" }, expectValid: false },
+    {
+      name: "unknown target kind",
+      params: { presetId: "preset_1", target: { kind: "layout" } },
+      expectValid: false,
+    },
+    {
+      name: "text create mode is not an agent operation",
+      params: { presetId: "preset_1", target: { kind: "text", mode: "create" } },
+      expectValid: false,
+    },
+    { name: "unknown field", params: { presetId: "p", target: { kind: "effect", clipIds: ["a"] }, at: 0 }, expectValid: false },
+  ],
 } as const;

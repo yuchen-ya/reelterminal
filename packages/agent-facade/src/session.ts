@@ -159,6 +159,12 @@ import {
   MATERIAL_ATTACH_SCHEMA,
   MATERIAL_UNDO_SCHEMA,
   FONT_UPLOAD_SCHEMA,
+  PRESET_LIST_SCHEMA,
+  PRESET_GET_SCHEMA,
+  PRESET_CREATE_SCHEMA,
+  PRESET_UPDATE_SCHEMA,
+  PRESET_REMOVE_SCHEMA,
+  PRESET_APPLY_SCHEMA,
 } from "./verb-schemas";
 import type {
   MaterialListParams,
@@ -2527,6 +2533,100 @@ export class AgentFacadeSession {
         "font.list: custom fonts are available only in live desktop sessions (they are installed in the GUI renderer's persistent font store, not the headless project checkpoint)",
         { runtime: "node-headless" },
       );
+    });
+  }
+
+  /* ---------------- preset.* (headless: UNSUPPORTED) ------------------- */
+
+  /**
+   * User-level custom presets live in the desktop GUI renderer's IndexedDB
+   * (cross-project, human-visible in the preset panels). Headless sessions
+   * have no GUI renderer, so every preset verb answers honestly UNSUPPORTED
+   * after validating params — the same policy as material and font verbs.
+   */
+  private presetUnsupported(verb: FacadeVerb): never {
+    throw new FacadeError(
+      "UNSUPPORTED",
+      `${verb}: user-level custom presets are available only in live desktop sessions (they live in the GUI renderer's persistent store, not the headless project checkpoint)`,
+      { runtime: "node-headless" },
+    );
+  }
+
+  async presetList(
+    params?: import("./preset-verbs").PresetListParams,
+  ): Promise<FacadeResult<import("./preset-verbs").PresetListResult>> {
+    return this.enqueue(async () => {
+      validateObject<import("./preset-verbs").PresetListParams>(
+        params ?? {},
+        PRESET_LIST_SCHEMA,
+        "preset.list params",
+      );
+      this.presetUnsupported("preset.list");
+    });
+  }
+
+  async presetGet(
+    params: import("./preset-verbs").PresetGetParams,
+  ): Promise<FacadeResult<import("./preset-verbs").PresetGetResult>> {
+    return this.enqueue(async () => {
+      validateObject<import("./preset-verbs").PresetGetParams>(
+        params,
+        PRESET_GET_SCHEMA,
+        "preset.get params",
+      );
+      this.presetUnsupported("preset.get");
+    });
+  }
+
+  async presetCreate(
+    params: import("./preset-verbs").PresetCreateParams,
+  ): Promise<FacadeResult<import("./preset-verbs").PresetCreateResult>> {
+    return this.enqueue(async () => {
+      validateObject<import("./preset-verbs").PresetCreateParams>(
+        params,
+        PRESET_CREATE_SCHEMA,
+        "preset.create params",
+      );
+      this.presetUnsupported("preset.create");
+    });
+  }
+
+  async presetUpdate(
+    params: import("./preset-verbs").PresetUpdateParams,
+  ): Promise<FacadeResult<import("./preset-verbs").PresetUpdateResult>> {
+    return this.enqueue(async () => {
+      validateObject<import("./preset-verbs").PresetUpdateParams>(
+        params,
+        PRESET_UPDATE_SCHEMA,
+        "preset.update params",
+      );
+      this.presetUnsupported("preset.update");
+    });
+  }
+
+  async presetRemove(
+    params: import("./preset-verbs").PresetRemoveParams,
+  ): Promise<FacadeResult<import("./preset-verbs").PresetRemoveResult>> {
+    return this.enqueue(async () => {
+      validateObject<import("./preset-verbs").PresetRemoveParams>(
+        params,
+        PRESET_REMOVE_SCHEMA,
+        "preset.remove params",
+      );
+      this.presetUnsupported("preset.remove");
+    });
+  }
+
+  async presetApply(
+    params: import("./preset-verbs").PresetApplyParams,
+  ): Promise<FacadeResult<import("./preset-verbs").PresetApplyResult>> {
+    return this.enqueue(async () => {
+      validateObject<import("./preset-verbs").PresetApplyParams>(
+        params,
+        PRESET_APPLY_SCHEMA,
+        "preset.apply params",
+      );
+      this.presetUnsupported("preset.apply");
     });
   }
 

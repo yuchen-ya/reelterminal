@@ -185,6 +185,12 @@ describe("capabilities.get / session.describe", () => {
       "material.undo",
       "font.upload",
       "font.list",
+      "preset.list",
+      "preset.get",
+      "preset.create",
+      "preset.update",
+      "preset.remove",
+      "preset.apply",
       "media.inspect",
       "media.import_preflight",
     ]);

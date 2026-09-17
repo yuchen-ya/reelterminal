@@ -60,8 +60,15 @@ describe("emitted verb JSON Schemas — global client constraints", () => {
     it(`${verb}: every property name matches ^[A-Za-z0-9_-]{1,64}$ and every object is closed, with no $ref anywhere`, () => {
       walk(schema, (node) => {
         if (node.type === "object") {
-          expect(node.additionalProperties, JSON.stringify(node)).toBe(false);
-          for (const key of Object.keys(node.properties as Schema)) {
+          // The open-object leaf (`{type:"object"}`, additionalProperties
+          // defaulted) is reserved for values deep-validated elsewhere
+          // (the custom-preset payload); pinned to those fields below.
+          expect(
+            node.additionalProperties === false ||
+              node.additionalProperties === undefined,
+            JSON.stringify(node),
+          ).toBe(true);
+          for (const key of Object.keys((node.properties ?? {}) as Schema)) {
             expect(key).toMatch(PROPERTY_NAME_RE);
           }
         }
@@ -71,6 +78,18 @@ describe("emitted verb JSON Schemas — global client constraints", () => {
       });
     });
   }
+
+  it("only the custom-preset payload uses the open-object leaf; everything else stays closed", () => {
+    const openObjects: string[] = [];
+    for (const [verb, typedSchema] of Object.entries(EMITTED_VERB_JSON_SCHEMAS)) {
+      walk(typedSchema as unknown as Schema, (node) => {
+        if (node.type === "object" && node.additionalProperties === undefined) {
+          openObjects.push(`${verb}`);
+        }
+      });
+    }
+    expect(openObjects).toEqual(["preset.create", "preset.update"]);
+  });
 
   it("emission is a pure derivation: editing a declaration changes both consumers (single source smoke)", () => {
     // The op-union variants in the emitted schema are the SAME declaration

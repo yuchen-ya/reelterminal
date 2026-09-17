@@ -1,19 +1,42 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Search } from "@/icons/lucide-compat";
+import {
+  ArrowLeftRight,
+  Pencil,
+  Search,
+  Trash2,
+  Wand2,
+} from "@/icons/lucide-compat";
 import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
 import { ToolcraftText as Text } from "@openreel/ui";
 import { ToolcraftTextInputControl } from "@openreel/ui";
+import {
+  ToolcraftContextMenu as ContextMenu,
+  type ToolcraftContextMenuOption as ContextMenuOption,
+} from "@openreel/ui";
 import { useProjectStore } from "../../../stores/project-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { toast } from "../../../stores/notification-store";
 import type {
   VideoEffectType,
 } from "../../../bridges/effects-bridge";
-import type { Clip, TransitionType } from "@openreel/core";
+import type { TransitionType } from "@openreel/core";
+import type {
+  CustomPresetRecord,
+  EffectPresetPayload,
+  TransitionPresetPayload,
+} from "@openreel/core/presets/types";
 import { getTransitionBridge } from "../../../bridges/transition-bridge";
 import { serializeEditorEffectDropPayload } from "../timeline/effect-drop";
 import { t as ti } from "../../../i18n";
 import { useTranslation } from "react-i18next";
+import { useCustomPresets } from "../../../services/custom-presets/use-custom-presets";
+import {
+  applyEffectPresetToSelectedClips,
+  applyTransitionPresetToSelectedCut,
+  deleteCustomPresetWithConfirm,
+  renameCustomPreset,
+  resolveSelectedCut,
+} from "./effect-transition-preset-controllers";
 
 // ─── Effect & Transition catalogs ──────────────────────────────────
 // Each item ships with a small CSS recipe used to animate the live
@@ -1451,6 +1474,248 @@ const useCurrentClipThumbnail = (): string | null => {
   }, [project, getSelectedClipIds]);
 };
 
+// ─── Custom preset cards ──────────────────────────────────────────
+// User-level presets merge into the same panels as read-only built-ins.
+// Custom cards double-click (or context-menu) to apply and carry the
+// management menu; built-in cards stay untouched.
+
+interface CustomPresetCardControlProps {
+  isRenaming: boolean;
+  renameDraft: string;
+  onRenameDraftChange: (value: string) => void;
+  onRenameSubmit: () => void;
+  onRenameCancel: () => void;
+  onApply: () => void;
+}
+
+/**
+ * Root-div props injected by the Radix slot above this card (the context
+ * menu's onContextMenu and ref). The card must spread them, or the menu
+ * can never open.
+ */
+type CustomPresetCardRootProps = Omit<
+  React.ComponentPropsWithoutRef<"div">,
+  keyof CustomPresetCardControlProps | "aria-label"
+>;
+
+const renameInputClass =
+  "w-full min-w-0 rounded-md border border-accent bg-bg-1 px-1.5 py-0.5 text-[11px] text-fg outline-none";
+
+/** Exported for the rename-guard regression test. */
+export const CustomEffectPresetCard: React.FC<
+  { preset: CustomPresetRecord } & CustomPresetCardControlProps &
+    CustomPresetCardRootProps
+> = ({
+  preset,
+  isRenaming,
+  renameDraft,
+  onRenameDraftChange,
+  onRenameSubmit,
+  onRenameCancel,
+  onApply,
+  ...rootProps
+}) => {
+  const { t: tr } = useTranslation();
+  const payload = preset.payload as EffectPresetPayload;
+  const firstType = payload.effects[0]?.type ?? "";
+  const builtinDef = EDITOR_EFFECT_PREVIEWS.find(
+    (def) => def.type === firstType,
+  );
+  const extraCount = payload.effects.length - 1;
+  const summary =
+    (builtinDef ? tr(builtinDef.label) : firstType) +
+    (extraCount > 0 ? ` +${extraCount}` : "");
+  return (
+    <div
+      {...rootProps}
+      tabIndex={0}
+      role="button"
+      aria-label={preset.name}
+      data-effect-preset-id={preset.id}
+      onDoubleClick={() => {
+        // Same rename guard as the text preset cards: keys and double-clicks
+        // inside the inline rename input bubble here and must not apply.
+        if (!isRenaming) onApply();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && !isRenaming) onApply();
+      }}
+      className="group relative flex min-w-0 cursor-pointer flex-col items-stretch overflow-hidden rounded-lg border border-border bg-bg-2 text-left transition-colors hover:border-accent"
+    >
+      <div className="relative aspect-video overflow-hidden bg-bg-3">
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(135deg, oklch(0.55 0.14 295), oklch(0.72 0.16 162))",
+            ...(builtinDef ? builtinDef.previewStyle(0.72) : {}),
+          }}
+        />
+        <Text className="absolute bottom-1 right-1 rounded bg-black/55 px-1.5 py-0.5 text-[8.5px] uppercase text-white/85 backdrop-blur-sm">
+          {tr("assets.effectPresets.cardBadge")}
+        </Text>
+      </div>
+      <div className="border-t border-border px-2 py-1.5">
+        {isRenaming ? (
+          <input
+            autoFocus
+            aria-label={tr("assets.effectPresets.renameAriaLabel")}
+            maxLength={80}
+            value={renameDraft}
+            onChange={(event) => onRenameDraftChange(event.currentTarget.value)}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                onRenameSubmit();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                onRenameCancel();
+              }
+            }}
+            onBlur={onRenameSubmit}
+            className={renameInputClass}
+          />
+        ) : (
+          <Text
+            type="supporting"
+            weight="bold"
+            display="block"
+            maxLines={1}
+            className="text-[10.5px] leading-tight text-fg"
+          >
+            {preset.name}
+          </Text>
+        )}
+        <Text
+          type="supporting"
+          color="secondary"
+          display="block"
+          maxLines={1}
+          className="mt-0.5 text-[9.5px] leading-tight text-fg-muted"
+        >
+          {summary}
+        </Text>
+      </div>
+    </div>
+  );
+};
+
+const CustomTransitionPresetCard: React.FC<
+  { preset: CustomPresetRecord; thumbUrl: string | null } &
+    CustomPresetCardControlProps &
+    CustomPresetCardRootProps
+> = ({
+  preset,
+  thumbUrl,
+  isRenaming,
+  renameDraft,
+  onRenameDraftChange,
+  onRenameSubmit,
+  onRenameCancel,
+  onApply,
+  ...rootProps
+}) => {
+  const { t: tr } = useTranslation();
+  const payload = preset.payload as TransitionPresetPayload;
+  const builtinDef =
+    TRANSITIONS.find((def) => def.type === payload.type) ?? TRANSITIONS[0]!;
+  const [progress, setProgress] = useState(0);
+  const [isHover, setIsHover] = useState(false);
+  const rafRef = React.useRef<number | null>(null);
+  const startRef = React.useRef<number>(0);
+
+  React.useEffect(() => {
+    if (!isHover) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      setProgress(0);
+      return;
+    }
+    startRef.current = performance.now();
+    const tick = (now: number) => {
+      const elapsed = (now - startRef.current) % PREVIEW_CYCLE_MS;
+      setProgress(elapsed / PREVIEW_CYCLE_MS);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [isHover]);
+
+  return (
+    <div
+      {...rootProps}
+      tabIndex={0}
+      role="button"
+      aria-label={preset.name}
+      data-transition-preset-id={preset.id}
+      onDoubleClick={() => {
+        // Same rename guard as the text preset cards: keys and double-clicks
+        // inside the inline rename input bubble here and must not apply.
+        if (!isRenaming) onApply();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && !isRenaming) onApply();
+      }}
+      onMouseEnter={() => setIsHover(true)}
+      onMouseLeave={() => setIsHover(false)}
+      className="group relative flex min-w-0 cursor-pointer flex-col items-stretch overflow-hidden rounded-lg border border-border bg-bg-2 text-left transition-colors hover:border-accent"
+    >
+      <div className="relative aspect-video overflow-hidden bg-bg-3">
+        {builtinDef.renderPreview(progress, thumbUrl)}
+      </div>
+      <div className="flex items-start justify-between gap-1 border-t border-border px-2 py-1.5">
+        <div className="min-w-0 flex-1">
+          {isRenaming ? (
+            <input
+              autoFocus
+              aria-label={tr("assets.transitionPresets.renameAriaLabel")}
+              maxLength={80}
+              value={renameDraft}
+              onChange={(event) => onRenameDraftChange(event.currentTarget.value)}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  onRenameSubmit();
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  onRenameCancel();
+                }
+              }}
+              onBlur={onRenameSubmit}
+              className={renameInputClass}
+            />
+          ) : (
+            <Text
+              type="supporting"
+              weight="bold"
+              display="block"
+              maxLines={1}
+              className="text-[10.5px] leading-tight text-fg"
+            >
+              {preset.name}
+            </Text>
+          )}
+          <Text
+            type="supporting"
+            color="secondary"
+            display="block"
+            maxLines={1}
+            className="mt-0.5 text-[9.5px] leading-tight text-fg-muted"
+          >
+            {tr(builtinDef.label)} · {payload.type}
+          </Text>
+        </div>
+        <span className="shrink-0 rounded bg-black/45 px-1 py-0.5 font-mono text-[8.5px] text-white/85">
+          {(payload.durationSec ?? 1).toFixed(1)}s
+        </span>
+      </div>
+    </div>
+  );
+};
+
 // ─── Main panel ───────────────────────────────────────────────────
 
 export const EffectsPanel: React.FC = () => {
@@ -1458,6 +1723,10 @@ export const EffectsPanel: React.FC = () => {
   const thumbUrl = useCurrentClipThumbnail();
   const getSelectedClipIds = useUIStore((s) => s.getSelectedClipIds);
   const addVideoEffect = useProjectStore((s) => s.addVideoEffect);
+
+  const customEffectPresets = useCustomPresets("effect");
+  const [renamingPresetId, setRenamingPresetId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
 
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] =
@@ -1473,6 +1742,42 @@ export const EffectsPanel: React.FC = () => {
           effect.category.toLowerCase().includes(q)),
     );
   }, [categoryFilter, query]);
+  const visibleCustomEffectPresets = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return customEffectPresets;
+    return customEffectPresets.filter((preset) =>
+      preset.name.toLowerCase().includes(q),
+    );
+  }, [customEffectPresets, query]);
+
+  const effectPresetMenuItems = useCallback(
+    (preset: CustomPresetRecord): ContextMenuOption[] => [
+      {
+        label: tr("assets.effectPresets.applyAction"),
+        icon: <Wand2 size={14} aria-hidden />,
+        onClick: () => {
+          void applyEffectPresetToSelectedClips(preset);
+        },
+      },
+      { type: "divider" },
+      {
+        label: tr("assets.effectPresets.renameAction"),
+        icon: <Pencil size={14} aria-hidden />,
+        onClick: () => {
+          setRenameDraft(preset.name);
+          setRenamingPresetId(preset.id);
+        },
+      },
+      {
+        label: tr("assets.effectPresets.deleteAction"),
+        icon: <Trash2 size={14} aria-hidden />,
+        onClick: () => {
+          void deleteCustomPresetWithConfirm(preset, "assets.effectPresets");
+        },
+      },
+    ],
+    [tr],
+  );
 
   const applyToSelection = useCallback(
     async (def: EditorEffectPreviewDef) => {
@@ -1579,11 +1884,73 @@ export const EffectsPanel: React.FC = () => {
               </section>
             );
           })}
-          {filtered.length === 0 && (
-            <Text type="supporting" color="secondary" display="block" justify="center" className="text-[10.5px] py-6">
-              {tr("No effects match \"{{query}}\".", { query })}
-            </Text>
+          {categoryFilter === "All" && (
+            <section aria-label={tr("assets.effectPresets.groupCustom")}>
+              <Text
+                type="supporting"
+                color="secondary"
+                weight="bold"
+                display="block"
+                className="mb-1.5 text-[9.5px] uppercase"
+              >
+                {tr("assets.effectPresets.groupCustom")}
+              </Text>
+              {visibleCustomEffectPresets.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border px-3 py-3 text-center text-[10.5px] text-fg-muted">
+                  {tr("assets.effectPresets.customEmpty")}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {visibleCustomEffectPresets.map((preset) => {
+                    const isRenaming = renamingPresetId === preset.id;
+                    const card = (
+                      <CustomEffectPresetCard
+                        preset={preset}
+                        isRenaming={isRenaming}
+                        renameDraft={renameDraft}
+                        onRenameDraftChange={setRenameDraft}
+                        onRenameSubmit={() => {
+                          void renameCustomPreset(
+                            preset,
+                            renameDraft,
+                            "assets.effectPresets",
+                          ).then((done) => {
+                            if (done) setRenamingPresetId(null);
+                          });
+                        }}
+                        onRenameCancel={() => setRenamingPresetId(null)}
+                        onApply={() =>
+                          void applyEffectPresetToSelectedClips(preset)
+                        }
+                      />
+                    );
+                    return (
+                      <ContextMenu
+                        key={preset.id}
+                        items={effectPresetMenuItems(preset)}
+                        menuWidth={220}
+                        size="sm"
+                      >
+                        {card}
+                      </ContextMenu>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
           )}
+          {filtered.length === 0 &&
+            visibleCustomEffectPresets.length === 0 && (
+              <Text
+                type="supporting"
+                color="secondary"
+                display="block"
+                justify="center"
+                className="py-6 text-[10.5px]"
+              >
+                {tr("No effects match \"{{query}}\".", { query })}
+              </Text>
+            )}
         </div>
       </div>
     </div>
@@ -1598,6 +1965,10 @@ export const TransitionsPanel: React.FC = () => {
     (state) => state.addClipTransition,
   );
   const getSelectedClipIds = useUIStore((state) => state.getSelectedClipIds);
+
+  const customTransitionPresets = useCustomPresets("transition");
+  const [renamingPresetId, setRenamingPresetId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
 
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] =
@@ -1619,12 +1990,47 @@ export const TransitionsPanel: React.FC = () => {
       },
     );
   }, [categoryFilter, query]);
+  const visibleCustomTransitionPresets = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return customTransitionPresets;
+    return customTransitionPresets.filter((preset) =>
+      preset.name.toLowerCase().includes(q),
+    );
+  }, [customTransitionPresets, query]);
+
+  const transitionPresetMenuItems = useCallback(
+    (preset: CustomPresetRecord): ContextMenuOption[] => [
+      {
+        label: tr("assets.transitionPresets.applyAction"),
+        icon: <ArrowLeftRight size={14} aria-hidden />,
+        onClick: () => {
+          void applyTransitionPresetToSelectedCut(preset);
+        },
+      },
+      { type: "divider" },
+      {
+        label: tr("assets.transitionPresets.renameAction"),
+        icon: <Pencil size={14} aria-hidden />,
+        onClick: () => {
+          setRenameDraft(preset.name);
+          setRenamingPresetId(preset.id);
+        },
+      },
+      {
+        label: tr("assets.transitionPresets.deleteAction"),
+        icon: <Trash2 size={14} aria-hidden />,
+        onClick: () => {
+          void deleteCustomPresetWithConfirm(preset, "assets.transitionPresets");
+        },
+      },
+    ],
+    [tr],
+  );
 
   const applyToSelectedCut = useCallback(
     async (def: TransitionDef) => {
-      const selectedIds = new Set(getSelectedClipIds());
-      const selectedCount = selectedIds.size;
-      if (selectedCount === 0) {
+      const selectedIds = getSelectedClipIds();
+      if (selectedIds.length === 0) {
         toast.warning(
           "No clip selected",
           "Select a clip or two adjacent clips, then double-click the transition.",
@@ -1632,53 +2038,16 @@ export const TransitionsPanel: React.FC = () => {
         return;
       }
 
-      let clipA: Clip | undefined;
-      let clipB: Clip | undefined;
-      for (const track of project.timeline.tracks) {
-        const sorted = [...track.clips].sort(
-          (first, second) => first.startTime - second.startTime,
-        );
-        if (selectedCount > 1) {
-          for (let index = 0; index < sorted.length - 1; index += 1) {
-            if (
-              selectedIds.has(sorted[index].id) &&
-              selectedIds.has(sorted[index + 1].id)
-            ) {
-              clipA = sorted[index];
-              clipB = sorted[index + 1];
-              break;
-            }
-          }
-        } else {
-          const selectedIndex = sorted.findIndex((clip) =>
-            selectedIds.has(clip.id),
-          );
-          if (selectedIndex >= 0) {
-            const selected = sorted[selectedIndex];
-            const next = sorted[selectedIndex + 1];
-            const previous = sorted[selectedIndex - 1];
-            if (next) {
-              clipA = selected;
-              clipB = next;
-            } else if (previous) {
-              clipA = previous;
-              clipB = selected;
-            } else {
-              clipA = selected;
-              clipB = undefined;
-            }
-          }
-        }
-        if (clipA) break;
-      }
-
-      if (!clipA) {
+      const cut = resolveSelectedCut(project, selectedIds);
+      if (!cut) {
         toast.warning(
           "No compatible cut",
           "The selected clips must be adjacent on the same timeline track.",
         );
         return;
       }
+      const clipA = cut.clipA;
+      const clipB = cut.clipB;
 
       const bridge = getTransitionBridge();
       if (!bridge.isInitialized()) {
@@ -1789,11 +2158,78 @@ export const TransitionsPanel: React.FC = () => {
               </section>
             );
           })}
-          {filtered.length === 0 && (
-            <Text type="supporting" color="secondary" display="block" justify="center" className="text-[10.5px] py-6">
-              {tr("No transitions match \"{{query}}\".", { query })}
-            </Text>
+          {categoryFilter === "All" && (
+            <section aria-label={tr("assets.transitionPresets.groupCustom")}>
+              <div className="mb-1.5 flex items-center justify-between">
+                <Text
+                  type="supporting"
+                  color="secondary"
+                  weight="bold"
+                  className="text-[9.5px] uppercase"
+                >
+                  {tr("assets.transitionPresets.groupCustom")}
+                </Text>
+                <Text type="supporting" color="secondary" className="font-mono text-[9px]">
+                  {visibleCustomTransitionPresets.length}
+                </Text>
+              </div>
+              {visibleCustomTransitionPresets.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border px-3 py-3 text-center text-[10.5px] text-fg-muted">
+                  {tr("assets.transitionPresets.customEmpty")}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {visibleCustomTransitionPresets.map((preset) => {
+                    const isRenaming = renamingPresetId === preset.id;
+                    const card = (
+                      <CustomTransitionPresetCard
+                        preset={preset}
+                        thumbUrl={thumbUrl}
+                        isRenaming={isRenaming}
+                        renameDraft={renameDraft}
+                        onRenameDraftChange={setRenameDraft}
+                        onRenameSubmit={() => {
+                          void renameCustomPreset(
+                            preset,
+                            renameDraft,
+                            "assets.transitionPresets",
+                          ).then((done) => {
+                            if (done) setRenamingPresetId(null);
+                          });
+                        }}
+                        onRenameCancel={() => setRenamingPresetId(null)}
+                        onApply={() =>
+                          void applyTransitionPresetToSelectedCut(preset)
+                        }
+                      />
+                    );
+                    return (
+                      <ContextMenu
+                        key={preset.id}
+                        items={transitionPresetMenuItems(preset)}
+                        menuWidth={220}
+                        size="sm"
+                      >
+                        {card}
+                      </ContextMenu>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
           )}
+          {filtered.length === 0 &&
+            visibleCustomTransitionPresets.length === 0 && (
+              <Text
+                type="supporting"
+                color="secondary"
+                display="block"
+                justify="center"
+                className="py-6 text-[10.5px]"
+              >
+                {tr("No transitions match \"{{query}}\".", { query })}
+              </Text>
+            )}
         </div>
       </div>
     </div>

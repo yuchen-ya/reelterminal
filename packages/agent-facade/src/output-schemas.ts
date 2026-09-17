@@ -822,6 +822,37 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
     },
     ["fonts"],
   ),
+  "preset.list": objectSchema(
+    {
+      presets: arraySchema(openObject()),
+      total: integerSchema(0),
+    },
+    ["presets", "total"],
+  ),
+  "preset.get": objectSchema({ preset: openObject() }, ["preset"]),
+  "preset.create": objectSchema(
+    { preset: openObject(), replayed: booleanSchema() },
+    ["preset"],
+  ),
+  "preset.update": objectSchema(
+    { preset: openObject(), replayed: booleanSchema() },
+    ["preset"],
+  ),
+  "preset.remove": objectSchema(
+    { id: stringSchema(), alreadyGone: booleanSchema() },
+    ["id", "alreadyGone"],
+  ),
+  "preset.apply": objectSchema(
+    {
+      presetId: stringSchema(),
+      projectId: stringSchema(),
+      projectName: stringSchema(),
+      revision: integerSchema(0),
+      applied: openObject(),
+      replayed: booleanSchema(),
+    },
+    ["presetId", "projectId", "projectName", "revision", "applied"],
+  ),
 };
 
 /** Successful `{ok:true,value}` output schema for every MCP facade verb. */

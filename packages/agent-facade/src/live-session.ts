@@ -154,6 +154,12 @@ import {
   MATERIAL_ATTACH_SCHEMA,
   MATERIAL_UNDO_SCHEMA,
   FONT_UPLOAD_SCHEMA,
+  PRESET_LIST_SCHEMA,
+  PRESET_GET_SCHEMA,
+  PRESET_CREATE_SCHEMA,
+  PRESET_UPDATE_SCHEMA,
+  PRESET_REMOVE_SCHEMA,
+  PRESET_APPLY_SCHEMA,
 } from "./verb-schemas";
 import {
   MATERIAL_VERBS,
@@ -186,6 +192,29 @@ import {
   type FontUploadParams,
   type FontUploadResult,
 } from "./font-library";
+import {
+  presetApplyTargetProblem,
+  type PresetApplyParams,
+  type PresetApplyResult,
+  type PresetCreateParams,
+  type PresetCreateResult,
+  type PresetGetParams,
+  type PresetGetResult,
+  type PresetLibraryBridge,
+  type PresetLibraryBridgeReply,
+  type PresetLibraryBridgeVerb,
+  type PresetListParams,
+  type PresetListResult,
+  type PresetRemoveParams,
+  type PresetRemoveResult,
+  type PresetUpdateParams,
+  type PresetUpdateResult,
+} from "./preset-verbs";
+import {
+  validatePresetName,
+  validatePresetPayload,
+  validatePresetThumbnail,
+} from "@openreel/core/presets/validate";
 import type { MaterialListResult } from "@openreel/core/material/types";
 import {
   isReadOnlyVerb,
@@ -321,6 +350,14 @@ export interface LiveFacadeConfig {
    * honestly; capabilities_get reports the same via fonts.available.
    */
   readonly fontLibrary?: FontLibraryBridge;
+  /**
+   * The user-level custom-preset seam: forwards preset.* verbs to the GUI
+   * renderer, which owns the canonical preset store (IndexedDB) and the
+   * apply expansion into core actions. Absent ⇒ the preset verbs report
+   * UNSUPPORTED honestly; capabilities_get reports the same via
+   * customPresets.available.
+   */
+  readonly presetLibrary?: PresetLibraryBridge;
 }
 
 /**
@@ -447,6 +484,8 @@ export class LiveFacadeSession {
       typeof this.config.materialLibrary === "function";
     const fontLibraryAvailable =
       typeof this.config.fontLibrary === "function";
+    const presetLibraryAvailable =
+      typeof this.config.presetLibrary === "function";
     const unavailableVerbs: FacadeVerb[] = [...LIVE_UNAVAILABLE_VERBS];
     if (!mediaImportAvailable) unavailableVerbs.push("media.import");
     if (!materialLibraryAvailable) unavailableVerbs.push(...MATERIAL_VERBS);
@@ -469,10 +508,11 @@ export class LiveFacadeSession {
         writer: this.writer,
         leaseHolder: this.config.lease.holder(),
         sessionId: this.config.sessionId,
-        mediaImportAvailable,
-        materialLibraryAvailable,
-        fontLibraryAvailable,
-        unavailableVerbs,
+      mediaImportAvailable,
+      materialLibraryAvailable,
+      fontLibraryAvailable,
+      presetLibraryAvailable,
+      unavailableVerbs,
       },
     };
   }
@@ -3209,6 +3249,392 @@ export class LiveFacadeSession {
     });
   }
 
+  /* ---------------- preset.* (user-level custom presets) ---------------- */
+
+  /**
+   * The renderer owns the canonical preset store (IndexedDB) and the apply
+   * expansion into core actions; the facade validates params (including a
+   * deep payload check with the SAME core validator the GUI uses), guards
+   * retries and the project revision, and forwards. Bridge failure codes
+   * cross as the facade's public taxonomy.
+   */
+  private async callPresetBridge<T>(
+    verb: FacadeVerb,
+    bridgeVerb: PresetLibraryBridgeVerb,
+    params: Record<string, unknown>,
+  ): Promise<T> {
+    const bridge = this.config.presetLibrary;
+    if (typeof bridge !== "function") {
+      throw new FacadeError(
+        "UNSUPPORTED",
+        `${verb}: this live host does not expose a preset-library bridge`,
+      );
+    }
+    let reply: PresetLibraryBridgeReply;
+    try {
+      reply = await bridge({ verb: bridgeVerb, params });
+    } catch (error) {
+      throw this.presetBridgeFailure(verb, error);
+    }
+    if (!reply.ok) {
+      throw this.presetBridgeFailure(verb, reply.error);
+    }
+    return reply.result as T;
+  }
+
+  /**
+   * Placement/apply problems are parameter errors, not INTERNAL failures:
+   * the specific renderer code is preserved in details.reason (TARGET_NOT_FOUND
+   * maps to NOT_FOUND, matching the taxonomy's missing-entity code).
+   */
+  private presetBridgeFailure(verb: FacadeVerb, error: unknown): FacadeError {
+    const typed =
+      typeof error === "object" && error !== null
+        ? (error as { code?: unknown; message?: unknown; details?: unknown })
+        : undefined;
+    const code = typeof typed?.code === "string" ? typed.code : undefined;
+    const message =
+      (typeof typed?.message === "string" && typed.message) ||
+      (error instanceof Error ? error.message : String(error));
+    const details =
+      typed?.details && typeof typed.details === "object"
+        ? (typed.details as Record<string, unknown>)
+        : undefined;
+    if (code === "TARGET_NOT_FOUND") {
+      return new FacadeError("NOT_FOUND", `${verb}: ${message}`, details);
+    }
+    if (
+      code === "PLACEMENT_INVALID" ||
+      code === "TARGET_REQUIRED" ||
+      code === "TARGET_MISMATCH" ||
+      code === "PRESET_INVALID" ||
+      code === "PRESET_APPLY_UNSUPPORTED" ||
+      code === "PAYLOAD_VERSION_UNSUPPORTED"
+    ) {
+      return new FacadeError("INVALID_PARAMS", `${verb}: ${message}`, {
+        ...(details ?? {}),
+        reason: code,
+      });
+    }
+    return this.materialBridgeFailure(verb, error);
+  }
+
+  /**
+   * Deep payload check with the core validator (Node-safe). Name and
+   * thumbnail run through their own core validators at the verb layer.
+   */
+  private assertPresetPayloadValid(
+    verb: FacadeVerb,
+    payload: unknown,
+  ): Record<string, unknown> {
+    const checked = validatePresetPayload(payload);
+    if (!checked.ok) {
+      throw new FacadeError(
+        "INVALID_PARAMS",
+        `${verb}: ${checked.message}`,
+        { validationCode: checked.code, ...(checked.details ?? {}) },
+      );
+    }
+    return checked.value as unknown as Record<string, unknown>;
+  }
+
+  async presetList(
+    params?: PresetListParams,
+  ): Promise<FacadeResult<PresetListResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<PresetListParams>(
+        params ?? {},
+        PRESET_LIST_SCHEMA,
+        "preset.list params",
+      );
+      const result = await this.callPresetBridge<PresetListResult>(
+        "preset.list",
+        "list",
+        {
+          ...(valid.kind !== undefined ? { kind: valid.kind } : {}),
+          ...(valid.query !== undefined ? { query: valid.query } : {}),
+          ...(valid.includePayload !== undefined
+            ? { includePayload: valid.includePayload }
+            : {}),
+        },
+      );
+      return ok(result);
+    });
+  }
+
+  async presetGet(
+    params: PresetGetParams,
+  ): Promise<FacadeResult<PresetGetResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<PresetGetParams>(
+        params,
+        PRESET_GET_SCHEMA,
+        "preset.get params",
+      );
+      const result = await this.callPresetBridge<PresetGetResult>(
+        "preset.get",
+        "get",
+        { id: valid.id },
+      );
+      return ok(result);
+    });
+  }
+
+  async presetCreate(
+    params: PresetCreateParams,
+  ): Promise<FacadeResult<PresetCreateResult>> {
+    return this.enqueue(async () => {
+      this.gate("preset.create");
+      const valid = validateObject<PresetCreateParams>(
+        params,
+        PRESET_CREATE_SCHEMA,
+        "preset.create params",
+      );
+      const { idempotencyKey, ...payload } = valid;
+      const prior = await this.replayLookup<PresetCreateResult>(
+        "preset.create",
+        idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        return ok<PresetCreateResult>({ ...prior.value, replayed: true });
+      }
+      const name = validatePresetName(valid.name);
+      if (!name.ok) {
+        throw new FacadeError("INVALID_PARAMS", `preset.create: ${name.message}`, {
+          validationCode: name.code,
+        });
+      }
+      const normalizedPayload = this.assertPresetPayloadValid(
+        "preset.create",
+        valid.payload,
+      );
+      if (valid.thumbnailDataUrl !== undefined) {
+        const thumbnail = validatePresetThumbnail(valid.thumbnailDataUrl);
+        if (!thumbnail.ok) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            `preset.create: ${thumbnail.message}`,
+            { validationCode: thumbnail.code, ...(thumbnail.details ?? {}) },
+          );
+        }
+      }
+      const result = await this.callPresetBridge<PresetCreateResult>(
+        "preset.create",
+        "create",
+        {
+          kind: valid.kind,
+          name: name.value,
+          payload: normalizedPayload,
+          ...(valid.tags !== undefined ? { tags: [...valid.tags] } : {}),
+          ...(valid.builtinBaseId !== undefined
+            ? { builtinBaseId: valid.builtinBaseId }
+            : {}),
+          ...(valid.thumbnailDataUrl !== undefined
+            ? { thumbnailDataUrl: valid.thumbnailDataUrl }
+            : {}),
+        },
+      );
+      if (idempotencyKey !== undefined) {
+        this.ledger.set("preset.create", idempotencyKey, {
+          revision: 0,
+          value: result,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(result);
+    });
+  }
+
+  async presetUpdate(
+    params: PresetUpdateParams,
+  ): Promise<FacadeResult<PresetUpdateResult>> {
+    return this.enqueue(async () => {
+      this.gate("preset.update");
+      const valid = validateObject<PresetUpdateParams>(
+        params,
+        PRESET_UPDATE_SCHEMA,
+        "preset.update params",
+      );
+      const { idempotencyKey, ...payload } = valid;
+      const prior = await this.replayLookup<PresetUpdateResult>(
+        "preset.update",
+        idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        return ok<PresetUpdateResult>({ ...prior.value, replayed: true });
+      }
+      let normalizedPayload: Record<string, unknown> | undefined;
+      if (valid.payload !== undefined) {
+        normalizedPayload = this.assertPresetPayloadValid(
+          "preset.update",
+          valid.payload,
+        );
+      }
+      if (valid.name !== undefined) {
+        const name = validatePresetName(valid.name);
+        if (!name.ok) {
+          throw new FacadeError("INVALID_PARAMS", `preset.update: ${name.message}`, {
+            validationCode: name.code,
+          });
+        }
+      }
+      if (valid.thumbnailDataUrl !== undefined) {
+        const thumbnail = validatePresetThumbnail(valid.thumbnailDataUrl);
+        if (!thumbnail.ok) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            `preset.update: ${thumbnail.message}`,
+            { validationCode: thumbnail.code, ...(thumbnail.details ?? {}) },
+          );
+        }
+      }
+      const result = await this.callPresetBridge<PresetUpdateResult>(
+        "preset.update",
+        "update",
+        {
+          id: valid.id,
+          ...(valid.name !== undefined ? { name: valid.name } : {}),
+          ...(valid.tags !== undefined ? { tags: [...valid.tags] } : {}),
+          ...(normalizedPayload !== undefined ? { payload: normalizedPayload } : {}),
+          ...(valid.thumbnailDataUrl !== undefined
+            ? { thumbnailDataUrl: valid.thumbnailDataUrl }
+            : {}),
+          ...(valid.expectedRevision !== undefined
+            ? { expectedRevision: valid.expectedRevision }
+            : {}),
+        },
+      );
+      if (idempotencyKey !== undefined) {
+        this.ledger.set("preset.update", idempotencyKey, {
+          revision: 0,
+          value: result,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(result);
+    });
+  }
+
+  async presetRemove(
+    params: PresetRemoveParams,
+  ): Promise<FacadeResult<PresetRemoveResult>> {
+    return this.enqueue(async () => {
+      this.gate("preset.remove");
+      const valid = validateObject<PresetRemoveParams>(
+        params,
+        PRESET_REMOVE_SCHEMA,
+        "preset.remove params",
+      );
+      const { idempotencyKey, ...payload } = valid;
+      const prior = await this.replayLookup<PresetRemoveResult>(
+        "preset.remove",
+        idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        return ok<PresetRemoveResult>({ ...prior.value, replayed: true });
+      }
+      const result = await this.callPresetBridge<PresetRemoveResult>(
+        "preset.remove",
+        "remove",
+        { id: valid.id },
+      );
+      if (idempotencyKey !== undefined) {
+        this.ledger.set("preset.remove", idempotencyKey, {
+          revision: 0,
+          value: result,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(result);
+    });
+  }
+
+  /**
+   * Structural target validation before any renderer round-trip: the
+   * kind-specific target shape is closed here (shared predicate, also used
+   * by the transports' runtime mirrors); payload/target kind pairing and
+   * clip existence stay renderer-side where the project lives.
+   */
+  private assertPresetApplyTarget(
+    target: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const problem = presetApplyTargetProblem(target);
+    if (problem !== null) {
+      throw new FacadeError("INVALID_PARAMS", `preset.apply: ${problem}`);
+    }
+    const kind = target.kind as string;
+    if (kind === "text") {
+      return { kind, mode: target.mode, clipId: target.clipId };
+    }
+    if (kind === "effect") {
+      return { kind, clipIds: [...(target.clipIds as readonly string[])] };
+    }
+    return {
+      kind,
+      clipAId: target.clipAId,
+      ...(target.clipBId !== undefined ? { clipBId: target.clipBId } : {}),
+    };
+  }
+
+  async presetApply(
+    params: PresetApplyParams,
+  ): Promise<FacadeResult<PresetApplyResult>> {
+    return this.enqueue(async () => {
+      this.gate("preset.apply");
+      const valid = validateObject<PresetApplyParams>(
+        params,
+        PRESET_APPLY_SCHEMA,
+        "preset.apply params",
+      );
+      const { idempotencyKey, expectedRevision, ...payload } = valid;
+      const prior = await this.replayLookup<PresetApplyResult>(
+        "preset.apply",
+        idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        return ok<PresetApplyResult>({ ...prior.value, replayed: true });
+      }
+      // Precedence contract mirrors material.attach: a stale caller revision
+      // is CONFLICT even before the renderer is involved; the renderer
+      // repeats the CAS at commit time.
+      const { revision } = await this.config.store.getState();
+      if (expectedRevision !== undefined && expectedRevision !== revision) {
+        throw new FacadeError(
+          "CONFLICT",
+          `revision conflict: expected ${expectedRevision}, current is ${revision}`,
+          { currentRevision: revision },
+        );
+      }
+      const target = this.assertPresetApplyTarget(
+        valid.target as unknown as Record<string, unknown>,
+      );
+      const result = await this.callPresetBridge<PresetApplyResult>(
+        "preset.apply",
+        "apply",
+        {
+          presetId: valid.presetId,
+          target,
+          // Unconditional CAS like live edit.apply: omitted still guards
+          // with the revision we just read.
+          expectedRevision: expectedRevision ?? revision,
+          ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+        },
+      );
+      if (idempotencyKey !== undefined) {
+        this.ledger.set("preset.apply", idempotencyKey, {
+          revision: result.revision,
+          value: result,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(result);
+    });
+  }
+
   /* ---------------------------- lifecycle ----------------------------- */
 
   /**
@@ -3689,6 +4115,12 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "material.undo": (params) => session.materialUndo(params),
     "font.upload": (params) => session.fontUpload(params as FontUploadParams),
     "font.list": (params) => session.fontList(params as FontListParams),
+    "preset.list": (params) => session.presetList(params as PresetListParams),
+    "preset.get": (params) => session.presetGet(params as PresetGetParams),
+    "preset.create": (params) => session.presetCreate(params as PresetCreateParams),
+    "preset.update": (params) => session.presetUpdate(params as PresetUpdateParams),
+    "preset.remove": (params) => session.presetRemove(params as PresetRemoveParams),
+    "preset.apply": (params) => session.presetApply(params as PresetApplyParams),
     releaseWriterLease: () => session.releaseWriterLease(),
     dispose: () => session.dispose(),
   };

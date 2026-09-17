@@ -73,6 +73,18 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Unavailable headless — custom fonts live in the desktop GUI renderer's font store.",
   font_list:
     "Unavailable headless — custom fonts live in the desktop GUI renderer's font store.",
+  preset_list:
+    "Unavailable headless — user-level presets live in the desktop GUI renderer.",
+  preset_get:
+    "Unavailable headless — user-level presets live in the desktop GUI renderer.",
+  preset_create:
+    "Unavailable headless — user-level presets live in the desktop GUI renderer.",
+  preset_update:
+    "Unavailable headless — user-level presets live in the desktop GUI renderer.",
+  preset_remove:
+    "Unavailable headless — user-level presets live in the desktop GUI renderer.",
+  preset_apply:
+    "Unavailable headless — user-level presets live in the desktop GUI renderer.",
 };
 
 const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
@@ -153,6 +165,18 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Install a custom font for the user: a .ttf, .otf, .woff or .woff2 file (<=10 MiB) read from an absolute path inside a configured media root, or raw base64 bytes. The bytes are validated by signature and activated in the GUI's font store, so the family appears in the GUI font pickers immediately and persists across restarts. The response reports the ACTUAL fontFamily — a duplicate base name is suffixed ('Bar' -> 'Bar 2'), never overwritten; use it verbatim in text styling. font.list first to avoid accidental duplicates.",
   "font.list":
     "List the user's installed custom fonts (name, format, size, upload time; never the bytes). These families are usable in text styling right now; built-in fonts are not included.",
+  "preset.list":
+    "List the user's saved custom presets (text styles, clip effect stacks, transition parameter sets) as metadata; pass kind to filter and includePayload to embed each parameter bundle. Presets are user state, independent of the open project.",
+  "preset.get":
+    "Return one custom preset in full: kind, name, tags, the validated parameter payload, thumbnail, and revision.",
+  "preset.create":
+    "Save a reusable preset for the user: text (whitelisted text style fields), effect (1-8 engine clip effects with parameter objects), or transition (engine transition type with parameter and duration overrides). Unknown fields and out-of-range values are rejected, never stored; the preset appears in the matching GUI panel immediately.",
+  "preset.update":
+    "Rename a custom preset, replace its tags, or replace its parameter payload. Pass expectedRevision (the preset's revision) for CAS protection; a concurrent GUI edit fails CONFLICT instead of being overwritten.",
+  "preset.remove":
+    "Delete a custom preset. Projects already built from it keep their parameter copies and are never affected; removal is permanent and idempotent on retries.",
+  "preset.apply":
+    "Apply a custom preset to the open project as one undoable batch: text presets restyle an existing text clip (mode updateStyle), effect presets apply their stack to explicit clipIds, transition presets set the parameters on a cut (clipAId, optional clipBId; omitting clipBId targets the out-point edge). Placement limits are hard rejections, never clamped; use a fresh idempotencyKey.",
 };
 
 export function toolDescription(verb: FacadeVerb, mode: "live" | "headless"): string {

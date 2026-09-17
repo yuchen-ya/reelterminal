@@ -28,6 +28,7 @@ import {
   type ProjectChangesResult,
   type MaterialLibraryBridge,
   type FontLibraryBridge,
+  type PresetLibraryBridge,
 } from "@openreel/agent-facade";
 import type { Action } from "@openreel/core/types/actions";
 import type { Project } from "@openreel/core/types/project";
@@ -77,6 +78,8 @@ export interface LiveStoreBridge {
   readonly materialLibrary?: MaterialLibraryBridge;
   /** Optional font-library seam (font.* verbs → renderer font store). */
   readonly fontLibrary?: FontLibraryBridge;
+  /** Optional preset-library seam (preset.* verbs → renderer preset store). */
+  readonly presetLibrary?: PresetLibraryBridge;
   /** Feed one "openreel:live:response" message; unknown/foreign replies drop. */
   handleResponse(sender: unknown, response: LiveBridgeReply): void;
   /** Reject every pending call (bridge teardown / renderer gone). */
@@ -310,10 +313,40 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
     }
   };
 
+  // Same envelope discipline as materialLibrary, for the preset store. Apply
+  // runs a whole action batch renderer-side, hence the apply-class timeout.
+  const presetLibrary: PresetLibraryBridge = async (presetRequest) => {
+    try {
+      const result = await request(
+        "presetLibrary",
+        {
+          presetVerb: presetRequest.verb,
+          presetParams: presetRequest.params,
+        },
+        APPLY_TIMEOUT_MS,
+      );
+      return { ok: true, result };
+    } catch (error) {
+      const typed = error as {
+        code?: string;
+        details?: Record<string, unknown>;
+      };
+      return {
+        ok: false,
+        error: {
+          code: typed?.code ?? "BRIDGE_ERROR",
+          message: error instanceof Error ? error.message : String(error),
+          ...(typed?.details ? { details: typed.details } : {}),
+        },
+      };
+    }
+  };
+
   return {
     store,
     materialLibrary,
     fontLibrary,
+    presetLibrary,
     handleResponse,
     teardown,
     get pendingCount() {
@@ -352,6 +385,7 @@ export function installLiveStoreBridge(): LiveStoreBridge {
     store: bridge.store,
     materialLibrary: bridge.materialLibrary,
     fontLibrary: bridge.fontLibrary,
+    presetLibrary: bridge.presetLibrary,
     handleResponse: bridge.handleResponse,
     get pendingCount() {
       return bridge.pendingCount;

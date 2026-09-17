@@ -25,6 +25,7 @@ import { getPlaybackBridge } from "../../bridges/playback-bridge";
 import { runExclusiveLiveWrite } from "./live-write-lock";
 import { handleMaterialLibraryRequest } from "./material-bridge";
 import { handleFontLibraryRequest } from "./font-bridge";
+import { handlePresetLibraryRequest } from "./preset-bridge";
 import { prepareLiveMedia } from "./prepare-live-media";
 
 /**
@@ -763,6 +764,16 @@ export async function handleLiveBridgeRequest(
         const reply = await handleFontLibraryRequest({
           verb: req.fontVerb,
           params: req.fontParams,
+        });
+        return reply as Omit<LiveBridgeReply, "callId">;
+      }
+      case "presetLibrary": {
+        // The canonical custom-preset store lives renderer-side (IndexedDB,
+        // shared with the preset panels); apply expands into core actions
+        // against the canonical project store right here.
+        const reply = await handlePresetLibraryRequest({
+          verb: req.presetVerb,
+          params: req.presetParams,
         });
         return reply as Omit<LiveBridgeReply, "callId">;
       }
