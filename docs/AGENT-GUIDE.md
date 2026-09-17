@@ -21,8 +21,8 @@ connect that Agent to the open ReelTerminal desktop project through MCP.
    ```
 
 The connector reads `~/.openreel/live-endpoint.json`, forwards stdio MCP to
-the authenticated loopback endpoint, and exposes exactly the 48 live tools
-(46 built-in verbs plus `media_import_preflight` and `media_inspect`) listed in the root
+the authenticated loopback endpoint, and exposes exactly the 49 live tools
+(47 built-in verbs plus `media_import_preflight` and `media_inspect`) listed in the root
 [`SKILL.md`](../SKILL.md). Do not copy the endpoint token
 into prompts, project files, or logs.
 
@@ -136,6 +136,32 @@ asset whose source media has left the project fails `NOT_FOUND` (the
 message text tells it apart from an unknown id), and neither capture nor
 instantiate carries any cross-session byte-retention promise — do not
 claim one to the user.
+
+## Render HTML to PNG for import (`media_render_html`)
+
+When a card, lower-third, or diagram is easier to author as HTML/CSS,
+`media_render_html` renders it to a PNG inside a media root so it can take
+the ordinary `media_import` path — render, then import the returned `path`,
+then place it with a `clip.add` op. Key points:
+
+- `source` is inline markup (`{"kind":"inline","html":…}`, ≤512 KiB) or an
+  `.html` file inside a media root; `width`/`height` are required even
+  integers in [2, 4096]; `timeoutMs` defaults to 30 s (cap 120 s). Output
+  lands under `jobs/html-render/<requestKey>/` in the first media root by
+  default — keep it inside the job discipline above, never in the repo.
+- The result is honest: the returned artifact carries `sha256`, and any
+  blocked or missing subresource is listed in `missingAssets` — those
+  references rendered blank while the PNG still published. Check the list
+  instead of assuming the image is complete.
+- The gate is dual: scripts, frames, event handlers, unsafe/non-image
+  `data:` URIs, and network references are rejected by the shared html
+  policy, and the renderer itself runs with JavaScript disabled behind a
+  file-only allowlist. Local subresources resolve only inside `assetsRoot`
+  (an `.html` source defaults to its own directory; inline markup without
+  `assetsRoot` can only use `data:image` URIs).
+- Availability needs this machine's Chromium (the same supply preview uses);
+  check `capabilities_get` first. The verb changes no project state —
+  importing the published path is a separate `media_import` call.
 
 ## User-level custom fonts
 

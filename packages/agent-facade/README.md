@@ -61,7 +61,7 @@ const state = await facade["project.get_state"]();
 
 ## Verbs
 
-The current registry exposes **48 tools: 46 built-in verbs plus the two
+The current registry exposes **49 tools: 47 built-in verbs plus the two
 bundled plugin tools** (`media_import_preflight`, `media.inspect`). The
 slice narrative below predates the later additions (the `material.*`,
 `analysis.*`, `font.*`, `preset.*`, and `help.*` verbs,
@@ -88,7 +88,7 @@ Slice 6: `project.changes` · `timeline.query` · `edit.validate` ·
 `history.get` · `history.control` add bounded delta recovery, scoped reads,
 side-effect-free preflight, and canonical live undo/redo. `media.analyze_start`
 adds asynchronous media analysis over the generalized `job.status`/
-`job.cancel` path. Live and headless sessions implement the same 48-tool
+`job.cancel` path. Live and headless sessions implement the same 49-tool
 contract over a `LiveProjectStore` seam with no live project copy; headless
 history control reports `UNSUPPORTED` because it has no GUI/Core history stack.
 
@@ -156,7 +156,7 @@ no-op with `ok: true`.
 
 ## Live-mode contract differences (ADR 0004)
 
-Live sessions (`createLiveFacade`) implement the same 48 verbs against the
+Live sessions (`createLiveFacade`) implement the same 49 verbs against the
 open GUI project. Where a verb's behavior must differ by mode, the contract
 states it up front instead of letting integrators discover it at runtime:
 
@@ -287,6 +287,56 @@ Recognized-but-unsupported image extensions (bmp, tiff, avif, svg, …)
 fail with an explicit `Unsupported media:` error naming the supported
 formats; image bytes hidden behind a non-image extension fall through to
 the container path and are rejected there.
+
+## HTML→PNG rendering (`media.render_html`)
+
+`media.render_html` turns constrained local HTML/CSS into a PNG artifact
+under the media roots, so generated markup reaches the timeline through the
+ordinary `media.import` path instead of a side channel. Headless and live
+sessions share one artifact core (`src/media-render-html.ts`) with identical
+containment checks, output-directory convention, temp-then-publish
+discipline, and PNG re-inspection.
+
+- Params: `source` is `{"kind":"path","path":…}` (an `.html` file inside a
+  configured media root) or `{"kind":"inline","html":…}` (non-empty markup,
+  ≤512 KiB UTF-8; file-based documents are read with an 8 MiB ceiling before
+  the policy runs); `assetsRoot` (optional) is an absolute directory inside a
+  media root that local relative subresources may resolve into — a path
+  source defaults it to the source file's own directory, while inline markup
+  without one has no local base and can only ever load `data:` URIs;
+  `width`/`height` are required even integers in [2, 4096]; `transparent`
+  defaults to `true`; `timeoutMs` is an integer in [1000, 120000] with
+  default 30000; `outputDir` defaults to
+  `<mediaRoots[0]>/jobs/html-render/<requestKey>/` with `requestKey` derived
+  content-addressed from the source and parameters, so identical retries
+  land on the same published path instead of clobbering it.
+- Result: `{path, width, height, sha256, bytes, missingAssets, replayed}`.
+  The verified published path is meant for `media.import`.
+- Mutation classification: the verb writes a file, so it sits behind the
+  mutation/serialization gates and the idempotency ledger (a replay is
+  honored only while the artifact file still exists), but it never touches
+  project state and does not bump the revision.
+- Availability: reported honestly by `capabilities.get`. It requires a
+  `RenderProvider` exposing `renderHtmlPng` (with
+  `@openreel/runtime-chromium`, the local Playwright Chromium — the same
+  supply preview uses), a configured media root for the output, and a
+  passing render preflight; otherwise the verb fails `UNSUPPORTED`.
+- Security boundary: markup crosses the core `html-policy` string gate
+  (scripts, iframe/object/embed, base href, meta refresh, srcset, event
+  handlers, `javascript:`/`vbscript:`/non-image `data:` URIs, and network
+  references are rejected before a browser sees the document), and the
+  renderer adds a second layer: JavaScript is disabled at the context
+  switch level and a `page.route` wildcard allowlist lets through only the
+  entry document, `file://` subresources whose realpath stays inside
+  `assetsRoot`, and non-document `data:` URIs — every remote scheme is
+  aborted. Fonts are system fonts only; no network font loading. Blocked or
+  missing subresources never fail the render: they are aborted and returned
+  in `missingAssets` (those references render blank), so a blank region is
+  disclosed data, never a silent surprise.
+- Output discipline: temp-then-publish with write-side containment, PNG
+  magic/IHDR re-inspection of the actual bytes (never the provider's
+  self-report), a 16 MiB published-PNG budget, and `sha256` over the
+  published file.
 
 ## Custom fonts (`font.upload` / `font.list`)
 

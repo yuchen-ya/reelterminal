@@ -37,12 +37,12 @@ implemented features, reusable foundations, and remaining integration work.
 
 - The browser/desktop editor and the canonical ReelTerminal `Project` model share
   one editing world.
-- A token-authenticated loopback MCP endpoint exposes exactly **48 live-facade
+- A token-authenticated loopback MCP endpoint exposes exactly **49 live-facade
   tools**:
 
   `session.describe` · `capabilities.get` · `project.create` · `project.open` ·
   `project.save` · `project.rename` · `project.get_state` · `project.changes` ·
-  `media.import` · `media.analyze_start` · `analysis.list` · `analysis.get` ·
+  `media.import` · `media.render_html` · `media.analyze_start` · `analysis.list` · `analysis.get` ·
   `timeline.get` · `timeline.query` · `editor.get_context` · `editor.control` ·
   `edit.validate` · `edit.apply` · `history.get` · `history.control` ·
   `preview.render_frame` · `preview.render_comparison` · `visual.inspect` ·
@@ -54,7 +54,7 @@ implemented features, reusable foundations, and remaining integration work.
   `help.list_screens` · `help.describe` · `help.search` ·
   `media.inspect` · `media.import_preflight`.
 
-  This is 46 built-in verbs plus the two bundled plugins
+  This is 47 built-in verbs plus the two bundled plugins
   `media.import_preflight` and `media.inspect`. The
   source of truth is `FACADE_VERBS` in `packages/agent-facade/src/types.ts`
   together with the startup plugin registry in `packages/agent-facade/src/plugins/`.
@@ -62,13 +62,19 @@ implemented features, reusable foundations, and remaining integration work.
 
   The facade verbs above use dotted names; on the MCP wire each dot becomes an
   underscore (`session.describe` → `session_describe`, `editor.control` →
-  `editor_control`). `session_describe` reports the same 48 verbs.
+  `editor_control`). `session_describe` reports the same 49 verbs.
 
   In live mode, project creation/open remain GUI-owned. An Agent can import
   local video, audio, and image files (PNG, JPEG, GIF, WebP) from the roots
   reported by `capabilities.get`; the
   media appears immediately in the open GUI project and uses the shared undo
-  history. The other tools operate on that same project through the live bridge.
+  history. `media.render_html` can also generate such an importable PNG
+  directly: constrained local HTML/CSS (inline markup or an `.html` file)
+  renders in the local headless Chromium into a media root — scripts and
+  network references rejected, blocked/missing subresources disclosed as
+  `missingAssets` — and the returned path imports through the same
+  `media.import` path. The other tools operate on that same project through
+  the live bridge.
 - Live revision and context checks, one-writer lease semantics, independent
   Guided / Collaborative / Autonomous work modes, shared undo, and action
   activity status are in place.
@@ -128,7 +134,7 @@ implemented features, reusable foundations, and remaining integration work.
   the new inspection panel currently uses English labels.
 - The desktop GUI conversation panel and loopback client transport are landed.
   The shipped Codex reference adapter creates or resumes a Codex App Server
-  thread, connects that same thread to the 48-tool live MCP facade, and
+  thread, connects that same thread to the 49-tool live MCP facade, and
   projects only safe display events into the panel. Other Agent hosts can use
   the provider-neutral adapter kit and conversation protocol.
 - The legacy 304-tool desktop endpoint and the embedded BYOK agent/chat path
@@ -173,7 +179,7 @@ external Agent via MCP ─┘
 ```text
 packages/core              canonical Project model + editing engines
 packages/ui                shared React UI component library (Radix + Tailwind)
-packages/agent-facade      typed 48-verb facade, headless and live sessions
+packages/agent-facade      typed 49-verb facade, headless and live sessions
 packages/runtime-chromium  Chromium render/export providers + verification
 packages/agent-transport   optional headless MCP/CLI transport foundation
 packages/creation-schema   creation scene schema, primitives, and validation
@@ -225,7 +231,7 @@ monotonic: they are never renumbered or reused, including after deletion.
 
 ## What the facade covers
 
-The 48-tool contract is shared by headless and live facade sessions. In a
+The 49-tool contract is shared by headless and live facade sessions. In a
 headless session, project lifecycle and local media operations are available
 subject to configured roots. In a live session, the GUI owns the open project;
 the facade can import media and edit that shared project while reporting live
@@ -323,7 +329,7 @@ Those commands are not the default ReelTerminal desktop entry point.
 |---|---|---|
 | `packages/core` | Canonical project and editing engines | Active foundation |
 | `packages/ui` | Shared React UI component library | Active foundation |
-| `packages/agent-facade` | Headless/live 48-tool contract | Active |
+| `packages/agent-facade` | Headless/live 49-tool contract | Active |
 | `packages/runtime-chromium` | Render, export, and verification providers | Active foundation |
 | `packages/agent-transport` | Headless MCP/CLI transport foundation | Optional |
 | `packages/creation-schema` | Creation scene schema and validation | Active foundation |
@@ -358,7 +364,7 @@ pnpm lint
 ```
 
 Desktop live collaboration tests cover endpoint authentication and MCP shape,
-the 48-tool catalog, the renderer bridge, session host, lease, status events,
+the 49-tool catalog, the renderer bridge, session host, lease, status events,
 and shared revision behavior.
 
 ## License and attribution

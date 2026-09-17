@@ -82,7 +82,8 @@ This connector exposes the same open GUI project through the following tools:
 
 `session_describe` · `capabilities_get` · `project_create` · `project_open` ·
 `project_save` · `project_rename` · `project_get_state` · `project_changes` ·
-`media_import_preflight` · `media_import` · `media_analyze_start` · `media_inspect` · `timeline_get` · `timeline_query` ·
+`media_import_preflight` · `media_import` · `media_render_html` ·
+`media_analyze_start` · `media_inspect` · `timeline_get` · `timeline_query` ·
 `editor_get_context` · `editor_control` · `edit_validate` · `edit_apply` ·
 `history_get` · `history_control` · `preview_render_frame` ·
 `preview_render_comparison` ·
@@ -379,6 +380,7 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `project_changes` | Bounded paged entity/field changes since a revision; explicit full-refresh fallback |
 | `media_import_preflight` | Cheap root/stat/size precheck; codec decodability remains unchecked |
 | `media_import` | Path inside `mediaRoots` (video, audio, or image); URLs refused |
+| `media_render_html` | Constrained local HTML/CSS → PNG inside a media root (scripts/frames/event handlers/network references rejected; local subresources only inside `assetsRoot`; `missingAssets` disclosed); `media_import` the returned path to place it |
 | `media_analyze_start` | Start a generalized async analysis job after checking per-type capabilities |
 | `media_inspect` | Read-only source-video sampling by `mediaId`, `startSec`, `endSec`; 1–12 budget-fitted frames (PNG, or JPEG per `maxFrameBytes`) with `frames[].fidelity`, and optional contact sheet, even before timeline placement |
 | `timeline_get` | Compact view — preferred read |
@@ -414,6 +416,26 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `help_list_screens` | List the shipped GUI manual's screen index (18 screens, bilingual zh/en): takes no params; returns the manual meta (`contentVersion`, bound `appVersion`, `languages`, screenshot status), `total`, and one restrained line per screen — `id`, zh/en `title`/`summary`, `hasScreenshot` |
 | `help_describe` | Return ONE screen's manual page by `screenId` (unknown id fails `INVALID_PARAMS` and points back at `help_list_screens`): zh/en entry path, visibility, common steps, `shortcutIds` references (ids only — key bindings are user-remappable; Settings → Shortcuts stays the live truth), and honest `limitations`. `screenshotStatus:"pending"` — the screenshot field is reserved, not yet delivered |
 | `help_search` | Search the whole manual with one zh/en keyword (1..100 chars; case-insensitive match over titles, summaries, entries, steps, limitations, shortcut ids, keywords); restrained hits — at most 20, each only `id`+`title`+`summary` — then `help_describe` the interesting ids |
+
+`media_render_html` renders constrained local HTML/CSS to a PNG inside a
+media root so the result reaches the timeline through the ordinary
+`media_import` path: `media_render_html {source:{kind:"inline",html},
+width:1280, height:720, idempotencyKey}` → take the returned
+`{path, sha256, missingAssets}` → `media_import {path}` → `clip.add` with
+the returned `mediaId`. `source` is inline markup (≤512 KiB) or an `.html`
+file inside a media root; `width`/`height` are even integers in [2, 4096];
+`timeoutMs` defaults to 30 s (cap 120 s); output lands under
+`jobs/html-render/<requestKey>/` in the first media root unless `outputDir`
+says otherwise. The gate is dual: the core html-policy string gate rejects
+scripts, frames, event handlers, unsafe/non-image `data:` URIs, and network
+references before a browser sees the document, and the renderer itself runs
+with JavaScript disabled behind a file-only route allowlist. Local
+subresources resolve only inside `assetsRoot` (a path source defaults to its
+own directory; inline markup without one can only use `data:image` URIs);
+anything blocked or missing is aborted and listed in `missingAssets` — those
+references render blank while the PNG still publishes. Needs this machine's
+Chromium (the same supply as preview) — check `capabilities_get`. The verb
+changes no project state; import the published path separately.
 
 Every result is one JSON envelope: `{ok:true, value}` or
 `{ok:false, error:{code, message, details}}` with `isError:true` — match on
