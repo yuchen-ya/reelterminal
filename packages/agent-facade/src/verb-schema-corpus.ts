@@ -341,6 +341,64 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
     },
     {
+      name: "valid clip.setDucking with pre-computed points",
+      params: { ops: [{ op: "clip.setDucking", clipId: "c1", threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2, points: [{ time: 0, value: 1 }, { time: 1, value: 0.4 }] }] },
+      expectValid: true,
+    },
+    {
+      name: "valid clip.setDucking with presenceRanges",
+      params: { ops: [{ op: "clip.setDucking", clipId: "c1", threshold: -25, reduction: 0.8, attack: 0.05, release: 0.2, holdTime: 0.1, presenceRanges: [{ start: 0.5, end: 2 }] }] },
+      expectValid: true,
+    },
+    {
+      name: "clip.setDucking threshold must be in [-60, 0]",
+      params: { ops: [{ op: "clip.setDucking", clipId: "c1", threshold: -61, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2, points: [{ time: 0, value: 1 }] }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setDucking reduction must be in [0, 1]",
+      params: { ops: [{ op: "clip.setDucking", clipId: "c1", threshold: -30, reduction: 1.5, attack: 0.1, release: 0.3, holdTime: 0.2, points: [{ time: 0, value: 1 }] }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setDucking point value must be in [0, 4]",
+      params: { ops: [{ op: "clip.setDucking", clipId: "c1", threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2, points: [{ time: 0, value: 5 }] }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setDucking point time must be >= 0",
+      params: { ops: [{ op: "clip.setDucking", clipId: "c1", threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2, points: [{ time: -1, value: 1 }] }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setDucking presenceRanges start must be >= 0",
+      params: { ops: [{ op: "clip.setDucking", clipId: "c1", threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2, presenceRanges: [{ start: -0.5, end: 2 }] }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setDucking unknown field",
+      params: { ops: [{ op: "clip.setDucking", clipId: "c1", threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2, points: [{ time: 0, value: 1 }], sourceTrackId: "t2" }] },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: ducking needs points or presenceRanges",
+      params: { ops: [{ op: "clip.setDucking", clipId: "c1", threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2 }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: points and presenceRanges are mutually exclusive",
+      params: { ops: [{ op: "clip.setDucking", clipId: "c1", threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2, points: [{ time: 0, value: 1 }], presenceRanges: [{ start: 0, end: 1 }] }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: presenceRange end must exceed start",
+      params: { ops: [{ op: "clip.setDucking", clipId: "c1", threshold: -30, reduction: 0.6, attack: 0.1, release: 0.3, holdTime: 0.2, presenceRanges: [{ start: 2, end: 2 }] }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
       name: "valid clip.applyReframe crop plan",
       params: {
         ops: [{

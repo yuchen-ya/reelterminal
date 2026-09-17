@@ -400,6 +400,30 @@ export type TransitionAction =
     };
 
 // Audio actions
+
+/**
+ * Panel readback snapshot persisted at clip.metadata.audioDucking. This field
+ * is the GUI ducking panel's restore/readback record (AudioDuckingSection
+ * reads it back); the audible result is carried solely by the
+ * clip.automation.volume points written alongside it — the render and export
+ * chains never read this metadata.
+ */
+export interface AudioDuckingSnapshot {
+  readonly enabled: boolean;
+  readonly sourceTrackId: string | null;
+  readonly threshold: number;
+  readonly reduction: number;
+  readonly attack: number;
+  readonly release: number;
+  readonly holdTime: number;
+}
+
+/**
+ * One undoable ducking unit: persist the volume-automation points the
+ * envelope detector produced AND the panel readback snapshot. `settings: null`
+ * and/or an empty `points` array removes the corresponding field (undo uses
+ * this to restore the exact prior two-field state, including "absent").
+ */
 export type AudioAction =
   | { type: "audio/setVolume"; params: { clipId: string; volume: number } }
   | {
@@ -426,6 +450,20 @@ export type AudioAction =
   | {
       type: "audio/toggleEffect";
       params: { clipId: string; effectId: string; enabled: boolean };
+    }
+  | {
+      /** Canonical ducking persistence — see AudioDuckingSnapshot above. */
+      type: "audio/setDucking";
+      params: {
+        clipId: string;
+        settings: AudioDuckingSnapshot | null;
+        points: AutomationPoint[];
+      };
+    }
+  | {
+      /** Removes both ducking fields; the inverse re-applies the prior state. */
+      type: "audio/clearDucking";
+      params: { clipId: string };
     };
 
 // Subtitle actions

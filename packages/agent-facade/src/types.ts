@@ -950,6 +950,7 @@ export const EDIT_OP_TYPES = [
   "media.rename",
   "clip.setChromaKey",
   "clip.setNoiseReduction",
+  "clip.setDucking",
   "svg.create",
   "svg.update",
   "svg.remove",
@@ -1440,6 +1441,53 @@ export interface ClipSetNoiseReductionOp {
 }
 
 /**
+ * clip.setDucking — persist audio ducking on ONE clip: the volume-automation
+ * points the audible chain evaluates (realtime preview and export both run
+ * clip.automation.volume through the shared core audio engine) plus the same
+ * panel-readback settings snapshot the GUI ducking panel persists, via the
+ * same core audio/setDucking action. Tuning fields mirror the GUI
+ * AudioDuckingSection sliders exactly.
+ *
+ * Keyframes come from envelope detection (core AudioDucker RMS presence) —
+ * deterministic local signal processing, not AI. Either supply `points`
+ * (an AudioDucker.generateDuckingKeyframes product, e.g. produced in a live
+ * GUI session) or `presenceRanges` (speech-active windows on the trigger
+ * track, e.g. the complement of a silence analysis) and the op synthesizes
+ * the keyframes with the same core kernel the GUI panel uses. An empty
+ * synthesis result is rejected, never persisted silently.
+ */
+export interface ClipSetDuckingOp {
+  readonly op: "clip.setDucking";
+  readonly clipId: string;
+  /** Voice level that triggers ducking, dB in [-60, 0]. */
+  readonly threshold: number;
+  /** How much the background is lowered, in [0, 1]. */
+  readonly reduction: number;
+  /** Attack time in seconds, [0, 1]. */
+  readonly attack: number;
+  /** Release time in seconds, [0, 2]. */
+  readonly release: number;
+  /** Minimum duck hold time in seconds, [0, 1]. */
+  readonly holdTime: number;
+  /**
+   * Pre-computed ducking keyframes (time in clip-relative seconds, value in
+   * [0, 4]). Supply points OR presenceRanges, never both.
+   */
+  readonly points?: readonly {
+    readonly time: number;
+    readonly value: number;
+  }[];
+  /**
+   * Speech-active windows (seconds, clip-relative) on the trigger track;
+   * keyframes are synthesized from them via the shared AudioDucker kernel.
+   */
+  readonly presenceRanges?: readonly {
+    readonly start: number;
+    readonly end: number;
+  }[];
+}
+
+/**
  * workAsset.capture — save one timeline clip into the project's work assets
  * ("saved work"): a named, stable-id reusable reference plus a parameter
  * snapshot (trim, speed, effects, transform, …). The asset references the
@@ -1531,6 +1579,7 @@ export type EditOp =
   | MediaRenameOp
   | ClipSetChromaKeyOp
   | ClipSetNoiseReductionOp
+  | ClipSetDuckingOp
   | WorkAssetCaptureOp
   | WorkAssetRenameOp
   | WorkAssetDeleteOp

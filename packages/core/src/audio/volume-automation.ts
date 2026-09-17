@@ -549,6 +549,96 @@ export async function initializeVolumeAutomation(
   return engine;
 }
 
+/**
+ * Pure ducking-keyframe synthesis from trigger-presence ranges (the single
+ * kernel behind AudioDucker.generateDuckingKeyframes). Kept free of any
+ * AudioBuffer/WebAudio dependency so the same envelope→keyframes math is
+ * callable from node-side callers (facade opToCoreActions) and tests — the
+ * GUI panel and the agent op therefore share one implementation, not a copy.
+ */
+export function generateDuckingKeyframesFromRanges(
+  presenceRanges: ReadonlyArray<{ start: number; end: number }>,
+  config: DuckingConfig,
+  backgroundVolume: number = 1,
+): VolumeKeyframe[] {
+  if (presenceRanges.length === 0) {
+    return [];
+  }
+
+  const keyframes: VolumeKeyframe[] = [];
+  const duckedVolume = clampVolume(backgroundVolume * (1 - config.reduction));
+  const normalVolume = clampVolume(backgroundVolume);
+  const mergedRanges = mergeDuckingPresenceRanges(
+    presenceRanges,
+    config.holdTime,
+  );
+
+  for (const range of mergedRanges) {
+    const duckStart = Math.max(0, range.start - config.attack);
+    const duckEnd = range.end + config.release;
+    keyframes.push({
+      time: duckStart,
+      value: normalVolume,
+      curve: "s-curve",
+    });
+
+    keyframes.push({
+      time: range.start,
+      value: duckedVolume,
+      curve: "s-curve",
+    });
+    keyframes.push({
+      time: range.end,
+      value: duckedVolume,
+      curve: "s-curve",
+    });
+
+    keyframes.push({
+      time: duckEnd,
+      value: normalVolume,
+      curve: "s-curve",
+    });
+  }
+  return deduplicateDuckingKeyframes(keyframes);
+}
+
+function mergeDuckingPresenceRanges(
+  ranges: ReadonlyArray<{ start: number; end: number }>,
+  holdTime: number,
+): Array<{ start: number; end: number }> {
+  if (ranges.length === 0) return [];
+
+  const sorted = [...ranges].sort((a, b) => a.start - b.start);
+  const merged: Array<{ start: number; end: number }> = [sorted[0]!];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const current = sorted[i]!;
+    const last = merged[merged.length - 1]!;
+    if (current.start <= last.end + holdTime) {
+      last.end = Math.max(last.end, current.end);
+    } else {
+      merged.push({ ...current });
+    }
+  }
+
+  return merged;
+}
+
+function deduplicateDuckingKeyframes(keyframes: VolumeKeyframe[]): VolumeKeyframe[] {
+  const sorted = [...keyframes].sort((a, b) => a.time - b.time);
+  const result: VolumeKeyframe[] = [];
+
+  for (const kf of sorted) {
+    const last = result[result.length - 1];
+    // Skip if same time (keep the first one)
+    if (!last || Math.abs(kf.time - last.time) > 0.001) {
+      result.push(kf);
+    }
+  }
+
+  return result;
+}
+
 export class AudioDucker {
   private audioContext: AudioContext | OfflineAudioContext | null = null;
   private initialized = false;
@@ -632,82 +722,11 @@ export class AudioDucker {
       config.threshold,
     );
 
-    if (presenceRanges.length === 0) {
-      return [];
-    }
-
-    const keyframes: VolumeKeyframe[] = [];
-    const duckedVolume = clampVolume(backgroundVolume * (1 - config.reduction));
-    const normalVolume = clampVolume(backgroundVolume);
-    const mergedRanges = this.mergePresenceRanges(
+    return generateDuckingKeyframesFromRanges(
       presenceRanges,
-      config.holdTime,
+      config,
+      backgroundVolume,
     );
-
-    for (const range of mergedRanges) {
-      const duckStart = Math.max(0, range.start - config.attack);
-      const duckEnd = range.end + config.release;
-      keyframes.push({
-        time: duckStart,
-        value: normalVolume,
-        curve: "s-curve",
-      });
-
-      keyframes.push({
-        time: range.start,
-        value: duckedVolume,
-        curve: "s-curve",
-      });
-      keyframes.push({
-        time: range.end,
-        value: duckedVolume,
-        curve: "s-curve",
-      });
-
-      keyframes.push({
-        time: duckEnd,
-        value: normalVolume,
-        curve: "s-curve",
-      });
-    }
-    return this.deduplicateKeyframes(keyframes);
-  }
-
-  private mergePresenceRanges(
-    ranges: Array<{ start: number; end: number }>,
-    holdTime: number,
-  ): Array<{ start: number; end: number }> {
-    if (ranges.length === 0) return [];
-
-    const sorted = [...ranges].sort((a, b) => a.start - b.start);
-    const merged: Array<{ start: number; end: number }> = [sorted[0]];
-
-    for (let i = 1; i < sorted.length; i++) {
-      const current = sorted[i];
-      const last = merged[merged.length - 1];
-      if (current.start <= last.end + holdTime) {
-        last.end = Math.max(last.end, current.end);
-      } else {
-        merged.push({ ...current });
-      }
-    }
-
-    return merged;
-  }
-
-  private deduplicateKeyframes(keyframes: VolumeKeyframe[]): VolumeKeyframe[] {
-    const sorted = [...keyframes].sort((a, b) => a.time - b.time);
-    const result: VolumeKeyframe[] = [];
-
-    for (const kf of sorted) {
-      const last = result[result.length - 1];
-      // Skip if same time (keep the first one)
-      if (!last || Math.abs(kf.time - last.time) > 0.001) {
-        result.push(kf);
-      }
-    }
-
-    return result;
   }
 
   async applyDucking(

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Project } from "@openreel/core";
 import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { useProjectStore } from "../../../stores/project-store";
@@ -123,5 +123,35 @@ describe("AudioDuckingSection", () => {
     expect(screen.getByText("Ducking Enabled")).toBeInTheDocument();
     expect(screen.getByText("Dialogue Track")).toBeInTheDocument();
     expect(screen.getByText("Trigger Source (Voice Track)")).toBeInTheDocument();
+  });
+
+  it("remove goes through the undoable core action and undo restores the readback state", async () => {
+    render(<AudioDuckingSection clipId={targetClipId} />);
+    expect(screen.getByText("Ducking Applied")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() => {
+      expect(screen.queryByText("Ducking Applied")).not.toBeInTheDocument();
+    });
+
+    const clip = useProjectStore
+      .getState()
+      .project.timeline.tracks.flatMap((track) => track.clips)
+      .find((candidate) => candidate.id === targetClipId);
+    expect(clip?.metadata?.audioDucking).toBeUndefined();
+    expect(clip?.automation?.volume ?? []).toHaveLength(0);
+
+    // The removal was an action, not a raw write: undo brings the panel
+    // readback (metadata snapshot + non-empty volume points) back.
+    await useProjectStore.getState().undo();
+    const restored = useProjectStore
+      .getState()
+      .project.timeline.tracks.flatMap((track) => track.clips)
+      .find((candidate) => candidate.id === targetClipId);
+    expect(restored?.metadata?.audioDucking).toMatchObject({ enabled: true });
+    expect((restored?.automation?.volume?.length ?? 0) > 0).toBe(true);
+    await waitFor(() => {
+      expect(screen.getByText("Ducking Applied")).toBeInTheDocument();
+    });
   });
 });

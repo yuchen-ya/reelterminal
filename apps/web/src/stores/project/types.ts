@@ -462,8 +462,8 @@ export interface ProjectState {
     clipId: string,
     settings: AudioDuckingSettings,
     points: AutomationPoint[],
-  ) => boolean;
-  clearClipAudioDucking: (clipId: string) => boolean;
+  ) => Promise<boolean>;
+  clearClipAudioDucking: (clipId: string) => Promise<boolean>;
 
   updateClipKeyframes: (clipId: string, keyframes: Keyframe[]) => boolean;
 

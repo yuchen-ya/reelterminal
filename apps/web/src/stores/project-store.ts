@@ -603,8 +603,8 @@ export interface ProjectState {
     clipId: string,
     settings: AudioDuckingSettings,
     points: AutomationPoint[],
-  ) => boolean;
-  clearClipAudioDucking: (clipId: string) => boolean;
+  ) => Promise<boolean>;
+  clearClipAudioDucking: (clipId: string) => Promise<boolean>;
 
   // Keyframe actions
   updateClipKeyframes: (clipId: string, keyframes: Keyframe[]) => boolean;
@@ -4180,58 +4180,52 @@ export const useProjectStore = create<ProjectState>()(
         return [];
       },
 
-      setClipAudioDucking: (
+      /**
+       * Persist clip ducking through the canonical core action (the same
+       * action the agent facade's clip.setDucking op emits) so the change is
+       * one undoable unit instead of a raw state write. metadata.audioDucking
+       * remains the panel readback record; the audible result is carried by
+       * the automation.volume points written in the same action.
+       */
+      setClipAudioDucking: async (
         clipId: string,
         settings: AudioDuckingSettings,
         points: AutomationPoint[],
       ) => {
-        const { project } = get();
-        const updatedProject = updateProjectClip(project, clipId, (clip) => ({
-          ...clip,
-          automation: {
-            ...(clip.automation ?? {}),
-            volume: points.map((point) => ({ ...point })),
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "audio/setDucking",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: {
+            clipId,
+            settings: { ...settings },
+            points: points.map((point) => ({ ...point })),
           },
-          metadata: {
-            ...(clip.metadata ?? {}),
-            audioDucking: { ...settings },
-          },
-        }));
-
-        if (!updatedProject) {
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (!result.success) {
+          console.error("Failed to set audio ducking:", result.error?.message);
           return false;
         }
-
-        set({ project: updatedProject });
+        set({ project: { ...project, modifiedAt: Date.now() } });
         return true;
       },
 
-      clearClipAudioDucking: (clipId: string) => {
-        const { project } = get();
-        const updatedProject = updateProjectClip(project, clipId, (clip) => {
-          const nextMetadata = { ...(clip.metadata ?? {}) } as Record<
-            string,
-            unknown
-          >;
-          delete nextMetadata.audioDucking;
-
-          const nextAutomation = { ...(clip.automation ?? {}) };
-          delete nextAutomation.volume;
-
-          return {
-            ...clip,
-            automation:
-              Object.keys(nextAutomation).length > 0 ? nextAutomation : undefined,
-            metadata:
-              Object.keys(nextMetadata).length > 0 ? nextMetadata : undefined,
-          };
-        });
-
-        if (!updatedProject) {
+      clearClipAudioDucking: async (clipId: string) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "audio/clearDucking",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { clipId },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (!result.success) {
+          console.error("Failed to clear audio ducking:", result.error?.message);
           return false;
         }
-
-        set({ project: updatedProject });
+        set({ project: { ...project, modifiedAt: Date.now() } });
         return true;
       },
 

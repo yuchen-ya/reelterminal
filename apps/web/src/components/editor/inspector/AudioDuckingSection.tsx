@@ -361,7 +361,14 @@ export const AudioDuckingSection: React.FC<AudioDuckingSectionProps> = ({
       }
 
       const persisted = { ...settings, enabled: true };
-      const applied = setClipAudioDucking(audioTargetClip.id, persisted, keyframes);
+      // The store setter persists via the core audio/setDucking action, so
+      // ducking joins the undo history; the panel readback below restores
+      // from clip.metadata.audioDucking exactly as before.
+      const applied = await setClipAudioDucking(
+        audioTargetClip.id,
+        persisted,
+        keyframes,
+      );
 
       if (!applied) {
         throw new Error("Failed to persist ducking on this clip.");
@@ -377,8 +384,8 @@ export const AudioDuckingSection: React.FC<AudioDuckingSectionProps> = ({
     }
   }, [audioTargetClip, project, setClipAudioDucking, settings]);
 
-  const handleRemoveDucking = useCallback(() => {
-    const cleared = clearClipAudioDucking(audioTargetClip?.id ?? clipId);
+  const handleRemoveDucking = useCallback(async () => {
+    const cleared = await clearClipAudioDucking(audioTargetClip?.id ?? clipId);
 
     if (!cleared) {
       setErrorMessage("Failed to remove ducking from this clip.");

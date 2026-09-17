@@ -874,6 +874,13 @@ export class InverseActionGenerator {
           enabled: effect.enabled,
         });
       }
+
+      // Ducking persistence is handler-based (handlers/audio-ducking.ts):
+      // registry handlers take precedence in generate(), so inversion of
+      // these types never reaches this built-in switch.
+      case "audio/setDucking":
+      case "audio/clearDucking":
+        return null;
     }
   }
 

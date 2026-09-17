@@ -546,9 +546,26 @@ export async function buildCapabilities(
         requires: "an analysis-backed gain plan plus shared preview/export semantics",
       },
       audioDucking: {
-        available: false,
-        reason: "The GUI has a direct automation helper, but it is not yet a canonical atomic Core action shared with the facade.",
-        requires: "a Core automation action with undo and export parity",
+        available: true,
+        details: {
+          op: "clip.setDucking",
+          coreAction: "audio/setDucking",
+          algorithm:
+            "envelope detection (core AudioDucker RMS presence windows) — deterministic local signal processing, not AI or model inference",
+          keyframeSource:
+            "the op takes pre-computed points (an AudioDucker.generateDuckingKeyframes product) or presenceRanges (speech-active windows on the trigger track, e.g. the complement of a silence analysis) and synthesizes keyframes with the same core kernel the GUI panel uses; an empty synthesis is rejected, never persisted silently",
+          tuning: {
+            thresholdDb: [-60, 0],
+            reduction: [0, 1],
+            attackSec: [0, 1],
+            releaseSec: [0, 2],
+            holdTimeSec: [0, 1],
+          },
+          evaluation:
+            "persisted clip.automation.volume is evaluated by the shared core audio engine in both realtime preview and export render (resolveClipVolumeAutomation → applyVolumeAutomation) — one evaluation chain, no separate export path",
+          guiParity:
+            "same core action as the GUI ducking panel (AudioDuckingSection), which the store now also persists through; undo restores both the volume keyframes and the panel readback snapshot",
+        },
       },
       vocalIsolation: {
         available: false,

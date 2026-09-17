@@ -85,6 +85,7 @@ import {
   type MediaRenameOp,
   type ClipSetChromaKeyOp,
   type ClipSetNoiseReductionOp,
+  type ClipSetDuckingOp,
   type WorkAssetCaptureOp,
   type WorkAssetRenameOp,
   type WorkAssetDeleteOp,
@@ -99,6 +100,8 @@ import {
   NOISE_REDUCTION_FOCUS_OPTIONS,
 } from "@openreel/core/audio/noise-reduction-presets";
 import { isSerializedNoiseProfile } from "@openreel/core/audio/audio-effect-routing";
+import { generateDuckingKeyframesFromRanges } from "@openreel/core/audio/volume-automation";
+import { resolveAudibleAudioTarget } from "@openreel/core/audio/clip-audio-resolution";
 import { captureWorkAssetFromClip } from "@openreel/core/work-assets/capture";
 import { buildWorkAssetInstantiateActions } from "@openreel/core/work-assets/instantiate";
 import { timelineDurationSec } from "./projection";
@@ -1716,6 +1719,115 @@ export const CLIP_SET_NOISE_REDUCTION_SCHEMA: ObjectSchema = {
  * the fresh validated objects — never the raw nested caller objects (whose
  * getters could yield different values post-validation).
  */
+
+/** Upper bound on ducking points / presence ranges per op (envelope output). */
+const DUCKING_MAX_POINTS = 512;
+const DUCKING_MAX_RANGES = 1024;
+
+const isFiniteNonNegative = (v: unknown): boolean =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0;
+
+const DUCKING_POINT_SCHEMA: ObjectSchema = {
+  time: {
+    check: isFiniteNonNegative,
+    describe: "a finite number >= 0 (clip-relative seconds)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  value: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 4,
+    describe: "a finite number in [0, 4]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 4 } },
+  },
+};
+
+const DUCKING_PRESENCE_RANGE_SCHEMA: ObjectSchema = {
+  start: {
+    check: isFiniteNonNegative,
+    describe: "a finite number >= 0 (clip-relative seconds)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  end: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0,
+    describe: "a finite number > start (clip-relative seconds)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+};
+
+export const CLIP_SET_DUCKING_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "clip.setDucking",
+    describe: '"clip.setDucking"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.setDucking" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  threshold: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= -60 && v <= 0,
+    describe: "a finite number in [-60, 0] (dB)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: -60, maximum: 0 } },
+  },
+  reduction: {
+    check: isUnitRange,
+    describe: "a finite number in [0, 1]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  attack: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1,
+    describe: "a finite number in [0, 1] (seconds)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  release: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 2,
+    describe: "a finite number in [0, 2] (seconds)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 2 } },
+  },
+  holdTime: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1,
+    describe: "a finite number in [0, 1] (seconds)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+  points: {
+    check: (v) =>
+      Array.isArray(v) &&
+      v.length >= 1 &&
+      v.length <= DUCKING_MAX_POINTS,
+    describe: `an array of 1-${DUCKING_MAX_POINTS} ducking keyframes (or pass presenceRanges instead)`,
+    emits: {
+      kind: "array",
+      minItems: 1,
+      maxItems: DUCKING_MAX_POINTS,
+      items: { kind: "object", schema: DUCKING_POINT_SCHEMA },
+    },
+  },
+  presenceRanges: {
+    check: (v) =>
+      Array.isArray(v) &&
+      v.length >= 1 &&
+      v.length <= DUCKING_MAX_RANGES,
+    describe: `an array of 1-${DUCKING_MAX_RANGES} speech-active ranges (or pass points instead)`,
+    emits: {
+      kind: "array",
+      minItems: 1,
+      maxItems: DUCKING_MAX_RANGES,
+      items: { kind: "object", schema: DUCKING_PRESENCE_RANGE_SCHEMA },
+    },
+  },
+};
+
 function sanitizeTextFields<T extends TextCreateOp | TextUpdateOp>(
   op: T,
   label: string,
@@ -2111,6 +2223,48 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
         );
       }
       return { ...op, profile };
+    }
+    case "clip.setDucking": {
+      const op = validateObject<ClipSetDuckingOp>(
+        raw,
+        CLIP_SET_DUCKING_SCHEMA,
+        label,
+      );
+      // Exactly one keyframe source: pre-computed points (an AudioDucker
+      // product) or presence ranges the shared core kernel synthesizes from.
+      if (op.points !== undefined && op.presenceRanges !== undefined) {
+        throw invalidParams(
+          `${label}: pass either points or presenceRanges, not both`,
+        );
+      }
+      if (op.points !== undefined) {
+        op.points.forEach((point, pointIndex) =>
+          validateObject(
+            point,
+            DUCKING_POINT_SCHEMA,
+            `${label}.points[${pointIndex}]`,
+          ),
+        );
+        return { ...op, points: op.points };
+      }
+      if (op.presenceRanges !== undefined) {
+        op.presenceRanges.forEach((range, rangeIndex) => {
+          const parsed = validateObject<{ start: number; end: number }>(
+            range,
+            DUCKING_PRESENCE_RANGE_SCHEMA,
+            `${label}.presenceRanges[${rangeIndex}]`,
+          );
+          if (parsed.end <= parsed.start) {
+            throw invalidParams(
+              `${label}.presenceRanges[${rangeIndex}].end must be greater than start`,
+            );
+          }
+        });
+        return { ...op, presenceRanges: op.presenceRanges };
+      }
+      throw invalidParams(
+        `${label}: ducking keyframes need a source — pass points (an AudioDucker.generateDuckingKeyframes product) or presenceRanges (speech-active windows on the trigger track, e.g. from a silence analysis complement)`,
+      );
     }
     case "reference.setComparison": {
       const op = validateObject<ReferenceSetComparisonOp>(
@@ -3953,6 +4107,75 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         );
       }
       return actions;
+    }
+
+    case "clip.setDucking": {
+      const clip = draft.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((candidate) => candidate.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.setDucking: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      // GUI parity: the ducking panel applies ducking to the clip that will
+      // actually be heard (resolveAudibleAudioTarget follows linked audio
+      // when the addressed clip is muted), and seeds the synthesis with the
+      // target's own volume as the ducked baseline.
+      const target = resolveAudibleAudioTarget(clip, draft.timeline);
+      const backgroundVolume = target.volume > 0 ? target.volume : 1;
+      const config = {
+        threshold: op.threshold,
+        reduction: op.reduction,
+        attack: op.attack,
+        release: op.release,
+        holdTime: op.holdTime,
+      };
+
+      let points;
+      if (op.points !== undefined) {
+        points = op.points.map((point) => ({ ...point }));
+      } else if (op.presenceRanges !== undefined) {
+        // Same core kernel AudioDucker.generateDuckingKeyframes delegates to
+        // (facade -> core is the established dependency direction); an empty
+        // synthesis is rejected, mirroring the GUI panel's explicit error.
+        points = generateDuckingKeyframesFromRanges(
+          op.presenceRanges,
+          config,
+          backgroundVolume,
+        );
+        if (points.length === 0) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            `clip.setDucking: no speech crossed the trigger threshold in the supplied presenceRanges for clip "${op.clipId}" — lower the threshold or check the trigger analysis`,
+            { clipId: op.clipId },
+          );
+        }
+      } else {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          "clip.setDucking: pass points or presenceRanges (validated by validateEditOp; this branch is unreachable for translated ops)",
+          { clipId: op.clipId },
+        );
+      }
+
+      return [
+        makeAction("audio/setDucking", {
+          clipId: target.id,
+          settings: {
+            enabled: true,
+            sourceTrackId: null,
+            threshold: op.threshold,
+            reduction: op.reduction,
+            attack: op.attack,
+            release: op.release,
+            holdTime: op.holdTime,
+          },
+          points,
+        }),
+      ];
     }
   }
 }

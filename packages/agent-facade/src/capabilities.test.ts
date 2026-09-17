@@ -119,6 +119,7 @@ describe("capabilities.get / session.describe", () => {
       "media.rename",
       "clip.setChromaKey",
       "clip.setNoiseReduction",
+      "clip.setDucking",
       "svg.create",
       "svg.update",
       "svg.remove",

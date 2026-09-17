@@ -275,6 +275,159 @@ describe("ProjectStore", () => {
     });
   });
 
+  describe("clip audio ducking (action-backed)", () => {
+    const DUCKING_SETTINGS = {
+      enabled: true,
+      sourceTrackId: "trigger-track",
+      threshold: -30,
+      reduction: 0.7,
+      attack: 0.1,
+      release: 0.3,
+      holdTime: 0.2,
+    };
+    const DUCKING_POINTS = [
+      { time: 0, value: 1 },
+      { time: 1, value: 0.3 },
+      { time: 2, value: 1 },
+    ];
+
+    function clipWithDuckingProject(): Project {
+      const project = createEmptyProject("ducking");
+      const clip: Clip = {
+        id: "duck-clip",
+        mediaId: "media-1",
+        trackId: "duck-track",
+        startTime: 0,
+        duration: 5,
+        inPoint: 0,
+        outPoint: 5,
+        effects: [],
+        audioEffects: [],
+        transform: {
+          position: { x: 0, y: 0 },
+          scale: { x: 1, y: 1 },
+          anchor: { x: 0.5, y: 0.5 },
+          rotation: 0,
+          opacity: 1,
+        },
+        volume: 1,
+        keyframes: [],
+      };
+      return {
+        ...project,
+        timeline: {
+          ...project.timeline,
+          tracks: [
+            {
+              id: "duck-track",
+              type: "audio",
+              name: "A1",
+              clips: [clip],
+              transitions: [],
+              locked: false,
+              hidden: false,
+              muted: false,
+              solo: false,
+            },
+          ],
+        },
+      } as Project;
+    }
+
+    function duckedClip(): Clip | undefined {
+      return useProjectStore
+        .getState()
+        .project.timeline.tracks.flatMap((track) => track.clips)
+        .find((clip) => clip.id === "duck-clip");
+    }
+
+    it("setClipAudioDucking persists through the core action and joins the undo history", async () => {
+      useProjectStore.setState({ project: clipWithDuckingProject() });
+
+      const applied = await useProjectStore
+        .getState()
+        .setClipAudioDucking("duck-clip", DUCKING_SETTINGS, DUCKING_POINTS);
+      expect(applied).toBe(true);
+      expect(duckedClip()?.automation?.volume).toEqual(DUCKING_POINTS);
+      expect(duckedClip()?.metadata?.audioDucking).toEqual(DUCKING_SETTINGS);
+
+      // Raw writes cannot be undone — the action-backed path can.
+      await useProjectStore.getState().undo();
+      expect(duckedClip()?.automation).toBeUndefined();
+      expect(duckedClip()?.metadata?.audioDucking).toBeUndefined();
+
+      await useProjectStore.getState().redo();
+      expect(duckedClip()?.automation?.volume).toEqual(DUCKING_POINTS);
+      expect(duckedClip()?.metadata?.audioDucking).toEqual(DUCKING_SETTINGS);
+    });
+
+    it("clearClipAudioDucking removes both fields, undo restores them, siblings survive", async () => {
+      const project = clipWithDuckingProject();
+      const target = project.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((clip) => clip.id === "duck-clip")!;
+      useProjectStore.setState({
+        project: {
+          ...project,
+          timeline: {
+            ...project.timeline,
+            tracks: project.timeline.tracks.map((track) =>
+              track.id === target.trackId
+                ? {
+                    ...track,
+                    clips: [
+                      {
+                        ...target,
+                        automation: {
+                          volume: DUCKING_POINTS,
+                          pan: [{ time: 0, value: 0 }],
+                        },
+                        metadata: {
+                          audioDucking: DUCKING_SETTINGS,
+                          templateManaged: true,
+                        },
+                      } as Clip,
+                    ],
+                  }
+                : track,
+            ),
+          },
+        } as Project,
+      });
+
+      const cleared = await useProjectStore
+        .getState()
+        .clearClipAudioDucking("duck-clip");
+      expect(cleared).toBe(true);
+      expect(duckedClip()?.automation?.volume).toBeUndefined();
+      expect(duckedClip()?.metadata?.audioDucking).toBeUndefined();
+      expect(duckedClip()?.automation?.pan).toEqual([{ time: 0, value: 0 }]);
+      expect(duckedClip()?.metadata?.templateManaged).toBe(true);
+
+      await useProjectStore.getState().undo();
+      expect(duckedClip()?.automation?.volume).toEqual(DUCKING_POINTS);
+      expect(duckedClip()?.metadata?.audioDucking).toEqual(DUCKING_SETTINGS);
+    });
+
+    it("leaves the panel readback state AudioDuckingSection consumes (metadata snapshot + non-empty volume points)", async () => {
+      useProjectStore.setState({ project: clipWithDuckingProject() });
+
+      await useProjectStore
+        .getState()
+        .setClipAudioDucking("duck-clip", DUCKING_SETTINGS, DUCKING_POINTS);
+      const clip = duckedClip();
+      // These two predicates are exactly the section's persistedSettings /
+      // hasAppliedDucking inputs (AudioDuckingSection.tsx readback).
+      expect(clip?.metadata?.audioDucking).toEqual(DUCKING_SETTINGS);
+      expect((clip?.automation?.volume?.length ?? 0) > 0).toBe(true);
+
+      await useProjectStore.getState().clearClipAudioDucking("duck-clip");
+      const cleared = duckedClip();
+      expect(cleared?.metadata?.audioDucking).toBeUndefined();
+      expect((cleared?.automation?.volume?.length ?? 0) > 0).toBe(false);
+    });
+  });
+
   describe("text overlay clips (project-authoritative)", () => {
     async function addTextTrack(): Promise<string> {
       await useProjectStore.getState().addTrack("text");
