@@ -61,10 +61,11 @@ const state = await facade["project.get_state"]();
 
 ## Verbs
 
-The current registry exposes **45 tools: 43 built-in verbs plus the two
+The current registry exposes **48 tools: 46 built-in verbs plus the two
 bundled plugin tools** (`media_import_preflight`, `media.inspect`). The
 slice narrative below predates the later additions (the `material.*`,
-`analysis.*`, `font.*`, and `preset.*` verbs, `preview.render_comparison`,
+`analysis.*`, `font.*`, `preset.*`, and `help.*` verbs,
+`preview.render_comparison`,
 `media.import_preflight`)
 and does not itemize them.
 `FACADE_VERBS` in `src/types.ts` and `BUNDLED_PLUGINS` in `src/plugins/index.ts`
@@ -87,7 +88,7 @@ Slice 6: `project.changes` · `timeline.query` · `edit.validate` ·
 `history.get` · `history.control` add bounded delta recovery, scoped reads,
 side-effect-free preflight, and canonical live undo/redo. `media.analyze_start`
 adds asynchronous media analysis over the generalized `job.status`/
-`job.cancel` path. Live and headless sessions implement the same 45-tool
+`job.cancel` path. Live and headless sessions implement the same 48-tool
 contract over a `LiveProjectStore` seam with no live project copy; headless
 history control reports `UNSUPPORTED` because it has no GUI/Core history stack.
 
@@ -155,7 +156,7 @@ no-op with `ok: true`.
 
 ## Live-mode contract differences (ADR 0004)
 
-Live sessions (`createLiveFacade`) implement the same 45 verbs against the
+Live sessions (`createLiveFacade`) implement the same 48 verbs against the
 open GUI project. Where a verb's behavior must differ by mode, the contract
 states it up front instead of letting integrators discover it at runtime:
 
@@ -351,6 +352,47 @@ availability, reason, kinds, limits, and apply targets.
 - Visibility is immediate in both directions: a GUI save shows up in the
   next `preset.list`, and an Agent create appears in the open panels
   without polling — one renderer service is the only writer behind both.
+
+## The shipped GUI manual (`help.*` verbs)
+
+`help.list_screens`/`help.describe`/`help.search` serve a GUI manual that
+ships with this package as static, hand-maintained data (`src/gui-manual.ts`):
+18 curated screen guides, each bilingual (`zh`/`en`), covering how to reach
+a screen, when it is visible, the common steps inside it, its
+keyboard-shortcut references, and its honest limitations. The manual exists
+so an Agent can answer GUI how-to questions WITHOUT reading product source.
+All three verbs are read-only and answer from the static module with no
+project, provider, or renderer bridge — headless and live sessions (even
+read-only ones) expose the identical content, and `capabilities.get.manual`
+reports `contentVersion`, `appVersion`, `languages`, `screenCount`, and the
+screenshot delivery state.
+
+- `help.list_screens` takes no parameters (closed empty schema) and returns
+  the restrained index: `{manual, total, screens}` where each screen is
+  `{id, title, summary, hasScreenshot}` — one line per screen, never full
+  page bodies.
+- `help.describe({screenId})` returns one screen page `{manual,
+  screenshotStatus, screen}`: the ordered `entry` path, optional
+  `visibility`, `steps`, `shortcutIds`, `limitations`, and search
+  `keywords`. `shortcutIds` reference the shared shortcut registry by
+  stable id only — key bindings are user-remappable state, so the manual
+  deliberately never copies them and the GUI's Settings → Shortcuts panel
+  remains the live truth. An unknown `screenId` fails `INVALID_PARAMS` with
+  a message that points back at `help.list_screens`.
+- `help.search({query})` matches one zh/en keyword (1..100 characters after
+  trim, case-insensitive) over titles, summaries, entries, steps,
+  limitations, shortcut ids, and keywords, returning `{manual, query, total,
+  hits}` with at most 20 hits of `{id, title, summary}` — never full pages.
+- The manual's `contentVersion` is mirrored to the documented application
+  version (`appVersion`, from the desktop package) and the equality is
+  test-enforced, so the answer to "what does THIS build's GUI do" is
+  version-bound data, not source reading. FACADE_VERSION remains the facade
+  protocol version; the manual binds to the app.
+- `screenshot` is a reserved field: until real screenshot assets are
+  delivered, `capabilities.get.manual.screenshots` reports
+  `reserved-not-delivered`, `help.describe` reports
+  `screenshotStatus:"pending"`, and no screen ever describes a screenshot
+  that does not exist.
 
 ## Bounded state, analysis, and finishing additions
 

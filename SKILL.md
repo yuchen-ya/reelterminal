@@ -91,7 +91,8 @@ This connector exposes the same open GUI project through the following tools:
 `material_list` · `material_get` · `material_create` · `material_update` ·
 `material_batch_update` · `material_remove` · `material_attach` ·
 `material_undo` · `font_upload` · `font_list` · `preset_list` · `preset_get` ·
-`preset_create` · `preset_update` · `preset_remove` · `preset_apply`.
+`preset_create` · `preset_update` · `preset_remove` · `preset_apply` ·
+`help_list_screens` · `help_describe` · `help_search`.
 
 The facade verbs are dot-named (`session.describe`, `editor.control`); on the
 MCP wire each dot becomes an underscore (`session.describe` →
@@ -402,6 +403,9 @@ MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
 | `preset_update` | Rename a preset, replace its tags/payload/thumbnail; `expectedRevision` is the PRESET record's revision (CAS) — a concurrent GUI edit fails `CONFLICT`, re-read and retry |
 | `preset_remove` | Delete one preset — no confirmation gate, permanent, idempotent on retries (`alreadyGone`); projects already built from it keep their parameter copies and are never affected |
 | `preset_apply` | Apply one preset to the open project as ONE undoable batch: text restyles an EXISTING text clip (`updateStyle` only — create the clip with `text.create` first), effect applies its stack to explicit `clipIds`, transition sets a cut (`clipAId`, optional `clipBId`; omitting it targets the out-point edge). Placement limits are HARD rejections (`INVALID_PARAMS`, `details.reason` names why — never clamped the way the GUI panel pre-clamps). Project `expectedRevision` CAS; mint a fresh `idempotencyKey` |
+| `help_list_screens` | List the shipped GUI manual's screen index (18 screens, bilingual zh/en): takes no params; returns the manual meta (`contentVersion`, bound `appVersion`, `languages`, screenshot status), `total`, and one restrained line per screen — `id`, zh/en `title`/`summary`, `hasScreenshot` |
+| `help_describe` | Return ONE screen's manual page by `screenId` (unknown id fails `INVALID_PARAMS` and points back at `help_list_screens`): zh/en entry path, visibility, common steps, `shortcutIds` references (ids only — key bindings are user-remappable; Settings → Shortcuts stays the live truth), and honest `limitations`. `screenshotStatus:"pending"` — the screenshot field is reserved, not yet delivered |
+| `help_search` | Search the whole manual with one zh/en keyword (1..100 chars; case-insensitive match over titles, summaries, entries, steps, limitations, shortcut ids, keywords); restrained hits — at most 20, each only `id`+`title`+`summary` — then `help_describe` the interesting ids |
 
 Every result is one JSON envelope: `{ok:true, value}` or
 `{ok:false, error:{code, message, details}}` with `isError:true` — match on
@@ -417,6 +421,19 @@ also attach bounded MCP image content (contact sheet when supported, otherwise
 individual frame blocks; lossless PNG, or JPEG re-encoded to the `maxFrameBytes`
 budget with `frames[].fidelity` disclosure). The CLI `run` transport remains JSONL
 envelopes plus artifact refs; it does not attach MCP image blocks.
+
+The `help_*` tools serve the shipped GUI manual: 18 curated, hand-maintained
+screen guides (bilingual zh/en) covering how to reach and use each editor
+screen — project switching, timeline and track headers, media and work
+assets, presets, the inspector and mixer, voiceover/music task panels,
+export, and more. The manual is static data bound to the application version
+(`contentVersion`/`appVersion` echoed in every answer and reported by
+`capabilities_get.manual`), so you can answer the user's GUI how-to
+questions — in Chinese or English — without reading product source. The
+verbs are read-only and answer with no project, provider, or bridge
+attached, in live and headless sessions alike; screen text describes
+structured content and shortcut references only (screenshots are a reserved
+field, reported as pending until delivered).
 
 ### `editor_get_context` — live vs headless honesty
 

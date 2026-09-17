@@ -21,8 +21,8 @@ connect that Agent to the open ReelTerminal desktop project through MCP.
    ```
 
 The connector reads `~/.openreel/live-endpoint.json`, forwards stdio MCP to
-the authenticated loopback endpoint, and exposes exactly the 45 live tools
-(43 built-in verbs plus `media_import_preflight` and `media_inspect`) listed in the root
+the authenticated loopback endpoint, and exposes exactly the 48 live tools
+(46 built-in verbs plus `media_import_preflight` and `media_inspect`) listed in the root
 [`SKILL.md`](../SKILL.md). Do not copy the endpoint token
 into prompts, project files, or logs.
 
@@ -171,6 +171,38 @@ rules:
   already built from it keep their parameter copies. Do not present
   deletion as reversible, and never claim a preset stores media bytes —
   it stores parameters only.
+
+## The shipped GUI manual (`help_list_screens`/`help_describe`/`help_search`)
+
+When the user asks HOW to do something in the editor ("怎么重命名项目",
+"how do I mute a track", "where do I save a preset"), answer from the
+shipped GUI manual instead of guessing or reading product source. It is
+static, hand-maintained bilingual (`zh`/`en`) data bound to the application
+version — `capabilities_get.manual` reports `contentVersion`, `appVersion`,
+`languages`, `screenCount` (18 screens), and the screenshot delivery state —
+and the three verbs are read-only: they answer with no project, provider,
+or bridge attached, live or headless.
+
+- `help_list_screens` takes no parameters and returns the index: one line
+  per screen (`id` + zh/en title + one-line summary), never full pages.
+- `help_describe {screenId}` returns ONE screen page: the ordered entry
+  path, visibility condition, common steps, `shortcutIds` references, and
+  honest limitations. Shortcut ids are stable references — the actual key
+  bindings are user-remappable, so quote the GUI's Settings → Shortcuts
+  panel as the live truth instead of inventing keys. An unknown `screenId`
+  fails `INVALID_PARAMS` and points back at the index.
+- `help_search {query}` matches one zh/en keyword (1..100 characters,
+  case-insensitive) over titles, summaries, entries, steps, limitations,
+  shortcut ids, and keywords — e.g. query `配音` or `voiceover` to find the
+  voiceover/music task panel, `solo` for track headers. It returns at most
+  20 restrained hits (`id`+`title`+`summary`); `help_describe` the
+  interesting ids for the full steps.
+
+Keep answers inside what the manual states: the pages describe structured
+content and shortcut references, and the screenshot field is reserved but
+not yet delivered (`screenshotStatus:"pending"`), so never describe or
+attach a screenshot you were not given. Limitations listed on a page are
+part of the answer, not an omission.
 
 ## Keep every creation task in one workspace
 
