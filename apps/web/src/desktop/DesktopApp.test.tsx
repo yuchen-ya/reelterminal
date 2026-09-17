@@ -42,9 +42,19 @@ vi.mock("../components/editor/settings/SettingsDialog", () => ({
 const mockedUseProjectStore = vi.mocked(useProjectStore);
 
 function mockHasProject(value: boolean): void {
-  mockedUseProjectStore.mockImplementation((selector) =>
-    selector({ hasOpenProject: value } as unknown as ProjectState),
-  );
+  mockedUseProjectStore.mockImplementation((selector) => {
+    // The title-bar project name control (and the ProjectSwitcher inside it)
+    // consume the store without a selector, so the mock must serve the whole
+    // slice too — not only selector-driven reads.
+    const state = {
+      hasOpenProject: value,
+      project: { id: "project-1", name: "My Project" },
+      createNewProject: vi.fn(),
+      recoverFromAutoSave: vi.fn(),
+      renameProject: vi.fn().mockResolvedValue({ success: true }),
+    } as unknown as ProjectState;
+    return selector ? selector(state) : state;
+  });
 }
 
 beforeEach(() => {
@@ -76,9 +86,12 @@ describe("DesktopApp", () => {
 
   it("renders the title bar and workspace when a project is open", () => {
     mockHasProject(true);
-    const { getByText, getByTestId } = render(<DesktopApp />);
+    const { getByText, getByTestId, getByRole } = render(<DesktopApp />);
     expect(getByText("ReelTerminal")).toBeTruthy();
     expect(getByTestId("desktop-workspace")).toBeTruthy();
+    // G03: the desktop chrome itself exposes the rename entry.
+    expect(getByTestId("desktop-project-name-control")).toBeTruthy();
+    expect(getByRole("textbox", { name: "Project name" })).toHaveValue("My Project");
   });
 
   it("shows the video export only while the Video Editing workspace is active", () => {

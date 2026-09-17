@@ -81,6 +81,11 @@ export const Toolbar: React.FC = () => {
     setProjectNameDraft(project.name);
   }, [project.name]);
 
+  // Escape cancels the draft; the blur() below fires onBlur synchronously,
+  // while its closure still holds the discarded draft — this flag tells
+  // onBlur to skip the commit.
+  const cancellingRef = useRef(false);
+
   const commitProjectName = useCallback(async () => {
     const next = projectNameDraft.trim();
     if (next && next !== project.name) {
@@ -440,11 +445,18 @@ export const Toolbar: React.FC = () => {
           isLabelHidden
           value={projectNameDraft}
           onChange={setProjectNameDraft}
-          onBlur={() => void commitProjectName()}
+          onBlur={() => {
+            if (cancellingRef.current) {
+              cancellingRef.current = false;
+              return;
+            }
+            void commitProjectName();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               (e.currentTarget as HTMLElement).blur();
             } else if (e.key === "Escape") {
+              cancellingRef.current = true;
               setProjectNameDraft(project.name);
               (e.currentTarget as HTMLElement).blur();
             }

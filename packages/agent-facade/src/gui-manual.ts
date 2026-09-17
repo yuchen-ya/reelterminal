@@ -53,7 +53,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.0.1" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.0.2" as const;
 export const GUI_MANUAL_APP_VERSION = "1.0.0-alpha.10" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
@@ -113,19 +113,29 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
   {
     id: "project-switcher",
     title: { zh: "项目切换器与项目改名", en: "Project Switcher & Renaming" },
-    // @source apps/web/src/components/editor/Toolbar.tsx:467
+    // @source apps/web/src/desktop/shell/DesktopProjectNameControl.tsx (desktop title bar)
+    // @source apps/web/src/desktop/shell/DesktopTitleBar.tsx
+    // @source apps/web/src/components/editor/Toolbar.tsx (web toolbar center)
     // @source apps/web/src/components/editor/ProjectSwitcher.tsx:40,120,232
     summary: {
-      zh: "在顶栏的项目名称按钮里新建、切换、恢复或重命名项目。",
-      en: "Create, switch, recover, or rename projects from the project-name button in the top toolbar.",
+      zh: "项目名称控件提供改名、新建、切换与恢复：桌面应用在窗口标题栏，浏览器版在编辑器顶栏。",
+      en: "The project-name control renames, creates, switches, and recovers projects: in the desktop title bar, or on the editor toolbar in the browser build.",
     },
     entry: [
       {
-        zh: "编辑器顶栏左侧的项目名称按钮，点击打开项目切换器。",
-        en: "Click the project-name button at the left end of the editor toolbar to open the switcher.",
+        zh: "桌面应用：窗口标题栏品牌区右侧的项目名称输入框与切换按钮，项目打开时始终可见可点。",
+        en: "Desktop app: the project-name field and switch button to the right of the title-bar brand; visible and clickable whenever a project is open.",
+      },
+      {
+        zh: "网页（浏览器）版：编辑器顶栏中央的项目名称输入框与切换按钮。",
+        en: "Browser (web) build: the project-name field and switch button at the center of the editor toolbar.",
       },
     ],
     steps: [
+      {
+        zh: "改名：直接在项目名称输入框输入新名称，回车或点击别处提交，Esc 取消；输入框旁的铅笔按钮可聚焦并全选名称。切换器内也有重命名入口。",
+        en: "Rename: type the new name straight into the project-name field; Enter or clicking elsewhere commits, Escape cancels; the pencil button beside it focuses and selects the name. The switcher offers a rename entry too.",
+      },
       {
         zh: "新建项目：切换器里的新建入口会以新项目替换当前打开的项目。",
         en: "New project: the switcher's new-project entry replaces the currently open project with a fresh one.",
@@ -133,10 +143,6 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       {
         zh: "切换项目：从已保存项目列表中选择另一个项目。",
         en: "Switch: pick another project from the saved-projects list.",
-      },
-      {
-        zh: "改名：在切换器中选择重命名项目，输入新名称确认。",
-        en: "Rename: choose Rename project in the switcher, type the new name, confirm.",
       },
       {
         zh: "恢复：从自动保存快照恢复未预期的丢失。",
@@ -149,7 +155,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
         en: "Renaming changes the display name and future suggested export/save names; it never renames an existing project file.",
       },
     ],
-    keywords: ["project", "rename", "switcher", "autosave", "项目", "改名", "切换", "自动保存"],
+    keywords: ["project", "rename", "switcher", "autosave", "title bar", "项目", "改名", "切换", "自动保存", "标题栏"],
   },
   {
     id: "settings-dialog",

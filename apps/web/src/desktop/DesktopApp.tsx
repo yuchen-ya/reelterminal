@@ -2,6 +2,7 @@ import type { JSX } from "react";
 import { useEffect } from "react";
 import { DesktopTitleBar } from "./shell/DesktopTitleBar";
 import { Workspace } from "./shell/Workspace";
+import { DesktopProjectNameControl } from "./shell/DesktopProjectNameControl";
 import { DesktopStartScreen } from "./start/DesktopStartScreen";
 import { DesktopExportButton } from "./editor/DesktopExportButton";
 import { EditorBootstrapGate } from "./editor/EditorBootstrapGate";
@@ -138,7 +139,13 @@ export function DesktopApp(): JSX.Element {
 
   return (
     <div className="openreel-desktop isolate flex h-screen w-screen flex-col overflow-hidden bg-bg text-fg">
-      <DesktopTitleBar platform={platform}>
+      <DesktopTitleBar
+        platform={platform}
+        // G03: the desktop chrome carries the rename entry, not just the
+        // browser-only Toolbar. Shown whenever a project is open (both the
+        // edit and motion pages rename the same project).
+        projectControl={hasProject ? <DesktopProjectNameControl /> : null}
+      >
         {hasProject && isVideoEditing ? <DesktopExportButton /> : null}
         <Button
           label={t("desktop.settings")}
