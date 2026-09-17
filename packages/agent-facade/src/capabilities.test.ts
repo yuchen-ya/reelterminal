@@ -191,6 +191,9 @@ describe("capabilities.get / session.describe", () => {
       "preset.update",
       "preset.remove",
       "preset.apply",
+      "help.list_screens",
+      "help.describe",
+      "help.search",
       "media.inspect",
       "media.import_preflight",
     ]);

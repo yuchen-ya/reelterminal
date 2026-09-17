@@ -3,6 +3,7 @@ import { assertUniqueToolNames } from "./plugin-api";
 import { MATERIAL_VERBS } from "./material-library";
 import { FONT_VERBS } from "./font-library";
 import { PRESET_VERBS } from "./preset-verbs";
+import { HELP_VERBS } from "./gui-manual";
 /**
  * Public contract of the in-process agent facade (Slice 1 + Slice 1b +
  * Slice 2a persistence, ADR 0003 Decision 10).
@@ -19,14 +20,17 @@ import { PRESET_VERBS } from "./preset-verbs";
  *   the openreel-project@2 checkpoint pair (cross-session persistence).
  * Slice 3 verbs (ADR 0004 Decision 4): editor.get_context — the live/
  *   headless-honest editor-context read plus the read-only visual.inspect
- *   slice. Slice 6 grows the compact contract to 24 verbs. The current
- *   registry exposes 37 tools (27 base verbs + 8 material verbs + 2 bundled
- *   plugin tools); FACADE_VERBS, MATERIAL_VERBS, and PLUGIN_TOOLS below are
- *   the mechanical source of truth for the live catalog.
+ *   slice. Slice 6 grows the compact contract to 24 verbs.
  * Slice 4 widens edit.apply's closed finishing vocabulary to include clip
  *   move/split/duplicate/ripple-delete, constant speed/reverse, visual
  *   transforms/crop, audio fades, and clip transitions without adding new
  *   verbs.
+ *
+ * The current registry exposes 48 tools (27 base verbs + 8 material verbs +
+ *   2 font verbs + 6 preset verbs + 3 help verbs + 2 bundled plugin tools);
+ *   FACADE_VERBS, MATERIAL_VERBS, FONT_VERBS, PRESET_VERBS, HELP_VERBS, and
+ *   PLUGIN_TOOLS below are the mechanical source of truth for the live
+ *   catalog.
  *
  * Pixel/export/verify backing arrives through the independent provider
  * interfaces in providers.ts (RenderProvider / ExportProvider /
@@ -87,6 +91,7 @@ export const FACADE_VERBS = [
   ...MATERIAL_VERBS,
   ...FONT_VERBS,
   ...PRESET_VERBS,
+  ...HELP_VERBS,
   ...PLUGIN_TOOLS.map((tool) => tool.name),
 ] as const;
 
@@ -170,6 +175,9 @@ export const READ_ONLY_VERBS = [
   "font.list",
   "preset.list",
   "preset.get",
+  "help.list_screens",
+  "help.describe",
+  "help.search",
   "visual.inspect",
   "preview.render_comparison",
   "analysis.list",
@@ -310,6 +318,8 @@ export interface Capabilities {
   readonly fonts: import("./font-library").FontLibraryCapability;
   /** User-level custom presets (preset.* verbs); headless reports unavailable. */
   readonly customPresets: import("./preset-verbs").CustomPresetCapability;
+  /** Shipped GUI manual (help.* verbs); static content, available in every mode. */
+  readonly manual: import("./gui-manual").ManualCapability;
   readonly mediaAnalysis: {
     readonly asynchronous: true;
     readonly types: Readonly<Record<MediaAnalysisType, CapabilityStatus>>;

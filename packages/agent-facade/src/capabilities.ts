@@ -44,6 +44,12 @@ import {
 import { MATERIAL_LIBRARY_LIMITS } from "./material-library";
 import { FONT_LIBRARY_LIMITS } from "./font-library";
 import { PRESET_LIBRARY_LIMITS } from "./preset-verbs";
+import {
+  GUI_MANUAL_APP_VERSION,
+  GUI_MANUAL_CONTENT_VERSION,
+  GUI_MANUAL_LANGUAGES,
+  GUI_MANUAL_SCREENS,
+} from "./gui-manual";
 import { MATERIAL_KINDS } from "@openreel/core/material/types";
 import { PRESET_KINDS } from "@openreel/core/presets/types";
 import {
@@ -373,6 +379,16 @@ export async function buildCapabilities(
           ? {}
           : { reason: "requires the live preset-library bridge" }),
       },
+    },
+    manual: {
+      available: true,
+      contentVersion: GUI_MANUAL_CONTENT_VERSION,
+      appVersion: GUI_MANUAL_APP_VERSION,
+      languages: [...GUI_MANUAL_LANGUAGES],
+      screenCount: GUI_MANUAL_SCREENS.length,
+      screenshots: GUI_MANUAL_SCREENS.some((screen) => screen.screenshot !== undefined)
+        ? "delivered"
+        : "reserved-not-delivered",
     },
     projectChanges: {
       available: true,

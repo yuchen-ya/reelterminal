@@ -19,6 +19,19 @@ import { EDIT_OP_TYPES, MEDIA_ANALYSIS_TYPES } from "./types";
 import { MATERIAL_LIBRARY_LIMITS } from "./material-library";
 import { FONT_LIBRARY_LIMITS } from "./font-library";
 import { PRESET_LIBRARY_LIMITS } from "./preset-verbs";
+import {
+  HELP_DESCRIBE_SCHEMA,
+  HELP_LIST_SCREENS_SCHEMA,
+  HELP_SEARCH_SCHEMA,
+} from "./gui-manual";
+// The help.* param declarations live in gui-manual.ts next to the content
+// they validate; re-exported here so VERB_PARAM_SCHEMAS stays the single
+// verb-declaration map for importers.
+export {
+  HELP_DESCRIBE_SCHEMA,
+  HELP_LIST_SCREENS_SCHEMA,
+  HELP_SEARCH_SCHEMA,
+};
 import { MATERIAL_KINDS, MATERIAL_MEDIA_TYPES } from "@openreel/core/material/types";
 import { PRESET_KINDS } from "@openreel/core/presets/types";
 import {
@@ -1708,4 +1721,7 @@ export const VERB_PARAM_SCHEMAS: {
   "preset.update": PRESET_UPDATE_SCHEMA,
   "preset.remove": PRESET_REMOVE_SCHEMA,
   "preset.apply": PRESET_APPLY_SCHEMA,
+  "help.list_screens": HELP_LIST_SCREENS_SCHEMA,
+  "help.describe": HELP_DESCRIBE_SCHEMA,
+  "help.search": HELP_SEARCH_SCHEMA,
 };

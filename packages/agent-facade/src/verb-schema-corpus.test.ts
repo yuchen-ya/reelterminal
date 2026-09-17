@@ -62,7 +62,11 @@ import {
   PRESET_UPDATE_SCHEMA,
   PRESET_REMOVE_SCHEMA,
   PRESET_APPLY_SCHEMA,
+  HELP_DESCRIBE_SCHEMA,
+  HELP_LIST_SCREENS_SCHEMA,
+  HELP_SEARCH_SCHEMA,
 } from "./verb-schemas";
+import { describeManualScreen } from "./gui-manual";
 import { validatePresetPayload } from "@openreel/core/presets/validate";
 import { VERB_SCHEMA_CORPUS } from "./verb-schema-corpus";
 import { FACADE_VERBS } from "./types";
@@ -386,6 +390,24 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
         `preset.apply: unknown target kind "${String(kind)}"`,
       );
     }
+    case "help.list_screens":
+      validateObject(params, HELP_LIST_SCREENS_SCHEMA, "help.list_screens params");
+      return;
+    case "help.describe": {
+      const valid = validateObject<Record<string, unknown>>(
+        params,
+        HELP_DESCRIBE_SCHEMA,
+        "help.describe params",
+      );
+      // Validator-only layer mirrored from gui-manual.ts: the id lookup runs
+      // after the boundary schema, so a schema-valid but unknown id is an
+      // INVALID_PARAMS.
+      describeManualScreen(valid.screenId as string);
+      return;
+    }
+    case "help.search":
+      validateObject(params, HELP_SEARCH_SCHEMA, "help.search params");
+      return;
     default:
       { const tool = PLUGIN_TOOLS.find((tool) => tool.name === verb);
         if (tool) { validateObject(params, tool.input, `${verb} params`); return; } }

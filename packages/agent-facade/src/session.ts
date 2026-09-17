@@ -165,7 +165,15 @@ import {
   PRESET_UPDATE_SCHEMA,
   PRESET_REMOVE_SCHEMA,
   PRESET_APPLY_SCHEMA,
+  HELP_DESCRIBE_SCHEMA,
+  HELP_LIST_SCREENS_SCHEMA,
+  HELP_SEARCH_SCHEMA,
 } from "./verb-schemas";
+import {
+  describeManualScreen,
+  listManualScreens,
+  searchManualScreens,
+} from "./gui-manual";
 import type {
   MaterialListParams,
   MaterialGetParams,
@@ -2627,6 +2635,52 @@ export class AgentFacadeSession {
         "preset.apply params",
       );
       this.presetUnsupported("preset.apply");
+    });
+  }
+
+  /* ------------------- help.* (static manual, all modes) ------------------ */
+
+  /**
+   * The GUI manual is shipped static data in this package, so the help
+   * verbs answer in EVERY mode (headless included) and need neither a
+   * project, a provider, nor a renderer bridge.
+   */
+  async helpListScreens(
+    params?: Record<string, never>,
+  ): Promise<FacadeResult<import("./gui-manual").ManualListScreensResult>> {
+    return this.enqueue(async () => {
+      validateObject<Record<string, never>>(
+        params ?? {},
+        HELP_LIST_SCREENS_SCHEMA,
+        "help.list_screens params",
+      );
+      return ok(listManualScreens());
+    });
+  }
+
+  async helpDescribe(
+    params: import("./gui-manual").ManualDescribeParams,
+  ): Promise<FacadeResult<import("./gui-manual").ManualDescribeResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<import("./gui-manual").ManualDescribeParams>(
+        params,
+        HELP_DESCRIBE_SCHEMA,
+        "help.describe params",
+      );
+      return ok(describeManualScreen(valid.screenId));
+    });
+  }
+
+  async helpSearch(
+    params: import("./gui-manual").ManualSearchParams,
+  ): Promise<FacadeResult<import("./gui-manual").ManualSearchResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<import("./gui-manual").ManualSearchParams>(
+        params,
+        HELP_SEARCH_SCHEMA,
+        "help.search params",
+      );
+      return ok(searchManualScreens(valid.query));
     });
   }
 

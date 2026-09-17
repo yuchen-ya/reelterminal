@@ -160,7 +160,15 @@ import {
   PRESET_UPDATE_SCHEMA,
   PRESET_REMOVE_SCHEMA,
   PRESET_APPLY_SCHEMA,
+  HELP_DESCRIBE_SCHEMA,
+  HELP_LIST_SCREENS_SCHEMA,
+  HELP_SEARCH_SCHEMA,
 } from "./verb-schemas";
+import {
+  describeManualScreen,
+  listManualScreens,
+  searchManualScreens,
+} from "./gui-manual";
 import {
   MATERIAL_VERBS,
   type MaterialLibraryBridge,
@@ -3635,6 +3643,53 @@ export class LiveFacadeSession {
     });
   }
 
+  /* ----------------- help.* (static manual, all modes) ----------------- */
+
+  /**
+   * The GUI manual is shipped static data in this package: live sessions
+   * answer from the same module as headless, with no project, provider, or
+   * renderer bridge involved. Reads, so neither the writer lease nor the
+   * access gate applies.
+   */
+  async helpListScreens(
+    params?: import("./gui-manual").ManualListScreensParams,
+  ): Promise<FacadeResult<import("./gui-manual").ManualListScreensResult>> {
+    return this.enqueue(async () => {
+      validateObject<import("./gui-manual").ManualListScreensParams>(
+        params ?? {},
+        HELP_LIST_SCREENS_SCHEMA,
+        "help.list_screens params",
+      );
+      return ok(listManualScreens());
+    });
+  }
+
+  async helpDescribe(
+    params: import("./gui-manual").ManualDescribeParams,
+  ): Promise<FacadeResult<import("./gui-manual").ManualDescribeResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<import("./gui-manual").ManualDescribeParams>(
+        params,
+        HELP_DESCRIBE_SCHEMA,
+        "help.describe params",
+      );
+      return ok(describeManualScreen(valid.screenId));
+    });
+  }
+
+  async helpSearch(
+    params: import("./gui-manual").ManualSearchParams,
+  ): Promise<FacadeResult<import("./gui-manual").ManualSearchResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<import("./gui-manual").ManualSearchParams>(
+        params,
+        HELP_SEARCH_SCHEMA,
+        "help.search params",
+      );
+      return ok(searchManualScreens(valid.query));
+    });
+  }
+
   /* ---------------------------- lifecycle ----------------------------- */
 
   /**
@@ -4121,6 +4176,12 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "preset.update": (params) => session.presetUpdate(params as PresetUpdateParams),
     "preset.remove": (params) => session.presetRemove(params as PresetRemoveParams),
     "preset.apply": (params) => session.presetApply(params as PresetApplyParams),
+    "help.list_screens": (params) =>
+      session.helpListScreens(params as import("./gui-manual").ManualListScreensParams),
+    "help.describe": (params) =>
+      session.helpDescribe(params as import("./gui-manual").ManualDescribeParams),
+    "help.search": (params) =>
+      session.helpSearch(params as import("./gui-manual").ManualSearchParams),
     releaseWriterLease: () => session.releaseWriterLease(),
     dispose: () => session.dispose(),
   };

@@ -1256,4 +1256,30 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     },
     { name: "unknown field", params: { presetId: "p", target: { kind: "effect", clipIds: ["a"] }, at: 0 }, expectValid: false },
   ],
+  "help.list_screens": [
+    { name: "no params is valid", params: {}, expectValid: true },
+    { name: "unknown field", params: { language: "zh" }, expectValid: false },
+  ],
+  "help.describe": [
+    { name: "valid screen id", params: { screenId: "timeline" }, expectValid: true },
+    { name: "missing screenId", params: {}, expectValid: false },
+    { name: "empty screenId", params: { screenId: "" }, expectValid: false },
+    {
+      name: "whitespace screenId passes the boundary schema, fails as an unknown id",
+      params: { screenId: "  " },
+      schemaValid: true,
+      expectValid: false,
+    },
+    { name: "wrong type screenId", params: { screenId: 7 }, expectValid: false },
+    { name: "unknown field", params: { screenId: "timeline", language: "zh" }, expectValid: false },
+  ],
+  "help.search": [
+    { name: "valid zh keyword", params: { query: "静音" }, expectValid: true },
+    { name: "valid en keyword", params: { query: "rename" }, expectValid: true },
+    { name: "missing query", params: {}, expectValid: false },
+    { name: "whitespace-only query", params: { query: "   " }, schemaValid: true, expectValid: false },
+    { name: "empty query", params: { query: "" }, expectValid: false },
+    { name: "wrong type query", params: { query: 42 }, expectValid: false },
+    { name: "unknown field", params: { query: "mute", limit: 5 }, expectValid: false },
+  ],
 } as const;

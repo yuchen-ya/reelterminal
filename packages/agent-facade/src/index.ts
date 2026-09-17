@@ -187,6 +187,15 @@ export interface AgentFacade extends BundledToolBindings {
   readonly "preset.apply": (
     params: import("./preset-verbs").PresetApplyParams,
   ) => Promise<FacadeResult<import("./preset-verbs").PresetApplyResult>>;
+  readonly "help.list_screens": (
+    params?: import("./gui-manual").ManualListScreensParams,
+  ) => Promise<FacadeResult<import("./gui-manual").ManualListScreensResult>>;
+  readonly "help.describe": (
+    params: import("./gui-manual").ManualDescribeParams,
+  ) => Promise<FacadeResult<import("./gui-manual").ManualDescribeResult>>;
+  readonly "help.search": (
+    params: import("./gui-manual").ManualSearchParams,
+  ) => Promise<FacadeResult<import("./gui-manual").ManualSearchResult>>;
 }
 
 /**
@@ -240,6 +249,9 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "preset.update": (params) => session.presetUpdate(params),
     "preset.remove": (params) => session.presetRemove(params),
     "preset.apply": (params) => session.presetApply(params),
+    "help.list_screens": (params) => session.helpListScreens(params),
+    "help.describe": (params) => session.helpDescribe(params),
+    "help.search": (params) => session.helpSearch(params),
   };
 }
 
@@ -447,6 +459,31 @@ export {
   VERB_SCHEMA_CORPUS,
   type VerbSchemaCorpusCase,
 } from "./verb-schema-corpus";
+export {
+  GUI_MANUAL_APP_VERSION,
+  GUI_MANUAL_CONTENT_VERSION,
+  GUI_MANUAL_LANGUAGES,
+  GUI_MANUAL_SCREENS,
+  HELP_LIBRARY_LIMITS,
+  HELP_VERBS,
+  describeManualScreen,
+  listManualScreens,
+  searchManualScreens,
+} from "./gui-manual";
+export type {
+  ManualCapability,
+  ManualDescribeParams,
+  ManualDescribeResult,
+  ManualIndexMeta,
+  ManualListScreensParams,
+  ManualListScreensResult,
+  ManualLocalizedText,
+  ManualScreen,
+  ManualScreenSummary,
+  ManualSearchHit,
+  ManualSearchParams,
+  ManualSearchResult,
+} from "./gui-manual";
 export * from "./types";
 
 export { defineTool, definePlugin, bindTools } from "./plugin-api";

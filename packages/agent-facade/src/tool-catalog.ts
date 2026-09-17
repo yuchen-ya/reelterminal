@@ -85,6 +85,12 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Unavailable headless — user-level presets live in the desktop GUI renderer.",
   preset_apply:
     "Unavailable headless — user-level presets live in the desktop GUI renderer.",
+  help_list_screens:
+    "List the shipped GUI manual's screen index: id, zh/en title and one-line summary per screen, plus the manual's content version, bound app version, and languages. Static data — available in every mode.",
+  help_describe:
+    "Return ONE GUI screen's manual page: entry path, visibility condition, common steps, keyboard-shortcut references (ids; live bindings live in Settings → Shortcuts), and honest limitations. Screenshots are reserved and reported as pending until delivered. Static data — available in every mode.",
+  help_search:
+    "Search the shipped GUI manual by a zh/en keyword matched over titles, summaries, entries, steps, limitations, shortcut ids and keywords; returns restrained hits (id + title + summary), never full page bodies. Static data — available in every mode.",
 };
 
 const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
@@ -177,6 +183,12 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Delete a custom preset. Projects already built from it keep their parameter copies and are never affected; removal is permanent and idempotent on retries.",
   "preset.apply":
     "Apply a custom preset to the open project as one undoable batch: text presets restyle an existing text clip (mode updateStyle), effect presets apply their stack to explicit clipIds, transition presets set the parameters on a cut (clipAId, optional clipBId; omitting clipBId targets the out-point edge). Placement limits are hard rejections, never clamped; use a fresh idempotencyKey.",
+  "help.list_screens":
+    "List the shipped GUI manual's screen index: id, zh/en title and one-line summary per screen, plus the manual's content version, bound app version, and languages. Static data — available in every mode.",
+  "help.describe":
+    "Return ONE GUI screen's manual page: entry path, visibility condition, common steps, keyboard-shortcut references (ids; live bindings live in Settings → Shortcuts), and honest limitations. Screenshots are reserved and reported as pending until delivered. Static data — available in every mode.",
+  "help.search":
+    "Search the shipped GUI manual by a zh/en keyword matched over titles, summaries, entries, steps, limitations, shortcut ids and keywords; returns restrained hits (id + title + summary), never full page bodies. Static data — available in every mode.",
 };
 
 export function toolDescription(verb: FacadeVerb, mode: "live" | "headless"): string {

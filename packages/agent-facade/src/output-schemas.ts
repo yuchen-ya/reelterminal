@@ -77,6 +77,10 @@ const nullable = (schema: OutputSchemaNode): OutputSchemaNode => ({
 
 const openObject = (): OutputSchemaNode => objectSchema({}, undefined, true);
 
+/** zh/en bilingual text pair used throughout the manual's help.* results. */
+const localizedText = (): OutputSchemaNode =>
+  objectSchema({ zh: stringSchema(), en: stringSchema() }, ["zh", "en"]);
+
 const workModeSemantics = (): OutputSchemaNode =>
   objectSchema(
     {
@@ -360,6 +364,17 @@ const capabilities = (): OutputSchemaNode =>
         ],
       ),
       editOps: arraySchema(stringSchema()),
+      manual: objectSchema(
+        {
+          available: booleanSchema(),
+          contentVersion: stringSchema(),
+          appVersion: stringSchema(),
+          languages: arraySchema(stringSchema()),
+          screenCount: integerSchema(0),
+          screenshots: enumSchema(["reserved-not-delivered", "delivered"]),
+        },
+        ["available", "contentVersion", "appVersion", "languages", "screenCount", "screenshots"],
+      ),
       textOverlay: objectSchema({ modelState: constSchema(true), pixelRendering: booleanSchema() }, ["modelState", "pixelRendering"]),
       preview: capabilityStatus(),
       visualInspection: capabilityStatus(),
@@ -367,7 +382,7 @@ const capabilities = (): OutputSchemaNode =>
       export: capabilityStatus(),
       verify: capabilityStatus(),
     },
-    ["runtime", "stateModel", "mediaImport", "projectChanges", "history", "mediaAnalysis", "professionalEditing", "editOps", "textOverlay", "preview", "visualInspection", "editorControl", "export", "verify"],
+    ["runtime", "stateModel", "mediaImport", "projectChanges", "history", "mediaAnalysis", "professionalEditing", "editOps", "manual", "textOverlay", "preview", "visualInspection", "editorControl", "export", "verify"],
   );
 
 const mediaImportResult = (): OutputSchemaNode =>
@@ -852,6 +867,94 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
       replayed: booleanSchema(),
     },
     ["presetId", "projectId", "projectName", "revision", "applied"],
+  ),
+  "help.list_screens": objectSchema(
+    {
+      manual: objectSchema(
+        {
+          contentVersion: stringSchema(),
+          appVersion: stringSchema(),
+          languages: arraySchema(stringSchema()),
+          screenshots: enumSchema(["reserved-not-delivered", "delivered"]),
+        },
+        ["contentVersion", "appVersion", "languages", "screenshots"],
+      ),
+      total: integerSchema(0),
+      screens: arraySchema(
+        objectSchema(
+          {
+            id: stringSchema(),
+            title: objectSchema(
+              { zh: stringSchema(), en: stringSchema() },
+              ["zh", "en"],
+            ),
+            summary: objectSchema(
+              { zh: stringSchema(), en: stringSchema() },
+              ["zh", "en"],
+            ),
+            hasScreenshot: booleanSchema(),
+          },
+          ["id", "title", "summary", "hasScreenshot"],
+        ),
+      ),
+    },
+    ["manual", "total", "screens"],
+  ),
+  "help.describe": objectSchema(
+    {
+      manual: objectSchema(
+        {
+          contentVersion: stringSchema(),
+          appVersion: stringSchema(),
+          languages: arraySchema(stringSchema()),
+          screenshots: enumSchema(["reserved-not-delivered", "delivered"]),
+        },
+        ["contentVersion", "appVersion", "languages", "screenshots"],
+      ),
+      screenshotStatus: enumSchema(["pending", "available"]),
+      screen: objectSchema(
+        {
+          id: stringSchema(),
+          title: objectSchema({ zh: stringSchema(), en: stringSchema() }, ["zh", "en"]),
+          summary: objectSchema({ zh: stringSchema(), en: stringSchema() }, ["zh", "en"]),
+          entry: arraySchema(localizedText()),
+          visibility: localizedText(),
+          steps: arraySchema(localizedText()),
+          shortcutIds: arraySchema(stringSchema()),
+          limitations: arraySchema(localizedText()),
+          keywords: arraySchema(stringSchema()),
+          screenshot: stringSchema(),
+        },
+        ["id", "title", "summary", "entry"],
+      ),
+    },
+    ["manual", "screenshotStatus", "screen"],
+  ),
+  "help.search": objectSchema(
+    {
+      manual: objectSchema(
+        {
+          contentVersion: stringSchema(),
+          appVersion: stringSchema(),
+          languages: arraySchema(stringSchema()),
+          screenshots: enumSchema(["reserved-not-delivered", "delivered"]),
+        },
+        ["contentVersion", "appVersion", "languages", "screenshots"],
+      ),
+      query: stringSchema(),
+      total: integerSchema(0),
+      hits: arraySchema(
+        objectSchema(
+          {
+            id: stringSchema(),
+            title: objectSchema({ zh: stringSchema(), en: stringSchema() }, ["zh", "en"]),
+            summary: objectSchema({ zh: stringSchema(), en: stringSchema() }, ["zh", "en"]),
+          },
+          ["id", "title", "summary"],
+        ),
+      ),
+    },
+    ["manual", "query", "total", "hits"],
   ),
 };
 

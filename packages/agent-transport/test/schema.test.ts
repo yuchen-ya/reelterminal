@@ -38,6 +38,7 @@ import {
   isValidPresetPayload,
   presetApplyTargetProblem,
 } from "@openreel/agent-facade/preset-verbs";
+import { isKnownManualScreenId } from "@openreel/agent-facade/gui-manual";
 
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 const compiled = new Map<string, any>();
@@ -154,6 +155,11 @@ function facadeRuntimeValidation(verb: string, params: unknown): boolean {
       }
       case "preset.apply": {
         return presetApplyTargetProblem(valid.target) === null;
+      }
+      case "help.describe": {
+        // Session-body predicate mirrored from gui-manual.ts: the id lookup
+        // runs after the closed envelope schema (shared predicate).
+        return isKnownManualScreenId(valid.screenId as string);
       }
       default:
         return true;
