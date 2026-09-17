@@ -86,6 +86,7 @@ import {
   type ClipSetChromaKeyOp,
   type ClipSetNoiseReductionOp,
   type ClipSetDuckingOp,
+  type ClipSetBackgroundRemovalOp,
   type WorkAssetCaptureOp,
   type WorkAssetRenameOp,
   type WorkAssetDeleteOp,
@@ -93,6 +94,7 @@ import {
 } from "./types";
 import { validateReferenceComparisonConfig } from "@openreel/core/types/reference-comparison";
 import { DEFAULT_CHROMA_KEY_SETTINGS } from "@openreel/core/video/chroma-key-engine";
+import { DEFAULT_BACKGROUND_SETTINGS } from "@openreel/core/ai/background-removal-engine";
 import { reframeKeyframesToTransformKeyframes } from "@openreel/core/ai/auto-reframe-engine";
 import {
   DEFAULT_NOISE_REDUCTION_SETTINGS,
@@ -1828,6 +1830,75 @@ export const CLIP_SET_DUCKING_SCHEMA: ObjectSchema = {
   },
 };
 
+/** GUI sliders and the shared engine defaults bound these matte values. */
+const BACKGROUND_MODES = ["blur", "color", "image", "video", "transparent"] as const;
+
+const isCssHexColor = (v: unknown): boolean =>
+  typeof v === "string" && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(v);
+
+const isBoundedUrlString = (v: unknown): boolean =>
+  typeof v === "string" && v.length > 0 && v.length <= 2048;
+
+export const CLIP_SET_BACKGROUND_REMOVAL_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "clip.setBackgroundRemoval",
+    describe: '"clip.setBackgroundRemoval"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.setBackgroundRemoval" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  enabled: {
+    check: isBoolean,
+    describe: "a boolean",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  mode: {
+    check: oneOf(BACKGROUND_MODES),
+    describe: `one of ${BACKGROUND_MODES.join(", ")}`,
+    emits: { kind: "leaf", schema: { enum: [...BACKGROUND_MODES] } },
+  },
+  blurAmount: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 50,
+    describe: "a finite number in [0, 50] (px)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 50 } },
+  },
+  backgroundColor: {
+    // Runtime authority is isCssHexColor (hex-only, validated at this
+    // boundary). The emitted JSON-schema leaf vocabulary has no `pattern`,
+    // so the schema is a boundary superset here — the ordering-pin corpus
+    // case pins the divergence (schema-valid, facade-rejected).
+    check: isCssHexColor,
+    describe: "a hex color string (#RGB, #RGBA, #RRGGBB or #RRGGBBAA)",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 2, maxLength: 9 } },
+  },
+  backgroundImageUrl: {
+    check: isBoundedUrlString,
+    describe: "a non-empty URL string (at most 2048 chars)",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1, maxLength: 2048 } },
+  },
+  backgroundVideoUrl: {
+    check: isBoundedUrlString,
+    describe: "a non-empty URL string (at most 2048 chars)",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1, maxLength: 2048 } },
+  },
+  edgeBlur: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 10,
+    describe: "a finite number in [0, 10] (px)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 10 } },
+  },
+  threshold: {
+    check: isUnitRange,
+    describe: "a finite number in [0, 1]",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 1 } },
+  },
+};
+
 function sanitizeTextFields<T extends TextCreateOp | TextUpdateOp>(
   op: T,
   label: string,
@@ -2264,6 +2335,17 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       }
       throw invalidParams(
         `${label}: ducking keyframes need a source — pass points (an AudioDucker.generateDuckingKeyframes product) or presenceRanges (speech-active windows on the trigger track, e.g. from a silence analysis complement)`,
+      );
+    }
+    case "clip.setBackgroundRemoval": {
+      // No cross-field predicate: `enabled` is required and every tuning
+      // field is independently bounded in the declaration above. Omitted
+      // tuning fields merge onto the clip's prior settings in
+      // opToCoreActions (the same full-settings action the GUI panel emits).
+      return validateObject<ClipSetBackgroundRemovalOp>(
+        raw,
+        CLIP_SET_BACKGROUND_REMOVAL_SCHEMA,
+        label,
       );
     }
     case "reference.setComparison": {
@@ -4002,6 +4084,63 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
               op.spillSuppression ??
               prior?.spillSuppression ??
               DEFAULT_CHROMA_KEY_SETTINGS.spillSuppression,
+          },
+        }),
+      ];
+    }
+
+    case "clip.setBackgroundRemoval": {
+      const clip = draft.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((candidate) => candidate.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.setBackgroundRemoval: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      // core's clip/setBackgroundRemoval REPLACES the whole field, so
+      // assemble the complete settings snapshot the GUI panel also emits:
+      // omitted tuning fields keep the clip's prior value, falling back to
+      // the shared engine defaults. Disabling keeps the tuning values,
+      // matching the GUI toggle. NOTE: this op persists the matte only —
+      // rendering it needs a MediaPipe-capable GUI/desktop-Chromium runtime
+      // (see the backgroundRemoval capability), and headless-rendered frames
+      // keep the original background.
+      const prior = clip.backgroundRemoval;
+      return [
+        makeAction("clip/setBackgroundRemoval", {
+          clipId: op.clipId,
+          backgroundRemoval: {
+            enabled: op.enabled,
+            mode: op.mode ?? prior?.mode ?? DEFAULT_BACKGROUND_SETTINGS.mode,
+            blurAmount:
+              op.blurAmount ??
+              prior?.blurAmount ??
+              DEFAULT_BACKGROUND_SETTINGS.blurAmount,
+            backgroundColor:
+              op.backgroundColor ??
+              prior?.backgroundColor ??
+              DEFAULT_BACKGROUND_SETTINGS.backgroundColor,
+            ...(op.backgroundImageUrl !== undefined ||
+            prior?.backgroundImageUrl !== undefined
+              ? {
+                  backgroundImageUrl:
+                    op.backgroundImageUrl ?? prior?.backgroundImageUrl,
+                }
+              : {}),
+            ...(op.backgroundVideoUrl !== undefined ||
+            prior?.backgroundVideoUrl !== undefined
+              ? {
+                  backgroundVideoUrl:
+                    op.backgroundVideoUrl ?? prior?.backgroundVideoUrl,
+                }
+              : {}),
+            edgeBlur:
+              op.edgeBlur ?? prior?.edgeBlur ?? DEFAULT_BACKGROUND_SETTINGS.edgeBlur,
+            threshold:
+              op.threshold ?? prior?.threshold ?? DEFAULT_BACKGROUND_SETTINGS.threshold,
           },
         }),
       ];
