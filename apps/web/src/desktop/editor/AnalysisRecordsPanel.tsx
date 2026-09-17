@@ -8,6 +8,7 @@ import type {
   OpenReelAnalysisRecordSummary,
 } from "../../types/global";
 import { collectEvidenceTimes, findTimelineLocations } from "./analysis-record-utils";
+import { useTranslation } from "react-i18next";
 
 function readableDate(value: string): string {
   const date = new Date(value);
@@ -70,6 +71,7 @@ function DataSection({
 }
 
 export function AnalysisRecordsPanel() {
+  const { t } = useTranslation();
   const project = useProjectStore((state) => state.project);
   const [open, setOpen] = useState(false);
   const [records, setRecords] = useState<readonly OpenReelAnalysisRecordSummary[]>([]);
@@ -261,7 +263,7 @@ export function AnalysisRecordsPanel() {
     <>
       <button
         type="button"
-        aria-label="Open analysis records"
+        aria-label={t("Open analysis records")}
         aria-expanded={open}
         onClick={() => {
           setOpen(true);

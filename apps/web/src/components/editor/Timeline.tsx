@@ -1113,7 +1113,7 @@ export const Timeline: React.FC = () => {
         <TLTool
           onClick={handleDuplicate}
           disabled={selectedClipIds.length === 0}
-          title={tr("Duplicate (⌘D)")}
+          title={tr(`Duplicate (${formatKeyComboDisplay("cmd+d")})`)}
         >
           <Copy size={16} aria-hidden />
         </TLTool>

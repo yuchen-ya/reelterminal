@@ -125,6 +125,7 @@ import {
 } from "@openreel/core";
 import { ToolcraftPopover as Popover } from "@openreel/ui";
 import { useProjectStore } from "../../stores/project-store";
+import { formatKeyComboDisplay } from "../../services/keyboard-shortcuts";
 import { useMotionStore } from "../stores/motion-store";
 import {
   formatMotionFps,
@@ -2103,7 +2104,7 @@ export function MotionTimeline({ composition }: MotionTimelineProps): JSX.Elemen
           {selectedKeyframeIds.length > 0 ? (
             <>
               <IconButton
-                label={t("Duplicate selected keyframes at playhead (⌘D)")}
+                label={t(`Duplicate selected keyframes at playhead (${formatKeyComboDisplay("cmd+d")})`)}
                 icon={<Copy size={13} aria-hidden />}
                 size="sm"
                 variant="ghost"
@@ -2160,7 +2161,7 @@ export function MotionTimeline({ composition }: MotionTimelineProps): JSX.Elemen
         </div>
         <div className="ml-2 flex items-center gap-0.5 border-l border-border pl-2">
           <IconButton
-            label={t("Copy timeline selection (⌘C)")}
+            label={t(`Copy timeline selection (${formatKeyComboDisplay("cmd+c")})`)}
             icon={<Copy size={14} aria-hidden />}
             size="md"
             variant="ghost"
@@ -2173,7 +2174,7 @@ export function MotionTimeline({ composition }: MotionTimelineProps): JSX.Elemen
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-hover hover:text-fg disabled:pointer-events-none disabled:opacity-35"
           />
           <IconButton
-            label={t("Paste at playhead (⌘V)")}
+            label={t(`Paste at playhead (${formatKeyComboDisplay("cmd+v")})`)}
             icon={<ClipboardPaste size={14} aria-hidden />}
             size="md"
             variant="ghost"

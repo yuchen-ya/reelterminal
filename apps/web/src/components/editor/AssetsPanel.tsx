@@ -775,7 +775,11 @@ export const AssetsPanel: React.FC = () => {
         for (let i = 0; i < fileArray.length; i++) {
           const file = fileArray[i];
           setImportProgress(
-            `Importing ${file.name} (${i + 1}/${fileArray.length})...`,
+            t("media.importingProgress", {
+              name: file.name,
+              current: i + 1,
+              total: fileArray.length,
+            }),
           );
 
           const result = await importMedia(file);
@@ -792,7 +796,7 @@ export const AssetsPanel: React.FC = () => {
 
           // If it's a video with audio, extract audio to separate track
           if (result.success && file.type.startsWith("video/")) {
-            setImportProgress(`Extracting audio from ${file.name}...`);
+            setImportProgress(t("media.extractingAudio", { name: file.name }));
             // Audio extraction is handled by the importMedia function
             // The audio track is created automatically when adding to timeline
           }
@@ -804,7 +808,7 @@ export const AssetsPanel: React.FC = () => {
         setImportProgress("");
       }
     },
-    [importMedia],
+    [importMedia, t],
   );
 
   // Handle drag and drop import — capture FileSystemFileHandle for each dropped file
@@ -1625,7 +1629,7 @@ export const AssetsPanel: React.FC = () => {
       {/* ── Body: section content fills the remaining space ──── */}
       <div className="flex-1 flex flex-col min-w-0 h-full bg-bg-1 relative">
         {isImporting && (
-          <LoadingIndicator message={importProgress || "Importing media..."} />
+          <LoadingIndicator message={importProgress || t("media.importing")} />
         )}
 
         <input

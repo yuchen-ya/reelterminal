@@ -2546,8 +2546,6 @@ export const Preview: React.FC = () => {
         : emptyBg;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      let hasRenderedContent = false;
-
       const allRenderableTracks = timelineTracks
         .map((track, idx) => ({ track, originalIndex: idx }))
         .filter(
@@ -2569,7 +2567,6 @@ export const Preview: React.FC = () => {
             if (time >= clipStart && time < clipEnd) {
               const mediaItem = getMediaItem(clip.mediaId);
               if (mediaItem) {
-                hasRenderedContent = true;
                 ctx.fillStyle = textPrimary;
                 ctx.font = "bold 24px Inter, sans-serif";
                 ctx.textAlign = "center";
@@ -2586,7 +2583,6 @@ export const Preview: React.FC = () => {
                   canvas.height / 2 + 30,
                 );
               } else if ((clip as ClipWithPlaceholder).isPlaceholder) {
-                hasRenderedContent = true;
                 ctx.fillStyle = textSecondary;
                 ctx.font = "bold 20px Inter, sans-serif";
                 ctx.textAlign = "center";
@@ -2617,7 +2613,6 @@ export const Preview: React.FC = () => {
               canvas.height,
               time,
             );
-            hasRenderedContent = true;
           }
         } else if (track.type === "text") {
           const trackTextClips = activeTextClips.filter(
@@ -2634,7 +2629,6 @@ export const Preview: React.FC = () => {
               isPlaying,
               getBehindSubjectStreamId(timelineTracks, time),
             );
-            hasRenderedContent = true;
           }
         }
       }
@@ -2650,28 +2644,21 @@ export const Preview: React.FC = () => {
         );
       }
 
-      const audioTracks = timelineTracks.filter(
-        (t) => t.type === "audio" && !t.hidden,
-      );
-      const hasActiveAudioClip = audioTracks.some((track) =>
-        track.clips.some(
-          (clip) =>
-            time >= clip.startTime && time < clip.startTime + clip.duration,
-        ),
+      // Empty-state hint reflects the timeline itself, not the frame under the
+      // playhead: with clips on the timeline the playhead can still sit in a
+      // gap between them, and hinting "import media" there is wrong. Show the
+      // hint only while no track holds any clip (motion instances, which are
+      // not clips, still suppress it while they render).
+      const timelineHasNoClips = timelineTracks.every(
+        (track) => track.clips.length === 0,
       );
 
-      if (
-        !hasRenderedContent &&
-        activeTextClips.length === 0 &&
-        activeShapeClips.length === 0 &&
-        !hasActiveMotionInstances(time) &&
-        !hasActiveAudioClip
-      ) {
+      if (timelineHasNoClips && !hasActiveMotionInstances(time)) {
         ctx.fillStyle = emptyText;
         ctx.font = "24px Inter, sans-serif";
         ctx.textAlign = "center";
         ctx.fillText(
-          "Import media to get started",
+          tr("Import media to get started"),
           canvas.width / 2,
           canvas.height / 2,
         );
@@ -2688,6 +2675,7 @@ export const Preview: React.FC = () => {
       hasActiveMotionInstances,
       isDark,
       isPlaying,
+      tr,
     ],
   );
 

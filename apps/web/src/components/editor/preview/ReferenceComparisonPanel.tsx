@@ -17,6 +17,7 @@ import { mapTimelineToReference, type ReferenceComparisonConfig } from "@openree
 import type { Action } from "@openreel/core/types/actions";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
+import { useTranslation } from "react-i18next";
 
 interface MediaItemLike {
   readonly id: string;
@@ -38,6 +39,7 @@ export const ReferenceComparisonPanel: React.FC<{
   timelineCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   userMuted?: boolean;
 }> = ({ timelineCanvasRef, userMuted = false }) => {
+  const { t } = useTranslation();
   const project = useProjectStore((state) => state.project);
   const executeAction = useProjectStore((state) => state.executeAction);
   const playheadPosition = useTimelineStore((state) => state.playheadPosition);
@@ -121,7 +123,7 @@ export const ReferenceComparisonPanel: React.FC<{
   if (!config) {
     return (
       <div className="px-3 py-1.5 text-[11px] text-[var(--text-secondary)]">
-        <label>Reference comparison
+        <label>{t("Reference comparison")}
           <select aria-label="Reference media" defaultValue="" className="ml-2 bg-bg-2" onChange={(event) => {
             const media = project.mediaLibrary.items.find((item) => item.id === event.target.value);
             if (!media) return;
@@ -131,7 +133,7 @@ export const ReferenceComparisonPanel: React.FC<{
                 setError(result.success ? null : result.error?.message ?? "Could not configure comparison");
               });
           }}>
-            <option value="" disabled>Choose reference video</option>
+            <option value="" disabled>{t("Choose reference video")}</option>
             {project.mediaLibrary.items.filter((item) => item.type === "video" && item.metadata.duration > 0)
               .map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
@@ -149,7 +151,7 @@ export const ReferenceComparisonPanel: React.FC<{
         className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
       >
         <span className={`transition-transform ${open ? "rotate-90" : ""}`}>▶</span>
-        Reference comparison
+        {t("Reference comparison")}
         <span className="ml-auto tabular-nums">
           TL {playheadPosition.toFixed(2)}s → REF {mapping ? mapping.referenceSec.toFixed(2) : "–"}s
           {mapping && mapping.clamped !== "none" ? ` (clamped ${mapping.clamped})` : ""}

@@ -253,7 +253,9 @@ export const TrackHeader: React.FC<TrackHeaderProps> = ({
                   type="button"
                   disabled={hasNoAudioContent}
                   aria-label={
-                    track.muted ? `Unmute ${track.name}` : `Mute ${track.name}`
+                    track.muted
+                      ? t("Unmute {{name}}", { name: track.name })
+                      : t("Mute {{name}}", { name: track.name })
                   }
                   aria-pressed={track.muted}
                   title={
@@ -289,7 +291,9 @@ export const TrackHeader: React.FC<TrackHeaderProps> = ({
                   type="button"
                   disabled={hasNoAudioContent}
                   aria-label={
-                    track.solo ? `Clear solo ${track.name}` : `Solo ${track.name}`
+                    track.solo
+                      ? t("Clear solo {{name}}", { name: track.name })
+                      : t("Solo {{name}}", { name: track.name })
                   }
                   aria-pressed={track.solo}
                   title={

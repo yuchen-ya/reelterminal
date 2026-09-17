@@ -436,10 +436,10 @@ describe("MotionTimeline professional navigation shortcuts", () => {
       screen.getByRole("button", { name: "Select audio clip Voiceover" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Copy timeline selection (⌘C)" }),
+      screen.getByRole("button", { name: "Copy timeline selection (Ctrl+C)" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Paste at playhead (⌘V)" }),
+      screen.getByRole("button", { name: "Paste at playhead (Ctrl+V)" }),
     );
 
     await waitFor(() => {
