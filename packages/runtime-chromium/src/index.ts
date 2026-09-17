@@ -41,3 +41,13 @@ export {
   type FfmpegConfig,
 } from "./node/ffmpeg";
 export { buildBrowserEntry } from "./node/bundle";
+export {
+  HTML_RENDER_DEFAULT_TIMEOUT_MS,
+  HTML_RENDER_MAX_DIMENSION,
+  HTML_RENDER_MAX_TIMEOUT_MS,
+  HTML_RENDER_MIN_TIMEOUT_MS,
+  HtmlRenderError,
+  HtmlRenderTimeoutError,
+  renderHtmlPng,
+  type RenderHtmlPngOptions,
+} from "./node/html-render";

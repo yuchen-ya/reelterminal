@@ -1730,6 +1730,126 @@ export const PRESET_APPLY_SCHEMA: ObjectSchema = {
 };
 
 /* ------------------------------------------------------------------ */
+/* media.render_html                                                   */
+/* ------------------------------------------------------------------ */
+
+/** Mirrors the core HTML policy's byte ceiling (html-policy.ts). */
+export const MEDIA_RENDER_HTML_MAX_INLINE_BYTES = 512 * 1024;
+
+const isHtmlRenderDimension = (v: unknown): boolean =>
+  typeof v === "number" && Number.isInteger(v) && v >= 2 && v <= 4096 && v % 2 === 0;
+
+const HTML_RENDER_DIMENSION_EMITS = {
+  kind: "leaf",
+  schema: { type: "integer", minimum: 2, maximum: 4096 },
+} as const;
+
+const MEDIA_RENDER_HTML_SOURCE_SCHEMA_PATH: ObjectSchema = {
+  kind: {
+    check: (v) => v === "path",
+    describe: '"path"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "path" } },
+  },
+  path: {
+    check: isNonEmptyString,
+    describe: "an absolute .html file path inside a configured media root",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+const MEDIA_RENDER_HTML_SOURCE_SCHEMA_INLINE: ObjectSchema = {
+  kind: {
+    check: (v) => v === "inline",
+    describe: '"inline"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "inline" } },
+  },
+  html: {
+    check: (v) =>
+      typeof v === "string" &&
+      v.length > 0 &&
+      Buffer.byteLength(v, "utf8") <= MEDIA_RENDER_HTML_MAX_INLINE_BYTES,
+    describe: `non-empty HTML markup of at most ${MEDIA_RENDER_HTML_MAX_INLINE_BYTES} bytes (UTF-8)`,
+    required: true,
+    emits: {
+      kind: "leaf",
+      schema: { type: "string", minLength: 1, maxLength: MEDIA_RENDER_HTML_MAX_INLINE_BYTES },
+    },
+  },
+};
+
+const isMediaRenderHtmlSource = (v: unknown): boolean => {
+  if (!isPlainObject(v)) return false;
+  if (v.kind === "path") return MEDIA_RENDER_HTML_SOURCE_SCHEMA_PATH.path.check(v.path);
+  if (v.kind === "inline") return MEDIA_RENDER_HTML_SOURCE_SCHEMA_INLINE.html.check(v.html);
+  return false;
+};
+
+/**
+ * Constrained HTML→PNG render params. Cross-field rules that stay
+ * validation-only: inline sources without assetsRoot may only use
+ * data:image URIs (no local base to resolve against).
+ */
+export const MEDIA_RENDER_HTML_SCHEMA: ObjectSchema = {
+  source: {
+    check: isMediaRenderHtmlSource,
+    describe:
+      '{"kind":"path","path":"<absolute .html path inside a media root>"} or {"kind":"inline","html":"<markup ≤512 KiB>"}',
+    required: true,
+    emits: {
+      kind: "anyOfObjects",
+      variants: [MEDIA_RENDER_HTML_SOURCE_SCHEMA_PATH, MEDIA_RENDER_HTML_SOURCE_SCHEMA_INLINE],
+    },
+  },
+  assetsRoot: {
+    check: isNonEmptyString,
+    describe: "an absolute directory inside a media root that local subresources may resolve into",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  width: {
+    check: isHtmlRenderDimension,
+    describe: "an even integer in [2, 4096]",
+    required: true,
+    emits: HTML_RENDER_DIMENSION_EMITS,
+  },
+  height: {
+    check: isHtmlRenderDimension,
+    describe: "an even integer in [2, 4096]",
+    required: true,
+    emits: HTML_RENDER_DIMENSION_EMITS,
+  },
+  transparent: {
+    check: isBoolean,
+    describe: "a boolean (default true — transparent page background)",
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  timeoutMs: {
+    check: (v) =>
+      typeof v === "number" && Number.isInteger(v) && v >= 1000 && v <= 120_000,
+    describe: "an integer in [1000, 120000] milliseconds (default 30000)",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1000, maximum: 120000 } },
+  },
+  outputDir: {
+    check: isNonEmptyString,
+    describe:
+      "an absolute output directory inside a media root; default <mediaRoots[0]>/jobs/html-render/<requestKey>/",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "a non-negative integer",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+  idempotencyKey: {
+    check: isNonEmptyString,
+    describe: "a non-empty retry key; retries replay the same published artifact",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /* The verb declaration map (single source, Decision 4)                */
 /* ------------------------------------------------------------------ */
 
@@ -1746,6 +1866,7 @@ export const VERB_PARAM_SCHEMAS: {
   "project.get_state": EMPTY_PARAMS_SCHEMA,
   "project.changes": PROJECT_CHANGES_SCHEMA,
   "media.import": MEDIA_IMPORT_SCHEMA,
+  "media.render_html": MEDIA_RENDER_HTML_SCHEMA,
   "media.analyze_start": MEDIA_ANALYZE_START_SCHEMA,
   "timeline.get": EMPTY_PARAMS_SCHEMA,
   "timeline.query": TIMELINE_QUERY_SCHEMA,

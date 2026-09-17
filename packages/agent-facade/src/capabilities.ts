@@ -210,6 +210,55 @@ export async function buildCapabilities(
     previewRaw,
     UNAVAILABLE_NO_RENDER_PROVIDER,
   );
+  // media.render_html shares the render provider's Chromium supply with
+  // preview, but writes under the MEDIA ROOTS (not artifactRoot) — so it
+  // needs roots, not the artifactRoot gate.
+  const htmlRenderSupported =
+    typeof ctx.renderProvider?.renderHtmlPng === "function";
+  const mediaRenderHtml: CapabilityStatus = (() => {
+    if (!htmlRenderSupported) {
+      return {
+        available: false,
+        reason:
+          "No render provider with HTML rendering (renderHtmlPng) is configured for this session; media.render_html cannot rasterize HTML.",
+        requires:
+          "a RenderProvider exposing renderHtmlPng (e.g. @openreel/runtime-chromium with the local playwright Chromium installed)",
+      };
+    }
+    if (ctx.mediaRoots.length === 0) {
+      return {
+        available: false,
+        reason:
+          "No media roots are configured; media.render_html writes its PNG under a media root.",
+        requires: "a configured media root for the output directory",
+      };
+    }
+    if (!previewRaw.available) {
+      return {
+        available: false,
+        reason: previewRaw.reason ?? "render provider preflight failed",
+        ...(previewRaw.requires ? { requires: previewRaw.requires } : {}),
+        ...(previewRaw.details ? { details: previewRaw.details } : {}),
+      };
+    }
+    return {
+      available: true,
+      details: {
+        renderer: "playwright Chromium (same supply as preview)",
+        contentPolicy:
+          "core html-policy: scripts, iframe/object/embed, base href, meta refresh, srcset, event handlers, javascript:/vbscript:/non-image data: and network references are rejected",
+        maxInlineBytes: 512 * 1024,
+        maxDimension: 4096,
+        defaultTimeoutMs: 30000,
+        maxTimeoutMs: 120000,
+        defaultOutputDir: "jobs/html-render/<requestKey>/ under mediaRoots[0]",
+        fontsNote:
+          "system fonts only; no network font loading (external fonts are rejected)",
+        missingAssetSemantics:
+          "blocked/missing subresources are listed in missingAssets; the render itself succeeds",
+      },
+    };
+  })();
   const visualInspection: CapabilityStatus = {
     ...visualRaw,
     details: {
@@ -712,6 +761,7 @@ export async function buildCapabilities(
       modelState: true,
       pixelRendering: preview.available,
     },
+    mediaRenderHtml,
     preview,
     visualInspection,
     editorControl,

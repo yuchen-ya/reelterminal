@@ -86,6 +86,7 @@ import {
 } from "./live-store";
 import { hasUrlScheme, resolveContainedPathDetailed } from "./media/path-roots";
 import { probeLocalMediaFile } from "./media/node-media-adapter";
+import { produceHtmlRenderArtifact } from "./media-render-html";
 import { assessColorSupport, probeColorMetadata } from "./color-policy";
 import {
   loadAnalysisRecord,
@@ -124,6 +125,7 @@ import {
   isEvenDimension,
   JOB_PARAMS_SCHEMA,
   MEDIA_IMPORT_SCHEMA,
+  MEDIA_RENDER_HTML_SCHEMA,
   MEDIA_ANALYZE_START_SCHEMA,
   normalizeProjectName,
   ANALYSIS_GET_SCHEMA,
@@ -239,6 +241,8 @@ import {
   type LiveProjectSaveResult,
   type MediaImportParams,
   type MediaImportResult,
+  type MediaRenderHtmlParams,
+  type MediaRenderHtmlResult,
   type MediaAnalyzeStartParams,
   type MediaAnalyzeStartResult,
   type OpApplied,
@@ -1188,6 +1192,93 @@ export class LiveFacadeSession {
         revision: committed.revision,
         replayed: false,
       });
+    });
+  }
+
+  /**
+   * media.render_html (live): same artifact core as headless — constrained
+   * HTML/CSS → PNG under the media roots, content-policy gated, published
+   * temp-then-publish with sha256 + PNG re-inspection. Writes a file (a
+   * mutation for the access/writer gates) but never touches project state:
+   * the caller imports the returned path via media.import.
+   */
+  async mediaRenderHtml(
+    params: MediaRenderHtmlParams,
+  ): Promise<FacadeResult<MediaRenderHtmlResult>> {
+    return this.enqueue(async () => {
+      this.gate("media.render_html");
+      const valid = validateObject<MediaRenderHtmlParams>(
+        params,
+        MEDIA_RENDER_HTML_SCHEMA,
+        "media.render_html params",
+      );
+
+      const payload = {
+        source: valid.source,
+        assetsRoot: valid.assetsRoot,
+        width: valid.width,
+        height: valid.height,
+        transparent: valid.transparent ?? true,
+        timeoutMs: valid.timeoutMs,
+        outputDir: valid.outputDir,
+      };
+      const prior = await this.replayLookup<MediaRenderHtmlResult>(
+        "media.render_html",
+        valid.idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        const stillThere = await stat(prior.value.path).then(
+          (s) => s.isFile(),
+          () => false,
+        );
+        if (stillThere) {
+          return ok<MediaRenderHtmlResult>({ ...prior.value, replayed: true });
+        }
+      }
+
+      const provider = this.config.renderProvider;
+      if (!provider || typeof provider.renderHtmlPng !== "function") {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "media.render_html: no render provider with HTML rendering is configured for this live session",
+          {
+            requires:
+              "a RenderProvider exposing renderHtmlPng (the desktop MAIN process supplies it from createChromiumProviders)",
+          },
+        );
+      }
+      const roots = this.config.mediaRoots ?? [];
+      if (roots.length === 0) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "media.render_html: no media roots configured for this live session",
+        );
+      }
+      await requireProviderPreflight(provider, "media.render_html");
+
+      const artifact = await produceHtmlRenderArtifact({
+        provider,
+        mediaRoots: roots,
+        params: {
+          source: valid.source,
+          ...(valid.assetsRoot !== undefined ? { assetsRoot: valid.assetsRoot } : {}),
+          width: valid.width,
+          height: valid.height,
+          ...(valid.transparent !== undefined ? { transparent: valid.transparent } : {}),
+          ...(valid.timeoutMs !== undefined ? { timeoutMs: valid.timeoutMs } : {}),
+          ...(valid.outputDir !== undefined ? { outputDir: valid.outputDir } : {}),
+        },
+      });
+      const value: MediaRenderHtmlResult = { ...artifact, replayed: false };
+      if (valid.idempotencyKey !== undefined) {
+        this.ledger.set("media.render_html", valid.idempotencyKey, {
+          revision: 0, // file-producing verb: no project revision to pin
+          value,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(value);
     });
   }
 
@@ -4165,6 +4256,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "project.get_state": () => session.projectGetState(),
     "project.changes": (params) => session.projectChanges(params),
     "media.import": (params) => session.mediaImport(params),
+    "media.render_html": (params) => session.mediaRenderHtml(params),
     "media.analyze_start": (params) => session.mediaAnalyzeStart(params),
     "timeline.get": () => session.timelineGet(),
     "timeline.query": (params) => session.timelineQuery(params),

@@ -12,7 +12,7 @@
  * land in a `.part` file that is only renamed into place on success — a
  * failed/cancelled export never leaves a success-looking MP4 behind.
  */
-import { chromium, type Browser, type Page } from "playwright-core";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { open, rename, rm } from "node:fs/promises";
@@ -653,6 +653,43 @@ export class ChromiumRuntime {
           this.renderPngOnPage(page, timeSec, width, height, region),
       });
     });
+  }
+
+  /* --------------------- isolated render contexts --------------------- */
+
+  /**
+   * Run `fn` with a THROWAWAY incognito browser context, isolated from the
+   * shared hydrate page (the context is closed again in every path).
+   *
+   * This is the substrate for the constrained HTML→PNG renderer: the context
+   * is created with JavaScript disabled at the switch level, and the caller
+   * installs its own route allowlist on pages inside it. The shared page's
+   * lock is deliberately NOT taken — an isolated context never touches the
+   * hydrate page — but the underlying browser process is the pool's own, so
+   * a browser that dies mid-render (crash, or the close/recycle teardown)
+   * rejects the work like any other page operation would.
+   */
+  async withIsolatedContext<T>(
+    options: { javaScriptEnabled?: boolean; viewport?: { width: number; height: number } },
+    fn: (context: BrowserContext) => Promise<T>,
+  ): Promise<T> {
+    if (this.closed) throw new Error("ChromiumRuntime is closed");
+    // Ensures the browser is launched (memoized). Launch brings the shared
+    // hydrate page up with it; this path never navigates or operates it.
+    await this.ensurePage();
+    const browser = this.browser;
+    if (!browser || !browser.isConnected()) {
+      throw new Error("Chromium browser is not connected");
+    }
+    const context = await browser.newContext({
+      javaScriptEnabled: options.javaScriptEnabled,
+      ...(options.viewport ? { viewport: options.viewport } : {}),
+    });
+    try {
+      return await fn(context);
+    } finally {
+      await context.close().catch(() => undefined);
+    }
   }
 
   /* ---------------------------- render ---------------------------- */

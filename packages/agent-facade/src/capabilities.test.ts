@@ -161,6 +161,7 @@ describe("capabilities.get / session.describe", () => {
       "project.get_state",
       "project.changes",
       "media.import",
+      "media.render_html",
       "media.analyze_start",
       "analysis.list",
       "analysis.get",

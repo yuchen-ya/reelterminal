@@ -26,7 +26,7 @@ import { HELP_VERBS } from "./gui-manual";
  *   transforms/crop, audio fades, and clip transitions without adding new
  *   verbs.
  *
- * The current registry exposes 48 tools (27 base verbs + 8 material verbs +
+ * The current registry exposes 49 tools (28 base verbs + 8 material verbs +
  *   2 font verbs + 6 preset verbs + 3 help verbs + 2 bundled plugin tools);
  *   FACADE_VERBS, MATERIAL_VERBS, FONT_VERBS, PRESET_VERBS, HELP_VERBS, and
  *   PLUGIN_TOOLS below are the mechanical source of truth for the live
@@ -70,6 +70,7 @@ export const FACADE_VERBS = [
   "project.get_state",
   "project.changes",
   "media.import",
+  "media.render_html",
   "media.analyze_start",
   "analysis.list",
   "analysis.get",
@@ -359,6 +360,13 @@ export interface Capabilities {
     readonly pixelRendering: boolean;
   };
   readonly preview: CapabilityStatus;
+  /**
+   * media.render_html backing: constrained HTML/CSS → PNG into a media
+   * root. Availability is the render provider's Chromium supply (the SAME
+   * pool preview uses) plus a configured media root for the output — it
+   * needs a local playwright Chromium and says so honestly.
+   */
+  readonly mediaRenderHtml: CapabilityStatus;
   /** visual.inspect backing; mirrors the real frame renderer and artifact root gate. */
   readonly visualInspection: CapabilityStatus;
   /** Ephemeral live-editor playback/selection/reveal controls. */
@@ -571,8 +579,65 @@ export interface MediaImportResult {
   readonly replayed: boolean;
 }
 
-export const MEDIA_ANALYSIS_TYPES = [
-  "technicalQuality",
+/* ------------------------------------------------------------------ */
+/* media.render_html                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Constrained HTML/CSS → PNG rendering under the session's media roots.
+ * The verb writes a FILE (a mutation for the read-only/writer gates and the
+ * idempotency ledger) but never touches project state — the returned path is
+ * meant to flow straight into media.import. Content is gated by the core
+ * HTML policy (scripts, frames, external references… are rejected); local
+ * subresources resolve only inside assetsRoot; the output PNG is
+ * temp-then-published, sha256-hashed and re-inspected (PNG magic + IHDR).
+ */
+export interface MediaRenderHtmlParams {
+  /**
+   * {"kind":"path","path":...} — an .html file inside a configured media
+   * root (relative subresources default to its directory), or
+   * {"kind":"inline","html":...} — raw markup up to 512 KiB (relative
+   * subresources then require assetsRoot).
+   */
+  readonly source: MediaRenderHtmlSource;
+  /**
+   * Absolute root for local subresources; must sit inside a media root.
+   * Every reference outside it is blocked and reported in missingAssets.
+   */
+  readonly assetsRoot?: string;
+  /** Output raster size: even integers in [2, 4096]. */
+  readonly width: number;
+  readonly height: number;
+  /** Transparent page background (omitBackground). Default true. */
+  readonly transparent?: boolean;
+  /** Hard deadline for the whole render. Default 30000, max 120000. */
+  readonly timeoutMs?: number;
+  /**
+   * Absolute output directory inside a media root. Default:
+   * `<mediaRoots[0]>/jobs/html-render/<requestKey>/`.
+   */
+  readonly outputDir?: string;
+  readonly expectedRevision?: number;
+  readonly idempotencyKey?: string;
+}
+
+export type MediaRenderHtmlSource =
+  | { readonly kind: "path"; readonly path: string }
+  | { readonly kind: "inline"; readonly html: string };
+
+export interface MediaRenderHtmlResult {
+  /** Published artifact path (inside a media root) — pass it to media.import. */
+  readonly path: string;
+  readonly width: number;
+  readonly height: number;
+  readonly sha256: string;
+  readonly bytes: number;
+  /** Subresources that were blocked or missing (render still succeeded). */
+  readonly missingAssets: readonly string[];
+  readonly replayed: boolean;
+}
+
+export const MEDIA_ANALYSIS_TYPES = [  "technicalQuality",
   "audioSummary",
   "videoReview",
   "sceneCuts",

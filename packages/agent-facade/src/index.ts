@@ -29,6 +29,8 @@ import type {
   JobStatusView,
   MediaImportParams,
   MediaImportResult,
+  MediaRenderHtmlParams,
+  MediaRenderHtmlResult,
   MediaAnalyzeStartParams,
   MediaAnalyzeStartResult,
   AnalysisGetParams,
@@ -87,6 +89,9 @@ export interface AgentFacade extends BundledToolBindings {
   readonly "media.import": (
     params: MediaImportParams,
   ) => Promise<FacadeResult<MediaImportResult>>;
+  readonly "media.render_html": (
+    params: MediaRenderHtmlParams,
+  ) => Promise<FacadeResult<MediaRenderHtmlResult>>;
   readonly "media.analyze_start": (
     params: MediaAnalyzeStartParams,
   ) => Promise<FacadeResult<MediaAnalyzeStartResult>>;
@@ -215,6 +220,7 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "project.get_state": () => session.projectGetState(),
     "project.changes": (params) => session.projectChanges(params),
     "media.import": (params) => session.mediaImport(params),
+    "media.render_html": (params) => session.mediaRenderHtml(params),
     "media.analyze_start": (params) => session.mediaAnalyzeStart(params),
     "timeline.get": () => session.timelineGet(),
     "timeline.query": (params) => session.timelineQuery(params),
@@ -418,13 +424,16 @@ export type {
   ExportProgressEvent,
   ExportProvider,
   ExportVideoRequest,
+  HtmlRenderSource,
   MediaFilesMap,
   PixelCompareRequest,
   ProviderPreflight,
   RenderedFrameInfo,
+  RenderedHtmlPngInfo,
   RenderContactSheetRequest,
   RenderedContactSheetInfo,
   RenderFrameRequest,
+  RenderHtmlPngRequest,
   RenderProvider,
   VerifyArtifactRequest,
   VerifyCheck,

@@ -23,6 +23,7 @@ import {
   EXPORT_START_SCHEMA,
   JOB_PARAMS_SCHEMA,
   MEDIA_IMPORT_SCHEMA,
+  MEDIA_RENDER_HTML_SCHEMA,
   MEDIA_ANALYZE_START_SCHEMA,
   ANALYSIS_GET_SCHEMA,
   ANALYSIS_LIST_SCHEMA,
@@ -149,6 +150,9 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
       return;
     case "media.import":
       validateObject(params, MEDIA_IMPORT_SCHEMA, "media.import params");
+      return;
+    case "media.render_html":
+      validateObject(params, MEDIA_RENDER_HTML_SCHEMA, "media.render_html params");
       return;
     case "media.analyze_start":
       validateObject(params, MEDIA_ANALYZE_START_SCHEMA, "media.analyze_start params");

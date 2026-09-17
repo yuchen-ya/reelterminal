@@ -700,6 +700,18 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "project.get_state": projectState(),
   "project.changes": projectChangesResult(),
   "media.import": mediaImportResult(),
+  "media.render_html": objectSchema(
+    {
+      path: stringSchema(),
+      width: integerSchema(2, 4096),
+      height: integerSchema(2, 4096),
+      sha256: stringSchema(),
+      bytes: integerSchema(1),
+      missingAssets: arraySchema(stringSchema()),
+      replayed: booleanSchema(),
+    },
+    ["path", "width", "height", "sha256", "bytes", "missingAssets", "replayed"],
+  ),
   "media.analyze_start": objectSchema(
     {
       jobId: stringSchema(),

@@ -125,6 +125,7 @@ import {
   isEvenDimension,
   JOB_PARAMS_SCHEMA,
   MEDIA_IMPORT_SCHEMA,
+  MEDIA_RENDER_HTML_SCHEMA,
   MEDIA_ANALYZE_START_SCHEMA,
   ANALYSIS_GET_SCHEMA,
   ANALYSIS_LIST_SCHEMA,
@@ -207,6 +208,8 @@ import type {
   JobStatusView,
   MediaImportParams,
   MediaImportResult,
+  MediaRenderHtmlParams,
+  MediaRenderHtmlResult,
   MediaAnalyzeStartParams,
   MediaAnalyzeStartResult,
   OpApplied,
@@ -245,6 +248,7 @@ import {
   MAX_VISUAL_PNG_BYTES,
   visualRasterSize,
 } from "./visual-inspect";
+import { produceHtmlRenderArtifact } from "./media-render-html";
 import { DEFAULT_FRAME_BUDGET_BYTES, fitFrameToBudget } from "./frame-budget";
 import {
   DEFAULT_AGENT_WORK_MODE,
@@ -1107,6 +1111,98 @@ export class AgentFacadeSession {
         metadata: outcome.value.metadata,
         replayed: outcome.replayed,
       });
+    });
+  }
+
+  /**
+   * media.render_html — constrained HTML/CSS → PNG under the media roots.
+   * The verb WRITES A FILE, so it sits behind the mutation gates
+   * and the idempotency ledger, but it never touches project state and does
+   * not bump the revision: the published path is meant to flow straight
+   * into media.import. All containment/publish/inspection discipline lives
+   * in the shared produceHtmlRenderArtifact core (identical in live mode).
+   */
+  async mediaRenderHtml(
+    params: MediaRenderHtmlParams,
+  ): Promise<FacadeResult<MediaRenderHtmlResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<MediaRenderHtmlParams>(
+        params,
+        MEDIA_RENDER_HTML_SCHEMA,
+        "media.render_html params",
+      );
+      const provider = this.config.renderProvider;
+      if (!provider || typeof provider.renderHtmlPng !== "function") {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "media.render_html: no render provider with HTML rendering is configured for this session",
+          {
+            requires:
+              "a RenderProvider exposing renderHtmlPng (e.g. @openreel/runtime-chromium with the local playwright Chromium)",
+          },
+        );
+      }
+      const roots = this.config.mediaRoots ?? [];
+      if (roots.length === 0) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "media.render_html: no media roots configured — the session was created without mediaRoots",
+        );
+      }
+      await requireProviderPreflight(provider, "media.render_html");
+
+      // Idempotent replays resolve BEFORE filesystem work (media.import
+      // convention); the payload is the mutation-defining part.
+      const payload = {
+        source: valid.source,
+        assetsRoot: valid.assetsRoot,
+        width: valid.width,
+        height: valid.height,
+        transparent: valid.transparent ?? true,
+        timeoutMs: valid.timeoutMs,
+        outputDir: valid.outputDir,
+      };
+      const prior = this.beginMutation<MediaRenderHtmlResult>(
+        "media.render_html",
+        valid.expectedRevision,
+        valid.idempotencyKey,
+        payload,
+      );
+      if (prior) {
+        // Replay only while the artifact file still exists (same honesty as
+        // preview.render_frame): a deleted file falls through to an honest
+        // re-render of the same content-addressed path.
+        const stillThere = await stat(prior.value.path).then(
+          (s) => s.isFile(),
+          () => false,
+        );
+        if (stillThere) {
+          return ok<MediaRenderHtmlResult>({ ...prior.value, replayed: true });
+        }
+      }
+
+      const artifact = await produceHtmlRenderArtifact({
+        provider,
+        mediaRoots: roots,
+        params: {
+          source: valid.source,
+          ...(valid.assetsRoot !== undefined ? { assetsRoot: valid.assetsRoot } : {}),
+          width: valid.width,
+          height: valid.height,
+          ...(valid.transparent !== undefined ? { transparent: valid.transparent } : {}),
+          ...(valid.timeoutMs !== undefined ? { timeoutMs: valid.timeoutMs } : {}),
+          ...(valid.outputDir !== undefined ? { outputDir: valid.outputDir } : {}),
+        },
+      });
+      const value: MediaRenderHtmlResult = { ...artifact, replayed: false };
+      if (valid.idempotencyKey !== undefined) {
+        this.ledger.set("media.render_html", valid.idempotencyKey, {
+          revision: this.revision,
+          value,
+          payloadHash: stableStringify(payload),
+        });
+      }
+      return ok(value);
     });
   }
 

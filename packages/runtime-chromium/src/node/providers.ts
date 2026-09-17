@@ -30,6 +30,8 @@ import type {
   RenderedFrameInfo,
   RenderContactSheetRequest,
   RenderedContactSheetInfo,
+  RenderedHtmlPngInfo,
+  RenderHtmlPngRequest,
   RenderProvider,
 } from "@openreel/agent-facade";
 
@@ -42,6 +44,7 @@ import {
   probeWithRuntime,
   type RuntimeProbeResult,
 } from "./probe";
+import { renderHtmlPng as renderHtmlPngOnRuntime } from "./html-render";
 import { ChromiumRuntime, HydratedSessionCancelled, PartFileWriter } from "./runtime";
 
 export interface ChromiumProvidersConfig {
@@ -282,6 +285,21 @@ export class ChromiumRenderProvider implements RenderProvider {
     }
     await writeFile(request.destPath, png);
     return { bytesWritten: png.length };
+  }
+
+  /**
+   * Constrained HTML→PNG on a THROWAWAY incognito context of the pool's own
+   * browser (javaScriptEnabled:false + route allowlist — see html-render.ts).
+   * Availability is the same Chromium supply as preview.render_frame: the
+   * pool probe gates it, and a crashed/recycled browser re-probes. The
+   * hydrate page is never touched.
+   */
+  async renderHtmlPng(request: RenderHtmlPngRequest): Promise<RenderedHtmlPngInfo> {
+    const probe = await this.providers.probe();
+    if (!probe.summary.renderAvailable) {
+      throw new Error("render provider preflight failed — refusing to render HTML");
+    }
+    return renderHtmlPngOnRuntime(this.providers.runtime, request);
   }
 }
 

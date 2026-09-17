@@ -20,6 +20,8 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Return a bounded, paged structural delta since a project revision, or require a full refresh when history was evicted.",
   media_import:
     "Import a local media file from a configured media root into the project.",
+  media_render_html:
+    "Render constrained local HTML/CSS to a transparent-capable PNG artifact inside the media roots (needs the local playwright Chromium); output flows to media.import by path. Scripts, frames, event handlers and network references are rejected; relative assets resolve only inside assetsRoot; blocked/missing assets are listed, not failed.",
   media_analyze_start:
     "Start an asynchronous analysis job for an imported media item; unavailable analysis types fail honestly before a job is created.",
   timeline_get: "Return the compact timeline view (tracks, clips, text overlays).",
@@ -112,6 +114,8 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Return bounded structural changes since a project revision, including both GUI and Agent edits, or require a full refresh when retained history is unavailable.",
   "media.import":
     "Import a local video, audio, or image file (PNG, JPEG, GIF, WebP) into the open GUI project. Use an absolute path under one of capabilities_get.mediaImport.mediaRoots; the returned mediaId can be passed to clip.add, the Media panel updates immediately, and the import is undoable in the GUI.",
+  "media.render_html":
+    "Render constrained local HTML/CSS markup to a PNG file under the media roots (default <mediaRoots[0]>/jobs/html-render/<requestKey>/), then media.import that path to put it on the timeline. source is {kind:'path',path} (an .html file inside a media root) or {kind:'inline',html} (raw markup ≤512 KiB). width/height are even integers in [2,4096]; transparent defaults to true; timeoutMs defaults to 30000 (≤120000). Scripts, iframe/object/embed, event handlers, javascript:/non-image data: URIs and network references (http(s), file, protocol-relative, srcset, CSS url(http)/@import/@font-face url(http)) are rejected; local subresources resolve only inside assetsRoot and remote/missing ones are aborted and returned in missingAssets — the render still succeeds. Requires this machine's playwright Chromium (same supply as preview) and a configured media root; transparent PNGs composite cleanly over the timeline. Changes no project state — import the returned path afterwards.",
   "media.analyze_start":
     "Start a read-only asynchronous analysis job. videoReview sends an explicit <=20s source range to the selected cloud provider (default Alibaba qwen3.5-omni-flash via DASHSCOPE_API_KEY; REELTERMINAL_VIDEO_REVIEW_PROVIDER selects the provider), requires artifactRoot and cloudUpload:true; optional reviewQuestion (<=1000 chars). The bounded inspection copy is transcoded once and cached (source fingerprint + range keyed); each review still uploads once. Returns fallible cloud opinions, not acceptance; no automatic retry. audioSummary uses local FFmpeg for LUFS, true peak, waveforms, silence and onset/periodicity candidates with explicit source startSec/endSec (max 120s), without listening or editing; capabilities_get reports each analysis type honestly.",
   "timeline.get":

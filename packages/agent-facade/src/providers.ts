@@ -117,6 +117,54 @@ export interface RenderedContactSheetInfo {
   readonly bytesWritten: number;
 }
 
+/* ------------------------------------------------------------------ */
+/* RenderProvider — HTML→PNG extension (media.render_html)             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The constrained HTML source for one render. `path` is a real file inside
+ * the session's media roots (the facade has already verified containment);
+ * `inline` is raw HTML markup the caller authored (byte-capped upstream).
+ */
+export type HtmlRenderSource =
+  | { readonly kind: "path"; readonly path: string }
+  | { readonly kind: "inline"; readonly html: string };
+
+export interface RenderHtmlPngRequest {
+  readonly source: HtmlRenderSource;
+  /**
+   * Absolute assets root: the only directory tree local file:// subresources
+   * may resolve into (the renderer enforces this with a route allowlist).
+   * Absent for inline sources means NO local subresource is allowed — only
+   * inline data:image URIs can render.
+   */
+  readonly assetsRoot?: string;
+  /** Output raster size (even, bounded — validated by the facade). */
+  readonly width: number;
+  readonly height: number;
+  /** True (default) yields a transparent background (omitBackground). */
+  readonly transparent: boolean;
+  /** Hard deadline for the whole render; on fire the context is closed. */
+  readonly timeoutMs: number;
+  /**
+   * Absolute PNG destination chosen by the facade (a temp path under the
+   * published output dir). The provider writes the file and reports bytes;
+   * the facade hashes/publishes per artifact discipline.
+   */
+  readonly destPath: string;
+}
+
+export interface RenderedHtmlPngInfo {
+  readonly bytesWritten: number;
+  /**
+   * Subresources that were blocked (network schemes, file:// outside the
+   * assets root) or failed to resolve. The render itself still succeeds —
+   * missing assets degrade to blank pixels, exactly like the SVG ingest
+   * behavior, and are disclosed here instead of failing the verb.
+   */
+  readonly missingAssets: readonly string[];
+}
+
 export interface RenderProvider {
   readonly supportsRegion?: boolean;
   readonly id: string;
@@ -136,6 +184,14 @@ export interface RenderProvider {
   renderContactSheetPng?(
     request: RenderContactSheetRequest,
   ): Promise<RenderedContactSheetInfo>;
+  /**
+   * Optional constrained HTML→PNG raster (backs media.render_html). When
+   * absent, the facade reports the capability honestly unavailable — the
+   * HTML render path must never be faked over the project-frame renderer.
+   * Availability is the SAME Chromium supply as preview (the pool's own
+   * runtime), so a passing preflight() covers it.
+   */
+  renderHtmlPng?(request: RenderHtmlPngRequest): Promise<RenderedHtmlPngInfo>;
 }
 
 /* ------------------------------------------------------------------ */
