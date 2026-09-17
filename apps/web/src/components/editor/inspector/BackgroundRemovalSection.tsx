@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { ToolcraftButton as Button } from "@openreel/ui";
 import { ToolcraftCard as Card } from "@openreel/ui";
 import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
@@ -11,6 +11,7 @@ import {
   Droplets,
   Loader2,
   Info,
+  AlertTriangle,
 } from "@/icons/lucide-compat";
 import {
   getBackgroundRemovalEngine,
@@ -21,6 +22,8 @@ import {
 } from "@openreel/core";
 import { toast } from "../../../stores/notification-store";
 import { useProcessingStore } from "../../../services/processing-manager";
+import { useProjectStore } from "../../../stores/project-store";
+import type { Action } from "@openreel/core";
 import { ColorSelector } from "../../../motion/components/primitives";
 import { useTranslation } from "react-i18next";
 
@@ -55,22 +58,45 @@ export const BackgroundRemovalSection: React.FC<
   BackgroundRemovalSectionProps
 > = ({ clipId, onSettingsChange }) => {
   const { t } = useTranslation();
-  const [settings, setSettings] = useState<BackgroundRemovalSettings>(
-    DEFAULT_BACKGROUND_SETTINGS,
-  );
   const [isInitializing, setIsInitializing] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [aiDegraded, setAiDegraded] = useState(false);
   const { addTask, updateTaskProgress, completeTask, failTask } =
     useProcessingStore();
 
+  const project = useProjectStore((state) => state.project);
+
+  // Reopened projects carry the persisted clip.backgroundRemoval field (the
+  // engine Map is empty after a reload): seed the engine's session cache from
+  // the field so the render pipeline and this panel start from the saved
+  // tuning instead of defaults.
   useEffect(() => {
     const engine = getBackgroundRemovalEngine();
-    if (engine) {
-      setSettings(engine.getSettings(clipId));
-      setIsInitialized(engine.isInitialized());
+    if (!engine || !clipId) return;
+    const clip = project.timeline.tracks
+      .flatMap((track) => track.clips)
+      .find((candidate) => candidate.id === clipId);
+    if (clip?.backgroundRemoval) {
+      engine.setSettings(clipId, clip.backgroundRemoval);
     }
-  }, [clipId]);
+    setIsInitialized(engine.isInitialized());
+    setAiDegraded(engine.isAIDegraded());
+  }, [clipId, project]);
+
+  // The persisted clip field is the display source of truth; the engine Map
+  // stays the fallback for in-session values that are not committed yet.
+  const settings = useMemo<BackgroundRemovalSettings>(() => {
+    const clip = project.timeline.tracks
+      .flatMap((track) => track.clips)
+      .find((candidate) => candidate.id === clipId);
+    if (clip?.backgroundRemoval) {
+      return { ...DEFAULT_BACKGROUND_SETTINGS, ...clip.backgroundRemoval };
+    }
+    return getBackgroundRemovalEngine()?.getSettings(clipId) ?? {
+      ...DEFAULT_BACKGROUND_SETTINGS,
+    };
+  }, [clipId, project]);
 
   const handleInitialize = useCallback(
     async (onProgress?: (progress: number, message: string) => void) => {
@@ -79,6 +105,7 @@ export const BackgroundRemovalSection: React.FC<
         const engine = initializeBackgroundRemovalEngine();
         await engine.initialize(onProgress);
         setIsInitialized(true);
+        setAiDegraded(engine.isAIDegraded());
       } catch (error) {
         console.error("Failed to initialize background removal:", error);
         throw error;
@@ -89,20 +116,46 @@ export const BackgroundRemovalSection: React.FC<
     [],
   );
 
+  // Persist every change through the clip/setBackgroundRemoval action so the
+  // matte is undoable AND survives save/reopen: the action writes the
+  // clip.backgroundRemoval field the render pipeline reads first (the engine
+  // Map is only a session cache, kept in step here for immediate rendering).
   const updateSettings = useCallback(
     (updates: Partial<BackgroundRemovalSettings>) => {
-      const newSettings = { ...settings, ...updates };
-      setSettings(newSettings);
-
       const engine = getBackgroundRemovalEngine();
       if (engine) {
-        engine.setSettings(clipId, newSettings);
+        engine.setSettings(clipId, updates);
       }
+
+      const current = (() => {
+        const clip = useProjectStore
+          .getState()
+          .project.timeline.tracks.flatMap((track) => track.clips)
+          .find((candidate) => candidate.id === clipId);
+        if (clip?.backgroundRemoval) {
+          return { ...DEFAULT_BACKGROUND_SETTINGS, ...clip.backgroundRemoval };
+        }
+        return engine?.getSettings(clipId) ?? {
+          ...DEFAULT_BACKGROUND_SETTINGS,
+        };
+      })();
+      const newSettings = { ...current, ...updates };
+
+      const action: Action = {
+        type: "clip/setBackgroundRemoval",
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        params: { clipId, backgroundRemoval: newSettings },
+      };
+      useProjectStore.getState().executeActionBatch([action], {
+        groupLabel: "Background removal",
+        historyOwner: "human",
+      });
 
       onSettingsChange?.(newSettings);
       window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
     },
-    [settings, clipId, onSettingsChange],
+    [clipId, onSettingsChange],
   );
 
   const processBackgroundRemoval = useCallback(async () => {
@@ -121,16 +174,27 @@ export const BackgroundRemovalSection: React.FC<
 
       updateSettings({ enabled: true });
       completeTask(taskId);
-      toast.success(
-        "Background Removal Ready",
-        "Effect will be applied during playback",
-      );
+      const degraded = getBackgroundRemovalEngine()?.isAIDegraded() ?? false;
+      if (degraded) {
+        // Honest disclosure: the segmentation model failed to load, so the
+        // engine falls back to the non-AI luminance mask (behavior is
+        // unchanged — only the disclosure is new).
+        toast.info(
+          t("Background Removal Ready"),
+          t("Segmentation model unavailable — using a non-AI fallback mask"),
+        );
+      } else {
+        toast.success(
+          t("Background Removal Ready"),
+          t("Effect will be applied during playback"),
+        );
+      }
     } catch (error) {
       failTask(
         taskId,
         error instanceof Error ? error.message : "Unknown error",
       );
-      toast.error("Processing Failed", "Could not enable background removal");
+      toast.error(t("Processing Failed"), t("Could not enable background removal"));
     } finally {
       setIsProcessing(false);
     }
@@ -143,16 +207,17 @@ export const BackgroundRemovalSection: React.FC<
     updateTaskProgress,
     completeTask,
     failTask,
+    t,
   ]);
 
   const handleToggleEnabled = useCallback(() => {
     if (settings.enabled) {
       updateSettings({ enabled: false });
-      toast.info("Background Removal Disabled");
+      toast.info(t("Background Removal Disabled"));
     } else {
       processBackgroundRemoval();
     }
-  }, [settings.enabled, updateSettings, processBackgroundRemoval]);
+  }, [settings.enabled, updateSettings, processBackgroundRemoval, t]);
 
   return (
     <div className="space-y-3">
@@ -173,6 +238,13 @@ export const BackgroundRemovalSection: React.FC<
 
       {settings.enabled && (
         <Card variant="muted" padding={3} className="space-y-3">
+          {aiDegraded && (
+            <div className="flex items-start gap-2 p-2 bg-warning/10 rounded border border-warning/30">
+              <AlertTriangle size={14} className="text-warning flex-shrink-0 mt-0.5" />
+              <Text type="supporting" color="secondary" className="text-[9px]">
+                {t("Non-AI fallback mask: the segmentation model could not be loaded, so a non-AI luminance mask is used (not AI matting).")}</Text>
+            </div>
+          )}
           <div>
             <Text type="supporting" color="secondary" className="mb-2 block text-[10px]">
               {t("Background Mode")}</Text>

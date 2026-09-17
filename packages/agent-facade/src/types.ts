@@ -338,6 +338,7 @@ export interface Capabilities {
     lut: CapabilityStatus;
     audioNormalization: CapabilityStatus;
     audioDucking: CapabilityStatus;
+    backgroundRemoval: CapabilityStatus;
     vocalIsolation: CapabilityStatus;
     stabilization: CapabilityStatus;
     smartReframe: CapabilityStatus;
@@ -951,6 +952,7 @@ export const EDIT_OP_TYPES = [
   "clip.setChromaKey",
   "clip.setNoiseReduction",
   "clip.setDucking",
+  "clip.setBackgroundRemoval",
   "svg.create",
   "svg.update",
   "svg.remove",
@@ -1488,6 +1490,42 @@ export interface ClipSetDuckingOp {
 }
 
 /**
+ * clip.setBackgroundRemoval — persist the person-segmentation matte settings
+ * on ONE clip via the same core clip/setBackgroundRemoval action the GUI
+ * Background Removal panel writes: undoable and saved with the project.
+ * Omitted tuning fields keep the clip's prior values, falling back to the
+ * shared engine defaults (blur mode, blur 15px, edge 3px, threshold 0.7).
+ *
+ * Rendering honesty: the MediaPipe person-segmentation model
+ * (selfie_multiclass_256x256, local inference) runs only in a GUI/desktop
+ * Chromium runtime and downloads on first GUI use. Agents persist the setting
+ * anywhere, but frames rendered headless keep the original background —
+ * preview/verify this effect through the desktop GUI. When the model fails to
+ * load, the GUI engine falls back to a non-AI luminance mask and discloses
+ * the degraded mask in the panel.
+ */
+export interface ClipSetBackgroundRemovalOp {
+  readonly op: "clip.setBackgroundRemoval";
+  readonly clipId: string;
+  /** Required: true enables the matte, false disables (tuning kept). */
+  readonly enabled: boolean;
+  /** Background treatment behind the segmented subject. */
+  readonly mode?: "blur" | "color" | "image" | "video" | "transparent";
+  /** Blur radius in px, [0, 50] (mode "blur"); omitted keeps prior. */
+  readonly blurAmount?: number;
+  /** Replacement fill color as #RGB/#RGBA/#RRGGBB/#RRGGBBAA hex (mode "color"). */
+  readonly backgroundColor?: string;
+  /** Image URL/data URL for mode "image"; loaded by the GUI runtime. */
+  readonly backgroundImageUrl?: string;
+  /** Video URL/data URL for mode "video"; loaded by the GUI runtime. */
+  readonly backgroundVideoUrl?: string;
+  /** Edge feather in px, [0, 10]; omitted keeps prior. */
+  readonly edgeBlur?: number;
+  /** Subject-mask threshold in [0, 1]; omitted keeps prior. */
+  readonly threshold?: number;
+}
+
+/**
  * workAsset.capture — save one timeline clip into the project's work assets
  * ("saved work"): a named, stable-id reusable reference plus a parameter
  * snapshot (trim, speed, effects, transform, …). The asset references the
@@ -1580,6 +1618,7 @@ export type EditOp =
   | ClipSetChromaKeyOp
   | ClipSetNoiseReductionOp
   | ClipSetDuckingOp
+  | ClipSetBackgroundRemovalOp
   | WorkAssetCaptureOp
   | WorkAssetRenameOp
   | WorkAssetDeleteOp

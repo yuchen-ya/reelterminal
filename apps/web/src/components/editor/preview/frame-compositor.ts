@@ -17,6 +17,7 @@ import {
 import type { Renderer } from "@openreel/core";
 import { getEffectsBridge } from "../../../bridges/effects-bridge";
 import type { ClipTransform } from "./index";
+import { clipBackgroundRemovalSettings } from "./background-removal-settings";
 import {
   applyEffectsToFrame,
   applyEffectsToFrameCanvas,
@@ -87,7 +88,10 @@ export const applyPreviewAdjustmentLayers = async (
 
 export const clipNeedsFrameProcessing = (clipId: string): boolean => {
   const bgEngine = getBackgroundRemovalEngine();
-  if (bgEngine?.isInitialized() && bgEngine.getSettings(clipId).enabled) {
+  if (
+    bgEngine?.isInitialized() &&
+    clipBackgroundRemovalSettings(clipId).enabled
+  ) {
     return true;
   }
 
@@ -105,7 +109,10 @@ export const clipNeedsFrameProcessing = (clipId: string): boolean => {
 
 export const clipCssFilterOnly = (clipId: string): string | null => {
   const bgEngine = getBackgroundRemovalEngine();
-  if (bgEngine?.isInitialized() && bgEngine.getSettings(clipId).enabled) {
+  if (
+    bgEngine?.isInitialized() &&
+    clipBackgroundRemovalSettings(clipId).enabled
+  ) {
     return null;
   }
   const effectsBridge = getEffectsBridge();

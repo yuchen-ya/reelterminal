@@ -23,6 +23,7 @@ import { getEffectsBridge } from "../../../bridges/effects-bridge";
 import { getTransitionBridge } from "../../../bridges/transition-bridge";
 import type { ClipTransform } from "./types";
 import { DEFAULT_TRANSFORM } from "./types";
+import { clipBackgroundRemovalSettings } from "./background-removal-settings";
 import { ThreeJSLayerRenderer } from "./threejs-layer-renderer";
 
 let lastEffectsLogTime = 0;
@@ -1811,21 +1812,19 @@ export const applyEffectsToFrame = async (
     let processedFrame = frame;
 
     const bgEngine = getBackgroundRemovalEngine();
-    if (bgEngine && bgEngine.isInitialized()) {
-      const settings = bgEngine.getSettings(clipId);
-      if (settings.enabled) {
-        try {
-          const bgResult = await bgEngine.processFrame(
-            clipId,
-            processedFrame,
-            processedFrame.width,
-            processedFrame.height,
-          );
-          if (bgResult && bgResult.width > 0 && bgResult.height > 0) {
-            processedFrame = bgResult;
-          }
-        } catch {}
-      }
+    const bgSettings = clipBackgroundRemovalSettings(clipId);
+    if (bgEngine && bgEngine.isInitialized() && bgSettings.enabled) {
+      try {
+        const bgResult = await bgEngine.processFrame(
+          clipId,
+          processedFrame,
+          processedFrame.width,
+          processedFrame.height,
+        );
+        if (bgResult && bgResult.width > 0 && bgResult.height > 0) {
+          processedFrame = bgResult;
+        }
+      } catch {}
     }
 
     const effectsBridge = getEffectsBridge();
@@ -1892,7 +1891,7 @@ export const applyEffectsToFrameCanvas = async (
   if (
     bgEngine &&
     bgEngine.isInitialized() &&
-    bgEngine.getSettings(clipId).enabled
+    clipBackgroundRemovalSettings(clipId).enabled
   ) {
     return null;
   }

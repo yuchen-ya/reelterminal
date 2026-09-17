@@ -136,6 +136,15 @@ export interface Clip {
   };
   readonly emphasisAnimation?: EmphasisAnimation;
   readonly chromaKey?: ChromaKeySettings;
+  /**
+   * Persisted person-segmentation matte settings for this clip (the same
+   * shape the BackgroundRemovalEngine consumes). Written only by the
+   * clip/setBackgroundRemoval action (undoable, saved with the project);
+   * render reads this field first and falls back to the engine's in-memory
+   * session Map when absent. Rendering needs a MediaPipe-capable runtime
+   * (GUI/desktop Chromium); the model itself downloads on first GUI use.
+   */
+  readonly backgroundRemoval?: import("../ai/background-removal-engine").BackgroundRemovalSettings;
   readonly speedKeyframes?: SpeedKeyframe[];
   readonly freezeFrames?: FreezeFrame[];
   readonly pitchCorrection?: boolean;

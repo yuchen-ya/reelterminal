@@ -58,6 +58,7 @@ import {
   MAX_THUMBNAIL_BYTES,
 } from "@openreel/core/presets/validate";
 import { DEFAULT_CHROMA_KEY_SETTINGS } from "@openreel/core/video/chroma-key-engine";
+import { DEFAULT_BACKGROUND_SETTINGS } from "@openreel/core/ai/background-removal-engine";
 import {
   DEFAULT_NOISE_REDUCTION_SETTINGS,
   NOISE_REDUCTION_PRESETS,
@@ -573,6 +574,35 @@ export async function buildCapabilities(
             "persisted clip.automation.volume is evaluated by the shared core audio engine in both realtime preview and export render (resolveClipVolumeAutomation → applyVolumeAutomation) — one evaluation chain, no separate export path",
           guiParity:
             "same core action as the GUI ducking panel (AudioDuckingSection), which the store now also persists through; undo restores both the volume keyframes and the panel readback snapshot",
+        },
+      },
+      backgroundRemoval: {
+        available: true,
+        details: {
+          op: "clip.setBackgroundRemoval",
+          coreAction: "clip/setBackgroundRemoval",
+          algorithm:
+            "MediaPipe person segmentation (selfie_multiclass_256x256 tflite, local in-browser inference) in the GUI/desktop-Chromium runtime",
+          renderRuntime:
+            "preview and export render this effect inside the desktop GUI (Chromium), where the model downloads on first GUI use and is cached per profile; headless runtimes have no MediaPipe runtime, so the op persists the setting but headless-rendered frames keep the original background — verify this effect through the desktop GUI",
+          offline:
+            "first-use model download needs storage.googleapis.com and cdn.jsdelivr.net; offline first use fails with the effect staying disabled",
+          degradedFallback:
+            "when the segmentation model fails to load, the GUI engine falls back to a non-AI luminance mask (generateSimpleMask) and the effects panel discloses the degraded mask — never presented as AI matting",
+          defaults: {
+            mode: DEFAULT_BACKGROUND_SETTINGS.mode,
+            blurAmount: DEFAULT_BACKGROUND_SETTINGS.blurAmount,
+            backgroundColor: DEFAULT_BACKGROUND_SETTINGS.backgroundColor,
+            edgeBlur: DEFAULT_BACKGROUND_SETTINGS.edgeBlur,
+            threshold: DEFAULT_BACKGROUND_SETTINGS.threshold,
+          },
+          parameterRanges: {
+            blurAmountPx: [0, 50],
+            edgeBlurPx: [0, 10],
+            threshold: [0, 1],
+          },
+          guiParity:
+            "same core action as the GUI Background Removal panel; the clip.backgroundRemoval field is undoable via the action's inverse and saved with the project",
         },
       },
       vocalIsolation: {

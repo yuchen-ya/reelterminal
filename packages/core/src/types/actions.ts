@@ -284,6 +284,14 @@ export type ClipAction =
          */
         effects?: Effect[];
       };
+    }
+  | {
+      type: "clip/setBackgroundRemoval";
+      params: {
+        clipId: string;
+        /** Full/partial settings; null/undefined clears the field (undo-safe). */
+        backgroundRemoval?: import("../ai/background-removal-engine").BackgroundRemovalSettings | null;
+      };
     };
 
 // Speed / time-remap actions

@@ -5,6 +5,10 @@ import { registerActionHandler } from "../registry";
 import type { ActionHandler } from "../registry";
 import { makeClipFieldHandler, findClip, patchClip } from "./clip-helpers";
 import { DEFAULT_CHROMA_KEY_SETTINGS } from "../../video/chroma-key-engine";
+import {
+  DEFAULT_BACKGROUND_SETTINGS,
+  type BackgroundRemovalSettings,
+} from "../../ai/background-removal-engine";
 
 const SPEED_MIN = 0.1;
 const SPEED_MAX = 20;
@@ -37,6 +41,35 @@ export const fullChromaKeySettings = (
     spillSuppression:
       partial.spillSuppression ??
       DEFAULT_CHROMA_KEY_SETTINGS.spillSuppression,
+  };
+};
+
+/**
+ * Normalize a partial backgroundRemoval payload into the complete settings
+ * snapshot persisted on the clip (same defaults the BackgroundRemovalEngine
+ * and the GUI panel share). The facade's clip.setBackgroundRemoval op
+ * translation assembles its own full snapshot (op field over the clip's
+ * prior value over these shared defaults) and does not call this, so a
+ * partial payload still lands as a complete field snapshot.
+ */
+export const fullBackgroundRemovalSettings = (
+  raw: unknown,
+): BackgroundRemovalSettings => {
+  const partial = (raw ?? {}) as Partial<BackgroundRemovalSettings>;
+  return {
+    enabled: partial.enabled ?? false,
+    mode: partial.mode ?? DEFAULT_BACKGROUND_SETTINGS.mode,
+    blurAmount: partial.blurAmount ?? DEFAULT_BACKGROUND_SETTINGS.blurAmount,
+    backgroundColor:
+      partial.backgroundColor ?? DEFAULT_BACKGROUND_SETTINGS.backgroundColor,
+    ...(partial.backgroundImageUrl !== undefined
+      ? { backgroundImageUrl: partial.backgroundImageUrl }
+      : {}),
+    ...(partial.backgroundVideoUrl !== undefined
+      ? { backgroundVideoUrl: partial.backgroundVideoUrl }
+      : {}),
+    edgeBlur: partial.edgeBlur ?? DEFAULT_BACKGROUND_SETTINGS.edgeBlur,
+    threshold: partial.threshold ?? DEFAULT_BACKGROUND_SETTINGS.threshold,
   };
 };
 
@@ -291,6 +324,22 @@ const handlers = [
         : "stabilization must be an object",
   }),
   clipSetChromaKey,
+  // Person-segmentation matte settings persisted as the clip.backgroundRemoval
+  // field (makeClipFieldHandler gives validate/apply/invert). Render reads the
+  // field first and seeds the engine's in-memory session Map from it; a null
+  // payload clears the field via the transform below. Undo/redo and project
+  // save/load come free with the field handler.
+  makeClipFieldHandler({
+    type: "clip/setBackgroundRemoval",
+    paramKey: "backgroundRemoval",
+    field: "backgroundRemoval",
+    transform: (value) =>
+      value == null ? undefined : fullBackgroundRemovalSettings(value),
+    validateValue: (v) =>
+      v == null || typeof v === "object"
+        ? null
+        : "backgroundRemoval must be an object",
+  }),
   makeClipFieldHandler({
     type: "speed/setKeyframes",
     paramKey: "keyframes",

@@ -133,6 +133,7 @@ const AUTO_GROUPABLE_TYPES = new Set<string>([
   "clip/roll",
   "clip/setSpeed",
   "clip/setChromaKey",
+  "clip/setBackgroundRemoval",
   "clip/setStabilization",
   "keyframe/move",
   "keyframe/update",

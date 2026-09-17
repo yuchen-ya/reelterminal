@@ -63,7 +63,10 @@ import {
 import { GPUCompositor, initializeGPUCompositor } from "./gpu-compositor";
 import { getRendererFactory, type Renderer } from "./renderer-factory";
 import { keyframeEngine } from "./keyframe-engine";
-import { getBackgroundRemovalEngine } from "../ai/background-removal-engine";
+import {
+  getBackgroundRemovalEngine,
+  resolveBackgroundRemovalSettings,
+} from "../ai/background-removal-engine";
 import {
   type GifFrameCache,
   createGifFrameCache,
@@ -90,6 +93,22 @@ const DEFAULT_CACHE_CONFIG: FrameCacheConfig = {
   maxSizeBytes: 500 * 1024 * 1024, // 500MB
   preloadAhead: 30, // ~1 second at 30fps
   preloadBehind: 10,
+};
+
+// A clip requests background removal but no initialized engine can serve it
+// (e.g. headless export or a fresh session where the model was never loaded
+// via the GUI). Warn ONCE per clip instead of failing the render — the frames
+// keep the original background, and the skip must not be silent.
+const bgRemovalUnavailableWarned = new Set<string>();
+const warnBackgroundRemovalUnavailable = (clipId: string): void => {
+  if (bgRemovalUnavailableWarned.has(clipId)) return;
+  bgRemovalUnavailableWarned.add(clipId);
+  console.warn(
+    `[VideoEngine] clip "${clipId}" has backgroundRemoval enabled but the ` +
+      `person-segmentation engine is not initialized in this runtime — the ` +
+      `effect is skipped (frames keep the original background). Initialize ` +
+      `it via the GUI (first use downloads the MediaPipe model).`,
+  );
 };
 
 function adjustmentBlendOperation(mode: BlendMode): GlobalCompositeOperation {
@@ -948,10 +967,19 @@ export class VideoEngine {
 
             let processedBitmap = bitmap;
 
+            // Field-first read: a persisted clip.backgroundRemoval (written
+            // by the clip/setBackgroundRemoval action) wins; the engine's
+            // in-memory Map stays a session cache for legacy in-session
+            // flows. The engine is seeded with the resolved settings so its
+            // internal processFrame uses exactly what the field requests.
             const bgEngine = getBackgroundRemovalEngine();
-            if (bgEngine && bgEngine.isInitialized()) {
-              const bgSettings = bgEngine.getSettings(clip.id);
-              if (bgSettings.enabled) {
+            const bgSettings = resolveBackgroundRemovalSettings(
+              clip,
+              bgEngine,
+            );
+            if (bgSettings.enabled) {
+              if (bgEngine && bgEngine.isInitialized()) {
+                bgEngine.setSettings(clip.id, bgSettings);
                 try {
                   const bgResult = await bgEngine.processFrame(
                     clip.id,
@@ -966,7 +994,14 @@ export class VideoEngine {
                     }
                     processedBitmap = bgResult;
                   }
-                } catch {}
+                } catch (error) {
+                  console.warn(
+                    `[VideoEngine] background removal failed for clip "${clip.id}":`,
+                    error,
+                  );
+                }
+              } else {
+                warnBackgroundRemovalUnavailable(clip.id);
               }
             }
 

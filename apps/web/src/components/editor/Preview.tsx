@@ -109,6 +109,7 @@ import {
 } from "./preview/canvas-transform";
 import { createPreviewTrackIndex } from "./preview/track-index";
 import { compareTracksForComposite } from "./preview/composite-track-order";
+import { clipBackgroundRemovalSettings } from "./preview/background-removal-settings";
 import { ProcessingOverlay } from "./ProcessingOverlay";
 import {
   getBackgroundRemovalEngine,
@@ -3532,7 +3533,9 @@ export const Preview: React.FC = () => {
         );
 
         const bgEngine = getBackgroundRemovalEngine();
-        const hasBgRemoval = bgEngine?.isInitialized() && bgEngine.getSettings(clip.id).enabled;
+        const hasBgRemoval =
+          bgEngine?.isInitialized() === true &&
+          clipBackgroundRemovalSettings(clip.id).enabled;
 
         let videoFrame: HTMLVideoElement | ImageBitmap = video;
         if (hasBgRemoval) {

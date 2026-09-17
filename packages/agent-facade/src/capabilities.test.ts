@@ -120,6 +120,7 @@ describe("capabilities.get / session.describe", () => {
       "clip.setChromaKey",
       "clip.setNoiseReduction",
       "clip.setDucking",
+      "clip.setBackgroundRemoval",
       "svg.create",
       "svg.update",
       "svg.remove",

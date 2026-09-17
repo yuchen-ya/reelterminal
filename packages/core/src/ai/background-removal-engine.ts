@@ -1,4 +1,5 @@
 import { getPersonSegmentationEngine } from "./person-segmentation-engine";
+import type { Clip } from "../types/timeline";
 
 export type BackgroundMode =
   | "blur"
@@ -42,6 +43,10 @@ export class BackgroundRemovalEngine {
   private settings: Map<string, BackgroundRemovalSettings> = new Map();
   private initialized = false;
   private useAI = false;
+  /** True when initialize ran but the segmentation model failed to load, so
+   * processing falls back to the non-AI luminance mask (generateSimpleMask).
+   * Surfaced so GUIs and agents can disclose the degraded mask honestly. */
+  private aiDegraded = false;
 
   async initialize(onProgress?: ProgressCallback): Promise<void> {
     if (this.initialized) return;
@@ -64,8 +69,10 @@ export class BackgroundRemovalEngine {
     try {
       await segEngine.initialize();
       this.useAI = true;
+      this.aiDegraded = false;
     } catch {
       this.useAI = false;
+      this.aiDegraded = true;
     }
 
     onProgress?.(100, "Background removal ready");
@@ -74,6 +81,15 @@ export class BackgroundRemovalEngine {
 
   isInitialized(): boolean {
     return this.initialized;
+  }
+
+  /**
+   * True when the engine is running the non-AI fallback mask because the
+   * segmentation model failed to load at initialize time. Never flips back
+   * to false until a later initialize succeeds (or dispose).
+   */
+  isAIDegraded(): boolean {
+    return this.aiDegraded;
   }
 
   setSettings(
@@ -501,6 +517,8 @@ export class BackgroundRemovalEngine {
     this.backgroundImage = null;
     this.settings.clear();
     this.initialized = false;
+    this.useAI = false;
+    this.aiDegraded = false;
   }
 }
 
@@ -522,4 +540,34 @@ export function disposeBackgroundRemovalEngine(): void {
     backgroundRemovalEngineInstance.dispose();
     backgroundRemovalEngineInstance = null;
   }
+}
+
+/**
+ * Field-first read order for background-removal settings, shared by the
+ * preview renderer, the export VideoEngine and the GUI panel:
+ *
+ * 1. A persisted `clip.backgroundRemoval` field (written by the
+ *    clip/setBackgroundRemoval action — undoable, saved with the project)
+ *    always wins, merged over the shared defaults.
+ * 2. When the field is absent, the engine's in-memory Map stays the session
+ *    cache it always was (in-session GUI flows that have not been committed
+ *    as actions yet), so existing behavior is unchanged.
+ *
+ * The export VideoEngine seeds the engine's Map with the resolved settings
+ * before running processFrame. The preview pipeline instead uses this
+ * resolver only as an enablement gate and relies on the GUI panel keeping
+ * the engine Map in step (seeded on clip selection and on every settings
+ * change). Neither pipeline alters the engine's internal flow.
+ */
+export function resolveBackgroundRemovalSettings(
+  clip: Pick<Clip, "id"> & { readonly backgroundRemoval?: BackgroundRemovalSettings } | undefined,
+  engine: BackgroundRemovalEngine | null,
+): BackgroundRemovalSettings {
+  if (clip?.backgroundRemoval) {
+    return { ...DEFAULT_BACKGROUND_SETTINGS, ...clip.backgroundRemoval };
+  }
+  if (engine && clip) {
+    return engine.getSettings(clip.id);
+  }
+  return { ...DEFAULT_BACKGROUND_SETTINGS };
 }

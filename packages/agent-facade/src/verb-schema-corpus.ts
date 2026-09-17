@@ -399,6 +399,50 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
     },
     {
+      name: "valid clip.setBackgroundRemoval enable with defaults",
+      params: { ops: [{ op: "clip.setBackgroundRemoval", clipId: "c1", enabled: true }] },
+      expectValid: true,
+    },
+    {
+      name: "valid clip.setBackgroundRemoval full settings",
+      params: { ops: [{ op: "clip.setBackgroundRemoval", clipId: "c1", enabled: true, mode: "color", backgroundColor: "#0000ff80", blurAmount: 20, edgeBlur: 4, threshold: 0.6 }] },
+      expectValid: true,
+    },
+    {
+      name: "clip.setBackgroundRemoval requires enabled",
+      params: { ops: [{ op: "clip.setBackgroundRemoval", clipId: "c1", mode: "blur" }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setBackgroundRemoval mode is allowlisted",
+      params: { ops: [{ op: "clip.setBackgroundRemoval", clipId: "c1", enabled: true, mode: "neon" }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setBackgroundRemoval blurAmount must be in [0, 50]",
+      params: { ops: [{ op: "clip.setBackgroundRemoval", clipId: "c1", enabled: true, blurAmount: 51 }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setBackgroundRemoval threshold must be in [0, 1]",
+      params: { ops: [{ op: "clip.setBackgroundRemoval", clipId: "c1", enabled: true, threshold: 1.5 }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setBackgroundRemoval backgroundColor must be hex",
+      // The runtime validator is the only hex authority (the emitted string
+      // leaf has no pattern), so this is an ordering pin: ajv accepts, the
+      // facade rejects.
+      params: { ops: [{ op: "clip.setBackgroundRemoval", clipId: "c1", enabled: true, backgroundColor: "blue" }] },
+      schemaValid: true,
+      expectValid: false,
+    },
+    {
+      name: "clip.setBackgroundRemoval unknown field",
+      params: { ops: [{ op: "clip.setBackgroundRemoval", clipId: "c1", enabled: true, preset: "portrait" }] },
+      expectValid: false,
+    },
+    {
       name: "valid clip.applyReframe crop plan",
       params: {
         ops: [{
