@@ -159,7 +159,9 @@ export const ProjectSwitcher: React.FC = () => {
   return (
     <div className="relative" ref={triggerRef}>
       <Button
-        label={t(project.name)}
+        // Project names are user data, not catalog keys: a project literally
+        // named "Horizontal" must never pick up the zh dictionary's "水平".
+        label={project.name}
         onClick={() => setIsOpen(!isOpen)}
         variant="ghost"
         size="md"
