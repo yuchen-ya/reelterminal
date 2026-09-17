@@ -470,7 +470,7 @@ and `{projectId, projectName, windowId}`.
 
 ### The `edit_apply` op vocabulary
 
-Forty-two ops, one atomic batch each call (the exact fields and bounds live in
+Forty-three ops, one atomic batch each call (the exact fields and bounds live in
 `edit_apply`'s `inputSchema`):
 
 - `track.add` — create a track (`trackType`); `track.remove` — remove an empty
@@ -538,6 +538,25 @@ Forty-two ops, one atomic batch each call (the exact fields and bounds live in
   compose your own from `visual_inspect`/`media_inspect` frames — a
   hand-written plan owns the ratio guarantee itself. Unknown `clipId` fails
   `NOT_FOUND`.
+- `clip.setDucking` — duck one clip's audio under speech on a trigger
+  track. Required `clipId`, the GUI ducking panel's exact tuning
+  (`threshold` -60..0 dB, `reduction` 0..1, `attack` 0..1 s, `release`
+  0..2 s, `holdTime` 0..1 s), and exactly one keyframe source (closed
+  schema) — `points` (1–512 pre-computed ducking keyframes, `time` in
+  clip-relative seconds / `value` 0..4) or `presenceRanges` (1–1024
+  speech-active windows on your chosen trigger track, clip-relative
+  seconds — the same trigger-track decision the GUI panel's picker makes),
+  which the op synthesizes into keyframes with the same core kernel the
+  panel uses. The addressed clip resolves to the audible audio clip exactly
+  like the GUI panel (a muted addressed clip follows its linked audio). One
+  atomic action writes the envelope-derived volume keyframes into
+  `clip.automation.volume` — evaluated by the shared core audio engine in
+  preview and export — plus the panel's readback snapshot, as a single undo
+  unit. Synthesis from ranges that never cross the threshold fails
+  `INVALID_PARAMS`; nothing is persisted silently. Unknown `clipId` fails
+  `NOT_FOUND`. Trigger selection is RMS envelope analysis, a deterministic
+  local algorithm — NOT AI; supply ranges from a silence analysis or your
+  own inspection instead of expecting speech recognition.
 - `clip.setColorGrade` — merge temperature/tint into the persisted clip grade,
   or `clear:true`; the Core compositor applies the same grade in preview and
   export. LUT import is not exposed until a bounded contained parser lands.

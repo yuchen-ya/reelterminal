@@ -433,6 +433,13 @@ screenshot delivery state.
   `clip.setNoiseReduction` (local noise-reduction DSP with the GUI panel's
   presets and parameters; an existing effect is updated in place, never
   stacked, and learned profiles are preserved; not AI or model inference),
+  `clip.setDucking` (audio ducking on one clip: the GUI ducking panel's
+  threshold/reduction/attack/release/holdTime tuning plus exactly one
+  keyframe source — pre-computed `points` or `presenceRanges` that the
+  same core kernel the GUI panel uses synthesizes into volume keyframes;
+  the keyframes persist in `clip.automation.volume` for preview and export
+  as one undo unit, an empty synthesis fails `INVALID_PARAMS`, and trigger
+  selection is RMS envelope analysis, not AI),
   and `svg.create`/`svg.update`/`svg.remove` (self-contained inline SVG on
   graphics tracks — the shared core ingest gate rejects scripts, foreign
   objects, event handlers, unsafe URL schemes, external references, and

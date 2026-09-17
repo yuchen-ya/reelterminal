@@ -89,7 +89,8 @@ implemented features, reusable foundations, and remaining integration work.
   text overlay creation/update/deletion, track updates, media display-name
   renaming, safe track/media removal,
   review markers, SRT subtitle import, temperature/tint grading, fixed-key
-  chroma keying (green screen), local audio noise reduction, Auto Reframe
+  chroma keying (green screen), local audio noise reduction, audio ducking
+  via envelope keyframes, Auto Reframe
   crop-plan application (keyframed single-clip crop with canvas retarget),
   self-contained SVG overlay creation/update/removal on graphics tracks,
   media source
