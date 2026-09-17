@@ -942,6 +942,7 @@ export const EDIT_OP_TYPES = [
   "subtitle.importSrt",
   "clip.setColorGrade",
   "clip.setKeyframes",
+  "clip.applyReframe",
   "reference.setComparison",
   "reference.clearComparison",
   "media.replace",
@@ -1337,6 +1338,41 @@ export interface ClipSetKeyframesOp {
 }
 
 /**
+ * Apply an Auto Reframe plan to ONE clip as a single atomic transaction: the
+ * crop rectangles an analysis produced (source-media seconds measured from
+ * the clip's in-point) are converted by the SAME core conversion the GUI
+ * reframe panel uses into scale/position transform keyframes, and the
+ * project canvas is resized to the plan's output size in the same batch —
+ * one core action set, one revision, one GUI undo unit. Time folding onto
+ * the clip-local keyframe clock (analysis seconds / clip speed) is done by
+ * the shared conversion, never by the agent. Detection itself is NOT part
+ * of the op: the heuristic subject analysis runs in the GUI's browser
+ * engine, and headless agents compose crop plans from their own frame
+ * inspection. This is a local color-region heuristic — not ML matting.
+ */
+export interface ClipApplyReframeOp {
+  readonly op: "clip.applyReframe";
+  readonly clipId: string;
+  /**
+   * 1–100 keyframed source-space crop rectangles (pixels). Times are on the
+   * source-analysis clock (seconds from the clip's in-point) and must stay
+   * within the clip's source span; each crop must keep the output aspect
+   * ratio for an exact fill (sub-pixel drift is tolerated).
+   */
+  readonly keyframes: readonly {
+    readonly time: number;
+    readonly cropX: number;
+    readonly cropY: number;
+    readonly cropWidth: number;
+    readonly cropHeight: number;
+  }[];
+  /** Project canvas width the plan targets (pixels). */
+  readonly outputWidth: number;
+  /** Project canvas height the plan targets (pixels). */
+  readonly outputHeight: number;
+}
+
+/**
  * Enable/disable the fixed-key chroma keyer on ONE clip (green-screen
  * keying). Omitted tuning fields keep the clip's prior value, falling back
  * to the engine defaults (green {r:0,g:1,b:0}, tolerance 0.3, edgeSoftness
@@ -1487,6 +1523,7 @@ export type EditOp =
   | SubtitleImportSrtOp
   | ClipSetColorGradeOp
   | ClipSetKeyframesOp
+  | ClipApplyReframeOp
   | ReferenceSetComparisonOp
   | ReferenceClearComparisonOp
   | MediaReplaceOp

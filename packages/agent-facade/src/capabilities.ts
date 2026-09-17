@@ -561,9 +561,20 @@ export async function buildCapabilities(
         requires: "canonical Core action plus renderer parity evidence",
       },
       smartReframe: {
-        available: false,
-        reason: "No subject-tracking/reframe provider is installed for this runtime.",
-        requires: "an analysis provider and keyframed transform output",
+        available: true,
+        details: {
+          op: "clip.applyReframe",
+          coreActions: ["project/updateSettings (only when the output size differs)", "keyframe/setAll"],
+          algorithm:
+            "local skin-region color heuristic (core auto-reframe-engine) — not ML/model inference; expect weak or off-subject tracks on non-person, low-light, or busy multi-subject footage",
+          subjectDetectionRuntime:
+            "browser GUI engine; headless agents supply their own crop plan (e.g. derived from visual.inspect frames)",
+          timeSemantics:
+            "op keyframe times are source-analysis seconds from the clip in-point; the shared core conversion folds them onto the clip-local keyframe clock (divided by clip speed)",
+          changesProjectDimensions: true,
+          maxKeyframes: 100,
+          undo: "one atomic edit.apply batch = one GUI undo group",
+        },
       },
       proxyMedia: {
         available: false,

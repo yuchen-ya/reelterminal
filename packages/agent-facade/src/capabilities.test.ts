@@ -111,6 +111,7 @@ describe("capabilities.get / session.describe", () => {
       "subtitle.importSrt",
       "clip.setColorGrade",
       "clip.setKeyframes",
+      "clip.applyReframe",
       "reference.setComparison",
       "reference.clearComparison",
       "media.replace",

@@ -16,6 +16,7 @@ import {
 import {
   getAutoReframeEngine,
   initializeAutoReframeEngine,
+  reframeKeyframesToTransformKeyframes,
   type ReframeSettings,
   type AspectRatioPreset,
   type PlatformPreset,
@@ -24,6 +25,7 @@ import {
   PLATFORM_PRESETS,
   DEFAULT_REFRAME_SETTINGS,
 } from "@openreel/core";
+import { extractFramesForAnalysis, closeFrames } from "../../../services/frame-extraction";
 import { toast } from "../../../stores/notification-store";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTranslation } from "react-i18next";
@@ -50,8 +52,8 @@ export const AutoReframeSection: React.FC<AutoReframeSectionProps> = ({
   onReframeComplete,
 }) => {
   const { t } = useTranslation();
-  const updateProjectDimensions = useProjectStore(
-    (state) => state.updateSettings,
+  const executeActionBatch = useProjectStore(
+    (state) => state.executeActionBatch,
   );
   const [reframeSettings, setReframeSettings] = useState<ReframeSettings>(
     DEFAULT_REFRAME_SETTINGS,
@@ -122,12 +124,11 @@ export const AutoReframeSection: React.FC<AutoReframeSectionProps> = ({
   const handleAnalyze = useCallback(async () => {
     setIsProcessing(true);
     setProgress(0);
-    setProgressMessage("Initializing...");
+    setProgressMessage(t("Preparing local analysis..."));
 
+    let frames: ImageBitmap[] = [];
     try {
       if (!isInitialized) {
-        setProgressMessage("Loading AI engine...");
-        setProgress(10);
         await handleInitialize();
       }
 
@@ -136,70 +137,135 @@ export const AutoReframeSection: React.FC<AutoReframeSectionProps> = ({
         throw new Error("Engine not available");
       }
 
-      setProgressMessage("Configuring reframe settings...");
-      setProgress(30);
+      const { project } = useProjectStore.getState();
+      const clip = project.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((candidate) => candidate.id === clipId);
+      if (!clip) {
+        throw new Error(t("Clip not found"));
+      }
+      const mediaItem = project.mediaLibrary.items.find(
+        (candidate) => candidate.id === clip.mediaId,
+      );
+      if (!mediaItem?.blob) {
+        throw new Error(t("Media file not loaded"));
+      }
 
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      setProgressMessage("Applying smart crop configuration...");
-      setProgress(60);
-
-      const targetConfig =
-        ASPECT_RATIO_PRESETS[reframeSettings.targetAspectRatio];
-
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      setProgressMessage("Updating project settings...");
-      setProgress(80);
-
-      await updateProjectDimensions({
-        width: targetConfig.width,
-        height: targetConfig.height,
+      // Real frame supply: evenly spaced samples over the clip's source
+      // span, hard-capped so long clips cannot exhaust memory.
+      setProgressMessage(t("Extracting frames..."));
+      const extraction = await extractFramesForAnalysis(mediaItem.blob, {
+        inPoint: clip.inPoint,
+        outPoint: clip.outPoint,
+        sampleFps: project.settings.frameRate,
       });
+      frames = extraction.frames;
+      if (frames.length === 0) {
+        throw new Error(t("No frames could be extracted from this clip"));
+      }
+      const source = {
+        width: frames[0]!.width,
+        height: frames[0]!.height,
+      };
 
-      setProgressMessage("Finalizing...");
-      setProgress(90);
+      // Real analysis: progress comes from the engine's per-frame callback.
+      const result = await engine.analyzeClip(
+        frames,
+        extraction.frameRate,
+        reframeSettings,
+        (prog, msg) => {
+          setProgress(prog);
+          setProgressMessage(msg);
+        },
+      );
+      closeFrames(frames);
+      frames = [];
 
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      if (!result.success || result.keyframes.length === 0) {
+        throw new Error(
+          result.message || t("Reframe analysis produced no subject track"),
+        );
+      }
+
+      setProgressMessage(t("Applying reframe keyframes..."));
+      const keyframes = reframeKeyframesToTransformKeyframes(
+        result,
+        source,
+        { duration: clip.duration, speed: clip.speed },
+      );
+      if (keyframes.length === 0) {
+        throw new Error(t("Reframe analysis produced no subject track"));
+      }
+
+      // Resize + keyframes land as ONE atomic, undoable batch: the resize
+      // action is only included when the output size actually differs.
+      const makeAction = (
+        type: string,
+        params: Record<string, unknown>,
+      ): { type: string; id: string; timestamp: number; params: Record<string, unknown> } => ({
+        type,
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        params,
+      });
+      const actions: ReturnType<typeof makeAction>[] = [];
+      if (
+        project.settings.width !== result.outputWidth ||
+        project.settings.height !== result.outputHeight
+      ) {
+        actions.push(
+          makeAction("project/updateSettings", {
+            width: result.outputWidth,
+            height: result.outputHeight,
+          }),
+        );
+      }
+      actions.push(
+        makeAction("keyframe/setAll", { clipId, keyframes }),
+      );
+
+      const batch = executeActionBatch(actions, {
+        groupLabel: "Auto Reframe",
+        historyOwner: "human",
+      });
+      if (!batch.result.success) {
+        throw new Error(
+          batch.result.error?.message ?? "Failed to apply the reframe",
+        );
+      }
 
       setProgress(100);
-      setProgressMessage("Complete!");
+      setProgressMessage(t("Complete!"));
       setIsApplied(true);
-
-      const result: ReframeResult = {
-        keyframes: [],
-        outputWidth: targetConfig.width,
-        outputHeight: targetConfig.height,
-        success: true,
-        message: `Configured for ${targetConfig.name} (${targetConfig.width}x${targetConfig.height})`,
-      };
 
       onReframeComplete?.(result);
 
-      const platformName = selectedPlatform
-        ? PLATFORM_PRESETS[selectedPlatform].name
-        : reframeSettings.targetAspectRatio;
       toast.success(
-        "Auto Reframe Applied",
-        `Project resized to ${platformName} (${targetConfig.width}x${targetConfig.height})`,
+        t("Auto Reframe Applied"),
+        t("{{count}} transform keyframes applied at {{size}}", {
+          count: keyframes.length,
+          size: `${result.outputWidth}x${result.outputHeight}`,
+        }),
       );
     } catch (error) {
       console.error("Auto-reframe failed:", error);
       toast.error(
-        "Auto Reframe Failed",
+        t("Auto Reframe Failed"),
         error instanceof Error ? error.message : "Unknown error",
       );
       setIsApplied(false);
     } finally {
+      closeFrames(frames);
       setIsProcessing(false);
     }
   }, [
+    clipId,
     isInitialized,
     handleInitialize,
     reframeSettings,
-    selectedPlatform,
     onReframeComplete,
-    updateProjectDimensions,
+    executeActionBatch,
+    t,
   ]);
 
   return (
@@ -359,6 +425,10 @@ export const AutoReframeSection: React.FC<AutoReframeSectionProps> = ({
           {t("Output:")}{" "}
           {ASPECT_RATIO_PRESETS[reframeSettings.targetAspectRatio].width} x{" "}
           {ASPECT_RATIO_PRESETS[reframeSettings.targetAspectRatio].height}
+        </Text>
+
+        <Text type="supporting" color="secondary" className="block text-center text-[9px]">
+          {t("Tracks subjects with a local color-region heuristic — not an AI model.")}
         </Text>
       </div>
     </div>

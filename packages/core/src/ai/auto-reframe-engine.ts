@@ -636,6 +636,182 @@ export class AutoReframeEngine {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Crop-keyframe → transform-keyframe conversion (pure, shared)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Upper bound on transform keyframes one reframe result may emit — the same
+ * per-clip limit the facade's clip.setKeyframes op enforces and the renderer
+ * evaluates per frame.
+ */
+export const MAX_REFRAME_TRANSFORM_KEYFRAMES = 100;
+
+/** Source media dimensions the reframe crop rectangles are expressed in. */
+export interface ReframeSourceInfo {
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * Clip timing needed to fold analysis times onto the clip's own keyframe
+ * clock: the renderer evaluates transform keyframes on clip-LOCAL timeline
+ * time (see video-engine getAnimatedTransform), while analysis keyframe
+ * times are source-media seconds measured from the extraction start (the
+ * clip's in-point). At constant speed, local = source / speed.
+ */
+export interface ReframeClipTiming {
+  /** Clip timeline duration in seconds (post-speed). */
+  readonly duration: number;
+  /** Playback speed (> 0); omitted or 1 means real time. */
+  readonly speed?: number;
+}
+
+/**
+ * One renderer-ready transform keyframe produced by the conversion. Four of
+ * these (position.x/y, scale.x/y) are emitted per kept analysis keyframe,
+ * all sharing the same folded time.
+ */
+export interface ReframeTransformKeyframe {
+  readonly id: string;
+  readonly property: "position.x" | "position.y" | "scale.x" | "scale.y";
+  readonly time: number;
+  readonly value: number;
+  readonly easing: "linear";
+}
+
+/**
+ * Downsample to exactly `max` entries; the first and the last entry of the
+ * input always survive.
+ */
+function downsampleToCap<T>(items: readonly T[], max: number): T[] {
+  if (items.length <= max) return [...items];
+  const stride = (items.length - 1) / (max - 1);
+  const out: T[] = [];
+  for (let index = 0; index < max; index++) {
+    out.push(items[Math.round(index * stride)]!);
+  }
+  out[max - 1] = items[items.length - 1]!;
+  return out;
+}
+
+function round4(value: number): number {
+  return Math.round(value * 10000) / 10000;
+}
+
+/**
+ * Convert an Auto Reframe analysis result (keyframed source-space crop
+ * rectangles) into the transform keyframes the renderer actually consumes
+ * through `clip.setKeyframes` / the core `keyframe/setAll` action.
+ *
+ * Math (matches drawFrameToContext's default "contain" fit with the default
+ * center anchor): the frame is contain-fitted to the (already resized)
+ * output canvas at fit size (fw, fh), scaled by k = fw/sourceWidth from
+ * source pixels. Making the crop rect cover the canvas exactly therefore
+ * needs:
+ *   zoom    = outputWidth / cropWidth           (crop-width based fill)
+ *   scale   = zoom * sourceWidth / fw           (ctx scale compensating fit)
+ *   pos.x   = zoom * (sourceWidth/2 - cropCenterX)
+ *   pos.y   = zoom * (sourceHeight/2 - cropCenterY)
+ * The engine's crop always has the target ratio (cropWidth/cropHeight ==
+ * outputWidth/outputHeight), so the same zoom fills vertically too; only
+ * sub-pixel rounding from the engine's Math.round on the crop can remain.
+ *
+ * Assumes the clip's base transform is at its defaults (center anchor,
+ * contain fit) — reframe composes a fresh position/scale animation and
+ * replaces the clip's whole keyframe set via keyframe/setAll.
+ *
+ * Times are folded from the source clock to the clip-local keyframe clock
+ * (analysis seconds / speed) and clamped to the clip duration. More than
+ * {@link MAX_REFRAME_TRANSFORM_KEYFRAMES} / 4 analysis points are thinned
+ * with first/last preserved.
+ */
+export function reframeKeyframesToTransformKeyframes(
+  result: ReframeResult,
+  source: ReframeSourceInfo,
+  clip: ReframeClipTiming,
+): ReframeTransformKeyframe[] {
+  const { outputWidth, outputHeight } = result;
+  if (
+    outputWidth <= 0 ||
+    outputHeight <= 0 ||
+    source.width <= 0 ||
+    source.height <= 0 ||
+    result.keyframes.length === 0
+  ) {
+    return [];
+  }
+
+  const speed =
+    clip.speed !== undefined && Number.isFinite(clip.speed) && clip.speed > 0
+      ? clip.speed
+      : 1;
+
+  const sourceAspect = source.width / source.height;
+  const canvasAspect = outputWidth / outputHeight;
+  // Default "contain" fit dimensions (drawFrameToContext).
+  const fitWidth =
+    sourceAspect > canvasAspect
+      ? outputWidth
+      : outputHeight * sourceAspect;
+  const fitHeight =
+    sourceAspect > canvasAspect
+      ? outputWidth / sourceAspect
+      : outputHeight;
+  const fitScaleX = fitWidth / source.width;
+  const fitScaleY = fitHeight / source.height;
+
+  const crops = downsampleToCap(
+    result.keyframes,
+    Math.max(1, Math.floor(MAX_REFRAME_TRANSFORM_KEYFRAMES / 4)),
+  );
+
+  const keyframes: ReframeTransformKeyframe[] = [];
+  crops.forEach((crop, index) => {
+    const zoom = outputWidth / Math.max(1e-6, crop.cropWidth);
+    const scale = zoom / fitScaleX;
+    const centerX = crop.cropX + crop.cropWidth / 2;
+    const centerY = crop.cropY + crop.cropHeight / 2;
+    const time = Math.min(
+      clip.duration,
+      Math.max(0, crop.time / speed),
+    );
+
+    const base = `reframe-${index}-`;
+    keyframes.push(
+      {
+        id: `${base}position.x`,
+        property: "position.x",
+        time,
+        value: round4(scale * (fitWidth / 2 - fitScaleX * centerX)),
+        easing: "linear",
+      },
+      {
+        id: `${base}position.y`,
+        property: "position.y",
+        time,
+        value: round4(scale * (fitHeight / 2 - fitScaleY * centerY)),
+        easing: "linear",
+      },
+      {
+        id: `${base}scale.x`,
+        property: "scale.x",
+        time,
+        value: round4(scale),
+        easing: "linear",
+      },
+      {
+        id: `${base}scale.y`,
+        property: "scale.y",
+        time,
+        value: round4(scale),
+        easing: "linear",
+      },
+    );
+  });
+  return keyframes;
+}
+
 let autoReframeEngineInstance: AutoReframeEngine | null = null;
 
 export function getAutoReframeEngine(): AutoReframeEngine | null {

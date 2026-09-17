@@ -341,6 +341,42 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: false,
     },
     {
+      name: "valid clip.applyReframe crop plan",
+      params: {
+        ops: [{
+          op: "clip.applyReframe",
+          clipId: "c1",
+          keyframes: [
+            { time: 0, cropX: 106.25, cropY: 0, cropWidth: 107.5, cropHeight: 180 },
+            { time: 4, cropX: 212.5, cropY: 0, cropWidth: 107.5, cropHeight: 180 },
+          ],
+          outputWidth: 1080,
+          outputHeight: 1920,
+        }],
+      },
+      expectValid: true,
+    },
+    {
+      name: "clip.applyReframe requires at least one crop keyframe",
+      params: { ops: [{ op: "clip.applyReframe", clipId: "c1", keyframes: [], outputWidth: 1080, outputHeight: 1920 }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.applyReframe crop width must be positive",
+      params: { ops: [{ op: "clip.applyReframe", clipId: "c1", keyframes: [{ time: 0, cropX: 0, cropY: 0, cropWidth: 0, cropHeight: 180 }], outputWidth: 1080, outputHeight: 1920 }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.applyReframe output size must be a positive integer",
+      params: { ops: [{ op: "clip.applyReframe", clipId: "c1", keyframes: [{ time: 0, cropX: 0, cropY: 0, cropWidth: 107.5, cropHeight: 180 }], outputWidth: 1080.5, outputHeight: 1920 }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.applyReframe unknown field",
+      params: { ops: [{ op: "clip.applyReframe", clipId: "c1", detectSubjects: true, keyframes: [{ time: 0, cropX: 0, cropY: 0, cropWidth: 107.5, cropHeight: 180 }], outputWidth: 1080, outputHeight: 1920 }] },
+      expectValid: false,
+    },
+    {
       name: "valid track.remove",
       params: { ops: [{ op: "track.remove", trackId: "v1" }] },
       expectValid: true,

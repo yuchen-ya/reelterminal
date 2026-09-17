@@ -148,7 +148,7 @@ describe("emitted schema per-verb structure", () => {
       },
     });
     const anyOf = ((ops.items as Schema).anyOf ?? []) as Schema[];
-    expect(anyOf).toHaveLength(41); // EDIT_OP_TYPES grows with the op set (reference + media.replace/relink/rename + clip.setChromaKey + clip.setNoiseReduction + svg.create/update/remove + workAsset.capture/rename/delete/instantiate)
+    expect(anyOf).toHaveLength(42); // EDIT_OP_TYPES grows with the op set (reference + media.replace/relink/rename + clip.setChromaKey + clip.setNoiseReduction + clip.applyReframe + svg.create/update/remove + workAsset.capture/rename/delete/instantiate)
     const trackAdd = anyOf[0];
     expect(trackAdd.additionalProperties).toBe(false);
     expect(trackAdd.required).toEqual(["op", "trackType"]);

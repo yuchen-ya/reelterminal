@@ -76,6 +76,7 @@ import {
   type SubtitleImportSrtOp,
   type ClipSetColorGradeOp,
   type ClipSetKeyframesOp,
+  type ClipApplyReframeOp,
   type FacadeKeyframeInput,
   type ReferenceSetComparisonOp,
   type ReferenceClearComparisonOp,
@@ -91,6 +92,7 @@ import {
 } from "./types";
 import { validateReferenceComparisonConfig } from "@openreel/core/types/reference-comparison";
 import { DEFAULT_CHROMA_KEY_SETTINGS } from "@openreel/core/video/chroma-key-engine";
+import { reframeKeyframesToTransformKeyframes } from "@openreel/core/ai/auto-reframe-engine";
 import {
   DEFAULT_NOISE_REDUCTION_SETTINGS,
   getNoiseReductionPreset,
@@ -1450,6 +1452,90 @@ export const CLIP_SET_KEYFRAMES_SCHEMA: ObjectSchema = {
   },
 };
 
+/** One source-space crop rectangle of an Auto Reframe plan. */
+const REFRAME_CROP_KEYFRAME_SCHEMA: ObjectSchema = {
+  time: {
+    check: isNonNegativeNumber,
+    describe:
+      "a non-negative source-analysis time in seconds (from the clip in-point)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  cropX: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative pixel offset",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  cropY: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative pixel offset",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  cropWidth: {
+    check: isPositiveNumber,
+    describe: "a positive pixel width",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+  cropHeight: {
+    check: isPositiveNumber,
+    describe: "a positive pixel height",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+};
+
+/**
+ * Relative tolerance for clip.applyReframe crop-vs-output aspect-ratio
+ * drift (|cropRatio − outputRatio| / outputRatio). The conversion fills the
+ * canvas exactly only when every crop keeps the output ratio; the analysis
+ * path guarantees it up to per-pixel rounding, so hand-written plans get a
+ * tight ±2% band instead of a schema-level ratio constraint (the op's
+ * internal callers always satisfy it).
+ */
+const REFRAME_CROP_RATIO_TOLERANCE = 0.02;
+
+export const CLIP_APPLY_REFRAME_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "clip.applyReframe",
+    describe: '"clip.applyReframe"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.applyReframe" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  keyframes: {
+    check: (value) =>
+      Array.isArray(value) && value.length > 0 && value.length <= 100,
+    describe: "a non-empty array of at most 100 crop keyframes",
+    required: true,
+    emits: {
+      kind: "array",
+      minItems: 1,
+      maxItems: 100,
+      items: { kind: "object", schema: REFRAME_CROP_KEYFRAME_SCHEMA },
+    },
+  },
+  outputWidth: {
+    check: isPositiveInteger,
+    describe: "a positive integer (project canvas width in pixels)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } },
+  },
+  outputHeight: {
+    check: isPositiveInteger,
+    describe: "a positive integer (project canvas height in pixels)",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } },
+  },
+};
+
 const CHROMA_KEY_COLOR_SCHEMA: ObjectSchema = {
   r: {
     check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1,
@@ -1961,6 +2047,25 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
         }
       }
       return { ...op, keyframes };
+    }
+    case "clip.applyReframe": {
+      // Crop rectangles are validated per-item (validateObject only checks
+      // top-level fields), mirroring clip.setKeyframes' per-keyframe loop.
+      // The draft-dependent predicates (source span, media dimensions, the
+      // crop→transform conversion) run in opToCoreActions.
+      const op = validateObject<ClipApplyReframeOp>(
+        raw,
+        CLIP_APPLY_REFRAME_SCHEMA,
+        label,
+      );
+      op.keyframes.forEach((value, keyframeIndex) =>
+        validateObject(
+          value,
+          REFRAME_CROP_KEYFRAME_SCHEMA,
+          `${label}.keyframes[${keyframeIndex}]`,
+        ),
+      );
+      return op;
     }
     case "clip.setChromaKey": {
       // No cross-field predicate: `enabled` is required and every tuning
@@ -3615,6 +3720,98 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           })),
         }),
       ];
+    }
+
+    case "clip.applyReframe": {
+      const clip = draft.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((candidate) => candidate.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.applyReframe: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+      const mediaItem = draft.mediaLibrary.items.find(
+        (candidate) => candidate.id === clip.mediaId,
+      );
+      if (!mediaItem) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.applyReframe: media "${clip.mediaId}" for clip "${op.clipId}" not found`,
+          { clipId: op.clipId, mediaId: clip.mediaId },
+        );
+      }
+      const sourceWidth = mediaItem.metadata?.width ?? 0;
+      const sourceHeight = mediaItem.metadata?.height ?? 0;
+      if (sourceWidth <= 0 || sourceHeight <= 0) {
+        throw invalidParams(
+          `clip.applyReframe: source media dimensions are unknown for "${mediaItem.id}"`,
+          { clipId: op.clipId, mediaId: mediaItem.id },
+        );
+      }
+      // Analysis times are source seconds from the clip's in-point — the
+      // same bound clip.setKeyframes enforces against the clip duration.
+      const sourceSpan = clip.outPoint - clip.inPoint;
+      for (const keyframe of op.keyframes) {
+        if (keyframe.time > sourceSpan + 1e-6) {
+          throw invalidParams(
+            `clip.applyReframe: keyframe time ${keyframe.time} exceeds the clip source span ${sourceSpan}`,
+            { clipId: op.clipId, time: keyframe.time, sourceSpan },
+          );
+        }
+      }
+      // The conversion covers the canvas exactly only when every crop keeps
+      // the output canvas ratio. The Auto Reframe analysis path guarantees
+      // this (up to per-pixel rounding); hand-written plans must respect the
+      // same band. Kept at the execution layer, NOT the schema, so the op's
+      // analysis-derived internal callers are never schema-rejected.
+      const outputRatio = op.outputWidth / op.outputHeight;
+      for (const keyframe of op.keyframes) {
+        const cropRatio = keyframe.cropWidth / keyframe.cropHeight;
+        const drift = Math.abs(cropRatio - outputRatio) / outputRatio;
+        if (drift > REFRAME_CROP_RATIO_TOLERANCE) {
+          throw invalidParams(
+            `clip.applyReframe: crop aspect ratio must match the output canvas aspect ratio ${outputRatio} (keyframe at ${keyframe.time}s has ratio ${cropRatio}, a ${(drift * 100).toFixed(1)}% drift, tolerance ${REFRAME_CROP_RATIO_TOLERANCE * 100}%) — the Auto Reframe analysis path already guarantees this; adjust hand-written plans to match`,
+            { clipId: op.clipId, time: keyframe.time, cropRatio, outputRatio, drift },
+          );
+        }
+      }
+      // The SAME core conversion the GUI reframe panel uses: crop rects →
+      // scale/position transform keyframes, with speed folding handled here
+      // (never by the agent).
+      const transformKeyframes = reframeKeyframesToTransformKeyframes(
+        {
+          keyframes: op.keyframes.map((keyframe) => ({ ...keyframe, scale: 1 })),
+          outputWidth: op.outputWidth,
+          outputHeight: op.outputHeight,
+          success: true,
+        },
+        { width: sourceWidth, height: sourceHeight },
+        { duration: clip.duration, speed: clip.speed },
+      );
+      const actions: Action[] = [];
+      if (
+        draft.settings.width !== op.outputWidth ||
+        draft.settings.height !== op.outputHeight
+      ) {
+        // Included ONLY when the output size actually differs, keeping the
+        // resize and the keyframes one atomic batch either way.
+        actions.push(
+          makeAction("project/updateSettings", {
+            width: op.outputWidth,
+            height: op.outputHeight,
+          }),
+        );
+      }
+      actions.push(
+        makeAction("keyframe/setAll", {
+          clipId: op.clipId,
+          keyframes: transformKeyframes,
+        }),
+      );
+      return actions;
     }
 
     case "clip.setChromaKey": {
