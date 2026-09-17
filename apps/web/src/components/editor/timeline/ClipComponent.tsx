@@ -670,11 +670,14 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   }, [isTrimming, trimEdge, clip.id, pixelsPerSecond, onTrimClip]);
 
   const thumbnailCount = Math.max(1, Math.floor(width / 60));
+  // Renamed media must show its displayName here too (G08 parity with the
+  // assets panel); without it the timeline label keeps the source filename.
   const clipName =
     motionComposition?.name ||
     (typeof clip.metadata?.compoundClipName === "string"
       ? clip.metadata.compoundClipName
       : undefined) ||
+    mediaItem?.displayName ||
     mediaItem?.name ||
     clip.mediaId.slice(0, 8);
 
