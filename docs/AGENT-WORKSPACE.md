@@ -43,12 +43,25 @@ Reusable, user-approved assets such as logos, fonts, and brand audio may go in
 `<recommendedRoot>/shared/`. Record their absolute source paths in the job's
 `brief.md`; do not silently mutate shared assets.
 
+One exception is cast by the product itself: a voiceover/music task handed
+over by the desktop GUI arrives as a prompt marked
+`[ReelTerminal 任务 openreel-task:<requestId>]` and precasts the job
+directory `jobs/<taskId>/output/` (a product-minted `amt_…` id, no date
+slug). For such a job, use the precast directory exactly as given — no
+date-slug rename, no brief.md, no standard subfolders — do not call
+`media_import` (the product imports the artifact), and reply with the
+one-line receipt the prompt specifies; see
+[`AGENT-GUIDE.md`](AGENT-GUIDE.md) for the receipt contract. Everything
+else on this page keeps applying to self-initiated jobs.
+
 ## Operating rules
 
 1. Write `brief.md` before generation. A short user prompt is sufficient; the
    Agent records its concrete interpretation without asking for tool steps.
 2. Generate or copy all importable media into `source/` or `generated/`, then
-   pass absolute paths to `media_import`.
+   pass absolute paths to `media_import` — except a product-cast
+   `openreel-task:` hand-off, where the prompt forbids `media_import` and
+   the product imports the artifact itself (see the exception above).
 3. Keep helper code and disposable bulk data in `work/`, never at repository
    root or inside `apps/`, `packages/`, or `docs/`.
 4. Use `preview_render_frame` and `visual_inspect`; place retained inspection

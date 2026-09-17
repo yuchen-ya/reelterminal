@@ -182,6 +182,38 @@ The desktop app creates the recommended `ReelTerminal Agent Workspace`
 automatically; the older `ReelTerminal Agent Imports` path remains readable for
 compatibility only.
 
+## Voiceover and music task hand-offs
+
+When the user dispatches a voiceover or music task from the desktop GUI
+(audio panel or action rail), ReelTerminal casts the whole task into ONE
+plain-text prompt on the conversation channel — there is no task tool and
+no wire change. The prompt opens with the marker
+`[ReelTerminal 任务 openreel-task:<requestId>]`, states the kind and the
+user's text/requirements, and closes with three binding constraints. The
+prose is Chinese regardless of UI language; the fields are self-describing.
+When you receive such a prompt:
+
+- Write exactly ONE audio file into the precast output directory the
+  prompt names (`<recommendedRoot>/jobs/<taskId>/output` — a product-minted
+  `amt_…` id, an intentional variant of the date-slug layout; do not rename
+  it and do not create the standard job subfolders for it).
+- Do NOT call `media_import` or any project-mutating tool, and do not
+  insert anything into the timeline: the product imports the artifact
+  itself and enforces containment inside the advertised media roots — keep
+  the file inside the precast directory.
+- Report with exactly one receipt line and nothing structured besides it:
+  on success `openreel-task:<requestId> RESULT <absolute artifact path>`;
+  on failure `openreel-task:<requestId> ERROR <one-line reason>`. If the
+  RESULT line carries no path, the product scans the precast directory
+  (newest audio file wins). Repeated or late receipts are ignored
+  idempotently; a retry mints a NEW `requestId`, so only answer the
+  requestId in the current prompt.
+- If you cannot generate (no model, no provider, no capability), reply the
+  ERROR line with the honest reason — never fabricate, copy a placeholder
+  audio file, or imply success. Keep credentials, keys, model, and vendor
+  names out of the reply and the artifact metadata, as the prompt's third
+  constraint requires.
+
 ## Attach a Codex conversation
 
 The repository ships a reference adapter for the signed-in local Codex CLI. It

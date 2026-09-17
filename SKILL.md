@@ -248,6 +248,15 @@ truly disposable process scratch). Do not delete another job, `source/`,
 `shared/`, or a delivered `output/` unless the user explicitly asks. Full
 rules and headless root mapping: [`docs/AGENT-WORKSPACE.md`](docs/AGENT-WORKSPACE.md).
 
+Exception — hand-off tasks: when a prompt opens with
+`[ReelTerminal 任务 openreel-task:<requestId>]`, the desktop GUI has cast a
+voiceover/music generation task. That prompt's constraints override the
+rules above for that job: write the single audio artifact into the precast
+output directory it names, do not call `media_import` (the product imports
+the artifact), and answer with the one-line receipt it specifies. The
+receipt contract is documented in
+[`docs/AGENT-GUIDE.md`](docs/AGENT-GUIDE.md).
+
 The desktop conversation panel and loopback client transport are landed. The
 repository includes a Codex App Server reference adapter at
 `scripts/conversation-adapter/codex-adapter.mjs`. Other external Agent hosts

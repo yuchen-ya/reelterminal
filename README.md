@@ -98,6 +98,14 @@ implemented features, reusable foundations, and remaining integration work.
   transition parameter sets — in the GUI preset panels, and Agents manage
   and apply the same user-level presets with the `preset.*` tools in a
   live session.
+- From the audio panel or the action rail, users can dispatch voiceover and
+  music generation tasks to the connected external Agent session: ReelTerminal
+  casts the request (text, requirements, optional adjustments, insert intent)
+  into the session as one prompt, tracks a seven-state task list with retry
+  and local cancel, then imports the artifact for audition and timeline
+  insertion. Generation happens entirely in the external Agent — ReelTerminal
+  holds no provider keys, never calls a generation service, and honestly
+  fails a task that no connected Agent can fulfill.
 - Users can mark audio, video, text, media, and graphics entities as stable
   Agent references (`@A1`, `@A2`, `@A3`, …). Multi-selection assignment is
   deterministic; repeated marks keep their number; deleted entities remain
@@ -283,7 +291,7 @@ edit, preview, export, and verify through the live facade; the user keeps direct
 GUI control and the shared undo path. `capabilities_get` reports the absolute
 media roots allowed by the desktop host. Its `mediaImport.recommendedRoot`
 points to the automatically created `ReelTerminal Agent Workspace` under
-Videos. Agents keep each creation under `jobs/<date>-<slug>/`, using the
+Videos. Agents keep each self-initiated creation under `jobs/<date>-<slug>/`, using the
 standard source/generated/work/project/output/evidence layout in
 [`docs/AGENT-WORKSPACE.md`](docs/AGENT-WORKSPACE.md). The former
 `ReelTerminal Agent Imports` folder remains readable for backward compatibility
