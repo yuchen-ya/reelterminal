@@ -168,6 +168,139 @@ describe("VideoEffectsEngine", () => {
     expect(pixels[6]).toBe(30);
   });
 
+  // Spill suppression consumes the spillSuppression param that the green-
+  // screen panel persists into the chromaKey effect item (clip-fx.ts). The
+  // CPU fallback here must mirror the GPU shader's u_spillSuppression branch:
+  // pull the key color's dominant channel back toward the average of the
+  // other two, weighted by the amount, on kept (alpha > 0) pixels only.
+  describe("chromaKey spill suppression (CPU fallback)", () => {
+    const chromaKeyEffect = (
+      params: Record<string, unknown>,
+    ): Effect => ({
+      id: "chroma-1",
+      type: "chromaKey",
+      enabled: true,
+      params: {
+        keyColor: { r: 0, g: 1, b: 0 },
+        tolerance: 0.3,
+        edgeSoftness: 0.1,
+        ...params,
+      },
+    });
+
+    // A green-tinted foreground pixel far enough from pure green to key
+    // fully opaque (dist ~208 > tolerance+softness ~176.7 in 0-255 space).
+    const greenSpillPixel = [150, 221, 140, 255];
+
+    const runChromaKey = async (params: Record<string, unknown>) => {
+      const engine = new VideoEffectsEngine({ width: 1, height: 1, useGPU: false }) as any;
+      const { ctx, getPixels } = createMockContext(1, 1, [...greenSpillPixel]);
+      await engine.applyEffectPixelLevel(ctx, chromaKeyEffect(params), 1, 1);
+      return getPixels();
+    };
+
+    it("leaves kept pixels untouched when spillSuppression is 0", async () => {
+      const pixels = await runChromaKey({ spillSuppression: 0 });
+      expect(pixels).toEqual(greenSpillPixel);
+    });
+
+    it("treats a missing spillSuppression param as 0 (legacy items unchanged)", async () => {
+      const pixels = await runChromaKey({ keyColor: { r: 0, g: 1, b: 0 } });
+      expect(pixels).toEqual(greenSpillPixel);
+    });
+
+    it("removes the full green excess at spillSuppression 1", async () => {
+      const pixels = await runChromaKey({ spillSuppression: 1 });
+      // avg(r,b) = 145, excess = 221 - 145 = 76 -> g pulled back to 145.
+      expect(pixels).toEqual([150, 145, 140, 255]);
+    });
+
+    it("scales the suppression with the amount at spillSuppression 0.5", async () => {
+      const pixels = await runChromaKey({ spillSuppression: 0.5 });
+      // excess 76 * 0.5 = 38 -> g = 221 - 38 = 183.
+      expect(pixels).toEqual([150, 183, 140, 255]);
+    });
+
+    it("keeps keyed-out pixels' RGB untouched (alpha 0 skips de-spill)", async () => {
+      const engine = new VideoEffectsEngine({ width: 1, height: 1, useGPU: false }) as any;
+      const { ctx, getPixels } = createMockContext(1, 1, [0, 255, 0, 255]);
+      await engine.applyEffectPixelLevel(
+        ctx,
+        chromaKeyEffect({ spillSuppression: 1 }),
+        1,
+        1,
+      );
+      // Pure key color keys to alpha 0; de-spill must not touch its RGB.
+      expect(getPixels()).toEqual([0, 255, 0, 0]);
+    });
+
+    it("suppresses the dominant blue channel for a blue key color", async () => {
+      const engine = new VideoEffectsEngine({ width: 1, height: 1, useGPU: false }) as any;
+      const { ctx, getPixels } = createMockContext(1, 1, [140, 160, 230, 255]);
+      await engine.applyEffectPixelLevel(
+        ctx,
+        chromaKeyEffect({
+          keyColor: { r: 0, g: 0, b: 1 },
+          spillSuppression: 1,
+        }),
+        1,
+        1,
+      );
+      // avg(r,g) = 150, excess = 230 - 150 = 80 -> b pulled back to 150.
+      expect(getPixels()).toEqual([140, 160, 150, 255]);
+    });
+  });
+
+  describe("chromaKey GPU uniform wiring", () => {
+    const makeShader = () => ({
+      uniforms: new Map(
+        ["u_keyColor", "u_tolerance", "u_softness", "u_spillSuppression"].map(
+          (name) => [name, { name } as unknown as WebGLUniformLocation],
+        ),
+      ) as Map<string, WebGLUniformLocation>,
+    });
+
+    const makeGl = (calls: Array<{ uniform: string; value: number }>) =>
+      ({
+        uniform1f: (loc: { name: string }, value: number) =>
+          calls.push({ uniform: loc.name, value }),
+        uniform3f: (loc: { name: string }) =>
+          calls.push({ uniform: loc.name, value: Number.NaN }),
+      }) as unknown as WebGL2RenderingContext;
+
+    const withGl = (
+      calls: Array<{ uniform: string; value: number }>,
+      params: Record<string, unknown>,
+    ): void => {
+      const engine = new VideoEffectsEngine({ width: 8, height: 8, useGPU: false }) as any;
+      engine.gl = makeGl(calls);
+      engine.setFilterUniforms("chromaKey", makeShader(), params);
+    };
+
+    it("uploads the spillSuppression param as u_spillSuppression", () => {
+      const calls: Array<{ uniform: string; value: number }> = [];
+      withGl(calls, {
+        keyColor: { r: 0, g: 1, b: 0 },
+        tolerance: 0.3,
+        edgeSoftness: 0.1,
+        spillSuppression: 0.7,
+      });
+
+      expect(calls).toContainEqual({ uniform: "u_spillSuppression", value: 0.7 });
+    });
+
+    it("falls back to 0 when the effect item omits spillSuppression", () => {
+      const calls: Array<{ uniform: string; value: number }> = [];
+      withGl(calls, {
+        keyColor: { r: 0, g: 1, b: 0 },
+        tolerance: 0.3,
+        edgeSoftness: 0.1,
+      });
+
+      expect(calls).toContainEqual({ uniform: "u_spillSuppression", value: 0 });
+    });
+  });
+
   describe("hasPixelLevelEffects (skip-readback decision)", () => {
     const cssOnlyEffects: Effect[] = [
       { id: "b", type: "brightness", enabled: true, params: { value: 20 } },

@@ -18,13 +18,16 @@ import type {
 import {
   ProjectSerializer,
   normalizeMotionComposition,
+  normalizeProjectChromaFields,
   normalizeProjectCreationFields,
   normalizeProjectMarkerFields,
   normalizeProjectMarkers,
   normalizeProjectMediaFields,
   normalizeProjectMotionFields,
+  normalizeProjectStoredFields,
   normalizeProjectWorkAssetFields,
 } from "./project-serializer";
+import { DEFAULT_CHROMA_KEY_SETTINGS } from "../video/chroma-key-engine";
 import { createCreationScene, createEmptyCreationState } from "../creation";
 
 const makeVideoLayer = (
@@ -271,6 +274,156 @@ describe("normalizeProjectCreationFields", () => {
     expect(normalized.creation?.version).toBe(creation.version);
     expect(normalized.creation?.scenes).toHaveLength(1);
     expect(normalized.creation?.operationHistory).toEqual([]);
+  });
+});
+
+describe("normalizeProjectChromaFields (legacy chromaKey backfill)", () => {
+  const trackId = "track-video";
+  const legacyChromaKey = {
+    enabled: true,
+    keyColor: { r: 0, g: 0.4, b: 0 },
+    tolerance: 0.42,
+    edgeSoftness: 0.2,
+    spillSuppression: 0.8,
+  };
+
+  const makeClip = (overrides: Record<string, unknown> = {}) =>
+    ({
+      id: "clip-1",
+      mediaId: "media-1",
+      trackId,
+      startTime: 0,
+      duration: 5,
+      inPoint: 0,
+      outPoint: 5,
+      effects: [],
+      audioEffects: [],
+      transform: {
+        position: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 },
+        rotation: 0,
+        anchor: { x: 0.5, y: 0.5 },
+        opacity: 1,
+      },
+      volume: 1,
+      keyframes: [],
+      ...overrides,
+    }) as Project["timeline"]["tracks"][number]["clips"][number];
+
+  const makeTrack = (clips: ReturnType<typeof makeClip>[]) => ({
+    id: trackId,
+    type: "video" as const,
+    name: "Primary",
+    clips,
+    transitions: [],
+    locked: false,
+    hidden: false,
+    muted: false,
+    solo: false,
+  });
+
+  const chromaItemsOf = (clip: ReturnType<typeof makeClip>) =>
+    clip.effects.filter((effect) => effect.type === "chromaKey");
+
+  it("backfills the render-side effect item for legacy clips that only have the settings field", () => {
+    // Pre-effects-stacks projects: clip/setChromaKey wrote only the field, so
+    // the GUI panel showed green screen enabled while rendering had no keyer.
+    const project = makeProject({
+      timeline: {
+        ...makeProject().timeline,
+        duration: 5,
+        tracks: [makeTrack([makeClip({ chromaKey: legacyChromaKey })])],
+      },
+    });
+
+    // The full stored-fields chain is the load path (importFromJson and
+    // project-manager normalization), so what the renderer consumes from
+    // clip.effects must hold after it — preview and export stay in sync.
+    const normalized = normalizeProjectStoredFields(project);
+    const clip = normalized.timeline.tracks[0]!.clips[0]!;
+    const items = chromaItemsOf(clip);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]!.enabled).toBe(true);
+    expect(items[0]!.params).toEqual({
+      keyColor: { r: 0, g: 0.4, b: 0 },
+      tolerance: 0.42,
+      edgeSoftness: 0.2,
+      spillSuppression: 0.8,
+    });
+    // The settings field itself stays untouched for the GUI panel.
+    expect(clip.chromaKey).toEqual(legacyChromaKey);
+  });
+
+  it("fills missing legacy settings with the defaults so params stay numeric", () => {
+    const project = makeProject({
+      timeline: {
+        ...makeProject().timeline,
+        tracks: [
+          makeTrack([
+            makeClip({
+              chromaKey: { enabled: true, keyColor: { r: 0, g: 1, b: 0 } },
+            }),
+          ]),
+        ],
+      },
+    });
+
+    const normalized = normalizeProjectChromaFields(project);
+    const items = chromaItemsOf(
+      normalized.timeline.tracks[0]!.clips[0]! as ReturnType<typeof makeClip>,
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0]!.params).toEqual({
+      keyColor: { r: 0, g: 1, b: 0 },
+      tolerance: DEFAULT_CHROMA_KEY_SETTINGS.tolerance,
+      edgeSoftness: DEFAULT_CHROMA_KEY_SETTINGS.edgeSoftness,
+      spillSuppression: DEFAULT_CHROMA_KEY_SETTINGS.spillSuppression,
+    });
+  });
+
+  it("does not duplicate or overwrite when an effect item already exists", () => {
+    const userTunedItems = [
+      {
+        id: "effect-chromakey-user",
+        type: "chromaKey",
+        enabled: false,
+        params: { keyColor: { r: 0, g: 1, b: 0 }, tolerance: 0.9 },
+      },
+    ];
+    const clip = makeClip({
+      chromaKey: legacyChromaKey,
+      effects: userTunedItems,
+    });
+    const project = makeProject({
+      timeline: {
+        ...makeProject().timeline,
+        tracks: [makeTrack([clip])],
+      },
+    });
+
+    const normalized = normalizeProjectChromaFields(project);
+
+    // Untouched stack, byte-for-byte, and no second chromaKey item.
+    expect(normalized.timeline.tracks[0]!.clips[0]!.effects).toEqual(
+      userTunedItems,
+    );
+    expect(normalized).toBe(project);
+  });
+
+  it("leaves clips without a chromaKey field untouched", () => {
+    const project = makeProject({
+      timeline: {
+        ...makeProject().timeline,
+        tracks: [makeTrack([makeClip()])],
+      },
+    });
+
+    const normalized = normalizeProjectChromaFields(project);
+
+    expect(chromaItemsOf(normalized.timeline.tracks[0]!.clips[0]! as ReturnType<typeof makeClip>)).toHaveLength(0);
+    expect(normalized).toBe(project);
   });
 });
 
