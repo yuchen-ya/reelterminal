@@ -21,7 +21,10 @@ const isNumber = (v: unknown): v is number =>
 // in place, never duplicated).
 const CHROMA_KEY_EFFECT_TYPE = "chromaKey";
 
-const fullChromaKeySettings = (
+// Exported for the project serializer's legacy-project backfill, which must
+// map a stored clip.chromaKey field to the exact same effect-item shape the
+// handler writes (see normalizeProjectChromaFields).
+export const fullChromaKeySettings = (
   raw: unknown,
 ): ChromaKeySettings => {
   const partial = (raw ?? {}) as Partial<ChromaKeySettings>;
@@ -52,7 +55,7 @@ const chromaKeyEffectParams = (settings: ChromaKeySettings): Record<string, unkn
  * matching the Effects panel's toggle semantics; a null/undefined settings
  * payload clears the keyer by removing its item(s).
  */
-const syncChromaKeyEffectItem = (
+export const syncChromaKeyEffectItem = (
   effects: readonly Effect[],
   settings: ChromaKeySettings | null,
 ): Effect[] => {

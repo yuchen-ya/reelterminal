@@ -23,6 +23,10 @@ import { normalizeMotionCamera } from "../motion/motion-camera";
 import { normalizeMotionLights } from "../motion/motion-lights";
 import { normalizeMotionTracks } from "../motion/motion-tracking";
 import { normalizeCreationState } from "../creation";
+import {
+  fullChromaKeySettings,
+  syncChromaKeyEffectItem,
+} from "../actions/handlers/clip-fx";
 
 const MOTION_SHADER_CATEGORIES: ReadonlySet<MotionShaderCategory> = new Set([
   "fill",
@@ -343,13 +347,51 @@ export function normalizeProjectMediaFields(project: Project): Project {
   return changed ? { ...project, mediaLibrary: { items: normalizedItems } } : project;
 }
 
+/**
+ * Legacy project backfill: before the per-frame keyer moved into the
+ * clip.effects stack, clip/setChromaKey only wrote the clip.chromaKey
+ * settings field, so an upgraded project shows an enabled green-screen panel
+ * while the render chain (which consumes clip.effects) has no keyer. Clips
+ * saved since then always carry both representations. For any clip that has
+ * the field but no chromaKey effect item, restore the item from the field
+ * (same param shape the clip/setChromaKey handler writes); clips that
+ * already have an item are left untouched so a user-tuned Effects-panel
+ * stack is never duplicated or overwritten.
+ */
+export function normalizeProjectChromaFields(project: Project): Project {
+  let changed = false;
+  const tracks = project.timeline.tracks.map((track) => ({
+    ...track,
+    clips: track.clips.map((clip) => {
+      const settings = clip.chromaKey;
+      if (!settings) return clip;
+      if ((clip.effects ?? []).some((effect) => effect.type === "chromaKey")) {
+        return clip;
+      }
+      changed = true;
+      return {
+        ...clip,
+        effects: syncChromaKeyEffectItem(
+          clip.effects ?? [],
+          fullChromaKeySettings(settings),
+        ),
+      };
+    }),
+  }));
+  return changed
+    ? { ...project, timeline: { ...project.timeline, tracks } }
+    : project;
+}
+
 export function normalizeProjectStoredFields(project: Project): Project {
   return normalizeProjectMediaFields(
     normalizeProjectMarkerFields(
       normalizeProjectGeneratedShaderFields(
         normalizeProjectCreationFields(
           normalizeProjectWorkAssetFields(
-            normalizeProjectMotionFields(project),
+            normalizeProjectMotionFields(
+              normalizeProjectChromaFields(project),
+            ),
           ),
         ),
       ),
