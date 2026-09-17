@@ -60,11 +60,24 @@ export class BeatDetectionEngine {
   async analyzeAudioBuffer(
     audioBuffer: AudioBuffer,
   ): Promise<BeatAnalysisResult> {
-    const channelData = audioBuffer.getChannelData(0);
-    const sampleRate = audioBuffer.sampleRate;
-    const duration = audioBuffer.duration;
+    return this.analyzePcm(
+      audioBuffer.getChannelData(0),
+      audioBuffer.sampleRate,
+    );
+  }
 
-    const onsets = this.detectOnsets(channelData, sampleRate);
+  /**
+   * Pure-PCM analysis entry. This is where the actual detection lives; the
+   * AudioBuffer path above delegates here so GUI callers (WebAudio decoding)
+   * and headless callers (facade PCM extraction) share one implementation.
+   */
+  async analyzePcm(
+    samples: Float32Array,
+    sampleRate: number,
+  ): Promise<BeatAnalysisResult> {
+    const duration = samples.length / sampleRate;
+
+    const onsets = this.detectOnsets(samples, sampleRate);
     const { bpm, confidence } = this.calculateBpm(onsets, duration);
     const beats = this.generateBeats(bpm, duration, onsets);
     const downbeats = this.detectDownbeats(beats);
@@ -381,6 +394,21 @@ export class BeatDetectionEngine {
 }
 
 let beatDetectionEngineInstance: BeatDetectionEngine | null = null;
+
+/**
+ * Pure-function beat analysis over raw mono PCM — the module-level entry the
+ * agent facade uses. Runs the same detector as BeatDetectionEngine (no
+ * algorithm copied); pass a config to override the detection tuning, defaults
+ * match DEFAULT_BEAT_DETECTION_CONFIG.
+ */
+export async function analyzeBeatsInPcm(
+  samples: Float32Array,
+  sampleRate: number,
+  config: Partial<BeatDetectionConfig> = {},
+): Promise<BeatAnalysisResult> {
+  const engine = new BeatDetectionEngine(config);
+  return engine.analyzePcm(samples, sampleRate);
+}
 
 export function getBeatDetectionEngine(): BeatDetectionEngine {
   if (!beatDetectionEngineInstance) {

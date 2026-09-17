@@ -575,6 +575,7 @@ export const MEDIA_ANALYSIS_TYPES = [
   "videoReview",
   "sceneCuts",
   "silence",
+  "beatGrid",
   "speechTranscript",
   "loudness",
   "blackFrames",
@@ -585,15 +586,31 @@ export const MEDIA_ANALYSIS_TYPES = [
 
 export type MediaAnalysisType = (typeof MEDIA_ANALYSIS_TYPES)[number];
 
+/**
+ * Tuning for the "silence" analysis type. Defaults match the GUI silence-cut
+ * panel (−40 dB threshold, 0.5 s minimum silence, 0.1 s padding) and run the
+ * same core detectSilenceRangesInPcm kernel the GUI bridge uses.
+ */
+export interface MediaSilenceAnalysisParams {
+  /** Threshold in dBFS; a window is silent when max amplitude stays below it. Default −40 (GUI default). */
+  readonly thresholdDb?: number;
+  /** Minimum padded-region duration in seconds to report. Default 0.5 (GUI default). */
+  readonly minDurationSec?: number;
+  /** Seconds each detected range is pulled in on both sides. Default 0.1 (GUI default). */
+  readonly paddingSec?: number;
+}
+
 export interface MediaAnalyzeStartParams {
   /** Explicit consent to send this range to the configured Alibaba cloud service. */
   readonly cloudUpload?: boolean;
   readonly reviewQuestion?: string;
-  /** Original media seconds; audioSummary maximum 120s, videoReview explicit range maximum 20s. */
+  /** Original media seconds; audioSummary/silence/beatGrid maximum 120s, videoReview explicit range maximum 20s. */
   readonly startSec?: number;
   readonly endSec?: number;
   readonly mediaId: string;
   readonly analysisTypes: readonly MediaAnalysisType[];
+  /** Silence analysis tuning; valid only when analysisTypes includes "silence". Omitted fields keep the GUI-aligned defaults. */
+  readonly silenceParams?: MediaSilenceAnalysisParams;
   /**
    * Re-check linkage: the id of a previous analysis record. The new run uses
    * the same configuration discipline and its record links back via

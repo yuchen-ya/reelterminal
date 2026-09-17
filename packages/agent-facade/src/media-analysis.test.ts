@@ -75,7 +75,7 @@ describe("media.analyze_start and generalized jobs", () => {
       expect(result.error.code).toBe("UNSUPPORTED");
       expect(result.error.details).toMatchObject({
         unavailableTypes: ["speechTranscript", "faces"],
-        availableTypes: ["technicalQuality"],
+        availableTypes: ["technicalQuality", "audioSummary", "silence", "beatGrid"],
       });
     }
   });

@@ -27,9 +27,11 @@ export {
   AutoEditService,
   getAutoEditService,
   DEFAULT_AUTO_EDIT_OPTIONS,
+  expandCutPlanToActions,
   type AutoEditOptions,
   type AutoEditCut,
   type AutoEditResult,
+  type AutoEditTrackRef,
   type CutMode,
 } from "./auto-edit-service";
 

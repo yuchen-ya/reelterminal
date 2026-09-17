@@ -105,6 +105,66 @@ class SegmentedAudioDecoder {
 }
 
 /**
+ * Shared silence-detection kernel over raw mono PCM. Scans 100ms windows and
+ * marks a window silent when its maximum absolute amplitude stays below the
+ * threshold (given in dBFS). This is the single detector implementation behind:
+ * - AudioEngine.detectSilence (the GUI silence-cut bridge path), and
+ * - the agent facade "silence"/"audioSummary" analysis providers.
+ *
+ * After the scan, each range is pulled in by `paddingSec` on both sides
+ * (clamped to the PCM duration) and ranges shorter than `minDurationSec` are
+ * dropped — the same post-processing the GUI silence-cut bridge applies.
+ * Pass zeros to get the raw scanned ranges unchanged.
+ */
+export function detectSilenceRangesInPcm(
+  pcm: Float32Array,
+  sampleRate: number,
+  thresholdDb: number,
+  minDurationSec: number = 0,
+  paddingSec: number = 0,
+): TimeRange[] {
+  const thresholdLinear = Math.pow(10, thresholdDb / 20);
+  const windowSize = Math.max(1, Math.floor(sampleRate * 0.1)); // 100ms window
+  const durationSec = pcm.length / sampleRate;
+
+  const scanned: TimeRange[] = [];
+  let silenceStart: number | null = null;
+
+  for (let i = 0; i < pcm.length; i += windowSize) {
+    const end = Math.min(i + windowSize, pcm.length);
+    let maxAmp = 0;
+
+    for (let j = i; j < end; j++) {
+      const amp = Math.abs(pcm[j]);
+      if (amp > maxAmp) maxAmp = amp;
+    }
+
+    const isSilent = maxAmp < thresholdLinear;
+    const currentTime = i / sampleRate;
+
+    if (isSilent && silenceStart === null) {
+      silenceStart = currentTime;
+    } else if (!isSilent && silenceStart !== null) {
+      scanned.push({ start: silenceStart, end: currentTime });
+      silenceStart = null;
+    }
+  }
+  if (silenceStart !== null) {
+    scanned.push({ start: silenceStart, end: durationSec });
+  }
+
+  return scanned
+    .map((range) => ({
+      start: Math.max(0, range.start + paddingSec),
+      end: Math.min(durationSec, range.end - paddingSec),
+    }))
+    .filter(
+      (range) =>
+        range.start < range.end && range.end - range.start >= minDurationSec,
+    );
+}
+
+/**
  * AudioEngine handles audio rendering and mixing for video projects.
  * Manages audio context, multiple tracks, and applies effects.
  *
@@ -883,40 +943,16 @@ export class AudioEngine {
   }
 
   detectSilence(buffer: AudioBuffer, threshold: number = -60): TimeRange[] {
-    const silentRanges: TimeRange[] = [];
-    const channelData = buffer.getChannelData(0);
-    const sampleRate = buffer.sampleRate;
-    const thresholdLinear = Math.pow(10, threshold / 20);
-
-    let silenceStart: number | null = null;
-    const windowSize = Math.floor(sampleRate * 0.1); // 100ms window
-
-    for (let i = 0; i < channelData.length; i += windowSize) {
-      const end = Math.min(i + windowSize, channelData.length);
-      let maxAmp = 0;
-
-      for (let j = i; j < end; j++) {
-        maxAmp = Math.max(maxAmp, Math.abs(channelData[j]));
-      }
-
-      const isSilent = maxAmp < thresholdLinear;
-      const currentTime = i / sampleRate;
-
-      if (isSilent && silenceStart === null) {
-        silenceStart = currentTime;
-      } else if (!isSilent && silenceStart !== null) {
-        silentRanges.push({ start: silenceStart, end: currentTime });
-        silenceStart = null;
-      }
-    }
-    if (silenceStart !== null) {
-      silentRanges.push({
-        start: silenceStart,
-        end: buffer.duration,
-      });
-    }
-
-    return silentRanges;
+    // Delegate to the shared PCM kernel with no padding and no minimum
+    // duration so the GUI bridge keeps applying its own post-filtering
+    // exactly as before (GUI semantics unchanged).
+    return detectSilenceRangesInPcm(
+      buffer.getChannelData(0),
+      buffer.sampleRate,
+      threshold,
+      0,
+      0,
+    );
   }
 
   measureLoudness(buffer: AudioBuffer): LoudnessMetrics {

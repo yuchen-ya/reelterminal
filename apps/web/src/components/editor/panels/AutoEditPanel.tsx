@@ -10,10 +10,9 @@ import { ToolcraftText as Text } from "@openreel/ui";
 import { useProjectStore } from "../../../stores/project-store";
 import { MAX_ACTIONS_PER_BATCH } from "../../../stores/project/action-batch";
 import {
+  expandCutPlanToActions as buildAutoEditActions,
   getBeatDetectionEngine,
   getAutoEditService,
-  type Action,
-  type AutoEditCut,
   type AutoEditOptions,
   type AutoEditResult,
   type CutMode,
@@ -26,107 +25,13 @@ interface AutoEditPanelProps {
   onClose: () => void;
 }
 
-/** The track the cut plan rewrites, plus the pool of clips cuts may source from. */
-interface VideoTrackRef {
-  readonly id: string;
-  readonly clips: readonly Clip[];
-}
-
 /**
- * Expands a generated cut plan into existing reversible core actions so the
- * whole plan lands as one undoable batch with the same timeline layout the
- * plan previews:
- * - target-track clips that no cut references are removed;
- * - the first cut of a constant-speed source clip on the target track trims
- *   and moves that clip, keeping its identity for undo;
- * - every other cut is placed as a copy of its source clip with the cut's
- *   exact source range and timeline slot. Clips whose speed differs from 1
- *   always go through copies, because clip/trim derives timeline duration
- *   as (outPoint - inPoint) / speed, which would skew the plan's durations;
- *   the original speed-adjusted clip is then removed as in the plan.
- * Cuts whose source clip no longer exists are skipped, as before.
+ * Cut-plan → reversible core action batch, shared with the agent facade via
+ * the core implementation (agents assemble the same clip/remove, clip/trim +
+ * clip/move, clip/add sequence as one edit.apply batch = one undo unit).
+ * Re-exported for the panel tests and any GUI callers.
  */
-export function buildAutoEditActions(
-  cuts: readonly AutoEditCut[],
-  targetTrack: VideoTrackRef,
-  sourceClips: readonly Clip[] = targetTrack.clips,
-): Action[] {
-  const makeAction = (type: string, params: Record<string, unknown>): Action => ({
-    type,
-    id: crypto.randomUUID(),
-    timestamp: Date.now(),
-    params,
-  });
-
-  const targetClipIds = new Set(targetTrack.clips.map((clip) => clip.id));
-  const sourceClipById = new Map(sourceClips.map((clip) => [clip.id, clip]));
-  const firstCutIndexBySource = new Map<string, number>();
-  cuts.forEach((cut, index) => {
-    if (
-      sourceClipById.has(cut.sourceClipId) &&
-      !firstCutIndexBySource.has(cut.sourceClipId)
-    ) {
-      firstCutIndexBySource.set(cut.sourceClipId, index);
-    }
-  });
-
-  const actions: Action[] = [];
-
-  for (const clip of targetTrack.clips) {
-    if (!firstCutIndexBySource.has(clip.id)) {
-      actions.push(makeAction("clip/remove", { clipId: clip.id }));
-    }
-  }
-
-  cuts.forEach((cut, index) => {
-    const sourceClip = sourceClipById.get(cut.sourceClipId);
-    if (!sourceClip) return;
-
-    const isFirstCutOfSource =
-      firstCutIndexBySource.get(cut.sourceClipId) === index;
-    const constantSpeed =
-      sourceClip.speed === undefined || sourceClip.speed === 1;
-    const newClipId = `auto-edit-${Date.now()}-${index}`;
-
-    if (isFirstCutOfSource && constantSpeed && targetClipIds.has(sourceClip.id)) {
-      actions.push(
-        makeAction("clip/trim", {
-          clipId: sourceClip.id,
-          inPoint: cut.inPoint,
-          outPoint: cut.outPoint,
-        }),
-      );
-      actions.push(
-        makeAction("clip/move", {
-          clipId: sourceClip.id,
-          startTime: cut.startTime,
-          trackId: targetTrack.id,
-        }),
-      );
-      return;
-    }
-
-    actions.push(
-      makeAction("clip/add", {
-        trackId: targetTrack.id,
-        mediaId: sourceClip.mediaId,
-        clipId: newClipId,
-        startTime: cut.startTime,
-        sourceClip: {
-          ...sourceClip,
-          duration: cut.duration,
-          inPoint: cut.inPoint,
-          outPoint: cut.outPoint,
-        },
-      }),
-    );
-    if (isFirstCutOfSource && targetClipIds.has(sourceClip.id)) {
-      actions.push(makeAction("clip/remove", { clipId: sourceClip.id }));
-    }
-  });
-
-  return actions;
-}
+export { buildAutoEditActions };
 
 export const AutoEditPanel: React.FC<AutoEditPanelProps> = ({ onClose }) => {
   const { t: tr } = useTranslation();

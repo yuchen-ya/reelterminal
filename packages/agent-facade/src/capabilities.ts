@@ -434,6 +434,38 @@ export async function buildCapabilities(
                   color: COLOR_POLICY_DISCLOSURE,
                 },
               }
+            : type === "silence" || type === "beatGrid"
+              ? !ctx.mediaRoots.length
+                ? {
+                    available: false,
+                    reason: "No media roots are configured, so the source file cannot be read for audio analysis.",
+                    requires: "a configured media root containing the source",
+                  }
+                : !audioReady.available
+                  ? { available: false, reason: audioReady.reason }
+                  : {
+                      available: true,
+                      details: type === "silence"
+                        ? {
+                            provider: "local-ffmpeg-pcm-silence-kernel",
+                            kernel: "core detectSilenceRangesInPcm — the same silence kernel and defaults as the GUI silence-cut panel",
+                            fields: ["silentRegions", "totalSilenceDurationSec", "parameters"],
+                            defaults: { thresholdDb: -40, minDurationSec: 0.5, paddingSec: 0.1 },
+                            tuning: "media.analyze_start silenceParams {thresholdDb, minDurationSec, paddingSec}",
+                            workflow: "cut the reported silentRegions with clip.split + clip.rippleDelete ops in one edit.apply batch (one undo unit)",
+                            coordinateSpace: "source",
+                            changesProject: false,
+                          }
+                        : {
+                            provider: "local-ffmpeg-pcm-beat-engine",
+                            kernel: "core BeatDetectionEngine.analyzePcm — the same beat detector as the GUI beat-sync panel",
+                            fields: ["beats", "bpm", "confidence"],
+                            downbeats: "not available: no downbeat detector is installed",
+                            workflow: "beat sync via clip.move + clip.trim ops; beat auto-edit plans expand via the shared core expandCutPlanToActions into clip.move/trim/add/remove ops applied as one edit.apply batch (one undo unit)",
+                            coordinateSpace: "source",
+                            changesProject: false,
+                          },
+                    }
             : type === "motion"
               ? {
                   available: false,

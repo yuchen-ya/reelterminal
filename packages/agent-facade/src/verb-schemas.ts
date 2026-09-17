@@ -269,11 +269,17 @@ export const MEDIA_IMPORT_SCHEMA: ObjectSchema = {
   },
 };
 
+export const MEDIA_SILENCE_PARAMS_SCHEMA: ObjectSchema = {
+  thresholdDb: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= -120 && v <= 0, describe: "a finite number in [-120, 0] (dBFS); default −40 matches the GUI silence-cut panel", emits: { kind: "leaf", schema: { type: "number", minimum: -120, maximum: 0 } } },
+  minDurationSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 10, describe: "a finite number in [0, 10] seconds; default 0.5 matches the GUI silence-cut panel", emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 10 } } },
+  paddingSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 10, describe: "a finite number in [0, 10] seconds; default 0.1 matches the GUI silence-cut panel", emits: { kind: "leaf", schema: { type: "number", minimum: 0, maximum: 10 } } },
+};
+
 export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
   cloudUpload: { check: (v) => typeof v === "boolean", describe: "must be true for videoReview: uploads the selected range to Alibaba", emits: { kind: "leaf", schema: { type: "boolean" } } },
   reviewQuestion: { check: (v) => typeof v === "string" && v.length <= 1000, describe: "optional video review focus, at most 1000 characters", emits: { kind: "leaf", schema: { type: "string", maxLength: 1000 } } },
   startSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0, describe: "nonnegative source seconds", emits: { kind: "leaf", schema: { type: "number", minimum: 0 } } },
-  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audioSummary range ≤120s; videoReview requires explicit start/end and range ≤20s", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
+  endSec: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "positive source seconds; audioSummary/silence/beatGrid range ≤120s; videoReview requires explicit start/end and range ≤20s", emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } } },
   mediaId: {
     check: isNonEmptyString,
     describe: "a non-empty media-library id",
@@ -302,6 +308,15 @@ export const MEDIA_ANALYZE_START_SCHEMA: ObjectSchema = {
     check: isNonEmptyString,
     describe: "optional id of a previous analysis record this run re-checks (links via recheckOf)",
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  silenceParams: {
+    check: (value) =>
+      value !== null && typeof value === "object" && !Array.isArray(value) &&
+      Object.entries(value).every(([key, val]) =>
+        key in MEDIA_SILENCE_PARAMS_SCHEMA && MEDIA_SILENCE_PARAMS_SCHEMA[key]!.check(val),
+      ),
+    describe: "optional silence tuning {thresholdDb, minDurationSec, paddingSec}; valid only when analysisTypes includes \"silence\"; defaults match the GUI silence-cut panel (−40 dB, 0.5 s, 0.1 s)",
+    emits: { kind: "object", schema: MEDIA_SILENCE_PARAMS_SCHEMA },
   },
   expectedRevision: {
     check: isNonNegativeInteger,

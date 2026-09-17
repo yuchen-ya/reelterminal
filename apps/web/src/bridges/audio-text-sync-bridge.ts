@@ -191,6 +191,11 @@ export class BeatSyncBridge {
 
     this.setState({ isProcessing: true, error: null });
 
+    // One undo group for the whole multi-clip sync, matching the silence-cut
+    // bridge grouping so a single Ctrl+Z reverts every move/trim.
+    const actionHistory = store.actionHistory;
+    actionHistory.beginGroup("Beat sync");
+
     try {
       for (const timing of previewTimings) {
         await store.moveClip(timing.clipId, timing.newStartTime);
@@ -218,6 +223,8 @@ export class BeatSyncBridge {
         error: error instanceof Error ? error.message : "Failed to apply sync",
       });
       return false;
+    } finally {
+      actionHistory.endGroup();
     }
   }
 
