@@ -218,3 +218,78 @@ describe("composeTaskPrompt", () => {
     expect(result.prompt.length).toBeLessThanOrEqual(AGENT_TASK_PROMPT_MAX_LENGTH);
   });
 });
+
+describe("composeTaskPrompt bilingual templates", () => {
+  // The marker is an external parsing contract (receipts.ts + external
+  // Agents): it must stay byte-identical across zh/en templates.
+  const MARKER = `[ReelTerminal 任务 ${AGENT_TASK_RECEIPT_PREFIX}req_abc123]`;
+
+  it("keeps the zh wording byte-identical whether the language is omitted or explicit", () => {
+    const omitted = composeTaskPrompt(BASE);
+    const explicit = composeTaskPrompt({ ...BASE, language: "zh" });
+    expect(omitted.ok && explicit.ok).toBe(true);
+    if (!omitted.ok || !explicit.ok) return;
+    expect(explicit.prompt).toBe(omitted.prompt);
+    expect(omitted.prompt).toContain(MARKER);
+    expect(omitted.prompt).toContain("类型: 配音");
+    expect(omitted.prompt).toContain("产物约束:");
+  });
+
+  it("renders the en template with the same contract and an identical marker", () => {
+    const result = composeTaskPrompt({
+      ...BASE,
+      promptText: "Welcome to the show.",
+      language: "en",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const prompt = result.prompt;
+    expect(prompt).toContain(MARKER);
+    expect(prompt).toContain("Type: Voiceover (read-aloud text to speech)");
+    expect(prompt).toContain("Content: Welcome to the show.");
+    expect(prompt).toContain(
+      "C:\\Users\\u\\Videos\\ReelTerminal Agent Workspace\\jobs\\amt_task1\\output",
+    );
+    expect(prompt).toContain(
+      "do not call media_import or any project-mutating tool",
+    );
+    expect(prompt).toContain(
+      `${AGENT_TASK_RECEIPT_PREFIX}req_abc123 RESULT <absolute artifact path>`,
+    );
+    expect(prompt).toContain(
+      `${AGENT_TASK_RECEIPT_PREFIX}req_abc123 ERROR <one-line reason>`,
+    );
+    expect(prompt).toContain("Keep credentials, keys, model, or vendor names");
+    // Apart from the stable marker line, the en template carries no Chinese.
+    const body = prompt.split("\n").slice(1).join("\n");
+    expect(body).not.toMatch(/[\u4e00-\u9fff]/);
+  });
+
+  it("renders the en music label and relays requirements in en", () => {
+    const result = composeTaskPrompt({
+      ...BASE,
+      kind: "music",
+      promptText: "  ",
+      language: "en",
+      requirementsText: "calm piano, around half a minute",
+      overrides: {
+        language: "Mandarin Chinese",
+        targetDurationSeconds: 12.4,
+        styleHint: "warm podcast",
+      },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.prompt).toContain("Type: Music (description to music)");
+    expect(result.prompt).toContain("Content: (no separate description");
+    expect(result.prompt).toContain(
+      "Requirements (treat verbatim as the generation requirements):",
+    );
+    expect(result.prompt).toContain("calm piano, around half a minute");
+    expect(result.prompt).toContain("Language preference: Mandarin Chinese");
+    expect(result.prompt).toContain("Target duration: about 12 seconds");
+    expect(result.prompt).toContain("Style hint: warm podcast");
+    // Never leaks raw provider-ish parameter names in either language.
+    expect(result.prompt).not.toContain("targetDurationSeconds");
+  });
+});

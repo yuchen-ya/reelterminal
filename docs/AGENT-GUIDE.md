@@ -276,7 +276,9 @@ plain-text prompt on the conversation channel — there is no task tool and
 no wire change. The prompt opens with the marker
 `[ReelTerminal 任务 openreel-task:<requestId>]`, states the kind and the
 user's text/requirements, and closes with three binding constraints. The
-prose is Chinese regardless of UI language; the fields are self-describing.
+prose follows the app UI language (Chinese or English); the marker, the
+field layout, and the receipt contract are identical in both, and the
+fields are self-describing.
 When you receive such a prompt:
 
 - Write exactly ONE audio file into the precast output directory the

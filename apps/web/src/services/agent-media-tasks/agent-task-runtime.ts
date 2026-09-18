@@ -5,6 +5,8 @@
  *  - installs the real recommended-root source for task submissions
  *    (desktop media-roots channel), so the precast artifact directory
  *    matches what the external Agent is told;
+ *  - installs the prompt-language source (app i18n locale) so the hand-off
+ *    prose follows the UI language while the receipt marker stays stable;
  *  - subscribes the receipt correlator to the conversation display stream,
  *    so a RESULT/ERROR receipt advances its task the moment it arrives;
  *  - runs restart recovery once, then keeps reconciling awaiting-import
@@ -25,7 +27,11 @@ import {
   type AgentTaskRuntimeDeps,
 } from "./task-import";
 import { createDesktopRecommendedRootResolver } from "./desktop-channel";
-import { setRecommendedRootResolver } from "../../components/editor/dialogs/agent-media-task-submit";
+import {
+  setRecommendedRootResolver,
+  setPromptLanguageResolver,
+} from "../../components/editor/dialogs/agent-media-task-submit";
+import i18n, { normalizeLocale } from "../../i18n";
 
 function conversationUpdates(): readonly ConversationEventLike[] {
   const updates =
@@ -59,6 +65,12 @@ export function resetAgentTaskRuntimeForTests(): void {
 export function installAgentTaskRuntime(): () => void {
   const desktopResolver = createDesktopRecommendedRootResolver();
   if (desktopResolver) setRecommendedRootResolver(desktopResolver);
+  // Hand-off prose follows the UI locale (read at compose time, so a
+  // mid-session language switch applies to the next task). The task marker
+  // and receipt contract stay byte-identical across languages.
+  setPromptLanguageResolver(() =>
+    normalizeLocale(i18n.language) === "zh-CN" ? "zh" : "en",
+  );
 
   if (installed && correlator) return () => undefined;
   installed = true;

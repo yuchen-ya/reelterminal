@@ -14,12 +14,19 @@
  * (`recommendedRoot` is `mediaRoots[0]`, the agent workspace root advertised
  * by the desktop host). The composer only formats it; callers snapshot the
  * directory onto the task record at creation time.
+ *
+ * The prose body follows the app UI language (`zh`/`en`); the task marker,
+ * the receipt line format, and every binding constraint are semantically
+ * identical in both templates.
  */
 
 /** Matches the conversation prompt IPC zod limit (text 1..32_000). */
 export const AGENT_TASK_PROMPT_MAX_LENGTH = 32_000;
 
 export const AGENT_TASK_RECEIPT_PREFIX = "openreel-task:";
+
+/** UI language the hand-off prose is written in (follows the app locale). */
+export type ComposeTaskPromptLanguage = "zh" | "en";
 
 export type ComposeTaskPromptField =
   | "requestId"
@@ -89,6 +96,11 @@ export interface ComposeTaskPromptInput {
   };
   /** `capabilities_get.mediaImport.recommendedRoot`; null → cannot precast. */
   readonly recommendedRoot: string | null;
+  /**
+   * UI language for the prose body. Omitted → "zh" (the historical
+   * behavior), so existing callers and records stay byte-identical.
+   */
+  readonly language?: ComposeTaskPromptLanguage;
 }
 
 /**
@@ -111,8 +123,85 @@ export function taskOutputDirectory(
   ].join(separator);
 }
 
-function kindLabel(kind: "tts" | "music"): string {
-  return kind === "tts" ? "配音（朗读文本转语音）" : "音乐（按描述生成音乐）";
+/**
+ * MARKER STABILITY CONSTRAINT: the opening line
+ * `[ReelTerminal 任务 openreel-task:<requestId>]` and the receipt verbs
+ * (`RESULT` / `ERROR`) are an external parsing contract — external Agents,
+ * `receipts.ts`, and docs/AGENT-GUIDE.md all match the literal marker, and
+ * the zh/en forms must stay byte-identical or receipt correlation breaks.
+ * Only the prose body below the marker is translated per UI language.
+ */
+const TASK_MARKER_LABEL = "ReelTerminal 任务";
+
+/**
+ * Per-language wording for the hand-off prompt. The two templates are kept
+ * semantically identical field for field (kind, content, requirements relay,
+ * artifact constraints, receipt protocol, sanitization demand); only the
+ * prose differs. The zh wording is the historical text and must not drift.
+ */
+const PROMPT_WORDING: Record<
+  ComposeTaskPromptLanguage,
+  {
+    readonly kindTts: string;
+    readonly kindMusic: string;
+    readonly typeLabel: string;
+    readonly contentLabel: string;
+    readonly contentNone: string;
+    readonly requirementsHeader: string;
+    readonly languagePreference: string;
+    readonly targetDuration: (seconds: number) => string;
+    readonly styleHint: string;
+    readonly artifactConstraintsHeader: string;
+    readonly artifactSingleFile: (outputDirectory: string) => string;
+    readonly artifactReceipt: (receiptId: string) => string;
+    readonly artifactSanitization: string;
+  }
+> = {
+  zh: {
+    kindTts: "配音（朗读文本转语音）",
+    kindMusic: "音乐（按描述生成音乐）",
+    typeLabel: "类型",
+    contentLabel: "内容",
+    contentNone: "内容:（无单独描述，以下方要求为准）",
+    requirementsHeader: "要求（请原样作为生成要求对待）:",
+    languagePreference: "语言偏好",
+    targetDuration: (seconds) => `目标时长: 约 ${seconds} 秒`,
+    styleHint: "风格提示",
+    artifactConstraintsHeader: "产物约束:",
+    artifactSingleFile: (dir) =>
+      `1. 生成结果只写入 ${dir} 目录下的单个音频文件；不要调用 media_import 或任何修改项目的工具，不要插入时间线。`,
+    artifactReceipt: (receiptId) =>
+      `2. 完成后回复一行 "${receiptId} RESULT <产物绝对路径>"；失败则回复一行 "${receiptId} ERROR <一句话原因>"。`,
+    artifactSanitization:
+      "3. 回复和产物信息中不要包含凭据、密钥、模型或供应商名称。",
+  },
+  en: {
+    kindTts: "Voiceover (read-aloud text to speech)",
+    kindMusic: "Music (description to music)",
+    typeLabel: "Type",
+    contentLabel: "Content",
+    contentNone:
+      "Content: (no separate description; treat the requirements below as the brief)",
+    requirementsHeader: "Requirements (treat verbatim as the generation requirements):",
+    languagePreference: "Language preference",
+    targetDuration: (seconds) => `Target duration: about ${seconds} seconds`,
+    styleHint: "Style hint",
+    artifactConstraintsHeader: "Artifact constraints:",
+    artifactSingleFile: (dir) =>
+      `1. Write the result as a single audio file under the ${dir} directory only; do not call media_import or any project-mutating tool, and do not insert anything into the timeline.`,
+    artifactReceipt: (receiptId) =>
+      `2. When done, reply with one line "${receiptId} RESULT <absolute artifact path>"; on failure, reply with one line "${receiptId} ERROR <one-line reason>".`,
+    artifactSanitization:
+      "3. Keep credentials, keys, model, or vendor names out of the reply and the artifact information.",
+  },
+};
+
+function kindLabel(
+  kind: "tts" | "music",
+  language: ComposeTaskPromptLanguage,
+): string {
+  const wording = PROMPT_WORDING[language];
+  return kind === "tts" ? wording.kindTts : wording.kindMusic;
 }
 
 function appendRequirement(
@@ -178,13 +267,18 @@ export function composeTaskPrompt(
     return { ok: false, code: "NO_RECOMMENDED_ROOT" };
   }
   const outputDirectory = taskOutputDirectory(recommendedRoot, taskId);
+  // Prose language follows the app UI language; omitted → historical zh.
+  const language = input.language ?? "zh";
+  const wording = PROMPT_WORDING[language];
+  const receiptId = `${AGENT_TASK_RECEIPT_PREFIX}${requestId}`;
 
   const lines: string[] = [
-    `[ReelTerminal 任务 ${AGENT_TASK_RECEIPT_PREFIX}${requestId}]`,
-    `类型: ${kindLabel(input.kind)}`,
+    // Marker stays byte-identical across languages (see TASK_MARKER_LABEL).
+    `[${TASK_MARKER_LABEL} ${receiptId}]`,
+    `${wording.typeLabel}: ${kindLabel(input.kind, language)}`,
     promptText
-      ? `内容: ${promptText}`
-      : "内容:（无单独描述，以下方要求为准）",
+      ? `${wording.contentLabel}: ${promptText}`
+      : wording.contentNone,
   ];
 
   const requirementLines: string[] = [];
@@ -192,7 +286,9 @@ export function composeTaskPrompt(
   const overrides = input.overrides;
   if (overrides) {
     if (overrides.language && overrides.language.trim()) {
-      requirementLines.push(`语言偏好: ${overrides.language.trim()}`);
+      requirementLines.push(
+        `${wording.languagePreference}: ${overrides.language.trim()}`,
+      );
     }
     if (
       typeof overrides.targetDurationSeconds === "number" &&
@@ -200,22 +296,22 @@ export function composeTaskPrompt(
       overrides.targetDurationSeconds > 0
     ) {
       requirementLines.push(
-        `目标时长: 约 ${Math.round(overrides.targetDurationSeconds)} 秒`,
+        wording.targetDuration(Math.round(overrides.targetDurationSeconds)),
       );
     }
     if (overrides.styleHint && overrides.styleHint.trim()) {
-      requirementLines.push(`风格提示: ${overrides.styleHint.trim()}`);
+      requirementLines.push(`${wording.styleHint}: ${overrides.styleHint.trim()}`);
     }
   }
   if (requirementLines.length > 0) {
-    lines.push(`要求（请原样作为生成要求对待）:\n${requirementLines.join("\n")}`);
+    lines.push(`${wording.requirementsHeader}\n${requirementLines.join("\n")}`);
   }
 
   lines.push(
-    "产物约束:",
-    `1. 生成结果只写入 ${outputDirectory} 目录下的单个音频文件；不要调用 media_import 或任何修改项目的工具，不要插入时间线。`,
-    `2. 完成后回复一行 "${AGENT_TASK_RECEIPT_PREFIX}${requestId} RESULT <产物绝对路径>"；失败则回复一行 "${AGENT_TASK_RECEIPT_PREFIX}${requestId} ERROR <一句话原因>"。`,
-    "3. 回复和产物信息中不要包含凭据、密钥、模型或供应商名称。",
+    wording.artifactConstraintsHeader,
+    wording.artifactSingleFile(outputDirectory),
+    wording.artifactReceipt(receiptId),
+    wording.artifactSanitization,
   );
 
   const prompt = lines.join("\n");

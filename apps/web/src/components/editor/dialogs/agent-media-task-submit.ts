@@ -15,6 +15,7 @@ import {
   composeFailureDetail,
   composeTaskPrompt,
   type ComposeTaskPromptFailure,
+  type ComposeTaskPromptLanguage,
 } from "../../../services/agent-media-tasks/prompt-composer";
 import {
   decideTaskAutoConfirmation,
@@ -101,6 +102,7 @@ async function dispatchComposedPrompt(
     requirementsText: record.requirementsText,
     overrides: record.overrides,
     recommendedRoot,
+    language: promptLanguageResolver(),
   });
   if (!composed.ok) {
     // Language-neutral detail for the ledger; the dialog translates the code.
@@ -226,4 +228,33 @@ export function setRecommendedRootResolver(
 
 export function getRecommendedRootResolver(): () => Promise<string | null> {
   return recommendedRootResolver;
+}
+
+/**
+ * Fail-closed (historical) prompt language source. The app runtime installer
+ * swaps in the real resolver (the i18n locale) via `setPromptLanguageResolver`;
+ * without that installation — tests, or a session before installation — the
+ * composed prose stays in the historical Chinese so records never change
+ * wording retroactively.
+ */
+function defaultResolvePromptLanguage(): ComposeTaskPromptLanguage {
+  return "zh";
+}
+
+let promptLanguageResolver: () => ComposeTaskPromptLanguage =
+  defaultResolvePromptLanguage;
+
+/**
+ * Replace the prompt-language source. The agent-task runtime installs the
+ * app-locale reader here so the hand-off prose follows the UI language
+ * (zh/en) while the task marker and receipt contract stay byte-identical.
+ */
+export function setPromptLanguageResolver(
+  resolver: () => ComposeTaskPromptLanguage,
+): void {
+  promptLanguageResolver = resolver;
+}
+
+export function getPromptLanguageResolver(): () => ComposeTaskPromptLanguage {
+  return promptLanguageResolver;
 }

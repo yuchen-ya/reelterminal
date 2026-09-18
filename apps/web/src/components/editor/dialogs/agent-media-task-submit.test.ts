@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   AgentMediaTaskService,
 } from "../../../services/agent-media-tasks/agent-media-task-service";
@@ -7,6 +7,7 @@ import type { AgentMediaTaskRecord } from "../../../services/agent-media-tasks/t
 import {
   cancelAgentMediaTask,
   retryAgentMediaTask,
+  setPromptLanguageResolver,
   submitAgentMediaTask,
   type AgentMediaTaskFormDraft,
   type AgentMediaTaskSubmitDeps,
@@ -63,6 +64,10 @@ function makeDeps(service: AgentMediaTaskService, options: { root?: string | nul
 }
 
 describe("submitAgentMediaTask", () => {
+  // The prompt-language resolver is module state; restore the historical
+  // default after every test so language stubs never leak across cases.
+  afterEach(() => setPromptLanguageResolver(() => "zh"));
+
   it("creates the record, precasts the prompt, and submits over the conversation lane", async () => {
     const service = new AgentMediaTaskService(new MemoryAgentTaskStorage());
     const { deps, prompts } = makeDeps(service);
@@ -146,6 +151,44 @@ describe("submitAgentMediaTask", () => {
     if (!result.ok) return;
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain("轻快的钢琴");
+  });
+
+  it("composes the hand-off prose in the installed UI language with a stable marker", async () => {
+    const service = new AgentMediaTaskService(new MemoryAgentTaskStorage());
+    const { deps, prompts } = makeDeps(service);
+    // Simulate an English UI locale (the agent-task runtime installs the
+    // i18n reader in the app; tests install a stub directly).
+    setPromptLanguageResolver(() => "en");
+
+    const result = await submitAgentMediaTask(makeDraft(), deps);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(prompts).toHaveLength(1);
+    // Marker is a parsing contract: identical in every language.
+    expect(prompts[0]).toContain(
+      `[ReelTerminal 任务 openreel-task:${result.record.requestId}]`,
+    );
+    expect(prompts[0]).toContain("Type: Voiceover (read-aloud text to speech)");
+    expect(prompts[0]).toContain(
+      `${result.record.requestId} RESULT <absolute artifact path>`,
+    );
+  });
+
+  it("keeps the historical zh prose when no language resolver is installed", async () => {
+    setPromptLanguageResolver(() => "zh");
+    const service = new AgentMediaTaskService(new MemoryAgentTaskStorage());
+    const { deps, prompts } = makeDeps(service);
+
+    const result = await submitAgentMediaTask(makeDraft(), deps);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("类型: 配音");
+    expect(prompts[0]).toContain(
+      `[ReelTerminal 任务 openreel-task:${result.record.requestId}]`,
+    );
   });
 });
 
