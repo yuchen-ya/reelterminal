@@ -217,12 +217,55 @@ export function useClipContextMenuItems({
 
   const handleSaveToWorkAsset = async () => {
     onClose?.();
-    // Preview the capture purely so unsupported parameters can be listed for
-    // confirmation BEFORE anything is saved; the slice re-runs the same core
-    // capture at commit time, so the decision is made against the same
-    // prechecks that produce the entry.
-    const { project, saveClipAsWorkAsset } = useProjectStore.getState();
-    const preview = captureWorkAssetFromClip(project, clip.id);
+    // Read the LIVE selection at click time — never the render-time snapshot.
+    // The menu can stay open across selection changes (e.g. a right-click
+    // driven reselect reported from GUI testing), so the capture form is
+    // decided by the selection AS IT STANDS when the item is clicked:
+    // ≥2 clips (incl. this one) → ONE kind "multi" asset, otherwise the
+    // single-clip form. The item's label follows the same subscribed state,
+    // so label and action can never disagree.
+    const liveClipIds = useUIStore.getState().getSelectedClipIds();
+    const multiClipIds =
+      liveClipIds.length >= 2 && liveClipIds.includes(clip.id)
+        ? liveClipIds
+        : null;
+    const { project: currentProject, saveClipAsWorkAsset, saveClipsAsWorkAsset } =
+      useProjectStore.getState();
+
+    if (multiClipIds) {
+      // Preview the capture purely so unsupported parameters can be listed
+      // for confirmation BEFORE anything is saved; the slice re-runs the same
+      // core capture at commit time, so the decision is made against the same
+      // prechecks that produce the entry.
+      const preview = captureWorkAssetFromClips(currentProject, multiClipIds);
+      if (!preview.ok) {
+        toast.error(t("workAssets.captureFailed"), preview.message);
+        return;
+      }
+      if (preview.asset.unsupportedParams.length > 0) {
+        const lines = preview.asset.unsupportedParams.map((param) => {
+          const reasonKey = UNSUPPORTED_REASON_KEYS[param.field];
+          const reason = reasonKey ? t(reasonKey) : param.reason;
+          return `• ${param.field} — ${reason}`;
+        });
+        const confirmed = window.confirm(
+          `${t("workAssets.unsupportedConfirmTitle")}\n\n${t(
+            "workAssets.unsupportedConfirmBody",
+            { fields: lines.join("\n") },
+          )}`,
+        );
+        if (!confirmed) return;
+      }
+      const saved = await saveClipsAsWorkAsset(multiClipIds);
+      if (saved.ok) {
+        toast.success(t("workAssets.saved"), saved.asset.name);
+      } else {
+        toast.error(t("workAssets.captureFailed"), saved.message);
+      }
+      return;
+    }
+
+    const preview = captureWorkAssetFromClip(currentProject, clip.id);
     if (!preview.ok) {
       toast.error(t("workAssets.captureFailed"), preview.message);
       return;
@@ -249,45 +292,11 @@ export function useClipContextMenuItems({
     }
   };
 
-  const handleSaveSelectionToWorkAsset = async () => {
-    onClose?.();
-    // Same preview-then-confirm discipline as the single form: the multi
-    // capture's unsupportedParams list is member-namespaced and includes
-    // stripped transitions/track groups, so nothing is dropped silently.
-    const { project: current, saveClipsAsWorkAsset } =
-      useProjectStore.getState();
-    const preview = captureWorkAssetFromClips(current, selectedClipIds);
-    if (!preview.ok) {
-      toast.error(t("workAssets.captureFailed"), preview.message);
-      return;
-    }
-    if (preview.asset.unsupportedParams.length > 0) {
-      const lines = preview.asset.unsupportedParams.map((param) => {
-        const reasonKey = UNSUPPORTED_REASON_KEYS[param.field];
-        const reason = reasonKey ? t(reasonKey) : param.reason;
-        return `• ${param.field} — ${reason}`;
-      });
-      const confirmed = window.confirm(
-        `${t("workAssets.unsupportedConfirmTitle")}\n\n${t(
-          "workAssets.unsupportedConfirmBody",
-          { fields: lines.join("\n") },
-        )}`,
-      );
-      if (!confirmed) return;
-    }
-    const saved = await saveClipsAsWorkAsset(selectedClipIds);
-    if (saved.ok) {
-      toast.success(t("workAssets.saved"), saved.asset.name);
-    } else {
-      toast.error(t("workAssets.captureFailed"), saved.message);
-    }
-  };
-
   const getClipTypeLabel = () => {
-    if (isVideo) return "Video Clip";
-    if (isAudio) return "Audio Clip";
-    if (isImage) return "Image Clip";
-    return "Clip";
+    if (isVideo) return t("clipContextMenu.videoClip");
+    if (isAudio) return t("clipContextMenu.audioClip");
+    if (isImage) return t("clipContextMenu.imageClip");
+    return t("clipContextMenu.clip");
   };
 
   const getClipTypeIcon = () => {
@@ -344,9 +353,7 @@ export function useClipContextMenuItems({
           : t("workAssets.captureDisabledMulti")
         : workAssetDisabledReason,
       isDisabled: isMultiCapture ? !canCaptureMulti : !canCaptureWorkAsset,
-      onClick: isMultiCapture
-        ? handleSaveSelectionToWorkAsset
-        : handleSaveToWorkAsset,
+      onClick: handleSaveToWorkAsset,
     },
     { type: "divider" },
     {

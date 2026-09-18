@@ -793,6 +793,12 @@
     "stepsPlaceholder": "步骤,每行一条(可选)",
     "methodHint": "保存只是存储文本以便复用 — 不会安装 skill,也不会执行提示词。"
   },
+  "clipContextMenu": {
+    "videoClip": "视频片段",
+    "audioClip": "音频片段",
+    "imageClip": "图片片段",
+    "clip": "片段"
+  },
   "workAssets": {
     "saveToWork": "保存到工作素材",
     "saveSelectionToWork": "将 {{count}} 个选中片段保存为工作素材",

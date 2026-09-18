@@ -793,6 +793,12 @@
     "stepsPlaceholder": "Steps, one per line (optional)",
     "methodHint": "Saving stores the text for reuse — it never installs a skill or executes the prompt."
   },
+  "clipContextMenu": {
+    "videoClip": "Video Clip",
+    "audioClip": "Audio Clip",
+    "imageClip": "Image Clip",
+    "clip": "Clip"
+  },
   "workAssets": {
     "saveToWork": "Save to Work Assets",
     "saveSelectionToWork": "Save {{count}} Selected Clips as Work Asset",

@@ -416,4 +416,113 @@ describe("clip context menu multi-clip work-asset capture", () => {
       ),
     ).toBe(true);
   });
+
+  it("captures exactly ONE single asset when a right-click reselect collapsed the selection before the click", async () => {
+    // The reported GUI repro: multi selection opens the menu, a right-click
+    // reselect collapses it to the clicked clip, and the user then clicks.
+    // The label must honestly flip with the selection, and the click must
+    // produce the single form for the right-clicked clip — never a phantom
+    // multi, never a second entry.
+    const first = mediaClip("clip-a", "media-a", { startTime: 0 });
+    const second = mediaClip("clip-b", "media-a", {
+      startTime: 1,
+      trackId: "video-track-2",
+      inPoint: 1,
+      outPoint: 2,
+    });
+    useProjectStore.setState({
+      hasOpenProject: true,
+      project: twoClipProject(first, second),
+    });
+    selectClips(["clip-a", "clip-b"]);
+
+    const track = useProjectStore.getState().project.timeline
+      .tracks[0] as Track;
+    const { result, rerender } = renderHook(() =>
+      useClipContextMenuItems({ clip: second, track }),
+    );
+    // Menu opened with the multi label (selection still intact).
+    expect(
+      result.current.some(
+        (candidate) =>
+          "label" in candidate &&
+          candidate.label === "Save 2 Selected Clips as Work Asset",
+      ),
+    ).toBe(true);
+
+    // Right-click reselect: the selection collapses to the clicked clip.
+    act(() => {
+      useUIStore.setState({
+        selectedItems: [{ id: "clip-b", type: "clip" as const }],
+      });
+    });
+    rerender();
+
+    // The multi entry is gone — the label never lies about the form.
+    expect(
+      result.current.some(
+        (candidate) =>
+          "label" in candidate &&
+          candidate.label === "Save 2 Selected Clips as Work Asset",
+      ),
+    ).toBe(false);
+
+    await act(async () =>
+      menuOption(result.current, "Save to Work Assets").onClick?.(),
+    );
+
+    const workAssets = useProjectStore.getState().project.workAssets ?? [];
+    expect(workAssets).toHaveLength(1);
+    expect(workAssets[0]).toMatchObject({
+      kind: "single",
+      sourceMediaId: "media-a",
+      sourceRange: { inSec: 1, outSec: 2 },
+    });
+  });
+
+  it("honors the LIVE selection when a stale multi-labeled item is clicked after the selection collapsed", async () => {
+    // Same repro, harsher timing: the click lands on the option object
+    // captured by the multi render (no re-render in between). The handler
+    // must route by the selection as it stands AT CLICK TIME.
+    const first = mediaClip("clip-a", "media-a", { startTime: 0 });
+    const second = mediaClip("clip-b", "media-a", {
+      startTime: 1,
+      trackId: "video-track-2",
+      inPoint: 1,
+      outPoint: 2,
+    });
+    useProjectStore.setState({
+      hasOpenProject: true,
+      project: twoClipProject(first, second),
+    });
+    selectClips(["clip-a", "clip-b"]);
+
+    const track = useProjectStore.getState().project.timeline
+      .tracks[0] as Track;
+    const { result } = renderHook(() =>
+      useClipContextMenuItems({ clip: second, track }),
+    );
+    const staleOption = menuOption(
+      result.current,
+      "Save 2 Selected Clips as Work Asset",
+    );
+
+    // The collapse lands after the render but before the click.
+    act(() => {
+      useUIStore.setState({
+        selectedItems: [{ id: "clip-b", type: "clip" as const }],
+      });
+    });
+
+    await act(async () => staleOption.onClick?.());
+
+    // Exactly ONE single asset of the right-clicked clip — the reported
+    // "multi label, single asset" outcome is now the honest single form.
+    const workAssets = useProjectStore.getState().project.workAssets ?? [];
+    expect(workAssets).toHaveLength(1);
+    expect(workAssets[0]).toMatchObject({
+      kind: "single",
+      sourceRange: { inSec: 1, outSec: 2 },
+    });
+  });
 });
