@@ -677,7 +677,16 @@ export class AutoSaveManager {
    * unsaved-changes guard on quit/close.
    */
   hasUnsavedChanges(project: Project): boolean {
-    if (!this.dirtyRevisionByProject.has(project.id)) {
+    const dirtyRevision = this.dirtyRevisionByProject.get(project.id);
+    if (dirtyRevision === undefined) {
+      return false;
+    }
+    // Once every revision this manager was told about has been drained to
+    // disk, the project is clean. The snapshot comparison below is only
+    // meaningful while a dirty revision is unresolved: the caller may pass a
+    // freshly rebuilt object whose volatile fields (e.g. a regenerated
+    // timestamp) differ from the persisted snapshot without being real edits.
+    if (dirtyRevision <= (this.savedRevisionByProject.get(project.id) ?? 0)) {
       return false;
     }
     return (
