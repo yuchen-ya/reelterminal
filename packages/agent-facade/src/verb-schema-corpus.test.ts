@@ -389,6 +389,40 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
         }
         return;
       }
+      if (kind === "graphics") {
+        if (
+          target.trackId !== undefined &&
+          (typeof target.trackId !== "string" || target.trackId.length === 0)
+        ) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            "preset.apply: graphics trackId must be a non-empty graphics track id",
+          );
+        }
+        if (
+          target.startTime !== undefined &&
+          (typeof target.startTime !== "number" ||
+            !Number.isFinite(target.startTime) ||
+            target.startTime < 0)
+        ) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            "preset.apply: graphics startTime must be a finite number >= 0",
+          );
+        }
+        if (
+          target.durationSec !== undefined &&
+          (typeof target.durationSec !== "number" ||
+            !Number.isFinite(target.durationSec) ||
+            target.durationSec <= 0)
+        ) {
+          throw new FacadeError(
+            "INVALID_PARAMS",
+            "preset.apply: graphics durationSec must be a finite number > 0",
+          );
+        }
+        return;
+      }
       throw new FacadeError(
         "INVALID_PARAMS",
         `preset.apply: unknown target kind "${String(kind)}"`,

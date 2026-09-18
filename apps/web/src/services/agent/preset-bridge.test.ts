@@ -447,7 +447,7 @@ describe("handlePresetLibraryRequest", () => {
     expect(firstProjectId).not.toBe(useProjectStore.getState().project.id);
   });
 
-  it("reports graphics application as unsupported and rejects unknown verbs", async () => {
+  it("applies graphics presets as a new SVG clip and rejects unknown verbs", async () => {
     const created = await service.create({
       kind: "graphics",
       name: "Badge",
@@ -465,8 +465,20 @@ describe("handlePresetLibraryRequest", () => {
         target: { kind: "graphics" },
       },
     });
-    expect(reply.ok).toBe(false);
-    if (!reply.ok) expect(reply.error.code).toBe("PRESET_APPLY_UNSUPPORTED");
+    expect(reply.ok).toBe(true);
+    if (reply.ok) {
+      const applied = reply.result as {
+        applied: { kind: string; clipIds: readonly string[]; trackId?: string };
+      };
+      expect(applied.applied.kind).toBe("graphics");
+      expect(applied.applied.clipIds).toHaveLength(1);
+      expect(applied.applied.trackId).toBeDefined();
+      // The created SVG overlay really landed on the project.
+      const project = useProjectStore.getState().project;
+      expect(project.svgClips?.map((clip) => clip.id)).toContain(
+        applied.applied.clipIds[0],
+      );
+    }
 
     const unknown = await handlePresetLibraryRequest({ verb: "explode", params: {} });
     expect(unknown.ok).toBe(false);

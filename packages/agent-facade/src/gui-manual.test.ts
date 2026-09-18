@@ -135,10 +135,17 @@ describe("GUI manual content integrity", () => {
     // …the stated count in both languages equals the live set size…
     expect(effectsLimitations).toContain(`共 ${effectTypes.length} 类`);
     expect(effectsLimitations).toContain(`a closed set of ${effectTypes.length} engine types`);
-    // …and the unrelated VIDEO_FILTER_TYPES vocabulary stays out.
-    for (const stale of ["lut", "chroma key", "color wheel", "sharpen", "hsl", "色键", "遮罩", "色彩轮", "锐化"]) {
+    // …and the unrelated VIDEO_FILTER_TYPES vocabulary stays out. The
+    // chroma-key/shader mentions are NOT stale: the limitation names them
+    // explicitly as the two stack features that cannot be saved as presets
+    // (chromaKey is clip-level keying, shader params depend on the chosen
+    // shader), and sharpen/锐化 are engine types since the contract was
+    // extended to the GUI effect stack's serammable 8.
+    for (const stale of ["lut", "colorWheels", "color wheel", "hsl", "遮罩", "色彩轮"]) {
       expect(effectsLimitations.toLowerCase()).not.toContain(stale);
     }
+    expect(effectsLimitations.toLowerCase()).toContain("chroma key lives in");
+    expect(effectsLimitations).toContain("取决于所选 shader");
   });
 });
 

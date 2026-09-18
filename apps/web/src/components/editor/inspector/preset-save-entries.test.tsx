@@ -155,7 +155,7 @@ describe("VideoEffectsSection save-as-preset entry", () => {
   it("rejects an effect outside the closed engine set with an explicit message", async () => {
     useProjectStore
       .getState()
-      .loadProject(loadProjectWithEffects([{ id: "e1", type: "grayscale", enabled: true, params: { amount: 1 } }]));
+      .loadProject(loadProjectWithEffects([{ id: "e1", type: "dream-glow", enabled: true, params: { amount: 1 } }]));
     render(<VideoEffectsSection clipId="clip-save" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Save effect as preset" }));
@@ -165,6 +165,55 @@ describe("VideoEffectsSection save-as-preset entry", () => {
     expect(errors[0]).toContain("not in the engine's presetable effect set");
     expect(screen.queryByLabelText("Preset name")).not.toBeInTheDocument();
     expect(await storedPresets("effect")).toEqual([]);
+  });
+
+  it("rejects chromaKey with the dedicated clip-keying copy instead of the generic line", async () => {
+    useProjectStore
+      .getState()
+      .loadProject(loadProjectWithEffects([{ id: "e1", type: "chromaKey", enabled: true, params: { tolerance: 0.3 } }]));
+    render(<VideoEffectsSection clipId="clip-save" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save effect as preset" }));
+
+    const errors = errorToastTexts();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("clip.setChromaKey");
+    expect(screen.queryByLabelText("Preset name")).not.toBeInTheDocument();
+    expect(await storedPresets("effect")).toEqual([]);
+  });
+
+  it("rejects shader with the dedicated shader-dependent copy", async () => {
+    useProjectStore
+      .getState()
+      .loadProject(loadProjectWithEffects([{ id: "e1", type: "shader", enabled: true, params: { shaderId: "warp" } }]));
+    render(<VideoEffectsSection clipId="clip-save" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save effect as preset" }));
+
+    const errors = errorToastTexts();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("depend on the selected shader");
+    expect(await storedPresets("effect")).toEqual([]);
+  });
+
+  it("saves a GUI-stack effect whose contract this round added (grayscale) without a dropped-params confirm", async () => {
+    useProjectStore
+      .getState()
+      .loadProject(loadProjectWithEffects([{ id: "e1", type: "grayscale", enabled: true, params: { amount: 0.75 } }]));
+    render(<VideoEffectsSection clipId="clip-save" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save effect as preset" }));
+    fireEvent.change(screen.getByLabelText("Preset name"), { target: { value: "Half Gray" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Preset" }));
+
+    await waitFor(async () => {
+      expect((await storedPresets("effect")).map((preset) => preset.name)).toEqual(["Half Gray"]);
+    });
+    const saved = (await storedPresets("effect"))[0];
+    expect(saved?.payload).toMatchObject({
+      kind: "effect",
+      effects: [{ type: "grayscale", params: { amount: 0.75 } }],
+    });
   });
 
   it("saves an engine effect with its parameters after confirming dropped keys", async () => {

@@ -300,6 +300,9 @@ describe("preset.apply", () => {
       { kind: "text", mode: "create" },
       { kind: "text", mode: "updateStyle" },
       { kind: "effect", clipIds: [] },
+      { kind: "graphics", trackId: "" },
+      { kind: "graphics", startTime: -5 },
+      { kind: "graphics", durationSec: 0 },
     ] as readonly unknown[]) {
       const res = await live["preset.apply"]({
         presetId: "preset_1",
@@ -309,6 +312,43 @@ describe("preset.apply", () => {
       if (!res.ok) expect(res.error.code).toBe("INVALID_PARAMS");
     }
     expect(bridge.requests).toHaveLength(0);
+  });
+
+  it("forwards graphics targets with the normalized placement fields", async () => {
+    bridge.reply = () => ({
+      ok: true,
+      result: {
+        presetId: "preset_1",
+        projectId: "proj-1",
+        projectName: "Live Demo",
+        revision: 5,
+        applied: { kind: "graphics", clipIds: ["svg-1"], trackId: "gfx-1" },
+      },
+    });
+    const live = facade({ presetLibrary: bridge.asBridge() });
+    const res = await live["preset.apply"]({
+      presetId: "preset_1",
+      target: { kind: "graphics", trackId: "gfx-1", startTime: 2, durationSec: 4 },
+    });
+    expect(res.ok).toBe(true);
+    expect(bridge.requests).toHaveLength(1);
+    expect(bridge.requests[0]?.verb).toBe("apply");
+    expect(bridge.requests[0]?.params).toMatchObject({
+      presetId: "preset_1",
+      target: { kind: "graphics", trackId: "gfx-1", startTime: 2, durationSec: 4 },
+    });
+    if (res.ok) {
+      expect(res.value.applied).toMatchObject({ kind: "graphics", trackId: "gfx-1" });
+    }
+
+    // Bare {kind:"graphics"} is valid: the renderer picks/auto-creates the
+    // track and applies the default duration.
+    const bare = await live["preset.apply"]({
+      presetId: "preset_1",
+      target: { kind: "graphics" },
+    });
+    expect(bare.ok).toBe(true);
+    expect(bridge.requests[1]?.params).toMatchObject({ target: { kind: "graphics" } });
   });
 
   it("CAS-checks the project revision before the bridge and forwards a fresh one", async () => {

@@ -6,6 +6,7 @@ import {
   type CustomPresetRecord,
 } from "@openreel/core/presets/types";
 import {
+  DEFAULT_GRAPHICS_PRESET_DURATION_SEC,
   expandPresetActions,
   transitionPlacementMaxDuration,
   TRANSITION_CUT_EPSILON,
@@ -412,17 +413,148 @@ describe("payload/target gating", () => {
     expect(newer.ok).toBe(false);
     if (!newer.ok) expect(newer.code).toBe("PAYLOAD_VERSION_UNSUPPORTED");
   });
+});
 
-  it("declines graphics application until the graphics card lands", () => {
+describe("graphics preset expansion", () => {
+  const VALID_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>`;
+
+  it("auto-creates a graphics track and expands [track/add, svg/create] with import defaults", () => {
     const result = expandPresetActions({
+      preset: preset("graphics", { svg: VALID_SVG }),
+      target: { kind: "graphics" },
+      project: makeProject(),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.actions).toHaveLength(2);
+    const trackAdd = result.actions[0]!;
+    expect(trackAdd.type).toBe("track/add");
+    expect(trackAdd.params.trackType).toBe("graphics");
+    const create = result.actions[1]!;
+    expect(create.type).toBe("svg/create");
+    const clip = create.params.clip as Record<string, unknown>;
+    // Same clip shape the facade svg.create op and GUI import build.
+    expect(clip.type).toBe("svg");
+    expect(clip.trackId).toBe(trackAdd.params.trackId);
+    expect(clip.startTime).toBe(0);
+    expect(clip.duration).toBe(DEFAULT_GRAPHICS_PRESET_DURATION_SEC);
+    expect(clip.svgContent).toBe(VALID_SVG);
+    expect(clip.viewBox).toEqual({ minX: 0, minY: 0, width: 10, height: 10 });
+    expect(clip.preserveAspectRatio).toBe("xMidYMid");
+    expect(clip.colorStyle).toEqual({ colorMode: "none", tintColor: "#ffffff", tintOpacity: 1 });
+    expect(clip.entryAnimation).toEqual({ type: "none", duration: 0.5, easing: "ease-out" });
+    expect(clip.exitAnimation).toEqual({ type: "none", duration: 0.5, easing: "ease-in" });
+  });
+
+  it("targets the first existing graphics track without emitting track/add", () => {
+    const mutable = mutableProject(makeProject());
+    mutable.timeline.tracks.push({
+      id: "gfx1",
+      type: "graphics",
+      name: "Graphics",
+      clips: [],
+      transitions: [],
+      locked: false,
+      hidden: false,
+      muted: false,
+      solo: false,
+    });
+    const result = expandPresetActions({
+      preset: preset("graphics", { svg: VALID_SVG }),
+      target: { kind: "graphics", startTime: 2.5, durationSec: 3 },
+      project: mutable as unknown as Project,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]!.type).toBe("svg/create");
+    const clip = result.actions[0]!.params.clip as Record<string, unknown>;
+    expect(clip.trackId).toBe("gfx1");
+    expect(clip.startTime).toBe(2.5);
+    expect(clip.duration).toBe(3);
+  });
+
+  it("rejects an unknown or non-graphics explicit trackId", () => {
+    const missing = expandPresetActions({
+      preset: preset("graphics", { svg: VALID_SVG }),
+      target: { kind: "graphics", trackId: "ghost-track" },
+      project: makeProject(),
+    });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.code).toBe("TARGET_NOT_FOUND");
+
+    const wrongType = expandPresetActions({
+      preset: preset("graphics", { svg: VALID_SVG }),
+      target: { kind: "graphics", trackId: "v1" },
+      project: makeProject(),
+    });
+    expect(wrongType.ok).toBe(false);
+    if (!wrongType.ok) expect(wrongType.code).toBe("PLACEMENT_INVALID");
+  });
+
+  it("rejects non-positive durations and negative start times", () => {
+    const badDuration = expandPresetActions({
+      preset: preset("graphics", { svg: VALID_SVG }),
+      target: { kind: "graphics", durationSec: 0 },
+      project: makeProject(),
+    });
+    expect(badDuration.ok).toBe(false);
+    if (!badDuration.ok) expect(badDuration.code).toBe("PLACEMENT_INVALID");
+
+    const badStart = expandPresetActions({
+      preset: preset("graphics", { svg: VALID_SVG }),
+      target: { kind: "graphics", startTime: -1 },
+      project: makeProject(),
+    });
+    expect(badStart.ok).toBe(false);
+    if (!badStart.ok) expect(badStart.code).toBe("PLACEMENT_INVALID");
+  });
+
+  it("rejects kind mismatches and unsafe SVG payloads through the shared validator", () => {
+    const mismatch = expandPresetActions({
+      preset: preset("effect", { effects: [{ type: "blur", params: { radius: 5 } }] }),
+      target: { kind: "graphics" },
+      project: makeProject(),
+    });
+    expect(mismatch.ok).toBe(false);
+    if (!mismatch.ok) expect(mismatch.code).toBe("TARGET_MISMATCH");
+
+    // validateGraphicsPresetSvg runs validateSvgContent inside
+    // validatePresetPayload — the SAME source the GUI save path and Agent
+    // preset.create use — so an unsafe document cannot reach svg/create.
+    const unsafe = expandPresetActions({
       preset: preset("graphics", {
-        svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>`,
+        svg: `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`,
       }),
       target: { kind: "graphics" },
       project: makeProject(),
     });
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe("PRESET_APPLY_UNSUPPORTED");
+    expect(unsafe.ok).toBe(false);
+    if (!unsafe.ok) expect(unsafe.code).toBe("PRESET_INVALID");
+  });
+
+  it("copies the payload by value: later record mutations never reach the actions", () => {
+    const payload: CustomPresetRecord["payload"] = {
+      schemaVersion: SCHEMA,
+      kind: "graphics",
+      svg: VALID_SVG,
+    };
+    const result = expandPresetActions({
+      preset: { name: "Logo", payload },
+      target: { kind: "graphics" },
+      project: makeProject(),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const before = JSON.stringify(result.actions);
+    // Test-only cast: records are readonly, but the whole point is proving
+    // that even a hostile in-place mutation after expansion cannot reach
+    // the already-built actions (by-value copy semantics).
+    (payload as { svg: string }).svg = "<svg>mutated</svg>";
+    expect(JSON.stringify(result.actions)).toBe(before);
+    // The stored clip is a fresh object, not an alias of the record payload.
+    const clip = result.actions[1]!.params.clip as Record<string, unknown>;
+    expect(clip.svgContent).toBe(VALID_SVG);
   });
 });
 
