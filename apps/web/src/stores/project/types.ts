@@ -481,6 +481,10 @@ export interface ProjectState {
     clipId: string,
     options?: SaveClipWorkAssetOptions,
   ) => Promise<SaveClipWorkAssetResult>;
+  saveClipsAsWorkAsset: (
+    clipIds: readonly string[],
+    options?: SaveClipWorkAssetOptions,
+  ) => Promise<SaveClipWorkAssetResult>;
   renameWorkAsset: (
     workAssetId: string,
     name: string,

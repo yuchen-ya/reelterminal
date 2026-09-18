@@ -63,6 +63,60 @@ function workAsset(overrides: Partial<WorkAsset> & { id: string }): WorkAsset {
   };
 }
 
+function memberSnapshot(duration: number) {
+  return {
+    duration,
+    inPoint: 0,
+    outPoint: duration,
+    effects: [],
+    audioEffects: [],
+    transform: {
+      position: { x: 0, y: 0 },
+      scale: { x: 1, y: 1 },
+      rotation: 0,
+      anchor: { x: 0.5, y: 0.5 },
+      opacity: 1,
+    },
+    volume: 1,
+    keyframes: [],
+  };
+}
+
+function multiWorkAsset(
+  overrides: Partial<WorkAsset> & { id: string },
+): WorkAsset {
+  return {
+    schemaVersion: 1,
+    kind: "multi",
+    name: `Composite ${overrides.id}`,
+    sourceMediaId: "media-a",
+    sourceRange: { inSec: 0, outSec: 2 },
+    members: [
+      {
+        memberId: "m-1",
+        mediaId: "media-a",
+        sourceRange: { inSec: 0, outSec: 2 },
+        relativeStart: 0,
+        lane: { trackType: "video", laneOffset: 0 },
+        snapshot: memberSnapshot(2),
+      },
+      {
+        memberId: "m-2",
+        mediaId: "media-b",
+        sourceRange: { inSec: 1, outSec: 2 },
+        relativeStart: 1,
+        lane: { trackType: "video", laneOffset: 1 },
+        snapshot: memberSnapshot(1),
+      },
+    ],
+    unsupportedParams: [],
+    createdBy: "user",
+    createdAt: 1_700_000_000_000,
+    updatedAt: 1_700_000_000_000,
+    ...overrides,
+  };
+}
+
 function projectWith(workAssets: WorkAsset[], mediaItems: MediaItem[]): Project {
   const empty = createEmptyProject("Work assets panel");
   return {
@@ -344,5 +398,113 @@ describe("WorkAssetsTab", () => {
     expect(
       (useProjectStore.getState().project.timeline.tracks[0]?.clips ?? []),
     ).toHaveLength(0);
+  });
+
+  it("shows the member badge with the lane summary for multi entries", () => {
+    useProjectStore.setState({
+      hasOpenProject: true,
+      project: projectWith(
+        [multiWorkAsset({ id: "wa-multi", name: "Two-up composite" })],
+        [mediaItem("media-a", "take-one.mp4")],
+      ),
+    });
+    render(<WorkAssetsTab />);
+
+    expect(screen.getByText("Two-up composite")).toBeInTheDocument();
+    expect(screen.getByText("2 members")).toBeInTheDocument();
+    expect(screen.getByText("· 2V")).toBeInTheDocument();
+  });
+
+  it("turns a multi entry yellow when ANY member's media is missing and disables adding", () => {
+    const empty = createEmptyProject("member missing");
+    useProjectStore.setState({
+      hasOpenProject: true,
+      project: {
+        ...projectWith(
+          [multiWorkAsset({ id: "wa-multi", name: "Two-up composite" })],
+          [mediaItem("media-a", "take-one.mp4")],
+        ),
+        mediaLibrary: {
+          ...empty.mediaLibrary,
+          // media-b (the second member's source) is gone; media-a remains.
+          items: [mediaItem("media-a", "take-one.mp4")],
+        },
+      },
+    });
+    render(<WorkAssetsTab />);
+
+    expect(screen.getByText("Two-up composite")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The source media of 1 member was deleted — this entry cannot be added to the timeline",
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.mouseEnter(
+      screen.getByText("Two-up composite").closest("[data-work-asset-id]")!,
+    );
+    const add = screen.getByRole("button", { name: "Add to timeline" });
+    expect(add).toBeDisabled();
+
+    const row = screen
+      .getByText("Two-up composite")
+      .closest("[data-work-asset-id]");
+    expect(row?.getAttribute("draggable")).toBe("false");
+  });
+
+  it("adds a multi entry as independent members on fresh lanes", async () => {
+    useProjectStore.setState({
+      hasOpenProject: true,
+      project: projectWith(
+        [multiWorkAsset({ id: "wa-multi", name: "Two-up composite" })],
+        [
+          mediaItem("media-a", "take-one.mp4"),
+          mediaItem("media-b", "take-two.mp4"),
+        ],
+      ),
+    });
+    render(<WorkAssetsTab />);
+
+    fireEvent.mouseEnter(
+      screen.getByText("Two-up composite").closest("[data-work-asset-id]")!,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add to timeline" }));
+
+    await waitFor(() => {
+      const project = useProjectStore.getState().project;
+      const clips = project.timeline.tracks.flatMap((t) => t.clips);
+      expect(clips).toHaveLength(2);
+      // One fresh lane per distinct member lane, anchor time at timeline end.
+      expect(project.timeline.tracks).toHaveLength(3);
+      // Relative timing is preserved verbatim (0 and 0 + 1).
+      const starts = clips.map((clip) => clip.startTime).sort((a, b) => a - b);
+      expect(starts).toEqual([0, 1]);
+      const anchor = clips.find((clip) => clip.startTime === 0)!;
+      const second = clips.find((clip) => clip.startTime === 1)!;
+      expect(anchor.mediaId).toBe("media-a");
+      expect(second.mediaId).toBe("media-b");
+      // The members land on different lanes (their lane relationship).
+      expect(anchor.trackId).not.toBe(second.trackId);
+      // The asset entry itself is untouched.
+      expect(project.workAssets?.[0]?.members).toHaveLength(2);
+    });
+
+    const successes = useNotificationStore
+      .getState()
+      .notifications.filter((n) => n.type === "success");
+    expect(successes.some((n) => n.title === "Added to timeline")).toBe(true);
+  });
+
+  it("rejects a multi capture with fewer than two clips explicitly", async () => {
+    useProjectStore.setState({
+      hasOpenProject: true,
+      project: projectWith([], [mediaItem("media-a", "take-one.mp4")]),
+    });
+    const result = await useProjectStore
+      .getState()
+      .saveClipsAsWorkAsset(["clip-a"]);
+    if (result.ok) throw new Error("expected undersized capture set to fail");
+    expect(result.code).toBe("INVALID_PARAMS");
+    expect(useProjectStore.getState().project.workAssets ?? []).toHaveLength(0);
   });
 });

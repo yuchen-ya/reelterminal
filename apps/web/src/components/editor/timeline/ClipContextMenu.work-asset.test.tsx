@@ -245,3 +245,175 @@ describe("clip context menu work-asset capture", () => {
     );
   });
 });
+
+describe("clip context menu multi-clip work-asset capture", () => {
+  beforeEach(() => {
+    useUIStore.getState().clearSelection();
+    useNotificationStore.getState().clearAll();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    useUIStore.getState().clearSelection();
+    useNotificationStore.getState().clearAll();
+    useProjectStore.setState({
+      hasOpenProject: false,
+      project: createEmptyProject("Reset"),
+    });
+  });
+
+  function twoClipProject(first: Clip, second: Clip): Project {
+    const empty = createEmptyProject("Multi capture");
+    return {
+      ...empty,
+      mediaLibrary: {
+        ...empty.mediaLibrary,
+        items: [mediaItem("media-a", "take-one.mp4")],
+      },
+      timeline: {
+        ...empty.timeline,
+        tracks: [
+          {
+            id: TRACK_ID,
+            type: "video",
+            name: "Video",
+            clips: [first],
+            transitions: [],
+            locked: false,
+            hidden: false,
+            muted: false,
+            solo: false,
+          },
+          {
+            id: "video-track-2",
+            type: "video",
+            name: "Video 2",
+            clips: [second],
+            transitions: [],
+            locked: false,
+            hidden: false,
+            muted: false,
+            solo: false,
+          },
+        ],
+      },
+    };
+  }
+
+  function selectClips(ids: string[]) {
+    useUIStore.setState({
+      selectedItems: ids.map((id) => ({ id, type: "clip" as const })),
+    });
+  }
+
+  it("offers the multi form for a selection and captures ONE multi asset", async () => {
+    const first = mediaClip("clip-a", "media-a", { startTime: 0 });
+    const second = mediaClip("clip-b", "media-a", {
+      startTime: 1,
+      trackId: "video-track-2",
+    });
+    useProjectStore.setState({
+      hasOpenProject: true,
+      project: twoClipProject(first, second),
+    });
+    selectClips(["clip-a", "clip-b"]);
+
+    const track = useProjectStore.getState().project.timeline
+      .tracks[0] as Track;
+    const { result } = renderHook(() =>
+      useClipContextMenuItems({ clip: first, track }),
+    );
+
+    const option = menuOption(
+      result.current,
+      "Save 2 Selected Clips as Work Asset",
+    );
+    expect(option.isDisabled).toBeFalsy();
+
+    await act(async () => option.onClick?.());
+
+    const workAssets = useProjectStore.getState().project.workAssets ?? [];
+    expect(workAssets).toHaveLength(1);
+    const asset = workAssets[0];
+    expect(asset).toMatchObject({
+      kind: "multi",
+      createdBy: "user",
+      sourceMediaId: "media-a",
+    });
+    expect(asset.members).toHaveLength(2);
+    // The earliest clip is the anchor (relativeStart 0); the layout keeps the
+    // 1s offset and the two-lane relationship.
+    expect(asset.members?.[0]).toMatchObject({
+      mediaId: "media-a",
+      relativeStart: 0,
+      lane: { trackType: "video", laneOffset: 0 },
+    });
+    expect(asset.members?.[1]).toMatchObject({
+      mediaId: "media-a",
+      relativeStart: 1,
+      lane: { trackType: "video", laneOffset: 1 },
+    });
+
+    const successes = useNotificationStore
+      .getState()
+      .notifications.filter((n) => n.type === "success");
+    expect(successes.some((n) => n.title === "Saved to work assets")).toBe(
+      true,
+    );
+  });
+
+  it("disables the multi entry with a reason when a member cannot be captured", () => {
+    const first = mediaClip("clip-a", "media-a", { startTime: 0 });
+    const orphan = mediaClip("clip-b", "media-gone", {
+      startTime: 1,
+      trackId: "video-track-2",
+    });
+    useProjectStore.setState({
+      hasOpenProject: true,
+      project: twoClipProject(first, orphan),
+    });
+    selectClips(["clip-a", "clip-b"]);
+
+    const track = useProjectStore.getState().project.timeline
+      .tracks[0] as Track;
+    const { result } = renderHook(() =>
+      useClipContextMenuItems({ clip: first, track }),
+    );
+
+    const option = menuOption(
+      result.current,
+      "Save 2 Selected Clips as Work Asset",
+    );
+    // The pre-capture explanation, not a silent drop at commit time.
+    expect(option.isDisabled).toBe(true);
+    expect(option.description).toBe(
+      "Some selected clips cannot be captured — check for missing media, placeholders, or engine-generated overlays",
+    );
+    expect(
+      useProjectStore.getState().project.workAssets ?? [],
+    ).toHaveLength(0);
+  });
+
+  it("keeps the single-clip entry for a one-clip selection", () => {
+    const first = mediaClip("clip-a", "media-a");
+    useProjectStore.setState({
+      hasOpenProject: true,
+      project: testProject(first, [mediaItem("media-a", "take-one.mp4")]),
+    });
+    selectClips(["clip-a"]);
+
+    const track = useProjectStore.getState().project.timeline
+      .tracks[0] as Track;
+    const { result } = renderHook(() =>
+      useClipContextMenuItems({ clip: first, track }),
+    );
+
+    expect(
+      result.current.some(
+        (candidate) =>
+          "label" in candidate && candidate.label === "Save to Work Assets",
+      ),
+    ).toBe(true);
+  });
+});

@@ -17,7 +17,10 @@ import {
   Hash,
 } from "@/icons/lucide-compat";
 import type { Clip, Track } from "@openreel/core";
-import { captureWorkAssetFromClip } from "@openreel/core/work-assets/capture";
+import {
+  captureWorkAssetFromClip,
+  captureWorkAssetFromClips,
+} from "@openreel/core/work-assets/capture";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useUIStore } from "../../../stores/ui-store";
@@ -84,6 +87,34 @@ export function useClipContextMenuItems({
   const { playheadPosition } = useTimelineStore();
   const selectMultiple = useUIStore((state) => state.selectMultiple);
   const project = useProjectStore((state) => state.project);
+  const selectedItems = useUIStore((state) => state.selectedItems);
+
+  /**
+   * Multi-clip capture branch: with ≥2 clips selected (and the right-clicked
+   * clip inside that selection) the save entry switches to the multi form.
+   * The same core prechecks run HERE — before capture — so unsupported
+   * selections are disabled with a reason instead of being silently dropped
+   * at commit time.
+   */
+  const selectedClipIds = React.useMemo(
+    () =>
+      selectedItems
+        .filter(
+          (item) =>
+            item.type === "clip" ||
+            item.type === "text-clip" ||
+            item.type === "shape-clip",
+        )
+        .map((item) => item.id),
+    [selectedItems],
+  );
+  const isMultiCapture =
+    selectedClipIds.length >= 2 && selectedClipIds.includes(clip.id);
+  const multiCapturePreview = React.useMemo(() => {
+    if (!isMultiCapture) return null;
+    return captureWorkAssetFromClips(project, selectedClipIds);
+  }, [isMultiCapture, project, selectedClipIds]);
+  const canCaptureMulti = multiCapturePreview?.ok === true;
 
   const isPlayheadOnClip =
     playheadPosition >= clip.startTime &&
@@ -218,6 +249,40 @@ export function useClipContextMenuItems({
     }
   };
 
+  const handleSaveSelectionToWorkAsset = async () => {
+    onClose?.();
+    // Same preview-then-confirm discipline as the single form: the multi
+    // capture's unsupportedParams list is member-namespaced and includes
+    // stripped transitions/track groups, so nothing is dropped silently.
+    const { project: current, saveClipsAsWorkAsset } =
+      useProjectStore.getState();
+    const preview = captureWorkAssetFromClips(current, selectedClipIds);
+    if (!preview.ok) {
+      toast.error(t("workAssets.captureFailed"), preview.message);
+      return;
+    }
+    if (preview.asset.unsupportedParams.length > 0) {
+      const lines = preview.asset.unsupportedParams.map((param) => {
+        const reasonKey = UNSUPPORTED_REASON_KEYS[param.field];
+        const reason = reasonKey ? t(reasonKey) : param.reason;
+        return `• ${param.field} — ${reason}`;
+      });
+      const confirmed = window.confirm(
+        `${t("workAssets.unsupportedConfirmTitle")}\n\n${t(
+          "workAssets.unsupportedConfirmBody",
+          { fields: lines.join("\n") },
+        )}`,
+      );
+      if (!confirmed) return;
+    }
+    const saved = await saveClipsAsWorkAsset(selectedClipIds);
+    if (saved.ok) {
+      toast.success(t("workAssets.saved"), saved.asset.name);
+    } else {
+      toast.error(t("workAssets.captureFailed"), saved.message);
+    }
+  };
+
   const getClipTypeLabel = () => {
     if (isVideo) return "Video Clip";
     if (isAudio) return "Audio Clip";
@@ -267,11 +332,21 @@ export function useClipContextMenuItems({
     },
     ...reviewMarkerMenuItems,
     {
-      label: t("workAssets.saveToWork"),
+      label: isMultiCapture
+        ? t("workAssets.saveSelectionToWork", {
+            count: selectedClipIds.length,
+          })
+        : t("workAssets.saveToWork"),
       icon: <FolderPlus size={14} aria-hidden />,
-      description: workAssetDisabledReason,
-      isDisabled: !canCaptureWorkAsset,
-      onClick: handleSaveToWorkAsset,
+      description: isMultiCapture
+        ? canCaptureMulti
+          ? undefined
+          : t("workAssets.captureDisabledMulti")
+        : workAssetDisabledReason,
+      isDisabled: isMultiCapture ? !canCaptureMulti : !canCaptureWorkAsset,
+      onClick: isMultiCapture
+        ? handleSaveSelectionToWorkAsset
+        : handleSaveToWorkAsset,
     },
     { type: "divider" },
     {

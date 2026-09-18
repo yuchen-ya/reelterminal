@@ -1,8 +1,12 @@
 import { v4 as uuidv4 } from "uuid";
 import type { StoreApi } from "zustand";
 import type { Action, ActionResult, WorkAsset } from "@openreel/core";
-import { captureWorkAssetFromClip } from "@openreel/core/work-assets/capture";
+import {
+  captureWorkAssetFromClip,
+  captureWorkAssetFromClips,
+} from "@openreel/core/work-assets/capture";
 import { buildWorkAssetInstantiateActions } from "@openreel/core/work-assets/instantiate";
+import { MAX_ACTIONS_PER_BATCH } from "./action-batch";
 import type { ProjectState } from "../project-store";
 
 type Get = StoreApi<ProjectState>["getState"];
@@ -27,6 +31,11 @@ export type InstantiateWorkAssetResult =
       readonly trackId: string;
       readonly clipId: string;
       readonly createdTrack: boolean;
+      /** Every instantiated clip id, in member order for "multi". */
+      readonly clipIds: readonly string[];
+      /** Every lane the batch touches, in track/add emission order. */
+      readonly trackIds: readonly string[];
+      readonly createdTrackCount: number;
     }
   | {
       readonly ok: false;
@@ -50,15 +59,26 @@ export interface SaveClipWorkAssetOptions {
 
 export type WorkAssetsSlice = Pick<
   ProjectState,
-  "saveClipAsWorkAsset" | "renameWorkAsset" | "deleteWorkAsset" | "instantiateWorkAsset"
+  | "saveClipAsWorkAsset"
+  | "saveClipsAsWorkAsset"
+  | "renameWorkAsset"
+  | "deleteWorkAsset"
+  | "instantiateWorkAsset"
 >;
 
 /**
- * Project-scoped work assets (`project.workAssets`). All four methods commit
+ * Project-scoped work assets (`project.workAssets`). All methods commit
  * through executeActionBatch so capture, rename, delete, and instantiate are
  * each one undoable history group; the prechecks and the instantiate action
  * batch come from the shared core functions so the GUI and the agent facade
  * behave identically.
+ *
+ * The multi-clip forms share the same commit discipline: a multi capture is
+ * ONE workAsset/create action (a multi asset is a single project entry —
+ * atomic by construction), and a multi instantiation expands to at most
+ * lanes + members actions (core caps: 32 + 64), far below
+ * MAX_ACTIONS_PER_BATCH — the guard below turns an out-of-range expansion
+ * into an explicit error instead of a silently truncated batch.
  */
 export function createWorkAssetsSlice(_set: Set, get: Get): WorkAssetsSlice {
   const commitSingleAction = async (
@@ -76,6 +96,42 @@ export function createWorkAssetsSlice(_set: Set, get: Get): WorkAssetsSlice {
     saveClipAsWorkAsset: async (clipId, options) => {
       const { project } = get();
       const captured = captureWorkAssetFromClip(project, clipId, {
+        createdBy: "user",
+        ...(options?.name !== undefined ? { name: options.name } : {}),
+      });
+      if (!captured.ok) return captured;
+      const action: Action = {
+        type: "workAsset/create",
+        id: uuidv4(),
+        timestamp: Date.now(),
+        params: { asset: captured.asset },
+      };
+      const result = await commitSingleAction(
+        action,
+        `Save work asset "${captured.asset.name}"`,
+      );
+      if (!result.success) {
+        return {
+          ok: false,
+          code: "INVALID_PARAMS",
+          message: result.error?.message ?? "workAsset/create failed",
+          ...(result.error?.details ? { details: result.error.details } : {}),
+        };
+      }
+      return captured;
+    },
+
+    saveClipsAsWorkAsset: async (clipIds, options) => {
+      const { project } = get();
+      if (clipIds.length < 2) {
+        return {
+          ok: false,
+          code: "INVALID_PARAMS",
+          message: "multi-clip capture requires at least 2 selected clips",
+          details: { clipIds: [...clipIds] },
+        };
+      }
+      const captured = captureWorkAssetFromClips(project, clipIds, {
         createdBy: "user",
         ...(options?.name !== undefined ? { name: options.name } : {}),
       });
@@ -137,6 +193,17 @@ export function createWorkAssetsSlice(_set: Set, get: Get): WorkAssetsSlice {
           ...(built.details ? { details: built.details } : {}),
         };
       }
+      // Multi expansions must stay inside the batch cap (core caps lanes at
+      // 32 and members at 64, so this is a guardrail, not the norm); exceeding
+      // it is an explicit error, never a truncated batch.
+      if (built.actions.length > MAX_ACTIONS_PER_BATCH) {
+        return {
+          ok: false,
+          code: "INVALID_PARAMS",
+          message: `work asset instantiation needs ${built.actions.length} actions; at most ${MAX_ACTIONS_PER_BATCH} are supported per batch`,
+          details: { workAssetId, actions: built.actions.length },
+        };
+      }
       const asset = (project.workAssets ?? []).find(
         (candidate) => candidate.id === workAssetId,
       );
@@ -160,6 +227,9 @@ export function createWorkAssetsSlice(_set: Set, get: Get): WorkAssetsSlice {
         trackId: built.trackId,
         clipId: built.clipId,
         createdTrack: built.createdTrack,
+        clipIds: built.clipIds,
+        trackIds: built.trackIds,
+        createdTrackCount: built.createdTrackCount,
       };
     },
   };

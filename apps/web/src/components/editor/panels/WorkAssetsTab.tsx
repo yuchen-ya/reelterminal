@@ -36,9 +36,33 @@ const formatDate = (timestamp: number): string => {
 
 const AUDIO_FILE_EXTENSIONS = /\.(mp3|wav|aac|flac|m4a|ogg)$/i;
 
+/**
+ * "2V+1A"-style summary of the member layout: the count of DISTINCT lanes per
+ * track type, in the order the asset's members first introduce them.
+ * Instantiation restores members by relative time and track relationships —
+ * the vertical order of freshly created lanes may differ from the source
+ * (see multiRestoreNote copy).
+ */
+const laneSummaryLabel = (asset: WorkAsset): string => {
+  const counts = new Map<string, number>();
+  const seenLanes = new Set<string>();
+  for (const member of asset.members ?? []) {
+    const laneKey = `${member.lane.trackType}:${member.lane.laneOffset}`;
+    if (seenLanes.has(laneKey)) continue;
+    seenLanes.add(laneKey);
+    const type = member.lane.trackType;
+    counts.set(type, (counts.get(type) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([type, count]) => `${count}${type[0].toUpperCase()}`)
+    .join("+");
+};
+
 const WorkAssetRow: React.FC<{
   asset: WorkAsset;
   missingSource: boolean;
+  /** Missing media references across the anchor + all members (multi). */
+  missingMediaCount: number;
   sourceName: string | null;
   onRename: (name: string) => Promise<boolean>;
   onDelete: () => void;
@@ -47,6 +71,7 @@ const WorkAssetRow: React.FC<{
 }> = ({
   asset,
   missingSource,
+  missingMediaCount,
   sourceName,
   onRename,
   onDelete,
@@ -125,6 +150,9 @@ const WorkAssetRow: React.FC<{
   const speed = snapshot?.speed;
   const effectCount =
     (snapshot?.effects.length ?? 0) + (snapshot?.audioEffects.length ?? 0);
+  const isMulti = asset.kind === "multi";
+  const memberCount = asset.members?.length ?? 0;
+  const laneSummary = isMulti ? laneSummaryLabel(asset) : null;
   const SourceIcon =
     missingSource || !sourceName
       ? AlertTriangle
@@ -187,6 +215,17 @@ const WorkAssetRow: React.FC<{
               {asset.name}
             </div>
           )}
+          {isMulti && (
+            <div
+              className="mt-0.5 inline-flex items-center gap-1 rounded bg-bg-2 px-1.5 py-0.5 text-[10px] font-medium text-fg-2 w-fit"
+              title={t("workAssets.multiRestoreNote")}
+            >
+              <span className="tabular-nums">
+                {t("workAssets.memberBadge", { count: memberCount })}
+              </span>
+              {laneSummary && <span className="text-fg-muted">· {laneSummary}</span>}
+            </div>
+          )}
           <div className="flex items-center gap-1.5 text-[10px] text-fg-muted flex-wrap">
             <span className="truncate max-w-[45%]" title={sourceName ?? undefined}>
               {missingSource
@@ -219,7 +258,11 @@ const WorkAssetRow: React.FC<{
           {missingSource && (
             <div className="flex items-center gap-1 mt-0.5 text-[10px] text-yellow-500">
               <AlertTriangle size={10} aria-hidden />
-              {t("workAssets.missingSource")}
+              {isMulti && missingMediaCount > 0
+                ? t("workAssets.missingMembersSource", {
+                    count: missingMediaCount,
+                  })
+                : t("workAssets.missingSource")}
             </div>
           )}
         </div>
@@ -232,7 +275,9 @@ const WorkAssetRow: React.FC<{
               title={
                 missingSource
                   ? t("workAssets.missingSource")
-                  : t("workAssets.addToTimeline")
+                  : isMulti
+                    ? t("workAssets.multiRestoreNote")
+                    : t("workAssets.addToTimeline")
               }
               disabled={missingSource}
               onClick={(e) => {
@@ -309,13 +354,30 @@ export const WorkAssetsTab: React.FC = () => {
     return map;
   }, [mediaItems]);
 
-  const missingSourceIds = useMemo(() => {
+  /**
+   * Missing-source state per asset. kind "single" only has the anchor media;
+   * kind "multi" turns yellow when the ANCHOR or ANY member's media is gone
+   * (instantiate is all-or-nothing, so a partial layout can never land).
+   * missingMediaCount tallies the missing references anchor-first; the multi
+   * anchor is also a member, so a missing anchor is counted in both terms.
+   */
+  const missingByAssetId = useMemo(() => {
     const liveIds = new Set(mediaItems.map((item) => item.id));
-    return new Set(
-      sortedAssets
-        .filter((asset) => !liveIds.has(asset.sourceMediaId))
-        .map((asset) => asset.id),
-    );
+    const map = new Map<
+      string,
+      { missingSource: boolean; missingMediaCount: number }
+    >();
+    for (const asset of sortedAssets) {
+      const anchorMissing = !liveIds.has(asset.sourceMediaId);
+      const memberMissing = (asset.members ?? []).filter(
+        (member) => !liveIds.has(member.mediaId),
+      ).length;
+      map.set(asset.id, {
+        missingSource: anchorMissing || memberMissing > 0,
+        missingMediaCount: (anchorMissing ? 1 : 0) + memberMissing,
+      });
+    }
+    return map;
   }, [sortedAssets, mediaItems]);
 
   const handleRename = useCallback(
@@ -448,7 +510,10 @@ export const WorkAssetsTab: React.FC = () => {
                 <WorkAssetRow
                   key={asset.id}
                   asset={asset}
-                  missingSource={missingSourceIds.has(asset.id)}
+                  missingSource={missingByAssetId.get(asset.id)?.missingSource ?? false}
+                  missingMediaCount={
+                    missingByAssetId.get(asset.id)?.missingMediaCount ?? 0
+                  }
                   sourceName={mediaNamesById.get(asset.sourceMediaId) ?? null}
                   onRename={(name) => handleRename(asset.id, name)}
                   onDelete={() => void handleDelete(asset)}

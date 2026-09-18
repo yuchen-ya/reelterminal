@@ -734,6 +734,82 @@ describe("live edit.apply", () => {
     expect(res.value.applied[3]).toEqual({ op: "clip.add", createdIds: [clipId] });
   });
 
+  it("workAsset multi expansion pins EVERY created lane and clip to the op", async () => {
+    // Seed one media item so clip.add has something to place.
+    store.project.mediaLibrary.items.push({
+      id: "m1",
+      name: "seed.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      metadata: {
+        duration: 6,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+        codec: "h264",
+        sampleRate: 48000,
+        channels: 2,
+        fileSize: 1024,
+      },
+      thumbnailUrl: null,
+      waveformData: null,
+    });
+    const facade = liveFacade();
+    const seeded = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v1" },
+        { op: "clip.add", trackId: "v1", mediaId: "m1", startTime: 0 },
+        { op: "track.add", trackType: "video", trackId: "v2" },
+        { op: "clip.add", trackId: "v2", mediaId: "m1", startTime: 1 },
+      ],
+    });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) return;
+    const c1 = seeded.value.applied[1]?.createdIds[0]!;
+    const c2 = seeded.value.applied[3]?.createdIds[0]!;
+
+    // Capture creates an ASSET, not timeline entities — no createdIds live.
+    const captured = await facade["edit.apply"]({
+      ops: [{ op: "workAsset.capture", clipIds: [c1, c2] }],
+    });
+    expect(captured.ok).toBe(true);
+    if (!captured.ok) return;
+    expect(captured.value.applied[0]).toEqual({
+      op: "workAsset.capture",
+      createdIds: [],
+    });
+    const assetId = store.project.workAssets?.[0]?.id;
+    expect(assetId).toBeDefined();
+
+    const res = await facade["edit.apply"]({
+      ops: [{ op: "workAsset.instantiate", workAssetId: assetId! }],
+    });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const applied = res.value.applied[0];
+    expect(applied.op).toBe("workAsset.instantiate");
+    // The multi expansion's whole batch belongs to THIS op: 2 new lanes
+    // first, then 2 clips — never handed to another op or dropped.
+    expect(applied.createdIds).toHaveLength(4);
+    const [laneA, laneB, clipA, clipB] = applied.createdIds;
+    const trackIds = store.project.timeline.tracks.map((track) => track.id);
+    expect(trackIds).toContain(laneA);
+    expect(trackIds).toContain(laneB);
+    expect(trackIds).not.toContain(clipA);
+    const flatClips = store.project.timeline.tracks.flatMap(
+      (track) => track.clips,
+    );
+    expect(flatClips.some((clip) => clip.id === clipA)).toBe(true);
+    expect(flatClips.some((clip) => clip.id === clipB)).toBe(true);
+    // Relative timing is preserved (seed spans: 0..(0+dur) and 1..(1+dur)).
+    const anchorClip = flatClips.find((clip) => clip.id === clipA)!;
+    const secondClip = flatClips.find((clip) => clip.id === clipB)!;
+    expect(
+      secondClip.startTime - anchorClip.startTime,
+    ).toBe(1);
+  });
+
   it("clip finishing ops move, split, retime and fade the canonical live project", async () => {
     store.project.mediaLibrary.items.push({
       id: "m1",
