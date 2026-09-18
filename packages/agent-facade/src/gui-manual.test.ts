@@ -34,6 +34,11 @@ describe("GUI manual version binding", () => {
     expect(GUI_MANUAL_CONTENT_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
+  it("pins the current content version (bump alongside real content changes)", () => {
+    // 1.1.0 = first delivered screenshot set (6 screens) on top of 1.0.3.
+    expect(GUI_MANUAL_CONTENT_VERSION).toBe("1.1.0");
+  });
+
   it("binds to the desktop application version, not the facade version", () => {
     // The desktop package.json is the app-version source the live endpoint
     // already advertises (app.getVersion()); the manual must mirror it.
@@ -109,12 +114,38 @@ describe("GUI manual content integrity", () => {
     }
   });
 
-  it("ships no placeholder screenshots — reserved means absent", () => {
+  it("delivers exactly the captured screens as PNG data URLs, others stay absent", () => {
+    // The delivered set is pinned: only screens with a REAL capture (V5 build
+    // b7fa4a3 evidence) may claim one — adding an id here without an asset in
+    // gui-manual-screenshots.ts (or vice versa) fails this test.
+    const deliveredIds = [
+      "keyboard-shortcuts",
+      "timeline",
+      "work-assets",
+      "voiceover-music-tasks",
+      "agent-session",
+      "export",
+    ];
+    const dataUrlPrefix = "data:image/png;base64,";
+    const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    let totalBytes = 0;
     for (const screen of GUI_MANUAL_SCREENS) {
-      if (screen.screenshot !== undefined) {
-        expect(screen.screenshot.length).toBeGreaterThan(0);
+      if (deliveredIds.includes(screen.id)) {
+        const screenshot = screen.screenshot;
+        expect(screenshot, `${screen.id} screenshot`).toBeDefined();
+        expect(screenshot!.startsWith(dataUrlPrefix), `${screen.id} is a PNG data URL`).toBe(true);
+        const bytes = Buffer.from(screenshot!.slice(dataUrlPrefix.length), "base64");
+        expect(bytes.subarray(0, 8).equals(pngMagic), `${screen.id} decodes to a PNG`).toBe(true);
+        expect(bytes.length, `${screen.id} payload is a real image`).toBeGreaterThan(10 * 1024);
+        totalBytes += screenshot!.length;
+      } else {
+        expect(screen.screenshot, `${screen.id} stays honestly absent`).toBeUndefined();
       }
     }
+    // The delivery must stay within the data-URL budget this form was chosen
+    // for (self-contained MCP payloads): 1MB across all screens.
+    expect(totalBytes).toBeLessThanOrEqual(1024 * 1024);
+    expect(deliveredIds).toHaveLength(6);
   });
 
   it("documents honest limitations on the screens that need them", () => {
@@ -156,9 +187,11 @@ describe("listManualScreens", () => {
     expect(result.screens).toHaveLength(GUI_MANUAL_SCREENS.length);
     expect(result.manual.contentVersion).toBe(GUI_MANUAL_CONTENT_VERSION);
     expect(result.manual.appVersion).toBe(GUI_MANUAL_APP_VERSION);
-    expect(result.manual.screenshots).toBe("reserved-not-delivered");
+    expect(result.manual.screenshots).toBe("delivered");
     for (const item of result.screens) {
-      expect(item.hasScreenshot).toBe(false);
+      expect(item.hasScreenshot).toBe(
+        ["keyboard-shortcuts", "timeline", "work-assets", "voiceover-music-tasks", "agent-session", "export"].includes(item.id),
+      );
       // Index payload stays restrained: identity + one-liners only, never
       // the page body fields.
       expect(Object.keys(item).sort()).toEqual(["hasScreenshot", "id", "summary", "title"]);
@@ -172,6 +205,15 @@ describe("describeManualScreen", () => {
     expect(result.screen.id).toBe("timeline");
     expect(result.screen.entry.length).toBeGreaterThan(0);
     expect(result.screen.shortcutIds).toContain("timeline.fitTimeline");
+    expect(result.screenshotStatus).toBe("available");
+  });
+
+  it("reports a screen without a delivered screenshot as pending", () => {
+    // "inspector" was NOT captured (the g14-04 evidence frame shows the
+    // work-assets tab with an empty inspector), so it must stay pending.
+    const result = describeManualScreen("inspector");
+    expect(result.screen.id).toBe("inspector");
+    expect(result.screen.screenshot).toBeUndefined();
     expect(result.screenshotStatus).toBe("pending");
   });
 

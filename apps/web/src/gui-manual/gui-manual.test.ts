@@ -61,7 +61,7 @@ describe("web bridge surface", () => {
     const capability = manualCapability();
     expect(capability.available).toBe(true);
     expect(capability.screenCount).toBe(GUI_MANUAL_SCREENS.length);
-    expect(capability.screenshots).toBe("reserved-not-delivered");
+    expect(capability.screenshots).toBe("delivered");
     expect(capability.languages).toEqual(["zh", "en"]);
   });
 

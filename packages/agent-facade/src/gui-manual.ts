@@ -23,13 +23,14 @@
  *    effect types. EFFECT_DEFINITIONS (packages/core/src/types/effects.ts)
  *    is the true source — core preset validation whitelists against it —
  *    and gui-manual.test.ts fails when this copy drifts from that set.
- *  - `screenshot` is reserved for a follow-up card that captures real
- *    screenshots. Absent means the help.describe answer says "pending";
- *    screens must never describe a screenshot that does not exist.
+ *  - `screenshot` carries a real capture (data URL delivered from
+ *    ./gui-manual-screenshots). Absent means the help.describe answer says
+ *    "pending"; screens must never describe a screenshot that does not exist.
  *  - Nothing here may claim a capability that does not exist. Limitations
  *    are part of the content.
  */
 import { FacadeError } from "./errors";
+import { GUI_MANUAL_SCREENSHOTS } from "./gui-manual-screenshots";
 import {
   isNonEmptyString,
   type ObjectSchema,
@@ -53,7 +54,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.0.3" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.1.0" as const;
 export const GUI_MANUAL_APP_VERSION = "1.0.0-alpha.10" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
@@ -239,6 +240,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       },
     ],
     keywords: ["shortcut", "keyboard", "keymap", "preset", "快捷键", "按键", "预设"],
+    screenshot: GUI_MANUAL_SCREENSHOTS["keyboard-shortcuts"],
   },
   {
     id: "timeline",
@@ -285,6 +287,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       "editing.delete",
     ],
     keywords: ["timeline", "zoom", "fit", "snap", "split", "trim", "track", "时间线", "缩放", "适配", "吸附", "分割", "修剪", "轨道"],
+    screenshot: GUI_MANUAL_SCREENSHOTS["timeline"],
   },
   {
     id: "track-headers",
@@ -384,6 +387,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       },
     ],
     keywords: ["work asset", "capture", "missingSource", "工作素材", "捕捉", "复用", "缺失"],
+    screenshot: GUI_MANUAL_SCREENSHOTS["work-assets"],
   },
   {
     id: "material-library",
@@ -581,6 +585,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       },
     ],
     keywords: ["voiceover", "tts", "music", "task", "retry", "cancel", "audition", "insert", "配音", "音乐", "任务", "重试", "取消", "试听", "插入"],
+    screenshot: GUI_MANUAL_SCREENSHOTS["voiceover-music-tasks"],
   },
   {
     id: "agent-session",
@@ -606,6 +611,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       },
     ],
     keywords: ["agent", "session", "conversation", "collaboration", "会话", "协作", "智能体"],
+    screenshot: GUI_MANUAL_SCREENSHOTS["agent-session"],
   },
   {
     id: "action-history",
@@ -680,6 +686,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       },
     ],
     keywords: ["export", "render", "mp4", "prores", "upscale", "导出", "渲染", "放大"],
+    screenshot: GUI_MANUAL_SCREENSHOTS["export"],
   },
   {
     id: "editor-tours",
@@ -752,7 +759,7 @@ export interface ManualListScreensResult {
 
 export interface ManualDescribeResult {
   readonly manual: ManualIndexMeta;
-  /** "pending" until the follow-up screenshot assets are delivered. */
+  /** "available" when the screen carries a delivered screenshot, else "pending". */
   readonly screenshotStatus: "pending" | "available";
   readonly screen: ManualScreen;
 }
