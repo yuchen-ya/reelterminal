@@ -827,4 +827,103 @@ describe("ProjectSerializer work assets", () => {
       "wa-shallow",
     ]);
   });
+
+  const makeMember = (overrides: Record<string, unknown> = {}) => ({
+    memberId: "m-1",
+    mediaId: "m1",
+    sourceRange: { inSec: 2, outSec: 6 },
+    relativeStart: 0,
+    lane: { trackType: "video", laneOffset: 0 },
+    snapshot: {
+      duration: 4,
+      inPoint: 2,
+      outPoint: 6,
+      effects: [],
+      audioEffects: [],
+      transform: {
+        position: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 },
+        rotation: 0,
+        anchor: { x: 0.5, y: 0.5 },
+        opacity: 1,
+      },
+      volume: 1,
+      keyframes: [],
+    },
+    ...overrides,
+  });
+
+  const makeMultiAsset = (overrides: Record<string, unknown> = {}) =>
+    makeWorkAsset({
+      kind: "multi",
+      name: "Composite",
+      clipSnapshot: undefined,
+      members: [makeMember()],
+      unsupportedParams: [],
+      ...overrides,
+    });
+
+  it("round-trips a kind multi asset with members and archived transitions", () => {
+    const serializer = new ProjectSerializer(new MemoryStorageEngine());
+    const multi = makeMultiAsset({
+      id: "wa-multi",
+      members: [
+        makeMember(),
+        makeMember({
+          memberId: "m-2",
+          mediaId: "m2",
+          relativeStart: 1.5,
+          lane: { trackType: "audio", laneOffset: 0 },
+        }),
+      ],
+      transitions: [
+        {
+          fromMemberId: "m-1",
+          toMemberId: "m-2",
+          type: "crossfade",
+          duration: 0.5,
+          params: { easing: "linear" },
+        },
+      ],
+    });
+    const project = makeProject({
+      workAssets: [makeWorkAsset(), multi],
+    } as unknown as Project);
+
+    const imported = serializer.importFromJson(serializer.exportToJson(project));
+
+    expect(imported.workAssets).toEqual(project.workAssets);
+  });
+
+  it("drops multi entries with malformed members (entry-level discard, one bad member is enough)", () => {
+    const serializer = new ProjectSerializer(new MemoryStorageEngine());
+    const project = makeProject({
+      workAssets: [
+        makeWorkAsset({ id: "wa-single" }),
+        makeMultiAsset({ id: "wa-bad-lane", members: [makeMember({ lane: { trackType: "text", laneOffset: 0 } })] }),
+        makeMultiAsset({ id: "wa-bad-range", members: [makeMember({ sourceRange: { inSec: 8, outSec: 2 } })] }),
+        makeMultiAsset({ id: "wa-negative-start", members: [makeMember({ relativeStart: -1 })] }),
+        makeMultiAsset({ id: "wa-no-snapshot", members: [makeMember({ snapshot: undefined })] }),
+        makeMultiAsset({ id: "wa-empty", members: [] }),
+        makeMultiAsset({ id: "wa-garbage", members: "nope" }),
+      ],
+    } as unknown as Project);
+
+    const imported = serializer.importFromJson(serializer.exportToJson(project));
+
+    expect(imported.workAssets?.map((asset) => asset.id)).toEqual(["wa-single"]);
+  });
+
+  it("enforces the kind/members pairing (multi without members, single with members)", () => {
+    const project = makeProject({
+      workAssets: [
+        makeWorkAsset({ kind: "multi", clipSnapshot: undefined }), // multi, no members
+        makeWorkAsset({ members: [makeMember()] }), // single with members
+      ],
+    } as unknown as Project);
+
+    const normalized = normalizeProjectWorkAssetFields(project);
+
+    expect(normalized.workAssets).toEqual([]);
+  });
 });

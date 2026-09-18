@@ -259,20 +259,88 @@ function isWorkAssetUnsupportedParamShape(value: unknown): boolean {
   );
 }
 
-function isWorkAssetShape(value: unknown): value is WorkAsset {
+function isWorkAssetSourceRangeShape(value: unknown): boolean {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const asset = value as Record<string, unknown>;
-  const range = asset.sourceRange as
-    | { inSec?: unknown; outSec?: unknown }
-    | undefined;
-  const rangeValid =
-    !!range &&
+  const range = value as { inSec?: unknown; outSec?: unknown };
+  return (
     typeof range.inSec === "number" &&
     Number.isFinite(range.inSec) &&
     range.inSec >= 0 &&
     typeof range.outSec === "number" &&
     Number.isFinite(range.outSec) &&
-    range.outSec > range.inSec;
+    range.outSec > range.inSec
+  );
+}
+
+function isWorkAssetMemberShape(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const member = value as Record<string, unknown>;
+  const lane = member.lane as { trackType?: unknown; laneOffset?: unknown } | undefined;
+  const laneValid =
+    !!lane &&
+    (lane.trackType === "video" ||
+      lane.trackType === "audio" ||
+      lane.trackType === "image") &&
+    typeof lane.laneOffset === "number" &&
+    Number.isInteger(lane.laneOffset) &&
+    lane.laneOffset >= 0;
+  return (
+    typeof member.memberId === "string" &&
+    member.memberId.length > 0 &&
+    typeof member.mediaId === "string" &&
+    member.mediaId.length > 0 &&
+    isWorkAssetSourceRangeShape(member.sourceRange) &&
+    typeof member.relativeStart === "number" &&
+    Number.isFinite(member.relativeStart) &&
+    member.relativeStart >= 0 &&
+    laneValid &&
+    !!member.snapshot &&
+    typeof member.snapshot === "object"
+  );
+}
+
+function isWorkAssetTransitionShape(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const transition = value as Record<string, unknown>;
+  return (
+    typeof transition.fromMemberId === "string" &&
+    transition.fromMemberId.length > 0 &&
+    typeof transition.toMemberId === "string" &&
+    transition.toMemberId.length > 0 &&
+    typeof transition.type === "string" &&
+    typeof transition.duration === "number" &&
+    Number.isFinite(transition.duration) &&
+    !!transition.params &&
+    typeof transition.params === "object" &&
+    !Array.isArray(transition.params)
+  );
+}
+
+function isWorkAssetMembersShape(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(isWorkAssetMemberShape)
+  );
+}
+
+function isWorkAssetShape(value: unknown): value is WorkAsset {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const asset = value as Record<string, unknown>;
+  const rangeValid = isWorkAssetSourceRangeShape(asset.sourceRange);
+  // Kind pairing: a "multi" entry must carry a non-empty members array of
+  // well-shaped members, and only a "multi" entry may carry members. An
+  // entry violating the pairing — or a members array with ONE malformed
+  // member — is dropped as a whole (the same conservative entry-level
+  // discard as every other invalid entry).
+  const membersValid =
+    asset.members === undefined
+      ? asset.kind !== "multi"
+      : isWorkAssetMembersShape(asset.members) && asset.kind === "multi";
+  const transitionsValid =
+    asset.transitions === undefined ||
+    (Array.isArray(asset.transitions) &&
+      asset.transitions.every(isWorkAssetTransitionShape));
   return (
     asset.schemaVersion === 1 &&
     typeof asset.id === "string" &&
@@ -294,7 +362,8 @@ function isWorkAssetShape(value: unknown): value is WorkAsset {
     asset.unsupportedParams.every(isWorkAssetUnsupportedParamShape) &&
     (asset.captureRequestId === undefined ||
       typeof asset.captureRequestId === "string") &&
-    (asset.members === undefined || Array.isArray(asset.members))
+    membersValid &&
+    transitionsValid
   );
 }
 

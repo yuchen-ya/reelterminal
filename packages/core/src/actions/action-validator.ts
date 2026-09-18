@@ -25,6 +25,7 @@ import type {
   Track,
   Clip,
 } from "../types";
+import { WORK_ASSET_MAX_MEMBERS } from "../types/work-asset";
 import { getActionHandler } from "./registry";
 
 export class ActionValidator {
@@ -780,6 +781,8 @@ export class ActionValidator {
           sourceMediaId?: unknown;
           sourceRange?: unknown;
           clipSnapshot?: unknown;
+          members?: unknown;
+          transitions?: unknown;
           unsupportedParams?: unknown;
           createdAt?: unknown;
           updatedAt?: unknown;
@@ -805,12 +808,24 @@ export class ActionValidator {
             path: "params.asset.id",
           });
         }
-        if (a.kind !== "single") {
+        if (a.kind !== "single" && a.kind !== "multi") {
           errors.push({
             code: "INVALID_PARAMS",
-            message:
-              'Work asset kind must be "single" (multi-clip capture is not available yet)',
+            message: 'Work asset kind must be "single" or "multi"',
             path: "params.asset.kind",
+          });
+        } else if (a.kind === "multi") {
+          // The multi layout is mutually exclusive with the single snapshot:
+          // members carry the per-clip snapshots, the top-level snapshot must
+          // be absent so the two shapes can never hybridize.
+          errors.push(
+            ...this.validateWorkAssetMembers(a, action, project),
+          );
+        } else if (a.members !== undefined) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: 'Work asset kind "single" must not carry a members array',
+            path: "params.asset.members",
           });
         }
         if (
@@ -872,7 +887,8 @@ export class ActionValidator {
         errors.push(
           ...this.validateWorkAssetUnsupportedParams(a.unsupportedParams),
         );
-        if (a.clipSnapshot !== undefined) {
+        errors.push(...this.validateWorkAssetTransitions(a.transitions));
+        if (a.clipSnapshot !== undefined && a.kind !== "multi") {
           errors.push(...this.validateWorkAssetClipSnapshot(a.clipSnapshot));
         }
         break;
@@ -931,9 +947,12 @@ export class ActionValidator {
     return errors;
   }
 
-  private validateWorkAssetSourceRange(range: unknown): ValidationError[] {
+  private validateWorkAssetSourceRange(
+    range: unknown,
+    basePath: string = "params.asset.sourceRange",
+  ): ValidationError[] {
     const errors: ValidationError[] = [];
-    const path = "params.asset.sourceRange";
+    const path = basePath;
     if (!range || typeof range !== "object" || Array.isArray(range)) {
       errors.push({
         code: "INVALID_PARAMS",
@@ -976,6 +995,220 @@ export class ActionValidator {
     return errors;
   }
 
+  /**
+   * Multi-asset members: count cap, unique memberIds, per-member media/range/
+   * lane/snapshot checks. The range and snapshot validators are the SAME wide
+   * checks used for single assets (deep parameter validation stays with the
+   * render engine). Media existence is a create-time concern only — a restored
+   * multi asset may legitimately reference media deleted after capture.
+   */
+  private validateWorkAssetMembers(
+    a: {
+      clipSnapshot?: unknown;
+      members?: unknown;
+    },
+    action: WorkAssetAction,
+    project: Project,
+  ): ValidationError[] {
+    const errors: ValidationError[] = [];
+    if (a.clipSnapshot !== undefined) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message:
+          'Work asset kind "multi" must not carry a single-clip clipSnapshot (per-clip snapshots live in members)',
+        path: "params.asset.clipSnapshot",
+      });
+    }
+    const members = a.members;
+    if (!Array.isArray(members) || members.length === 0) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message:
+          'Work asset kind "multi" requires a non-empty members array (multi-clip layout)',
+        path: "params.asset.members",
+      });
+      return errors;
+    }
+    if (members.length > WORK_ASSET_MAX_MEMBERS) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message: `Work asset kind "multi" supports at most ${WORK_ASSET_MAX_MEMBERS} members (got ${members.length})`,
+        path: "params.asset.members",
+      });
+    }
+    const seenMemberIds = new Set<string>();
+    members.forEach((member, index) => {
+      const path = `params.asset.members[${index}]`;
+      if (!member || typeof member !== "object" || Array.isArray(member)) {
+        errors.push({
+          code: "INVALID_PARAMS",
+          message: "Each work asset member must be an object",
+          path,
+        });
+        return;
+      }
+      const m = member as {
+        memberId?: unknown;
+        mediaId?: unknown;
+        sourceRange?: unknown;
+        relativeStart?: unknown;
+        lane?: unknown;
+        snapshot?: unknown;
+      };
+      if (typeof m.memberId !== "string" || m.memberId.length === 0) {
+        errors.push({
+          code: "INVALID_PARAMS",
+          message:
+            "Work asset member memberId is required and must be a non-empty string",
+          path: `${path}.memberId`,
+        });
+      } else if (seenMemberIds.has(m.memberId)) {
+        errors.push({
+          code: "INVALID_PARAMS",
+          message: `Work asset member memberId ${m.memberId} is not unique within the asset`,
+          path: `${path}.memberId`,
+        });
+      } else {
+        seenMemberIds.add(m.memberId);
+      }
+      if (
+        typeof m.mediaId !== "string" ||
+        m.mediaId.length === 0
+      ) {
+        errors.push({
+          code: "INVALID_PARAMS",
+          message:
+            "Work asset member mediaId is required and must be a non-empty string",
+          path: `${path}.mediaId`,
+        });
+      } else if (
+        action.type === "workAsset/create" &&
+        !project.mediaLibrary.items.some((item) => item.id === m.mediaId)
+      ) {
+        // Same create-time-only rule as the anchor media.
+        errors.push({
+          code: "MEDIA_NOT_FOUND",
+          message: `Member ${index} media ${m.mediaId} not found`,
+          path: `${path}.mediaId`,
+        });
+      }
+      errors.push(...this.validateWorkAssetSourceRange(m.sourceRange, path));
+      if (
+        typeof m.relativeStart !== "number" ||
+        !Number.isFinite(m.relativeStart) ||
+        m.relativeStart < 0
+      ) {
+        errors.push({
+          code: "INVALID_PARAMS",
+          message:
+            "Work asset member relativeStart must be a non-negative finite number",
+          path: `${path}.relativeStart`,
+        });
+      }
+      errors.push(...this.validateWorkAssetMemberLane(m.lane, path));
+      if (m.snapshot === undefined) {
+        errors.push({
+          code: "INVALID_PARAMS",
+          message: "Work asset member snapshot is required",
+          path: `${path}.snapshot`,
+        });
+      } else {
+        errors.push(
+          ...this.validateWorkAssetClipSnapshot(m.snapshot, `${path}.snapshot`),
+        );
+      }
+    });
+    return errors;
+  }
+
+  private validateWorkAssetMemberLane(
+    lane: unknown,
+    basePath: string,
+  ): ValidationError[] {
+    const errors: ValidationError[] = [];
+    const path = `${basePath}.lane`;
+    if (!lane || typeof lane !== "object" || Array.isArray(lane)) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message: "Work asset member lane must be an object",
+        path,
+      });
+      return errors;
+    }
+    const l = lane as { trackType?: unknown; laneOffset?: unknown };
+    if (
+      l.trackType !== "video" &&
+      l.trackType !== "audio" &&
+      l.trackType !== "image"
+    ) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message:
+          'Work asset member lane trackType must be "video", "audio", or "image"',
+        path: `${path}.trackType`,
+      });
+    }
+    if (
+      typeof l.laneOffset !== "number" ||
+      !Number.isInteger(l.laneOffset) ||
+      l.laneOffset < 0 ||
+      l.laneOffset > 31
+    ) {
+      errors.push({
+        code: "INVALID_PARAMS",
+        message:
+          "Work asset member lane laneOffset must be an integer between 0 and 31",
+        path: `${path}.laneOffset`,
+      });
+    }
+    return errors;
+  }
+
+  private validateWorkAssetTransitions(value: unknown): ValidationError[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value)) {
+      return [
+        {
+          code: "INVALID_PARAMS",
+          message: "Work asset transitions must be an array",
+          path: "params.asset.transitions",
+        },
+      ];
+    }
+    const valid = value.every((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return false;
+      }
+      const e = entry as {
+        fromMemberId?: unknown;
+        toMemberId?: unknown;
+        type?: unknown;
+        duration?: unknown;
+        params?: unknown;
+      };
+      return (
+        typeof e.fromMemberId === "string" &&
+        typeof e.toMemberId === "string" &&
+        typeof e.type === "string" &&
+        typeof e.duration === "number" &&
+        Number.isFinite(e.duration) &&
+        !!e.params &&
+        typeof e.params === "object" &&
+        !Array.isArray(e.params)
+      );
+    });
+    return valid
+      ? []
+      : [
+          {
+            code: "INVALID_PARAMS",
+            message:
+              "Each work asset transition must reference two member ids with string type, finite duration, and object params",
+            path: "params.asset.transitions",
+          },
+        ];
+  }
+
   private validateWorkAssetUnsupportedParams(
     value: unknown,
   ): ValidationError[] {
@@ -1014,9 +1247,10 @@ export class ActionValidator {
    */
   private validateWorkAssetClipSnapshot(
     snapshot: unknown,
+    basePath: string = "params.asset.clipSnapshot",
   ): ValidationError[] {
     const errors: ValidationError[] = [];
-    const path = "params.asset.clipSnapshot";
+    const path = basePath;
     if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
       errors.push({
         code: "INVALID_PARAMS",

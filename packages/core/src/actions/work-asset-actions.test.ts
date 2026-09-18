@@ -4,7 +4,7 @@ import { ActionHistory } from "./action-history";
 import { InverseActionGenerator } from "./inverse-action-generator";
 import { ActionValidator } from "./action-validator";
 import type { Action } from "../types/actions";
-import type { Project, WorkAsset } from "../types";
+import type { Project, WorkAsset, WorkAssetMember } from "../types";
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
@@ -235,6 +235,215 @@ describe("workAsset/create", () => {
     expect(messages).toContain("outPoint");
     expect(messages).toContain("effects");
     expect(messages).toContain("transform");
+  });
+});
+
+describe("workAsset/create kind multi", () => {
+  const makeMember = (
+    overrides: Partial<WorkAssetMember> = {},
+  ): WorkAssetMember => ({
+    memberId: "m-1",
+    mediaId: "m1",
+    sourceRange: { inSec: 2, outSec: 6 },
+    relativeStart: 0,
+    lane: { trackType: "video", laneOffset: 0 },
+    snapshot: {
+      duration: 4,
+      inPoint: 2,
+      outPoint: 6,
+      effects: [],
+      audioEffects: [],
+      transform: {
+        position: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 },
+        rotation: 0,
+        anchor: { x: 0.5, y: 0.5 },
+        opacity: 1,
+      },
+      volume: 1,
+      keyframes: [],
+    },
+    ...overrides,
+  });
+
+  const makeMultiAsset = (overrides: Partial<WorkAsset> = {}): WorkAsset =>
+    makeAsset({
+      kind: "multi",
+      name: "Composite",
+      clipSnapshot: undefined,
+      members: [makeMember()],
+      unsupportedParams: [],
+      ...overrides,
+    }) as WorkAsset;
+
+  it("accepts a well-formed multi asset through validator and executor", async () => {
+    const asset = makeMultiAsset({
+      members: [
+        makeMember(),
+        makeMember({
+          memberId: "m-2",
+          mediaId: "m1",
+          relativeStart: 1.5,
+          lane: { trackType: "audio", laneOffset: 0 },
+        }),
+      ],
+      transitions: [
+        {
+          fromMemberId: "m-1",
+          toMemberId: "m-2",
+          type: "crossfade",
+          duration: 0.5,
+          params: {},
+        },
+      ],
+    });
+    const validation = new ActionValidator().validate(
+      action("workAsset/create", { asset }),
+      makeProject(),
+    );
+    expect(validation.valid).toBe(true);
+    expect(validation.errors).toEqual([]);
+
+    const executor = new ActionExecutor();
+    const project = makeProject();
+    const result = await executor.execute(
+      action("workAsset/create", { asset }),
+      project,
+    );
+    expect(result.success).toBe(true);
+    expect(project.workAssets?.[0]?.kind).toBe("multi");
+  });
+
+  it("rejects a multi asset that carries a single-clip snapshot", async () => {
+    const executor = new ActionExecutor();
+    const result = await executor.execute(
+      action("workAsset/create", {
+        asset: makeMultiAsset({ clipSnapshot: makeAsset().clipSnapshot }),
+      }),
+      makeProject(),
+    );
+    expect(result.success).toBe(false);
+    expect(result.error?.message).toContain("clipSnapshot");
+  });
+
+  it("rejects a single asset that carries a members array", async () => {
+    const executor = new ActionExecutor();
+    const result = await executor.execute(
+      action("workAsset/create", {
+        asset: makeAsset({ members: [makeMember()] }),
+      }),
+      makeProject(),
+    );
+    expect(result.success).toBe(false);
+    expect(result.error?.message).toContain('kind "single" must not carry');
+  });
+
+  it("rejects duplicate memberIds, bad lanes, negative relativeStart, and malformed member snapshots", async () => {
+    const cases: Array<[string, WorkAsset, string]> = [
+      [
+        "duplicate memberId",
+        makeMultiAsset({
+          members: [makeMember(), makeMember({ memberId: "m-1" })],
+        }),
+        "not unique",
+      ],
+      [
+        "bad lane trackType",
+        makeMultiAsset({
+          members: [
+            makeMember({ lane: { trackType: "text" as never, laneOffset: 0 } }),
+          ],
+        }),
+        "trackType",
+      ],
+      [
+        "bad lane offset",
+        makeMultiAsset({
+          members: [makeMember({ lane: { trackType: "video", laneOffset: 1.5 } })],
+        }),
+        "laneOffset",
+      ],
+      [
+        "negative relativeStart",
+        makeMultiAsset({ members: [makeMember({ relativeStart: -0.5 })] }),
+        "relativeStart",
+      ],
+      [
+        "member range out <= in",
+        makeMultiAsset({
+          members: [makeMember({ sourceRange: { inSec: 6, outSec: 2 } })],
+        }),
+        "greater than inSec",
+      ],
+      [
+        "member snapshot malformed",
+        makeMultiAsset({
+          members: [
+            makeMember({
+              snapshot: {
+                ...(makeMember().snapshot as object),
+                speed: 0,
+              } as WorkAssetMember["snapshot"],
+            }),
+          ],
+        }),
+        "speed",
+      ],
+      [
+        "member mediaId empty",
+        makeMultiAsset({ members: [makeMember({ mediaId: "" })] }),
+        "mediaId is required",
+      ],
+    ];
+    for (const [label, asset, message] of cases) {
+      const executor = new ActionExecutor();
+      const result = await executor.execute(
+        action("workAsset/create", { asset }),
+        makeProject(),
+      );
+      expect(result.success, label).toBe(false);
+      expect(result.error?.message, label).toContain(message);
+    }
+  });
+
+  it("rejects more members than the 64 cap", async () => {
+    const members = Array.from({ length: 65 }, (_, index) =>
+      makeMember({ memberId: `m-${index}` }),
+    );
+    const executor = new ActionExecutor();
+    const result = await executor.execute(
+      action("workAsset/create", {
+        asset: makeMultiAsset({
+          members: members as unknown as WorkAssetMember[],
+        }),
+      }),
+      makeProject(),
+    );
+    expect(result.success).toBe(false);
+    expect(result.error?.message).toContain("at most 64 members");
+  });
+
+  it("checks member media existence at create time but not at restore time", async () => {
+    const executor = new ActionExecutor();
+    const asset = makeMultiAsset({
+      members: [makeMember({ mediaId: "deleted-media" })],
+    });
+
+    const create = await executor.execute(
+      action("workAsset/create", { asset }),
+      makeProject(),
+    );
+    expect(create.success).toBe(false);
+    expect(create.error?.message).toContain("Member 0 media deleted-media not found");
+
+    const restoreExecutor = new ActionExecutor();
+    const restoreProject = makeProject();
+    const restore = await restoreExecutor.execute(
+      action("workAsset/restore", { asset }),
+      restoreProject,
+    );
+    expect(restore.success).toBe(true);
+    expect(restoreProject.workAssets?.[0]?.kind).toBe("multi");
   });
 });
 

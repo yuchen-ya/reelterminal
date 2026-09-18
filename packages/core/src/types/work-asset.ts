@@ -77,19 +77,90 @@ export interface WorkAssetClipSnapshot {
   readonly audioTrackIndex?: number;
 }
 
+/** Upper bound on members of one multi work asset (also the capture-set cap). */
+export const WORK_ASSET_MAX_MEMBERS = 64;
+/** Upper bound on distinct lanes a multi work asset expands onto. */
+export const WORK_ASSET_MAX_LANES = 32;
+
+/** Relative lane coordinate: track type plus the index within same-type lanes. */
+export interface WorkAssetMemberLane {
+  readonly trackType: "video" | "audio" | "image";
+  /** Integer 0..31; the anchor member's lane is always offset 0. */
+  readonly laneOffset: number;
+}
+
+/**
+ * One member of a multi work asset: a single-clip snapshot plus its position
+ * in the shared relative layout. Instance identity (clip id/trackId/absolute
+ * startTime) is minted at instantiate time and never persisted here.
+ */
+export interface WorkAssetMember {
+  /** Unique identity inside the capture set (minted as `m-<uuid>`). */
+  readonly memberId: string;
+  /** The member's own project media reference; bytes are never duplicated. */
+  readonly mediaId: string;
+  /** The member's own trim range within its source media (0 ≤ inSec < outSec). */
+  readonly sourceRange: WorkAssetSourceRange;
+  /**
+   * member.startTime − T0 (T0 = the earliest startTime in the capture set), in
+   * timeline seconds (speed-adjusted, same coordinate system as
+   * snapshot.duration). Finite and ≥ 0.
+   */
+  readonly relativeStart: number;
+  /** Relative lane: track type + index among same-type lanes; never a trackId. */
+  readonly lane: WorkAssetMemberLane;
+  /** Same snapshot structure as kind "single" (including strip accounting). */
+  readonly snapshot: WorkAssetClipSnapshot;
+}
+
+/**
+ * A transition between two members captured by reference: both endpoint clips
+ * were inside the capture set, so the intent is archived against the stable
+ * memberIds (never instance clip ids). Instantiate does not replay archived
+ * transitions yet — this archive is the record that they exist; only
+ * transitions that could NOT be archived (single-sided edge, endpoints
+ * outside the set) are declared in `unsupportedParams`.
+ */
+export interface WorkAssetMemberTransition {
+  readonly fromMemberId: string;
+  readonly toMemberId: string;
+  readonly type: string;
+  readonly duration: number;
+  readonly params: Record<string, unknown>;
+}
+
 export interface WorkAsset {
   readonly schemaVersion: 1;
   /** Stable operational identity; never reused after deletion. */
   readonly id: string;
-  /** "single" today; "multi" (relative multi-clip layout) is reserved. */
+  /** "single" = one clip snapshot; "multi" = relative multi-clip layout. */
   readonly kind: "single" | "multi";
   /** Search key only — names are not unique and are never an identity. */
   readonly name: string;
-  /** Referenced project media; bytes are never duplicated. */
+  /**
+   * Anchor media of the asset; bytes are never duplicated. For "single" this
+   * is the captured clip's media; for "multi" it is the ANCHOR member's media
+   * (the member with relativeStart 0, i.e. the T0 time anchor). The full
+   * cross-track layout lives in `members`. Both this and `sourceRange` stay
+   * required for both kinds — a compatibility anchor so storage, retention,
+   * and query paths never branch on kind.
+   */
   readonly sourceMediaId: string;
   readonly sourceRange: WorkAssetSourceRange;
-  /** Present for kind "single"; absent for the reserved "multi" layout. */
+  /** Required for kind "single"; must be absent for kind "multi". */
   readonly clipSnapshot?: WorkAssetClipSnapshot;
+  /**
+   * Required (non-empty) for kind "multi"; must be absent for kind "single".
+   * The first condition of the multi layout is that both shape variants stay
+   * mutually exclusive so dirty data can never hybridize.
+   */
+  readonly members?: readonly WorkAssetMember[];
+  /**
+   * Member-to-member transitions captured by reference (both endpoints inside
+   * the capture set). Absent = none captured. Transitions touching clips
+   * OUTSIDE the set are stripped and declared in `unsupportedParams` instead.
+   */
+  readonly transitions?: readonly WorkAssetMemberTransition[];
   /** Parameters explicitly not captured (never silently dropped). */
   readonly unsupportedParams: readonly WorkAssetUnsupportedParam[];
   /** Echo of the facade idempotency key that produced this asset, if any. */

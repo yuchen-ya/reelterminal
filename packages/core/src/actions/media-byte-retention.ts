@@ -66,12 +66,13 @@ export function historyRetainsMediaBytes(
 
 /**
  * Whether a persisted work asset in `project` references `mediaId`. A work
- * asset keeps pointing at its source media even after the media item is
- * removed from the library (missingSource is a legal persistent state), so its
- * bytes must not be reclaimed while the asset can still be undone back into a
- * project that contains them. Multi-clip assets (the reserved "multi" kind,
- * not produced yet) will extend this to `members[].mediaId` — keep that anchor
- * when evolving the shape.
+ * asset keeps pointing at its media even after the media item is removed from
+ * the library (missingSource is a legal persistent state), so bytes must not
+ * be reclaimed while the asset can still be undone back into a project that
+ * contains them. Both shapes are covered: the top-level anchor reference
+ * (kind "single", and the anchor member of kind "multi") and every entry of
+ * `members[].mediaId` — a multi asset stays reusable only while ALL member
+ * media survive, so one member's media is enough to retain the bytes.
  */
 export function projectRetainsWorkAssetMediaBytes(
   project: Pick<Project, "workAssets">,
@@ -79,5 +80,15 @@ export function projectRetainsWorkAssetMediaBytes(
 ): boolean {
   const assets = project.workAssets;
   if (!Array.isArray(assets)) return false;
-  return assets.some((asset) => asset.sourceMediaId === mediaId);
+  return assets.some(
+    (asset) =>
+      asset.sourceMediaId === mediaId ||
+      (Array.isArray(asset.members) &&
+        asset.members.some(
+          (member) =>
+            !!member &&
+            typeof member === "object" &&
+            (member as { mediaId?: unknown }).mediaId === mediaId,
+        )),
+  );
 }

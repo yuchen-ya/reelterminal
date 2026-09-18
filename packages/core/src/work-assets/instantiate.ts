@@ -1,30 +1,54 @@
 import type { Action } from "../types/actions";
 import type { Clip } from "../types/timeline";
 import type { Project } from "../types/project";
-import type { WorkAsset } from "../types/work-asset";
+import type {
+  WorkAsset,
+  WorkAssetClipSnapshot,
+  WorkAssetMember,
+  WorkAssetMemberLane,
+} from "../types/work-asset";
+import {
+  WORK_ASSET_MAX_LANES,
+  WORK_ASSET_MAX_MEMBERS,
+} from "../types/work-asset";
 
 /**
  * Work-asset instantiation as an action batch. The returned actions follow
- * the material-library attach pattern: an optional `track/add` for a freshly
- * pre-allocated lane, then one `clip/add` carrying a full `sourceClip` built
- * from the asset's snapshot — core clones it and injects the instance identity
- * (id/trackId/startTime), so editing the instance can never reach back into
- * the asset entry. No media import is needed: the clip references the same
- * `sourceMediaId` the asset already points at (bytes are never duplicated).
+ * the material-library attach pattern: `track/add` for freshly pre-allocated
+ * lanes, then `clip/add` entries carrying full `sourceClip`s built from the
+ * snapshot(s) — core clones them and injects the instance identity
+ * (id/trackId/startTime), so editing an instance can never reach back into
+ * the asset entry. No media import is needed: clips reference the same media
+ * ids the asset already points at (bytes are never duplicated).
  *
- * The batch is submitted as ONE group (single undo unit, all-or-nothing) by
- * the caller; ids are pre-allocated here so dry-run and live commits pin the
- * same identities.
+ * kind "single" builds one clip (legacy result fields kept); kind "multi"
+ * expands the relative member layout onto one lane per (trackType, laneOffset)
+ * — the anchor lane may reuse `options.trackId`, every other lane is a fresh
+ * track. The batch is submitted as ONE group (single undo unit,
+ * all-or-nothing) by the caller; ids are pre-allocated here so dry-run and
+ * live commits pin the same identities.
  */
 
 export type WorkAssetInstantiateResult =
   | {
       readonly ok: true;
       readonly actions: readonly Action[];
+      /**
+       * kind "single": the single target lane. kind "multi": the anchor lane
+       * (the lane with the anchor member's trackType and laneOffset 0) — the
+       * lane `options.trackId` binds to. Not necessarily `trackIds[0]`, which
+       * follows track/add emission order.
+       */
       readonly trackId: string;
+      /** kind "single": the one instance clip. kind "multi": the anchor clip. */
       readonly clipId: string;
-      /** True when the batch starts with a track/add for a new lane. */
+      /** True when the batch contains at least one track/add. */
       readonly createdTrack: boolean;
+      /** Every instantiated clip id, in member order for "multi". */
+      readonly clipIds: readonly string[];
+      /** Every lane the batch touches, in track/add emission order for "multi". */
+      readonly trackIds: readonly string[];
+      readonly createdTrackCount: number;
     }
   | {
       readonly ok: false;
@@ -107,14 +131,21 @@ function isSnapshotShapeValid(snapshot: WorkAsset["clipSnapshot"]): boolean {
   return true;
 }
 
+/**
+ * Shared snapshot→Clip builder for both kinds. The parameter shape is the
+ * generalized form of the original single-asset helper: the single path calls
+ * it with (asset.clipSnapshot, asset.sourceMediaId) and its output is
+ * preserved verbatim; multi passes each member's snapshot and mediaId.
+ * Everything cloneable is deep-cloned so no instance aliases asset data.
+ */
 function buildClipFromSnapshot(
-  asset: WorkAsset,
+  snapshot: WorkAssetClipSnapshot,
+  mediaId: string,
   overrides: { id: string; trackId: string; startTime: number },
 ): Clip {
-  const snapshot = asset.clipSnapshot!;
   return {
     id: overrides.id,
-    mediaId: asset.sourceMediaId,
+    mediaId,
     trackId: overrides.trackId,
     startTime: overrides.startTime,
     duration: snapshot.duration,
@@ -175,9 +206,10 @@ function buildClipFromSnapshot(
 }
 
 /**
- * Build the instantiation action batch for one single-clip work asset.
- * The asset entry itself is never modified: repeated instantiation keeps
- * producing fresh independent clips from the same snapshot.
+ * Build the instantiation action batch for a work asset. kind "single" keeps
+ * the legacy single-clip path; kind "multi" expands the relative member
+ * layout. The asset entry itself is never modified: repeated instantiation
+ * keeps producing fresh independent clips from the same snapshot(s).
  */
 export function buildWorkAssetInstantiateActions(
   project: Project,
@@ -194,6 +226,9 @@ export function buildWorkAssetInstantiateActions(
       message: `work asset "${workAssetId}" not found`,
       details: { workAssetId },
     };
+  }
+  if (asset.kind === "multi") {
+    return buildMultiInstantiateActions(project, asset, options);
   }
   if (asset.kind !== "single" || !asset.clipSnapshot) {
     return {
@@ -275,7 +310,7 @@ export function buildWorkAssetInstantiateActions(
     };
   }
 
-  const clip = buildClipFromSnapshot(asset, {
+  const clip = buildClipFromSnapshot(asset.clipSnapshot, asset.sourceMediaId, {
     id: clipId,
     trackId,
     startTime,
@@ -304,5 +339,322 @@ export function buildWorkAssetInstantiateActions(
       },
     },
   ];
-  return { ok: true, actions, trackId, clipId, createdTrack };
+  return {
+    ok: true,
+    actions,
+    trackId,
+    clipId,
+    createdTrack,
+    clipIds: [clipId],
+    trackIds: [trackId],
+    createdTrackCount: createdTrack ? 1 : 0,
+  };
+}
+
+/** Emission order of lanes in the multi batch: video, then audio, then image. */
+const LANE_TYPE_ORDER: Array<WorkAssetMemberLane["trackType"]> = [
+  "video",
+  "audio",
+  "image",
+];
+
+interface LanePlanEntry {
+  readonly trackType: WorkAssetMemberLane["trackType"];
+  readonly laneOffset: number;
+  readonly trackId: string;
+  readonly created: boolean;
+}
+
+/**
+ * Multi-asset expansion: relative → absolute. Everything below happens BEFORE
+ * any action is built — any failure produces NO actions (all-or-nothing).
+ *
+ * 1. Envelope: members complete (count cap, unique memberIds, sane lanes and
+ *    relativeStarts, per-member snapshot shape).
+ * 2. missingSource is all-or-nothing: one missing member media rejects the
+ *    whole expansion with the full missing list (a partial layout would
+ *    silently misrepresent the asset).
+ * 3. Lane mapping: one lane per distinct (trackType, laneOffset). The anchor
+ *    lane — the anchor member's trackType at offset 0 — may reuse
+ *    `options.trackId`; every other lane is always a fresh track (same
+ *    convention as single attach: never occupy the user's existing tracks
+ *    implicitly). track/add is emitted video lanes asc → audio asc → image asc.
+ * 4. Time expansion: anchorTime = `options.startTime` ?? timeline end; each
+ *    member lands at anchorTime + relativeStart (relative timing preserved
+ *    verbatim — no cross-fade synthesis, no re-alignment).
+ */
+function buildMultiInstantiateActions(
+  project: Project,
+  asset: WorkAsset,
+  options: InstantiateWorkAssetOptions,
+): WorkAssetInstantiateResult {
+  const members = asset.members;
+  if (asset.clipSnapshot !== undefined) {
+    return {
+      ok: false,
+      code: "INVALID_PARAMS",
+      message: `work asset "${asset.name}" (${asset.id}) is kind "multi" but carries a single-clip snapshot — the entry is malformed`,
+      details: { workAssetId: asset.id },
+    };
+  }
+  if (!Array.isArray(members) || members.length === 0) {
+    return {
+      ok: false,
+      code: "INVALID_PARAMS",
+      message: `work asset "${asset.name}" (${asset.id}) is kind "multi" but carries no members — the entry is malformed`,
+      details: { workAssetId: asset.id },
+    };
+  }
+  // Array.isArray narrows readonly arrays to any[]; re-anchor the type.
+  const memberList = members as readonly WorkAssetMember[];
+  if (memberList.length > WORK_ASSET_MAX_MEMBERS) {
+    return {
+      ok: false,
+      code: "INVALID_PARAMS",
+      message: `work asset "${asset.name}" (${asset.id}) carries ${memberList.length} members; at most ${WORK_ASSET_MAX_MEMBERS} are supported`,
+      details: { workAssetId: asset.id },
+    };
+  }
+
+  // Envelope checks mirroring the create-time member validator.
+  const issues: string[] = [];
+  const seenMemberIds = new Set<string>();
+  for (let index = 0; index < memberList.length; index++) {
+    const member = memberList[index];
+    const label = `members[${index}]`;
+    if (!member || typeof member !== "object") {
+      issues.push(`${label} must be an object`);
+      continue;
+    }
+    if (typeof member.memberId !== "string" || member.memberId.length === 0) {
+      issues.push(`${label}.memberId must be a non-empty string`);
+    } else if (seenMemberIds.has(member.memberId)) {
+      issues.push(`${label}.memberId "${member.memberId}" is not unique`);
+    } else {
+      seenMemberIds.add(member.memberId);
+    }
+    if (typeof member.mediaId !== "string" || member.mediaId.length === 0) {
+      issues.push(`${label}.mediaId must be a non-empty string`);
+    }
+    if (
+      typeof member.relativeStart !== "number" ||
+      !Number.isFinite(member.relativeStart) ||
+      member.relativeStart < 0
+    ) {
+      issues.push(`${label}.relativeStart must be a finite number >= 0`);
+    }
+    const lane = member.lane as WorkAssetMemberLane | undefined;
+    if (
+      !lane ||
+      typeof lane !== "object" ||
+      (lane.trackType !== "video" &&
+        lane.trackType !== "audio" &&
+        lane.trackType !== "image") ||
+      typeof lane.laneOffset !== "number" ||
+      !Number.isInteger(lane.laneOffset) ||
+      lane.laneOffset < 0 ||
+      lane.laneOffset > 31
+    ) {
+      issues.push(
+        `${label}.lane must be { trackType: "video"|"audio"|"image", laneOffset: integer 0..31 }`,
+      );
+    }
+    if (!isSnapshotShapeValid(member.snapshot)) {
+      issues.push(`${label}.snapshot is malformed`);
+    }
+  }
+  if (issues.length > 0) {
+    return {
+      ok: false,
+      code: "INVALID_PARAMS",
+      message: `work asset "${asset.name}" (${asset.id}) carries malformed members — the asset cannot be instantiated`,
+      details: { workAssetId: asset.id, issues },
+    };
+  }
+
+  // All-or-nothing media check with a per-member missing list.
+  const missingMembers: Array<{ memberIndex: number; mediaId: string }> = [];
+  memberList.forEach((member, memberIndex) => {
+    if (
+      !project.mediaLibrary.items.some((item) => item.id === member.mediaId)
+    ) {
+      missingMembers.push({ memberIndex, mediaId: member.mediaId });
+    }
+  });
+  if (missingMembers.length > 0) {
+    return {
+      ok: false,
+      code: "MEDIA_NOT_FOUND",
+      message: `work asset "${asset.name}" (${asset.id}) cannot be instantiated: ${missingMembers.length} of ${members.length} members reference media that is no longer in the project library`,
+      details: { workAssetId: asset.id, missingMembers },
+    };
+  }
+
+  // Deterministic member order (same tie-break family as capture): relativeStart, then lane, then memberId.
+  const typeRank: Record<WorkAssetMemberLane["trackType"], number> = {
+    video: 0,
+    audio: 1,
+    image: 2,
+  };
+  const sortedMembers = [...memberList].sort(
+    (a, b) =>
+      a.relativeStart - b.relativeStart ||
+      typeRank[a.lane.trackType] - typeRank[b.lane.trackType] ||
+      a.lane.laneOffset - b.lane.laneOffset ||
+      (a.memberId < b.memberId ? -1 : a.memberId > b.memberId ? 1 : 0),
+  );
+
+  // Anchor = the member at relativeStart 0 (the T0 time anchor); its track
+  // type is the anchor lane's type. Capture always produces one, but a
+  // hand-written layout may have no member at exactly 0 — fall back to the
+  // earliest member instead of rejecting the asset.
+  const anchorMember =
+    members.find((member) => member.relativeStart === 0) ?? sortedMembers[0];
+  const anchorLaneType = anchorMember.lane.trackType;
+
+  // Distinct lanes; count cap guards the batch size (lanes + members).
+  const lanePlan = new Map<string, LanePlanEntry>();
+  for (const member of memberList) {
+    const key = `${member.lane.trackType}:${member.lane.laneOffset}`;
+    if (!lanePlan.has(key)) {
+      lanePlan.set(key, {
+        trackType: member.lane.trackType,
+        laneOffset: member.lane.laneOffset,
+        trackId: `track-${crypto.randomUUID()}`,
+        created: true,
+      });
+    }
+  }
+  if (lanePlan.size > WORK_ASSET_MAX_LANES) {
+    return {
+      ok: false,
+      code: "INVALID_PARAMS",
+      message: `work asset "${asset.name}" (${asset.id}) spans ${lanePlan.size} lanes; at most ${WORK_ASSET_MAX_LANES} are supported`,
+      details: { workAssetId: asset.id },
+    };
+  }
+
+  // options.trackId binds the ANCHOR lane only; every other lane stays fresh.
+  const anchorKey = `${anchorLaneType}:0`;
+  if (options.trackId !== undefined) {
+    const track = project.timeline.tracks.find(
+      (candidate) => candidate.id === options.trackId,
+    );
+    if (!track) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: `track "${options.trackId}" not found`,
+        details: { trackId: options.trackId },
+      };
+    }
+    if (track.type !== anchorLaneType) {
+      return {
+        ok: false,
+        code: "CONFLICT",
+        message: `track "${options.trackId}" is a ${track.type} track, but the work asset's anchor lane is ${anchorLaneType}`,
+        details: {
+          trackId: options.trackId,
+          trackType: track.type,
+          anchorLaneType,
+        },
+      };
+    }
+    const anchorEntry = lanePlan.get(anchorKey);
+    if (anchorEntry) {
+      lanePlan.set(anchorKey, { ...anchorEntry, trackId: options.trackId, created: false });
+    } else {
+      // No member occupies the anchor lane slot (hand-written layout); still
+      // honour the explicit binding without emitting a dangling track/add.
+      lanePlan.set(anchorKey, {
+        trackType: anchorLaneType,
+        laneOffset: 0,
+        trackId: options.trackId,
+        created: false,
+      });
+    }
+  }
+
+  const anchorTime = options.startTime ?? timelineEndSec(project);
+  if (!Number.isFinite(anchorTime) || anchorTime < 0) {
+    return {
+      ok: false,
+      code: "INVALID_PARAMS",
+      message: `startTime must be a finite number >= 0 (got ${anchorTime})`,
+      details: { startTime: options.startTime ?? null },
+    };
+  }
+
+  // Pre-mint clip ids (options.clipId pins the anchor clip) and precheck ALL
+  // of them — the whole batch must be conflict-free before anything is built.
+  const clipIds = sortedMembers.map((_member, index) =>
+    index === 0 && options.clipId !== undefined ? options.clipId : `clip-${crypto.randomUUID()}`,
+  );
+  const mintedIds = new Set<string>();
+  for (const clipId of clipIds) {
+    if (
+      project.timeline.tracks.some((track) =>
+        track.clips.some((candidate) => candidate.id === clipId),
+      ) ||
+      mintedIds.has(clipId)
+    ) {
+      return {
+        ok: false,
+        code: "CONFLICT",
+        message: `a clip with id "${clipId}" already exists`,
+        details: { clipId },
+      };
+    }
+    mintedIds.add(clipId);
+  }
+
+  const timestamp = options.now ?? Date.now();
+  const laneOrder: LanePlanEntry[] = LANE_TYPE_ORDER.flatMap((trackType) =>
+    [...lanePlan.values()]
+      .filter((lane) => lane.trackType === trackType)
+      .sort((a, b) => a.laneOffset - b.laneOffset),
+  );
+  const actions: Action[] = [];
+  for (const lane of laneOrder) {
+    if (!lane.created) continue;
+    actions.push({
+      type: "track/add",
+      id: `action-${crypto.randomUUID()}`,
+      timestamp,
+      params: { trackType: lane.trackType, trackId: lane.trackId },
+    });
+  }
+  sortedMembers.forEach((member, index) => {
+    const lane = lanePlan.get(`${member.lane.trackType}:${member.lane.laneOffset}`)!;
+    const startTime = anchorTime + member.relativeStart;
+    const clip = buildClipFromSnapshot(
+      member.snapshot,
+      member.mediaId,
+      { id: clipIds[index], trackId: lane.trackId, startTime },
+    );
+    actions.push({
+      type: "clip/add",
+      id: `action-${crypto.randomUUID()}`,
+      timestamp,
+      params: {
+        clipId: clipIds[index],
+        trackId: lane.trackId,
+        mediaId: member.mediaId,
+        startTime,
+        sourceClip: clip,
+      },
+    });
+  });
+
+  const anchorLane = lanePlan.get(anchorKey);
+  return {
+    ok: true,
+    actions,
+    trackId: anchorLane ? anchorLane.trackId : laneOrder[0].trackId,
+    clipId: clipIds[0],
+    createdTrack: laneOrder.some((lane) => lane.created),
+    clipIds,
+    trackIds: laneOrder.map((lane) => lane.trackId),
+    createdTrackCount: laneOrder.filter((lane) => lane.created).length,
+  };
 }

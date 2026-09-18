@@ -140,4 +140,60 @@ describe("work asset reference retention", () => {
       ),
     ).toBe(false);
   });
+
+  const multiAsset = (overrides: Partial<WorkAsset> = {}): WorkAsset =>
+    workAsset({
+      kind: "multi",
+      clipSnapshot: undefined,
+      members: [
+        {
+          memberId: "m-a",
+          mediaId: "m-anchor-alt",
+          sourceRange: { inSec: 0, outSec: 2 },
+          relativeStart: 0,
+          lane: { trackType: "video", laneOffset: 0 },
+          snapshot: {} as never,
+        },
+        {
+          memberId: "m-b",
+          mediaId: "m-member",
+          sourceRange: { inSec: 1, outSec: 3 },
+          relativeStart: 1.5,
+          lane: { trackType: "audio", laneOffset: 0 },
+          snapshot: {} as never,
+        },
+      ],
+      ...overrides,
+    }) as WorkAsset;
+
+  it("retains bytes for every member media of a multi asset (anchor and members)", () => {
+    const project = { workAssets: [multiAsset()] };
+
+    expect(projectRetainsWorkAssetMediaBytes(project, "m1")).toBe(true); // anchor (top-level)
+    expect(projectRetainsWorkAssetMediaBytes(project, "m-member")).toBe(true);
+    expect(projectRetainsWorkAssetMediaBytes(project, "m-anchor-alt")).toBe(true);
+    expect(projectRetainsWorkAssetMediaBytes(project, "other")).toBe(false);
+  });
+
+  it("keeps protecting member media while a multi asset sits in missingSource state", () => {
+    // The member reference survives the media deletion (legal persistent
+    // state); only deleting the asset releases the bytes.
+    const project = { workAssets: [multiAsset()] };
+
+    expect(projectRetainsWorkAssetMediaBytes(project, "m-member")).toBe(true);
+  });
+
+  it("ignores malformed members arrays instead of crashing the GC scan", () => {
+    const project = {
+      workAssets: [
+        workAsset({
+          kind: "multi",
+          members: "garbage",
+        } as unknown as Partial<WorkAsset>),
+      ],
+    };
+
+    expect(projectRetainsWorkAssetMediaBytes(project, "m1")).toBe(true);
+    expect(projectRetainsWorkAssetMediaBytes(project, "other")).toBe(false);
+  });
 });
