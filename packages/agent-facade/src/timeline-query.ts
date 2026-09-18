@@ -216,13 +216,45 @@ function allCandidates(project: Project): Candidate[] {
   }
   // Work assets live OUTSIDE the timeline (project.workAssets), so they have
   // no track/time position — same null-position convention as media entries.
-  // The raw clipSnapshot is deliberately NOT projected (it can carry entire
-  // effect/keyframe/freeze-frame sets; same payload discipline as svg
-  // content): agents verify identity, naming, source range, speed, the
-  // declared unsupportedParams and the missing-source state, and observe the
-  // snapshot's effect indirectly through the instances it produces.
+  // The raw clipSnapshot / member snapshots are deliberately NOT projected
+  // (they can carry entire effect/keyframe/freeze-frame sets; same payload
+  // discipline as svg content): agents verify identity, naming, source range,
+  // speed, the declared unsupportedParams and the missing-source state, and
+  // observe the snapshot's effect indirectly through the instances it
+  // produces.
+  //
+  // kind "multi" swaps the single-clip aggregates (speed/effectCount/…, null
+  // here — they would misrepresent a member set) for the layout summary:
+  // memberCount, laneSummary (distinct lanes per track type), spanSec
+  // (relativeStart + duration of the latest member), missingMemberCount (the
+  // ALL-member missing-media count — missingSource stays the ANCHOR's state)
+  // and transitionsCaptured (archived member-to-member transitions; not
+  // replayed on instantiate yet).
   for (const asset of project.workAssets ?? []) {
     const snapshot = asset.clipSnapshot;
+    const isMulti = asset.kind === "multi";
+    const members = asset.members ?? [];
+    const laneSummary: Record<string, number> = {};
+    const seenLanes = new Set<string>();
+    let spanSec: number | null = null;
+    let missingMemberCount = 0;
+    if (isMulti) {
+      for (const member of members) {
+        const laneKey = `${member.lane.trackType}:${member.lane.laneOffset}`;
+        if (!seenLanes.has(laneKey)) {
+          seenLanes.add(laneKey);
+          const key = member.lane.trackType;
+          laneSummary[key] = (laneSummary[key] ?? 0) + 1;
+        }
+        const memberEnd = member.relativeStart + member.snapshot.duration;
+        spanSec = spanSec === null ? memberEnd : Math.max(spanSec, memberEnd);
+        if (
+          !project.mediaLibrary.items.some((item) => item.id === member.mediaId)
+        ) {
+          missingMemberCount += 1;
+        }
+      }
+    }
     candidates.push({
       entityType: "workAsset",
       id: asset.id,
@@ -235,10 +267,15 @@ function allCandidates(project: Project): Candidate[] {
         type: asset.kind,
         sourceMediaId: asset.sourceMediaId,
         sourceRange: asset.sourceRange,
-        speed: snapshot?.speed ?? 1,
-        effectCount: snapshot?.effects.length ?? 0,
-        audioEffectCount: snapshot?.audioEffects.length ?? 0,
-        keyframeCount: snapshot?.keyframes.length ?? 0,
+        speed: isMulti ? null : (snapshot?.speed ?? 1),
+        effectCount: isMulti ? null : (snapshot?.effects.length ?? 0),
+        audioEffectCount: isMulti ? null : (snapshot?.audioEffects.length ?? 0),
+        keyframeCount: isMulti ? null : (snapshot?.keyframes.length ?? 0),
+        memberCount: isMulti ? members.length : null,
+        laneSummary: isMulti ? laneSummary : null,
+        spanSec: isMulti ? spanSec : null,
+        missingMemberCount: isMulti ? missingMemberCount : null,
+        transitionsCaptured: isMulti ? (asset.transitions?.length ?? 0) : null,
         unsupportedParams: asset.unsupportedParams,
         missingSource: !project.mediaLibrary.items.some(
           (item) => item.id === asset.sourceMediaId,
@@ -444,6 +481,11 @@ export const TIMELINE_QUERY_FIELDS: readonly TimelineQueryField[] = [
   "effectCount",
   "audioEffectCount",
   "keyframeCount",
+  "memberCount",
+  "laneSummary",
+  "spanSec",
+  "missingMemberCount",
+  "transitionsCaptured",
   "captureRequestId",
   "createdAt",
 ];

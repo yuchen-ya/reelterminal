@@ -621,7 +621,10 @@ const timelineQueryResult = (): OutputSchemaNode =>
       items: arraySchema(
         objectSchema(
           {
-            entityType: enumSchema(["track", "clip", "text", "media", "transition", "marker", "subtitle"]),
+            // Mirrors TIMELINE_QUERY_ENTITY_TYPES (kept literal so this file
+            // stays dependency-light): the projection also emits text-adjacent
+            // "svg" overlays and project-scoped "workAsset" entries.
+            entityType: enumSchema(["track", "clip", "text", "svg", "media", "transition", "marker", "subtitle", "workAsset"]),
             id: stringSchema(),
             ref: nullable(stringSchema()),
             trackId: nullable(stringSchema()),

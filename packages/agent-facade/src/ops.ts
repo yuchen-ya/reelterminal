@@ -109,8 +109,12 @@ import { isSerializedNoiseProfile } from "@openreel/core/audio/audio-effect-rout
 import { generateDuckingKeyframesFromRanges } from "@openreel/core/audio/volume-automation";
 import { resolveAudibleAudioTarget } from "@openreel/core/audio/clip-audio-resolution";
 import { getMotionShaderEffectDefs } from "@openreel/core/motion/shaders";
-import { captureWorkAssetFromClip } from "@openreel/core/work-assets/capture";
+import {
+  captureWorkAssetFromClip,
+  captureWorkAssetFromClips,
+} from "@openreel/core/work-assets/capture";
 import { buildWorkAssetInstantiateActions } from "@openreel/core/work-assets/instantiate";
+import { WORK_ASSET_MAX_MEMBERS } from "@openreel/core/types/work-asset";
 import { timelineDurationSec } from "./projection";
 import { basename } from "node:path";
 import { resolveContainedPathDetailed } from "./media/path-roots";
@@ -1104,6 +1108,19 @@ export const MARKER_REMOVE_SCHEMA: ObjectSchema = {
 const isWorkAssetName = (v: unknown): boolean =>
   typeof v === "string" && v.trim().length > 0 && v.length <= 200;
 
+/**
+ * Multi capture set: 2..64 unique non-empty clip ids. The 64 cap and the
+ * uniqueness requirement are validation-only (not emitted) — the emitted
+ * schema is the boundary superset (array of ≥2 strings); core enforces the
+ * same caps authoritatively at capture time.
+ */
+const isWorkAssetClipIdSet = (v: unknown): boolean =>
+  Array.isArray(v) &&
+  v.length >= 2 &&
+  v.length <= WORK_ASSET_MAX_MEMBERS &&
+  v.every((id) => isNonEmptyString(id)) &&
+  new Set(v).size === v.length;
+
 export const WORK_ASSET_CAPTURE_SCHEMA: ObjectSchema = {
   op: {
     check: (v) => v === "workAsset.capture",
@@ -1113,9 +1130,19 @@ export const WORK_ASSET_CAPTURE_SCHEMA: ObjectSchema = {
   },
   clipId: {
     check: isNonEmptyString,
-    describe: "a non-empty string",
-    required: true,
+    describe:
+      "a non-empty string — single-clip form; exactly one of clipId / clipIds must be given",
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  clipIds: {
+    check: isWorkAssetClipIdSet,
+    describe:
+      "2..64 unique non-empty clip ids — multi-clip form captured as ONE kind:\"multi\" asset; exactly one of clipId / clipIds must be given",
+    emits: {
+      kind: "array",
+      items: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+      minItems: 2,
+    },
   },
   name: {
     check: isWorkAssetName,
@@ -1180,12 +1207,14 @@ export const WORK_ASSET_INSTANTIATE_SCHEMA: ObjectSchema = {
   },
   trackId: {
     check: isNonEmptyString,
-    describe: "a non-empty string — existing lane matching the source media's type",
+    describe:
+      "a non-empty string — existing lane matching the source media's type (multi assets: binds the anchor lane only; every other lane is created fresh)",
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
   },
   startTime: {
     check: isNonNegativeNumber,
-    describe: "a finite number >= 0 (timeline seconds; defaults to the timeline end)",
+    describe:
+      "a finite number >= 0 (timeline seconds; defaults to the timeline end; multi assets: the anchor time T0 the relative member layout starts from)",
     emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
   },
 };
@@ -2468,12 +2497,21 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       return validateObject<MarkerAddOp>(raw, MARKER_ADD_SCHEMA, label);
     case "marker.remove":
       return validateObject<MarkerRemoveOp>(raw, MARKER_REMOVE_SCHEMA, label);
-    case "workAsset.capture":
-      return validateObject<WorkAssetCaptureOp>(
+    case "workAsset.capture": {
+      const op = validateObject<WorkAssetCaptureOp>(
         raw,
         WORK_ASSET_CAPTURE_SCHEMA,
         label,
       );
+      // Cross-field, validation-only (the emitted schema is a boundary
+      // superset): exactly one capture form per op.
+      if ((op.clipId !== undefined) === (op.clipIds !== undefined)) {
+        throw invalidParams(
+          `${label}: exactly one of clipId / clipIds is required`,
+        );
+      }
+      return op;
+    }
     case "workAsset.rename":
       return validateObject<WorkAssetRenameOp>(
         raw,
@@ -4139,17 +4177,44 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       // itself is created through the same undoable core action the GUI
       // capture entry uses (only the recorded `createdBy` provenance
       // differs).
+      const captureOptions = {
+        ...(op.name !== undefined ? { name: op.name } : {}),
+        ...(op.captureRequestId !== undefined
+          ? { captureRequestId: op.captureRequestId }
+          : {}),
+        assetId: `wa-${crypto.randomUUID()}`,
+        createdBy: "agent" as const,
+      };
+      if (op.clipIds !== undefined) {
+        // Multi form: ONE kind:"multi" asset from the whole set — core
+        // prechecks every member and any failure rejects the set as a whole
+        // (details.perMember names every failing clip; never a partial
+        // asset).
+        const captured = captureWorkAssetFromClips(draft, op.clipIds, {
+          ...captureOptions,
+        });
+        if (!captured.ok) {
+          const code =
+            captured.code === "NOT_FOUND" || captured.code === "MEDIA_NOT_FOUND"
+              ? "NOT_FOUND"
+              : captured.code === "UNSUPPORTED"
+                ? "UNSUPPORTED"
+                : "INVALID_PARAMS";
+          throw new FacadeError(
+            code,
+            `workAsset.capture: ${captured.message}`,
+            {
+              clipIds: [...op.clipIds],
+              ...(captured.details ?? {}),
+            },
+          );
+        }
+        return [makeAction("workAsset/create", { asset: captured.asset })];
+      }
       const captured = captureWorkAssetFromClip(
         draft,
-        op.clipId,
-        {
-          ...(op.name !== undefined ? { name: op.name } : {}),
-          ...(op.captureRequestId !== undefined
-            ? { captureRequestId: op.captureRequestId }
-            : {}),
-          assetId: `wa-${crypto.randomUUID()}`,
-          createdBy: "agent",
-        },
+        op.clipId as string,
+        captureOptions,
       );
       if (!captured.ok) {
         const code =

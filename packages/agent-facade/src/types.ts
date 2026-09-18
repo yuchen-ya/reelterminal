@@ -865,6 +865,11 @@ export type TimelineQueryField =
   | "effectCount"
   | "audioEffectCount"
   | "keyframeCount"
+  | "memberCount"
+  | "laneSummary"
+  | "spanSec"
+  | "missingMemberCount"
+  | "transitionsCaptured"
   | "captureRequestId"
   | "createdAt";
 
@@ -1678,7 +1683,7 @@ export interface ClipAddVideoEffectOp {
 }
 
 /**
- * workAsset.capture — save one timeline clip into the project's work assets
+ * workAsset.capture — save timeline clip(s) into the project's work assets
  * ("saved work"): a named, stable-id reusable reference plus a parameter
  * snapshot (trim, speed, effects, transform, …). The asset references the
  * clip's media by id and never copies media bytes. Engine-generated overlay
@@ -1686,10 +1691,23 @@ export interface ClipAddVideoEffectOp {
  * artifacts (e.g. stabilization profiles) are stripped and declared on the
  * asset's unsupportedParams instead of being dropped silently. Names are
  * search keys, never identities.
+ *
+ * Exactly one of clipId (kind "single") / clipIds (kind "multi") is required:
+ * clipIds captures a SET of ≥2 clips as ONE multi asset whose members keep
+ * their relative times and track relationships. Any failing member rejects
+ * the whole set (all-or-nothing) with per-member details — never a partial
+ * asset.
  */
 export interface WorkAssetCaptureOp {
   readonly op: "workAsset.capture";
-  readonly clipId: string;
+  /** Single-clip form: the one clip to capture (kind "single"). */
+  readonly clipId?: string;
+  /**
+   * Multi-clip form: the capture set, order-independent (core sorts it),
+   * 2..64 unique clip ids (kind "multi"). The earliest startTime is the
+   * time anchor T0; the first sorted member is the anchor.
+   */
+  readonly clipIds?: readonly string[];
   /** Optional display name; derived from the source media when omitted. */
   readonly name?: string;
   /**
@@ -1714,17 +1732,27 @@ export interface WorkAssetDeleteOp {
 }
 
 /**
- * workAsset.instantiate — place a work asset back on the timeline as a NEW
- * clip built from its snapshot. The asset entry is never modified, so
- * repeated instantiation keeps producing independent clips. Without trackId
- * a matching new lane is created (material-attach convention); startTime
- * defaults to the end of the timeline. The clip id is allocated by the
- * translator and reported via createdIds.
+ * workAsset.instantiate — place a work asset back on the timeline as NEW
+ * clip(s) built from its snapshot(s). The asset entry is never modified, so
+ * repeated instantiation keeps producing independent instances. Without
+ * trackId a matching new lane is created (material-attach convention);
+ * startTime defaults to the end of the timeline.
+ *
+ * kind "single" places one clip. kind "multi" expands the member layout:
+ * startTime anchors the asset's T0 (the anchor member lands exactly there,
+ * others at startTime + relativeStart), trackId binds the ANCHOR lane (its
+ * type must match; every other lane is created fresh — existing user tracks
+ * are never occupied implicitly), and relative times/track relationships are
+ * preserved verbatim. Ids are allocated by the translator and reported via
+ * createdIds (multi: every new lane id first, then every clip id).
  */
 export interface WorkAssetInstantiateOp {
   readonly op: "workAsset.instantiate";
   readonly workAssetId: string;
-  /** Existing target lane; must match the source media's type. */
+  /**
+   * Existing target lane; must match the source media's type (multi: the
+   * anchor lane's type — other lanes are always freshly created).
+   */
   readonly trackId?: string;
   /** Timeline seconds; defaults to the end of the timeline. */
   readonly startTime?: number;

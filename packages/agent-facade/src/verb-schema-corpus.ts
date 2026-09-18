@@ -889,8 +889,58 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: true,
     },
     {
-      name: "workAsset.capture requires clipId",
+      name: "valid workAsset.capture multi-clip form (clipIds)",
+      params: {
+        ops: [
+          {
+            op: "workAsset.capture",
+            clipIds: ["c1", "c2", "c3"],
+            name: "Composite",
+          },
+        ],
+      },
+      expectValid: true,
+    },
+    {
+      name: "workAsset.capture requires clipId or clipIds",
       params: { ops: [{ op: "workAsset.capture", name: "Hero trim" }] },
+      expectValid: false,
+      schemaValid: true,
+    },
+    {
+      name: "workAsset.capture rejects clipId together with clipIds",
+      params: {
+        ops: [
+          {
+            op: "workAsset.capture",
+            clipId: "c1",
+            clipIds: ["c2", "c3"],
+          },
+        ],
+      },
+      expectValid: false,
+      schemaValid: true,
+    },
+    {
+      name: "workAsset.capture rejects a one-clip clipIds set",
+      params: {
+        ops: [{ op: "workAsset.capture", clipIds: ["c1"] }],
+      },
+      expectValid: false,
+    },
+    {
+      name: "schema-valid but facade-rejected: workAsset.capture duplicate ids in clipIds",
+      params: {
+        ops: [{ op: "workAsset.capture", clipIds: ["c1", "c1"] }],
+      },
+      expectValid: false,
+      schemaValid: true,
+    },
+    {
+      name: "workAsset.capture rejects a non-string entry in clipIds",
+      params: {
+        ops: [{ op: "workAsset.capture", clipIds: ["c1", 2] }],
+      },
       expectValid: false,
     },
     {

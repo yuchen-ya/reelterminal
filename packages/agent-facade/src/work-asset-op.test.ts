@@ -8,11 +8,20 @@
  *    differs): snapshot parameters (speed, fades, effects), source range,
  *    declared unsupportedParams, stable id, "agent" provenance and the
  *    captureRequestId echo,
+ *  - the multi-clip form (clipIds) captures a SET of clips as ONE kind
+ *    "multi" asset: relative member layout, anchor mirrored into the
+ *    top-level identity fields, all-or-nothing prechecks with per-member
+ *    details, and the member/lane summary projected through timeline.query,
  *  - unknown clips fail NOT_FOUND and the revision does not move,
  *  - workAsset.rename / workAsset.delete reuse the core undoable actions,
  *  - workAsset.instantiate places a NEW clip built from the snapshot: the
  *    asset entry is untouched, a second instantiation is fully independent,
  *    and the original timeline clip can be deleted in between,
+ *  - a multi asset expands the whole member layout: every new lane id first,
+ *    then every clip id in member order; relative timing is preserved
+ *    verbatim; an explicit trackId binds the anchor lane only; a member with
+ *    missing media rejects the WHOLE expansion (all-or-nothing), and a
+ *    retried idempotencyKey replays instead of stacking members,
  *  - without trackId a matching lane is created and reported FIRST in
  *    createdIds, then the clip id (headless diff ordering),
  *  - retrying with the same idempotencyKey replays instead of stacking
@@ -368,5 +377,398 @@ describe("workAsset ops (edit.apply)", () => {
     expect(validated.value.valid).toBe(true);
     // The dry-run must not have persisted anything.
     expect(await assetsList()).toHaveLength(0);
+  });
+
+  /* ----------------------- multi-clip capture form ----------------------- */
+
+  /** A second video track + clip so a capture set spans two lanes. */
+  async function seedSecondClip(mediaIdForSecond = mediaId) {
+    const seeded = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v2" },
+        {
+          op: "clip.add",
+          trackId: "v2",
+          mediaId: mediaIdForSecond,
+          startTime: 1,
+          inPoint: 0,
+          outPoint: 2,
+          clipId: "c2",
+        },
+      ],
+    });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) throw new Error("seed v2 failed");
+  }
+
+  async function captureMulti(
+    options: { name?: string; captureRequestId?: string } = {},
+  ) {
+    const result = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "workAsset.capture",
+          clipIds: ["c1", "c2"],
+          ...(options.name !== undefined ? { name: options.name } : {}),
+          ...(options.captureRequestId !== undefined
+            ? { captureRequestId: options.captureRequestId }
+            : {}),
+        } as EditOp,
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("multi capture failed");
+    return (await assetsList())[0];
+  }
+
+  it("captures a clip set as ONE multi asset and projects the member layout", async () => {
+    await seedSecondClip();
+    const asset = await captureMulti({
+      name: "Two-up",
+      captureRequestId: "req-multi",
+    });
+
+    // Capture creates an ASSET, not timeline entities — no createdIds
+    // (same convention as single capture).
+    expect(asset.kind).toBe("multi");
+    expect(asset.name).toBe("Two-up");
+    expect(asset.createdBy).toBe("agent");
+    expect(asset.captureRequestId).toBe("req-multi");
+    expect(asset.clipSnapshot).toBeUndefined();
+    expect(asset.members).toHaveLength(2);
+    // Members are sorted by startTime: c1 (t0) is the anchor; its identity
+    // fields are mirrored to the top level.
+    expect(asset.members?.[0]).toMatchObject({
+      mediaId,
+      relativeStart: 0,
+      lane: { trackType: "video", laneOffset: 0 },
+    });
+    expect(asset.members?.[1]).toMatchObject({
+      mediaId,
+      relativeStart: 1,
+      lane: { trackType: "video", laneOffset: 1 },
+    });
+    expect(asset.sourceMediaId).toBe(mediaId);
+    expect(asset.sourceRange).toEqual({ inSec: 1, outSec: 5 });
+
+    const queried = await facade["timeline.query"]({
+      entityTypes: ["workAsset"],
+      fields: [
+        "type",
+        "memberCount",
+        "laneSummary",
+        "spanSec",
+        "missingMemberCount",
+        "transitionsCaptured",
+        "speed",
+        "effectCount",
+      ],
+    });
+    expect(queried.ok).toBe(true);
+    if (!queried.ok) throw new Error("query failed");
+    expect(queried.value.items[0].data).toEqual({
+      type: "multi",
+      memberCount: 2,
+      laneSummary: { video: 2 },
+      // c1 spans 0..4, c2 spans 1..3 relative to T0 — the layout reach is 4s.
+      spanSec: 4,
+      missingMemberCount: 0,
+      transitionsCaptured: 0,
+      // Single-clip aggregates would misrepresent a member set — honest nulls.
+      speed: null,
+      effectCount: null,
+    });
+  });
+
+  it("rejects a multi capture all-or-nothing with per-member details", async () => {
+    // edit.apply cannot seed a degenerate clip (clip.add re-validates the
+    // range), so pin the translator mapping directly: a track clip that fails
+    // capture's per-member prechecks must reject the WHOLE set with the
+    // member named in details.perMember and produce no action.
+    const { createEmptyProject } = await import("./project-factory");
+    const { opToCoreActions } = await import("./ops");
+    const { FacadeError } = await import("./errors");
+    const draft = createEmptyProject("Per-member rejection");
+    draft.mediaLibrary.items.push({
+      id: mediaId,
+      name: "tiny-6s.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      metadata: {
+        duration: 6,
+        width: 320,
+        height: 180,
+        frameRate: 10,
+        codec: "h264",
+        sampleRate: 0,
+        channels: 0,
+        fileSize: 1,
+      },
+      thumbnailUrl: null,
+      waveformData: null,
+    });
+    const clip = (id: string, startTime: number, inPoint: number, outPoint: number) => ({
+      id,
+      mediaId,
+      trackId: "v1",
+      startTime,
+      duration: outPoint - inPoint,
+      inPoint,
+      outPoint,
+      effects: [],
+      audioEffects: [],
+      transform: {
+        position: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 },
+        rotation: 0,
+        anchor: { x: 0.5, y: 0.5 },
+        opacity: 1,
+      },
+      volume: 1,
+      keyframes: [],
+    });
+    draft.timeline.tracks.push({
+      id: "v1",
+      type: "video",
+      name: "Video",
+      clips: [clip("c1", 0, 1, 5), clip("cbad", 2, 5, 2)],
+      transitions: [],
+      locked: false,
+      hidden: false,
+      muted: false,
+      solo: false,
+    });
+
+    let thrown: unknown;
+    try {
+      opToCoreActions(
+        { op: "workAsset.capture", clipIds: ["c1", "cbad"] },
+        draft,
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(FacadeError);
+    const facadeError = thrown as InstanceType<typeof FacadeError>;
+    expect(facadeError.code).toBe("INVALID_PARAMS");
+    const perMember = (
+      facadeError.details as {
+        perMember?: Array<{ clipId: string; code: string }>;
+      }
+    ).perMember;
+    expect(perMember).toHaveLength(1);
+    expect(perMember?.[0]).toMatchObject({
+      clipId: "cbad",
+      code: "INVALID_PARAMS",
+    });
+  });
+
+  it("rejects a capture set naming a clip the timeline cannot resolve", async () => {
+    // Overlay clips (text etc.) live outside track.clips, so the capture set
+    // cannot resolve them — the whole set is rejected, nothing is produced.
+    const created = await facade["edit.apply"]({
+      ops: [{ op: "text.create", text: "overlay", startTime: 0, duration: 2 }],
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) throw new Error("text.create failed");
+    const textClipId = created.value.applied[0]?.createdIds.at(-1);
+    expect(typeof textClipId).toBe("string");
+
+    const result = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "workAsset.capture",
+          clipIds: ["c1", textClipId as string],
+        } as EditOp,
+      ],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("NOT_FOUND");
+    expect(
+      (result.error.details as { clipIds?: string[] }).clipIds,
+    ).toEqual([textClipId]);
+    expect(await assetsList()).toHaveLength(0);
+  });
+
+  it("rejects ambiguous and malformed multi capture forms", async () => {
+    const cases: Array<{ ops: readonly EditOp[]; code: string }> = [
+      {
+        ops: [
+          { op: "workAsset.capture", clipId: "c1", clipIds: ["c2", "c3"] },
+        ],
+        code: "INVALID_PARAMS",
+      },
+      { ops: [{ op: "workAsset.capture", clipIds: ["c1"] }], code: "INVALID_PARAMS" },
+      {
+        ops: [{ op: "workAsset.capture", clipIds: ["c1", "c1"] }],
+        code: "INVALID_PARAMS",
+      },
+      {
+        ops: [{ op: "workAsset.capture", clipIds: ["c1", "nope"] }],
+        code: "NOT_FOUND",
+      },
+    ];
+    for (const { ops, code } of cases) {
+      const result = await facade["edit.apply"]({ ops });
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.error.code).toBe(code);
+    }
+    expect(await assetsList()).toHaveLength(0);
+  });
+
+  /* -------------------- multi-asset instantiation --------------------- */
+
+  it("expands a multi asset onto fresh lanes preserving relative timing", async () => {
+    await seedSecondClip();
+    const asset = await captureMulti();
+    const assetBefore = structuredClone(asset);
+
+    const first = await facade["edit.apply"]({
+      ops: [{ op: "workAsset.instantiate", workAssetId: asset.id }],
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("instantiate failed");
+    const [applied] = first.value.applied;
+    // Two new lanes first, then two clips in member order.
+    expect(applied.createdIds).toHaveLength(4);
+    const [laneA, laneB, clipA, clipB] = applied.createdIds;
+
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error("state failed");
+    const tracks = state.value.project.timeline.tracks;
+    const laneATrack = tracks.find((track) => track.id === laneA);
+    const laneBTrack = tracks.find((track) => track.id === laneB);
+    expect(laneATrack?.type).toBe("video");
+    expect(laneBTrack?.type).toBe("video");
+    const anchorClip = laneATrack?.clips.find((clip) => clip.id === clipA);
+    const secondClip = laneBTrack?.clips.find((clip) => clip.id === clipB);
+    // anchorTime defaults to the timeline end (4): T0 lands exactly there and
+    // the second member keeps its 1s offset.
+    expect(anchorClip?.startTime).toBe(4);
+    expect(secondClip?.startTime).toBe(5);
+    expect(anchorClip).toMatchObject({ mediaId, inPoint: 1, outPoint: 5 });
+    expect(secondClip).toMatchObject({ mediaId, inPoint: 0, outPoint: 2 });
+
+    // The asset entry is byte-identical after instantiation.
+    expect((await assetsList())[0]).toEqual(assetBefore);
+
+    // A second instantiation is a fully independent expansion.
+    const second = await facade["edit.apply"]({
+      ops: [{ op: "workAsset.instantiate", workAssetId: asset.id }],
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("second instantiate failed");
+    const secondIds = second.value.applied[0]?.createdIds ?? [];
+    expect(secondIds).toHaveLength(4);
+    expect(secondIds[2]).not.toBe(clipA);
+    expect(secondIds[3]).not.toBe(clipB);
+  });
+
+  it("binds an explicit trackId to the anchor lane and anchors T0 at startTime", async () => {
+    await seedSecondClip();
+    const asset = await captureMulti();
+
+    const result = await facade["edit.apply"]({
+      ops: [
+        {
+          op: "workAsset.instantiate",
+          workAssetId: asset.id,
+          trackId: "v1",
+          startTime: 10,
+        },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("instantiate failed");
+    const [applied] = result.value.applied;
+    // Only the second lane is new; the anchor reuses v1 (no track/add).
+    expect(applied.createdIds).toHaveLength(3);
+    const [newLaneId, anchorClipId, secondClipId] = applied.createdIds;
+    expect(newLaneId).not.toBe("v1");
+
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error("state failed");
+    const tracks = state.value.project.timeline.tracks;
+    const anchorClip = tracks
+      .find((track) => track.id === "v1")
+      ?.clips.find((clip) => clip.id === anchorClipId);
+    const secondClip = tracks
+      .find((track) => track.id === newLaneId)
+      ?.clips.find((clip) => clip.id === secondClipId);
+    expect(anchorClip?.startTime).toBe(10);
+    expect(secondClip?.startTime).toBe(11);
+    expect(secondClip?.trackId).toBe(newLaneId);
+  });
+
+  it("refuses multi instantiation all-or-nothing when a member's media is gone", async () => {
+    const secondImport = await facade["media.import"]({
+      path: `${mediaRoot}/tiny-6s.mp4`,
+    });
+    expect(secondImport.ok).toBe(true);
+    if (!secondImport.ok) throw new Error("second import failed");
+    const mediaB = secondImport.value.mediaId;
+    await seedSecondClip(mediaB);
+    const asset = await captureMulti();
+
+    // Delete the second member's media (its clip first: media.remove only
+    // accepts unreferenced items).
+    await facade["edit.apply"]({
+      ops: [
+        { op: "clip.remove", clipId: "c1" },
+        { op: "clip.remove", clipId: "c2" },
+        { op: "media.remove", mediaId: mediaB },
+      ],
+    });
+
+    const result = await facade["edit.apply"]({
+      ops: [{ op: "workAsset.instantiate", workAssetId: asset.id }],
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("NOT_FOUND");
+    const missingMembers = (
+      result.error.details as {
+        missingMembers?: Array<{ memberIndex: number; mediaId: string }>;
+      }
+    ).missingMembers;
+    expect(missingMembers).toEqual([{ memberIndex: 1, mediaId: mediaB }]);
+
+    // All-or-nothing: not a single member landed on the timeline.
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error("state failed");
+    expect(
+      state.value.project.timeline.tracks.flatMap((track) => track.clips),
+    ).toHaveLength(0);
+  });
+
+  it("replays a repeated multi instantiation instead of stacking members", async () => {
+    await seedSecondClip();
+    const asset = await captureMulti();
+    const params = {
+      ops: [
+        { op: "workAsset.instantiate", workAssetId: asset.id },
+      ] as readonly EditOp[],
+      idempotencyKey: "multi-once",
+    };
+    const first = await facade["edit.apply"](params);
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("instantiate failed");
+    expect(first.value.replayed).toBe(false);
+    const replay = await facade["edit.apply"](params);
+    expect(replay.ok).toBe(true);
+    if (!replay.ok) throw new Error("replay failed");
+    expect(replay.value.replayed).toBe(true);
+    expect(replay.value.revision).toBe(first.value.revision);
+
+    // Exactly the two members exist — the replay stacked nothing.
+    const state = await facade["project.get_state"]();
+    if (!state.ok) throw new Error("state failed");
+    const instances = state.value.project.timeline.tracks
+      .flatMap((track) => track.clips)
+      .filter((clip) => clip.id !== "c1" && clip.id !== "c2");
+    expect(instances).toHaveLength(2);
   });
 });

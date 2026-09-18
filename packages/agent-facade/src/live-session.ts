@@ -397,9 +397,13 @@ const CREATING_OPS: ReadonlySet<EditOp["op"]> = new Set([
   "svg.create",
   "transition.add",
   "subtitle.importSrt",
-  // Instantiation creates exactly one clip (plus its own implicit lane when
-  // the translator prepends a track/add).
+  // Instantiation creates one clip plus its own implicit lane when the
+  // translator prepends a track/add — or, for kind "multi" assets, the whole
+  // member expansion (several lanes + several clips, all pinned to the op).
   "workAsset.instantiate",
+  // workAsset.capture deliberately absent: it creates an ASSET, not timeline
+  // entities, so createdIds is always [] and the agent recovers the asset id
+  // via timeline.query (same convention as single capture).
 ]);
 
 interface EditApplyPayload {
@@ -1538,7 +1542,14 @@ export class LiveFacadeSession {
       const draft = structuredClone(snapshot);
       const executor = new ActionExecutor(new ActionHistory());
       const actions: Action[] = [];
-      const autoTrackIds: Array<string | undefined> = [];
+      // Per op: either ONE implicit lane id (text.create/svg.create) or EVERY
+      // lane the op's translator emitted (workAsset.instantiate multi
+      // expansion) — partitionCreatedIds pins all of them to THIS op so an
+      // explicit track.add in the same batch cannot steal or reorder them.
+      const autoTrackIds: Array<string | readonly string[] | undefined> = [];
+      // Per op: how many clips the op minted (workAsset.instantiate multi
+      // expands to one clip per member); undefined = exactly one.
+      const opClipCounts: Array<number | undefined> = [];
       for (const [index, op] of enrichedOps.entries()) {
         // text.create/svg.create with no explicit track imply their lane;
         // when that lane is missing, the translator prepends one track/add
@@ -1576,12 +1587,19 @@ export class LiveFacadeSession {
             ? (opActions.find((action) => action.type === "track/add")?.params
                 .trackId as string | undefined)
             : op.op === "workAsset.instantiate"
-              ? // The translator prepends a track/add only when it had to
-                // create the lane; when an explicit trackId was honored the
-                // find returns undefined and nothing is pinned here.
-                (opActions.find((action) => action.type === "track/add")
-                  ?.params.trackId as string | undefined)
+              ? // Every lane the expansion created; an explicit trackId only
+                // binds the anchor lane, so the anchor then has no track/add
+                // and is simply not listed here.
+                opActions
+                  .filter((action) => action.type === "track/add")
+                  .map(
+                    (action) => action.params.trackId as string,
+                  )
               : undefined;
+        opClipCounts[index] =
+          op.op === "workAsset.instantiate"
+            ? opActions.filter((action) => action.type === "clip/add").length
+            : undefined;
         actions.push(...opActions);
       }
 
@@ -1619,7 +1637,12 @@ export class LiveFacadeSession {
       // Partition the store-diffed created ids back onto the ops: every
       // creating op consumes one id from its own category bucket (the store
       // diffs per category, so a mixed batch can't cross-assign ids).
-      const applied = partitionCreatedIds(ops, committed.createdIds, autoTrackIds);
+      const applied = partitionCreatedIds(
+        ops,
+        committed.createdIds,
+        autoTrackIds,
+        opClipCounts,
+      );
       const value: EditApplyPayload = { applied };
       if (valid.idempotencyKey !== undefined) {
         this.ledger.set("edit.apply", valid.idempotencyKey, {
@@ -4153,11 +4176,17 @@ export class LiveFacadeSession {
  * mirroring ops.ts diffCreatedIdsByCategory. A mixed batch (e.g.
  * [text.create, clip.add]) thus hands every op the id of the entity it
  * created; a flat project-ordered list would cross-assign the ids.
+ *
+ * workAsset.instantiate consumes per op: EVERY lane its translator created
+ * (pinned via autoTrackIds — a single entry or the multi expansion's whole
+ * list), then as many clip ids as the expansion minted (opClipCounts; single
+ * assets mint exactly one, multi assets one per member).
  */
 function partitionCreatedIds(
   ops: readonly EditOp[],
   createdIds: LiveCreatedIds,
-  autoTrackIds: readonly (string | undefined)[] = [],
+  autoTrackIds: readonly (string | readonly string[] | undefined)[] = [],
+  opClipCounts: readonly (number | undefined)[] = [],
 ): OpApplied[] {
   const categories = {
     "track.add": "tracks",
@@ -4175,6 +4204,11 @@ function partitionCreatedIds(
     transitions: 0,
     subtitles: 0,
   };
+  const autoTrackIdList = (index: number): readonly string[] => {
+    const value = autoTrackIds[index];
+    if (value === undefined) return [];
+    return typeof value === "string" ? [value] : value;
+  };
   return ops.map((op, index) => {
     if (!CREATING_OPS.has(op.op)) return { op: op.op, createdIds: [] };
     const ids: string[] = [];
@@ -4188,10 +4222,11 @@ function partitionCreatedIds(
       // An implicit text lane is part of this higher-level op. Use the exact
       // id emitted by the translator, so explicit track.add ops in the same
       // batch cannot steal or reorder it.
-      const autoTrackId = autoTrackIds[index];
-      if (autoTrackId !== undefined && createdIds.tracks.includes(autoTrackId)) {
-        usedTracks.add(autoTrackId);
-        ids.push(autoTrackId);
+      for (const autoTrackId of autoTrackIdList(index)) {
+        if (createdIds.tracks.includes(autoTrackId)) {
+          usedTracks.add(autoTrackId);
+          ids.push(autoTrackId);
+        }
       }
       const id = createdIds.textClips[cursors.textClips];
       cursors.textClips += 1;
@@ -4201,10 +4236,11 @@ function partitionCreatedIds(
       // order [autoTrackId, overlayId]. A seam store without the svgClips
       // bucket (optional on LiveCreatedIds) reports no clip id here — the
       // agent falls back to timeline.query's svg projection.
-      const autoTrackId = autoTrackIds[index];
-      if (autoTrackId !== undefined && createdIds.tracks.includes(autoTrackId)) {
-        usedTracks.add(autoTrackId);
-        ids.push(autoTrackId);
+      for (const autoTrackId of autoTrackIdList(index)) {
+        if (createdIds.tracks.includes(autoTrackId)) {
+          usedTracks.add(autoTrackId);
+          ids.push(autoTrackId);
+        }
       }
       const svgClips = createdIds.svgClips ?? [];
       const id = svgClips[cursors.svgClips];
@@ -4214,17 +4250,22 @@ function partitionCreatedIds(
       ids.push(...createdIds.subtitles.slice(cursors.subtitles));
       cursors.subtitles = createdIds.subtitles.length;
     } else if (op.op === "workAsset.instantiate") {
-      // Same implicit-lane convention as text.create/svg.create: the
-      // translator's own track/add id is pinned for THIS op, then one clip id
-      // is consumed from the clips bucket in batch order.
-      const autoTrackId = autoTrackIds[index];
-      if (autoTrackId !== undefined && createdIds.tracks.includes(autoTrackId)) {
-        usedTracks.add(autoTrackId);
-        ids.push(autoTrackId);
+      // Same implicit-lane convention as text.create/svg.create, generalized
+      // to multi assets: every track/add the translator emitted is pinned for
+      // THIS op, then one clip id per member is consumed from the clips
+      // bucket in batch order (single assets mint exactly one).
+      for (const autoTrackId of autoTrackIdList(index)) {
+        if (createdIds.tracks.includes(autoTrackId)) {
+          usedTracks.add(autoTrackId);
+          ids.push(autoTrackId);
+        }
       }
-      const id = createdIds.clips[cursors.clips];
-      cursors.clips += 1;
-      if (id !== undefined) ids.push(id);
+      const clipCount = opClipCounts[index] ?? 1;
+      for (let consumed = 0; consumed < clipCount; consumed++) {
+        const id = createdIds.clips[cursors.clips];
+        cursors.clips += 1;
+        if (id !== undefined) ids.push(id);
+      }
     } else {
       const category = categories[op.op as keyof typeof categories];
       const id = createdIds[category][cursors[category]];
