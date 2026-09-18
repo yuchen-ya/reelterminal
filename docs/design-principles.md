@@ -92,8 +92,8 @@ curated, bilingual (`zh`/`en`) screen guides bound to the application
 version, so an Agent can explain how the editor's screens work without
 reading product source. The manual is hand-maintained static content, not
 a generated mirror of the UI, and it honestly reports what it does not
-have (its screenshot field is reserved and reported as pending until
-delivered).
+have (six screens carry a delivered screenshot; the rest report their
+screenshot as pending).
 
 ## Principle 2: One World, Two Interfaces, Three Modes
 

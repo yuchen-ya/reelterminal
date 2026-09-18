@@ -235,6 +235,14 @@ Chromium + system ffmpeg). Semantics owned by the facade itself:
   headless via `OPENREEL_AVE_DELIVERY_ROOTS` / `--delivery-root` and in the
   desktop live host from the Agent workspace root; with none configured,
   `destinationPath` fails fast with the reason.
+- `export.start` accepts `settings.upscaling {enabled, quality:
+  "fast"|"balanced"|"quality"}` for the export-time upscale pass (WebGPU
+  Lanczos + edge-directed interpolation — a deterministic local resampler,
+  NOT a neural-network upscaler; the same engine as the GUI export dialog).
+  It engages only when the export size exceeds the project canvas size AND
+  the runtime has WebGPU; when the pass cannot run, the done job reports
+  `upscalingRequestedButInactive: true` — the artifact is valid and NOT
+  upscaled, never a silent downgrade.
 - The stdio MCP transports (including the desktop `openreel-live-mcp`
   connector) accept `_meta.progressToken` on `export.start` and emit opt-in
   `notifications/progress` updates while the job is running. Direct callers of
@@ -358,7 +366,8 @@ formats, and limits.
 
 `preset.list`/`preset.get`/`preset.create`/`preset.update`/`preset.remove`/
 `preset.apply` manage the user's saved custom presets — the same records the
-GUI's text, effect, and transition preset panels read and write (renderer
+GUI's text, effect, transition, and graphics preset panels read and write
+(renderer
 IndexedDB). Presets are user state shared across projects, not project
 state. Live sessions require the host's preset-library bridge; headless
 sessions report `UNSUPPORTED`. `capabilities.get.customPresets` carries
@@ -366,18 +375,21 @@ availability, reason, kinds, limits, and apply targets.
 
 - Kinds: `text` (whitelisted text-style fields — code-facing fields such as
   the text shader are excluded), `effect` (1–8 clip effects whose types are
-  closed to the engine's 14 parametered clip-effect types: `blur`, `shadow`,
+  closed to the engine's 22 parametered clip-effect types: `blur`, `shadow`,
   `glow`, `brightness`, `contrast`, `saturation`, `hue-saturation`,
   `color-balance`, `curves`, `motion-blur`, `radial-blur`, `vignette`,
-  `film-grain`, `chromatic-aberration`; audio effects fail
-  `UNSUPPORTED_EFFECT_TYPE`, and kinds outside the set — the GUI effect
-  stack's `grayscale`, `sepia`, `shader`, and their siblings — fail
-  `UNKNOWN_EFFECT_TYPE`), and `transition` (one of the 24 engine transition
+  `film-grain`, `chromatic-aberration`, `grayscale`, `sepia`, `invert`,
+  `sharpen`, `grain`, `temperature`, `tint`, `tonal`; audio effects fail
+  `UNSUPPORTED_EFFECT_TYPE`, and `chromaKey`/`shader`/`hue` are declined —
+  chroma key and shader saves name where those settings actually live, and
+  `hue` stays out until its render paths share one parameter contract),
+  and `transition` (one of the 24 engine transition
   types with parameter and duration overrides). Unknown payload fields and
   out-of-range values are rejected with a stable code, never clamped or
-  silently dropped. A `graphics` kind validates and stores inline SVG, but
-  applying it is not implemented yet and reports an explicit unsupported
-  error at apply time.
+  silently dropped. A `graphics` kind validates and stores inline SVG
+  through the shared SVG gate; applying it expands to the same
+  track/svg-create actions a GUI import produces, in the same undoable
+  batch as the other targets.
 - Payloads are deep-validated in the facade and re-validated by the
   renderer. `preset.create`/`preset.update`/`preset.remove` accept
   `idempotencyKey` (retry replays the committed result);
@@ -390,9 +402,11 @@ availability, reason, kinds, limits, and apply targets.
 - `preset.apply` expands a preset into one undoable core action batch:
   text targets an EXISTING text clip (`mode:"updateStyle"` — create the
   clip with `edit.apply text.create` first), effect targets explicit
-  `clipIds`, and transition targets a cut (`clipAId`, optional `clipBId`
+  `clipIds`, transition targets a cut (`clipAId`, optional `clipBId`
   for the in-point edge; omitting `clipBId` applies at the out-point
-  edge). Placement rules are hard rejections, never clamped: a duration
+  edge), and graphics targets a graphics track (optional `trackId` —
+  one is created when none exists — plus optional `startTime` and
+  `durationSec`, default 5 s). Placement rules are hard rejections, never clamped: a duration
   over the cut's placement cap fails `INVALID_PARAMS` with
   `details.reason` (`PLACEMENT_INVALID`) instead of being shortened — the
   GUI panels pre-clamp with a warning, the Agent side does not. The
@@ -438,11 +452,11 @@ screenshot delivery state.
   test-enforced, so the answer to "what does THIS build's GUI do" is
   version-bound data, not source reading. FACADE_VERSION remains the facade
   protocol version; the manual binds to the app.
-- `screenshot` is a reserved field: until real screenshot assets are
-  delivered, `capabilities.get.manual.screenshots` reports
-  `reserved-not-delivered`, `help.describe` reports
-  `screenshotStatus:"pending"`, and no screen ever describes a screenshot
-  that does not exist.
+- `screenshot` is delivered where it exists: six of the 18 screens carry a
+  real capture, `capabilities.get.manual.screenshots` reports `delivered`,
+  and each `help.describe` answer reports `screenshotStatus:"available"`
+  with the screenshot data or `"pending"` — no screen ever describes a
+  screenshot that does not exist.
 
 ## Bounded state, analysis, and finishing additions
 
@@ -467,7 +481,10 @@ screenshot delivery state.
   0.1 s padding, tunable via `silenceParams`), and `beatGrid` runs the core
   beat-detection engine (`bpm`/`confidence`/`beats`; downbeats are not
   available — no downbeat detector is installed). `audioSummary`'s
-  silence/bpm fields come from the same kernels. The remaining declared
+  silence/bpm fields come from the same kernels. `videoReview` is the
+  opt-in cloud opinion: it needs media roots, `artifactRoot`, local FFmpeg,
+  and the user's own provider credential, and fails before any request
+  without them. The remaining declared
   types are individually unavailable in `capabilities.get`; they fail
   `UNSUPPORTED` before job creation.
 - New closed edit ops with Core/GUI/renderer parity are `track.update`
@@ -527,7 +544,17 @@ screenshot delivery state.
   existing same-type `trackId` (`CONFLICT` on mismatch) or a new
   same-type track, optional `startTime` defaulting to the timeline end;
   a missing source media fails `NOT_FOUND`, distinguishable from the
-  unknown-id case only by the message text). Capability data names the
+  unknown-id case only by the message text). `clip.addVideoEffect` appends
+  one effect to a clip's video effect stack — `effectType` is closed to the
+  GUI effect-stack type list (`CLIP_VIDEO_EFFECT_TYPES`, 21 types including
+  `chromaKey` and `shader`, each with its own closed parameter contract;
+  `shader` takes a builtin `shaderId` plus that shader's parameters), with
+  optional per-type closed
+  `params` and a deterministic `effectId` for same-batch references. It is
+  the same core `effect/add` action as the GUI effect panel — an effect
+  with the given parameters, never image analysis: the GUI's "Auto-Color"
+  is a fixed three-op preset (`saturation 1.15` + `contrast 1.1` +
+  `brightness 5`), not frame-adapted AI. Capability data names the
   remaining professional gaps instead of exposing no-op
   schemas.
 
@@ -564,4 +591,7 @@ Both `media.inspect` and `visual.inspect` can present verified frame evidence in
 the desktop inspection panel (lossless PNG, or budget-fitted JPEG with
 `fidelity` disclosure). Neither sparse-frame tool evaluates continuous
 motion, audio, semantic scenes, or editing rhythm; the built-in asynchronous
-analysis provider currently supports only `technicalQuality`.
+analysis covers `technicalQuality`, `audioSummary`, `silence`, and
+`beatGrid` locally, plus the opt-in cloud `videoReview` when the user's own
+provider credential is configured — the remaining declared types report
+unavailable.

@@ -204,7 +204,8 @@ deduped with a suffix, never overwritten: always use the returned
 
 `preset_list`/`preset_get`/`preset_create`/`preset_update`/`preset_remove`/
 `preset_apply` manage the user's custom presets — text styles, clip effect
-stacks, and transition parameter sets — user state shared with the GUI
+stacks, transition parameter sets, and inline-SVG graphics presets — user
+state shared with the GUI
 across projects, not project state (live only; headless is honestly
 `UNSUPPORTED` — check `capabilities_get.customPresets`). Collaboration
 rules:
@@ -212,10 +213,12 @@ rules:
 - What you create appears in the open preset panels immediately, and what
   the user saves there is visible to your next `preset_list` — one store,
   no polling, no import step.
-- Effect presets are closed to the engine's 14 parametered clip-effect
-  types: the GUI stack's extra looks (grayscale, sepia, shader, …) and
-  audio effects are honestly rejected, never approximated — say so instead
-  of promising a saved preset.
+- Effect presets are closed to the engine's 22 parametered clip-effect types
+  (the presettable `EffectDefinition` set — note it is narrower than the
+  `clip.addVideoEffect` op's stack list). Audio
+  effects are rejected, and `chromaKey`/`shader`/`hue` presets are declined
+  with copy naming where those settings actually live — never approximated;
+  say so instead of promising a saved preset.
 - Applying a preset is one undoable batch the user can revert with one
   click. Placement limits are hard rejections (`INVALID_PARAMS` with a
   reason), never silently shortened the way the GUI clamps; `preset.apply`
@@ -253,9 +256,11 @@ or bridge attached, live or headless.
   interesting ids for the full steps.
 
 Keep answers inside what the manual states: the pages describe structured
-content and shortcut references, and the screenshot field is reserved but
-not yet delivered (`screenshotStatus:"pending"`), so never describe or
-attach a screenshot you were not given. Limitations listed on a page are
+content and shortcut references. Six of the 18 screens carry a real
+delivered screenshot — the answer reports it with
+`screenshotStatus:"available"` and the screenshot data; every other screen
+reports `pending`, so never describe or attach a screenshot you were not
+given. Limitations listed on a page are
 part of the answer, not an omission.
 
 ## Keep every creation task in one workspace

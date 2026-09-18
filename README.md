@@ -88,15 +88,19 @@ implemented features, reusable foundations, and remaining integration work.
 - Scoped `timeline.query` reads, `project.changes` delta recovery,
   `edit.validate` preflight, and live `history.get`/`history.control` support
   iterative editing. `media.analyze_start` implements `technicalQuality`
-  (built-in probe), `audioSummary` (local FFmpeg), and the dedicated
+  (built-in probe), `audioSummary` (local FFmpeg), the dedicated
   `silence` and `beatGrid` types that share the GUI panels' core silence
-  and beat-detection kernels; other analysis types report unavailable.
+  and beat-detection kernels, and the opt-in cloud `videoReview` (the
+  user's own provider credential); the remaining declared analysis types
+  report unavailable.
 - The atomic `edit_apply` vocabulary covers placement, moving, trimming,
   splitting, duplication, ripple deletion, constant speed/reverse, visual
   transforms and crop, volume, fades, ordinary removal, clip transitions,
   text overlay creation/update/deletion, track updates, media display-name
   renaming, safe track/media removal,
-  review markers, SRT subtitle import, temperature/tint grading, fixed-key
+  review markers, SRT subtitle import, temperature/tint grading, clip
+  video-effect stack application (closed parametered engine effect types;
+  the GUI's "Auto-Color" is a fixed preset, not AI), fixed-key
   chroma keying (green screen), local audio noise reduction, audio ducking
   via envelope keyframes, AI background removal (matte; rendered inside the
   desktop GUI via MediaPipe person segmentation), Auto Reframe
@@ -109,15 +113,17 @@ implemented features, reusable foundations, and remaining integration work.
   transform/opacity
   keyframes. Creation operations report their
   real ids so an Agent can continue editing them in later calls.
-- Users can save custom presets — text styles, clip effect stacks, and
-  transition parameter sets — in the GUI preset panels, and Agents manage
+- Users can save custom presets — text styles, clip effect stacks,
+  transition parameter sets, and inline-SVG graphics presets — in the GUI
+  preset panels, and Agents manage
   and apply the same user-level presets with the `preset.*` tools in a
   live session.
 - A shipped GUI manual travels with the app as version-bound bilingual
   (`zh`/`en`) data: Agents answer "how do I reach/rename/mute/export …"
   questions from 18 curated screen guides through the read-only
   `help.list_screens`/`help.describe`/`help.search` tools — no project and
-  no source reading required.
+  no source reading required. Six screens ship a real screenshot; the rest
+  honestly report their screenshot as pending.
 - From the audio panel or the action rail, users can dispatch voiceover and
   music generation tasks to the connected external Agent session: ReelTerminal
   casts the request (text, requirements, optional adjustments, insert intent)

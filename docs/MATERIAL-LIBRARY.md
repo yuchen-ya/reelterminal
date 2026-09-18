@@ -36,7 +36,8 @@ while work-asset instantiation only reuses material that is already in
 the project.
 
 Custom presets (text styles, clip effect stacks, transition parameter
-sets in the text/effects/transitions panels) are a third, separate
+sets, and inline-SVG graphics presets in the text/effects/transitions/
+graphics panels) are a third, separate
 user-level store: like this library they are cross-project user state,
 but they hold PARAMETER bundles only — never media files, segments, or
 links — and applying one copies values into the project with no lasting
