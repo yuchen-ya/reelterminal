@@ -1,10 +1,11 @@
 import type { JSX } from "react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Bot, CircleHelp, FolderOpen, MessageSquare, Power, X } from "@/icons/lucide-compat";
+import { AudioLines, Bot, CircleHelp, FolderOpen, MessageSquare, Power, X } from "@/icons/lucide-compat";
 import { useCollabStore, installCollabEventListener, type CollabMode } from "../../stores/collab-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useAgentReferencesStore } from "../../stores/agent-references-store";
+import { AGENT_MEDIA_TASK_MODAL_ID } from "../../components/editor/dialogs/AgentMediaTaskDialog";
 import { useTranslation } from "react-i18next";
 import { useAnchoredBelowStyle } from "../../utils/anchored-position";
 import { AnalysisRecordsPanel } from "./AnalysisRecordsPanel";
@@ -76,6 +77,9 @@ export function CollabStatusBar(): JSX.Element {
 
   const chatOpen = useUIStore((s) => s.panels.externalAgent.visible);
   const togglePanel = useUIStore((s) => s.togglePanel);
+  // G13 desktop entry: the strip hosts the desktop's voiceover/music task
+  // trigger since the desktop layout has no mixer panel to carry it.
+  const openModal = useUIStore((s) => s.openModal);
   const references = useAgentReferencesStore((s) =>
     Object.values(s.references).sort((a, b) => a.number - b.number),
   );
@@ -355,6 +359,19 @@ export function CollabStatusBar(): JSX.Element {
 
       <div className="ml-auto flex items-center">
         <AnalysisRecordsPanel />
+        {/* G13 desktop entry: opens the shared voiceover/music task dialog
+            (mounted on the Edit page) via the standard ui-store modal id.
+            Label/icon mirror the web mixer entry (`agentMediaTasks.entry`). */}
+        <button
+          type="button"
+          data-testid="collab-agent-media-entry"
+          aria-label={t("agentMediaTasks.entry")}
+          onClick={() => openModal(AGENT_MEDIA_TASK_MODAL_ID)}
+          className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors text-fg-2 hover:bg-hover hover:text-fg"
+        >
+          <AudioLines size={13} aria-hidden />
+          {t("agentMediaTasks.entry")}
+        </button>
         <button
           type="button"
           aria-label={t(chatOpen ? "externalAgent.closePanel" : "externalAgent.openPanel")}

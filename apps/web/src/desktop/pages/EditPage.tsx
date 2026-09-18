@@ -8,6 +8,8 @@ import { ToolcraftText as Text } from "@openreel/ui";
 import { AssetsPanel } from "../../components/editor/AssetsPanel";
 import { InspectorPanel } from "../../components/editor/InspectorPanel";
 import { ExternalAgentFloatingWindow } from "../../components/editor/agent/ExternalAgentFloatingWindow";
+import { AgentMediaTaskDialog } from "../../components/editor/dialogs/AgentMediaTaskDialog";
+import { AgentMediaTaskRuntime } from "../../components/editor/dialogs/AgentMediaTaskRuntime";
 import { PanelErrorBoundary } from "../../components/ErrorBoundary";
 import { CollabStatusBar } from "../editor/CollabStatusBar";
 import { Icon } from "@/icons/Icon";
@@ -165,6 +167,14 @@ export function EditPage(): JSX.Element {
       </DockRegion>
 
       <ExternalAgentFloatingWindow />
+      {/* G13 desktop entry: the voiceover/music task surface must exist on
+          the desktop too, not only in the web editor shell. The runtime arms
+          the receipt correlator and recommended-root source for the session;
+          the dialog renders null while closed and portals to document.body
+          when open, so neither has any footprint in the grid above. The
+          CollabStatusBar hosts the entry button. */}
+      <AgentMediaTaskRuntime />
+      <AgentMediaTaskDialog />
     </div>
   );
 }

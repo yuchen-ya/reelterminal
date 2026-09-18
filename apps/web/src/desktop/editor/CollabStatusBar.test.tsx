@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CollabStatusBar } from "./CollabStatusBar";
+import { useUIStore } from "../../stores/ui-store";
+import { AGENT_MEDIA_TASK_MODAL_ID } from "../../components/editor/dialogs/AgentMediaTaskDialog";
 
 const INTRO_SEEN_KEY = "reelterminal.agentSessionIntroSeen";
 
@@ -199,5 +201,31 @@ describe("CollabStatusBar Agent Session onboarding", () => {
     fireEvent.click(restore);
 
     await waitFor(() => expect(setAccess).toHaveBeenCalledWith("write"));
+  });
+});
+
+describe("CollabStatusBar voiceover/music entry (G13 desktop)", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    delete openreelWindow.openreel;
+  });
+
+  afterEach(() => {
+    window.localStorage.clear();
+    delete openreelWindow.openreel;
+    useUIStore.setState({ activeModal: null });
+  });
+
+  it("opens the shared voiceover/music task modal from the strip", () => {
+    render(<CollabStatusBar />);
+
+    const entry = screen.getByTestId("collab-agent-media-entry");
+    // Same catalog key as the web mixer entry, so zh/en follow the UI language.
+    expect(entry).toHaveAttribute("aria-label", "Generate voiceover / music");
+    expect(useUIStore.getState().activeModal).toBeNull();
+
+    fireEvent.click(entry);
+
+    expect(useUIStore.getState().activeModal).toBe(AGENT_MEDIA_TASK_MODAL_ID);
   });
 });
