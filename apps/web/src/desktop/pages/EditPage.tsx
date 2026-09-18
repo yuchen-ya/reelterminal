@@ -99,6 +99,9 @@ function RowHandle({
   );
 }
 
+/** Height of the CollabStatusBar row wrapper below (`h-8`, grid row "collab"). */
+const COLLAB_ROW_HEIGHT = 32;
+
 export function EditPage(): JSX.Element {
   const { t } = useTranslation();
   const mediaW = useResizable({
@@ -166,7 +169,12 @@ export function EditPage(): JSX.Element {
         <RowHandle onPointerDown={timelineH.onHandlePointerDown} />
       </DockRegion>
 
-      <ExternalAgentFloatingWindow />
+      {/* F15 occlusion: the never-dragged agent window keeps its default
+          rectangle above the collab row + timeline dock so the strip's
+          right-side entries stay clickable while the window is open. */}
+      <ExternalAgentFloatingWindow
+        defaultBottomReserve={COLLAB_ROW_HEIGHT + timelineH.value}
+      />
       {/* G13 desktop entry: the voiceover/music task surface must exist on
           the desktop too, not only in the web editor shell. The runtime arms
           the receipt correlator and recommended-root source for the session;

@@ -5,6 +5,8 @@ import { ToolcraftText as Text } from "@openreel/ui";
 import { Bot } from "@/icons/lucide-compat";
 import {
   clampBoundsToViewport,
+  DEFAULT_MIN_SIZE,
+  FLOATING_WINDOW_MARGIN,
   FloatingWindow,
   type WindowBounds,
 } from "../../floating/FloatingWindow";
@@ -41,7 +43,19 @@ function PanelLoading(): JSX.Element {
  * dragged, resized, or minimized (display:none), the live conversation event
  * listener, composer draft, and numbered references survive all of those.
  */
-export function ExternalAgentFloatingWindow(): JSX.Element | null {
+export function ExternalAgentFloatingWindow({
+  defaultBottomReserve = 0,
+}: {
+  /**
+   * Vertical space (px) at the viewport bottom that the factory-default
+   * window must stay above. The desktop Edit page passes its collab strip +
+   * timeline dock height (F15): the strip's right-side entries (voiceover/
+   * music, agent session) must stay clickable while the window is open.
+   * Only the never-dragged default geometry shrinks; once the user drags or
+   * resizes, their persisted bounds win.
+   */
+  defaultBottomReserve?: number;
+} = {}): JSX.Element | null {
   const { t } = useTranslation();
   const panel = useUIStore((state) => state.panels.externalAgent);
   const setPanelVisible = useUIStore((state) => state.setPanelVisible);
@@ -60,7 +74,23 @@ export function ExternalAgentFloatingWindow(): JSX.Element | null {
 
   const viewport = { width: window.innerWidth, height: window.innerHeight };
   const width = panel.width ?? DEFAULT_WIDTH;
-  const height = panel.height ?? Math.min(DEFAULT_HEIGHT, viewport.height - 80);
+  // F15 occlusion: with no persisted position the user has never dragged the
+  // window, so keep its default rectangle above the reserved bottom strip
+  // (desktop collab bar + timeline) instead of covering the strip's entries.
+  // Any drag or resize commits x/y, which opts out of this default sizing.
+  const atDefaultPosition = panel.x == null && panel.y == null;
+  const height = atDefaultPosition
+    ? Math.max(
+        DEFAULT_MIN_SIZE.height,
+        Math.min(
+          panel.height ?? DEFAULT_HEIGHT,
+          viewport.height -
+            DEFAULT_TOP -
+            FLOATING_WINDOW_MARGIN -
+            defaultBottomReserve,
+        ),
+      )
+    : (panel.height ?? Math.min(DEFAULT_HEIGHT, viewport.height - 80));
   const bounds = clampBoundsToViewport({
     x: panel.x ?? viewport.width - width - DEFAULT_RIGHT_MARGIN,
     y: panel.y ?? DEFAULT_TOP,
