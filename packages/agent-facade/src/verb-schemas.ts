@@ -1696,6 +1696,31 @@ export const PRESET_TARGET_TRANSITION_SCHEMA: ObjectSchema = {
   },
 };
 
+export const PRESET_TARGET_GRAPHICS_SCHEMA: ObjectSchema = {
+  kind: {
+    check: (v) => v === "graphics",
+    describe: '"graphics" — creates a NEW SVG clip from the preset',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "graphics" } },
+  },
+  trackId: {
+    check: isNonEmptyString,
+    describe:
+      "graphics track to place the clip on; omitted picks the first graphics track (one is created when none exists)",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  startTime: {
+    check: isNonNegativeNumber,
+    describe: "timeline seconds for the new clip (default 0)",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  durationSec: {
+    check: isPositiveNumber,
+    describe: "clip duration in seconds (default 5)",
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+};
+
 export const PRESET_APPLY_SCHEMA: ObjectSchema = {
   presetId: {
     check: isNonEmptyString,
@@ -1706,7 +1731,7 @@ export const PRESET_APPLY_SCHEMA: ObjectSchema = {
   target: {
     check: isPlainObject,
     describe:
-      'where the parameters land: {"kind":"text","mode":"updateStyle","clipId":...} | {"kind":"effect","clipIds":[...]} | {"kind":"transition","clipAId":...,"clipBId":"..."}',
+      'where the parameters land: {"kind":"text","mode":"updateStyle","clipId":...} | {"kind":"effect","clipIds":[...]} | {"kind":"transition","clipAId":...,"clipBId":"..."} | {"kind":"graphics","trackId":"...","startTime":0,"durationSec":5}',
     required: true,
     emits: {
       kind: "anyOfObjects",
@@ -1714,6 +1739,7 @@ export const PRESET_APPLY_SCHEMA: ObjectSchema = {
         PRESET_TARGET_TEXT_SCHEMA,
         PRESET_TARGET_EFFECT_SCHEMA,
         PRESET_TARGET_TRANSITION_SCHEMA,
+        PRESET_TARGET_GRAPHICS_SCHEMA,
       ],
     },
   },

@@ -111,11 +111,55 @@ function parseApplyTarget(raw: unknown):
   const record = raw as Record<string, unknown>;
   const kind = record.kind;
   if (kind === "graphics") {
+    if (
+      record.trackId !== undefined &&
+      (!isString(record.trackId) || record.trackId.length === 0)
+    ) {
+      return {
+        ok: false,
+        error: {
+          code: "INVALID_PARAMS",
+          message:
+            "graphics trackId must be a non-empty graphics track id; omit it to target the first graphics track (one is created when none exists)",
+        },
+      };
+    }
+    if (
+      record.startTime !== undefined &&
+      (typeof record.startTime !== "number" ||
+        !Number.isFinite(record.startTime) ||
+        record.startTime < 0)
+    ) {
+      return {
+        ok: false,
+        error: {
+          code: "INVALID_PARAMS",
+          message: "graphics startTime must be a finite number >= 0 (timeline seconds)",
+        },
+      };
+    }
+    if (
+      record.durationSec !== undefined &&
+      (typeof record.durationSec !== "number" ||
+        !Number.isFinite(record.durationSec) ||
+        record.durationSec <= 0)
+    ) {
+      return {
+        ok: false,
+        error: {
+          code: "INVALID_PARAMS",
+          message:
+            "graphics durationSec must be a finite number > 0 (seconds); omit it for the default 5s",
+        },
+      };
+    }
     return {
-      ok: false,
-      error: {
-        code: "PRESET_APPLY_UNSUPPORTED",
-        message: "graphics preset application is not available yet",
+      ok: true,
+      target: {
+        kind: "graphics",
+        ...(record.trackId !== undefined ? { trackId: record.trackId as string } : {}),
+        ...(record.startTime !== undefined ? { startTime: record.startTime } : {}),
+        ...(record.durationSec !== undefined ? { durationSec: record.durationSec } : {}),
       },
     };
   }
@@ -183,7 +227,7 @@ function parseApplyTarget(raw: unknown):
     ok: false,
     error: {
       code: "INVALID_PARAMS",
-      message: `unknown target kind "${String(kind)}" (expected text | effect | transition)`,
+      message: `unknown target kind "${String(kind)}" (expected text | effect | transition | graphics)`,
     },
   };
 }
@@ -283,6 +327,20 @@ async function handleApply(
     if (target.kind === "transition" && isString(first?.transition?.id)) {
       transitionId = first.transition.id;
     }
+    // Graphics targets create a NEW SVG clip; the applied projection
+    // surfaces the created clip id (and its track) so the caller can
+    // address the result in follow-up edits.
+    let graphicsClipId: string | undefined;
+    let graphicsTrackId: string | undefined;
+    if (target.kind === "graphics") {
+      for (const action of expanded.actions) {
+        if (action.type === "svg/create") {
+          const clip = action.params as { clip?: { id?: string; trackId?: string } };
+          if (isString(clip.clip?.id)) graphicsClipId = clip.clip.id;
+          if (isString(clip.clip?.trackId)) graphicsTrackId = clip.clip.trackId;
+        }
+      }
+    }
     const appliedClipIds =
       target.kind === "text"
         ? [target.clipId]
@@ -292,7 +350,9 @@ async function handleApply(
             ? target.clipBId !== undefined
               ? [target.clipAId, target.clipBId]
               : [target.clipAId]
-            : [];
+            : graphicsClipId !== undefined
+              ? [graphicsClipId]
+              : [];
     const result: Record<string, unknown> = {
       presetId,
       projectId: store.project.id,
@@ -302,6 +362,7 @@ async function handleApply(
         kind: target.kind,
         clipIds: appliedClipIds,
         ...(transitionId !== undefined ? { transitionId } : {}),
+        ...(graphicsTrackId !== undefined ? { trackId: graphicsTrackId } : {}),
       },
     };
 

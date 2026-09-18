@@ -195,6 +195,73 @@ describe("effect payload validation", () => {
     expect(extraKey.ok).toBe(false);
     if (!extraKey.ok) expect(extraKey.code).toBe("UNKNOWN_PAYLOAD_FIELD");
   });
+
+  it("accepts the eight GUI-stack effect types the engines render", () => {
+    // Keys and ranges mirror what the GUI writes (effects-bridge
+    // getDefaultParams) and what the engines read (video-effects-engine +
+    // canvas2d fallback): grayscale/sepia/invert=amount 0..1,
+    // sharpen=amount, grain=amount+size, temperature/tint=value -100..100,
+    // tonal=shadows/midtones/highlights.
+    const result = validatePresetPayload({
+      ...base,
+      effects: [
+        { type: "grayscale", params: { amount: 0.8 } },
+        { type: "sepia", params: { amount: 1 } },
+        { type: "invert", params: { amount: 0.5 } },
+        { type: "sharpen", params: { amount: 120 } },
+        { type: "grain", params: { amount: 25, size: 1.5 } },
+        { type: "temperature", params: { value: -40 } },
+        { type: "tint", params: { value: 30 } },
+        { type: "tonal", params: { shadows: -20, midtones: 0, highlights: 15 } },
+      ],
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects out-of-range parameters for the added GUI-stack types", () => {
+    const cases: Array<{ type: string; params: Record<string, unknown> }> = [
+      { type: "grayscale", params: { amount: 1.5 } },
+      { type: "sepia", params: { amount: -0.1 } },
+      { type: "invert", params: { amount: 2 } },
+      { type: "sharpen", params: { amount: 500 } },
+      { type: "grain", params: { amount: 200 } },
+      { type: "grain", params: { size: 0.1 } },
+      { type: "temperature", params: { value: 101 } },
+      { type: "tint", params: { value: -101 } },
+      { type: "tonal", params: { shadows: 0, midtones: 999, highlights: 0 } },
+    ];
+    for (const effect of cases) {
+      const result = validatePresetPayload({ ...base, effects: [effect] });
+      expect(result.ok, `${effect.type} ${JSON.stringify(effect.params)}`).toBe(false);
+      if (!result.ok) expect(result.code).toBe("INVALID_PARAM_VALUE");
+    }
+  });
+
+  it("rejects engine params the preset contract does not define for the added types", () => {
+    // sharpen's radius slider and grain's roughness/colored extras are not
+    // engine-consumed parameters, so they stay out of the whitelist.
+    const result = validatePresetPayload({
+      ...base,
+      effects: [{ type: "sharpen", params: { amount: 50, radius: 2 } }],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("UNKNOWN_PAYLOAD_FIELD");
+      expect(result.details?.field).toBe("effects[0].params.radius");
+    }
+  });
+
+  it("still rejects the engine-only stack features with no safe preset contract", () => {
+    // hue: two render paths disagree on the parameter key (GPU reads
+    // rotation, the canvas filter chain reads value) — contract TBD.
+    // chromaKey: clip-level keying field, not a stack effect.
+    // shader: per-shaderId dynamic params; presets are parameter-only.
+    for (const type of ["hue", "chromaKey", "shader"]) {
+      const result = validatePresetPayload({ ...base, effects: [{ type, params: {} }] });
+      expect(result.ok, type).toBe(false);
+      if (!result.ok) expect(result.code).toBe("UNKNOWN_EFFECT_TYPE");
+    }
+  });
 });
 
 describe("transition payload validation", () => {

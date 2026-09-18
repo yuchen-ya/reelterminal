@@ -114,7 +114,16 @@ export type PresetApplyTarget =
       readonly clipId: string;
     }
   | { readonly kind: "effect"; readonly clipIds: readonly string[] }
-  | { readonly kind: "transition"; readonly clipAId: string; readonly clipBId?: string };
+  | { readonly kind: "transition"; readonly clipAId: string; readonly clipBId?: string }
+  | {
+      readonly kind: "graphics";
+      /** Graphics track to place the SVG clip on; omitted picks/auto-creates one. */
+      readonly trackId?: string;
+      /** Timeline seconds; defaults to 0. */
+      readonly startTime?: number;
+      /** Clip duration in seconds; defaults to the renderer's graphics preset constant (5s). */
+      readonly durationSec?: number;
+    };
 
 export interface PresetApplyParams {
   readonly presetId: string;
@@ -180,10 +189,12 @@ export interface PresetApplyResult {
   readonly revision: number;
   readonly applied: {
     readonly kind: PresetKind;
-    /** Clips the parameters landed on (the styled clip / every targeted clip / the cut). */
+    /** Clips the parameters landed on (the styled clip / every targeted clip / the cut / the created SVG clip). */
     readonly clipIds: readonly string[];
     /** Set for transition targets: the created transition id. */
     readonly transitionId?: string;
+    /** Set for graphics targets: the graphics track the SVG clip landed on. */
+    readonly trackId?: string;
   };
 }
 
@@ -242,6 +253,7 @@ export interface CustomPresetCapability {
       "text:updateStyle",
       "effect:clipIds",
       "transition:clipAId",
+      "graphics:trackId",
     ];
     readonly reason?: string;
   };
@@ -302,5 +314,30 @@ export function presetApplyTargetProblem(target: unknown): string | null {
     }
     return null;
   }
-  return `unknown target kind "${String(kind)}" (expected text | effect | transition)`;
+  if (kind === "graphics") {
+    if (
+      record.trackId !== undefined &&
+      (typeof record.trackId !== "string" || record.trackId.length === 0)
+    ) {
+      return "graphics trackId must be a non-empty graphics track id; omit it to target the first graphics track (one is created when none exists)";
+    }
+    if (
+      record.startTime !== undefined &&
+      (typeof record.startTime !== "number" ||
+        !Number.isFinite(record.startTime) ||
+        record.startTime < 0)
+    ) {
+      return "graphics startTime must be a finite number >= 0 (timeline seconds)";
+    }
+    if (
+      record.durationSec !== undefined &&
+      (typeof record.durationSec !== "number" ||
+        !Number.isFinite(record.durationSec) ||
+        record.durationSec <= 0)
+    ) {
+      return "graphics durationSec must be a finite number > 0 (seconds); omit it for the default 5s";
+    }
+    return null;
+  }
+  return `unknown target kind "${String(kind)}" (expected text | effect | transition | graphics)`;
 }

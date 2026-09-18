@@ -53,7 +53,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.0.2" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.0.3" as const;
 export const GUI_MANUAL_APP_VERSION = "1.0.0-alpha.10" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
@@ -467,8 +467,8 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     ],
     limitations: [
       {
-        zh: "效果预设只覆盖片段视频效果栈，且是封闭集合（模糊、阴影、发光、亮度、对比度、饱和度、色相/饱和度、色彩平衡、曲线、运动模糊、径向模糊、晕影、胶片颗粒、色差共 14 类）；音频效果不能进效果预设。",
-        en: "Effect presets cover the clip VIDEO effect stack only, a closed set of 14 engine types (blur, shadow, glow, brightness, contrast, saturation, hue-saturation, color-balance, curves, motion-blur, radial-blur, vignette, film-grain, chromatic-aberration); audio effects cannot join an effect preset.",
+        zh: "效果预设只覆盖片段视频效果栈，且是封闭集合（模糊、阴影、发光、亮度、对比度、饱和度、色相/饱和度、色彩平衡、曲线、运动模糊、径向模糊、晕影、胶片颗粒、色差、灰度、深褐色、反相、锐化、颗粒、色温、色调、影调共 22 类）；音频效果不能进效果预设。色键保存在片段的独立键控设置中、着色器效果的参数取决于所选 shader，二者不能存为效果预设。",
+        en: "Effect presets cover the clip VIDEO effect stack only, a closed set of 22 engine types (blur, shadow, glow, brightness, contrast, saturation, hue-saturation, color-balance, curves, motion-blur, radial-blur, vignette, film-grain, chromatic-aberration, grayscale, sepia, invert, sharpen, grain, temperature, tint, tonal); audio effects cannot join an effect preset. Chroma key lives in the clip's dedicated keying settings and a shader effect's parameters depend on the selected shader, so neither can be saved as an effect preset.",
       },
       {
         zh: "未知效果类型在保存时被拒绝；自定义预设保存在本机，跨项目可用。",

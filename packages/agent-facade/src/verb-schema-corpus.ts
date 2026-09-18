@@ -1545,6 +1545,39 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       },
       expectValid: true,
     },
+    {
+      name: "valid graphics target with explicit placement",
+      params: {
+        presetId: "preset_1",
+        target: { kind: "graphics", trackId: "gfx-1", startTime: 2, durationSec: 4 },
+      },
+      expectValid: true,
+    },
+    {
+      name: "valid graphics target with defaults (track/time/duration omitted)",
+      params: {
+        presetId: "preset_1",
+        target: { kind: "graphics" },
+        idempotencyKey: "pa2",
+      },
+      expectValid: true,
+    },
+    {
+      name: "graphics startTime must be non-negative",
+      params: {
+        presetId: "preset_1",
+        target: { kind: "graphics", startTime: -1 },
+      },
+      expectValid: false,
+    },
+    {
+      name: "graphics durationSec must be positive",
+      params: {
+        presetId: "preset_1",
+        target: { kind: "graphics", durationSec: 0 },
+      },
+      expectValid: false,
+    },
     { name: "missing target", params: { presetId: "preset_1" }, expectValid: false },
     { name: "target not an object", params: { presetId: "preset_1", target: "clip-1" }, expectValid: false },
     {

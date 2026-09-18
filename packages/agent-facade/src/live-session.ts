@@ -3707,6 +3707,14 @@ export class LiveFacadeSession {
     if (kind === "effect") {
       return { kind, clipIds: [...(target.clipIds as readonly string[])] };
     }
+    if (kind === "graphics") {
+      return {
+        kind,
+        ...(target.trackId !== undefined ? { trackId: target.trackId } : {}),
+        ...(target.startTime !== undefined ? { startTime: target.startTime } : {}),
+        ...(target.durationSec !== undefined ? { durationSec: target.durationSec } : {}),
+      };
+    }
     return {
       kind,
       clipAId: target.clipAId,

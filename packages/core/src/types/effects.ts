@@ -7,6 +7,14 @@ export type LayerEffectType =
   | "brightness"
   | "contrast"
   | "saturation"
+  | "grayscale"
+  | "sepia"
+  | "invert"
+  | "sharpen"
+  | "grain"
+  | "temperature"
+  | "tint"
+  | "tonal"
   | "hue-saturation"
   | "color-balance"
   | "curves"
@@ -537,6 +545,185 @@ export const EFFECT_DEFINITIONS: EffectDefinition[] = [
         max: 360,
         step: 1,
         unit: "°",
+        default: 0,
+      },
+    ],
+  },
+  // The eight entries below close the gap between this contract table and
+  // the GUI video effect stack: the render engines already implement them
+  // (video-effects-engine.ts GPU uniforms / CSS filter chain / CPU pixel
+  // kernels, and the canvas2d fallback renderer), but they had no
+  // EffectDefinition, which made them unvalidatable and therefore
+  // unpresetable. Parameter keys and ranges mirror what the GUI writes
+  // (effects-bridge getDefaultParams / VideoEffectsSection sliders) and
+  // what the engines read — the same measured contract for both render
+  // paths. `hue` stays OUT on purpose: the video-effects-engine GPU
+  // shader, its CSS filter chain, the canvas2d fallback, and the WebGPU
+  // processor all read `rotation` (degrees), while the legacy
+  // UnifiedEffectsProcessor CSS chain still reads `value` (0..1 turns),
+  // so there is no single safe contract yet.
+  // chromaKey (clip-level keying, not a stack effect) and shader
+  // (per-shaderId dynamic params; presets are parameter-only) are
+  // deliberately absent — preset saves reject them with dedicated copy.
+  {
+    type: "grayscale",
+    name: "Grayscale",
+    category: "color",
+    params: [
+      {
+        key: "amount",
+        label: "Amount",
+        type: "number",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        default: 1,
+      },
+    ],
+  },
+  {
+    type: "sepia",
+    name: "Sepia",
+    category: "color",
+    params: [
+      {
+        key: "amount",
+        label: "Amount",
+        type: "number",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        default: 1,
+      },
+    ],
+  },
+  {
+    type: "invert",
+    name: "Invert",
+    category: "color",
+    params: [
+      {
+        key: "amount",
+        label: "Amount",
+        type: "number",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        default: 1,
+      },
+    ],
+  },
+  {
+    type: "sharpen",
+    name: "Sharpen",
+    category: "stylize",
+    // The GPU/CPU kernels read `amount` only; the inspector's radius slider
+    // is not an engine-consumed parameter, so it is not whitelisted here.
+    params: [
+      {
+        key: "amount",
+        label: "Amount",
+        type: "number",
+        min: 0,
+        max: 200,
+        step: 1,
+        unit: "%",
+        default: 0,
+      },
+    ],
+  },
+  {
+    type: "grain",
+    name: "Grain",
+    category: "stylize",
+    // Lightweight sibling of film-grain: amount + size only (no
+    // roughness), matching what the engines read — the GPU grain shader
+    // consumes both keys, the CPU kernel amount only.
+    params: [
+      {
+        key: "amount",
+        label: "Amount",
+        type: "number",
+        min: 0,
+        max: 100,
+        step: 1,
+        default: 0,
+      },
+      {
+        key: "size",
+        label: "Size",
+        type: "number",
+        min: 0.5,
+        max: 5,
+        step: 0.1,
+        default: 1,
+      },
+    ],
+  },
+  {
+    type: "temperature",
+    name: "Temperature",
+    category: "color",
+    // Effect-stack white balance shift (-100 cool .. 100 warm); distinct
+    // from clip.colorGrading.temperature, which is a separate pipeline.
+    params: [
+      {
+        key: "value",
+        label: "Value",
+        type: "number",
+        min: -100,
+        max: 100,
+        step: 1,
+        default: 0,
+      },
+    ],
+  },
+  {
+    type: "tint",
+    name: "Tint",
+    category: "color",
+    params: [
+      {
+        key: "value",
+        label: "Value",
+        type: "number",
+        min: -100,
+        max: 100,
+        step: 1,
+        default: 0,
+      },
+    ],
+  },
+  {
+    type: "tonal",
+    name: "Tonal",
+    category: "color",
+    params: [
+      {
+        key: "shadows",
+        label: "Shadows",
+        type: "number",
+        min: -100,
+        max: 100,
+        step: 1,
+        default: 0,
+      },
+      {
+        key: "midtones",
+        label: "Midtones",
+        type: "number",
+        min: -100,
+        max: 100,
+        step: 1,
+        default: 0,
+      },
+      {
+        key: "highlights",
+        label: "Highlights",
+        type: "number",
+        min: -100,
+        max: 100,
+        step: 1,
         default: 0,
       },
     ],

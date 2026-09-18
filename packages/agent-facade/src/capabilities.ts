@@ -433,7 +433,12 @@ export async function buildCapabilities(
       persistence: "renderer-indexeddb",
       apply: {
         available: presetLibraryAvailable,
-        targets: ["text:updateStyle", "effect:clipIds", "transition:clipAId"],
+        targets: [
+          "text:updateStyle",
+          "effect:clipIds",
+          "transition:clipAId",
+          "graphics:trackId",
+        ],
         ...(presetLibraryAvailable
           ? {}
           : { reason: "requires the live preset-library bridge" }),

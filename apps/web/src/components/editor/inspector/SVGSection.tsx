@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
 import { ToolcraftSelectControl as Selector } from "@openreel/ui";
 import { ToolcraftText as Text } from "@openreel/ui";
@@ -9,6 +9,19 @@ import { SVG_ANIMATION_PRESETS } from "@openreel/core";
 import { ColorSelector } from "../../../motion/components/primitives";
 import { t } from "../../../i18n";
 import { useTranslation } from "react-i18next";
+import { BookmarkPlus, Pencil, Trash2, Wand2 } from "lucide-react";
+import { useCustomPresets } from "../../../services/custom-presets/use-custom-presets";
+import type { CustomPresetRecord } from "@openreel/core/presets/types";
+import { PresetNameDialog } from "../panels/preset-name-dialog";
+import {
+  applyGraphicsPresetToPlayhead,
+  captureGraphicsPresetSvg,
+  deleteCustomPresetWithConfirm,
+  renameCustomPreset,
+  saveGraphicsPreset,
+} from "../panels/effect-transition-preset-controllers";
+import { dedupePresetName } from "../panels/TextPresetsPanel";
+import { toast } from "../../../stores/notification-store";
 
 const ColorField: React.FC<{
   label: string;
@@ -39,6 +52,113 @@ interface SVGSectionProps {
   clipId: string;
 }
 
+/** One row of the custom graphics preset list: apply / inline rename / delete. */
+const GraphicsPresetRow: React.FC<{
+  readonly preset: CustomPresetRecord;
+  readonly onApply: (preset: CustomPresetRecord) => void;
+  readonly onRename: (preset: CustomPresetRecord, draft: string) => void;
+  readonly onDelete: (preset: CustomPresetRecord) => void;
+}> = ({ preset, onApply, onRename, onDelete }) => {
+  const { t } = useTranslation();
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState("");
+
+  const startRename = () => {
+    setRenameDraft(preset.name);
+    setIsRenaming(true);
+  };
+  const submitRename = () => {
+    if (isRenaming) onRename(preset, renameDraft);
+    setIsRenaming(false);
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={preset.name}
+      data-graphics-preset-id={preset.id}
+      onDoubleClick={() => {
+        if (!isRenaming) onApply(preset);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && !isRenaming) onApply(preset);
+      }}
+      className="group flex cursor-pointer items-center gap-1 rounded-lg border border-border bg-bg-2 px-2 py-1.5 text-left transition-colors hover:border-accent"
+    >
+      <div className="min-w-0 flex-1">
+        {isRenaming ? (
+          <input
+            autoFocus
+            aria-label={t("assets.graphicsPresets.renameAriaLabel")}
+            maxLength={80}
+            value={renameDraft}
+            onChange={(event) => setRenameDraft(event.currentTarget.value)}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                submitRename();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                setIsRenaming(false);
+              }
+            }}
+            onBlur={submitRename}
+            className="w-full rounded border border-border bg-bg px-1.5 py-0.5 text-[11px] text-fg outline-none focus:border-accent"
+          />
+        ) : (
+          <Text
+            type="supporting"
+            weight="bold"
+            display="block"
+            maxLines={1}
+            className="text-[11px] leading-tight text-fg"
+          >
+            {preset.name}
+          </Text>
+        )}
+      </div>
+      <button
+        type="button"
+        aria-label={t("assets.graphicsPresets.applyAction")}
+        title={t("assets.graphicsPresets.applyAction")}
+        onClick={(event) => {
+          event.stopPropagation();
+          onApply(preset);
+        }}
+        className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-3 hover:bg-hover hover:text-fg"
+      >
+        <Wand2 size={12} aria-hidden />
+      </button>
+      <button
+        type="button"
+        aria-label={t("assets.graphicsPresets.renameAction")}
+        title={t("assets.graphicsPresets.renameAction")}
+        onClick={(event) => {
+          event.stopPropagation();
+          startRename();
+        }}
+        className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-3 hover:bg-hover hover:text-fg"
+      >
+        <Pencil size={12} aria-hidden />
+      </button>
+      <button
+        type="button"
+        aria-label={t("assets.graphicsPresets.deleteAction")}
+        title={t("assets.graphicsPresets.deleteAction")}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDelete(preset);
+        }}
+        className="grid h-6 w-6 shrink-0 place-items-center rounded text-fg-3 hover:bg-hover hover:text-red-400"
+      >
+        <Trash2 size={12} aria-hidden />
+      </button>
+    </div>
+  );
+};
+
 export const SVGSection: React.FC<SVGSectionProps> = ({ clipId }) => {
   const { t } = useTranslation();
   const { getSVGClipById, updateSVGClip, project } = useProjectStore();
@@ -47,6 +167,14 @@ export const SVGSection: React.FC<SVGSectionProps> = ({ clipId }) => {
     () => getSVGClipById(clipId),
     [clipId, getSVGClipById, project.modifiedAt],
   );
+
+  const customGraphicsPresets = useCustomPresets("graphics");
+  const existingPresetNames = useMemo(
+    () => customGraphicsPresets.map((preset) => preset.name),
+    [customGraphicsPresets],
+  );
+  const [presetDialogOpen, setPresetDialogOpen] = useState(false);
+  const [presetNameDraft, setPresetNameDraft] = useState("");
 
   const colorStyle = useMemo(
     () =>
@@ -152,6 +280,49 @@ export const SVGSection: React.FC<SVGSectionProps> = ({ clipId }) => {
     },
     [clipId, svgClip, exitAnimation, updateSVGClip],
   );
+
+  const handleSaveAsPreset = useCallback(() => {
+    if (!svgClip) return;
+    // Same-source validation gate as agent preset.create: the payload only
+    // persists when validateSvgContent accepts the clip's SVG source.
+    const capture = captureGraphicsPresetSvg(svgClip.svgContent);
+    if (!capture.ok) {
+      toast.error(t("assets.graphicsPresets.saveFailed"), capture.message);
+      return;
+    }
+    setPresetNameDraft(dedupePresetName(t("assets.graphicsPresets.defaultName"), existingPresetNames));
+    setPresetDialogOpen(true);
+  }, [svgClip, existingPresetNames, t]);
+
+  const handlePresetSaveConfirm = useCallback(() => {
+    if (!svgClip) return;
+    const capture = captureGraphicsPresetSvg(svgClip.svgContent);
+    setPresetDialogOpen(false);
+    if (!capture.ok) {
+      toast.error(t("assets.graphicsPresets.saveFailed"), capture.message);
+      return;
+    }
+    void saveGraphicsPreset({
+      name: presetNameDraft,
+      svg: capture.svg,
+      existingNames: existingPresetNames,
+    });
+  }, [svgClip, presetNameDraft, existingPresetNames, t]);
+
+  const handleApplyPreset = useCallback((preset: CustomPresetRecord) => {
+    void applyGraphicsPresetToPlayhead(preset);
+  }, []);
+
+  const handleRenamePreset = useCallback(
+    (preset: CustomPresetRecord, draft: string) => {
+      void renameCustomPreset(preset, draft, "assets.graphicsPresets");
+    },
+    [],
+  );
+
+  const handleDeletePreset = useCallback((preset: CustomPresetRecord) => {
+    void deleteCustomPresetWithConfirm(preset, "assets.graphicsPresets");
+  }, []);
 
   if (!svgClip) {
     return (
@@ -259,6 +430,66 @@ export const SVGSection: React.FC<SVGSectionProps> = ({ clipId }) => {
           />
         )}
       </div>
+
+      <div className="space-y-2 border-t border-border pt-3">
+        <div className="flex items-center justify-between">
+          <Text
+            type="supporting"
+            color="secondary"
+            weight="bold"
+            className="text-[9.5px] uppercase"
+          >
+            {t("assets.graphicsPresets.groupCustom")}
+          </Text>
+          <button
+            type="button"
+            aria-label={t("assets.graphicsPresets.save")}
+            title={t("assets.graphicsPresets.save")}
+            onClick={handleSaveAsPreset}
+            className="flex items-center gap-1 rounded-md border border-border bg-bg-2 px-2 py-1 text-[10px] font-semibold text-fg-2 transition-colors hover:border-accent hover:text-fg"
+          >
+            <BookmarkPlus size={12} aria-hidden />
+            {t("assets.graphicsPresets.save")}
+          </button>
+        </div>
+        <Text
+          type="supporting"
+          color="secondary"
+          display="block"
+          className="text-[9.5px] leading-snug text-fg-muted"
+        >
+          {t("assets.graphicsPresets.sectionHint")}
+        </Text>
+        {customGraphicsPresets.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border px-3 py-2.5 text-center text-[10.5px] text-fg-muted">
+            {t("assets.graphicsPresets.customEmpty")}
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {customGraphicsPresets.map((preset) => (
+              <GraphicsPresetRow
+                key={preset.id}
+                preset={preset}
+                onApply={handleApplyPreset}
+                onRename={handleRenamePreset}
+                onDelete={handleDeletePreset}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {presetDialogOpen && (
+        <PresetNameDialog
+          title={t("assets.graphicsPresets.dialogTitle")}
+          placeholder={t("assets.graphicsPresets.namePlaceholder")}
+          confirmLabel={t("assets.graphicsPresets.save")}
+          value={presetNameDraft}
+          onChange={setPresetNameDraft}
+          onCancel={() => setPresetDialogOpen(false)}
+          onConfirm={handlePresetSaveConfirm}
+        />
+      )}
     </div>
   );
 };

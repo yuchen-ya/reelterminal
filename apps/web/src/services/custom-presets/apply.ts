@@ -32,11 +32,19 @@ import type { Transition } from "@openreel/core/types/timeline";
 import type {
   CustomPresetRecord,
   EffectPresetItem,
+  GraphicsPresetPayload,
 } from "@openreel/core/presets/types";
 import {
   getTransitionDefaultParams,
   validatePresetPayload,
 } from "@openreel/core/presets/validate";
+import { validateSvgContent } from "@openreel/core/graphics/svg-validation";
+import {
+  DEFAULT_GRAPHIC_TRANSFORM,
+  DEFAULT_SVG_COLOR_STYLE,
+  type SVGClip,
+  type ViewBox,
+} from "@openreel/core/graphics/types";
 
 export type PresetApplyErrorCode =
   | "PRESET_INVALID"
@@ -68,7 +76,15 @@ export type PresetApplyTarget =
   | { readonly kind: "text"; readonly mode: "updateStyle"; readonly clipId: string }
   | { readonly kind: "effect"; readonly clipIds: readonly string[] }
   | { readonly kind: "transition"; readonly clipAId: string; readonly clipBId?: string }
-  | { readonly kind: "graphics"; readonly trackId?: string; readonly startTime?: number };
+  | {
+      readonly kind: "graphics";
+      /** Graphics track to place the SVG clip on; omitted picks/auto-creates one. */
+      readonly trackId?: string;
+      /** Timeline seconds; defaults to 0. */
+      readonly startTime?: number;
+      /** Clip duration in seconds; defaults to DEFAULT_GRAPHICS_PRESET_DURATION_SEC. */
+      readonly durationSec?: number;
+    };
 
 export interface PresetApplyInput {
   readonly preset: Pick<CustomPresetRecord, "name" | "payload">;
@@ -300,6 +316,143 @@ function buildEffectActions(
   return { ok: true, actions, groupLabel };
 }
 
+/* ------------------------------- graphics ------------------------------ */
+
+/**
+ * Default duration for SVG clips created from graphics presets. The payload
+ * carries the SVG source only, so duration is a target concern; GUI and
+ * agent callers may override via the target's `durationSec`. UIs surface
+ * this constant so the applied duration is never a surprise.
+ */
+export const DEFAULT_GRAPHICS_PRESET_DURATION_SEC = 5;
+
+/**
+ * String-level viewBox extraction for graphics preset application. Mirrors
+ * the facade svg.create translator (ops.ts extractSvgViewBox), which itself
+ * mirrors core parseSVG's fallback ladder: viewBox attribute first, else
+ * width/height, else 100x100 — so a preset-applied SVG clips identically to
+ * a GUI import of the same markup.
+ */
+function extractSvgViewBox(content: string): ViewBox {
+  const fallback: ViewBox = { minX: 0, minY: 0, width: 100, height: 100 };
+  const rootMatch = /<(?:[a-zA-Z][\w.-]*:)?svg(?=[\s/>])[^>]*>/.exec(content);
+  if (!rootMatch) return fallback;
+  const tag = rootMatch[0];
+  const attr = (name: string): string | null => {
+    const match = new RegExp(`${name}\\s*=\\s*("([^"]*)"|'([^']*)')`).exec(tag);
+    return match ? (match[2] ?? match[3] ?? "") : null;
+  };
+  const viewBoxAttr = attr("viewBox");
+  if (viewBoxAttr !== null) {
+    const parts = viewBoxAttr.split(/[\s,]+/).map(Number);
+    if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {
+      return {
+        minX: parts[0] as number,
+        minY: parts[1] as number,
+        width: parts[2] as number,
+        height: parts[3] as number,
+      };
+    }
+    return fallback;
+  }
+  const width = parseFloat(attr("width") ?? "");
+  const height = parseFloat(attr("height") ?? "");
+  if (Number.isFinite(width) && Number.isFinite(height)) {
+    return { minX: 0, minY: 0, width, height };
+  }
+  return fallback;
+}
+
+function buildGraphicsActions(
+  payload: GraphicsPresetPayload,
+  target: Extract<PresetApplyTarget, { kind: "graphics" }>,
+  project: Project,
+  groupLabel: string,
+): PresetApplyResult {
+  // Same-source SVG gate as create time (validateGraphicsPresetSvg runs
+  // validateSvgContent inside validatePresetPayload, which already ran
+  // above). Re-checking here keeps the expansion safe even if the payload
+  // dispatch ever loosens — the svg/create executor ingests verbatim.
+  const svg = validateSvgContent(payload.svg);
+  if (!svg.ok) {
+    return fail("PRESET_INVALID", svg.message, { validationCode: svg.code });
+  }
+
+  const startTime = target.startTime ?? 0;
+  if (!Number.isFinite(startTime) || startTime < 0) {
+    return fail("PLACEMENT_INVALID", "graphics preset startTime must be a finite number >= 0", {
+      startTime: target.startTime,
+    });
+  }
+  const duration = target.durationSec ?? DEFAULT_GRAPHICS_PRESET_DURATION_SEC;
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return fail("PLACEMENT_INVALID", "graphics preset durationSec must be a finite number > 0", {
+      durationSec: target.durationSec,
+    });
+  }
+
+  // Track resolution mirrors the facade svg.create translator: explicit
+  // trackId must exist and be a graphics track, otherwise the first
+  // graphics track is used, otherwise one is created in the same batch —
+  // one atomic undo unit either way.
+  let trackId = target.trackId;
+  let autoCreatedTrackId: string | undefined;
+  if (trackId !== undefined) {
+    const track = project.timeline.tracks.find((candidate) => candidate.id === trackId);
+    if (!track) {
+      return fail("TARGET_NOT_FOUND", `track "${trackId}" was not found on the timeline`, {
+        trackId,
+      });
+    }
+    if (track.type !== "graphics") {
+      return fail(
+        "PLACEMENT_INVALID",
+        `track "${trackId}" is a ${track.type} track, expected a graphics track`,
+        { trackId, trackType: track.type },
+      );
+    }
+  } else {
+    const graphicsTrack = project.timeline.tracks.find(
+      (candidate) => candidate.type === "graphics",
+    );
+    if (graphicsTrack) {
+      trackId = graphicsTrack.id;
+    } else {
+      autoCreatedTrackId = `track-${uuid()}`;
+      trackId = autoCreatedTrackId;
+    }
+  }
+
+  // Same clip shape the facade svg.create op and the GUI SVG import build
+  // (defaults for preserveAspectRatio/colorStyle/animations), so a
+  // preset-applied SVG is indistinguishable from an imported one.
+  const clip: SVGClip = {
+    id: `svg-${uuid()}`,
+    trackId,
+    startTime,
+    duration,
+    type: "svg",
+    svgContent: payload.svg,
+    viewBox: extractSvgViewBox(payload.svg),
+    preserveAspectRatio: "xMidYMid",
+    transform: { ...DEFAULT_GRAPHIC_TRANSFORM },
+    keyframes: [],
+    colorStyle: { ...DEFAULT_SVG_COLOR_STYLE },
+    entryAnimation: { type: "none", duration: 0.5, easing: "ease-out" },
+    exitAnimation: { type: "none", duration: 0.5, easing: "ease-in" },
+  };
+  return {
+    ok: true,
+    actions: [
+      ...(autoCreatedTrackId !== undefined
+        ? [makeAction("track/add", { trackType: "graphics", trackId: autoCreatedTrackId })]
+        : []),
+      makeAction("svg/create", { clip }),
+    ],
+    groupLabel,
+  };
+}
+
 /* ------------------------------- dispatch ------------------------------ */
 
 /**
@@ -377,10 +530,16 @@ export function expandPresetActions(input: PresetApplyInput): PresetApplyResult 
         groupLabel,
       );
     }
+    case "graphics": {
+      if (payload.kind !== "graphics") {
+        return kindMismatch(payload.kind, target.kind);
+      }
+      return buildGraphicsActions(payload, target, input.project, groupLabel);
+    }
     default:
       return fail(
         "PRESET_APPLY_UNSUPPORTED",
-        "graphics preset application is not available yet",
+        `preset application for this target kind is not available`,
       );
   }
 }

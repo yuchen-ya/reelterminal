@@ -874,9 +874,11 @@ export const VideoEffectsSection: React.FC<VideoEffectsSectionProps> = ({
         const reasonText =
           capture.reason === "unsupported-type"
             ? t("assets.effectPresets.audioUnsupported")
-            : capture.reason === "unknown-type"
-              ? `${t("assets.effectPresets.unknownType")}\n${capture.message}`
-              : capture.message;
+            : capture.reason === "engine-managed" && capture.messageKey
+              ? t(capture.messageKey)
+              : capture.reason === "unknown-type"
+                ? `${t("assets.effectPresets.unknownType")}\n${capture.message}`
+                : capture.message;
         toast.error(t("assets.effectPresets.saveFailed"), reasonText);
         return;
       }

@@ -31,12 +31,15 @@ import {
   validatePresetName,
   validateTransitionPresetPayload,
 } from "@openreel/core/presets/validate";
+import { validateSvgContent } from "@openreel/core/graphics/svg-validation";
 import type { Clip, Project } from "@openreel/core";
 import { useProjectStore } from "../../../stores/project-store";
+import { useTimelineStore } from "../../../stores/timeline-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { toast } from "../../../stores/notification-store";
 import { getCustomPresetService } from "../../../services/custom-presets/preset-service";
 import {
+  DEFAULT_GRAPHICS_PRESET_DURATION_SEC,
   expandPresetActions,
   transitionPlacementMaxDuration,
 } from "../../../services/custom-presets/apply";
@@ -61,21 +64,55 @@ export type EffectPresetCapture =
     }
   | {
       readonly ok: false;
-      readonly reason: "unsupported-type" | "unknown-type" | "invalid-params";
+      readonly reason:
+        | "unsupported-type"
+        | "unknown-type"
+        | "engine-managed"
+        | "invalid-params";
+      /**
+       * Dedicated i18n key for effect types whose rejection copy explains a
+       * specific modeling boundary instead of the generic unknown-type line
+       * (chromaKey lives in clip keying settings, shader params depend on
+       * the chosen shader).
+       */
+      readonly messageKey?: "assets.effectPresets.chromaKeyNotPreset" | "assets.effectPresets.shaderNotPreset";
       readonly message: string;
     };
+
+/** Effect types that are real engine features but never preset material. */
+const ENGINE_MANAGED_EFFECT_TYPES: Record<
+  string,
+  {
+    messageKey:
+      | "assets.effectPresets.chromaKeyNotPreset"
+      | "assets.effectPresets.shaderNotPreset";
+  }
+> = {
+  chromaKey: { messageKey: "assets.effectPresets.chromaKeyNotPreset" },
+  shader: { messageKey: "assets.effectPresets.shaderNotPreset" },
+};
 
 /**
  * Captures one effect-stack item (type + current parameters) as a preset
  * draft. Effect types are closed to the engine's layer effect set: audio
- * effects and unknown types are rejected outright, while parameter keys the
- * engine does not define are reported back as dropped so the UI can confirm
- * with the user instead of discarding them silently.
+ * effects and unknown types are rejected outright, chromaKey/shader never
+ * reach that check (dedicated copy via ENGINE_MANAGED_EFFECT_TYPES), and
+ * parameter keys the engine does not define are reported back as dropped
+ * so the UI can confirm with the user instead of discarding them silently.
  */
 export function captureEffectPresetItem(
   effectType: string,
   rawParams: Record<string, unknown> | undefined,
 ): EffectPresetCapture {
+  const engineManaged = ENGINE_MANAGED_EFFECT_TYPES[effectType];
+  if (engineManaged) {
+    return {
+      ok: false,
+      reason: "engine-managed",
+      messageKey: engineManaged.messageKey,
+      message: tr(engineManaged.messageKey),
+    };
+  }
   const checked = validateEffectPresetEffects([
     { type: effectType, params: rawParams ?? {} },
   ]);
@@ -414,12 +451,16 @@ export async function applyTransitionPresetToSelectedCut(
 /**
  * Renames through the service with core name validation; failures surface
  * as error toasts. `i18nPrefix` selects the caller's namespace
- * ("assets.effectPresets" / "assets.transitionPresets").
+ * ("assets.effectPresets" / "assets.transitionPresets" /
+ * "assets.graphicsPresets").
  */
 export async function renameCustomPreset(
   preset: Pick<CustomPresetRecord, "id" | "name">,
   draftName: string,
-  i18nPrefix: "assets.effectPresets" | "assets.transitionPresets",
+  i18nPrefix:
+    | "assets.effectPresets"
+    | "assets.transitionPresets"
+    | "assets.graphicsPresets",
 ): Promise<boolean> {
   const validated = validatePresetName(draftName);
   if (!validated.ok) {
@@ -445,7 +486,10 @@ export async function renameCustomPreset(
  */
 export async function deleteCustomPresetWithConfirm(
   preset: Pick<CustomPresetRecord, "id" | "name">,
-  i18nPrefix: "assets.effectPresets" | "assets.transitionPresets",
+  i18nPrefix:
+    | "assets.effectPresets"
+    | "assets.transitionPresets"
+    | "assets.graphicsPresets",
 ): Promise<boolean> {
   if (!window.confirm(tr(`${i18nPrefix}.deleteConfirm`, { name: preset.name }))) {
     return false;
@@ -456,5 +500,89 @@ export async function deleteCustomPresetWithConfirm(
     return false;
   }
   toast.success(tr(`${i18nPrefix}.deleted`), preset.name);
+  return true;
+}
+
+/* ------------------------------ graphics ------------------------------ */
+
+export type GraphicsPresetCapture =
+  | { readonly ok: true; readonly svg: string }
+  | { readonly ok: false; readonly message: string };
+
+/**
+ * Captures an SVG clip's source as a graphics preset draft. The same
+ * DOM-free core validator (`validateSvgContent`) that gates Agent
+ * preset.create and core SVG ingest runs here, so a GUI-saved graphics
+ * preset and an agent-created one pass through identical validation.
+ */
+export function captureGraphicsPresetSvg(svg: unknown): GraphicsPresetCapture {
+  if (typeof svg !== "string" || svg.trim().length === 0) {
+    return { ok: false, message: tr("assets.graphicsPresets.emptySvg") };
+  }
+  const checked = validateSvgContent(svg);
+  if (!checked.ok) {
+    return { ok: false, message: checked.message };
+  }
+  return { ok: true, svg };
+}
+
+/** Persists the captured SVG source under a deduplicated name. */
+export async function saveGraphicsPreset(input: {
+  readonly name: string;
+  readonly svg: string;
+  readonly existingNames: readonly string[];
+}): Promise<CustomPresetRecord | null> {
+  const finalName = dedupePresetName(input.name, input.existingNames);
+  const result = await getCustomPresetService().create({
+    kind: "graphics",
+    name: finalName,
+    payload: {
+      schemaVersion: PRESET_PAYLOAD_SCHEMA_VERSION,
+      kind: "graphics",
+      svg: input.svg,
+    },
+  });
+  if (!result.ok) {
+    toast.error(tr("assets.graphicsPresets.saveFailed"), result.message);
+    return null;
+  }
+  toast.success(tr("assets.graphicsPresets.saved", { name: result.value.name }));
+  return result.value;
+}
+
+/**
+ * Applies a graphics preset by creating a NEW SVG clip: the payload is
+ * expanded through the shared `expandPresetActions` graphics case
+ * ([track/add?] + svg/create, one undo unit), placed on the first graphics
+ * track (or a new one) at the playhead with the default preset duration.
+ * The clip receives a copied-by-value snapshot of the payload, so deleting
+ * the preset later never affects clips already created from it.
+ */
+export async function applyGraphicsPresetToPlayhead(
+  preset: Pick<CustomPresetRecord, "name" | "payload">,
+): Promise<boolean> {
+  const state = useProjectStore.getState();
+  const expanded = expandPresetActions({
+    preset: { name: preset.name, payload: preset.payload },
+    target: {
+      kind: "graphics",
+      startTime: useTimelineStore.getState().playheadPosition,
+    },
+    project: state.project,
+  });
+  if (!expanded.ok) {
+    toast.error(tr("assets.graphicsPresets.applyFailed"), expanded.message);
+    return false;
+  }
+  state.executeActionBatch(expanded.actions, {
+    groupLabel: expanded.groupLabel,
+    historyOwner: "human",
+  });
+  toast.success(
+    tr("assets.graphicsPresets.applied", { name: preset.name }),
+    tr("assets.graphicsPresets.appliedHint", {
+      duration: DEFAULT_GRAPHICS_PRESET_DURATION_SEC,
+    }),
+  );
   return true;
 }

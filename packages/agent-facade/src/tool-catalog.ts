@@ -186,7 +186,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "preset.remove":
     "Delete a custom preset. Projects already built from it keep their parameter copies and are never affected; removal is permanent and idempotent on retries.",
   "preset.apply":
-    "Apply a custom preset to the open project as one undoable batch: text presets restyle an existing text clip (mode updateStyle), effect presets apply their stack to explicit clipIds, transition presets set the parameters on a cut (clipAId, optional clipBId; omitting clipBId targets the out-point edge). Placement limits are hard rejections, never clamped; use a fresh idempotencyKey.",
+    "Apply a custom preset to the open project as one undoable batch: text presets restyle an existing text clip (mode updateStyle), effect presets apply their stack to explicit clipIds, transition presets set the parameters on a cut (clipAId, optional clipBId; omitting clipBId targets the out-point edge), graphics presets create a NEW SVG clip on a graphics track (optional trackId/startTime/durationSec; omitting trackId picks or creates the graphics track). Placement limits are hard rejections, never clamped; use a fresh idempotencyKey.",
   "help.list_screens":
     "List the shipped GUI manual's screen index: id, zh/en title and one-line summary per screen, plus the manual's content version, bound app version, and languages. Static data — available in every mode.",
   "help.describe":
