@@ -141,7 +141,7 @@ export function DesktopApp(): JSX.Element {
     <div className="openreel-desktop isolate flex h-screen w-screen flex-col overflow-hidden bg-bg text-fg">
       <DesktopTitleBar
         platform={platform}
-        // G03: the desktop chrome carries the rename entry, not just the
+        // The desktop chrome carries the rename entry, not just the
         // browser-only Toolbar. Shown whenever a project is open (both the
         // edit and motion pages rename the same project).
         projectControl={hasProject ? <DesktopProjectNameControl /> : null}

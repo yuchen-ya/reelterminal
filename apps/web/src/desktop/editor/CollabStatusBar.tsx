@@ -77,8 +77,8 @@ export function CollabStatusBar(): JSX.Element {
 
   const chatOpen = useUIStore((s) => s.panels.externalAgent.visible);
   const togglePanel = useUIStore((s) => s.togglePanel);
-  // G13 desktop entry: the strip hosts the desktop's voiceover/music task
-  // trigger since the desktop layout has no mixer panel to carry it.
+  // The strip hosts the desktop's voiceover/music task trigger since the
+  // desktop layout has no mixer panel to carry it.
   const openModal = useUIStore((s) => s.openModal);
   const references = useAgentReferencesStore((s) =>
     Object.values(s.references).sort((a, b) => a.number - b.number),
@@ -359,8 +359,8 @@ export function CollabStatusBar(): JSX.Element {
 
       <div className="ml-auto flex items-center">
         <AnalysisRecordsPanel />
-        {/* G13 desktop entry: opens the shared voiceover/music task dialog
-            (mounted on the Edit page) via the standard ui-store modal id.
+        {/* Opens the shared voiceover/music task dialog (mounted on the Edit
+            page) via the standard ui-store modal id.
             Label/icon mirror the web mixer entry (`agentMediaTasks.entry`). */}
         <button
           type="button"

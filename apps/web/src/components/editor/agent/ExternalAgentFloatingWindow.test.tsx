@@ -1,5 +1,5 @@
 /**
- * F15 occlusion regression: with the agent session open, the floating window
+ * Occlusion regression: with the agent session open, the floating window
  * (fixed z-[60]) must not cover the desktop collab strip — the strip's
  * right-side entries (`collab-agent-media-entry`, the agent-session toggle)
  * must stay reachable. jsdom cannot lay out, so the assertions compare the
@@ -82,7 +82,7 @@ function collabStripRect(viewportHeight: number): Rect {
   };
 }
 
-describe("ExternalAgentFloatingWindow default geometry (F15 occlusion)", () => {
+describe("ExternalAgentFloatingWindow default geometry (occlusion reserve)", () => {
   afterEach(() => {
     // Unmount before touching the store so the hide re-render stays in act.
     cleanup();
@@ -143,8 +143,8 @@ describe("ExternalAgentFloatingWindow default geometry (F15 occlusion)", () => {
   it("leaves dragged windows on their persisted bounds", async () => {
     stubViewport(VIEWPORT.width, VIEWPORT.height);
     // Fits the viewport (so the pre-existing viewport retract is a no-op)
-    // but deliberately overlaps the strip: the user put it there, and F15
-    // only reshapes the never-dragged default geometry.
+    // but deliberately overlaps the strip: the user put it there, and the
+    // occlusion reserve only reshapes the never-dragged default geometry.
     setExternalAgentPanel({ x: 400, y: 300, width: 400, height: 280 });
 
     await act(async () => {
@@ -162,7 +162,7 @@ describe("ExternalAgentFloatingWindow default geometry (F15 occlusion)", () => {
       render(<ExternalAgentFloatingWindow />);
     });
 
-    // Factory default: 400x560 at the top-right, as before F15.
+    // Factory default: 400x560 at the top-right.
     expect(windowRect()).toEqual({
       left: VIEWPORT.width - 400 - 24,
       top: 72,

@@ -34,7 +34,7 @@ describe("DesktopProjectNameControl", () => {
 
     const input = screen.getByRole("textbox", { name: "Project name" });
     expect(input).toHaveValue("My Project");
-    // Mouse-discoverable rename affordance (G03): explicit pencil button.
+    // Mouse-discoverable rename affordance: explicit pencil button.
     expect(screen.getByRole("button", { name: "Rename project" })).toBeTruthy();
   });
 

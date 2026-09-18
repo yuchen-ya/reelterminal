@@ -204,7 +204,7 @@ describe("CollabStatusBar Agent Session onboarding", () => {
   });
 });
 
-describe("CollabStatusBar voiceover/music entry (G13 desktop)", () => {
+describe("CollabStatusBar voiceover/music entry", () => {
   beforeEach(() => {
     window.localStorage.clear();
     delete openreelWindow.openreel;

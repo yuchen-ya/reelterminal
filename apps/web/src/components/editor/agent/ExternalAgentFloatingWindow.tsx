@@ -49,7 +49,7 @@ export function ExternalAgentFloatingWindow({
   /**
    * Vertical space (px) at the viewport bottom that the factory-default
    * window must stay above. The desktop Edit page passes its collab strip +
-   * timeline dock height (F15): the strip's right-side entries (voiceover/
+   * timeline dock height: the strip's right-side entries (voiceover/
    * music, agent session) must stay clickable while the window is open.
    * Only the never-dragged default geometry shrinks; once the user drags or
    * resizes, their persisted bounds win.
@@ -74,8 +74,8 @@ export function ExternalAgentFloatingWindow({
 
   const viewport = { width: window.innerWidth, height: window.innerHeight };
   const width = panel.width ?? DEFAULT_WIDTH;
-  // F15 occlusion: with no persisted position the user has never dragged the
-  // window, so keep its default rectangle above the reserved bottom strip
+  // Occlusion reserve: with no persisted position the user has never dragged
+  // the window, so keep its default rectangle above the reserved bottom strip
   // (desktop collab bar + timeline) instead of covering the strip's entries.
   // Any drag or resize commits x/y, which opts out of this default sizing.
   const atDefaultPosition = panel.x == null && panel.y == null;

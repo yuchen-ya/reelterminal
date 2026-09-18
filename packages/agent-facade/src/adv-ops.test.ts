@@ -5,7 +5,7 @@
  *  T1  text.create targeting a VIDEO track -> INVALID_PARAMS, zero side effects
  *  T2  text.create with nonexistent track -> NOT_FOUND
  *  T3  text.create fallback to first existing text track
- *  T4  canonical TextClip: empty/whitespace text rejected (fixed M5),
+ *  T4  canonical TextClip: empty/whitespace text rejected,
  *      JSON-safe, all fields present; style/fontSize boundaries enforced
  *  T5  error precedence documented: replay/CONFLICT resolves BEFORE any
  *      filesystem probing in media.import (nonexistent file + stale revision
@@ -14,13 +14,11 @@
  *      rejected; clip.trim outPoint beyond media rejected
  *  T7  importing the ROOT DIRECTORY itself is rejected cleanly
  *  T8  capabilities honesty: mediaImport.available===false when no roots
- *      are configured (fixed M1), true once roots exist
+ *      are configured, true once roots exist
  *  T9  __proto__ own-property keys in params/op/settings are rejected by the
  *      closed-schema validation (no prototype pollution through the boundary)
  *  T10 non-integer expectedRevision -> INVALID_PARAMS at the schema layer
- *      (fixed M4)
  *  T11 nonexistent file -> "cannot be read"; real escape -> "escapes roots"
- *      (fixed M2)
  *  T12 text.update / text.delete / clip.setVolume / clip.remove NOT_FOUND
  *      paths name the missing id
  *  T13 intra-batch references resolve via the DRAFT (clip.add -> clip.setVolume

@@ -169,14 +169,14 @@ export function EditPage(): JSX.Element {
         <RowHandle onPointerDown={timelineH.onHandlePointerDown} />
       </DockRegion>
 
-      {/* F15 occlusion: the never-dragged agent window keeps its default
+      {/* Occlusion reserve: the never-dragged agent window keeps its default
           rectangle above the collab row + timeline dock so the strip's
           right-side entries stay clickable while the window is open. */}
       <ExternalAgentFloatingWindow
         defaultBottomReserve={COLLAB_ROW_HEIGHT + timelineH.value}
       />
-      {/* G13 desktop entry: the voiceover/music task surface must exist on
-          the desktop too, not only in the web editor shell. The runtime arms
+      {/* The voiceover/music task surface must exist on the desktop too, not
+          only in the web editor shell. The runtime arms
           the receipt correlator and recommended-root source for the session;
           the dialog renders null while closed and portals to document.body
           when open, so neither has any footprint in the grid above. The

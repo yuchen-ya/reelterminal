@@ -46,7 +46,7 @@ describe("help verbs (headless)", () => {
     expect(result.value.screen.id).toBe("work-assets");
     expect(result.value.screen.entry.length).toBeGreaterThan(0);
     expect(result.value.screen.steps?.length ?? 0).toBeGreaterThan(0);
-    expect(result.value.screenshotStatus).toBe("pending");
+    expect(result.value.screenshotStatus).toBe("available");
   });
 
   it("help.describe rejects an unknown screenId with INVALID_PARAMS", async () => {
@@ -102,7 +102,7 @@ describe("help verbs (headless)", () => {
       appVersion: GUI_MANUAL_APP_VERSION,
       languages: ["zh", "en"],
       screenCount: GUI_MANUAL_SCREENS.length,
-      screenshots: "reserved-not-delivered",
+      screenshots: "delivered",
     });
   });
 

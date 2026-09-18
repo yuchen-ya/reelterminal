@@ -209,7 +209,7 @@ describe("describeManualScreen", () => {
   });
 
   it("reports a screen without a delivered screenshot as pending", () => {
-    // "inspector" was NOT captured (the g14-04 evidence frame shows the
+    // "inspector" was NOT captured (the delivered evidence frame shows the
     // work-assets tab with an empty inspector), so it must stay pending.
     const result = describeManualScreen("inspector");
     expect(result.screen.id).toBe("inspector");

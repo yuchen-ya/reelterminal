@@ -9,9 +9,9 @@ import { ProjectSwitcher } from "../../components/editor/ProjectSwitcher";
 import { useTranslation } from "react-i18next";
 
 /**
- * Project name control for the desktop shell's title bar (G03: the delivered
- * desktop chrome must expose a mouse-discoverable rename entry; until now the
- * rename input + switcher only existed in the web-only Toolbar). It mirrors
+ * Project name control for the desktop shell's title bar: the delivered
+ * desktop chrome must expose a mouse-discoverable rename entry, so the
+ * rename input + switcher cannot stay web-Toolbar-only. It mirrors
  * the web toolbar's semantics exactly: a borderless draft input that commits
  * on blur/Enter, cancels on Escape, and a pencil button that focuses and
  * selects the name, with the same ProjectSwitcher dropdown beside it.

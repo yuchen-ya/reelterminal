@@ -5,7 +5,7 @@ import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { useProjectStore } from "../../../stores/project-store";
 import { ClipComponent } from "./ClipComponent";
 
-// G08 parity: renaming media must also update the timeline clip label. The
+// Renaming media must also update the timeline clip label. The
 // assets panel already prefers the media's displayName; the clip label is
 // the timeline half of that promise (fallback chain: motion composition >
 // compound clip name > displayName > source filename > mediaId prefix).

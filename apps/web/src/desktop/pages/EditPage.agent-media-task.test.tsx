@@ -1,5 +1,5 @@
 /**
- * G13 desktop entry: the desktop Edit page must mount the shared
+ * The desktop Edit page must mount the shared
  * voiceover/music task dialog + runtime, and the CollabStatusBar entry
  * button must open it through the standard ui-store modal id. Heavy page
  * panels are stubbed; the strip and the dialog run for real.
@@ -55,7 +55,7 @@ class MemoryAgentTaskStorage implements AgentTaskStorage {
   }
 }
 
-describe("EditPage agent media task entry (G13 desktop)", () => {
+describe("EditPage agent media task entry", () => {
   beforeEach(() => {
     useProjectStore.setState({ project: createEmptyProject("Desktop Demo") });
     useUIStore.setState({ activeModal: null });

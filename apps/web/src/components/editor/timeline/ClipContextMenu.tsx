@@ -234,9 +234,9 @@ export function useClipContextMenuItems({
 
     if (multiClipIds) {
       // Preview the capture purely so unsupported parameters can be listed
-      // for confirmation BEFORE anything is saved; the slice re-runs the same
-      // core capture at commit time, so the decision is made against the same
-      // prechecks that produce the entry.
+      // for confirmation BEFORE anything is saved; the save flow re-runs the
+      // same core capture at commit time, so the decision is made against the
+      // same prechecks that produce the entry.
       const preview = captureWorkAssetFromClips(currentProject, multiClipIds);
       if (!preview.ok) {
         toast.error(t("workAssets.captureFailed"), preview.message);

@@ -212,7 +212,7 @@ async function seedSubmittedTask(
   return submitted.value;
 }
 
-describe("AgentMediaTaskDialog row actions (G13-D)", () => {
+describe("AgentMediaTaskDialog row actions", () => {
   beforeAll(() => {
     // jsdom has no object-URL implementation; the preview only needs a string.
     URL.createObjectURL = vi.fn(() => "blob:mock-audio");

@@ -89,7 +89,7 @@ describe("DesktopApp", () => {
     const { getByText, getByTestId, getByRole } = render(<DesktopApp />);
     expect(getByText("ReelTerminal")).toBeTruthy();
     expect(getByTestId("desktop-workspace")).toBeTruthy();
-    // G03: the desktop chrome itself exposes the rename entry.
+    // The desktop chrome itself exposes the rename entry.
     expect(getByTestId("desktop-project-name-control")).toBeTruthy();
     expect(getByRole("textbox", { name: "Project name" })).toHaveValue("My Project");
   });

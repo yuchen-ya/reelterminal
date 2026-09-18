@@ -37,7 +37,7 @@ export interface ReceiptCorrelatorDeps extends AgentTaskRuntimeDeps {
 export interface ReceiptCorrelator {
   /** Mark events already in the store at install time as seen. */
   start(): void;
-  /** Process unseen events; resolves once settling work has been kicked off. */
+  /** Process unseen events; resolves after the settling work it spawned completed. */
   poll(): Promise<number>;
 }
 
