@@ -22,7 +22,12 @@ The assets panel also has a project-scoped **Work** tab, fed by
 `workAsset.*` edit ops). A work asset is a snapshot of one clip — its
 source media, range, speed, effects, and keyframes — stored INSIDE the
 open project: it saves, undoes, and reopens with the project, and
-instantiating it clones the snapshot into a new timeline clip. That is a
+instantiating it clones the snapshot into a new timeline clip. A work
+asset may also snapshot a SET of clips (the timeline's multi-select
+right-click "save N selected clips"): it stores a relative member layout
+inside the same project, and the project's media-byte retention treats
+every member's media as referenced — not reclaimable — while the asset
+(or history that could still undo it) exists. That is a
 different mechanism from the library on this page, which is user-level
 and cross-project, references original files instead of snapshotting
 clips, and keeps its own journal and undo. The two systems do not copy to

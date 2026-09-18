@@ -695,15 +695,28 @@ Forty-five ops, one atomic batch each call (the exact fields and bounds live in
   `anchor`; omitted fields keep their values) or remove it; unknown ids
   fail `NOT_FOUND`. Color-style and entry/exit animation edits stay
   GUI-side for now; capability data names the gap.
-- `workAsset.capture` — save one timeline clip as a reusable PROJECT work
-  asset: a named snapshot of its source media, source range, speed,
-  effects, audio effects, keyframes, and transform. Required `clipId`;
+- `workAsset.capture` — save timeline clips as a reusable PROJECT work
+  asset: a named snapshot of source media, source range, speed,
+  effects, audio effects, keyframes, and transform. Required: exactly one
+  of `clipId` (single-clip form) or `clipIds` (2..64 unique clip ids —
+  the multi-clip form, saved as ONE `kind:"multi"` asset);
   optional `name` (1..200 characters after trim — derived from the source
   media's display name when omitted) and optional `captureRequestId`
   (echoed onto the asset for traceability only; retry safety still comes
   from `edit_apply`'s `idempotencyKey`). Engine-generated overlays (text,
   shape, svg, sticker, motion) and placeholder media fail `UNSUPPORTED`;
-  a degenerate source range or empty name fails `INVALID_PARAMS`. Capture
+  a degenerate source range or empty name fails `INVALID_PARAMS`. The
+  multi form applies the same prechecks to every member, and any failing
+  clip rejects the whole set (`details.perMember` names each failure) —
+  never a partial asset. A multi asset stores a relative layout, not
+  absolute positions: per-member offsets from the earliest start time
+  plus per-track-type lane offsets anchored at the first member's lane,
+  with the anchor mirrored into the top-level `sourceMediaId`/
+  `sourceRange`. Transitions with both endpoints inside the set are saved
+  by reference between members; single-sided edge transitions and
+  transitions touching clips outside the set are stripped and listed in
+  `unsupportedParams` (track-group linkage likewise) — nothing is
+  dropped silently. Capture
   creates no timeline entities, so `createdIds` is empty — read the new
   asset back from `timeline_query` workAsset entities. Work assets are
   project state (saved, undone, and reopened with the project), unlike
@@ -718,6 +731,18 @@ Forty-five ops, one atomic batch each call (the exact fields and bounds live in
   `startTime` (timeline seconds; defaults to the end of the timeline).
   With no `trackId` a new same-type track is created in the same atomic
   batch and `createdIds` reports `[trackId, clipId]` (or `[clipId]`).
+  For a `kind:"multi"` asset the same options drive a whole-layout
+  restore: `trackId` binds the ANCHOR lane only (the anchor member's
+  track type at lane offset 0; a type mismatch fails `CONFLICT`), every
+  other lane is freshly created, and each member lands at the anchor
+  time plus its stored relative offset — relative timing and lane
+  relations are restored, but the vertical order of the created lanes can
+  differ from the source stack. Missing member media is all-or-nothing:
+  one missing member fails the whole instantiation with the full
+  missing-member list in the error details (still `NOT_FOUND`,
+  distinguishable from the unknown-id case only by the message text).
+  The op's `createdIds` then covers the whole expansion — every member
+  clip plus every created lane — as one undo unit.
   Editing an instance never writes back to the asset. If the asset's
   source media has left the project library, instantiation fails
   `NOT_FOUND` — the underlying missing-media condition (and the plain

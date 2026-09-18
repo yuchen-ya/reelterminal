@@ -137,6 +137,33 @@ message text tells it apart from an unknown id), and neither capture nor
 instantiate carries any cross-session byte-retention promise — do not
 claim one to the user.
 
+Capture also has a multi-clip form: pass `clipIds` (2–64 unique clip ids;
+exactly one of `clipId`/`clipIds`) to save the selection as ONE `multi`
+asset. Every member faces the same prechecks as single capture, and any
+failing clip rejects the whole set with a per-member failure list — never
+a partial asset. A multi asset stores a RELATIVE layout, not absolute
+positions: each member's offset from the earliest start time plus
+per-track-type lane offsets anchored at the first member's lane.
+Instantiation restores that arrangement at the requested anchor time —
+members land at anchor time + relative offset, one lane per (track type,
+offset); `trackId` binds the anchor lane only (a type mismatch fails
+`CONFLICT`) and every other lane is freshly created. Because restore
+follows relative time and lane relations, the vertical order of the
+created lanes can differ from the source stack. Missing member media is
+all-or-nothing: one missing member fails the whole instantiation with the
+full missing-member list (still `NOT_FOUND`, distinguished from an
+unknown id by the message text). Transitions between two members are
+saved by reference; a single-sided edge transition, or one touching a
+clip outside the set, is stripped from the snapshot and declared in
+`unsupportedParams` — nothing is dropped silently. The GUI side is
+implemented: timeline multi-select right-click offers "save N selected
+clips as one work asset", and the Work tab shows a member-count badge
+plus a yellow missing-source bar (naming how many members lost media)
+for an entry that can no longer be placed on the timeline. While the
+asset — or history that could still undo it — exists, the project's
+media-byte retention treats every member's media as referenced; the
+no-cross-session-retention promise above is unchanged.
+
 ## Render HTML to PNG for import (`media_render_html`)
 
 When a card, lower-third, or diagram is easier to author as HTML/CSS,

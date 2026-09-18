@@ -104,7 +104,9 @@ implemented features, reusable foundations, and remaining integration work.
   self-contained SVG overlay creation/update/removal on graphics tracks,
   media source
   replace/relink, review comparisons, project-scoped work-asset capture
-  and reuse, and supported transform/opacity
+  and reuse (single clips or multi-clip selections saved as one asset and
+  restored by relative time and lane relations), and supported
+  transform/opacity
   keyframes. Creation operations report their
   real ids so an Agent can continue editing them in later calls.
 - Users can save custom presets — text styles, clip effect stacks, and

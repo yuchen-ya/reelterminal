@@ -512,11 +512,18 @@ screenshot delivery state.
   graphics tracks — the shared core ingest gate rejects scripts, foreign
   objects, event handlers, unsafe URL schemes, external references, and
   documents over 2 MiB or 10,000 elements), `workAsset.capture` (snapshot
-  one timeline clip into a project-scoped reusable work asset; read assets
+  one timeline clip — or a 2..64-clip selection via `clipIds`, saved as
+  ONE `kind:"multi"` asset with a relative member layout where any
+  failing member rejects the whole set with a per-member list — into a
+  project-scoped reusable work asset; read assets
   back via `timeline.query` workAsset entities — capture reports no
   createdIds), `workAsset.rename`/`workAsset.delete` (by `workAssetId`;
   deletion never touches placed instances or project media), and
-  `workAsset.instantiate` (place a fresh independent clip — optional
+  `workAsset.instantiate` (place a fresh independent clip — or, for a
+  multi asset, restore the whole relative layout all-or-nothing: missing
+  member media fails with the full missing list, `trackId` binds the
+  anchor lane only and every other lane is fresh, members land by
+  relative time and lane relations — optional
   existing same-type `trackId` (`CONFLICT` on mismatch) or a new
   same-type track, optional `startTime` defaulting to the timeline end;
   a missing source media fails `NOT_FOUND`, distinguishable from the
