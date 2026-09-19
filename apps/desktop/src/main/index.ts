@@ -1,3 +1,10 @@
+// MUST stay the first import in the main entry: the bundler evaluates
+// require("esbuild") (runtime-chromium's static import) as a top-level
+// statement ahead of this file's body, and esbuild captures
+// process.env.ESBUILD_BINARY_PATH at that require. This module's top-level
+// install runs first, so the packaged (app.asar.unpacked) binary path is in
+// place before esbuild ever reads the environment.
+import "./esbuild-binary-path";
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import path from "node:path";
 import { z } from "zod";
