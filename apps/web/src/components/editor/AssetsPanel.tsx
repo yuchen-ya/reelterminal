@@ -1525,7 +1525,9 @@ export const AssetsPanel: React.FC = () => {
                       const created = createTextClip(
                         newTextTrack.id,
                         playheadPosition,
-                        "New Title",
+                        // Canvas-visible sample copy, not an internal id:
+                        // localize so zh users see a Chinese starter title.
+                        t("New Title"),
                         5,
                         DEFAULT_TITLE_STYLE,
                       );

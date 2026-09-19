@@ -186,9 +186,14 @@ export const RecipesTab: React.FC = () => {
         return;
       }
 
+      // The toast shell translates titles at render time; the interpolated
+      // message must be localized here so recipe/file names stay verbatim.
       toast.success(
         "Recipe applied",
-        `${template.name} was added to ${selectedMedia?.name || "the selected clip"}.`,
+        t("{{name}} was added to {{clip}}.", {
+          name: template.name,
+          clip: selectedMedia?.name || t("the selected clip"),
+        }),
       );
     } finally {
       setApplyingTemplateId(null);

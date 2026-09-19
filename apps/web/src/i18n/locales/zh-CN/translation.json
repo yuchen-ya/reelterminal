@@ -250,12 +250,14 @@
       "sessionMissing": "连接时会自动启用，不会替换或重置当前打开的项目。",
       "codexTitle": "本机 Codex",
       "codexReady": "Codex 已安装，App Server 响应正常。",
-      "codexMissing": "请安装 Codex 应用或 CLI，然后重新检查。",
-      "codexUnavailable": "Codex 无法启动。请先打开 Codex 处理启动问题，然后重新检查。",
+      "codexMissing": "未检测到 Codex。请安装 Codex CLI（winget install OpenAI.Codex 或 npm i -g @openai/codex），或设置 OPENREEL_CODEX_COMMAND 指定命令路径，然后重新检查。",
+      "codexUnavailable": "Codex 启动或通信出现未知问题。请升级 Codex CLI 后重新检查。",
+      "codexLaunchFailed": "已检测到 Codex，但 ReelTerminal 无法启动其 App Server。请将 Codex CLI 升级到最新版（npm i -g @openai/codex），然后重新检查。",
+      "codexProtocolError": "已启动 Codex，但通信协议不兼容。请将 Codex CLI 升级到最新版，然后重新检查。",
       "authTitle": "Codex 账户",
       "authReady": "已登录可用的 Codex 账户。",
-      "authRequired": "请打开 Codex 登录，然后返回此处重新检查。",
-      "authUnknown": "Codex 启动前无法验证登录状态。",
+      "authRequired": "Codex 未登录。请在终端运行 codex login 登录（ReelTerminal 不会代为登录），然后返回此处重新检查。",
+      "authUnknown": "Codex 启动前无法验证登录状态。这不是账户问题；先解决上方「本机 Codex」一项即可。",
       "connectorTitle": "实时剪辑工具",
       "connectorReady": "ReelTerminal 内置连接器已就绪。",
       "connectorMissing": "实时剪辑连接器缺失，请重新安装或更新 ReelTerminal。",
@@ -799,6 +801,15 @@
     "imageClip": "图片片段",
     "clip": "片段"
   },
+  "captions": {
+    "modelDownloadFailure": {
+      "network": "无法连接 {{model}} 的模型下载服务器。请检查网络连接后重试；模型大小：{{size}}，仅需下载一次。",
+      "http": "下载 {{model}} 时模型服务器返回错误（HTTP {{status}}）。请稍后重试；模型仅需下载一次。",
+      "storage": "浏览器缓存无法保存 {{model}}。请清理浏览器存储空间（或退出无痕模式）后重试。",
+      "localInferenceNote": "模型仅首次使用时需要下载——字幕识别始终在你的设备上本地运行，媒体与识别文本不会上传。",
+      "retry": "重试"
+    }
+  },
   "workAssets": {
     "saveToWork": "保存到工作素材",
     "saveSelectionToWork": "将 {{count}} 个选中片段保存为工作素材",
@@ -839,5 +850,12 @@
   "Track a region, apply its motion as transform keyframes": "跟踪区域，将其运动应用为变换关键帧",
   "Matching the region frame by frame (correlation)...": "正在逐帧匹配该区域（相关性匹配）…",
   "Applied as transform keyframes on this clip — undoable and saved with the project.": "跟踪结果将作为变换关键帧应用，可撤销，并随项目保存。",
-  "Correlation matching — no AI model; works fully offline": "相关性匹配 — 非 AI 模型；完全离线运行"
+  "Correlation matching — no AI model; works fully offline": "相关性匹配 — 非 AI 模型；完全离线运行",
+  "Recipe applied": "配方已应用",
+  "{{name}} was added to {{clip}}.": "已将 {{name}} 添加到 {{clip}}。",
+  "the selected clip": "所选片段",
+  "Background Noise Removal": "背景降噪",
+  "Background Noise Removal (Active)": "背景降噪（已启用）",
+  "Background Noise Removal (Configured)": "背景降噪（已配置）",
+  "New Title": "新建标题"
 }

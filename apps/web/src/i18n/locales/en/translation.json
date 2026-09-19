@@ -250,12 +250,14 @@
       "sessionMissing": "This turns on automatically when you connect. It does not replace or reset the open project.",
       "codexTitle": "Codex on this computer",
       "codexReady": "Codex is installed and its App Server is responding.",
-      "codexMissing": "Install the Codex app or CLI, then check again.",
-      "codexUnavailable": "Codex could not start. Open Codex once, resolve any startup error, then check again.",
+      "codexMissing": "Codex was not found. Install the Codex CLI (winget install OpenAI.Codex or npm i -g @openai/codex), or point OPENREEL_CODEX_COMMAND at the command, then check again.",
+      "codexUnavailable": "Codex failed to start or communicate for an unknown reason. Upgrade the Codex CLI, then check again.",
+      "codexLaunchFailed": "Codex was found, but ReelTerminal could not launch its App Server. Upgrade the Codex CLI to the latest version (npm i -g @openai/codex), then check again.",
+      "codexProtocolError": "Codex started, but the App Server protocol is incompatible. Upgrade the Codex CLI to the latest version, then check again.",
       "authTitle": "Codex account",
       "authReady": "A usable Codex account is signed in.",
-      "authRequired": "Open Codex and sign in, then return here and check again.",
-      "authUnknown": "Sign-in status could not be verified until Codex starts.",
+      "authRequired": "Codex is not signed in. Run codex login in a terminal (ReelTerminal never signs in for you), then return here and check again.",
+      "authUnknown": "Sign-in status could not be verified until Codex starts. This is not an account problem; resolve the \"Local Codex\" item above first.",
       "connectorTitle": "Live editing tools",
       "connectorReady": "The packaged ReelTerminal connector is ready.",
       "connectorMissing": "The live editing connector is missing. Reinstall or update ReelTerminal.",
@@ -799,6 +801,15 @@
     "imageClip": "Image Clip",
     "clip": "Clip"
   },
+  "captions": {
+    "modelDownloadFailure": {
+      "network": "Could not reach the model download server for {{model}}. Check your network connection and retry. The model ({{size}}) is downloaded only once.",
+      "http": "The model server returned an error (HTTP {{status}}) while downloading {{model}}. Try again later; the model is downloaded only once.",
+      "storage": "The browser cache could not store {{model}}. Free up browser storage (or exit private browsing), then retry.",
+      "localInferenceNote": "The model is only downloaded on first use — captioning itself always runs locally on your device; media and transcripts are never uploaded.",
+      "retry": "Retry"
+    }
+  },
   "workAssets": {
     "saveToWork": "Save to Work Assets",
     "saveSelectionToWork": "Save {{count}} Selected Clips as Work Asset",
@@ -839,5 +850,12 @@
   "Track a region, apply its motion as transform keyframes": "Track a region, apply its motion as transform keyframes",
   "Matching the region frame by frame (correlation)...": "Matching the region frame by frame (correlation)...",
   "Applied as transform keyframes on this clip — undoable and saved with the project.": "Applied as transform keyframes on this clip — undoable and saved with the project.",
-  "Correlation matching — no AI model; works fully offline": "Correlation matching — no AI model; works fully offline"
+  "Correlation matching — no AI model; works fully offline": "Correlation matching — no AI model; works fully offline",
+  "Recipe applied": "Recipe applied",
+  "{{name}} was added to {{clip}}.": "{{name}} was added to {{clip}}.",
+  "the selected clip": "the selected clip",
+  "Background Noise Removal": "Background Noise Removal",
+  "Background Noise Removal (Active)": "Background Noise Removal (Active)",
+  "Background Noise Removal (Configured)": "Background Noise Removal (Configured)",
+  "New Title": "New Title"
 }
