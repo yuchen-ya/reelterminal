@@ -195,6 +195,8 @@ export type OpenReelConversationSetupProvider = "codex" | "external";
 export interface OpenReelConversationSetupCheck {
   state: "ready" | "missing" | "error";
   code: string;
+  /** Sanitized, path-free diagnostic summary for error checks. */
+  detail?: string | null;
 }
 export interface OpenReelCodexThreadSummary {
   id: string;

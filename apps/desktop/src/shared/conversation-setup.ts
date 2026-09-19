@@ -6,6 +6,11 @@ export interface ConversationSetupCheck {
   readonly state: ConversationSetupCheckState;
   /** Stable UI-facing code. No command output, paths, or credentials. */
   readonly code: string;
+  /**
+   * Optional sanitized, path-free diagnostic summary for error checks (for
+   * example the first App Server stderr line, redacted by the client).
+   */
+  readonly detail?: string | null;
 }
 
 export interface CodexConversationThreadSummary {

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -21,6 +23,41 @@ test("uses an explicit packaged runtime for the live MCP connector", () => {
   assert.match(serialized, /mcp_servers\.openreel_live\.command=.*ReelTerminal/);
   assert.match(serialized, /ELECTRON_RUN_AS_NODE/);
   assert.doesNotMatch(serialized, /command="node"/);
+  assert.ok(!overrides.includes("--stdio"));
+});
+
+test("spawns the bare app-server subcommand with an optional prefix, never --stdio", async () => {
+  const spawns = [];
+  // The child exits immediately (like a CLI rejecting its arguments); the
+  // assertions only care about the constructed spawn arguments.
+  class ExitingChild extends EventEmitter {
+    constructor() {
+      super();
+      this.stdin = new PassThrough();
+      this.stdout = new PassThrough();
+      this.stderr = new PassThrough();
+      this.exitCode = 2;
+      this.signalCode = null;
+      queueMicrotask(() => this.emit("exit", 2, null));
+    }
+    kill() {
+      return true;
+    }
+  }
+  const child = new ExitingChild();
+  await assert.rejects(
+    startCodexConversationAdapter({
+      threadId: "thr_unreachable",
+      configureLiveMcp: false,
+      codexCommand: "node",
+      codexArgsPrefix: ["codex.js"],
+      spawnImpl: (command, args) => {
+        spawns.push([command, [...args]]);
+        return child;
+      },
+    }),
+  );
+  assert.deepEqual(spawns, [["node", ["codex.js", "app-server"]]]);
 });
 
 test("closes the App Server client when thread startup fails", async () => {

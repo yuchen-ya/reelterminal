@@ -3,6 +3,56 @@ import {
   createCodexOnboardingHost,
   summarizeCodexThreads,
 } from "./codex-onboarding";
+import type { CodexOnboardingDeps } from "./codex-onboarding";
+
+/** Failure shaped like the App Server client's CodexAppServerError. */
+function appServerFailure(code: string, detail?: string): Error {
+  return Object.assign(new Error(`Codex app-server failure (${code})`), {
+    name: "CodexAppServerError",
+    code,
+    ...(detail ? { detail } : {}),
+  });
+}
+
+interface HostOptions {
+  readonly env?: Record<string, string>;
+  readonly platform?: NodeJS.Platform;
+  readonly accessFile?: (candidate: string, mode?: number) => Promise<void>;
+  readonly startError?: unknown;
+  readonly createClient?: CodexOnboardingDeps["createClient"];
+  readonly startAdapter?: CodexOnboardingDeps["startAdapter"];
+}
+
+function createHost(options: HostOptions = {}) {
+  const close = vi.fn(async () => undefined);
+  const createClient =
+    options.createClient ??
+    vi.fn(() => ({
+      start: vi.fn(async () => {
+        if (options.startError) throw options.startError;
+        return {};
+      }),
+      readAccount: vi.fn(async () => ({ account: { type: "chatgpt" } })),
+      listThreads: vi.fn(async () => ({ data: [] })),
+      close,
+    }));
+  return {
+    close,
+    createClient,
+    host: createCodexOnboardingHost({
+      descriptorFilePath: "/runtime/conversation.json",
+      visualStateRoot: "/runtime/visuals",
+      liveMcpConnector: "/app/live-mcp.js",
+      newThreadCwd: "/videos/agent-workspace",
+      env: options.env ?? { OPENREEL_CODEX_COMMAND: "codex-test" },
+      ...(options.platform ? { platform: options.platform } : {}),
+      ...(options.accessFile ? { accessFile: options.accessFile } : {}),
+      createClient,
+      ...(options.startAdapter ? { startAdapter: options.startAdapter } : {}),
+      inspectExternalAdapter: vi.fn(async () => ({})),
+    }),
+  };
+}
 
 describe("Codex onboarding host", () => {
   it("sanitizes App Server threads for the renderer", () => {
@@ -152,5 +202,129 @@ describe("Codex onboarding host", () => {
     expect((await host.inspect()).managedSessionId).toBe("thr_current");
     await host.dispose();
     expect(current.close).toHaveBeenCalledOnce();
+  });
+
+  it("classifies a nonzero app-server exit as a launch failure with sanitized detail", async () => {
+    const { host } = createHost({
+      startError: appServerFailure(
+        "PROCESS_EXIT",
+        "error: unexpected argument '--stdio' found",
+      ),
+    });
+    const state = await host.inspect();
+    expect(state.codex).toEqual({
+      state: "error",
+      code: "codex-launch-failed",
+      detail: "error: unexpected argument '--stdio' found",
+    });
+    expect(state.authentication).toEqual({ state: "missing", code: "auth-unknown" });
+  });
+
+  it("classifies handshake timeouts as launch failures", async () => {
+    const { host } = createHost({ startError: appServerFailure("REQUEST_TIMEOUT") });
+    const state = await host.inspect();
+    expect(state.codex).toEqual({ state: "error", code: "codex-launch-failed" });
+  });
+
+  it("classifies invalid handshakes as protocol errors", async () => {
+    const { host } = createHost({ startError: appServerFailure("INVALID_RESPONSE") });
+    const state = await host.inspect();
+    expect(state.codex).toEqual({ state: "error", code: "codex-protocol-error" });
+  });
+
+  it("falls back to codex-unavailable for unexpected failures", async () => {
+    const { host } = createHost({ startError: new Error("boom") });
+    const state = await host.inspect();
+    expect(state.codex).toEqual({ state: "error", code: "codex-unavailable" });
+  });
+
+  it("reports codex as missing when no candidate is executable", async () => {
+    const { host } = createHost({
+      env: {},
+      accessFile: vi.fn(async () => {
+        throw new Error("ENOENT");
+      }),
+    });
+    const state = await host.inspect();
+    expect(state.codex).toEqual({ state: "missing", code: "codex-missing" });
+    expect(state.authentication).toEqual({ state: "missing", code: "auth-unknown" });
+  });
+
+  it("resolves npm global codex.cmd shims to their Node CLI entry on Windows", async () => {
+    const cliEntry = "C:\\npm-global\\node_modules\\@openai\\codex\\bin\\codex.js";
+    const accessFile = vi.fn(async (candidate: string) => {
+      if (candidate === "C:\\npm-global\\codex.cmd") return;
+      if (candidate === cliEntry) return;
+      throw new Error("ENOENT");
+    });
+    const createClient = vi.fn(() => ({
+      start: vi.fn(async () => ({})),
+      readAccount: vi.fn(async () => ({ account: { type: "chatgpt" } })),
+      listThreads: vi.fn(async () => ({ data: [] })),
+      close: vi.fn(async () => undefined),
+    }));
+    const { host } = createHost({
+      env: { PATH: "C:\\npm-global" },
+      platform: "win32",
+      accessFile,
+      createClient,
+    });
+
+    const state = await host.inspect();
+    expect(state.codex).toEqual({ state: "ready", code: "codex-ready" });
+    expect(createClient).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "node", argsPrefix: [cliEntry] }),
+    );
+  });
+
+  it("prefers codex.exe over the codex.cmd shim on Windows", async () => {
+    const accessFile = vi.fn(async (candidate: string) => {
+      if (candidate === "C:\\npm-global\\codex.exe") return;
+      throw new Error("ENOENT");
+    });
+    const createClient = vi.fn(() => ({
+      start: vi.fn(async () => ({})),
+      readAccount: vi.fn(async () => ({ account: { type: "chatgpt" } })),
+      listThreads: vi.fn(async () => ({ data: [] })),
+      close: vi.fn(async () => undefined),
+    }));
+    const { host } = createHost({
+      env: { PATH: "C:\\npm-global" },
+      platform: "win32",
+      accessFile,
+      createClient,
+    });
+
+    const state = await host.inspect();
+    expect(state.codex).toEqual({ state: "ready", code: "codex-ready" });
+    expect(createClient).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "C:\\npm-global\\codex.exe" }),
+    );
+  });
+
+  it("hands the resolved prefix args to the managed adapter on start", async () => {
+    const cliEntry = "C:\\npm-global\\node_modules\\@openai\\codex\\bin\\codex.js";
+    const accessFile = vi.fn(async (candidate: string) => {
+      if (candidate === "C:\\npm-global\\codex.cmd") return;
+      if (candidate === cliEntry) return;
+      if (candidate === "/app/live-mcp.js") return;
+      throw new Error("ENOENT");
+    });
+    const adapter = { threadId: "thr_selected", close: vi.fn(async () => undefined) };
+    const startAdapter = vi.fn(async () => adapter);
+    const { host } = createHost({
+      env: { PATH: "C:\\npm-global" },
+      platform: "win32",
+      accessFile,
+      startAdapter,
+    });
+
+    await host.start({ provider: "codex", threadId: "thr_selected" });
+    expect(startAdapter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        codexCommand: "node",
+        codexArgsPrefix: [cliEntry],
+      }),
+    );
   });
 });

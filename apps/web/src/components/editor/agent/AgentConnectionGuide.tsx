@@ -13,6 +13,7 @@ import {
 import { ToolcraftButton as Button } from "@openreel/ui";
 import type {
   OpenReelCodexThreadSummary,
+  OpenReelConversationSetupCheck,
   OpenReelConversationSetupProvider,
   OpenReelConversationSetupState,
 } from "../../../types/global";
@@ -81,6 +82,28 @@ function formatRecency(timestamp: number | null, language: string): string | nul
   } catch {
     return null;
   }
+}
+
+/**
+ * Codex check messages per failure class: not installed, installed but the
+ * App Server cannot launch, and launched but protocol-incompatible. The
+ * sanitized diagnostic detail (first stderr line) is appended when present.
+ */
+function codexCheckDetail(
+  check: OpenReelConversationSetupCheck,
+  t: (key: string) => string,
+): string {
+  const message =
+    check.state === "ready"
+      ? t("externalAgent.setup.codexReady")
+      : check.code === "codex-missing"
+        ? t("externalAgent.setup.codexMissing")
+        : check.code === "codex-launch-failed"
+          ? t("externalAgent.setup.codexLaunchFailed")
+          : check.code === "codex-protocol-error"
+            ? t("externalAgent.setup.codexProtocolError")
+            : t("externalAgent.setup.codexUnavailable");
+  return check.detail ? `${message} (${check.detail})` : message;
 }
 
 function ThreadOption({
@@ -222,15 +245,11 @@ export function AgentConnectionGuide({
               <CheckRow
                 state={checking ? "checking" : setup.codex.state}
                 title={t("externalAgent.setup.codexTitle")}
-                detail={t(
+                detail={
                   checking
-                    ? "externalAgent.setup.checking"
-                    : setup.codex.state === "ready"
-                      ? "externalAgent.setup.codexReady"
-                      : setup.codex.code === "codex-missing"
-                        ? "externalAgent.setup.codexMissing"
-                        : "externalAgent.setup.codexUnavailable",
-                )}
+                    ? t("externalAgent.setup.checking")
+                    : codexCheckDetail(setup.codex, t)
+                }
               />
               <CheckRow
                 state={checking ? "checking" : setup.authentication.state}

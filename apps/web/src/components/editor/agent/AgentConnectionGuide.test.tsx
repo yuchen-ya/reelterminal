@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { OpenReelConversationSetupCheck } from "../../../types/global";
 import { AgentConnectionGuide } from "./AgentConnectionGuide";
 
 const readySetup = {
@@ -45,7 +46,7 @@ describe("AgentConnectionGuide", () => {
     expect(onConnect).toHaveBeenCalledOnce();
   });
 
-  it("keeps connect disabled and gives a repair action when Codex is unavailable", () => {
+  it("keeps connect disabled and gives a repair action when Codex is missing", () => {
     const onRefresh = vi.fn();
     render(
       <AgentConnectionGuide
@@ -67,10 +68,76 @@ describe("AgentConnectionGuide", () => {
       />,
     );
 
-    expect(screen.getByText("Install the Codex app or CLI, then check again.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Codex was not found. Install the Codex CLI (winget install OpenAI.Codex or npm i -g @openai/codex), or point OPENREEL_CODEX_COMMAND at the command, then check again.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Connect" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Check connection requirements again" }));
     expect(onRefresh).toHaveBeenCalledOnce();
+  });
+
+  it("maps each new Codex failure class to its repair guidance and appends sanitized detail", () => {
+    const baseSetup = {
+      ...readySetup,
+      authentication: { state: "missing" as const, code: "auth-unknown" },
+      threads: [],
+    };
+    const renderWithCodexCheck = (
+      codexCheck: OpenReelConversationSetupCheck,
+    ) =>
+      render(
+        <AgentConnectionGuide
+          provider="codex"
+          setup={{ ...baseSetup, codex: codexCheck }}
+          selectedThread="new"
+          collabEnabled
+          busy={false}
+          error={false}
+          onProviderChange={vi.fn()}
+          onSelectThread={vi.fn()}
+          onRefresh={vi.fn()}
+          onConnect={vi.fn()}
+        />,
+      );
+
+    // Installed but the App Server cannot launch: upgrade guidance plus the
+    // sanitized stderr summary keeps the failure diagnosable.
+    const launchFailed = renderWithCodexCheck({
+      state: "error",
+      code: "codex-launch-failed",
+      detail: "unexpected argument '--stdio' found",
+    });
+    expect(
+      launchFailed.getByText(
+        "Codex was found, but ReelTerminal could not launch its App Server. Upgrade the Codex CLI to the latest version (npm i -g @openai/codex), then check again. (unexpected argument '--stdio' found)",
+      ),
+    ).toBeInTheDocument();
+    launchFailed.unmount();
+
+    // Launched but protocol-incompatible: its own guidance, no detail.
+    const protocolError = renderWithCodexCheck({
+      state: "error",
+      code: "codex-protocol-error",
+    });
+    expect(
+      protocolError.getByText(
+        "Codex started, but the App Server protocol is incompatible. Upgrade the Codex CLI to the latest version, then check again.",
+      ),
+    ).toBeInTheDocument();
+    protocolError.unmount();
+
+    // Unknown codes still get the generic unavailable fallback.
+    const fallback = renderWithCodexCheck({
+      state: "error",
+      code: "codex-something-new",
+    });
+    expect(
+      fallback.getByText(
+        "Codex failed to start or communicate for an unknown reason. Upgrade the Codex CLI, then check again.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("prioritizes a compatible adapter without asking ReelTerminal to create a session", () => {

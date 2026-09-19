@@ -1,8 +1,31 @@
 import { spawn } from "node:child_process";
+import os from "node:os";
 import readline from "node:readline";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 const CLOSE_GRACE_MS = 2_000;
+const STDERR_SUMMARY_MAX_LENGTH = 240;
+
+/**
+ * One-line, sanitized summary of App Server stderr for setup diagnostics.
+ * Absolute paths collapse to their file name (and `~` for the home
+ * directory) so the summary stays free of paths, and obvious credential
+ * shapes are redacted. Returns null for empty input.
+ */
+export function sanitizeStderrLine(line, maxLength = STDERR_SUMMARY_MAX_LENGTH) {
+  if (typeof line !== "string") return null;
+  let text = line.replace(/\s+/g, " ").trim();
+  if (!text) return null;
+  const home = os.homedir();
+  if (home && home.length > 2) text = text.split(home).join("~");
+  text = text
+    .replace(/[A-Za-z]:\\(?:[^\\/:*?"<>|]+\\)*[^\\/:*?"<>|]*/g, (match) =>
+      `…\\${match.slice(match.lastIndexOf("\\") + 1)}`)
+    .replace(/(?:\/[A-Za-z0-9@._-]+){2,}/g, (match) =>
+      `…/${match.slice(match.lastIndexOf("/") + 1)}`)
+    .replace(/(sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+)/gi, "[redacted]");
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+}
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -16,10 +39,13 @@ function errorMessage(value, fallback) {
 }
 
 export class CodexAppServerError extends Error {
-  constructor(code, message) {
+  constructor(code, message, detail = null) {
     super(message);
     this.name = "CodexAppServerError";
     this.code = code;
+    // Sanitized stderr summary (see sanitizeStderrLine) or other bounded,
+    // path-free diagnostic context. Safe for the setup UI detail line.
+    this.detail = typeof detail === "string" && detail ? detail : null;
   }
 }
 
@@ -31,7 +57,13 @@ export class CodexAppServerError extends Error {
 export class CodexAppServerClient {
   constructor(options = {}) {
     this.command = options.command ?? "codex";
-    this.commandArgs = options.commandArgs ?? ["app-server", "--stdio"];
+    // stdio is the app-server default transport (`--listen` defaults to
+    // `stdio://`; verified on 0.130.0 and 0.153.2). The previously hardcoded
+    // `--stdio` flag failed the spawn outright on every CLI version probed
+    // (exit 2, `unexpected argument '--stdio' found`, observed on 0.130.0;
+    // 0.153.2 `--help` no longer lists the flag). Which versions ever
+    // accepted it is unverified, so the bare subcommand is the portable form.
+    this.commandArgs = options.commandArgs ?? ["app-server"];
     this.cwd = options.cwd;
     this.env = options.env ?? process.env;
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
@@ -49,6 +81,8 @@ export class CodexAppServerClient {
     this.closed = false;
     this.closePromise = null;
     this.initializeResult = null;
+    this.stderrSummary = null;
+    this.lastFailure = null;
   }
 
   async start() {
@@ -61,13 +95,22 @@ export class CodexAppServerClient {
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.process = child;
-    child.once("error", (error) => this.failClosed(error));
+    child.once("error", (error) =>
+      this.failClosed(
+        new CodexAppServerError(
+          "SPAWN_FAILED",
+          errorMessage(error, "Codex app-server failed to start"),
+        ),
+      ));
     child.once("exit", (code, signal) => {
       if (this.closed) return;
+      const summary = this.stderrSummary;
+      const reason = signal ?? (code === null ? "unknown" : `exit code ${code}`);
       this.failClosed(
         new CodexAppServerError(
           "PROCESS_EXIT",
-          `Codex app-server exited unexpectedly (${signal ?? code ?? "unknown"})`,
+          `Codex app-server exited unexpectedly (${reason})${summary ? `: ${summary}` : ""}`,
+          summary,
         ),
       );
     });
@@ -75,9 +118,10 @@ export class CodexAppServerClient {
       throw new CodexAppServerError("SPAWN_FAILED", "Codex app-server stdio is unavailable");
     }
     // App Server diagnostics are not part of the protocol and may contain
-    // provider details. Drain them so the child cannot block, but never relay
-    // them into the ReelTerminal conversation surface.
-    child.stderr?.resume();
+    // provider details. Keep the child draining so it cannot block, retain a
+    // sanitized first line for setup diagnostics only, and never relay either
+    // into the ReelTerminal conversation surface.
+    child.stderr?.on("data", (chunk) => this.noteStderr(chunk));
     this.reader = readline.createInterface({ input: child.stdout });
     this.reader.on("line", (line) => this.handleLine(line));
 
@@ -91,7 +135,15 @@ export class CodexAppServerClient {
       // and non-secret option questions can be projected into ReelTerminal.
       capabilities: { experimentalApi: true },
     });
-    this.notify("initialized", {});
+    try {
+      this.notify("initialized", {});
+    } catch {
+      // The process died between the initialize response and the initialized
+      // notification; surface the recorded failure instead of the secondary
+      // write error, which carries no diagnostic value.
+      throw this.lastFailure ??
+        new CodexAppServerError("CLOSED", "Codex app-server closed before initialization completed");
+    }
     return this.initializeResult;
   }
 
@@ -110,6 +162,7 @@ export class CodexAppServerClient {
           new CodexAppServerError(
             "REQUEST_TIMEOUT",
             `Codex app-server did not answer ${method} within ${timeoutMs}ms`,
+            this.stderrSummary,
           ),
         );
       }, timeoutMs);
@@ -278,6 +331,13 @@ export class CodexAppServerClient {
     stdin.write(`${JSON.stringify(message)}\n`);
   }
 
+  noteStderr(chunk) {
+    if (this.stderrSummary) return;
+    const firstLine = String(chunk).split(/\r?\n/).find((line) => line.trim());
+    if (!firstLine) return;
+    this.stderrSummary = sanitizeStderrLine(firstLine);
+  }
+
   handleLine(line) {
     let message;
     try {
@@ -353,6 +413,7 @@ export class CodexAppServerClient {
   failClosed(error) {
     if (this.closed) return;
     this.closed = true;
+    this.lastFailure = error;
     this.rejectPending(error);
     for (const listener of this.closeListeners) listener(error);
   }

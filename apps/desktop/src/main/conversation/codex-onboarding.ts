@@ -35,9 +35,12 @@ export interface CodexOnboardingDeps {
   readonly liveMcpConnector: string;
   readonly newThreadCwd: string;
   readonly env?: NodeJS.ProcessEnv;
+  /** Executable discovery platform; defaults to process.platform. */
+  readonly platform?: NodeJS.Platform;
   readonly accessFile?: (candidate: string, mode?: number) => Promise<void>;
   readonly createClient?: (options: {
     command: string;
+    argsPrefix?: readonly string[];
     cwd?: string;
     env: NodeJS.ProcessEnv;
   }) => AppServerClient;
@@ -99,13 +102,36 @@ function accountIsReady(value: unknown): boolean {
   return value.account === null && value.requiresOpenaiAuth === false;
 }
 
-function executableCandidates(env: NodeJS.ProcessEnv): string[] {
+interface ResolvedCodexCommand {
+  readonly command: string;
+  /**
+   * Arguments ahead of the `app-server` subcommand. Set when discovery
+   * resolved a Windows .cmd shim to its real Node CLI entry, for example
+   * `node <npm-global>/node_modules/@openai/codex/bin/codex.js`.
+   */
+  readonly argsPrefix?: readonly string[];
+}
+
+function executableCandidates(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  const windows = platform === "win32";
   const explicit = env.OPENREEL_CODEX_COMMAND;
   const candidates = [
     explicit,
-    ...(env.PATH ?? "").split(path.delimiter).map((entry) =>
-      entry ? path.join(entry, process.platform === "win32" ? "codex.exe" : "codex") : "",
+    // Windows ships both a winget codex.exe and npm-global codex.cmd shims;
+    // accept each PATH directory's executable forms before falling back.
+    ...(env.PATH ?? "").split(path.delimiter).flatMap((entry) =>
+      entry
+        ? windows
+          ? [path.join(entry, "codex.exe"), path.join(entry, "codex.cmd")]
+          : [path.join(entry, "codex")]
+        : [],
     ),
+    ...(windows && env.APPDATA
+      ? [path.join(env.APPDATA, "npm", "codex.exe"), path.join(env.APPDATA, "npm", "codex.cmd")]
+      : []),
     path.join(os.homedir(), ".local", "bin", "codex"),
     path.join(os.homedir(), ".volta", "bin", "codex"),
     "/opt/homebrew/bin/codex",
@@ -114,24 +140,81 @@ function executableCandidates(env: NodeJS.ProcessEnv): string[] {
   return [...new Set(candidates)];
 }
 
+// Node >= 18.20 / >= 20.12 refuses to spawn .cmd/.bat files without a shell
+// (EINVAL; older 18.x/20.x patch lines did not), and a shell would re-parse
+// the App Server's JSON `-c` arguments. npm global shims all execute
+// `<dir>/node_modules/@openai/codex/bin/codex.js`, so resolve that
+// target and launch it with Node directly instead of through the shim.
+async function resolveNpmCmdShim(
+  shimPath: string,
+  accessFile: (candidate: string, mode?: number) => Promise<void>,
+): Promise<ResolvedCodexCommand | null> {
+  const shimDir = path.dirname(shimPath);
+  const cliEntry = path.join(shimDir, "node_modules", "@openai", "codex", "bin", "codex.js");
+  try {
+    await accessFile(cliEntry, fsConstants.R_OK);
+  } catch {
+    return null;
+  }
+  let nodeCommand = "node";
+  try {
+    const localNode = path.join(shimDir, "node.exe");
+    await accessFile(localNode, fsConstants.X_OK);
+    nodeCommand = localNode;
+  } catch {
+    // Fall back to `node` resolved through PATH.
+  }
+  return { command: nodeCommand, argsPrefix: [cliEntry] };
+}
+
 async function resolveCodexCommand(
   env: NodeJS.ProcessEnv,
   accessFile: (candidate: string, mode?: number) => Promise<void>,
-): Promise<string | null> {
-  for (const candidate of executableCandidates(env)) {
+  platform: NodeJS.Platform = process.platform,
+): Promise<ResolvedCodexCommand | null> {
+  for (const candidate of executableCandidates(env, platform)) {
     // A bare explicit command is useful for hermetic tests and PATH-based
     // managed deployments. Other candidates are verified before spawning.
     if (candidate === env.OPENREEL_CODEX_COMMAND && !path.isAbsolute(candidate)) {
-      return candidate;
+      return { command: candidate };
     }
     try {
       await accessFile(candidate, fsConstants.X_OK);
-      return candidate;
     } catch {
       // Keep looking through the bounded candidate list.
+      continue;
     }
+    if (platform === "win32" && candidate.toLowerCase().endsWith(".cmd")) {
+      const resolvedShim = await resolveNpmCmdShim(candidate, accessFile);
+      if (resolvedShim) return resolvedShim;
+      continue;
+    }
+    return { command: candidate };
   }
   return null;
+}
+
+/**
+ * Map an App Server client failure to a setup check. Discovery failure stays
+ * "codex-missing"; everything the client reports splits into launch failures
+ * (spawn error, nonzero exit, handshake timeout) and protocol errors
+ * (handshake/response shape, plus the CLOSED transport failures the launch
+ * codes do not cover, including a drop in the initialize→initialized gap),
+ * so the UI can tell "not installed" apart from "installed but cannot
+ * start" and "started but incompatible".
+ */
+function codexFailureFrom(error: unknown): ConversationSetupCheck {
+  if (error instanceof Error && error.name === "CodexAppServerError") {
+    const { code, detail } = error as { code?: unknown; detail?: unknown };
+    const launchFailure =
+      code === "SPAWN_FAILED" || code === "PROCESS_EXIT" || code === "REQUEST_TIMEOUT";
+    return {
+      state: "error",
+      code: launchFailure ? "codex-launch-failed" : "codex-protocol-error",
+      ...(typeof detail === "string" && detail ? { detail } : {}),
+    };
+  }
+  return failed("codex-unavailable");
 }
 
 function externalCheckFrom(error?: unknown): ConversationSetupCheck {
@@ -147,12 +230,21 @@ function externalCheckFrom(error?: unknown): ConversationSetupCheck {
 
 export function createCodexOnboardingHost(deps: CodexOnboardingDeps): CodexOnboardingHost {
   const env = deps.env ?? process.env;
+  const platform = deps.platform ?? process.platform;
   const accessFile = deps.accessFile ?? access;
   const inspectExternalAdapter =
     deps.inspectExternalAdapter ?? readConversationEndpointDescriptor;
   const createClient =
     deps.createClient ??
-    ((options) => new CodexAppServerClient(options) as AppServerClient);
+    ((options) =>
+      new CodexAppServerClient({
+        command: options.command,
+        ...(options.argsPrefix?.length
+          ? { commandArgs: [...options.argsPrefix, "app-server"] }
+          : {}),
+        cwd: options.cwd,
+        env: options.env,
+      }) as AppServerClient);
   const startAdapter = deps.startAdapter ?? startCodexConversationAdapter;
   const ensureDirectory = deps.ensureDirectory ?? ((directory: string) =>
     mkdir(directory, { recursive: true, mode: 0o700 }).then(() => undefined));
@@ -182,7 +274,7 @@ export function createCodexOnboardingHost(deps: CodexOnboardingDeps): CodexOnboa
       liveConnector = missing("connector-missing");
     }
 
-    const command = await resolveCodexCommand(env, accessFile);
+    const command = await resolveCodexCommand(env, accessFile, platform);
     if (!command) {
       return {
         codex: missing("codex-missing"),
@@ -194,7 +286,11 @@ export function createCodexOnboardingHost(deps: CodexOnboardingDeps): CodexOnboa
       };
     }
 
-    const client = createClient({ command, env });
+    const client = createClient({
+      command: command.command,
+      ...(command.argsPrefix ? { argsPrefix: command.argsPrefix } : {}),
+      env,
+    });
     try {
       await client.start();
       const [account, threads] = await Promise.all([
@@ -216,9 +312,9 @@ export function createCodexOnboardingHost(deps: CodexOnboardingDeps): CodexOnboa
         threads: summarizeCodexThreads(threads),
         managedSessionId: adapter?.threadId ?? null,
       };
-    } catch {
+    } catch (error) {
       return {
-        codex: failed("codex-unavailable"),
+        codex: codexFailureFrom(error),
         authentication: missing("auth-unknown"),
         liveConnector,
         externalAdapter,
@@ -237,7 +333,7 @@ export function createCodexOnboardingHost(deps: CodexOnboardingDeps): CodexOnboa
       if ((args.createThread === true) === Boolean(args.threadId)) {
         throw new Error("Choose one existing Codex conversation or create a new one");
       }
-      const command = await resolveCodexCommand(env, accessFile);
+      const command = await resolveCodexCommand(env, accessFile, platform);
       if (!command) throw new Error("CODEX_MISSING");
       await accessFile(deps.liveMcpConnector, fsConstants.R_OK).catch(() => {
         throw new Error("LIVE_CONNECTOR_MISSING");
@@ -246,7 +342,8 @@ export function createCodexOnboardingHost(deps: CodexOnboardingDeps): CodexOnboa
       if (args.createThread) await ensureDirectory(deps.newThreadCwd);
       const previous = adapter;
       const started = await startAdapter({
-        codexCommand: command,
+        codexCommand: command.command,
+        ...(command.argsPrefix ? { codexArgsPrefix: [...command.argsPrefix] } : {}),
         descriptorPath: deps.descriptorFilePath,
         liveMcpConnector: deps.liveMcpConnector,
         visualStateRoot: deps.visualStateRoot,

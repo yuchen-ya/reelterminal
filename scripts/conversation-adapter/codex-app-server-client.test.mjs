@@ -3,7 +3,10 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 
-import { CodexAppServerClient } from "./codex-app-server-client.mjs";
+import {
+  CodexAppServerClient,
+  sanitizeStderrLine,
+} from "./codex-app-server-client.mjs";
 
 class FakeAppServerProcess extends EventEmitter {
   constructor() {
@@ -49,6 +52,28 @@ class FakeAppServerProcess extends EventEmitter {
     } else if (message.method === "thread/compact/start") {
       this.send({ id: message.id, result: {} });
     }
+  }
+
+  kill(signal) {
+    this.signalCode = signal;
+    queueMicrotask(() => this.emit("exit", null, signal));
+    return true;
+  }
+}
+
+/**
+ * A child that accepts stdio but never answers the initialize handshake,
+ * like a CLI that dies before the protocol starts. Lets tests control the
+ * exact failure event (error/exit) without racing the handshake response.
+ */
+class SilentAppServerProcess extends EventEmitter {
+  constructor() {
+    super();
+    this.stdin = new PassThrough();
+    this.stdout = new PassThrough();
+    this.stderr = new PassThrough();
+    this.exitCode = null;
+    this.signalCode = null;
   }
 
   kill(signal) {
@@ -109,4 +134,71 @@ test("handshakes, frames turns, and retains early completion notifications", asy
     await client.close();
   }
   assert.equal(child.signalCode, "SIGTERM");
+});
+
+test("spawns the bare app-server subcommand (no --stdio flag)", async () => {
+  const child = new FakeAppServerProcess();
+  const spawnCalls = [];
+  const client = new CodexAppServerClient({
+    spawnImpl: (command, args) => {
+      spawnCalls.push([command, [...args]]);
+      return child;
+    },
+  });
+  try {
+    await client.start();
+  } finally {
+    await client.close();
+  }
+  assert.deepEqual(spawnCalls, [["codex", ["app-server"]]]);
+});
+
+test("attaches the sanitized first stderr line to process exit failures", async () => {
+  const child = new SilentAppServerProcess();
+  const client = new CodexAppServerClient({ spawnImpl: () => child });
+  const failurePromise = client.start().then(() => null, (error) => error);
+  child.stderr.write("error: unexpected argument '--stdio' found\n");
+  child.stderr.write('second line with C:\\Users\\leak\\secret.txt must be ignored\n');
+  await new Promise((resolve) => setImmediate(resolve));
+  child.emit("exit", 2, null);
+  const failure = await failurePromise;
+  assert.ok(failure, "start() must reject when the process exits during handshake");
+  assert.equal(failure.code, "PROCESS_EXIT");
+  assert.match(failure.message, /exit code 2/);
+  assert.match(failure.message, /unexpected argument '--stdio' found/);
+  assert.equal(failure.detail, "error: unexpected argument '--stdio' found");
+  assert.ok(!failure.message.includes("leak"), "only the first stderr line is summarized");
+});
+
+test("reports spawn system errors as SPAWN_FAILED", async () => {
+  const child = new SilentAppServerProcess();
+  const client = new CodexAppServerClient({
+    spawnImpl: (command, args, options) => {
+      assert.equal(options.stdio[0], "pipe");
+      return child;
+    },
+  });
+  const failurePromise = client.start().then(() => null, (error) => error);
+  child.emit("error", Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" }));
+  const failure = await failurePromise;
+  assert.ok(failure);
+  assert.equal(failure.code, "SPAWN_FAILED");
+  assert.match(failure.message, /spawn codex ENOENT/);
+});
+
+test("sanitizes stderr summaries before they reach the UI", () => {
+  assert.equal(
+    sanitizeStderrLine("Error: cannot read C:\\Users\\Admin\\.codex\\auth.json"),
+    "Error: cannot read …\\auth.json",
+  );
+  assert.equal(
+    sanitizeStderrLine("failed to open /home/user/private/config.toml for writing"),
+    "failed to open …/config.toml for writing",
+  );
+  assert.match(
+    sanitizeStderrLine("request rejected with sk-abcdefgh1234567890"),
+    /\[redacted\]/,
+  );
+  assert.equal(sanitizeStderrLine("   \n\t  "), null);
+  assert.equal(sanitizeStderrLine(42), null);
 });
