@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { access, readFile, realpath, stat } from "node:fs/promises";
 import os from "node:os";
@@ -803,9 +802,18 @@ export async function startCodexConversationAdapter(options = {}) {
     options.client ??
     new CodexAppServerClient({
       command: options.codexCommand ?? "codex",
+      // stdio is the app-server default transport (`--listen` defaults to
+      // `stdio://`; verified on 0.130.0 and 0.153.2). The previously
+      // hardcoded `--stdio` flag failed the spawn outright on every CLI
+      // version probed (exit 2, observed on 0.130.0; 0.153.2 `--help` no
+      // longer lists the flag), and which versions ever accepted it is
+      // unverified, so the bare subcommand is the portable form.
+      // codexArgsPrefix lets the onboarding discovery hand over a
+      // resolved launcher (for example `node <npm shim codex.js>`) ahead of
+      // the app-server subcommand.
       commandArgs: [
+        ...(options.codexArgsPrefix ?? []),
         "app-server",
-        "--stdio",
         ...(options.configureLiveMcp === false
           ? []
           : codexMcpOverrides(
@@ -817,6 +825,8 @@ export async function startCodexConversationAdapter(options = {}) {
       ],
       cwd: options.cwd,
       env: options.env,
+      // Injectable for tests that assert the constructed spawn arguments.
+      ...(options.spawnImpl ? { spawnImpl: options.spawnImpl } : {}),
     });
   let initialize;
   let threadResult;
