@@ -400,7 +400,6 @@ export const MultiCameraPanel: React.FC<MultiCameraPanelProps> = () => {
                   label={`${clip.name} ${clip.trackName}`}
                   isSelected={selectedClips.includes(clip.id)}
                   onChange={() => toggleClipSelection(clip.id)}
-                  onClick={() => toggleClipSelection(clip.id)}
                   padding={2}
                   variant={selectedClips.includes(clip.id) ? "green" : "muted"}
                   className={`w-full flex items-center gap-2 p-2 rounded-lg text-left transition-colors ${

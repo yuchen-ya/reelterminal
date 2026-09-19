@@ -49,7 +49,19 @@ export const ToolcraftSelectableCard = React.forwardRef<
         aria-checked={isSelected}
         disabled={resolvedDisabled}
         onClick={(event) => {
-          onClick?.(event)
+          // Exclusive activation dispatch: when the consumer supplies an
+          // explicit click handler, it owns activation entirely and onChange
+          // is not also fired. The previous contract (call onClick, then
+          // onChange unless preventDefault) double-dispatched for consumers
+          // that passed both props, so any non-idempotent handler — e.g. a
+          // selection toggle wired to both — was invoked twice per activation
+          // and silently cancelled itself.
+          if (onClick) {
+            onClick(event)
+            return
+          }
+          // onChange-only usage keeps the legacy escape hatch: an inner
+          // handler that calls preventDefault still suppresses the activation.
           if (!event.defaultPrevented) {
             onChange?.()
           }
