@@ -76,6 +76,27 @@ connector, and verifies `initialize → session/resume` before showing the
 conversation. The guide can also create a new Codex-owned conversation; it does
 not create a ReelTerminal-owned transcript or replace the open project.
 
+When the check fails, the panel names one of four states instead of a single
+"cannot start" error: **not installed** (no usable Codex found — the copy
+points at winget or `npm install -g @openai/codex`), **launch failed** (the
+process spawned but exited or timed out before the App Server handshake),
+**protocol error** (the handshake answered with an unusable response), or
+**not signed in** (the copy asks you to run `codex login` yourself; the guide
+never signs in for you). Launch and protocol failures carry a sanitized
+first-line stderr summary as a detail line — whitespace collapsed, home
+directories and absolute paths folded, key-shaped credentials redacted. A
+generic fallback state remains for anything else, showing the raw error.
+
+Discovery covers the winget `codex.exe`, the npm-global `codex.cmd` shim on
+Windows (resolved to `node …/@openai/codex/bin/codex.js` so no shell
+re-parses the App Server arguments; other `.cmd` shapes are skipped), and the
+usual macOS/Linux install locations. The adapter starts `codex app-server`
+with no transport flag — `stdio` is the App Server's default transport —
+which has been verified against both winget- and npm-installed Codex
+releases; no minimum version is enforced. Set `OPENREEL_CODEX_COMMAND` to
+override discovery with an explicit command (absolute path or bare name; a
+command only — extra flags are not supported).
+
 The command below is the manual path for adapter development, debugging, and
 custom hosts. Build the connector, open a desktop project, and enable **Agent
 Session** before running it:

@@ -186,8 +186,16 @@ then place it with a `clip.add` op. Key points:
   file-only allowlist. Local subresources resolve only inside `assetsRoot`
   (an `.html` source defaults to its own directory; inline markup without
   `assetsRoot` can only use `data:image` URIs).
-- Availability needs this machine's Chromium (the same supply preview uses);
-  check `capabilities_get` first. The verb changes no project state —
+- Availability needs this machine's Chromium (the same Playwright-managed
+  supply the GUI preview uses); check `capabilities_get` first. The esbuild
+  platform binary this runtime also needs ships inside the packaged Windows
+  app (the desktop host points `ESBUILD_BINARY_PATH` at its unpacked copy),
+  but the browser itself is not bundled: on a clean machine the agent-side
+  Chromium render paths (frame preview, export, visual inspection, and this
+  verb) stay unavailable until a compatible Playwright Chromium is supplied —
+  the repository quick start's `playwright-core install chromium` step is the
+  reference supply, and a packaged-install remedy is still open follow-up
+  work. The verb changes no project state —
   importing the published path is a separate `media_import` call.
 
 ## User-level custom fonts
@@ -333,9 +341,14 @@ The adapter preapproves the dedicated `openreel_live` MCP server because the
 user already enabled Agent Session in the ReelTerminal GUI. The live facade
 continues to enforce access level, work-mode context, the one-writer lease,
 revision checks, and shared undo. Codex command and file-change requests remain
-explicit approval events in the conversation panel. See the
+explicit approval events in the conversation panel. If the panel's connection
+guide reports the local Codex as **not installed**, **launch failed**,
+**protocol error**, or **not signed in**, its copy states the matching next
+step (install Codex, retry, or run `codex login` yourself — it never signs in
+for you). See the
 [`scripts/conversation-adapter` guide](../scripts/conversation-adapter/README.md)
-for setup and acceptance tests.
+for setup, discovery details, the `OPENREEL_CODEX_COMMAND` override, and
+acceptance tests.
 
 At each user turn, ReelTerminal gives Codex a visual-state keyframe or compact
 changed-region atlas plus exact revision/selection/playhead fields. Treat that packet as the
