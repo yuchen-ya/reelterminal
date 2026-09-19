@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Effect } from "../types/timeline";
 import { VideoEffectsEngine } from "./video-effects-engine";
 
@@ -531,6 +531,172 @@ describe("VideoEffectsEngine", () => {
     it("reports resize when height differs", () => {
       const canvas = { width: 1920, height: 1080 } as OffscreenCanvas;
       expect(VideoEffectsEngine.needsResize(canvas, 1920, 720)).toBe(true);
+    });
+  });
+
+  describe("chroma key frame pipeline (enabled filter + pixel math)", () => {
+    // Frame layout: top row pure green (the key), bottom row pure magenta
+    // (the subject that must survive keying).
+    const WIDTH = 4;
+    const HEIGHT = 2;
+    const GREEN_ROW = [0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255];
+    const MAGENTA_ROW = [
+      255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255,
+    ];
+    const ORIGINAL = [...GREEN_ROW, ...MAGENTA_ROW];
+
+    const CHROMA_PARAMS = {
+      keyColor: { r: 0, g: 1, b: 0 },
+      tolerance: 0.3,
+      edgeSoftness: 0.1,
+      spillSuppression: 0.5,
+    };
+
+    const makeFakeFxContext = (initial: number[]) => {
+      const backing = new Uint8ClampedArray(initial);
+      const canvas = { width: WIDTH, height: HEIGHT, data: backing };
+      const ctx = {
+        canvas,
+        filter: "none",
+        clearRect: () => {
+          backing.fill(0);
+        },
+        drawImage: (source: { pixels?: Uint8ClampedArray; data?: Uint8ClampedArray }) => {
+          backing.set(source.pixels ?? source.data ?? []);
+        },
+        getImageData: (_x: number, _y: number, w: number, h: number) => ({
+          width: w,
+          height: h,
+          data: new Uint8ClampedArray(backing),
+        }),
+        putImageData: (imageData: { data: Uint8ClampedArray }) => {
+          backing.set(imageData.data);
+        },
+        save: () => {},
+        restore: () => {},
+        setTransform: () => {},
+      };
+      return { ctx, canvas };
+    };
+
+    const makeBitmap = (pixels: number[]) =>
+      ({
+        width: WIDTH,
+        height: HEIGHT,
+        pixels: new Uint8ClampedArray(pixels),
+        close: () => {},
+      }) as unknown as ImageBitmap;
+
+    beforeEach(() => {
+      vi.stubGlobal(
+        "createImageBitmap",
+        async (source: {
+          width: number;
+          height: number;
+          pixels?: Uint8ClampedArray;
+          data?: Uint8ClampedArray;
+        }) => ({
+          width: source.width,
+          height: source.height,
+          pixels: new Uint8ClampedArray(source.pixels ?? source.data ?? []),
+          close: () => {},
+        }),
+      );
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("keys out the green area and keeps the magenta subject when enabled", async () => {
+      const engine = new VideoEffectsEngine({
+        width: WIDTH,
+        height: HEIGHT,
+        useGPU: false,
+      }) as any;
+      const { ctx } = makeFakeFxContext(ORIGINAL);
+      engine.getFxContext = () => ctx;
+
+      const result = await engine.applyEffects(makeBitmap(ORIGINAL), [
+        {
+          id: "chroma-1",
+          type: "chromaKey",
+          enabled: true,
+          params: CHROMA_PARAMS,
+        } satisfies Effect,
+      ]);
+
+      const pixels = result.image.pixels as Uint8ClampedArray;
+      // Green (key) area: alpha ~0.
+      for (let i = 0; i < WIDTH; i++) {
+        expect(pixels[i * 4 + 3]).toBeLessThanOrEqual(2);
+      }
+      // Magenta (subject) area: fully opaque with RGB preserved.
+      for (let i = WIDTH; i < WIDTH * HEIGHT; i++) {
+        expect(pixels[i * 4 + 0]).toBe(255);
+        expect(pixels[i * 4 + 1]).toBe(0);
+        expect(pixels[i * 4 + 2]).toBe(255);
+        expect(pixels[i * 4 + 3]).toBe(255);
+      }
+    });
+
+    it("returns the input frame unchanged when the chroma key is disabled", async () => {
+      const engine = new VideoEffectsEngine({
+        width: WIDTH,
+        height: HEIGHT,
+        useGPU: false,
+      }) as any;
+      const { ctx } = makeFakeFxContext(ORIGINAL);
+      engine.getFxContext = () => ctx;
+
+      const result = await engine.applyEffects(makeBitmap(ORIGINAL), [
+        {
+          id: "chroma-1",
+          type: "chromaKey",
+          enabled: false,
+          params: CHROMA_PARAMS,
+        } satisfies Effect,
+      ]);
+
+      expect(Array.from(result.image.pixels as Uint8ClampedArray)).toEqual(
+        ORIGINAL,
+      );
+    });
+
+    it("renders the original frame again when the key is disabled after being enabled", async () => {
+      // The preview/export pipeline re-decodes the source frame for every
+      // render and applies the current effect state on top, so the disabled
+      // pass consumes the original decoded frame, not the keyed output.
+      const engine = new VideoEffectsEngine({
+        width: WIDTH,
+        height: HEIGHT,
+        useGPU: false,
+      }) as any;
+      const { ctx } = makeFakeFxContext(ORIGINAL);
+      engine.getFxContext = () => ctx;
+
+      const keyed = await engine.applyEffects(makeBitmap(ORIGINAL), [
+        {
+          id: "chroma-1",
+          type: "chromaKey",
+          enabled: true,
+          params: CHROMA_PARAMS,
+        } satisfies Effect,
+      ]);
+      expect((keyed.image.pixels as Uint8ClampedArray)[3]).toBeLessThanOrEqual(2);
+
+      const restored = await engine.applyEffects(makeBitmap(ORIGINAL), [
+        {
+          id: "chroma-1",
+          type: "chromaKey",
+          enabled: false,
+          params: CHROMA_PARAMS,
+        } satisfies Effect,
+      ]);
+
+      expect(Array.from(restored.image.pixels as Uint8ClampedArray)).toEqual(
+        ORIGINAL,
+      );
     });
   });
 });

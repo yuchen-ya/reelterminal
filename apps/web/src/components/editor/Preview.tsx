@@ -100,6 +100,7 @@ import {
   PREVIEW_MAX_DIMENSION,
   previewQualityScale,
   PREVIEW_QUALITY_OPTIONS,
+  resolveRenderBase,
 } from "./preview/index";
 import {
   calculateClipTransform,
@@ -1935,7 +1936,27 @@ export const Preview: React.FC = () => {
       let hasRenderedFrame = false;
       let shouldClearCanvas = true;
       const hadBackground = Boolean(lastGoodFrameRef.current);
-      if (lastGoodFrameRef.current) {
+      // A keyed (or otherwise transparent) full-frame video replaces the
+      // picture rather than compositing over it. Baking it over the previous
+      // frame let stale pixels shine through every transparent region and be
+      // re-baked, so effect changes only ever showed on the first draw. When a
+      // full-frame active video clip owns the frame, redraw from the clean
+      // background — the same replace semantics playback and export use. The
+      // previous frame stays reserved for the decode-failure fallback below.
+      const renderBase = resolveRenderBase({
+        time,
+        hasLastGoodFrame: hadBackground,
+        clips: videoTracks.flatMap((track) =>
+          track.clips.map((clip) => ({
+            mediaType: getMediaItem(clip.mediaId)?.type,
+            trackHidden: track.hidden,
+            startTime: clip.startTime,
+            duration: clip.duration,
+            transform: clip.transform as ClipTransform | undefined,
+          })),
+        ),
+      });
+      if (renderBase === "lastFrame" && lastGoodFrameRef.current) {
         ctx.drawImage(
           lastGoodFrameRef.current,
           0,
@@ -2455,7 +2476,27 @@ export const Preview: React.FC = () => {
 
       if (hadBackground && hasActiveContent && offscreenCanvasRef.current) {
         mainCtx.clearRect(0, 0, canvas.width, canvas.height);
-        mainCtx.drawImage(offscreenCanvasRef.current, 0, 0);
+        if (
+          renderBase === "lastFrame" ||
+          !lastGoodFrameRef.current ||
+          activeSubtitles.length > 0
+        ) {
+          // The offscreen canvas still holds the previous frame as its base
+          // (plus anything rendered this round, e.g. subtitles) — keep it.
+          mainCtx.drawImage(offscreenCanvasRef.current, 0, 0);
+        } else {
+          // The base was skipped this round (a full-frame video owns the
+          // frame) and nothing rendered (the decode failed or was superseded
+          // by a newer seek): fall back to the last good frame instead of
+          // flashing the bare background fill.
+          mainCtx.drawImage(
+            lastGoodFrameRef.current,
+            0,
+            0,
+            canvas.width,
+            canvas.height,
+          );
+        }
         return true;
       }
 
