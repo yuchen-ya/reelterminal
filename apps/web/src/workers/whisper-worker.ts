@@ -7,6 +7,7 @@ import {
   isWhisperModelKey,
   type WhisperModelKey,
 } from "./whisper-models";
+import { classifyWhisperDownloadError } from "../utils/whisper-download-error";
 
 const MODEL_HOST = "https://media.openreel.video/models/";
 
@@ -149,9 +150,17 @@ self.onmessage = async (
       backend,
     });
   } catch (error) {
+    // Classify while the real Error object is still here. postMessage can
+    // structured-clone Error objects, but the worker protocol posts plain
+    // strings (the old implementation posted only error.message), so the
+    // panel can no longer tell a network refusal from an HTTP status on
+    // its own.
+    const classified = classifyWhisperDownloadError(error);
     post(requestId, {
       type: "error",
-      message: error instanceof Error ? error.message : "Local transcription failed.",
+      message: classified.message,
+      code: classified.kind,
+      status: classified.status,
     });
   }
 };

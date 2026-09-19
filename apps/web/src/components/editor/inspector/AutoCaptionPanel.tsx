@@ -23,9 +23,15 @@ import { useUIStore } from "../../../stores/ui-store";
 import { loadAudioBuffer } from "../../../utils/load-audio-buffer";
 import { audioBufferToWhisperSamples } from "../../../utils/whisper-audio";
 import {
+  classifyWhisperDownloadError,
+  whisperDownloadFailureCopy,
+  type WhisperDownloadFailureView,
+} from "../../../utils/whisper-download-error";
+import {
   DEFAULT_WHISPER_MODEL,
   WHISPER_MODELS,
   isWhisperModelKey,
+  type WhisperModelDefinition,
   type WhisperModelKey,
 } from "../../../workers/whisper-models";
 import { useTranslation } from "react-i18next";
@@ -60,6 +66,102 @@ interface WorkerChunk {
 
 type WorkerState = "idle" | "loading" | "ready";
 
+/**
+ * Reduces a thrown value (worker rejection or a local precondition) to
+ * the classified download-failure view. The worker classifies with the
+ * original Error instance in hand and attaches `code`/`status` to the
+ * rejection; locally thrown failures fall back to message-based
+ * classification, which keeps unclassifiable causes honest ("unknown").
+ */
+function toDownloadFailure(reason: unknown): WhisperDownloadFailureView {
+  const code = (reason as { code?: unknown } | null)?.code;
+  const status = (reason as { status?: unknown } | null)?.status;
+  const classified = classifyWhisperDownloadError(reason);
+  return {
+    kind:
+      code === "network" || code === "http" || code === "storage"
+        ? code
+        : classified.kind,
+    status: typeof status === "number" ? status : classified.status,
+    rawMessage: reason instanceof Error ? reason.message : String(reason),
+  };
+}
+
+/**
+ * The failure bar for the caption model download. Classified failures
+ * (network / HTTP status / storage) get an understandable localized
+ * title with the raw message kept as a secondary detail line, the
+ * local-inference note, and an explicit Retry that re-issues the flow
+ * that failed: the download-bar instance retries the download flow,
+ * while the transcription-failure instance retries transcribing (which
+ * re-attempts the download when the model is not loaded yet).
+ * Unclassified failures keep the raw message only — no invented cause,
+ * no retry framing.
+ */
+const ModelDownloadFailureBlock: React.FC<{
+  failure: WhisperDownloadFailureView;
+  model: WhisperModelDefinition;
+  onRetry: () => void;
+}> = ({ failure, model, onRetry }) => {
+  const { t } = useTranslation();
+  const copy = whisperDownloadFailureCopy(failure, {
+    model: model.shortLabel,
+    size: t(model.downloadSize),
+  });
+  if (!copy) {
+    return (
+      <Card
+        variant="muted"
+        padding={2}
+        className="flex items-start gap-2 border border-red-500/30 bg-red-500/10"
+      >
+        <AlertCircle size={14} className="mt-0.5 shrink-0 text-red-400" aria-hidden />
+        <Text type="supporting" className="text-[10px] text-red-400">
+          {failure.rawMessage}
+        </Text>
+      </Card>
+    );
+  }
+  return (
+    <div
+      role="alert"
+      className="space-y-1.5 rounded-md border border-red-500/30 bg-red-500/10 p-2"
+    >
+      <div className="flex items-start gap-1.5">
+        <AlertCircle size={13} className="mt-0.5 shrink-0 text-red-400" aria-hidden />
+        <div className="min-w-0 flex-1 space-y-1">
+          <Text type="supporting" className="block text-[10px] text-red-400">
+            {t(copy.key, copy.options)}
+          </Text>
+          {/* Raw error text under the localized title, kept readable for
+              debugging (same pattern as the cloud failure surfaces). */}
+          <Text
+            type="supporting"
+            className="block break-all text-[9px] text-red-400/70"
+          >
+            {failure.rawMessage}
+          </Text>
+          <Text
+            type="supporting"
+            color="secondary"
+            className="block text-[9px] leading-relaxed"
+          >
+            {t("captions.modelDownloadFailure.localInferenceNote")}
+          </Text>
+        </div>
+      </div>
+      <Button
+        label={t("captions.modelDownloadFailure.retry")}
+        icon={<Download size={13} aria-hidden />}
+        variant="secondary"
+        size="sm"
+        onClick={onRetry}
+        className="w-full justify-center"
+      />
+    </div>
+  );
+};
+
 export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
   clipId,
   maxWordsPerLine = 5,
@@ -85,7 +187,10 @@ export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
     Partial<Record<WhisperModelKey, "webgpu" | "wasm">>
   >({});
   const [segments, setSegments] = useState<TranscriptionSegment[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [downloadFailure, setDownloadFailure] =
+    useState<WhisperDownloadFailureView | null>(null);
+  const [transcribeFailure, setTranscribeFailure] =
+    useState<WhisperDownloadFailureView | null>(null);
 
   const selectedItems = useUIStore((state) => state.selectedItems);
   const resolvedClipId =
@@ -162,7 +267,23 @@ export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
             });
           } else if (messageType === "error") {
             worker.removeEventListener("message", handleMessage);
-            reject(new Error(String(event.data.message ?? "Local transcription failed.")));
+            const failure = new Error(
+              String(event.data.message ?? "Local transcription failed."),
+            );
+            // The worker classifies while the real Error object is still
+            // alive (names and statuses do not survive postMessage);
+            // carry the verdict on the rejection for the failure views.
+            const withCode = failure as Error & {
+              code?: unknown;
+              status?: unknown;
+            };
+            if (typeof event.data.code === "string") {
+              withCode.code = event.data.code;
+            }
+            if (typeof event.data.status === "number") {
+              withCode.status = event.data.status;
+            }
+            reject(failure);
           }
         };
         worker.addEventListener("message", handleMessage);
@@ -195,7 +316,8 @@ export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
       if (!isWhisperModelKey(value)) return;
       setSelectedModel(value);
       setSegments([]);
-      setError(null);
+      setDownloadFailure(null);
+      setTranscribeFailure(null);
       setProgress(readyModels.has(value) ? 1 : 0);
       setProgressMessage(readyModels.has(value) ? "Offline caption model is ready" : "");
       setWorkerState(readyModels.has(value) ? "ready" : "idle");
@@ -204,7 +326,7 @@ export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
   );
 
   const handlePrepareModel = useCallback(async () => {
-    setError(null);
+    setDownloadFailure(null);
     setWorkerState("loading");
     setProgress(0);
     setProgressMessage("Preparing offline caption model…");
@@ -212,13 +334,13 @@ export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
       await runWorker("load");
     } catch (reason) {
       setWorkerState("idle");
-      setError(reason instanceof Error ? reason.message : "Model download failed.");
+      setDownloadFailure(toDownloadFailure(reason));
     }
   }, [runWorker]);
 
   const handleTranscribe = useCallback(async () => {
     if (!clip || !mediaItem) return;
-    setError(null);
+    setTranscribeFailure(null);
     setSegments([]);
     setIsTranscribing(true);
     setProgress(0);
@@ -295,7 +417,7 @@ export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
       setSegments(nextSegments);
       setProgressMessage("Captions are ready to add");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Local transcription failed.");
+      setTranscribeFailure(toDownloadFailure(reason));
     } finally {
       await audioContext?.close().catch(() => undefined);
       setIsTranscribing(false);
@@ -406,6 +528,16 @@ export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
             className="w-full justify-center"
           />
         )}
+        {/* Download failure feedback sits directly under the Download
+            button so a failed download is visible without scrolling —
+            the previous bar rendered near the bottom of the panel. */}
+        {downloadFailure && (
+          <ModelDownloadFailureBlock
+            failure={downloadFailure}
+            model={WHISPER_MODELS[selectedModel]}
+            onRetry={handlePrepareModel}
+          />
+        )}
         <Text type="supporting" color="secondary" className="block text-[9px] leading-relaxed">
           {t("Stored in this browser after the first download. Media never leaves your device.")}</Text>
       </Card>
@@ -448,11 +580,12 @@ export const AutoCaptionPanel: React.FC<AutoCaptionPanelProps> = ({
         </div>
       </Card>
 
-      {error && (
-        <Card variant="muted" padding={2} className="flex items-start gap-2 border border-red-500/30 bg-red-500/10">
-          <AlertCircle size={14} className="mt-0.5 shrink-0 text-red-400" aria-hidden />
-          <Text type="supporting" className="text-[10px] text-red-400">{error}</Text>
-        </Card>
+      {transcribeFailure && (
+        <ModelDownloadFailureBlock
+          failure={transcribeFailure}
+          model={WHISPER_MODELS[selectedModel]}
+          onRetry={handleTranscribe}
+        />
       )}
 
       {isTranscribing && (
