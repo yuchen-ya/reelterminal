@@ -1095,10 +1095,12 @@ export class EffectsBridge {
       colorGrading: SerializedColorGrading;
     },
   ): EffectResult {
-    if (!this.initialized) {
-      return { success: false, error: "EffectsBridge not initialized" };
-    }
-
+    // This method is the store→bridge mirror used by project sync. It must
+    // accept writes even before initialize() resolves (and after dispose()):
+    // the effect maps are plain data, initialize() never clears them, and a
+    // sync dropped during the uninitialized window left the preview reading
+    // stale effects (chroma key missing after project load / undo) while the
+    // export pipeline, which reads the store, stayed correct.
     // Restore video effects
     const effects: VideoEffect[] = data.effects.map((e) => ({
       id: e.id,

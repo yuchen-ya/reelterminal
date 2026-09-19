@@ -750,40 +750,52 @@ export const useProjectStore = create<ProjectState>()(
 
     const syncClipEffectsBridge = (project: Project, clipId: string): void => {
       const effectsBridge = getEffectsBridge();
-      if (!effectsBridge.isInitialized()) {
-        return;
+      // No isInitialized() gate here: this is a pure data mirror of the
+      // canonical clip.effects. initialize() never clears the maps and a
+      // later sync re-populates them after dispose() clears them, while a
+      // sync dropped while the bridge was still initializing left the preview
+      // without effects (chroma key missing after project load / undo) even
+      // though the store was correct. processEffects() still checks
+      // initialization before touching the GPU.
+      try {
+        const timelineClip = project.timeline.tracks
+          .flatMap((track) => track.clips)
+          .find((candidate) => candidate.id === clipId);
+        const overlayClip = [
+          ...(project.textClips ?? []),
+          ...(project.shapeClips ?? []),
+          ...(project.svgClips ?? []),
+          ...(project.stickerClips ?? []),
+        ].find((candidate) => candidate.id === clipId);
+        const clip = timelineClip ?? overlayClip;
+
+        if (!clip) {
+          effectsBridge.clearEffects(clipId);
+          return;
+        }
+
+        const effects = mapClipEffectsToVideoEffects(clip.effects ?? []);
+        effectsBridge.deserializeEffects(clipId, {
+          effects: effects.map((effect) => ({
+            id: effect.id,
+            type: effect.type,
+            enabled: effect.enabled,
+            params: effect.params,
+            order: effect.order,
+          })),
+          // The clip is the source of truth for color grading; pushing it into
+          // the bridge here is what makes undo/redo (and project load) restore
+          // the graded look.
+          colorGrading: timelineClip?.colorGrading ?? {},
+        });
+      } catch (error) {
+        // Derived-cache refresh must never fail the state mutation that
+        // triggered it (same policy as syncDerivedState in executeActionBatch).
+        console.warn(
+          `Failed to synchronize effects bridge for clip ${clipId}`,
+          error,
+        );
       }
-
-      const timelineClip = project.timeline.tracks
-        .flatMap((track) => track.clips)
-        .find((candidate) => candidate.id === clipId);
-      const overlayClip = [
-        ...(project.textClips ?? []),
-        ...(project.shapeClips ?? []),
-        ...(project.svgClips ?? []),
-        ...(project.stickerClips ?? []),
-      ].find((candidate) => candidate.id === clipId);
-      const clip = timelineClip ?? overlayClip;
-
-      if (!clip) {
-        effectsBridge.clearEffects(clipId);
-        return;
-      }
-
-      const effects = mapClipEffectsToVideoEffects(clip.effects ?? []);
-      effectsBridge.deserializeEffects(clipId, {
-        effects: effects.map((effect) => ({
-          id: effect.id,
-          type: effect.type,
-          enabled: effect.enabled,
-          params: effect.params,
-          order: effect.order,
-        })),
-        // The clip is the source of truth for color grading; pushing it into
-        // the bridge here is what makes undo/redo (and project load) restore
-        // the graded look.
-        colorGrading: timelineClip?.colorGrading ?? {},
-      });
     };
 
     const syncProjectEffectsBridge = (
@@ -791,15 +803,23 @@ export const useProjectStore = create<ProjectState>()(
       previousProject?: Project,
     ): void => {
       const effectsBridge = getEffectsBridge();
-      if (!effectsBridge.isInitialized()) {
-        return;
-      }
-
+      // Mirrors syncClipEffectsBridge: runs before initialization too, so a
+      // load/undo landing in the uninitialized window still populates the map
+      // the preview reads once the bridge finishes initializing.
       const nextClipIds = new Set(getProjectClipIds(nextProject));
 
       for (const clipId of previousProject ? getProjectClipIds(previousProject) : []) {
         if (!nextClipIds.has(clipId)) {
-          effectsBridge.clearEffects(clipId);
+          try {
+            effectsBridge.clearEffects(clipId);
+          } catch (error) {
+            // Derived-cache refresh must never fail the state mutation that
+            // triggered it (same policy as syncClipEffectsBridge).
+            console.warn(
+              `Failed to clear effects bridge for removed clip ${clipId}`,
+              error,
+            );
+          }
         }
       }
 
@@ -854,6 +874,27 @@ export const useProjectStore = create<ProjectState>()(
         syncTrackTransitionsBridge(nextProject, track.id);
       }
     };
+
+    // The effects bridge is a derived view of the canonical project: the
+    // preview reads clip.effects through it while export reads the store
+    // directly. Individual mutation paths re-sync it, but any sync that was
+    // dropped (uninitialized bridge) or any path that forgot to sync left the
+    // preview desynced after undo/redo or project reload. Re-derive the whole
+    // bridge on every project reference change so it stays a strict projection
+    // of the store no matter which path mutated the project.
+    api.subscribe((state, previousState) => {
+      if (state.project === previousState.project) return;
+      try {
+        syncProjectEffectsBridge(state.project, previousState.project);
+      } catch (error) {
+        // Derived-cache refresh must never fail the state update that
+        // triggered it (same policy as syncDerivedState in executeActionBatch).
+        console.warn(
+          "Failed to synchronize effects bridge on project change",
+          error,
+        );
+      }
+    });
 
     // Restore a full clip snapshot into the owning engine (used by undo/redo
     // of text/shape property edits). Never creates or deletes the clip — it

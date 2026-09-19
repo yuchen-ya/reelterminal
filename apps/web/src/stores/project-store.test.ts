@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useProjectStore } from "./project-store";
 import { useEngineStore } from "./engine-store";
 import { useNotificationStore } from "./notification-store";
 import type {
+  Action,
   Project,
   Clip,
   MediaItem,
@@ -15,6 +16,7 @@ import {
   listGeneratedMotionShaders,
 } from "@openreel/core/motion/shaders";
 import { createEmptyProject } from "./project/project-helpers";
+import { getEffectsBridge } from "../bridges/effects-bridge";
 import { autoSaveManager } from "../services/auto-save";
 
 const { ffmpegProbeMock } = vi.hoisted(() => ({
@@ -2491,5 +2493,209 @@ describe("getFullProject / forceSave with momentarily-null engines", () => {
       expect(saved?.svgClips?.map((c) => c.id)).toEqual(["svg-1"]);
       expect(saved?.stickerClips?.map((c) => c.id)).toEqual(["sticker-1"]);
     });
+  });
+});
+
+describe("effects bridge projection (chroma key sync)", () => {
+  const chromaClipId = "video-clip-1";
+
+  const chromaSettings = (enabled: boolean) => ({
+    enabled,
+    keyColor: { r: 0, g: 1, b: 0 },
+    tolerance: 0.3,
+    edgeSoftness: 0.1,
+    spillSuppression: 0.5,
+  });
+
+  const chromaEffectItem = (enabled: boolean) => ({
+    id: "chroma-effect-1",
+    type: "chromaKey",
+    enabled,
+    params: chromaSettings(enabled),
+    order: 0,
+  });
+
+  const createProjectWithChromaClip = (effects: unknown[]): Project => ({
+    id: "chroma-sync-project",
+    name: "Chroma Sync Project",
+    createdAt: Date.now(),
+    modifiedAt: Date.now(),
+    settings: {
+      width: 1920,
+      height: 1080,
+      frameRate: 30,
+      sampleRate: 48000,
+      channels: 2,
+    },
+    mediaLibrary: { items: [] },
+    timeline: {
+      tracks: [
+        {
+          id: "video-track-1",
+          type: "video",
+          name: "Video",
+          clips: [
+            {
+              id: chromaClipId,
+              mediaId: "video-media-1",
+              trackId: "video-track-1",
+              startTime: 0,
+              duration: 8,
+              inPoint: 0,
+              outPoint: 8,
+              effects,
+              audioEffects: [],
+              transform: {
+                position: { x: 0.5, y: 0.5 },
+                scale: { x: 1, y: 1 },
+                rotation: 0,
+                anchor: { x: 0.5, y: 0.5 },
+                opacity: 1,
+              },
+              volume: 1,
+              keyframes: [],
+            },
+          ],
+          transitions: [],
+          locked: false,
+          hidden: false,
+          muted: false,
+          solo: false,
+        },
+      ],
+      subtitles: [],
+      duration: 8,
+      markers: [],
+    },
+  } as unknown as Project);
+
+  const bridgeChromaEntries = () =>
+    (mockEffectsBridgeState.clipEffects.get(chromaClipId) ?? []).filter(
+      (effect) => effect.type === "chromaKey",
+    );
+
+  beforeEach(() => {
+    mockEffectsBridgeState.clipEffects.clear();
+    mockTransitionBridgeState.trackTransitions.clear();
+    mockEffectsBridge.isInitialized.mockReturnValue(true);
+    useProjectStore.getState().createNewProject();
+  });
+
+  afterEach(() => {
+    mockEffectsBridge.isInitialized.mockReturnValue(true);
+  });
+
+  it("mirrors clip effects into the bridge on project load even while the bridge is uninitialized", () => {
+    // Regression: load/undo landing in the bridge's uninitialized window used
+    // to drop the sync silently, so the preview rendered unkeyed frames after
+    // a project reload while export (which reads the store) stayed correct.
+    mockEffectsBridge.isInitialized.mockReturnValue(false);
+
+    useProjectStore
+      .getState()
+      .loadProject(createProjectWithChromaClip([chromaEffectItem(true)]));
+
+    const mirrored = bridgeChromaEntries();
+    expect(mirrored).toHaveLength(1);
+    expect(mirrored[0].enabled).toBe(true);
+
+    // Once the bridge finishes initializing, the mirrored entry is already
+    // in place — no later store mutation is required to heal it.
+    mockEffectsBridge.isInitialized.mockReturnValue(true);
+    expect(bridgeChromaEntries()[0].enabled).toBe(true);
+  });
+
+  it("keeps the bridge keyed state in step across enable, disable, undo, and redo", async () => {
+    useProjectStore.getState().loadProject(createProjectWithChromaClip([]));
+
+    const chromaAction = (enabled: boolean): Action => ({
+      type: "clip/setChromaKey",
+      id: `chroma-${enabled ? "enable" : "disable"}`,
+      timestamp: Date.now(),
+      params: { clipId: chromaClipId, chromaKey: chromaSettings(enabled) },
+    });
+    const batchOptions = {
+      groupLabel: "Green screen",
+      historyOwner: "human",
+    } as const;
+
+    // Rapid same-target toggles coalesce into one undo unit by design
+    // (slider-drag UX). A human toggle is seconds apart, so zero the
+    // proximity window to model one undo unit per GUI toggle.
+    useProjectStore
+      .getState()
+      .actionExecutor.getHistory()
+      .setAutoGroupWindow(0);
+
+    await useProjectStore
+      .getState()
+      .executeActionBatch([chromaAction(true)], batchOptions);
+    expect(bridgeChromaEntries().at(-1)?.enabled).toBe(true);
+
+    await useProjectStore
+      .getState()
+      .executeActionBatch([chromaAction(false)], batchOptions);
+    expect(bridgeChromaEntries().at(-1)?.enabled).toBe(false);
+
+    // Undo the disable: canonical store and preview bridge must agree again.
+    await useProjectStore.getState().undo();
+    expect(
+      useProjectStore.getState().getClip(chromaClipId)?.chromaKey?.enabled,
+    ).toBe(true);
+    expect(bridgeChromaEntries().at(-1)?.enabled).toBe(true);
+
+    // Redo reapplies the disable in both representations.
+    await useProjectStore.getState().redo();
+    expect(
+      useProjectStore.getState().getClip(chromaClipId)?.chromaKey?.enabled,
+    ).toBe(false);
+    expect(bridgeChromaEntries().at(-1)?.enabled).toBe(false);
+  });
+
+  it("re-derives the bridge when the project is swapped without an explicit sync call", () => {
+    useProjectStore.getState().loadProject(createProjectWithChromaClip([]));
+    expect(bridgeChromaEntries()).toHaveLength(0);
+
+    // Raw setState bypasses every mutation path that re-syncs the bridge
+    // (undo stacks, action batches, load). The store subscription must keep
+    // the derived bridge consistent anyway.
+    useProjectStore.setState({
+      project: createProjectWithChromaClip([chromaEffectItem(true)]),
+    });
+
+    expect(bridgeChromaEntries()).toHaveLength(1);
+    expect(bridgeChromaEntries()[0].enabled).toBe(true);
+  });
+
+  it("does not fail loadProject when a partial bridge lacks clearEffects and the clip set shrinks", () => {
+    // Regression (F01-ACC problem 1, low): the vanishing-clip cleanup called
+    // effectsBridge.clearEffects bare, so a partial bridge that only exposes
+    // isInitialized turned a shrinking clip set on loadProject into a
+    // TypeError escaping the state mutation. Derived-cache refresh must
+    // degrade to a console.warn instead (syncClipEffectsBridge policy).
+    useProjectStore
+      .getState()
+      .loadProject(createProjectWithChromaClip([chromaEffectItem(true)]));
+    expect(bridgeChromaEntries()).toHaveLength(1);
+
+    const partialBridge = {
+      isInitialized: vi.fn(() => false),
+    } as unknown as ReturnType<typeof getEffectsBridge>;
+    vi.mocked(getEffectsBridge).mockReturnValue(partialBridge);
+    try {
+      expect(() =>
+        useProjectStore
+          .getState()
+          .loadProject(createEmptyProject("Shrunk Project")),
+      ).not.toThrow();
+
+      // The load itself completed: the store swapped to the smaller project
+      // even though every bridge call in the sync failed.
+      expect(useProjectStore.getState().project.name).toBe("Shrunk Project");
+    } finally {
+      vi.mocked(getEffectsBridge).mockReturnValue(
+        mockEffectsBridge as unknown as ReturnType<typeof getEffectsBridge>,
+      );
+    }
   });
 });
