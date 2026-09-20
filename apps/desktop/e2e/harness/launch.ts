@@ -4,7 +4,8 @@
  * One temp run dir per launch: `--user-data-dir` isolates the Chromium
  * profile (IndexedDB autosave, caches) and the live-artifacts root, while
  * REELTERMINAL_LIVE_ENDPOINT_FILE redirects the endpoint descriptor so a test run
- * never touches the developer's real ~/.openreel file. (`--user-data-dir` is
+ * never touches the developer's real ~/.reelterminal (or legacy ~/.openreel)
+ * file. (`--user-data-dir` is
  * honored by Electron for app.getPath("userData") — verified by
  * e2e/scratch/probe.mjs.)
  *

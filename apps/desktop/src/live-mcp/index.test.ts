@@ -14,18 +14,30 @@ import {
 
 describe("live MCP endpoint selection", () => {
   afterEach(() => {
+    delete process.env.REELTERMINAL_LIVE_ENDPOINT_FILE;
     delete process.env.OPENREEL_LIVE_ENDPOINT_FILE;
   });
 
-  it("defaults to the live endpoint descriptor", () => {
+  it("defaults to the canonical live endpoint descriptor", () => {
+    delete process.env.REELTERMINAL_LIVE_ENDPOINT_FILE;
     delete process.env.OPENREEL_LIVE_ENDPOINT_FILE;
-    expect(endpointFilePath()).toBe(path.join(os.homedir(), ".openreel", "live-endpoint.json"));
+    expect(endpointFilePath()).toBe(
+      path.join(os.homedir(), ".reelterminal", "live-endpoint.json"),
+    );
   });
 
   it("supports an isolated descriptor override", () => {
     const descriptor = path.join(os.tmpdir(), "openreel-live-endpoint.json");
     process.env.OPENREEL_LIVE_ENDPOINT_FILE = descriptor;
     expect(endpointFilePath()).toBe(descriptor);
+  });
+
+  it("prefers the new override name when both are set", () => {
+    const newFile = path.join(os.tmpdir(), "reelterminal-live-endpoint.json");
+    const oldFile = path.join(os.tmpdir(), "openreel-live-endpoint.json");
+    process.env.REELTERMINAL_LIVE_ENDPOINT_FILE = newFile;
+    process.env.OPENREEL_LIVE_ENDPOINT_FILE = oldFile;
+    expect(endpointFilePath()).toBe(newFile);
   });
 });
 

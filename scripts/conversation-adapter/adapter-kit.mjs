@@ -9,6 +9,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, isAbsolute, resolve } from "node:path";
+import { ENDPOINT_PRODUCT_ID } from "./endpoint-paths.mjs";
 
 export const MAX_REQUEST_BYTES = 256 * 1024;
 export const CONVERSATION_ENDPOINT_PATH = "/conversation";
@@ -18,6 +19,7 @@ const MAX_SESSION_ID_LENGTH = 512;
 const MAX_NAME_LENGTH = 256;
 const MAX_VERSION_LENGTH = 128;
 const MAX_DESCRIPTOR_LENGTH = 64 * 1024;
+const MAX_MIRROR_DESCRIPTOR_PATHS = 4;
 const CAPABILITY_LEVELS = new Set(["basic", "streaming", "observable"]);
 const WORK_MODES = new Set(["guided", "collaborative", "autonomous"]);
 const VISUAL_STATE_KINDS = new Set(["keyframe", "delta", "metadata"]);
@@ -102,6 +104,18 @@ function normalizeOptions(options) {
   const descriptorPath = requiredString(options.descriptorPath, "descriptor path", 4_096);
   const agent = normalizeAgent(options.agent);
   const adapter = normalizeAdapter(options.adapter);
+  // N03 compat mirrors: extra legacy-path copies of the descriptor for
+  // clients that only read the legacy directory. Written after the primary
+  // descriptor exists and removed on close with the same ownership guard.
+  const rawMirrors = options.mirrorDescriptorPaths;
+  const mirrorDescriptorPaths = rawMirrors === undefined ? [] : rawMirrors;
+  if (
+    !Array.isArray(mirrorDescriptorPaths) ||
+    mirrorDescriptorPaths.length > MAX_MIRROR_DESCRIPTOR_PATHS ||
+    mirrorDescriptorPaths.some((candidate) => typeof candidate !== "string" || candidate.length === 0)
+  ) {
+    throw new TypeError("mirrorDescriptorPaths must be an array of at most 4 path strings");
+  }
   for (const name of [
     "onInitialize",
     "onResume",
@@ -118,6 +132,7 @@ function normalizeOptions(options) {
   return {
     sessionId,
     descriptorPath: resolve(descriptorPath),
+    mirrorDescriptorPaths: mirrorDescriptorPaths.map((candidate) => resolve(candidate)),
     agent,
     adapter,
     onInitialize: options.onInitialize,
@@ -703,10 +718,27 @@ export async function startConversationAdapter(options) {
       endpoint,
       token,
       sessionId: normalized.sessionId,
+      // N03: lets ReelTerminal verify descriptor ownership during
+      // legacy-path discovery; readers that predate the field ignore it.
+      product: ENDPOINT_PRODUCT_ID,
       agent: normalized.agent,
       adapter: normalized.adapter,
     };
     await writeDescriptor(normalized.descriptorPath, descriptor);
+    // Legacy-path mirrors are written after the primary descriptor exists,
+    // so a reader that discovers the mirror always finds a live server.
+    for (const mirrorPath of normalized.mirrorDescriptorPaths) {
+      if (mirrorPath === normalized.descriptorPath) continue;
+      try {
+        await writeDescriptor(mirrorPath, descriptor);
+      } catch (error) {
+        // The primary descriptor is published; a failed legacy mirror must
+        // not take the adapter down. Best-effort only.
+        process.stderr.write(
+          `adapter-kit: legacy compat descriptor update failed for ${mirrorPath}: ${error instanceof Error ? error.message : String(error)}\n`,
+        );
+      }
+    }
   } catch (error) {
     await closeServer(server, sockets).catch(() => undefined);
     throw error;
@@ -720,6 +752,10 @@ export async function startConversationAdapter(options) {
         closePromise = (async () => {
           await closeServer(server, sockets).catch(() => undefined);
           await removeOwnedDescriptor(normalized.descriptorPath, endpoint, token);
+          for (const mirrorPath of normalized.mirrorDescriptorPaths) {
+            if (mirrorPath === normalized.descriptorPath) continue;
+            await removeOwnedDescriptor(mirrorPath, endpoint, token);
+          }
         })();
       }
       return closePromise;

@@ -6,6 +6,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startConversationAdapter } from "./adapter-kit.mjs";
 import { CodexAppServerClient } from "./codex-app-server-client.mjs";
+import {
+  canonicalEndpointPath,
+  describeWritebackDecision,
+  legacyEndpointPath,
+  endpointOverridePath,
+  foreignDescriptorRefusal,
+  planLegacyCompatWriteback,
+  resolveEndpointReadPath,
+} from "./endpoint-paths.mjs";
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(MODULE_DIR, "../..");
@@ -13,16 +22,27 @@ const DEFAULT_LIVE_MCP_CONNECTOR = path.join(
   REPO_ROOT,
   "apps/desktop/dist/live-mcp/index.js",
 );
-const DEFAULT_DESCRIPTOR = path.join(
-  os.homedir(),
-  ".openreel",
-  "conversation-endpoint.json",
-);
-const DEFAULT_VISUAL_STATE_ROOT = path.join(
-  os.homedir(),
-  ".openreel",
-  "conversation-visual-state",
-);
+/**
+ * N03 (docs/NAMING-AND-COMPATIBILITY.md §4): the canonical descriptor and
+ * visual-state roots live under ~/.reelterminal. The legacy ~/.openreel
+ * paths are discovered read-only for compatibility, and — when the legacy
+ * descriptor provably belonged to this application family and nothing live
+ * sits behind it — mirrored so old ReelTerminal builds still find the new
+ * adapter. Resolution logic is the standalone twin of
+ * apps/desktop/src/shared/endpoint-paths.ts; a consistency test pins both.
+ */
+function canonicalDescriptorPath(home = os.homedir()) {
+  return canonicalEndpointPath(home, "conversation-endpoint");
+}
+
+function defaultVisualStateRoot(home = os.homedir()) {
+  // Read-only discovery: prefer the canonical root, fall back to a legacy
+  // root left by an older session when the canonical one does not exist.
+  return resolveEndpointReadPath("conversation-visual-state", {
+    env: process.env,
+    home,
+  }).path;
+}
 const EVENT_LIMIT = 500;
 const MAX_VISUAL_STATE_BYTES = 4 * 1024 * 1024;
 
@@ -208,7 +228,7 @@ export class CodexConversationSession {
     this.buffer = new CodexDisplayBuffer(threadId, options.onDisplayUpdate);
     this.onError = options.onError;
     this.onVisualState = options.onVisualState;
-    this.visualStateRoot = options.visualStateRoot ?? DEFAULT_VISUAL_STATE_ROOT;
+    this.visualStateRoot = options.visualStateRoot ?? defaultVisualStateRoot();
     this.activeTurnId = null;
     this.pendingApprovals = new Map();
     this.approvalCounter = 0;
@@ -829,8 +849,32 @@ export function codexMcpOverrides(
   return overrides;
 }
 
+export function resolveAdapterEndpointPaths(options = {}) {
+  const env = options.env ?? process.env;
+  const home = options.home ?? os.homedir();
+  const override = endpointOverridePath(env, "conversation-endpoint");
+  const envOverride =
+    override !== undefined && path.isAbsolute(override) ? override : undefined;
+  const canonical = path.resolve(canonicalDescriptorPath(home));
+  // Explicit option (desktop handoff or --descriptor) wins, then the env
+  // override, then the canonical default.
+  const descriptorPath = path.resolve(
+    options.descriptorPath ?? envOverride ?? canonical,
+  );
+  const canonicalFlow = descriptorPath === canonical;
+  return {
+    descriptorPath,
+    canonicalDescriptorPath: canonical,
+    legacyDescriptorPath: legacyEndpointPath(home, "conversation-endpoint"),
+    // Compat mirroring only applies when publishing the canonical default:
+    // explicit custom targets and env overrides are fully user-managed.
+    canonicalFlow,
+  };
+}
+
 export async function startCodexConversationAdapter(options = {}) {
-  const descriptorPath = path.resolve(options.descriptorPath ?? DEFAULT_DESCRIPTOR);
+  const paths = resolveAdapterEndpointPaths(options);
+  const descriptorPath = paths.descriptorPath;
   const liveMcpConnector = path.resolve(
     options.liveMcpConnector ?? DEFAULT_LIVE_MCP_CONNECTOR,
   );
@@ -840,8 +884,29 @@ export async function startCodexConversationAdapter(options = {}) {
       options.env?.OPENREEL_CONVERSATION_VISUAL_STATE_ROOT ??
       process.env.REELTERMINAL_CONVERSATION_VISUAL_STATE_ROOT ??
       process.env.OPENREEL_CONVERSATION_VISUAL_STATE_ROOT ??
-      DEFAULT_VISUAL_STATE_ROOT,
+      defaultVisualStateRoot(options.home),
   );
+  // An explicit target that already holds another product's descriptor is a
+  // hard startup failure: rewriting it would silently redirect that
+  // product's readers to this adapter.
+  if (!paths.canonicalFlow) {
+    const refusal = foreignDescriptorRefusal("conversation-endpoint", descriptorPath);
+    if (refusal !== undefined) throw new Error(refusal);
+  }
+  // Legacy compat mirror decision (N03): only the canonical default is
+  // mirrored, and only when the legacy descriptor provably belonged to this
+  // application family and no live publisher is behind it.
+  const plan = await planLegacyCompatWriteback({
+    resource: "conversation-endpoint",
+    targetPath: descriptorPath,
+    explicitTarget: !paths.canonicalFlow,
+    home: options.home,
+  });
+  const mirrorDescriptorPaths = plan.writeback ? [plan.legacyPath] : [];
+  if (plan.writeback === false && plan.reason !== "no-legacy" && plan.reason !== "explicit-target") {
+    const note = describeWritebackDecision(plan);
+    if (note) process.stderr.write(`codex-adapter: ${note}.\n`);
+  }
   if (options.configureLiveMcp !== false) await access(liveMcpConnector);
 
   const client =
@@ -926,6 +991,7 @@ export async function startCodexConversationAdapter(options = {}) {
         capabilityLevel: "observable",
       },
       descriptorPath,
+      mirrorDescriptorPaths,
       onInitialize: () => ({
         protocolVersion: "openreel-conversation/1",
         agentInfo: { name: "Codex" },
@@ -995,6 +1061,7 @@ function parseArgs(argv) {
     else if (arg === "--live-mcp-connector") options.liveMcpConnector = value();
     else if (arg === "--visual-state-root") options.visualStateRoot = value();
     else if (arg === "--no-live-mcp") options.configureLiveMcp = false;
+    else if (arg === "--print-paths") options.printPaths = true;
     else if (arg === "--help" || arg === "-h") options.help = true;
     else throw new Error(`Unknown option: ${arg}`);
   }
@@ -1013,13 +1080,29 @@ function helpText() {
     `  --codex-command PATH      Codex CLI executable (default: codex)\n` +
     `  --live-mcp-connector PATH Built reelterminal-live-mcp connector\n` +
     `  --visual-state-root PATH  Trusted ReelTerminal visual-state directory\n` +
-    `  --no-live-mcp             Do not inject the ReelTerminal MCP server\n`;
+    `  --no-live-mcp             Do not inject the ReelTerminal MCP server\n` +
+    `  --print-paths             Print resolved endpoint paths as JSON and exit\n`;
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help) {
     process.stdout.write(helpText());
+    return;
+  }
+  if (options.printPaths) {
+    // Safe readiness metadata only: paths and defaults, never descriptor
+    // contents or tokens. Used by the cross-implementation consistency test
+    // that pins this standalone resolver to the desktop's endpoint-paths.ts.
+    const paths = resolveAdapterEndpointPaths(options);
+    process.stdout.write(
+      `${JSON.stringify({
+        descriptorPath: paths.descriptorPath,
+        canonicalDescriptorPath: paths.canonicalDescriptorPath,
+        legacyDescriptorPath: paths.legacyDescriptorPath,
+        visualStateRoot: defaultVisualStateRoot(options.home),
+      })}\n`,
+    );
     return;
   }
   const adapter = await startCodexConversationAdapter(options);

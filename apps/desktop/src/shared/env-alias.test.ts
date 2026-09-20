@@ -50,16 +50,16 @@ describe("live endpoint descriptor path aliasing (main-process representative)",
     expect(endpointFilePath()).toBe("C:/cfg/old.json");
   });
 
-  it("treats an empty new name as set-and-empty → legacy default path applies", () => {
+  it("treats an empty new name as set-and-empty → built-in default path applies", () => {
     // The call site keeps its original `override.length > 0` semantics.
     process.env[NEW_FILE] = "";
     delete process.env[OLD_FILE];
-    expect(endpointFilePath()).toContain(path.join(".openreel", "live-endpoint.json"));
+    expect(endpointFilePath()).toContain(path.join(".reelterminal", "live-endpoint.json"));
   });
 
   it("uses the built-in default when neither name is set", () => {
     delete process.env[NEW_FILE];
     delete process.env[OLD_FILE];
-    expect(endpointFilePath()).toContain(path.join(".openreel", "live-endpoint.json"));
+    expect(endpointFilePath()).toContain(path.join(".reelterminal", "live-endpoint.json"));
   });
 });

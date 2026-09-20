@@ -1,5 +1,6 @@
 import { lstat, readFile, stat } from "node:fs/promises";
 import { z } from "zod";
+import { ENDPOINT_PRODUCT_ID } from "../../shared/endpoint-paths";
 import type {
   ExternalAgentConnector,
   ExternalAgentNotification,
@@ -24,6 +25,12 @@ const descriptorSchema = z.object({
   endpoint: z.string().min(1).max(2_048),
   token: z.string().min(16).max(4_096),
   sessionId: z.string().min(1).max(512),
+  /**
+   * Written by adapters since N03 for ownership validation during
+   * legacy-path discovery. Older adapters omit it; readers ignore unknown
+   * fields either way (docs/external-agent-conversation-adapter.md §4).
+   */
+  product: z.string().min(1).max(64).optional(),
   agent: z.object({
     name: z.string().min(1).max(256),
     version: z.string().min(1).max(128).optional(),
@@ -40,6 +47,8 @@ export interface ConversationEndpointDescriptor {
   readonly endpoint: string;
   readonly token: string;
   readonly sessionId: string;
+  /** Product identity written by N03+ adapters (optional, validated). */
+  readonly product?: string;
   readonly agent: { readonly name: string; readonly version?: string };
   readonly adapter: {
     readonly name: string;
@@ -164,6 +173,17 @@ export async function readConversationEndpointDescriptor(
     const parsed = descriptorSchema.safeParse(JSON.parse(raw));
     if (!parsed.success) {
       throw new ConversationDescriptorError("Adapter descriptor has an unsupported shape");
+    }
+    if (
+      parsed.data.product !== undefined &&
+      parsed.data.product !== ENDPOINT_PRODUCT_ID
+    ) {
+      // Fail closed: never attach to another product's adapter session.
+      throw new ConversationDescriptorError(
+        `The adapter descriptor at ${filePath} belongs to another product ` +
+          `(product "${parsed.data.product}"); remove it or point ` +
+          "REELTERMINAL_CONVERSATION_ENDPOINT_FILE at a ReelTerminal adapter descriptor.",
+      );
     }
     return {
       ...parsed.data,

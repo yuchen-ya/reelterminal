@@ -3,6 +3,7 @@ import { access, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { readEnvAlias } from "../../shared/env-alias";
+import type { EndpointPathResolution } from "../../shared/endpoint-paths";
 import type {
   CodexConversationThreadSummary,
   ConversationSetupCheck,
@@ -32,6 +33,12 @@ interface AppServerClient {
 
 export interface CodexOnboardingDeps {
   readonly descriptorFilePath: string;
+  /**
+   * Read-side resolution (override → canonical → owned-legacy discovery);
+   * defaults to inspecting `descriptorFilePath` directly. A conflict fails
+   * the adapter check with an explicit-path message.
+   */
+  readonly resolveReadDescriptorPath?: () => EndpointPathResolution;
   readonly visualStateRoot: string;
   readonly liveMcpConnector: string;
   readonly newThreadCwd: string;
@@ -264,7 +271,12 @@ export function createCodexOnboardingHost(deps: CodexOnboardingDeps): CodexOnboa
   const inspectUnlocked = async (): Promise<ConversationSetupState> => {
     let externalAdapter: ConversationSetupCheck;
     try {
-      await inspectExternalAdapter(deps.descriptorFilePath);
+      const resolved =
+        deps.resolveReadDescriptorPath?.() ?? { path: deps.descriptorFilePath };
+      if (resolved.conflict) {
+        throw new ConversationDescriptorError(resolved.conflict);
+      }
+      await inspectExternalAdapter(resolved.path);
       externalAdapter = ready("adapter-ready");
     } catch (error) {
       externalAdapter = externalCheckFrom(error);

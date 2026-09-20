@@ -3,6 +3,11 @@ import path from "node:path";
 import { CHANNELS } from "../../shared/channels";
 import { readEnvAlias } from "../../shared/env-alias";
 import {
+  canonicalEndpointPath,
+  resolveEndpointReadPath,
+  type EndpointPathResolution,
+} from "../../shared/endpoint-paths";
+import {
   createConversationHost,
   type ConversationHost,
 } from "./conversation-host";
@@ -18,6 +23,12 @@ let host: ConversationHost | null = null;
 let unsubscribeWorkMode: (() => void) | null = null;
 let onboardingHost: CodexOnboardingHost | null = null;
 
+/**
+ * The descriptor path this process PUBLISHES to the adapter (and the
+ * default the adapter is handed): an explicit absolute override wins,
+ * otherwise the canonical ~/.reelterminal path. No legacy discovery here —
+ * writes never go to the legacy directory.
+ */
 export function conversationEndpointFilePath(): string {
   const override = readEnvAlias(
     process.env,
@@ -26,7 +37,19 @@ export function conversationEndpointFilePath(): string {
   );
   return override && path.isAbsolute(override)
     ? override
-    : path.join(app.getPath("home"), ".openreel", "conversation-endpoint.json");
+    : canonicalEndpointPath(app.getPath("home"), "conversation-endpoint");
+}
+
+/**
+ * Read-side resolution for the conversation panel: override → canonical →
+ * legacy compat discovery (owned descriptors only). A foreign product at
+ * the legacy path surfaces as `conflict` instead of a silent choice.
+ */
+export function conversationEndpointReadFilePath(): EndpointPathResolution {
+  return resolveEndpointReadPath("conversation-endpoint", {
+    env: process.env,
+    home: app.getPath("home"),
+  });
 }
 
 export function conversationVisualStateRoot(): string {
@@ -37,7 +60,7 @@ export function conversationVisualStateRoot(): string {
   );
   return override && path.isAbsolute(override)
     ? override
-    : path.join(app.getPath("home"), ".openreel", "conversation-visual-state");
+    : canonicalEndpointPath(app.getPath("home"), "conversation-visual-state");
 }
 
 export function liveMcpConnectorPath(): string {
@@ -68,6 +91,7 @@ export function getConversationHost(): ConversationHost {
     const preferences = getAgentModePreferenceStore();
     host = createConversationHost({
       descriptorFilePath: conversationEndpointFilePath(),
+      resolveReadDescriptorPath: conversationEndpointReadFilePath,
       emitEvent: emitToEditor,
       getWorkMode: () => preferences.get().workMode,
       visualStateStore: createConversationVisualStateStore(
@@ -94,6 +118,7 @@ export function getCodexOnboardingHost(): CodexOnboardingHost {
       : agentWorkspaceRoot();
     onboardingHost = createCodexOnboardingHost({
       descriptorFilePath: conversationEndpointFilePath(),
+      resolveReadDescriptorPath: conversationEndpointReadFilePath,
       visualStateRoot: conversationVisualStateRoot(),
       liveMcpConnector: liveMcpConnectorPath(),
       newThreadCwd: workspace,

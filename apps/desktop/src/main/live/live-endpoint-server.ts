@@ -18,8 +18,11 @@
  *
  * Auth: a 32-byte random bearer token per endpoint lifetime, compared with
  * timingSafeEqual on EVERY request. The endpoint file
- * (~/.openreel/live-endpoint.json, mode 0600) is written on start and
- * deleted on stop. THE TOKEN IS NEVER SENT TO THE RENDERER AND NEVER LOGGED
+ * (~/.reelterminal/live-endpoint.json, mode 0600) is written on start and
+ * deleted on stop; a legacy ~/.openreel descriptor that provably belonged
+ * to this application family and no longer has a live publisher is
+ * atomically updated so old connectors can discover the new host. THE TOKEN
+ * IS NEVER SENT TO THE RENDERER AND NEVER LOGGED
  * It appears only in the 0600 endpoint file, never in any IPC payload,
  * status object, or response body beyond the file itself.
  */
@@ -45,8 +48,16 @@ import {
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
-import { readEnvAlias } from "../../shared/env-alias";
 import path from "node:path";
+import { readEnvAlias } from "../../shared/env-alias";
+import {
+  canonicalEndpointPath,
+  describeWritebackDecision,
+  endpointOverridePath,
+  foreignDescriptorRefusal,
+  planLegacyCompatWriteback,
+  ENDPOINT_PRODUCT_ID,
+} from "../../shared/endpoint-paths";
 import {
   toolDescription,
   toolPresentation,
@@ -241,6 +252,37 @@ export interface LiveEndpointFile {
   readonly url: string;
   readonly port: number;
   readonly token: string;
+  /**
+   * Written by this host since N03 so clients can verify descriptor
+   * ownership during legacy-path discovery. Readers that predate the field
+   * ignore it (they read url/port/token only).
+   */
+  readonly product?: string;
+}
+
+export interface LiveEndpointFileResolution {
+  readonly file: string;
+  /** True when an explicit option or env override chose the path. */
+  readonly explicit: boolean;
+}
+
+/**
+ * Resolve the host's descriptor write target. An explicit option or env
+ * override (REELTERMINAL_LIVE_ENDPOINT_FILE, legacy OPENREEL_) is used
+ * exactly and disables compat write-back; otherwise the canonical
+ * ~/.reelterminal path is served (and a qualifying legacy descriptor is
+ * updated for old readers). `home` is injectable for tests.
+ */
+export function liveEndpointFileResolution(
+  explicitPath?: string,
+  home = os.homedir(),
+): LiveEndpointFileResolution {
+  if (explicitPath !== undefined) return { file: explicitPath, explicit: true };
+  const override = endpointOverridePath(process.env, "live-endpoint");
+  if (override !== undefined && override.length > 0) {
+    return { file: override, explicit: true };
+  }
+  return { file: canonicalEndpointPath(home, "live-endpoint"), explicit: false };
 }
 
 /**
@@ -249,20 +291,14 @@ export interface LiveEndpointFile {
  * the real file).
  */
 export function liveEndpointFilePath(): string {
-  const override = readEnvAlias(
-    process.env,
-    "REELTERMINAL_LIVE_ENDPOINT_FILE",
-    "OPENREEL_LIVE_ENDPOINT_FILE",
-  );
-  if (override && override.length > 0) return override;
-  return path.join(os.homedir(), ".openreel", "live-endpoint.json");
+  return liveEndpointFileResolution().file;
 }
 
 function writeEndpointFile(file: string, endpoint: LiveEndpointFile): void {
   const parent = path.dirname(file);
   mkdirSync(parent, { recursive: true, mode: 0o700 });
   const temporaryFile = `${file}.${process.pid}.${randomBytes(8).toString("hex")}.tmp`;
-  const payload = `${JSON.stringify(endpoint, null, 2)}\n`;
+  const payload = `${JSON.stringify({ product: ENDPOINT_PRODUCT_ID, ...endpoint }, null, 2)}\n`;
   let descriptorFd: number | undefined;
   try {
     descriptorFd = openSync(temporaryFile, "wx", 0o600);
@@ -307,6 +343,32 @@ function removeEndpointFile(file: string): void {
   }
 }
 
+/**
+ * Remove a legacy-path descriptor only when it is still the one this host
+ * wrote (url and token both match). A file another instance replaced in
+ * the meantime is left alone — the same ownership guard the conversation
+ * adapter applies on shutdown.
+ */
+function removeOwnedEndpointFile(
+  file: string,
+  endpoint: Pick<LiveEndpointFile, "url" | "token">,
+): void {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed) &&
+      (parsed as { url?: unknown }).url === endpoint.url &&
+      (parsed as { token?: unknown }).token === endpoint.token
+    ) {
+      rmSync(file, { force: true });
+    }
+  } catch {
+    // Nothing identifiable to remove.
+  }
+}
+
 /* ------------------------------ JSON-RPC -------------------------------- */
 
 interface JsonRpcMessage {
@@ -339,6 +401,11 @@ export interface LiveEndpointOptions {
   readonly port?: number;
   /** Defaults to liveEndpointFilePath(). */
   readonly endpointFilePath?: string;
+  /**
+   * Home directory for canonical/legacy endpoint resolution. Injectable so
+   * tests never touch the real ~/.reelterminal or ~/.openreel.
+   */
+  readonly home?: string;
 }
 
 export interface RunningLiveEndpoint {
@@ -494,7 +561,18 @@ export function startLiveEndpointServer(
   // written only to the 0600 endpoint file — never returned, never logged,
   // never sent to the renderer.
   const token = randomBytes(32).toString("hex");
-  const endpointFile = options.endpointFilePath ?? liveEndpointFilePath();
+  const endpointResolution = liveEndpointFileResolution(
+    options.endpointFilePath,
+    options.home,
+  );
+  const endpointFile = endpointResolution.file;
+  // An explicit override that already holds another product's descriptor is
+  // a hard startup failure: rewriting it would silently redirect that
+  // product's clients to this process (or vice versa).
+  if (endpointResolution.explicit) {
+    const refusal = foreignDescriptorRefusal("live-endpoint", endpointFile);
+    if (refusal !== undefined) return Promise.reject(new Error(refusal));
+  }
 
   const server = createServer((req, res) => {
     void (async () => {
@@ -565,29 +643,69 @@ export function startLiveEndpointServer(
       const boundPort =
         typeof address === "object" && address ? address.port : 0;
       const url = `http://127.0.0.1:${boundPort}/mcp`;
-      try {
-        writeEndpointFile(endpointFile, { url, port: boundPort, token });
-      } catch (error) {
-        // A descriptor write failure (e.g. an unwritable ~/.openreel) must
-        // settle like the bind-failure path ("error" → reject): reject so the
-        // caller's enable() can roll back and be retried, and close the
-        // half-started server so no listener is left behind.
-        server.close();
-        reject(error);
-        return;
-      }
-      resolve({
-        server,
-        port: boundPort,
-        host,
-        url,
-        endpointFile,
-        close: () =>
-          new Promise<void>((resolveClose) => {
-            removeEndpointFile(endpointFile);
-            server.close(() => resolveClose());
-          }),
-      });
+      const descriptor: LiveEndpointFile = { url, port: boundPort, token };
+      void (async () => {
+        try {
+          writeEndpointFile(endpointFile, descriptor);
+        } catch (error) {
+          // A descriptor write failure (e.g. an unwritable home directory)
+          // must settle like the bind-failure path ("error" → reject):
+          // reject so the caller's enable() can roll back and be retried,
+          // and close the half-started server so no listener is left behind.
+          server.close();
+          reject(error);
+          return;
+        }
+        // N03 compat write-back: when serving from the canonical path, also
+        // republish the descriptor at the legacy path IF it holds this
+        // application family's descriptor and nothing live is behind it —
+        // so connectors that only read ~/.openreel discover the new host.
+        // Any other legacy content (foreign product, unidentifiable,
+        // still-served) is left untouched with a credential-free log line.
+        // Awaited before resolve() so a subsequent close() can remove the
+        // mirror deterministically.
+        let legacyMirror: string | null = null;
+        if (!endpointResolution.explicit) {
+          try {
+            const plan = await planLegacyCompatWriteback({
+              resource: "live-endpoint",
+              targetPath: endpointFile,
+              explicitTarget: endpointResolution.explicit,
+              home: options.home,
+            });
+            if (plan.writeback) {
+              writeEndpointFile(plan.legacyPath, descriptor);
+              legacyMirror = plan.legacyPath;
+            } else {
+              const note = describeWritebackDecision(plan);
+              if (note) console.error(`[live-endpoint] ${note}.`);
+            }
+          } catch (error) {
+            // The canonical descriptor is already published; a failed legacy
+            // update must not take the running host down.
+            console.error(
+              `[live-endpoint] legacy compat descriptor update failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        }
+        resolve({
+          server,
+          port: boundPort,
+          host,
+          url,
+          endpointFile,
+          close: () =>
+            new Promise<void>((resolveClose) => {
+              if (legacyMirror !== null) {
+                removeOwnedEndpointFile(legacyMirror, descriptor);
+              }
+              removeEndpointFile(endpointFile);
+              server.close(() => resolveClose());
+            }),
+        });
+      })();
     });
   });
 }

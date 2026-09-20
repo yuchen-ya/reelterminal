@@ -92,7 +92,7 @@ export interface LiveSessionHostDeps {
   readonly serverInfo: { name: string; version: string };
   /** Endpoint port override; defaults to REELTERMINAL_LIVE_PORT (legacy OPENREEL_) / random. */
   readonly port?: number;
-  /** Endpoint file override; defaults to ~/.openreel/live-endpoint.json. */
+  /** Endpoint file override; defaults to ~/.reelterminal/live-endpoint.json. */
   readonly endpointFilePath?: string;
   /** Persisted main-process source of truth shared with conversation transport. */
   readonly modePreferenceStore?: AgentModePreferenceStore;

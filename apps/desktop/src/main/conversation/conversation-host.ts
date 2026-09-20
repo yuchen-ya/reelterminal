@@ -11,6 +11,7 @@ import type {
   DesktopConversationState,
   ConversationVisualStateCapture,
 } from "../../shared/conversation";
+import type { EndpointPathResolution } from "../../shared/endpoint-paths";
 import {
   ConversationDescriptorError,
   createLoopbackConversationConnector,
@@ -31,6 +32,13 @@ const missingAdapter = (): ConversationAdapterSummary => ({
 
 export interface ConversationHostDeps {
   readonly descriptorFilePath: string;
+  /**
+   * Read-side resolution (override → canonical → owned-legacy discovery).
+   * Defaults to reading `descriptorFilePath` directly. When the resolution
+   * reports a conflict (e.g. a foreign product's descriptor at the legacy
+   * path), attach/getState fail with that message instead of guessing.
+   */
+  readonly resolveReadDescriptorPath?: () => EndpointPathResolution;
   readonly emitEvent: (event: DesktopConversationEvent) => void;
   readonly getWorkMode: () => AgentWorkMode;
   readonly visualStateStore?: ConversationVisualStateStore;
@@ -79,7 +87,12 @@ export function createConversationHost(deps: ConversationHostDeps): Conversation
 
   const inspectAdapter = async (): Promise<ConversationEndpointDescriptor> => {
     try {
-      const descriptor = await readConversationEndpointDescriptor(deps.descriptorFilePath);
+      const resolved =
+        deps.resolveReadDescriptorPath?.() ?? { path: deps.descriptorFilePath };
+      if (resolved.conflict) {
+        throw new ConversationDescriptorError(resolved.conflict);
+      }
+      const descriptor = await readConversationEndpointDescriptor(resolved.path);
       adapter = descriptorSummary(descriptor);
       return descriptor;
     } catch (error) {

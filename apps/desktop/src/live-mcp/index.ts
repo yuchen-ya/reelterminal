@@ -7,17 +7,24 @@
  * names implemented by the live endpoint. It never imports a provider,
  * model, keychain, or conversation service. The descriptor is written by
  * the desktop live host while collaboration is enabled:
- *   default: ~/.openreel/live-endpoint.json
+ *   default: ~/.reelterminal/live-endpoint.json (legacy ~/.openreel/ is
+ *     still discovered when the canonical file is absent and the legacy
+ *     descriptor passes ownership validation)
  *   override: REELTERMINAL_LIVE_ENDPOINT_FILE (legacy: OPENREEL_LIVE_ENDPOINT_FILE)
  */
 import { readFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import os from "node:os";
-import path from "node:path";
 import { createInterface } from "node:readline";
 import { FACADE_TOOL_NAMES } from "@reelterminal/agent-facade";
 import { LIVE_HEARTBEAT_INTERVAL_MS } from "../shared/live";
-import { readEnvAlias } from "../shared/env-alias";
+import {
+  canonicalEndpointPath,
+  classifyDescriptorOwnership,
+  endpointOverridePath,
+  resolveEndpointReadPath,
+  type EndpointPathResolution,
+} from "../shared/endpoint-paths";
 
 interface RpcMessage {
   readonly jsonrpc?: string;
@@ -74,19 +81,39 @@ export function validateLiveEndpointUrl(raw: string): URL {
   return url;
 }
 
+/**
+ * The connector's descriptor target ignoring legacy discovery: an explicit
+ * override (new env name first, legacy fallback), else the canonical
+ * ~/.reelterminal path. The actual read may discover an owned legacy
+ * descriptor (resolveLiveEndpointPath) when the canonical file is absent.
+ */
 export function endpointFilePath(): string {
-  const override = readEnvAlias(
-    process.env,
-    "REELTERMINAL_LIVE_ENDPOINT_FILE",
-    "OPENREEL_LIVE_ENDPOINT_FILE",
-  );
-  return override && override.length > 0
+  const override = endpointOverridePath(process.env, "live-endpoint");
+  return override !== undefined && override.length > 0
     ? override
-    : path.join(os.homedir(), ".openreel", "live-endpoint.json");
+    : canonicalEndpointPath(os.homedir(), "live-endpoint");
 }
 
-function readEndpoint(): LiveEndpoint {
-  const file = endpointFilePath();
+/**
+ * Full read-side resolution: explicit override (new env name first, legacy
+ * fallback), then the canonical descriptor, then compat discovery of the
+ * legacy descriptor — owned descriptors only. A foreign product at the
+ * legacy path (or at both paths) yields `conflict` instead of a guess.
+ */
+export function resolveLiveEndpointPath(home?: string): EndpointPathResolution {
+  return resolveEndpointReadPath("live-endpoint", {
+    env: process.env,
+    ...(home !== undefined ? { home } : {}),
+  });
+}
+
+/** Exported for tests: resolves and loads the descriptor, fail-closed. */
+export function readEndpoint(home?: string): LiveEndpoint {
+  const resolution = resolveLiveEndpointPath(home);
+  if (resolution.conflict) {
+    throw new Error(resolution.conflict);
+  }
+  const file = resolution.path;
   let parsed: Partial<LiveEndpoint>;
   try {
     parsed = JSON.parse(readFileSync(file, "utf8")) as Partial<LiveEndpoint>;
@@ -97,6 +124,16 @@ function readEndpoint(): LiveEndpoint {
   }
   if (typeof parsed.url !== "string" || !parsed.url || typeof parsed.token !== "string" || !parsed.token) {
     throw new Error(`Invalid live endpoint descriptor at ${file}`);
+  }
+  // Fail closed on descriptors another product wrote (including an explicit
+  // override pointing at one): connecting would silently cross products.
+  if (
+    classifyDescriptorOwnership("live-endpoint", parsed) === "foreign"
+  ) {
+    throw new Error(
+      `The live endpoint descriptor at ${file} belongs to another product; ` +
+        "set REELTERMINAL_LIVE_ENDPOINT_FILE to a ReelTerminal descriptor.",
+    );
   }
   validateLiveEndpointUrl(parsed.url);
   return { url: parsed.url, token: parsed.token };
