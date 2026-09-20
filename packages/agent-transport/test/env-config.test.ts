@@ -113,10 +113,7 @@ describe("B.5 env config honored by the commands (integration)", () => {
     const client = startServe([], { ...envRoots(), OPENREEL_TRANSPORT_LOG: "error" });
     await initialize(client);
     client.handle.child.kill("SIGTERM");
-    const exitCode = await client.handle.exitCode;
-    // Windows has no POSIX signals, so the 143 (128+SIGTERM) exit code
-    // does not exist there; asserting only that the server exited.
-    if (process.platform !== "win32") expect(exitCode).toBe(143);
+    expect(await client.handle.exitCode).toBe(143);
     const levels = client.handle.stderr
       .split("\n")
       .filter((l) => l.trim().length > 0)
