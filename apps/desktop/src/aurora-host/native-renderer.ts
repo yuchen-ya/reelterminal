@@ -443,7 +443,7 @@ async function renderMeshWithNativeAuroraRendererViaFiles(
   mesh: Mesh,
   options: RayTraceOptions,
 ): Promise<AuroraRenderedFrame | null> {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "openreel-aurora-native-"));
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "reelterminal-aurora-native-"));
   const requestPath = path.join(tempDir, "request.bin");
   const responsePath = path.join(tempDir, "response.bin");
 

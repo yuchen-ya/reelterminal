@@ -12,7 +12,7 @@ import {
 import { probeAudioStreams as probe, type AudioStreamInfo } from "../sidecar/probe-streams";
 
 function tmpPath(ext: string): string {
-  return path.join(os.tmpdir(), `openreel-${randomUUID()}.${ext}`);
+  return path.join(os.tmpdir(), `reelterminal-${randomUUID()}.${ext}`);
 }
 
 export async function generateProxy(args: {

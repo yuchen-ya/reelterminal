@@ -15,6 +15,7 @@
     "test:adapters": "node --test scripts/conversation-adapter/*.test.mjs",
     "test:watch": "pnpm -r test",
     "lint": "pnpm -r lint",
+    "lint:naming": "node scripts/naming-lint.mjs",
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r clean"
   },

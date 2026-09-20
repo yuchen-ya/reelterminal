@@ -197,8 +197,13 @@ when both are set"）——本规则将该模式推广为全仓约定。
    白名单绑定 `openreel.video` 域，独立部署前端需显式增列新域。
 5. **云 API 授权**：客户端默认指向 `api.` / `cloud.openreel.video`（上游服务），
    ReelTerminal 构建产物的继续使用权无书面依据。
-6. **签名配置**：代码签名 / macOS notarization 配置为空，与 appId
-   `video.reelterminal.desktop` 的配套关系未记录。
+6. **签名配置**（N05 修正，原"配置为空"表述与现状不符）：macOS 侧**已配置**——
+   `apps/desktop/electron-builder.yml` 的 `mac.identity`（Developer ID
+   Application，`Augustus Otu (864H636QW4)`）与 `mac.notarize.teamId`
+   （`864H636QW4`）均已落地，公证凭证构建时经环境变量提供。剩余缺口：该
+   证书/团队号的**归属未核实**（现值继承上游作者姓名，是否已转移给
+   ReelTerminal 维护者无证据）；**Windows 侧未签名**（无证书配置）；签名
+   身份与 appId `video.reelterminal.desktop` 的配套关系**未记录**。
 
 规则：未确定部署目标时使用显式配置，**缺配置必须报错**；禁止自动创建云
 资源，禁止向未核实的上游/第三方资源部署或写入；更新源在发布前必须核实。

@@ -126,7 +126,7 @@ describe("buildBrowserEntry (real fs, cache semantics)", () => {
     // A real temp file proves the whole chain — default existsSync +
     // readFileSync utf8 — and, because this checkout HAS the TS sources, that
     // the pre-bundle takes priority over a successful source resolution.
-    const dir = mkdtempSync(path.join(tmpdir(), "openreel-prebundle-"));
+    const dir = mkdtempSync(path.join(tmpdir(), "reelterminal-prebundle-"));
     const artifact = path.join(dir, "browser-entry.mjs");
     writeFileSync(artifact, "OPENREEL-F02-R3-PREBUNDLE-MARKER");
     const previous = process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE;

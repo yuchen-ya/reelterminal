@@ -509,7 +509,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
     category: "logo-reveals",
     description: "A simple reveal scene ready for logo or SVG replacement.",
     variables: [
-      textVariable("brand-name", "Brand name", "OpenReel"),
+      textVariable("brand-name", "Brand name", "ReelTerminal"),
       colorVariable("brand-color", "Brand color", "#14b8a6"),
     ],
     create: () =>
@@ -518,7 +518,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
         duration: 5,
         backgroundColor: "transparent",
         variables: [
-          textVariable("brand-name", "Brand name", "OpenReel"),
+          textVariable("brand-name", "Brand name", "ReelTerminal"),
           colorVariable("brand-color", "Brand color", "#14b8a6"),
         ],
         layers: (composition) => [
@@ -554,7 +554,7 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
           textLayer(composition, {
             id: "logo-name",
             name: "Brand Name",
-            text: "OpenReel",
+            text: "ReelTerminal",
             x: composition.width * 0.5,
             y: composition.height * 0.61,
             fontSize: 74,

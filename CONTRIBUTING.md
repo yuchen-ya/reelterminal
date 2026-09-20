@@ -49,11 +49,11 @@ cd reelterminal
 corepack pnpm install
 
 # one-time browser install for the render/export runtime
-pnpm --filter @openreel/runtime-chromium exec playwright-core install chromium
+pnpm --filter @reelterminal/runtime-chromium exec playwright-core install chromium
 
 # focused test suites — the lab's verified surface
-pnpm --filter @openreel/agent-facade test:run       # pure Node
-pnpm --filter @openreel/runtime-chromium test:run   # real Chromium + ffmpeg
+pnpm --filter @reelterminal/agent-facade test:run       # pure Node
+pnpm --filter @reelterminal/runtime-chromium test:run   # real Chromium + ffmpeg
 
 # the inherited browser editor GUI (optional)
 pnpm dev
@@ -72,8 +72,14 @@ audit/                     frozen extraction audit + machine evidence
 docs/adr|slice-1b          ADRs and committed platform evidence
 ```
 
-Package names stay `@openreel/*` for source and project-format compatibility;
-the product and repository are named `ReelTerminal`.
+Workspace packages are unified under `@reelterminal/*` (renamed atomically from
+the inherited `@openreel/*` scope; the workspace is private with no published
+packages or external consumers). Inherited runtime identifiers that cross
+version boundaries—`.openreel` project-format files, persistence keys, legacy
+CLI/endpoint compatibility entries, and `openreel-*` protocol markers—remain
+supported compatibility contracts as governed by
+[`docs/NAMING-AND-COMPATIBILITY.md`](docs/NAMING-AND-COMPATIBILITY.md). The
+product and repository are named `ReelTerminal`.
 
 ## Making changes
 

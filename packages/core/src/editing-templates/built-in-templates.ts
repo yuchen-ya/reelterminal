@@ -573,7 +573,7 @@ export const BUILT_IN_EDITING_TEMPLATES: readonly EditingTemplate[] = [
     tags: ["branding", "watermark", "corner"],
     supportedTargets: ["video", "image"],
     controls: [
-      { id: "watermarkText", label: "Watermark", type: "text", defaultValue: "@openreel" },
+      { id: "watermarkText", label: "Watermark", type: "text", defaultValue: "@reelterminal" },
       { id: "watermarkOpacity", label: "Opacity", type: "number", defaultValue: 0.45, min: 0.1, max: 1, step: 0.05 },
     ],
     recipe: {
@@ -1073,7 +1073,7 @@ export const BUILT_IN_EDITING_TEMPLATES: readonly EditingTemplate[] = [
     tags: ["social", "hashtag", "bar"],
     supportedTargets: ["video", "image"],
     controls: [
-      { id: "tags", label: "Hashtags", type: "text", defaultValue: "#openreel #editing #creative" },
+      { id: "tags", label: "Hashtags", type: "text", defaultValue: "#reelterminal #editing #creative" },
     ],
     recipe: {
       effects: [],

@@ -81,7 +81,7 @@ const validateScene: RegisteredCreationTool = {
   name: "validate_creation_scene",
   domain: "validation",
   title: "Validate creation scene",
-  description: "Validate an OpenReel creation scene for broken references, missing semantic parts, and animation issues.",
+  description: "Validate a ReelTerminal creation scene for broken references, missing semantic parts, and animation issues.",
   inputSchema: obj({ scene: { type: "object" } }, ["scene"]),
   readOnly: true,
   handler: (args) => {

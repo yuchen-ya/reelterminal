@@ -159,5 +159,5 @@ export async function revealInFolder(args: { path: string }): Promise<void> {
 
 export async function tempFilePath(args: { ext: string }): Promise<string> {
   const safeExt = args.ext.replace(/[^a-zA-Z0-9]/g, "") || "bin";
-  return path.join(os.tmpdir(), `openreel-mat-${randomUUID()}.${safeExt}`);
+  return path.join(os.tmpdir(), `reelterminal-mat-${randomUUID()}.${safeExt}`);
 }

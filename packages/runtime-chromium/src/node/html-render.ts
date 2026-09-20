@@ -232,7 +232,7 @@ export async function renderHtmlPng(
       // The inline document needs a file:// address for relative resources
       // to resolve; a throwaway temp dir OUTSIDE the media roots keeps the
       // agent workspace free of non-artifact files.
-      const tempDir = await mkdtemp(path.join(tmpdir(), "openreel-html-render-"));
+      const tempDir = await mkdtemp(path.join(tmpdir(), "reelterminal-html-render-"));
       entryFile = path.join(tempDir, `${randomUUID()}.html`);
       cleanupEntry = () => rm(tempDir, { recursive: true, force: true });
     } else {

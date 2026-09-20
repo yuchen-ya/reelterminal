@@ -54,7 +54,7 @@ afterEach(async () => {
 
 describe("conversation visual-state store", () => {
   it("validates and atomically persists a bounded PNG under its private root", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "openreel-visual-state-"));
+    const root = await mkdtemp(path.join(tmpdir(), "reelterminal-visual-state-"));
     roots.push(root);
     const store = createConversationVisualStateStore(root);
     const packet = await store.persist(capture());
@@ -81,7 +81,7 @@ describe("conversation visual-state store", () => {
   });
 
   it("passes metadata-only deltas without creating a file", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "openreel-visual-state-"));
+    const root = await mkdtemp(path.join(tmpdir(), "reelterminal-visual-state-"));
     roots.push(root);
     const store = createConversationVisualStateStore(root);
     const packet = await store.persist(
@@ -98,7 +98,7 @@ describe("conversation visual-state store", () => {
   });
 
   it("rejects malformed images and mismatched delta regions", async () => {
-    const root = await mkdtemp(path.join(tmpdir(), "openreel-visual-state-"));
+    const root = await mkdtemp(path.join(tmpdir(), "reelterminal-visual-state-"));
     roots.push(root);
     const store = createConversationVisualStateStore(root);
     await expect(

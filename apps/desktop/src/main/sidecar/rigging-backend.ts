@@ -70,7 +70,7 @@ async function availableBlender(): Promise<RiggingBackendProbe> {
 }
 
 async function tempRiggingDir(): Promise<string> {
-  return mkdtemp(path.join(os.tmpdir(), "openreel-rigging-"));
+  return mkdtemp(path.join(os.tmpdir(), "reelterminal-rigging-"));
 }
 
 function extensionFromUrl(url: string): string {

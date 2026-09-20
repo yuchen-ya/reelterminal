@@ -39,7 +39,7 @@ describe("Agent connection guide", () => {
   let evidence: EvidenceRecord;
 
   beforeAll(async () => {
-    const runDir = await mkdtemp(path.join(tmpdir(), "openreel-agent-guide-e2e-"));
+    const runDir = await mkdtemp(path.join(tmpdir(), "reelterminal-agent-guide-e2e-"));
     const fakeCodex = path.join(runDir, "fake-codex.cjs");
     await writeFile(fakeCodex, FAKE_CODEX_APP_SERVER, { mode: 0o700 });
     await chmod(fakeCodex, 0o700);

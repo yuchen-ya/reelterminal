@@ -11,7 +11,7 @@ describe("media.analyze_start and generalized jobs", () => {
   let mediaId = "";
 
   beforeEach(async () => {
-    root = await mkdtemp(path.join(tmpdir(), "openreel-analysis-"));
+    root = await mkdtemp(path.join(tmpdir(), "reelterminal-analysis-"));
     const source = writeTinyMp4(root);
     facade = createAgentFacade({ mediaRoots: [root] });
     await facade["project.create"]({ name: "Analysis" });

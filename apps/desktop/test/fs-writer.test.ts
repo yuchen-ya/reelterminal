@@ -4,7 +4,7 @@ import path from "node:path";
 import { readFile, rm } from "node:fs/promises";
 import { FileWriterRegistry } from "../src/main/ipc/fs";
 
-const target = path.join(tmpdir(), `openreel-test-${Date.now()}.bin`);
+const target = path.join(tmpdir(), `reelterminal-test-${Date.now()}.bin`);
 
 describe("FileWriterRegistry", () => {
   afterAll(() => rm(target, { force: true }));

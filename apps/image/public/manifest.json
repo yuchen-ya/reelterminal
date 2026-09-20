@@ -1,6 +1,6 @@
 {
-  "name": "OpenReel Image",
-  "short_name": "OpenReel",
+  "name": "ReelTerminal Image",
+  "short_name": "ReelTerminal",
   "description": "Professional browser-based graphic design editor",
   "start_url": "/",
   "display": "standalone",

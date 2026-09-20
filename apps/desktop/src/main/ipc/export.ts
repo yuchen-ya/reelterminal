@@ -78,7 +78,7 @@ export function resolveExportArgs(
 export async function startExport(wc: WebContents, args: ExportStartArgs): Promise<{ jobId: string }> {
   const jobId = randomUUID();
   const encoders = await probeEncoders();
-  const audioWavPath = path.join(os.tmpdir(), `openreel-${jobId}.wav`);
+  const audioWavPath = path.join(os.tmpdir(), `reelterminal-${jobId}.wav`);
   const exportArgs = resolveExportArgs(args, process.platform, encoders, audioWavPath);
 
   const { port1, port2 } = new MessageChannelMain();

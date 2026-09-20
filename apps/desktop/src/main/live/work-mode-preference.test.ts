@@ -13,7 +13,7 @@ import { createAgentModePreferenceStore } from "./work-mode-preference";
 const directories: string[] = [];
 
 const fixture = (value?: unknown) => {
-  const directory = mkdtempSync(path.join(tmpdir(), "openreel-work-mode-"));
+  const directory = mkdtempSync(path.join(tmpdir(), "reelterminal-work-mode-"));
   directories.push(directory);
   const file = path.join(directory, "agent-work-mode.json");
   if (value !== undefined) writeFileSync(file, JSON.stringify(value));

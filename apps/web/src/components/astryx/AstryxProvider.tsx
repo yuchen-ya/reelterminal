@@ -4,7 +4,7 @@ import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 import "@astryxdesign/theme-neutral/theme.css";
 
 import { useThemeStore } from "../../stores/theme-store";
-import "./openreel-astryx-theme.css";
+import "./reelterminal-astryx-theme.css";
 
 export function AstryxProvider({
   children,

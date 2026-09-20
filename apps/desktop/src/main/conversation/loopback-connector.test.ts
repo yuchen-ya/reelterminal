@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 function descriptorPath(value: Record<string, unknown>, mode = 0o600): string {
-  const dir = mkdtempSync(path.join(tmpdir(), "openreel-conversation-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "reelterminal-conversation-"));
   tempDirs.push(dir);
   const file = path.join(dir, "conversation-endpoint.json");
   writeFileSync(file, JSON.stringify(value), { mode });

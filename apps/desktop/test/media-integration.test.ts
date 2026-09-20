@@ -28,7 +28,7 @@ import {
 
 const run = promisify(execFile);
 const stamp = Date.now();
-const src = path.join(tmpdir(), `openreel-media-src-${stamp}.mp4`);
+const src = path.join(tmpdir(), `reelterminal-media-src-${stamp}.mp4`);
 const created: string[] = [src];
 
 function ffprobePathFor(ffmpeg: string): string {

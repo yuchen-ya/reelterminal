@@ -1,4 +1,4 @@
-# OpenReel filter recipes → LUT generator
+# ReelTerminal filter recipes → LUT generator
 
 Build LUTs from YAML recipes for the filter-presets subsystem.
 

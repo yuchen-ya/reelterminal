@@ -21,11 +21,17 @@ finished film—not another agent or chat provider. Task-specific finishing
 algorithms such as transcription remain ordinary editor tools; they never
 become a second conversational authority.
 
-The product and repository are named **ReelTerminal**. Inherited technical
-identifiers—including `@openreel/*` packages, `.openreel` project/state paths,
-the `window.openreel` preload bridge, and `openreel-*` protocol/CLI names—stay
-unchanged for compatibility. They are implementation contracts, not the
-user-facing brand.
+The product and repository are named **ReelTerminal**. Workspace packages are
+unified under `@reelterminal/*`, the desktop bridge's primary key is
+`window.reelterminal` (the legacy `window.openreel` key remains available as a
+compatibility alias), agent endpoint files live under `~/.reelterminal/` by
+default (legacy `~/.openreel/` paths are still discovered when owned by this
+app), and the CLI ships under `reelterminal-*` names with thin legacy-command
+aliases. Remaining inherited identifiers—`.openreel` project/state formats,
+persistence keys, and `openreel-*` protocol markers—are versioned compatibility
+contracts, not the user-facing brand. The authoritative naming and
+compatibility policy is
+[`docs/NAMING-AND-COMPATIBILITY.md`](docs/NAMING-AND-COMPATIBILITY.md).
 
 ## Current status
 
@@ -269,13 +275,13 @@ git clone https://github.com/yuchen-ya/reelterminal.git
 cd reelterminal
 
 corepack pnpm install
-pnpm --filter @openreel/runtime-chromium exec playwright-core install chromium
+pnpm --filter @reelterminal/runtime-chromium exec playwright-core install chromium
 
 # Headless facade tests
-pnpm --filter @openreel/agent-facade test:run
+pnpm --filter @reelterminal/agent-facade test:run
 
 # Chromium runtime tests
-pnpm --filter @openreel/runtime-chromium test:run
+pnpm --filter @reelterminal/runtime-chromium test:run
 
 # Open the editor GUI
 pnpm dev
@@ -349,8 +355,8 @@ Those commands are not the default ReelTerminal desktop entry point.
 | `packages/image-core` | Imperative image-editing core (commands, masks, history) | Stable; consumed only by `apps/image` |
 | `apps/web` | ReelTerminal editor and live renderer bridge | Active |
 | `apps/desktop` | Desktop shell and live endpoint host | Active |
-| `apps/studio` | Experimental VFX/filter creation workbench (`pnpm --filter @openreel/studio dev`); local creation, compiling, and tutorials work | Experimental; publishing targets an out-of-repo worker |
-| `apps/image` | Standalone image editor (`pnpm --filter @openreel/image dev`); self-hosted Cloudflare Pages deploy (`openreel-image`), not covered by the root `deploy` | Experimental / dormant; not on the current mainline; low test coverage |
+| `apps/studio` | Experimental VFX/filter creation workbench (`pnpm --filter @reelterminal/studio dev`); local creation, compiling, and tutorials work | Experimental; publishing targets an out-of-repo worker |
+| `apps/image` | Standalone image editor (`pnpm --filter @reelterminal/image dev`); self-hosted Cloudflare Pages deploy (`openreel-image`), not covered by the root `deploy` | Experimental / dormant; not on the current mainline; low test coverage |
 | `audit/` | 304-tool extraction audit and risk evidence | Frozen historical material |
 | `docs/adr/` | Architecture decisions | Historical record; do not rewrite |
 
