@@ -1,5 +1,5 @@
 /**
- * `agent-video doctor` tests (slice 2c, Appendix E requirements) against
+ * `reelterminal-agent doctor` tests (slice 2c, Appendix E requirements) against
  * the REAL binary: exit-code classes (0 usable / 1 degraded / 2 unusable),
  * canonicalized roots echo, over-broad-root warning, orphan-artifact
  * listing with the unverifiable label, checkpoint `.tmp` residue listed

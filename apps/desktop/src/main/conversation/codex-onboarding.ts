@@ -2,6 +2,7 @@ import { constants as fsConstants } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { readEnvAlias } from "../../shared/env-alias";
 import type {
   CodexConversationThreadSummary,
   ConversationSetupCheck,
@@ -117,7 +118,7 @@ function executableCandidates(
   platform: NodeJS.Platform = process.platform,
 ): string[] {
   const windows = platform === "win32";
-  const explicit = env.OPENREEL_CODEX_COMMAND;
+  const explicit = readEnvAlias(env, "REELTERMINAL_CODEX_COMMAND", "OPENREEL_CODEX_COMMAND");
   const candidates = [
     explicit,
     // Windows ships both a winget codex.exe and npm-global codex.cmd shims;
@@ -175,7 +176,10 @@ async function resolveCodexCommand(
   for (const candidate of executableCandidates(env, platform)) {
     // A bare explicit command is useful for hermetic tests and PATH-based
     // managed deployments. Other candidates are verified before spawning.
-    if (candidate === env.OPENREEL_CODEX_COMMAND && !path.isAbsolute(candidate)) {
+    if (
+      candidate === readEnvAlias(env, "REELTERMINAL_CODEX_COMMAND", "OPENREEL_CODEX_COMMAND") &&
+      !path.isAbsolute(candidate)
+    ) {
       return { command: candidate };
     }
     try {

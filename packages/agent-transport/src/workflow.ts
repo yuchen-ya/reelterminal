@@ -1,5 +1,5 @@
 /**
- * `agent-video run` — the B.6 executable workflow format (ADR 0003
+ * `reelterminal-agent run` — the B.6 executable workflow format (ADR 0003
  * Decision 3 / Appendix B.6).
  *
  * JSONL, one step per line, two step kinds:

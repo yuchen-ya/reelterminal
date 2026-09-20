@@ -7,7 +7,7 @@
  * preview move with Playwright's real mouse input.
  *
  * Run against an existing desktop build:
- *   OPENREEL_E2E_PREVIEW_PERF=1 pnpm --filter @reelterminal/desktop exec vitest run \
+ *   REELTERMINAL_E2E_PREVIEW_PERF=1 pnpm --filter @reelterminal/desktop exec vitest run \
  *     --config e2e/vitest.config.ts e2e/preview-large-project-performance.e2e.ts
  */
 import { describe, expect, test } from "vitest";
@@ -23,7 +23,7 @@ import {
   selectTextClipViaUI,
 } from "./harness/ui";
 
-const RUN_PERF = process.env.OPENREEL_E2E_PREVIEW_PERF === "1";
+const RUN_PERF = process.env.REELTERMINAL_E2E_PREVIEW_PERF === "1";
 const performanceDescribe = RUN_PERF ? describe : describe.skip;
 const TRACK_COUNT = 10;
 const CLIPS_PER_TRACK = 100;

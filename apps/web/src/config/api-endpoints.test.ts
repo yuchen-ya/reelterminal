@@ -115,3 +115,78 @@ describe("api-endpoints cloud registry", () => {
     expect(registry.OPENREEL_TRANSCRIBE_URL).toBe("https://gpu.example.dev");
   });
 });
+
+/**
+ * N02 env naming contract (docs/NAMING-AND-COMPATIBILITY.md §3): the new
+ * VITE_REELTERMINAL_* names win when set; the legacy VITE_OPENREEL_* names
+ * stay readable as a fallback so existing deployments do not change target.
+ */
+describe("api-endpoints env alias precedence (N02)", () => {
+  const NEW_KEYS = [
+    "VITE_REELTERMINAL_CLOUD",
+    "VITE_REELTERMINAL_CLOUD_URL",
+    "VITE_REELTERMINAL_TRANSCRIBE_URL",
+  ] as const;
+
+  function clearAliasEnv(): void {
+    for (const key of [...CLOUD_ENV_KEYS, ...NEW_KEYS]) {
+      delete (import.meta.env as Record<string, unknown>)[key];
+    }
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    clearAliasEnv();
+  });
+
+  it("disables the cloud via the new VITE_REELTERMINAL_CLOUD=off name", async () => {
+    clearAliasEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "off");
+    const registry = await loadRegistry();
+    expect(registry.OPENREEL_CLOUD_ENABLED).toBe(false);
+  });
+
+  it("prefers the new name when both VITE_REELTERMINAL_CLOUD and VITE_OPENREEL_CLOUD are set", async () => {
+    clearAliasEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", ""); // new name set-and-empty: cloud stays enabled
+    vi.stubEnv("VITE_OPENREEL_CLOUD", "off");
+    const registry = await loadRegistry();
+    expect(registry.OPENREEL_CLOUD_ENABLED).toBe(true);
+  });
+
+  it("falls back to the legacy VITE_OPENREEL_CLOUD_URL when the new URL name is unset", async () => {
+    clearAliasEnv();
+    vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://legacy.example.dev");
+    const registry = await loadRegistry();
+    expect(registry.OPENREEL_CLOUD_URL).toBe("https://legacy.example.dev");
+  });
+
+  it("lets VITE_REELTERMINAL_CLOUD_URL win over both legacy aliases", async () => {
+    clearAliasEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://new.example.dev");
+    vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://legacy.example.dev");
+    vi.stubEnv("VITE_CLOUD_API_URL", "https://older.example.dev");
+    const registry = await loadRegistry();
+    expect(registry.OPENREEL_CLOUD_URL).toBe("https://new.example.dev");
+  });
+
+  it("new URL name set-and-empty keeps its empty semantics and never falls back to the legacy name", async () => {
+    // §3: an empty new name is handled per its own empty-value semantics
+    // (the || chain falls to the default), never to the legacy name.
+    clearAliasEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "");
+    vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://legacy.example.dev");
+    const registry = await loadRegistry();
+    const isDev = import.meta.env.DEV;
+    expect(registry.OPENREEL_CLOUD_URL).toBe(
+      isDev ? "http://localhost:8787" : "https://api.openreel.video",
+    );
+  });
+
+  it("lets VITE_REELTERMINAL_TRANSCRIBE_URL override the transcription URL", async () => {
+    clearAliasEnv();
+    vi.stubEnv("VITE_REELTERMINAL_TRANSCRIBE_URL", "https://gpu.example.dev");
+    const registry = await loadRegistry();
+    expect(registry.OPENREEL_TRANSCRIBE_URL).toBe("https://gpu.example.dev");
+  });
+});

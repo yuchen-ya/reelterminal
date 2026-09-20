@@ -1,5 +1,5 @@
 /**
- * `agent-video doctor` — the honest environment report (ADR 0003
+ * `reelterminal-agent doctor` — the honest environment report (ADR 0003
  * Decision 3, Appendix E requirements).
  *
  * ONE machine-readable JSON report on stdout; exit codes:
@@ -38,7 +38,13 @@ import {
   type RuntimeProbeResult,
 } from "@reelterminal/runtime-chromium";
 
-import { CONFIG_DEFAULTS, parseArgv, refuseStartup } from "./config";
+import {
+  CONFIG_DEFAULTS,
+  CONFIG_NEW_NAMES,
+  parseArgv,
+  readEnvAlias,
+  refuseStartup,
+} from "./config";
 import { logInfo, setLogLevel } from "./log";
 import { verifyBrowserReaper, type ReaperFinding } from "./reaper";
 import { TRANSPORT_VERSION } from "./serve";
@@ -182,7 +188,10 @@ export interface DoctorReport {
   readonly command: "doctor";
   readonly ts: string;
   readonly transport: {
-    readonly name: "agent-video";
+    // Machine-readable since slice 2c; historical evidence archives store
+    // the pre-N02 value "agent-video". The command name itself keeps the
+    // agent-video alias, so consumers can re-identify the binary regardless.
+    readonly name: "reelterminal-agent";
     readonly version: string;
     readonly pid: number;
     readonly platform: string;
@@ -190,6 +199,13 @@ export interface DoctorReport {
   };
   readonly config: {
     readonly env: {
+      readonly mediaRoots: string;
+      readonly artifactRoot: string;
+      readonly projectRoots: string;
+      readonly log: string;
+    };
+    /** Legacy OPENREEL_* names still honored as a fallback (N02). */
+    readonly envLegacy: {
       readonly mediaRoots: string;
       readonly artifactRoot: string;
       readonly projectRoots: string;
@@ -275,9 +291,21 @@ export async function doctorCommand(argv: readonly string[]): Promise<number> {
 
   // 1. Lenient root inspection (env-only — flags belong to serve/run).
   const env = process.env;
-  const rawMediaRootsEnv = env[CONFIG_DEFAULTS.mediaRootsEnv];
-  const rawProjectRootsEnv = env[CONFIG_DEFAULTS.projectRootsEnv];
-  const rawArtifactRoot = env[CONFIG_DEFAULTS.artifactRootEnv];
+  const rawMediaRootsEnv = readEnvAlias(
+    env,
+    CONFIG_NEW_NAMES.mediaRootsEnv,
+    CONFIG_DEFAULTS.mediaRootsEnv,
+  );
+  const rawProjectRootsEnv = readEnvAlias(
+    env,
+    CONFIG_NEW_NAMES.projectRootsEnv,
+    CONFIG_DEFAULTS.projectRootsEnv,
+  );
+  const rawArtifactRoot = readEnvAlias(
+    env,
+    CONFIG_NEW_NAMES.artifactRootEnv,
+    CONFIG_DEFAULTS.artifactRootEnv,
+  );
   const rawMediaRoots =
     rawMediaRootsEnv !== undefined
       ? rawMediaRootsEnv.split(path.delimiter).filter((s) => s.length > 0)
@@ -435,7 +463,7 @@ export async function doctorCommand(argv: readonly string[]): Promise<number> {
     command: "doctor",
     ts: new Date().toISOString(),
     transport: {
-      name: "agent-video",
+      name: "reelterminal-agent",
       version: TRANSPORT_VERSION,
       pid: process.pid,
       platform: process.platform,
@@ -443,6 +471,16 @@ export async function doctorCommand(argv: readonly string[]): Promise<number> {
     },
     config: {
       env: {
+        mediaRoots: CONFIG_NEW_NAMES.mediaRootsEnv,
+        artifactRoot: CONFIG_NEW_NAMES.artifactRootEnv,
+        projectRoots: CONFIG_NEW_NAMES.projectRootsEnv,
+        log: CONFIG_NEW_NAMES.logLevelEnv,
+      },
+      // Machine-readable note (N02): config.env above advertises the
+      // canonical REELTERMINAL_* names; the legacy OPENREEL_AVE_* /
+      // OPENREEL_TRANSPORT_LOG names remain readable as a fallback, and
+      // historical evidence archives reference them.
+      envLegacy: {
         mediaRoots: CONFIG_DEFAULTS.mediaRootsEnv,
         artifactRoot: CONFIG_DEFAULTS.artifactRootEnv,
         projectRoots: CONFIG_DEFAULTS.projectRootsEnv,

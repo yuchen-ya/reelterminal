@@ -1,4 +1,5 @@
 import { net } from "electron";
+import { readEnvAlias } from "../../shared/env-alias";
 
 const DEFAULT_MAX_BYTES = 256 * 1024 * 1024;
 
@@ -16,7 +17,11 @@ function err(message: string, status = 0): FetchUrlResult {
 }
 
 function isBlockedHost(hostname: string): boolean {
-  if (process.env.OPENREEL_ALLOW_LOCAL_FETCH === "1") return false;
+  if (
+    readEnvAlias(process.env, "REELTERMINAL_ALLOW_LOCAL_FETCH", "OPENREEL_ALLOW_LOCAL_FETCH") ===
+    "1"
+  )
+    return false;
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
   if (host === "::1" || host === "0.0.0.0") return true;

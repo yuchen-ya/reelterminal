@@ -6,6 +6,7 @@
   "main": "dist/main/index.js",
   "homepage": "https://github.com/yuchen-ya/reelterminal",
   "bin": {
+    "reelterminal-live-mcp": "dist/live-mcp/index.js",
     "openreel-live-mcp": "dist/live-mcp/index.js"
   },
   "author": {
@@ -14,7 +15,7 @@
   "description": "ReelTerminal — the finishing editor for AI video",
   "scripts": {
     "build:main": "node scripts/prepare-aurora-native.mjs && tsup && node scripts/link-live-runtime-deps.mjs",
-    "build:renderer": "cross-env OPENREEL_DESKTOP=1 pnpm --filter @reelterminal/web build",
+    "build:renderer": "cross-env REELTERMINAL_DESKTOP=1 pnpm --filter @reelterminal/web build",
     "build": "pnpm run build:renderer && pnpm run build:main",
     "predev": "pnpm run build:renderer",
     "dev": "tsup --watch --onSuccess \"electron .\"",

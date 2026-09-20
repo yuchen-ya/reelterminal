@@ -1,7 +1,7 @@
 /**
  * @reelterminal/agent-transport — ADR 0003 slice 2b/2c.
  *
- * The `agent-video` CLI: `serve` (MCP stdio server, one process == one
+ * The `reelterminal-agent` CLI: `serve` (MCP stdio server, one process == one
  * AgentFacadeSession), `run` (B.6 executable JSONL workflow over a fresh
  * session), `doctor` (machine-readable environment report). The transport
  * adds no semantics and removes none: facade results pass through verbatim

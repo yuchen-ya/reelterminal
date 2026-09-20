@@ -1,5 +1,5 @@
 /**
- * Chromium-gated E2E through the REAL `agent-video run` binary (the B.6
+ * Chromium-gated E2E through the REAL `reelterminal-agent run` binary (the B.6
  * closed loop, Appendix B.6 example): import → edit → export → await →
  * verify, plus the cross-process persistence loop with pixels-adjacent
  * verification (Appendix D scenario shapes, expressed as workflows).

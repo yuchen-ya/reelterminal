@@ -63,7 +63,7 @@ beforeAll(async () => {
     onExternalActivity: () => {
       activity += 1;
     },
-    serverInfo: { name: "openreel-live", version: "test" },
+    serverInfo: { name: "reelterminal-live", version: "test" },
     port: 0,
     endpointFilePath: endpointFile,
     artifactRoot: tempDir,
@@ -125,7 +125,7 @@ describe("live endpoint auth + transport", () => {
     }
     const closed = await startLiveEndpointServer({
       callVerb: async () => ({ ok: true, value: {} }),
-      serverInfo: { name: "openreel-live", version: "test" },
+      serverInfo: { name: "reelterminal-live", version: "test" },
       port: 0,
       endpointFilePath: path.join(tempDir, "second-endpoint.json"),
     });
@@ -139,7 +139,7 @@ describe("live endpoint auth + transport", () => {
     writeFileSync(staleFile, '{"stale":true}\n', { mode: 0o644 });
     const replacement = await startLiveEndpointServer({
       callVerb: async () => ({ ok: true, value: {} }),
-      serverInfo: { name: "openreel-live", version: "test" },
+      serverInfo: { name: "reelterminal-live", version: "test" },
       port: 0,
       endpointFilePath: staleFile,
     });
@@ -190,7 +190,7 @@ describe("live endpoint MCP protocol", () => {
       result: { protocolVersion: string; serverInfo: { name: string } };
     };
     expect(supportedJson.result.protocolVersion).toBe("2025-11-25");
-    expect(supportedJson.result.serverInfo.name).toBe("openreel-live");
+    expect(supportedJson.result.serverInfo.name).toBe("reelterminal-live");
 
     const unknown = await rpc(
       { jsonrpc: "2.0", id: 2, method: "initialize", params: { protocolVersion: "1999-01-01" } },
@@ -396,7 +396,7 @@ describe("live endpoint descriptor write failure", () => {
     try {
       await startLiveEndpointServer({
         callVerb: async () => ({ ok: true, value: {} }),
-        serverInfo: { name: "openreel-live", version: "test" },
+        serverInfo: { name: "reelterminal-live", version: "test" },
         port: 0,
         endpointFilePath: blockedFile,
       });
@@ -412,7 +412,7 @@ describe("live endpoint descriptor write failure", () => {
     // normally, publishes the descriptor, and closes cleanly.
     const retried = await startLiveEndpointServer({
       callVerb: async () => ({ ok: true, value: {} }),
-      serverInfo: { name: "openreel-live", version: "test" },
+      serverInfo: { name: "reelterminal-live", version: "test" },
       port: 0,
       endpointFilePath: path.join(tempDir, "retry-endpoint.json"),
     });

@@ -21,6 +21,36 @@ export const CONFIG_DEFAULTS = {
   logLevelEnv: "OPENREEL_TRANSPORT_LOG",
 } as const;
 
+/**
+ * New-name (REELTERMINAL_*) counterparts of CONFIG_DEFAULTS. These are the
+ * documented contract going forward (SKILL.md / AGENT-WORKSPACE); the legacy
+ * OPENREEL_* names stay readable as a fallback so existing host
+ * configurations keep working (docs/NAMING-AND-COMPATIBILITY.md §3).
+ */
+export const CONFIG_NEW_NAMES = {
+  mediaRootsEnv: "REELTERMINAL_AVE_MEDIA_ROOTS",
+  artifactRootEnv: "REELTERMINAL_AVE_ARTIFACT_ROOT",
+  projectRootsEnv: "REELTERMINAL_AVE_PROJECT_ROOTS",
+  deliveryRootsEnv: "REELTERMINAL_AVE_DELIVERY_ROOTS",
+  logLevelEnv: "REELTERMINAL_TRANSPORT_LOG",
+} as const;
+
+/**
+ * Env alias resolution (docs/NAMING-AND-COMPATIBILITY.md §3): the new
+ * REELTERMINAL_* name wins when set (an empty string counts as set), the
+ * legacy OPENREEL_* name is read only when the new name is unset, otherwise
+ * undefined — call sites keep their own default/empty semantics.
+ */
+export function readEnvAlias(
+  env: NodeJS.ProcessEnv,
+  newName: string,
+  oldName: string,
+): string | undefined {
+  const next = env[newName];
+  if (next !== undefined) return next;
+  return env[oldName];
+}
+
 /** Roots as parsed from flags/env, before validation + canonicalization. */
 export interface RawRoots {
   readonly mediaRoots: readonly string[];
@@ -163,7 +193,11 @@ export function mergeEnvRoots(
     roots.mediaRoots.length > 0
       ? [...roots.mediaRoots]
       : (() => {
-          const raw = env[CONFIG_DEFAULTS.mediaRootsEnv];
+          const raw = readEnvAlias(
+            env,
+            CONFIG_NEW_NAMES.mediaRootsEnv,
+            CONFIG_DEFAULTS.mediaRootsEnv,
+          );
           return raw === undefined
             ? []
             : splitEnvList(raw, CONFIG_DEFAULTS.mediaRootsEnv);
@@ -172,20 +206,33 @@ export function mergeEnvRoots(
     roots.projectRoots.length > 0
       ? [...roots.projectRoots]
       : (() => {
-          const raw = env[CONFIG_DEFAULTS.projectRootsEnv];
+          const raw = readEnvAlias(
+            env,
+            CONFIG_NEW_NAMES.projectRootsEnv,
+            CONFIG_DEFAULTS.projectRootsEnv,
+          );
           return raw === undefined
             ? []
             : splitEnvList(raw, CONFIG_DEFAULTS.projectRootsEnv);
         })();
   let artifactRoot = roots.artifactRoot;
-  if (artifactRoot === undefined && env[CONFIG_DEFAULTS.artifactRootEnv] !== undefined) {
-    artifactRoot = env[CONFIG_DEFAULTS.artifactRootEnv] as string;
+  const rawArtifact = readEnvAlias(
+    env,
+    CONFIG_NEW_NAMES.artifactRootEnv,
+    CONFIG_DEFAULTS.artifactRootEnv,
+  );
+  if (artifactRoot === undefined && rawArtifact !== undefined) {
+    artifactRoot = rawArtifact;
   }
   const deliveryRoots =
     roots.deliveryRoots.length > 0
       ? [...roots.deliveryRoots]
       : (() => {
-          const raw = env[CONFIG_DEFAULTS.deliveryRootsEnv];
+          const raw = readEnvAlias(
+            env,
+            CONFIG_NEW_NAMES.deliveryRootsEnv,
+            CONFIG_DEFAULTS.deliveryRootsEnv,
+          );
           return raw === undefined
             ? []
             : splitEnvList(raw, CONFIG_DEFAULTS.deliveryRootsEnv);
@@ -204,7 +251,7 @@ export function mergeEnvLogLevel(
   env: NodeJS.ProcessEnv = process.env,
 ): LogLevel {
   if (logLevel !== undefined) return logLevel;
-  const raw = env[CONFIG_DEFAULTS.logLevelEnv];
+  const raw = readEnvAlias(env, CONFIG_NEW_NAMES.logLevelEnv, CONFIG_DEFAULTS.logLevelEnv);
   if (raw === undefined) return "info";
   if (raw !== "error" && raw !== "info" && raw !== "debug") {
     throw new ConfigRefusal(

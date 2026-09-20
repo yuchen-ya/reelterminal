@@ -57,7 +57,7 @@ export async function probeRiggingBackend(): Promise<RiggingBackendProbe> {
   return {
     available: false,
     provider: "blender",
-    error: `Blender not found. Checked ${attempted.length} candidate(s). Set OPENREEL_BLENDER_PATH or bundle Blender under resources/rigging/blender/<platform>-<arch>.`,
+    error: `Blender not found. Checked ${attempted.length} candidate(s). Set REELTERMINAL_BLENDER_PATH (legacy OPENREEL_BLENDER_PATH still works) or bundle Blender under resources/rigging/blender/<platform>-<arch>.`,
   };
 }
 

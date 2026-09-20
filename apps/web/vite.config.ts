@@ -4,7 +4,7 @@ import path from "path";
 import { stripFfmpegPlugin } from "./vite-plugins/strip-ffmpeg";
 import { pruneFontsPlugin } from "./vite-plugins/prune-fonts";
 
-const isDesktop = process.env.OPENREEL_DESKTOP === "1";
+const isDesktop = process.env.REELTERMINAL_DESKTOP === "1";
 
 const normalizedModuleId = (id: string): string => id.replaceAll("\\", "/");
 const isNodePackage = (id: string, packageName: string): boolean =>

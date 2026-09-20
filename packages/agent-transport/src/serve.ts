@@ -1,6 +1,6 @@
 import { toolPresentation } from "@reelterminal/agent-facade";
 /**
- * `agent-video serve` — the MCP stdio server (ADR 0003 Decisions 1/2/5/7).
+ * `reelterminal-agent serve` — the MCP stdio server (ADR 0003 Decisions 1/2/5/7).
  *
  * One long-lived stdio MCP server process == one AgentFacadeSession. The
  * public surface is the registered tools of the facade contract (including
@@ -176,9 +176,9 @@ export async function serveCommand(argv: readonly string[]): Promise<never> {
   // fields are deliberate — outgoing results are not schema-stripped by
   // the SDK, and conforming clients ignore unknown serverInfo fields.)
   const serverInfo = {
-    name: "agent-video",
+    name: "reelterminal-agent",
     version: TRANSPORT_VERSION,
-    title: "OpenReel Agent Video Engine — one process, one facade session",
+    title: "ReelTerminal Agent Video Engine — one process, one facade session",
     pid: process.pid,
     args: [...process.argv.slice(2)],
     facadeContract: FACADE_CONTRACT_VERSION,
@@ -244,7 +244,7 @@ export async function serveCommand(argv: readonly string[]): Promise<never> {
       if (shuttingDown) {
         throw new McpError(
           ErrorCode.InvalidRequest,
-          "agent-video is shutting down — no further tool calls are accepted",
+          "reelterminal-agent is shutting down — no further tool calls are accepted",
         );
       }
       const params: unknown = request.params.arguments ?? {};

@@ -90,7 +90,7 @@ export interface LiveSessionHostDeps {
   /** liveEvents push (targets the editor window in prod). */
   readonly emitEvent: (event: LiveEvent) => void;
   readonly serverInfo: { name: string; version: string };
-  /** Endpoint port override; defaults to OPENREEL_LIVE_PORT / random. */
+  /** Endpoint port override; defaults to REELTERMINAL_LIVE_PORT (legacy OPENREEL_) / random. */
   readonly port?: number;
   /** Endpoint file override; defaults to ~/.openreel/live-endpoint.json. */
   readonly endpointFilePath?: string;

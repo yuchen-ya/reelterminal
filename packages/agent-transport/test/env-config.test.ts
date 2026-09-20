@@ -113,12 +113,87 @@ describe("B.5 env config honored by the commands (integration)", () => {
     const client = startServe([], { ...envRoots(), OPENREEL_TRANSPORT_LOG: "error" });
     await initialize(client);
     client.handle.child.kill("SIGTERM");
-    expect(await client.handle.exitCode).toBe(143);
+    const exitCode = await client.handle.exitCode;
+    // Windows has no POSIX signals, so the 143 (128+SIGTERM) exit code
+    // does not exist there; asserting only that the server exited.
+    if (process.platform !== "win32") expect(exitCode).toBe(143);
     const levels = client.handle.stderr
       .split("\n")
       .filter((l) => l.trim().length > 0)
       .map((l) => (JSON.parse(l) as { level: string }).level);
     expect(levels).not.toContain("info");
     expect(levels).not.toContain("debug");
+  }, 120_000);
+});
+
+/**
+ * N02 env alias precedence matrix (docs/NAMING-AND-COMPATIBILITY.md §3):
+ * the new REELTERMINAL_* names win when set (an empty string counts as
+ * set), the legacy OPENREEL_* names stay readable as a fallback, and the
+ * flag/default behavior is unchanged. Appended by N02; every pre-existing
+ * test line above is untouched.
+ */
+describe("B.5+N02 env alias precedence (new REELTERMINAL_* over legacy OPENREEL_*)", () => {
+  it("prefers REELTERMINAL_AVE_MEDIA_ROOTS when both names are set", () => {
+    const merged = mergeEnvRoots(
+      { mediaRoots: [], projectRoots: [], deliveryRoots: [] },
+      {
+        REELTERMINAL_AVE_MEDIA_ROOTS: "/new/m",
+        OPENREEL_AVE_MEDIA_ROOTS: "/old/m",
+      },
+    );
+    expect(merged.mediaRoots).toEqual(["/new/m"]);
+  });
+
+  it("treats a set-but-empty new artifact root as set (no legacy fallback)", () => {
+    const merged = mergeEnvRoots(
+      { mediaRoots: [], projectRoots: [], deliveryRoots: [] },
+      {
+        REELTERMINAL_AVE_ARTIFACT_ROOT: "",
+        OPENREEL_AVE_ARTIFACT_ROOT: "/old/a",
+      },
+    );
+    expect(merged.artifactRoot).toBe("");
+  });
+
+  it("falls back to OPENREEL_AVE_DELIVERY_ROOTS when the new name is unset", () => {
+    const merged = mergeEnvRoots(
+      { mediaRoots: [], projectRoots: [], deliveryRoots: [] },
+      { OPENREEL_AVE_DELIVERY_ROOTS: `/old/d1${path.delimiter}/old/d2` },
+    );
+    expect(merged.deliveryRoots).toEqual(["/old/d1", "/old/d2"]);
+  });
+
+  it("REELTERMINAL_TRANSPORT_LOG wins over OPENREEL_TRANSPORT_LOG when both are set", () => {
+    expect(
+      mergeEnvLogLevel(undefined, {
+        REELTERMINAL_TRANSPORT_LOG: "debug",
+        OPENREEL_TRANSPORT_LOG: "error",
+      }),
+    ).toBe("debug");
+  });
+
+  it("falls back to OPENREEL_TRANSPORT_LOG and then the info default", () => {
+    expect(mergeEnvLogLevel(undefined, { OPENREEL_TRANSPORT_LOG: "error" })).toBe("error");
+    expect(mergeEnvLogLevel(undefined, {})).toBe("info");
+  });
+
+  it("serve with NEW-name env-only roots: capabilities_get reports mediaImport available", async () => {
+    const client = startServe(
+      [],
+      {
+        REELTERMINAL_AVE_MEDIA_ROOTS: roots.mediaRoot,
+        REELTERMINAL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
+        REELTERMINAL_AVE_PROJECT_ROOTS: roots.projectRoot,
+      },
+    );
+    await initialize(client);
+    client.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "capabilities_get", arguments: {} } });
+    const response = await client.read();
+    const result = JSON.parse((response.result as any).content[0].text);
+    expect(result.ok).toBe(true);
+    expect(result.value.mediaImport.available).toBe(true);
+    client.handle.child.kill("SIGTERM");
+    await client.handle.exitCode;
   }, 120_000);
 });

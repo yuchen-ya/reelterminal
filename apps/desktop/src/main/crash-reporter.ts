@@ -1,8 +1,13 @@
 import { app } from "electron";
 import os from "node:os";
+import { readEnvAlias } from "../shared/env-alias";
 
 const CRASH_ENDPOINT =
-  process.env.OPENREEL_CRASH_ENDPOINT ?? "https://api.openreel.video/crash";
+  readEnvAlias(
+    process.env,
+    "REELTERMINAL_CRASH_ENDPOINT",
+    "OPENREEL_CRASH_ENDPOINT",
+  ) ?? "https://api.openreel.video/crash";
 const REPORT_TIMEOUT_MS = 4000;
 
 export interface CrashReportInput {

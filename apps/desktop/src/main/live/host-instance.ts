@@ -11,6 +11,7 @@
 import { app } from "electron";
 import { mkdirSync, statSync } from "node:fs";
 import path from "node:path";
+import { readEnvAlias } from "../../shared/env-alias";
 import { createLiveFacade } from "@reelterminal/agent-facade";
 import {
   createChromiumProviders,
@@ -36,7 +37,11 @@ let host: LiveSessionHost | null = null;
  * the media-roots default and the "open workspace" IPC — single source.
  */
 export function agentWorkspaceRoot(): string {
-  const configured = process.env.OPENREEL_AGENT_WORKSPACE_ROOT;
+  const configured = readEnvAlias(
+    process.env,
+    "REELTERMINAL_AGENT_WORKSPACE_ROOT",
+    "OPENREEL_AGENT_WORKSPACE_ROOT",
+  );
   if (configured && path.isAbsolute(configured)) return configured;
   return path.join(
     app.getPath("videos"),
@@ -55,7 +60,11 @@ export function agentWorkspaceRoot(): string {
  * MCP contract.
  */
 export function liveMediaRoots(): readonly string[] {
-  const configured = process.env.OPENREEL_LIVE_MEDIA_ROOTS;
+  const configured = readEnvAlias(
+    process.env,
+    "REELTERMINAL_LIVE_MEDIA_ROOTS",
+    "OPENREEL_LIVE_MEDIA_ROOTS",
+  );
   if (configured?.trim()) {
     return configured
       .split(path.delimiter)
@@ -100,10 +109,15 @@ function isDirectory(candidate: string): boolean {
  * Roots under which export.start's destinationPath may deliver finished
  * artifacts (`<root>/jobs/<slug>/output/`). Defaults to the Agent workspace
  * root — the one place the workspace convention defines a deliverables
- * directory. OPENREEL_LIVE_DELIVERY_ROOTS overrides for advanced hosts.
+ * directory. REELTERMINAL_LIVE_DELIVERY_ROOTS (legacy OPENREEL_*) overrides
+ * for advanced hosts.
  */
 function liveDeliveryRoots(): readonly string[] {
-  const configured = process.env.OPENREEL_LIVE_DELIVERY_ROOTS;
+  const configured = readEnvAlias(
+    process.env,
+    "REELTERMINAL_LIVE_DELIVERY_ROOTS",
+    "OPENREEL_LIVE_DELIVERY_ROOTS",
+  );
   if (configured?.trim()) {
     return configured
       .split(path.delimiter)
@@ -136,7 +150,7 @@ export function getLiveSessionHost(): LiveSessionHost {
           contents.send(CHANNELS.liveEvent, event);
         }
       },
-      serverInfo: { name: "openreel-live", version: app.getVersion() },
+      serverInfo: { name: "reelterminal-live", version: app.getVersion() },
       modePreferenceStore: getAgentModePreferenceStore(),
     });
   }

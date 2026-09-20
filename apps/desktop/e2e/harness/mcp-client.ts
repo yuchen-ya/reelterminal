@@ -1,6 +1,6 @@
 /**
  * External-agent channel: a real stdio MCP client spawning the shipped
- * openreel-live-mcp connector, which forwards to the token-authenticated
+ * reelterminal-live-mcp connector, which forwards to the token-authenticated
  * desktop live endpoint. This is the same path a Codex/Claude-style external
  * Agent takes.
  *
@@ -74,7 +74,7 @@ export async function connectExternalAgent(endpointFile: string): Promise<Extern
     {
       env: {
         ...process.env,
-        OPENREEL_LIVE_ENDPOINT_FILE: endpointFile,
+        REELTERMINAL_LIVE_ENDPOINT_FILE: endpointFile,
       },
       stdio: ["pipe", "pipe", "pipe"],
     },
@@ -97,7 +97,7 @@ export async function connectExternalAgent(endpointFile: string): Promise<Extern
     closed = true;
     rejectPending(
       new Error(
-        `openreel-live-mcp exited before replying (code ${code ?? "null"}, signal ${signal ?? "none"})`,
+        `reelterminal-live-mcp exited before replying (code ${code ?? "null"}, signal ${signal ?? "none"})`,
       ),
     );
   });
@@ -128,7 +128,7 @@ export async function connectExternalAgent(endpointFile: string): Promise<Extern
     timeoutMs = 120_000,
   ): Promise<JsonRpcResult> => {
     if (closed || connector.stdin.destroyed) {
-      return Promise.reject(new Error("openreel-live-mcp is not running"));
+      return Promise.reject(new Error("reelterminal-live-mcp is not running"));
     }
     const id = ++requestId;
     return new Promise((resolve, reject) => {
@@ -154,7 +154,7 @@ export async function connectExternalAgent(endpointFile: string): Promise<Extern
   await request("initialize", {
     protocolVersion: "2024-11-05",
     capabilities: {},
-    clientInfo: { name: "openreel-e2e-external-agent", version: "0.0.0" },
+    clientInfo: { name: "reelterminal-e2e-external-agent", version: "0.0.0" },
   });
   connector.stdin.write(
     `${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`,

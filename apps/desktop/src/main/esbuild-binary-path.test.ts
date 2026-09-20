@@ -12,7 +12,7 @@ import {
 describe("esbuild binary path install (module side effect)", () => {
   it("leaves process.env untouched when running under plain node", () => {
     expect(process.env.ESBUILD_BINARY_PATH).toBeUndefined();
-    expect(process.env.OPENREEL_BROWSER_ENTRY_BUNDLE).toBeUndefined();
+    expect(process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE).toBeUndefined();
   });
 });
 
@@ -151,11 +151,11 @@ describe("installPackagedEsbuildBinaryPath", () => {
     } as Parameters<typeof installPackagedEsbuildBinaryPath>[0];
   }
 
-  it("sets ESBUILD_BINARY_PATH and OPENREEL_BROWSER_ENTRY_BUNDLE on the given env when packaged", () => {
+  it("sets ESBUILD_BINARY_PATH and REELTERMINAL_BROWSER_ENTRY_BUNDLE on the given env when packaged", () => {
     const env = {} as NodeJS.ProcessEnv;
     expect(installPackagedEsbuildBinaryPath(context({ env }))).toBe(true);
     expect(env.ESBUILD_BINARY_PATH).toBe(unpackedBinary);
-    expect(env.OPENREEL_BROWSER_ENTRY_BUNDLE).toBe(prebundledEntry);
+    expect(env.REELTERMINAL_BROWSER_ENTRY_BUNDLE).toBe(prebundledEntry);
   });
 
   it("does not set the env vars when unpackaged or binary missing", () => {
@@ -166,7 +166,7 @@ describe("installPackagedEsbuildBinaryPath", () => {
       ),
     ).toBe(false);
     expect(devEnv.ESBUILD_BINARY_PATH).toBeUndefined();
-    expect(devEnv.OPENREEL_BROWSER_ENTRY_BUNDLE).toBeUndefined();
+    expect(devEnv.REELTERMINAL_BROWSER_ENTRY_BUNDLE).toBeUndefined();
 
     const missingEnv = {} as NodeJS.ProcessEnv;
     expect(
@@ -178,7 +178,7 @@ describe("installPackagedEsbuildBinaryPath", () => {
       ),
     ).toBe(false);
     expect(missingEnv.ESBUILD_BINARY_PATH).toBeUndefined();
-    expect(missingEnv.OPENREEL_BROWSER_ENTRY_BUNDLE).toBeUndefined();
+    expect(missingEnv.REELTERMINAL_BROWSER_ENTRY_BUNDLE).toBeUndefined();
   });
 });
 

@@ -3,7 +3,7 @@
  *
  * Unlike the deterministic external-conversation fixture, this launches the
  * installed Codex app-server, creates a Codex-owned thread configured with the
- * shipped openreel-live-mcp connector, sends the prompt through the real
+ * shipped reelterminal-live-mcp connector, sends the prompt through the real
  * ReelTerminal conversation panel, and requires Codex itself to mutate the
  * visible canonical project. It is intentionally opt-in because it uses the
  * signed-in Codex account and a live model turn.
@@ -34,7 +34,7 @@ interface EditorContext {
   projectRevision: number;
 }
 
-const REAL_CODEX = process.env.OPENREEL_REAL_CODEX_E2E === "1";
+const REAL_CODEX = process.env.REELTERMINAL_REAL_CODEX_E2E === "1";
 const TITLE = `CODEX-LIVE-${Date.now()}`;
 
 describe.skipIf(!REAL_CODEX)("real Codex conversation → MCP → GUI", () => {
@@ -58,8 +58,8 @@ describe.skipIf(!REAL_CODEX)("real Codex conversation → MCP → GUI", () => {
       descriptorPath: launched.conversationEndpointFile,
       env: {
         ...process.env,
-        OPENREEL_LIVE_ENDPOINT_FILE: launched.endpointFile,
-        OPENREEL_CONVERSATION_VISUAL_STATE_ROOT:
+        REELTERMINAL_LIVE_ENDPOINT_FILE: launched.endpointFile,
+        REELTERMINAL_CONVERSATION_VISUAL_STATE_ROOT:
           launched.conversationVisualStateRoot,
       },
       onDisplayUpdate: (event: unknown) => {
@@ -98,7 +98,7 @@ describe.skipIf(!REAL_CODEX)("real Codex conversation → MCP → GUI", () => {
     await composer.fill(
       `Use the attached ReelTerminal visual-state keyframe and its exact revision fields. ` +
         `Do not bootstrap-read the editor or timeline unless an exact required field is missing. ` +
-        `Use only the configured ReelTerminal openreel_live MCP tools and add one text overlay with the exact text ` +
+        `Use only the configured ReelTerminal live MCP tools and add one text overlay with the exact text ` +
         `"${TITLE}" at 0 seconds for 3 seconds. Do not run shell commands and do not edit files. ` +
         `After the GUI edit succeeds, reply with exactly "${TITLE} complete".`,
     );

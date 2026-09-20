@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { access, readFile, realpath, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -360,7 +361,7 @@ export class CodexConversationSession {
     const summary = boundedText(this.workModeContext?.semantics?.summary, 500);
     return [
       "You are the external Codex agent attached to the user's open ReelTerminal project.",
-      "Use the configured openreel_live MCP tools for editor reads and mutations; do not imitate edits with UI automation.",
+      "Use the configured ReelTerminal live MCP tools for editor reads and mutations; do not imitate edits with UI automation.",
       `Current ReelTerminal work mode: ${mode}.`,
       ...(summary ? [summary] : []),
       "Treat the live MCP tool schemas and returned errors as authoritative; do not inspect repository source merely to discover editor operation shapes.",
@@ -733,26 +734,64 @@ export class CodexConversationSession {
   }
 }
 
+/**
+ * MCP server key written into the Codex session config (N02,
+ * docs/NAMING-AND-COMPATIBILITY.md §2): the canonical name is
+ * "reelterminal_live". If the user's Codex config already defines the legacy
+ * "openreel_live" server, we KEEP that key and update its values in place —
+ * injecting "reelterminal_live" alongside it would expose two identical
+ * tool sets to the model, while silently abandoning the old key would leave
+ * a stale duplicate behind. The key-name migration itself is deferred to a
+ * future version that can move user config explicitly.
+ */
+export const LIVE_MCP_SERVER_KEY = "reelterminal_live";
+export const LEGACY_LIVE_MCP_SERVER_KEY = "openreel_live";
+
+function liveMcpServerKey(environment = process.env) {
+  try {
+    const codexHome =
+      environment?.CODEX_HOME || path.join(os.homedir(), ".codex");
+    const configFile = path.join(codexHome, "config.toml");
+    const configText = readFileSync(configFile, "utf8");
+    if (
+      new RegExp(
+        `^\\s*\\[mcp_servers\\.${LEGACY_LIVE_MCP_SERVER_KEY}(\\.|\\])`,
+        "m",
+      ).test(configText)
+    ) {
+      process.stderr.write(
+        `codex-adapter: existing "${LEGACY_LIVE_MCP_SERVER_KEY}" server found in ${configFile}; updating it in place (renaming the key to "${LIVE_MCP_SERVER_KEY}" is deferred so only one server is ever injected)\n`,
+      );
+      return LEGACY_LIVE_MCP_SERVER_KEY;
+    }
+  } catch {
+    // No readable Codex config (fresh install, custom config location) —
+    // best effort only; use the canonical new name.
+  }
+  return LIVE_MCP_SERVER_KEY;
+}
+
 export function codexMcpOverrides(
   connectorPath,
   environment,
   connectorCommand = "node",
   electronRunAsNode = false,
 ) {
+  const serverKey = liveMcpServerKey(environment);
   const overrides = [
     "-c",
-    `mcp_servers.openreel_live.command=${JSON.stringify(connectorCommand)}`,
+    `mcp_servers.${serverKey}.command=${JSON.stringify(connectorCommand)}`,
     "-c",
-    `mcp_servers.openreel_live.args=${JSON.stringify([connectorPath])}`,
+    `mcp_servers.${serverKey}.args=${JSON.stringify([connectorPath])}`,
     "-c",
-    "mcp_servers.openreel_live.required=true",
+    `mcp_servers.${serverKey}.required=true`,
     // Enabling Agent Session in the ReelTerminal GUI is the coarse-grained
     // authorization boundary. The live facade still enforces read/write
     // access, its single-writer lease, revision CAS, and undo. Without this
     // Codex's generic MCP policy rejects even capabilities_get because this
     // app-server client has no separate native Codex approval surface.
     "-c",
-    'mcp_servers.openreel_live.default_tools_approval_mode="approve"',
+    `mcp_servers.${serverKey}.default_tools_approval_mode="approve"`,
   ];
   // Visual state replaces routine bootstrap reads. When an exact fallback
   // read is still necessary, keep its response bounded so one inspection
@@ -766,20 +805,25 @@ export function codexMcpOverrides(
   ]) {
     overrides.push(
       "-c",
-      `mcp_servers.openreel_live.tools.${tool}.output_token_limit=${limit}`,
+      `mcp_servers.${serverKey}.tools.${tool}.output_token_limit=${limit}`,
     );
   }
-  const endpointFile = environment?.OPENREEL_LIVE_ENDPOINT_FILE;
+  // Only the NEW env name is written into the injected server env; the
+  // connector resolves it first and falls back to the legacy name itself
+  // (docs/NAMING-AND-COMPATIBILITY.md §3), so the two never diverge.
+  const endpointFile =
+    environment?.REELTERMINAL_LIVE_ENDPOINT_FILE ??
+    environment?.OPENREEL_LIVE_ENDPOINT_FILE;
   if (typeof endpointFile === "string" && endpointFile.length > 0) {
     overrides.push(
       "-c",
-      `mcp_servers.openreel_live.env.OPENREEL_LIVE_ENDPOINT_FILE=${JSON.stringify(endpointFile)}`,
+      `mcp_servers.${serverKey}.env.REELTERMINAL_LIVE_ENDPOINT_FILE=${JSON.stringify(endpointFile)}`,
     );
   }
   if (electronRunAsNode) {
     overrides.push(
       "-c",
-      'mcp_servers.openreel_live.env.ELECTRON_RUN_AS_NODE="1"',
+      `mcp_servers.${serverKey}.env.ELECTRON_RUN_AS_NODE="1"`,
     );
   }
   return overrides;
@@ -792,7 +836,9 @@ export async function startCodexConversationAdapter(options = {}) {
   );
   const visualStateRoot = path.resolve(
     options.visualStateRoot ??
+      options.env?.REELTERMINAL_CONVERSATION_VISUAL_STATE_ROOT ??
       options.env?.OPENREEL_CONVERSATION_VISUAL_STATE_ROOT ??
+      process.env.REELTERMINAL_CONVERSATION_VISUAL_STATE_ROOT ??
       process.env.OPENREEL_CONVERSATION_VISUAL_STATE_ROOT ??
       DEFAULT_VISUAL_STATE_ROOT,
   );
@@ -965,7 +1011,7 @@ function helpText() {
     `  --cwd PATH                Working directory for the Codex thread\n` +
     `  --descriptor PATH         Conversation descriptor destination\n` +
     `  --codex-command PATH      Codex CLI executable (default: codex)\n` +
-    `  --live-mcp-connector PATH Built openreel-live-mcp connector\n` +
+    `  --live-mcp-connector PATH Built reelterminal-live-mcp connector\n` +
     `  --visual-state-root PATH  Trusted ReelTerminal visual-state directory\n` +
     `  --no-live-mcp             Do not inject the ReelTerminal MCP server\n`;
 }

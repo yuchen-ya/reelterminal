@@ -16,7 +16,7 @@ import path from "node:path";
  * runtime either (the spawned esbuild.exe cannot read the TS sources inside
  * app.asar). apps/desktop/scripts/build-browser-entry.mjs pre-bundles it at
  * build time into `app.asar/dist/browser-entry.mjs`, and the
- * OPENREEL_BROWSER_ENTRY_BUNDLE env var set here tells runtime-chromium's
+ * REELTERMINAL_BROWSER_ENTRY_BUNDLE env var set here tells runtime-chromium's
  * bundle.ts to serve that finished artifact directly. ESBUILD_BINARY_PATH
  * stays as defense in depth for any other esbuild use.
  *
@@ -119,7 +119,7 @@ export function packagedBrowserEntryBundlePath(
 }
 
 /**
- * Set ESBUILD_BINARY_PATH and OPENREEL_BROWSER_ENTRY_BUNDLE when running
+ * Set ESBUILD_BINARY_PATH and REELTERMINAL_BROWSER_ENTRY_BUNDLE when running
  * packaged. Returns whether any env var was set. No-op in dev runs and in
  * unit tests.
  */
@@ -135,7 +135,9 @@ export function installPackagedEsbuildBinaryPath(
   }
   const bundle = packagedBrowserEntryBundlePath(context);
   if (bundle) {
-    env.OPENREEL_BROWSER_ENTRY_BUNDLE = bundle;
+    // New name preferred; runtime-chromium still reads the legacy
+    // OPENREEL_BROWSER_ENTRY_BUNDLE as a fallback (docs §3).
+    env.REELTERMINAL_BROWSER_ENTRY_BUNDLE = bundle;
     installed = true;
   }
   return installed;

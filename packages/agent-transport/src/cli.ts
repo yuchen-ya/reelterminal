@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * `agent-video` — the ADR 0003 slice-2 agent transport CLI.
+ * `reelterminal-agent` — the ADR 0003 slice-2 agent transport CLI.
+ * `agent-video` remains available as a thin alias to this same entry point.
  *
  * Three subcommands (Decision 3):
  *   serve                — the MCP stdio server; one process == one session
@@ -20,14 +21,15 @@ import {
   setLogLevel,
 } from "./log";
 
-const USAGE = `agent-video — OpenReel Agent Video Engine transport (ADR 0003)
+const USAGE = `reelterminal-agent — ReelTerminal agent video transport (ADR 0003)
+(legacy command name: agent-video, same entry point)
 
 Usage:
-  agent-video serve [options]        Start the MCP stdio server (one process == one session)
-  agent-video run --workflow <abs> [--keep-going] [options]
+  reelterminal-agent serve [options]        Start the MCP stdio server (one process == one session)
+  reelterminal-agent run --workflow <abs> [--keep-going] [options]
                                      Execute a JSONL workflow over a fresh session
-  agent-video doctor                 Print the machine-readable environment report
-  agent-video --help                 This help
+  reelterminal-agent doctor                 Print the machine-readable environment report
+  reelterminal-agent --help                 This help
 
 Options (serve/run):
   --media-root <abs>      Repeatable. Roots media.import may read from.
@@ -37,11 +39,14 @@ Options (serve/run):
   --log-level <level>     error | info | debug (stderr JSON logs; default info)
 
 Environment (flags beat env):
-  OPENREEL_AVE_MEDIA_ROOTS      path-separator list
-  OPENREEL_AVE_ARTIFACT_ROOT    single path
-  OPENREEL_AVE_PROJECT_ROOTS    path-separator list
-  OPENREEL_AVE_DELIVERY_ROOTS   path-separator list
-  OPENREEL_TRANSPORT_LOG        error | info | debug
+  REELTERMINAL_AVE_MEDIA_ROOTS      path-separator list
+  REELTERMINAL_AVE_ARTIFACT_ROOT    single path
+  REELTERMINAL_AVE_PROJECT_ROOTS    path-separator list
+  REELTERMINAL_AVE_DELIVERY_ROOTS   path-separator list
+  REELTERMINAL_TRANSPORT_LOG        error | info | debug
+
+  Legacy OPENREEL_AVE_* / OPENREEL_TRANSPORT_LOG names are still read when
+  the REELTERMINAL_* name is unset; when both are set the new name wins.
 
 Every root and path input must be ABSOLUTE (relative paths and '~' are
 refused, never resolved against the cwd). Missing/relative/non-directory

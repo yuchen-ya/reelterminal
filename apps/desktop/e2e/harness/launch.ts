@@ -3,7 +3,7 @@
  *
  * One temp run dir per launch: `--user-data-dir` isolates the Chromium
  * profile (IndexedDB autosave, caches) and the live-artifacts root, while
- * OPENREEL_LIVE_ENDPOINT_FILE redirects the endpoint descriptor so a test run
+ * REELTERMINAL_LIVE_ENDPOINT_FILE redirects the endpoint descriptor so a test run
  * never touches the developer's real ~/.openreel file. (`--user-data-dir` is
  * honored by Electron for app.getPath("userData") — verified by
  * e2e/scratch/probe.mjs.)
@@ -32,7 +32,7 @@ export interface LaunchedApp {
   readonly page: Page;
   readonly runDir: string;
   readonly userDataDir: string;
-  /** Live endpoint descriptor path (OPENREEL_LIVE_ENDPOINT_FILE). */
+  /** Live endpoint descriptor path (REELTERMINAL_LIVE_ENDPOINT_FILE). */
   readonly endpointFile: string;
   /** External conversation descriptor path (isolated from the user's home). */
   readonly conversationEndpointFile: string;
@@ -98,14 +98,14 @@ async function launch(
     env: {
       ...process.env,
       ...extraEnv,
-      OPENREEL_USER_DATA_DIR: paths.userDataDir,
-      OPENREEL_LIVE_ENDPOINT_FILE: paths.endpointFile,
+      REELTERMINAL_USER_DATA_DIR: paths.userDataDir,
+      REELTERMINAL_LIVE_ENDPOINT_FILE: paths.endpointFile,
       // The per-run directory is the only media root needed by import E2E;
       // every other spec simply observes the additional honest capability.
-      OPENREEL_LIVE_MEDIA_ROOTS: paths.runDir,
-      OPENREEL_AGENT_WORKSPACE_ROOT: path.join(paths.runDir, "agent-workspace"),
-      OPENREEL_CONVERSATION_ENDPOINT_FILE: paths.conversationEndpointFile,
-      OPENREEL_CONVERSATION_VISUAL_STATE_ROOT: paths.conversationVisualStateRoot,
+      REELTERMINAL_LIVE_MEDIA_ROOTS: paths.runDir,
+      REELTERMINAL_AGENT_WORKSPACE_ROOT: path.join(paths.runDir, "agent-workspace"),
+      REELTERMINAL_CONVERSATION_ENDPOINT_FILE: paths.conversationEndpointFile,
+      REELTERMINAL_CONVERSATION_VISUAL_STATE_ROOT: paths.conversationVisualStateRoot,
     },
     timeout: 120_000,
   });

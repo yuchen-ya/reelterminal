@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { tmpdir } from "node:os";
@@ -12,15 +13,29 @@ import {
   startCodexConversationAdapter,
 } from "./codex-adapter.mjs";
 
+/**
+ * N02: codexMcpOverrides consults the user's Codex config (via CODEX_HOME)
+ * to decide which MCP server key to inject. These tests pin an isolated
+ * CODEX_HOME so the suite never reads the developer's real ~/.codex.
+ */
+function tmpCodexHome(configToml) {
+  const dir = mkdtempSync(path.join(tmpdir(), "reelterminal-codex-home-"));
+  if (configToml !== null) {
+    writeFileSync(path.join(dir, "config.toml"), configToml);
+  }
+  return dir;
+}
+
 test("uses an explicit packaged runtime for the live MCP connector", () => {
   const overrides = codexMcpOverrides(
     "/Applications/ReelTerminal.app/Contents/Resources/app.asar.unpacked/dist/live-mcp/index.js",
-    {},
+    // Fresh Codex config (no legacy server): the canonical new key is used.
+    { CODEX_HOME: tmpCodexHome("") },
     "/Applications/ReelTerminal.app/Contents/MacOS/ReelTerminal",
     true,
   );
   const serialized = overrides.join("\n");
-  assert.match(serialized, /mcp_servers\.openreel_live\.command=.*ReelTerminal/);
+  assert.match(serialized, /mcp_servers\.reelterminal_live\.command=.*ReelTerminal/);
   assert.match(serialized, /ELECTRON_RUN_AS_NODE/);
   assert.doesNotMatch(serialized, /command="node"/);
   assert.ok(!overrides.includes("--stdio"));
@@ -133,7 +148,7 @@ class FakeCodexClient {
         item: {
           type: "mcpToolCall",
           id: "tool-1",
-          server: "openreel_live",
+          server: "reelterminal_live",
           tool: "edit_apply",
           status: "inProgress",
           arguments: { secret: "raw-argument-must-not-cross" },
@@ -145,7 +160,7 @@ class FakeCodexClient {
         item: {
           type: "mcpToolCall",
           id: "tool-1",
-          server: "openreel_live",
+          server: "reelterminal_live",
           tool: "edit_apply",
           status: "completed",
           result: { secret: "raw-result-must-not-cross" },
@@ -379,7 +394,7 @@ test("projects a real Codex turn with trusted visual state into safe streaming u
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.match(client.lastTurn?.text ?? "", /User request from ReelTerminal/);
     const extra = JSON.stringify(client.lastTurn?.options?.additionalContext);
-    assert.match(extra, /openreel_live MCP/);
+    assert.match(extra, /ReelTerminal live MCP tools/);
     assert.match(extra, /projectRevision/);
     assert.match(extra, /7/);
     assert.match(extra, /do not call capabilities_get/i);
@@ -763,4 +778,59 @@ test("rejects ambiguous or multi-option Codex questions instead of inventing app
   } finally {
     await adapter.close();
   }
+});
+
+
+test("keeps the legacy openreel_live key (updated in place) when the user config already has it", () => {
+  const codexHome = tmpCodexHome(
+    [
+      "[mcp_servers.openreel_live]",
+      "command = \"old-node\"",
+      "args = [\"old-connector.js\"]",
+      "",
+      "[mcp_servers.openreel_live.env]",
+      "FOO = \"1\"",
+    ].join("\n"),
+  );
+  const overrides = codexMcpOverrides(
+    "/app/dist/live-mcp/index.js",
+    { CODEX_HOME: codexHome, OPENREEL_LIVE_ENDPOINT_FILE: "C:/cfg/endpoint.json" },
+  );
+  const serialized = overrides.join("\n");
+  // Updated in place under the SAME key — never a second injected server.
+  assert.match(serialized, /mcp_servers\.openreel_live\.command=/);
+  assert.match(serialized, /mcp_servers\.openreel_live\.args=/);
+  assert.match(serialized, /mcp_servers\.openreel_live\.default_tools_approval_mode=/);
+  assert.doesNotMatch(serialized, /mcp_servers\.reelterminal_live/);
+  const keyCount = overrides.filter((entry) => entry.includes("command=")).length;
+  assert.equal(keyCount, 1);
+  // Env written under the legacy SERVER key uses the NEW env name only;
+  // the connector's own §3 fallback keeps legacy env names working.
+  assert.match(
+    serialized,
+    /mcp_servers\.openreel_live\.env\.REELTERMINAL_LIVE_ENDPOINT_FILE=/,
+  );
+  assert.doesNotMatch(serialized, /env\.OPENREEL_LIVE_ENDPOINT_FILE=/);
+});
+
+test("uses reelterminal_live with no detection side effects when no Codex config exists", () => {
+  const codexHome = tmpCodexHome(null);
+  const overrides = codexMcpOverrides(
+    "/app/dist/live-mcp/index.js",
+    { CODEX_HOME: codexHome },
+  );
+  const serialized = overrides.join("\n");
+  assert.match(serialized, /mcp_servers\.reelterminal_live\.command=/);
+  assert.doesNotMatch(serialized, /mcp_servers\.openreel_live/);
+  // Exactly one server key is injected (no double registration).
+  assert.equal(
+    overrides.filter((entry) => /^mcp_servers\./.test(entry)).length > 0,
+    true,
+  );
+  const serverKeys = new Set(
+    overrides
+      .filter((entry) => entry.startsWith("mcp_servers."))
+      .map((entry) => entry.split(".")[1]),
+  );
+  assert.equal(serverKeys.size, 1);
 });

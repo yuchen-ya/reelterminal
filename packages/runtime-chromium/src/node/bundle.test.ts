@@ -1,7 +1,7 @@
 /**
  * Unit tests for the browser-entry resolution policy in bundle.ts:
  *   - packaged installs serve the build-time pre-bundle advertised via
- *     OPENREEL_BROWSER_ENTRY_BUNDLE (the runtime esbuild build cannot work
+ *     REELTERMINAL_BROWSER_ENTRY_BUNDLE (the runtime esbuild build cannot work
  *     there — the spawned esbuild.exe cannot read TS sources inside asar),
  *   - dev checkouts fall through to the TS source candidates unchanged,
  *   - a missing pre-bundle / missing env keeps the original resolution error.
@@ -24,11 +24,34 @@ describe("loadPrebundledBrowserEntry", () => {
   it("reads the artifact text when the env var points at an existing file", () => {
     expect(
       loadPrebundledBrowserEntry({
+        env: { REELTERMINAL_BROWSER_ENTRY_BUNDLE: "D:/app/app.asar/dist/browser-entry.mjs" },
+        fileExists: () => true,
+        readText: (p) => `TEXT-OF:${p}`,
+      }),
+    ).toBe("TEXT-OF:D:/app/app.asar/dist/browser-entry.mjs");
+  });
+
+  it("still honors the legacy OPENREEL_BROWSER_ENTRY_BUNDLE name as a fallback", () => {
+    expect(
+      loadPrebundledBrowserEntry({
         env: { OPENREEL_BROWSER_ENTRY_BUNDLE: "D:/app/app.asar/dist/browser-entry.mjs" },
         fileExists: () => true,
         readText: (p) => `TEXT-OF:${p}`,
       }),
     ).toBe("TEXT-OF:D:/app/app.asar/dist/browser-entry.mjs");
+  });
+
+  it("prefers the new name when both env names are set", () => {
+    expect(
+      loadPrebundledBrowserEntry({
+        env: {
+          REELTERMINAL_BROWSER_ENTRY_BUNDLE: "D:/new/browser-entry.mjs",
+          OPENREEL_BROWSER_ENTRY_BUNDLE: "D:/legacy/browser-entry.mjs",
+        },
+        fileExists: () => true,
+        readText: (p) => `TEXT-OF:${p}`,
+      }),
+    ).toBe("TEXT-OF:D:/new/browser-entry.mjs");
   });
 
   it("returns undefined when the env var is unset (dev checkout)", () => {
@@ -38,7 +61,7 @@ describe("loadPrebundledBrowserEntry", () => {
   it("returns undefined when the env var points at a missing file", () => {
     expect(
       loadPrebundledBrowserEntry({
-        env: { OPENREEL_BROWSER_ENTRY_BUNDLE: "D:/app/app.asar/dist/browser-entry.mjs" },
+        env: { REELTERMINAL_BROWSER_ENTRY_BUNDLE: "D:/app/app.asar/dist/browser-entry.mjs" },
         fileExists: () => false,
         readText: () => {
           throw new Error("must not be read");
@@ -53,7 +76,7 @@ describe("resolveBrowserEntry", () => {
     // The packaged discriminator: source candidates all fail, yet the
     // advertised pre-bundle wins — resolution never reaches the candidates.
     const resolved = resolveBrowserEntry({
-      env: { OPENREEL_BROWSER_ENTRY_BUNDLE: "<resources>/app.asar/dist/browser-entry.mjs" },
+      env: { REELTERMINAL_BROWSER_ENTRY_BUNDLE: "<resources>/app.asar/dist/browser-entry.mjs" },
       fileExists: () => true,
       readText: () => "PREBUNDLED-MARKER",
       sourceExists: () => false,
@@ -79,7 +102,7 @@ describe("resolveBrowserEntry", () => {
 
   it("falls through to the source candidates when the advertised file is missing", () => {
     const resolved = resolveBrowserEntry({
-      env: { OPENREEL_BROWSER_ENTRY_BUNDLE: "<resources>/app.asar/dist/browser-entry.mjs" },
+      env: { REELTERMINAL_BROWSER_ENTRY_BUNDLE: "<resources>/app.asar/dist/browser-entry.mjs" },
       fileExists: () => false,
       sourceExists: (candidate) =>
         candidate.endsWith(path.join("browser", "entry.ts")) ||
@@ -106,17 +129,17 @@ describe("buildBrowserEntry (real fs, cache semantics)", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "openreel-prebundle-"));
     const artifact = path.join(dir, "browser-entry.mjs");
     writeFileSync(artifact, "OPENREEL-F02-R3-PREBUNDLE-MARKER");
-    const previous = process.env.OPENREEL_BROWSER_ENTRY_BUNDLE;
-    process.env.OPENREEL_BROWSER_ENTRY_BUNDLE = artifact;
+    const previous = process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE;
+    process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE = artifact;
     try {
       await expect(buildBrowserEntry()).resolves.toBe(
         "OPENREEL-F02-R3-PREBUNDLE-MARKER",
       );
     } finally {
       if (previous === undefined) {
-        delete process.env.OPENREEL_BROWSER_ENTRY_BUNDLE;
+        delete process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE;
       } else {
-        process.env.OPENREEL_BROWSER_ENTRY_BUNDLE = previous;
+        process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE = previous;
       }
       rmSync(dir, { recursive: true, force: true });
     }

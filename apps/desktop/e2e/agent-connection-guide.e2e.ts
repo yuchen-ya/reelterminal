@@ -45,7 +45,7 @@ describe("Agent connection guide", () => {
     await chmod(fakeCodex, 0o700);
     launched = await launchApp({
       runDir,
-      env: { OPENREEL_CODEX_COMMAND: fakeCodex },
+      env: { REELTERMINAL_CODEX_COMMAND: fakeCodex },
     });
     evidence = createEvidence("agent-connection-guide", launched.page);
     await createProjectViaUI(launched.page);

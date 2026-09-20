@@ -45,6 +45,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
+import { readEnvAlias } from "../../shared/env-alias";
 import path from "node:path";
 import {
   toolDescription,
@@ -244,10 +245,15 @@ export interface LiveEndpointFile {
 
 /**
  * Stable location external clients read (overridable for tests via
- * OPENREEL_LIVE_ENDPOINT_FILE so they never touch the real file).
+ * REELTERMINAL_LIVE_ENDPOINT_FILE (legacy OPENREEL_) so they never touch
+ * the real file).
  */
 export function liveEndpointFilePath(): string {
-  const override = process.env.OPENREEL_LIVE_ENDPOINT_FILE;
+  const override = readEnvAlias(
+    process.env,
+    "REELTERMINAL_LIVE_ENDPOINT_FILE",
+    "OPENREEL_LIVE_ENDPOINT_FILE",
+  );
   if (override && override.length > 0) return override;
   return path.join(os.homedir(), ".openreel", "live-endpoint.json");
 }
@@ -329,7 +335,7 @@ export interface LiveEndpointOptions {
   /** Facade-verified image artifacts may be embedded only from this root. */
   readonly artifactRoot?: string;
   readonly host?: string;
-  /** Defaults to OPENREEL_LIVE_PORT, else a random port. */
+  /** Defaults to REELTERMINAL_LIVE_PORT (legacy OPENREEL_), else random. */
   readonly port?: number;
   /** Defaults to liveEndpointFilePath(). */
   readonly endpointFilePath?: string;
@@ -549,7 +555,9 @@ export function startLiveEndpointServer(
 
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    const envPort = Number(process.env.OPENREEL_LIVE_PORT ?? 0);
+    const envPort = Number(
+      readEnvAlias(process.env, "REELTERMINAL_LIVE_PORT", "OPENREEL_LIVE_PORT") ?? 0,
+    );
     const port = options.port ?? (Number.isFinite(envPort) && envPort > 0 ? envPort : 0);
     server.listen(port, host, () => {
       server.removeListener("error", reject);

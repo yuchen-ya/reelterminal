@@ -55,12 +55,12 @@ afterAll(async () => {
   }
 });
 
-describe("agent-video serve (real binary)", () => {
+describe("reelterminal-agent serve (real binary)", () => {
   it("responds to initialize with serverInfo carrying the transport's own facts", async () => {
     const c = await getClient();
     const init = await initialize(c);
     const info = init.result.serverInfo;
-    expect(info.name).toBe("agent-video");
+    expect(info.name).toBe("reelterminal-agent");
     expect(info.version).toBe("0.1.0");
     expect(typeof info.pid).toBe("number");
     expect(Array.isArray(info.args)).toBe(true);

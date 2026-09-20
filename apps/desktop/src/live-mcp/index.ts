@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * openreel-live-mcp — stdio to the external-agent live endpoint.
+ * reelterminal-live-mcp — stdio to the external-agent live endpoint.
+ * (npm bin "openreel-live-mcp" is kept as a thin alias to this entry.)
  *
  * This deliberately forwards only the MCP methods and facade-owned tool
  * names implemented by the live endpoint. It never imports a provider,
  * model, keychain, or conversation service. The descriptor is written by
  * the desktop live host while collaboration is enabled:
  *   default: ~/.openreel/live-endpoint.json
- *   override: OPENREEL_LIVE_ENDPOINT_FILE
+ *   override: REELTERMINAL_LIVE_ENDPOINT_FILE (legacy: OPENREEL_LIVE_ENDPOINT_FILE)
  */
 import { readFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
@@ -16,6 +17,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { FACADE_TOOL_NAMES } from "@reelterminal/agent-facade";
 import { LIVE_HEARTBEAT_INTERVAL_MS } from "../shared/live";
+import { readEnvAlias } from "../shared/env-alias";
 
 interface RpcMessage {
   readonly jsonrpc?: string;
@@ -73,7 +75,11 @@ export function validateLiveEndpointUrl(raw: string): URL {
 }
 
 export function endpointFilePath(): string {
-  const override = process.env.OPENREEL_LIVE_ENDPOINT_FILE;
+  const override = readEnvAlias(
+    process.env,
+    "REELTERMINAL_LIVE_ENDPOINT_FILE",
+    "OPENREEL_LIVE_ENDPOINT_FILE",
+  );
   return override && override.length > 0
     ? override
     : path.join(os.homedir(), ".openreel", "live-endpoint.json");
@@ -425,7 +431,7 @@ function main(): void {
     endpoint = readEndpoint();
   } catch (error) {
     process.stderr.write(
-      `openreel-live-mcp: ${error instanceof Error ? error.message : String(error)}\n` +
+      `reelterminal-live-mcp: ${error instanceof Error ? error.message : String(error)}\n` +
         "Enable ReelTerminal Agent Session and try again.\n",
     );
     process.exit(1);

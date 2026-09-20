@@ -211,7 +211,7 @@ function makeFixture(
       return factory(config);
     },
     emitEvent: (event) => events.push(event),
-    serverInfo: { name: "openreel-live", version: "test" },
+    serverInfo: { name: "reelterminal-live", version: "test" },
     port: 0,
     endpointFilePath: endpointFile,
     modePreferenceStore,
