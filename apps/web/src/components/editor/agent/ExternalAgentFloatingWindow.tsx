@@ -63,10 +63,10 @@ export function ExternalAgentFloatingWindow({
   const setPanelMinimized = useUIStore((state) => state.setPanelMinimized);
   const setPanelMaximized = useUIStore((state) => state.setPanelMaximized);
 
-  // The desktop shell scopes its dark Resolve theme under .openreel-desktop;
+  // The desktop shell scopes its dark Resolve theme under .reelterminal-desktop;
   // portaling there keeps the window on the same theme tokens as the shell.
   const portalContainer = useMemo(
-    () => document.querySelector(".openreel-desktop") ?? document.body,
+    () => document.querySelector(".reelterminal-desktop") ?? document.body,
     [],
   );
 

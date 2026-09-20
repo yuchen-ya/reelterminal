@@ -6,7 +6,7 @@ import type { OpenReelAnalysisRecord } from "../../types/global";
 import { AnalysisRecordsPanel } from "./AnalysisRecordsPanel";
 
 const originalProject = structuredClone(useProjectStore.getState().project);
-const originalOpenReel = window.openreel;
+const originalOpenReel = window.reelterminal;
 
 function record(overrides: Partial<OpenReelAnalysisRecord> = {}): OpenReelAnalysisRecord {
   return {
@@ -48,7 +48,7 @@ function installBridge(detail = record()) {
     ok: false as const,
     error: { code: "UNSUPPORTED", message: "Enable Agent Session to run a recheck." },
   }));
-  window.openreel = {
+  window.reelterminal = {
     platform: "desktop",
     analysisRecords: {
       list,
@@ -56,7 +56,7 @@ function installBridge(detail = record()) {
       recheck,
       jobStatus: vi.fn(),
     },
-  } as unknown as NonNullable<Window["openreel"]>;
+  } as unknown as NonNullable<Window["reelterminal"]>;
   return { list, recheck };
 }
 
@@ -122,7 +122,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  window.openreel = originalOpenReel;
+  window.reelterminal = originalOpenReel;
   useProjectStore.setState({ project: structuredClone(originalProject) });
 });
 

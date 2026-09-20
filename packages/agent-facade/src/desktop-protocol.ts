@@ -24,6 +24,14 @@ export type { AgentAccessMode, AgentWorkMode } from "./work-mode";
 export const LIVE_HEARTBEAT_INTERVAL_MS = 10_000;
 /** No authenticated activity for this long releases the external writer. */
 export const LIVE_ACTIVITY_TIMEOUT_MS = 45_000;
+/**
+ * window.postMessage marker the preload uses to hand the native-export
+ * MessagePort to the renderer (a live port cannot cross contextBridge).
+ * Single source of truth: the sender (apps/desktop/src/preload) and the
+ * receiver (apps/web native-ffmpeg-backend) must reference THIS constant —
+ * a drifted literal breaks desktop export with a 15s timeout (N02-ACC B1).
+ */
+export const DESKTOP_EXPORT_PORT_MARKER = '__reelterminalExportPort';
 
 /** collabControl.getStatus / the `{type:"status"}` live event payload. */
 export interface DesktopCollabStatus {
@@ -61,7 +69,7 @@ export type DesktopLiveBridgeKind =
   | "presetLibrary"
   | "requestSave";
 
-/** Main-to-renderer request on `openreel:live:request`. */
+/** Main-to-renderer request on `reelterminal:live:request`. */
 export interface DesktopLiveBridgeRequest {
   readonly callId: string;
   readonly kind: DesktopLiveBridgeKind;
@@ -103,7 +111,7 @@ export interface DesktopLiveBridgeError {
   readonly details?: Record<string, unknown>;
 }
 
-/** Renderer-to-main reply on `openreel:live:response`. */
+/** Renderer-to-main reply on `reelterminal:live:response`. */
 export interface DesktopLiveBridgeReply {
   readonly callId: string;
   readonly ok: boolean;

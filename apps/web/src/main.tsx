@@ -19,14 +19,14 @@ const DesktopApp = React.lazy(() =>
 );
 
 const isDesktop =
-  typeof window !== "undefined" && window.openreel?.platform === "desktop";
+  typeof window !== "undefined" && window.reelterminal?.platform === "desktop";
 
 if (isDesktop) {
   setEncoderBackendFactory(
     () =>
       new NativeFFmpegBackend(
         () =>
-          (window as { __openreelExportPath?: string }).__openreelExportPath ??
+          (window as { __reelterminalExportPath?: string }).__reelterminalExportPath ??
           "",
       ),
   );

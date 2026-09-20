@@ -266,7 +266,7 @@ describe("motion export range / resolution / png-sequence", () => {
         }
       },
     );
-    Object.defineProperty(window, "openreel", {
+    Object.defineProperty(window, "reelterminal", {
       configurable: true,
       value: undefined,
     });
@@ -297,7 +297,7 @@ describe("motion export range / resolution / png-sequence", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    Object.defineProperty(window, "openreel", {
+    Object.defineProperty(window, "reelterminal", {
       configurable: true,
       value: undefined,
     });

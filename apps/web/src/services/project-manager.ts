@@ -36,7 +36,7 @@ type NativeFileRef = { kind: "native"; path: string };
 type ProjectFileRef = FileSystemFileHandle | NativeFileRef;
 
 function isDesktopFs(): boolean {
-  return typeof window !== "undefined" && !!window.openreel?.fs;
+  return typeof window !== "undefined" && !!window.reelterminal?.fs;
 }
 
 function isNativeRef(ref: unknown): ref is NativeFileRef {
@@ -318,12 +318,12 @@ class ProjectManager {
 
   async saveProjectAs(project: Project): Promise<boolean> {
     if (isDesktopFs()) {
-      const filePath = await window.openreel!.fs.showSaveDialog({
+      const filePath = await window.reelterminal!.fs.showSaveDialog({
         defaultPath: `${project.name}.oreel`,
         filters: [{ name: "ReelTerminal Project", extensions: ["oreel", "json"] }],
       });
       if (!filePath) return false;
-      await window.openreel!.fs.writeFile(
+      await window.reelterminal!.fs.writeFile(
         filePath,
         JSON.stringify(project, null, 2),
       );
@@ -373,7 +373,7 @@ class ProjectManager {
   ): Promise<boolean> {
     try {
       if (isNativeRef(handle)) {
-        await window.openreel!.fs.writeFile(
+        await window.reelterminal!.fs.writeFile(
           handle.path,
           JSON.stringify(project, null, 2),
         );
@@ -418,11 +418,11 @@ class ProjectManager {
 
   async openProject(): Promise<Project | null> {
     if (isDesktopFs()) {
-      const filePath = await window.openreel!.fs.showOpenDialog({
+      const filePath = await window.reelterminal!.fs.showOpenDialog({
         filters: [{ name: "ReelTerminal Project", extensions: ["oreel", "json"] }],
       });
       if (!filePath) return null;
-      const content = await window.openreel!.fs.readFile(filePath);
+      const content = await window.reelterminal!.fs.readFile(filePath);
       let project: Project;
       try {
         project = this.parseProjectContent(content);
@@ -505,7 +505,7 @@ class ProjectManager {
     if (recentProject.fileHandle) {
       if (isNativeRef(recentProject.fileHandle)) {
         try {
-          const content = await window.openreel!.fs.readFile(
+          const content = await window.reelterminal!.fs.readFile(
             recentProject.fileHandle.path,
           );
           const project = this.parseProjectContent(content);

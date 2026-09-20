@@ -12,7 +12,7 @@ import {
   type GpuInfo,
 } from "./device-capabilities";
 
-// Mirror of OpenReelHardwareInfo (window.openreel.probeHardware result). packages/core does not
+// Mirror of OpenReelHardwareInfo (window.reelterminal.probeHardware result). packages/core does not
 // see apps/web's ambient type, so the shape is declared locally.
 export interface NativeHardwareInfo {
   cpu: { model: string; physicalCores: number; logicalCores: number };

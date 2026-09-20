@@ -84,7 +84,7 @@ function isAbsoluteLocalPath(value: string): boolean {
  */
 function desktopFileSourcePath(file: File): string | undefined {
   const getPathForFile =
-    typeof window === "undefined" ? undefined : window.openreel?.fs?.getPathForFile;
+    typeof window === "undefined" ? undefined : window.reelterminal?.fs?.getPathForFile;
   if (!getPathForFile) return undefined;
 
   try {
@@ -548,7 +548,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
         );
       }
 
-      const fsBridge = typeof window === "undefined" ? undefined : window.openreel?.fs;
+      const fsBridge = typeof window === "undefined" ? undefined : window.reelterminal?.fs;
       if (!fsBridge?.readFileBytes) {
         return importError(
           "DECODE_ERROR",

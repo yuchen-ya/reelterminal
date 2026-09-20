@@ -83,7 +83,7 @@ function stubConversationApi(lifecycle: string) {
     inspectSetup: async () => SETUP_STATE,
     startSetup: async () => SETUP_STATE,
   };
-  (window as unknown as { openreel?: unknown }).openreel = {
+  (window as unknown as { reelterminal?: unknown }).reelterminal = {
     platform: "desktop",
     publicOrigin: "https://desktop.test",
     conversation: api,
@@ -136,7 +136,7 @@ describe("AgentMediaTaskDialog", () => {
   afterEach(() => {
     setRecommendedRootResolver(defaultResolveRecommendedRoot);
     setAgentMediaTaskServiceForTests(null);
-    delete (window as unknown as { openreel?: unknown }).openreel;
+    delete (window as unknown as { reelterminal?: unknown }).reelterminal;
     useUIStore.setState({ activeModal: null });
   });
 

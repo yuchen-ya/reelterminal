@@ -7,7 +7,7 @@ import {
 describe("native aurora preview session", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    Object.defineProperty(window, "openreel", {
+    Object.defineProperty(window, "reelterminal", {
       configurable: true,
       value: undefined,
     });
@@ -25,7 +25,7 @@ describe("native aurora preview session", () => {
         listener = null;
       };
     });
-    Object.defineProperty(window, "openreel", {
+    Object.defineProperty(window, "reelterminal", {
       configurable: true,
       value: {
         platform: "desktop",

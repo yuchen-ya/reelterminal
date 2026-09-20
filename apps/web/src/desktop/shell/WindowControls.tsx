@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 export function WindowControls({ platform }: { platform: string }): JSX.Element | null {
   const { t } = useTranslation();
   if (platform === "darwin") return null;
-  const api = typeof window !== "undefined" ? window.openreel?.win : undefined;
+  const api = typeof window !== "undefined" ? window.reelterminal?.win : undefined;
   if (!api) return null;
   return (
     <div className="flex items-center" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>

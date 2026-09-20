@@ -4,12 +4,12 @@ import { generateShareableLink } from "../hooks/use-router";
 import { getSharePageUrl } from "./share-service";
 
 afterEach(() => {
-  delete (window as unknown as { openreel?: unknown }).openreel;
+  delete (window as unknown as { reelterminal?: unknown }).reelterminal;
 });
 
 describe("shareBaseOrigin", () => {
   it("uses publicOrigin on desktop for share + deep links", () => {
-    (window as unknown as { openreel: unknown }).openreel = {
+    (window as unknown as { reelterminal: unknown }).reelterminal = {
       platform: "desktop",
       publicOrigin: "https://app.openreel.video",
     };

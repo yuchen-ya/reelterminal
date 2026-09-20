@@ -103,7 +103,7 @@ const setupStartSchema = z
 
 function assertEditorSender(sender: WebContents): void {
   const win = BrowserWindow.fromWebContents(sender);
-  if (!win || !sender.getURL().startsWith("app://openreel/")) {
+  if (!win || !sender.getURL().startsWith("app://reelterminal/")) {
     throw new Error(
       "[ipc] conversation channels are only available to the ReelTerminal editor window",
     );

@@ -1,12 +1,12 @@
 /* ============================================================
    ReelTerminal Desktop — DaVinci-Resolve-style charcoal/emerald tokens
-   Scoped under .openreel-desktop. Overrides the same CSS variable
+   Scoped under .reelterminal-desktop. Overrides the same CSS variable
    names index.css defines so desktop components reuse the existing
    Tailwind utilities and inherit the Resolve look.
    Surfaces: charcoal-neutral (hue ~250, low chroma).
    Accent: emerald (hue ~162).
    ============================================================ */
-.openreel-desktop {
+.reelterminal-desktop {
   color-scheme: dark;
 
   --bg: oklch(0.16 0.004 250);

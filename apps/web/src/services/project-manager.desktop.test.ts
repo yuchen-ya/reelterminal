@@ -5,7 +5,7 @@ const store = new Map<string, string>();
 
 beforeEach(() => {
   store.clear();
-  (window as any).openreel = {
+  (window as any).reelterminal = {
     platform: "desktop",
     fs: {
       showSaveDialog: vi.fn(async () => "/tmp/proj.oreel"),
@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete (window as any).openreel;
+  delete (window as any).reelterminal;
 });
 
 const project: any = {
@@ -29,10 +29,10 @@ const project: any = {
 };
 
 describe("ProjectManager desktop fs", () => {
-  it("saveProjectAs writes via window.openreel.fs and round-trips", async () => {
+  it("saveProjectAs writes via window.reelterminal.fs and round-trips", async () => {
     const ok = await projectManager.saveProjectAs(project);
     expect(ok).toBe(true);
-    expect((window as any).openreel.fs.writeFile).toHaveBeenCalled();
+    expect((window as any).reelterminal.fs.writeFile).toHaveBeenCalled();
     const loaded = await projectManager.openProject();
     expect(loaded?.name).toBe("Demo");
   });

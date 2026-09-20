@@ -10,7 +10,7 @@ const recent = new Map<string, number>();
 
 export function reportRendererCrash(input: RendererCrashInput): void {
   try {
-    const crash = window.openreel?.crash;
+    const crash = window.reelterminal?.crash;
     if (!crash) return;
     const message = input.message?.slice(0, 8000);
     if (!message) return;

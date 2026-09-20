@@ -30,7 +30,7 @@ export async function probeMaterialFileStatus(
 ): Promise<MaterialFileStatus> {
   if (!isMediaMaterial(record)) return "ok";
   if (record.fileRef.type === "path") {
-    const pathStatus = typeof window === "undefined" ? undefined : window.openreel?.fs?.pathStatus;
+    const pathStatus = typeof window === "undefined" ? undefined : window.reelterminal?.fs?.pathStatus;
     if (!pathStatus) return "unknown";
     try {
       const status = await pathStatus(record.fileRef.path);

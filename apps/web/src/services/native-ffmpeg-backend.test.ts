@@ -1,4 +1,8 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { DESKTOP_EXPORT_PORT_MARKER } from "@reelterminal/agent-facade/desktop-protocol";
 import {
   buildWavHeader,
   encodeAudioBufferToPcm16,
@@ -75,5 +79,36 @@ describe("native ffmpeg backend helpers", () => {
     expect(view.getInt16(2, true)).toBe(8192);
     expect(view.getInt16(4, true)).toBe(-8192);
     expect(view.getInt16(6, true)).toBe(-8192);
+  });
+});
+
+
+/**
+ * N02-ACC B1 regression: the export MessagePort handoff marker is ONE
+ * shared constant referenced by the sender (desktop preload) and this
+ * receiver. A drifted literal on either side deadlocks desktop native
+ * export behind the 15s awaitExportPort timeout — exactly what shipped
+ * in the N02 round. This test pins the wire value and checks both ends
+ * by source so a reintroduced literal fails here, not in a user export.
+ */
+describe("export port marker pairing (N02-ACC B1)", () => {
+  const receiverSource = readFileSync(new URL("./native-ffmpeg-backend.ts", import.meta.url), "utf8");
+  const preloadSource = readFileSync(
+    path.resolve(fileURLToPath(new URL("../../../../apps/desktop/src/preload/index.ts", import.meta.url))),
+    "utf8",
+  );
+
+  it("pins the shared marker wire value", () => {
+    expect(DESKTOP_EXPORT_PORT_MARKER).toBe("__reelterminalExportPort");
+  });
+
+  it("receiver matches the message against the shared constant, not a literal", () => {
+    expect(receiverSource).toContain("data?.[DESKTOP_EXPORT_PORT_MARKER]");
+    expect(receiverSource).not.toContain("__openreelExportPort");
+  });
+
+  it("preload sender posts the same shared constant", () => {
+    expect(preloadSource).toContain("window.postMessage({ [DESKTOP_EXPORT_PORT_MARKER]: true, jobId }");
+    expect(preloadSource).not.toContain("__openreelExportPort");
   });
 });

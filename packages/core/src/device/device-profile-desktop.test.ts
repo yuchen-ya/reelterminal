@@ -2,11 +2,11 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { getDeviceProfile } from "./device-capabilities";
 
 afterEach(() => {
-  delete (globalThis as unknown as { openreel?: unknown }).openreel;
+  delete (globalThis as unknown as { reelterminal?: unknown }).reelterminal;
 });
 
 describe("getDeviceProfile desktop branch", () => {
-  it("builds the profile from window.openreel.probeHardware when on desktop", async () => {
+  it("builds the profile from window.reelterminal.probeHardware when on desktop", async () => {
     const probeHardware = vi.fn(async () => ({
       cpu: { model: "Apple M3 Max", physicalCores: 14, logicalCores: 14 },
       memory: { totalBytes: 36 * 1024 ** 3, freeBytes: 20 * 1024 ** 3 },
@@ -15,7 +15,7 @@ describe("getDeviceProfile desktop branch", () => {
       platform: "darwin" as const,
       arch: "arm64",
     }));
-    (globalThis as unknown as { openreel?: unknown }).openreel = { platform: "desktop", probeHardware };
+    (globalThis as unknown as { reelterminal?: unknown }).reelterminal = { platform: "desktop", probeHardware };
 
     const profile = await getDeviceProfile(true);
 

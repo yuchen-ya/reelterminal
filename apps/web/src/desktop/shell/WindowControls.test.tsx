@@ -5,10 +5,10 @@ import { WindowControls } from "./WindowControls";
 const win = { minimize: vi.fn(), toggleMaximize: vi.fn(), close: vi.fn(), isMaximized: vi.fn().mockResolvedValue(false) };
 
 beforeEach(() => {
-  (window as unknown as { openreel: unknown }).openreel = { platform: "desktop", win };
+  (window as unknown as { reelterminal: unknown }).reelterminal = { platform: "desktop", win };
 });
 afterEach(() => {
-  delete (window as unknown as { openreel?: unknown }).openreel;
+  delete (window as unknown as { reelterminal?: unknown }).reelterminal;
   vi.clearAllMocks();
 });
 

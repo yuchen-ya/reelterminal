@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { isAllowedNavigation } from "./nav-guard";
 
-const APP_INDEX = "app://openreel/index.html";
+const APP_INDEX = "app://reelterminal/index.html";
 
 describe("isAllowedNavigation", () => {
   it("allows same-origin app navigation", () => {
-    expect(isAllowedNavigation("app://openreel/editor", APP_INDEX)).toBe(true);
-    expect(isAllowedNavigation("app://openreel/index.html#x", APP_INDEX)).toBe(true);
+    expect(isAllowedNavigation("app://reelterminal/editor", APP_INDEX)).toBe(true);
+    expect(isAllowedNavigation("app://reelterminal/index.html#x", APP_INDEX)).toBe(true);
   });
 
   it("denies external http(s) sites", () => {

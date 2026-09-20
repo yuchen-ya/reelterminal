@@ -1,7 +1,7 @@
 /**
  * Desktop channel bridge for artifact receiving.
  *
- * Everything here goes through the narrow `window.openreel.agentTasks`
+ * Everything here goes through the narrow `window.reelterminal.agentTasks`
  * surface the desktop preload exposes: the advertised media roots (for
  * precasting a task's artifact output directory) and the product-side import
  * forward (facade `media.import` in the main process). The renderer never
@@ -42,11 +42,11 @@ export type AgentTaskImportOutcome =
   | AgentTaskImportFailure;
 
 function agentTasksApi():
-  | NonNullable<NonNullable<Window["openreel"]>["agentTasks"]>
+  | NonNullable<NonNullable<Window["reelterminal"]>["agentTasks"]>
   | undefined {
   return typeof window === "undefined"
     ? undefined
-    : window.openreel?.agentTasks;
+    : window.reelterminal?.agentTasks;
 }
 
 /** Advertised `capabilities_get.mediaImport` roots; null outside the desktop. */
@@ -118,7 +118,7 @@ export async function importTaskArtifact(args: {
 
 /** True when the artifact file still exists on disk (stat only, no reads). */
 export async function artifactFileExists(path: string): Promise<boolean | null> {
-  const statusApi = typeof window === "undefined" ? undefined : window.openreel?.fs;
+  const statusApi = typeof window === "undefined" ? undefined : window.reelterminal?.fs;
   if (!statusApi?.pathStatus) return null;
   try {
     const status = await statusApi.pathStatus(path);

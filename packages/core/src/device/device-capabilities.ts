@@ -435,11 +435,13 @@ export async function getDeviceProfile(
     return cachedProfile;
   }
 
-  // Desktop: build the profile from real hardware specs (window.openreel.probeHardware)
-  // instead of the browser heuristics (navigator/WebGL/WebCodecs).
+  // Desktop: build the profile from real hardware specs (window.reelterminal.probeHardware)
+  // instead of the browser heuristics (navigator/WebGL/WebCodecs). The preload
+  // exposes the same bridge object under the legacy alias `openreel`; renderer
+  // code reads only the primary name.
   const bridge = (globalThis as unknown as {
-    openreel?: { platform?: string; probeHardware?: () => Promise<NativeHardwareInfo> };
-  }).openreel;
+    reelterminal?: { platform?: string; probeHardware?: () => Promise<NativeHardwareInfo> };
+  }).reelterminal;
   if (bridge?.platform === "desktop" && typeof bridge.probeHardware === "function") {
     const info = await bridge.probeHardware();
     const { buildProfileFromNativeSpecs } = await import("./native-profile");

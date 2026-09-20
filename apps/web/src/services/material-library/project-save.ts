@@ -227,7 +227,7 @@ export async function saveLocalFileToLibrary(file: File): Promise<SaveProjectMed
       ? undefined
       : (() => {
           try {
-            const resolved = window.openreel?.fs?.getPathForFile(file);
+            const resolved = window.reelterminal?.fs?.getPathForFile(file);
             return resolved && isAbsoluteLocalPath(resolved) ? resolved : undefined;
           } catch {
             return undefined;

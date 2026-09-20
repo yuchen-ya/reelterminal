@@ -60,13 +60,13 @@ function mockHasProject(value: boolean): void {
 beforeEach(() => {
   useUIStore.setState({ desktopPage: "edit" });
   useSettingsStore.setState({ settingsOpen: false, settingsTab: "general" });
-  (window as unknown as { openreel: unknown }).openreel = {
+  (window as unknown as { reelterminal: unknown }).reelterminal = {
     platform: "desktop",
     win: { minimize: () => {}, toggleMaximize: () => {}, close: () => {}, isMaximized: async () => false },
   };
 });
 afterEach(() => {
-  delete (window as unknown as { openreel?: unknown }).openreel;
+  delete (window as unknown as { reelterminal?: unknown }).reelterminal;
   vi.clearAllMocks();
 });
 
@@ -74,7 +74,7 @@ describe("DesktopApp", () => {
   it("applies the desktop theme class to its root", () => {
     mockHasProject(false);
     const { container } = render(<DesktopApp />);
-    expect(container.querySelector(".openreel-desktop")).not.toBeNull();
+    expect(container.querySelector(".reelterminal-desktop")).not.toBeNull();
   });
 
   it("shows the start screen and hides the workspace when no project is open", () => {
@@ -124,7 +124,7 @@ describe("DesktopApp", () => {
     let flush: (() => Promise<void>) | undefined;
     (mockedUseProjectStore as unknown as { getState: () => unknown }).getState =
       () => ({ forceSave });
-    (window as unknown as { openreel: unknown }).openreel = {
+    (window as unknown as { reelterminal: unknown }).reelterminal = {
       platform: "desktop",
       win: {
         minimize: () => {},

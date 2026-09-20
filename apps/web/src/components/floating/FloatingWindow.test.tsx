@@ -88,7 +88,7 @@ describe("FloatingWindow", () => {
 
   it("portals into a provided container so themed shells keep their tokens", () => {
     const shell = document.createElement("div");
-    shell.className = "openreel-desktop";
+    shell.className = "reelterminal-desktop";
     document.body.appendChild(shell);
     try {
       render(
@@ -105,7 +105,7 @@ describe("FloatingWindow", () => {
         </FloatingWindow>,
       );
       expect(shell.querySelector("[data-testid='floating-window']")).not.toBeNull();
-      expect(screen.getByText("panel content").closest(".openreel-desktop")).toBe(shell);
+      expect(screen.getByText("panel content").closest(".reelterminal-desktop")).toBe(shell);
     } finally {
       shell.remove();
     }

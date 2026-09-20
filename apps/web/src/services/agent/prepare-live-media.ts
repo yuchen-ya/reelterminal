@@ -22,9 +22,9 @@ export async function prepareLiveMedia(actions: readonly Action[], project: Proj
       if (project.mediaLibrary.items.some((entry) => entry.id === item.id) || persisted.includes(item.id)) {
         throw new Error("Replacement media id already exists; no stored bytes were overwritten");
       }
-      if (!window.openreel?.fs?.readFileBytes) throw new Error("Desktop file access is unavailable");
+      if (!window.reelterminal?.fs?.readFileBytes) throw new Error("Desktop file access is unavailable");
       if (item.metadata.fileSize > MAX_BYTES) throw new Error("Replacement exceeds the 256 MiB import limit");
-      const bytes = await window.openreel.fs.readFileBytes(item.originalUrl, MAX_BYTES);
+      const bytes = await window.reelterminal.fs.readFileBytes(item.originalUrl, MAX_BYTES);
       if (bytes.byteLength > MAX_BYTES) throw new Error("Replacement exceeds the 256 MiB import limit");
       if (item.metadata.fileSize !== bytes.byteLength) throw new Error("Replacement source changed after probing; retry with fresh file facts");
       const extension = item.name.split(".").pop()?.toLowerCase();

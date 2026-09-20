@@ -324,7 +324,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
         : exportPresetsManager.getRecommendedPresets();
 
   const isDesktop =
-    typeof window !== "undefined" && window.openreel?.platform === "desktop";
+    typeof window !== "undefined" && window.reelterminal?.platform === "desktop";
   const isNativeExportAvailable = isDesktop;
 
   const guardrailActive =

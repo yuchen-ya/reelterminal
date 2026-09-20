@@ -34,11 +34,11 @@ function composition(): MotionComposition {
 
 function setDesktop(enabled: boolean): void {
   if (enabled) {
-    (window as { openreel?: { platform: "desktop" } }).openreel = {
+    (window as { reelterminal?: { platform: "desktop" } }).reelterminal = {
       platform: "desktop",
     };
   } else {
-    delete (window as { openreel?: unknown }).openreel;
+    delete (window as { reelterminal?: unknown }).reelterminal;
   }
 }
 

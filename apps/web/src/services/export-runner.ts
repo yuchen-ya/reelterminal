@@ -256,16 +256,16 @@ export async function createDownloadWritable(
 ): Promise<FileSystemWritableFileStream> {
   const ext = filename.split(".").pop() || "mp4";
 
-  if (typeof window.openreel?.fs?.showSaveDialog === "function") {
-    const chosen = await window.openreel.fs.showSaveDialog({
+  if (typeof window.reelterminal?.fs?.showSaveDialog === "function") {
+    const chosen = await window.reelterminal.fs.showSaveDialog({
       defaultPath: filename,
       filters: [{ name: "Media file", extensions: [ext] }],
     });
     if (!chosen) {
       throw new DOMException("User cancelled", "AbortError");
     }
-    (window as { __openreelExportPath?: string }).__openreelExportPath = chosen;
-    const handleId = await window.openreel.fs.openWrite(chosen);
+    (window as { __reelterminalExportPath?: string }).__reelterminalExportPath = chosen;
+    const handleId = await window.reelterminal.fs.openWrite(chosen);
     let cursor = 0;
     return {
       async seek(position: number) {
@@ -286,14 +286,14 @@ export async function createDownloadWritable(
         } else {
           return;
         }
-        await window.openreel!.fs.writeChunk(handleId, bytes, cursor);
+        await window.reelterminal!.fs.writeChunk(handleId, bytes, cursor);
         cursor += bytes.byteLength;
       },
       async close() {
-        await window.openreel!.fs.closeWrite(handleId);
+        await window.reelterminal!.fs.closeWrite(handleId);
       },
       async abort() {
-        await window.openreel!.fs.abortWrite(handleId);
+        await window.reelterminal!.fs.abortWrite(handleId);
       },
       async truncate() {},
     } as unknown as FileSystemWritableFileStream;
@@ -450,21 +450,21 @@ export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
     ): Promise<FileSystemWritableFileStream> => {
       const mime = mimeForExt(ext);
 
-      if (typeof window.openreel?.fs?.showSaveDialog === "function") {
-        const chosen = await window.openreel.fs.showSaveDialog({
+      if (typeof window.reelterminal?.fs?.showSaveDialog === "function") {
+        const chosen = await window.reelterminal.fs.showSaveDialog({
           defaultPath: filename,
           filters: [{ name: "Media file", extensions: [ext] }],
         });
         if (!chosen) {
           throw new DOMException("User cancelled", "AbortError");
         }
-        (window as { __openreelExportPath?: string }).__openreelExportPath = chosen;
+        (window as { __reelterminalExportPath?: string }).__reelterminalExportPath = chosen;
 
         // The WAV path and any WebCodecs export (streamToFile) mux directly to
         // disk through the fs bridge. The native ffmpeg video path writes the
-        // file itself via __openreelExportPath, so it gets the no-op stub below.
+        // file itself via __reelterminalExportPath, so it gets the no-op stub below.
         if (ext === "wav" || opts?.streamToFile === true) {
-          const handleId = await window.openreel.fs.openWrite(chosen);
+          const handleId = await window.reelterminal.fs.openWrite(chosen);
           let cursor = 0;
           return {
             async seek(position: number) {
@@ -481,14 +481,14 @@ export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
               } else {
                 return;
               }
-              await window.openreel!.fs.writeChunk(handleId, bytes, cursor);
+              await window.reelterminal!.fs.writeChunk(handleId, bytes, cursor);
               cursor += bytes.byteLength;
             },
             async close() {
-              await window.openreel!.fs.closeWrite(handleId);
+              await window.reelterminal!.fs.closeWrite(handleId);
             },
             async abort() {
-              await window.openreel!.fs.abortWrite(handleId);
+              await window.reelterminal!.fs.abortWrite(handleId);
             },
             async truncate() {},
           } as unknown as FileSystemWritableFileStream;

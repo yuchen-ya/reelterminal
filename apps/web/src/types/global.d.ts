@@ -377,9 +377,13 @@ export interface OpenReelConversationVisualStateCapture {
   }[];
 }
 
-declare global {
-  interface Window {
-    openreel?: {
+/**
+ * Shape of the desktop preload bridge object. The Electron preload exposes the
+ * SAME object under the primary name `window.reelterminal` and the legacy
+ * compatibility alias `window.openreel` (one implementation, never two), so
+ * both Window keys share this single type — do not fork it.
+ */
+interface ReelTerminalDesktopBridge {
       platform: "desktop";
       publicOrigin: string;
       probeHardware(): Promise<OpenReelHardwareInfo>;
@@ -533,6 +537,18 @@ declare global {
           idempotencyKey: string;
         }): Promise<OpenReelAgentTaskImportReply>;
       };
-    };
+}
+
+declare global {
+  interface Window {
+    /** Primary desktop bridge namespace, exposed by the Electron preload. */
+    reelterminal?: ReelTerminalDesktopBridge;
+    /**
+     * @deprecated Legacy bridge alias — the SAME object as
+     * `window.reelterminal` (preload exposes both names for one
+     * implementation). Kept for external host/skill compatibility; new
+     * renderer code must read `window.reelterminal`.
+     */
+    openreel?: ReelTerminalDesktopBridge;
   }
 }

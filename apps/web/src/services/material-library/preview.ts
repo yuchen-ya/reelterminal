@@ -26,7 +26,7 @@ async function objectUrlForMedia(
     return { kind: "unavailable", reason: "not a media material" };
   }
   if (record.fileRef.type === "path") {
-    const fsBridge = typeof window === "undefined" ? undefined : window.openreel?.fs;
+    const fsBridge = typeof window === "undefined" ? undefined : window.reelterminal?.fs;
     if (!fsBridge?.readFileBytes) {
       return {
         kind: "unavailable",

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { DESKTOP_EXPORT_PORT_MARKER } from "@reelterminal/agent-facade/desktop-protocol";
 import { CHANNELS } from "../shared/channels";
 import type {
   AgentAccessMode,
@@ -14,14 +15,18 @@ import type {
   DesktopConversationState,
 } from "../shared/conversation";
 
-contextBridge.exposeInMainWorld("openreel", {
+// The desktop bridge is exposed under the primary name `window.reelterminal`.
+// The legacy `window.openreel` name is kept as a compatibility alias pointing
+// at the SAME object (one implementation, one set of IPC listeners — never a
+// second registration), so an action taken through either name commits once.
+const api = {
   platform: "desktop",
   publicOrigin: "https://app.openreel.video",
   probeHardware: () => ipcRenderer.invoke(CHANNELS.probeHardware, undefined),
   onMenuAction: (cb: (id: string) => void) => {
     const handler = (_event: unknown, id: string) => cb(id);
-    ipcRenderer.on("openreel:menu:action", handler);
-    return () => ipcRenderer.removeListener("openreel:menu:action", handler);
+    ipcRenderer.on(CHANNELS.menuAction, handler);
+    return () => ipcRenderer.removeListener(CHANNELS.menuAction, handler);
   },
   fs: {
     // File.path was removed from Electron's renderer File object. Resolve the
@@ -52,13 +57,13 @@ contextBridge.exposeInMainWorld("openreel", {
   export: {
     start: (args: unknown) =>
       new Promise((resolve) => {
-        ipcRenderer.once("openreel:export-port", (event, meta) => {
+        ipcRenderer.once(CHANNELS.exportPortHandoff, (event, meta) => {
           const { jobId } = meta as { jobId: string };
           const [port] = event.ports;
           // A live MessagePort cannot survive contextBridge serialization into
           // the main world, so forward it via window.postMessage transfer (the
           // documented Electron path) and resolve with just the jobId.
-          window.postMessage({ __openreelExportPort: true, jobId }, "*", [port]);
+          window.postMessage({ [DESKTOP_EXPORT_PORT_MARKER]: true, jobId }, "*", [port]);
           resolve({ jobId });
         });
         ipcRenderer.invoke(CHANNELS.exportStart, args);
@@ -252,4 +257,10 @@ contextBridge.exposeInMainWorld("openreel", {
       return () => ipcRenderer.removeListener(CHANNELS.lifecycleFlush, listener);
     },
   },
-});
+};
+
+contextBridge.exposeInMainWorld("reelterminal", api);
+// Deprecated compatibility alias: the SAME object under the legacy name so
+// external hosts/skills still reach one bridge implementation. Do not register
+// a second implementation here — `window.openreel === window.reelterminal`.
+contextBridge.exposeInMainWorld("openreel", api);

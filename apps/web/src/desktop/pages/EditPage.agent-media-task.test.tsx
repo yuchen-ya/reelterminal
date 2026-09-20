@@ -69,7 +69,7 @@ describe("EditPage agent media task entry", () => {
   afterEach(() => {
     setAgentMediaTaskServiceForTests(null);
     useUIStore.setState({ activeModal: null });
-    delete (window as unknown as { openreel?: unknown }).openreel;
+    delete (window as unknown as { reelterminal?: unknown }).reelterminal;
   });
 
   it("mounts the dialog closed and opens it from the strip entry", () => {

@@ -65,7 +65,7 @@ const WEB_NORMALIZED_RESULT_NOTE = "Encoded H.264 (ProRes unavailable on web)";
 
 function detectNativeExportAvailable(): boolean {
   if (typeof window === "undefined") return false;
-  return window.openreel?.platform === "desktop";
+  return window.reelterminal?.platform === "desktop";
 }
 
 function formatRequiresNativeExport(format: MotionRenderQueueFormat): boolean {

@@ -811,10 +811,10 @@ export async function handleLiveBridgeRequest(
  */
 export function installLiveBridge(): () => void {
   if (typeof window === "undefined") return () => {};
-  const bridge = window.openreel?.liveBridge;
+  const bridge = window.reelterminal?.liveBridge;
   if (!bridge) return () => {};
   return bridge.onRequest(async (req) => {
     const reply = await handleLiveBridgeRequest(req);
-    window.openreel?.liveBridge?.respond({ callId: req.callId, ...reply });
+    window.reelterminal?.liveBridge?.respond({ callId: req.callId, ...reply });
   });
 }

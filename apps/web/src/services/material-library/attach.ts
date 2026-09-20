@@ -111,7 +111,7 @@ async function resolveMediaFile(
 ): Promise<{ file: File; sourcePath?: string } | { error: AttachMaterialResult }> {
   if (record.fileRef.type === "path") {
     const fsBridge =
-      typeof window === "undefined" ? undefined : window.openreel?.fs;
+      typeof window === "undefined" ? undefined : window.reelterminal?.fs;
     if (!fsBridge?.readFileBytes || !fsBridge.pathStatus) {
       return {
         error: {

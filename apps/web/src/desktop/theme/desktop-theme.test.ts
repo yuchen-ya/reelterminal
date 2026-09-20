@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 const css = readFileSync(fileURLToPath(new URL("./desktop-theme.css", import.meta.url)), "utf8");
 
 describe("desktop-theme.css", () => {
-  it("scopes overrides under .openreel-desktop", () => {
-    expect(css).toContain(".openreel-desktop");
+  it("scopes overrides under .reelterminal-desktop", () => {
+    expect(css).toContain(".reelterminal-desktop");
   });
   it("retints the accent to emerald and surfaces to charcoal", () => {
     expect(css).toMatch(/--accent:\s*oklch\([^)]*16[0-9]/);

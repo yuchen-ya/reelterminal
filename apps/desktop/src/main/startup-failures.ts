@@ -116,7 +116,7 @@ export function installLoadFailureRecovery(win: BrowserWindow): void {
 
 /**
  * Honest notification when the preload bridge fails to inject:
- * without `window.openreel` the renderer silently falls back to the browser
+ * without `window.reelterminal` the renderer silently falls back to the browser
  * shell, so the user used to get a window that looked normal while native
  * menu, native export, updates, and lifecycle flush were all gone. This only
  * informs — it creates no substitute desktop API.

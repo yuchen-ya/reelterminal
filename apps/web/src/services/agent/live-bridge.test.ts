@@ -87,7 +87,7 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
   });
 
   afterEach(() => {
-    delete (window as { openreel?: unknown }).openreel;
+    delete (window as { reelterminal?: unknown }).reelterminal;
     vi.restoreAllMocks();
   });
 
@@ -271,7 +271,7 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
   it("imports an agent path into the canonical media library and one agent undo unit", async () => {
     mockSaveMediaBlob.mockClear();
     const readFileBytes = vi.fn(async () => new ArrayBuffer(4));
-    (window as unknown as { openreel: unknown }).openreel = {
+    (window as unknown as { reelterminal: unknown }).reelterminal = {
       fs: { readFileBytes },
     };
     const beforeRevision = getProjectRevision();
@@ -351,7 +351,7 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
 
   it("does not commit media or history when durable blob persistence fails", async () => {
     const readFileBytes = vi.fn(async () => new ArrayBuffer(4));
-    (window as unknown as { openreel: unknown }).openreel = {
+    (window as unknown as { reelterminal: unknown }).reelterminal = {
       fs: { readFileBytes },
     };
     mockSaveMediaBlob.mockRejectedValueOnce(new Error("simulated storage failure"));
@@ -443,7 +443,7 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
   it("records the native source path for a manual desktop media import", async () => {
     const sourcePath = "/Users/editor/Footage/human-shot.mp4";
     const getPathForFile = vi.fn(() => sourcePath);
-    (window as unknown as { openreel: unknown }).openreel = {
+    (window as unknown as { reelterminal: unknown }).reelterminal = {
       fs: { getPathForFile },
     };
     const file = new File([new Uint8Array([1, 2, 3, 4])], "human-shot.mp4", {
@@ -491,7 +491,7 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
 
   it("replays a committed import key without reading or inserting the file twice", async () => {
     const readFileBytes = vi.fn(async () => new ArrayBuffer(4));
-    (window as unknown as { openreel: unknown }).openreel = {
+    (window as unknown as { reelterminal: unknown }).reelterminal = {
       fs: { readFileBytes },
     };
     const beforeRevision = getProjectRevision();
@@ -1119,7 +1119,7 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     let handler:
       | ((request: { callId: string; kind: string }) => Promise<void>)
       | null = null;
-    (window as { openreel?: unknown }).openreel = {
+    (window as { reelterminal?: unknown }).reelterminal = {
       platform: "desktop",
       liveBridge: {
         onRequest: (h: typeof handler) => {

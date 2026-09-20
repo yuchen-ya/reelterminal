@@ -57,11 +57,11 @@ function installBridge(): void {
       })),
     },
   };
-  (globalThis as any).openreel = bridge;
+  (globalThis as any).reelterminal = bridge;
 }
 
 function bridgeMock(): any {
-  return (globalThis as any).openreel;
+  return (globalThis as any).reelterminal;
 }
 
 beforeEach(() => {
@@ -70,13 +70,13 @@ beforeEach(() => {
   installBridge();
 });
 afterEach(() => {
-  delete (globalThis as any).openreel;
+  delete (globalThis as any).reelterminal;
 });
 
 describe("native-media-bridge", () => {
   it("nativeMediaAvailable is true only when a desktop bridge is present", () => {
     expect(nativeMediaAvailable()).toBe(true);
-    delete (globalThis as any).openreel;
+    delete (globalThis as any).reelterminal;
     expect(nativeMediaAvailable()).toBe(false);
   });
 

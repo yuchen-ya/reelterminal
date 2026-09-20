@@ -1,5 +1,5 @@
-// Renderer-side bridge to the desktop native FFmpeg sidecar (window.openreel.media).
-// packages/core cannot see apps/web's ambient window.openreel type, so we declare the
+// Renderer-side bridge to the desktop native FFmpeg sidecar (window.reelterminal.media).
+// packages/core cannot see apps/web's ambient window.reelterminal type, so we declare the
 // minimal slice this module uses and access it via a typed cast on globalThis.
 
 export interface NativeMediaBridge {
@@ -35,8 +35,8 @@ export interface NativeMediaBridge {
 }
 
 export function getBridge(): NativeMediaBridge | undefined {
-  const w = globalThis as unknown as { openreel?: Partial<NativeMediaBridge> };
-  const o = w.openreel;
+  const w = globalThis as unknown as { reelterminal?: Partial<NativeMediaBridge> };
+  const o = w.reelterminal;
   if (o && o.platform === "desktop" && o.fs && o.media) {
     return o as NativeMediaBridge;
   }

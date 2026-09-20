@@ -69,7 +69,7 @@ function conversationState(lifecycle: string) {
 }
 
 function stubDesktopApi(lifecycle: string, importArtifact: unknown) {
-  (window as unknown as { openreel?: unknown }).openreel = {
+  (window as unknown as { reelterminal?: unknown }).reelterminal = {
     platform: "desktop",
     publicOrigin: "https://desktop.test",
     conversation: {
@@ -231,7 +231,7 @@ describe("AgentMediaTaskDialog row actions", () => {
 
   afterEach(() => {
     setAgentMediaTaskServiceForTests(null);
-    delete (window as unknown as { openreel?: unknown }).openreel;
+    delete (window as unknown as { reelterminal?: unknown }).reelterminal;
     useUIStore.setState({ activeModal: null });
   });
 

@@ -38,7 +38,7 @@ function mockDesktopConversation() {
     })),
     startSetup: vi.fn(),
   };
-  (window as { openreel?: unknown }).openreel = {
+  (window as { reelterminal?: unknown }).reelterminal = {
     platform: "desktop",
     conversation,
   };
@@ -47,7 +47,7 @@ function mockDesktopConversation() {
 
 describe("ExternalAgentPanelContainer", () => {
   afterEach(() => {
-    delete (window as { openreel?: unknown }).openreel;
+    delete (window as { reelterminal?: unknown }).reelterminal;
     vi.restoreAllMocks();
   });
 

@@ -201,11 +201,11 @@ describe("motion frame export helpers", () => {
         }
       },
     );
-    Object.defineProperty(window, "openreel", {
+    Object.defineProperty(window, "reelterminal", {
       configurable: true,
       value: undefined,
     });
-    delete (window as { __openreelExportPath?: string }).__openreelExportPath;
+    delete (window as { __reelterminalExportPath?: string }).__reelterminalExportPath;
     createDownloadWritableMock.mockResolvedValue({ close: vi.fn() });
     initializeMock.mockResolvedValue(undefined);
     audioEngineClearCacheMock.mockReturnValue(undefined);
@@ -269,11 +269,11 @@ describe("motion frame export helpers", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    Object.defineProperty(window, "openreel", {
+    Object.defineProperty(window, "reelterminal", {
       configurable: true,
       value: undefined,
     });
-    delete (window as { __openreelExportPath?: string }).__openreelExportPath;
+    delete (window as { __reelterminalExportPath?: string }).__reelterminalExportPath;
   });
 
   it("builds stable filenames", () => {
@@ -432,7 +432,7 @@ describe("motion frame export helpers", () => {
       });
     const cancelSequenceSession = vi.fn().mockResolvedValue(undefined);
 
-    Object.defineProperty(window, "openreel", {
+    Object.defineProperty(window, "reelterminal", {
       configurable: true,
       value: {
         platform: "desktop",
@@ -493,7 +493,7 @@ describe("motion frame export helpers", () => {
         totalFrames: 2,
       }),
     );
-    expect((window as { __openreelExportPath?: string }).__openreelExportPath).toBe(
+    expect((window as { __reelterminalExportPath?: string }).__reelterminalExportPath).toBe(
       "/Users/me/Movies/native-launch.mp4",
     );
   });

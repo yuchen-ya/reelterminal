@@ -5,6 +5,7 @@ import { promises as fs } from "node:fs";
 import type { FileHandle } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { ExportJob, type ExportArgs } from "../sidecar/export-job";
+import { CHANNELS } from "../../shared/channels";
 import { CfrWriter } from "../sidecar/cfr";
 import { selectEncoder, probeEncoders } from "../sidecar/encoder-probe";
 import type { ExportCodec, EncodeMode } from "../sidecar/encode-args";
@@ -127,7 +128,7 @@ export async function startExport(wc: WebContents, args: ExportStartArgs): Promi
   });
   port1.start();
 
-  wc.postMessage("openreel:export-port", { jobId }, [port2]);
+  wc.postMessage(CHANNELS.exportPortHandoff, { jobId }, [port2]);
   jobs.set(jobId, entry);
   return { jobId };
 }

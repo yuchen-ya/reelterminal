@@ -311,8 +311,8 @@ describe("useExportRunner showSavePicker fallback", () => {
     } else {
       delete win.showSaveFilePicker;
     }
-    delete win.openreel;
-    delete win.__openreelExportPath;
+    delete win.reelterminal;
+    delete win.__reelterminalExportPath;
   });
 
   it("falls back to an in-memory download when OPFS is unavailable and the picker is blocked", async () => {
@@ -421,7 +421,7 @@ describe("useExportRunner showSavePicker fallback", () => {
     const showSaveDialog = vi
       .fn()
       .mockResolvedValue("/Users/me/Movies/Rubik.mp4");
-    win.openreel = {
+    win.reelterminal = {
       platform: "desktop",
       fs: {
         showSaveDialog,
@@ -435,13 +435,13 @@ describe("useExportRunner showSavePicker fallback", () => {
     const writable = await createDownloadWritable("Rubik.mp4", "video/mp4");
 
     expect(showSaveDialog).toHaveBeenCalledTimes(1);
-    expect(win.__openreelExportPath).toBe("/Users/me/Movies/Rubik.mp4");
+    expect(win.__reelterminalExportPath).toBe("/Users/me/Movies/Rubik.mp4");
     expect(writable).toBeDefined();
   });
 
   it("desktop stream writable forwards Uint8Array chunks without an ArrayBuffer copy", async () => {
     const writeChunk = vi.fn().mockResolvedValue(undefined);
-    win.openreel = {
+    win.reelterminal = {
       platform: "desktop",
       fs: {
         showSaveDialog: vi.fn().mockResolvedValue("/Users/me/Movies/Rubik.mp4"),
@@ -466,7 +466,7 @@ describe("useExportRunner showSavePicker fallback", () => {
   });
 
   it("createDownloadWritable rethrows AbortError when the native save dialog is cancelled", async () => {
-    win.openreel = {
+    win.reelterminal = {
       platform: "desktop",
       fs: {
         showSaveDialog: vi.fn().mockResolvedValue(null),
@@ -477,6 +477,6 @@ describe("useExportRunner showSavePicker fallback", () => {
     await expect(
       createDownloadWritable("Rubik.mp4", "video/mp4"),
     ).rejects.toMatchObject({ name: "AbortError" });
-    expect(win.__openreelExportPath).toBeUndefined();
+    expect(win.__reelterminalExportPath).toBeUndefined();
   });
 });

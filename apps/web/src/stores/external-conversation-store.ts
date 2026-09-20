@@ -5,7 +5,7 @@ import {
   resetConversationVisualState,
 } from "../services/agent/visual-state";
 
-type ConversationApi = NonNullable<NonNullable<Window["openreel"]>["conversation"]>;
+type ConversationApi = NonNullable<NonNullable<Window["reelterminal"]>["conversation"]>;
 type ConversationState = Awaited<ReturnType<ConversationApi["getState"]>>;
 
 const unavailableState = (): ConversationState => ({
@@ -40,7 +40,7 @@ interface ExternalConversationStoreState {
 }
 
 function conversationApi() {
-  return typeof window === "undefined" ? undefined : window.openreel?.conversation;
+  return typeof window === "undefined" ? undefined : window.reelterminal?.conversation;
 }
 
 function errorMessage(error: unknown): string {

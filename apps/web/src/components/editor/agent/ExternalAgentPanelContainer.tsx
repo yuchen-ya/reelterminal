@@ -44,12 +44,12 @@ export function ExternalAgentPanelContainer({
   const enableCollab = useCollabStore((value) => value.enable);
   const referencesByNumber = useAgentReferencesStore((value) => value.references);
   // Capability, not platform sniffing: the desktop preload injects
-  // window.openreel.conversation; a plain browser never has it. Without it
+  // window.reelterminal.conversation; a plain browser never has it. Without it
   // there is nothing to listen to, initialize, or inspect, so the panel skips
   // those calls and the guide explains the desktop requirement instead of
   // spinning in its "checking" state forever.
   const conversationApiAvailable =
-    typeof window !== "undefined" && Boolean(window.openreel?.conversation);
+    typeof window !== "undefined" && Boolean(window.reelterminal?.conversation);
   const [setup, setSetup] = useState<OpenReelConversationSetupState | null>(null);
   const [setupBusy, setSetupBusy] = useState(false);
   const [setupFailed, setSetupFailed] = useState(false);
@@ -77,7 +77,7 @@ export function ExternalAgentPanelContainer({
   }, []);
 
   const refreshSetup = useCallback(async () => {
-    const api = window.openreel?.conversation;
+    const api = window.reelterminal?.conversation;
     if (!api?.inspectSetup) return;
     setSetupBusy(true);
     setSetupFailed(false);
@@ -144,7 +144,7 @@ export function ExternalAgentPanelContainer({
   );
 
   const connect = async (): Promise<void> => {
-    const api = window.openreel?.conversation;
+    const api = window.reelterminal?.conversation;
     if (!api?.startSetup) return;
     setSetupBusy(true);
     setSetupFailed(false);

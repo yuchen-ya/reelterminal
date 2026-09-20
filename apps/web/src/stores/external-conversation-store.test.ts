@@ -7,10 +7,10 @@ import {
 
 type ConversationState = Awaited<
   ReturnType<
-    NonNullable<NonNullable<Window["openreel"]>["conversation"]>["getState"]
+    NonNullable<NonNullable<Window["reelterminal"]>["conversation"]>["getState"]
   >
 >;
-type ConversationApi = NonNullable<NonNullable<Window["openreel"]>["conversation"]>;
+type ConversationApi = NonNullable<NonNullable<Window["reelterminal"]>["conversation"]>;
 type ConversationEvent = Parameters<ConversationApi["onEvent"]>[0] extends (
   event: infer Event,
 ) => void
@@ -50,7 +50,7 @@ function mockConversation() {
       };
     }),
   };
-  (window as { openreel?: unknown }).openreel = {
+  (window as { reelterminal?: unknown }).reelterminal = {
     platform: "desktop",
     conversation,
   };
@@ -84,7 +84,7 @@ describe("external-conversation-store", () => {
   });
 
   afterEach(() => {
-    delete (window as { openreel?: unknown }).openreel;
+    delete (window as { reelterminal?: unknown }).reelterminal;
     vi.restoreAllMocks();
   });
 

@@ -29,8 +29,8 @@ export interface NativeAuroraBridge {
 }
 
 function getBridge(): NativeAuroraBridge | undefined {
-  const scope = globalThis as { openreel?: Partial<NativeAuroraBridge> };
-  const openreel = scope.openreel;
+  const scope = globalThis as { reelterminal?: Partial<NativeAuroraBridge> };
+  const openreel = scope.reelterminal;
   if (openreel?.platform === "desktop" && openreel.aurora) {
     return openreel as NativeAuroraBridge;
   }

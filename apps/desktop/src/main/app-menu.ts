@@ -1,4 +1,5 @@
 import { Menu, type MenuItemConstructorOptions, type BrowserWindow } from "electron";
+import { CHANNELS } from "../shared/channels";
 
 export interface MenuNode {
   label: string;
@@ -93,5 +94,5 @@ export function installApplicationMenu(platform: string, onAction: (id: string) 
 }
 
 export function sendMenuAction(win: BrowserWindow | null, id: string): void {
-  if (win) win.webContents.send("openreel:menu:action", id);
+  if (win) win.webContents.send(CHANNELS.menuAction, id);
 }

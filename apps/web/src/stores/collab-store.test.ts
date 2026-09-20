@@ -35,7 +35,7 @@ const mockDesktop = () => {
       };
     }),
   };
-  (window as { openreel?: unknown }).openreel = {
+  (window as { reelterminal?: unknown }).reelterminal = {
     platform: "desktop",
     collabControl,
     liveEvents,
@@ -61,7 +61,7 @@ describe("collab-store (ADR 0004 Decisions 6+7)", () => {
   });
 
   afterEach(() => {
-    delete (window as { openreel?: unknown }).openreel;
+    delete (window as { reelterminal?: unknown }).reelterminal;
     vi.restoreAllMocks();
   });
 

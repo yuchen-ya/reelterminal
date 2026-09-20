@@ -104,7 +104,7 @@ export function CollabStatusBar(): JSX.Element {
   }, []);
 
   const openWorkspace = () => {
-    void window.openreel?.collabControl?.openWorkspace?.();
+    void window.reelterminal?.collabControl?.openWorkspace?.();
   };
 
   const dismissIntro = () => {

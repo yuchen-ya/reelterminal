@@ -16,7 +16,7 @@ const defaultMotionTransform = {
 describe("VideoEngine motion asset resolver", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    Object.defineProperty(globalThis, "openreel", {
+    Object.defineProperty(globalThis, "reelterminal", {
       configurable: true,
       value: undefined,
     });
@@ -138,7 +138,7 @@ describe("VideoEngine motion asset resolver", () => {
 
     vi.stubGlobal("createImageBitmap", createImageBitmapMock);
     vi.stubGlobal("fetch", fetchMock);
-    Object.defineProperty(globalThis, "openreel", {
+    Object.defineProperty(globalThis, "reelterminal", {
       configurable: true,
       value: {
         platform: "desktop",

@@ -52,5 +52,5 @@ export function handleAppScheme(rendererRoot: string): void {
   });
 }
 
-export const APP_ORIGIN = `${SCHEME}://openreel`;
+export const APP_ORIGIN = `${SCHEME}://reelterminal`;
 export const APP_INDEX = `${APP_ORIGIN}/index.html`;

@@ -1,6 +1,6 @@
 /**
  * Live collaboration IPC (ADR 0004): the renderer-facing handles behind
- * window.openreel.collabControl.
+ * window.reelterminal.collabControl.
  *
  * Every channel is restricted to the main editor window's webContents. Agent
  * reasoning and tool calls arrive through the external live endpoint; this

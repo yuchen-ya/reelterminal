@@ -2,7 +2,7 @@
  * RendererStoreAdapter — the main-process half of the ADR 0004 Decision 1
  * seam. Implements the facade's `LiveProjectStore` over a callId-correlated
  * IPC bridge to the canonical renderer store. Its channel namespace is
- * "openreel:live:request" / "openreel:live:response".
+ * "reelterminal:live:request" / "reelterminal:live:response".
  *
  * Hardening (DESK-06 lesson): a response only resolves its pending call when
  * it arrives from the CURRENT target window's webContents — foreign or stale
@@ -80,7 +80,7 @@ export interface LiveStoreBridge {
   readonly fontLibrary?: FontLibraryBridge;
   /** Optional preset-library seam (preset.* verbs → renderer preset store). */
   readonly presetLibrary?: PresetLibraryBridge;
-  /** Feed one "openreel:live:response" message; unknown/foreign replies drop. */
+  /** Feed one "reelterminal:live:response" message; unknown/foreign replies drop. */
   handleResponse(sender: unknown, response: LiveBridgeReply): void;
   /** Reject every pending call (bridge teardown / renderer gone). */
   teardown(reason: string): void;

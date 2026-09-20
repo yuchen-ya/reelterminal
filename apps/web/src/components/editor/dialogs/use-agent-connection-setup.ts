@@ -37,7 +37,7 @@ export interface AgentConnectionSetup {
 
 export function useAgentConnectionSetup(): AgentConnectionSetup {
   const conversationApiAvailable =
-    typeof window !== "undefined" && Boolean(window.openreel?.conversation);
+    typeof window !== "undefined" && Boolean(window.reelterminal?.conversation);
   const ready = useExternalConversationStore(
     (value) => value.state.conversation.lifecycle === "ready",
   );
@@ -76,7 +76,7 @@ export function useAgentConnectionSetup(): AgentConnectionSetup {
   }, []);
 
   const refresh = useCallback(async () => {
-    const api = window.openreel?.conversation;
+    const api = window.reelterminal?.conversation;
     if (!api?.inspectSetup) return;
     setBusy(true);
     setFailed(false);
@@ -90,7 +90,7 @@ export function useAgentConnectionSetup(): AgentConnectionSetup {
   }, [applySetup]);
 
   const connect = useCallback(async () => {
-    const api = window.openreel?.conversation;
+    const api = window.reelterminal?.conversation;
     if (!api?.startSetup) return;
     setBusy(true);
     setFailed(false);

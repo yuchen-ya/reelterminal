@@ -6,18 +6,18 @@ import { AGENT_MEDIA_TASK_MODAL_ID } from "../../components/editor/dialogs/Agent
 
 const INTRO_SEEN_KEY = "reelterminal.agentSessionIntroSeen";
 
-type OpenReelWindow = Window & { openreel?: Record<string, unknown> };
+type OpenReelWindow = Window & { reelterminal?: Record<string, unknown> };
 const openreelWindow = window as OpenReelWindow;
 
 describe("CollabStatusBar Agent Session onboarding", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    delete openreelWindow.openreel;
+    delete openreelWindow.reelterminal;
   });
 
   afterEach(() => {
     window.localStorage.clear();
-    delete openreelWindow.openreel;
+    delete openreelWindow.reelterminal;
   });
 
   it("shows the first-run intro bubble until dismissed, then remembers", () => {
@@ -98,7 +98,7 @@ describe("CollabStatusBar Agent Session onboarding", () => {
   it("reveals the Agent workspace via the desktop bridge", () => {
     const openWorkspace = vi.fn(async () => "/videos/ReelTerminal Agent Workspace");
     // Partial bridge mock: only the surface this component can touch.
-    openreelWindow.openreel = {
+    openreelWindow.reelterminal = {
       platform: "desktop",
       collabControl: {
         enable: vi.fn(),
@@ -115,7 +115,7 @@ describe("CollabStatusBar Agent Session onboarding", () => {
         }),
         openWorkspace,
       },
-    } as unknown as NonNullable<OpenReelWindow["openreel"]>;
+    } as unknown as NonNullable<OpenReelWindow["reelterminal"]>;
     window.localStorage.setItem(INTRO_SEEN_KEY, "1");
     render(<CollabStatusBar />);
 
@@ -134,7 +134,7 @@ describe("CollabStatusBar Agent Session onboarding", () => {
       access: "write" as const,
       currentAction: null,
     }));
-    openreelWindow.openreel = {
+    openreelWindow.reelterminal = {
       platform: "desktop",
       collabControl: {
         enable: vi.fn(),
@@ -150,7 +150,7 @@ describe("CollabStatusBar Agent Session onboarding", () => {
           currentAction: null,
         }),
       },
-    } as unknown as NonNullable<OpenReelWindow["openreel"]>;
+    } as unknown as NonNullable<OpenReelWindow["reelterminal"]>;
     window.localStorage.setItem(INTRO_SEEN_KEY, "1");
     render(<CollabStatusBar />);
 
@@ -175,7 +175,7 @@ describe("CollabStatusBar Agent Session onboarding", () => {
       access: "write" as const,
       currentAction: null,
     }));
-    openreelWindow.openreel = {
+    openreelWindow.reelterminal = {
       platform: "desktop",
       collabControl: {
         enable: vi.fn(),
@@ -193,7 +193,7 @@ describe("CollabStatusBar Agent Session onboarding", () => {
         }),
         openWorkspace: vi.fn(),
       },
-    } as unknown as NonNullable<OpenReelWindow["openreel"]>;
+    } as unknown as NonNullable<OpenReelWindow["reelterminal"]>;
     window.localStorage.setItem(INTRO_SEEN_KEY, "1");
     render(<CollabStatusBar />);
 
@@ -207,12 +207,12 @@ describe("CollabStatusBar Agent Session onboarding", () => {
 describe("CollabStatusBar voiceover/music entry", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    delete openreelWindow.openreel;
+    delete openreelWindow.reelterminal;
   });
 
   afterEach(() => {
     window.localStorage.clear();
-    delete openreelWindow.openreel;
+    delete openreelWindow.reelterminal;
     useUIStore.setState({ activeModal: null });
   });
 

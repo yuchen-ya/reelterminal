@@ -86,7 +86,7 @@ export function AnalysisRecordsPanel() {
   const pollGeneration = useRef(0);
 
   const refresh = useCallback(async () => {
-    const bridge = window.openreel?.analysisRecords;
+    const bridge = window.reelterminal?.analysisRecords;
     if (!bridge || !project.id) return;
     setLoading(true);
     setError(null);
@@ -118,7 +118,7 @@ export function AnalysisRecordsPanel() {
     setRecheckStatus(null);
     setDetail(null);
     if (!selectedId || !project.id) return;
-    const bridge = window.openreel?.analysisRecords;
+    const bridge = window.reelterminal?.analysisRecords;
     if (!bridge) return;
     let active = true;
     void bridge
@@ -187,7 +187,7 @@ export function AnalysisRecordsPanel() {
 
   const runRecheck = useCallback(async () => {
     if (!detail || recheckBusy) return;
-    const bridge = window.openreel?.analysisRecords;
+    const bridge = window.reelterminal?.analysisRecords;
     if (!bridge) {
       setRecheckStatus("Recheck is available in the desktop app.");
       return;

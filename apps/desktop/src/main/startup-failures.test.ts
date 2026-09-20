@@ -29,7 +29,7 @@ import {
   installPreloadFailureNotice,
 } from "./startup-failures";
 
-const APP_INDEX = "app://openreel/index.html";
+const APP_INDEX = "app://reelterminal/index.html";
 
 type Handler = (...args: unknown[]) => void;
 
@@ -121,7 +121,7 @@ describe("installLoadFailureRecovery (did-fail-load)", () => {
     const win = makeWindow();
     installLoadFailureRecovery(win.win as never);
 
-    failLoad(win, -6, "ERR_FILE_NOT_FOUND", "app://openreel/assets/chunk.js", false);
+    failLoad(win, -6, "ERR_FILE_NOT_FOUND", "app://reelterminal/assets/chunk.js", false);
 
     expect(win.contents.loadURL).not.toHaveBeenCalled();
   });

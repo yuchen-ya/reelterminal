@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import type { OpenReelUpdaterStatus } from "../types/global";
 
 // Notify → (consented) download → install. Subscribes to main-process update
-// status and drives download/install through window.openreel.updater. The
+// status and drives download/install through window.reelterminal.updater. The
 // install path quits through the normal guarded flow, so unsaved changes are
 // still protected.
 export function UpdateBanner(): JSX.Element | null {
@@ -15,7 +15,7 @@ export function UpdateBanner(): JSX.Element | null {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    const updater = window.openreel?.updater;
+    const updater = window.reelterminal?.updater;
     if (!updater) return;
     return updater.onStatus((next) => {
       setStatus(next);
@@ -50,7 +50,7 @@ export function UpdateBanner(): JSX.Element | null {
               label={t("desktop.update.download")}
               variant="primary"
               size="sm"
-              onClick={() => void window.openreel?.updater.download()}
+              onClick={() => void window.reelterminal?.updater.download()}
             />
             <Button
               label={t("desktop.update.later")}
@@ -92,7 +92,7 @@ export function UpdateBanner(): JSX.Element | null {
               label={t("desktop.update.restartInstall")}
               variant="primary"
               size="sm"
-              onClick={() => void window.openreel?.updater.install()}
+              onClick={() => void window.reelterminal?.updater.install()}
             />
             <Button
               label={t("desktop.update.later")}

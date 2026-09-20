@@ -29,8 +29,8 @@ interface CollabState extends CollabStatus {
 }
 
 const collabControl = () =>
-  typeof window !== "undefined" && window.openreel?.platform === "desktop"
-    ? window.openreel?.collabControl
+  typeof window !== "undefined" && window.reelterminal?.platform === "desktop"
+    ? window.reelterminal?.collabControl
     : undefined;
 
 export const useCollabStore = create<CollabState>()((set, get) => ({
@@ -122,10 +122,10 @@ const eventActionLabel = (evt: Record<string, unknown>): string | null => {
  * current agent action). Returns an unsubscribe. No-op off desktop.
  */
 export function installCollabEventListener(): () => void {
-  if (typeof window === "undefined" || window.openreel?.platform !== "desktop") {
+  if (typeof window === "undefined" || window.reelterminal?.platform !== "desktop") {
     return () => {};
   }
-  const events = window.openreel?.liveEvents;
+  const events = window.reelterminal?.liveEvents;
   if (!events?.onEvent) return () => {};
   return events.onEvent((evt) => {
     if (evt.type === "status") {
