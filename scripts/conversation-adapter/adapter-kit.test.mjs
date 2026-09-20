@@ -46,11 +46,15 @@ test("writes a private descriptor atomically with the loopback endpoint", async 
       "adapter",
       "agent",
       "endpoint",
+      "product",
       "sessionId",
       "token",
       "transport",
       "version",
     ]);
+    // N03: the product field marks the descriptor as owned by this
+    // application family for legacy-path discovery.
+    assert.equal(descriptor.product, "reelterminal");
     const endpoint = new URL(descriptor.endpoint);
     assert.equal(endpoint.protocol, "http:");
     assert.equal(endpoint.hostname, "127.0.0.1");
@@ -315,6 +319,78 @@ test("close only removes the descriptor still owned by that adapter", async () =
     assert.deepEqual(await descriptorAt(descriptorPath), secondDescriptor);
   } finally {
     await second.close();
+  }
+  await assert.rejects(readFile(descriptorPath));
+});
+
+test("N03: mirror descriptors are published and removed with the adapter", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openreel-adapter-mirror-"));
+  const descriptorPath = join(directory, ".reelterminal", "conversation-endpoint.json");
+  const legacyMirror = join(directory, ".openreel", "conversation-endpoint.json");
+  const adapter = await startConversationAdapter({
+    sessionId: "agent-session-mirror",
+    agent: { name: "Mirror Agent" },
+    adapter: { name: "kit", capabilityLevel: "basic" },
+    descriptorPath,
+    mirrorDescriptorPaths: [legacyMirror],
+  });
+  try {
+    const primary = await descriptorAt(descriptorPath);
+    const mirror = await descriptorAt(legacyMirror);
+    // Same descriptor payload at both paths; the mirror makes a live
+    // adapter discoverable for read-only-legacy clients.
+    assert.equal(mirror.endpoint, primary.endpoint);
+    assert.equal(mirror.product, "reelterminal");
+    if (process.platform !== "win32") {
+      assert.equal((await stat(legacyMirror)).mode & 0o777, 0o600);
+    }
+  } finally {
+    await adapter.close();
+  }
+  // Both owned copies are removed; the mirror failure of the primary must
+  // not leave either behind.
+  await assert.rejects(readFile(descriptorPath));
+  await assert.rejects(readFile(legacyMirror));
+});
+
+test("N03: an unwritable mirror degrades to primary-only publishing", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "openreel-adapter-mirror-fail-"));
+  // The mirror's parent is a regular file: mkdir fails on every platform.
+  const blockedParent = join(directory, "blocked");
+  const { writeFileSync } = await import("node:fs");
+  writeFileSync(blockedParent, "not a directory\n");
+  const descriptorPath = join(directory, "nested", "conversation-endpoint.json");
+  const adapter = await startConversationAdapter({
+    sessionId: "agent-session-mirror-fail",
+    agent: { name: "Mirror Fail Agent" },
+    adapter: { name: "kit", capabilityLevel: "basic" },
+    descriptorPath,
+    mirrorDescriptorPaths: [join(blockedParent, "conversation-endpoint.json")],
+  });
+  try {
+    // The primary descriptor is live regardless of the mirror failure.
+    const primary = await descriptorAt(descriptorPath);
+    assert.equal(primary.sessionId, "agent-session-mirror-fail");
+  } finally {
+    await adapter.close();
+  }
+  await assert.rejects(readFile(descriptorPath));
+});
+
+test("N03: a mirror identical to the primary path is skipped, not double-written", async () => {
+  const descriptorPath = await temporaryDescriptorPath();
+  const adapter = await startConversationAdapter({
+    sessionId: "agent-session-same",
+    agent: { name: "Same Path Agent" },
+    adapter: { name: "kit", capabilityLevel: "basic" },
+    descriptorPath,
+    mirrorDescriptorPaths: [descriptorPath],
+  });
+  try {
+    const descriptor = await descriptorAt(descriptorPath);
+    assert.equal(descriptor.sessionId, "agent-session-same");
+  } finally {
+    await adapter.close();
   }
   await assert.rejects(readFile(descriptorPath));
 });

@@ -10,6 +10,7 @@ import test from "node:test";
 
 import {
   codexMcpOverrides,
+  resolveAdapterEndpointPaths,
   startCodexConversationAdapter,
 } from "./codex-adapter.mjs";
 
@@ -833,4 +834,56 @@ test("uses reelterminal_live with no detection side effects when no Codex config
       .map((entry) => entry.split(".")[1]),
   );
   assert.equal(serverKeys.size, 1);
+});
+test("N03: resolveAdapterEndpointPaths picks option → env → canonical and detects canonical flow", () => {
+  const home = "/home/adapter-user";
+  const canonical = path.join(
+    home,
+    ".reelterminal",
+    "conversation-endpoint.json",
+  );
+
+  // Desktop handoff (explicit option at the canonical path) keeps the
+  // legacy-mirror flow enabled.
+  const desktopHandoff = resolveAdapterEndpointPaths({
+    descriptorPath: canonical,
+    env: {},
+    home,
+  });
+  assert.equal(desktopHandoff.descriptorPath, path.resolve(canonical));
+  assert.equal(desktopHandoff.canonicalFlow, true);
+
+  // Legacy env override (old hosts) wins over the default.
+  const legacyEnv = resolveAdapterEndpointPaths({
+    env: { OPENREEL_CONVERSATION_ENDPOINT_FILE: "/custom/old.json" },
+    home,
+  });
+  assert.equal(legacyEnv.descriptorPath, path.resolve("/custom/old.json"));
+  assert.equal(legacyEnv.canonicalFlow, false);
+
+  // New env override beats the legacy name; relative values are ignored.
+  const newEnv = resolveAdapterEndpointPaths({
+    env: {
+      REELTERMINAL_CONVERSATION_ENDPOINT_FILE: "/custom/new.json",
+      OPENREEL_CONVERSATION_ENDPOINT_FILE: "/custom/old.json",
+    },
+    home,
+  });
+  assert.equal(newEnv.descriptorPath, path.resolve("/custom/new.json"));
+  assert.equal(newEnv.canonicalFlow, false);
+
+  const relativeEnv = resolveAdapterEndpointPaths({
+    env: { REELTERMINAL_CONVERSATION_ENDPOINT_FILE: "relative.json" },
+    home,
+  });
+  assert.equal(relativeEnv.descriptorPath, path.resolve(canonical));
+
+  // A custom --descriptor target is user-managed: never canonical flow.
+  const custom = resolveAdapterEndpointPaths({
+    descriptorPath: "/custom/target.json",
+    env: {},
+    home,
+  });
+  assert.equal(custom.descriptorPath, path.resolve("/custom/target.json"));
+  assert.equal(custom.canonicalFlow, false);
 });
