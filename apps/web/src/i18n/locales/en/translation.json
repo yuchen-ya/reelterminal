@@ -303,7 +303,7 @@
     "composerDisconnected": "Connect an external Agent session to write here",
     "composerHint": "Enter to send · Shift+Enter for a new line",
     "send": "Send to external Agent",
-    "adapterMissing": "No conversation adapter is configured. Ask your Agent to create ~/.openreel/conversation-endpoint.json, then connect again.",
+    "adapterMissing": "No conversation adapter is configured. Ask your Agent to create ~/.reelterminal/conversation-endpoint.json, then connect again.",
     "adapterInvalid": "The conversation adapter configuration is invalid or not private. Ask your Agent to repair it and keep its permissions at 0600.",
     "connectionFailed": "The external Agent conversation could not be reached. Its native chat and ReelTerminal MCP tools remain available.",
     "error": {

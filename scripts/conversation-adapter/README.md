@@ -42,7 +42,7 @@ const adapter = await startConversationAdapter({
   sessionId: existingAgentSession.id,
   agent: { name: "My Agent" },
   adapter: { name: "my-openreel-adapter", capabilityLevel: "observable" },
-  descriptorPath: "/absolute/path/to/.openreel/conversation-endpoint.json",
+  descriptorPath: "/absolute/path/to/.reelterminal/conversation-endpoint.json",
   onPrompt: ({ prompt }) => existingAgentSession.prompt(prompt),
   onCancel: () => existingAgentSession.cancel(),
   onWorkMode: ({ clientContext }) =>

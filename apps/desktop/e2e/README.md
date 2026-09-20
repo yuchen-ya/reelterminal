@@ -32,7 +32,8 @@ the default `pnpm --filter @openreel/desktop test:run` never picks them up.
 Each spec launches its own app instance with a per-run temp dir:
 `--user-data-dir` isolates the Chromium profile (IndexedDB autosave) and the
 live-artifacts root; `OPENREEL_LIVE_ENDPOINT_FILE` redirects the endpoint
-descriptor so a test run never touches the developer's real `~/.openreel` file.
+descriptor so a test run never touches the developer's real `~/.reelterminal`
+(or legacy `~/.openreel`) file.
 `OPENREEL_CONVERSATION_ENDPOINT_FILE` likewise isolates the external
 conversation descriptor.
 

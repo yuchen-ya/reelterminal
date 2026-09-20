@@ -36,9 +36,11 @@ ReelTerminal owns the editing world and its tool/context boundary.
    ```
 
    The
-connector reads `~/.openreel/live-endpoint.json` by default to discover the
-current loopback URL and bearer token. The endpoint file is short-lived and
-is removed when the Agent Session is disabled.
+connector reads `~/.reelterminal/live-endpoint.json` by default to discover the
+current loopback URL and bearer token. When the canonical file is absent, a
+legacy `~/.openreel/live-endpoint.json` descriptor that belongs to this
+application is still discovered for compatibility. The endpoint file is
+short-lived and is removed when the Agent Session is disabled.
 
 Treat that descriptor as a credential: never `cat`, print, log, paste, or return
 its contents. Let `openreel-live-mcp` read it, or read it only inside a client
@@ -75,7 +77,9 @@ An installed desktop distribution may also place `openreel-live-mcp` on
 configuration is deterministic.
 
 Use an explicit endpoint-file option only if the connector or host requires
-one; the default is already `~/.openreel/live-endpoint.json`. Do not copy the
+one; the default is already `~/.reelterminal/live-endpoint.json` (with
+compatibility discovery of an owned legacy `~/.openreel/live-endpoint.json`
+when the canonical file is absent). Do not copy the
 token into project files, prompts, or logs.
 
 This connector exposes the same open GUI project through the following tools:
@@ -272,7 +276,9 @@ repository includes a Codex App Server reference adapter at
 `scripts/conversation-adapter/codex-adapter.mjs`. Other external Agent hosts
 run and configure their thin server-side adapter at `/conversation`,
 atomically write the private
-`~/.openreel/conversation-endpoint.json` descriptor with mode `0600`, and
+`~/.reelterminal/conversation-endpoint.json` descriptor with mode `0600` (an
+older `~/.openreel/conversation-endpoint.json` at the legacy location remains
+discoverable for compatibility), and
 remove it on exit; ReelTerminal only reads that descriptor. There is no universal
 provider connector and no embedded model. MCP tool access through the live
 facade remains a separate tool-plugin integration and must not be confused with

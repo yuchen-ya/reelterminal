@@ -31,8 +31,10 @@ external Agent conversation ── thin adapter ── optional ReelTerminal vie
 ```
 
 The conversation endpoint and the MCP endpoint are separate contracts. The
-MCP facade remains discoverable through `~/.openreel/live-endpoint.json` and
-`/mcp`; this protocol uses `~/.openreel/conversation-endpoint.json` and
+MCP facade remains discoverable through `~/.reelterminal/live-endpoint.json`
+(legacy `~/.openreel/live-endpoint.json` is still discovered when the
+canonical file is absent) and
+`/mcp`; this protocol uses `~/.reelterminal/conversation-endpoint.json` and
 `/conversation`. Neither endpoint is a transcript store, a model provider, or
 a replacement for the Agent's native chat.
 
@@ -224,8 +226,14 @@ An external Agent or host adapter starts the loopback `/conversation` service
 and atomically writes a short-lived descriptor at:
 
 ```text
-~/.openreel/conversation-endpoint.json
+~/.reelterminal/conversation-endpoint.json
 ```
+
+The legacy `~/.openreel/conversation-endpoint.json` location remains
+discoverable for compatibility: ReelTerminal reads it when the canonical file
+is absent and the descriptor is recognizably one this application family
+wrote (descriptors written since this migration carry a `product` field).
+ReelTerminal never overwrites a descriptor it cannot identify as its own.
 
 The descriptor has this shape (the token below is a fixture value, not a
 usable secret):
@@ -237,6 +245,7 @@ usable secret):
   "endpoint": "http://127.0.0.1:43127/conversation",
   "token": "fixture-token-1234567890",
   "sessionId": "agent-session-opaque",
+  "product": "reelterminal",
   "agent": { "name": "Example Agent", "version": "2.4" },
   "adapter": {
     "name": "example-conversation-adapter",
@@ -254,12 +263,14 @@ The descriptor fields are:
 | `endpoint` | Required loopback HTTP URL ending in `/conversation`; POST JSON-RPC requests here. |
 | `token` | Required opaque bearer token with at least 16 characters. Never expose it in prompts, events, logs, or project state. |
 | `sessionId` | Required opaque id for the already existing external session. |
+| `product` | Optional identity field. ReelTerminal's reference adapter writes `"reelterminal"` so the desktop can verify descriptor ownership during legacy-path discovery; descriptors without it are accepted when their remaining shape matches. |
 | `agent` | Required object with non-empty `name`; `version` is optional display metadata. |
 | `adapter` | Required object with non-empty `name` and `capabilityLevel` equal to `basic`, `streaming`, or `observable`. |
 
 Unknown descriptor fields MUST be ignored. The conversation descriptor is not
 the MCP descriptor. The `openreel-live-mcp` connector reads
-`~/.openreel/live-endpoint.json` for the independent MCP facade. ReelTerminal's
+`~/.reelterminal/live-endpoint.json` (legacy `~/.openreel/live-endpoint.json`
+is still discovered) for the independent MCP facade. ReelTerminal's
 conversation client reads only `conversation-endpoint.json`; it never creates,
 rewrites, or owns that file. The conversation endpoint is loopback-only,
 POST-only, and token authenticated.

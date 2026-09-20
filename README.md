@@ -308,8 +308,9 @@ still owns and starts its thin conversation adapter; the guide detects the
 private descriptor, verifies the session, and explains how to repair a missing
 or invalid adapter. Adapter authors and headless integrations can configure the
 built `apps/desktop/dist/live-mcp/index.js` MCP server manually. By default it
-reads `~/.openreel/live-endpoint.json` inside the connector process to discover
-the current loopback endpoint.
+reads `~/.reelterminal/live-endpoint.json` inside the connector process to discover
+the current loopback endpoint (an owned legacy `~/.openreel/live-endpoint.json`
+is still discovered when the canonical file is absent).
 
 The external Agent and the user remain equal peers over the same GUI project.
 The Agent can import local video/audio/images, inspect context, use stable references,

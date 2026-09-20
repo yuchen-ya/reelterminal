@@ -96,6 +96,31 @@ when both are set"）——本规则将该模式推广为全仓约定。
   活性校验冲突时显式报错或要求显式路径，禁止静默跨连另一应用/会话。
   描述符是凭据：仅在连接器/客户端进程内读取，不打印、不落日志、不复制，
   `0600` 权限与 AGENTS.md 安全规则不变。
+  实现（N03）：解析顺序统一为 显式 override（`REELTERMINAL_*` 优先、旧名
+  回退）→ 正式路径 → 兼容发现旧路径。归属校验以描述符新增的
+  `product: "reelterminal"` 字段为准；无该字段的旧描述符按"本应用家族
+  既有确切结构"（live：`{url,port,token}`；conversation：`version:1` +
+  `transport` + 回环 `/conversation` endpoint + token/sessionId/agent/
+  adapter）识别为自有。最终行为表：
+  - **兼容写回**：宿主（live 宿主进程 / conversation adapter）以正式路径
+    发布时，若旧路径存在、归属校验通过、且旧描述符端点经无凭据探测
+    （GET，不带 Authorization，仅限回环 URL）确认无存活发布者，则原子更新
+    旧描述符指向当前实例，使只读旧路径的旧版连接器/adapter 能发现新宿主；
+    宿主退出时按归属（url/token 匹配）移除。中断/重试幂等。
+  - **不写回**：旧描述符属于其他产品（`product` 显式不同）、无法识别
+    （坏 JSON/结构不符）或仍有存活发布者时，不写回、不覆盖；宿主在正式
+    路径正常服务并给出不含敏感值的日志说明。
+  - **冲突拒绝**：显式 override 指向的既有描述符 `product` 与本应用不符 →
+    宿主启动失败 / 连接器读取报错（说明指向了另一产品、如何改指）。
+    正式与旧路径同时存在且旧路径身份显式为其他产品 → 宿主以正式路径为准
+    并日志说明；连接器侧 discovery 报错要求显式路径。同属本应用家族的
+    新旧并存（如崩溃残留）一律以正式路径为准，不视为冲突。
+  - **不能安全兼容的组合**：旧描述符缺失身份字段且结构无法匹配本应用
+    家族的任何已知写入形态（含被截断/损坏的文件）——无法确认归属，按
+    拒绝处理（发现时报错并指引显式路径；写回时不动该文件）。目录型资源
+    （conversation-visual-state/）无身份字段，仅做存在性回退发现。
+  - 跨版本矩阵（新→新、新→旧、旧→新、旧路径陈旧、新旧并存冲突、写回
+    失败恢复）由隔离夹具自动化测试覆盖，不触真实用户目录、不打印凭据。
 - **持久化保留为 legacy（本轮不改物理标识）**：IndexedDB 库名
   `openreel-projects` / `openreel-agent-tasks` / `openreel-autosave` /
   `openreel-custom-fonts` / `openreel-material-library` /

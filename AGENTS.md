@@ -8,7 +8,9 @@ the live `capabilities_get` tool. Use
 [`docs/AGENT-WORKSPACE.md`](docs/AGENT-WORKSPACE.md).
 
 User-facing video creation defaults to the live desktop workflow. If
-`~/.openreel/live-endpoint.json` is absent, launch/prepare the ReelTerminal GUI
+`~/.reelterminal/live-endpoint.json` is absent (the legacy
+`~/.openreel/live-endpoint.json` location is still discovered when the
+canonical file is not there), launch/prepare the ReelTerminal GUI
 and enable Agent Session; do not silently switch to headless. Headless is only
 for an explicit headless request or a task that does not require GUI-visible
 collaboration.
@@ -18,7 +20,8 @@ user explicitly requests a new project or different settings. The open project
 is user context, not an Agent default to replace.
 
 The live endpoint descriptor is a credential, not diagnostic output. Never
-`cat`, print, log, paste, or return `~/.openreel/live-endpoint.json` or its token.
+`cat`, print, log, paste, or return `~/.reelterminal/live-endpoint.json` (or a
+discovered legacy `~/.openreel/live-endpoint.json`) or its token.
 Read it only inside the connector/client process and send the token directly in
 the loopback Authorization header. File existence alone does not prove the
 endpoint is live; probe it without echoing credentials. An unreachable file is

@@ -303,7 +303,7 @@
     "composerDisconnected": "连接外部 Agent 会话后即可在这里输入",
     "composerHint": "Enter 发送 · Shift+Enter 换行",
     "send": "发送给外部 Agent",
-    "adapterMissing": "尚未配置对话适配器。请让你的 Agent 创建 ~/.openreel/conversation-endpoint.json，然后重新连接。",
+    "adapterMissing": "尚未配置对话适配器。请让你的 Agent 创建 ~/.reelterminal/conversation-endpoint.json，然后重新连接。",
     "adapterInvalid": "对话适配器配置无效或权限不安全。请让你的 Agent 修复，并将文件权限保持为 0600。",
     "connectionFailed": "无法连接外部 Agent 对话；你仍可使用 Agent 原生聊天窗口和 ReelTerminal MCP 工具。",
     "error": {

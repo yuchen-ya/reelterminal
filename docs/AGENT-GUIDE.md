@@ -20,7 +20,9 @@ connect that Agent to the open ReelTerminal desktop project through MCP.
    node /absolute/path/to/apps/desktop/dist/live-mcp/index.js
    ```
 
-The connector reads `~/.openreel/live-endpoint.json`, forwards stdio MCP to
+The connector reads `~/.reelterminal/live-endpoint.json` (discovering an owned
+legacy `~/.openreel/live-endpoint.json` when the canonical file is absent),
+forwards stdio MCP to
 the authenticated loopback endpoint, and exposes exactly the 49 live tools
 (47 built-in verbs plus `media_import_preflight` and `media_inspect`) listed in the root
 [`SKILL.md`](../SKILL.md). Do not copy the endpoint token
