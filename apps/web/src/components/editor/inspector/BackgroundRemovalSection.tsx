@@ -153,7 +153,7 @@ export const BackgroundRemovalSection: React.FC<
       });
 
       onSettingsChange?.(newSettings);
-      window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
+      window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
     },
     [clipId, onSettingsChange],
   );

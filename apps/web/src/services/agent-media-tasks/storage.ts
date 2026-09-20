@@ -16,8 +16,11 @@
  * mutation batch, so a crash can never persist half a batch.
  */
 import type { AgentMediaTaskRecord } from "./types";
+import { LEGACY_AGENT_TASKS_DB_NAME } from "../legacy-storage-keys";
 
-export const AGENT_TASKS_DB_NAME = "openreel-agent-tasks";
+// Persisted database name — legacy registry re-export, value frozen (user
+// task history). See packages/core/src/legacy/physical-identifiers.ts.
+export const AGENT_TASKS_DB_NAME = LEGACY_AGENT_TASKS_DB_NAME;
 export const AGENT_TASKS_DB_VERSION = 1;
 export const AGENT_TASKS_STORE = "tasks";
 

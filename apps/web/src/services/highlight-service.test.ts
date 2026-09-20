@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 describe("highlight-service URL registry migration", () => {
-  it("posts highlights to OPENREEL_CLOUD_URL, honoring VITE_OPENREEL_CLOUD_URL", async () => {
+  it("posts highlights to REELTERMINAL_CLOUD_URL, honoring VITE_OPENREEL_CLOUD_URL", async () => {
     clearCloudEnv();
     vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://selfhosted.example");
     const fetchSpy = stubFetch();
@@ -76,12 +76,12 @@ describe("highlight-service URL registry migration", () => {
     clearCloudEnv();
     const fetchSpy = stubFetch();
     const { extractHighlights } = await loadService();
-    const { OPENREEL_CLOUD_URL } = await import("../config/api-endpoints");
+    const { REELTERMINAL_CLOUD_URL } = await import("../config/api-endpoints");
 
     await extractHighlights({} as AudioBuffer, []);
 
     expect(String(fetchSpy.mock.calls[0][0])).toBe(
-      `${OPENREEL_CLOUD_URL}/highlights`,
+      `${REELTERMINAL_CLOUD_URL}/highlights`,
     );
   });
 

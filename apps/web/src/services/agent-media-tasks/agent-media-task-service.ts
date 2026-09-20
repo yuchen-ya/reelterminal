@@ -12,7 +12,7 @@
  * Creation is idempotent by `requestId`: replaying the same key returns the
  * existing record untouched, mirroring the facade idempotency-ledger
  * replay semantics. Every successful change commits in one storage
- * transaction and then broadcasts `openreel:agent-media-tasks-updated` on
+ * transaction and then broadcasts `reelterminal:agent-media-tasks-updated` on
  * `window`, so open panels re-render without polling.
  */
 import { v4 as uuid } from "uuid";
@@ -47,7 +47,7 @@ import {
 } from "./storage";
 import { validateAgentTaskRecord } from "./validate";
 
-export const AGENT_MEDIA_TASKS_UPDATED_EVENT = "openreel:agent-media-tasks-updated";
+export const AGENT_MEDIA_TASKS_UPDATED_EVENT = "reelterminal:agent-media-tasks-updated";
 
 export function notifyAgentMediaTasksChanged(): void {
   if (typeof window !== "undefined") {

@@ -1,3 +1,5 @@
+import { LEGACY_LS_ONBOARDING_COMPLETE } from "../../../services/legacy-storage-keys";
+
 export interface TourStep {
   id: string;
   target: string | null;
@@ -73,4 +75,5 @@ export const TOUR_STEPS: TourStep[] = [
   },
 ];
 
-export const ONBOARDING_KEY = "openreel-onboarding-complete";
+// Persisted localStorage key — legacy registry, value frozen (tour state).
+export const ONBOARDING_KEY = LEGACY_LS_ONBOARDING_COMPLETE;

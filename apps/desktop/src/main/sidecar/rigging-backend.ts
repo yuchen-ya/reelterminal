@@ -10,6 +10,10 @@ import type {
   RiggingBackendProbe,
 } from "../../shared/ipc-contract";
 import { blenderCandidates, isExecutable } from "./blender-path";
+import {
+  LEGACY_RIGGING_HUMANOID_NAME,
+  LEGACY_RIGGING_ARMATURE_MODIFIER,
+} from "@reelterminal/core/legacy/physical-identifiers";
 
 const execFileAsync = promisify(execFile);
 const RIG_JOB_TIMEOUT_MS = 180_000;
@@ -100,7 +104,9 @@ async function resolveRigOutput(args: RigHumanoidModelArgs, workDir: string): Pr
   return outputPath;
 }
 
-function blenderRigScript(): string {
+/** Exported for the legacy-identifier drift test (N04): pins the embedded
+ * Python text to the frozen registry values. */
+export function blenderRigScript(): string {
   return String.raw`
 import argparse
 import json
@@ -127,7 +133,7 @@ def parse_args():
     parser.add_argument("--input", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--report", required=True)
-    parser.add_argument("--name", default="OpenReelHumanoid")
+    parser.add_argument("--name", default="${LEGACY_RIGGING_HUMANOID_NAME}")
     parser.add_argument("--height-meters", type=float, default=0.0)
     parser.add_argument("--overwrite-existing", action="store_true")
     return parser.parse_args(argv)
@@ -264,7 +270,7 @@ def bind_meshes_to_armature(meshes, armature_obj, warnings):
         except Exception as exc:
             warnings.append(warning("AUTO_WEIGHTS_FAILED", "warning", f"{obj.name}: {exc}"))
             if not any(mod.type == "ARMATURE" and mod.object == armature_obj for mod in obj.modifiers):
-                mod = obj.modifiers.new("OpenReel Armature", "ARMATURE")
+                mod = obj.modifiers.new("${LEGACY_RIGGING_ARMATURE_MODIFIER}", "ARMATURE")
                 mod.object = armature_obj
 
 
@@ -399,7 +405,7 @@ export async function rigHumanoidModel(
         "--report",
         reportPath,
         "--name",
-        args.name ?? "OpenReelHumanoid",
+        args.name ?? LEGACY_RIGGING_HUMANOID_NAME,
         ...(args.heightMeters ? ["--height-meters", String(args.heightMeters)] : []),
         ...(args.overwriteExisting ? ["--overwrite-existing"] : []),
       ],

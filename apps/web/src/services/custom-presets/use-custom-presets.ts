@@ -1,7 +1,7 @@
 /**
  * React binding for user-level custom presets, mirroring the custom-fonts
  * hook pattern: read a synchronous snapshot for first paint, then follow the
- * `openreel:custom-presets-updated` window event (fired by the service after
+ * `reelterminal:custom-presets-updated` window event (fired by the service after
  * every committed change, GUI- or agent-made) and re-sync from the service.
  * Panels merge the returned records with their built-in lists; built-ins
  * stay read-only.

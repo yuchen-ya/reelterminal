@@ -39,7 +39,7 @@ const isDev = import.meta.env.DEV;
  * templates, sharing, transcription, highlight AI). Only the exact
  * value `off` disables; there is deliberately no "enable" value.
  */
-export const OPENREEL_CLOUD_ENABLED =
+export const REELTERMINAL_CLOUD_ENABLED =
   readEnvAlias("VITE_REELTERMINAL_CLOUD", "VITE_OPENREEL_CLOUD")?.toLowerCase() !== "off";
 
 /**
@@ -50,7 +50,7 @@ export const OPENREEL_CLOUD_ENABLED =
  * as lower-priority compatibility aliases so existing deployments do not
  * silently change target. The newest name wins when several are set.
  */
-export const OPENREEL_CLOUD_URL =
+export const REELTERMINAL_CLOUD_URL =
   readEnvAlias("VITE_REELTERMINAL_CLOUD_URL", "VITE_OPENREEL_CLOUD_URL") ||
   env.VITE_CLOUD_API_URL ||
   (isDev ? "http://localhost:8787" : "https://api.openreel.video");
@@ -59,6 +59,6 @@ export const OPENREEL_CLOUD_URL =
  * Transcription service (GPU). Override with VITE_REELTERMINAL_TRANSCRIBE_URL
  * (legacy name VITE_OPENREEL_TRANSCRIBE_URL).
  */
-export const OPENREEL_TRANSCRIBE_URL =
+export const REELTERMINAL_TRANSCRIBE_URL =
   readEnvAlias("VITE_REELTERMINAL_TRANSCRIBE_URL", "VITE_OPENREEL_TRANSCRIBE_URL") ||
   "https://cloud.openreel.video";

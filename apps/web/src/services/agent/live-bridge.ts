@@ -337,7 +337,7 @@ async function handleApplyActions(
     // Agent edits land outside the GUI gesture paths, so nudge the preview
     // explicitly: clears processed-audio caches and forces a paused re-render
     // with the new project state.
-    window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
+    window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
 
     // Record only after the commit landed (a failed batch retries freely).
     if (idempotencyKey) {
@@ -494,7 +494,7 @@ function detach<T>(value: T): T {
   }
 }
 
-const LIVE_REVEAL_MEDIA_EVENT = "openreel:live-reveal-media";
+const LIVE_REVEAL_MEDIA_EVENT = "reelterminal:live-reveal-media";
 
 /** Locate a rendered target without trusting ids as CSS selectors. */
 function renderedEditorTarget(

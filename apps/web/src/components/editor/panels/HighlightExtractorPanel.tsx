@@ -13,8 +13,8 @@ import {
   type TranscriptWord,
 } from "@reelterminal/core";
 import {
-  OPENREEL_CLOUD_ENABLED,
-  OPENREEL_TRANSCRIBE_URL,
+  REELTERMINAL_CLOUD_ENABLED,
+  REELTERMINAL_TRANSCRIBE_URL,
 } from "../../../config/api-endpoints";
 import { t } from "../../../i18n";
 import {
@@ -65,7 +65,7 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
 
   // Build-time cloud switch: highlight analysis (and its transcription
   // prerequisite) belongs to the first-party cloud domain.
-  const cloudEnabled = OPENREEL_CLOUD_ENABLED;
+  const cloudEnabled = REELTERMINAL_CLOUD_ENABLED;
 
   const handleAnalyze = useCallback(async () => {
     if (!project) return;
@@ -102,7 +102,7 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
       setProgress(5);
 
       const transcriptionService = getTranscriptionService() || initializeTranscriptionService({
-        apiEndpoint: `${OPENREEL_TRANSCRIBE_URL}/transcribe`,
+        apiEndpoint: `${REELTERMINAL_TRANSCRIBE_URL}/transcribe`,
       });
       const subtitles = await transcriptionService.transcribeClip(
         clip,

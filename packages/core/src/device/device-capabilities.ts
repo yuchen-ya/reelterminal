@@ -1,4 +1,5 @@
 import type { NativeHardwareInfo } from "./native-profile";
+import { LEGACY_LS_DEVICE_PROFILE } from "../legacy/physical-identifiers";
 
 export type DeviceTier = "low" | "mid" | "high";
 
@@ -62,7 +63,9 @@ export interface CodecRecommendation {
   qualityRating: "good" | "better" | "best";
 }
 
-const STORAGE_KEY = "openreel_device_profile";
+// Persisted localStorage key — legacy registry, value frozen (renaming would
+// drop every user's cached device profile). See src/legacy/physical-identifiers.ts.
+const STORAGE_KEY = LEGACY_LS_DEVICE_PROFILE;
 
 export function getCpuTier(cores: number): DeviceTier {
   if (cores >= 8) return "high";

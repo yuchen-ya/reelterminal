@@ -352,7 +352,7 @@ export async function attachMaterialToProject(
     };
   }
   const mediaIdInProject = importResult.actionId;
-  if (wantClip) window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
+  if (wantClip) window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
 
   const finalState = useProjectStore.getState();
   const usage: MaterialUsage = {

@@ -221,7 +221,7 @@ export function createWorkAssetsSlice(_set: Set, get: Get): WorkAssetsSlice {
             : {}),
         };
       }
-      window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
+      window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
       return {
         ok: true,
         trackId: built.trackId,

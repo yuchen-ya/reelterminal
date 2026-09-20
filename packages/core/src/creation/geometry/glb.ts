@@ -1,5 +1,6 @@
 import { computeMeshBounds, type Mesh } from "./mesh";
 import { encodeBase64, type MeshToGltfOptions } from "./gltf";
+import { LEGACY_GEOMETRY_GENERATOR } from "../../legacy/physical-identifiers";
 
 const COMPONENT_FLOAT = 5126;
 const COMPONENT_UNSIGNED_INT = 5125;
@@ -74,7 +75,9 @@ function buildGlbJson(mesh: Mesh, binary: MeshBinary, options: MeshToGltfOptions
   const bounds = computeMeshBounds(mesh.positions);
   const vertexCount = mesh.positions.length / 3;
   const json = {
-    asset: { version: "2.0", generator: "openreel-cpu-geometry-kernel" },
+    // Legacy generator string embedded in exported assets — value frozen for
+    // provenance (legacy registry, docs/NAMING §5.4).
+    asset: { version: "2.0", generator: LEGACY_GEOMETRY_GENERATOR },
     scene: 0,
     scenes: [{ nodes: [0] }],
     nodes: [{ mesh: 0, name: options.name }],

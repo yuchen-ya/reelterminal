@@ -18,8 +18,11 @@ import type {
   MaterialJournalEntry,
   MaterialRecord,
 } from "@reelterminal/core/material/types";
+import { LEGACY_MATERIAL_LIBRARY_DB_NAME } from "../legacy-storage-keys";
 
-export const MATERIAL_LIBRARY_DB_NAME = "openreel-material-library";
+// Persisted database name — legacy registry re-export, value frozen
+// (user materials/journal/blobs). See packages/core/src/legacy/physical-identifiers.ts.
+export const MATERIAL_LIBRARY_DB_NAME = LEGACY_MATERIAL_LIBRARY_DB_NAME;
 export const MATERIAL_LIBRARY_DB_VERSION = 1;
 
 export interface MaterialStorageCommit {

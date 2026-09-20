@@ -4,8 +4,11 @@ import { initReactI18next } from "react-i18next";
 import en from "./locales/en/translation.json";
 import zhCN from "./locales/zh-CN/translation.json";
 import upstreamZh from "./locales/zh-CN/upstream-translation.json";
+import { LEGACY_LS_LOCALE } from "../services/legacy-storage-keys";
 
-export const LOCALE_STORAGE_KEY = "openreel-locale";
+// Persisted localStorage key — legacy registry, value frozen (user language
+// preference). See packages/core/src/legacy/physical-identifiers.ts.
+export const LOCALE_STORAGE_KEY = LEGACY_LS_LOCALE;
 export const SYSTEM_LANGUAGE = "system" as const;
 export const SUPPORTED_LOCALES = ["en", "zh-CN"] as const;
 

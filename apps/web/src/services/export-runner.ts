@@ -103,7 +103,7 @@ function triggerAnchorDownload(data: Blob, filename: string, onRelease?: () => v
   );
 }
 
-const OPFS_TMP_PREFIX = ".openreel-export-";
+const OPFS_TMP_PREFIX = ".reelterminal-export-";
 const OPFS_TMP_TTL_MS = 60 * 60 * 1000;
 
 type OpfsWriteHandle = FileSystemFileHandle & {

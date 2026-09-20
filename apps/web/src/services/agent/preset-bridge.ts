@@ -10,7 +10,7 @@
  * timeout→retry cannot double-apply a preset — and a key committed in one
  * project cannot replay into another after a project switch.
  *
- * Visibility: the service fires `openreel:custom-presets-updated` after
+ * Visibility: the service fires `reelterminal:custom-presets-updated` after
  * every committed change, so the GUI preset panels re-render the moment an
  * agent creates, renames, or deletes a preset — no polling either way.
  */
@@ -318,7 +318,7 @@ async function handleApply(
     }
 
     // Agent edits land outside the GUI gesture paths; nudge the preview.
-    window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
+    window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
 
     let transitionId: string | undefined;
     const first = expanded.actions[0]?.params as

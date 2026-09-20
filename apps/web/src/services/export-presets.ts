@@ -1,4 +1,5 @@
 import type { ExportPreset, AudioExportSettings } from "@reelterminal/core";
+import { LEGACY_LS_CUSTOM_EXPORT_PRESETS } from "./legacy-storage-keys";
 
 export interface PlatformExportPreset extends ExportPreset {
   platform: string;
@@ -770,7 +771,9 @@ export const ALL_EXPORT_PRESETS: PlatformExportPreset[] = [
   ...AUDIO_PRESETS,
 ];
 
-const CUSTOM_PRESETS_KEY = "openreel-custom-export-presets";
+// Persisted localStorage key — legacy registry, value frozen (user export
+// presets). See packages/core/src/legacy/physical-identifiers.ts.
+const CUSTOM_PRESETS_KEY = LEGACY_LS_CUSTOM_EXPORT_PRESETS;
 
 class ExportPresetsManager {
   private customPresets: PlatformExportPreset[] = [];

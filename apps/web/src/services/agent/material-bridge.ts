@@ -207,7 +207,7 @@ export async function handleMaterialLibraryRequest(req: {
 function notifyLibraryChanged(success: boolean): void {
   if (!success || typeof window === "undefined") return;
   try {
-    window.dispatchEvent(new CustomEvent("openreel:material-library-changed"));
+    window.dispatchEvent(new CustomEvent("reelterminal:material-library-changed"));
   } catch {
     // Never fail a committed mutation because a UI event could not fire.
   }
@@ -280,7 +280,7 @@ async function handleAttach(
         if (oldest !== undefined) ledger.delete(oldest);
       }
     }
-    window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
+    window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
     return { ok: true, result: result.value };
   });
 }

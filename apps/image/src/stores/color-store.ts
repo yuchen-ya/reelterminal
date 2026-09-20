@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+// Legacy persisted storage name (frozen value; see
+// packages/core/src/legacy/physical-identifiers.ts in the main app workspace).
+const LEGACY_LS_IMAGE_COLORS = 'openreel-image-colors';
+
 export interface CustomPalette {
   id: string;
   name: string;
@@ -112,7 +116,10 @@ export const useColorStore = create<ColorState & ColorActions>()(
       },
     }),
     {
-      name: 'openreel-image-colors',
+      // LEGACY PERSISTED STORAGE NAME — value frozen (user palettes).
+      // Registered in packages/core/src/legacy/physical-identifiers.ts
+      // (LEGACY_LS_IMAGE_COLORS); apps/image does not depend on core.
+      name: LEGACY_LS_IMAGE_COLORS,
     }
   )
 );

@@ -91,9 +91,9 @@ export function MaterialLibraryPanel() {
       void useMaterialLibraryStore.getState().refresh();
       void useMaterialLibraryStore.getState().refreshJournal();
     };
-    window.addEventListener("openreel:material-library-changed", onChanged);
+    window.addEventListener("reelterminal:material-library-changed", onChanged);
     return () =>
-      window.removeEventListener("openreel:material-library-changed", onChanged);
+      window.removeEventListener("reelterminal:material-library-changed", onChanged);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

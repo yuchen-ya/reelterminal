@@ -1,4 +1,5 @@
 import { computeMeshBounds, type Mesh } from "./mesh";
+import { LEGACY_GEOMETRY_GENERATOR } from "../../legacy/physical-identifiers";
 
 export interface GltfDocument {
   readonly asset: { readonly version: "2.0"; readonly generator: string };
@@ -86,7 +87,9 @@ export function meshToGltf(mesh: Mesh, options: MeshToGltfOptions = {}): GltfDoc
   const indexCount = mesh.indices.length;
 
   return {
-    asset: { version: "2.0", generator: "openreel-cpu-geometry-kernel" },
+    // Legacy generator string embedded in exported assets — value frozen for
+    // provenance (legacy registry, docs/NAMING §5.4).
+    asset: { version: "2.0", generator: LEGACY_GEOMETRY_GENERATOR },
     scene: 0,
     scenes: [{ nodes: [0] }],
     nodes: [{ mesh: 0, name: options.name }],

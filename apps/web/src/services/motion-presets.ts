@@ -1,4 +1,5 @@
 import { v4 as uuid } from "uuid";
+import { LEGACY_MOTION_PRESETS_DB_NAME } from "./legacy-storage-keys";
 
 export type PresetCategory = "entrance" | "exit" | "emphasis" | "transition";
 
@@ -55,7 +56,8 @@ export interface AppliedMotionPreset {
   type: "in" | "out" | "emphasis";
 }
 
-const DB_NAME = "openreel-motion-presets";
+// Persisted database name — legacy registry, value frozen (user motion presets).
+const DB_NAME = LEGACY_MOTION_PRESETS_DB_NAME;
 const DB_VERSION = 1;
 const STORE_NAME = "userPresets";
 

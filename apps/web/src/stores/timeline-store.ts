@@ -1,7 +1,9 @@
+import { LEGACY_LS_TIMELINE_WORKSPACE } from "../services/legacy-storage-keys";
 import { create } from "zustand";
 import { persist, subscribeWithSelector } from "zustand/middleware";
 
-export const TIMELINE_WORKSPACE_STORAGE_KEY = "openreel-timeline-workspace";
+// Persisted localStorage key — legacy registry, value frozen (workspace layout).
+export const TIMELINE_WORKSPACE_STORAGE_KEY = LEGACY_LS_TIMELINE_WORKSPACE;
 
 /**
  * Single source of the effective timeline zoom range (px per second).

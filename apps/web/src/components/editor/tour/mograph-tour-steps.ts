@@ -1,3 +1,5 @@
+import { LEGACY_LS_MOGRAPH_TOUR_COMPLETE } from "../../../services/legacy-storage-keys";
+
 export interface MoGraphTourStep {
   id: string;
   target: string | null;
@@ -125,4 +127,5 @@ export const MOGRAPH_TOUR_STEPS: MoGraphTourStep[] = [
   },
 ];
 
-export const MOGRAPH_TOUR_KEY = "openreel-mograph-tour-complete";
+// Persisted localStorage key — legacy registry, value frozen (tour state).
+export const MOGRAPH_TOUR_KEY = LEGACY_LS_MOGRAPH_TOUR_COMPLETE;

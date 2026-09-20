@@ -19,7 +19,7 @@ import { CaptionEditorPanel } from "../CaptionEditorPanel";
 import { AutoEditPanel } from "../../panels/AutoEditPanel";
 import { HighlightExtractorPanel } from "../../panels/HighlightExtractorPanel";
 import { InspectorSection } from "../shell/InspectorSection";
-import { OPENREEL_CLOUD_ENABLED } from "../../../../config/api-endpoints";
+import { REELTERMINAL_CLOUD_ENABLED } from "../../../../config/api-endpoints";
 import { useTranslation } from "react-i18next";
 
 export interface AiTabProps {
@@ -76,7 +76,7 @@ export const AiTab: React.FC<AiTabProps> = ({
   onCaptionWordsPerLineChange,
 }) => {
   const { t } = useTranslation();
-  const cloudTranscribeEnabled = OPENREEL_CLOUD_ENABLED;
+  const cloudTranscribeEnabled = REELTERMINAL_CLOUD_ENABLED;
   // Explicit cancel for the in-flight run: aborts the upload and the
   // result polling and resets to the idle state — no half-added
   // captions, no error, and the request is never re-issued on its own.

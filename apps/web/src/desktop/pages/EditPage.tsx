@@ -1,3 +1,4 @@
+import { LEGACY_LS_DESKTOP_MEDIA_WIDTH, LEGACY_LS_DESKTOP_INSPECTOR_WIDTH, LEGACY_LS_DESKTOP_TIMELINE_HEIGHT } from "../../services/legacy-storage-keys";
 import { AgentInspectionPanel } from "../editor/AgentInspectionPanel";
 import type { JSX } from "react";
 import type React from "react";
@@ -110,7 +111,7 @@ export function EditPage(): JSX.Element {
     max: 520,
     axis: "x",
     direction: 1,
-    storageKey: "openreel-desktop-media-w",
+    storageKey: LEGACY_LS_DESKTOP_MEDIA_WIDTH,
   });
   const inspectorW = useResizable({
     initial: 340,
@@ -118,7 +119,7 @@ export function EditPage(): JSX.Element {
     max: 560,
     axis: "x",
     direction: -1,
-    storageKey: "openreel-desktop-inspector-w",
+    storageKey: LEGACY_LS_DESKTOP_INSPECTOR_WIDTH,
   });
   const timelineH = useResizable({
     initial: 320,
@@ -126,7 +127,7 @@ export function EditPage(): JSX.Element {
     max: 640,
     axis: "y",
     direction: -1,
-    storageKey: "openreel-desktop-timeline-h",
+    storageKey: LEGACY_LS_DESKTOP_TIMELINE_HEIGHT,
   });
 
   // The optional external-session surface floats above the editor as a

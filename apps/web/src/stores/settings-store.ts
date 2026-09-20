@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { subscribeWithSelector, persist } from "zustand/middleware";
+import { LEGACY_LS_SETTINGS } from "../services/legacy-storage-keys";
 import {
   changeAppLanguage,
   getInitialLanguagePreference,
@@ -61,7 +62,9 @@ export const useSettingsStore = create<SettingsState>()(
         closeSettings: () => set({ settingsOpen: false }),
       }),
       {
-        name: "openreel-settings",
+        // Persisted storage name — legacy registry, value frozen (user
+        // settings). See packages/core/src/legacy/physical-identifiers.ts.
+        name: LEGACY_LS_SETTINGS,
         version: 3,
         migrate: (persisted, version) => {
           const next = (persisted ?? {}) as Record<string, unknown>;

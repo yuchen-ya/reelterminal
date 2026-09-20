@@ -502,14 +502,14 @@ const EffectItem: React.FC<{
     <div
       data-effect-id={effect.id}
       onDragOver={(event) => {
-        if (event.dataTransfer.types.includes("application/x-openreel-effect-order")) {
+        if (event.dataTransfer.types.includes("application/x-reelterminal-effect-order")) {
           event.preventDefault();
           event.dataTransfer.dropEffect = "move";
         }
       }}
       onDrop={(event) => {
         const sourceEffectId = event.dataTransfer.getData(
-          "application/x-openreel-effect-order",
+          "application/x-reelterminal-effect-order",
         );
         if (!sourceEffectId) return;
         event.preventDefault();
@@ -530,7 +530,7 @@ const EffectItem: React.FC<{
             onDragStart={(event) => {
               event.dataTransfer.effectAllowed = "move";
               event.dataTransfer.setData(
-                "application/x-openreel-effect-order",
+                "application/x-reelterminal-effect-order",
                 effect.id,
               );
             }}

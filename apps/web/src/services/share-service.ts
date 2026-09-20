@@ -8,8 +8,8 @@
  * to a different host.
  */
 import {
-  OPENREEL_CLOUD_ENABLED,
-  OPENREEL_CLOUD_URL,
+  REELTERMINAL_CLOUD_ENABLED,
+  REELTERMINAL_CLOUD_URL,
 } from "../config/api-endpoints";
 import { t } from "../i18n";
 import { shareBaseOrigin } from "./share-origin";
@@ -39,7 +39,7 @@ export async function uploadForSharing(
   filename: string,
   onProgress?: UploadProgressCallback,
 ): Promise<ShareResult> {
-  if (!OPENREEL_CLOUD_ENABLED) {
+  if (!REELTERMINAL_CLOUD_ENABLED) {
     // Reject before constructing FormData or the XMLHttpRequest so a
     // cloud-disabled build never issues the upload.
     throw new Error(t("cloud.shareDisabled"));
@@ -88,15 +88,15 @@ export async function uploadForSharing(
       reject(new Error("Upload was cancelled"));
     });
 
-    xhr.open("POST", `${OPENREEL_CLOUD_URL}/shares`);
+    xhr.open("POST", `${REELTERMINAL_CLOUD_URL}/shares`);
     xhr.send(formData);
   });
 }
 
 export async function getShareInfo(shareId: string): Promise<ShareInfo | null> {
-  if (!OPENREEL_CLOUD_ENABLED) return null;
+  if (!REELTERMINAL_CLOUD_ENABLED) return null;
   try {
-    const response = await fetch(`${OPENREEL_CLOUD_URL}/shares/${shareId}`);
+    const response = await fetch(`${REELTERMINAL_CLOUD_URL}/shares/${shareId}`);
 
     if (response.status === 404) {
       return null;
@@ -120,8 +120,8 @@ export async function getShareInfo(shareId: string): Promise<ShareInfo | null> {
 }
 
 export function getShareDownloadUrl(shareId: string): string {
-  if (!OPENREEL_CLOUD_ENABLED) return "";
-  return `${OPENREEL_CLOUD_URL}/shares/${shareId}/download`;
+  if (!REELTERMINAL_CLOUD_ENABLED) return "";
+  return `${REELTERMINAL_CLOUD_URL}/shares/${shareId}/download`;
 }
 
 export function getSharePageUrl(shareId: string): string {
@@ -151,9 +151,9 @@ export function isShareExpired(expiresAt: number): boolean {
 }
 
 export async function checkShareHealth(): Promise<boolean> {
-  if (!OPENREEL_CLOUD_ENABLED) return false;
+  if (!REELTERMINAL_CLOUD_ENABLED) return false;
   try {
-    const response = await fetch(`${OPENREEL_CLOUD_URL}/health`);
+    const response = await fetch(`${REELTERMINAL_CLOUD_URL}/health`);
     return response.ok;
   } catch {
     return false;

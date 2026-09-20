@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { subscribeWithSelector, persist } from "zustand/middleware";
+import { LEGACY_LS_UI_PREFERENCES } from "../services/legacy-storage-keys";
 import type { PreviewQuality } from "../components/editor/preview/preview-resolution";
 
 export type PanelId =
@@ -694,7 +695,8 @@ export const useUIStore = create<UIState>()(
         },
       }),
       {
-        name: "openreel-ui-preferences",
+        // Persisted storage name — legacy registry, value frozen (UI prefs).
+        name: LEGACY_LS_UI_PREFERENCES,
         version: 4,
         migrate: (persisted: unknown, version: number) => {
           const state = persisted as Record<string, unknown>;

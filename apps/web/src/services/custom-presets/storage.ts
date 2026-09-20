@@ -15,8 +15,11 @@
  * in the same transaction (deleting a preset is the only reclamation point).
  */
 import type { CustomPresetRecord } from "@reelterminal/core/presets/types";
+import { LEGACY_CUSTOM_PRESETS_DB_NAME } from "../legacy-storage-keys";
 
-export const CUSTOM_PRESETS_DB_NAME = "openreel-custom-presets";
+// Persisted database name — legacy registry re-export, value frozen
+// (user custom presets). See packages/core/src/legacy/physical-identifiers.ts.
+export const CUSTOM_PRESETS_DB_NAME = LEGACY_CUSTOM_PRESETS_DB_NAME;
 export const CUSTOM_PRESETS_DB_VERSION = 1;
 export const CUSTOM_PRESETS_STORE = "presets";
 

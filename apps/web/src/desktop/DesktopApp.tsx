@@ -52,7 +52,7 @@ export function DesktopApp(): JSX.Element {
         case "newProject":
         case "open":
         case "export":
-          window.dispatchEvent(new CustomEvent(`openreel:menu:${id}`));
+          window.dispatchEvent(new CustomEvent(`reelterminal:menu:${id}`));
           break;
         case "settings":
           useSettingsStore.getState().openSettings();

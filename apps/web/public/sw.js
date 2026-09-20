@@ -10,6 +10,13 @@
  * - 35.4: Inform user that AI requires internet connectivity
  */
 
+// LEGACY PERSISTED CACHE NAMES (N04) — this file is standalone plain JS and
+// cannot import the central registry; its values must stay in sync with
+// packages/core/src/legacy/physical-identifiers.ts (pinned there by a
+// source-reading drift test). Renaming orphans user caches: the retention
+// cleanup below matches the "openreel-" prefix and could no longer delete
+// caches written under an older name, leaving them until quota eviction.
+// docs/NAMING-AND-COMPATIBILITY.md §4 "持久化保留为 legacy".
 const CACHE_NAME = "openreel-v2";
 const STATIC_CACHE_NAME = "openreel-static-v2";
 const DYNAMIC_CACHE_NAME = "openreel-dynamic-v2";

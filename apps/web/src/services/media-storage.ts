@@ -1,5 +1,10 @@
 import { StorageEngine } from "@reelterminal/core";
 import type { MediaRecord, MediaMetadata } from "@reelterminal/core";
+import {
+  LEGACY_AUTO_SAVE_DB_NAME,
+  LEGACY_PROJECT_DB_NAME,
+  LEGACY_TEMPLATE_DB_NAME,
+} from "./legacy-storage-keys";
 
 const storage = new StorageEngine();
 
@@ -85,7 +90,14 @@ export async function getStorageStats(): Promise<{
 export async function clearAllStorage(): Promise<void> {
   await storage.clearAllData();
 
-  const databasesToDelete = ["openreel-autosave", "openreel-projects", "openreel-templates"];
+  // Legacy database names — must match the frozen registry
+  // (packages/core/src/legacy/physical-identifiers.ts) or old data survives
+  // the "clear all" action.
+  const databasesToDelete = [
+    LEGACY_AUTO_SAVE_DB_NAME,
+    LEGACY_PROJECT_DB_NAME,
+    LEGACY_TEMPLATE_DB_NAME,
+  ];
   await Promise.allSettled(
     databasesToDelete.map(
       (dbName) =>

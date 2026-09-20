@@ -215,7 +215,7 @@ describe("handleMaterialLibraryRequest", () => {
 
   it("dispatches a library-changed window event after mutations", async () => {
     const listener = vi.fn();
-    window.addEventListener("openreel:material-library-changed", listener);
+    window.addEventListener("reelterminal:material-library-changed", listener);
     await handleMaterialLibraryRequest({
       verb: "create",
       params: { kind: "link", url: "https://example.com/evt" },
@@ -224,7 +224,7 @@ describe("handleMaterialLibraryRequest", () => {
     // Reads never fire it.
     await handleMaterialLibraryRequest({ verb: "list", params: {} });
     expect(listener).toHaveBeenCalledTimes(1);
-    window.removeEventListener("openreel:material-library-changed", listener);
+    window.removeEventListener("reelterminal:material-library-changed", listener);
   });
 
   it("buckets the attach ledger per project so a key replays only in its own project", async () => {

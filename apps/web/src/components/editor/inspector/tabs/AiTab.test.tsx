@@ -35,7 +35,7 @@ vi.mock("../../../../config/api-endpoints", async (importOriginal) => {
     >();
   return {
     ...actual,
-    get OPENREEL_CLOUD_ENABLED() {
+    get REELTERMINAL_CLOUD_ENABLED() {
       return stubs.cloudEnabled.value;
     },
   };

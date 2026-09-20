@@ -1253,8 +1253,8 @@ const TRANSITIONS: TransitionDef[] = [
 ];
 
 // ─── Drag payload helpers ──────────────────────────────────────────
-export const EFFECT_DRAG_MIME = "application/x-openreel-effect";
-export const TRANSITION_DRAG_MIME = "application/x-openreel-transition";
+export const EFFECT_DRAG_MIME = "application/x-reelterminal-effect";
+export const TRANSITION_DRAG_MIME = "application/x-reelterminal-transition";
 
 const PREVIEW_CYCLE_MS = 1800;
 

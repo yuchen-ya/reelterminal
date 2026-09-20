@@ -330,7 +330,7 @@ const MediaThumbnail: React.FC<{
           if (result.ok) {
             toast.success(t("material.savedToLibrary"), result.material?.title ?? "");
             window.dispatchEvent(
-              new CustomEvent("openreel:material-library-changed"),
+              new CustomEvent("reelterminal:material-library-changed"),
             );
           } else {
             toast.error(
@@ -671,9 +671,9 @@ export const AssetsPanel: React.FC = () => {
       if (typeof id !== "string" || id.length === 0) return;
       setActiveTabRaw("media");
     };
-    window.addEventListener("openreel:live-reveal-media", handleLiveReveal);
+    window.addEventListener("reelterminal:live-reveal-media", handleLiveReveal);
     return () =>
-      window.removeEventListener("openreel:live-reveal-media", handleLiveReveal);
+      window.removeEventListener("reelterminal:live-reveal-media", handleLiveReveal);
   }, []);
 
   const [isDragOver, setIsDragOver] = useState(false);

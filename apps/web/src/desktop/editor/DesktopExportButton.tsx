@@ -59,8 +59,8 @@ export function DesktopExportButton(): JSX.Element {
 
   useEffect(() => {
     const open = () => setIsDialogOpen(true);
-    window.addEventListener("openreel:menu:export", open);
-    return () => window.removeEventListener("openreel:menu:export", open);
+    window.addEventListener("reelterminal:menu:export", open);
+    return () => window.removeEventListener("reelterminal:menu:export", open);
   }, []);
 
   const handleExport = useCallback(

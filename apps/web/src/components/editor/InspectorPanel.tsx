@@ -18,8 +18,8 @@ import {
   getAnimationStyleDisplayName,
 } from "@reelterminal/core";
 import {
-  OPENREEL_CLOUD_ENABLED,
-  OPENREEL_TRANSCRIBE_URL,
+  REELTERMINAL_CLOUD_ENABLED,
+  REELTERMINAL_TRANSCRIBE_URL,
 } from "../../config/api-endpoints";
 import {
   classifyCloudError,
@@ -495,7 +495,7 @@ export const InspectorPanel: React.FC = () => {
       try {
         await waitForEffectApplicationPaint();
         await apply();
-        window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
+        window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
         await waitForEffectApplicationPaint();
       } finally {
         finishEffectApplication();
@@ -644,7 +644,7 @@ export const InspectorPanel: React.FC = () => {
   const handleGenerateSubtitles = useCallback(async () => {
     if (!selectedClip || isTranscribing) return;
 
-    if (!OPENREEL_CLOUD_ENABLED) {
+    if (!REELTERMINAL_CLOUD_ENABLED) {
       // Cloud-disabled build: surface the explanation through the existing
       // error progress channel and return before any service is
       // constructed, so no audio extraction or upload can start.
@@ -675,7 +675,7 @@ export const InspectorPanel: React.FC = () => {
 
     try {
       const transcriptionService = initializeTranscriptionService({
-        apiEndpoint: `${OPENREEL_TRANSCRIBE_URL}/transcribe`,
+        apiEndpoint: `${REELTERMINAL_TRANSCRIBE_URL}/transcribe`,
         targetLanguage: targetLanguage !== "none" ? targetLanguage : undefined,
       });
 

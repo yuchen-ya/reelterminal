@@ -14,7 +14,10 @@
  * the task in `awaiting_import` instead of failing it on a guess.
  */
 
-const PROJECT_DB_NAME = "openreel-projects";
+import { LEGACY_PROJECT_DB_NAME } from "../legacy-storage-keys";
+
+// Persisted database name — legacy registry, value frozen (user projects).
+const PROJECT_DB_NAME = LEGACY_PROJECT_DB_NAME;
 const PROJECTS_STORE = "projects";
 
 export type ProjectExistence =

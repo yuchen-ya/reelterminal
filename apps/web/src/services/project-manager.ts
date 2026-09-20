@@ -2,6 +2,7 @@ import type { Project, ProjectSettings } from "@reelterminal/core";
 import { normalizeProjectStoredFields } from "@reelterminal/core";
 import { v4 as uuidv4 } from "uuid";
 import { t as ti } from "../i18n";
+import { LEGACY_PROJECT_DB_NAME } from "./legacy-storage-keys";
 
 interface FilePickerAcceptType {
   description: string;
@@ -47,7 +48,8 @@ function isNativeRef(ref: unknown): ref is NativeFileRef {
   );
 }
 
-const PROJECT_DB_NAME = "openreel-projects";
+// Persisted database name — legacy registry, value frozen (user projects).
+const PROJECT_DB_NAME = LEGACY_PROJECT_DB_NAME;
 const PROJECT_DB_VERSION = 1;
 const PROJECTS_STORE = "projects";
 const RECENT_STORE = "recent";

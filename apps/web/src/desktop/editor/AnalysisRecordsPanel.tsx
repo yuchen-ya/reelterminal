@@ -160,7 +160,7 @@ export function AnalysisRecordsPanel() {
     timeline.pause();
     timeline.seekTo(location.timelineSec);
     window.dispatchEvent(
-      new CustomEvent("openreel:live-reveal-media", {
+      new CustomEvent("reelterminal:live-reveal-media", {
         detail: { id: detail.subject.mediaId },
       }),
     );

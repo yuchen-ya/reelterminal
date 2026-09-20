@@ -33,12 +33,12 @@ describe("api-endpoints cloud registry", () => {
     clearCloudEnv();
     const registry = await loadRegistry();
 
-    expect(registry.OPENREEL_CLOUD_ENABLED).toBe(true);
+    expect(registry.REELTERMINAL_CLOUD_ENABLED).toBe(true);
     const isDev = import.meta.env.DEV;
-    expect(registry.OPENREEL_CLOUD_URL).toBe(
+    expect(registry.REELTERMINAL_CLOUD_URL).toBe(
       isDev ? "http://localhost:8787" : "https://api.openreel.video",
     );
-    expect(registry.OPENREEL_TRANSCRIBE_URL).toBe(
+    expect(registry.REELTERMINAL_TRANSCRIBE_URL).toBe(
       "https://cloud.openreel.video",
     );
   });
@@ -50,10 +50,10 @@ describe("api-endpoints cloud registry", () => {
       vi.stubEnv("VITE_OPENREEL_CLOUD", value);
       const registry = await loadRegistry();
 
-      expect(registry.OPENREEL_CLOUD_ENABLED).toBe(false);
+      expect(registry.REELTERMINAL_CLOUD_ENABLED).toBe(false);
       // Opting out must not change where a re-enabled build would point.
       const isDev = import.meta.env.DEV;
-      expect(registry.OPENREEL_CLOUD_URL).toBe(
+      expect(registry.REELTERMINAL_CLOUD_URL).toBe(
         isDev ? "http://localhost:8787" : "https://api.openreel.video",
       );
     },
@@ -66,7 +66,7 @@ describe("api-endpoints cloud registry", () => {
       vi.stubEnv("VITE_OPENREEL_CLOUD", value);
       const registry = await loadRegistry();
 
-      expect(registry.OPENREEL_CLOUD_ENABLED).toBe(true);
+      expect(registry.REELTERMINAL_CLOUD_ENABLED).toBe(true);
     },
   );
 
@@ -75,7 +75,7 @@ describe("api-endpoints cloud registry", () => {
     vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://cloud.example.dev");
     const registry = await loadRegistry();
 
-    expect(registry.OPENREEL_CLOUD_URL).toBe("https://cloud.example.dev");
+    expect(registry.REELTERMINAL_CLOUD_URL).toBe("https://cloud.example.dev");
   });
 
   it("still honors VITE_CLOUD_API_URL as a compatibility alias", async () => {
@@ -83,7 +83,7 @@ describe("api-endpoints cloud registry", () => {
     vi.stubEnv("VITE_CLOUD_API_URL", "https://legacy.example.dev");
     const registry = await loadRegistry();
 
-    expect(registry.OPENREEL_CLOUD_URL).toBe("https://legacy.example.dev");
+    expect(registry.REELTERMINAL_CLOUD_URL).toBe("https://legacy.example.dev");
   });
 
   it("prefers VITE_OPENREEL_CLOUD_URL over the legacy alias", async () => {
@@ -92,7 +92,7 @@ describe("api-endpoints cloud registry", () => {
     vi.stubEnv("VITE_CLOUD_API_URL", "https://legacy.example.dev");
     const registry = await loadRegistry();
 
-    expect(registry.OPENREEL_CLOUD_URL).toBe("https://cloud.example.dev");
+    expect(registry.REELTERMINAL_CLOUD_URL).toBe("https://cloud.example.dev");
   });
 
   it("treats an empty override like a missing one and falls back to the default", async () => {
@@ -102,7 +102,7 @@ describe("api-endpoints cloud registry", () => {
     const registry = await loadRegistry();
 
     const isDev = import.meta.env.DEV;
-    expect(registry.OPENREEL_CLOUD_URL).toBe(
+    expect(registry.REELTERMINAL_CLOUD_URL).toBe(
       isDev ? "http://localhost:8787" : "https://api.openreel.video",
     );
   });
@@ -112,7 +112,7 @@ describe("api-endpoints cloud registry", () => {
     vi.stubEnv("VITE_OPENREEL_TRANSCRIBE_URL", "https://gpu.example.dev");
     const registry = await loadRegistry();
 
-    expect(registry.OPENREEL_TRANSCRIBE_URL).toBe("https://gpu.example.dev");
+    expect(registry.REELTERMINAL_TRANSCRIBE_URL).toBe("https://gpu.example.dev");
   });
 });
 
@@ -143,7 +143,7 @@ describe("api-endpoints env alias precedence (N02)", () => {
     clearAliasEnv();
     vi.stubEnv("VITE_REELTERMINAL_CLOUD", "off");
     const registry = await loadRegistry();
-    expect(registry.OPENREEL_CLOUD_ENABLED).toBe(false);
+    expect(registry.REELTERMINAL_CLOUD_ENABLED).toBe(false);
   });
 
   it("prefers the new name when both VITE_REELTERMINAL_CLOUD and VITE_OPENREEL_CLOUD are set", async () => {
@@ -151,14 +151,14 @@ describe("api-endpoints env alias precedence (N02)", () => {
     vi.stubEnv("VITE_REELTERMINAL_CLOUD", ""); // new name set-and-empty: cloud stays enabled
     vi.stubEnv("VITE_OPENREEL_CLOUD", "off");
     const registry = await loadRegistry();
-    expect(registry.OPENREEL_CLOUD_ENABLED).toBe(true);
+    expect(registry.REELTERMINAL_CLOUD_ENABLED).toBe(true);
   });
 
   it("falls back to the legacy VITE_OPENREEL_CLOUD_URL when the new URL name is unset", async () => {
     clearAliasEnv();
     vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://legacy.example.dev");
     const registry = await loadRegistry();
-    expect(registry.OPENREEL_CLOUD_URL).toBe("https://legacy.example.dev");
+    expect(registry.REELTERMINAL_CLOUD_URL).toBe("https://legacy.example.dev");
   });
 
   it("lets VITE_REELTERMINAL_CLOUD_URL win over both legacy aliases", async () => {
@@ -167,7 +167,7 @@ describe("api-endpoints env alias precedence (N02)", () => {
     vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://legacy.example.dev");
     vi.stubEnv("VITE_CLOUD_API_URL", "https://older.example.dev");
     const registry = await loadRegistry();
-    expect(registry.OPENREEL_CLOUD_URL).toBe("https://new.example.dev");
+    expect(registry.REELTERMINAL_CLOUD_URL).toBe("https://new.example.dev");
   });
 
   it("new URL name set-and-empty keeps its empty semantics and never falls back to the legacy name", async () => {
@@ -178,7 +178,7 @@ describe("api-endpoints env alias precedence (N02)", () => {
     vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://legacy.example.dev");
     const registry = await loadRegistry();
     const isDev = import.meta.env.DEV;
-    expect(registry.OPENREEL_CLOUD_URL).toBe(
+    expect(registry.REELTERMINAL_CLOUD_URL).toBe(
       isDev ? "http://localhost:8787" : "https://api.openreel.video",
     );
   });
@@ -187,6 +187,6 @@ describe("api-endpoints env alias precedence (N02)", () => {
     clearAliasEnv();
     vi.stubEnv("VITE_REELTERMINAL_TRANSCRIBE_URL", "https://gpu.example.dev");
     const registry = await loadRegistry();
-    expect(registry.OPENREEL_TRANSCRIBE_URL).toBe("https://gpu.example.dev");
+    expect(registry.REELTERMINAL_TRANSCRIBE_URL).toBe("https://gpu.example.dev");
   });
 });

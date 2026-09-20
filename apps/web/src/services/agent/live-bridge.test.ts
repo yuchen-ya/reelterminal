@@ -708,10 +708,10 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
     expect(undoSize()).toBeGreaterThan(0);
   });
 
-  it("applyActions dispatches openreel:preview-invalidate after a successful batch", async () => {
+  it("applyActions dispatches reelterminal:preview-invalidate after a successful batch", async () => {
     const seen: string[] = [];
-    const listener = () => seen.push("openreel:preview-invalidate");
-    window.addEventListener("openreel:preview-invalidate", listener);
+    const listener = () => seen.push("reelterminal:preview-invalidate");
+    window.addEventListener("reelterminal:preview-invalidate", listener);
     try {
       const res = await handleLiveBridgeRequest(
         req("applyActions", {
@@ -719,9 +719,9 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
         }),
       );
       expect(res.ok).toBe(true);
-      expect(seen).toEqual(["openreel:preview-invalidate"]);
+      expect(seen).toEqual(["reelterminal:preview-invalidate"]);
     } finally {
-      window.removeEventListener("openreel:preview-invalidate", listener);
+      window.removeEventListener("reelterminal:preview-invalidate", listener);
     }
   });
 

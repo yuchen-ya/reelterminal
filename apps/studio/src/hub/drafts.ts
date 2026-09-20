@@ -1,8 +1,11 @@
 import { openDB, type IDBPDatabase } from "idb";
 import type { Scene } from "../effect/scene";
 import type { FilterDoc } from "../filter/types";
+import { LEGACY_IDB_STUDIO_DRAFTS } from "@reelterminal/core/legacy/physical-identifiers";
 
-const DB_NAME = "openreel-studio";
+// Persisted database name — legacy registry, value frozen (user drafts).
+// See packages/core/src/legacy/physical-identifiers.ts.
+const DB_NAME = LEGACY_IDB_STUDIO_DRAFTS;
 const STORE = "drafts";
 const DB_VERSION = 1;
 

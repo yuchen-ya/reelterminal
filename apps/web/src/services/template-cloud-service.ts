@@ -4,10 +4,10 @@ import type {
   ScriptableTemplate,
 } from "@reelterminal/core";
 
-import { OPENREEL_CLOUD_ENABLED, OPENREEL_CLOUD_URL } from "../config/api-endpoints";
+import { REELTERMINAL_CLOUD_ENABLED, REELTERMINAL_CLOUD_URL } from "../config/api-endpoints";
 import { t } from "../i18n";
 
-const CLOUD_API_URL = OPENREEL_CLOUD_URL;
+const CLOUD_API_URL = REELTERMINAL_CLOUD_URL;
 
 export interface CloudTemplate extends TemplateSummary {
   author?: string;
@@ -26,7 +26,7 @@ export class TemplateCloudService {
    * and the UI is expected to explain the disabled state.
    */
   isCloudEnabled(): boolean {
-    return OPENREEL_CLOUD_ENABLED;
+    return REELTERMINAL_CLOUD_ENABLED;
   }
 
   private disabledError(): string {
@@ -34,7 +34,7 @@ export class TemplateCloudService {
   }
 
   async listTemplates(): Promise<CloudTemplate[]> {
-    if (!OPENREEL_CLOUD_ENABLED) return [];
+    if (!REELTERMINAL_CLOUD_ENABLED) return [];
     try {
       const response = await fetch(`${this.apiUrl}/templates`);
       if (!response.ok) {
@@ -61,7 +61,7 @@ export class TemplateCloudService {
     templates: CloudTemplate[];
     failed: boolean;
   }> {
-    if (!OPENREEL_CLOUD_ENABLED) return { templates: [], failed: false };
+    if (!REELTERMINAL_CLOUD_ENABLED) return { templates: [], failed: false };
     try {
       const response = await fetch(`${this.apiUrl}/templates`);
       if (!response.ok) {
@@ -76,7 +76,7 @@ export class TemplateCloudService {
   }
 
   async getTemplate(id: string): Promise<Template | null> {
-    if (!OPENREEL_CLOUD_ENABLED) return null;
+    if (!REELTERMINAL_CLOUD_ENABLED) return null;
     try {
       const response = await fetch(`${this.apiUrl}/templates/${id}`);
       if (!response.ok) {
@@ -93,7 +93,7 @@ export class TemplateCloudService {
   async uploadTemplate(
     template: Template,
   ): Promise<{ success: boolean; error?: string }> {
-    if (!OPENREEL_CLOUD_ENABLED) {
+    if (!REELTERMINAL_CLOUD_ENABLED) {
       return { success: false, error: this.disabledError() };
     }
     try {
@@ -124,7 +124,7 @@ export class TemplateCloudService {
   async deleteTemplate(
     id: string,
   ): Promise<{ success: boolean; error?: string }> {
-    if (!OPENREEL_CLOUD_ENABLED) {
+    if (!REELTERMINAL_CLOUD_ENABLED) {
       return { success: false, error: this.disabledError() };
     }
     try {
@@ -149,7 +149,7 @@ export class TemplateCloudService {
   }
 
   async checkHealth(): Promise<boolean> {
-    if (!OPENREEL_CLOUD_ENABLED) return false;
+    if (!REELTERMINAL_CLOUD_ENABLED) return false;
     try {
       const response = await fetch(`${this.apiUrl}/health`);
       return response.ok;
@@ -159,7 +159,7 @@ export class TemplateCloudService {
   }
 
   async listScriptableTemplates(): Promise<ScriptableTemplate[]> {
-    if (!OPENREEL_CLOUD_ENABLED) return [];
+    if (!REELTERMINAL_CLOUD_ENABLED) return [];
     try {
       const response = await fetch(`${this.apiUrl}/templates/scriptable`);
       if (!response.ok) {
@@ -185,7 +185,7 @@ export class TemplateCloudService {
     templates: ScriptableTemplate[];
     failed: boolean;
   }> {
-    if (!OPENREEL_CLOUD_ENABLED) return { templates: [], failed: false };
+    if (!REELTERMINAL_CLOUD_ENABLED) return { templates: [], failed: false };
     try {
       const response = await fetch(`${this.apiUrl}/templates/scriptable`);
       if (!response.ok) {
@@ -200,7 +200,7 @@ export class TemplateCloudService {
   }
 
   async getScriptableTemplate(id: string): Promise<ScriptableTemplate | null> {
-    if (!OPENREEL_CLOUD_ENABLED) return null;
+    if (!REELTERMINAL_CLOUD_ENABLED) return null;
     try {
       const response = await fetch(`${this.apiUrl}/templates/scriptable/${id}`);
       if (!response.ok) {

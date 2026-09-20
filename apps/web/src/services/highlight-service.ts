@@ -4,7 +4,7 @@ import {
   type TranscriptWord,
   type AudioSegmentMetrics,
 } from "@reelterminal/core";
-import { OPENREEL_CLOUD_URL } from "../config/api-endpoints";
+import { REELTERMINAL_CLOUD_URL } from "../config/api-endpoints";
 
 export interface HighlightResult {
   start: number;
@@ -38,7 +38,7 @@ type ProgressCallback = (phase: string, progress: number, message: string) => vo
  * other first-party cloud service (previously it always pointed at
  * production).
  */
-const API_BASE = OPENREEL_CLOUD_URL;
+const API_BASE = REELTERMINAL_CLOUD_URL;
 
 // Same budget as the cloud transcription upload: the request must fail
 // fast with an understandable timeout instead of hanging on the browser

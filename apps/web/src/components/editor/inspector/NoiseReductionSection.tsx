@@ -359,7 +359,7 @@ export const NoiseReductionSection: React.FC<NoiseReductionSectionProps> = ({
         toggleAudioEffect(audioTargetClipId, existingEffectId, true);
         setAudioEffectPreviewBypass(audioTargetClipId, existingEffectId, false);
         setEnabled(true);
-        window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
+        window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
         return existingEffectId;
       }
 
@@ -372,7 +372,7 @@ export const NoiseReductionSection: React.FC<NoiseReductionSectionProps> = ({
       setEffectId(applyResult.effectId);
       setAudioEffectPreviewBypass(audioTargetClipId, applyResult.effectId, false);
       setEnabled(true);
-      window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
+      window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
       return applyResult.effectId;
     },
     [audioTargetClipId, effectId, setAudioEffectPreviewBypass, toggleAudioEffect],
@@ -393,7 +393,7 @@ export const NoiseReductionSection: React.FC<NoiseReductionSectionProps> = ({
         }
       } else if (effectId) {
         toggleAudioEffect(audioTargetClipId, effectId, newEnabled);
-        window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
+        window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
       }
 
       setEnabled(newEnabled);
@@ -416,7 +416,7 @@ export const NoiseReductionSection: React.FC<NoiseReductionSectionProps> = ({
 
         if (effectId && enabled) {
           bridge.updateNoiseReduction(audioTargetClipId, effectId, newConfig);
-          window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
+          window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
         }
 
         return newConfig;
@@ -618,7 +618,7 @@ export const NoiseReductionSection: React.FC<NoiseReductionSectionProps> = ({
       }
 
       setAudioEffectPreviewBypass(audioTargetClipId, effectId, mode === "original");
-      window.dispatchEvent(new CustomEvent("openreel:preview-invalidate"));
+      window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
     },
     [audioTargetClipId, effectId, setAudioEffectPreviewBypass],
   );

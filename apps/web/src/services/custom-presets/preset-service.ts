@@ -8,7 +8,7 @@
  * being silently overwritten.
  *
  * Every successful change commits in one storage transaction and then
- * broadcasts `openreel:custom-presets-updated` on `window`, so open panels
+ * broadcasts `reelterminal:custom-presets-updated` on `window`, so open panels
  * re-render without any polling. There is deliberately NO undo journal:
  * deleting a preset is final, and applied projects are unaffected by
  * deletion because application copies payloads by value.
@@ -28,7 +28,7 @@ import {
 } from "@reelterminal/core/presets/validate";
 import { createIdbPresetStorage, PresetStorageUnavailableError, type PresetStorage } from "./storage";
 
-export const CUSTOM_PRESETS_UPDATED_EVENT = "openreel:custom-presets-updated";
+export const CUSTOM_PRESETS_UPDATED_EVENT = "reelterminal:custom-presets-updated";
 
 export function notifyPresetsChanged(): void {
   if (typeof window !== "undefined") {

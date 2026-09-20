@@ -39,6 +39,7 @@ import type {
   ProjectMarker,
   ProjectMarkersState,
 } from "@reelterminal/core/types/project";
+import { LEGACY_CHECKPOINT_FORMAT } from "@reelterminal/core/legacy/physical-identifiers";
 
 import { FACADE_CONTRACT_VERSION, TRACK_TYPES } from "./types";
 import { FacadeError } from "./errors";
@@ -63,7 +64,10 @@ import { PROJECT_SETTINGS_SCHEMA } from "./verb-schemas";
 /* Format constants                                                    */
 /* ------------------------------------------------------------------ */
 
-export const CHECKPOINT_FORMAT = "openreel-project" as const;
+// Persisted checkpoint format string — legacy registry, value frozen (it is a
+// format-compatibility gate: renaming makes every existing checkpoint
+// unreadable). See packages/core/src/legacy/physical-identifiers.ts.
+export const CHECKPOINT_FORMAT = LEGACY_CHECKPOINT_FORMAT;
 export const CHECKPOINT_FORMAT_VERSION = 2 as const;
 /** The only supported document version in this slice (10.4 step 2). */
 export const SUPPORTED_CHECKPOINT_FORMAT_VERSIONS: readonly number[] = [

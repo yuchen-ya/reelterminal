@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
+import {
+  LEGACY_CUSTOM_FONTS_DB_NAME,
+} from "../../../services/legacy-storage-keys";
 
-const CUSTOM_FONT_EVENT = "openreel:custom-fonts-updated";
+const CUSTOM_FONT_EVENT = "reelterminal:custom-fonts-updated";
 
-const DB_NAME = "openreel-custom-fonts";
+// Persisted database name — legacy registry, value frozen (user font uploads).
+const DB_NAME = LEGACY_CUSTOM_FONTS_DB_NAME;
 const DB_VERSION = 1;
 const STORE_FONTS = "fonts";
 

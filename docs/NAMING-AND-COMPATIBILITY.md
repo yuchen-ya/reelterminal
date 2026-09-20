@@ -136,6 +136,18 @@ when both are set"）——本规则将该模式推广为全仓约定。
   schema，先写逐项迁移设计（检测 → 复制 → 验证 → 切换 → 失败恢复，幂等、
   多标签页并发、配额/中断、blob/journal 引用保持），经独立审查后实现；
   不先删旧库，不要求用户清缓存。
+  实现（N04）：物理标识集中注册于
+  `packages/core/src/legacy/physical-identifiers.ts`（web 渲染层经
+  `apps/web/src/services/legacy-storage-keys.ts` 再导出；`public/sw.js` 为
+  独立 plain JS，以紧邻注释块指向注册模块并由源码读取测试钉住——值必须与
+  注册模块同步，改名即孤立用户缓存）。调用侧一律 import 常量、不重复字面量；
+  每个常量有漂移防护测试断言其等于历史字面量
+  （`packages/core/src/legacy/physical-identifiers.test.ts`）。旧数据可读性
+  由 legacy 标识回归夹具验证：以 legacy 常量建库写数据 → 重新 open 读回 →
+  编辑 → 保存重开 往返，及 localStorage 设置保全往返
+  （`apps/web/src/services/legacy-identifiers.test.ts`、
+  `apps/web/src/services/legacy-settings-roundtrip.test.ts`）。**声明：这是
+  legacy 标识回归测试，不是数据迁移测试**——本轮无任何迁移。
 - **安装身份不动**：appId `video.reelterminal.desktop`、productName
   `ReelTerminal`、artifactName、自动更新源已是 reelterminal 身份。Windows
   安装/更新身份不是纯文案，不随品牌任务调整。
@@ -222,10 +234,11 @@ when both are set"）——本规则将该模式推广为全仓约定。
 3. `README.md` 第一轮兼容政策原文（`@openreel/*`、`window.openreel`、
    `openreel-*` 永久保留）已被本文档收窄取代；README / CONTRIBUTING 中的
    政策段落需由品牌与文档任务同步改写，改写完成前以本文档为准。
-4. 约 130 处 `OpenReel*` TypeScript 类型名镜像 `window.openreel` 桥。桥接改
-   主名后类型层需新增 `ReelTerminal*` 主声明 + `OpenReel*` deprecated 别名
-   声明；存量类型名是否批量重命名未在决策表中明确，由桥接实现任务按
-   "同一实现、不双份维护"原则裁决。
+4. 【已裁决（N02）】约 130 处 `OpenReel*` TypeScript 类型名镜像 `window.openreel`
+   桥。裁决：**保留**——两个桥接键共享同一 `ReelTerminalDesktopBridge` 类型
+   （不双份维护），体内 `OpenReel*` 成员类型为零外部表面的内部 TS 标识，
+   批量改名属纯机械扰动且稀释"类型镜像桥"注释语义；如需统一另立机械卡并
+   在 naming-lint 登记（依据与理由见 N02 实施报告 §6.1）。
 5. i18n 中 6 处 "OpenReel cloud" 用户可见文案指向真实第三方云服务：不得改为
    "ReelTerminal cloud"（错误归因）。候选方案（保留服务方归因或中性化文案）
    待品牌任务裁决；域名与披露事实不变。
@@ -233,5 +246,7 @@ when both are set"）——本规则将该模式推广为全仓约定。
    源码迁移落地后必须改 JSON 源重新生成并重新校验，不能只改图内字符串。
 7. motion 预设默认文本 `OpenReel` 改为 `ReelTerminal` 会破坏
    `packages/core` 既有文本预设测试断言，需同批更新测试。
-8. doctor JSON 的 `transport.name` 是机器可读输出，历史 evidence 中存有旧值；
-   其别名/版本说明策略随 CLI 兼容任务细化。
+8. 【已裁决（N02）】doctor JSON 的 `transport.name` 是机器可读输出，现值
+   `"reelterminal-agent"`（`packages/agent-transport/src/doctor.ts`），源码
+   注释记录历史证据存有旧值 `"agent-video"` 且 CLI 命令名保留该薄别名，
+   消费者可据此重新识别二进制；别名/版本说明即按此受测契约维护。

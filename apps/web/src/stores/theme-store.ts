@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { LEGACY_LS_THEME } from "../services/legacy-storage-keys";
 
 export type ThemeMode = "light" | "dark" | "auto";
 
@@ -55,7 +56,8 @@ export const useThemeStore = create<ThemeState>()(
       },
     }),
     {
-      name: "openreel-theme",
+      // Persisted storage name — legacy registry, value frozen (theme prefs).
+      name: LEGACY_LS_THEME,
       onRehydrateStorage: () => (state) => {
         if (state) {
           const isDark = calculateIsDark(state.mode);
