@@ -1,5 +1,5 @@
 // Native parity test for the creation-core C ABI.
-// Verifies orc_bake_box matches the @openreel/core/creation CPU reference
+// Verifies orc_bake_box matches the @reelterminal/core/creation CPU reference
 // (a 2x2x2 box: 24 vertices, 12 triangles, bounds [-1,1]^3).
 
 #include "creation_core.h"

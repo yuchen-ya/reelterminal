@@ -12,7 +12,7 @@ import {
   createDefaultMotionGradientFill,
   type MotionComposition,
   type MotionShapeLayer,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { createEmptyProject } from "../../stores/project/project-helpers";
 import { useProjectStore } from "../../stores/project-store";
 import { useMotionStore } from "../stores/motion-store";

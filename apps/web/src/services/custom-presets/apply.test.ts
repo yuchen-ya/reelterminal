@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import type { Project } from "@openreel/core";
+import type { Project } from "@reelterminal/core";
 import {
   PRESET_PAYLOAD_SCHEMA_VERSION,
   PRESET_RECORD_VERSION,
   type CustomPresetRecord,
-} from "@openreel/core/presets/types";
+} from "@reelterminal/core/presets/types";
 import {
   DEFAULT_GRAPHICS_PRESET_DURATION_SEC,
   expandPresetActions,

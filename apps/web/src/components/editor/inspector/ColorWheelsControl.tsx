@@ -1,9 +1,9 @@
 import React, { useCallback, useRef, useMemo } from "react";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { RotateCcw } from "@/icons/lucide-compat";
 import { PropertySlider } from "./shell/PropertySlider";
-import type { ColorWheelValues } from "@openreel/core";
+import type { ColorWheelValues } from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 export const DEFAULT_COLOR_WHEEL_VALUES: ColorWheelValues = {

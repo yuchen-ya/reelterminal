@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SpectralNoiseReducer } from "@openreel/core";
+import { SpectralNoiseReducer } from "@reelterminal/core";
 import { DEFAULT_NOISE_REDUCTION } from "../../../bridges/audio-bridge-effects";
 import {
   suggestNoiseReductionConfig,

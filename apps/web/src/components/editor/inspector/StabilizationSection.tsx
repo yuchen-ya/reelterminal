@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useMemo } from "react";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { Video, Download } from "@/icons/lucide-compat";
 import { PropertySlider } from "./shell/PropertySlider";
 import { MockToggle } from "./shell/InspectorControls";
-import type { Clip } from "@openreel/core";
-import { getVidstabEngine, type VidstabProgress } from "@openreel/core";
+import type { Clip } from "@reelterminal/core";
+import { getVidstabEngine, type VidstabProgress } from "@reelterminal/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTranslation } from "react-i18next";
 

@@ -5,7 +5,7 @@ import type {
   ShapeClip,
   SVGClip,
   StickerClip,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { ClipComponent } from "./ClipComponent";
 import { TextClipComponent } from "./TextClipComponent";
 import { ShapeClipComponent } from "./ShapeClipComponent";

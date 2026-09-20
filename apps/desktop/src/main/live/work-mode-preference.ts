@@ -11,7 +11,7 @@ import path from "node:path";
 import {
   normalizeAgentModePreference,
   type AgentModePreference,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 
 const MAX_PREFERENCE_BYTES = 4_096;
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Wand2, Loader2 } from 'lucide-react';
-import { Slider } from '@openreel/ui';
+import { Slider } from '@reelterminal/ui';
 import { useProjectStore } from '../../../stores/project-store';
 import type { ImageLayer } from '../../../types/project';
 import {

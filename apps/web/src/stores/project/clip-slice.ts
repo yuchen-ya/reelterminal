@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import type { StoreApi } from "zustand";
-import type { Action, ActionResult } from "@openreel/core";
+import type { Action, ActionResult } from "@reelterminal/core";
 import type { ProjectState } from "../project-store";
 import { toast } from "../notification-store";
 import { t } from "../../i18n";
@@ -132,7 +132,7 @@ export function createClipSlice(set: Set, get: Get): ClipSlice {
       let audioTrackCount = mediaItem.metadata.audioTrackCount ?? 1;
       if (audioTrackCount <= 1 && mediaItem.blob) {
         try {
-          const { getFFmpegFallback } = await import("@openreel/core/media");
+          const { getFFmpegFallback } = await import("@reelterminal/core/media");
           const ffmpeg = getFFmpegFallback();
           const probeResult = await ffmpeg.probeAudioStreams(mediaItem.blob);
           if (probeResult.audioStreamCount > 1) {

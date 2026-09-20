@@ -9,8 +9,8 @@ import { useUIStore } from "./stores/ui-store";
 import { useProjectStore } from "./stores/project-store";
 import { useRouter } from "./hooks/use-router";
 import { useProjectRecovery } from "./hooks/useProjectRecovery";
-import { SOCIAL_MEDIA_PRESETS, type SocialMediaCategory } from "@openreel/core";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { SOCIAL_MEDIA_PRESETS, type SocialMediaCategory } from "@reelterminal/core";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 
 const EditorInterface = lazy(() =>
   import("./components/editor/EditorInterface").then((m) => ({

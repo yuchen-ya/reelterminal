@@ -1,4 +1,4 @@
-import { toolPresentation } from "@openreel/agent-facade";
+import { toolPresentation } from "@reelterminal/agent-facade";
 /**
  * `agent-video serve` — the MCP stdio server (ADR 0003 Decisions 1/2/5/7).
  *
@@ -27,7 +27,7 @@ import {
   McpError,
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { FACADE_CONTRACT_VERSION, type FacadeResult } from "@openreel/agent-facade";
+import { FACADE_CONTRACT_VERSION, type FacadeResult } from "@reelterminal/agent-facade";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve as resolvePath } from "node:path";
 

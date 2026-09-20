@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { StoreApi } from "zustand";
 import type { ProjectState } from "../project-store";
 import { useEngineStore } from "../engine-store";
-import { splitCaptionIntoSingleLineCues } from "@openreel/core";
+import { splitCaptionIntoSingleLineCues } from "@reelterminal/core";
 
 type Get = StoreApi<ProjectState>["getState"];
 type Set = StoreApi<ProjectState>["setState"];

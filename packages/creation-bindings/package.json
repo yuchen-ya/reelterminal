@@ -1,9 +1,9 @@
 {
-  "name": "@openreel/creation-bindings",
+  "name": "@reelterminal/creation-bindings",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Node addon / WASM bindings for @openreel/creation-core with a CPU fallback to @openreel/core/creation.",
+  "description": "Node addon / WASM bindings for @reelterminal/creation-core with a CPU fallback to @reelterminal/core/creation.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -22,6 +22,6 @@
     "vitest": "^1.6.0"
   },
   "dependencies": {
-    "@openreel/core": "workspace:*"
+    "@reelterminal/core": "workspace:*"
   }
 }

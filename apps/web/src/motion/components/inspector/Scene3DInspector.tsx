@@ -6,7 +6,7 @@ import {
   type MotionScene3DLayer,
   type MotionSceneObject3D,
   type MotionSceneVector3,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { Plus, Trash2 } from "@/icons/lucide-compat";
 import {
   ColorInput,

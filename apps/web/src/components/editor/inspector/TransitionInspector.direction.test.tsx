@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Clip, Transition } from "@openreel/core";
+import type { Clip, Transition } from "@reelterminal/core";
 import { getTransitionBridge } from "../../../bridges/transition-bridge";
 import { TransitionInspector } from "./TransitionInspector";
 

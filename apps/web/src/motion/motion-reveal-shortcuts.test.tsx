@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { act, fireEvent, render } from "@testing-library/react";
-import type { MotionComposition, MotionLayer } from "@openreel/core";
+import type { MotionComposition, MotionLayer } from "@reelterminal/core";
 import { StageCanvas } from "./components/StageCanvas";
 import { useMotionStore } from "./stores/motion-store";
 import { useProjectStore } from "../stores/project-store";

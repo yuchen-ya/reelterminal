@@ -5,7 +5,7 @@ import {
   ToolcraftClickableCard,
   ToolcraftFileDropControl,
   ToolcraftText,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 
 describe("Toolcraft surface controls", () => {
   it("fires clickable-card actions through a button surface", () => {

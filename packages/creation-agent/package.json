@@ -1,5 +1,5 @@
 {
-  "name": "@openreel/creation-agent",
+  "name": "@reelterminal/creation-agent",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -21,7 +21,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@openreel/creation-schema": "workspace:*"
+    "@reelterminal/creation-schema": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.4.5",

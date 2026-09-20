@@ -1,5 +1,5 @@
 {
-  "name": "@openreel/runtime-chromium",
+  "name": "@reelterminal/runtime-chromium",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -26,8 +26,8 @@
     "vitest": "^1.6.0"
   },
   "dependencies": {
-    "@openreel/agent-facade": "workspace:*",
-    "@openreel/core": "workspace:*",
+    "@reelterminal/agent-facade": "workspace:*",
+    "@reelterminal/core": "workspace:*",
     "esbuild": "^0.27.7",
     "mediabunny": "^1.25.3",
     "playwright-core": "^1.60.0"

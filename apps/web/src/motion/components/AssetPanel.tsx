@@ -11,7 +11,7 @@ import {
 import {
   ToolcraftFileDropControl,
   ToolcraftTextInputControl,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import {
   createMotionImageAssetFromMediaItem,
   createMotionImageLayerFromAsset,
@@ -22,7 +22,7 @@ import {
   type MediaItem,
   type MotionAsset,
   type MotionComposition,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useProjectStore } from "../../stores/project-store";
 import { toast } from "../../stores/notification-store";
 import { useMotionStore } from "../stores/motion-store";

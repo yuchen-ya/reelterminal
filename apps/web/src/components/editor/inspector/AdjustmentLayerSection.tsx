@@ -11,16 +11,16 @@ import {
   Droplet,
   Copy,
 } from "@/icons/lucide-compat";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftPopover as Popover } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftPopover as Popover } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { PropertySlider } from "./shell/PropertySlider";
 import { useEngineStore } from "../../../stores/engine-store";
 import { useProjectStore } from "../../../stores/project-store";
-import type { AdjustmentLayer, BlendMode, Effect } from "@openreel/core";
+import type { AdjustmentLayer, BlendMode, Effect } from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 interface AdjustmentLayerSectionProps {
@@ -177,7 +177,7 @@ export const AdjustmentLayerSection: React.FC<AdjustmentLayerSectionProps> = ({
   const [expandedLayer, setExpandedLayer] = useState<string | null>(null);
   const [showBlendModes, setShowBlendModes] = useState(false);
   const [adjustmentLayerEngine, setAdjustmentLayerEngine] =
-    useState<import("@openreel/core").AdjustmentLayerEngine | null>(null);
+    useState<import("@reelterminal/core").AdjustmentLayerEngine | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,7 +221,7 @@ export const AdjustmentLayerSection: React.FC<AdjustmentLayerSectionProps> = ({
   );
 
   const persistLayers = useCallback(
-    (engine: import("@openreel/core").AdjustmentLayerEngine) =>
+    (engine: import("@reelterminal/core").AdjustmentLayerEngine) =>
       useProjectStore.getState().executeAction({
         type: "adjustment/setAll",
         id: crypto.randomUUID(),

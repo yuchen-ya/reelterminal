@@ -2,7 +2,7 @@
  * Slice-1b capability provider interfaces (ADR 0002 decision 1).
  *
  * The facade stays pure Node and transport-agnostic: it defines the
- * contracts, a runtime package (e.g. @openreel/runtime-chromium) supplies the
+ * contracts, a runtime package (e.g. @reelterminal/runtime-chromium) supplies the
  * implementations. The three interfaces are INDEPENDENT on purpose — a
  * runtime that can rasterize frames cannot necessarily encode H.264, and an
  * artifact verifier needs no browser at all. Capability availability is
@@ -12,7 +12,7 @@
  * Nothing here imports Chromium/Playwright/ffmpeg; implementations live in
  * the runtime package. All types are JSON-serializable.
  */
-import type { Project } from "@openreel/core/types/project";
+import type { Project } from "@reelterminal/core/types/project";
 
 /* ------------------------------------------------------------------ */
 /* Shared                                                              */

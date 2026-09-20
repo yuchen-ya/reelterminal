@@ -46,8 +46,8 @@ import {
   type MotionEffectType,
   type MotionLayer,
   type MotionShaderParamDef,
-} from "@openreel/core";
-import { ToolcraftClickableCard, ToolcraftText } from "@openreel/ui";
+} from "@reelterminal/core";
+import { ToolcraftClickableCard, ToolcraftText } from "@reelterminal/ui";
 import { useProjectStore } from "../../stores/project-store";
 import { useMotionStore } from "../stores/motion-store";
 import { ShaderPreviewBrowser } from "../../components/shaders/ShaderPreviewBrowser";

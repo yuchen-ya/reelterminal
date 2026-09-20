@@ -2,7 +2,7 @@ import type {
   Template,
   TemplateSummary,
   ScriptableTemplate,
-} from "@openreel/core";
+} from "@reelterminal/core";
 
 import { OPENREEL_CLOUD_ENABLED, OPENREEL_CLOUD_URL } from "../config/api-endpoints";
 import { t } from "../i18n";

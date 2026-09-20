@@ -54,7 +54,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Chromium for Playwright
-        run: pnpm --filter @openreel/runtime-chromium exec playwright-core install --with-deps chromium
+        run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install --with-deps chromium
 
       # ubuntu-latest does NOT ship ffmpeg: the frames-route encoder and the
       # artifact verifier need real ffmpeg/ffprobe binaries.
@@ -70,14 +70,14 @@ jobs:
 
       - name: Typecheck facade + runtime
         run: |
-          pnpm --filter @openreel/agent-facade typecheck
-          pnpm --filter @openreel/runtime-chromium typecheck
+          pnpm --filter @reelterminal/agent-facade typecheck
+          pnpm --filter @reelterminal/runtime-chromium typecheck
 
       - name: Typecheck agent-transport
-        run: pnpm --filter @openreel/agent-transport typecheck
+        run: pnpm --filter @reelterminal/agent-transport typecheck
 
       - name: Run Slice-1 facade tests (must stay green)
-        run: pnpm --filter @openreel/agent-facade test:run
+        run: pnpm --filter @reelterminal/agent-facade test:run
 
       # ulimit -c 0: the runtime/transport suites SIGKILL real Chromium
       # (reaper, signal-ownership, watchdog) — apport/core dumps of a
@@ -85,7 +85,7 @@ jobs:
       - name: Run Chromium runtime tests (probe, E2E, jobs, verify)
         run: |
           ulimit -c 0
-          pnpm --filter @openreel/runtime-chromium test:run
+          pnpm --filter @reelterminal/runtime-chromium test:run
 
       # Slice 2 transport: the protocol/signal/workflow/doctor suites spawn
       # the REAL built binary — their vitest global-setup builds dist/cli.js
@@ -95,7 +95,7 @@ jobs:
       - name: Run agent-transport tests (serve/run/doctor over the real binary, e2e-gated)
         run: |
           ulimit -c 0
-          pnpm --filter @openreel/agent-transport test:run
+          pnpm --filter @reelterminal/agent-transport test:run
 
       # Evidence MUST exist and MUST upload: the probe/verify JSON is the
       # machine-readable proof of what this run measured. The directory is
@@ -157,11 +157,11 @@ jobs:
       # --with-deps is Linux-only (apt packages); macOS needs no system deps.
       - name: Install Chromium for Playwright (Linux)
         if: runner.os == 'Linux'
-        run: pnpm --filter @openreel/runtime-chromium exec playwright-core install --with-deps chromium
+        run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install --with-deps chromium
 
       - name: Install Chromium for Playwright (macOS)
         if: runner.os == 'macOS'
-        run: pnpm --filter @openreel/runtime-chromium exec playwright-core install chromium
+        run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install chromium
 
       # The transport e2e-gated suite and the artifact verifier need real
       # ffmpeg/ffprobe binaries; neither runner image ships them.
@@ -176,7 +176,7 @@ jobs:
         run: brew install ffmpeg
 
       - name: Run facade suite (pure Node; platform-independent)
-        run: pnpm --filter @openreel/agent-facade test:run
+        run: pnpm --filter @reelterminal/agent-facade test:run
 
       - name: Run transport suite over the real binary
-        run: pnpm --filter @openreel/agent-transport test:run
+        run: pnpm --filter @reelterminal/agent-transport test:run

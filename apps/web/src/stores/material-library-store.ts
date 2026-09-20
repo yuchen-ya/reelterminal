@@ -14,7 +14,7 @@ import type {
   MaterialKind,
   MaterialRecord,
   MaterialSortOrder,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { getMaterialLibraryService } from "../services/material-library/library-service";
 import { probeMaterialFileStatuses } from "../services/material-library/file-status";
 

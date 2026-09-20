@@ -1,11 +1,11 @@
 import React, { useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { ToolcraftSwitchControl } from "@openreel/ui";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftNumberInputControl } from "@openreel/ui";
-import { ToolcraftSelectControl as Selector } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftSwitchControl } from "@reelterminal/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftNumberInputControl } from "@reelterminal/ui";
+import { ToolcraftSelectControl as Selector } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { useSettingsStore } from "../../../stores/settings-store";
 import { useProjectStore } from "../../../stores/project-store";
 import type { LanguagePreference } from "../../../i18n";

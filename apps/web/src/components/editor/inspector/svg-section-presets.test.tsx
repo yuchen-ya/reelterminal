@@ -7,12 +7,12 @@
 import "../../../test/install-local-storage-mock";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Project, SVGClip } from "@openreel/core";
-import type { CustomPresetRecord } from "@openreel/core/presets/types";
+import type { Project, SVGClip } from "@reelterminal/core";
+import type { CustomPresetRecord } from "@reelterminal/core/presets/types";
 import {
   DEFAULT_GRAPHIC_TRANSFORM,
   DEFAULT_SVG_COLOR_STYLE,
-} from "@openreel/core/graphics/types";
+} from "@reelterminal/core/graphics/types";
 import type { PresetStorage } from "../../../services/custom-presets/storage";
 import {
   CustomPresetService,

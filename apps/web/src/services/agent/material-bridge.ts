@@ -24,7 +24,7 @@ import type {
   MaterialListQuery,
   MaterialMediaMetadata,
   MaterialUpdatePatch,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { runExclusiveLiveWrite } from "./live-write-lock";
 import { useProjectStore } from "../../stores/project-store";
 

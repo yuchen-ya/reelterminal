@@ -14,9 +14,9 @@ import { useTranslation } from "react-i18next";
 import {
   ToolcraftContextMenu as ContextMenu,
   type ToolcraftContextMenuOption as ContextMenuOption,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import { Flag } from "@/icons/lucide-compat";
-import type { ProjectMarker } from "@openreel/core";
+import type { ProjectMarker } from "@reelterminal/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { toast } from "../../../stores/notification-store";

@@ -1,4 +1,4 @@
-import type { DesktopInspection } from "@openreel/agent-facade/desktop-protocol";
+import type { DesktopInspection } from "@reelterminal/agent-facade/desktop-protocol";
 import { create } from "zustand";
 import type {
   OpenReelAgentAccessMode,

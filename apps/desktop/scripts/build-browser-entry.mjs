@@ -71,7 +71,7 @@ const result = await build({
   },
   plugins: [
     {
-      name: "openreel-harness-shims",
+      name: "reelterminal-harness-shims",
       setup(pluginBuild) {
         // Same swap as the runtime dev path (bundle.ts): core/audio/
         // audio-engine dynamically imports "../media/extract-audio", whose

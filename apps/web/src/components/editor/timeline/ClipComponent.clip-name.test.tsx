@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import type { MediaItem, Project } from "@openreel/core";
+import type { MediaItem, Project } from "@reelterminal/core";
 import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { useProjectStore } from "../../../stores/project-store";
 import { ClipComponent } from "./ClipComponent";

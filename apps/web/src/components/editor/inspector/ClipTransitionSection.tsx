@@ -23,17 +23,17 @@ import type {
   GraphicClip,
   Transition,
   TransitionEdge,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useEngineStore } from "../../../stores/engine-store";
 import { toast } from "../../../stores/notification-store";
 import { TransitionInspector } from "./TransitionInspector";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftNumberInputControl } from "@openreel/ui";
-import { ToolcraftSelectControl as Selector } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftNumberInputControl } from "@reelterminal/ui";
+import { ToolcraftSelectControl as Selector } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { useTranslation } from "react-i18next";
 
 type MutableGraphicClip = {

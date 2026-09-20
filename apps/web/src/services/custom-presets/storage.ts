@@ -14,7 +14,7 @@
  * inline data-URL strings on the record; they live and die with the record
  * in the same transaction (deleting a preset is the only reclamation point).
  */
-import type { CustomPresetRecord } from "@openreel/core/presets/types";
+import type { CustomPresetRecord } from "@reelterminal/core/presets/types";
 
 export const CUSTOM_PRESETS_DB_NAME = "openreel-custom-presets";
 export const CUSTOM_PRESETS_DB_VERSION = 1;

@@ -1,8 +1,8 @@
 import { create } from "zustand";
 // Subpath import (not the package index) so the web bundle never pulls in the
 // facade's node-only session module.
-import type { LiveEditorContext } from "@openreel/agent-facade/live-store";
-import type { Project } from "@openreel/core";
+import type { LiveEditorContext } from "@reelterminal/agent-facade/live-store";
+import type { Project } from "@reelterminal/core";
 import { getProjectRevision, useProjectStore } from "./project-store";
 import { useTimelineStore } from "./timeline-store";
 import { useUIStore } from "./ui-store";
@@ -29,7 +29,7 @@ import {
  * in-memory store and projected here. Nothing is persisted.
  */
 
-export type { LiveEditorContext } from "@openreel/agent-facade/live-store";
+export type { LiveEditorContext } from "@reelterminal/agent-facade/live-store";
 
 export interface CanvasPoint {
   readonly x: number; // normalized 0..1 against the project frame

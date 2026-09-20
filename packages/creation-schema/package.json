@@ -1,5 +1,5 @@
 {
-  "name": "@openreel/creation-schema",
+  "name": "@reelterminal/creation-schema",
   "version": "0.1.0",
   "private": true,
   "type": "module",

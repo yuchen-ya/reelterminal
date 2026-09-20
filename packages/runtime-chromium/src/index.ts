@@ -1,8 +1,8 @@
 /**
- * @openreel/runtime-chromium — the Slice-1b Chromium render/export runtime.
+ * @reelterminal/runtime-chromium — the Slice-1b Chromium render/export runtime.
  *
  * Implements the facade's independent provider interfaces
- * (@openreel/agent-facade providers.ts) over real Chromium (playwright-core):
+ * (@reelterminal/agent-facade providers.ts) over real Chromium (playwright-core):
  * the canonical Project is hydrated into the existing core engines bundled
  * into the page, frames come back as real PNGs, and exports produce real
  * H.264 MP4s (WebCodecs route, or frames→ffmpeg fallback). Verification uses

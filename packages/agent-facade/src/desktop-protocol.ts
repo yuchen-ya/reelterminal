@@ -6,7 +6,7 @@
  * It intentionally contains types and cadence constants only: validation and
  * privileged behavior stay in the desktop main process.
  */
-import type { Action } from "@openreel/core/types/actions";
+import type { Action } from "@reelterminal/core/types/actions";
 import type {
   ExternalAgentApprovalDecision,
   ExternalConversationDisplayState,

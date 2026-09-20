@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useProjectStore } from '../../../stores/project-store';
 import type { ShapeLayer, ShapeStyle, Gradient, FillType, StrokeDashType, NoiseFill } from '../../../types/project';
 import { DEFAULT_NOISE_FILL } from '../../../types/project';
-import { Slider } from '@openreel/ui';
+import { Slider } from '@reelterminal/ui';
 import { GradientPicker } from '../../ui/GradientPicker';
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@openreel/ui';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@reelterminal/ui';
 import { ChevronDown, Link, Unlink } from 'lucide-react';
 
 const DASH_PATTERNS: { value: StrokeDashType; label: string; preview: string }[] = [

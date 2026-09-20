@@ -15,7 +15,7 @@ import {
   type MotionComposition,
   type MotionShaderEffect,
   type MotionTextLayer,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { createEmptyProject } from "../../stores/project/project-helpers";
 import { useProjectStore } from "../../stores/project-store";
 import { useMotionStore } from "../stores/motion-store";

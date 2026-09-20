@@ -13,9 +13,9 @@ export default defineConfig({
   // scripts/link-runtime-deps.mjs step links into dist/node_modules so the
   // built binary resolves them exactly where the workspace installs them.
   noExternal: [
-    "@openreel/agent-facade",
-    "@openreel/runtime-chromium",
-    "@openreel/core",
+    "@reelterminal/agent-facade",
+    "@reelterminal/runtime-chromium",
+    "@reelterminal/core",
   ],
   external: ["esbuild", "playwright-core", "mediabunny"],
   clean: true,

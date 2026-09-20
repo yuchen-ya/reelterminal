@@ -5,7 +5,7 @@ import {
   buildMotionPathData,
   type MotionComposition,
   type MotionShapePathPoint,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useProjectStore } from "../stores/project-store";
 import { createEmptyProject } from "../stores/project/project-helpers";
 

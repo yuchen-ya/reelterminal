@@ -3,7 +3,7 @@ import {
   CloudRequestError,
   type TranscriptWord,
   type AudioSegmentMetrics,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { OPENREEL_CLOUD_URL } from "../config/api-endpoints";
 
 export interface HighlightResult {

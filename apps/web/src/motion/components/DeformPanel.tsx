@@ -25,7 +25,7 @@ import {
   type MotionPuppetPropertyName,
   type MotionShapeLayer,
   type MotionShapePathPoint,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useProjectStore } from "../../stores/project-store";
 import { useMotionStore } from "../stores/motion-store";
 import {

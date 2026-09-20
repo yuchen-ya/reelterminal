@@ -1,5 +1,5 @@
 import { Film, Volume2, Image, Type, Shapes, Layers } from "@/icons/lucide-compat";
-import type { Track } from "@openreel/core";
+import type { Track } from "@reelterminal/core";
 import type {
   SnapPoint,
   SnapResult,

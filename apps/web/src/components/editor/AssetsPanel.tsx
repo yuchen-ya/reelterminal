@@ -11,16 +11,16 @@ import {
   generateBackgroundBlob,
   type BackgroundPreset,
 } from "../../services/background-generator";
-import type { ShapeType } from "@openreel/core";
+import type { ShapeType } from "@reelterminal/core";
 import {
   mediaDisplayName,
   validateSvgContent,
   type SvgValidationErrorCode,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useTimelineStore } from "../../stores/timeline-store";
-import type { MediaItem } from "@openreel/core";
+import type { MediaItem } from "@reelterminal/core";
 import { AspectRatioMatchDialog } from "./dialogs/AspectRatioMatchDialog";
 import { EditingToolsTab } from "./EditingToolsTab";
 import { RecipesTab } from "./panels/RecipesTab";
@@ -36,11 +36,11 @@ import {
 } from "./panels/text-style-presets";
 import { toast } from "../../stores/notification-store";
 import { saveFileHandle, saveDirectoryHandle } from "../../services/media-storage";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftSelectableCard as SelectableCard } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
-import { ToolcraftContextMenu as ContextMenu, type ToolcraftContextMenuOption as ContextMenuOption } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftSelectableCard as SelectableCard } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
+import { ToolcraftContextMenu as ContextMenu, type ToolcraftContextMenuOption as ContextMenuOption } from "@reelterminal/ui";
 import { StickerPickerPanel } from "./inspector/StickerPickerPanel";
 import { Hash } from "@/icons/lucide-compat";
 import { AgentReferenceBadge } from "./timeline/AgentReferenceBadge";

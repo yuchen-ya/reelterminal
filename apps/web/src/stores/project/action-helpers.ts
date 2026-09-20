@@ -5,8 +5,8 @@ import type {
   Project,
   Track,
   Clip,
-} from "@openreel/core";
-import type { ActionExecutor } from "@openreel/core";
+} from "@reelterminal/core";
+import type { ActionExecutor } from "@reelterminal/core";
 
 export function createAction(
   type: string,

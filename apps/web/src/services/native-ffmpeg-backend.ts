@@ -2,7 +2,7 @@ import type {
   EncoderBackend,
   VideoExportSettings,
   Project,
-} from "@openreel/core";
+} from "@reelterminal/core";
 
 type ExportPortMessage =
   | { type: "progress"; frame: number }

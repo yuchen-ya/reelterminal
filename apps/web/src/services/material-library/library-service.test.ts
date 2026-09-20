@@ -4,7 +4,7 @@ import type {
   MaterialRecord,
   MediaItem,
   Project,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { MaterialLibraryService } from "./library-service";
 import type { MaterialStorage, MaterialStorageCommit } from "./storage";
 

@@ -2,7 +2,7 @@
  * Web-side bridge for the shipped GUI manual.
  *
  * The manual's structured content (screens, versions, search) lives in the
- * agent facade package (`@openreel/agent-facade/gui-manual`) so the help.*
+ * agent facade package (`@reelterminal/agent-facade/gui-manual`) so the help.*
  * verbs answer from the SAME static data in live and headless sessions.
  * This module re-exports that content for renderer use and adds the one
  * thing only the web app can do: resolve a screen's shortcut REFERENCES
@@ -21,7 +21,7 @@ import {
   describeManualScreen,
   listManualScreens,
   searchManualScreens,
-} from "@openreel/agent-facade/gui-manual";
+} from "@reelterminal/agent-facade/gui-manual";
 import type {
   ManualCapability,
   ManualDescribeParams,
@@ -30,7 +30,7 @@ import type {
   ManualLocalizedText,
   ManualScreen,
   ManualSearchResult,
-} from "@openreel/agent-facade/gui-manual";
+} from "@reelterminal/agent-facade/gui-manual";
 
 export {
   GUI_MANUAL_APP_VERSION,

@@ -14,12 +14,12 @@
  * every committed change, so the GUI preset panels re-render the moment an
  * agent creates, renames, or deletes a preset — no polling either way.
  */
-import type { PresetListItem } from "@openreel/agent-facade";
+import type { PresetListItem } from "@reelterminal/agent-facade";
 import type {
   CustomPresetRecord,
   PresetKind,
-} from "@openreel/core/presets/types";
-import { PRESET_KINDS } from "@openreel/core/presets/types";
+} from "@reelterminal/core/presets/types";
+import { PRESET_KINDS } from "@reelterminal/core/presets/types";
 import {
   getCustomPresetService,
   type CustomPresetUpdateInput,

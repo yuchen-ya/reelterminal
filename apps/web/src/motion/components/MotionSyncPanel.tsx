@@ -23,8 +23,8 @@ import {
   type MotionAnimationPresetId,
   type MotionComposition,
   type MotionLayer,
-} from "@openreel/core";
-import { ToolcraftText } from "@openreel/ui";
+} from "@reelterminal/core";
+import { ToolcraftText } from "@reelterminal/ui";
 import { useProjectStore } from "../../stores/project-store";
 import { useMotionStore } from "../stores/motion-store";
 import {

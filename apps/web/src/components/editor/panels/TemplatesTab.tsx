@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Box, Search, Layout, Clock } from "@/icons/lucide-compat";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftSelectableCard as SelectableCard } from "@openreel/ui";
-import { ToolcraftTextInputControl } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftSelectableCard as SelectableCard } from "@reelterminal/ui";
+import { ToolcraftTextInputControl } from "@reelterminal/ui";
 import { useEngineStore } from "../../../stores/engine-store";
 import { useProjectStore } from "../../../stores/project-store";
 import { useRouter } from "../../../hooks/use-router";
 import type {
   TemplateSummary,
   TemplateCategory,
-} from "@openreel/core";
-import { TEMPLATE_CATEGORIES } from "@openreel/core";
+} from "@reelterminal/core";
+import { TEMPLATE_CATEGORIES } from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 export const TemplatesTab: React.FC = () => {

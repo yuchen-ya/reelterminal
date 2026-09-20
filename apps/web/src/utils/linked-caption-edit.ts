@@ -1,4 +1,4 @@
-import type { Clip, Project, TextClip } from "@openreel/core";
+import type { Clip, Project, TextClip } from "@reelterminal/core";
 
 export interface LinkedCaptionEditStore {
   project: Project;

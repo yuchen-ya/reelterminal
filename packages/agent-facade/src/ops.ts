@@ -5,23 +5,23 @@
  * existence, normalized crop bounds) live here so every core action the
  * executor sees is already sane.
  */
-import type { Action } from "@openreel/core/types/actions";
-import type { Project, ProjectMarker } from "@openreel/core/types/project";
-import { DEFAULT_PROJECT_MARKER_COLOR } from "@openreel/core/types/project";
-import type { Clip, Transform, Transition } from "@openreel/core/types/timeline";
-import { TransitionEngine } from "@openreel/core/video/transition-engine";
-import type { TextClip } from "@openreel/core/text/types";
-import { parseSRT } from "@openreel/core/text/subtitle-engine";
+import type { Action } from "@reelterminal/core/types/actions";
+import type { Project, ProjectMarker } from "@reelterminal/core/types/project";
+import { DEFAULT_PROJECT_MARKER_COLOR } from "@reelterminal/core/types/project";
+import type { Clip, Transform, Transition } from "@reelterminal/core/types/timeline";
+import { TransitionEngine } from "@reelterminal/core/video/transition-engine";
+import type { TextClip } from "@reelterminal/core/text/types";
+import { parseSRT } from "@reelterminal/core/text/subtitle-engine";
 import {
   DEFAULT_GRAPHIC_TRANSFORM,
   DEFAULT_SVG_COLOR_STYLE,
   type SVGClip,
   type ViewBox,
-} from "@openreel/core/graphics/types";
+} from "@reelterminal/core/graphics/types";
 import {
   DEFAULT_TEXT_STYLE,
   DEFAULT_TEXT_TRANSFORM,
-} from "@openreel/core/text/types";
+} from "@reelterminal/core/text/types";
 import { FacadeError } from "./errors";
 import { invalidParams } from "./validate";
 import {
@@ -96,25 +96,25 @@ import {
   type WorkAssetDeleteOp,
   type WorkAssetInstantiateOp,
 } from "./types";
-import { validateReferenceComparisonConfig } from "@openreel/core/types/reference-comparison";
-import { DEFAULT_CHROMA_KEY_SETTINGS } from "@openreel/core/video/chroma-key-engine";
-import { DEFAULT_BACKGROUND_SETTINGS } from "@openreel/core/ai/background-removal-engine";
-import { reframeKeyframesToTransformKeyframes } from "@openreel/core/ai/auto-reframe-engine";
+import { validateReferenceComparisonConfig } from "@reelterminal/core/types/reference-comparison";
+import { DEFAULT_CHROMA_KEY_SETTINGS } from "@reelterminal/core/video/chroma-key-engine";
+import { DEFAULT_BACKGROUND_SETTINGS } from "@reelterminal/core/ai/background-removal-engine";
+import { reframeKeyframesToTransformKeyframes } from "@reelterminal/core/ai/auto-reframe-engine";
 import {
   DEFAULT_NOISE_REDUCTION_SETTINGS,
   getNoiseReductionPreset,
   NOISE_REDUCTION_FOCUS_OPTIONS,
-} from "@openreel/core/audio/noise-reduction-presets";
-import { isSerializedNoiseProfile } from "@openreel/core/audio/audio-effect-routing";
-import { generateDuckingKeyframesFromRanges } from "@openreel/core/audio/volume-automation";
-import { resolveAudibleAudioTarget } from "@openreel/core/audio/clip-audio-resolution";
-import { getMotionShaderEffectDefs } from "@openreel/core/motion/shaders";
+} from "@reelterminal/core/audio/noise-reduction-presets";
+import { isSerializedNoiseProfile } from "@reelterminal/core/audio/audio-effect-routing";
+import { generateDuckingKeyframesFromRanges } from "@reelterminal/core/audio/volume-automation";
+import { resolveAudibleAudioTarget } from "@reelterminal/core/audio/clip-audio-resolution";
+import { getMotionShaderEffectDefs } from "@reelterminal/core/motion/shaders";
 import {
   captureWorkAssetFromClip,
   captureWorkAssetFromClips,
-} from "@openreel/core/work-assets/capture";
-import { buildWorkAssetInstantiateActions } from "@openreel/core/work-assets/instantiate";
-import { WORK_ASSET_MAX_MEMBERS } from "@openreel/core/types/work-asset";
+} from "@reelterminal/core/work-assets/capture";
+import { buildWorkAssetInstantiateActions } from "@reelterminal/core/work-assets/instantiate";
+import { WORK_ASSET_MAX_MEMBERS } from "@reelterminal/core/types/work-asset";
 import { timelineDurationSec } from "./projection";
 import { basename } from "node:path";
 import { resolveContainedPathDetailed } from "./media/path-roots";

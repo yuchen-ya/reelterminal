@@ -13,7 +13,7 @@
  * with an adapter present; availability flips only when Slice 1b adds the
  * verbs that actually drive the adapter.
  */
-import type { Project } from "@openreel/core/types/project";
+import type { Project } from "@reelterminal/core/types/project";
 
 export interface ProjectRenderAdapter {
   readonly id: string;

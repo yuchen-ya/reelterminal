@@ -1,5 +1,5 @@
 {
-  "name": "@openreel/fxpkg",
+  "name": "@reelterminal/fxpkg",
   "version": "0.1.0",
   "private": true,
   "type": "module",

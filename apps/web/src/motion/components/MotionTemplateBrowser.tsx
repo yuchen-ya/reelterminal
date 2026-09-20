@@ -1,8 +1,8 @@
 import type { JSX } from "react";
 import { useMemo, useState } from "react";
 import { Clapperboard, Sparkles } from "@/icons/lucide-compat";
-import { ToolcraftClickableCard, ToolcraftText } from "@openreel/ui";
-import { MOTION_PRESETS, getMotionPresetCategories } from "@openreel/core";
+import { ToolcraftClickableCard, ToolcraftText } from "@reelterminal/ui";
+import { MOTION_PRESETS, getMotionPresetCategories } from "@reelterminal/core";
 import { useProjectStore } from "../../stores/project-store";
 import { useMotionStore } from "../stores/motion-store";
 import { PanelHeader, SegmentedControl } from "./primitives";

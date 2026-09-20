@@ -37,15 +37,15 @@ import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 import { opToCoreActions } from "./ops";
 import { createEmptyProject } from "./project-factory";
 import { makeTempDir, projectJson, removeTempDir } from "./test-helpers";
-import { ActionExecutor } from "@openreel/core/actions/action-executor";
-import { ActionHistory } from "@openreel/core/actions/action-history";
+import { ActionExecutor } from "@reelterminal/core/actions/action-executor";
+import { ActionHistory } from "@reelterminal/core/actions/action-history";
 import {
   DEFAULT_NOISE_REDUCTION_SETTINGS,
   getNoiseReductionPreset,
   NOISE_REDUCTION_PRESETS,
-} from "@openreel/core/audio/noise-reduction-presets";
-import type { Action } from "@openreel/core/types/actions";
-import type { Clip, Effect } from "@openreel/core/types/timeline";
+} from "@reelterminal/core/audio/noise-reduction-presets";
+import type { Action } from "@reelterminal/core/types/actions";
+import type { Clip, Effect } from "@reelterminal/core/types/timeline";
 
 const noiseEffectOf = (clip: Clip): Effect | undefined =>
   (clip.audioEffects ?? []).find(

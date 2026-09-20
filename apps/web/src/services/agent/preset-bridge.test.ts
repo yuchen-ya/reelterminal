@@ -7,14 +7,14 @@
  * by preset-service.test.ts and apply.test.ts.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Action } from "@openreel/core";
+import type { Action } from "@reelterminal/core";
 import {
   CustomPresetService,
   CUSTOM_PRESETS_UPDATED_EVENT,
   setCustomPresetServiceForTests,
 } from "../custom-presets/preset-service";
 import type { PresetStorage } from "../custom-presets/storage";
-import type { CustomPresetRecord } from "@openreel/core/presets/types";
+import type { CustomPresetRecord } from "@reelterminal/core/presets/types";
 import { handlePresetLibraryRequest } from "./preset-bridge";
 import { useProjectStore } from "../../stores/project-store";
 

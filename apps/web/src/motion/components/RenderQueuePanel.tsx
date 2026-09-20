@@ -13,7 +13,7 @@ import {
   Trash2,
   XCircle,
 } from "@/icons/lucide-compat";
-import type { MotionComposition } from "@openreel/core";
+import type { MotionComposition } from "@reelterminal/core";
 import { toast } from "../../stores/notification-store";
 import { useProjectStore } from "../../stores/project-store";
 import {

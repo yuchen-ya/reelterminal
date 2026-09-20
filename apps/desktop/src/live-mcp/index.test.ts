@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import os from "node:os";
 import path from "node:path";
-import { FACADE_TOOL_NAMES } from "@openreel/agent-facade";
+import { FACADE_TOOL_NAMES } from "@reelterminal/agent-facade";
 import {
   createSerializedLineWriter,
   endpointFilePath,

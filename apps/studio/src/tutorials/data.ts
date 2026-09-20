@@ -1,4 +1,4 @@
-import { getBlueprint, validateGraph, type AssetKind, type Graph } from "@openreel/fxpkg";
+import { getBlueprint, validateGraph, type AssetKind, type Graph } from "@reelterminal/fxpkg";
 
 export interface TutorialStep {
   title: string;

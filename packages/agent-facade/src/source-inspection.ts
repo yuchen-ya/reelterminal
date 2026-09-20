@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { rm, stat } from "node:fs/promises";
-import type { Project } from "@openreel/core/types/project";
+import type { Project } from "@reelterminal/core/types/project";
 import { FacadeError } from "./errors";
 import type { ToolContext } from "./plugin-api";
 import type { SourceInspectInput, SourceInspectResult } from "./plugins/source-inspection";

@@ -1,7 +1,7 @@
 import type {
   ExternalConversationDisplayState,
   ExternalConversationLifecycle,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 
 export type AgentConnectionState =
   | "disabled"

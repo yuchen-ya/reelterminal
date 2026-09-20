@@ -1,4 +1,4 @@
-import type { MediaItem } from "@openreel/core";
+import type { MediaItem } from "@reelterminal/core";
 
 export async function generateThumbnailFromBlob(
   blob: Blob,

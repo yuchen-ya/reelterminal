@@ -26,10 +26,10 @@ import { createAgentFacade } from "./index";
 import { opToCoreActions } from "./ops";
 import { createEmptyProject } from "./project-factory";
 import { projectJson } from "./test-helpers";
-import { ActionExecutor } from "@openreel/core/actions/action-executor";
-import { ActionHistory } from "@openreel/core/actions/action-history";
-import type { Action } from "@openreel/core/types/actions";
-import type { Project } from "@openreel/core/types/project";
+import { ActionExecutor } from "@reelterminal/core/actions/action-executor";
+import { ActionHistory } from "@reelterminal/core/actions/action-history";
+import type { Action } from "@reelterminal/core/types/actions";
+import type { Project } from "@reelterminal/core/types/project";
 
 const SAFE_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><circle cx="60" cy="40" r="30" fill="#22c55e"/></svg>';

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CustomPresetRecord } from "@openreel/core/presets/types";
-import { PRESET_RECORD_VERSION } from "@openreel/core/presets/types";
+import type { CustomPresetRecord } from "@reelterminal/core/presets/types";
+import { PRESET_RECORD_VERSION } from "@reelterminal/core/presets/types";
 import { PresetStorageUnavailableError, type PresetStorage } from "./storage";
 import {
   CUSTOM_PRESETS_UPDATED_EVENT,

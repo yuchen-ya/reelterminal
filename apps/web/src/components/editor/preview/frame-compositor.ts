@@ -7,14 +7,14 @@ import type {
   SVGClip,
   TextClip,
   Track,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   createMotionAwareOcclusionMask,
   getBackgroundRemovalEngine,
   getPersonSegmentationEngine,
   getStabilizedTransform,
-} from "@openreel/core";
-import type { Renderer } from "@openreel/core";
+} from "@reelterminal/core";
+import type { Renderer } from "@reelterminal/core";
 import { getEffectsBridge } from "../../../bridges/effects-bridge";
 import type { ClipTransform } from "./index";
 import { clipBackgroundRemovalSettings } from "./background-removal-settings";

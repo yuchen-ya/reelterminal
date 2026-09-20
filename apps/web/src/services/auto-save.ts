@@ -1,4 +1,4 @@
-import type { Project } from "@openreel/core";
+import type { Project } from "@reelterminal/core";
 
 export interface AutoSaveConfig {
   interval: number;

@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Copy, ExternalLink, Film, ImageIcon, Link2, Music } from "lucide-react";
-import type { MaterialRecord } from "@openreel/core";
+import type { MaterialRecord } from "@reelterminal/core";
 import { loadMaterialPreview, type PreviewSource } from "../../../services/material-library/preview";
 import { toast } from "../../../stores/notification-store";
 

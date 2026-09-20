@@ -11,7 +11,7 @@ import path from "node:path";
 import {
   TINY_MP4_EXPECTED,
   writeTinyMp4,
-} from "@openreel/agent-facade/media/fixtures/tiny-mp4";
+} from "@reelterminal/agent-facade/media/fixtures/tiny-mp4";
 import { runChromiumRuntimeProbe } from "./node/probe";
 import { saveEvidence } from "./evidence";
 

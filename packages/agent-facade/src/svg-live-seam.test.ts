@@ -16,10 +16,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ActionExecutor } from "@openreel/core/actions/action-executor";
-import { ActionHistory } from "@openreel/core/actions/action-history";
-import type { Action } from "@openreel/core/types/actions";
-import type { Project } from "@openreel/core/types/project";
+import { ActionExecutor } from "@reelterminal/core/actions/action-executor";
+import { ActionHistory } from "@reelterminal/core/actions/action-history";
+import type { Action } from "@reelterminal/core/types/actions";
+import type { Project } from "@reelterminal/core/types/project";
 
 import { createLiveFacade, LiveWriterLease } from "./index";
 import { LiveStoreConflictError } from "./live-store";

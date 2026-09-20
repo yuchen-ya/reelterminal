@@ -1,6 +1,6 @@
 import type { CSSProperties, JSX } from "react";
 import { useTranslation } from "react-i18next";
-import type { ProjectMarker } from "@openreel/core";
+import type { ProjectMarker } from "@reelterminal/core";
 
 export type ProjectMarkerBadgeSize = "sm" | "md";
 

@@ -31,13 +31,13 @@ importers:
       '@esbuild/win32-x64':
         specifier: 0.27.7
         version: 0.27.7
-      '@openreel/agent-facade':
+      '@reelterminal/agent-facade':
         specifier: workspace:*
         version: link:../../packages/agent-facade
-      '@openreel/core':
+      '@reelterminal/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@openreel/runtime-chromium':
+      '@reelterminal/runtime-chromium':
         specifier: workspace:*
         version: link:../../packages/runtime-chromium
       electron-updater:
@@ -83,12 +83,6 @@ importers:
       '@imgly/background-removal':
         specifier: ^1.7.0
         version: 1.7.0(onnxruntime-web@1.21.0)
-      '@openreel/image-core':
-        specifier: workspace:*
-        version: link:../../packages/image-core
-      '@openreel/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
       '@radix-ui/react-context-menu':
         specifier: ^2.2.16
         version: 2.3.7(@types/react-dom@19.2.5(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -113,6 +107,12 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.8
         version: 1.2.16(@types/react-dom@19.2.5(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@reelterminal/image-core':
+        specifier: workspace:*
+        version: link:../../packages/image-core
+      '@reelterminal/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -213,13 +213,13 @@ importers:
       '@mediapipe/tasks-vision':
         specifier: ^0.10.35
         version: 0.10.35
-      '@openreel/core':
+      '@reelterminal/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@openreel/fxpkg':
+      '@reelterminal/fxpkg':
         specifier: workspace:*
         version: link:../../packages/fxpkg
-      '@openreel/ui':
+      '@reelterminal/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       clsx:
@@ -328,18 +328,18 @@ importers:
       '@huggingface/transformers':
         specifier: 3.8.1
         version: 3.8.1
-      '@openreel/agent-facade':
-        specifier: workspace:*
-        version: link:../../packages/agent-facade
-      '@openreel/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@openreel/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
       '@paper-design/shaders-react':
         specifier: ^0.0.76
         version: 0.0.76(@types/react@19.2.17)(react@19.2.7)
+      '@reelterminal/agent-facade':
+        specifier: workspace:*
+        version: link:../../packages/agent-facade
+      '@reelterminal/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@reelterminal/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@types/react-syntax-highlighter':
         specifier: ^15.5.13
         version: 15.5.13
@@ -452,7 +452,7 @@ importers:
 
   packages/agent-facade:
     dependencies:
-      '@openreel/core':
+      '@reelterminal/core':
         specifier: workspace:*
         version: link:../core
       mediabunny:
@@ -474,10 +474,10 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.30.0
         version: 1.30.0(zod@4.4.3)
-      '@openreel/agent-facade':
+      '@reelterminal/agent-facade':
         specifier: workspace:*
         version: link:../agent-facade
-      '@openreel/runtime-chromium':
+      '@reelterminal/runtime-chromium':
         specifier: workspace:*
         version: link:../runtime-chromium
     devDependencies:
@@ -560,7 +560,7 @@ importers:
 
   packages/creation-agent:
     dependencies:
-      '@openreel/creation-schema':
+      '@reelterminal/creation-schema':
         specifier: workspace:*
         version: link:../creation-schema
     devDependencies:
@@ -573,7 +573,7 @@ importers:
 
   packages/creation-bindings:
     dependencies:
-      '@openreel/core':
+      '@reelterminal/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -623,10 +623,10 @@ importers:
 
   packages/runtime-chromium:
     dependencies:
-      '@openreel/agent-facade':
+      '@reelterminal/agent-facade':
         specifier: workspace:*
         version: link:../agent-facade
-      '@openreel/core':
+      '@reelterminal/core':
         specifier: workspace:*
         version: link:../core
       esbuild:

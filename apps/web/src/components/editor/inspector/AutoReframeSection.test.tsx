@@ -11,7 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { Project } from "@openreel/core";
+import type { Project } from "@reelterminal/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { AutoReframeSection } from "./AutoReframeSection";
@@ -38,8 +38,8 @@ const engineInitializeMock = vi.fn(async (onProgress?: (p: number, m: string) =>
   onProgress?.(100, "Auto-reframe engine ready");
 });
 
-vi.mock("@openreel/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@openreel/core")>();
+vi.mock("@reelterminal/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@reelterminal/core")>();
   return {
     ...actual,
     getAutoReframeEngine: () => ({

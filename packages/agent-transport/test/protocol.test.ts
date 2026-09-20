@@ -1,4 +1,4 @@
-import { FACADE_VERBS, FACADE_CONTRACT_VERSION } from "@openreel/agent-facade";
+import { FACADE_VERBS, FACADE_CONTRACT_VERSION } from "@reelterminal/agent-facade";
 /**
  * Protocol tests (ADR 0003 deliverable 5, slice 2b): spawn the REAL
  * `agent-video serve` binary and drive the MCP handshake end to end.
@@ -14,8 +14,8 @@ import { FACADE_VERBS, FACADE_CONTRACT_VERSION } from "@openreel/agent-facade";
  */
 import { afterAll, describe, expect, it } from "vitest";
 import { copyFile } from "node:fs/promises";
-import { EMITTED_VERB_JSON_SCHEMAS } from "@openreel/agent-facade";
-import { writeTinyVp9Mp4 } from "@openreel/runtime-chromium/media/tiny-vp9-mp4";
+import { EMITTED_VERB_JSON_SCHEMAS } from "@reelterminal/agent-facade";
+import { writeTinyVp9Mp4 } from "@reelterminal/runtime-chromium/media/tiny-vp9-mp4";
 import { chromiumAvailable, initialize, makeRoots, startServe, type McpClient } from "./helpers";
 
 let client: McpClient | null = null;

@@ -3,7 +3,7 @@
  * Dev identity is sent via headers (matches the API auth shim); production swaps
  * to cookie/JWT. Base URL is configurable via VITE_API_URL.
  */
-import type { AssetKind, Graph } from "@openreel/fxpkg";
+import type { AssetKind, Graph } from "@reelterminal/fxpkg";
 
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8787";
 

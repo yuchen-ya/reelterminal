@@ -19,7 +19,7 @@ import type {
   PresetLibraryBridgeRequest,
   PresetLibraryBridgeReply,
 } from "./preset-verbs";
-import type { Project } from "@openreel/core/types/project";
+import type { Project } from "@reelterminal/core/types/project";
 import { createEmptyProject } from "./project-factory";
 
 /* ------------------------- fakes ------------------------- */

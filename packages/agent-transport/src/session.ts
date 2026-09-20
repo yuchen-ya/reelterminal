@@ -13,12 +13,12 @@
  * in-flight verb), then dispose the provider runtime (the runtime's bounded
  * teardown). The second-signal hard exit is the operator's escape hatch.
  */
-import { createAgentFacade, type AgentFacade, type FacadeResult } from "@openreel/agent-facade";
+import { createAgentFacade, type AgentFacade, type FacadeResult } from "@reelterminal/agent-facade";
 import {
   createChromiumProviders,
   FfmpegArtifactVerifier,
   type ChromiumProviders,
-} from "@openreel/runtime-chromium";
+} from "@reelterminal/runtime-chromium";
 
 import type { TransportConfig } from "./config";
 import { logError, logInfo } from "./log";

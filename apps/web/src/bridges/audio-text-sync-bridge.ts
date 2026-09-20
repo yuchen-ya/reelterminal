@@ -6,7 +6,7 @@ import {
   type BeatSyncConfig,
   type BeatAnalysisResult,
   DEFAULT_BEAT_SYNC_CONFIG,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useProjectStore } from "../stores/project-store";
 
 export interface BeatSyncState {

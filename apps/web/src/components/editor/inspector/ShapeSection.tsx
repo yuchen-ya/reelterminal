@@ -1,10 +1,10 @@
 import React, { useCallback, useMemo } from "react";
-import { ToolcraftSegmentedControl } from "@openreel/ui";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftNumberInputControl } from "@openreel/ui";
-import { ToolcraftSelectControl as Selector } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftSegmentedControl } from "@reelterminal/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftNumberInputControl } from "@reelterminal/ui";
+import { ToolcraftSelectControl as Selector } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import {
   Square,
   Circle,
@@ -21,11 +21,11 @@ import type {
   ShapeStyle,
   FillStyle,
   StrokeStyle,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   getMotionShaderDef,
   getMotionShaderFillDefs,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   createDefaultEditorShader,
   groupShaderDefsByCollection,

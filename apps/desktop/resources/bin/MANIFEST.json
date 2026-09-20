@@ -12,7 +12,13 @@
       "ffmpegVersion": "6.1.1",
       "source": "ffmpeg-static b6.1.1 (Evermeet), GPL static",
       "sha256": "ebdddc936f61e14049a2d4b549a412b8a40deeff6540e58a9f2a2da9e6b18894"
+    },
+    "win32-x64": {
+      "file": "win32-x64/ffmpeg.exe",
+      "ffmpegVersion": "6.1.1",
+      "source": "ffmpeg-static b6.1.1, GPL static",
+      "sha256": "04e1307997530f9cf2fe35cba2ca7e8875ca91da02f89d6c7243df819c94ad00"
     }
   },
-  "note": "Binaries are gitignored. Run `pnpm --filter @openreel/desktop fetch:ffmpeg` (host slots) or `node scripts/fetch-ffmpeg.mjs --all`. Sources/versions differ per slot (see each entry); digests are verified on every fetch."
+  "note": "Binaries are gitignored. Run `pnpm --filter @reelterminal/desktop fetch:ffmpeg` (host slots) or `node scripts/fetch-ffmpeg.mjs --all`. Sources/versions differ per slot (see each entry); digests are verified on every fetch."
 }

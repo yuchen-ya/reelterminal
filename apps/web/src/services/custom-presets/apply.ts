@@ -8,7 +8,7 @@
  *
  * 1. Payloads are re-validated immediately before expansion. Presets may
  *    have been created by an older build, so this second gate (beyond the
- *    create-time validation in @openreel/core/presets/validate) keeps
+ *    create-time validation in @reelterminal/core/presets/validate) keeps
  *    unknown or out-of-range parameters out of project JSON — the core
  *    `effect/add` and `transition/set` executors write parameters verbatim.
  *
@@ -22,29 +22,29 @@
  * The returned actions are meant for `executeActionBatch` (one undo unit).
  */
 import { v4 as uuid } from "uuid";
-import type { Action, Clip, Project, Track } from "@openreel/core";
-import type { TextClip } from "@openreel/core/text/types";
+import type { Action, Clip, Project, Track } from "@reelterminal/core";
+import type { TextClip } from "@reelterminal/core/text/types";
 import {
   EFFECT_DEFINITIONS,
   type EffectDefinition,
-} from "@openreel/core/types/effects";
-import type { Transition } from "@openreel/core/types/timeline";
+} from "@reelterminal/core/types/effects";
+import type { Transition } from "@reelterminal/core/types/timeline";
 import type {
   CustomPresetRecord,
   EffectPresetItem,
   GraphicsPresetPayload,
-} from "@openreel/core/presets/types";
+} from "@reelterminal/core/presets/types";
 import {
   getTransitionDefaultParams,
   validatePresetPayload,
-} from "@openreel/core/presets/validate";
-import { validateSvgContent } from "@openreel/core/graphics/svg-validation";
+} from "@reelterminal/core/presets/validate";
+import { validateSvgContent } from "@reelterminal/core/graphics/svg-validation";
 import {
   DEFAULT_GRAPHIC_TRANSFORM,
   DEFAULT_SVG_COLOR_STYLE,
   type SVGClip,
   type ViewBox,
-} from "@openreel/core/graphics/types";
+} from "@reelterminal/core/graphics/types";
 
 export type PresetApplyErrorCode =
   | "PRESET_INVALID"

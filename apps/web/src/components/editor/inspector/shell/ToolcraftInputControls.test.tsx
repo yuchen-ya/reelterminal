@@ -7,7 +7,7 @@ import {
   ToolcraftSelectControl,
   ToolcraftSwitchControl,
   ToolcraftTextInputControl,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 
 describe("Toolcraft input controls", () => {
   it("updates text inputs through the shared control surface", () => {

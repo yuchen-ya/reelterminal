@@ -7,7 +7,7 @@ import {
   syncTransitionBridgeFromProject,
 } from "../../../bridges/transition-bridge";
 import { getTransitionAtTime } from "./canvas-renderers";
-import type { Transition } from "@openreel/core";
+import type { Transition } from "@reelterminal/core";
 
 const facadeTransition = {
   id: "transition-facade-1",

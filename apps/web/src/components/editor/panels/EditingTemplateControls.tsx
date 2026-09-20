@@ -1,10 +1,10 @@
 import React from "react";
-import { ToolcraftSwitchControl } from "@openreel/ui";
-import { ToolcraftSelectControl as Selector } from "@openreel/ui";
-import { ToolcraftSliderControl } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
-import { ToolcraftTextInputControl } from "@openreel/ui";
-import type { EditingTemplate, EditingTemplatePrimitive } from "@openreel/core";
+import { ToolcraftSwitchControl } from "@reelterminal/ui";
+import { ToolcraftSelectControl as Selector } from "@reelterminal/ui";
+import { ToolcraftSliderControl } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
+import { ToolcraftTextInputControl } from "@reelterminal/ui";
+import type { EditingTemplate, EditingTemplatePrimitive } from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 export const getEditingTemplateDefaultControlValues = (

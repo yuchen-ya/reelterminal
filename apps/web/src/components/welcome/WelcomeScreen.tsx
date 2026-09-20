@@ -8,13 +8,13 @@ import {
   Square,
   FolderOpen,
 } from "@/icons/lucide-compat";
-import { ToolcraftSwitchControl } from "@openreel/ui";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftSwitchControl } from "@reelterminal/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
-import { SOCIAL_MEDIA_PRESETS, type SocialMediaCategory } from "@openreel/core";
+import { SOCIAL_MEDIA_PRESETS, type SocialMediaCategory } from "@reelterminal/core";
 import { TemplateGallery } from "./TemplateGallery";
 import { RecentProjects } from "./RecentProjects";
 import { useRouter } from "../../hooks/use-router";

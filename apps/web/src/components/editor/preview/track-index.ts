@@ -1,4 +1,4 @@
-import type { Clip, Track } from "@openreel/core";
+import type { Clip, Track } from "@reelterminal/core";
 
 export interface PreviewTrackIndex {
   readonly clipsById: ReadonlyMap<string, Clip>;

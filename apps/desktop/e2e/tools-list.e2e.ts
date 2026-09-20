@@ -5,7 +5,7 @@
  * unknown tool name is a JSON-RPC protocol error, never a domain result.
  */
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { FACADE_TOOL_NAMES } from "@openreel/agent-facade";
+import { FACADE_TOOL_NAMES } from "@reelterminal/agent-facade";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
 import { createEvidence, type EvidenceRecord } from "./harness/evidence";

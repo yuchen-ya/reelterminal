@@ -20,13 +20,13 @@
  * All output bytes flow OUT through these bindings as bounded chunks and are
  * written to disk by the Node host.
  */
-import { getSpeedEngine } from "@openreel/core/video/speed-engine";
-import { getVideoEngine } from "@openreel/core/video/video-engine";
-import { getExportEngine } from "@openreel/core/export/export-engine";
-import { DEFAULT_UPSCALING_SETTINGS } from "@openreel/core/export/types";
-import { titleEngine } from "@openreel/core/text/title-engine";
-import { graphicsEngine } from "@openreel/core/graphics/graphics-engine";
-import type { Project } from "@openreel/core/types/project";
+import { getSpeedEngine } from "@reelterminal/core/video/speed-engine";
+import { getVideoEngine } from "@reelterminal/core/video/video-engine";
+import { getExportEngine } from "@reelterminal/core/export/export-engine";
+import { DEFAULT_UPSCALING_SETTINGS } from "@reelterminal/core/export/types";
+import { titleEngine } from "@reelterminal/core/text/title-engine";
+import { graphicsEngine } from "@reelterminal/core/graphics/graphics-engine";
+import type { Project } from "@reelterminal/core/types/project";
 
 declare global {
   interface Window {

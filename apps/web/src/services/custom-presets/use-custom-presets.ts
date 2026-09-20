@@ -7,7 +7,7 @@
  * stay read-only.
  */
 import { useEffect, useState } from "react";
-import type { PresetKind, CustomPresetRecord } from "@openreel/core/presets/types";
+import type { PresetKind, CustomPresetRecord } from "@reelterminal/core/presets/types";
 import {
   CUSTOM_PRESETS_UPDATED_EVENT,
   getCustomPresetService,

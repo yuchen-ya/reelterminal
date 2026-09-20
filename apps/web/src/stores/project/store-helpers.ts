@@ -7,14 +7,14 @@ import type {
   TextClip,
   SVGClip,
   StickerClip,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   calculateProjectDuration,
   getSpeedEngine,
   getAdjustmentLayerEngine,
   multicamEngine,
   getNestedSequenceEngine,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import type { ProjectState } from "../project-store";
 import type { ClipHistoryEntryType } from "./index";
 import { useEngineStore } from "../engine-store";

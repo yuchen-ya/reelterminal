@@ -1,7 +1,7 @@
 import "../../../test/install-local-storage-mock";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Clip } from "@openreel/core";
+import type { Clip } from "@reelterminal/core";
 import { disposeTransitionBridge } from "../../../bridges/transition-bridge";
 import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { useProjectStore } from "../../../stores/project-store";

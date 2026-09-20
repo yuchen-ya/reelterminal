@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { Action } from "@openreel/core";
-import type { TextClip } from "@openreel/core";
+import type { Action } from "@reelterminal/core";
+import type { TextClip } from "@reelterminal/core";
 import { useProjectStore, getProjectRevision } from "../../stores/project-store";
 import {
   getLiveEditorContext,

@@ -1,14 +1,14 @@
 import { useCallback, useRef, useState } from "react";
-import { ToolcraftSegmentedControl } from "@openreel/ui";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftDialog as Dialog, ToolcraftDialogHeader as DialogHeader } from "@openreel/ui";
-import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent, ToolcraftLayoutFooter as LayoutFooter } from "@openreel/ui";
-import { ToolcraftFileDropControl as FileInput } from "@openreel/ui";
-import { ToolcraftNumberInputControl } from "@openreel/ui";
-import { ToolcraftProgressBar as ProgressBar } from "@openreel/ui";
-import { ToolcraftSelectableCard as SelectableCard } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftSegmentedControl } from "@reelterminal/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftDialog as Dialog, ToolcraftDialogHeader as DialogHeader } from "@reelterminal/ui";
+import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent, ToolcraftLayoutFooter as LayoutFooter } from "@reelterminal/ui";
+import { ToolcraftFileDropControl as FileInput } from "@reelterminal/ui";
+import { ToolcraftNumberInputControl } from "@reelterminal/ui";
+import { ToolcraftProgressBar as ProgressBar } from "@reelterminal/ui";
+import { ToolcraftSelectableCard as SelectableCard } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { Video, Loader2 } from "@/icons/lucide-compat";
 import {
   computeCompressionPlan,
@@ -18,7 +18,7 @@ import {
   type CompressionSource,
   type CompressionTarget,
   type CompressionQuality,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   probeCompressionSource,
   runCompression,

@@ -1,9 +1,9 @@
 import type { JSX } from "react";
 import React, { useCallback, useEffect, useState } from "react";
-import { ToolcraftButton as Button } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { useTranslation } from "react-i18next";
-import type { VideoExportSettings } from "@openreel/core";
-import { setEncoderBackendFactory, WebCodecsBackend } from "@openreel/core";
+import type { VideoExportSettings } from "@reelterminal/core";
+import { setEncoderBackendFactory, WebCodecsBackend } from "@reelterminal/core";
 import { useProjectStore } from "../../stores/project-store";
 import { ExportDialog } from "../../components/editor/ExportDialog";
 import { deriveSourceExportMatch } from "../../services/export-source-match";

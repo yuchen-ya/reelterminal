@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Settings, Grid3X3, MousePointer, Save, Palette, Monitor } from 'lucide-react';
 import { useUIStore } from '../../stores/ui-store';
-import { Slider } from '@openreel/ui';
+import { Slider } from '@reelterminal/ui';
 
 interface Props {
   isOpen: boolean;

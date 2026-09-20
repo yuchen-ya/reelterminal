@@ -5,8 +5,8 @@
  * the default unit-test config never sees `*.e2e.ts` files, so `test:run`
  * stays fast. Run with:
  *
- *   pnpm --filter @openreel/desktop build
- *   pnpm --filter @openreel/desktop test:e2e
+ *   pnpm --filter @reelterminal/desktop build
+ *   pnpm --filter @reelterminal/desktop test:e2e
  *
  * Serial execution, long timeouts: every spec file boots the real built
  * Electron app and drives a real MCP client against it.

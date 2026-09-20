@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MotionComposition, Project } from "@openreel/core";
+import type { MotionComposition, Project } from "@reelterminal/core";
 import {
   exportMotionCompositionScene,
   MOTION_EXPORT_FORMATS,
@@ -29,7 +29,7 @@ vi.mock("../services/export-runner", () => ({
         : "application/octet-stream",
 }));
 
-vi.mock("@openreel/core", () => ({
+vi.mock("@reelterminal/core", () => ({
   DEFAULT_VIDEO_SETTINGS: {
     format: "mp4",
     codec: "h264",
@@ -93,7 +93,7 @@ vi.mock("@openreel/core", () => ({
   },
 }));
 
-vi.mock("@openreel/core/creation/index", () => ({
+vi.mock("@reelterminal/core/creation/index", () => ({
   resolveCreationMotionSceneBinding: vi.fn(() => null),
 }));
 

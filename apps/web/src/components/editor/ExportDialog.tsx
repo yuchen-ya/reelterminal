@@ -20,15 +20,15 @@ import {
   Minimize2,
   AlertTriangle,
 } from "@/icons/lucide-compat";
-import { ToolcraftSegmentedControl, ToolcraftSwitchControl } from "@openreel/ui";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftDialog as Dialog, ToolcraftDialogHeader as DialogHeader } from "@openreel/ui";
-import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent, ToolcraftLayoutFooter as LayoutFooter } from "@openreel/ui";
-import { ToolcraftNumberInputControl } from "@openreel/ui";
-import { ToolcraftSelectableCard as SelectableCard } from "@openreel/ui";
-import { ToolcraftSelectControl as Selector } from "@openreel/ui";
-import { ToolcraftSliderControl } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftSegmentedControl, ToolcraftSwitchControl } from "@reelterminal/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftDialog as Dialog, ToolcraftDialogHeader as DialogHeader } from "@reelterminal/ui";
+import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent, ToolcraftLayoutFooter as LayoutFooter } from "@reelterminal/ui";
+import { ToolcraftNumberInputControl } from "@reelterminal/ui";
+import { ToolcraftSelectableCard as SelectableCard } from "@reelterminal/ui";
+import { ToolcraftSelectControl as Selector } from "@reelterminal/ui";
+import { ToolcraftSliderControl } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import {
   exportPresetsManager,
   type PlatformExportPreset,
@@ -40,7 +40,7 @@ import type {
   CompressionSource,
   CompressionTarget,
   CompressionPlan,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import type { SourceExportMatch } from "../../services/export-source-match";
 import {
   getDeviceProfile,
@@ -58,7 +58,7 @@ import {
   type BenchmarkProgress,
   type TimeEstimate,
   type CodecRecommendation,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 const WEB_EXPORT_GUARDRAIL_MESSAGE =

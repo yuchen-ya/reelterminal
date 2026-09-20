@@ -17,7 +17,7 @@
 import type {
   MaterialJournalEntry,
   MaterialRecord,
-} from "@openreel/core/material/types";
+} from "@reelterminal/core/material/types";
 
 export const MATERIAL_LIBRARY_DB_NAME = "openreel-material-library";
 export const MATERIAL_LIBRARY_DB_VERSION = 1;

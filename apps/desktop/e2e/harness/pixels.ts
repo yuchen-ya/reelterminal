@@ -6,7 +6,7 @@
 import {
   extractFrameRgba,
   resolveFfmpegBinaries,
-} from "@openreel/runtime-chromium/node/ffmpeg";
+} from "@reelterminal/runtime-chromium/node/ffmpeg";
 
 export interface PixelStats {
   readonly width: number;

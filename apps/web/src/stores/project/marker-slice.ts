@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import type { StoreApi } from "zustand";
-import type { Action } from "@openreel/core";
+import type { Action } from "@reelterminal/core";
 import type { ProjectState } from "../project-store";
 
 type Get = StoreApi<ProjectState>["getState"];

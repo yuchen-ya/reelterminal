@@ -7,8 +7,8 @@ import type {
   Project,
   Track,
   VideoExportSettings,
-} from "@openreel/core";
-import type { CreationProjectState } from "@openreel/core/creation/index";
+} from "@reelterminal/core";
+import type { CreationProjectState } from "@reelterminal/core/creation/index";
 import {
   DEFAULT_MOTION_INSTANCE_TRANSFORM,
   DEFAULT_VIDEO_SETTINGS,
@@ -18,8 +18,8 @@ import {
   MotionHighQualityRenderer,
   motionEngine,
   motionRenderer,
-} from "@openreel/core";
-import { resolveCreationMotionSceneBinding } from "@openreel/core/creation/index";
+} from "@reelterminal/core";
+import { resolveCreationMotionSceneBinding } from "@reelterminal/core/creation/index";
 import {
   createDownloadWritable,
   mimeForExt,

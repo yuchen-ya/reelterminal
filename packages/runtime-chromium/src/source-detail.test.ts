@@ -2,7 +2,7 @@ import { it, expect } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createAgentFacade } from "@openreel/agent-facade";
+import { createAgentFacade } from "@reelterminal/agent-facade";
 import { createChromiumProviders } from "./node/providers";
 import { resolveFfmpegBinaries, runProcess, extractFrameRgba } from "./node/ffmpeg";
 

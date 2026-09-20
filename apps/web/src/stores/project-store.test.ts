@@ -9,12 +9,12 @@ import type {
   MediaItem,
   MotionShaderDef,
   Transition,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   clearGeneratedMotionShaders,
   getMotionShaderDef,
   listGeneratedMotionShaders,
-} from "@openreel/core/motion/shaders";
+} from "@reelterminal/core/motion/shaders";
 import { createEmptyProject } from "./project/project-helpers";
 import { getEffectsBridge } from "../bridges/effects-bridge";
 import { autoSaveManager } from "../services/auto-save";
@@ -27,7 +27,7 @@ const { ffmpegProbeMock } = vi.hoisted(() => ({
 
 // Fault simulation seam: the separateAudio probe is the browser path
 // that lazily loads FFmpeg.wasm from its remote CDN.
-vi.mock("@openreel/core/media", () => ({
+vi.mock("@reelterminal/core/media", () => ({
   getFFmpegFallback: () => ffmpegProbeMock,
 }));
 

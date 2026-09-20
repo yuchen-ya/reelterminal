@@ -1,5 +1,5 @@
 import type { StoreApi } from "zustand";
-import { textAnimationEngine } from "@openreel/core";
+import { textAnimationEngine } from "@reelterminal/core";
 import type {
   TextStyle,
   TextAnimation,
@@ -14,7 +14,7 @@ import type {
   StickerClip,
   TextClip,
   Text3DSettings,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import type { ProjectState } from "../project-store";
 import type { ProjectStoreHelpers } from "./store-helpers";
 import { useEngineStore } from "../engine-store";

@@ -1,5 +1,5 @@
-import type { Project, ProjectSettings } from "@openreel/core";
-import { normalizeProjectStoredFields } from "@openreel/core";
+import type { Project, ProjectSettings } from "@reelterminal/core";
+import { normalizeProjectStoredFields } from "@reelterminal/core";
 import { v4 as uuidv4 } from "uuid";
 import { t as ti } from "../i18n";
 

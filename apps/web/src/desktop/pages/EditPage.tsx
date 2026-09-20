@@ -3,7 +3,7 @@ import type { JSX } from "react";
 import type React from "react";
 import { lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 
 import { AssetsPanel } from "../../components/editor/AssetsPanel";
 import { InspectorPanel } from "../../components/editor/InspectorPanel";

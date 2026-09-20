@@ -12,15 +12,15 @@ import {
   Hash,
   Music,
 } from "@/icons/lucide-compat";
-import { ToolcraftSwitchControl } from "@openreel/ui";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftDialog as Dialog, ToolcraftDialogHeader as DialogHeader } from "@openreel/ui";
-import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent, ToolcraftLayoutFooter as LayoutFooter } from "@openreel/ui";
-import { ToolcraftNumberInputControl } from "@openreel/ui";
-import { ToolcraftSliderControl } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
-import { ToolcraftTextAreaControl } from "@openreel/ui";
-import { ToolcraftTextInputControl } from "@openreel/ui";
+import { ToolcraftSwitchControl } from "@reelterminal/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftDialog as Dialog, ToolcraftDialogHeader as DialogHeader } from "@reelterminal/ui";
+import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent, ToolcraftLayoutFooter as LayoutFooter } from "@reelterminal/ui";
+import { ToolcraftNumberInputControl } from "@reelterminal/ui";
+import { ToolcraftSliderControl } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
+import { ToolcraftTextAreaControl } from "@reelterminal/ui";
+import { ToolcraftTextInputControl } from "@reelterminal/ui";
 import { useEngineStore } from "../../stores/engine-store";
 import { useProjectStore } from "../../stores/project-store";
 import type {
@@ -28,7 +28,7 @@ import type {
   ExtendedPlaceholder,
   ScriptableTemplateReplacements,
   ExtendedPlaceholderType,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 interface TemplatePreviewModalProps {
@@ -153,7 +153,7 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({
               lineHeight: 1.2,
             },
             transform: textClip.transform as Partial<
-              import("@openreel/core").Transform
+              import("@reelterminal/core").Transform
             >,
             animation: {
               preset: "fade",

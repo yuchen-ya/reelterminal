@@ -1,5 +1,5 @@
 /**
- * @openreel/fxpkg — the .fxpkg artifact contract, node library, graph validator,
+ * @reelterminal/fxpkg — the .fxpkg artifact contract, node library, graph validator,
  * filter/template compilers, and blueprint engine. The shared spine of the
  * studio → marketplace → editor → render-farm pipeline (STUDIO_PLAN Parts II–III).
  */

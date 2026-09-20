@@ -4,7 +4,7 @@ import {
   createConversationDisplayState,
   type ExternalConversationBridge as ExternalConversationBridgeType,
   type AgentWorkMode,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 import type {
   ConversationAdapterSummary,
   DesktopConversationEvent,

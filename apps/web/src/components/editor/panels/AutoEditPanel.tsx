@@ -1,12 +1,12 @@
 import React, { useState, useCallback, useMemo } from "react";
 import { Music, Zap, Loader2 } from "@/icons/lucide-compat";
-import { ToolcraftSegmentedControl } from "@openreel/ui";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftEmptyState as EmptyState } from "@openreel/ui";
-import { ToolcraftSelectControl as Selector } from "@openreel/ui";
-import { ToolcraftSliderControl } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftSegmentedControl } from "@reelterminal/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftEmptyState as EmptyState } from "@reelterminal/ui";
+import { ToolcraftSelectControl as Selector } from "@reelterminal/ui";
+import { ToolcraftSliderControl } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { useProjectStore } from "../../../stores/project-store";
 import { MAX_ACTIONS_PER_BATCH } from "../../../stores/project/action-batch";
 import {
@@ -18,7 +18,7 @@ import {
   type CutMode,
   type BeatAnalysisResult,
   type Clip,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 interface AutoEditPanelProps {

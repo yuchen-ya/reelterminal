@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { MotionComposition, MotionLayer } from "@openreel/core";
+import type { MotionComposition, MotionLayer } from "@reelterminal/core";
 import {
   DEFAULT_MOTION_TRANSFORM,
   createMotionParticleLayer,
   createMotionLight,
   getMotionMaskKeyframeProperty,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   getMotionStagePlaybackPreviewSettings,
   getMotionStagePreviewCanvasSize,

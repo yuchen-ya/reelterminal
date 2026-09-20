@@ -13,14 +13,14 @@ import {
   FileCode,
   Smile,
 } from "@/icons/lucide-compat";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
-import { ToolcraftTextInputControl } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
+import { ToolcraftTextInputControl } from "@reelterminal/ui";
 import { useProjectStore } from "../../../stores/project-store";
-import type { HistorySnapshot } from "@openreel/core";
+import type { HistorySnapshot } from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 interface DisplayEntry {

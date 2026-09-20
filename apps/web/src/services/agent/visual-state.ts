@@ -1,4 +1,4 @@
-import type { Project, Track } from "@openreel/core";
+import type { Project, Track } from "@reelterminal/core";
 import { getLiveEditorContext } from "../../stores/editor-context-store";
 import { getProjectRevision, useProjectStore } from "../../stores/project-store";
 

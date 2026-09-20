@@ -60,7 +60,7 @@ export type JsonSchemaNode =
    * The one open-object leaf (no additionalProperties key = JSON-Schema
    * default, i.e. any properties): reserved for parameter bundles whose deep
    * validation lives in a shared validator (the custom-preset payload
-   * whitelist lives in @openreel/core/presets/validate). A closed emission
+   * whitelist lives in @reelterminal/core/presets/validate). A closed emission
    * here would make schema-validating clients unable to send valid payloads.
    */
   | { readonly type: "object" }

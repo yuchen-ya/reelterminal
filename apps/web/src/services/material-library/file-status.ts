@@ -10,7 +10,7 @@ import type {
   MaterialFileStatus,
   MaterialRecord,
   MediaMaterialRecord,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { getMaterialLibraryService } from "./library-service";
 
 export function isMediaMaterial(

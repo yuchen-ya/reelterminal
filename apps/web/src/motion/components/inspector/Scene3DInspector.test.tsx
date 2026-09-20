@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { Scene3DInspector } from "./Scene3DInspector";
-import type { MotionScene3DLayer } from "@openreel/core";
+import type { MotionScene3DLayer } from "@reelterminal/core";
 
 const baseLayer = {
   id: "L1",

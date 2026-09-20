@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { detectSilenceRangesInPcm } from "@openreel/core/audio/audio-engine";
-import { analyzeBeatsInPcm } from "@openreel/core/audio/beat-detection-engine";
+import { detectSilenceRangesInPcm } from "@reelterminal/core/audio/audio-engine";
+import { analyzeBeatsInPcm } from "@reelterminal/core/audio/beat-detection-engine";
 import { FacadeError } from "./errors";
 
 export const AUDIO_LIMITS = { maxRangeSec: 120, maxConcurrentPerSession: 2, timeoutMs: 60000, maxProcessOutputBytes: 16 * 1024 * 1024, maxWaveformBins: 600, maxEvents: 256 } as const;

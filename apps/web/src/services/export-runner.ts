@@ -4,7 +4,7 @@ import {
   type VideoExportSettings,
   type ExportResult,
   type Project,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { t } from "../i18n";
 
 export interface ExportRunnerState {

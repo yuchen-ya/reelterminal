@@ -1,5 +1,5 @@
-import { StorageEngine } from "@openreel/core";
-import type { MediaRecord, MediaMetadata } from "@openreel/core";
+import { StorageEngine } from "@reelterminal/core";
+import type { MediaRecord, MediaMetadata } from "@reelterminal/core";
 
 const storage = new StorageEngine();
 

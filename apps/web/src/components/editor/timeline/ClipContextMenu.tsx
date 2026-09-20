@@ -1,6 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import type { ToolcraftContextMenuOption as ContextMenuOption } from "@openreel/ui";
+import type { ToolcraftContextMenuOption as ContextMenuOption } from "@reelterminal/ui";
 import {
   Copy,
   Layers,
@@ -16,11 +16,11 @@ import {
   ListChecks,
   Hash,
 } from "@/icons/lucide-compat";
-import type { Clip, Track } from "@openreel/core";
+import type { Clip, Track } from "@reelterminal/core";
 import {
   captureWorkAssetFromClip,
   captureWorkAssetFromClips,
-} from "@openreel/core/work-assets/capture";
+} from "@reelterminal/core/work-assets/capture";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useUIStore } from "../../../stores/ui-store";

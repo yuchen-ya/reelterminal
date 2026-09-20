@@ -41,11 +41,11 @@ import type {
   Project,
   ProjectMarkerTarget,
   ProjectSettings,
-} from "@openreel/core/types/project";
+} from "@reelterminal/core/types/project";
 import {
   TRANSITION_TYPES as CORE_TRANSITION_TYPES,
   type TransitionType,
-} from "@openreel/core/types/effects";
+} from "@reelterminal/core/types/effects";
 import type { LiveEditorReferences } from "./live-store";
 import type {
   ArtifactRef,
@@ -1175,7 +1175,7 @@ export interface ClipRippleDeleteOp {
 export interface TextStyleInput {
   readonly fontFamily?: string;
   readonly fontSize?: number;
-  readonly fontWeight?: import("@openreel/core/text/types").FontWeight;
+  readonly fontWeight?: import("@reelterminal/core/text/types").FontWeight;
   readonly color?: string;
   readonly textAlign?: "left" | "center" | "right" | "justify";
 }

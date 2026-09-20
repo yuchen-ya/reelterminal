@@ -4,7 +4,7 @@
  * panel merges these built-ins (never editable) with the user's custom text
  * presets from the cross-project preset store.
  */
-import type { TextStyle } from "@openreel/core";
+import type { TextStyle } from "@reelterminal/core";
 
 export const DEFAULT_TITLE_STYLE: Partial<TextStyle> = {
   fontSize: 96,

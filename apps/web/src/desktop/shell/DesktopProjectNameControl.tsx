@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Pencil } from "@/icons/lucide-compat";
 import { useProjectStore } from "../../stores/project-store";
 import { toast } from "../../stores/notification-store";
-import { ToolcraftIconButton, ToolcraftTextInputControl } from "@openreel/ui";
+import { ToolcraftIconButton, ToolcraftTextInputControl } from "@reelterminal/ui";
 import { ProjectSwitcher } from "../../components/editor/ProjectSwitcher";
 import { useTranslation } from "react-i18next";
 

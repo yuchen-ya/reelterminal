@@ -25,7 +25,7 @@ export const loadAudioBuffer = async (
   let extractError: unknown = null;
 
   try {
-    const { extractAudioWav } = await import("@openreel/core/media");
+    const { extractAudioWav } = await import("@reelterminal/core/media");
     options.onProgress?.({
       stage: "extracting",
       progress: 0.08,

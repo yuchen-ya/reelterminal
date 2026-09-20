@@ -7,15 +7,15 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Scissors } from "lucide-react";
-import type { MediaMaterialRecord } from "@openreel/core";
-import { isValidSegmentRange } from "@openreel/core";
+import type { MediaMaterialRecord } from "@reelterminal/core";
+import { isValidSegmentRange } from "@reelterminal/core";
 import {
   ToolcraftDialog,
   ToolcraftDialogHeader,
   ToolcraftLayout,
   ToolcraftLayoutContent,
   ToolcraftLayoutFooter,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import { getMaterialLibraryService } from "../../../services/material-library/library-service";
 import { toast } from "../../../stores/notification-store";
 

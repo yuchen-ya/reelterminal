@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Layers } from "@/icons/lucide-compat";
-import type { AdjustmentLayer } from "@openreel/core";
+import type { AdjustmentLayer } from "@reelterminal/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTranslation } from "react-i18next";
 

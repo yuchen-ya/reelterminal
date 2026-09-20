@@ -18,14 +18,14 @@ import {
   Scissors,
   Trash2,
 } from "lucide-react";
-import type { MaterialRecord, MaterialUpdatePatch } from "@openreel/core";
+import type { MaterialRecord, MaterialUpdatePatch } from "@reelterminal/core";
 import {
   ToolcraftDialog,
   ToolcraftDialogHeader,
   ToolcraftLayout,
   ToolcraftLayoutContent,
   ToolcraftLayoutFooter,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import { getMaterialLibraryService } from "../../../services/material-library/library-service";
 import { attachMaterialToProject } from "../../../services/material-library/attach";
 import { useMaterialLibraryStore } from "../../../stores/material-library-store";

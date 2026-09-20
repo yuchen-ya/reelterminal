@@ -3,7 +3,7 @@
 import * as React from "react"
 import { Check, Slash } from "lucide-react"
 
-import { cn } from "@openreel/ui/lib/utils"
+import { cn } from "@reelterminal/ui/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "./popover"
 import { Slider } from "./slider"
 

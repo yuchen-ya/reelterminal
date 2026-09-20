@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ToolcraftPanelSection } from "@openreel/ui";
+import { ToolcraftPanelSection } from "@reelterminal/ui";
 
 describe("ToolcraftPanelSection", () => {
   it("exposes a collapsible Toolcraft-style section header", () => {

@@ -59,7 +59,7 @@ import {
   type FacadeResult,
   type FacadeVerb,
   type JsonSchemaObject,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 

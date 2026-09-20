@@ -67,7 +67,7 @@ function makeRunDirs(runDir?: string): {
   conversationEndpointFile: string;
   conversationVisualStateRoot: string;
 } {
-  const dir = runDir ?? mkdtempSync(path.join(tmpdir(), "openreel-e2e-"));
+  const dir = runDir ?? mkdtempSync(path.join(tmpdir(), "reelterminal-e2e-"));
   mkdirSync(dir, { recursive: true });
   return {
     runDir: dir,
@@ -84,7 +84,7 @@ async function launch(
 ): Promise<LaunchedApp> {
   if (!existsSync(MAIN_BUNDLE_PATH) || !existsSync(LIVE_MCP_CONNECTOR_PATH)) {
     throw new Error(
-      "desktop build missing — run `pnpm --filter @openreel/desktop build` before test:e2e",
+      "desktop build missing — run `pnpm --filter @reelterminal/desktop build` before test:e2e",
     );
   }
 

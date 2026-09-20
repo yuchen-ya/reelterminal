@@ -1,6 +1,6 @@
 import * as React from "react"
 import { Slider } from "./slider"
-import { cn } from "@openreel/ui/lib/utils"
+import { cn } from "@reelterminal/ui/lib/utils"
 
 export interface LabeledSliderProps {
   label: string

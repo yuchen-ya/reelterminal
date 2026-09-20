@@ -38,7 +38,7 @@ import type {
   Project,
   ProjectMarker,
   ProjectMarkersState,
-} from "@openreel/core/types/project";
+} from "@reelterminal/core/types/project";
 
 import { FACADE_CONTRACT_VERSION, TRACK_TYPES } from "./types";
 import { FacadeError } from "./errors";

@@ -3,7 +3,7 @@ import {
   ToolcraftNumberFieldGroup,
   ToolcraftSliderControl,
   ToolcraftSwitchControl,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 
 export interface NumberFieldEntry {
   axis: string;

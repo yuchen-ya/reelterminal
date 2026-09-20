@@ -19,13 +19,13 @@ import {
   PRESET_KINDS,
   type CustomPresetRecord,
   type PresetKind,
-} from "@openreel/core/presets/types";
+} from "@reelterminal/core/presets/types";
 import {
   validatePresetName,
   validatePresetPayload,
   validatePresetRecord,
   validatePresetThumbnail,
-} from "@openreel/core/presets/validate";
+} from "@reelterminal/core/presets/validate";
 import { createIdbPresetStorage, PresetStorageUnavailableError, type PresetStorage } from "./storage";
 
 export const CUSTOM_PRESETS_UPDATED_EVENT = "openreel:custom-presets-updated";

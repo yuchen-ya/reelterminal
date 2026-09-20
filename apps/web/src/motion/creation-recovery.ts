@@ -1,10 +1,10 @@
-import type { Project, MotionComposition } from "@openreel/core";
+import type { Project, MotionComposition } from "@reelterminal/core";
 import type {
   MotionMaterial3D,
   MotionObject3DKind,
   MotionScene3DLayer,
   MotionSceneObject3D,
-} from "@openreel/core/motion/types";
+} from "@reelterminal/core/motion/types";
 import type {
   CreationAssetKind,
   CreationAssetRecipe,
@@ -17,7 +17,7 @@ import type {
   CreationSceneEnvironment,
   CreationSceneObject,
   Transform3D,
-} from "@openreel/core/creation/index";
+} from "@reelterminal/core/creation/index";
 
 export interface RecoverableScene3DLayerSummary {
   readonly compositionId: string;

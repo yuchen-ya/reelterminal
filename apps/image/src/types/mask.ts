@@ -1,1 +1,1 @@
-export * from '@openreel/image-core/mask';
+export * from '@reelterminal/image-core/mask';

@@ -1,7 +1,7 @@
 /**
  * Passive failure tracking for the remote default 3D text font.
  *
- * The core renderer (`@openreel/core` motion-three-renderer) downloads its
+ * The core renderer (`@reelterminal/core` motion-three-renderer) downloads its
  * default Text3D font from a hardcoded remote URL and swallows load
  * failures: a failed font simply means the 3D text object is missing from
  * the rendered frame with no signal reaching the UI. This module lets the
@@ -18,7 +18,7 @@
  *   successful font fetch (e.g. after that retry) or an explicit reset.
  */
 
-import type { MotionComposition } from "@openreel/core/motion/types";
+import type { MotionComposition } from "@reelterminal/core/motion/types";
 
 export interface Text3DFontFailure {
   /** The font URL whose fetch failed. */

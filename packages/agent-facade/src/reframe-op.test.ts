@@ -24,8 +24,8 @@ import { writeTinyMp4, TINY_MP4_EXPECTED } from "./media/fixtures/tiny-mp4";
 import { opToCoreActions } from "./ops";
 import { createEmptyProject } from "./project-factory";
 import { makeTempDir, removeTempDir } from "./test-helpers";
-import type { Action } from "@openreel/core/types/actions";
-import type { Project } from "@openreel/core/types/project";
+import type { Action } from "@reelterminal/core/types/actions";
+import type { Project } from "@reelterminal/core/types/project";
 
 // The fixture source is 320x180; a 9:16 center crop of it.
 const SOURCE = { width: TINY_MP4_EXPECTED.width, height: TINY_MP4_EXPECTED.height };
@@ -429,8 +429,8 @@ describe("clip.applyReframe translation", () => {
   });
 
   it("the emitted actions execute and undo as one group through core", async () => {
-    const { ActionExecutor } = await import("@openreel/core/actions/action-executor");
-    const { ActionHistory } = await import("@openreel/core/actions/action-history");
+    const { ActionExecutor } = await import("@reelterminal/core/actions/action-executor");
+    const { ActionHistory } = await import("@reelterminal/core/actions/action-history");
     const project = seedDraft();
     const history = new ActionHistory();
     const executor = new ActionExecutor(history);

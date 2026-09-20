@@ -1,8 +1,8 @@
 import React from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp } from "@/icons/lucide-compat";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
-import type { Clip, FitMode, Transform } from "@openreel/core";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
+import type { Clip, FitMode, Transform } from "@reelterminal/core";
 import {
   CropSection,
   AlignmentSection,

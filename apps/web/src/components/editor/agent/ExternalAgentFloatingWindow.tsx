@@ -1,7 +1,7 @@
 import type { JSX } from "react";
 import { lazy, Suspense, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { Bot } from "@/icons/lucide-compat";
 import {
   clampBoundsToViewport,

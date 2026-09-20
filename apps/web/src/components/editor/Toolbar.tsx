@@ -19,7 +19,7 @@ import {
   type ExportResult,
   type DeviceProfile,
   type TimeEstimate,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { ExportDialog } from "./ExportDialog";
 import { CompressDialog } from "./CompressDialog";
 import { deriveSourceExportMatch } from "../../services/export-source-match";
@@ -41,7 +41,7 @@ import {
   ToolcraftIconButton,
   ToolcraftText as Text,
   ToolcraftTextInputControl,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import { useTranslation } from "react-i18next";
 
 type ExportType =

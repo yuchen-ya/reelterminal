@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { AdjustmentLayer, Project } from "@openreel/core";
+import type { AdjustmentLayer, Project } from "@reelterminal/core";
 import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { useProjectStore } from "../../../stores/project-store";
 import { AdjustmentLayerTimelineItem } from "./AdjustmentLayerTimelineItem";

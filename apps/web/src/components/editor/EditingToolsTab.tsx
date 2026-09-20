@@ -11,9 +11,9 @@ import {
   FileStack,
   Volume2,
 } from "@/icons/lucide-compat";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { AutoCaptionPanel } from "./inspector/AutoCaptionPanel";
 import { FilterPresetsPanel } from "./inspector/FilterPresetsPanel";
 import { MusicLibraryPanel } from "./inspector/MusicLibraryPanel";

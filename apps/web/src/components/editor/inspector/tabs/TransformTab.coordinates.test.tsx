@@ -1,7 +1,7 @@
 import "../../../../test/install-local-storage-mock";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Transform } from "@openreel/core";
+import type { Transform } from "@reelterminal/core";
 import { TransformTab } from "./TransformTab";
 
 const overlayTransform: Transform = {

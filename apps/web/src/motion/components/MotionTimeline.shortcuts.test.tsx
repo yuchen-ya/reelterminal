@@ -8,7 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { ToolcraftPopoverProps } from "@openreel/ui";
+import type { ToolcraftPopoverProps } from "@reelterminal/ui";
 
 // jsdom hardening (pre-existing flake, surfaced on contended CI runners):
 // Radix Popper + floating-ui positioning spins the CPU in jsdom once the
@@ -16,8 +16,8 @@ import type { ToolcraftPopoverProps } from "@openreel/ui";
 // waits on. Replace ToolcraftPopover with an inline open/close container —
 // identical DOM interactions (same roles/names inside `content`), no
 // positioning machinery. Product component is untouched.
-vi.mock("@openreel/ui", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@openreel/ui")>();
+vi.mock("@reelterminal/ui", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@reelterminal/ui")>();
   return {
     ...actual,
     ToolcraftPopover: ({
@@ -53,7 +53,7 @@ import {
   createMotionLight,
   type MotionComposition,
   type MotionShapeLayer,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { createEmptyProject } from "../../stores/project/project-helpers";
 import { useProjectStore } from "../../stores/project-store";
 import { useMotionStore } from "../stores/motion-store";

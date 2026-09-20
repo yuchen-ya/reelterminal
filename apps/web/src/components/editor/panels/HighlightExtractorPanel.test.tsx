@@ -31,7 +31,7 @@ vi.mock("../../../stores/timeline-store", () => ({
     selector({ seekTo: () => {} }),
 }));
 
-vi.mock("@openreel/core", () => ({
+vi.mock("@reelterminal/core", () => ({
   getTranscriptionService: stubs.core.getTranscriptionService,
   initializeTranscriptionService: stubs.core.initializeTranscriptionService,
   analyzeAudioForHighlights: vi.fn(() => ({ segments: [], duration: 12 })),

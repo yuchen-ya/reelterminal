@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { saveAnalysisRecord } from "@openreel/agent-facade/analysis-records";
+import { saveAnalysisRecord } from "@reelterminal/agent-facade/analysis-records";
 import { createAnalysisRecordsService } from "./analysis-records-service";
 
 const dirs: string[] = [];

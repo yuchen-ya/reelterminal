@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ToolcraftSliderControl } from "@openreel/ui";
+import { ToolcraftSliderControl } from "@reelterminal/ui";
 
 describe("ToolcraftSliderControl", () => {
   it("commits edited percent labels back to normalized slider values", () => {

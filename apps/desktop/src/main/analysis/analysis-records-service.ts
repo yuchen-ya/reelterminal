@@ -3,12 +3,12 @@ import {
   listAnalysisRecords,
   loadAnalysisRecord,
   type AnalysisRecordView,
-} from "@openreel/agent-facade/analysis-records";
+} from "@reelterminal/agent-facade/analysis-records";
 import type {
   FacadeResult,
   MediaAnalyzeStartResult,
   JobStatusView,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 import type { LiveSessionHost } from "../live/live-session-host";
 
 export interface AnalysisRecordSummary {

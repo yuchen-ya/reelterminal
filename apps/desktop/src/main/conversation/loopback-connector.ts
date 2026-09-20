@@ -5,7 +5,7 @@ import type {
   ExternalAgentNotification,
   ExternalAgentPairing,
   ExternalAgentTransport,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 import type {
   ConversationAdapterSummary,
   ConversationCapabilityLevel,

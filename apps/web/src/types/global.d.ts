@@ -12,7 +12,7 @@ import type {
   DesktopLiveBridgeRequest,
   DesktopLiveEvent,
   DesktopLiveEventsApi,
-} from "@openreel/agent-facade/desktop-protocol";
+} from "@reelterminal/agent-facade/desktop-protocol";
 
 export {};
 
@@ -180,7 +180,7 @@ export type OpenReelUpdaterStatus =
 /* ---- Live collaboration (ADR 0004) --------------------------------------- */
 
 /* Compatibility aliases for existing renderer imports. Definitions live in
- * @openreel/agent-facade/desktop-protocol. */
+ * @reelterminal/agent-facade/desktop-protocol. */
 export type OpenReelAgentWorkMode = AgentWorkMode;
 export type OpenReelAgentAccessMode = AgentAccessMode;
 export type OpenReelCollabStatus = DesktopCollabStatus;

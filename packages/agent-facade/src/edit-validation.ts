@@ -1,6 +1,6 @@
-import { ActionExecutor } from "@openreel/core/actions/action-executor";
-import { ActionHistory } from "@openreel/core/actions/action-history";
-import type { Project } from "@openreel/core/types/project";
+import { ActionExecutor } from "@reelterminal/core/actions/action-executor";
+import { ActionHistory } from "@reelterminal/core/actions/action-history";
+import type { Project } from "@reelterminal/core/types/project";
 import { FacadeError } from "./errors";
 import {
   applyClipIdOverride,

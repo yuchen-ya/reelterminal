@@ -109,7 +109,7 @@ export async function verifyBrowserReaper(): Promise<ReaperFinding> {
       platform,
       method,
       waitMs: REAPER_WAIT_MS,
-      reason: "playwright-core could not be resolved from @openreel/runtime-chromium",
+      reason: "playwright-core could not be resolved from @reelterminal/runtime-chromium",
     };
   }
 

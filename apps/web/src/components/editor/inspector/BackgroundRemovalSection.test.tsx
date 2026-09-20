@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Project } from "@openreel/core";
+import type { Project } from "@reelterminal/core";
 import {
   DEFAULT_BACKGROUND_SETTINGS,
   disposeBackgroundRemovalEngine,
   getBackgroundRemovalEngine,
   initializeBackgroundRemovalEngine,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { useProjectStore } from "../../../stores/project-store";
 import { BackgroundRemovalSection } from "./BackgroundRemovalSection";

@@ -17,7 +17,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { open, rename, rm } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
-import type { Project } from "@openreel/core/types/project";
+import type { Project } from "@reelterminal/core/types/project";
 
 import { buildBrowserEntry } from "./bundle";
 

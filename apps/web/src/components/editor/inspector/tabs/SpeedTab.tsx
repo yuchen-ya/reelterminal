@@ -1,5 +1,5 @@
 import React from "react";
-import type { Clip } from "@openreel/core";
+import type { Clip } from "@reelterminal/core";
 import { SpeedSection, StabilizationSection, SpeedRampSection } from "../";
 import { InspectorSection } from "../shell/InspectorSection";
 import { useTranslation } from "react-i18next";

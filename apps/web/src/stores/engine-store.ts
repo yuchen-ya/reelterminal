@@ -24,8 +24,8 @@ import {
   getExportEngine,
   titleEngine as coreTitleEngine,
   graphicsEngine as coreGraphicsEngine,
-} from "@openreel/core";
-import type { RenderedFrame } from "@openreel/core";
+} from "@reelterminal/core";
+import type { RenderedFrame } from "@reelterminal/core";
 
 const lazyEngineCache = new Map<string, unknown>();
 

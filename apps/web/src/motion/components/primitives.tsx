@@ -23,7 +23,7 @@ import {
   ToolcraftSwitchControl,
   ToolcraftTextAreaControl,
   ToolcraftTextInputControl,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import type { LucideIcon } from "@/icons/lucide-compat";
 import { useTranslation } from "react-i18next";
 

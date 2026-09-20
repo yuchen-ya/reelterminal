@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CloudRequestError } from "@openreel/core";
+import { CloudRequestError } from "@reelterminal/core";
 import {
   classifyCloudError,
   cloudFailureMessage,

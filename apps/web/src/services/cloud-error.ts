@@ -1,4 +1,4 @@
-import type { CloudFailureKind } from "@openreel/core";
+import type { CloudFailureKind } from "@reelterminal/core";
 
 export type { CloudFailureKind };
 

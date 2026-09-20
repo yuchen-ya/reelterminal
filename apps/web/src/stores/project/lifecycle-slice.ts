@@ -1,4 +1,4 @@
-import type { Action, Project, ProjectSettings } from "@openreel/core";
+import type { Action, Project, ProjectSettings } from "@reelterminal/core";
 import {
   ActionExecutor,
   ActionHistory,
@@ -6,7 +6,7 @@ import {
   normalizeProjectMotionFields,
   normalizeProjectWorkAssetFields,
   registerProjectGeneratedShaders,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import type { StoreApi } from "zustand";
 import { v4 as uuidv4 } from "uuid";
 import type { ProjectState } from "../project-store";

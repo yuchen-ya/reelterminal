@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import type { StoreApi } from "zustand";
-import type { Action, ProjectMarker } from "@openreel/core";
-import { DEFAULT_PROJECT_MARKER_COLOR } from "@openreel/core";
+import type { Action, ProjectMarker } from "@reelterminal/core";
+import { DEFAULT_PROJECT_MARKER_COLOR } from "@reelterminal/core";
 import type { ProjectState } from "../project-store";
 
 type Get = StoreApi<ProjectState>["getState"];

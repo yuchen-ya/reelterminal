@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { Plus, Trash2, Copy, MoreHorizontal, ChevronUp, ChevronDown } from 'lucide-react';
 import { useProjectStore } from '../../../stores/project-store';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@openreel/ui';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@reelterminal/ui';
 
 export function PagesBar() {
   const {

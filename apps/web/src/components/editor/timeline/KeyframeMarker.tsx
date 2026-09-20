@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect, useRef } from "react";
-import type { Keyframe } from "@openreel/core";
+import type { Keyframe } from "@reelterminal/core";
 
 interface KeyframeMarkerProps {
   keyframe: Keyframe;

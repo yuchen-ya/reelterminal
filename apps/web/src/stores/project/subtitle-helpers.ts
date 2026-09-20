@@ -1,4 +1,4 @@
-import type { Project, Subtitle, SubtitleStyle } from "@openreel/core";
+import type { Project, Subtitle, SubtitleStyle } from "@reelterminal/core";
 
 export const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {
   fontFamily: "Inter",

@@ -16,9 +16,9 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@openreel/core": path.resolve(__dirname, "../core/src"),
-      "@openreel/agent-facade": path.resolve(__dirname, "../agent-facade/src"),
-      "@openreel/runtime-chromium": path.resolve(__dirname, "./src"),
+      "@reelterminal/core": path.resolve(__dirname, "../core/src"),
+      "@reelterminal/agent-facade": path.resolve(__dirname, "../agent-facade/src"),
+      "@reelterminal/runtime-chromium": path.resolve(__dirname, "./src"),
     },
   },
 });

@@ -30,13 +30,13 @@ import {
   createAgentFacade,
   type Capabilities,
   type FacadeResult,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 import {
   createChromiumProviders,
   FfmpegArtifactVerifier,
   resolveFfmpegBinaries,
   type RuntimeProbeResult,
-} from "@openreel/runtime-chromium";
+} from "@reelterminal/runtime-chromium";
 
 import { CONFIG_DEFAULTS, parseArgv, refuseStartup } from "./config";
 import { logInfo, setLogLevel } from "./log";

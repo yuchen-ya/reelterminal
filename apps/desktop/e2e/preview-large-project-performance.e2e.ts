@@ -7,7 +7,7 @@
  * preview move with Playwright's real mouse input.
  *
  * Run against an existing desktop build:
- *   OPENREEL_E2E_PREVIEW_PERF=1 pnpm --filter @openreel/desktop exec vitest run \
+ *   OPENREEL_E2E_PREVIEW_PERF=1 pnpm --filter @reelterminal/desktop exec vitest run \
  *     --config e2e/vitest.config.ts e2e/preview-large-project-performance.e2e.ts
  */
 import { describe, expect, test } from "vitest";
@@ -101,7 +101,7 @@ async function startRendererSampling(
       observer: PerformanceObserver | null;
     };
     type SamplingGlobal = typeof globalThis & {
-      __openreelPreviewPerfSample?: SampleState;
+      __reelterminalPreviewPerfSample?: SampleState;
     };
     const root = globalThis as SamplingGlobal;
     const readHeap = (): number | null => {
@@ -168,7 +168,7 @@ async function startRendererSampling(
       }
       requestAnimationFrame(sampleFrame);
     };
-    root.__openreelPreviewPerfSample = state;
+    root.__reelterminalPreviewPerfSample = state;
     requestAnimationFrame(sampleFrame);
   });
 }
@@ -190,9 +190,9 @@ async function stopRendererSampling(
       observer: PerformanceObserver | null;
     };
     type SamplingGlobal = typeof globalThis & {
-      __openreelPreviewPerfSample?: SampleState;
+      __reelterminalPreviewPerfSample?: SampleState;
     };
-    const state = (globalThis as SamplingGlobal).__openreelPreviewPerfSample;
+    const state = (globalThis as SamplingGlobal).__reelterminalPreviewPerfSample;
     if (!state) throw new Error("preview performance sampler was not started");
     state.active = false;
     state.observer?.disconnect();

@@ -1,17 +1,17 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftSelectControl as Selector } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftSelectControl as Selector } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { PropertySlider } from "./shell/PropertySlider";
 import { useProjectStore } from "../../../stores/project-store";
-import type { GraphicAnimation, GraphicAnimationType } from "@openreel/core";
-import { SVG_ANIMATION_PRESETS } from "@openreel/core";
+import type { GraphicAnimation, GraphicAnimationType } from "@reelterminal/core";
+import { SVG_ANIMATION_PRESETS } from "@reelterminal/core";
 import { ColorSelector } from "../../../motion/components/primitives";
 import { t } from "../../../i18n";
 import { useTranslation } from "react-i18next";
 import { BookmarkPlus, Pencil, Trash2, Wand2 } from "lucide-react";
 import { useCustomPresets } from "../../../services/custom-presets/use-custom-presets";
-import type { CustomPresetRecord } from "@openreel/core/presets/types";
+import type { CustomPresetRecord } from "@reelterminal/core/presets/types";
 import { PresetNameDialog } from "../panels/preset-name-dialog";
 import {
   applyGraphicsPresetToPlayhead,

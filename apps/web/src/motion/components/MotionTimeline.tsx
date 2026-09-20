@@ -122,8 +122,8 @@ import {
   type MotionLayer,
   type MotionLayerClipboard,
   type MotionLayerType,
-} from "@openreel/core";
-import { ToolcraftPopover as Popover } from "@openreel/ui";
+} from "@reelterminal/core";
+import { ToolcraftPopover as Popover } from "@reelterminal/ui";
 import { useProjectStore } from "../../stores/project-store";
 import { formatKeyComboDisplay } from "../../services/keyboard-shortcuts";
 import { useMotionStore } from "../stores/motion-store";

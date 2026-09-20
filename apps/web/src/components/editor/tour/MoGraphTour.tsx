@@ -8,8 +8,8 @@ import {
   X,
   Lightbulb,
 } from "@/icons/lucide-compat";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { useTranslation } from "react-i18next";
 
 export const MoGraphTour: React.FC = () => {

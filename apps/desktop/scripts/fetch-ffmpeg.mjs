@@ -138,7 +138,7 @@ function extractFromZip(zipBuffer, member, slot) {
   // Node has no built-in zip reader; shell out to `unzip -p` (present on the
   // macOS runner, the only host that fetches a zip slot). Errors surface clearly
   // if it is missing.
-  const tmpZip = path.join(os.tmpdir(), `openreel-ffmpeg-${slot}-${process.pid}.zip`);
+  const tmpZip = path.join(os.tmpdir(), `reelterminal-ffmpeg-${slot}-${process.pid}.zip`);
   try {
     writeFileSync(tmpZip, zipBuffer);
     return execFileSync("unzip", ["-p", tmpZip, member], {
@@ -227,7 +227,7 @@ async function writeManifest(slots) {
     license:
       "All binaries are GPL FFmpeg builds invoked as a separate process. See LICENSES/FFMPEG.md. None are built --enable-nonfree (enforced at fetch time).",
     binaries,
-    note: "Binaries are gitignored. Run `pnpm --filter @openreel/desktop fetch:ffmpeg` (host slots) or `node scripts/fetch-ffmpeg.mjs --all`. Sources/versions differ per slot (see each entry); digests are verified on every fetch.",
+    note: "Binaries are gitignored. Run `pnpm --filter @reelterminal/desktop fetch:ffmpeg` (host slots) or `node scripts/fetch-ffmpeg.mjs --all`. Sources/versions differ per slot (see each entry); digests are verified on every fetch.",
   };
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }

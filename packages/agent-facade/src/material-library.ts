@@ -25,7 +25,7 @@ import type {
   MaterialMediaType,
   MaterialOrganizeStatus,
   MaterialRecord,
-} from "@openreel/core";
+} from "@reelterminal/core";
 
 export const MATERIAL_VERBS = [
   "material.list",

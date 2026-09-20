@@ -19,7 +19,7 @@ import path from "node:path";
 import { AgentFacadeSession, createAgentFacade, type AgentFacade } from "./index";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 import { createEmptyProject } from "./project-factory";
-import type { Project } from "@openreel/core/types/project";
+import type { Project } from "@reelterminal/core/types/project";
 
 async function waitForAnalysis(facade: AgentFacade, jobId: string): Promise<{
   state: string;

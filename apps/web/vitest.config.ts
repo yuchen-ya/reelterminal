@@ -4,7 +4,7 @@ import path from "path";
 
 function rawCssUrlForTests() {
   return {
-    name: "openreel-raw-css-url-for-tests",
+    name: "reelterminal-raw-css-url-for-tests",
     enforce: "pre" as const,
     transform(code: string, id: string) {
       if (!id.endsWith(".test.ts") && !id.endsWith(".test.tsx")) return null;
@@ -48,8 +48,8 @@ export default defineConfig({
       react: path.resolve(__dirname, "./node_modules/react"),
       "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
       "@": path.resolve(__dirname, "./src"),
-      "@openreel/core": path.resolve(__dirname, "../../packages/core/src"),
-      "@openreel/agent-facade": path.resolve(__dirname, "../../packages/agent-facade/src"),
+      "@reelterminal/core": path.resolve(__dirname, "../../packages/core/src"),
+      "@reelterminal/agent-facade": path.resolve(__dirname, "../../packages/agent-facade/src"),
     },
   },
 });

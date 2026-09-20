@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ToolcraftBadge, ToolcraftText } from "@openreel/ui";
+import { ToolcraftBadge, ToolcraftText } from "@reelterminal/ui";
 
 export interface InspectorClipHeaderProps {
   name: string;

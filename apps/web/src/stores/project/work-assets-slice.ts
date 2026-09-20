@@ -1,11 +1,11 @@
 import { v4 as uuidv4 } from "uuid";
 import type { StoreApi } from "zustand";
-import type { Action, ActionResult, WorkAsset } from "@openreel/core";
+import type { Action, ActionResult, WorkAsset } from "@reelterminal/core";
 import {
   captureWorkAssetFromClip,
   captureWorkAssetFromClips,
-} from "@openreel/core/work-assets/capture";
-import { buildWorkAssetInstantiateActions } from "@openreel/core/work-assets/instantiate";
+} from "@reelterminal/core/work-assets/capture";
+import { buildWorkAssetInstantiateActions } from "@reelterminal/core/work-assets/instantiate";
 import { MAX_ACTIONS_PER_BATCH } from "./action-batch";
 import type { ProjectState } from "../project-store";
 

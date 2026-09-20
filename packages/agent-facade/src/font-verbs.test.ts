@@ -18,7 +18,7 @@ import type {
   FontLibraryBridgeRequest,
   FontLibraryBridgeReply,
 } from "./font-library";
-import type { Project } from "@openreel/core/types/project";
+import type { Project } from "@reelterminal/core/types/project";
 import { createEmptyProject } from "./project-factory";
 
 /* ------------------------- fakes ------------------------- */

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { PARTICLE_PRESETS } from "@openreel/core";
+import { PARTICLE_PRESETS } from "@reelterminal/core";
 import { ParticleEffectsSection } from "./ParticleEffectsSection";
 
 describe("ParticleEffectsSection preset previews", () => {

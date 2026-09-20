@@ -5,7 +5,7 @@ import * as ContextMenuPrimitive from "@radix-ui/react-context-menu"
 import { motion, AnimatePresence } from "motion/react"
 import { Check, ChevronRight, Circle } from "lucide-react"
 
-import { cn } from "@openreel/ui/lib/utils"
+import { cn } from "@reelterminal/ui/lib/utils"
 
 const ContextMenu = ContextMenuPrimitive.Root
 

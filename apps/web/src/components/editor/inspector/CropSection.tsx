@@ -1,11 +1,11 @@
 import React from "react";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { Crop, RotateCcw } from "@/icons/lucide-compat";
 import { useProjectStore } from "../../../stores/project-store";
 import { useUIStore } from "../../../stores/ui-store";
-import type { Clip } from "@openreel/core";
+import type { Clip } from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 interface CropSectionProps {

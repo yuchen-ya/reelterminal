@@ -6,7 +6,7 @@ import {
   type TimelineBeatMarker,
   type TimelineBeatAnalysis,
   type Clip,
-} from "@openreel/core";
+} from "@reelterminal/core";
 
 export interface BeatSyncState {
   isAnalyzing: boolean;

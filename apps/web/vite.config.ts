@@ -12,7 +12,7 @@ const isNodePackage = (id: string, packageName: string): boolean =>
 
 function desktopHtmlPlugin() {
   return {
-    name: "openreel-desktop-html",
+    name: "reelterminal-desktop-html",
     transformIndexHtml(html: string) {
       if (!isDesktop) return html;
       let out = html
@@ -42,9 +42,9 @@ export default defineConfig({
       react: path.resolve(__dirname, "./node_modules/react"),
       "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
       "@": path.resolve(__dirname, "./src"),
-      "@openreel/core": path.resolve(__dirname, "../../packages/core/src"),
-      "@openreel/agent-facade": path.resolve(__dirname, "../../packages/agent-facade/src"),
-      "@openreel/ui": path.resolve(__dirname, "../../packages/ui/src"),
+      "@reelterminal/core": path.resolve(__dirname, "../../packages/core/src"),
+      "@reelterminal/agent-facade": path.resolve(__dirname, "../../packages/agent-facade/src"),
+      "@reelterminal/ui": path.resolve(__dirname, "../../packages/ui/src"),
     },
   },
   worker: { format: "es" },

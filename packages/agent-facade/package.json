@@ -1,5 +1,5 @@
 {
-  "name": "@openreel/agent-facade",
+  "name": "@reelterminal/agent-facade",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -26,7 +26,7 @@
     "vitest": "^1.6.0"
   },
   "dependencies": {
-    "@openreel/core": "workspace:*",
+    "@reelterminal/core": "workspace:*",
     "mediabunny": "^1.25.3"
   }
 }

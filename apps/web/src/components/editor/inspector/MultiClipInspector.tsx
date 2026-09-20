@@ -10,14 +10,14 @@ import {
   RotateCcw,
   Trash2,
 } from "@/icons/lucide-compat";
-import type { Transform } from "@openreel/core";
+import type { Transform } from "@reelterminal/core";
 import {
   ToolcraftButton as Button,
   ToolcraftCard as Card,
   ToolcraftNumberInputControl,
   ToolcraftSliderControl,
   ToolcraftText as Text,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import { useEngineStore } from "../../../stores/engine-store";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";

@@ -14,13 +14,13 @@
  * Nothing here deletes or moves the user's original file, and removing the
  * project reference later never touches the library.
  */
-import type { Action } from "@openreel/core";
+import type { Action } from "@reelterminal/core";
 import {
   isValidSegmentRange,
   type MaterialRecord,
   type MaterialUsage,
   type MediaMaterialRecord,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { v4 as uuidv4 } from "uuid";
 import { getProjectRevision, useProjectStore } from "../../stores/project-store";
 import { getMaterialLibraryService } from "./library-service";

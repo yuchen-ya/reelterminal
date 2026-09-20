@@ -1,6 +1,6 @@
 import { useProjectStore } from '../../../stores/project-store';
 import type { Layer, Shadow, InnerShadow, Stroke, Glow } from '../../../types/project';
-import { Slider } from '@openreel/ui';
+import { Slider } from '@reelterminal/ui';
 import { ChevronDown, Droplets, Pencil, Sparkles, CircleDot } from 'lucide-react';
 import { useState } from 'react';
 

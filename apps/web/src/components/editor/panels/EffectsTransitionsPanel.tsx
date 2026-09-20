@@ -6,25 +6,25 @@ import {
   Trash2,
   Wand2,
 } from "@/icons/lucide-compat";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
-import { ToolcraftTextInputControl } from "@openreel/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
+import { ToolcraftTextInputControl } from "@reelterminal/ui";
 import {
   ToolcraftContextMenu as ContextMenu,
   type ToolcraftContextMenuOption as ContextMenuOption,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import { useProjectStore } from "../../../stores/project-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { toast } from "../../../stores/notification-store";
 import type {
   VideoEffectType,
 } from "../../../bridges/effects-bridge";
-import type { TransitionType } from "@openreel/core";
+import type { TransitionType } from "@reelterminal/core";
 import type {
   CustomPresetRecord,
   EffectPresetPayload,
   TransitionPresetPayload,
-} from "@openreel/core/presets/types";
+} from "@reelterminal/core/presets/types";
 import { getTransitionBridge } from "../../../bridges/transition-bridge";
 import { serializeEditorEffectDropPayload } from "../timeline/effect-drop";
 import { t as ti } from "../../../i18n";

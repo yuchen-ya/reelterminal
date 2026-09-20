@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Project } from "@openreel/core";
+import type { Project } from "@reelterminal/core";
 import type { ProjectState } from "../stores/project-store";
 import {
   deleteTimelineItem,

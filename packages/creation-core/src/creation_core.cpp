@@ -2,8 +2,8 @@
 //
 // This is the Phase 0 native scaffold. It implements the C ABI declared in
 // include/creation_core.h with results that match the TypeScript CPU reference
-// in @openreel/core/creation. Build with CMake (see CMakeLists.txt); the
-// @openreel/creation-bindings package loads the resulting library and falls
+// in @reelterminal/core/creation. Build with CMake (see CMakeLists.txt); the
+// @reelterminal/creation-bindings package loads the resulting library and falls
 // back to the CPU reference when it is unavailable.
 
 #include "creation_core.h"

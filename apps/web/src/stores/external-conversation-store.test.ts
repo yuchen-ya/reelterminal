@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createConversationDisplayState } from "@openreel/agent-facade/conversation-state";
+import { createConversationDisplayState } from "@reelterminal/agent-facade/conversation-state";
 import {
   installExternalConversationEventListener,
   useExternalConversationStore,

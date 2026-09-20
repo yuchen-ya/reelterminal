@@ -1,5 +1,5 @@
 {
-  "name": "@openreel/image-core",
+  "name": "@reelterminal/image-core",
   "version": "0.1.0",
   "private": true,
   "type": "module",

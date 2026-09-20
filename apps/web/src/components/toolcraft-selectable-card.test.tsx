@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { ToolcraftSelectableCard } from "@openreel/ui";
+import { ToolcraftSelectableCard } from "@reelterminal/ui";
 
 /**
  * Contract tests for ToolcraftSelectableCard's activation dispatch.
  *
- * The component consumes @openreel/ui source directly (same resolution as
+ * The component consumes @reelterminal/ui source directly (same resolution as
  * production code). It lives in the web suite because packages/ui has no
  * test runner of its own (no vitest/RTL/jsdom devDependencies, no test
  * script, pnpm strict isolation), and installing dependencies is out of

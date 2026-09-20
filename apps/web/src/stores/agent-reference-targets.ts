@@ -7,10 +7,10 @@ import type {
   StickerClip,
   TextClip,
   Track,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import type { SelectionItem } from "./ui-store";
 import type { AgentReferenceTarget } from "./agent-references-store";
-import type { LiveEditorReferenceKind } from "@openreel/agent-facade/live-store";
+import type { LiveEditorReferenceKind } from "@reelterminal/agent-facade/live-store";
 import { t } from "../i18n";
 
 /** Convert editor track types to the intentionally small agent vocabulary. */

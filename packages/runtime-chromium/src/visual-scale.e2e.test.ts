@@ -24,7 +24,7 @@ import { inflateSync } from "node:zlib";
 import {
   createAgentFacade,
   type AgentFacade,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 
 import { createChromiumProviders, type ChromiumProviders } from "./node/providers";
 import { writeTinyVp9Mp4 } from "./media/tiny-vp9-mp4";

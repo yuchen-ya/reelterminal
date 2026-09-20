@@ -4,7 +4,7 @@ import * as React from "react"
 import * as CollapsiblePrimitive from "@radix-ui/react-collapsible"
 import { motion, AnimatePresence } from "motion/react"
 
-import { cn } from "@openreel/ui/lib/utils"
+import { cn } from "@reelterminal/ui/lib/utils"
 
 type CollapsibleContextValue = {
   open: boolean

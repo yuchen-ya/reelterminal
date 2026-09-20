@@ -8,8 +8,8 @@
 import "../../../test/install-local-storage-mock";
 import { waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CustomPresetRecord } from "@openreel/core/presets/types";
-import { PRESET_PAYLOAD_SCHEMA_VERSION } from "@openreel/core/presets/types";
+import type { CustomPresetRecord } from "@reelterminal/core/presets/types";
+import { PRESET_PAYLOAD_SCHEMA_VERSION } from "@reelterminal/core/presets/types";
 import type { PresetStorage } from "../../../services/custom-presets/storage";
 import {
   CustomPresetService,

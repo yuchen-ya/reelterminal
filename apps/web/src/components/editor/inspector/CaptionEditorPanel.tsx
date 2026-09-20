@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { splitCaptionIntoSingleLineCues } from "@openreel/core";
+import { splitCaptionIntoSingleLineCues } from "@reelterminal/core";
 import {
   ToolcraftButton as Button,
   ToolcraftCard as Card,
   ToolcraftSelectControl as Selector,
   ToolcraftText as Text,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import { Check, WrapText } from "@/icons/lucide-compat";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTranslation } from "react-i18next";

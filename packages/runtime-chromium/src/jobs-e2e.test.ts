@@ -17,7 +17,7 @@ import {
   createAgentFacade,
   type AgentFacade,
   type JobStatusView,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 
 import {
   createChromiumProviders,

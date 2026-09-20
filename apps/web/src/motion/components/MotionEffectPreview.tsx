@@ -6,7 +6,7 @@ import {
   isMotionPixelEffect,
   type MotionEffect,
   type MotionShapeLayer,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 interface MotionEffectPreviewProps {

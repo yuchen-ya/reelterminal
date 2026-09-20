@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MotionComposition, MotionScene3DLayer } from "@openreel/core";
+import type { MotionComposition, MotionScene3DLayer } from "@reelterminal/core";
 import { createMotionLayerOfType } from "./motion-layer-factory";
 
 const composition = {

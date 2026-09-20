@@ -1,6 +1,6 @@
-import type { Effect } from "@openreel/core";
-import { AudioEffectsEngine, getAudioEffectsEngine } from "@openreel/core";
-import type { EQBand } from "@openreel/core";
+import type { Effect } from "@reelterminal/core";
+import { AudioEffectsEngine, getAudioEffectsEngine } from "@reelterminal/core";
+import type { EQBand } from "@reelterminal/core";
 import { useProjectStore } from "../stores/project-store";
 
 /**

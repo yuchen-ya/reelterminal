@@ -11,7 +11,7 @@ import {
   ToolcraftButton as Button,
   ToolcraftLink as Link,
   ToolcraftText as Text,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import {
   getShareInfo,
   getShareDownloadUrl,

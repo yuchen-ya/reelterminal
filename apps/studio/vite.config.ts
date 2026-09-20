@@ -8,9 +8,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "@openreel/core": path.resolve(__dirname, "../../packages/core/src"),
-      "@openreel/fxpkg": path.resolve(__dirname, "../../packages/fxpkg/src"),
-      "@openreel/ui": path.resolve(__dirname, "../../packages/ui/src"),
+      "@reelterminal/core": path.resolve(__dirname, "../../packages/core/src"),
+      "@reelterminal/fxpkg": path.resolve(__dirname, "../../packages/fxpkg/src"),
+      "@reelterminal/ui": path.resolve(__dirname, "../../packages/ui/src"),
     },
   },
   worker: {

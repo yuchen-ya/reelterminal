@@ -1,4 +1,4 @@
-import type { Action, ActionResult, Project } from "@openreel/core";
+import type { Action, ActionResult, Project } from "@reelterminal/core";
 
 /** Bounded below ActionHistory's retained entry count, including expansions. */
 export const MAX_ACTIONS_PER_BATCH = 256;

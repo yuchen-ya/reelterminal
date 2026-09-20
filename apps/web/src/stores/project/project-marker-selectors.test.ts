@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Project, ProjectMarkersState } from "@openreel/core";
+import type { Project, ProjectMarkersState } from "@reelterminal/core";
 import type { SelectionItem } from "../ui-store";
 import {
   findClipMarkersActiveAt,

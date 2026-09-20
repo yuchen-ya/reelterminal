@@ -19,7 +19,7 @@
  */
 import { rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Project } from "@openreel/core/types/project";
+import type { Project } from "@reelterminal/core/types/project";
 import type {
   ExportCallbacks,
   ExportProgressEvent,
@@ -33,7 +33,7 @@ import type {
   RenderedHtmlPngInfo,
   RenderHtmlPngRequest,
   RenderProvider,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 
 import {
   resolveFfmpegBinaries,

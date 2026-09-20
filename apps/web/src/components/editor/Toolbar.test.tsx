@@ -34,7 +34,7 @@ vi.mock("../services/export-runner", () => ({
   writeBlobToWritable: vi.fn(),
 }));
 
-vi.mock("@openreel/core", () => ({
+vi.mock("@reelterminal/core", () => ({
   getExportEngine: vi.fn(),
   getDeviceProfile: vi.fn(),
   estimateExportTime: vi.fn(),

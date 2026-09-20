@@ -45,7 +45,7 @@ import {
   type MaterialUsage,
   type MediaItem,
   type Project,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import type { MaterialStorage } from "./storage";
 import { createIdbMaterialStorage } from "./storage";
 

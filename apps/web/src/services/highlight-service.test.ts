@@ -10,8 +10,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * stays available so failure-shape tests can assert on it.
  */
 
-vi.mock("@openreel/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@openreel/core")>();
+vi.mock("@reelterminal/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@reelterminal/core")>();
   return {
     ...actual,
     analyzeAudioForHighlights: vi.fn(() => ({ segments: [], duration: 12 })),

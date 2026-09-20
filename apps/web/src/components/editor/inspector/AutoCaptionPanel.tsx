@@ -3,13 +3,13 @@ import {
   SUBTITLE_STYLE_PRESETS,
   splitCaptionIntoSingleLineCues,
   type TranscriptionSegment,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   ToolcraftButton as Button,
   ToolcraftCard as Card,
   ToolcraftSelectControl as Selector,
   ToolcraftText as Text,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import {
   AlertCircle,
   Check,

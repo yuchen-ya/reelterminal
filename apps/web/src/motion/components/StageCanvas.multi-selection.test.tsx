@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { act, render, screen } from "@testing-library/react";
-import type { MotionComposition, MotionLayer } from "@openreel/core";
+import type { MotionComposition, MotionLayer } from "@reelterminal/core";
 import { useProjectStore } from "../../stores/project-store";
 import { createMotionLayerOfType } from "../motion-layer-factory";
 import { useMotionStore } from "../stores/motion-store";

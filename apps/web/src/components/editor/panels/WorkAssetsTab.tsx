@@ -11,12 +11,12 @@ import {
   Zap,
   FolderPlus,
 } from "@/icons/lucide-compat";
-import { mediaDisplayName, type WorkAsset } from "@openreel/core";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { mediaDisplayName, type WorkAsset } from "@reelterminal/core";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import {
   ToolcraftContextMenu as ContextMenu,
   type ToolcraftContextMenuOption as ContextMenuOption,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import { useProjectStore } from "../../../stores/project-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { toast } from "../../../stores/notification-store";

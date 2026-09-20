@@ -14,11 +14,11 @@
  */
 import { copyFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import { createAgentFacade } from "@openreel/agent-facade";
+import { createAgentFacade } from "@reelterminal/agent-facade";
 import {
   createChromiumProviders,
   FfmpegArtifactVerifier,
-} from "@openreel/runtime-chromium";
+} from "@reelterminal/runtime-chromium";
 
 interface Args {
   input: string;

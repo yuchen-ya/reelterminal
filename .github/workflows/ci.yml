@@ -47,7 +47,7 @@ jobs:
       # packages/runtime-chromium launches real Chromium in its tests, and
       # ubuntu-latest ships no ffmpeg (frames-route encoder + verifier).
       - name: Install Chromium for Playwright
-        run: pnpm --filter @openreel/runtime-chromium exec playwright-core install --with-deps chromium
+        run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install --with-deps chromium
 
       - name: Install ffmpeg
         run: |

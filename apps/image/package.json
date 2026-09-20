@@ -1,5 +1,5 @@
 {
-  "name": "@openreel/image",
+  "name": "@reelterminal/image",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,8 +17,8 @@
   },
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",
-    "@openreel/image-core": "workspace:*",
-    "@openreel/ui": "workspace:*",
+    "@reelterminal/image-core": "workspace:*",
+    "@reelterminal/ui": "workspace:*",
     "@radix-ui/react-context-menu": "^2.2.16",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",

@@ -37,13 +37,13 @@ import path from "node:path";
 import {
   assertValidHtmlContent,
   HtmlValidationError,
-} from "@openreel/core/security/html-policy";
+} from "@reelterminal/core/security/html-policy";
 
 import type { ChromiumRuntime } from "./runtime";
 import type {
   RenderedHtmlPngInfo,
   RenderHtmlPngRequest,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 
 export const HTML_RENDER_DEFAULT_TIMEOUT_MS = 30_000;
 export const HTML_RENDER_MAX_TIMEOUT_MS = 120_000;

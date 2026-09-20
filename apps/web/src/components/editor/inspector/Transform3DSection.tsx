@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo } from "react";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftSelectControl as Selector } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftSelectControl as Selector } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { PropertySlider } from "./shell/PropertySlider";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTranslation } from "react-i18next";

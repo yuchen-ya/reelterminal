@@ -3,12 +3,12 @@ import type {
   MotionMask,
   MotionShapeItem,
   MotionShapeLayer,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   DEFAULT_MOTION_TRANSFORM,
   getMotionMaskKeyframeProperty,
   getMotionMaskPathKeyframeProperty,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { getGraphEditorAvailableProperties } from "./GraphEditorPanel";
 
 const pathMask = (id: string): MotionMask => ({

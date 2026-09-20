@@ -1,6 +1,6 @@
 import * as React from "react"
 
-import { cn } from "@openreel/ui/lib/utils"
+import { cn } from "@reelterminal/ui/lib/utils"
 
 const Card = React.forwardRef<
   HTMLDivElement,

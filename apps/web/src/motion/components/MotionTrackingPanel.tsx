@@ -23,8 +23,8 @@ import {
   type MotionTrack,
   type MotionTrackPoint,
   type MotionTrackingApplyMode,
-} from "@openreel/core";
-import { ToolcraftClickableCard, ToolcraftText } from "@openreel/ui";
+} from "@reelterminal/core";
+import { ToolcraftClickableCard, ToolcraftText } from "@reelterminal/ui";
 import { useProjectStore } from "../../stores/project-store";
 import { toast } from "../../stores/notification-store";
 import { useMotionStore } from "../stores/motion-store";

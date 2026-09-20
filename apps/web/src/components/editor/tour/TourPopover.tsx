@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, X } from "@/icons/lucide-compat";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
 import type { TourStep } from "./tour-steps";
 import { useTranslation } from "react-i18next";
 

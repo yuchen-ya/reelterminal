@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Plus, Trash2, RotateCw } from 'lucide-react';
-import { Slider } from '@openreel/ui';
+import { Slider } from '@reelterminal/ui';
 import type { Gradient } from '../../types/project';
 
 interface GradientPickerProps {

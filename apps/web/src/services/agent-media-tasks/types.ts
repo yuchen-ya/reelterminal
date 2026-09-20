@@ -9,7 +9,7 @@
  * store, because the target project may not be open while a task is running.
  *
  * The status set and its transition semantics mirror the facade job state
- * machine (JOB_STATES / JobRegistry in @openreel/agent-facade jobs.ts):
+ * machine (JOB_STATES / JobRegistry in @reelterminal/agent-facade jobs.ts):
  * forward-only movement and frozen terminal states.
  */
 

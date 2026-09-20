@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useMemo } from "react";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { PropertySlider } from "./shell/PropertySlider";
 import { Film, Camera, Moon, Palette, Wand2, Check } from "@/icons/lucide-compat";
 import { useProjectStore } from "../../../stores/project-store";
@@ -14,7 +14,7 @@ import {
   getPresetsByCategory,
   type FilterPreset,
   type FilterCategory,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {

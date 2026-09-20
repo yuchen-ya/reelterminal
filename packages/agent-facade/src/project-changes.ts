@@ -1,4 +1,4 @@
-import type { Project } from "@openreel/core/types/project";
+import type { Project } from "@reelterminal/core/types/project";
 import { stableStringify } from "./idempotency";
 import { FacadeError } from "./errors";
 import type {

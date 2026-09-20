@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { EASING_FUNCTIONS, cubicBezier } from "@openreel/core";
-import type { EasingType } from "@openreel/core";
+import { EASING_FUNCTIONS, cubicBezier } from "@reelterminal/core";
+import type { EasingType } from "@reelterminal/core";
 import {
   graphPointToNormalizedHandle,
   isFlatSegment,

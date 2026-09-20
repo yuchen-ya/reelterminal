@@ -3,8 +3,8 @@ import type {
   Clip,
   AutomationPoint,
   Effect,
-} from "@openreel/core";
-import { AudioEffectsEngine, getAudioEffectsEngine } from "@openreel/core";
+} from "@reelterminal/core";
+import { AudioEffectsEngine, getAudioEffectsEngine } from "@reelterminal/core";
 import { useEngineStore } from "../stores/engine-store";
 import { useProjectStore } from "../stores/project-store";
 

@@ -2,7 +2,7 @@ import type {
   ExternalAgentSessionUpdate,
   ExternalConversationDisplayState,
   ExternalConversationEvent,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 import { describe, expect, it } from "vitest";
 import { conversationViewModelFromProtocol } from "./AgentViewModel";
 

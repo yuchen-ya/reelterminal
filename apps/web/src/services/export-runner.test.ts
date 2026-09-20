@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import type { Project, VideoExportSettings, ExportResult } from "@openreel/core";
+import type { Project, VideoExportSettings, ExportResult } from "@reelterminal/core";
 import {
   useExportRunner,
   mimeForExt,
@@ -24,7 +24,7 @@ const { mockEngine, getExportEngineMock } = vi.hoisted(() => {
   };
 });
 
-vi.mock("@openreel/core", () => ({
+vi.mock("@reelterminal/core", () => ({
   getExportEngine: getExportEngineMock,
 }));
 

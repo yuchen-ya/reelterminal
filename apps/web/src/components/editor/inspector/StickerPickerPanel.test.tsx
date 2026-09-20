@@ -1,7 +1,7 @@
 import "../../../test/install-local-storage-mock";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { stickerLibrary } from "@openreel/core";
+import { stickerLibrary } from "@reelterminal/core";
 import { useEngineStore } from "../../../stores/engine-store";
 import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { useProjectStore } from "../../../stores/project-store";

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import type { Action } from "@openreel/core";
+import type { Action } from "@reelterminal/core";
 import { useProjectStore, getProjectChanges, getProjectRevision } from "./project-store";
 
 const act = (type: string, params: Record<string, unknown>): Action => ({

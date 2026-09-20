@@ -14,7 +14,7 @@ import {
   type LiveProjectStore,
   type AgentAccessMode,
   type AgentWorkMode,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 import {
   createLiveSessionHost,
   type LiveProviders,

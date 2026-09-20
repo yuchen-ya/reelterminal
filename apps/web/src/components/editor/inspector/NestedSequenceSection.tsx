@@ -11,14 +11,14 @@ import {
   Check,
   X,
 } from "@/icons/lucide-compat";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
-import { ToolcraftTextInputControl } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
+import { ToolcraftTextInputControl } from "@reelterminal/ui";
 import { useEngineStore } from "../../../stores/engine-store";
 import { useProjectStore } from "../../../stores/project-store";
 import { useUIStore } from "../../../stores/ui-store";
-import type { Clip, CompoundClip } from "@openreel/core";
+import type { Clip, CompoundClip } from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 interface NestedSequenceSectionProps {
@@ -39,7 +39,7 @@ export const NestedSequenceSection: React.FC<NestedSequenceSectionProps> = ({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [nestedSequenceEngine, setNestedSequenceEngine] =
-    useState<import("@openreel/core").NestedSequenceEngine | null>(null);
+    useState<import("@reelterminal/core").NestedSequenceEngine | null>(null);
 
   useEffect(() => {
     let cancelled = false;

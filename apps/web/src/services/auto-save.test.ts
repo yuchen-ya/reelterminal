@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Project } from "@openreel/core";
+import type { Project } from "@reelterminal/core";
 import { AutoSaveManager } from "./auto-save";
 import { createEmptyProject } from "../stores/project/project-helpers";
 

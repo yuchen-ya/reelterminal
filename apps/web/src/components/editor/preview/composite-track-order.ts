@@ -1,4 +1,4 @@
-import type { Track } from "@openreel/core";
+import type { Track } from "@reelterminal/core";
 
 export interface IndexedTrack<T> {
   track: T;

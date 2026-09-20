@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawnCli, makeRoots, type Roots } from "./helpers";
-import { writeTinyVp9Mp4 } from "@openreel/runtime-chromium/media/tiny-vp9-mp4";
+import { writeTinyVp9Mp4 } from "@reelterminal/runtime-chromium/media/tiny-vp9-mp4";
 
 let roots: Roots;
 let inputMp4: string;
@@ -89,7 +89,9 @@ describe("run: startup refusals (exit 2, Decision 6 / B.5)", () => {
   });
 
   it("refuses non-directory roots and `~` roots without expansion", async () => {
-    const r = await runRaw(["--workflow", "/tmp/wf.jsonl", "--media-root", "/etc/hosts"]);
+    // An existing non-directory path on every platform (POSIX traditionally
+    // used /etc/hosts, which does not exist on Windows).
+    const r = await runRaw(["--workflow", "/tmp/wf.jsonl", "--media-root", process.execPath]);
     expect(r.exitCode).toBe(2);
     expect(r.stderr).toContain("not a directory");
     const tilde = await runRaw(["--workflow", "/tmp/wf.jsonl", "--media-root", "~/Movies"]);

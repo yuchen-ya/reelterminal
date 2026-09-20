@@ -14,7 +14,7 @@
  *
  * The mapping itself (rate 1, start offset, clamp-and-disclose beyond the
  * reference range) is the single shared implementation in
- * @openreel/core/types/reference-comparison — the GUI panel uses it too.
+ * @reelterminal/core/types/reference-comparison — the GUI panel uses it too.
  */
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, stat } from "node:fs/promises";
@@ -22,12 +22,12 @@ import { tmpdir } from "node:os";
 import { join, resolve as resolvePath } from "node:path";
 import { promisify } from "node:util";
 
-import type { Project } from "@openreel/core/types/project";
+import type { Project } from "@reelterminal/core/types/project";
 import {
   mapTimelineToReference,
   type ReferenceComparisonConfig,
   type ReferenceComparisonLayout,
-} from "@openreel/core/types/reference-comparison";
+} from "@reelterminal/core/types/reference-comparison";
 
 import { FacadeError } from "./errors";
 import { assessColorSupport, probeColorMetadata } from "./color-policy";

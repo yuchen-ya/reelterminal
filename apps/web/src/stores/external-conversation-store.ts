@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { createConversationDisplayState } from "@openreel/agent-facade/conversation-state";
+import { createConversationDisplayState } from "@reelterminal/agent-facade/conversation-state";
 import {
   captureConversationVisualState,
   resetConversationVisualState,

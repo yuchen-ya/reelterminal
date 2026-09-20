@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FacadeError } from "./errors";
-import { EFFECT_DEFINITIONS } from "@openreel/core/types/effects";
+import { EFFECT_DEFINITIONS } from "@reelterminal/core/types/effects";
 import {
   GUI_MANUAL_APP_VERSION,
   GUI_MANUAL_CONTENT_VERSION,

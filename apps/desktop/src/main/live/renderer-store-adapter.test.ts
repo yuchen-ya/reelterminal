@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import {
   isLiveStoreConflict,
   LiveStoreConflictError,
-} from "@openreel/agent-facade";
-import type { Action } from "@openreel/core/types/actions";
+} from "@reelterminal/agent-facade";
+import type { Action } from "@reelterminal/core/types/actions";
 import { createLiveStoreBridge } from "./renderer-store-adapter";
 import type {
   LiveBridgeRequest,

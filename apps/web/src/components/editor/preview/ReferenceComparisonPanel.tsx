@@ -13,8 +13,8 @@
  * ONE side's audio ever plays (config.audioSide).
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { mapTimelineToReference, type ReferenceComparisonConfig } from "@openreel/core/types/reference-comparison";
-import type { Action } from "@openreel/core/types/actions";
+import { mapTimelineToReference, type ReferenceComparisonConfig } from "@reelterminal/core/types/reference-comparison";
+import type { Action } from "@reelterminal/core/types/actions";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useTranslation } from "react-i18next";

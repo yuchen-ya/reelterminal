@@ -9,8 +9,8 @@
  * The project keeps its own copy either way; removing the library entry or
  * the project reference never affects the other side.
  */
-import type { MediaItem } from "@openreel/core";
-import type { MediaMaterialRecord } from "@openreel/core";
+import type { MediaItem } from "@reelterminal/core";
+import type { MediaMaterialRecord } from "@reelterminal/core";
 import { getMaterialLibraryService } from "./library-service";
 
 const MAX_SAVED_BLOB_BYTES = 256 * 1024 * 1024;

@@ -1,4 +1,4 @@
-;; WebAssembly proof-of-concept for the @openreel/creation-core C ABI.
+;; WebAssembly proof-of-concept for the @reelterminal/creation-core C ABI.
 ;;
 ;; The full WASM build is produced from packages/creation-core via emscripten
 ;; (see ../../creation-core/CMakeLists.txt, the EMSCRIPTEN target). This hand-

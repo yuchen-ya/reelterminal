@@ -8,7 +8,7 @@ import type {
   Action,
   Transform,
   EditingTemplatePrimitive,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   ChromaKeyEngine,
   initializeTranscriptionService,
@@ -16,7 +16,7 @@ import {
   type CaptionAnimationStyle,
   CAPTION_ANIMATION_STYLES,
   getAnimationStyleDisplayName,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   OPENREEL_CLOUD_ENABLED,
   OPENREEL_TRANSCRIBE_URL,
@@ -40,14 +40,14 @@ import {
   useCustomFonts,
 } from "./inspector/font-options";
 import { getNoiseReductionPreset } from "./inspector/noise-reduction-presets";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftFileDropControl as FileInput } from "@openreel/ui";
-import { ToolcraftNumberInputControl } from "@openreel/ui";
-import { ToolcraftSelectableCard as SelectableCard } from "@openreel/ui";
-import { ToolcraftSelectControl as Selector } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
-import { ToolcraftTextAreaControl } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftFileDropControl as FileInput } from "@reelterminal/ui";
+import { ToolcraftNumberInputControl } from "@reelterminal/ui";
+import { ToolcraftSelectableCard as SelectableCard } from "@reelterminal/ui";
+import { ToolcraftSelectControl as Selector } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
+import { ToolcraftTextAreaControl } from "@reelterminal/ui";
 import { ColorSelector } from "../../motion/components/primitives";
 import {
   getTabIdsForClipType,

@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftNumberInputControl } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftNumberInputControl } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { Sparkles, Play, Check, Loader2 } from "@/icons/lucide-compat";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
@@ -11,7 +11,7 @@ import {
   getTranscriptionService,
   initializeTranscriptionService,
   type TranscriptWord,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   OPENREEL_CLOUD_ENABLED,
   OPENREEL_TRANSCRIBE_URL,

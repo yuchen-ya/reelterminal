@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { MockToggle } from "./shell/InspectorControls";
 import { PropertySlider } from "./shell/PropertySlider";
 import {
@@ -19,8 +19,8 @@ import {
   getTransitionBridge,
   type TransitionTypeInfo,
 } from "../../../bridges/transition-bridge";
-import type { Transition, Clip, TransitionEdge } from "@openreel/core";
-import type { TransitionType } from "@openreel/core";
+import type { Transition, Clip, TransitionEdge } from "@reelterminal/core";
+import type { TransitionType } from "@reelterminal/core";
 import { toast } from "../../../stores/notification-store";
 import {
   captureTransitionPreset,
@@ -28,7 +28,7 @@ import {
   saveTransitionPreset,
 } from "../panels/effect-transition-preset-controllers";
 import { PresetNameDialog } from "../panels/preset-name-dialog";
-import type { TransitionPresetPayload } from "@openreel/core/presets/types";
+import type { TransitionPresetPayload } from "@reelterminal/core/presets/types";
 import { useCustomPresets } from "../../../services/custom-presets/use-custom-presets";
 import { useTranslation } from "react-i18next";
 

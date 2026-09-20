@@ -10,7 +10,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { Project, TrackingData, TrackingJob } from "@openreel/core";
+import type { Project, TrackingData, TrackingJob } from "@reelterminal/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { MotionTrackingSection } from "./MotionTrackingSection";

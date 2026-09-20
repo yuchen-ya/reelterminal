@@ -6,8 +6,8 @@
     "outDir": "dist",
     "baseUrl": ".",
     "paths": {
-      "@openreel/core": ["./src/index.ts"],
-      "@openreel/core/*": ["./src/*"]
+      "@reelterminal/core": ["./src/index.ts"],
+      "@reelterminal/core/*": ["./src/*"]
     }
   },
   "include": ["src"],

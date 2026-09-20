@@ -13,12 +13,12 @@
     "composite": false,
     "baseUrl": ".",
     "paths": {
-      "@openreel/core": ["../../packages/core/src/index.ts"],
-      "@openreel/core/*": ["../../packages/core/src/*"],
-      "@openreel/agent-facade": ["../../packages/agent-facade/src/index.ts"],
-      "@openreel/agent-facade/*": ["../../packages/agent-facade/src/*"],
-      "@openreel/runtime-chromium": ["../../packages/runtime-chromium/src/index.ts"],
-      "@openreel/runtime-chromium/*": ["../../packages/runtime-chromium/src/*"]
+      "@reelterminal/core": ["../../packages/core/src/index.ts"],
+      "@reelterminal/core/*": ["../../packages/core/src/*"],
+      "@reelterminal/agent-facade": ["../../packages/agent-facade/src/index.ts"],
+      "@reelterminal/agent-facade/*": ["../../packages/agent-facade/src/*"],
+      "@reelterminal/runtime-chromium": ["../../packages/runtime-chromium/src/index.ts"],
+      "@reelterminal/runtime-chromium/*": ["../../packages/runtime-chromium/src/*"]
     }
   },
   "include": ["src"]

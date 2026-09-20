@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import {
   keyboardShortcuts,
   formatKeyComboDisplay,

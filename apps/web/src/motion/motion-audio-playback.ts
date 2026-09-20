@@ -1,4 +1,4 @@
-import type { MediaItem, MotionAudioClip } from "@openreel/core";
+import type { MediaItem, MotionAudioClip } from "@reelterminal/core";
 import { loadAudioBuffer } from "../utils/load-audio-buffer";
 
 const EPSILON = 1e-4;

@@ -6,7 +6,7 @@
  * at execution time — including the `$ref`-fed relative path.
  */
 import { describe, expect, it } from "vitest";
-import type { AgentFacade, FacadeResult } from "@openreel/agent-facade";
+import type { AgentFacade, FacadeResult } from "@reelterminal/agent-facade";
 import {
   executeWorkflow,
   parseRefText,

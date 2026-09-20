@@ -1,4 +1,4 @@
-import type { Graph } from "@openreel/fxpkg";
+import type { Graph } from "@reelterminal/fxpkg";
 
 export type SubjectKind = "face" | "subject_silhouette" | "full_frame";
 

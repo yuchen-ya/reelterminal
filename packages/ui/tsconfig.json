@@ -7,8 +7,8 @@
     "outDir": "dist",
     "baseUrl": ".",
     "paths": {
-      "@openreel/ui": ["./src/index.ts"],
-      "@openreel/ui/*": ["./src/*"]
+      "@reelterminal/ui": ["./src/index.ts"],
+      "@reelterminal/ui/*": ["./src/*"]
     }
   },
   "include": ["src"]

@@ -4,8 +4,8 @@ import {
   type NoiseReductionFocus,
   type NoiseProfileData,
 } from "../../../bridges/audio-bridge-effects";
-import type { NoiseReductionEffectParams } from "@openreel/core/audio/noise-reduction-presets";
-import { getNoiseReductionPreset } from "@openreel/core/audio/noise-reduction-presets";
+import type { NoiseReductionEffectParams } from "@reelterminal/core/audio/noise-reduction-presets";
+import { getNoiseReductionPreset } from "@reelterminal/core/audio/noise-reduction-presets";
 
 /**
  * The preset parameter sets live in core (noise-reduction-presets.ts) so the
@@ -18,7 +18,7 @@ export {
   NOISE_REDUCTION_PRESETS,
   getNoiseReductionPreset,
   type NoiseReductionPreset,
-} from "@openreel/core/audio/noise-reduction-presets";
+} from "@reelterminal/core/audio/noise-reduction-presets";
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));

@@ -11,7 +11,7 @@ set_target_properties(creation_core PROPERTIES
   INSTALL_RPATH "@loader_path"
 )
 
-# Native desktop build produces a shared library loaded by @openreel/creation-bindings.
+# Native desktop build produces a shared library loaded by @reelterminal/creation-bindings.
 # WASM build (emscripten): exposes the C ABI to the browser/desktop WASM bridge.
 if(EMSCRIPTEN)
   set_target_properties(creation_core PROPERTIES

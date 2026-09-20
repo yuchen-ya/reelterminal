@@ -5,13 +5,13 @@ import type {
   Transition,
   Clip,
   Track,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   VideoEffectsEngine,
   getVideoEffectsEngine,
   TransitionEngine,
   createTransitionEngine,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useEngineStore } from "../stores/engine-store";
 import { useProjectStore } from "../stores/project-store";
 import { useTimelineStore } from "../stores/timeline-store";

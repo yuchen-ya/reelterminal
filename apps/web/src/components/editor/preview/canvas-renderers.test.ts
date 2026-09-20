@@ -4,7 +4,7 @@ import {
   renderTextClipToCanvas,
 } from "./canvas-renderers";
 import { DEFAULT_TRANSFORM, type ClipTransform } from "./types";
-import { titleEngine, type Keyframe, type TextClip } from "@openreel/core";
+import { titleEngine, type Keyframe, type TextClip } from "@reelterminal/core";
 
 afterEach(() => {
   vi.restoreAllMocks();

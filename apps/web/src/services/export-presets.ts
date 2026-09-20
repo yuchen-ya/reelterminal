@@ -1,4 +1,4 @@
-import type { ExportPreset, AudioExportSettings } from "@openreel/core";
+import type { ExportPreset, AudioExportSettings } from "@reelterminal/core";
 
 export interface PlatformExportPreset extends ExportPreset {
   platform: string;

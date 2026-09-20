@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MediaItem } from "@openreel/core";
+import type { MediaItem } from "@reelterminal/core";
 import { restoreMediaItem } from "./media-recovery";
 
 /**

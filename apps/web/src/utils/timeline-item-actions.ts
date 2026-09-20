@@ -1,4 +1,4 @@
-import type { Project } from "@openreel/core";
+import type { Project } from "@reelterminal/core";
 import type { ProjectState } from "../stores/project-store";
 import type { SelectionItem } from "../stores/ui-store";
 import { trimLinkedCaptions } from "./linked-caption-edit";

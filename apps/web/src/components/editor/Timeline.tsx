@@ -40,13 +40,13 @@ import {
   VolumeX,
   Pencil,
 } from "@/icons/lucide-compat";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
 import {
   ToolcraftDropdownMenu as DropdownMenu,
   type ToolcraftDropdownMenuOption as DropdownMenuOption,
   ToolcraftPopover as Popover,
   ToolcraftText as Text,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import { useProjectStore } from "../../stores/project-store";
 import {
   sliderPercentToZoom,

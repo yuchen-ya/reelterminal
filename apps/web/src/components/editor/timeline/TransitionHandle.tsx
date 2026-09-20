@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { TransitionType } from "@openreel/core";
+import type { TransitionType } from "@reelterminal/core";
 import type { ResolvedTransitionHandle } from "./transition-handles";
 import { useProjectStore } from "../../../stores/project-store";
 import { getTransitionBridge } from "../../../bridges/transition-bridge";

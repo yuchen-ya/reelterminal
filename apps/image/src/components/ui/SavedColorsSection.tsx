@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@openreel/ui';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@reelterminal/ui';
 import { ChevronDown, Plus, Trash2, X, Bookmark, History, FolderPlus, Pencil, Check } from 'lucide-react';
 import { useColorStore, type CustomPalette } from '../../stores/color-store';
 

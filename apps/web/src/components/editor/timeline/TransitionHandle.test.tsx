@@ -1,7 +1,7 @@
 import "../../../test/install-local-storage-mock";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import type { Clip, Transition } from "@openreel/core";
+import type { Clip, Transition } from "@reelterminal/core";
 import { TransitionHandle } from "./TransitionHandle";
 import type { ResolvedTransitionHandle } from "./transition-handles";
 

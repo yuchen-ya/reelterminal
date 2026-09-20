@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import type { Keyframe, Clip } from "@openreel/core";
-import { EASING_FUNCTIONS, type EasingName } from "@openreel/core";
+import type { Keyframe, Clip } from "@reelterminal/core";
+import { EASING_FUNCTIONS, type EasingName } from "@reelterminal/core";
 import { X, Copy, Clipboard, Trash2 } from "@/icons/lucide-compat";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftSelectControl as Selector } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftSelectControl as Selector } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { useTranslation } from "react-i18next";
 
 const PROPERTY_COLORS: Record<string, string> = {

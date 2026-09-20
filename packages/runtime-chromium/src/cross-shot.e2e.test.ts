@@ -28,7 +28,7 @@ import {
   createAgentFacade,
   type AgentFacade,
   type JobStatusView,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 
 import { createChromiumProviders, type ChromiumProviders } from "./node/providers";
 import { FfmpegArtifactVerifier } from "./node/verify";

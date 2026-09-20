@@ -9,7 +9,7 @@ import { ArtboardSection } from './ArtboardSection';
 import { PenSettingsSection } from './PenSettingsSection';
 import { ColorHarmonySection } from './ColorHarmonySection';
 import { ChevronRight, Sliders, Palette, Wand2, Sparkles, Image as ImageIcon, Layers } from 'lucide-react';
-import { ScrollArea } from '@openreel/ui';
+import { ScrollArea } from '@reelterminal/ui';
 import type { Layer, ImageLayer, TextLayer, ShapeLayer } from '../../../types/project';
 import type { Tool } from '../../../stores/ui-store';
 

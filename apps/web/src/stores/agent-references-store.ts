@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { LiveEditorReference, LiveEditorReferenceKind } from "@openreel/agent-facade/live-store";
+import type { LiveEditorReference, LiveEditorReferenceKind } from "@reelterminal/agent-facade/live-store";
 
 /** A point-in-time target that can be marked for an agent. */
 export interface AgentReferenceTarget {

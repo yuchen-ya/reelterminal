@@ -5,16 +5,16 @@ import React, {
   useState,
   useMemo,
 } from "react";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { Activity, Circle, BarChart3 } from "@/icons/lucide-compat";
 import { getEffectsBridge } from "../../../bridges/effects-bridge";
 import type {
   WaveformScopeData,
   VectorscopeData,
   HistogramData,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 /**

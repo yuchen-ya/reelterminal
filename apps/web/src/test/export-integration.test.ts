@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useProjectStore } from "../stores/project-store";
-import type { Project, Clip, Track } from "@openreel/core";
+import type { Project, Clip, Track } from "@reelterminal/core";
 
 vi.mock("../services/auto-save", () => ({
   autoSaveManager: {

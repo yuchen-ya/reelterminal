@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { normalizeProjectStoredFields } from "@openreel/core";
+import { normalizeProjectStoredFields } from "@reelterminal/core";
 import { useProjectStore } from "../project-store";
 
 vi.mock("../../bridges/effects-bridge", () => ({

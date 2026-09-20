@@ -1,4 +1,4 @@
-import type { PlaybackController, PlaybackEvent } from "@openreel/core";
+import type { PlaybackController, PlaybackEvent } from "@reelterminal/core";
 import { useTimelineStore, type PlaybackState } from "../stores/timeline-store";
 import { useEngineStore } from "../stores/engine-store";
 import { useProjectStore } from "../stores/project-store";

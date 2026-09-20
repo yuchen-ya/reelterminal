@@ -82,7 +82,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (!existsSync(options.cli)) {
     throw new Error(
-      `built CLI not found at ${options.cli} — run: corepack pnpm --filter @openreel/agent-transport build`,
+      `built CLI not found at ${options.cli} — run: corepack pnpm --filter @reelterminal/agent-transport build`,
     );
   }
 

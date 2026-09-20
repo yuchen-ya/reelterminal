@@ -1,7 +1,7 @@
 import "../test/install-local-storage-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { MotionComposition } from "@openreel/core";
+import type { MotionComposition } from "@reelterminal/core";
 import { createEmptyProject } from "../stores/project/project-helpers";
 import { useProjectStore } from "../stores/project-store";
 import { useNotificationStore } from "../stores/notification-store";

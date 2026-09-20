@@ -32,13 +32,13 @@ export {
   HELP_LIST_SCREENS_SCHEMA,
   HELP_SEARCH_SCHEMA,
 };
-import { MATERIAL_KINDS, MATERIAL_MEDIA_TYPES } from "@openreel/core/material/types";
-import { PRESET_KINDS } from "@openreel/core/presets/types";
+import { MATERIAL_KINDS, MATERIAL_MEDIA_TYPES } from "@reelterminal/core/material/types";
+import { PRESET_KINDS } from "@reelterminal/core/presets/types";
 import {
   MAX_MATERIAL_METHOD_STEPS,
   MAX_MATERIAL_TAGS,
   MAX_MATERIAL_TEXT_LENGTH,
-} from "@openreel/core/material/logic";
+} from "@reelterminal/core/material/logic";
 import {
   MAX_PROJECT_CHANGES_LIMIT,
 } from "./project-changes";

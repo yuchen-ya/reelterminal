@@ -1,5 +1,5 @@
-import type { CreationProjectState } from "@openreel/core/creation/index";
-import type { MotionComposition } from "@openreel/core/motion/types";
+import type { CreationProjectState } from "@reelterminal/core/creation/index";
+import type { MotionComposition } from "@reelterminal/core/motion/types";
 
 export type CreationIssueSeverity = "error" | "warning" | "info";
 

@@ -18,19 +18,19 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next";
 import i18n from "../../../i18n";
 import { Pencil, Plus, Trash2, Type } from "@/icons/lucide-compat";
-import type { Project, TextStyle } from "@openreel/core";
+import type { Project, TextStyle } from "@reelterminal/core";
 import {
   MAX_SAMPLE_TEXT_LENGTH,
   TEXT_STYLE_FIELDS,
   validatePresetName,
   validatePresetPayload,
   validateTextPresetStyle,
-} from "@openreel/core/presets/validate";
+} from "@reelterminal/core/presets/validate";
 import {
   PRESET_PAYLOAD_SCHEMA_VERSION,
   type CustomPresetRecord,
   type TextPresetPayload,
-} from "@openreel/core/presets/types";
+} from "@reelterminal/core/presets/types";
 import { useProjectStore } from "../../../stores/project-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
@@ -38,8 +38,8 @@ import { toast } from "../../../stores/notification-store";
 import { useCustomPresets } from "../../../services/custom-presets/use-custom-presets";
 import { getCustomPresetService } from "../../../services/custom-presets/preset-service";
 import { expandPresetActions } from "../../../services/custom-presets/apply";
-import { ToolcraftContextMenu as ContextMenu, type ToolcraftContextMenuOption as ContextMenuOption } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftContextMenu as ContextMenu, type ToolcraftContextMenuOption as ContextMenuOption } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { TEXT_STYLE_PRESETS } from "./text-style-presets";
 
 /* --------------------------- capture / naming --------------------------- */

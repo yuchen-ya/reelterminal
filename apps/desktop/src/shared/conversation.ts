@@ -5,7 +5,7 @@ export type {
   DesktopConversationAdapterSummary as ConversationAdapterSummary,
   DesktopConversationEvent,
   DesktopConversationState,
-} from "@openreel/agent-facade/desktop-protocol";
+} from "@reelterminal/agent-facade/desktop-protocol";
 
 export interface ConversationPromptArgs {
   readonly text: string;

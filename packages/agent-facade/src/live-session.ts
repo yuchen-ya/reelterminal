@@ -28,10 +28,10 @@ import { bindBundledTools } from "./plugin-runtime";
  * Serialization mirrors headless: every verb body runs inside one
  * promise-chained lane, so verb calls never interleave.
  */
-import { ActionExecutor } from "@openreel/core/actions/action-executor";
-import { ActionHistory } from "@openreel/core/actions/action-history";
-import type { Action } from "@openreel/core/types/actions";
-import type { Project } from "@openreel/core/types/project";
+import { ActionExecutor } from "@reelterminal/core/actions/action-executor";
+import { ActionHistory } from "@reelterminal/core/actions/action-history";
+import type { Action } from "@reelterminal/core/types/actions";
+import type { Project } from "@reelterminal/core/types/project";
 import { stat } from "node:fs/promises";
 import { readFile as readFileFontBytes } from "node:fs/promises";
 import { basename, isAbsolute, resolve as resolvePath } from "node:path";
@@ -224,8 +224,8 @@ import {
   validatePresetName,
   validatePresetPayload,
   validatePresetThumbnail,
-} from "@openreel/core/presets/validate";
-import type { MaterialListResult } from "@openreel/core/material/types";
+} from "@reelterminal/core/presets/validate";
+import type { MaterialListResult } from "@reelterminal/core/material/types";
 import {
   isReadOnlyVerb,
   type Capabilities,
@@ -1681,7 +1681,7 @@ export class LiveFacadeSession {
         throw new FacadeError(
           "UNSUPPORTED",
           "preview.render_frame: no render provider configured for this session",
-          { requires: "RenderProvider (e.g. @openreel/runtime-chromium)" },
+          { requires: "RenderProvider (e.g. @reelterminal/runtime-chromium)" },
         );
       }
       const artifactRoot = requireArtifactRoot(
@@ -1853,7 +1853,7 @@ export class LiveFacadeSession {
         throw new FacadeError(
           "UNSUPPORTED",
           "preview.render_comparison: no render provider configured for this session",
-          { requires: "RenderProvider (e.g. @openreel/runtime-chromium)" },
+          { requires: "RenderProvider (e.g. @reelterminal/runtime-chromium)" },
         );
       }
       const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "preview.render_comparison");
@@ -2001,7 +2001,7 @@ export class LiveFacadeSession {
         throw new FacadeError(
           "UNSUPPORTED",
           "visual.inspect: no render provider configured for this session",
-          { requires: "RenderProvider (e.g. @openreel/runtime-chromium)" },
+          { requires: "RenderProvider (e.g. @reelterminal/runtime-chromium)" },
         );
       }
       const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "visual.inspect");
@@ -2301,7 +2301,7 @@ export class LiveFacadeSession {
         throw new FacadeError(
           "UNSUPPORTED",
           "export.start: no export provider configured for this session",
-          { requires: "ExportProvider (e.g. @openreel/runtime-chromium)" },
+          { requires: "ExportProvider (e.g. @reelterminal/runtime-chromium)" },
         );
       }
       const artifactRoot = requireArtifactRoot(

@@ -1,5 +1,5 @@
 {
-  "name": "@openreel/desktop",
+  "name": "@reelterminal/desktop",
   "private": true,
   "version": "1.0.0-alpha.10",
   "type": "commonjs",
@@ -14,7 +14,7 @@
   "description": "ReelTerminal — the finishing editor for AI video",
   "scripts": {
     "build:main": "node scripts/prepare-aurora-native.mjs && tsup && node scripts/link-live-runtime-deps.mjs",
-    "build:renderer": "cross-env OPENREEL_DESKTOP=1 pnpm --filter @openreel/web build",
+    "build:renderer": "cross-env OPENREEL_DESKTOP=1 pnpm --filter @reelterminal/web build",
     "build": "pnpm run build:renderer && pnpm run build:main",
     "predev": "pnpm run build:renderer",
     "dev": "tsup --watch --onSuccess \"electron .\"",
@@ -30,9 +30,9 @@
   },
   "dependencies": {
     "@esbuild/win32-x64": "0.27.7",
-    "@openreel/agent-facade": "workspace:*",
-    "@openreel/core": "workspace:*",
-    "@openreel/runtime-chromium": "workspace:*",
+    "@reelterminal/agent-facade": "workspace:*",
+    "@reelterminal/core": "workspace:*",
+    "@reelterminal/runtime-chromium": "workspace:*",
     "electron-updater": "^6.3.9",
     "esbuild": "^0.27.7",
     "mediabunny": "^1.25.3",

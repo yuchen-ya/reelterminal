@@ -34,7 +34,7 @@ import type {
   ClipColorGrading,
   MotionComposition,
   MotionCompositionInstance,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   ActionExecutor,
   ActionHistory,
@@ -44,7 +44,7 @@ import {
   motionEngine,
   reflowMotionAutoLayoutGroups,
   resolveEditingTemplate,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { createMarkerSlice } from "./project/marker-slice";
 import { createProjectMarkersSlice } from "./project/project-markers-slice";
 import { createWorkAssetsSlice } from "./project/work-assets-slice";
@@ -92,12 +92,12 @@ import {
   type CreationCameraEditPatch,
 } from "../motion/creation-camera-editing";
 import { planRecoverMotionScene3DLayer } from "../motion/creation-recovery";
-import { ProjectChangeJournal } from "@openreel/agent-facade/project-changes";
+import { ProjectChangeJournal } from "@reelterminal/agent-facade/project-changes";
 import { getMaterialLibraryService } from "../services/material-library/library-service";
 import type {
   ProjectChangesParams,
   ProjectChangesResult,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 
 /**
  * ProjectState - Complete state interface for project management
@@ -252,7 +252,7 @@ export interface ProjectState {
   ) => Promise<ActionResult>;
   updateClipBlendMode: (
     clipId: string,
-    blendMode: import("@openreel/core").BlendMode,
+    blendMode: import("@reelterminal/core").BlendMode,
   ) => Promise<ActionResult>;
   updateClipBlendOpacity: (
     clipId: string,
@@ -269,7 +269,7 @@ export interface ProjectState {
   ) => boolean;
   updateClipEmphasisAnimation: (
     clipId: string,
-    emphasisAnimation: import("@openreel/core").EmphasisAnimation,
+    emphasisAnimation: import("@reelterminal/core").EmphasisAnimation,
   ) => Promise<ActionResult>;
 
   // Clipboard actions
@@ -345,7 +345,7 @@ export interface ProjectState {
     text: string,
     duration?: number,
     style?: Partial<TextStyle>,
-    metadata?: import("@openreel/core").ClipMetadata,
+    metadata?: import("@reelterminal/core").ClipMetadata,
     options?: {
       /** Pre-assigned clip id (live-bridge applies facade-minted ids verbatim). */
       id?: string;
@@ -371,7 +371,7 @@ export interface ProjectState {
   ) => TextClip | null;
   updateText3D: (
     clipId: string,
-    text3d: import("@openreel/core").Text3DSettings | undefined,
+    text3d: import("@reelterminal/core").Text3DSettings | undefined,
   ) => TextClip | null;
   getTextClip: (clipId: string) => TextClip | undefined;
   getAllTextClips: () => TextClip[];
@@ -392,17 +392,17 @@ export interface ProjectState {
 
   // Subtitle actions - subtitles are created as text clips on a Captions track
   addSubtitle: (
-    subtitle: import("@openreel/core").Subtitle,
-    metadata?: import("@openreel/core").ClipMetadata,
+    subtitle: import("@reelterminal/core").Subtitle,
+    metadata?: import("@reelterminal/core").ClipMetadata,
   ) => Promise<void>;
   removeSubtitle: (subtitleId: string) => void;
   updateSubtitle: (
     subtitleId: string,
-    updates: Partial<import("@openreel/core").Subtitle>,
+    updates: Partial<import("@reelterminal/core").Subtitle>,
   ) => void;
   getSubtitle: (
     subtitleId: string,
-  ) => import("@openreel/core").Subtitle | undefined;
+  ) => import("@reelterminal/core").Subtitle | undefined;
   importSRT: (
     srtContent: string,
     options?: { sourceClipId?: string; maxWordsPerLine?: number },
@@ -420,16 +420,16 @@ export interface ProjectState {
   removeMarker: (markerId: string) => Promise<ActionResult>;
   updateMarker: (
     markerId: string,
-    updates: Partial<import("@openreel/core").Marker>,
+    updates: Partial<import("@reelterminal/core").Marker>,
   ) => Promise<ActionResult>;
-  getMarker: (markerId: string) => import("@openreel/core").Marker | undefined;
-  getMarkers: () => import("@openreel/core").Marker[];
+  getMarker: (markerId: string) => import("@reelterminal/core").Marker | undefined;
+  getMarkers: () => import("@reelterminal/core").Marker[];
 
   // Project review marker actions (persisted `project.markers`; distinct from
   // the ruler point markers above). Removal addresses a marker by its stable
   // number and fails listing the assigned numbers when it is unknown.
   addProjectMarker: (
-    target: import("@openreel/core").ProjectMarkerTarget,
+    target: import("@reelterminal/core").ProjectMarkerTarget,
     label?: string,
   ) => Promise<ActionResult>;
   removeProjectMarker: (number: number) => Promise<ActionResult>;
@@ -466,9 +466,9 @@ export interface ProjectState {
       startTime?: number;
       duration?: number;
       transform?: Partial<Transform>;
-      entryAnimation?: import("@openreel/core").GraphicAnimation;
-      exitAnimation?: import("@openreel/core").GraphicAnimation;
-      colorStyle?: import("@openreel/core").SVGColorStyle;
+      entryAnimation?: import("@reelterminal/core").GraphicAnimation;
+      exitAnimation?: import("@reelterminal/core").GraphicAnimation;
+      colorStyle?: import("@reelterminal/core").SVGColorStyle;
     },
   ) => SVGClip | null;
   deleteSVGClip: (clipId: string) => boolean;

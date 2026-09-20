@@ -18,7 +18,7 @@ import type {
   VerifyArtifactRequest,
   VerifyCheck,
   VerifyReport,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 import {
   extractFrameRgba,
   ffprobeJson,

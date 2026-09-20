@@ -1,7 +1,7 @@
 import "../../test/install-local-storage-mock";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { Project } from "@openreel/core";
+import type { Project } from "@reelterminal/core";
 import { createEmptyProject } from "../../stores/project/project-helpers";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
@@ -20,8 +20,8 @@ const stubs = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@openreel/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@openreel/core")>();
+vi.mock("@reelterminal/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@reelterminal/core")>();
   return {
     ...actual,
     initializeTranscriptionService:

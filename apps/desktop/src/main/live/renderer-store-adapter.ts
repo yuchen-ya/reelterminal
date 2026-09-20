@@ -29,9 +29,9 @@ import {
   type MaterialLibraryBridge,
   type FontLibraryBridge,
   type PresetLibraryBridge,
-} from "@openreel/agent-facade";
-import type { Action } from "@openreel/core/types/actions";
-import type { Project } from "@openreel/core/types/project";
+} from "@reelterminal/agent-facade";
+import type { Action } from "@reelterminal/core/types/actions";
+import type { Project } from "@reelterminal/core/types/project";
 import { CHANNELS } from "../../shared/channels";
 import type {
   LiveBridgeReply,

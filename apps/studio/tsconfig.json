@@ -11,12 +11,12 @@
     "types": ["vite/client", "node"],
     "paths": {
       "@/*": ["./src/*"],
-      "@openreel/core": ["../../packages/core/src/index.ts"],
-      "@openreel/core/*": ["../../packages/core/src/*"],
-      "@openreel/fxpkg": ["../../packages/fxpkg/src/index.ts"],
-      "@openreel/fxpkg/*": ["../../packages/fxpkg/src/*"],
-      "@openreel/ui": ["../../packages/ui/src/index.ts"],
-      "@openreel/ui/*": ["../../packages/ui/src/*"]
+      "@reelterminal/core": ["../../packages/core/src/index.ts"],
+      "@reelterminal/core/*": ["../../packages/core/src/*"],
+      "@reelterminal/fxpkg": ["../../packages/fxpkg/src/index.ts"],
+      "@reelterminal/fxpkg/*": ["../../packages/fxpkg/src/*"],
+      "@reelterminal/ui": ["../../packages/ui/src/index.ts"],
+      "@reelterminal/ui/*": ["../../packages/ui/src/*"]
     }
   },
   "include": ["src", "vite.config.ts"]

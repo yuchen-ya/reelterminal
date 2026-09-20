@@ -2,7 +2,7 @@ import type { CSSProperties, JSX, PointerEvent as ReactPointerEvent, ReactNode }
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
 import { Maximize2, Minimize2, Minus, X } from "@/icons/lucide-compat";
 
 export interface WindowBounds {

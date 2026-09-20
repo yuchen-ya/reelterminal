@@ -10,7 +10,7 @@ import {
   RefreshCw,
   Terminal,
 } from "@/icons/lucide-compat";
-import { ToolcraftButton as Button } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
 import type {
   OpenReelCodexThreadSummary,
   OpenReelConversationSetupCheck,

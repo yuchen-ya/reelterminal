@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FacadeResult, JobStatusView } from "@openreel/agent-facade";
+import type { FacadeResult, JobStatusView } from "@reelterminal/agent-facade";
 import { startJobProgressWatch, type JobProgressNotification } from "../src/progress";
 
 function status(state: JobStatusView["state"], percent: number | null, phase = "rendering"): JobStatusView {

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, render, waitFor } from "@testing-library/react";
-import type { MotionComposition } from "@openreel/core";
+import type { MotionComposition } from "@reelterminal/core";
 import { createEmptyProject } from "../../stores/project/project-helpers";
 import { useProjectStore } from "../../stores/project-store";
 import {

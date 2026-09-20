@@ -4,7 +4,7 @@ import {
   type AutoEditCut,
   type Clip,
   type Project,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { buildAutoEditActions } from "./AutoEditPanel";
 
 const TRANSFORM = {

@@ -2,13 +2,13 @@
  * Post-build fixup: the bundled CLI keeps esbuild / playwright-core /
  * mediabunny external (they must run from their real installed locations —
  * esbuild needs its platform binary, playwright-core its browser registry).
- * They are dependencies of @openreel/runtime-chromium, not of this package
+ * They are dependencies of @reelterminal/runtime-chromium, not of this package
  * (ADR 0003: the transport adds no runtime dependencies of its own), so the
  * bundle resolves them by linking each package into dist/node_modules —
  * the directory Node consults first for code inside dist/.
  *
  * Every link points at the exact store location pnpm resolved for
- * @openreel/runtime-chromium, so the binary runs the same versions as the
+ * @reelterminal/runtime-chromium, so the binary runs the same versions as the
  * workspace. Idempotent: re-running replaces stale links.
  */
 import { createRequire } from "node:module";
@@ -47,6 +47,7 @@ for (const name of LINKED_PACKAGES) {
   const linkPath = path.join(distModules, name);
   rmSync(linkPath, { force: true, recursive: true });
   const target = path.relative(path.dirname(linkPath), realDir);
-  symlinkSync(target, linkPath, "dir");
+  // Directory junctions on Windows need no admin/Developer Mode privileges.
+  symlinkSync(target, linkPath, process.platform === "win32" ? "junction" : "dir");
   process.stderr.write(`[link-runtime-deps] dist/node_modules/${name} -> ${target}\n`);
 }

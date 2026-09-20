@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Track } from "@openreel/core";
+import type { Track } from "@reelterminal/core";
 import {
   compareTracksForComposite,
   isOverlayTrackType,

@@ -17,8 +17,8 @@ import {
 import {
   SOCIAL_MEDIA_CATEGORY_INFO,
   type SocialMediaCategory,
-} from "@openreel/core";
-import { ToolcraftButton as Button } from "@openreel/ui";
+} from "@reelterminal/core";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { useTranslation } from "react-i18next";
 
 interface CategoryTabsProps {

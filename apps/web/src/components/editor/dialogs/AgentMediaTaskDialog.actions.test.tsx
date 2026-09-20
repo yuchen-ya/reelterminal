@@ -9,7 +9,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { AgentMediaTaskService, setAgentMediaTaskServiceForTests } from "../../../services/agent-media-tasks/agent-media-task-service";
 import type { AgentTaskStorage } from "../../../services/agent-media-tasks/storage";
 import type { AgentMediaTaskRecord } from "../../../services/agent-media-tasks/types";
-import type { MediaItem } from "@openreel/core";
+import type { MediaItem } from "@reelterminal/core";
 import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { useProjectStore } from "../../../stores/project-store";
 import { useUIStore } from "../../../stores/ui-store";

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Action } from "@openreel/core";
+import type { Action } from "@reelterminal/core";
 import { useProjectStore } from "../project-store";
 
 const { deleteMediaBlob, importFile, saveMediaBlob } = vi.hoisted(() => ({

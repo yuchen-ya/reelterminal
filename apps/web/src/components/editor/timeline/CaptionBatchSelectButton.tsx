@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { ListChecks } from "@/icons/lucide-compat";
-import { ToolcraftButton as Button } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { useProjectStore } from "../../../stores/project-store";
 import { useUIStore } from "../../../stores/ui-store";
 import { getTimelineTrackSelection } from "../../../utils/timeline-item-actions";

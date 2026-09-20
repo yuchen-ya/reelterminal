@@ -6,7 +6,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   Slider,
-} from '@openreel/ui';
+} from '@reelterminal/ui';
 import { useUIStore } from '../../../stores/ui-store';
 import { useProjectStore } from '../../../stores/project-store';
 

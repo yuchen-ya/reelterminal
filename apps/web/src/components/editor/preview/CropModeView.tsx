@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
 import { Check, X, Maximize2 } from "@/icons/lucide-compat";
-import type { Clip } from "@openreel/core";
+import type { Clip } from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 interface CropModeViewProps {

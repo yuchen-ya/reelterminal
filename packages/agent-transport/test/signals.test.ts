@@ -9,7 +9,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { chromiumAvailable, ffmpegAvailable, initialize, makeRoots, spawnCli, startServe, type CliHandle, type McpClient, type Roots } from "./helpers";
-import { writeTinyVp9Mp4 } from "@openreel/runtime-chromium/media/tiny-vp9-mp4";
+import { writeTinyVp9Mp4 } from "@reelterminal/runtime-chromium/media/tiny-vp9-mp4";
 
 let roots!: Roots;
 let inputMp4!: string;
@@ -67,7 +67,9 @@ async function waitForListening(handle: CliHandle, timeoutMs = 60_000): Promise<
 }
 
 describe("Decision 7: signal ownership", () => {
-  it("first SIGTERM runs the bounded disposal and exits 143", async () => {
+  // Windows has no POSIX signals: kill("SIGTERM") is a hard terminate, so
+  // the 143/130/129 exit-code semantics these tests assert cannot exist.
+  it.skipIf(process.platform === "win32")("first SIGTERM runs the bounded disposal and exits 143", async () => {
     const handle = spawnCli(["serve", ...serveArgs()]);
     await waitForListening(handle);
     handle.child.kill("SIGTERM");
@@ -136,7 +138,7 @@ describe("Decision 7: signal ownership", () => {
     expect(logs.some((l) => /second signal — immediate hard exit/.test(l.msg))).toBe(true);
   }, 300_000);
 
-  it("SIGINT exits 130 and SIGHUP exits 129 through the same bounded disposal", async () => {
+  it.skipIf(process.platform === "win32")("SIGINT exits 130 and SIGHUP exits 129 through the same bounded disposal", async () => {
     for (const [signal, code] of [["SIGINT", 130], ["SIGHUP", 129]] as const) {
       const handle = spawnCli(["serve", ...serveArgs()]);
       await waitForListening(handle);

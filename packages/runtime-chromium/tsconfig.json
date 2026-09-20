@@ -5,12 +5,12 @@
     "baseUrl": ".",
     "types": ["node"],
     "paths": {
-      "@openreel/core": ["../core/src/index.ts"],
-      "@openreel/core/*": ["../core/src/*"],
-      "@openreel/agent-facade": ["../agent-facade/src/index.ts"],
-      "@openreel/agent-facade/*": ["../agent-facade/src/*"],
-      "@openreel/runtime-chromium": ["./src/index.ts"],
-      "@openreel/runtime-chromium/*": ["./src/*"]
+      "@reelterminal/core": ["../core/src/index.ts"],
+      "@reelterminal/core/*": ["../core/src/*"],
+      "@reelterminal/agent-facade": ["../agent-facade/src/index.ts"],
+      "@reelterminal/agent-facade/*": ["../agent-facade/src/*"],
+      "@reelterminal/runtime-chromium": ["./src/index.ts"],
+      "@reelterminal/runtime-chromium/*": ["./src/*"]
     }
   },
   "include": ["src"]

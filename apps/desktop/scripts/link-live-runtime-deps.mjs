@@ -1,15 +1,15 @@
 /**
  * Post-build fixup for the live-collaboration runtime (ADR 0004 Slice 3).
  *
- * The main-process bundle inlines @openreel/runtime-chromium, whose
+ * The main-process bundle inlines @reelterminal/runtime-chromium, whose
  * node/bundle.ts builds the Chromium browser entry at RUNTIME with esbuild
  * from the TypeScript sources src/browser/{entry,extract-audio-shim}.ts. In
  * the CJS bundle, import.meta.url resolves inside dist/, so the runtime
  * looks for <dist>/browser/<name> (the package's own first candidate). This
  * script copies those two sources there.
  *
- * esbuild then resolves the entry's "@openreel/core/*" imports through
- * apps/desktop/node_modules/@openreel/core (a workspace symlink into
+ * esbuild then resolves the entry's "@reelterminal/core/*" imports through
+ * apps/desktop/node_modules/@reelterminal/core (a workspace symlink into
  * packages/core, whose own node_modules carry three/gsap/mediabunny/etc.) —
  * the same store locations the workspace uses, no version drift.
  *

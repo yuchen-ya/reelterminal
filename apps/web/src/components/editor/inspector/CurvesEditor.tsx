@@ -5,11 +5,11 @@ import React, {
   useMemo,
   useEffect,
 } from "react";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { RotateCcw } from "@/icons/lucide-compat";
-import type { CurvesValues, CurvePoint } from "@openreel/core";
+import type { CurvesValues, CurvePoint } from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 export const DEFAULT_CURVES: CurvesValues = {

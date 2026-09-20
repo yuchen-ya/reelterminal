@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import type { FacadeResult } from "@openreel/agent-facade";
+import type { FacadeResult } from "@reelterminal/agent-facade";
 import { appendVisualImageContent } from "../src/serve";
 
 const ONE_PIXEL_PNG = Buffer.from(

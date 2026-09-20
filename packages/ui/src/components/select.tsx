@@ -5,7 +5,7 @@ import * as SelectPrimitive from "@radix-ui/react-select"
 import { motion } from "motion/react"
 import { Check, ChevronDown, ChevronUp } from "lucide-react"
 
-import { cn } from "@openreel/ui/lib/utils"
+import { cn } from "@reelterminal/ui/lib/utils"
 
 const Select = SelectPrimitive.Root
 

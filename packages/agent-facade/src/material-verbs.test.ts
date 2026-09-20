@@ -16,7 +16,7 @@ import type {
   MaterialLibraryBridgeRequest,
   MaterialLibraryBridgeReply,
 } from "./material-library";
-import type { Project } from "@openreel/core/types/project";
+import type { Project } from "@reelterminal/core/types/project";
 import { createEmptyProject } from "./project-factory";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 

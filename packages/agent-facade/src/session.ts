@@ -17,11 +17,11 @@ import { analyzeLocalAudio, analyzeSilence, analyzeBeatGrid, audioAnalysisPrefli
  *  - Strict closed-schema validation at the boundary: unknown fields, wrong
  *    field names and unsupported ops fail with zero side effects.
  */
-import { ActionExecutor } from "@openreel/core/actions/action-executor";
-import { ActionHistory } from "@openreel/core/actions/action-history";
-import type { Project, ProjectSettings } from "@openreel/core/types/project";
-import type { MediaItem } from "@openreel/core/types/project";
-import type { MaterialListResult } from "@openreel/core/material/types";
+import { ActionExecutor } from "@reelterminal/core/actions/action-executor";
+import { ActionHistory } from "@reelterminal/core/actions/action-history";
+import type { Project, ProjectSettings } from "@reelterminal/core/types/project";
+import type { MediaItem } from "@reelterminal/core/types/project";
+import type { MaterialListResult } from "@reelterminal/core/material/types";
 import type { FacadeVerb } from "./types";
 import { basename, isAbsolute, resolve as resolvePath } from "node:path";
 import { readFile, rm, stat } from "node:fs/promises";
@@ -1138,7 +1138,7 @@ export class AgentFacadeSession {
           "media.render_html: no render provider with HTML rendering is configured for this session",
           {
             requires:
-              "a RenderProvider exposing renderHtmlPng (e.g. @openreel/runtime-chromium with the local playwright Chromium)",
+              "a RenderProvider exposing renderHtmlPng (e.g. @reelterminal/runtime-chromium with the local playwright Chromium)",
           },
         );
       }
@@ -1476,7 +1476,7 @@ export class AgentFacadeSession {
         throw new FacadeError(
           "UNSUPPORTED",
           "preview.render_frame: no render provider configured for this session",
-          { requires: "RenderProvider (e.g. @openreel/runtime-chromium)" },
+          { requires: "RenderProvider (e.g. @reelterminal/runtime-chromium)" },
         );
       }
       const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "preview.render_frame");
@@ -1631,7 +1631,7 @@ export class AgentFacadeSession {
         throw new FacadeError(
           "UNSUPPORTED",
           "preview.render_comparison: no render provider configured for this session",
-          { requires: "RenderProvider (e.g. @openreel/runtime-chromium)" },
+          { requires: "RenderProvider (e.g. @reelterminal/runtime-chromium)" },
         );
       }
       const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "preview.render_comparison");
@@ -1776,7 +1776,7 @@ export class AgentFacadeSession {
         throw new FacadeError(
           "UNSUPPORTED",
           "visual.inspect: no render provider configured for this session",
-          { requires: "RenderProvider (e.g. @openreel/runtime-chromium)" },
+          { requires: "RenderProvider (e.g. @reelterminal/runtime-chromium)" },
         );
       }
       const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "visual.inspect");
@@ -2070,7 +2070,7 @@ export class AgentFacadeSession {
         throw new FacadeError(
           "UNSUPPORTED",
           "export.start: no export provider configured for this session",
-          { requires: "ExportProvider (e.g. @openreel/runtime-chromium)" },
+          { requires: "ExportProvider (e.g. @reelterminal/runtime-chromium)" },
         );
       }
       const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "export.start");

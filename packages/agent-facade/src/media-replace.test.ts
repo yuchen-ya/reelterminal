@@ -22,9 +22,9 @@ import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { createAgentFacade, type AgentFacade } from "./index";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
-import { ActionExecutor } from "@openreel/core/actions/action-executor";
-import { ActionHistory } from "@openreel/core/actions/action-history";
-import type { Action } from "@openreel/core/types/actions";
+import { ActionExecutor } from "@reelterminal/core/actions/action-executor";
+import { ActionHistory } from "@reelterminal/core/actions/action-history";
+import type { Action } from "@reelterminal/core/types/actions";
 import { createEmptyProject } from "./project-factory";
 
 const execute = promisify(execFile);

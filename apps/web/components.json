@@ -10,9 +10,9 @@
   },
   "aliases": {
     "components": "@/components",
-    "ui": "@openreel/ui/components",
-    "utils": "@openreel/ui/lib/utils",
-    "hooks": "@openreel/ui/hooks",
-    "lib": "@openreel/ui/lib"
+    "ui": "@reelterminal/ui/components",
+    "utils": "@reelterminal/ui/lib/utils",
+    "hooks": "@reelterminal/ui/hooks",
+    "lib": "@reelterminal/ui/lib"
   }
 }

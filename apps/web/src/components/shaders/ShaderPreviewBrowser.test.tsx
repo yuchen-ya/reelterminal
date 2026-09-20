@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getMotionShaderFillDefs } from "@openreel/core";
+import { getMotionShaderFillDefs } from "@reelterminal/core";
 import { ShaderPreviewBrowser } from "./ShaderPreviewBrowser";
 
 describe("ShaderPreviewBrowser", () => {

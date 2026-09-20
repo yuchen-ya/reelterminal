@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { GraphEdge, GraphNode } from "@openreel/fxpkg";
+import type { GraphEdge, GraphNode } from "@reelterminal/fxpkg";
 import type { IconName } from "../../icons";
 import type { AtomicKind, Subject, SubjectKind } from "../scene";
 import { ALL_ATOMICS } from "./atomics";

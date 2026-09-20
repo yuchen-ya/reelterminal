@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { MotionComposition } from "@openreel/core";
-import { IDENTITY_TRANSFORM } from "@openreel/core/creation/index";
+import type { MotionComposition } from "@reelterminal/core";
+import { IDENTITY_TRANSFORM } from "@reelterminal/core/creation/index";
 import type {
   CreationAssetRecipe,
   CreationProjectState,
   CreationScene,
-} from "@openreel/core/creation/index";
+} from "@reelterminal/core/creation/index";
 import {
   previewPixelsHaveForeground,
   renderCreationStagePreviewFallbackImage,

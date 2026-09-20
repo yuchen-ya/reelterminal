@@ -6,7 +6,7 @@
  * session runtimes: a live `project.get_state`/`timeline.get` is the same
  * view over a snapshot as headless is over its private project.
  */
-import type { Project } from "@openreel/core/types/project";
+import type { Project } from "@reelterminal/core/types/project";
 import type {
   ProjectCounts,
   ProjectState,

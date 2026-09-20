@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildBox } from "@openreel/core/creation/index";
+import { buildBox } from "@reelterminal/core/creation/index";
 import {
   cpuCreationBackend,
   loadCreationBackend,

@@ -7,7 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { Clip, Project, TextClip } from "@openreel/core";
+import type { Clip, Project, TextClip } from "@reelterminal/core";
 import { createEmptyProject } from "../../stores/project/project-helpers";
 import { useEngineStore } from "../../stores/engine-store";
 import { useProjectStore } from "../../stores/project-store";

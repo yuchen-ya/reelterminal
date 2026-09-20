@@ -3,7 +3,7 @@ import type { TextLayer, TextStyle, TextFillType, Gradient } from '../../../type
 import { AlignLeft, AlignCenter, AlignRight, Bold, Italic, Underline, CaseUpper, CaseLower, CaseSensitive, Strikethrough, Type } from 'lucide-react';
 import { FontPicker } from '../../ui/FontPicker';
 import { GradientPicker } from '../../ui/GradientPicker';
-import { Slider, Switch } from '@openreel/ui';
+import { Slider, Switch } from '@reelterminal/ui';
 
 interface Props {
   layer: TextLayer;

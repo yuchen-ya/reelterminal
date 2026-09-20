@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MotionShapePathPoint } from "@openreel/core";
+import type { MotionShapePathPoint } from "@reelterminal/core";
 import {
   moveHandle,
   moveVertex,

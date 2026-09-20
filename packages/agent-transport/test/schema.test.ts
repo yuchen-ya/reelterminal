@@ -1,4 +1,4 @@
-import { FACADE_VERBS } from "@openreel/agent-facade";
+import { FACADE_VERBS } from "@reelterminal/agent-facade";
 /**
  * Schema differential tests (ADR 0003 Decision 4 items 2/3/5):
  *
@@ -19,10 +19,10 @@ import { FACADE_VERBS } from "@openreel/agent-facade";
 import { describe, expect, it } from "vitest";
 import Ajv2020 from "ajv/dist/2020";
 import { TOOLS } from "../src/tools";
-import { EMITTED_VERB_JSON_SCHEMAS } from "@openreel/agent-facade";
-import { VERB_SCHEMA_CORPUS } from "@openreel/agent-facade";
-import { validateObject } from "@openreel/agent-facade/validate";
-import { validateEditOp } from "@openreel/agent-facade/ops";
+import { EMITTED_VERB_JSON_SCHEMAS } from "@reelterminal/agent-facade";
+import { VERB_SCHEMA_CORPUS } from "@reelterminal/agent-facade";
+import { validateObject } from "@reelterminal/agent-facade/validate";
+import { validateEditOp } from "@reelterminal/agent-facade/ops";
 import {
   EXPORT_SETTINGS_SCHEMA,
   VISUAL_INSPECT_RANGE_SCHEMA,
@@ -33,12 +33,12 @@ import {
   PROJECT_SETTINGS_SCHEMA,
   EDITOR_CONTROL_TARGET_SCHEMA,
   TIMELINE_QUERY_RANGE_SCHEMA,
-} from "@openreel/agent-facade/verb-schemas";
+} from "@reelterminal/agent-facade/verb-schemas";
 import {
   isValidPresetPayload,
   presetApplyTargetProblem,
-} from "@openreel/agent-facade/preset-verbs";
-import { isKnownManualScreenId } from "@openreel/agent-facade/gui-manual";
+} from "@reelterminal/agent-facade/preset-verbs";
+import { isKnownManualScreenId } from "@reelterminal/agent-facade/gui-manual";
 
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 const compiled = new Map<string, any>();

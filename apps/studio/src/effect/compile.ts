@@ -1,4 +1,4 @@
-import type { AssetKind, Graph, GraphEdge, GraphNode } from "@openreel/fxpkg";
+import type { AssetKind, Graph, GraphEdge, GraphNode } from "@reelterminal/fxpkg";
 import { getBehavior, type DetectorRequirement } from "./behaviors/registry";
 import { getSubjectCapability } from "./subjects";
 import type { Scene, SceneCompileResult, Subject } from "./scene";

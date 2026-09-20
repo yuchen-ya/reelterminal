@@ -23,13 +23,13 @@ import {
   Crosshair,
   Flag,
 } from "@/icons/lucide-compat";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import {
   ToolcraftContextMenu as ContextMenu,
   type ToolcraftContextMenuOption as ContextMenuOption,
-} from "@openreel/ui";
+} from "@reelterminal/ui";
 import { useProjectStore } from "../../stores/project-store";
 import { useTimelineStore } from "../../stores/timeline-store";
 import { useUIStore } from "../../stores/ui-store";
@@ -70,7 +70,7 @@ import {
   type Mask,
   type ProjectMarker,
   getTrackTransitionAudioFades,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useEngineStore } from "../../stores/engine-store";
 import { loadAudioBuffer as loadDecodedAudioBuffer } from "../../utils/load-audio-buffer";
 import {
@@ -115,11 +115,11 @@ import { ProcessingOverlay } from "./ProcessingOverlay";
 import {
   getBackgroundRemovalEngine,
   getVidstabEngine,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import type {
   GSAPMotionPathPoint,
   MotionPathConfig,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 import {
   applyPreviewAdjustmentLayers,

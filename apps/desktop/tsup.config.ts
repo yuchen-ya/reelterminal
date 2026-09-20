@@ -30,9 +30,9 @@ export default defineConfig({
   noExternal: [
     "electron-updater",
     "zod",
-    "@openreel/agent-facade",
-    "@openreel/runtime-chromium",
-    "@openreel/core",
+    "@reelterminal/agent-facade",
+    "@reelterminal/runtime-chromium",
+    "@reelterminal/core",
   ],
   // runtime-chromium's node/bundle.ts resolves the browser entry relative to
   // import.meta.url; the CJS bundle needs the tsup import.meta.url shim so

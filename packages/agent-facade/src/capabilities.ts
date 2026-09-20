@@ -51,20 +51,20 @@ import {
   GUI_MANUAL_LANGUAGES,
   GUI_MANUAL_SCREENS,
 } from "./gui-manual";
-import { MATERIAL_KINDS } from "@openreel/core/material/types";
-import { PRESET_KINDS } from "@openreel/core/presets/types";
+import { MATERIAL_KINDS } from "@reelterminal/core/material/types";
+import { PRESET_KINDS } from "@reelterminal/core/presets/types";
 import {
   MAX_EFFECTS_PER_PRESET,
   MAX_GRAPHICS_SVG_BYTES,
   MAX_THUMBNAIL_BYTES,
-} from "@openreel/core/presets/validate";
-import { DEFAULT_CHROMA_KEY_SETTINGS } from "@openreel/core/video/chroma-key-engine";
-import { DEFAULT_BACKGROUND_SETTINGS } from "@openreel/core/ai/background-removal-engine";
+} from "@reelterminal/core/presets/validate";
+import { DEFAULT_CHROMA_KEY_SETTINGS } from "@reelterminal/core/video/chroma-key-engine";
+import { DEFAULT_BACKGROUND_SETTINGS } from "@reelterminal/core/ai/background-removal-engine";
 import {
   DEFAULT_NOISE_REDUCTION_SETTINGS,
   NOISE_REDUCTION_PRESETS,
-} from "@openreel/core/audio/noise-reduction-presets";
-import { SVG_MAX_CONTENT_BYTES } from "@openreel/core/graphics/svg-validation";
+} from "@reelterminal/core/audio/noise-reduction-presets";
+import { SVG_MAX_CONTENT_BYTES } from "@reelterminal/core/graphics/svg-validation";
 import {
   DEFAULT_AGENT_WORK_MODE,
   agentWorkModeSemantics,
@@ -121,7 +121,7 @@ const UNAVAILABLE_NO_RENDER_PROVIDER: CapabilityStatus = {
   available: false,
   reason:
     "No render provider is configured for this session; preview.render_frame cannot produce pixels.",
-  requires: "a RenderProvider with a passing runtime preflight (e.g. @openreel/runtime-chromium)",
+  requires: "a RenderProvider with a passing runtime preflight (e.g. @reelterminal/runtime-chromium)",
 };
 
 const UNAVAILABLE_NO_EXPORT_PROVIDER: CapabilityStatus = {
@@ -222,7 +222,7 @@ export async function buildCapabilities(
         reason:
           "No render provider with HTML rendering (renderHtmlPng) is configured for this session; media.render_html cannot rasterize HTML.",
         requires:
-          "a RenderProvider exposing renderHtmlPng (e.g. @openreel/runtime-chromium with the local playwright Chromium installed)",
+          "a RenderProvider exposing renderHtmlPng (e.g. @reelterminal/runtime-chromium with the local playwright Chromium installed)",
       };
     }
     if (ctx.mediaRoots.length === 0) {

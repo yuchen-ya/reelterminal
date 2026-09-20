@@ -17,7 +17,7 @@ import {
 } from "../../components/editor/inspector/font-options";
 
 /**
- * Mirrors FONT_LIBRARY_LIMITS.maxFontBytes in @openreel/agent-facade — the
+ * Mirrors FONT_LIBRARY_LIMITS.maxFontBytes in @reelterminal/agent-facade — the
  * facade enforces the same decoded-size budget before forwarding.
  */
 const MAX_FONT_UPLOAD_BYTES = 10 * 1024 * 1024;

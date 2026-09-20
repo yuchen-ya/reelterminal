@@ -1,4 +1,4 @@
-// Node N-API addon exposing the @openreel/creation-core C ABI to the Electron
+// Node N-API addon exposing the @reelterminal/creation-core C ABI to the Electron
 // host. Built with node-gyp; loaded by ../src/index.ts via loadNativeAddon().
 
 #include <stdbool.h>

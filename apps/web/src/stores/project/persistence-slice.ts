@@ -1,11 +1,11 @@
-import type { Project } from "@openreel/core";
+import type { Project } from "@reelterminal/core";
 import {
   ActionExecutor,
   ActionHistory,
   normalizeGeneratedShaders,
   normalizeProjectWorkAssetFields,
   registerProjectGeneratedShaders,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import type { StoreApi } from "zustand";
 import type { ProjectState } from "../project-store";
 import {

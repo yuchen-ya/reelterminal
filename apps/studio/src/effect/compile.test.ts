@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateGraph } from "@openreel/fxpkg";
+import { validateGraph } from "@reelterminal/fxpkg";
 import { sceneToGraph } from "./compile";
 import { emptyScene, type Scene } from "./scene";
 import { registerAllBehaviors, getBehavior } from "./behaviors/registry";

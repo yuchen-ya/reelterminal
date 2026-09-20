@@ -17,7 +17,7 @@ import {
   FACADE_VERBS,
   type FacadeResult,
   type FacadeVerb,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 import {
   startLiveEndpointServer,
   toolNameForVerb,

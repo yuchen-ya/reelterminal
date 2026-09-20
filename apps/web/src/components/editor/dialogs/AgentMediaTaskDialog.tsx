@@ -22,7 +22,7 @@ import {
   RotateCcw,
   X,
 } from "@/icons/lucide-compat";
-import { ToolcraftButton as Button } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { AgentConnectionGuide } from "../agent/AgentConnectionGuide";
 import { useProjectStore } from "../../../stores/project-store";
 import { useUIStore } from "../../../stores/ui-store";

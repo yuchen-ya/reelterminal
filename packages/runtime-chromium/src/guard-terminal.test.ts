@@ -5,7 +5,7 @@
  * dropped, and no running/progress signal may follow a terminal.
  */
 import { describe, expect, it } from "vitest";
-import type { ExportCallbacks } from "@openreel/agent-facade";
+import type { ExportCallbacks } from "@reelterminal/agent-facade";
 import { guardExportCallbacks } from "./node/providers";
 import { summarizeProbe } from "./node/probe";
 import type { PageProbeFacts } from "./node/runtime";

@@ -1,5 +1,5 @@
 /**
- * @openreel/agent-transport — ADR 0003 slice 2b/2c.
+ * @reelterminal/agent-transport — ADR 0003 slice 2b/2c.
  *
  * The `agent-video` CLI: `serve` (MCP stdio server, one process == one
  * AgentFacadeSession), `run` (B.6 executable JSONL workflow over a fresh

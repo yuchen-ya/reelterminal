@@ -15,7 +15,7 @@ import {
   isNeutralColorGrading,
   type Transition,
   type TransitionEdge,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import * as THREE from "three";
 
 type GraphicClipUnion = ShapeClip | SVGClip | StickerClip;

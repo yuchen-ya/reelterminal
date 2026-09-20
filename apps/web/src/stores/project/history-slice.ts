@@ -5,7 +5,7 @@ import type {
   TextClip,
   SVGClip,
   StickerClip,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import type { ProjectState } from "../project-store";
 import type { ProjectStoreHelpers } from "./store-helpers";
 import type {

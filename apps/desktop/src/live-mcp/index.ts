@@ -14,7 +14,7 @@ import { request as httpRequest } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { FACADE_TOOL_NAMES } from "@openreel/agent-facade";
+import { FACADE_TOOL_NAMES } from "@reelterminal/agent-facade";
 import { LIVE_HEARTBEAT_INTERVAL_MS } from "../shared/live";
 
 interface RpcMessage {

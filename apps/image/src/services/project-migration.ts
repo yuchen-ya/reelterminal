@@ -1,1 +1,1 @@
-export * from '@openreel/image-core/migration';
+export * from '@reelterminal/image-core/migration';

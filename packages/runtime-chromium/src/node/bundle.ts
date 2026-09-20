@@ -87,7 +87,7 @@ function resolveBrowserSource(
     // createRequire lookup would fail on these import-only exports maps.
     // The main entry is <root>/src/index.ts; walk to the browser sources.
     const mainEntry = fileURLToPath(
-      import.meta.resolve("@openreel/runtime-chromium"),
+      import.meta.resolve("@reelterminal/runtime-chromium"),
     );
     candidates.push(join(dirname(mainEntry), "browser", name));
     candidates.push(join(dirname(mainEntry), "..", "src", "browser", name));
@@ -138,7 +138,7 @@ async function doBuild(): Promise<string> {
     },
     plugins: [
       {
-        name: "openreel-harness-shims",
+        name: "reelterminal-harness-shims",
         setup(pluginBuild) {
           // core/audio/audio-engine dynamically imports "../media/extract-audio",
           // whose ffmpeg.wasm fallback cannot load inside the harness page

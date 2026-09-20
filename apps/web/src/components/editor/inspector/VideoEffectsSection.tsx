@@ -11,11 +11,11 @@ import {
   Copy,
   Search,
 } from "@/icons/lucide-compat";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftPopover as Popover } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftPopover as Popover } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { PropertySlider } from "./shell/PropertySlider";
 import { useProjectStore } from "../../../stores/project-store";
 import type {
@@ -26,7 +26,7 @@ import {
   getMotionShaderDef,
   getMotionShaderEffectDefs,
   defaultMotionShaderParams,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { ColorSelector } from "../../../motion/components/primitives";
 import { ShaderPreviewBrowser } from "../../shaders/ShaderPreviewBrowser";
 import { toast } from "../../../stores/notification-store";
@@ -46,7 +46,7 @@ import {
   saveEffectPreset,
 } from "../panels/effect-transition-preset-controllers";
 import { PresetNameDialog } from "../panels/preset-name-dialog";
-import type { EffectPresetItem } from "@openreel/core/presets/types";
+import type { EffectPresetItem } from "@reelterminal/core/presets/types";
 import { useCustomPresets } from "../../../services/custom-presets/use-custom-presets";
 import { useTranslation } from "react-i18next";
 

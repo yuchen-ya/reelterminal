@@ -2,7 +2,7 @@ import type {
   Project,
   ProjectMarker,
   ProjectMarkersState,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import type { SelectionItem } from "../ui-store";
 
 /**

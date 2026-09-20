@@ -5,7 +5,7 @@
  * of its own entity.
  */
 import { describe, expect, it } from "vitest";
-import type { Project } from "@openreel/core";
+import type { Project } from "@reelterminal/core";
 import {
   appendCreatedIdDiff,
   emptyActionBatchCreatedIds,

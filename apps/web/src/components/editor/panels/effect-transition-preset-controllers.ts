@@ -18,21 +18,21 @@ import {
   EFFECT_DEFINITIONS,
   TRANSITION_TYPES,
   type TransitionType,
-} from "@openreel/core/types/effects";
+} from "@reelterminal/core/types/effects";
 import {
   PRESET_PAYLOAD_SCHEMA_VERSION,
   type CustomPresetRecord,
   type EffectPresetItem,
   type TransitionPresetPayload,
-} from "@openreel/core/presets/types";
+} from "@reelterminal/core/presets/types";
 import {
   getTransitionDefaultParams,
   validateEffectPresetEffects,
   validatePresetName,
   validateTransitionPresetPayload,
-} from "@openreel/core/presets/validate";
-import { validateSvgContent } from "@openreel/core/graphics/svg-validation";
-import type { Clip, Project } from "@openreel/core";
+} from "@reelterminal/core/presets/validate";
+import { validateSvgContent } from "@reelterminal/core/graphics/svg-validation";
+import type { Clip, Project } from "@reelterminal/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useUIStore } from "../../../stores/ui-store";

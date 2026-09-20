@@ -33,12 +33,12 @@ import {
   type AgentWorkMode,
   DEFAULT_AGENT_ACCESS_MODE,
   DEFAULT_AGENT_WORK_MODE,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 import type {
   ArtifactVerifier,
   ExportProvider,
   RenderProvider,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 import type {
   LiveCollabStatus,
   LiveEvent,

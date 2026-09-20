@@ -1,4 +1,4 @@
-import type { Action, MediaItem, Project } from "@openreel/core";
+import type { Action, MediaItem, Project } from "@reelterminal/core";
 import { saveMediaBlob, deleteMediaBlob } from "../media-storage";
 
 const MAX_BYTES = 256 * 1024 * 1024;

@@ -9,7 +9,7 @@ import "./index.css";
 import { AstryxProvider } from "./components/astryx/AstryxProvider";
 import { registerServiceWorker } from "./services/service-worker";
 import { initCustomFonts } from "./components/editor/inspector/font-options";
-import { setEncoderBackendFactory } from "@openreel/core";
+import { setEncoderBackendFactory } from "@reelterminal/core";
 import { NativeFFmpegBackend } from "./services/native-ffmpeg-backend";
 
 const DesktopApp = React.lazy(() =>

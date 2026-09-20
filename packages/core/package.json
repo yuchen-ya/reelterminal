@@ -1,5 +1,5 @@
 {
-  "name": "@openreel/core",
+  "name": "@reelterminal/core",
   "version": "0.1.0",
   "private": true,
   "type": "module",

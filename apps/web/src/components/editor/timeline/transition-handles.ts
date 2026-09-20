@@ -1,4 +1,4 @@
-import type { Clip, Track, Transition, TransitionEdge } from "@openreel/core";
+import type { Clip, Track, Transition, TransitionEdge } from "@reelterminal/core";
 
 export const TRANSITION_ADJACENCY_TOLERANCE = 0.05;
 

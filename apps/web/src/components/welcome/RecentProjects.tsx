@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Clock, Trash2, Film } from "@/icons/lucide-compat";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import {
   checkForRecovery,
   type AutoSaveMetadata,

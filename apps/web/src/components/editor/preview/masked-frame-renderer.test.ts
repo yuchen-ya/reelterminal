@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Mask } from "@openreel/core";
+import type { Mask } from "@reelterminal/core";
 import { DEFAULT_TRANSFORM } from "./types";
 import { drawFrameWithMasks } from "./masked-frame-renderer";
 

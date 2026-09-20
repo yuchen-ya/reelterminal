@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { Command } from '@openreel/image-core/commands';
+import type { Command } from '@reelterminal/image-core/commands';
 import type { Project } from '../types/project';
 
 // ---------------------------------------------------------------------------

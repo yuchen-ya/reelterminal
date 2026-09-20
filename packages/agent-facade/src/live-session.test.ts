@@ -14,10 +14,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ActionExecutor } from "@openreel/core/actions/action-executor";
-import { ActionHistory } from "@openreel/core/actions/action-history";
-import type { Action } from "@openreel/core/types/actions";
-import type { Project } from "@openreel/core/types/project";
+import { ActionExecutor } from "@reelterminal/core/actions/action-executor";
+import { ActionHistory } from "@reelterminal/core/actions/action-history";
+import type { Action } from "@reelterminal/core/types/actions";
+import type { Project } from "@reelterminal/core/types/project";
 
 import {
   createAgentFacade,
@@ -1578,7 +1578,7 @@ describe("live media.import through the canonical store bridge", () => {
       groupLabel: "agent: media.import",
       expectedRevision: 0,
     });
-    expect(store.mediaImports[0]?.request.path).toMatch(/\/tiny-6s\.mp4$/);
+    expect(store.mediaImports[0]?.request.path).toMatch(/[\\/]tiny-6s\.mp4$/);
     expect(store.project.mediaLibrary.items[0]).toMatchObject({
       id: res.value.mediaId,
       originalUrl: store.mediaImports[0]?.request.path,
@@ -1617,9 +1617,16 @@ describe("live media.import through the canonical store bridge", () => {
     expect(stale.ok).toBe(false);
     if (!stale.ok) expect(stale.error.code).toBe("CONFLICT");
 
+    // A non-absolute path must be refused. path.relative only yields a
+    // relative string when both paths share a drive/root; across drives on
+    // Windows (e.g. repo on E:, tmpdir on C:) it returns an absolute path,
+    // so fall back to a guaranteed-relative string with the same meaning.
+    const relativeString = path.relative(process.cwd(), inputPath);
     const relative = await facade["media.import"]({
-      path: path.relative(process.cwd(), inputPath),
+      path: path.isAbsolute(relativeString) ? "tiny-6s.mp4" : relativeString,
     });
+    expect(relative.ok).toBe(false);
+    if (!relative.ok) expect(relative.error.code).toBe("INVALID_PARAMS");
     expect(relative.ok).toBe(false);
     if (!relative.ok) expect(relative.error.code).toBe("INVALID_PARAMS");
 

@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
-import type { ToolcraftContextMenuOption as ContextMenuOption } from "@openreel/ui";
+import type { ToolcraftContextMenuOption as ContextMenuOption } from "@reelterminal/ui";
 import { Flag } from "@/icons/lucide-compat";
-import type { ProjectMarkerTarget } from "@openreel/core";
+import type { ProjectMarkerTarget } from "@reelterminal/core";
 import { useProjectStore } from "../../stores/project-store";
 import {
   findMarkersForEntity,

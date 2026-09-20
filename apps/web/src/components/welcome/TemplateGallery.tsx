@@ -1,14 +1,14 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { Search, Loader2, Layers, CloudOff } from "@/icons/lucide-compat";
-import { ToolcraftText as Text } from "@openreel/ui";
-import { ToolcraftTextInputControl } from "@openreel/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
+import { ToolcraftTextInputControl } from "@reelterminal/ui";
 import { useEngineStore } from "../../stores/engine-store";
 import {
   SOCIAL_MEDIA_CATEGORY_INFO,
   type SocialMediaCategory,
   type ScriptableTemplate,
   type Clip,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { templateCloudService } from "../../services/template-cloud-service";
 import { CategoryTabs } from "./CategoryTabs";
 import { TemplateCard } from "./TemplateCard";

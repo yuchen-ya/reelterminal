@@ -3,9 +3,9 @@ import { Eye, EyeOff, Volume2, VolumeX, Lock, Trash2, Pencil, AlignLeft, Link2, 
 import {
   ToolcraftContextMenu as ContextMenu,
   type ToolcraftContextMenuOption as ContextMenuOption,
-} from "@openreel/ui";
-import { ToolcraftTextInputControl } from "@openreel/ui";
-import type { Track } from "@openreel/core";
+} from "@reelterminal/ui";
+import { ToolcraftTextInputControl } from "@reelterminal/ui";
+import type { Track } from "@reelterminal/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { getTrackInfo } from "./utils";

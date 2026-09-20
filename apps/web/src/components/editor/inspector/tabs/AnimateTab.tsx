@@ -1,6 +1,6 @@
 import React from "react";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { Box, ExternalLink } from "@/icons/lucide-compat";
 import {
   KeyframesSection,

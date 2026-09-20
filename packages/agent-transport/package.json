@@ -1,5 +1,5 @@
 {
-  "name": "@openreel/agent-transport",
+  "name": "@reelterminal/agent-transport",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -27,8 +27,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
-    "@openreel/agent-facade": "workspace:*",
-    "@openreel/runtime-chromium": "workspace:*"
+    "@reelterminal/agent-facade": "workspace:*",
+    "@reelterminal/runtime-chromium": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

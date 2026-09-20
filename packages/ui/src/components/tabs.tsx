@@ -4,7 +4,7 @@ import * as React from "react"
 import * as TabsPrimitive from "@radix-ui/react-tabs"
 import { motion, LayoutGroup } from "motion/react"
 
-import { cn } from "@openreel/ui/lib/utils"
+import { cn } from "@reelterminal/ui/lib/utils"
 
 interface TabsContextValue {
   activeValue: string | undefined

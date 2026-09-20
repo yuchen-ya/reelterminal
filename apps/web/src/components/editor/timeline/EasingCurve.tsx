@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
-import type { EasingType } from "@openreel/core";
-import { EASING_FUNCTIONS, type EasingName } from "@openreel/core";
+import type { EasingType } from "@reelterminal/core";
+import { EASING_FUNCTIONS, type EasingName } from "@reelterminal/core";
 
 interface EasingCurveProps {
   startX: number;

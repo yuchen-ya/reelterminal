@@ -6,7 +6,7 @@
  * contract. This watcher only reads the facade's public `job.status` path and
  * never exposes provider paths or raw callbacks to the transport.
  */
-import type { FacadeResult, JobStatusView } from "@openreel/agent-facade";
+import type { FacadeResult, JobStatusView } from "@reelterminal/agent-facade";
 
 export type McpProgressToken = string | number;
 

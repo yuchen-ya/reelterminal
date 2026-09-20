@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useEffect } from "react";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { PropertySlider } from "./shell/PropertySlider";
 import { MockToggle } from "./shell/InspectorControls";
 import {
@@ -24,7 +24,7 @@ import {
   ASPECT_RATIO_PRESETS,
   PLATFORM_PRESETS,
   DEFAULT_REFRAME_SETTINGS,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { extractFramesForAnalysis, closeFrames } from "../../../services/frame-extraction";
 import { toast } from "../../../stores/notification-store";
 import { useProjectStore } from "../../../stores/project-store";

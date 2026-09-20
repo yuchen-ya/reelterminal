@@ -24,8 +24,8 @@ import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 import { opToCoreActions } from "./ops";
 import { createEmptyProject } from "./project-factory";
 import { makeTempDir, removeTempDir } from "./test-helpers";
-import { ActionExecutor } from "@openreel/core/actions/action-executor";
-import { ActionHistory } from "@openreel/core/actions/action-history";
+import { ActionExecutor } from "@reelterminal/core/actions/action-executor";
+import { ActionHistory } from "@reelterminal/core/actions/action-history";
 
 /** The exact fixed Auto-Color preset parameters the GUI sends. */
 const AUTO_COLOR_PRESET = [

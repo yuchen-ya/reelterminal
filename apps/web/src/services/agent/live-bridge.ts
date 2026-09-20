@@ -2,12 +2,12 @@ import type {
   DesktopLiveBridgeError as LiveBridgeError,
   DesktopLiveBridgeReply as LiveBridgeReply,
   DesktopLiveBridgeRequest as LiveBridgeRequest,
-} from "@openreel/agent-facade/desktop-protocol";
+} from "@reelterminal/agent-facade/desktop-protocol";
 import type {
   LiveEditorControlParams,
   LiveEditorControlResult,
   LiveEditorControlTarget,
-} from "@openreel/agent-facade/live-store";
+} from "@reelterminal/agent-facade/live-store";
 import {
   useProjectStore,
   getProjectChanges,
@@ -17,7 +17,7 @@ import type {
   HistoryEntrySummary,
   HistoryGetResult,
   ProjectChangesParams,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 import { getLiveEditorContext } from "../../stores/editor-context-store";
 import { useUIStore, type SelectionItem } from "../../stores/ui-store";
 import { useTimelineStore } from "../../stores/timeline-store";

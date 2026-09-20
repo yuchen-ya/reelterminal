@@ -1,6 +1,6 @@
 #!/bin/bash
 # ReelTerminal - local development start script
-# Starts the inherited OpenReel browser editor (apps/web) via Vite.
+# Starts the ReelTerminal web editor (apps/web, forked from the OpenReel browser editor) via Vite.
 
 set -e
 

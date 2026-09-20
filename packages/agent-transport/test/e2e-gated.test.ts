@@ -21,7 +21,7 @@ import {
   spawnCli,
   type Roots,
 } from "./helpers";
-import { writeTinyVp9Mp4 } from "@openreel/runtime-chromium/media/tiny-vp9-mp4";
+import { writeTinyVp9Mp4 } from "@reelterminal/runtime-chromium/media/tiny-vp9-mp4";
 
 const execFileAsync = promisify(execFile);
 

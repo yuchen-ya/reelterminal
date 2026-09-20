@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Action, MediaItem, Project } from "@openreel/core";
+import type { Action, MediaItem, Project } from "@reelterminal/core";
 const storage = vi.hoisted(() => ({ save: vi.fn(), remove: vi.fn() }));
 vi.mock("../media-storage", () => ({ saveMediaBlob: storage.save, deleteMediaBlob: storage.remove }));
 import { prepareLiveMedia } from "./prepare-live-media";

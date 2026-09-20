@@ -1,4 +1,4 @@
-import type { Project } from "@openreel/core/types/project";
+import type { Project } from "@reelterminal/core/types/project";
 import type { RenderProvider } from "./providers";
 import type { OutputSchemaNode } from "./output-schemas";
 import { validateObject, type ObjectSchema } from "./validate";

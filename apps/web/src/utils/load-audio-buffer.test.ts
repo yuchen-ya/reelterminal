@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const extractAudioWav = vi.fn();
-vi.mock("@openreel/core/media", () => ({
+vi.mock("@reelterminal/core/media", () => ({
   extractAudioWav: (...args: unknown[]) => extractAudioWav(...args),
 }));
 

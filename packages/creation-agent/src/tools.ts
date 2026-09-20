@@ -4,7 +4,7 @@ import {
   validateCreationScene,
   type CreationScene,
   type ProductCinematicSpec,
-} from "@openreel/creation-schema";
+} from "@reelterminal/creation-schema";
 import type { CreationJsonSchema, CreationToolResult, RegisteredCreationTool } from "./types";
 
 const str: CreationJsonSchema = { type: "string" };

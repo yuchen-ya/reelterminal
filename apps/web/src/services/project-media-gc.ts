@@ -1,9 +1,9 @@
-import type { Project } from "@openreel/core";
+import type { Project } from "@reelterminal/core";
 import {
   historyRetainsMediaBytes,
   projectRetainsWorkAssetMediaBytes,
-} from "@openreel/core";
-import type { ActionHistory } from "@openreel/core";
+} from "@reelterminal/core";
+import type { ActionHistory } from "@reelterminal/core";
 import {
   deleteMediaBlob,
   getMediaIdsByProject,

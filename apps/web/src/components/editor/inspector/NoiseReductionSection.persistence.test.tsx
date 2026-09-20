@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { autoLearnNoiseProfile, type Project } from "@openreel/core";
+import { autoLearnNoiseProfile, type Project } from "@reelterminal/core";
 import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { useProjectStore } from "../../../stores/project-store";
 import {
@@ -10,8 +10,8 @@ import {
 import * as audioBridgeEffects from "../../../bridges/audio-bridge-effects";
 import { NoiseReductionSection } from "./NoiseReductionSection";
 
-vi.mock("@openreel/core", async () => {
-  const actual = await vi.importActual<typeof import("@openreel/core")>("@openreel/core");
+vi.mock("@reelterminal/core", async () => {
+  const actual = await vi.importActual<typeof import("@reelterminal/core")>("@reelterminal/core");
   return {
     ...actual,
     autoLearnNoiseProfile: vi.fn(),

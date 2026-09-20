@@ -11,11 +11,11 @@
 import { app } from "electron";
 import { mkdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { createLiveFacade } from "@openreel/agent-facade";
+import { createLiveFacade } from "@reelterminal/agent-facade";
 import {
   createChromiumProviders,
   FfmpegArtifactVerifier,
-} from "@openreel/runtime-chromium";
+} from "@reelterminal/runtime-chromium";
 import { CHANNELS } from "../../shared/channels";
 import {
   createLiveSessionHost,

@@ -1,6 +1,6 @@
 import { bindBundledTools, type BundledToolBindings } from "./plugin-runtime";
 /**
- * @openreel/agent-facade — the agent-facing facade (Slice 1 + Slice 1b +
+ * @reelterminal/agent-facade — the agent-facing facade (Slice 1 + Slice 1b +
  * Slice 2a persistence + Slice 3 live collaboration).
  *
  * Pure-Node, in-process, transport-agnostic. The public surface is the
@@ -146,7 +146,7 @@ export interface AgentFacade extends BundledToolBindings {
   ) => Promise<FacadeResult<VerifyArtifactResult>>;
   readonly "material.list": (
     params?: import("./types").MaterialListParams,
-  ) => Promise<FacadeResult<import("@openreel/core").MaterialListResult>>;
+  ) => Promise<FacadeResult<import("@reelterminal/core").MaterialListResult>>;
   readonly "material.get": (
     params: import("./types").MaterialGetParams,
   ) => Promise<FacadeResult<import("./types").MaterialGetResult>>;

@@ -5,7 +5,7 @@
  * copy. Never loads anything during listing/paging — only on explicit
  * preview/attach actions.
  */
-import type { MaterialRecord } from "@openreel/core";
+import type { MaterialRecord } from "@reelterminal/core";
 import { getMaterialLibraryService } from "./library-service";
 
 const MAX_PREVIEW_BYTES = 256 * 1024 * 1024;

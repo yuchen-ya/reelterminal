@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { MediaItem, MotionAudioClip, MotionComposition } from "@openreel/core";
+import type { MediaItem, MotionAudioClip, MotionComposition } from "@reelterminal/core";
 import { useProjectStore } from "../../stores/project-store";
 import { useMotionStore } from "../stores/motion-store";
 import { MotionAudioPlayback } from "../motion-audio-playback";

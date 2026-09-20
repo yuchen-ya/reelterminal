@@ -22,8 +22,8 @@
  *    undo unit; the placement duration cap is a hard rejection there
  *    (PLACEMENT_INVALID), never a silent clamp.
  */
-import type { CustomPresetRecord, PresetKind } from "@openreel/core/presets/types";
-import { validatePresetPayload } from "@openreel/core/presets/validate";
+import type { CustomPresetRecord, PresetKind } from "@reelterminal/core/presets/types";
+import { validatePresetPayload } from "@reelterminal/core/presets/validate";
 
 export const PRESET_VERBS = [
   "preset.list",

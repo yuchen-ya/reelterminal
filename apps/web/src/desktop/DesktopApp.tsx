@@ -15,7 +15,7 @@ import { installLiveBridge } from "../services/agent/live-bridge";
 import { useUIStore } from "../stores/ui-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { SettingsDialog } from "../components/editor/settings/SettingsDialog";
-import { ToolcraftButton as Button } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { Settings } from "@/icons/lucide-compat";
 import { useTranslation } from "react-i18next";
 import { toast } from "../stores/notification-store";

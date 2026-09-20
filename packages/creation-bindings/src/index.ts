@@ -9,7 +9,7 @@ import {
   type MeshStats,
   type RayTraceOptions,
   type RayTracedImage,
-} from "@openreel/core/creation/index";
+} from "@reelterminal/core/creation/index";
 
 export type CreationBackendKind = "native" | "wasm" | "cpu";
 export type CreationRenderKind = "native" | "cpu";

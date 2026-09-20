@@ -1,15 +1,15 @@
-import type { MotionComposition } from "@openreel/core";
+import type { MotionComposition } from "@reelterminal/core";
 import type {
   CreationAssetRecipe,
   CreationProjectState,
   CreationScene,
   RenderedImage,
-} from "@openreel/core/creation/index";
+} from "@reelterminal/core/creation/index";
 import {
   bakeCreationSceneMesh,
   evaluateCreationSceneAtTime,
   renderMeshToImage,
-} from "@openreel/core/creation/index";
+} from "@reelterminal/core/creation/index";
 
 export interface CreationStagePreviewFallback {
   readonly scene: CreationScene;

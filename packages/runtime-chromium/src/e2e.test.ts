@@ -19,8 +19,8 @@ import {
   type AgentFacade,
   type JobStatusView,
   FACADE_CONTRACT_VERSION,
-} from "@openreel/agent-facade";
-import { writeTinyMp4 } from "@openreel/agent-facade/media/fixtures/tiny-mp4";
+} from "@reelterminal/agent-facade";
+import { writeTinyMp4 } from "@reelterminal/agent-facade/media/fixtures/tiny-mp4";
 
 import { createChromiumProviders, type ChromiumProviders } from "./node/providers";
 import { FfmpegArtifactVerifier } from "./node/verify";

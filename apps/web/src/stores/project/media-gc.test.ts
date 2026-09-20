@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Project } from "@openreel/core";
+import type { Project } from "@reelterminal/core";
 import { useProjectStore } from "../project-store";
 import { createEmptyProject } from "./index";
 import { loadMediaBlob } from "../../services/media-storage";

@@ -23,7 +23,7 @@
  */
 import { isAbsolute } from "node:path";
 
-import type { AgentFacade, FacadeResult } from "@openreel/agent-facade";
+import type { AgentFacade, FacadeResult } from "@reelterminal/agent-facade";
 
 import { parseArgv, resolveConfig, mergeEnvRoots, mergeEnvLogLevel, refuseStartup, type TransportConfig } from "./config";
 import { logError, logInfo, setLogLevel } from "./log";

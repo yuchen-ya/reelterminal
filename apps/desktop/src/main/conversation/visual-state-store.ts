@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, rename, rm, unlink } from "node:fs/promises";
 import path from "node:path";
-import type { ExternalAgentVisualState } from "@openreel/agent-facade";
+import type { ExternalAgentVisualState } from "@reelterminal/agent-facade";
 import type { ConversationVisualStateCapture } from "../../shared/conversation";
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);

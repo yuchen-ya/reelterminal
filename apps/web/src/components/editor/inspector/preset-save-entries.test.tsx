@@ -1,8 +1,8 @@
 import "../../../test/install-local-storage-mock";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Clip, Project, Transition } from "@openreel/core";
-import type { CustomPresetRecord } from "@openreel/core/presets/types";
+import type { Clip, Project, Transition } from "@reelterminal/core";
+import type { CustomPresetRecord } from "@reelterminal/core/presets/types";
 import { getTransitionBridge } from "../../../bridges/transition-bridge";
 import type { PresetStorage } from "../../../services/custom-presets/storage";
 import {

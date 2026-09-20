@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import {
   defaultMotionShaderParams,
   type MotionShaderDef,
-} from "@openreel/core";
-import { MotionShaderRenderer } from "@openreel/core/motion/motion-shader-renderer";
+} from "@reelterminal/core";
+import { MotionShaderRenderer } from "@reelterminal/core/motion/motion-shader-renderer";
 import { useTranslation } from "react-i18next";
 
 type ShaderPreviewSample = "text" | "shape" | "effect";

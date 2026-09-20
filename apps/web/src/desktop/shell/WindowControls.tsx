@@ -1,6 +1,6 @@
 import type { JSX } from "react";
 import type React from "react";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
 import { Icon } from "@/icons/Icon";
 import { useTranslation } from "react-i18next";
 

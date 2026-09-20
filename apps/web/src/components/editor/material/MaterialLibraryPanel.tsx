@@ -25,8 +25,8 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
-import type { MaterialJournalEntry, MaterialKind, MaterialRecord } from "@openreel/core";
-import { ToolcraftEmptyState } from "@openreel/ui";
+import type { MaterialJournalEntry, MaterialKind, MaterialRecord } from "@reelterminal/core";
+import { ToolcraftEmptyState } from "@reelterminal/ui";
 import {
   getMaterialLibraryService,
   type MaterialServiceResult,

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@openreel/ui';
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@reelterminal/ui';
 import { ChevronDown, Palette } from 'lucide-react';
 
 export interface ColorPalette {

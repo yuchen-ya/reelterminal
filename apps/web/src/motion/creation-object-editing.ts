@@ -1,5 +1,5 @@
-import type { Project, MotionComposition } from "@openreel/core";
-import type { MotionScene3DLayer } from "@openreel/core/motion/types";
+import type { Project, MotionComposition } from "@reelterminal/core";
+import type { MotionScene3DLayer } from "@reelterminal/core/motion/types";
 import type {
   CreationAssetRecipe,
   CreationMaterial,
@@ -7,7 +7,7 @@ import type {
   CreationScene,
   CreationSceneObject,
   Transform3D,
-} from "@openreel/core/creation/index";
+} from "@reelterminal/core/creation/index";
 
 export interface CreationObjectMaterialPatch {
   readonly baseColor?: string;

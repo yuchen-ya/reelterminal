@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Settings } from "@/icons/lucide-compat";
-import { ToolcraftDialog as Dialog, ToolcraftDialogHeader as DialogHeader } from "@openreel/ui";
-import { ToolcraftSegmentedControl } from "@openreel/ui";
-import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent } from "@openreel/ui";
+import { ToolcraftDialog as Dialog, ToolcraftDialogHeader as DialogHeader } from "@reelterminal/ui";
+import { ToolcraftSegmentedControl } from "@reelterminal/ui";
+import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent } from "@reelterminal/ui";
 import { useSettingsStore } from "../../../stores/settings-store";
 import { GeneralPanel } from "./GeneralPanel";
 import { KeyboardShortcutsPanel } from "./KeyboardShortcutsPanel";

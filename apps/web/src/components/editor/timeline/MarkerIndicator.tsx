@@ -1,8 +1,8 @@
 import React from "react";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftTextInputControl } from "@openreel/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftTextInputControl } from "@reelterminal/ui";
 import { Flag, X } from "@/icons/lucide-compat";
-import type { Marker } from "@openreel/core";
+import type { Marker } from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 interface MarkerIndicatorProps {

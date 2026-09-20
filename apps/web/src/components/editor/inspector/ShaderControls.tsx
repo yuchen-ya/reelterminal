@@ -1,13 +1,13 @@
 import React from "react";
-import { ToolcraftNumberInputControl } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftNumberInputControl } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import {
   defaultMotionShaderParams,
   getMotionShaderDef,
   type MotionShaderDef,
   type MotionShaderParamDef,
   type MotionShaderParamValue,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { PropertySlider } from "./shell/PropertySlider";
 import { ColorSelector } from "../../../motion/components/primitives";
 import { t } from "../../../i18n";

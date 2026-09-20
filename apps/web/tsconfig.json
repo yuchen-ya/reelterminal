@@ -9,12 +9,12 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@openreel/core": ["../../packages/core/src/index.ts"],
-      "@openreel/core/*": ["../../packages/core/src/*"],
-      "@openreel/agent-facade": ["../../packages/agent-facade/src/index.ts"],
-      "@openreel/agent-facade/*": ["../../packages/agent-facade/src/*"],
-      "@openreel/ui": ["../../packages/ui/src/index.ts"],
-      "@openreel/ui/*": ["../../packages/ui/src/*"]
+      "@reelterminal/core": ["../../packages/core/src/index.ts"],
+      "@reelterminal/core/*": ["../../packages/core/src/*"],
+      "@reelterminal/agent-facade": ["../../packages/agent-facade/src/index.ts"],
+      "@reelterminal/agent-facade/*": ["../../packages/agent-facade/src/*"],
+      "@reelterminal/ui": ["../../packages/ui/src/index.ts"],
+      "@reelterminal/ui/*": ["../../packages/ui/src/*"]
     }
   },
   "include": ["src"]

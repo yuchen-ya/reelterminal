@@ -1,1 +1,1 @@
-export * from '@openreel/image-core/project';
+export * from '@reelterminal/image-core/project';

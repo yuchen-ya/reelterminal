@@ -34,7 +34,7 @@ import {
   type MotionShapePathItem,
   type ShapeStyle,
   type ShapeType,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { useProjectStore } from "../../stores/project-store";
 import { ColorInput, Field, NumberInput, Section } from "./primitives";
 import { useTranslation } from "react-i18next";

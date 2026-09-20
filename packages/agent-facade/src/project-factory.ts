@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Project, ProjectSettings } from "@openreel/core/types/project";
+import type { Project, ProjectSettings } from "@reelterminal/core/types/project";
 
 export const DEFAULT_PROJECT_SETTINGS: ProjectSettings = {
   width: 1920,

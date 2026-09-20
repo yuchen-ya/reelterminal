@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { ChevronDown, Volume2 } from "@/icons/lucide-compat";
 import { PropertySlider } from "./shell/PropertySlider";
 import { MockSlider, MockToggle } from "./shell/InspectorControls";

@@ -27,8 +27,8 @@
  *  - `getState`/`getContext` return fresh, detached values the caller may
  *    hold and clone — never live references into the store.
  */
-import type { Action } from "@openreel/core/types/actions";
-import type { Project } from "@openreel/core/types/project";
+import type { Action } from "@reelterminal/core/types/actions";
+import type { Project } from "@reelterminal/core/types/project";
 import type {
   HistoryControlResult,
   HistoryGetParams,

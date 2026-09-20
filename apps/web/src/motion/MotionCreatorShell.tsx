@@ -23,8 +23,8 @@ import {
   Sparkles,
   type LucideIcon,
 } from "@/icons/lucide-compat";
-import type { MotionComposition } from "@openreel/core";
-import { ToolcraftClickableCard, ToolcraftText } from "@openreel/ui";
+import type { MotionComposition } from "@reelterminal/core";
+import { ToolcraftClickableCard, ToolcraftText } from "@reelterminal/ui";
 import { WorkspaceModeTabs } from "../components/WorkspaceModeTabs";
 import { Icon } from "@/icons/Icon";
 import { useRouter } from "../hooks/use-router";

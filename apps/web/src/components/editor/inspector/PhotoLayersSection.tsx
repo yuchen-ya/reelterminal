@@ -11,13 +11,13 @@ import {
   GripVertical,
   ChevronDown,
 } from "@/icons/lucide-compat";
-import type { PhotoBlendMode, PhotoLayer } from "@openreel/core";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftPopover as Popover } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import type { PhotoBlendMode, PhotoLayer } from "@reelterminal/core";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftPopover as Popover } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { PropertySlider } from "./shell/PropertySlider";
 import { useTranslation } from "react-i18next";
 

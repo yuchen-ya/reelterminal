@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { writeTinyMp4 } from "@openreel/agent-facade/media/fixtures/tiny-mp4";
+import { writeTinyMp4 } from "@reelterminal/agent-facade/media/fixtures/tiny-mp4";
 import { FfmpegArtifactVerifier } from "./node/verify";
 import { extractFrameRgba, resolveFfmpegBinaries } from "./node/ffmpeg";
 import { writeTinyVp9Mp4 } from "./media/tiny-vp9-mp4";

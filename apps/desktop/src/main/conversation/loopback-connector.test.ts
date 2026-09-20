@@ -3,7 +3,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ExternalConversationBridge } from "@openreel/agent-facade";
+import { ExternalConversationBridge } from "@reelterminal/agent-facade";
 import {
   createLoopbackConversationConnector,
   readConversationEndpointDescriptor,

@@ -17,8 +17,8 @@ import {
   FACADE_VERB_TO_TOOL,
   type FacadeToolName,
   type JsonSchemaObject,
-} from "@openreel/agent-facade";
-import type { FacadeVerb } from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
+import type { FacadeVerb } from "@reelterminal/agent-facade";
 
 /** B.1 tool names, flat underscore form, in B.1 table order. */
 export const TOOL_NAMES = FACADE_TOOL_NAMES;

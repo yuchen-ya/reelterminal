@@ -68,7 +68,7 @@ import {
   HELP_SEARCH_SCHEMA,
 } from "./verb-schemas";
 import { describeManualScreen } from "./gui-manual";
-import { validatePresetPayload } from "@openreel/core/presets/validate";
+import { validatePresetPayload } from "@reelterminal/core/presets/validate";
 import { VERB_SCHEMA_CORPUS } from "./verb-schema-corpus";
 import { FACADE_VERBS } from "./types";
 

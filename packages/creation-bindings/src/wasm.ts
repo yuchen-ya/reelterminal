@@ -2,7 +2,7 @@ import {
   buildBox,
   computeMeshStats,
   rayTraceMeshToImage,
-} from "@openreel/core/creation/index";
+} from "@reelterminal/core/creation/index";
 import type { CreationBackend } from "./index";
 
 // Assembled bytes for wasm/creation_core.wat:

@@ -1,9 +1,9 @@
 import React, { useCallback, useMemo } from "react";
-import { ToolcraftButton as Button } from "@openreel/ui";
-import { ToolcraftCard as Card } from "@openreel/ui";
-import { ToolcraftClickableCard as ClickableCard } from "@openreel/ui";
-import { ToolcraftIconButton as IconButton } from "@openreel/ui";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
+import { ToolcraftCard as Card } from "@reelterminal/ui";
+import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
+import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { PropertySlider } from "./shell/PropertySlider";
 import { ChevronDown, RotateCcw, Sun, Thermometer } from "@/icons/lucide-compat";
 import { useProjectStore } from "../../../stores/project-store";
@@ -12,12 +12,12 @@ import type {
   HSLValues,
   CurvesValues,
   LUTData,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import {
   DEFAULT_COLOR_WHEELS,
   DEFAULT_HSL,
   DEFAULT_CURVES,
-} from "@openreel/core";
+} from "@reelterminal/core";
 import { ColorWheelsControl } from "./ColorWheelsControl";
 import { CurvesEditor } from "./CurvesEditor";
 import { LUTLoader } from "./LUTLoader";

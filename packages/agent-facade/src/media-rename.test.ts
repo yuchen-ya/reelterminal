@@ -20,10 +20,10 @@ import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 import { opToCoreActions } from "./ops";
 import { createEmptyProject } from "./project-factory";
 import { makeTempDir, projectJson, removeTempDir } from "./test-helpers";
-import { ActionExecutor } from "@openreel/core/actions/action-executor";
-import { ActionHistory } from "@openreel/core/actions/action-history";
-import { mediaDisplayName } from "@openreel/core/types/project";
-import type { Action } from "@openreel/core/types/actions";
+import { ActionExecutor } from "@reelterminal/core/actions/action-executor";
+import { ActionHistory } from "@reelterminal/core/actions/action-history";
+import { mediaDisplayName } from "@reelterminal/core/types/project";
+import type { Action } from "@reelterminal/core/types/actions";
 
 describe("media.rename (edit.apply op)", () => {
   let mediaRoot: string;

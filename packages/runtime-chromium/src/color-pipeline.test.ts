@@ -26,14 +26,14 @@ import {
   createAgentFacade,
   type AgentFacade,
   type JobStatusView,
-} from "@openreel/agent-facade";
+} from "@reelterminal/agent-facade";
 import {
   writeColorPatternPng,
   writeColorPatternVideo,
   COLOR_PATTERN_WIDTH,
   COLOR_PATTERN_HEIGHT,
   COLOR_PATTERN_FRAME_RATE,
-} from "@openreel/agent-facade/media/fixtures/color-patterns";
+} from "@reelterminal/agent-facade/media/fixtures/color-patterns";
 
 import { createChromiumProviders, type ChromiumProviders } from "./node/providers";
 import { FfmpegArtifactVerifier } from "./node/verify";

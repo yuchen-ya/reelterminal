@@ -1,10 +1,10 @@
 import React, { useCallback, useState, useEffect } from "react";
-import { ToolcraftText as Text } from "@openreel/ui";
+import { ToolcraftText as Text } from "@reelterminal/ui";
 import { Loader2 } from "@/icons/lucide-compat";
 import { MockToggle } from "./shell/InspectorControls";
 import { useEngineStore } from "../../../stores/engine-store";
 import { useProjectStore } from "../../../stores/project-store";
-import { getPersonSegmentationEngine } from "@openreel/core";
+import { getPersonSegmentationEngine } from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
 interface BehindSubjectSectionProps {
