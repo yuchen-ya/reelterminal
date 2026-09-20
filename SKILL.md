@@ -2,9 +2,9 @@
 name: agent-video
 description: >-
   Drive ReelTerminal through its live desktop MCP interface by default: connect
-  the external Agent to the open GUI project's tool-plugin openreel-live-mcp
+  the external Agent to the open GUI project's tool-plugin reelterminal-live-mcp
   facade, inspect context, edit, preview, export, and verify. The optional
-  agent-video serve/run transport remains available for headless workflows.
+  reelterminal-agent serve/run transport remains available for headless workflows.
 ---
 
 # agent-video — ReelTerminal live desktop first
@@ -15,7 +15,8 @@ desktop session where the user and an external Agent are equal peers on the
 same GUI project, through different paths:
 
 - The user edits in the ReelTerminal GUI.
-- The external Agent connects through `openreel-live-mcp`.
+- The external Agent connects through `reelterminal-live-mcp` (the legacy
+  `openreel-live-mcp` command name remains available as an alias).
 - Both paths use the same canonical project, revisions, undo history, preview,
   export, and verification.
 
@@ -29,10 +30,10 @@ ReelTerminal owns the editing world and its tool/context boundary.
 1. Open a project in the ReelTerminal desktop editor.
 2. Enable **Agent Session** in the collaboration status bar. This starts the
    token-authenticated loopback endpoint for the external Agent.
-3. Build and configure the `openreel-live-mcp` MCP connector in the Agent host:
+3. Build and configure the `reelterminal-live-mcp` MCP connector in the Agent host:
 
    ```sh
-   corepack pnpm --filter @openreel/desktop build:main
+   corepack pnpm --filter @reelterminal/desktop build:main
    ```
 
    The
@@ -43,7 +44,7 @@ application is still discovered for compatibility. The endpoint file is
 short-lived and is removed when the Agent Session is disabled.
 
 Treat that descriptor as a credential: never `cat`, print, log, paste, or return
-its contents. Let `openreel-live-mcp` read it, or read it only inside a client
+its contents. Let `reelterminal-live-mcp` read it, or read it only inside a client
 process that sends the token directly in the loopback Authorization header.
 File existence is not a liveness check; after an unclean app exit it may be
 stale. Probe the local endpoint without echoing credentials, then launch/prepare
@@ -67,12 +68,12 @@ horizontal one (or vice versa) merely because one format seems more conventional
 Example MCP configuration (the connector itself owns endpoint-file parsing):
 
 ```toml
-[mcp_servers.openreel-live-mcp]
+[mcp_servers.reelterminal-live-mcp]
 command = "node"
 args = ["/abs/repo/apps/desktop/dist/live-mcp/index.js"]
 ```
 
-An installed desktop distribution may also place `openreel-live-mcp` on
+An installed desktop distribution may also place `reelterminal-live-mcp` on
 `PATH`; in a source checkout, use the built absolute path above so the Agent
 configuration is deterministic.
 
@@ -284,8 +285,9 @@ provider connector and no embedded model. MCP tool access through the live
 facade remains a separate tool-plugin integration and must not be confused with
 the conversation transport.
 
-One `agent-video` process owns exactly **one facade session** and that
-session owns exactly **one project**. Two clients are provided:
+One `reelterminal-agent` process owns exactly **one facade session** and that
+session owns exactly **one project** (the legacy `agent-video` command name
+remains available as an alias). Two clients are provided:
 
 - `serve` — a long-lived MCP stdio server (the persistent session).
 - `run --workflow <abs>` — executes one JSONL workflow over a **fresh**
@@ -293,7 +295,7 @@ session owns exactly **one project**. Two clients are provided:
 - `doctor` — one machine-readable JSON environment report on stdout.
 
 Binary: `<repo>/packages/agent-transport/dist/cli.js` (build with
-`corepack pnpm --filter @openreel/agent-transport build`). Substitute an
+`corepack pnpm --filter @reelterminal/agent-transport build`). Substitute an
 absolute path for `<repo>` everywhere below. Authoritative contract:
 `docs/adr/0003-agent-transport-slice-2.md`; verb semantics:
 `packages/agent-facade/README.md`.
@@ -301,9 +303,9 @@ absolute path for `<repo>` everywhere below. Authoritative contract:
 ## 1. Optional headless workflow: run `doctor` first — and trust its reasons
 
 ```sh
-OPENREEL_AVE_MEDIA_ROOTS=/abs/media \
-OPENREEL_AVE_ARTIFACT_ROOT=/abs/artifacts \
-OPENREEL_AVE_PROJECT_ROOTS=/abs/checkpoints \
+REELTERMINAL_AVE_MEDIA_ROOTS=/abs/media \
+REELTERMINAL_AVE_ARTIFACT_ROOT=/abs/artifacts \
+REELTERMINAL_AVE_PROJECT_ROOTS=/abs/checkpoints \
 node <repo>/packages/agent-transport/dist/cli.js doctor
 ```
 
@@ -323,35 +325,37 @@ about why; there is no skill-level workaround. Missing capability ⇒ read
 
 The same bundled tools exist on every client. Clients must spawn the server
 **directly** (no `sh -c` wrapper — a wrapper that holds stdin open defeats
-disconnect detection). Set the `OPENREEL_AVE_*` env vars in the server's
+disconnect detection). Set the `REELTERMINAL_AVE_*` env vars (the legacy
+`OPENREEL_AVE_*` names are still read when the new names are unset) in the
+server's
 environment; every root value must be an absolute path to an existing
 directory.
 
 Codex (`~/.codex/config.toml`, or `codex mcp add`):
 
 ```toml
-[mcp_servers.agent-video]
+[mcp_servers.reelterminal-agent]
 command = "/abs/repo/packages/agent-transport/dist/cli.js"
-env = { "OPENREEL_AVE_MEDIA_ROOTS" = "/abs/media", "OPENREEL_AVE_ARTIFACT_ROOT" = "/abs/artifacts", "OPENREEL_AVE_PROJECT_ROOTS" = "/abs/checkpoints" }
+env = { "REELTERMINAL_AVE_MEDIA_ROOTS" = "/abs/media", "REELTERMINAL_AVE_ARTIFACT_ROOT" = "/abs/artifacts", "REELTERMINAL_AVE_PROJECT_ROOTS" = "/abs/checkpoints" }
 ```
 
-Claude Code (tools become `mcp__agent-video__<tool>`):
+Claude Code (tools become `mcp__reelterminal-agent__<tool>`):
 
 ```sh
-claude mcp add-json agent-video '{"command":"/abs/repo/packages/agent-transport/dist/cli.js","env":{"OPENREEL_AVE_MEDIA_ROOTS":"/abs/media","OPENREEL_AVE_ARTIFACT_ROOT":"/abs/artifacts","OPENREEL_AVE_PROJECT_ROOTS":"/abs/checkpoints"}}'
-# equivalent project-scope .mcp.json: {"mcpServers":{"agent-video":{"command":"…","env":{…}}}}
+claude mcp add-json reelterminal-agent '{"command":"/abs/repo/packages/agent-transport/dist/cli.js","env":{"REELTERMINAL_AVE_MEDIA_ROOTS":"/abs/media","REELTERMINAL_AVE_ARTIFACT_ROOT":"/abs/artifacts","REELTERMINAL_AVE_PROJECT_ROOTS":"/abs/checkpoints"}}'
+# equivalent project-scope .mcp.json: {"mcpServers":{"reelterminal-agent":{"command":"…","env":{…}}}}
 ```
 
 DSH (`@deepseek-ai/dsh-mcp-client` plugin entry):
 
 ```yaml
-serverName: agent-video
+serverName: reelterminal-agent
 transport: stdio
 command: /abs/repo/packages/agent-transport/dist/cli.js
 env:
-  OPENREEL_AVE_MEDIA_ROOTS: /abs/media
-  OPENREEL_AVE_ARTIFACT_ROOT: /abs/artifacts
-  OPENREEL_AVE_PROJECT_ROOTS: /abs/checkpoints
+  REELTERMINAL_AVE_MEDIA_ROOTS: /abs/media
+  REELTERMINAL_AVE_ARTIFACT_ROOT: /abs/artifacts
+  REELTERMINAL_AVE_PROJECT_ROOTS: /abs/checkpoints
 ```
 
 MCP-less agents (Pi-class) use `run` + `doctor`: author a JSONL workflow
@@ -789,7 +793,7 @@ the whole batch back; a deleted overlay or clip stays deleted after
   the done job reports `upscalingRequestedButInactive: true` — the artifact
   is valid and NOT upscaled, never a silent downgrade. Stdio MCP transports
   (including the desktop
-  `openreel-live-mcp` connector) may instead include `_meta.progressToken` on
+  `reelterminal-live-mcp` connector) may instead include `_meta.progressToken` on
   `export_start` and receive opt-in `notifications/progress` updates. Direct
   loopback HTTP callers have no server-push channel, so the polling contract
   remains their required fallback.

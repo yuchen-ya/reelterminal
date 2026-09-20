@@ -10,7 +10,7 @@ connect that Agent to the open ReelTerminal desktop project through MCP.
 1. Build the desktop main process:
 
    ```sh
-   corepack pnpm --filter @openreel/desktop build:main
+   corepack pnpm --filter @reelterminal/desktop build:main
    ```
 
 2. Open a project and enable **Agent Session** in the collaboration bar.
@@ -339,7 +339,7 @@ source checkout, per `AGENTS.md`). Then open the external
 Agent panel and choose **Connect external Agent**. Stop the adapter with
 Ctrl+C; it removes only its private conversation descriptor.
 
-The adapter preapproves the dedicated `openreel_live` MCP server because the
+The adapter preapproves the dedicated `reelterminal_live` MCP server because the
 user already enabled Agent Session in the ReelTerminal GUI. The live facade
 continues to enforce access level, work-mode context, the one-writer lease,
 revision checks, and shared undo. Codex command and file-change requests remain
@@ -349,7 +349,7 @@ guide reports the local Codex as **not installed**, **launch failed**,
 step (install Codex, retry, or run `codex login` yourself — it never signs in
 for you). See the
 [`scripts/conversation-adapter` guide](../scripts/conversation-adapter/README.md)
-for setup, discovery details, the `OPENREEL_CODEX_COMMAND` override, and
+for setup, discovery details, the `REELTERMINAL_CODEX_COMMAND` override, and
 acceptance tests.
 
 At each user turn, ReelTerminal gives Codex a visual-state keyframe or compact
@@ -360,7 +360,7 @@ normal starting context: for a routine edit, go directly to one atomic
 exact field that is absent or stale. The image never relaxes revision checks.
 
 For deterministic headless workflows without a GUI, the optional
-`agent-video serve/run` facade transport remains documented in
+`reelterminal-agent serve/run` facade transport remains documented in
 [`SKILL.md`](../SKILL.md). It exposes editor tools; it does not choose a model,
 store provider keys, or run an LLM inference loop.
 

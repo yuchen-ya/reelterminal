@@ -1,6 +1,6 @@
-# @openreel/runtime-chromium
+# @reelterminal/runtime-chromium
 
-Real-Chromium render/export runtime for the OpenReel agent facade (Slice 1b,
+Real-Chromium render/export runtime for the ReelTerminal agent facade (Slice 1b,
 ADR 0002). It hydrates the canonical `Project` into the existing core engines
 bundled into a headless Chromium page and produces **real pixels**: PNG frame
 previews and H.264 MP4 exports, with ffprobe/ffmpeg-based artifact
@@ -8,13 +8,13 @@ verification.
 
 No MCP, no CLI, no product-UI changes: this package implements the
 transport-agnostic provider interfaces defined by
-[`@openreel/agent-facade`](../agent-facade/README.md) (`RenderProvider`,
+[`@reelterminal/agent-facade`](../agent-facade/README.md) (`RenderProvider`,
 `ExportProvider`, `ArtifactVerifier`).
 
 ## Requirements
 
 - **Chromium** — resolved by `playwright-core`. Install once:
-  `pnpm --filter @openreel/runtime-chromium exec playwright-core install chromium`
+  `pnpm --filter @reelterminal/runtime-chromium exec playwright-core install chromium`
 - **ffmpeg + ffprobe** — required for `verify.artifact`, and for the
   explicitly forced video-only frames→ffmpeg export experiment. Resolved
   from explicit config (`ffmpegPath`/`ffprobePath`) or the system `PATH`.
@@ -24,11 +24,11 @@ transport-agnostic provider interfaces defined by
 ## Quick start
 
 ```ts
-import { createAgentFacade } from "@openreel/agent-facade";
+import { createAgentFacade } from "@reelterminal/agent-facade";
 import {
   createChromiumProviders,
   FfmpegArtifactVerifier,
-} from "@openreel/runtime-chromium";
+} from "@reelterminal/runtime-chromium";
 
 const providers = createChromiumProviders(); // one Chromium, one probe
 const facade = createAgentFacade({
@@ -208,8 +208,8 @@ prerequisites as the `videoOnlyFramesRouteAvailable` fact).
 ## Tests
 
 ```bash
-pnpm --filter @openreel/runtime-chromium test:run   # probe + E2E + jobs + verify
-pnpm --filter @openreel/agent-facade test:run       # facade incl. Slice-1
+pnpm --filter @reelterminal/runtime-chromium test:run   # probe + E2E + jobs + verify
+pnpm --filter @reelterminal/agent-facade test:run       # facade incl. Slice-1
 ```
 
 Generated PNGs/MP4s, browsers and ffmpeg binaries are never committed.

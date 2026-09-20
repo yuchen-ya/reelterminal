@@ -1,8 +1,9 @@
 /**
  * Regression guard: the target-project existence oracle answers from the
- * `projects` object store of `openreel-projects` — never from the evictable
- * recent-projects list. A project that fell out of the recent list must
- * still count as existing.
+ * `projects` object store of the legacy project database (name registered in
+ * packages/core/src/legacy/physical-identifiers.ts) — never from the
+ * evictable recent-projects list. A project that fell out of the recent list
+ * must still count as existing.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { checkProjectExists } from "./project-existence";

@@ -9,7 +9,8 @@
  * original file on disk.
  *
  * The record format is JSON and persists in the renderer's IndexedDB
- * (`openreel-material-library`). `schemaVersion` gates future migrations.
+ * (legacy store name registered in src/legacy/physical-identifiers.ts).
+ * `schemaVersion` gates future migrations.
  *
  * Separation guarantees (load-bearing):
  *  - `userNotes` is written by the human. Agent tools update `aiSummary`,

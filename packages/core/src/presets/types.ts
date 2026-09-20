@@ -5,7 +5,8 @@
  * stack, transition parameters, or inline SVG graphics) that lives outside
  * any project so it can be reused across projects by both the GUI panels and
  * the agent session. Records are plain JSON (thumbnails are inline data URLs)
- * and persist in the renderer's IndexedDB (`openreel-custom-presets`).
+ * and persist in the renderer's IndexedDB (legacy store name registered in
+ * src/legacy/physical-identifiers.ts).
  *
  * Isolation guarantee (load-bearing): applying a preset copies the payload
  * BY VALUE into project actions. Projects never store a preset id or hold a

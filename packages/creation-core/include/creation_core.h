@@ -1,5 +1,7 @@
 /*
- * OpenReel Creation Core - C ABI boundary.
+ * ReelTerminal Creation Core - C ABI boundary.
+ * (Include guard OPENREEL_CREATION_CORE_H below keeps its legacy name: it is
+ * an internal build identifier, frozen pending native-toolchain verification.)
  *
  * This header defines the stable C ABI that the native (C++20) creation engine
  * exposes to the TypeScript/Electron host via @reelterminal/creation-bindings.

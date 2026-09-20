@@ -1,5 +1,5 @@
 /**
- * OpenReel Service Worker
+ * ReelTerminal Service Worker
  *
  * Handles offline functionality by caching application assets.
  * Implements a cache-first strategy for static assets and network-first for API calls.
@@ -309,7 +309,8 @@ async function getCacheStatus() {
 }
 
 /**
- * Clear all OpenReel caches
+ * Clear all caches under the legacy "openreel-" prefix (see the N04 block
+ * above: renamed caches would no longer match this retention cleanup).
  */
 async function clearAllCaches() {
   const cacheNames = await caches.keys();

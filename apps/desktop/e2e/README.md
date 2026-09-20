@@ -17,24 +17,24 @@ built desktop app. Binding contract: `docs/adr/0004-live-collaboration-slice-3.m
 ## Run
 
 ```bash
-pnpm --filter @openreel/desktop build      # renderer (vite) + main (tsup)
-pnpm --filter @openreel/desktop test:e2e   # this suite (vitest, serial, long timeouts)
+pnpm --filter @reelterminal/desktop build      # renderer (vite) + main (tsup)
+pnpm --filter @reelterminal/desktop test:e2e   # this suite (vitest, serial, long timeouts)
 ```
 
 Prerequisites on the host: the Playwright-managed Chromium
-(`pnpm --filter @openreel/runtime-chromium exec playwright-core install chromium`)
+(`pnpm --filter @reelterminal/runtime-chromium exec playwright-core install chromium`)
 and ffmpeg/ffprobe on PATH (pixel assertions decode the rendered PNG with
 ffmpeg — no image libraries).
 
 Specs are `e2e/*.e2e.ts` under a separate config (`e2e/vitest.config.ts`);
-the default `pnpm --filter @openreel/desktop test:run` never picks them up.
+the default `pnpm --filter @reelterminal/desktop test:run` never picks them up.
 
 Each spec launches its own app instance with a per-run temp dir:
 `--user-data-dir` isolates the Chromium profile (IndexedDB autosave) and the
-live-artifacts root; `OPENREEL_LIVE_ENDPOINT_FILE` redirects the endpoint
+live-artifacts root; `REELTERMINAL_LIVE_ENDPOINT_FILE` redirects the endpoint
 descriptor so a test run never touches the developer's real `~/.reelterminal`
 (or legacy `~/.openreel`) file.
-`OPENREEL_CONVERSATION_ENDPOINT_FILE` likewise isolates the external
+`REELTERMINAL_CONVERSATION_ENDPOINT_FILE` likewise isolates the external
 conversation descriptor.
 
 ## Coverage
@@ -78,8 +78,8 @@ The real Codex spec is skipped by default because it uses the host's signed-in
 Codex account and a live model turn. Run it explicitly after the desktop build:
 
 ```sh
-OPENREEL_REAL_CODEX_E2E=1 \
-  pnpm --filter @openreel/desktop exec vitest run \
+REELTERMINAL_REAL_CODEX_E2E=1 \
+  pnpm --filter @reelterminal/desktop exec vitest run \
   --config e2e/vitest.config.ts e2e/codex-conversation.e2e.ts
 ```
 

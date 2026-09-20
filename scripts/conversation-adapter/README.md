@@ -41,7 +41,7 @@ import { startConversationAdapter } from "./adapter-kit.mjs";
 const adapter = await startConversationAdapter({
   sessionId: existingAgentSession.id,
   agent: { name: "My Agent" },
-  adapter: { name: "my-openreel-adapter", capabilityLevel: "observable" },
+  adapter: { name: "my-reelterminal-adapter", capabilityLevel: "observable" },
   descriptorPath: "/absolute/path/to/.reelterminal/conversation-endpoint.json",
   onPrompt: ({ prompt }) => existingAgentSession.prompt(prompt),
   onCancel: () => existingAgentSession.cancel(),
@@ -93,7 +93,7 @@ re-parses the App Server arguments; other `.cmd` shapes are skipped), and the
 usual macOS/Linux install locations. The adapter starts `codex app-server`
 with no transport flag — `stdio` is the App Server's default transport —
 which has been verified against both winget- and npm-installed Codex
-releases; no minimum version is enforced. Set `OPENREEL_CODEX_COMMAND` to
+releases; no minimum version is enforced. Set `REELTERMINAL_CODEX_COMMAND` to
 override discovery with an explicit command (absolute path or bare name; a
 command only — extra flags are not supported).
 
@@ -102,10 +102,10 @@ custom hosts. Build the connector, open a desktop project, and enable **Agent
 Session** before running it:
 
 ```sh
-pnpm --filter @openreel/desktop build:main
+pnpm --filter @reelterminal/desktop build:main
 node scripts/conversation-adapter/codex-adapter.mjs \
   --new-thread \
-  --cwd /absolute/path/to/agent-video-engine-lab
+  --cwd /absolute/path/to/the-repository-workspace
 ```
 
 Use `--thread-id <id>` instead to resume an existing Codex thread. The adapter
@@ -115,7 +115,7 @@ token. ReelTerminal attaches through the Agent panel's **Other Agent** path
 when this manual process owns the descriptor.
 
 Agent Session enablement is the coarse-grained authorization for the dedicated
-`openreel_live` MCP server, which the adapter marks approved using Codex's
+`reelterminal_live` MCP server, which the adapter marks approved using Codex's
 [configuration policy](https://developers.openai.com/codex/config-reference/).
 The ReelTerminal facade still enforces its access level, work-mode context,
 single-writer lease, revision checks, and shared undo. Codex command and file
@@ -126,7 +126,7 @@ Each GUI prompt also supplies a visual-state packet. Codex receives a full
 changes, or only revision/selection/playhead metadata when pixels are unchanged.
 The adapter accepts image paths only under the desktop's private visual-state
 root, verifies their digest, and never exposes those paths in display events.
-Set `OPENREEL_CONVERSATION_VISUAL_STATE_ROOT` (or `--visual-state-root`) only
+Set `REELTERMINAL_CONVERSATION_VISUAL_STATE_ROOT` (or `--visual-state-root`) only
 when the desktop and adapter intentionally share a non-default runtime
 directory, such as an isolated E2E run.
 
@@ -134,8 +134,8 @@ The real acceptance spec is opt-in because it launches Electron and consumes a
 live model turn from the signed-in Codex account:
 
 ```sh
-pnpm --filter @openreel/desktop build
-OPENREEL_REAL_CODEX_E2E=1 \
-  pnpm --filter @openreel/desktop exec vitest run \
+pnpm --filter @reelterminal/desktop build
+REELTERMINAL_REAL_CODEX_E2E=1 \
+  pnpm --filter @reelterminal/desktop exec vitest run \
   --config e2e/vitest.config.ts e2e/codex-conversation.e2e.ts
 ```

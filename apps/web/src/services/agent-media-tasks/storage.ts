@@ -1,9 +1,12 @@
 /**
  * IndexedDB persistence for user-level agent media tasks.
  *
- * A dedicated database (`openreel-agent-tasks`), deliberately separate from
- * `openreel-db`, the material library and the preset store so none of their
- * schema versioning or GC semantics are touched. One object store:
+ * A dedicated database (its name is the frozen legacy `AGENT_TASKS_DB_NAME`
+ * re-exported below from ../legacy-storage-keys — registry:
+ * packages/core/src/legacy/physical-identifiers.ts), deliberately separate
+ * from the project storage engine's database, the material library and the
+ * preset store so none of their schema versioning or GC semantics are
+ * touched. One object store:
  *
  *  - `tasks`: AgentMediaTaskRecord JSON rows keyed by `id`, with secondary
  *    indexes on `requestId`, `status` and `updatedAt`.

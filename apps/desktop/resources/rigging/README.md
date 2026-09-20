@@ -4,7 +4,8 @@ This folder is the desktop app's optional rigging backend resource root.
 
 In development, ReelTerminal checks this folder first after environment overrides:
 
-- `OPENREEL_BLENDER_PATH=/absolute/path/to/blender`
+- `REELTERMINAL_BLENDER_PATH=/absolute/path/to/blender` (legacy
+  `OPENREEL_BLENDER_PATH` is still read when the new name is unset)
 - `BLENDER_PATH=/absolute/path/to/blender`
 
 To bundle Blender, place platform slots under:

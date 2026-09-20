@@ -20,15 +20,15 @@ The web cloud switch and URL overrides live in
 
 | Variable | Effect | Default when unset |
 |---|---|---|
-| `VITE_OPENREEL_CLOUD` | Domain-level kill switch for all first-party web cloud calls (cloud templates read + publish, sharing, transcription, highlight AI). Only the exact value `off` (case-insensitive) disables; there is deliberately no "enable" value. When off, affected features short-circuit before constructing a request and say so in the UI. | Cloud calls enabled |
-| `VITE_OPENREEL_CLOUD_URL` | Base URL override for the cloud API (templates, sharing, highlight AI). | `http://localhost:8787` in dev, `https://api.openreel.video` in production builds |
-| `VITE_CLOUD_API_URL` | Compatibility alias for the same override; lower priority — `VITE_OPENREEL_CLOUD_URL` wins when both are set. | — |
-| `VITE_OPENREEL_TRANSCRIBE_URL` | Base URL override for the transcription (GPU) service. | `https://cloud.openreel.video` |
+| `VITE_REELTERMINAL_CLOUD` | Domain-level kill switch for all first-party web cloud calls (cloud templates read + publish, sharing, transcription, highlight AI). Only the exact value `off` (case-insensitive) disables; there is deliberately no "enable" value. When off, affected features short-circuit before constructing a request and say so in the UI. Legacy `VITE_OPENREEL_CLOUD` is still read when the new name is unset. | Cloud calls enabled |
+| `VITE_REELTERMINAL_CLOUD_URL` | Base URL override for the cloud API (templates, sharing, highlight AI). Legacy `VITE_OPENREEL_CLOUD_URL` is still read when the new name is unset. | `http://localhost:8787` in dev, `https://api.openreel.video` in production builds |
+| `VITE_CLOUD_API_URL` | Compatibility alias for the same override; lowest priority — `VITE_REELTERMINAL_CLOUD_URL` (then legacy `VITE_OPENREEL_CLOUD_URL`) wins when both are set. | — |
+| `VITE_REELTERMINAL_TRANSCRIBE_URL` | Base URL override for the transcription (GPU) service. Legacy `VITE_OPENREEL_TRANSCRIBE_URL` is still read when the new name is unset. | `https://cloud.openreel.video` |
 | `VITE_PUBLIC_POSTHOG_KEY` + `VITE_PUBLIC_POSTHOG_HOST` | PostHog product analytics. Both must be set for analytics to load at all. | Analytics off |
 | `DASHSCOPE_API_KEY` | Opt-in credential (read from the desktop host environment, never bundled) for the agent video-review cloud opinion. Without it the review tool fails before any request. | Feature unavailable |
 | `REELTERMINAL_QWEN_BASE_URL` | Endpoint override for video review; restricted to official Alibaba compatible-mode/v1 HTTPS endpoints by an allowlist. | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | `REELTERMINAL_VIDEO_REVIEW_PROVIDER` | Selects the review provider from the registry (currently only the Qwen provider exists). | Default provider |
-| `OPENREEL_CRASH_ENDPOINT` | Address for desktop crash reports. **Changing the address is the only effect — there is no value that turns crash reporting off.** | `https://api.openreel.video/crash` |
+| `REELTERMINAL_CRASH_ENDPOINT` | Address for desktop crash reports. **Changing the address is the only effect — there is no value that turns crash reporting off.** Legacy `OPENREEL_CRASH_ENDPOINT` is still read when the new name is unset. | `https://api.openreel.video/crash` |
 | `VITE_API_URL` | Base URL for the studio marketplace API (a service outside this repository). | `http://localhost:8787` |
 
 `VITE_*` variables are read at build time (Vite static replacement), so they
@@ -46,10 +46,10 @@ match the readiness investigation matrix for traceability.
 |---|---|---|---|---|---|---|
 | W1 | Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) | resource | Page load, every visit | IP/UA/referer + the requested font families (~60) | **None — cannot be disabled**; host is hardcoded in `index.html` | Browser falls back to system fonts silently |
 | W2 | PostHog host (from env) | telemetry | Only if both PostHog env vars are set (default off) | Anonymous event names/properties, page views | Not setting either var disables it | Silent (capture never throws) |
-| W3 | Cloud template reads (`GET /templates/scriptable`, `GET /templates`) | request | Welcome gallery mounts; template browser panel opens | No body; visitor IP and feature usage exposed | `VITE_OPENREEL_CLOUD=off` skips the request; URL via `VITE_OPENREEL_CLOUD_URL` | Visible failed state with a manual retry (distinct from "no templates") |
+| W3 | Cloud template reads (`GET /templates/scriptable`, `GET /templates`) | request | Welcome gallery mounts; template browser panel opens | No body; visitor IP and feature usage exposed | `VITE_REELTERMINAL_CLOUD=off` skips the request; URL via `VITE_REELTERMINAL_CLOUD_URL` | Visible failed state with a manual retry (distinct from "no templates") |
 | W4 | Cloud template publish (`POST /templates`) | request | Saving a template with the Cloud location selected | Template JSON (name, description, timeline structure) | Kill switch disables the Cloud option in the save dialog; URL override as W3 | Error surfaced in the save dialog |
 | W5 | Share service (`POST /shares`, share reads, `GET /health`) | request | Share upload / viewing a share page | Upload: the exported video file. Reads: nothing beyond the request | Kill switch short-circuits before any XHR; URL override as W3 | Upload rejects with an explicit message; health check returns false silently. At HEAD no web UI invokes the upload function — only the share *view* path is wired up |
-| W6 | Cloud transcription (`/transcribe`, `/jobs/{id}` polling) | request | "Generate Captions (Cloud)" / highlight analysis | The clip's extracted audio (WAV) + language settings | Kill switch disables the button with an explanation; URL via `VITE_OPENREEL_TRANSCRIBE_URL` | Failures show a classified title (network / server with status / rate limit / timeout / unparseable response / cloud task failed) with the raw error as a secondary detail line, plus a manual Retry button; the upload times out after 120 s and repeated consecutive polling failures surface a visible failure instead of silently waiting; a Cancel button aborts the run with no error and no captions |
+| W6 | Cloud transcription (`/transcribe`, `/jobs/{id}` polling) | request | "Generate Captions (Cloud)" / highlight analysis | The clip's extracted audio (WAV) + language settings | Kill switch disables the button with an explanation; URL via `VITE_REELTERMINAL_TRANSCRIBE_URL` | Failures show a classified title (network / server with status / rate limit / timeout / unparseable response / cloud task failed) with the raw error as a secondary detail line, plus a manual Retry button; the upload times out after 120 s and repeated consecutive polling failures surface a visible failure instead of silently waiting; a Cancel button aborts the run with no error and no captions |
 | W7 | Highlight AI (`POST /highlights`) | request | Running highlight analysis (after transcription) | Transcript text with timestamps, audio energy metrics, duration, preferences | Kill switch disables the action with an explanation; URL override as W3 | Classified failure message with a manual Retry button; the submit request times out after 120 s |
 | W8 | Whisper model host (`https://media.openreel.video/models/`) | resource | Opening auto-captions / loading a model | No user data (model download only) | **None — cannot be disabled**; host hardcoded, local models are disabled in the worker config | Per-file download progress. Download failures show a classified banner (network unreachable / HTTP status / storage problem) with the original message as a secondary detail line and a manual Retry button, rendered directly under the model download button; unclassified failures keep the raw message and offer no retry. The model is downloaded once and caption recognition always runs locally in the browser — media and transcripts are not uploaded by this path. WebGPU→WASM fallback; no automatic retry |
 | W9 | FFmpeg.wasm core (`https://unpkg.com/@ffmpeg/core@0.12.6/...`) | resource | First transcode/probe/audio-extract that needs the fallback core (~31 MB wasm) | No user data | **None — cannot be disabled**; domain and version hardcoded | Load errors surface as toasts in affected flows; no automatic retry |
@@ -63,7 +63,7 @@ match the readiness investigation matrix for traceability.
 
 | # | Outbound | Type | Trigger | Data sent | Override / can it be disabled | If it fails |
 |---|---|---|---|---|---|---|
-| D1 | Crash reports (`https://api.openreel.video/crash`) | telemetry | Any uncaught exception, unhandled rejection, or renderer/child-process death | Error message (≤8 KB) / stack (≤16 KB), app version, platform/CPU/OS/Electron versions, timestamp | `OPENREEL_CRASH_ENDPOINT` changes the address only — **cannot be disabled** | Silent; 4 s timeout, never escalates a crash |
+| D1 | Crash reports (`https://api.openreel.video/crash`) | telemetry | Any uncaught exception, unhandled rejection, or renderer/child-process death | Error message (≤8 KB) / stack (≤16 KB), app version, platform/CPU/OS/Electron versions, timestamp | `REELTERMINAL_CRASH_ENDPOINT` changes the address only — **cannot be disabled** | Silent; 4 s timeout, never escalates a crash |
 | D2 | Update check (`github.com/yuchen-ya/reelterminal/releases`) | request | Packaged builds only, at launch; downloading needs explicit user confirmation | Version/platform metadata | **No skip switch**; dev runs are a no-op | Error state broadcast to the renderer UI |
 
 ### Studio (`apps/studio`, experimental)
@@ -120,7 +120,7 @@ The following are accurate statements about the current code, not promises:
   `@latest` wasm), and the imgly default CDN (I2) are all hardcoded. Self-hosting
   or offline-packing them is planned follow-up work recorded in the readiness
   plan, not an existing capability.
-- **Desktop crash reporting cannot be turned off.** `OPENREEL_CRASH_ENDPOINT`
+- **Desktop crash reporting cannot be turned off.** `REELTERMINAL_CRASH_ENDPOINT`
   only redirects where reports go, and reports are silent.
 - **The desktop update check has no skip switch** in packaged builds; only the
   download step asks for confirmation.

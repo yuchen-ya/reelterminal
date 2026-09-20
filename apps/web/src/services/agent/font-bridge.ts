@@ -1,7 +1,8 @@
 /**
  * Renderer side of the custom-font live bridge: the desktop main process
  * facade forwards font.* verbs here, and this module executes them against
- * the canonical font service (font-options.ts: IndexedDB `openreel-custom-fonts`
+ * the canonical font service (font-options.ts: the legacy IndexedDB font
+ * store name registered in packages/core/src/legacy/physical-identifiers.ts,
  * + FontFace activation) — the exact registration path the GUI upload
  * button uses, so agent-installed fonts are immediately visible in every
  * GUI font picker (same update event) and persist across restarts.

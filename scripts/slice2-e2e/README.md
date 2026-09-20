@@ -16,7 +16,7 @@ against the REAL built transport binary
 Each scenario runs over two paths:
 
 - `--path run` — the runner authors Appendix-B.6 JSONL workflows and invokes
-  `agent-video run` (the MCP-less, Pi-class path; deliberately-failing probes
+  `reelterminal-agent run` (the MCP-less, Pi-class path; deliberately-failing probes
   are separate invocations or one `--keep-going` run whose nonzero exit is
   the expected outcome).
 - `--path mcp` — a scripted stdio MCP client over `serve` (raw NDJSON, same
@@ -33,7 +33,7 @@ simulators and are labeled **`simulated`** in the evidence.
 # remove it first (tsup's clean chokes on the symlinked runtime deps — the
 # same hazard packages/agent-transport/test/global-setup.ts works around):
 rm -rf packages/agent-transport/dist
-corepack pnpm --filter @openreel/agent-transport build
+corepack pnpm --filter @reelterminal/agent-transport build
 
 # Everything (scenario 1 run+mcp, scenario 2 run/mcp x SIGTERM/SIGKILL):
 node scripts/slice2-e2e/run.mjs
@@ -81,6 +81,6 @@ OS temp dir per scenario execution (`--keep-evidence` prints and keeps it).
 
 Node ESM, no dependencies beyond the workspace. On PATH: `ffmpeg` +
 `ffprobe` (a build without `drawtext` is fine — the input falls back to bare
-`testsrc2`). The Playwright-managed Chromium of `@openreel/runtime-chromium`
+`testsrc2`). The Playwright-managed Chromium of `@reelterminal/runtime-chromium`
 must be installed. Real 1080p exports take minutes; the full plan runs about
 twenty to forty minutes.

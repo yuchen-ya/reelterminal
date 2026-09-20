@@ -81,14 +81,14 @@ anything needed to reproduce, inspect, or deliver the edit belongs in the job.
 
 ## Headless mapping
 
-For `agent-video serve` or `run`, map the three containment classes into the
+For `reelterminal-agent serve` or `run`, map the three containment classes into the
 same job:
 
 ```text
-OPENREEL_AVE_MEDIA_ROOTS=<job>/source:<job>/generated
-OPENREEL_AVE_ARTIFACT_ROOT=<job>/work/artifacts
-OPENREEL_AVE_PROJECT_ROOTS=<job>/project
-OPENREEL_AVE_DELIVERY_ROOTS=<recommendedRoot>   # optional: enables export.start destinationPath
+REELTERMINAL_AVE_MEDIA_ROOTS=<job>/source:<job>/generated
+REELTERMINAL_AVE_ARTIFACT_ROOT=<job>/work/artifacts
+REELTERMINAL_AVE_PROJECT_ROOTS=<job>/project
+REELTERMINAL_AVE_DELIVERY_ROOTS=<recommendedRoot>   # optional: enables export.start destinationPath
 ```
 
 Use the platform path delimiter (`:` on macOS/Linux, `;` on Windows). After a

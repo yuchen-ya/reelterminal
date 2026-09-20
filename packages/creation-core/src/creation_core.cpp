@@ -1,4 +1,4 @@
-// OpenReel Creation Core - native C++ implementation of the C ABI.
+// ReelTerminal Creation Core - native C++ implementation of the C ABI.
 //
 // This is the Phase 0 native scaffold. It implements the C ABI declared in
 // include/creation_core.h with results that match the TypeScript CPU reference

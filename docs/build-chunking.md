@@ -7,7 +7,7 @@ startup graph.
 
 ## 2026-09-04 evidence
 
-Measured with `pnpm --filter @openreel/web build` from the same working tree:
+Measured with `pnpm --filter @reelterminal/web build` from the same working tree:
 
 | Chunk | Before | After | Reason |
 |---|---:|---:|---|

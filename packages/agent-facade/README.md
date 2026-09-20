@@ -1,4 +1,4 @@
-# @openreel/agent-facade
+# @reelterminal/agent-facade
 
 Pure-Node, in-process, transport-agnostic agent facade over the ReelTerminal
 canonical `Project` state, with headless and live sessions and bundled
@@ -7,7 +7,7 @@ read-only tool extensions. Original design: `audit/facade-v0.md`,
 `docs/adr/0002-chromium-runtime-slice-1b.md`.
 
 ```ts
-import { createAgentFacade } from "@openreel/agent-facade";
+import { createAgentFacade } from "@reelterminal/agent-facade";
 
 const facade = createAgentFacade({ mediaRoots: ["/abs/path/to/media"] });
 
@@ -204,7 +204,7 @@ provider credential, inference loop, or long-term conversation history.
 
 The facade stays pure Node; pixel/export/verify backing arrives through the
 provider interfaces. The reference implementation is
-[`@openreel/runtime-chromium`](../runtime-chromium/README.md) (real headless
+[`@reelterminal/runtime-chromium`](../runtime-chromium/README.md) (real headless
 Chromium + system ffmpeg). Semantics owned by the facade itself:
 
 - `preview.render_frame({timeSec, width?, height?, expectedRevision?,
@@ -232,7 +232,7 @@ Chromium + system ffmpeg). Semantics owned by the facade itself:
   atomic-excl. `job.status` reports the outcome as `deliveredTo` /
   `deliveryError`; a delivery failure never downgrades the done job or hides
   its artifact. Delivery roots are session config (`deliveryRoots`), wired
-  headless via `OPENREEL_AVE_DELIVERY_ROOTS` / `--delivery-root` and in the
+  headless via `REELTERMINAL_AVE_DELIVERY_ROOTS` / `--delivery-root` and in the
   desktop live host from the Agent workspace root; with none configured,
   `destinationPath` fails fast with the reason.
 - `export.start` accepts `settings.upscaling {enabled, quality:
@@ -243,7 +243,7 @@ Chromium + system ffmpeg). Semantics owned by the facade itself:
   the runtime has WebGPU; when the pass cannot run, the done job reports
   `upscalingRequestedButInactive: true` — the artifact is valid and NOT
   upscaled, never a silent downgrade.
-- The stdio MCP transports (including the desktop `openreel-live-mcp`
+- The stdio MCP transports (including the desktop `reelterminal-live-mcp`
   connector) accept `_meta.progressToken` on `export.start` and emit opt-in
   `notifications/progress` updates while the job is running. Direct callers of
   the desktop loopback HTTP endpoint have no server-push channel and should
@@ -326,7 +326,7 @@ discipline, and PNG re-inspection.
   project state and does not bump the revision.
 - Availability: reported honestly by `capabilities.get`. It requires a
   `RenderProvider` exposing `renderHtmlPng` (with
-  `@openreel/runtime-chromium`, the local Playwright Chromium — the same
+  `@reelterminal/runtime-chromium`, the local Playwright Chromium — the same
   supply preview uses), a configured media root for the output, and a
   passing render preflight; otherwise the verb fails `UNSUPPORTED`.
 - Security boundary: markup crosses the core `html-policy` string gate

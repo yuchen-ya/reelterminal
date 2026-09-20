@@ -1,9 +1,11 @@
 /**
  * IndexedDB persistence for the user-level material library.
  *
- * A dedicated database (`openreel-material-library`), deliberately separate
- * from `openreel-db` so the project storage engine's schema versioning is
- * untouched. Three object stores:
+ * A dedicated database (its name is the frozen legacy
+ * `MATERIAL_LIBRARY_DB_NAME` re-exported below from ../legacy-storage-keys —
+ * registry: packages/core/src/legacy/physical-identifiers.ts), deliberately
+ * separate from the project storage engine's own database so its schema
+ * versioning is untouched. Three object stores:
  *
  *  - `materials`: MaterialRecord JSON rows keyed by id.
  *  - `journal`:   MaterialJournalEntry rows (library-scoped undo history).

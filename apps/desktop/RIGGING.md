@@ -10,7 +10,7 @@ armatures, animation clips, inverse kinematics, and retargeting.
 - Desktop main process probes Blender as the rigging backend.
 - Probe order is environment override, bundled resource, then common system
   installs.
-- Renderer exposes `window.openreel.rigging.probeBackend()`.
+- Renderer exposes `window.reelterminal.rigging.probeBackend()`.
 - Agents can call the read-only MCP tool `probe_rigging_backend`.
 - Agents can call the read-only MCP tool `inspect_3d_model` to report GLB/glTF
   meshes, materials, textures, animation clips, armature/bones, bounds,

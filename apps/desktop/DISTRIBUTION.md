@@ -24,7 +24,7 @@ pnpm dist             # full installers (dmg/zip, nsis, AppImage/deb) WITH signi
 The app spawns a bundled `ffmpeg` from `resources/bin/<platform>-<arch>/ffmpeg[.exe]` (resolver: `apps/desktop/src/main/sidecar/ffmpeg-path.ts`). Binaries are **gitignored** and fetched on demand:
 
 ```bash
-pnpm --filter @openreel/desktop fetch:ffmpeg          # host platform's slots
+pnpm --filter @reelterminal/desktop fetch:ffmpeg          # host platform's slots
 node apps/desktop/scripts/fetch-ffmpeg.mjs --all       # every slot
 ```
 
@@ -48,10 +48,10 @@ installed (Xcode). Provide credentials ONE of two ways:
 
 ```bash
 # Option A: saved keychain profile (simplest locally) — run once:
-xcrun notarytool store-credentials openreel-notary \
+xcrun notarytool store-credentials reelterminal-notary \
   --apple-id "you@example.com" --team-id 864H636QW4 \
   --password "abcd-efgh-ijkl-mnop"        # app-specific password (appleid.apple.com)
-export APPLE_KEYCHAIN_PROFILE=openreel-notary
+export APPLE_KEYCHAIN_PROFILE=reelterminal-notary
 
 # Option B: env (CI) — Apple ID:
 export APPLE_ID="you@example.com"
@@ -92,7 +92,7 @@ bucket served at **`https://dl.openreel.video`**, which hosts:
 
 `electron-builder.yml` sets `publish: { provider: generic, url: https://dl.openreel.video }`, so each build embeds that update feed and emits `latest*.yml` + blockmaps (the generic provider does not upload — the CI does, §6).
 
-**Self-update flow** (`src/main/updater.ts`, `initAutoUpdater`): on launch it checks the R2 feed in the background (`autoDownload = false`). When a newer version exists the renderer shows an **update banner** (`apps/web/src/desktop/UpdateBanner.tsx`); the user clicks **Download** (`window.openreel.updater.download()` → in-app progress) and then **Restart & Install** (`updater.install()`), which quits through the normal flow so `autoInstallOnAppQuit` applies the update **after** the unsaved-changes guard. Nothing downloads or installs without consent.
+**Self-update flow** (`src/main/updater.ts`, `initAutoUpdater`): on launch it checks the R2 feed in the background (`autoDownload = false`). When a newer version exists the renderer shows an **update banner** (`apps/web/src/desktop/UpdateBanner.tsx`); the user clicks **Download** (`window.reelterminal.updater.download()` → in-app progress) and then **Restart & Install** (`updater.install()`), which quits through the normal flow so `autoInstallOnAppQuit` applies the update **after** the unsaved-changes guard. Nothing downloads or installs without consent.
 
 Caveats: macOS install requires the build to be **signed** (Squirrel.Mac) — the CI does not upload an unsigned mac update feed; Linux auto-update is **AppImage** only (not `.deb`). The DMG/installers are always uploaded for manual download regardless of signing.
 
@@ -152,7 +152,6 @@ the live manifest.
 ## 7. App identity
 
 - Product name: **ReelTerminal** · appId: `video.reelterminal.desktop` · version: `apps/desktop/package.json`.
-- Note: the GPU bundle id referenced in `src/main/index.ts` (`com.openreel.video`) differs from `video.reelterminal.desktop` — reconcile if a single identity is desired.
 
 ## What we (the product owner) must provide
 1. ~~ffmpeg binaries / GPL attribution / auto-update~~ — **done** (§2, §5).

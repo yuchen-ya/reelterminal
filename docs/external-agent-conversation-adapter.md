@@ -268,7 +268,7 @@ The descriptor fields are:
 | `adapter` | Required object with non-empty `name` and `capabilityLevel` equal to `basic`, `streaming`, or `observable`. |
 
 Unknown descriptor fields MUST be ignored. The conversation descriptor is not
-the MCP descriptor. The `openreel-live-mcp` connector reads
+the MCP descriptor. The `reelterminal-live-mcp` connector reads
 `~/.reelterminal/live-endpoint.json` (legacy `~/.openreel/live-endpoint.json`
 is still discovered) for the independent MCP facade. ReelTerminal's
 conversation client reads only `conversation-endpoint.json`; it never creates,
@@ -709,7 +709,7 @@ See `scripts/conversation-adapter/README.md` for a minimal integration.
 `scripts/conversation-adapter/codex-adapter.mjs` is the first production
 provider adapter. It speaks the official Codex App Server JSONL protocol,
 creates or resumes a Codex-owned thread, configures the built
-`openreel-live-mcp` connector for that thread, and publishes the ordinary
+`reelterminal-live-mcp` connector for that thread, and publishes the ordinary
 private `/conversation` descriptor consumed by ReelTerminal.
 
 Only bounded display-safe events cross into the editor: user/Agent text,
@@ -735,7 +735,7 @@ requests remain interactive approvals. Run and test instructions live in
 
 Hosts that consume the workspace TypeScript packages can implement
 `ExternalConversationProviderAdapter` from
-`@openreel/agent-facade/conversation-adapter`. The companion
+`@reelterminal/agent-facade/conversation-adapter`. The companion
 `createExternalConversationAdapterRouter(...)` enforces the existing-session
 identity, one in-flight prompt, out-of-band cancel/work-mode calls, and
 explicit unsupported-operation errors. It contains no HTTP, descriptor,

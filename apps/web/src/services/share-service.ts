@@ -2,7 +2,7 @@
  * Sharing upload/read against the OpenReel cloud.
  *
  * Every networked function short-circuits when the build opts out of the
- * first-party cloud (VITE_OPENREEL_CLOUD=off, see api-endpoints.ts): the
+ * first-party cloud (VITE_REELTERMINAL_CLOUD=off, see api-endpoints.ts): the
  * upload rejects before any XMLHttpRequest is created, reads resolve to
  * empty values, the health probe reports false, and nothing falls back
  * to a different host.

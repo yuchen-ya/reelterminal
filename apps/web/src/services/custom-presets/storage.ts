@@ -1,8 +1,10 @@
 /**
  * IndexedDB persistence for user-level custom presets.
  *
- * A dedicated database (`openreel-custom-presets`), deliberately separate
- * from `openreel-db` so the project storage engine's schema versioning is
+ * A dedicated database (its name is the frozen legacy `CUSTOM_PRESETS_DB_NAME`
+ * re-exported below from ../legacy-storage-keys — registry:
+ * packages/core/src/legacy/physical-identifiers.ts), deliberately separate
+ * from the project storage engine's own database so its schema versioning is
  * untouched, and separate from the material library so preset CRUD can never
  * interfere with library GC semantics. One object store:
  *

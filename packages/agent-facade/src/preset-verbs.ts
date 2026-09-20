@@ -3,7 +3,8 @@
  *
  * Custom presets are USER-level state: named parameter bundles (text style,
  * clip effect stack, transition parameters, inline SVG graphics) that live in
- * the desktop GUI renderer's IndexedDB (`openreel-custom-presets`), shared by
+ * the desktop GUI renderer's IndexedDB (the legacy custom-presets store name,
+ * registered in packages/core/src/legacy/physical-identifiers.ts), shared by
  * the GUI panels and the agent session. In live sessions the facade stays
  * stateless: every verb validates params here and forwards through the narrow
  * `PresetLibraryBridge` to the renderer, which owns the canonical records and

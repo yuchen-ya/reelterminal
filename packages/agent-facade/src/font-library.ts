@@ -2,9 +2,10 @@
  * The font.* verb contract (user-level custom fonts).
  *
  * Custom fonts are USER-level state: they live in the desktop GUI renderer's
- * IndexedDB (`openreel-custom-fonts`) and are activated there through the
- * FontFace API — the exact same registration path the GUI upload button
- * uses. In live sessions the facade stays stateless: font.upload validates
+ * IndexedDB (the legacy custom-fonts store name, registered in
+ * packages/core/src/legacy/physical-identifiers.ts) and are activated there
+ * through the FontFace API — the exact same registration path the GUI upload
+ * button uses. In live sessions the facade stays stateless: font.upload validates
  * params here and forwards the bytes through the narrow `FontLibraryBridge`
  * to the renderer, which owns registration, dedup, persistence and listing.
  * Headless sessions honestly report the verbs UNSUPPORTED (there is no GUI

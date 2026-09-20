@@ -329,13 +329,14 @@ standard source/generated/work/project/output/evidence layout in
 [`docs/AGENT-WORKSPACE.md`](docs/AGENT-WORKSPACE.md). The former
 `ReelTerminal Agent Imports` folder remains readable for backward compatibility
 but is not the destination for new work. Set
-`OPENREEL_LIVE_MEDIA_ROOTS` to a platform-delimited list of existing absolute
+`REELTERMINAL_LIVE_MEDIA_ROOTS` (legacy `OPENREEL_LIVE_MEDIA_ROOTS` is still
+read when the new name is unset) to a platform-delimited list of existing absolute
 directories before launch to replace those defaults. Other Agent hosts provide
 a thin `/conversation` adapter and publish the private descriptor described in
 [`docs/external-agent-conversation-adapter.md`](docs/external-agent-conversation-adapter.md).
 
-For a standalone, headless workflow, use the optional `agent-video serve` or
-`agent-video run` transport documented in the root [`SKILL.md`](SKILL.md).
+For a standalone, headless workflow, use the optional `reelterminal-agent serve` or
+`reelterminal-agent run` transport documented in the root [`SKILL.md`](SKILL.md).
 Those commands are not the default ReelTerminal desktop entry point.
 
 ## Repository map and historical boundaries
