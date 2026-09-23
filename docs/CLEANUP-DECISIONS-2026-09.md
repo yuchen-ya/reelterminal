@@ -25,10 +25,11 @@ of re-deciding. Section references below are to
 
 ## Deferred follow-ups
 
-- **zod major-version split** — `apps/desktop` on v3; `apps/image`,
-  `apps/studio`, `packages/fxpkg`, `packages/image-core` on v4. Unify on v4
-  when desktop next touches its zod schemas (an API-change pass is required);
-  batch dependency upgrades are out of scope this round (readiness plan §2).
+- **zod major-version split** — `apps/desktop` declares v3 while `apps/studio`,
+  `packages/fxpkg` and `packages/image-core` declare v4 (`apps/image` consumes
+  v4 transitively through image-core). Unify on v4 when desktop next touches
+  its zod schemas (an API-change pass is required); batch dependency upgrades
+  are out of scope this round (readiness plan §2).
 - **Local/offline packaging of the runtime cores** — the FFmpeg.wasm core and
   the vidstab cores still load from their CDNs. Download-location overrides
   landed 2026-09-23 (see `EXTERNAL-DEPENDENCIES.md` W9/W10); offline packing
