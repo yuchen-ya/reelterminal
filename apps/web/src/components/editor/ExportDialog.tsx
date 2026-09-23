@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { formatDuration } from "../../utils/format";
 import {
   Download,
   Settings,
@@ -403,12 +404,6 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
       return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     }
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  };
-
-  const formatDuration = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   if (!isOpen) return null;

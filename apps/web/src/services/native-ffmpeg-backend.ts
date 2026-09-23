@@ -4,6 +4,11 @@ import type {
   Project,
 } from "@reelterminal/core";
 import { DESKTOP_EXPORT_PORT_MARKER } from "@reelterminal/agent-facade/desktop-protocol";
+import { buildPcm16WavHeader as buildWavHeader } from "@reelterminal/core";
+
+// Shared with the core WAV encoders. The stream writes the 44-byte header
+// first and appends PCM frames separately via encodeAudioBufferToPcm16.
+export { buildWavHeader };
 
 type ExportPortMessage =
   | { type: "progress"; frame: number }
@@ -13,8 +18,6 @@ type ExportPortMessage =
 
 const WAV_HEADER_BYTES = 44;
 const BYTES_PER_SAMPLE = 2;
-const PCM_FORMAT_TAG = 1;
-const BITS_PER_SAMPLE = 16;
 const INT16_MAX = 0x7fff;
 const INT16_MIN = -0x8000;
 const MAX_INITIAL_FRAME_CREDITS = 10;
@@ -26,34 +29,6 @@ export function initialNativeFrameCredits(width: number, height: number): number
     1,
     Math.min(MAX_INITIAL_FRAME_CREDITS, Math.floor(MAX_IN_FLIGHT_FRAME_BYTES / frameBytes)),
   );
-}
-
-export function buildWavHeader(
-  totalFrames: number,
-  channelCount: number,
-  sampleRate: number,
-): ArrayBuffer {
-  const blockAlign = channelCount * BYTES_PER_SAMPLE;
-  const byteRate = sampleRate * blockAlign;
-  const dataLength = totalFrames * blockAlign;
-  const buffer = new ArrayBuffer(WAV_HEADER_BYTES);
-  const view = new DataView(buffer);
-
-  writeAscii(view, 0, "RIFF");
-  view.setUint32(4, WAV_HEADER_BYTES - 8 + dataLength, true);
-  writeAscii(view, 8, "WAVE");
-  writeAscii(view, 12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, PCM_FORMAT_TAG, true);
-  view.setUint16(22, channelCount, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, byteRate, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, BITS_PER_SAMPLE, true);
-  writeAscii(view, 36, "data");
-  view.setUint32(40, dataLength, true);
-
-  return buffer;
 }
 
 export function encodeAudioBufferToPcm16(
@@ -77,12 +52,6 @@ export function encodeAudioBufferToPcm16(
   }
 
   return out;
-}
-
-function writeAscii(view: DataView, offset: number, value: string): void {
-  for (let i = 0; i < value.length; i++) {
-    view.setUint8(offset + i, value.charCodeAt(i));
-  }
 }
 
 export class NativeFFmpegBackend implements EncoderBackend {

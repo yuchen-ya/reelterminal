@@ -1,4 +1,5 @@
 import type { SoundItem, MusicGenre, MoodTag } from "../types/sound-library";
+import { encodePcm16Wav } from "./wav-encode";
 
 export interface GeneratedSound {
   item: SoundItem;
@@ -2304,57 +2305,7 @@ export class SoundGenerator {
   }
 
   private async audioBufferToBlob(buffer: AudioBuffer): Promise<Blob> {
-    const numChannels = buffer.numberOfChannels;
-    const sampleRate = buffer.sampleRate;
-    const format = 1;
-    const bitDepth = 16;
-
-    const bytesPerSample = bitDepth / 8;
-    const blockAlign = numChannels * bytesPerSample;
-    const byteRate = sampleRate * blockAlign;
-    const dataSize = buffer.length * blockAlign;
-    const headerSize = 44;
-    const totalSize = headerSize + dataSize;
-
-    const arrayBuffer = new ArrayBuffer(totalSize);
-    const view = new DataView(arrayBuffer);
-
-    const writeString = (offset: number, str: string) => {
-      for (let i = 0; i < str.length; i++) {
-        view.setUint8(offset + i, str.charCodeAt(i));
-      }
-    };
-
-    writeString(0, "RIFF");
-    view.setUint32(4, totalSize - 8, true);
-    writeString(8, "WAVE");
-    writeString(12, "fmt ");
-    view.setUint32(16, 16, true);
-    view.setUint16(20, format, true);
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, byteRate, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, bitDepth, true);
-    writeString(36, "data");
-    view.setUint32(40, dataSize, true);
-
-    const channels: Float32Array[] = [];
-    for (let i = 0; i < numChannels; i++) {
-      channels.push(buffer.getChannelData(i));
-    }
-
-    let offset = 44;
-    for (let i = 0; i < buffer.length; i++) {
-      for (let channel = 0; channel < numChannels; channel++) {
-        const sample = Math.max(-1, Math.min(1, channels[channel][i]));
-        const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-        view.setInt16(offset, intSample, true);
-        offset += 2;
-      }
-    }
-
-    return new Blob([arrayBuffer], { type: "audio/wav" });
+    return encodePcm16Wav(buffer);
   }
 
   dispose(): void {

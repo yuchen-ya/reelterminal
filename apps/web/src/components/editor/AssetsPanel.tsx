@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { formatDuration } from "../../utils/format";
 import { useTranslation } from "react-i18next";
 import {
   Image as ImageIcon, Film, Music, Plus, Upload, Trash2,
@@ -51,14 +52,6 @@ import { markAgentReferenceForMedia } from "../../stores/editor-context-store";
 import { MaterialLibraryPanel } from "./material/MaterialLibraryPanel";
 import { saveProjectMediaToLibrary } from "../../services/material-library/project-save";
 import { WorkAssetsTab } from "./panels/WorkAssetsTab";
-
-const formatDuration = (seconds: number): string => {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins.toString().padStart(2, "0")}:${secs
-    .toString()
-    .padStart(2, "0")}`;
-};
 
 // Maps shared SVG validation error codes to localized copy so every
 // rejection category (active content, external references, size limits,

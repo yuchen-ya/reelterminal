@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from "react";
+import { formatDuration } from "../../../utils/format";
 import {
   Layers,
   FolderOpen,
@@ -292,12 +293,6 @@ export const NestedSequenceSection: React.FC<NestedSequenceSectionProps> = ({
     setRenamingId(null);
     setRenameValue("");
   }, []);
-
-  const formatDuration = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
 
   return (
     <div className="space-y-3">

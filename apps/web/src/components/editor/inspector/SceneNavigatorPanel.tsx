@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo } from "react";
+import { formatDuration } from "../../../utils/format";
 import {
   Film,
   ChevronLeft,
@@ -108,12 +109,6 @@ export const SceneNavigatorPanel: React.FC<SceneNavigatorPanelProps> = ({
     const currentTime = bridge.getCurrentTime();
     addMarker(currentTime, `Scene ${markers.length + 1}`, "#10b981");
   }, [addMarker, markers.length]);
-
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
 
   const getSceneDuration = (scene: Scene): number => {
     return scene.endTime - scene.startTime;
@@ -307,7 +302,7 @@ export const SceneNavigatorPanel: React.FC<SceneNavigatorPanelProps> = ({
                 </div>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-[9px] text-fg-3">
-                    {formatTime(scene.startTime)} - {formatTime(scene.endTime)}
+                    {formatDuration(scene.startTime)} - {formatDuration(scene.endTime)}
                   </span>
                   <span className="text-[9px] text-fg-3">•</span>
                   <span className="text-[9px] text-fg-3">

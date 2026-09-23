@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
+import { formatDuration } from "../../../utils/format";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
 import { ToolcraftNumberInputControl } from "@reelterminal/ui";
@@ -184,12 +185,6 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
     });
   }, []);
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
   return (
     <div className="space-y-3">
       <div className="space-y-2">
@@ -329,7 +324,7 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[9px] text-text-muted">
-                  {formatTime(highlight.start)} - {formatTime(highlight.end)}
+                  {formatDuration(highlight.start)} - {formatDuration(highlight.end)}
                 </span>
                 <span className="text-[9px] text-text-muted italic truncate max-w-[120px]">
                   {highlight.reason}

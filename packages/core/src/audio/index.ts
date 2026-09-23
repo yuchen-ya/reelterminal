@@ -16,3 +16,4 @@ export * from "./sound-library-engine";
 export * from "./sound-generator";
 export * from "./beat-detection-engine";
 export * from "./highlight-analyzer";
+export * from "./wav-encode";

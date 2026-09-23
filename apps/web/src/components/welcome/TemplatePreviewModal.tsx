@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
+import { formatDurationCompact } from "../../utils/format";
 import { useAnalytics, AnalyticsEvents } from "../../hooks/useAnalytics";
 import {
   Play,
@@ -190,13 +191,6 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({
     track,
   ]);
 
-  const formatDuration = (seconds: number): string => {
-    if (seconds < 60) return `${seconds}s`;
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-  };
-
   return (
     <Dialog
       isOpen
@@ -210,7 +204,7 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({
             closeLabel={t("Close dialog")}
             title={t(template.name)}
             onOpenChange={(open) => !open && onClose()}
-            subtitle={`${formatDuration(template.timeline.duration)} · ${template.placeholders.length} editable fields`}
+            subtitle={`${formatDurationCompact(template.timeline.duration)} · ${template.placeholders.length} editable fields`}
           />
         }
         content={
@@ -255,7 +249,7 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({
                           {t(scene.label)}
                         </span>
                         <span className="text-text-muted">
-                          ({formatDuration(scene.endTime - scene.startTime)})
+                          ({formatDurationCompact(scene.endTime - scene.startTime)})
                         </span>
                       </div>
                     ))}

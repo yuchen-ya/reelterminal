@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { formatDurationCompact } from "../../utils/format";
 import {
   Play,
   Clock,
@@ -72,13 +73,6 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
   const gradient =
     CATEGORY_GRADIENTS[category] || "from-primary to-emerald-500";
 
-  const formatDuration = (seconds: number): string => {
-    if (seconds < 60) return `${seconds}s`;
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-  };
-
   return (
     <ClickableCard
       label={t(template.name)}
@@ -148,7 +142,7 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
         <div className="flex items-center gap-3 mt-1.5">
           <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
             <Clock size={11} />
-            <span>{formatDuration(template.timeline.duration)}</span>
+            <span>{formatDurationCompact(template.timeline.duration)}</span>
           </div>
           <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
             <Layers size={11} />
