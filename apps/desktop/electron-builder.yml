@@ -66,8 +66,14 @@ mac:
 win:
   icon: build/icon.png
   target:
+    # NSIS wizard installer (choose install dir) + zip for portable use.
     - target: nsis
       arch: [x64]
+    - target: zip
+      arch: [x64]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
 linux:
   icon: build/icon.png
   target:
