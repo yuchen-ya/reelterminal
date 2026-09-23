@@ -1,6 +1,6 @@
 import type { ExportProgress } from "../export/types";
-
-const FFMPEG_CORE_BASE_URL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm";
+import { encodePcm16WavRounded } from "../audio/wav-encode";
+import { getFfmpegCoreBaseUrl } from "./media-cdn-config";
 type FFmpegInstance = {
   load(options?: {
     coreURL?: string;
@@ -132,9 +132,10 @@ export class FFmpegFallback {
 
       this.ffmpeg = new FFmpeg() as unknown as FFmpegInstance;
 
+      const baseURL = getFfmpegCoreBaseUrl();
       const [coreURL, wasmURL] = await Promise.all([
-        toBlobURL(`${FFMPEG_CORE_BASE_URL}/ffmpeg-core.js`, "text/javascript"),
-        toBlobURL(`${FFMPEG_CORE_BASE_URL}/ffmpeg-core.wasm`, "application/wasm"),
+        toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+        toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
       ]);
 
       await this.ffmpeg.load({
@@ -421,41 +422,6 @@ export class FFmpegFallback {
     } finally {
       this.removeProgressTracking();
       await this.cleanupFiles([inputFilename, outputFilename]);
-    }
-  }
-
-  async getMetadata(file: File | Blob): Promise<{
-    duration: number;
-    width: number;
-    height: number;
-    hasVideo: boolean;
-    hasAudio: boolean;
-  }> {
-    await this.load();
-    this.ensureLoaded();
-
-    const inputFilename = "input";
-
-    try {
-      const inputData = await this.fileToUint8Array(file);
-      await this.ffmpeg!.writeFile(inputFilename, inputData);
-
-      // FFmpeg.wasm doesn't expose ffprobe, so metadata extraction
-      // is limited. Use MediaBunny for comprehensive metadata.
-      try {
-        await this.ffmpeg!.exec(["-i", inputFilename, "-f", "null", "-"]);
-      } catch {
-        // FFmpeg outputs info to stderr during probe
-      }
-      return {
-        duration: 0,
-        width: 0,
-        height: 0,
-        hasVideo: true,
-        hasAudio: true,
-      };
-    } finally {
-      await this.cleanupFiles([inputFilename]);
     }
   }
 
@@ -896,50 +862,7 @@ export class FFmpegFallback {
   }
 
   private encodeAudioBufferToWav(buffer: AudioBuffer): Blob {
-    const numberOfChannels = buffer.numberOfChannels;
-    const sampleRate = buffer.sampleRate;
-    const bitDepth = 16;
-    const bytesPerSample = bitDepth / 8;
-    const blockAlign = numberOfChannels * bytesPerSample;
-    const byteRate = sampleRate * blockAlign;
-    const dataLength = buffer.length * blockAlign;
-    const headerLength = 44;
-    const totalLength = headerLength + dataLength;
-
-    const arrayBuffer = new ArrayBuffer(totalLength);
-    const view = new DataView(arrayBuffer);
-
-    const writeString = (offset: number, str: string) => {
-      for (let i = 0; i < str.length; i++) {
-        view.setUint8(offset + i, str.charCodeAt(i));
-      }
-    };
-
-    writeString(0, "RIFF");
-    view.setUint32(4, totalLength - 8, true);
-    writeString(8, "WAVE");
-    writeString(12, "fmt ");
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, numberOfChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, byteRate, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, bitDepth, true);
-    writeString(36, "data");
-    view.setUint32(40, dataLength, true);
-
-    let offset = 44;
-    for (let i = 0; i < buffer.length; i++) {
-      for (let channel = 0; channel < numberOfChannels; channel++) {
-        const sample = buffer.getChannelData(channel)[i];
-        const intSample = Math.max(-32768, Math.min(32767, Math.round(sample * 32767)));
-        view.setInt16(offset, intSample, true);
-        offset += bytesPerSample;
-      }
-    }
-
-    return new Blob([arrayBuffer], { type: "audio/wav" });
+    return encodePcm16WavRounded(buffer);
   }
 
   async exportVideoDirectly(

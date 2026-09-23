@@ -9,8 +9,21 @@ import "./index.css";
 import { AstryxProvider } from "./components/astryx/AstryxProvider";
 import { registerServiceWorker } from "./services/service-worker";
 import { initCustomFonts } from "./components/editor/inspector/font-options";
-import { setEncoderBackendFactory } from "@reelterminal/core";
+import { setEncoderBackendFactory, setMediaCdnOverrides } from "@reelterminal/core";
 import { NativeFFmpegBackend } from "./services/native-ffmpeg-backend";
+import {
+  REELTERMINAL_FFMPEG_CORE_URL,
+  REELTERMINAL_VIDSTAB_MT_URL,
+  REELTERMINAL_VIDSTAB_ST_URL,
+} from "./config/api-endpoints";
+
+// Must run before any media core loads; empty values keep the built-in
+// CDN defaults in @reelterminal/core.
+setMediaCdnOverrides({
+  ffmpegCoreBaseUrl: REELTERMINAL_FFMPEG_CORE_URL,
+  vidstabMtUrl: REELTERMINAL_VIDSTAB_MT_URL,
+  vidstabStUrl: REELTERMINAL_VIDSTAB_ST_URL,
+});
 
 const DesktopApp = React.lazy(() =>
   import("./desktop/DesktopApp").then((module) => ({

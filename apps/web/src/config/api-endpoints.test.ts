@@ -12,8 +12,14 @@ const CLOUD_ENV_KEYS = [
   "VITE_OPENREEL_TRANSCRIBE_URL",
 ] as const;
 
+const MEDIA_ENV_KEYS = [
+  "VITE_REELTERMINAL_FFMPEG_CORE_URL",
+  "VITE_REELTERMINAL_VIDSTAB_MT_URL",
+  "VITE_REELTERMINAL_VIDSTAB_ST_URL",
+] as const;
+
 function clearCloudEnv(): void {
-  for (const key of CLOUD_ENV_KEYS) {
+  for (const key of [...CLOUD_ENV_KEYS, ...MEDIA_ENV_KEYS]) {
     delete (import.meta.env as Record<string, unknown>)[key];
   }
 }
@@ -188,5 +194,39 @@ describe("api-endpoints env alias precedence (N02)", () => {
     vi.stubEnv("VITE_REELTERMINAL_TRANSCRIBE_URL", "https://gpu.example.dev");
     const registry = await loadRegistry();
     expect(registry.REELTERMINAL_TRANSCRIBE_URL).toBe("https://gpu.example.dev");
+  });
+});
+
+/**
+ * Media-core download locations (EXTERNAL-DEPENDENCIES W9/W10): new
+ * settings with no legacy names — unset or empty keeps the defaults owned
+ * by @reelterminal/core.
+ */
+describe("api-endpoints media core URL overrides", () => {
+  it("keeps every media override empty with no env set", async () => {
+    clearCloudEnv();
+    const registry = await loadRegistry();
+
+    expect(registry.REELTERMINAL_FFMPEG_CORE_URL).toBe("");
+    expect(registry.REELTERMINAL_VIDSTAB_MT_URL).toBe("");
+    expect(registry.REELTERMINAL_VIDSTAB_ST_URL).toBe("");
+  });
+
+  it("lets each VITE_REELTERMINAL_* media URL override its core", async () => {
+    clearCloudEnv();
+    vi.stubEnv("VITE_REELTERMINAL_FFMPEG_CORE_URL", "https://mirror.example.dev/ffmpeg-core");
+    vi.stubEnv("VITE_REELTERMINAL_VIDSTAB_MT_URL", "https://mirror.example.dev/vidstab/mt");
+    vi.stubEnv("VITE_REELTERMINAL_VIDSTAB_ST_URL", "https://mirror.example.dev/vidstab/st");
+    const registry = await loadRegistry();
+
+    expect(registry.REELTERMINAL_FFMPEG_CORE_URL).toBe(
+      "https://mirror.example.dev/ffmpeg-core",
+    );
+    expect(registry.REELTERMINAL_VIDSTAB_MT_URL).toBe(
+      "https://mirror.example.dev/vidstab/mt",
+    );
+    expect(registry.REELTERMINAL_VIDSTAB_ST_URL).toBe(
+      "https://mirror.example.dev/vidstab/st",
+    );
   });
 });

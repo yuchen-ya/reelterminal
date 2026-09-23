@@ -62,3 +62,18 @@ export const REELTERMINAL_CLOUD_URL =
 export const REELTERMINAL_TRANSCRIBE_URL =
   readEnvAlias("VITE_REELTERMINAL_TRANSCRIBE_URL", "VITE_OPENREEL_TRANSCRIBE_URL") ||
   "https://cloud.openreel.video";
+
+/**
+ * Runtime-loaded media cores (EXTERNAL-DEPENDENCIES W9/W10): the FFmpeg.wasm
+ * fallback core and the vidstab cores. Override the download locations with
+ * VITE_REELTERMINAL_FFMPEG_CORE_URL / VITE_REELTERMINAL_VIDSTAB_MT_URL /
+ * VITE_REELTERMINAL_VIDSTAB_ST_URL to point at a mirror or self-hosted copy;
+ * unset or empty keeps the default CDN locations owned by @reelterminal/core.
+ * These are new settings with no legacy names (§3).
+ */
+export const REELTERMINAL_FFMPEG_CORE_URL =
+  env.VITE_REELTERMINAL_FFMPEG_CORE_URL || "";
+export const REELTERMINAL_VIDSTAB_MT_URL =
+  env.VITE_REELTERMINAL_VIDSTAB_MT_URL || "";
+export const REELTERMINAL_VIDSTAB_ST_URL =
+  env.VITE_REELTERMINAL_VIDSTAB_ST_URL || "";

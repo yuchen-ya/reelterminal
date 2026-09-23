@@ -204,7 +204,7 @@
     { "files": "apps/web/src/services/native-ffmpeg-backend.test.ts", "pattern": "__openreelExportPort", "category": 5, "reason": "兼容入口（负向防护）：钉住旧 postMessage 标记 __openreelExportPort 不得回潮的 not.toContain 断言（N02-ACC B1 配对防护）。" },
     { "files": "packages/core/src/device/device-capabilities.ts", "pattern": "`openreel`", "category": 5, "reason": "兼容入口：注释说明桥对象在 legacy 别名 openreel 下暴露同一实现（别名契约说明）。" },
     { "files": "packages/core/src/device/native-profile.ts", "pattern": "openreel[a-z]", "category": 5, "reason": "桥镜像类型：注释引用 OpenReelHardwareInfo（window.reelterminal 桥的镜像类型名，§9.4 裁决保留）。" },
-    { "files": "packages/core/src/video/stabilization/vidstab-engine.ts", "pattern": "openreel[-_.][a-z0-9_-]*", "category": 3, "reason": "真实第三方域名：vidstab 核心 CDN mediashares.openreel.video（规则 §5.3）。" },
+    { "files": "packages/core/src/media/media-cdn-config.ts", "pattern": "openreel[-_.][a-z0-9_-]*", "category": 3, "reason": "真实第三方域名：vidstab 核心 CDN mediashares.openreel.video 默认值（规则 §5.3；自 vidstab-engine.ts 迁入 media-cdn-config 集中管理）。" },
     { "files": "apps/desktop/resources/aurora/creation_aurora_renderer", "category": 6, "reason": "生成产物：预编译 aurora 原生渲染器二进制，字节级内嵌 legacy kernel/generator 串（不手改，随原生构建再生）。" }
   ]
 }

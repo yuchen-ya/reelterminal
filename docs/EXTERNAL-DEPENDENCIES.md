@@ -24,6 +24,8 @@ The web cloud switch and URL overrides live in
 | `VITE_REELTERMINAL_CLOUD_URL` | Base URL override for the cloud API (templates, sharing, highlight AI). Legacy `VITE_OPENREEL_CLOUD_URL` is still read when the new name is unset. | `http://localhost:8787` in dev, `https://api.openreel.video` in production builds |
 | `VITE_CLOUD_API_URL` | Compatibility alias for the same override; lowest priority — `VITE_REELTERMINAL_CLOUD_URL` (then legacy `VITE_OPENREEL_CLOUD_URL`) wins when both are set. | — |
 | `VITE_REELTERMINAL_TRANSCRIBE_URL` | Base URL override for the transcription (GPU) service. Legacy `VITE_OPENREEL_TRANSCRIBE_URL` is still read when the new name is unset. | `https://cloud.openreel.video` |
+| `VITE_REELTERMINAL_FFMPEG_CORE_URL` | Download-location override for the FFmpeg.wasm fallback core (W9); point it at a mirror or self-hosted copy. No legacy name. | Built-in CDN location |
+| `VITE_REELTERMINAL_VIDSTAB_MT_URL` + `VITE_REELTERMINAL_VIDSTAB_ST_URL` | Download-location overrides for the multi-threaded / single-threaded vidstab cores (W10). No legacy names. | Built-in CDN locations |
 | `VITE_PUBLIC_POSTHOG_KEY` + `VITE_PUBLIC_POSTHOG_HOST` | PostHog product analytics. Both must be set for analytics to load at all. | Analytics off |
 | `DASHSCOPE_API_KEY` | Opt-in credential (read from the desktop host environment, never bundled) for the agent video-review cloud opinion. Without it the review tool fails before any request. | Feature unavailable |
 | `REELTERMINAL_QWEN_BASE_URL` | Endpoint override for video review; restricted to official Alibaba compatible-mode/v1 HTTPS endpoints by an allowlist. | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
@@ -52,8 +54,8 @@ match the readiness investigation matrix for traceability.
 | W6 | Cloud transcription (`/transcribe`, `/jobs/{id}` polling) | request | "Generate Captions (Cloud)" / highlight analysis | The clip's extracted audio (WAV) + language settings | Kill switch disables the button with an explanation; URL via `VITE_REELTERMINAL_TRANSCRIBE_URL` | Failures show a classified title (network / server with status / rate limit / timeout / unparseable response / cloud task failed) with the raw error as a secondary detail line, plus a manual Retry button; the upload times out after 120 s and repeated consecutive polling failures surface a visible failure instead of silently waiting; a Cancel button aborts the run with no error and no captions |
 | W7 | Highlight AI (`POST /highlights`) | request | Running highlight analysis (after transcription) | Transcript text with timestamps, audio energy metrics, duration, preferences | Kill switch disables the action with an explanation; URL override as W3 | Classified failure message with a manual Retry button; the submit request times out after 120 s |
 | W8 | Whisper model host (`https://media.openreel.video/models/`) | resource | Opening auto-captions / loading a model | No user data (model download only) | **None — cannot be disabled**; host hardcoded, local models are disabled in the worker config | Per-file download progress. Download failures show a classified banner (network unreachable / HTTP status / storage problem) with the original message as a secondary detail line and a manual Retry button, rendered directly under the model download button; unclassified failures keep the raw message and offer no retry. The model is downloaded once and caption recognition always runs locally in the browser — media and transcripts are not uploaded by this path. WebGPU→WASM fallback; no automatic retry |
-| W9 | FFmpeg.wasm core (`https://unpkg.com/@ffmpeg/core@0.12.6/...`) | resource | First transcode/probe/audio-extract that needs the fallback core (~31 MB wasm) | No user data | **None — cannot be disabled**; domain and version hardcoded | Load errors surface as toasts in affected flows; no automatic retry |
-| W10 | Vidstab cores (`https://mediashares.openreel.video/ffmpeg-vidstab/…`) | resource | Enabling stabilization | No user data | **None — cannot be disabled** | Download progress is shown; failure throws a load error |
+| W9 | FFmpeg.wasm core (`https://unpkg.com/@ffmpeg/core@0.12.6/...`) | resource | First transcode/probe/audio-extract that needs the fallback core (~31 MB wasm) | No user data | URL via `VITE_REELTERMINAL_FFMPEG_CORE_URL` (mirror or self-hosted copy); **cannot be disabled** | Load errors surface as toasts in affected flows; no automatic retry |
+| W10 | Vidstab cores (`https://mediashares.openreel.video/ffmpeg-vidstab/…`) | resource | Enabling stabilization | No user data | URLs via `VITE_REELTERMINAL_VIDSTAB_MT_URL` / `VITE_REELTERMINAL_VIDSTAB_ST_URL`; **cannot be disabled** | Download progress is shown; failure throws a load error |
 | W11 | Person segmentation (Google model storage ×2, `unpkg.com` and `cdn.jsdelivr.net` tasks-vision @0.10.35) | resource | Behind Subject / background removal first use (agent-applied `clip.setBackgroundRemoval` rendering also requires this model — the download stays GUI-first-use triggered; headless rendering of the effect has no MediaPipe runtime and keeps the original background) | No user data (model + wasm download) | **None — cannot be disabled**; 4 URLs hardcoded | Visible error and the toggle rolls back (Behind Subject entry). Auto Reframe does NOT use this download — its analysis is the local skin-region color heuristic in `packages/core/src/ai/auto-reframe-engine.ts` |
 | W12 | mediabunny CDN fallback (`https://esm.sh/mediabunny@1.25.3`) | resource | Only when the bundled `mediabunny` import throws | No user data | **None — cannot be disabled** | Loss of parallel decode is now observable state in the engine store; the fetch itself still fails silently |
 | W13 | 3D text default font (`https://threejs.org/examples/fonts/helvetiker_bold.typeface.json`) | resource | Rendering a 3D text object with the default font | No user data | **None — cannot be disabled** | A stage notice now reports the failure with an explicit manual retry; rendering skips the 3D text |
@@ -70,7 +72,7 @@ match the readiness investigation matrix for traceability.
 
 | # | Outbound | Type | Trigger | Data sent | Override / can it be disabled | If it fails |
 |---|---|---|---|---|---|---|
-| S1 | DetectorPool (jsdelivr `@mediapipe/tasks-vision@latest` wasm — version **not pinned** — plus Google face/segmenter models) | resource | Enabling subject/face preview in the effect view | No user data | **None — cannot be disabled**; hosts hardcoded | Errors propagate to the preview engine |
+| S1 | DetectorPool (jsdelivr `@mediapipe/tasks-vision@0.10.35` wasm, pinned to the npm dependency, plus Google face/segmenter models) | resource | Enabling subject/face preview in the effect view | No user data | **None — cannot be disabled**; hosts hardcoded | Errors propagate to the preview engine |
 | S2 | Marketplace API (`VITE_API_URL`, default `http://localhost:8787`; service outside this repository) | request | Opening blueprint/asset lists, saving, validating, submitting drafts | Graph JSON, titles, manifest; **every request carries hardcoded identity headers** (`X-User-Id: u-studio`, `X-Creator-Id: c-studio`, `X-Creator-Handle: augani`) | `VITE_API_URL` changes the target; the identity headers and the requests themselves **cannot be disabled** | Errors thrown with method, path, and status |
 
 ### Image (`apps/image`, experimental / dormant)
@@ -113,11 +115,13 @@ The following are accurate statements about the current code, not promises:
 - **Google Fonts (W1, I1) fire on page load in web and image and cannot be
   disabled or redirected by any configuration.** The only mitigation is
   network-level blocking; the apps then render with system fonts.
-- **Model and asset hosts have no override or disable switch**: the whisper
-  model host (W8), the FFmpeg.wasm unpkg core (W9), the vidstab CDN (W10), the
+- **Model and asset hosts cannot be disabled**: the whisper model host (W8),
+  the FFmpeg.wasm unpkg core (W9), the vidstab CDN (W10), the
   person-segmentation URLs (W11), the mediabunny esm.sh fallback (W12), the 3D
-  text font (W13), the studio DetectorPool (S1, including an unpinned
-  `@latest` wasm), and the imgly default CDN (I2) are all hardcoded. Self-hosting
+  text font (W13), the studio DetectorPool (S1), and the imgly default CDN (I2)
+  all load from fixed locations. W9 and W10 accept download-location overrides
+  (`VITE_REELTERMINAL_FFMPEG_CORE_URL`, `VITE_REELTERMINAL_VIDSTAB_*_URL`) for
+  mirrored or self-hosted copies; the rest have no override switch. Self-hosting
   or offline-packing them is planned follow-up work recorded in the readiness
   plan, not an existing capability.
 - **Desktop crash reporting cannot be turned off.** `REELTERMINAL_CRASH_ENDPOINT`

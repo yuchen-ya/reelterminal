@@ -21,6 +21,18 @@ export {
 } from "./ffmpeg-fallback";
 export type { ProxySettings, TranscodeOptions, AudioProbeResult, AudioStreamInfo } from "./ffmpeg-fallback";
 
+// Media core CDN locations (EXTERNAL-DEPENDENCIES W9/W10)
+export {
+  DEFAULT_FFMPEG_CORE_BASE_URL,
+  DEFAULT_VIDSTAB_MT_URL,
+  DEFAULT_VIDSTAB_ST_URL,
+  setMediaCdnOverrides,
+  resetMediaCdnOverrides,
+  getFfmpegCoreBaseUrl,
+  getVidstabCoreUrl,
+} from "./media-cdn-config";
+export type { MediaCdnOverrides } from "./media-cdn-config";
+
 // Native media bridge (desktop) + shared audio-extract helper
 export {
   getBridge,

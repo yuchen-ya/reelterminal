@@ -1,5 +1,6 @@
 import type { StabilizationConfig } from "./types";
 import { DEFAULT_STABILIZATION_CONFIG } from "./types";
+import { getVidstabCoreUrl } from "../../media/media-cdn-config";
 
 type FFmpegInstance = {
   load(options?: {
@@ -20,11 +21,6 @@ type FFmpegInstance = {
     callback?: (data: { progress?: number; time?: number; message?: string; type?: string }) => void,
   ): void;
   terminate(): void;
-};
-
-const VIDSTAB_CORE_CDN = {
-  mt: "https://mediashares.openreel.video/ffmpeg-vidstab/mt",
-  st: "https://mediashares.openreel.video/ffmpeg-vidstab/st",
 };
 
 export type VidstabProgress = {
@@ -58,7 +54,7 @@ export class VidstabEngine {
       const useMultiThread =
         typeof crossOriginIsolated !== "undefined" && crossOriginIsolated;
 
-      const baseURL = useMultiThread ? VIDSTAB_CORE_CDN.mt : VIDSTAB_CORE_CDN.st;
+      const baseURL = useMultiThread ? getVidstabCoreUrl("mt") : getVidstabCoreUrl("st");
 
       if (useMultiThread) {
         const [coreURL, wasmURL, workerURL] = await Promise.all([
