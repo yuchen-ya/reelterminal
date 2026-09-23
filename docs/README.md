@@ -17,6 +17,15 @@ you are writing for; do not copy content across rows — link instead.
 
 ## Current contents
 
+- [`open-source-readiness/GUI-PLAN.md`](open-source-readiness/GUI-PLAN.md) — current
+  follow-up scope for all 11 hands-on findings, with implementation cards,
+  unattended execution prompts, and desktop GUI comparison acceptance.
+
+- [`open-source-readiness/PLAN.md`](open-source-readiness/PLAN.md) — approved
+  desktop, browser showcase, and open-source readiness scope; includes task
+  queue, unattended delegation rules, and a coordinator startup prompt.
+  This is an execution plan, not evidence that the work is complete.
+
 - [`product-scope.md`](product-scope.md) — ReelTerminal as the last stop for AI
   video: external-agent session ownership, shared project authority, numbered
   references, localization, and the rule for pruning inherited features.
@@ -66,6 +75,10 @@ you are writing for; do not copy content across rows — link instead.
   lazy route/component boundaries stay authoritative; manual chunks only for
   stable third-party package boundaries.
 - [`EXTERNAL-DEPENDENCIES.md`](EXTERNAL-DEPENDENCIES.md) — every runtime outbound network destination (web, desktop, studio, image, agent path): triggers, data sent, env overrides, what can and cannot be disabled, and upload disclosures.
+- [`CLEANUP-DECISIONS-2026-09.md`](CLEANUP-DECISIONS-2026-09.md) — what the
+  2026-09 dead-code cleanup round keeps deliberately (`packages/creation-schema`,
+  `apps/web/src/gui-manual`), what it defers (zod unification, offline core
+  packaging, oversized files), and the historical-residue register.
 
 ## Guides and inherited history
 

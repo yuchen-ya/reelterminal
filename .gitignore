@@ -88,6 +88,9 @@ xcuserdata/
 # Brainstorming session artifacts
 .superpowers/
 
+# One-off design handoff exports (see docs/CLEANUP-DECISIONS-2026-09.md)
+creating-views/project/uploads/
+
 # Signing certs — never commit
 *.p12
 *.pfx
