@@ -15,9 +15,7 @@ export function migrateProject(raw: Record<string, unknown>): Record<string, unk
     doc = migrateV0ToV1(doc);
   }
 
-  // Future migrations go here, e.g.:
-  // if (doc.version < 2) { doc = migrateV1ToV2(doc); }
-
+  // Future migrations go here.
   return doc;
 }
 

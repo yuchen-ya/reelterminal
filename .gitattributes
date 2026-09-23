@@ -1,0 +1,14 @@
+* text=auto
+
+# Keep shell-invoked and vm-imported scripts LF everywhere; CRLF checkouts
+# on Windows broke vitest's module loader on the shebang line.
+*.mjs text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.sh text eol=lf
+*.json text eol=lf
+*.wasm binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary

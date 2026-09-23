@@ -23,8 +23,6 @@
       "@reelterminal/core/*": ["./packages/core/src/*"],
       "@reelterminal/creation-bindings": ["./packages/creation-bindings/src/index.ts"],
       "@reelterminal/creation-bindings/*": ["./packages/creation-bindings/src/*"],
-      "@reelterminal/creation-agent": ["./packages/creation-agent/src/index.ts"],
-      "@reelterminal/creation-agent/*": ["./packages/creation-agent/src/*"],
       "@reelterminal/creation-schema": ["./packages/creation-schema/src/index.ts"],
       "@reelterminal/creation-schema/*": ["./packages/creation-schema/src/*"],
       "@reelterminal/image-core": ["./packages/image-core/src/index.ts"],

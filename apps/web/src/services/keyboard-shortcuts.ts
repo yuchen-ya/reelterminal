@@ -493,10 +493,15 @@ class KeyboardShortcutsManager {
   }
 
   private loadShortcuts(): void {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    const customizations: Record<string, string> = saved
-      ? JSON.parse(saved)
-      : {};
+    let customizations: Record<string, string> = {};
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        customizations = JSON.parse(saved);
+      }
+    } catch (error) {
+      console.error("[KeyboardShortcuts] Failed to load custom shortcuts:", error);
+    }
 
     DEFAULT_SHORTCUTS.forEach((shortcut) => {
       const customKey = customizations[shortcut.id];

@@ -71,7 +71,7 @@ export function migrateGpuCacheOnUpgrade(): void {
           console.error(`[gpu-cache] failed to clear ${dir}:`, error);
         }
       }
-      console.log(
+      console.warn(
         `[gpu-cache] cleared regenerable caches on version change ${previousVersion} -> ${currentVersion}`,
       );
     }

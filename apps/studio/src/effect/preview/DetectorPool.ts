@@ -13,7 +13,7 @@ interface ImageSegmenterHandle {
 
 type Handle = FaceLandmarkerHandle | ImageSegmenterHandle;
 
-const WASM_PATH = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
+const WASM_PATH = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm";
 
 export class DetectorPool {
   private handles = new Map<DetectorKind, Handle>();
