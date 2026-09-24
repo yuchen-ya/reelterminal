@@ -2059,6 +2059,25 @@ export const getTransitionAtTime = (
   }
 };
 
+const warnedTransitionFallbacks = new Set<string>();
+
+/**
+ * Hard-cut fallback must stay invisible to the viewer but not to diagnosis:
+ * playback degrades to `progress < 0.5 ? A : B` on any blend failure, which is
+ * exactly the "transition disappeared" symptom. Log once per transition+reason.
+ */
+export const warnTransitionFallbackOnce = (
+  transitionId: string,
+  reason: string,
+): void => {
+  const key = `${transitionId}:${reason}`;
+  if (warnedTransitionFallbacks.has(key)) return;
+  warnedTransitionFallbacks.add(key);
+  console.warn(
+    `[Preview] Transition ${transitionId} degraded to hard cut: ${reason}`,
+  );
+};
+
 export const renderTransitionFrame = async (
   transitionInfo: TransitionRenderInfo,
   outgoingFrame: ImageBitmap,
@@ -2067,6 +2086,10 @@ export const renderTransitionFrame = async (
   try {
     const transitionBridge = getTransitionBridge();
     if (!transitionBridge.isInitialized()) {
+      warnTransitionFallbackOnce(
+        transitionInfo.transitionId,
+        "transition bridge not initialized",
+      );
       return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
     }
 
@@ -2074,6 +2097,10 @@ export const renderTransitionFrame = async (
       transitionInfo.transition ??
       transitionBridge.getTransition(transitionInfo.transitionId);
     if (!transition) {
+      warnTransitionFallbackOnce(
+        transitionInfo.transitionId,
+        "transition definition not found",
+      );
       return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
     }
 
@@ -2093,8 +2120,16 @@ export const renderTransitionFrame = async (
       return result.frame;
     }
 
+    warnTransitionFallbackOnce(
+      transitionInfo.transitionId,
+      "blend produced an empty frame",
+    );
     return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
-  } catch {
+  } catch (error) {
+    warnTransitionFallbackOnce(
+      transitionInfo.transitionId,
+      `blend threw: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
   }
 };
@@ -2107,6 +2142,10 @@ export const renderTransitionCanvas = async (
   try {
     const transitionBridge = getTransitionBridge();
     if (!transitionBridge.isInitialized()) {
+      warnTransitionFallbackOnce(
+        transitionInfo.transitionId,
+        "transition bridge not initialized",
+      );
       return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
     }
 
@@ -2114,6 +2153,10 @@ export const renderTransitionCanvas = async (
       transitionInfo.transition ??
       transitionBridge.getTransition(transitionInfo.transitionId);
     if (!transition) {
+      warnTransitionFallbackOnce(
+        transitionInfo.transitionId,
+        "transition definition not found",
+      );
       return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
     }
 
@@ -2128,8 +2171,16 @@ export const renderTransitionCanvas = async (
       return canvas;
     }
 
+    warnTransitionFallbackOnce(
+      transitionInfo.transitionId,
+      "blend produced an empty frame",
+    );
     return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
-  } catch {
+  } catch (error) {
+    warnTransitionFallbackOnce(
+      transitionInfo.transitionId,
+      `blend threw: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
   }
 };

@@ -115,7 +115,12 @@ export class PlaybackController {
       return;
     }
 
-    this.renderFrameAtTime(time);
+    // Preview presentation owns on-screen frames during playback (ADR 0009).
+    // The per-tick composite render below this line produced a frame that
+    // nothing displayed (setDisplayCanvas has no callers) and competed with
+    // the preview render loop for CPU/GPU/decoders. Report the clock as
+    // presented instead so drift-based frame pacing stays neutral.
+    this.masterClock.reportVideoTime(time);
 
     this.emitEvent({
       type: "timeupdate",

@@ -91,6 +91,7 @@ import {
   setImageLoadCallback,
   renderTransitionFrame,
   renderTransitionCanvas,
+  warnTransitionFallbackOnce,
   getAnimatedTransform,
   applyEmphasisAnimation,
   CropModeView,
@@ -152,6 +153,36 @@ import { ReferenceComparisonPanel } from "./preview/ReferenceComparisonPanel";
 // eviction on this helper so the keys can never drift apart.
 const scrubVideoCacheKey = (mediaId: string, isStabilized: boolean): string =>
   isStabilized ? `${mediaId}:stabilized` : mediaId;
+
+// Playback frame sourcing must never block the render loop indefinitely: a
+// wedged hardware decoder leaves `CanvasSink.getCanvas` pending forever, which
+// pins the per-session `isProcessingFrame` latch and freezes the picture while
+// the audio-driven clock keeps advancing (ADR 0009).
+const DECODE_TIMEOUT_MS = 1500;
+const PLAYBACK_STALL_TIMEOUT_MS = 2000;
+const PLAYBACK_WATCHDOG_INTERVAL_MS = 500;
+const PLAYBACK_MAX_AUTO_RESTARTS = 3;
+
+const withTimeout = async <T,>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T | null> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timeoutId = setTimeout(() => {
+          console.warn(`[Preview] ${label} timed out after ${ms}ms`);
+          resolve(null);
+        }, ms);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+};
 
 interface ClipWithPlaceholder {
   isPlaceholder?: boolean;
@@ -945,6 +976,13 @@ export const Preview: React.FC = () => {
 
   const rateRef = useRef(playbackRate);
   const startPositionRef = useRef(playheadPosition);
+  // Watchdog heartbeat: timestamp of the last frame actually presented to the
+  // visible canvas. A wedged render loop leaves the picture frozen while the
+  // audio clock keeps publishing time, so the heartbeat is the only reliable
+  // stall signal (ADR 0009).
+  const lastPresentedFrameAtRef = useRef<number>(0);
+  const playbackRestartCountRef = useRef<number>(0);
+  const [playbackSessionNonce, setPlaybackSessionNonce] = useState(0);
 
   // MediaBunny playback resources - map of clipId to resources for multi-track playback
   const playbackResourcesRef = useRef<
@@ -2842,10 +2880,13 @@ export const Preview: React.FC = () => {
       const loadVideoForClip = (
         clip: (typeof timelineTracks)[0]["clips"][0],
         mediaItem: NonNullable<ReturnType<typeof getMediaItem>>,
+        cacheIdOverride?: string,
       ): Promise<void> => {
         const vidstabCheck = getVidstabEngine();
         const clipStabilized = vidstabCheck.hasStabilized(clip.id);
-        const videoCacheId = clipStabilized ? `stabilized:${clip.id}` : clip.mediaId;
+        const videoCacheId =
+          cacheIdOverride ??
+          (clipStabilized ? `stabilized:${clip.id}` : clip.mediaId);
 
         const existingLoad = loadingVideos.get(videoCacheId);
         if (existingLoad) {
@@ -2868,7 +2909,7 @@ export const Preview: React.FC = () => {
         const playBlob = (isStabilized
           ? vidstabEng.getStabilizedBlob(clip.id)
           : mediaItem.blob)!;
-        const cacheId = isStabilized ? `stabilized:${clip.id}` : clip.mediaId;
+        const cacheId = videoCacheId;
         const url = URL.createObjectURL(playBlob);
         const video = document.createElement("video");
         video.src = url;
@@ -3057,7 +3098,7 @@ export const Preview: React.FC = () => {
         }
       };
 
-      const drawFrame = async () => {
+      const drawFrameInner = async () => {
         if (!isActive || !nativePlaybackActiveRef.current) return;
 
         const currentPlayhead = masterClock.currentTime;
@@ -3097,157 +3138,217 @@ export const Preview: React.FC = () => {
             ? findNativeClipById(transitionInfo.clipB.id)
             : null;
 
-          if (clipARecord && (!transitionInfo.clipB || clipBRecord)) {
-            const records = clipBRecord
-              ? [clipARecord, clipBRecord]
-              : [clipARecord];
-            await Promise.all(
-              records.map((record) =>
-                loadVideoForClip(record.clip, record.mediaItem),
-              ),
-            );
-            if (!isActive || !nativePlaybackActiveRef.current) return;
-
-            const clipACacheId = getVidstabEngine().hasStabilized(
-              clipARecord.clip.id,
-            )
+          // Each transition side needs its own decode source. Two clips cut
+          // from the same media share one cached <video> element (mediaId
+          // key); driving that single element to two source times makes the
+          // blend render the element against itself, which looks like the
+          // transition vanished. Give the incoming side a dedicated element.
+          const baseACacheId = clipARecord
+            ? getVidstabEngine().hasStabilized(clipARecord.clip.id)
               ? `stabilized:${clipARecord.clip.id}`
-              : clipARecord.clip.mediaId;
-            const clipBCacheId = clipBRecord && getVidstabEngine().hasStabilized(
-              clipBRecord.clip.id,
-            )
-              ? `stabilized:${clipBRecord.clip.id}`
-              : clipBRecord?.clip.mediaId;
-            const clipAVideo = videoCache.get(clipACacheId)?.video;
-            const clipBVideo = clipBCacheId
-              ? videoCache.get(clipBCacheId)?.video
+              : clipARecord.clip.mediaId
+            : null;
+          const baseBCacheId =
+            clipBRecord && transitionInfo.clipB
+              ? getVidstabEngine().hasStabilized(clipBRecord.clip.id)
+                ? `stabilized:${clipBRecord.clip.id}`
+                : clipBRecord.clip.mediaId
               : null;
+          const sharedBaseId =
+            baseACacheId !== null && baseACacheId === baseBCacheId;
+          const clipACacheId = baseACacheId;
+          const clipBCacheId =
+            sharedBaseId && transitionInfo.clipB
+              ? `transition:${transitionInfo.clipB.id}`
+              : baseBCacheId;
 
-            if (clipAVideo && (!transitionInfo.clipB || clipBVideo)) {
-              const sameElement =
-                Boolean(clipBVideo) && clipAVideo === clipBVideo;
-              const cutTime = clipBRecord?.clip.startTime ?? clipARecord.clip.startTime;
-              const outgoingHeld =
-                Boolean(clipBVideo) && !sameElement && currentPlayhead >= cutTime;
-              const incomingHeld =
-                Boolean(clipBVideo) && !sameElement && currentPlayhead < cutTime;
-
-              if (outgoingHeld) clipAVideo.pause();
-              if (incomingHeld && clipBVideo) clipBVideo.pause();
-
-              await Promise.all([
-                syncVideoToClipTime(
-                  clipAVideo,
-                  clipARecord.clip,
-                  currentPlayhead,
-                ),
-                clipBVideo && clipBRecord
-                  ? syncVideoToClipTime(
-                      clipBVideo,
-                      clipBRecord.clip,
-                      currentPlayhead,
-                    )
-                  : Promise.resolve(),
-              ]);
-              if (!isActive || !nativePlaybackActiveRef.current) return;
-              if (!outgoingHeld) await playVideoElement(clipAVideo);
-              if (!incomingHeld && clipBVideo) {
-                await playVideoElement(clipBVideo);
-              }
-
-              const blank = transitionInfo.clipB
-                ? null
-                : createTransparentCanvasSource(canvas.width, canvas.height);
-              const outgoingSource =
-                transitionInfo.clipB || transitionInfo.edge !== "in"
-                  ? clipAVideo
-                  : blank;
-              const incomingSource = transitionInfo.clipB
-                ? clipBVideo
-                : transitionInfo.edge === "in"
-                  ? clipAVideo
-                  : blank;
-
-              const blended =
-                outgoingSource && incomingSource
-                  ? await renderTransitionCanvas(
-                      transitionInfo,
-                      outgoingSource,
-                      incomingSource,
-                    )
-                  : null;
-              if (!isActive || !nativePlaybackActiveRef.current) return;
-              if (blended) {
-                fillPreviewBackground(
-                  ctx,
-                  playheadPositionRef.current,
-                  canvas.width,
-                  canvas.height,
-                );
-                ctx.drawImage(blended, 0, 0, canvas.width, canvas.height);
-              }
-
-              const activeShapeClipsTr = getActiveShapeClips(
-                allShapeClipsRef.current,
-                currentPlayhead,
-              );
-              const activeTextClipsTr = getActiveTextClips(
-                allTextClipsRef.current,
-                currentPlayhead,
-              );
-              if (
-                activeShapeClipsTr.length > 0 ||
-                activeTextClipsTr.length > 0
-              ) {
-                const transitionSubjectFrame = hasBehindSubjectText(
-                  activeTextClipsTr,
-                )
-                  ? await captureSubjectFrame(ctx, canvas.width, canvas.height)
-                  : null;
-                try {
-                  await renderOverlayClipsInTrackOrder(
-                    ctx,
-                    timelineTracksRef.current,
-                    activeShapeClipsTr,
-                    activeTextClipsTr,
-                    currentPlayhead,
-                    canvas.width,
-                    canvas.height,
-                    transitionSubjectFrame,
-                  );
-                } finally {
-                  transitionSubjectFrame?.close();
-                }
-              }
-
-              const activeSubtitlesTr = getActiveSubtitles(
-                allSubtitles,
-                currentPlayhead,
-              );
-              for (const subtitle of activeSubtitlesTr) {
-                renderSubtitleToCanvas(
-                  ctx,
-                  subtitle,
-                  canvas.width,
-                  canvas.height,
-                  currentPlayhead,
-                );
-              }
-
-              const nowTransition = performance.now();
-              if (
-                nowTransition - lastPlayheadUpdateRef.current >=
-                PLAYHEAD_UPDATE_THROTTLE_MS
-              ) {
-                lastPlayheadUpdateRef.current = nowTransition;
-                setPlayheadPosition(currentPlayhead);
-              }
-              rafId = requestAnimationFrame(() => {
-                drawFrame();
-              });
-              return;
+          const resolveTransitionSide = async (
+            side: (typeof transitionInfo)["clipA"],
+            record: typeof clipARecord,
+            cacheId: string | null,
+          ): Promise<CanvasImageSource | null> => {
+            if (record && cacheId) {
+              await loadVideoForClip(record.clip, record.mediaItem, cacheId);
+              return videoCache.get(cacheId)?.video ?? null;
             }
+            // Image clips have no video-element pipeline in this path; decode
+            // them straight from their blob so image transitions blend here
+            // just like in the paused renderer.
+            const mediaItem = getMediaItem(side.mediaId);
+            if (mediaItem?.type === "image" && mediaItem.blob) {
+              const cachedBitmap = imageBitmapCache.get(side.id);
+              if (cachedBitmap) return cachedBitmap;
+              try {
+                const bitmap = await createImageBitmap(mediaItem.blob);
+                imageBitmapCache.set(side.id, bitmap);
+                return bitmap;
+              } catch (error) {
+                console.warn(
+                  `[Preview] Transition image decode failed for clip ${side.id}:`,
+                  error,
+                );
+                return null;
+              }
+            }
+            return null;
+          };
+
+          const clipASource = await resolveTransitionSide(
+            transitionInfo.clipA,
+            clipARecord,
+            clipACacheId,
+          );
+          const clipBSource = transitionInfo.clipB
+            ? await resolveTransitionSide(
+                transitionInfo.clipB,
+                clipBRecord,
+                clipBCacheId,
+              )
+            : null;
+          if (!isActive || !nativePlaybackActiveRef.current) return;
+
+          const sidesResolved =
+            clipASource && (!transitionInfo.clipB || clipBSource);
+
+          if (sidesResolved) {
+            const clipAVideo =
+              clipASource instanceof HTMLVideoElement ? clipASource : null;
+            const clipBVideo =
+              clipBSource instanceof HTMLVideoElement ? clipBSource : null;
+            const cutTime =
+              clipBRecord?.clip.startTime ??
+              transitionInfo.clipB?.startTime ??
+              transitionInfo.clipA.startTime;
+            // The transition window straddles the cut, so one side is always
+            // past its visible window: hold that side on its edge frame while
+            // the other side plays.
+            const outgoingHeld =
+              Boolean(transitionInfo.clipB) && currentPlayhead >= cutTime;
+            const incomingHeld =
+              Boolean(transitionInfo.clipB) && currentPlayhead < cutTime;
+
+            if (outgoingHeld && clipAVideo) clipAVideo.pause();
+            if (incomingHeld && clipBVideo) clipBVideo.pause();
+
+            await Promise.all([
+              clipAVideo && clipARecord
+                ? syncVideoToClipTime(
+                    clipAVideo,
+                    clipARecord.clip,
+                    currentPlayhead,
+                  )
+                : Promise.resolve(),
+              clipBVideo && clipBRecord
+                ? syncVideoToClipTime(
+                    clipBVideo,
+                    clipBRecord.clip,
+                    currentPlayhead,
+                  )
+                : Promise.resolve(),
+            ]);
+            if (!isActive || !nativePlaybackActiveRef.current) return;
+            if (!outgoingHeld && clipAVideo) await playVideoElement(clipAVideo);
+            if (!incomingHeld && clipBVideo) {
+              await playVideoElement(clipBVideo);
+            }
+
+            const blank = transitionInfo.clipB
+              ? null
+              : createTransparentCanvasSource(canvas.width, canvas.height);
+            const outgoingSource =
+              transitionInfo.clipB || transitionInfo.edge !== "in"
+                ? clipASource
+                : blank;
+            const incomingSource = transitionInfo.clipB
+              ? clipBSource
+              : transitionInfo.edge === "in"
+                ? clipASource
+                : blank;
+
+            const blended =
+              outgoingSource && incomingSource
+                ? await renderTransitionCanvas(
+                    transitionInfo,
+                    outgoingSource,
+                    incomingSource,
+                  )
+                : null;
+            if (!isActive || !nativePlaybackActiveRef.current) return;
+            if (blended) {
+              fillPreviewBackground(
+                ctx,
+                playheadPositionRef.current,
+                canvas.width,
+                canvas.height,
+              );
+              ctx.drawImage(blended, 0, 0, canvas.width, canvas.height);
+            }
+
+            const activeShapeClipsTr = getActiveShapeClips(
+              allShapeClipsRef.current,
+              currentPlayhead,
+            );
+            const activeTextClipsTr = getActiveTextClips(
+              allTextClipsRef.current,
+              currentPlayhead,
+            );
+            if (
+              activeShapeClipsTr.length > 0 ||
+              activeTextClipsTr.length > 0
+            ) {
+              const transitionSubjectFrame = hasBehindSubjectText(
+                activeTextClipsTr,
+              )
+                ? await captureSubjectFrame(ctx, canvas.width, canvas.height)
+                : null;
+              try {
+                await renderOverlayClipsInTrackOrder(
+                  ctx,
+                  timelineTracksRef.current,
+                  activeShapeClipsTr,
+                  activeTextClipsTr,
+                  currentPlayhead,
+                  canvas.width,
+                  canvas.height,
+                  transitionSubjectFrame,
+                );
+              } finally {
+                transitionSubjectFrame?.close();
+              }
+            }
+
+            const activeSubtitlesTr = getActiveSubtitles(
+              allSubtitles,
+              currentPlayhead,
+            );
+            for (const subtitle of activeSubtitlesTr) {
+              renderSubtitleToCanvas(
+                ctx,
+                subtitle,
+                canvas.width,
+                canvas.height,
+                currentPlayhead,
+              );
+            }
+
+            const nowTransition = performance.now();
+            if (
+              nowTransition - lastPlayheadUpdateRef.current >=
+              PLAYHEAD_UPDATE_THROTTLE_MS
+            ) {
+              lastPlayheadUpdateRef.current = nowTransition;
+              setPlayheadPosition(currentPlayhead);
+            }
+            lastPresentedFrameAtRef.current = nowTransition;
+            rafId = requestAnimationFrame(() => {
+              drawFrame();
+            });
+            return;
           }
+          warnTransitionFallbackOnce(
+            transitionInfo.transitionId,
+            "playback could not resolve both transition sources",
+          );
         }
 
         const activeClip = findClipAtTime(currentPlayhead);
@@ -3342,6 +3443,7 @@ export const Preview: React.FC = () => {
             lastPlayheadUpdateRef.current = nowNoClip;
             setPlayheadPosition(currentPlayhead);
           }
+          lastPresentedFrameAtRef.current = nowNoClip;
           rafId = requestAnimationFrame(() => { drawFrame(); });
           return;
         }
@@ -3601,9 +3703,39 @@ export const Preview: React.FC = () => {
           lastGoodFrameRef.current = await createImageBitmap(canvas);
         } catch {}
 
+        lastPresentedFrameAtRef.current = performance.now();
         rafId = requestAnimationFrame(() => {
           drawFrame();
         });
+      };
+
+      // Presentation-loop safety rail: an uncaught rejection inside the frame
+      // body used to kill the rAF chain silently while the audio-driven clock
+      // kept advancing (ADR 0009).
+      let drawFrameErrors = 0;
+      const drawFrame = async (): Promise<void> => {
+        try {
+          await drawFrameInner();
+          drawFrameErrors = 0;
+        } catch (error) {
+          drawFrameErrors += 1;
+          console.error(
+            `[Preview] drawFrame error (${drawFrameErrors}):`,
+            error,
+          );
+          if (!isActive || !nativePlaybackActiveRef.current) return;
+          if (drawFrameErrors > 60) {
+            console.error(
+              "[Preview] drawFrame failing repeatedly; stopping playback",
+            );
+            cleanup();
+            onEnd();
+            return;
+          }
+          rafId = requestAnimationFrame(() => {
+            drawFrame();
+          });
+        }
       };
 
       const cleanup = (preserveCaches = false) => {
@@ -3692,6 +3824,7 @@ export const Preview: React.FC = () => {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
       }
+      playbackRestartCountRef.current = 0;
       cleanupAudioResources();
       return;
     }
@@ -3709,6 +3842,35 @@ export const Preview: React.FC = () => {
       setPlayheadPosition(0);
     }
     const playbackStartPosition = startPositionRef.current;
+
+    // Stall watchdog (ADR 0009): the audio-driven clock keeps publishing time
+    // even when a render loop wedges mid-await, so "playing but no presented
+    // frame" is the only reliable freeze signal. Recover by rebuilding the
+    // playback pipeline at the live playhead instead of freezing silently.
+    lastPresentedFrameAtRef.current = performance.now();
+    const watchdogId = setInterval(() => {
+      if (!isActive) return;
+      const masterClock = getMasterClock();
+      if (!masterClock.isPlaying) {
+        lastPresentedFrameAtRef.current = performance.now();
+        return;
+      }
+      const stalledFor = performance.now() - lastPresentedFrameAtRef.current;
+      if (stalledFor < PLAYBACK_STALL_TIMEOUT_MS) return;
+      playbackRestartCountRef.current += 1;
+      if (playbackRestartCountRef.current <= PLAYBACK_MAX_AUTO_RESTARTS) {
+        console.error(
+          `[Preview] Playback stalled for ${Math.round(stalledFor)}ms without a presented frame; ` +
+            `rebuilding playback pipeline (attempt ${playbackRestartCountRef.current})`,
+        );
+        setPlaybackSessionNonce((n) => n + 1);
+      } else {
+        console.error(
+          "[Preview] Playback stalled repeatedly; pausing playback",
+        );
+        pause();
+      }
+    }, PLAYBACK_WATCHDOG_INTERVAL_MS);
 
     const findAllClipsAtTime = (time: number) => {
       const tracks = timelineTracksRef.current;
@@ -4410,6 +4572,7 @@ export const Preview: React.FC = () => {
             if (nextTime !== null) {
               masterClock.seek(nextTime);
               audioGraph.seekTo(nextTime);
+              lastPresentedFrameAtRef.current = performance.now();
               isProcessingFrame = false;
               animationRef.current = requestAnimationFrame(
                 processMultiTrackFrame,
@@ -4434,6 +4597,7 @@ export const Preview: React.FC = () => {
           );
           if (hasActiveCompound) {
             await renderFrameDirectlyRef.current(currentPlayhead);
+            lastPresentedFrameAtRef.current = performance.now();
             masterClock.reportVideoTime(currentPlayhead);
             const now = performance.now();
             const elapsed = now - lastFrameTimestamp;
@@ -4515,7 +4679,30 @@ export const Preview: React.FC = () => {
 
               const decodeClipFrameForTransition = async (
                 clip: (typeof tracks)[0]["clips"][0],
-              ): Promise<HTMLCanvasElement | OffscreenCanvas | null> => {
+              ): Promise<
+                ImageBitmap | HTMLCanvasElement | OffscreenCanvas | null
+              > => {
+                // Image clips never get MediaBunny resources
+                // (initClipResources returns null for them); decode them from
+                // their blob/cache so image transitions blend here just like
+                // in the paused renderer.
+                const mediaItem = getMediaItem(clip.mediaId);
+                if (mediaItem?.type === "image") {
+                  const cachedBitmap = imageBitmapCacheRef.current.get(clip.id);
+                  if (cachedBitmap) return cachedBitmap;
+                  if (!mediaItem.blob) return null;
+                  try {
+                    const bitmap = await createImageBitmap(mediaItem.blob);
+                    imageBitmapCacheRef.current.set(clip.id, bitmap);
+                    return bitmap;
+                  } catch (error) {
+                    console.warn(
+                      `[Preview] Transition image decode failed for clip ${clip.id}:`,
+                      error,
+                    );
+                    return null;
+                  }
+                }
                 const resources = playbackResourcesRef.current.get(clip.id);
                 if (!resources) return null;
                 const speedEngine = getSpeedEngine();
@@ -4530,13 +4717,17 @@ export const Preview: React.FC = () => {
                   ),
                 );
                 try {
-                  const result = await (
-                    resources.sink as {
-                      getCanvas: (time: number) => Promise<{
-                        canvas: HTMLCanvasElement | OffscreenCanvas;
-                      } | null>;
-                    }
-                  ).getCanvas(sourceTime);
+                  const result = await withTimeout(
+                    (
+                      resources.sink as {
+                        getCanvas: (time: number) => Promise<{
+                          canvas: HTMLCanvasElement | OffscreenCanvas;
+                        } | null>;
+                      }
+                    ).getCanvas(sourceTime),
+                    DECODE_TIMEOUT_MS,
+                    `Transition decode for clip ${clip.id}`,
+                  );
                   if (!result?.canvas) return null;
                   return result.canvas;
                 } catch (error) {
@@ -4637,6 +4828,7 @@ export const Preview: React.FC = () => {
 
                   mainCtx.drawImage(offscreenCanvasRef.current!, 0, 0);
 
+                  lastPresentedFrameAtRef.current = performance.now();
                   masterClock.reportVideoTime(currentPlayhead);
                   const nowTr = performance.now();
                   if (
@@ -4673,6 +4865,11 @@ export const Preview: React.FC = () => {
                     error,
                   );
                 }
+              } else {
+                warnTransitionFallbackOnce(
+                  transitionInfoMulti.transitionId,
+                  "playback could not resolve both transition sources",
+                );
               }
             }
           }
@@ -4796,15 +4993,19 @@ export const Preview: React.FC = () => {
                 );
 
                 try {
-                  const frameResult = await (
-                    resources.sink as {
-                      getCanvas: (time: number) => Promise<{
-                        canvas: HTMLCanvasElement | OffscreenCanvas;
-                        timestamp: number;
-                        duration: number;
-                      } | null>;
-                    }
-                  ).getCanvas(sourceTime);
+                  const frameResult = await withTimeout(
+                    (
+                      resources.sink as {
+                        getCanvas: (time: number) => Promise<{
+                          canvas: HTMLCanvasElement | OffscreenCanvas;
+                          timestamp: number;
+                          duration: number;
+                        } | null>;
+                      }
+                    ).getCanvas(sourceTime),
+                    DECODE_TIMEOUT_MS,
+                    `Frame decode for clip ${clip.id}`,
+                  );
 
                   if (!isActive) return null;
 
@@ -5131,6 +5332,7 @@ export const Preview: React.FC = () => {
             }
 
             mainCtx.drawImage(offscreenCanvasRef.current!, 0, 0);
+            lastPresentedFrameAtRef.current = performance.now();
 
             try {
               lastGoodFrameRef.current?.close();
@@ -5160,6 +5362,7 @@ export const Preview: React.FC = () => {
             }
 
             mainCtx.drawImage(offscreenCanvasRef.current!, 0, 0);
+            lastPresentedFrameAtRef.current = performance.now();
           }
 
           masterClock.reportVideoTime(currentPlayhead);
@@ -5305,6 +5508,7 @@ export const Preview: React.FC = () => {
     });
 
     return () => {
+      clearInterval(watchdogId);
       isActive = false;
       nativePlaybackActiveRef.current = false;
       const masterClock = getMasterClock();
@@ -5326,6 +5530,7 @@ export const Preview: React.FC = () => {
     };
   }, [
     isPlaying,
+    playbackSessionNonce,
     canUseNativeVideoPlayback,
     startNativeVideoPlayback,
     actualEndTime,
