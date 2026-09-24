@@ -2327,7 +2327,6 @@ export function StageCanvas({ composition }: StageCanvasProps): JSX.Element {
       ),
       modifiedAt: Date.now(),
     };
-    penDraftPointsRef.current = [...penDraftPointsRef.current];
     if (penDraftRef.current?.maskTargetLayerId) {
       const committedMask = commitPenDraftAsMask();
       if (!committedMask) {
@@ -4590,7 +4589,6 @@ function StageLayerTree({
     isControllerLayer;
   const selectionShadow =
     selected && !isHitTestOnly ? "0 0 0 6px var(--accent-soft)" : undefined;
-  const combinedShadow = selectionShadow;
   const children = getMotionLayerChildren(composition, layer.id);
   const rotationX = transform.rotation3d?.x ?? 0;
   const rotationY = transform.rotation3d?.y ?? 0;
@@ -4631,7 +4629,7 @@ function StageLayerTree({
         ? "2px solid var(--accent)"
         : "1px solid transparent",
     outlineOffset: interactive && selected && !isHitTestOnly ? 4 : 0,
-    boxShadow: combinedShadow || undefined,
+    boxShadow: selectionShadow || undefined,
     cursor: layer.locked ? "not-allowed" : "pointer",
     pointerEvents: !interactive || layer.locked ? "none" : "auto",
   };

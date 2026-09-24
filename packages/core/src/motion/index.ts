@@ -59,4 +59,3 @@ export * from "./motion-presets";
 export * from "./motion-template-types";
 export * from "./importers/svg-importer";
 export * from "./importers/lottie-importer";
-export * from "./importers/figma-json-importer";

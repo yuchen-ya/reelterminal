@@ -54,6 +54,10 @@ const api = {
     abortWrite: (handleId: string) => ipcRenderer.invoke(CHANNELS.fsAbortWrite, { handleId }),
     revealInFolder: (p: string) => ipcRenderer.invoke(CHANNELS.fsRevealInFolder, { path: p }),
   },
+  dataRoot: {
+    getInfo: () => ipcRenderer.invoke(CHANNELS.dataRootGetInfo, undefined),
+    change: (p: string) => ipcRenderer.invoke(CHANNELS.dataRootChange, { path: p }),
+  },
   export: {
     start: (args: unknown) =>
       new Promise((resolve) => {

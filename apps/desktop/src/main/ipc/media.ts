@@ -1,6 +1,7 @@
 import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
 import {
   MediaJob,
   buildProxyArgs,
@@ -20,7 +21,14 @@ export async function generateProxy(args: {
   preset: ProxyPreset;
 }): Promise<{ outPath: string }> {
   const outPath = tmpPath("mp4");
-  await new MediaJob(buildProxyArgs(args.srcPath, outPath, args.preset)).run();
+  try {
+    await new MediaJob(buildProxyArgs(args.srcPath, outPath, args.preset)).run();
+  } catch (error) {
+    // Best-effort reclaim of the partial ffmpeg output; the original error
+    // object is rethrown untouched.
+    await rm(outPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
   return { outPath };
 }
 
@@ -31,13 +39,18 @@ export async function transcode(args: {
   audioBitrateKbps: number;
 }): Promise<{ outPath: string }> {
   const outPath = tmpPath(args.container);
-  await new MediaJob(
-    buildTranscodeArgs(args.srcPath, outPath, {
-      container: args.container,
-      videoBitrateKbps: args.videoBitrateKbps,
-      audioBitrateKbps: args.audioBitrateKbps,
-    }),
-  ).run();
+  try {
+    await new MediaJob(
+      buildTranscodeArgs(args.srcPath, outPath, {
+        container: args.container,
+        videoBitrateKbps: args.videoBitrateKbps,
+        audioBitrateKbps: args.audioBitrateKbps,
+      }),
+    ).run();
+  } catch (error) {
+    await rm(outPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
   return { outPath };
 }
 
@@ -46,7 +59,12 @@ export async function extractAudioWav(args: {
   streamIndex?: number;
 }): Promise<{ outPath: string }> {
   const outPath = tmpPath("wav");
-  await new MediaJob(buildExtractAudioArgs(args.srcPath, outPath, args.streamIndex)).run();
+  try {
+    await new MediaJob(buildExtractAudioArgs(args.srcPath, outPath, args.streamIndex)).run();
+  } catch (error) {
+    await rm(outPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
   return { outPath };
 }
 

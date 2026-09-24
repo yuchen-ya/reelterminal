@@ -222,6 +222,7 @@ export const EditorInterface: React.FC = () => {
     keyframeEditorOpen,
     setKeyframeEditorOpen,
     getSelectedClipIds,
+    selectedItems,
     panels,
     setPanelVisible,
     timelineMaximized,
@@ -234,6 +235,8 @@ export const EditorInterface: React.FC = () => {
     import("@reelterminal/core").Keyframe[]
   >([]);
 
+  // Keyed on the stable selectedItems reference; getSelectedClipIds() is a
+  // pure derivation of it, so the memo result stays valid between changes.
   const selectedClip = React.useMemo(() => {
     const selectedIds = getSelectedClipIds();
     if (selectedIds.length === 0) return null;
@@ -243,7 +246,7 @@ export const EditorInterface: React.FC = () => {
       if (clip) return clip;
     }
     return null;
-  }, [getSelectedClipIds, tracks]);
+  }, [selectedItems, tracks]);
 
   const handleUpdateKeyframe = React.useCallback(
     (

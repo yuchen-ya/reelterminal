@@ -4,6 +4,7 @@ import type { Action, ActionResult, WorkAsset } from "@reelterminal/core";
 import {
   captureWorkAssetFromClip,
   captureWorkAssetFromClips,
+  captureWorkAssetFromMedia,
 } from "@reelterminal/core/work-assets/capture";
 import { buildWorkAssetInstantiateActions } from "@reelterminal/core/work-assets/instantiate";
 import { MAX_ACTIONS_PER_BATCH } from "./action-batch";
@@ -57,10 +58,19 @@ export interface SaveClipWorkAssetOptions {
   readonly name?: string;
 }
 
+export interface SaveMediaWorkAssetOptions {
+  readonly name?: string;
+  /** Source-media start in seconds; defaults to 0. */
+  readonly inSec?: number;
+  /** Source-media end in seconds; defaults to the media's default span. */
+  readonly outSec?: number;
+}
+
 export type WorkAssetsSlice = Pick<
   ProjectState,
   | "saveClipAsWorkAsset"
   | "saveClipsAsWorkAsset"
+  | "saveMediaAsWorkAsset"
   | "renameWorkAsset"
   | "deleteWorkAsset"
   | "instantiateWorkAsset"
@@ -134,6 +144,36 @@ export function createWorkAssetsSlice(_set: Set, get: Get): WorkAssetsSlice {
       const captured = captureWorkAssetFromClips(project, clipIds, {
         createdBy: "user",
         ...(options?.name !== undefined ? { name: options.name } : {}),
+      });
+      if (!captured.ok) return captured;
+      const action: Action = {
+        type: "workAsset/create",
+        id: uuidv4(),
+        timestamp: Date.now(),
+        params: { asset: captured.asset },
+      };
+      const result = await commitSingleAction(
+        action,
+        `Save work asset "${captured.asset.name}"`,
+      );
+      if (!result.success) {
+        return {
+          ok: false,
+          code: "INVALID_PARAMS",
+          message: result.error?.message ?? "workAsset/create failed",
+          ...(result.error?.details ? { details: result.error.details } : {}),
+        };
+      }
+      return captured;
+    },
+
+    saveMediaAsWorkAsset: async (mediaId, options) => {
+      const { project } = get();
+      const captured = captureWorkAssetFromMedia(project, mediaId, {
+        createdBy: "user",
+        ...(options?.name !== undefined ? { name: options.name } : {}),
+        ...(options?.inSec !== undefined ? { inSec: options.inSec } : {}),
+        ...(options?.outSec !== undefined ? { outSec: options.outSec } : {}),
       });
       if (!captured.ok) return captured;
       const action: Action = {

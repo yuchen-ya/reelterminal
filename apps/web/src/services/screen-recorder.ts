@@ -110,10 +110,16 @@ export class ScreenRecorderService {
       audio: options.audio.systemAudio,
     };
 
+    // A retry overwrites the previous streams. Stop the held tracks first so
+    // capture devices are released instead of leaking behind the new stream.
+    this.screenStream?.getTracks().forEach((track) => track.stop());
+    this.screenStream = null;
     this.screenStream =
       await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
 
     if (options.audio.microphone) {
+      this.micStream?.getTracks().forEach((track) => track.stop());
+      this.micStream = null;
       try {
         this.micStream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -128,6 +134,8 @@ export class ScreenRecorderService {
     }
 
     if (options.webcam.enabled) {
+      this.webcamStream?.getTracks().forEach((track) => track.stop());
+      this.webcamStream = null;
       const webcamRes = RESOLUTION_MAP[options.webcam.resolution];
       try {
         this.webcamStream = await navigator.mediaDevices.getUserMedia({

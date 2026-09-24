@@ -8,7 +8,7 @@ import {
 } from "../i18n";
 import { autoSaveManager } from "../services/auto-save";
 
-export type SettingsTab = "general";
+export type SettingsTab = "general" | "storage";
 
 export interface SettingsState {
   // General preferences

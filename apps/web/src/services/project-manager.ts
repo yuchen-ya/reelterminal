@@ -320,8 +320,15 @@ class ProjectManager {
 
   async saveProjectAs(project: Project): Promise<boolean> {
     if (isDesktopFs()) {
+      // Land new projects in the data root's projects/ folder when the
+      // desktop bridge reports one (docs/DATA-ROOT.md).
+      const dataRootProjects = await window.reelterminal!.dataRoot
+        ?.getInfo()
+        .then((info) => (info.active && info.projects ? info.projects : undefined))
+        .catch(() => undefined);
       const filePath = await window.reelterminal!.fs.showSaveDialog({
         defaultPath: `${project.name}.oreel`,
+        ...(dataRootProjects ? { defaultDir: dataRootProjects } : {}),
         filters: [{ name: "ReelTerminal Project", extensions: ["oreel", "json"] }],
       });
       if (!filePath) return false;

@@ -26,10 +26,14 @@ export type HardwareInfo = z.infer<typeof hardwareInfoSchema>;
 
 export const saveDialogArgsSchema = z.object({
   defaultPath: z.string(),
+  /** Optional folder the default path is resolved inside (data-root projects/). */
+  defaultDir: z.string().optional(),
   filters: z.array(z.object({ name: z.string(), extensions: z.array(z.string()) })),
 });
 export const openDialogArgsSchema = z.object({
   filters: z.array(z.object({ name: z.string(), extensions: z.array(z.string()) })),
+  /** Pick a directory instead of a file (data-root change flow). */
+  directory: z.boolean().optional(),
 });
 export const writeFileArgsSchema = z.object({ path: z.string(), data: z.string() });
 export const readFileArgsSchema = z.object({ path: z.string() });
@@ -46,6 +50,40 @@ export const pathStatusResultSchema = z.object({
   lastModifiedMs: z.number().nonnegative().nullable(),
 });
 export type PathStatusResult = z.infer<typeof pathStatusResultSchema>;
+
+export const dataRootMigrationItemSchema = z.object({
+  kind: z.enum(["appData", "workspace"]),
+  from: z.string(),
+  to: z.string(),
+  status: z.enum([
+    "moved",
+    "copied-backup-left",
+    "skipped-missing",
+    "skipped-target-exists",
+    "failed",
+  ]),
+  error: z.string().optional(),
+});
+export const dataRootInfoSchema = z.object({
+  /** False = running on the legacy flat locations (adoption deferred). */
+  active: z.boolean(),
+  root: z.string(),
+  source: z.enum(["env", "pointer", "default"]),
+  appData: z.string(),
+  projects: z.string(),
+  agentWorkspace: z.string(),
+  logs: z.string(),
+  machineConfigDir: z.string(),
+  migrationItems: z.array(dataRootMigrationItemSchema),
+});
+export type DataRootInfo = z.infer<typeof dataRootInfoSchema>;
+export const dataRootChangeArgsSchema = z.object({ path: z.string() });
+export const dataRootChangeResultSchema = z.object({
+  ok: z.boolean(),
+  requiresRestart: z.boolean(),
+  error: z.string().optional(),
+});
+export type DataRootChangeResult = z.infer<typeof dataRootChangeResultSchema>;
 
 export const proxyArgsSchema = z.object({
   srcPath: z.string(),

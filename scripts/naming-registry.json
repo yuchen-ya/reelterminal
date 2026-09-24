@@ -13,6 +13,7 @@
     { "files": "docs/superpowers/**", "category": 1, "reason": "历史证据：2026-05~07 过程 plans/specs，冻结保留原貌（规则 §5.1）。" },
     { "files": "docs/slice-2/**", "category": 1, "reason": "历史证据：slice-2 平台证据与运行记录（含 transcript/sha256），冻结保留原貌。" },
     { "files": "docs/adr/**", "category": 1, "reason": "历史证据：ADR 0002-0007 冻结记录，确需勘误按修订惯例追加（规则 §5.1）。" },
+    { "files": "docs/open-source-readiness/**", "category": 1, "reason": "历史证据：第一轮方案/交接/执行记录（EXECUTION/TASKS/TWO-ROUND-START 等含历史命令与任务描述），冻结保留原貌（规则 §5.1；DIR_ENTRY_ALLOWLIST 已列此目录）。" },
     { "files": "docs/REPAIR-ACCEPTANCE-2026-09-08.md", "category": 1, "reason": "历史证据：修复验收当日的命令与输出记录，保留原貌。" },
     { "files": "apps/web/src/i18n/locales/zh-CN/upstream-translation.json", "category": 1, "reason": "历史证据：上游翻译记忆（上游文案含 OpenReel 字样），en 源无对应活键，保留原貌（规则 §5.1）。" },
 

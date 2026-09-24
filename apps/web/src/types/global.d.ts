@@ -393,10 +393,12 @@ interface ReelTerminalDesktopBridge {
         getPathForFile(file: File): string;
         showSaveDialog(opts: {
           defaultPath: string;
+          defaultDir?: string;
           filters: { name: string; extensions: string[] }[];
         }): Promise<string | null>;
         showOpenDialog(opts: {
           filters: { name: string; extensions: string[] }[];
+          directory?: boolean;
         }): Promise<string | null>;
         readFile(path: string): Promise<string>;
         readFileBytes(path: string, maxBytes?: number): Promise<ArrayBuffer>;
@@ -413,6 +415,35 @@ interface ReelTerminalDesktopBridge {
         closeWrite(handleId: string): Promise<void>;
         abortWrite(handleId: string): Promise<void>;
         revealInFolder(path: string): Promise<void>;
+      };
+      dataRoot?: {
+        getInfo(): Promise<{
+          active: boolean;
+          root: string;
+          source: "env" | "pointer" | "default";
+          appData: string;
+          projects: string;
+          agentWorkspace: string;
+          logs: string;
+          machineConfigDir: string;
+          migrationItems: Array<{
+            kind: "appData" | "workspace";
+            from: string;
+            to: string;
+            status:
+              | "moved"
+              | "copied-backup-left"
+              | "skipped-missing"
+              | "skipped-target-exists"
+              | "failed";
+            error?: string;
+          }>;
+        }>;
+        change(path: string): Promise<{
+          ok: boolean;
+          requiresRestart: boolean;
+          error?: string;
+        }>;
       };
       export: {
         start(args: OpenReelExportStartArgs): Promise<OpenReelExportSession>;

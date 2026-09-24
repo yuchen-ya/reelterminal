@@ -715,24 +715,8 @@ export async function initializeAutoSave(): Promise<void> {
   await autoSaveManager.initialize();
 }
 
-export function startAutoSave(getProject: () => Project): void {
-  autoSaveManager.start(getProject);
-}
-
-export function stopAutoSave(): void {
-  autoSaveManager.stop();
-}
-
-export function markProjectDirty(): void {
-  autoSaveManager.markDirty();
-}
-
 export async function checkForRecovery(
   projectId?: string,
 ): Promise<AutoSaveMetadata[]> {
   return autoSaveManager.checkForRecovery(projectId);
-}
-
-export async function recoverProject(saveId: string): Promise<Project | null> {
-  return autoSaveManager.recover(saveId);
 }

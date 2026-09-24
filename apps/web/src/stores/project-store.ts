@@ -638,6 +638,10 @@ export interface ProjectState {
     clipIds: readonly string[],
     options?: import("./project/work-assets-slice").SaveClipWorkAssetOptions,
   ) => Promise<import("./project/work-assets-slice").SaveClipWorkAssetResult>;
+  saveMediaAsWorkAsset: (
+    mediaId: string,
+    options?: import("./project/work-assets-slice").SaveMediaWorkAssetOptions,
+  ) => Promise<import("./project/work-assets-slice").SaveClipWorkAssetResult>;
   renameWorkAsset: (
     workAssetId: string,
     name: string,

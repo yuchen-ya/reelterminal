@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTimelineStore } from "../../stores/timeline-store";
 import { useCollabStore } from "../../stores/collab-store";
+import { useNotificationStore } from "../../stores/notification-store";
 import { X } from "@/icons/lucide-compat";
 
 /** Ephemeral evidence from the active agent session; never project content. */
@@ -9,8 +10,42 @@ export function AgentInspectionPanel() {
   const inspection = useCollabStore((state) => state.inspection);
   const dismiss = useCollabStore((state) => state.dismissInspection);
   const playing = useTimelineStore((state) => state.playbackState === "playing");
+  const [expanded, setExpanded] = useState(false);
   useEffect(() => { if (playing) dismiss(); }, [playing, inspection, dismiss]);
-  if (!inspection || playing) return null;
+
+  // Collapsed by default: the evidence sits in the top-right toast stack as a
+  // text-only card (the same lane as error messages) and expands on click, so
+  // an unnoticed inspection never mounts its base64 sample sheets. The toast
+  // retracts while the panel is open — the two never share the corner.
+  useEffect(() => {
+    if (!inspection) {
+      setExpanded(false);
+      return;
+    }
+    if (expanded) return;
+    const id = useNotificationStore.getState().addNotification({
+      type: "info",
+      title: inspection.title,
+      message: [
+        inspection.kind === "cloud-opinion"
+          ? "Cloud model opinion · not audiovisual acceptance"
+          : "Static frame inspection · not audiovisual review",
+        inspection.range,
+        inspection.images.length > 0
+          ? `${inspection.images.length} sample sheet${inspection.images.length === 1 ? "" : "s"}`
+          : null,
+        "click to expand",
+      ]
+        .filter((part): part is string => Boolean(part))
+        .join(" · "),
+      duration: 0,
+      onClick: () => setExpanded(true),
+      onDismiss: () => useCollabStore.getState().dismissInspection(),
+    });
+    return () => useNotificationStore.getState().removeNotification(id);
+  }, [inspection, expanded]);
+
+  if (!inspection || !expanded || playing) return null;
   // Portal to document.body: as an in-app absolute layer (z-40) it sat in the
   // desktop shell's single `isolate` stacking context and lost to the timeline
   // toolbar (z-50) and playhead. Portaled, it uses the --z-popover ladder and

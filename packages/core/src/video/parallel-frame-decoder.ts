@@ -37,15 +37,6 @@ interface WorkerState {
   mediabunnyAvailable: boolean;
 }
 
-export interface ParallelDecoderStats {
-  workerCount: number;
-  totalDecodes: number;
-  averageDecodeTime: number;
-  pendingRequests: number;
-  cacheHits: number;
-  cacheMisses: number;
-}
-
 export class ParallelFrameDecoder {
   private workers: WorkerState[] = [];
   private workerUrls: string[] = [];
@@ -57,8 +48,6 @@ export class ParallelFrameDecoder {
   private frameCache: Map<string, { bitmap: ImageBitmap; timestamp: number }> =
     new Map();
   private maxCacheSize = 100;
-  private cacheHits = 0;
-  private cacheMisses = 0;
   private initialized = false;
   private initPromise: Promise<void> | null = null;
   private requestIdCounter = 0;
@@ -85,22 +74,44 @@ export class ParallelFrameDecoder {
 
   private async doInitialize(): Promise<void> {
     const workerPromises: Promise<WorkerState>[] = [];
+    // Every Worker created below is registered here immediately so that a
+    // failed initialization can terminate them instead of orphaning them.
+    const createdWorkers: Worker[] = [];
 
     for (let i = 0; i < this.workerCount; i++) {
-      workerPromises.push(this.createWorker(i));
+      workerPromises.push(this.createWorker(i, createdWorkers));
     }
 
-    this.workers = await Promise.all(workerPromises);
+    try {
+      this.workers = await Promise.all(workerPromises);
+    } catch (error) {
+      // Init failed: terminate all created workers (ready or still starting),
+      // then rethrow the original rejection to preserve its timing/identity.
+      for (const worker of createdWorkers) {
+        try { worker.terminate(); } catch {}
+      }
+      createdWorkers.length = 0;
+      this.workers = [];
+      for (const url of this.workerUrls) {
+        try { URL.revokeObjectURL(url); } catch {}
+      }
+      this.workerUrls = [];
+      throw error;
+    }
     this.mediabunnyAvailable = this.workers.some((w) => w.mediabunnyAvailable);
     this.initialized = true;
   }
 
-  private async createWorker(index: number): Promise<WorkerState> {
+  private async createWorker(
+    index: number,
+    createdWorkers: Worker[],
+  ): Promise<WorkerState> {
     return new Promise((resolve, reject) => {
       const workerUrl = createDecodeWorkerUrl();
       this.workerUrls.push(workerUrl);
 
       const worker = new Worker(workerUrl, { type: "module" });
+      createdWorkers.push(worker);
 
       const state: WorkerState = {
         worker,
@@ -123,9 +134,6 @@ export class ParallelFrameDecoder {
           clearTimeout(initTimeout);
           state.workerId = response.workerId;
           state.mediabunnyAvailable = response.mediabunnyAvailable ?? false;
-          if (state.mediabunnyAvailable) {
-          } else {
-          }
           resolve(state);
           return;
         }
@@ -208,28 +216,6 @@ export class ParallelFrameDecoder {
     this.frameCache.set(key, { bitmap, timestamp: performance.now() });
   }
 
-  private async getFromCache(
-    clipId: string,
-    time: number,
-  ): Promise<ImageBitmap | null> {
-    const cacheKey = `${clipId}:${time.toFixed(3)}`;
-    const cached = this.frameCache.get(cacheKey);
-
-    if (cached) {
-      cached.timestamp = performance.now();
-      this.cacheHits++;
-      try {
-        return await createImageBitmap(cached.bitmap);
-      } catch {
-        this.frameCache.delete(cacheKey);
-        return null;
-      }
-    }
-
-    this.cacheMisses++;
-    return null;
-  }
-
   private getLeastBusyWorker(): WorkerState | null {
     let leastBusy: WorkerState | null = null;
     let minPending = Infinity;
@@ -289,106 +275,11 @@ export class ParallelFrameDecoder {
     worker.worker.postMessage(decodeRequest);
   }
 
-  async decodeFrame(request: FrameDecodeRequest): Promise<FrameDecodeResult> {
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    const cached = await this.getFromCache(request.clipId, request.time);
-    if (cached) {
-      return {
-        clipId: request.clipId,
-        bitmap: cached,
-        time: request.time,
-      };
-    }
-
-    return new Promise((resolve, reject) => {
-      const worker = this.getLeastBusyWorker();
-
-      if (worker && worker.pendingRequests.size < 2) {
-        this.sendDecodeRequest(worker, request, resolve, reject);
-      } else {
-        this.requestQueue.push({ request, resolve, reject });
-      }
-    });
-  }
-
-  async decodeFrames(
-    requests: FrameDecodeRequest[],
-  ): Promise<Map<string, FrameDecodeResult>> {
-    if (!this.initialized) {
-      await this.initialize();
-    }
-
-    const results = new Map<string, FrameDecodeResult>();
-    const pending: Promise<FrameDecodeResult>[] = [];
-
-    for (const request of requests) {
-      pending.push(this.decodeFrame(request));
-    }
-
-    const resolved = await Promise.all(pending);
-    for (const result of resolved) {
-      results.set(result.clipId, result);
-    }
-
-    return results;
-  }
-
-  async decodeClipsAtTime(
-    clips: Array<{ clipId: string; blob: Blob; time: number }>,
-    width: number,
-    height: number,
-  ): Promise<Map<string, ImageBitmap>> {
-    const requests: FrameDecodeRequest[] = clips.map((clip) => ({
-      clipId: clip.clipId,
-      blob: clip.blob,
-      time: clip.time,
-      width,
-      height,
-    }));
-
-    const results = await this.decodeFrames(requests);
-    const bitmaps = new Map<string, ImageBitmap>();
-
-    for (const [clipId, result] of results) {
-      if (result.bitmap) {
-        bitmaps.set(clipId, result.bitmap);
-      }
-    }
-
-    return bitmaps;
-  }
-
-  getStats(): ParallelDecoderStats {
-    let totalDecodes = 0;
-    let totalTime = 0;
-    let pendingCount = 0;
-
-    for (const worker of this.workers) {
-      totalDecodes += worker.totalDecodes;
-      totalTime += worker.totalDecodeTime;
-      pendingCount += worker.pendingRequests.size;
-    }
-
-    return {
-      workerCount: this.workers.length,
-      totalDecodes,
-      averageDecodeTime: totalDecodes > 0 ? totalTime / totalDecodes : 0,
-      pendingRequests: pendingCount + this.requestQueue.length,
-      cacheHits: this.cacheHits,
-      cacheMisses: this.cacheMisses,
-    };
-  }
-
   clearCache(): void {
     for (const [, cached] of this.frameCache) {
       cached.bitmap.close();
     }
     this.frameCache.clear();
-    this.cacheHits = 0;
-    this.cacheMisses = 0;
   }
 
   dispose(): void {

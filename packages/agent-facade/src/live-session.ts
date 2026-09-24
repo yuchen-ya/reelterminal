@@ -845,7 +845,6 @@ export class LiveFacadeSession {
           `editor.control params.targets[${index}]`,
         ),
       );
-      this.gate("editor.control");
       if (valid.action === "seek" && valid.timeSeconds === undefined) {
         throw new FacadeError(
           "INVALID_PARAMS",

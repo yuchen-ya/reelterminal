@@ -12,8 +12,11 @@ In a live desktop session, call `capabilities_get` before creating files. Use:
 capabilities_get.mediaImport.recommendedRoot
 ```
 
-The default desktop root is `ReelTerminal Agent Workspace` under the operating
-system's Videos folder. The app creates its `jobs/` and `shared/` directories.
+The default desktop root is the `agent-workspace` folder inside the
+ReelTerminal data root — by default `ReelTerminal/agent-workspace` under the
+operating system's Videos folder (see [`DATA-ROOT.md`](DATA-ROOT.md) for the
+layout and how users relocate the root). The app creates its `jobs/` and
+`shared/` directories.
 An environment override may change the path, so an Agent must use the reported
 absolute path rather than hard-code `~/Movies`, `~/Videos`, or a repository
 path. The reported `mediaRoots` remain the authoritative import allowlist.

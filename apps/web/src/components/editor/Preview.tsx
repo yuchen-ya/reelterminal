@@ -146,6 +146,12 @@ import {
 import { ASPECT_PRESETS, aspectLabelFor } from "./preview/display-options";
 import { ReferenceComparisonPanel } from "./preview/ReferenceComparisonPanel";
 
+// Cache key for the scrub-decode video element cache (videoElementCacheRef).
+// Stabilized clips decode from their own blob, so they cache under a dedicated
+// key instead of evicting the original media's element. Keep every lookup and
+// eviction on this helper so the keys can never drift apart.
+const scrubVideoCacheKey = (mediaId: string, isStabilized: boolean): string =>
+  isStabilized ? `${mediaId}:stabilized` : mediaId;
 
 interface ClipWithPlaceholder {
   isPlaceholder?: boolean;
@@ -175,17 +181,12 @@ export const Preview: React.FC = () => {
   );
 
   // Native video element for hardware-accelerated playback (much faster for 4K)
-  const videoElementRef = useRef<HTMLVideoElement | null>(null);
-  const videoUrlRef = useRef<string | null>(null);
-  const currentVideoMediaIdRef = useRef<string | null>(null);
   const nativePlaybackActiveRef = useRef<boolean>(false);
   const nativeVideoCacheRef = useRef<
     Map<string, { video: HTMLVideoElement; url: string }>
   >(new Map());
   const nativeImageBitmapCacheRef = useRef<Map<string, ImageBitmap>>(new Map());
 
-  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
   const audioGraphRef = useRef<ReturnType<typeof getRealtimeAudioGraph> | null>(
     null,
   );
@@ -290,7 +291,6 @@ export const Preview: React.FC = () => {
   const [isRenderBridgeReady, setIsRenderBridgeReady] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [videoAreaSize, setVideoAreaSize] = useState({ width: 0, height: 0 });
-  const [, setRendererType] = useState<string>("none");
   const [isMaximized, setIsMaximized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -439,19 +439,6 @@ export const Preview: React.FC = () => {
       releaseScrubVideoElements();
     }, 350);
   }, [releaseScrubVideoElements]);
-
-  // Persistent decoder cache for efficient playback (legacy - kept for fallback)
-  const decoderCacheRef = useRef<
-    Map<
-      string,
-      {
-        input: { [Symbol.dispose]?: () => void };
-        sink: unknown;
-        mediaId: string;
-        lastUsed: number;
-      }
-    >
-  >(new Map());
 
   // Track canvas size changes for resize handles positioning
   useEffect(() => {
@@ -850,28 +837,10 @@ export const Preview: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const decoderCache = decoderCacheRef.current;
     const nativeVideoCache = nativeVideoCacheRef.current;
     const nativeImageBitmapCache = nativeImageBitmapCacheRef.current;
     return () => {
-      for (const entry of decoderCache.values()) {
-        entry.input[Symbol.dispose]?.();
-      }
-      decoderCache.clear();
-
       releaseScrubVideoElements();
-
-      if (videoElementRef.current) {
-        videoElementRef.current.pause();
-        videoElementRef.current.removeAttribute("src");
-        videoElementRef.current.load();
-        videoElementRef.current = null;
-      }
-      if (videoUrlRef.current) {
-        URL.revokeObjectURL(videoUrlRef.current);
-        videoUrlRef.current = null;
-      }
-      currentVideoMediaIdRef.current = null;
 
       for (const [, entry] of nativeVideoCache) {
         releaseVideoElement(entry);
@@ -932,20 +901,17 @@ export const Preview: React.FC = () => {
 
         rendererRef.current = renderer;
         rendererInitializedRef.current = true;
-        setRendererType(renderer.type);
 
         renderer.onDeviceLost(() => {
           console.warn("[Preview] GPU device lost, attempting recovery...");
           renderer.recreateDevice().then((success) => {
             if (!success) {
               console.error("[Preview] Failed to recover GPU device");
-              setRendererType("canvas2d");
             }
           });
         });
       } catch (error) {
         console.warn("[Preview] Failed to initialize GPU renderer:", error);
-        setRendererType("canvas2d");
       }
     };
 
@@ -1026,15 +992,6 @@ export const Preview: React.FC = () => {
   }, []);
 
   const cleanupAudioResources = useCallback(() => {
-    if (audioSourceRef.current) {
-      try {
-        audioSourceRef.current.stop();
-      } catch {
-        // Ignore errors if already stopped
-      }
-      audioSourceRef.current.disconnect();
-      audioSourceRef.current = null;
-    }
     if (audioGraphRef.current) {
       audioGraphRef.current.stopScheduler();
       audioGraphRef.current.stopAllClips();
@@ -1042,9 +999,6 @@ export const Preview: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = isMuted ? 0 : 1;
-    }
     if (audioGraphRef.current) {
       audioGraphRef.current.setPreviewMuted(isMuted);
     }
@@ -1652,7 +1606,7 @@ export const Preview: React.FC = () => {
             );
             const isStabilized = vidstab.hasStabilized(clip.id);
             const mediaTime = isStabilized ? adjustedLocalTime : (clip.inPoint || 0) + adjustedLocalTime;
-            const cacheKey = isStabilized ? `${clip.mediaId}:stabilized` : clip.mediaId;
+            const cacheKey = scrubVideoCacheKey(clip.mediaId, isStabilized);
             let cached = videoElementCacheRef.current.get(cacheKey);
 
             if (!cached) {
@@ -1835,10 +1789,16 @@ export const Preview: React.FC = () => {
             scheduleScrubVideoRelease();
             resolve(frame);
           } catch {
-            const cached = videoElementCacheRef.current.get(clip.mediaId);
+            // Evict with the same key the entry was cached under (a stabilized
+            // clip caches under `${mediaId}:stabilized`, not its plain mediaId).
+            const failedKey = scrubVideoCacheKey(
+              clip.mediaId,
+              vidstab.hasStabilized(clip.id),
+            );
+            const cached = videoElementCacheRef.current.get(failedKey);
             if (cached) {
               releaseVideoElement(cached);
-              videoElementCacheRef.current.delete(clip.mediaId);
+              videoElementCacheRef.current.delete(failedKey);
             }
             scheduleScrubVideoRelease();
             resolve(null);
@@ -2085,19 +2045,6 @@ export const Preview: React.FC = () => {
                 closeOnce(blendedFrame);
               }
               hasRenderedFrame = true;
-            }
-            if (processedA !== clipAFrame) closeOnce(processedA);
-            if (processedB && processedB !== clipBFrame) closeOnce(processedB);
-            closeOnce(clipAFrame);
-            closeOnce(clipBFrame);
-            closeOnce(blankFrame);
-            if (
-              blendedFrame &&
-              blendedFrame !== validA &&
-              blendedFrame !== validB &&
-              blendedFrame !== blankFrame
-            ) {
-              closeOnce(blendedFrame);
             }
           } else if (clipAFrame) {
             const processed = await applyEffectsToFrame(
@@ -2838,14 +2785,7 @@ export const Preview: React.FC = () => {
 
       return { canUse: true, clips: allVideoClips, imageClips };
     },
-    [
-      timelineTracks,
-      getMediaItem,
-      allTextClips,
-      allShapeClips,
-      getResolvedClipAudioEffects,
-      clipMasksById,
-    ],
+    [timelineTracks, getMediaItem, getResolvedClipAudioEffects, clipMasksById],
   );
 
   // Start native video playback using hardware-accelerated video elements (handles multiple clips)
@@ -3689,8 +3629,6 @@ export const Preview: React.FC = () => {
           imageBitmapCache.clear();
         }
 
-        videoElementRef.current = null;
-        currentVideoMediaIdRef.current = null;
         if (preserveCaches) {
           masterClock.pause();
         } else {
@@ -3918,7 +3856,6 @@ export const Preview: React.FC = () => {
           let currentMediaTime = mediaStartTime;
           let currentPlayheadTime = timelinePosition;
           let lastFrameTimestamp = performance.now();
-          let frameCount = 0;
 
           const processNextFrame = async () => {
             if (!isActive) {
@@ -3958,8 +3895,6 @@ export const Preview: React.FC = () => {
                   } | null>;
                 }
               ).getCanvas(currentMediaTime);
-
-              frameCount++;
 
               if (!frameResult || !frameResult.canvas) {
                 console.warn("[Preview] No frame at time", currentMediaTime);
@@ -4380,7 +4315,6 @@ export const Preview: React.FC = () => {
 
       const frameDuration = 1000 / 30;
       let lastFrameTimestamp = performance.now();
-      let frameCount = 0;
       let isProcessingFrame = false;
 
       const processMultiTrackFrame = async () => {
@@ -4500,7 +4434,6 @@ export const Preview: React.FC = () => {
           );
           if (hasActiveCompound) {
             await renderFrameDirectlyRef.current(currentPlayhead);
-            frameCount++;
             masterClock.reportVideoTime(currentPlayhead);
             const now = performance.now();
             const elapsed = now - lastFrameTimestamp;
@@ -4704,7 +4637,6 @@ export const Preview: React.FC = () => {
 
                   mainCtx.drawImage(offscreenCanvasRef.current!, 0, 0);
 
-                  frameCount++;
                   masterClock.reportVideoTime(currentPlayhead);
                   const nowTr = performance.now();
                   if (
@@ -5230,7 +5162,6 @@ export const Preview: React.FC = () => {
             mainCtx.drawImage(offscreenCanvasRef.current!, 0, 0);
           }
 
-          frameCount++;
           masterClock.reportVideoTime(currentPlayhead);
           const now = performance.now();
           const elapsed = now - lastFrameTimestamp;
@@ -5389,16 +5320,6 @@ export const Preview: React.FC = () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
-      }
-      if (videoElementRef.current) {
-        videoElementRef.current.pause();
-        videoElementRef.current.removeAttribute("src");
-        videoElementRef.current.load();
-        videoElementRef.current = null;
-      }
-      if (videoUrlRef.current) {
-        URL.revokeObjectURL(videoUrlRef.current);
-        videoUrlRef.current = null;
       }
       masterClock.pause();
       cleanupAudioResources();
@@ -6005,84 +5926,6 @@ export const Preview: React.FC = () => {
     return getActiveShapeClips(allShapeClips, playheadPosition);
   }, [allShapeClips, playheadPosition]);
 
-  const shapeClipBounds = useMemo(() => {
-    if (!selectedShapeClip || !canvasRef.current || !overlayRef.current)
-      return null;
-
-    const canvas = canvasRef.current;
-    const overlay = overlayRef.current;
-    const overlayRect = overlay.getBoundingClientRect();
-    const canvasRect = canvas.getBoundingClientRect();
-
-    const { transform } = selectedShapeClip;
-
-    const canvasWidth = settings.width;
-    const canvasHeight = settings.height;
-
-    const canvasAspect = canvasWidth / canvasHeight;
-    const elementAspect = canvasRect.width / canvasRect.height;
-
-    let actualWidth: number;
-    let actualHeight: number;
-    let letterboxOffsetX = 0;
-    let letterboxOffsetY = 0;
-
-    if (elementAspect > canvasAspect) {
-      actualHeight = canvasRect.height;
-      actualWidth = actualHeight * canvasAspect;
-      letterboxOffsetX = (canvasRect.width - actualWidth) / 2;
-    } else {
-      actualWidth = canvasRect.width;
-      actualHeight = actualWidth / canvasAspect;
-      letterboxOffsetY = (canvasRect.height - actualHeight) / 2;
-    }
-
-    const displayScale = actualWidth / canvasWidth;
-
-    let baseWidth: number;
-    let baseHeight: number;
-
-    if (selectedShapeClip.type === "svg") {
-      const svgClip = selectedShapeClip as SVGClip;
-      const svgWidth = svgClip.viewBox?.width || 200;
-      const svgHeight = svgClip.viewBox?.height || 200;
-      const svgAspect = svgWidth / svgHeight;
-      if (svgAspect > 1) {
-        baseWidth = canvasWidth;
-        baseHeight = canvasWidth / svgAspect;
-      } else {
-        baseHeight = canvasHeight;
-        baseWidth = canvasHeight * svgAspect;
-      }
-    } else {
-      baseWidth = 200;
-      baseHeight = 200;
-    }
-
-    const shapeWidth = baseWidth * transform.scale.x * displayScale;
-    const shapeHeight = baseHeight * transform.scale.y * displayScale;
-
-    const posX = transform.position.x * canvasWidth * displayScale;
-    const posY = transform.position.y * canvasHeight * displayScale;
-
-    const canvasOffsetX = canvasRect.left - overlayRect.left + letterboxOffsetX;
-    const canvasOffsetY = canvasRect.top - overlayRect.top + letterboxOffsetY;
-
-    const centerX = canvasOffsetX + posX;
-    const centerY = canvasOffsetY + posY;
-
-    return {
-      x: centerX - shapeWidth / 2,
-      y: centerY - shapeHeight / 2,
-      width: shapeWidth,
-      height: shapeHeight,
-      centerX,
-      centerY,
-      displayScale,
-      isShapeClip: true,
-    };
-  }, [selectedShapeClip, settings.width, settings.height, canvasSize]);
-
   const getGraphicClipDisplayBounds = useCallback(
     (clip: ShapeClip | SVGClip | StickerClip) => {
       if (!canvasRef.current || !overlayRef.current) return null;
@@ -6156,9 +5999,20 @@ export const Preview: React.FC = () => {
         height: shapeHeight,
         centerX,
         centerY,
+        displayScale,
       };
     },
     [settings.width, settings.height],
+  );
+
+  // Selection bounds for the currently selected graphic clip: the exact same
+  // geometry as the hover/hit-test bounds above, so reuse it instead of
+  // duplicating the letterbox math. canvasSize stays a recompute trigger —
+  // the rects are read live from the DOM and must refresh after resizes.
+  const shapeClipBounds = useMemo(
+    () =>
+      selectedShapeClip ? getGraphicClipDisplayBounds(selectedShapeClip) : null,
+    [selectedShapeClip, getGraphicClipDisplayBounds, canvasSize],
   );
 
   const findGraphicClipAtPoint = useCallback(
@@ -6810,6 +6664,12 @@ export const Preview: React.FC = () => {
     return null;
   }, [cropMode, cropClipId, timelineTracks]);
 
+  // The blob URL created below must not accumulate across memo recomputes:
+  // revoke the previous one before minting a new URL, and revoke the last one
+  // on unmount. The URL is still created during render on purpose so
+  // CropModeView receives a usable src in the very same commit.
+  const cropMediaUrlRef = useRef<string | null>(null);
+
   const cropMediaData = useMemo(() => {
     if (!cropMode || !cropClipId || !cropClip) return null;
 
@@ -6818,7 +6678,11 @@ export const Preview: React.FC = () => {
 
     let src: string | null = null;
     if (mediaItem.blob) {
+      if (cropMediaUrlRef.current) {
+        URL.revokeObjectURL(cropMediaUrlRef.current);
+      }
       src = URL.createObjectURL(mediaItem.blob);
+      cropMediaUrlRef.current = src;
     } else if (mediaItem.originalUrl) {
       src = mediaItem.originalUrl;
     }
@@ -6830,6 +6694,16 @@ export const Preview: React.FC = () => {
       type: mediaItem.type as "video" | "image",
     };
   }, [cropMode, cropClipId, cropClip, getMediaItem]);
+
+  useEffect(
+    () => () => {
+      if (cropMediaUrlRef.current) {
+        URL.revokeObjectURL(cropMediaUrlRef.current);
+        cropMediaUrlRef.current = null;
+      }
+    },
+    [],
+  );
 
   const cropVideoSrc = cropMediaData?.src ?? null;
   const cropMediaType = cropMediaData?.type ?? "video";

@@ -16,6 +16,7 @@
  */
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAgentFacade, type AgentFacade } from "./index";
 import { FACADE_CONTRACT_VERSION } from "./types";
@@ -337,7 +338,9 @@ describe("persistence: save → fresh session open → continue", () => {
   it("save escapes the project roots and refuses a missing parent directory (never auto-created)", async () => {
     const facade = newSession();
     await facade["project.create"]({ name: "Escape" });
-    const escaping = await facade["project.save"]({ path: "/tmp/escape-ck.json" });
+    const escaping = await facade["project.save"]({
+      path: join(tmpdir(), "escape-ck.json"),
+    });
     expect(escaping.ok).toBe(false);
     if (!escaping.ok) {
       expect(escaping.error.code).toBe("INVALID_PARAMS");

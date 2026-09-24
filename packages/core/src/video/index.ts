@@ -16,23 +16,17 @@ export * from "./keyframe-engine";
 export * from "./chroma-key-engine";
 export * from "./motion-tracking-engine";
 export * from "./motion-tracking-keyframes";
-export * from "./playback-engine";
 export * from "./types";
 
 // WebGPU rendering
 export * from "./renderer-factory";
 export * from "./webgpu-renderer-impl";
 export * from "./canvas2d-fallback-renderer";
-export * from "./texture-cache";
 export * from "./webgpu-effects-processor";
-export * from "./unified-effects-processor";
 
 // Parallel decoding
 export * from "./parallel-frame-decoder";
 export * from "./decode-worker";
-
-// Frame buffering
-export * from "./frame-ring-buffer";
 
 // GPU Compositing
 export * from "./gpu-compositor";

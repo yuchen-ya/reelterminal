@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -98,8 +99,13 @@ async function resolveModelInput(modelUrl: string, workDir: string): Promise<str
   throw new Error("rig_humanoid_model requires an absolute path, file:// URL, or http(s) URL");
 }
 
-async function resolveRigOutput(args: RigHumanoidModelArgs, workDir: string): Promise<string> {
-  const outputPath = args.outputPath?.trim() || path.join(workDir, "rigged-model.glb");
+async function resolveRigOutput(args: RigHumanoidModelArgs): Promise<string> {
+  // The deliverable must live OUTSIDE the per-job scratch workDir so the
+  // workDir can be reclaimed when the job settles without deleting the
+  // rigged GLB the caller still reads via outputPath/outputUrl.
+  const outputPath =
+    args.outputPath?.trim() ||
+    path.join(os.tmpdir(), `reelterminal-rigged-${randomUUID()}.glb`);
   await mkdir(path.dirname(outputPath), { recursive: true });
   return outputPath;
 }
@@ -384,65 +390,73 @@ export async function rigHumanoidModel(
   }
 
   const workDir = await tempRiggingDir();
-  const inputPath = await resolveModelInput(args.modelUrl, workDir);
-  const outputPath = await resolveRigOutput(args, workDir);
-  const reportPath = path.join(workDir, "rig-report.json");
-  const scriptPath = await writeRigScript(workDir);
-
+  // Everything written into workDir is per-job scratch (downloaded source,
+  // embedded script, report). The deliverable GLB never lands in workDir
+  // (resolveRigOutput defaults to its own tmp path), so the whole directory
+  // is reclaimed here on every path — success, job failure, and throws.
   try {
-    await execFileAsync(
-      backend.path,
-      [
-        "--background",
-        "--factory-startup",
-        "--python",
-        scriptPath,
-        "--",
-        "--input",
-        inputPath,
-        "--output",
+    const inputPath = await resolveModelInput(args.modelUrl, workDir);
+    const outputPath = await resolveRigOutput(args);
+    const reportPath = path.join(workDir, "rig-report.json");
+    const scriptPath = await writeRigScript(workDir);
+
+    try {
+      await execFileAsync(
+        backend.path,
+        [
+          "--background",
+          "--factory-startup",
+          "--python",
+          scriptPath,
+          "--",
+          "--input",
+          inputPath,
+          "--output",
+          outputPath,
+          "--report",
+          reportPath,
+          "--name",
+          args.name ?? LEGACY_RIGGING_HUMANOID_NAME,
+          ...(args.heightMeters ? ["--height-meters", String(args.heightMeters)] : []),
+          ...(args.overwriteExisting ? ["--overwrite-existing"] : []),
+        ],
+        {
+          timeout: RIG_JOB_TIMEOUT_MS,
+          windowsHide: true,
+          maxBuffer: 20 * 1024 * 1024,
+        },
+      );
+    } catch (error) {
+      return {
+        ok: false,
+        provider: "blender",
+        inputUrl: args.modelUrl,
         outputPath,
-        "--report",
-        reportPath,
-        "--name",
-        args.name ?? LEGACY_RIGGING_HUMANOID_NAME,
-        ...(args.heightMeters ? ["--height-meters", String(args.heightMeters)] : []),
-        ...(args.overwriteExisting ? ["--overwrite-existing"] : []),
-      ],
-      {
-        timeout: RIG_JOB_TIMEOUT_MS,
-        windowsHide: true,
-        maxBuffer: 20 * 1024 * 1024,
-      },
-    );
-  } catch (error) {
+        outputUrl: pathToFileURL(outputPath).href,
+        createdArmature: false,
+        preservedExistingArmature: false,
+        skinnedMeshCount: 0,
+        meshCount: 0,
+        boneCount: 0,
+        warnings: [
+          {
+            code: "BLENDER_JOB_FAILED",
+            severity: "error",
+            message: error instanceof Error ? error.message : "Blender rigging job failed.",
+          },
+        ],
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+
+    const rawReport = JSON.parse(await readFile(reportPath, "utf8")) as RigHumanoidModelResult;
     return {
-      ok: false,
-      provider: "blender",
+      ...rawReport,
       inputUrl: args.modelUrl,
       outputPath,
       outputUrl: pathToFileURL(outputPath).href,
-      createdArmature: false,
-      preservedExistingArmature: false,
-      skinnedMeshCount: 0,
-      meshCount: 0,
-      boneCount: 0,
-      warnings: [
-        {
-          code: "BLENDER_JOB_FAILED",
-          severity: "error",
-          message: error instanceof Error ? error.message : "Blender rigging job failed.",
-        },
-      ],
-      error: error instanceof Error ? error.message : String(error),
     };
+  } finally {
+    await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
   }
-
-  const rawReport = JSON.parse(await readFile(reportPath, "utf8")) as RigHumanoidModelResult;
-  return {
-    ...rawReport,
-    inputUrl: args.modelUrl,
-    outputPath,
-    outputUrl: pathToFileURL(outputPath).href,
-  };
 }

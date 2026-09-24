@@ -45,11 +45,14 @@ export const fileWriters = new FileWriterRegistry();
 
 export async function showSaveDialog(args: {
   defaultPath: string;
+  defaultDir?: string;
   filters: { name: string; extensions: string[] }[];
 }): Promise<string | null> {
   const win = BrowserWindow.getFocusedWindow() ?? undefined;
   const res = await dialog.showSaveDialog(win!, {
-    defaultPath: args.defaultPath,
+    defaultPath: args.defaultDir
+      ? path.join(args.defaultDir, args.defaultPath)
+      : args.defaultPath,
     filters: args.filters,
   });
   return res.canceled || !res.filePath ? null : res.filePath;
@@ -57,11 +60,12 @@ export async function showSaveDialog(args: {
 
 export async function showOpenDialog(args: {
   filters: { name: string; extensions: string[] }[];
+  directory?: boolean;
 }): Promise<string | null> {
   const win = BrowserWindow.getFocusedWindow() ?? undefined;
   const res = await dialog.showOpenDialog(win!, {
-    filters: args.filters,
-    properties: ["openFile"],
+    filters: args.directory ? [] : args.filters,
+    properties: [args.directory ? "openDirectory" : "openFile"],
   });
   return res.canceled || res.filePaths.length === 0 ? null : res.filePaths[0];
 }

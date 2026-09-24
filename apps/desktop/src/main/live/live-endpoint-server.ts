@@ -285,15 +285,6 @@ export function liveEndpointFileResolution(
   return { file: canonicalEndpointPath(home, "live-endpoint"), explicit: false };
 }
 
-/**
- * Stable location external clients read (overridable for tests via
- * REELTERMINAL_LIVE_ENDPOINT_FILE (legacy OPENREEL_) so they never touch
- * the real file).
- */
-export function liveEndpointFilePath(): string {
-  return liveEndpointFileResolution().file;
-}
-
 function writeEndpointFile(file: string, endpoint: LiveEndpointFile): void {
   const parent = path.dirname(file);
   mkdirSync(parent, { recursive: true, mode: 0o700 });
@@ -399,7 +390,7 @@ export interface LiveEndpointOptions {
   readonly host?: string;
   /** Defaults to REELTERMINAL_LIVE_PORT (legacy OPENREEL_), else random. */
   readonly port?: number;
-  /** Defaults to liveEndpointFilePath(). */
+  /** Defaults to the canonical/overridden endpoint path resolution. */
   readonly endpointFilePath?: string;
   /**
    * Home directory for canonical/legacy endpoint resolution. Injectable so

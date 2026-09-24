@@ -181,8 +181,6 @@ export const READ_ONLY_VERBS = [
   "help.search",
   "visual.inspect",
   "preview.render_comparison",
-  "analysis.list",
-  "analysis.get",
   "job.status",
   "verify.artifact",
   ...PLUGIN_TOOLS.filter((tool) => tool.effect === "read").map((tool) => tool.name),

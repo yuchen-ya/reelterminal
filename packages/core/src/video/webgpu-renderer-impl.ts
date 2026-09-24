@@ -12,7 +12,6 @@ import {
   createTransformUniformsBuffer,
   createTransformMatrix,
 } from "./shaders";
-import { TextureCache, calculateTextureSize } from "./texture-cache";
 
 export class WebGPURenderer implements Renderer {
   readonly type = "webgpu" as const;
@@ -23,7 +22,6 @@ export class WebGPURenderer implements Renderer {
   private context: GPUCanvasContext | null = null;
   private width: number;
   private height: number;
-  private _maxTextureCache: number;
   private deviceLostCallbacks: Array<() => void> = [];
   private layers: RenderLayer[] = [];
   private isDeviceLost = false;
@@ -64,27 +62,11 @@ export class WebGPURenderer implements Renderer {
   private currentFrameTexture: GPUTexture | null = null;
   private lastRenderTime = 0;
 
-  // Frame cache for decoded video frames
-  private frameCache: TextureCache | null = null;
-  private frameCacheHits = 0;
-  private frameCacheMisses = 0;
-
-  private renderPipelineRef: GPURenderPipeline | null = null;
-  private bindGroupLayoutRef: GPUBindGroupLayout | null = null;
-
   constructor(config: RendererConfig) {
     this._config = config;
     this.width = config.width;
     this.height = config.height;
-    this._maxTextureCache = config.maxTextureCache ?? 500 * 1024 * 1024;
     this.canvas = new OffscreenCanvas(config.width, config.height);
-    void this.renderPipelineRef;
-    void this.bindGroupLayoutRef;
-  }
-
-  /** Get the max texture cache size */
-  get maxTextureCache(): number {
-    return this._maxTextureCache;
   }
 
   /** Get the renderer config */
@@ -147,14 +129,6 @@ export class WebGPURenderer implements Renderer {
       await this.effectsProcessor.initialize();
       this.effectsProcessor.onEffectsChange((clipId, effects) => {
         this.triggerReRender(clipId, effects);
-      });
-      this.frameCache = new TextureCache({
-        maxSize: this._maxTextureCache,
-        onEvict: (entry) => {
-          console.debug(
-            `[WebGPURenderer] Evicted frame cache entry: ${entry.clipId}:${entry.frameTime}`,
-          );
-        },
       });
 
       return true;
@@ -296,9 +270,6 @@ export class WebGPURenderer implements Renderer {
 
     // Border radius shader texture layout (group 1) - same as composite
     this.borderRadiusTextureLayout = this.compositeTextureLayout;
-
-    // Legacy compatibility
-    this.bindGroupLayoutRef = this.compositeUniformLayout;
   }
 
   private createUniformBuffers(): void {
@@ -344,9 +315,6 @@ export class WebGPURenderer implements Renderer {
     await this.createCompositePipeline(canvasFormat);
     await this.createTransformPipeline("rgba8unorm");
     await this.createBorderRadiusPipeline("rgba8unorm");
-
-    // Legacy compatibility
-    this.renderPipelineRef = this.compositePipeline;
   }
 
   private async createCompositePipeline(
@@ -525,10 +493,6 @@ export class WebGPURenderer implements Renderer {
       this.effectsProcessor.dispose();
       this.effectsProcessor = null;
     }
-    if (this.frameCache) {
-      this.frameCache.clear();
-      this.frameCache = null;
-    }
 
     // Destroy frame buffers
     for (const buffer of this.frameBuffers) {
@@ -552,14 +516,12 @@ export class WebGPURenderer implements Renderer {
     this.compositePipeline = null;
     this.transformPipeline = null;
     this.borderRadiusPipeline = null;
-    this.renderPipelineRef = null;
     this.compositeUniformLayout = null;
     this.compositeTextureLayout = null;
     this.transformUniformLayout = null;
     this.transformTextureLayout = null;
     this.borderRadiusUniformLayout = null;
     this.borderRadiusTextureLayout = null;
-    this.bindGroupLayoutRef = null;
     this.textureSampler = null;
 
     // Destroy device
@@ -573,8 +535,6 @@ export class WebGPURenderer implements Renderer {
     this.deviceLostCallbacks = [];
     this.effectsChangeCallbacks = [];
     this.layers = [];
-    this.frameCacheHits = 0;
-    this.frameCacheMisses = 0;
   }
 
   beginFrame(): void {
@@ -995,92 +955,5 @@ export class WebGPURenderer implements Renderer {
 
   isLost(): boolean {
     return this.isDeviceLost;
-  }
-
-  getCachedFrame(clipId: string, frameTime: number): GPUTexture | null {
-    if (!this.frameCache) return null;
-
-    const texture = this.frameCache.get(clipId, frameTime);
-    if (texture) {
-      this.frameCacheHits++;
-      return texture;
-    }
-
-    this.frameCacheMisses++;
-    return null;
-  }
-
-  cacheFrame(
-    clipId: string,
-    frameTime: number,
-    image: ImageBitmap,
-  ): GPUTexture {
-    if (!this.device) {
-      throw new Error("WebGPU device not initialized");
-    }
-    const existing = this.getCachedFrame(clipId, frameTime);
-    if (existing) {
-      return existing;
-    }
-    const texture = this.createTextureFromImage(image);
-    const size = calculateTextureSize(image.width, image.height, "rgba8unorm");
-    if (this.frameCache) {
-      this.frameCache.set(clipId, frameTime, texture, size);
-    }
-
-    return texture;
-  }
-
-  hasFrameCached(clipId: string, frameTime: number): boolean {
-    return this.frameCache?.has(clipId, frameTime) ?? false;
-  }
-
-  evictClipFrames(clipId: string): void {
-    this.frameCache?.evict(clipId);
-  }
-
-  getFrameCacheStats(): {
-    hits: number;
-    misses: number;
-    hitRate: number;
-    memoryUsage: number;
-    maxSize: number;
-    entryCount: number;
-  } {
-    const total = this.frameCacheHits + this.frameCacheMisses;
-    return {
-      hits: this.frameCacheHits,
-      misses: this.frameCacheMisses,
-      hitRate: total > 0 ? this.frameCacheHits / total : 0,
-      memoryUsage: this.frameCache?.getMemoryUsage() ?? 0,
-      maxSize: this.frameCache?.getMaxSize() ?? 0,
-      entryCount: this.frameCache?.getCount() ?? 0,
-    };
-  }
-
-  clearFrameCache(): void {
-    this.frameCache?.clear();
-    this.frameCacheHits = 0;
-    this.frameCacheMisses = 0;
-  }
-
-  getRenderPipeline(): GPURenderPipeline | null {
-    return this.compositePipeline;
-  }
-
-  getTransformPipeline(): GPURenderPipeline | null {
-    return this.transformPipeline;
-  }
-
-  getBorderRadiusPipeline(): GPURenderPipeline | null {
-    return this.borderRadiusPipeline;
-  }
-
-  arePipelinesInitialized(): boolean {
-    return (
-      this.compositePipeline !== null &&
-      this.transformPipeline !== null &&
-      this.borderRadiusPipeline !== null
-    );
   }
 }

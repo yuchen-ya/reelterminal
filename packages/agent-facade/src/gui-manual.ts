@@ -351,15 +351,17 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     title: { zh: "工作素材", en: "Work Assets" },
     // @source apps/web/src/components/editor/timeline/ClipContextMenu.tsx:20,184-189(capture)
     // @source apps/web/src/components/editor/panels/WorkAssetsTab.tsx:152-156,219-237,266,312,355-361(missingSource/instantiate)
+    // @source apps/web/src/components/editor/AssetsPanel.tsx(media card menu: workAssets.saveToWork)
+    // @source packages/core/src/work-assets/capture.ts(captureWorkAssetFromMedia)
     summary: {
-      zh: "\"工作素材\"标签存放项目内可复用的片段捕捉：从片段捕捉、加入时间线、拖回复用。",
-      en: "The Work Assets tab stores reusable in-project clip captures: capture from a clip, add to the timeline, drag back to reuse.",
+      zh: "\"工作素材\"标签存放项目内可复用的片段与素材捕捉：从片段或媒体卡捕捉、加入时间线、拖回复用。",
+      en: "The Work Assets tab stores reusable in-project clip and media captures: capture from a clip or media card, add to the timeline, drag back to reuse.",
     },
     entry: [
       { zh: "编辑器左侧面板 → \"工作素材\" 标签。", en: "Left panel in the editor → the Work Assets tab." },
       {
-        zh: "捕捉入口：时间线上右键一个片段 → 捕捉为工作素材。",
-        en: "Capture entry: right-click a timeline clip → capture as a work asset.",
+        zh: "捕捉入口：时间线上右键一个片段 → 捕捉为工作素材；或在\"媒体\"标签右键媒体卡 → 保存到工作素材（无需先上时间线）。",
+        en: "Capture entries: right-click a timeline clip → capture as a work asset; or right-click a media card in the Media tab → save to work assets (no timeline detour needed).",
       },
     ],
     steps: [
@@ -380,6 +382,10 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       {
         zh: "工作素材是项目级的可复用捕捉，区别于用户级素材库（跨项目）。",
         en: "Work assets are project-scoped reusable captures — distinct from the user-level material library (cross-project).",
+      },
+      {
+        zh: "从媒体卡直接捕捉的素材携带默认参数（无特效、无关键帧）；需要保留参数的捕捉请从时间线片段执行。",
+        en: "Captures made directly from a media card carry default clip parameters (no effects, no keyframes); capture from a timeline clip to preserve parameters.",
       },
       {
         zh: "源文件缺失时卡片显示缺失警示，加入时间线被禁用，但条目本身保留。",

@@ -127,12 +127,24 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
         damping: 30,
         opacity: { duration: 0.2 },
       }}
+      role={notification.onClick ? "button" : undefined}
+      tabIndex={notification.onClick ? 0 : undefined}
+      title={notification.onClick ? t("Expand agent inspection") : undefined}
+      onClick={notification.onClick}
+      onKeyDown={(event) => {
+        if (!notification.onClick || event.target !== event.currentTarget) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          notification.onClick();
+        }
+      }}
       className={`
         relative overflow-hidden
         min-w-[320px] max-w-[420px]
         rounded-xl border shadow-lg
         ${config.bg} ${config.border}
         backdrop-blur-xl
+        ${notification.onClick ? "cursor-pointer" : ""}
       `}
     >
       <div className="flex items-start gap-3 p-4">
@@ -178,7 +190,11 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
             transition={{ delay: 0.2 }}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
-            onClick={() => onRemove(notification.id)}
+            onClick={(event) => {
+              event.stopPropagation();
+              notification.onDismiss?.();
+              onRemove(notification.id);
+            }}
             className={`
               flex-shrink-0 p-1.5 rounded-lg
               transition-colors duration-150

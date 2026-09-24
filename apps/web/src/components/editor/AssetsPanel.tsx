@@ -69,6 +69,75 @@ const SVG_IMPORT_ERROR_MESSAGE_KEYS: Record<SvgValidationErrorCode, string> = {
 };
 
 /**
+ * Media card context menu, extracted as a hook so the capture entries can be
+ * driven without the menu DOM (same pattern as `useClipContextMenuItems`).
+ * Marker entries come from the shared project-marker menu hook so both
+ * surfaces stay in step.
+ */
+export function useMediaContextMenuItems({
+  item,
+  startRename,
+}: {
+  item: MediaItem;
+  startRename: () => void;
+}): ContextMenuOption[] {
+  const { t } = useTranslation();
+  const reviewMarkerMenuItems = useProjectMarkerMenuItems({
+    kind: "asset",
+    mediaId: item.id,
+  });
+  const contextMenuItems: ContextMenuOption[] = [
+    {
+      label: t("agentReferences.add"),
+      icon: <Hash size={14} aria-hidden />,
+      onClick: () => markAgentReferenceForMedia(item),
+    },
+    {
+      label: t("media.renameAction"),
+      icon: <Pencil size={14} aria-hidden />,
+      onClick: startRename,
+    },
+    {
+      label: t("material.saveToLibrary"),
+      icon: <BookMarked size={14} aria-hidden />,
+      onClick: () => {
+        void (async () => {
+          const result = await saveProjectMediaToLibrary(item);
+          if (result.ok) {
+            toast.success(t("material.savedToLibrary"), result.material?.title ?? "");
+            window.dispatchEvent(
+              new CustomEvent("reelterminal:material-library-changed"),
+            );
+          } else {
+            toast.error(
+              t("material.saveToLibraryFailed"),
+              result.error?.message ?? "failed",
+            );
+          }
+        })();
+      },
+    },
+    {
+      label: t("workAssets.saveToWork"),
+      icon: <FolderPlus size={14} aria-hidden />,
+      onClick: () => {
+        void (async () => {
+          const { saveMediaAsWorkAsset } = useProjectStore.getState();
+          const saved = await saveMediaAsWorkAsset(item.id);
+          if (saved.ok) {
+            toast.success(t("workAssets.saved"), saved.asset.name);
+          } else {
+            toast.error(t("workAssets.captureFailed"), saved.message);
+          }
+        })();
+      },
+    },
+    ...reviewMarkerMenuItems,
+  ];
+  return contextMenuItems;
+}
+
+/**
  * Media Item Thumbnail Component
  * Shows thumbnail with metadata below (not overlaid)
  */
@@ -235,10 +304,6 @@ const MediaThumbnail: React.FC<{
   const reviewMarkers = findMarkersForEntity(projectMarkers, {
     mediaId: item.id,
   });
-  const reviewMarkerMenuItems = useProjectMarkerMenuItems({
-    kind: "asset",
-    mediaId: item.id,
-  });
 
   const startRename = useCallback(() => {
     setNameDraft(resolvedName);
@@ -303,39 +368,7 @@ const MediaThumbnail: React.FC<{
     />
   );
 
-  const contextMenuItems: ContextMenuOption[] = [
-    {
-      label: t("agentReferences.add"),
-      icon: <Hash size={14} aria-hidden />,
-      onClick: () => markAgentReferenceForMedia(item),
-    },
-    {
-      label: t("media.renameAction"),
-      icon: <Pencil size={14} aria-hidden />,
-      onClick: startRename,
-    },
-    {
-      label: t("material.saveToLibrary"),
-      icon: <BookMarked size={14} aria-hidden />,
-      onClick: () => {
-        void (async () => {
-          const result = await saveProjectMediaToLibrary(item);
-          if (result.ok) {
-            toast.success(t("material.savedToLibrary"), result.material?.title ?? "");
-            window.dispatchEvent(
-              new CustomEvent("reelterminal:material-library-changed"),
-            );
-          } else {
-            toast.error(
-              t("material.saveToLibraryFailed"),
-              result.error?.message ?? "failed",
-            );
-          }
-        })();
-      },
-    },
-    ...reviewMarkerMenuItems,
-  ];
+  const contextMenuItems = useMediaContextMenuItems({ item, startRename });
 
   const getIcon = () => {
     switch (item.type) {

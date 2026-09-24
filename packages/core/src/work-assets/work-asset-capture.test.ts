@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { captureWorkAssetFromClip, captureWorkAssetFromClips } from "./capture";
+import {
+  captureWorkAssetFromClip,
+  captureWorkAssetFromClips,
+  captureWorkAssetFromMedia,
+} from "./capture";
+import { buildWorkAssetInstantiateActions } from "./instantiate";
 import { ActionExecutor } from "../actions/action-executor";
 import { ActionValidator } from "../actions/action-validator";
 import type { Clip, Track, Transition } from "../types/timeline";
@@ -689,5 +694,145 @@ describe("captureWorkAssetFromClips", () => {
     expect(project.workAssets).toHaveLength(1);
     expect(project.workAssets![0].kind).toBe("multi");
     expect(project.workAssets![0].members).toHaveLength(3);
+  });
+});
+
+describe("captureWorkAssetFromMedia", () => {
+  it("captures the full media span with the engine's default clip parameters", () => {
+    const result = captureWorkAssetFromMedia(makeProject(), "m1", {
+      assetId: "wa-m1",
+      now: 2000,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const asset = result.asset;
+    expect(asset.schemaVersion).toBe(1);
+    expect(asset.kind).toBe("single");
+    expect(asset.id).toBe("wa-m1");
+    expect(asset.sourceMediaId).toBe("m1");
+    expect(asset.sourceRange).toEqual({ inSec: 0, outSec: 30 });
+    expect(asset.name).toBe("Take 01 (0s-30s)");
+    expect(asset.unsupportedParams).toEqual([]);
+    expect(asset.clipSnapshot).toMatchObject({
+      duration: 30,
+      inPoint: 0,
+      outPoint: 30,
+      volume: 1,
+    });
+    expect(asset.clipSnapshot?.effects).toEqual([]);
+    expect(asset.clipSnapshot?.audioEffects).toEqual([]);
+    expect(asset.clipSnapshot?.keyframes).toEqual([]);
+    expect(asset.clipSnapshot?.transform).toMatchObject({
+      rotation: 0,
+      opacity: 1,
+    });
+    expect(asset.createdAt).toBe(2000);
+    expect(asset.updatedAt).toBe(2000);
+  });
+
+  it("captures an explicit sub-range and honors a caller-supplied name", () => {
+    const result = captureWorkAssetFromMedia(makeProject(), "m1", {
+      inSec: 4,
+      outSec: 9,
+      name: "  Punch-in  ",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.asset.name).toBe("Punch-in");
+    expect(result.asset.sourceRange).toEqual({ inSec: 4, outSec: 9 });
+    expect(result.asset.clipSnapshot).toMatchObject({
+      duration: 5,
+      inPoint: 4,
+      outPoint: 9,
+    });
+  });
+
+  it("falls back to the 5s still-image span when the media reports no duration", () => {
+    const project = makeProject({
+      mediaItems: [
+        {
+          type: "image",
+          metadata: {
+            duration: 0,
+            width: 100,
+            height: 80,
+            frameRate: 0,
+            codec: "png",
+            sampleRate: 0,
+            channels: 0,
+            fileSize: 10,
+          },
+        },
+      ],
+    });
+    const result = captureWorkAssetFromMedia(project, "m1");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.asset.sourceRange).toEqual({ inSec: 0, outSec: 5 });
+    expect(result.asset.clipSnapshot?.duration).toBe(5);
+  });
+
+  it("rejects unknown media, placeholders, degenerate or out-of-bounds ranges, and empty names", () => {
+    expect(captureWorkAssetFromMedia(makeProject(), "nope")).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    const placeholder = makeProject({
+      mediaItems: [{ isPlaceholder: true }],
+    });
+    expect(captureWorkAssetFromMedia(placeholder, "m1")).toMatchObject({
+      ok: false,
+      code: "UNSUPPORTED",
+    });
+    expect(
+      captureWorkAssetFromMedia(makeProject(), "m1", { inSec: 5, outSec: 5 }),
+    ).toMatchObject({ ok: false, code: "INVALID_PARAMS" });
+    expect(
+      captureWorkAssetFromMedia(makeProject(), "m1", { inSec: -1, outSec: 5 }),
+    ).toMatchObject({ ok: false, code: "INVALID_PARAMS" });
+    expect(
+      captureWorkAssetFromMedia(makeProject(), "m1", { outSec: 31 }),
+    ).toMatchObject({ ok: false, code: "INVALID_PARAMS" });
+    expect(
+      captureWorkAssetFromMedia(makeProject(), "m1", { name: "   " }),
+    ).toMatchObject({ ok: false, code: "INVALID_PARAMS" });
+  });
+
+  it("round-trips through instantiate as a well-formed clip", () => {
+    const captured = captureWorkAssetFromMedia(makeProject(), "m1", {
+      assetId: "wa-x",
+      inSec: 2,
+      outSec: 6,
+    });
+    expect(captured.ok).toBe(true);
+    if (!captured.ok) return;
+    const project = {
+      ...makeProject(),
+      workAssets: [captured.asset],
+    } as unknown as Project;
+    const built = buildWorkAssetInstantiateActions(project, "wa-x", {
+      trackId: "v1",
+      clipId: "clip-x",
+      startTime: 10,
+      now: 5,
+    });
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.trackId).toBe("v1");
+    expect(built.createdTrack).toBe(false);
+    expect(built.actions).toHaveLength(1);
+    expect(built.actions[0].type).toBe("clip/add");
+    const sourceClip = (
+      built.actions[0].params as { sourceClip: Clip }
+    ).sourceClip;
+    expect(sourceClip).toMatchObject({
+      id: "clip-x",
+      mediaId: "m1",
+      trackId: "v1",
+      startTime: 10,
+      duration: 4,
+      inPoint: 2,
+      outPoint: 6,
+    });
   });
 });

@@ -291,6 +291,7 @@ export class NativeFFmpegBackend implements EncoderBackend {
       }
     } finally {
       this.releaseReadbackBuffers();
+      this.closePort();
     }
   }
 
@@ -298,7 +299,25 @@ export class NativeFFmpegBackend implements EncoderBackend {
     if (this.jobId && window.reelterminal) {
       await window.reelterminal.export.cancel(this.jobId);
     }
+    // Settle a still-pending `done` so an in-flight finalize cannot hang
+    // forever after a cancel. Rejecting an already-settled promise is a
+    // no-op, and finalize's own await observes the rejection either way.
+    this.rejectDone?.(new Error("Native export cancelled"));
+    // Keep the rejection from surfacing as an unhandledrejection when no
+    // finalize is awaiting at this moment.
+    this.done.catch(() => undefined);
+    this.closePort();
     this.releaseReadbackBuffers();
+  }
+
+  private closePort(): void {
+    if (this.port) {
+      this.port.onmessage = null;
+      this.port.close();
+      this.port = null;
+    }
+    this.resolveDone = null;
+    this.rejectDone = null;
   }
 
   private async waitForFrameCredit(): Promise<void> {

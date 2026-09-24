@@ -4060,7 +4060,9 @@ function PrecompSection({
         id: `motion-kf-${Date.now()}-reverse-start`,
         property: MOTION_COMPOSITION_TIME_PROPERTY,
         time: 0,
-        value: Math.min(sourceDuration, Math.max(0, sourceDuration)),
+        // Math.min(x, Math.max(0, x)) is identical to Math.max(0, x) for all x;
+        // keep the negative guard without the redundant self-referencing min.
+        value: Math.max(0, sourceDuration),
         easing: "linear",
       },
       {

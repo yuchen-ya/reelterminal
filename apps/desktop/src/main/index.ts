@@ -49,6 +49,12 @@ import {
   getLiveSessionHost,
 } from "./live/host-instance";
 import {
+  prepareDataRootSession,
+  reportMigrationProblem,
+  getDataRootInfo,
+  changeDataRoot,
+} from "./data-root";
+import {
   disposeConversationHost,
   getCodexOnboardingHost,
   getConversationHost,
@@ -98,6 +104,7 @@ import {
   rigHumanoidModelArgsSchema,
   rigHumanoidModelResultSchema,
   windowControlArgsSchema,
+  dataRootChangeArgsSchema,
 } from "../shared/ipc-contract";
 import type {
   AuroraPreviewSessionStartArgs,
@@ -119,6 +126,17 @@ const isolatedUserDataDir = readEnvAlias(
 if (isolatedUserDataDir && path.isAbsolute(isolatedUserDataDir)) {
   app.setPath("userData", isolatedUserDataDir);
 }
+
+// Data-root adoption (docs/DATA-ROOT.md): migrate any pre-data-root data and
+// point userData at `<root>/app-data` so projects, media bytes, the material
+// library and settings share one relocatable folder. Skipped entirely under
+// the isolated seam above — bypassing user-scoped locations is its purpose.
+// The promise is awaited in the ready flow below, before anything opens the
+// Chromium profile.
+const dataRootReady =
+  isolatedUserDataDir && path.isAbsolute(isolatedUserDataDir)
+    ? Promise.resolve(null)
+    : prepareDataRootSession();
 
 // Register crash/error reporting as early as possible so main-process faults and
 // process-gone events during startup are captured (POST to the cloud worker).
@@ -180,8 +198,15 @@ function createWindow(): void {
   win.loadURL(APP_INDEX);
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return;
+  // The data-root migration must settle before anything opens the Chromium
+  // profile (IndexedDB lives in userData). The GPU cache sweep then runs
+  // against the FINAL userData path — an adopted tree may have carried stale
+  // caches in with it (the early sweep above only saw the old location).
+  const dataRoot = await dataRootReady;
+  migrateGpuCacheOnUpgrade();
+  if (dataRoot) reportMigrationProblem(dataRoot);
   if (process.platform === "darwin" && !app.isPackaged) {
     app.dock?.setIcon(developmentIconPath());
   }
@@ -211,6 +236,10 @@ app.whenReady().then(() => {
   handle(CHANNELS.fsReadFileBytes, readFileBytesArgsSchema, readFileBytes);
   handle(CHANNELS.fsPathStatus, pathStatusArgsSchema, pathStatus);
   handle(CHANNELS.fsTempFilePath, z.object({ ext: z.string() }), tempFilePath);
+  handle(CHANNELS.dataRootGetInfo, z.undefined(), () => getDataRootInfo());
+  handle(CHANNELS.dataRootChange, dataRootChangeArgsSchema, (args) =>
+    changeDataRoot(args.path),
+  );
   handle(CHANNELS.mediaGenerateProxy, proxyArgsSchema, generateProxy);
   handle(CHANNELS.mediaTranscode, transcodeArgsSchema, transcode);
   handle(CHANNELS.mediaExtractAudioWav, extractAudioArgsSchema, extractAudioWav);

@@ -105,6 +105,38 @@ const TRACK_LAYER_FILTERS: readonly {
 const ADD_TRACK_ROW_HEIGHT = 36;
 const TIMELINE_SCROLLBAR_SIZE = 10;
 
+// Small, mockup-styled timeline tool button. Hoisted to module level so the
+// subtree is not remounted on every Timeline render.
+const TLTool = ({
+  onClick,
+  disabled,
+  active,
+  title,
+  children,
+  extra,
+}: {
+  onClick?: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  title?: string;
+  children: React.ReactNode;
+  extra?: React.ReactNode;
+}) => (
+  <button
+    type="button"
+    aria-label={title ?? "Timeline tool"}
+    onClick={onClick}
+    disabled={disabled}
+    data-tip-bottom={title}
+    className={`relative grid place-items-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+      active ? "text-accent" : "text-fg-muted hover:text-fg-2"
+    }`}
+  >
+    {children}
+    {extra}
+  </button>
+);
+
 export const Timeline: React.FC = () => {
   const { t: tr } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -280,17 +312,19 @@ export const Timeline: React.FC = () => {
     toggleTimelineMaximized,
   } = useUIStore();
   const selectedClipIds = getSelectedClipIds();
+  // selectedClipIds is a fresh array every render, so memo deps use the stable
+  // selectedItems reference (getSelectedClipIds is a pure derivation of it).
   const splittableSelectedClipIds = useMemo(
     () =>
       getSplittableTimelineItemIds(project, selectedClipIds, playheadPosition),
-    [playheadPosition, project, selectedClipIds],
+    [playheadPosition, project, selectedItems],
   );
   const selectedMediaClipIds = useMemo(
     () =>
       selectedClipIds.filter((clipId) =>
         tracks.some((track) => track.clips.some((clip) => clip.id === clipId)),
       ),
-    [selectedClipIds, tracks],
+    [selectedItems, tracks],
   );
   const canRippleDelete =
     selectedMediaClipIds.length > 0 &&
@@ -958,7 +992,7 @@ export const Timeline: React.FC = () => {
               duration: newDuration,
             };
 
-      const adjustedKeyframes = clip.keyframes.map((kf) => {
+      const adjustedKeyframes = (clip.keyframes ?? []).map((kf) => {
         if (kf.id.startsWith("kf-exit-")) {
           const relativeTime = kf.time - oldDuration;
           return { ...kf, time: newDuration + relativeTime };
@@ -994,7 +1028,6 @@ export const Timeline: React.FC = () => {
     [tracks],
   );
 
-  const visualOrderTracks = useMemo(() => tracks, [tracks]);
   const addTrackItems: DropdownMenuOption[] = useMemo(
     () => [
       {
@@ -1025,37 +1058,6 @@ export const Timeline: React.FC = () => {
       },
     ],
     [addTrack, tr],
-  );
-
-  // Small, mockup-styled timeline tool button
-  const TLTool = ({
-    onClick,
-    disabled,
-    active,
-    title,
-    children,
-    extra,
-  }: {
-    onClick?: () => void;
-    disabled?: boolean;
-    active?: boolean;
-    title?: string;
-    children: React.ReactNode;
-    extra?: React.ReactNode;
-  }) => (
-    <button
-      type="button"
-      aria-label={title ?? "Timeline tool"}
-      onClick={onClick}
-      disabled={disabled}
-      data-tip-bottom={title}
-      className={`relative grid place-items-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-        active ? "text-accent" : "text-fg-muted hover:text-fg-2"
-      }`}
-    >
-      {children}
-      {extra}
-    </button>
   );
 
   return (
@@ -1579,7 +1581,7 @@ export const Timeline: React.FC = () => {
             }}
           >
             <div className="flex flex-col">
-              {visualOrderTracks.map((track, i) => {
+              {tracks.map((track, i) => {
                 const keyframeCount = track.clips.reduce(
                   (sum, clip) => sum + (clip.keyframes?.length || 0),
                   0
@@ -1747,11 +1749,11 @@ export const Timeline: React.FC = () => {
               style={{ width: `${timelineDuration * pixelsPerSecond}px` }}
               className="min-w-full"
             >
-              {visualOrderTracks.map((track) => (
+              {tracks.map((track) => (
                 <TrackLane
                   key={track.id}
                   track={track}
-                  allTracks={visualOrderTracks}
+                  allTracks={tracks}
                   pixelsPerSecond={pixelsPerSecond}
                   selectedClipIds={selectedClipIds}
                   textClips={getTextClipsForTrack(track.id)}

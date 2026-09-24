@@ -428,15 +428,3 @@ export type FilterCategory = (typeof FILTER_CATEGORIES)[number]["id"];
 export function getPresetsByCategory(category: FilterCategory): FilterPreset[] {
   return FILTER_PRESETS.filter((preset) => preset.category === category);
 }
-
-export function getPresetById(id: string): FilterPreset | undefined {
-  return FILTER_PRESETS.find((preset) => preset.id === id);
-}
-
-export function getAllCategories(): typeof FILTER_CATEGORIES {
-  return FILTER_CATEGORIES;
-}
-
-export function getAllPresets(): FilterPreset[] {
-  return FILTER_PRESETS;
-}

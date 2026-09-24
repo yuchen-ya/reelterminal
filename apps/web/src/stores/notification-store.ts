@@ -9,6 +9,10 @@ export interface Notification {
   message?: string;
   duration?: number;
   dismissible?: boolean;
+  /** Fires when the card body is activated (click or Enter/Space). */
+  onClick?: () => void;
+  /** Fires only when the user dismisses via X, never on programmatic removal. */
+  onDismiss?: () => void;
 }
 
 interface NotificationState {

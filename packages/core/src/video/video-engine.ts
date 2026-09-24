@@ -36,15 +36,8 @@ import type { Transition } from "../types/timeline";
 import { getMediaEngine } from "../media/mediabunny-engine";
 import type {
   RenderedFrame,
-  CompositeLayer,
   BlendMode,
-  FrameCacheConfig,
-  FrameCacheStats,
-  CachedFrame,
   VideoClipRenderInfo,
-  VideoCodecSupport,
-  FilterDefinition,
-  PreloadRequest,
 } from "./types";
 import { getSpeedEngine } from "./speed-engine";
 import { getFrameInterpolationEngine } from "./frame-interpolation";
@@ -56,10 +49,6 @@ import {
   ParallelFrameDecoder,
   getParallelFrameDecoder,
 } from "./parallel-frame-decoder";
-import {
-  CompositeFrameBuffer,
-  getCompositeFrameBuffer,
-} from "./frame-ring-buffer";
 import { GPUCompositor, initializeGPUCompositor } from "./gpu-compositor";
 import { getRendererFactory, type Renderer } from "./renderer-factory";
 import { keyframeEngine } from "./keyframe-engine";
@@ -87,13 +76,6 @@ import { MotionHighQualityRenderer } from "../motion/motion-gpu-render";
 import { renderAuroraPreviewToImageBitmap } from "../motion/native-aurora-bridge";
 import type { MotionAsset } from "../motion/types";
 import { resolveCreationMotionSceneBinding } from "../creation/render-binding";
-
-const DEFAULT_CACHE_CONFIG: FrameCacheConfig = {
-  maxFrames: 100,
-  maxSizeBytes: 500 * 1024 * 1024, // 500MB
-  preloadAhead: 30, // ~1 second at 30fps
-  preloadBehind: 10,
-};
 
 // A clip requests background removal but no initialized engine can serve it
 // (e.g. headless export or a fresh session where the model was never loaded
@@ -128,11 +110,11 @@ type RenderableClipColorGrading = Omit<ClipColorGrading, "lut"> & {
 
 /**
  * VideoEngine handles video frame rendering and composition.
- * Supports GPU acceleration, parallel decoding, frame caching, and effects.
+ * Supports GPU acceleration, parallel decoding, and effects.
  *
  * Usage:
  * ```ts
- * const engine = new VideoEngine({ maxFrames: 200 });
+ * const engine = new VideoEngine();
  * await engine.initialize();
  * const frame = await engine.renderFrame(project, 1.5);
  * ```
@@ -140,20 +122,14 @@ type RenderableClipColorGrading = Omit<ClipColorGrading, "lut"> & {
 export class VideoEngine {
   private mediabunny: typeof import("mediabunny") | null = null;
   private initialized = false;
-  private frameCache: Map<string, CachedFrame> = new Map();
   private gifFrameCache: Map<string, GifFrameCache> = new Map();
   private staticImageCache: Map<string, ImageBitmap> = new Map();
-  private cacheConfig: FrameCacheConfig;
-  private cacheStats = { hits: 0, misses: 0 };
-  private preloadQueue: PreloadRequest[] = [];
-  private isPreloading = false;
   private compositeCanvas: OffscreenCanvas | null = null;
   private compositeCtx: OffscreenCanvasRenderingContext2D | null = null;
   private decodeCanvas: OffscreenCanvas | null = null;
   private decodeCtx: OffscreenCanvasRenderingContext2D | null = null;
 
   private parallelDecoder: ParallelFrameDecoder | null = null;
-  private compositeBuffer: CompositeFrameBuffer | null = null;
   private useParallelDecoding = true;
   private videoElementCache: Map<
     string,
@@ -184,12 +160,8 @@ export class VideoEngine {
 
   /**
    * Creates a new VideoEngine instance.
-   *
-   * @param config - Optional frame cache configuration
    */
-  constructor(config: Partial<FrameCacheConfig> = {}) {
-    this.cacheConfig = { ...DEFAULT_CACHE_CONFIG, ...config };
-  }
+  constructor() {}
 
   /**
    * Initializes the VideoEngine, setting up decoders and GPU compositor.
@@ -225,7 +197,6 @@ export class VideoEngine {
       this.parallelDecoder = null;
     }
 
-    this.compositeBuffer = getCompositeFrameBuffer();
     this.initialized = true;
   }
 
@@ -251,15 +222,6 @@ export class VideoEngine {
    */
   getParallelDecoder(): ParallelFrameDecoder | null {
     return this.parallelDecoder;
-  }
-
-  /**
-   * Gets the composite frame buffer for frame management.
-   *
-   * @returns CompositeFrameBuffer or null if not initialized
-   */
-  getCompositeBuffer(): CompositeFrameBuffer | null {
-    return this.compositeBuffer;
   }
 
   /**
@@ -396,6 +358,9 @@ export class VideoEngine {
     width: number,
     height: number,
   ): Promise<ImageBitmap | null> {
+    // Freshly decoded (non-cached) frames are owned here and must be closed
+    // before returning; only their clones go into interpFrameCache.
+    const ownedFrames: ImageBitmap[] = [];
     try {
       const frameRate = mediaItem.metadata?.frameRate ?? 30;
       const speedEngine = getSpeedEngine();
@@ -424,6 +389,7 @@ export class VideoEngine {
           mediaItem.id,
         );
         if (frame1) {
+          ownedFrames.push(frame1);
           const clone = await createImageBitmap(frame1);
           this.setCachedInterpFrame(cacheKey1, clone);
         }
@@ -439,6 +405,7 @@ export class VideoEngine {
           mediaItem.id,
         );
         if (frame2) {
+          ownedFrames.push(frame2);
           const clone = await createImageBitmap(frame2);
           this.setCachedInterpFrame(cacheKey2, clone);
         }
@@ -473,6 +440,12 @@ export class VideoEngine {
       return result.frame;
     } catch {
       return null;
+    } finally {
+      // Close the locally-owned originals on every exit path; the cached
+      // clones and the returned bitmap (always freshly created) stay alive.
+      for (const owned of ownedFrames) {
+        try { owned.close(); } catch {}
+      }
     }
   }
 
@@ -580,56 +553,6 @@ export class VideoEngine {
     this.videoElementCache.clear();
   }
 
-  /**
-   * Invalidate every cache keyed by a specific media id, so that a media item
-   * whose blob was swapped in place (e.g. an AI tool result replacing a clip's
-   * source video) is re-decoded instead of serving stale frames.
-   */
-  invalidateMedia(mediaId: string): void {
-    const cachedVideo = this.videoElementCache.get(mediaId);
-    if (cachedVideo) {
-      cachedVideo.video.pause();
-      cachedVideo.video.removeAttribute("src");
-      cachedVideo.video.load();
-      URL.revokeObjectURL(cachedVideo.url);
-      this.videoElementCache.delete(mediaId);
-    }
-
-    const cachedImage = this.staticImageCache.get(mediaId);
-    if (cachedImage) {
-      try {
-        cachedImage.close();
-      } catch {
-        // already released
-      }
-      this.staticImageCache.delete(mediaId);
-    }
-
-    const gifCache = this.gifFrameCache.get(mediaId);
-    if (gifCache) {
-      for (const frame of gifCache.frames) {
-        try {
-          frame.close();
-        } catch {
-          // already released
-        }
-      }
-      this.gifFrameCache.delete(mediaId);
-    }
-
-    const prefix = `${mediaId}:`;
-    for (const key of [...this.frameCache.keys()]) {
-      if (key.startsWith(prefix)) {
-        const entry = this.frameCache.get(key);
-        try {
-          entry?.image.close();
-        } catch {
-          // already released
-        }
-        this.frameCache.delete(key);
-      }
-    }
-  }
 
   private ensureInitialized(): void {
     if (!this.initialized || !this.mediabunny) {
@@ -1128,7 +1051,7 @@ export class VideoEngine {
 
     let engine = this.compoundEngines.get(compoundId);
     if (!engine) {
-      engine = new VideoEngine(this.cacheConfig);
+      engine = new VideoEngine();
       engine.exportMode = this.exportMode;
       await engine.initialize();
       this.compoundEngines.set(compoundId, engine);
@@ -3161,7 +3084,13 @@ export class VideoEngine {
         const zoomAmount = animation.zoomScale || 1.5;
         const holdDuration = animation.holdDuration || 0.3;
         const zoomInPhase = 0.3;
-        const zoomOutPhase = 1 - holdDuration - zoomInPhase;
+        // Floor guards against holdDuration >= 0.7, where the zoom-out phase
+        // would be <= 0 and the division below would produce NaN/Inf scale.
+        // Unchanged for any holdDuration that keeps the phase positive.
+        const zoomOutPhase = Math.max(
+          1 - holdDuration - zoomInPhase,
+          Number.EPSILON,
+        );
 
         let focusScale = 1;
         let focusOffsetX = 0;
@@ -3272,747 +3201,16 @@ export class VideoEngine {
     }
   }
 
-  async decodeFrame(
-    mediaItem: MediaItem,
-    time: number,
-  ): Promise<ImageBitmap | null> {
-    if (!mediaItem.blob) {
-      console.warn(`No blob available for media item ${mediaItem.id}`);
-      return null;
-    }
-
-    // Special handling for static images - they don't need mediabunny
-    if (mediaItem.type === "image") {
-      try {
-        return await createImageBitmap(mediaItem.blob);
-      } catch (error) {
-        console.warn(`Failed to create ImageBitmap from image: ${error}`);
-        return null;
-      }
-    }
-
-    this.ensureInitialized();
-
-    const { Input, ALL_FORMATS, BlobSource, VideoSampleSink } =
-      this.mediabunny!;
-
-    const input = new Input({
-      source: new BlobSource(mediaItem.blob),
-      formats: ALL_FORMATS,
-    });
-
-    try {
-      const videoTrack = await input.getPrimaryVideoTrack();
-      if (!videoTrack) {
-        return null;
-      }
-
-      const canDecode = await videoTrack.canDecode();
-      if (!canDecode) {
-        console.warn(`Cannot decode video track for media ${mediaItem.id}`);
-        return null;
-      }
-
-      const sink = new VideoSampleSink(videoTrack);
-      const sample = await sink.getSample(time);
-
-      if (!sample) {
-        return null;
-      }
-
-      // VideoSample wraps a VideoFrame - convert to ImageBitmap for rendering
-      let imageBitmap: ImageBitmap;
-      try {
-        const hasToVideoFrame =
-          typeof (sample as { toVideoFrame?: () => VideoFrame })
-            .toVideoFrame === "function";
-        const videoFrame = hasToVideoFrame
-          ? (sample as { toVideoFrame: () => VideoFrame }).toVideoFrame()
-          : sample;
-        imageBitmap = await createImageBitmap(videoFrame as VideoFrame);
-        if (hasToVideoFrame && videoFrame !== sample) {
-          (videoFrame as VideoFrame).close();
-        }
-      } catch {
-        const canvas = new OffscreenCanvas(
-          sample.displayWidth,
-          sample.displayHeight,
-        );
-        const ctx = canvas.getContext("2d");
-        const hasDraw =
-          typeof (
-            sample as {
-              draw?: (
-                ctx: OffscreenCanvasRenderingContext2D,
-                x: number,
-                y: number,
-              ) => void;
-            }
-          ).draw === "function";
-        if (ctx && hasDraw) {
-          (
-            sample as {
-              draw: (
-                ctx: OffscreenCanvasRenderingContext2D,
-                x: number,
-                y: number,
-              ) => void;
-            }
-          ).draw(ctx, 0, 0);
-          imageBitmap = await createImageBitmap(canvas);
-        } else {
-          sample.close();
-          return null;
-        }
-      }
-
-      sample.close();
-      return imageBitmap;
-    } finally {
-      input[Symbol.dispose]?.();
-    }
-  }
-
-  async decodeFrameToCanvas(
-    mediaItem: MediaItem,
-    time: number,
-    targetWidth?: number,
-    targetHeight?: number,
-  ): Promise<OffscreenCanvas | null> {
-    this.ensureInitialized();
-
-    const { Input, ALL_FORMATS, BlobSource, CanvasSink } = this.mediabunny!;
-
-    if (!mediaItem.blob) {
-      return null;
-    }
-
-    const input = new Input({
-      source: new BlobSource(mediaItem.blob),
-      formats: ALL_FORMATS,
-    });
-
-    try {
-      const videoTrack = await input.getPrimaryVideoTrack();
-      if (!videoTrack) {
-        return null;
-      }
-
-      const canDecode = await videoTrack.canDecode();
-      if (!canDecode) {
-        return null;
-      }
-
-      // Configure sink with optional resize
-      const sinkOptions: Record<string, unknown> = {
-        poolSize: 1,
-        fit: "contain" as const,
-      };
-
-      if (targetWidth) {
-        sinkOptions.width = targetWidth;
-      }
-      if (targetHeight) {
-        sinkOptions.height = targetHeight;
-      }
-
-      const sink = new CanvasSink(videoTrack, sinkOptions);
-      const result = await sink.getCanvas(time);
-
-      if (!result) {
-        return null;
-      }
-
-      // Clone the canvas since CanvasSink may reuse it
-      const clone = new OffscreenCanvas(
-        result.canvas.width,
-        result.canvas.height,
-      );
-      const ctx = clone.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(result.canvas, 0, 0);
-      }
-
-      return clone;
-    } finally {
-      input[Symbol.dispose]?.();
-    }
-  }
-
-  private async compositeFrame(
-    frame: ImageBitmap,
-    transform: Transform,
-    opacity: number,
-  ): Promise<void> {
-    if (!this.compositeCtx) return;
-
-    const ctx = this.compositeCtx;
-    const canvasWidth = this.compositeCanvas!.width;
-    const canvasHeight = this.compositeCanvas!.height;
-
-    ctx.save();
-    ctx.globalAlpha = opacity;
-    const centerX = canvasWidth / 2;
-    const centerY = canvasHeight / 2;
-
-    ctx.translate(
-      centerX + transform.position.x,
-      centerY + transform.position.y,
-    );
-
-    ctx.rotate((transform.rotation * Math.PI) / 180);
-
-    ctx.scale(transform.scale.x, transform.scale.y);
-
-    if (transform.crop) {
-      const sx = transform.crop.x * frame.width;
-      const sy = transform.crop.y * frame.height;
-      const sWidth = transform.crop.width * frame.width;
-      const sHeight = transform.crop.height * frame.height;
-
-      const croppedAspect = sWidth / sHeight;
-      const canvasAspect = canvasWidth / canvasHeight;
-
-      let cropDrawWidth: number;
-      let cropDrawHeight: number;
-
-      if (croppedAspect > canvasAspect) {
-        cropDrawWidth = canvasWidth;
-        cropDrawHeight = canvasWidth / croppedAspect;
-      } else {
-        cropDrawHeight = canvasHeight;
-        cropDrawWidth = canvasHeight * croppedAspect;
-      }
-
-      const cropDrawX = -cropDrawWidth * transform.anchor.x;
-      const cropDrawY = -cropDrawHeight * transform.anchor.y;
-
-      ctx.drawImage(
-        frame,
-        sx,
-        sy,
-        sWidth,
-        sHeight,
-        cropDrawX,
-        cropDrawY,
-        cropDrawWidth,
-        cropDrawHeight,
-      );
-    } else {
-      // Treat a missing or "none" fit as "contain" so clips preserve their
-      // aspect ratio on export/compositing, matching the preview.
-      const fitMode =
-        !transform.fitMode || transform.fitMode === "none"
-          ? "contain"
-          : transform.fitMode;
-      let drawWidth = frame.width;
-      let drawHeight = frame.height;
-
-      const sourceAspect = frame.width / frame.height;
-      const canvasAspect = canvasWidth / canvasHeight;
-      if (fitMode === "stretch") {
-        drawWidth = canvasWidth;
-        drawHeight = canvasHeight;
-      } else if (fitMode === "cover") {
-        if (sourceAspect > canvasAspect) {
-          drawHeight = canvasHeight;
-          drawWidth = canvasHeight * sourceAspect;
-        } else {
-          drawWidth = canvasWidth;
-          drawHeight = canvasWidth / sourceAspect;
-        }
-      } else {
-        if (sourceAspect > canvasAspect) {
-          drawWidth = canvasWidth;
-          drawHeight = canvasWidth / sourceAspect;
-        } else {
-          drawHeight = canvasHeight;
-          drawWidth = canvasHeight * sourceAspect;
-        }
-      }
-
-      const drawX = -drawWidth * transform.anchor.x;
-      const drawY = -drawHeight * transform.anchor.y;
-      ctx.drawImage(frame, drawX, drawY, drawWidth, drawHeight);
-    }
-
-    ctx.restore();
-  }
-
-  async composite(
-    layers: CompositeLayer[],
-    width: number,
-    height: number,
-  ): Promise<ImageBitmap> {
-    this.ensureCompositeCanvas(width, height);
-
-    const ctx = this.compositeCtx!;
-    ctx.clearRect(0, 0, width, height);
-
-    for (const layer of layers) {
-      if (!layer.visible) continue;
-
-      ctx.save();
-      ctx.globalCompositeOperation = this.getCanvasBlendMode(layer.blendMode);
-      await this.compositeFrame(
-        layer.image instanceof ImageBitmap
-          ? layer.image
-          : await createImageBitmap(layer.image),
-        layer.transform,
-        layer.transform.opacity,
-      );
-
-      ctx.restore();
-    }
-
-    return createImageBitmap(this.compositeCanvas!);
-  }
-
-  private getCanvasBlendMode(blendMode: BlendMode): GlobalCompositeOperation {
-    const modeMap: Record<BlendMode, GlobalCompositeOperation> = {
-      normal: "source-over",
-      multiply: "multiply",
-      screen: "screen",
-      overlay: "overlay",
-      darken: "darken",
-      lighten: "lighten",
-      "color-dodge": "color-dodge",
-      "color-burn": "color-burn",
-      "hard-light": "hard-light",
-      "soft-light": "soft-light",
-      difference: "difference",
-      exclusion: "exclusion",
-      hue: "hue",
-      saturation: "saturation",
-      color: "color",
-      luminosity: "luminosity",
-      add: "lighter",
-      "linear-dodge": "lighter",
-    };
-    return modeMap[blendMode] || "source-over";
-  }
-
-  private ensureCompositeCanvas(width: number, height: number): void {
-    if (
-      !this.compositeCanvas ||
-      this.compositeCanvas.width !== width ||
-      this.compositeCanvas.height !== height
-    ) {
-      this.compositeCanvas = new OffscreenCanvas(width, height);
-      this.compositeCtx = this.compositeCanvas.getContext("2d");
-    }
-  }
-
-  private getCacheKey(mediaId: string, time: number): string {
-    // Round time to nearest frame (assuming 30fps for cache key)
-    const frameTime = Math.round(time * 30) / 30;
-    return `${mediaId}:${frameTime.toFixed(4)}`;
-  }
-
-  private cacheFrame(key: string, image: ImageBitmap, mediaId: string): void {
-    // Estimate frame size (4 bytes per pixel for RGBA)
-    const sizeBytes = image.width * image.height * 4;
-    this.evictIfNeeded(sizeBytes);
-
-    this.frameCache.set(key, {
-      image,
-      timestamp: parseFloat(key.split(":")[1]),
-      mediaId,
-      width: image.width,
-      height: image.height,
-      sizeBytes,
-      lastAccessed: Date.now(),
-    });
-  }
-
-  private evictIfNeeded(newFrameSize: number): void {
-    while (this.frameCache.size >= this.cacheConfig.maxFrames) {
-      this.evictOldestFrame();
-    }
-    let totalSize = this.getTotalCacheSize();
-    while (
-      totalSize + newFrameSize > this.cacheConfig.maxSizeBytes &&
-      this.frameCache.size > 0
-    ) {
-      this.evictOldestFrame();
-      totalSize = this.getTotalCacheSize();
-    }
-  }
-
-  private evictOldestFrame(): void {
-    let oldestKey = "";
-    let oldestTime = Infinity;
-
-    for (const [key, entry] of this.frameCache.entries()) {
-      if (entry.lastAccessed < oldestTime) {
-        oldestTime = entry.lastAccessed;
-        oldestKey = key;
-      }
-    }
-
-    if (oldestKey) {
-      const entry = this.frameCache.get(oldestKey);
-      if (entry) {
-        entry.image.close();
-      }
-      this.frameCache.delete(oldestKey);
-    }
-  }
-
-  private getTotalCacheSize(): number {
-    let total = 0;
-    for (const entry of this.frameCache.values()) {
-      total += entry.sizeBytes;
-    }
-    return total;
-  }
-
   /**
-   * Gets frame cache statistics and performance metrics.
-   *
-   * @returns Cache stats including hit rate, memory usage, and entry count
-   */
-  getCacheStats(): FrameCacheStats {
-    const totalRequests = this.cacheStats.hits + this.cacheStats.misses;
-    return {
-      entries: this.frameCache.size,
-      sizeBytes: this.getTotalCacheSize(),
-      hitRate: totalRequests > 0 ? this.cacheStats.hits / totalRequests : 0,
-      maxSizeBytes: this.cacheConfig.maxSizeBytes,
-      hits: this.cacheStats.hits,
-      misses: this.cacheStats.misses,
-    };
-  }
-
-  /**
-   * Clears the frame cache, freeing memory.
-   * Resets cache statistics.
+   * Clears the GIF frame cache, freeing memory.
    */
   clearCache(): void {
-    for (const entry of this.frameCache.values()) {
-      entry.image.close();
-    }
-    this.frameCache.clear();
-    this.cacheStats = { hits: 0, misses: 0 };
-
     for (const gifCache of this.gifFrameCache.values()) {
       for (const frame of gifCache.frames) {
         try { frame.close(); } catch {}
       }
     }
     this.gifFrameCache.clear();
-  }
-
-  /**
-   * Preloads frames around a specific time for efficient playback.
-   * Frames are cached based on preloadAhead and preloadBehind settings.
-   *
-   * @param mediaItem - Media to preload frames from
-   * @param centerTime - Time around which to preload (in seconds)
-   * @param frameRate - Frame rate for preloading (default: 30 fps)
-   */
-  async preloadFrames(
-    mediaItem: MediaItem,
-    centerTime: number,
-    frameRate: number = 30,
-  ): Promise<void> {
-    this.ensureInitialized();
-
-    if (!mediaItem.blob) return;
-
-    const frameDuration = 1 / frameRate;
-    const startTime = Math.max(
-      0,
-      centerTime - this.cacheConfig.preloadBehind * frameDuration,
-    );
-    const endTime = Math.min(
-      mediaItem.metadata.duration,
-      centerTime + this.cacheConfig.preloadAhead * frameDuration,
-    );
-
-    const { Input, ALL_FORMATS, BlobSource, VideoSampleSink } =
-      this.mediabunny!;
-
-    const input = new Input({
-      source: new BlobSource(mediaItem.blob),
-      formats: ALL_FORMATS,
-    });
-
-    try {
-      const videoTrack = await input.getPrimaryVideoTrack();
-      if (!videoTrack) return;
-
-      const canDecode = await videoTrack.canDecode();
-      if (!canDecode) return;
-
-      const sink = new VideoSampleSink(videoTrack);
-      const timestamps: number[] = [];
-      for (let t = startTime; t <= endTime; t += frameDuration) {
-        const cacheKey = this.getCacheKey(mediaItem.id, t);
-        if (!this.frameCache.has(cacheKey)) {
-          timestamps.push(t);
-        }
-      }
-
-      // Preload frames
-      for await (const sample of sink.samplesAtTimestamps(timestamps)) {
-        if (!sample) continue;
-
-        // VideoSample is a VideoFrame which can be used with createImageBitmap
-        const imageBitmap = await createImageBitmap(
-          sample as unknown as VideoFrame,
-        );
-        const cacheKey = this.getCacheKey(
-          mediaItem.id,
-          sample.timestamp / 1_000_000,
-        );
-        this.cacheFrame(cacheKey, imageBitmap, mediaItem.id);
-
-        sample.close();
-      }
-    } finally {
-      input[Symbol.dispose]?.();
-    }
-  }
-
-  queuePreload(request: PreloadRequest): void {
-    this.preloadQueue = this.preloadQueue.filter(
-      (r) => r.mediaId !== request.mediaId,
-    );
-    this.preloadQueue.push(request);
-    this.preloadQueue.sort((a, b) => b.priority - a.priority);
-    this.processPreloadQueue();
-  }
-
-  private async processPreloadQueue(): Promise<void> {
-    if (this.isPreloading || this.preloadQueue.length === 0) return;
-
-    this.isPreloading = true;
-
-    while (this.preloadQueue.length > 0) {
-      const request = this.preloadQueue.shift()!;
-
-      try {
-        await this.preloadFramesRange(
-          request.media,
-          request.mediaId,
-          request.startTime,
-          request.endTime,
-          request.frameRate,
-        );
-      } catch (error) {
-        console.warn(`Preload failed for media ${request.mediaId}:`, error);
-      }
-    }
-
-    this.isPreloading = false;
-  }
-
-  private async preloadFramesRange(
-    media: Blob | File,
-    mediaId: string,
-    startTime: number,
-    endTime: number,
-    frameRate: number,
-  ): Promise<void> {
-    this.ensureInitialized();
-
-    const { Input, ALL_FORMATS, BlobSource, VideoSampleSink } =
-      this.mediabunny!;
-
-    const input = new Input({
-      source: new BlobSource(media),
-      formats: ALL_FORMATS,
-    });
-
-    try {
-      const videoTrack = await input.getPrimaryVideoTrack();
-      if (!videoTrack) return;
-
-      const canDecode = await videoTrack.canDecode();
-      if (!canDecode) return;
-
-      const sink = new VideoSampleSink(videoTrack);
-      const frameDuration = 1 / frameRate;
-      const timestamps: number[] = [];
-      for (let t = startTime; t <= endTime; t += frameDuration) {
-        const cacheKey = this.getCacheKey(mediaId, t);
-        if (!this.frameCache.has(cacheKey)) {
-          timestamps.push(t);
-        }
-      }
-
-      // Preload frames
-      for await (const sample of sink.samplesAtTimestamps(timestamps)) {
-        if (!sample) continue;
-
-        // VideoSample is a VideoFrame which can be used with createImageBitmap
-        const imageBitmap = await createImageBitmap(
-          sample as unknown as VideoFrame,
-        );
-        const cacheKey = this.getCacheKey(
-          mediaId,
-          sample.timestamp / 1_000_000,
-        );
-        this.cacheFrame(cacheKey, imageBitmap, mediaId);
-
-        sample.close();
-      }
-    } finally {
-      input[Symbol.dispose]?.();
-    }
-  }
-
-  /**
-   * Gets supported video and audio codecs for encoding and decoding.
-   *
-   * @returns CodecSupport with lists of decodable and encodable codecs
-   */
-  async getSupportedCodecs(): Promise<VideoCodecSupport> {
-    this.ensureInitialized();
-
-    const { getEncodableVideoCodecs, getEncodableAudioCodecs } =
-      this.mediabunny!;
-
-    try {
-      const [videoEncode, audioEncode] = await Promise.all([
-        getEncodableVideoCodecs(),
-        getEncodableAudioCodecs(),
-      ]);
-
-      return {
-        decode: ["avc", "hevc", "vp8", "vp9", "av1"], // Common decodable codecs
-        encode: [...videoEncode, ...audioEncode],
-        hardware: true, // WebCodecs typically uses hardware acceleration
-      };
-    } catch {
-      return {
-        decode: [],
-        encode: [],
-        hardware: false,
-      };
-    }
-  }
-
-  /**
-   * Checks if a video format MIME type is supported for playback.
-   *
-   * @param mimeType - MIME type to check (e.g., "video/mp4")
-   * @returns true if the format is supported, false otherwise
-   */
-  isFormatSupported(mimeType: string): boolean {
-    const supportedFormats = [
-      "video/mp4",
-      "video/webm",
-      "video/quicktime",
-      "video/x-matroska",
-    ];
-    return supportedFormats.includes(mimeType);
-  }
-
-  /**
-   * Returns all available video filters for effects.
-   *
-   * @returns Array of filter definitions
-   */
-  getAvailableFilters(): FilterDefinition[] {
-    return [
-      {
-        type: "brightness",
-        name: "Brightness",
-        category: "color",
-        gpuAccelerated: true,
-      },
-      {
-        type: "contrast",
-        name: "Contrast",
-        category: "color",
-        gpuAccelerated: true,
-      },
-      {
-        type: "saturation",
-        name: "Saturation",
-        category: "color",
-        gpuAccelerated: true,
-      },
-      {
-        type: "hue",
-        name: "Hue Rotation",
-        category: "color",
-        gpuAccelerated: true,
-      },
-      { type: "blur", name: "Blur", category: "blur", gpuAccelerated: true },
-      {
-        type: "sharpen",
-        name: "Sharpen",
-        category: "blur",
-        gpuAccelerated: true,
-      },
-      {
-        type: "vignette",
-        name: "Vignette",
-        category: "stylize",
-        gpuAccelerated: true,
-      },
-      {
-        type: "grain",
-        name: "Film Grain",
-        category: "stylize",
-        gpuAccelerated: true,
-      },
-      {
-        type: "chromaKey",
-        name: "Chroma Key",
-        category: "keying",
-        gpuAccelerated: true,
-      },
-    ];
-  }
-
-  /**
-   * Applies a filter effect to a rendered frame.
-   *
-   * @param frame - ImageBitmap to filter
-   * @param filter - Effect configuration to apply
-   * @returns Filtered ImageBitmap
-   */
-  async applyFilter(frame: ImageBitmap, filter: Effect): Promise<ImageBitmap> {
-    const canvas = new OffscreenCanvas(frame.width, frame.height);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return frame;
-
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-
-    ctx.drawImage(frame, 0, 0);
-    const filterString = this.buildFilterString(filter);
-    if (filterString) {
-      ctx.filter = filterString;
-      ctx.drawImage(canvas, 0, 0);
-    }
-
-    return createImageBitmap(canvas);
-  }
-
-  private buildFilterString(filter: Effect): string {
-    if (!filter.enabled) return "";
-
-    const params = filter.params as Record<string, number>;
-
-    switch (filter.type) {
-      case "brightness":
-        return `brightness(${1 + (params.value || 0)})`;
-      case "contrast":
-        return `contrast(${params.value || 1})`;
-      case "saturation":
-        return `saturate(${params.value || 1})`;
-      case "hue":
-        return `hue-rotate(${params.rotation || 0}deg)`;
-      case "blur":
-        return `blur(${params.radius || 0}px)`;
-      default:
-        return "";
-    }
   }
 
   /**
@@ -4033,7 +3231,6 @@ export class VideoEngine {
     this.compositeCtx = null;
     this.decodeCanvas = null;
     this.decodeCtx = null;
-    this.preloadQueue = [];
     this.initialized = false;
     this.mediabunny = null;
     this.motionHqRenderer?.destroy();
@@ -4045,6 +3242,14 @@ export class VideoEngine {
     this.colorGradingEngine?.dispose();
     this.colorGradingEngine = null;
     this.maskEngine = null;
+    this.gpuCompositor?.dispose();
+    this.gpuCompositor = null;
+    this.gpuRenderer?.destroy();
+    this.gpuRenderer = null;
+    for (const entry of this.interpFrameCache.values()) {
+      try { entry.bitmap.close(); } catch {}
+    }
+    this.interpFrameCache.clear();
   }
 }
 let videoEngineInstance: VideoEngine | null = null;

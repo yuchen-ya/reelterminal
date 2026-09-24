@@ -64,6 +64,7 @@ const WorkAssetRow: React.FC<{
   /** Missing media references across the anchor + all members (multi). */
   missingMediaCount: number;
   sourceName: string | null;
+  thumbnailUrl: string | null;
   onRename: (name: string) => Promise<boolean>;
   onDelete: () => void;
   onAddToTimeline: () => void;
@@ -73,6 +74,7 @@ const WorkAssetRow: React.FC<{
   missingSource,
   missingMediaCount,
   sourceName,
+  thumbnailUrl,
   onRename,
   onDelete,
   onAddToTimeline,
@@ -193,11 +195,20 @@ const WorkAssetRow: React.FC<{
             : "border-border hover:border-border-strong"
         }`}
       >
-        <div className="w-9 h-9 rounded-md bg-bg-2 flex items-center justify-center flex-shrink-0">
-          <SourceIcon
-            size={16}
-            className={missingSource ? "text-yellow-500" : "text-primary/50"}
-          />
+        <div className="w-9 h-9 rounded-md bg-bg-2 flex items-center justify-center flex-shrink-0 overflow-hidden">
+          {thumbnailUrl && !missingSource ? (
+            <img
+              src={thumbnailUrl}
+              alt=""
+              draggable={false}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <SourceIcon
+              size={16}
+              className={missingSource ? "text-yellow-500" : "text-primary/50"}
+            />
+          )}
         </div>
 
         <div className="flex-1 min-w-0">
@@ -380,6 +391,39 @@ export const WorkAssetsTab: React.FC = () => {
     return map;
   }, [sortedAssets, mediaItems]);
 
+  /**
+   * Best available preview per asset: the anchor media's filmstrip frame
+   * nearest the captured in-point, falling back to the media thumbnail. Audio
+   * and missing media stay icon-only.
+   */
+  const thumbnailByAssetId = useMemo(() => {
+    const map = new Map<string, string | null>();
+    const mediaById = new Map(mediaItems.map((item) => [item.id, item]));
+    for (const asset of sortedAssets) {
+      const media = mediaById.get(asset.sourceMediaId);
+      if (!media) {
+        map.set(asset.id, null);
+        continue;
+      }
+      const strip = media.filmstripThumbnails;
+      if (strip && strip.length > 0) {
+        const inSec = asset.sourceRange.inSec;
+        let best = strip[0];
+        for (const frame of strip) {
+          if (
+            Math.abs(frame.timestamp - inSec) < Math.abs(best.timestamp - inSec)
+          ) {
+            best = frame;
+          }
+        }
+        map.set(asset.id, best.url);
+        continue;
+      }
+      map.set(asset.id, media.thumbnailUrl);
+    }
+    return map;
+  }, [sortedAssets, mediaItems]);
+
   const handleRename = useCallback(
     async (assetId: string, nextName: string): Promise<boolean> => {
       const { renameWorkAsset } = useProjectStore.getState();
@@ -515,6 +559,7 @@ export const WorkAssetsTab: React.FC = () => {
                     missingByAssetId.get(asset.id)?.missingMediaCount ?? 0
                   }
                   sourceName={mediaNamesById.get(asset.sourceMediaId) ?? null}
+                  thumbnailUrl={thumbnailByAssetId.get(asset.id) ?? null}
                   onRename={(name) => handleRename(asset.id, name)}
                   onDelete={() => void handleDelete(asset)}
                   onAddToTimeline={() => void handleAddToTimeline(asset)}

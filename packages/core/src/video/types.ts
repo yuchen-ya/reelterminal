@@ -7,13 +7,6 @@ export interface RenderedFrame {
   height: number;
 }
 
-export interface CompositeLayer {
-  image: ImageBitmap | OffscreenCanvas | HTMLCanvasElement;
-  transform: Transform;
-  effects: Effect[];
-  blendMode: BlendMode;
-  visible: boolean;
-}
 
 export const BLEND_MODES = [
   "normal",
@@ -79,26 +72,4 @@ export interface VideoClipRenderInfo {
   transform: Transform;
   effects: Effect[];
   opacity: number;
-}
-
-export interface VideoCodecSupport {
-  decode: string[];
-  encode: string[];
-  hardware: boolean;
-}
-
-export interface FilterDefinition {
-  type: string;
-  name: string;
-  category: "color" | "blur" | "stylize" | "distort" | "keying";
-  gpuAccelerated: boolean;
-}
-
-export interface PreloadRequest {
-  mediaId: string;
-  media: Blob | File;
-  startTime: number;
-  endTime: number;
-  frameRate: number;
-  priority: number;
 }

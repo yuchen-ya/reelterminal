@@ -507,4 +507,53 @@ describe("WorkAssetsTab", () => {
     expect(result.code).toBe("INVALID_PARAMS");
     expect(useProjectStore.getState().project.workAssets ?? []).toHaveLength(0);
   });
+
+  it("prefers the filmstrip frame nearest the captured in-point as the preview", () => {
+    useProjectStore.setState({
+      hasOpenProject: true,
+      project: projectWith(
+        [
+          workAsset({ id: "wa-early", sourceRange: { inSec: 0.2, outSec: 2 } }),
+          workAsset({ id: "wa-late", sourceRange: { inSec: 4, outSec: 6 } }),
+        ],
+        [
+          {
+            ...mediaItem("media-a", "take-one.mp4"),
+            filmstripThumbnails: [
+              { timestamp: 0, url: "frame-0.png" },
+              { timestamp: 5, url: "frame-5.png" },
+            ],
+          },
+        ],
+      ),
+    });
+    render(<WorkAssetsTab />);
+    expect(document.querySelector('img[src="frame-0.png"]')).not.toBeNull();
+    expect(document.querySelector('img[src="frame-5.png"]')).not.toBeNull();
+  });
+
+  it("falls back to the media thumbnail and keeps the type icon when none exists", () => {
+    useProjectStore.setState({
+      hasOpenProject: true,
+      project: projectWith(
+        [
+          workAsset({ id: "wa-thumb", sourceMediaId: "media-a" }),
+          workAsset({ id: "wa-bare", sourceMediaId: "media-b" }),
+        ],
+        [
+          {
+            ...mediaItem("media-a", "take-one.mp4"),
+            thumbnailUrl: "data:image/png;base64,thumb",
+          },
+          mediaItem("media-b", "take-two.mp4"),
+        ],
+      ),
+    });
+    render(<WorkAssetsTab />);
+    expect(
+      document.querySelector('img[src="data:image/png;base64,thumb"]'),
+    ).not.toBeNull();
+    // The media without a thumbnail keeps the type icon: exactly one <img>.
+    expect(document.querySelectorAll("img")).toHaveLength(1);
+  });
 });

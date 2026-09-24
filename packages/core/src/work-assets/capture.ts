@@ -253,12 +253,16 @@ function buildClipSnapshot(clip: Clip): {
   return { snapshot, unsupportedParams };
 }
 
+function formatRangeName(base: string, inSec: number, outSec: number): string {
+  return `${base} (${inSec}s-${outSec}s)`;
+}
+
 function deriveDefaultName(project: Project, clip: Clip): string {
   const media = project.mediaLibrary.items.find(
     (item) => item.id === clip.mediaId,
   );
   const base = media ? mediaDisplayName(media) : clip.mediaId;
-  return `${base} (${clip.inPoint}s-${clip.outPoint}s)`;
+  return formatRangeName(base, clip.inPoint, clip.outPoint);
 }
 
 /**
@@ -343,6 +347,120 @@ function normalizeAssetName(
     name = name.slice(0, 200);
   }
   return { ok: true, name };
+}
+
+export interface CaptureWorkAssetFromMediaOptions
+  extends CaptureWorkAssetOptions {
+  /** Source-media start in seconds; defaults to 0. */
+  readonly inSec?: number;
+  /**
+   * Source-media end in seconds; defaults to the media's measured duration,
+   * falling back to the conventional 5s still-image span (the same rule
+   * `clip/add` applies when no explicit duration is passed).
+   */
+  readonly outSec?: number;
+}
+
+/**
+ * Build a work asset straight from a project media item — no timeline
+ * detour. The snapshot is the engine's DEFAULT clip parameter set for the
+ * chosen source range (identity transform, no effects/keyframes, unit
+ * volume), so instantiating the asset behaves exactly like dropping that
+ * media span onto the timeline. Parameter-bearing captures still come from
+ * `captureWorkAssetFromClip(s)`; this entry exists so raw imports and
+ * generated files can be staged for reuse without occupying the timeline
+ * first.
+ */
+export function captureWorkAssetFromMedia(
+  project: Project,
+  mediaId: string,
+  options: CaptureWorkAssetFromMediaOptions = {},
+): WorkAssetCaptureResult {
+  const media = project.mediaLibrary.items.find((item) => item.id === mediaId);
+  if (!media) {
+    return {
+      ok: false,
+      code: "NOT_FOUND",
+      message: `media "${mediaId}" is not in the project library`,
+      details: { mediaId },
+    };
+  }
+  if (media.isPlaceholder === true) {
+    return {
+      ok: false,
+      code: "UNSUPPORTED",
+      message: `media "${mediaId}" is a placeholder whose bytes are missing — restore the media before capturing`,
+      details: { mediaId },
+    };
+  }
+
+  const inSec = options.inSec ?? 0;
+  const mediaDuration = media.metadata.duration;
+  const defaultOutSec = mediaDuration > 0 ? mediaDuration : 5;
+  const outSec = options.outSec ?? defaultOutSec;
+  if (
+    !Number.isFinite(inSec) ||
+    !Number.isFinite(outSec) ||
+    inSec < 0 ||
+    outSec <= inSec
+  ) {
+    return {
+      ok: false,
+      code: "INVALID_PARAMS",
+      message: `degenerate source range (in ${inSec}, out ${outSec})`,
+      details: { mediaId, inSec, outSec },
+    };
+  }
+  if (mediaDuration > 0 && outSec > mediaDuration) {
+    return {
+      ok: false,
+      code: "INVALID_PARAMS",
+      message: `source range ends at ${outSec}s but media "${mediaId}" is only ${mediaDuration}s long`,
+      details: { mediaId, inSec, outSec, mediaDuration },
+    };
+  }
+
+  const nameResult = normalizeAssetName(
+    options.name,
+    formatRangeName(mediaDisplayName(media), inSec, outSec),
+  );
+  if (!nameResult.ok) return nameResult;
+
+  const now = options.now ?? Date.now();
+  const asset: WorkAsset = {
+    schemaVersion: 1,
+    kind: "single",
+    id: options.assetId ?? `wa-${crypto.randomUUID()}`,
+    name: nameResult.name,
+    sourceMediaId: mediaId,
+    sourceRange: { inSec, outSec },
+    clipSnapshot: {
+      duration: outSec - inSec,
+      inPoint: inSec,
+      outPoint: outSec,
+      effects: [],
+      audioEffects: [],
+      transform: {
+        position: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 },
+        rotation: 0,
+        anchor: { x: 0.5, y: 0.5 },
+        opacity: 1,
+      },
+      volume: 1,
+      keyframes: [],
+    },
+    unsupportedParams: [],
+    ...(options.captureRequestId !== undefined
+      ? { captureRequestId: options.captureRequestId }
+      : {}),
+    ...(options.createdBy !== undefined
+      ? { createdBy: options.createdBy }
+      : {}),
+    createdAt: now,
+    updatedAt: now,
+  };
+  return { ok: true, asset };
 }
 
 /**

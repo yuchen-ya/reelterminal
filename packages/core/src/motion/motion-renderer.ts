@@ -3160,6 +3160,10 @@ export class MotionRenderer {
       this.shaderRenderer.dispose();
       this.shaderRenderer = null;
     }
+    if (this.threeRenderer) {
+      this.threeRenderer.dispose();
+      this.threeRenderer = null;
+    }
     this.shaderFillFrameCache = null;
     this.warnedShaderGlyphCaps.clear();
   }

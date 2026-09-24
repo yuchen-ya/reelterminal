@@ -74,6 +74,10 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  # Layered data cleanup at uninstall time (program / projects+library /
+  # agent workspace / caches), driven by uninstall-info.ini written by the
+  # app. Default remains "keep everything user-owned".
+  include: build/installer.nsh
 linux:
   icon: build/icon.png
   target:

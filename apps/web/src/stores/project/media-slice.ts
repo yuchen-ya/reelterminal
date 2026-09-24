@@ -162,6 +162,23 @@ function importError(
   };
 }
 
+/**
+ * Release the blob URLs an item owns (filmstrip thumbnails created from
+ * OffscreenCanvas via createObjectURL; the rest are data: URLs). Only `blob:`
+ * URLs made by this store are revoked; data: URLs need no release.
+ */
+function revokeMediaItemBlobUrls(item: MediaItem): void {
+  const urls = [
+    ...(item.thumbnailUrl ? [item.thumbnailUrl] : []),
+    ...(item.filmstripThumbnails?.map((thumb) => thumb.url) ?? []),
+  ];
+  for (const url of urls) {
+    if (url.startsWith("blob:")) {
+      URL.revokeObjectURL(url);
+    }
+  }
+}
+
 export function createMediaSlice(set: Set, get: Get): MediaSlice {
   return {
     importMedia: async (file: File, options: ImportMediaOptions = {}) => {
@@ -763,6 +780,15 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
             modifiedAt: Date.now(),
           },
         });
+
+        // The previous item left the library for good — replacement bypasses
+        // the undo history — so its blob URLs can never be reached again.
+        const previousItem = project.mediaLibrary.items.find(
+          (item) => item.id === mediaId,
+        );
+        if (previousItem) {
+          revokeMediaItemBlobUrls(previousItem);
+        }
 
         if (updatedItem.type === "video" && !updatedItem.thumbnailUrl) {
           setTimeout(async () => {

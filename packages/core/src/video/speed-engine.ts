@@ -103,7 +103,6 @@ export class SpeedEngine {
     }
     if (data) {
       data.reverse = reverse;
-    } else {
     }
   }
 
@@ -485,12 +484,5 @@ export function getSpeedEngine(): SpeedEngine {
   if (!speedEngineInstance) {
     speedEngineInstance = new SpeedEngine();
   }
-  return speedEngineInstance;
-}
-
-export function initializeSpeedEngine(
-  animationEngine?: AnimationEngine,
-): SpeedEngine {
-  speedEngineInstance = new SpeedEngine(animationEngine);
   return speedEngineInstance;
 }

@@ -33,19 +33,20 @@ async function getOrCreateEngine<T>(
   key: string,
   factory: () => T | Promise<T>
 ): Promise<T> {
-  if (!lazyEngineCache.has(key)) {
-    lazyEngineCache.set(key, Promise.resolve(factory()));
+  let promise = lazyEngineCache.get(key) as Promise<T> | undefined;
+  if (!promise) {
+    promise = Promise.resolve(factory());
+    lazyEngineCache.set(key, promise);
+    // Evict a rejected entry so the next call retries construction instead of
+    // replaying a permanent failure. The first caller still receives the
+    // original rejection; this extra handler only unpins it from the cache.
+    promise.catch(() => {
+      if (lazyEngineCache.get(key) === promise) {
+        lazyEngineCache.delete(key);
+      }
+    });
   }
-  return lazyEngineCache.get(key) as Promise<T>;
-}
-
-export interface AudioLevelData {
-  peaks: Map<string, number>;
-  rms: Map<string, number>;
-  masterPeak: number;
-  masterRms: number;
-  isClipping: boolean;
-  isWarning: boolean;
+  return promise;
 }
 
 export interface PlaybackStats {
@@ -90,15 +91,8 @@ export interface EngineState {
   adjustmentLayerEngine: AdjustmentLayerEngine | null;
   currentFrame: RenderedFrame | null;
   playbackStats: PlaybackStats | null;
-  audioLevels: AudioLevelData | null;
   initialize: () => Promise<void>;
   dispose: () => void;
-  renderFrame: (time: number) => Promise<RenderedFrame | null>;
-  getAudioLevels: () => AudioLevelData;
-  updateAudioLevels: (
-    trackLevels: Map<string, { peak: number; rms: number }>,
-  ) => void;
-  resetAudioLevels: () => void;
   getVideoEngine: () => VideoEngine | null;
   getAudioEngine: () => AudioEngine | null;
   getPlaybackController: () => PlaybackController | null;
@@ -116,70 +110,6 @@ export interface EngineState {
   getNestedSequenceEngine: () => Promise<NestedSequenceEngine>;
   getAdjustmentLayerEngine: () => Promise<AdjustmentLayerEngine>;
 }
-
-/**
- * Audio level threshold constants (in linear scale, converted from dB)
- *
- * Warning and clipping thresholds
- * Feature: core-ui-integration, Property 20: Audio Level Threshold Detection
- */
-export const AUDIO_THRESHOLDS = {
-  /** Warning threshold: -6dB = 10^(-6/20) ≈ 0.501 */
-  WARNING_DB: -6,
-  WARNING_LINEAR: Math.pow(10, -6 / 20), // ~0.501
-
-  /** Clipping threshold: 0dB = 1.0 */
-  CLIPPING_DB: 0,
-  CLIPPING_LINEAR: 1.0,
-} as const;
-
-/**
- * Convert linear amplitude to decibels
- * @param linear - Linear amplitude value (0-1+)
- * @returns Decibel value
- */
-export function linearToDb(linear: number): number {
-  if (linear <= 0) return -Infinity;
-  return 20 * Math.log10(linear);
-}
-
-/**
- * Convert decibels to linear amplitude
- * @param db - Decibel value
- * @returns Linear amplitude value
- */
-export function dbToLinear(db: number): number {
-  return Math.pow(10, db / 20);
-}
-
-/**
- * Detect audio level threshold violations
- *
- * Warning indicator when levels exceed -6dB
- * Clipping indicator when levels exceed 0dB
- * Feature: core-ui-integration, Property 20: Audio Level Threshold Detection
- *
- * @param level - Audio level in linear scale (0-1+)
- * @returns Object with isWarning and isClipping flags
- */
-export function detectThresholds(level: number): {
-  isWarning: boolean;
-  isClipping: boolean;
-} {
-  return {
-    isWarning: level > AUDIO_THRESHOLDS.WARNING_LINEAR,
-    isClipping: level >= AUDIO_THRESHOLDS.CLIPPING_LINEAR,
-  };
-}
-
-const DEFAULT_AUDIO_LEVELS: AudioLevelData = {
-  peaks: new Map(),
-  rms: new Map(),
-  masterPeak: 0,
-  masterRms: 0,
-  isClipping: false,
-  isWarning: false,
-};
 
 const DEFAULT_PLAYBACK_STATS: PlaybackStats = {
   currentTime: 0,
@@ -220,7 +150,6 @@ export const useEngineStore = create<EngineState>()(
 
     currentFrame: null,
     playbackStats: DEFAULT_PLAYBACK_STATS,
-    audioLevels: DEFAULT_AUDIO_LEVELS,
 
     initialize: async () => {
       const state = get();
@@ -325,73 +254,6 @@ export const useEngineStore = create<EngineState>()(
         adjustmentLayerEngine: null,
         currentFrame: null,
         playbackStats: DEFAULT_PLAYBACK_STATS,
-        audioLevels: DEFAULT_AUDIO_LEVELS,
-      });
-    },
-
-    /**
-     * Render a frame at the specified time
-     * Note: This is a placeholder - actual rendering requires a project
-     * and will be implemented in the RenderBridge
-     */
-    renderFrame: async (_time: number) => {
-      const { videoEngine, initialized } = get();
-
-      if (!initialized || !videoEngine) {
-        return null;
-      }
-
-      // The actual implementation will be in the RenderBridge
-      // which has access to the project store
-      return null;
-    },
-
-    getAudioLevels: () => {
-      const { audioLevels } = get();
-      return audioLevels || DEFAULT_AUDIO_LEVELS;
-    },
-
-    updateAudioLevels: (
-      trackLevels: Map<string, { peak: number; rms: number }>,
-    ) => {
-      const peaks = new Map<string, number>();
-      const rms = new Map<string, number>();
-      let masterPeak = 0;
-      let masterRms = 0;
-      let isClipping = false;
-      let isWarning = false;
-
-      for (const [trackId, levels] of trackLevels) {
-        peaks.set(trackId, levels.peak);
-        rms.set(trackId, levels.rms);
-
-        masterPeak = Math.max(masterPeak, levels.peak);
-        masterRms = Math.max(masterRms, levels.rms);
-
-        const thresholds = detectThresholds(levels.peak);
-        if (thresholds.isClipping) isClipping = true;
-        if (thresholds.isWarning) isWarning = true;
-      }
-
-      const masterThresholds = detectThresholds(masterPeak);
-      if (masterThresholds.isClipping) isClipping = true;
-      if (masterThresholds.isWarning) isWarning = true;
-
-      set({
-        audioLevels: {
-          peaks,
-          rms,
-          masterPeak,
-          masterRms,
-          isClipping,
-          isWarning,
-        },
-      });
-    },
-
-    resetAudioLevels: () => {
-      set({
-        audioLevels: DEFAULT_AUDIO_LEVELS,
       });
     },
 

@@ -22,7 +22,6 @@
  */
 import { mkdirSync } from "node:fs";
 import {
-  FACADE_VERBS,
   toolPresentation,
   LiveWriterLease,
   type FacadeResult,
@@ -116,10 +115,6 @@ export interface LiveSessionHost {
   /** External endpoint → facade (lazy-creates the external session). */
   callExternal(verb: FacadeVerb, params: unknown): Promise<FacadeResult<unknown>>;
   readonly isEnabled: boolean;
-}
-
-export function isFacadeVerb(verb: string): verb is FacadeVerb {
-  return (FACADE_VERBS as readonly string[]).includes(verb);
 }
 
 /** First line only, bounded — summaries never carry raw JSON or params. */
@@ -367,7 +362,7 @@ export function createLiveSessionHost(
       if (result.ok && toolPresentation(verb) === "image-collection") {
         const images = visualImageContent(result, deps.artifactRoot)
           .filter((block) => block.type === "image")
-          .map((block) => `data:image/png;base64,${block.data}`);
+          .map((block) => `data:${block.mimeType};base64,${block.data}`);
         if (images.length > 0) {
           const value = result.value as { mediaId?: string; sourceRevision?: number; frames?: { timeSec: number }[]; mediaName?: string; startSec?: number; endSec?: number; limitations?: string[] };
           deps.emitEvent({ type: "inspection", title: `${value.mediaName ?? verb}${value.mediaId ? ` · ${value.mediaId}` : ""}${value.sourceRevision !== undefined ? ` · revision ${value.sourceRevision}` : ""}`,

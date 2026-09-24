@@ -143,6 +143,12 @@ export const useRecorderStore = create<RecorderState>((set, get) => {
 
       await new Promise((resolve) => setTimeout(resolve, 3000));
 
+      // A cancel/reset during the countdown changes the status away from
+      // "countdown"; do not start recording from a stale timer.
+      if (get().status !== "countdown") {
+        return;
+      }
+
       try {
         await screenRecorderService.startRecording(options);
         set({ status: "recording", duration: 0 });

@@ -61,7 +61,6 @@ export const Toolbar: React.FC = () => {
   const { t } = useTranslation();
   const { project, renameProject } = useProjectStore();
   const {
-    selectedItems,
     setExportState: setGlobalExportState,
     setDesktopPage,
     activeModal,
@@ -111,10 +110,6 @@ export const Toolbar: React.FC = () => {
     },
     [navigate, setDesktopPage],
   );
-
-  // selectedItems drives related UX in the editor (e.g. inspector context).
-  // Kept on the destructure list so future tweaks don't have to rewire it.
-  void selectedItems;
 
   const handleExported = useCallback(
     (videoSettings: Partial<VideoExportSettings>) => {
@@ -168,14 +163,13 @@ export const Toolbar: React.FC = () => {
     const duration = project.timeline.duration;
     const estimates = new Map<string, TimeEstimate>();
 
+    // Only presets actually displayed in exportOptions are estimated; keys
+    // that no option ever renders (4k-60-master, 4k-master, prores) were dead.
     const configs: Array<{ key: string; width: number; height: number; frameRate: number; codec: "h264" | "h265" | "vp9" | "av1" }> = [
       { key: "mp4", width: project.settings.width, height: project.settings.height, frameRate: 30, codec: "h264" },
       { key: "4k", width: 3840, height: 2160, frameRate: 30, codec: "h264" },
-      { key: "4k-60-master", width: 3840, height: 2160, frameRate: 60, codec: "h264" },
-      { key: "4k-master", width: 3840, height: 2160, frameRate: 30, codec: "h264" },
       { key: "1080p-high", width: 1920, height: 1080, frameRate: 30, codec: "h264" },
       { key: "1080p-60", width: 1920, height: 1080, frameRate: 60, codec: "h264" },
-      { key: "prores", width: project.settings.width, height: project.settings.height, frameRate: 30, codec: "h264" },
     ];
 
     for (const config of configs) {

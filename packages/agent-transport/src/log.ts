@@ -16,24 +16,10 @@ const LEVEL_ORDER: Readonly<Record<LogLevel, number>> = {
   debug: 2,
 };
 
-const LEVEL_NAMES: readonly LogLevel[] = ["error", "info", "debug"];
-
 let currentLevel: LogLevel = "info";
-
-/** Parse a level name; returns null for anything else (callers refuse). */
-export function parseLogLevel(raw: string | undefined): LogLevel | null {
-  if (raw === undefined) return null;
-  return (LEVEL_NAMES as readonly string[]).includes(raw)
-    ? (raw as LogLevel)
-    : null;
-}
 
 export function setLogLevel(level: LogLevel): void {
   currentLevel = level;
-}
-
-export function getLogLevel(): LogLevel {
-  return currentLevel;
 }
 
 function enabled(level: LogLevel): boolean {

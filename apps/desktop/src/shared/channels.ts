@@ -72,4 +72,6 @@ export const CHANNELS = {
   agentTaskMediaRoots: "reelterminal:agentTasks:mediaRoots",
   agentTaskScanOutput: "reelterminal:agentTasks:scanOutput",
   agentTaskImport: "reelterminal:agentTasks:importArtifact",
+  dataRootGetInfo: "reelterminal:dataRoot:getInfo",
+  dataRootChange: "reelterminal:dataRoot:change",
 } as const;

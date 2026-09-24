@@ -74,6 +74,9 @@ export const CropModeView: React.FC<CropModeViewProps> = ({
   const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
   const [isLoading, setIsLoading] = useState(true);
 
+  const currentTimeRef = useRef(currentTime);
+  currentTimeRef.current = currentTime;
+
   useEffect(() => {
     setIsLoading(true);
 
@@ -126,14 +129,23 @@ export const CropModeView: React.FC<CropModeViewProps> = ({
       video.addEventListener("loadedmetadata", handleLoadedMetadata);
       video.addEventListener("error", handleError);
       video.src = videoSrc;
-      video.currentTime = currentTime;
+      video.currentTime = currentTimeRef.current;
 
       return () => {
         video.removeEventListener("loadedmetadata", handleLoadedMetadata);
         video.removeEventListener("error", handleError);
       };
     }
-  }, [videoSrc, currentTime, mediaType]);
+  }, [videoSrc, mediaType]);
+
+  // Seek playback position without reloading the media source.
+  useEffect(() => {
+    if (mediaType === "image") return;
+    const video = videoDisplayRef.current;
+    if (video) {
+      video.currentTime = currentTime;
+    }
+  }, [currentTime, mediaType]);
 
   const handleMouseDown = (e: React.MouseEvent, handle: DragHandle) => {
     e.preventDefault();

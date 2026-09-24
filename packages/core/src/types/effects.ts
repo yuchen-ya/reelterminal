@@ -557,10 +557,10 @@ export const EFFECT_DEFINITIONS: EffectDefinition[] = [
   // unpresetable. Parameter keys and ranges mirror what the GUI writes
   // (effects-bridge getDefaultParams / VideoEffectsSection sliders) and
   // what the engines read — the same measured contract for both render
-  // paths. `hue` stays OUT on purpose: the video-effects-engine GPU
-  // shader, its CSS filter chain, the canvas2d fallback, and the WebGPU
+  // paths. `hue` stays OUT on purpose: the video-effects-engine CSS
+  // filter chain, the canvas2d fallback, and the WebGPU
   // processor all read `rotation` (degrees), while the legacy
-  // UnifiedEffectsProcessor CSS chain still reads `value` (0..1 turns),
+  // value-turns effects CSS chain still reads `value` (0..1 turns),
   // so there is no single safe contract yet.
   // chromaKey (clip-level keying, not a stack effect) and shader
   // (per-shaderId dynamic params; presets are parameter-only) are

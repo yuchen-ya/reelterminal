@@ -52,5 +52,6 @@ export function handleAppScheme(rendererRoot: string): void {
   });
 }
 
-export const APP_ORIGIN = `${SCHEME}://reelterminal`;
+// Module-local: APP_INDEX is the only published derived value.
+const APP_ORIGIN = `${SCHEME}://reelterminal`;
 export const APP_INDEX = `${APP_ORIGIN}/index.html`;

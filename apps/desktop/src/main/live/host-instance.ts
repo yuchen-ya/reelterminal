@@ -28,6 +28,7 @@ import {
   liveTargetWebContents,
 } from "./renderer-store-adapter";
 import { getAgentModePreferenceStore } from "./work-mode-instance";
+import { agentWorkspaceDefault } from "../data-root";
 
 let host: LiveSessionHost | null = null;
 
@@ -43,10 +44,9 @@ export function agentWorkspaceRoot(): string {
     "OPENREEL_AGENT_WORKSPACE_ROOT",
   );
   if (configured && path.isAbsolute(configured)) return configured;
-  return path.join(
-    app.getPath("videos"),
-    "ReelTerminal Agent Workspace",
-  );
+  // Data-root aware default: `<dataRoot>/agent-workspace` when the data root
+  // is active, else the pre-data-root folder under Videos (docs/DATA-ROOT.md).
+  return agentWorkspaceDefault();
 }
 
 /**

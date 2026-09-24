@@ -6,7 +6,6 @@ export interface RendererConfig {
   canvas: HTMLCanvasElement | OffscreenCanvas;
   width: number;
   height: number;
-  maxTextureCache?: number;
   preferredRenderer?: RendererType;
 }
 
@@ -60,8 +59,6 @@ export function getBestRendererType(preferred?: RendererType): RendererType {
 
 export class RendererFactory {
   private static instance: RendererFactory | null = null;
-  private currentRenderer: Renderer | null = null;
-  private config: RendererConfig | null = null;
 
   private constructor() {}
 
@@ -76,13 +73,7 @@ export class RendererFactory {
     return isWebGPUSupported();
   }
 
-  getRendererType(preferred?: RendererType): RendererType {
-    return getBestRendererType(preferred);
-  }
-
   async createRenderer(config: RendererConfig): Promise<Renderer> {
-    this.config = config;
-
     // Try WebGPU first
     if (isWebGPUSupported()) {
       try {
@@ -91,8 +82,6 @@ export class RendererFactory {
         const initialized = await renderer.initialize();
 
         if (initialized) {
-          this.currentRenderer = renderer;
-
           return renderer;
         }
 
@@ -107,37 +96,11 @@ export class RendererFactory {
       await import("./canvas2d-fallback-renderer");
     const renderer = new Canvas2DFallbackRenderer(config);
     await renderer.initialize();
-    this.currentRenderer = renderer;
 
     return renderer;
-  }
-
-  getCurrentRenderer(): Renderer | null {
-    return this.currentRenderer;
-  }
-
-  destroyRenderer(): void {
-    if (this.currentRenderer) {
-      this.currentRenderer.destroy();
-      this.currentRenderer = null;
-    }
-  }
-
-  async recreateRenderer(): Promise<Renderer | null> {
-    if (!this.config) {
-      return null;
-    }
-    this.destroyRenderer();
-    return this.createRenderer(this.config);
   }
 }
 
 export function getRendererFactory(): RendererFactory {
   return RendererFactory.getInstance();
-}
-
-export async function createRenderer(
-  config: RendererConfig,
-): Promise<Renderer> {
-  return RendererFactory.getInstance().createRenderer(config);
 }
