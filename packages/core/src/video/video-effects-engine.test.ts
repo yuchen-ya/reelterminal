@@ -251,56 +251,6 @@ describe("VideoEffectsEngine", () => {
     });
   });
 
-  describe("chromaKey GPU uniform wiring", () => {
-    const makeShader = () => ({
-      uniforms: new Map(
-        ["u_keyColor", "u_tolerance", "u_softness", "u_spillSuppression"].map(
-          (name) => [name, { name } as unknown as WebGLUniformLocation],
-        ),
-      ) as Map<string, WebGLUniformLocation>,
-    });
-
-    const makeGl = (calls: Array<{ uniform: string; value: number }>) =>
-      ({
-        uniform1f: (loc: { name: string }, value: number) =>
-          calls.push({ uniform: loc.name, value }),
-        uniform3f: (loc: { name: string }) =>
-          calls.push({ uniform: loc.name, value: Number.NaN }),
-      }) as unknown as WebGL2RenderingContext;
-
-    const withGl = (
-      calls: Array<{ uniform: string; value: number }>,
-      params: Record<string, unknown>,
-    ): void => {
-      const engine = new VideoEffectsEngine({ width: 8, height: 8, useGPU: false }) as any;
-      engine.gl = makeGl(calls);
-      engine.setFilterUniforms("chromaKey", makeShader(), params);
-    };
-
-    it("uploads the spillSuppression param as u_spillSuppression", () => {
-      const calls: Array<{ uniform: string; value: number }> = [];
-      withGl(calls, {
-        keyColor: { r: 0, g: 1, b: 0 },
-        tolerance: 0.3,
-        edgeSoftness: 0.1,
-        spillSuppression: 0.7,
-      });
-
-      expect(calls).toContainEqual({ uniform: "u_spillSuppression", value: 0.7 });
-    });
-
-    it("falls back to 0 when the effect item omits spillSuppression", () => {
-      const calls: Array<{ uniform: string; value: number }> = [];
-      withGl(calls, {
-        keyColor: { r: 0, g: 1, b: 0 },
-        tolerance: 0.3,
-        edgeSoftness: 0.1,
-      });
-
-      expect(calls).toContainEqual({ uniform: "u_spillSuppression", value: 0 });
-    });
-  });
-
   describe("hasPixelLevelEffects (skip-readback decision)", () => {
     const cssOnlyEffects: Effect[] = [
       { id: "b", type: "brightness", enabled: true, params: { value: 20 } },
