@@ -13,6 +13,7 @@ import { AgentMediaTaskDialog } from "../../components/editor/dialogs/AgentMedia
 import { AgentMediaTaskRuntime } from "../../components/editor/dialogs/AgentMediaTaskRuntime";
 import { PanelErrorBoundary } from "../../components/ErrorBoundary";
 import { CollabStatusBar } from "../editor/CollabStatusBar";
+import { DesktopKeyboardShortcuts } from "../editor/DesktopKeyboardShortcuts";
 import { Icon } from "@/icons/Icon";
 import { useResizable } from "../editor/useResizable";
 
@@ -184,6 +185,11 @@ export function EditPage(): JSX.Element {
           CollabStatusBar hosts the entry button. */}
       <AgentMediaTaskRuntime />
       <AgentMediaTaskDialog />
+      {/* Window-level shortcut dispatch for the edit page (the web shell gets
+          this from EditorInterface; the desktop tree never mounted it, which
+          left every keyboard shortcut dead there). Renders null until the
+          "?" overlay opens. */}
+      <DesktopKeyboardShortcuts />
     </div>
   );
 }

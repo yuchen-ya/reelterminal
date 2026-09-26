@@ -546,6 +546,10 @@ class KeyboardShortcutsManager {
   }
 
   private handleKeyDown = (e: KeyboardEvent): void => {
+    // A window-level handler registered earlier (e.g. the desktop shell's
+    // own undo/redo listener) may have already consumed this key; without
+    // this check both would fire for one press.
+    if (e.defaultPrevented) return;
     const target = e.target;
     if (
       target instanceof HTMLInputElement ||

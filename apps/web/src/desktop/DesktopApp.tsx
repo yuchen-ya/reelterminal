@@ -70,6 +70,10 @@ export function DesktopApp(): JSX.Element {
   // entry in an input, textarea, or contenteditable.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
+      // The shared keyboard-shortcuts service may have already consumed
+      // this key (its editing.undo/redo bindings overlap this handler);
+      // whichever listener runs first owns the press.
+      if (e.defaultPrevented) return;
       const target = e.target;
       if (
         target instanceof HTMLInputElement ||
