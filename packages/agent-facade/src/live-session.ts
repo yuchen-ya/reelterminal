@@ -279,11 +279,8 @@ import {
 } from "./types";
 import {
   DEFAULT_AGENT_ACCESS_MODE,
-  DEFAULT_AGENT_WORK_MODE,
-  agentWorkModeSemantics,
   type AgentAccessMode,
-  type AgentWorkMode,
-} from "./work-mode";
+} from "./access";
 import {
   buildVisualSamplePlan,
   MAX_VISUAL_CONTACT_SHEET_PIXELS,
@@ -334,10 +331,8 @@ export interface LiveFacadeConfig {
   readonly lease: LiveWriterLease;
   /** Identity of THIS AI session, used as the lease holder id. */
   readonly sessionId: string;
-  /** Collaboration preference; a getter lets the GUI switch without remounting this session. */
-  readonly workMode?: AgentWorkMode | (() => AgentWorkMode);
   /**
-   * Authorization boundary, deliberately independent from work mode. A
+   * Explicit authorization boundary. A
    * getter lets the desktop recover a safely migrated read-only preference
    * without replacing the facade (and losing jobs/idempotency state).
    */
@@ -478,13 +473,6 @@ export class LiveFacadeSession {
       this.accessMode() === "write" && config.lease.acquire(config.sessionId);
   }
 
-  private workMode(): AgentWorkMode {
-    const configured = this.config.workMode;
-    return typeof configured === "function"
-      ? configured()
-      : configured ?? DEFAULT_AGENT_WORK_MODE;
-  }
-
   private accessMode(): AgentAccessMode {
     const configured = this.config.access;
     return typeof configured === "function"
@@ -506,7 +494,7 @@ export class LiveFacadeSession {
     if (!mediaImportAvailable) unavailableVerbs.push("media.import");
     if (!materialLibraryAvailable) unavailableVerbs.push(...MATERIAL_VERBS);
     return {
-      workMode: this.workMode(),
+
       mediaRoots: this.config.mediaRoots ?? [],
       deliveryRoots: this.config.deliveryRoots ?? [],
       ...(this.config.renderProvider
@@ -547,10 +535,10 @@ export class LiveFacadeSession {
     if (this.accessMode() === "read-only") {
       throw new FacadeError(
         "FORBIDDEN",
-        `${verb}: this live session has read-only access — work mode never grants write permission`,
+        `${verb}: this live session has read-only access`,
         {
           access: this.accessMode(),
-          workMode: this.workMode(),
+
           sessionId: this.config.sessionId,
         },
       );
@@ -804,8 +792,7 @@ export class LiveFacadeSession {
       ]);
       return ok<EditorGetContextResult>({
         mode: "live",
-        workMode: this.workMode(),
-        workModeSemantics: agentWorkModeSemantics(this.workMode()),
+
         projectRevision: state.revision,
         contextAvailable: true,
         contextRevision: context.contextRevision,
@@ -820,6 +807,7 @@ export class LiveFacadeSession {
           projectId: identity.projectId,
           projectName: identity.projectName,
           windowId: identity.windowId,
+          ...(identity.projectEpoch ? { projectEpoch: identity.projectEpoch } : {}),
         },
       });
     });
@@ -3886,13 +3874,10 @@ export class LiveFacadeSession {
     payload: unknown,
   ): Promise<{ revision: number; value: T } | null> {
     if (idempotencyKey === undefined) return null;
-    try {
-      const { projectId } = await this.config.store.getIdentity();
-      this.ledgerProjectId = projectId;
-    } catch {
-      // Identity unreadable (e.g. no project open): keep the last known
-      // scope — the store's own errors/CAS stay authoritative.
-    }
+    // Never replay a result from the last project if the current identity is
+    // unavailable or its request guard has failed during a project switch.
+    const { projectId, projectEpoch } = await this.config.store.getIdentity();
+    this.ledgerProjectId = `${projectId}:${projectEpoch ?? "legacy"}`;
     const stored = this.ledger.get<T>(verb, idempotencyKey);
     if (!stored) return null;
     if (stableStringify(payload) !== stored.payloadHash) {
@@ -4168,7 +4153,13 @@ export class LiveFacadeSession {
 
   /** Serialized execution: every verb body runs inside this single lane. */
   private enqueue<T>(task: () => Promise<FacadeResult<T>>): Promise<FacadeResult<T>> {
-    const result = this.chain.then(() => task()).catch(toFailure<T>);
+    const result = this.chain.then(() => task()).catch((error: unknown) => {
+      if (isLiveStoreConflict(error)) {
+        const conflict = error as { message?: string; details?: Record<string, unknown> };
+        return toFailure<T>(new FacadeError("CONFLICT", conflict.message ?? "Project changed", conflict.details));
+      }
+      return toFailure<T>(error);
+    });
     this.chain = result.then(
       () => undefined,
       () => undefined,

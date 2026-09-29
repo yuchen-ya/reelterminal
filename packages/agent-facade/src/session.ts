@@ -250,15 +250,8 @@ import {
 } from "./visual-inspect";
 import { produceHtmlRenderArtifact } from "./media-render-html";
 import { DEFAULT_FRAME_BUDGET_BYTES, fitFrameToBudget } from "./frame-budget";
-import {
-  DEFAULT_AGENT_WORK_MODE,
-  agentWorkModeSemantics,
-  type AgentWorkMode,
-} from "./work-mode";
 
 export interface AgentFacadeConfig {
-  /** Default Agent initiative/alignment preference; never grants permissions. */
-  readonly workMode?: AgentWorkMode;
   /**
    * Absolute roots that media.import may read from. Imports resolving
    * outside every root fail with zero side effects. Default: none (imports
@@ -339,7 +332,7 @@ export class AgentFacadeSession {
 
   private capabilityContext() {
     return {
-      workMode: this.config.workMode ?? DEFAULT_AGENT_WORK_MODE,
+
       mediaRoots: this.config.mediaRoots ?? [],
       deliveryRoots: this.config.deliveryRoots ?? [],
       ...(this.config.renderAdapter
@@ -525,10 +518,7 @@ export class AgentFacadeSession {
       validateObject(params, EMPTY_PARAMS_SCHEMA, "editor.get_context params");
       return ok<EditorGetContextResult>({
         mode: "headless",
-        workMode: this.config.workMode ?? DEFAULT_AGENT_WORK_MODE,
-        workModeSemantics: agentWorkModeSemantics(
-          this.config.workMode ?? DEFAULT_AGENT_WORK_MODE,
-        ),
+
         projectRevision: this.revision,
         contextAvailable: false,
         contextRevision: null,

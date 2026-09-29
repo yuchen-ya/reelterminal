@@ -8,17 +8,13 @@
  */
 import type { Action } from "@reelterminal/core/types/actions";
 import type {
-  ExternalAgentApprovalDecision,
-  ExternalConversationDisplayState,
-} from "./conversation-protocol";
-import type {
   LiveEditorControlParams,
   LiveEditorControlTarget,
   LiveMediaImportRequest,
 } from "./live-store";
-import type { AgentAccessMode, AgentWorkMode } from "./work-mode";
+import type { AgentAccessMode } from "./access";
 
-export type { AgentAccessMode, AgentWorkMode } from "./work-mode";
+export type { AgentAccessMode } from "./access";
 
 /** Shipped connector cadence; comfortably below the host activity lease. */
 export const LIVE_HEARTBEAT_INTERVAL_MS = 10_000;
@@ -40,14 +36,9 @@ export interface DesktopCollabStatus {
   readonly enabled: boolean;
   readonly externalConnected: boolean;
   readonly writer: "external" | null;
-  readonly workMode: AgentWorkMode;
-  /** Authorization is independent from work mode. */
+  /** Explicit authorization for external commands. */
   readonly access: AgentAccessMode;
   readonly currentAction: string | null;
-}
-
-export interface DesktopCollabSetWorkModeArgs {
-  readonly mode: AgentWorkMode;
 }
 
 export interface DesktopCollabSetAccessArgs {
@@ -72,6 +63,8 @@ export type DesktopLiveBridgeKind =
 /** Main-to-renderer request on `reelterminal:live:request`. */
 export interface DesktopLiveBridgeRequest {
   readonly callId: string;
+  readonly expectedProjectId?: string;
+  readonly expectedProjectEpoch?: string;
   readonly kind: DesktopLiveBridgeKind;
   readonly actions?: readonly Action[];
   readonly groupLabel?: string;
@@ -141,37 +134,6 @@ export type DesktopLiveEvent =
       readonly summary: string;
     };
 
-export type ConversationAdapterAvailability =
-  | "missing"
-  | "available"
-  | "invalid";
-
-export type ConversationCapabilityLevel =
-  | "basic"
-  | "streaming"
-  | "observable";
-
-export interface DesktopConversationAdapterSummary {
-  readonly availability: ConversationAdapterAvailability;
-  readonly agentLabel: string | null;
-  readonly adapterName: string | null;
-  readonly sessionId: string | null;
-  readonly capabilityLevel: ConversationCapabilityLevel | null;
-  /** Bounded diagnostic; never an endpoint, token, or response body. */
-  readonly message: string | null;
-}
-
-export interface DesktopConversationState {
-  readonly sequence: number;
-  readonly adapter: DesktopConversationAdapterSummary;
-  readonly conversation: ExternalConversationDisplayState;
-}
-
-export type DesktopConversationEvent = {
-  readonly type: "state";
-  readonly state: DesktopConversationState;
-};
-
 /** Typed renderer-facing contextBridge collaboration surfaces. */
 export interface DesktopLiveBridgeApi {
   onRequest(
@@ -188,21 +150,7 @@ export interface DesktopCollabControlApi {
   enable(): Promise<DesktopCollabStatus>;
   disable(): Promise<DesktopCollabStatus>;
   getStatus(): Promise<DesktopCollabStatus>;
-  setWorkMode(mode: AgentWorkMode): Promise<DesktopCollabStatus>;
-  /** Explicitly change the authorization boundary; never implied by work mode. */
+  /** Explicitly change the authorization boundary; independent of client behavior. */
   setAccess(access: AgentAccessMode): Promise<DesktopCollabStatus>;
   openWorkspace(): Promise<string>;
-}
-
-export interface DesktopConversationApi {
-  getState(): Promise<DesktopConversationState>;
-  attach(): Promise<DesktopConversationState>;
-  prompt(text: string): Promise<DesktopConversationState>;
-  resolveApproval(
-    requestId: string,
-    decision: ExternalAgentApprovalDecision,
-  ): Promise<DesktopConversationState>;
-  cancel(): Promise<DesktopConversationState>;
-  detach(): Promise<DesktopConversationState>;
-  onEvent(handler: (event: DesktopConversationEvent) => void): () => void;
 }

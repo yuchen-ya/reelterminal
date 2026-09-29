@@ -43,7 +43,6 @@ import {
 import { registerLiveIpc } from "./ipc/live";
 import { registerAgentTaskIpc } from "./live/agent-task-channels";
 import { registerAnalysisRecordsIpc } from "./ipc/analysis-records";
-import { registerConversationIpc } from "./ipc/conversation";
 import {
   disposeLiveSessionHost,
   getLiveSessionHost,
@@ -54,11 +53,6 @@ import {
   getDataRootInfo,
   changeDataRoot,
 } from "./data-root";
-import {
-  disposeConversationHost,
-  getCodexOnboardingHost,
-  getConversationHost,
-} from "./conversation/host-instance";
 import { registerEditorWindow } from "./editor-window";
 import {
   fileWriters,
@@ -325,12 +319,10 @@ app.whenReady().then(async () => {
       context: payload.context,
     });
   });
-  // Live human–agent collaboration (ADR 0004 Slice 3): external MCP endpoint
-  // plus collabControl behind the main-process session host.
+  // Live project command endpoint plus the desktop access-status control.
   registerLiveIpc(getLiveSessionHost());
   registerAgentTaskIpc(getLiveSessionHost());
   registerAnalysisRecordsIpc(getLiveSessionHost());
-  registerConversationIpc(getConversationHost(), getCodexOnboardingHost());
   createWindow();
   initAutoUpdater();
   installApplicationMenu(process.platform, (id) => {
@@ -380,15 +372,15 @@ app.on("before-quit", () => {
 // 0600 endpoint file, Chromium providers): fire-and-forget would leave them
 // behind on quit, so the quit is deferred once — same preventDefault +
 // re-quit shape as the window close guard in lifecycle.ts. The re-quit
-// re-enters this handler with the disposal done; the other three disposals
-// are idempotent and simply run again.
+// re-enters this handler with the disposal done; the other disposals are
+// idempotent and simply run again.
 let liveSessionHostDisposed = false;
 app.on("will-quit", (event) => {
   disposeAuroraClient();
   cancelAllExports();
   if (liveSessionHostDisposed) return;
   event.preventDefault();
-  void Promise.all([disposeLiveSessionHost(), disposeConversationHost()])
+  void disposeLiveSessionHost()
     .catch(() => undefined)
     .then(() => {
       liveSessionHostDisposed = true;

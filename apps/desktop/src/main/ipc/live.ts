@@ -15,9 +15,6 @@ import { liveTargetWebContents } from "../live/renderer-store-adapter";
 import { agentWorkspaceRoot } from "../live/host-instance";
 import type { LiveSessionHost } from "../live/live-session-host";
 
-const setModeArgsSchema = z.object({
-  mode: z.enum(["guided", "collaborative", "autonomous"]),
-});
 const setAccessArgsSchema = z.object({
   access: z.enum(["read-only", "write"]),
 });
@@ -45,12 +42,6 @@ export function registerLiveIpc(host: LiveSessionHost): void {
   ipcMain.handle(CHANNELS.collabGetStatus, async (event) => {
     assertMainWindowSender(event.sender);
     return host.getStatus();
-  });
-
-  ipcMain.handle(CHANNELS.collabSetMode, async (event, raw) => {
-    assertMainWindowSender(event.sender);
-    const { mode } = setModeArgsSchema.parse(raw);
-    return host.setWorkMode(mode);
   });
 
   ipcMain.handle(CHANNELS.collabSetAccess, async (event, raw) => {

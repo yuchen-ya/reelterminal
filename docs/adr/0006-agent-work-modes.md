@@ -1,5 +1,8 @@
 # ADR 0006: Agent Work Modes Are Not Permissions
 
+> Historical decision, superseded by [ADR 0010](0010-cli-command-api.md).
+> Conversation integration and collaboration modes are no longer shipped.
+
 - Status: **Accepted**
 - Date: 2026-09-04
 - Supersedes: ADR 0004 Decision 7 (the combined Observe / Assist / Autonomous mode)

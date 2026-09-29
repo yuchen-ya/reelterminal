@@ -78,22 +78,21 @@ describe("EditPage agent media task entry", () => {
     // The strip hosts the desktop entry button.
     const entry = screen.getByTestId("collab-agent-media-entry");
     // Closed dialog renders null — no layout footprint until opened.
-    expect(screen.queryByTestId("amt-desktop-notice")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("amt-generation-paused")).not.toBeInTheDocument();
 
     fireEvent.click(entry);
 
     expect(useUIStore.getState().activeModal).toBe(AGENT_MEDIA_TASK_MODAL_ID);
-    // With no desktop conversation API the dialog renders its desktop
-    // notice — proving the shared dialog is live on the desktop page.
-    expect(screen.getByTestId("amt-desktop-notice")).toBeInTheDocument();
+    // The shared dialog stays mounted and shows that generation is paused.
+    expect(screen.getByTestId("amt-generation-paused")).toBeInTheDocument();
   });
 
-  it("does not open the dialog from unrelated strip buttons", () => {
+  it("does not open the dialog from the Agent Access switch", () => {
     render(<EditPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Got it" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Agent Access" }));
 
     expect(useUIStore.getState().activeModal).toBeNull();
-    expect(screen.queryByTestId("amt-desktop-notice")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("amt-generation-paused")).not.toBeInTheDocument();
   });
 });

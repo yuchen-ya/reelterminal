@@ -1,3 +1,6 @@
+> Retired integration. Use [the CLI-first Agent guide](AGENT-GUIDE.md).
+> The implementation described below has been removed; retained as historical context.
+
 # ReelTerminal External-Agent Conversation Adapter Protocol
 
 **Protocol:** `openreel-conversation/1`

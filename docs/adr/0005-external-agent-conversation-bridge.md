@@ -1,5 +1,8 @@
 # ADR 0005: External-Agent Conversation Bridge Foundation
 
+> Historical decision, superseded by [ADR 0010](0010-cli-command-api.md).
+> Conversation integration and collaboration modes are no longer shipped.
+
 - Status: **Desktop UI and loopback reference transport landed; external server adapters required** (2026-09-02)
 - Scope: provider-neutral protocol, attachment service, ephemeral display
   state, landed desktop conversation UI, and the loopback HTTP JSON-RPC

@@ -286,6 +286,23 @@ describe("handlePresetLibraryRequest", () => {
     }
   });
 
+  it("rejects a project switch while asynchronously reading a preset", async () => {
+    const created = await service.create({ kind: "text", name: "Race", payload: TEXT_PAYLOAD });
+    if (!created.ok) throw new Error(created.message);
+    const originalGet = service.get.bind(service);
+    vi.spyOn(service, "get").mockImplementationOnce(async (id) => {
+      const found = await originalGet(id);
+      useProjectStore.getState().createNewProject("Switched during preset load");
+      return found;
+    });
+    const result = await handlePresetLibraryRequest({ verb: "apply", params: {
+      presetId: created.value.id,
+      target: { kind: "text", mode: "updateStyle", clipId: "old-clip" },
+    } });
+    expect(result).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+    expect(useProjectStore.getState().actionHistory.getUndoStackSize()).toBe(0);
+  });
+
   it("applies a text preset to an existing clip as one undoable batch", async () => {
     const created = await service.create({
       kind: "text",

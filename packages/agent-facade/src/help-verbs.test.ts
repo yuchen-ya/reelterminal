@@ -29,7 +29,7 @@ describe("help verbs in the contract", () => {
 
 describe("help verbs (headless)", () => {
   // No project has been created: the help verbs must not care.
-  const facade = createAgentFacade({ workMode: "collaborative" });
+  const facade = createAgentFacade({});
 
   it("help.list_screens answers without a project", async () => {
     const result = await facade["help.list_screens"]();
@@ -124,7 +124,7 @@ describe("help verbs (live)", () => {
     store: storeStub,
     lease: new LiveWriterLease(),
     sessionId: "help-test-agent",
-    workMode: "collaborative",
+
     access: "read-only",
     artifactRoot: "/tmp/help-verbs-artifacts",
   });

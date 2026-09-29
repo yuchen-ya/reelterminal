@@ -1,5 +1,4 @@
 import { LEGACY_LS_DESKTOP_MEDIA_WIDTH, LEGACY_LS_DESKTOP_INSPECTOR_WIDTH, LEGACY_LS_DESKTOP_TIMELINE_HEIGHT } from "../../services/legacy-storage-keys";
-import { AgentInspectionPanel } from "../editor/AgentInspectionPanel";
 import type { JSX } from "react";
 import type React from "react";
 import { lazy, Suspense } from "react";
@@ -8,11 +7,10 @@ import { ToolcraftText as Text } from "@reelterminal/ui";
 
 import { AssetsPanel } from "../../components/editor/AssetsPanel";
 import { InspectorPanel } from "../../components/editor/InspectorPanel";
-import { ExternalAgentFloatingWindow } from "../../components/editor/agent/ExternalAgentFloatingWindow";
 import { AgentMediaTaskDialog } from "../../components/editor/dialogs/AgentMediaTaskDialog";
-import { AgentMediaTaskRuntime } from "../../components/editor/dialogs/AgentMediaTaskRuntime";
 import { PanelErrorBoundary } from "../../components/ErrorBoundary";
 import { CollabStatusBar } from "../editor/CollabStatusBar";
+import { AgentInspectionPanel } from "../editor/AgentInspectionPanel";
 import { DesktopKeyboardShortcuts } from "../editor/DesktopKeyboardShortcuts";
 import { Icon } from "@/icons/Icon";
 import { useResizable } from "../editor/useResizable";
@@ -102,7 +100,6 @@ function RowHandle({
 }
 
 /** Height of the CollabStatusBar row wrapper below (`h-8`, grid row "collab"). */
-const COLLAB_ROW_HEIGHT = 32;
 
 export function EditPage(): JSX.Element {
   const { t } = useTranslation();
@@ -131,9 +128,8 @@ export function EditPage(): JSX.Element {
     storageKey: LEGACY_LS_DESKTOP_TIMELINE_HEIGHT,
   });
 
-  // The optional external-session surface floats above the editor as a
-  // draggable window; ReelTerminal does not own its model or conversation
-  // history. The grid below is always the three-column editor layout.
+  // The grid stays a three-column editor layout with a compact local CLI
+  // access status row above the timeline.
   const gridStyle: React.CSSProperties = {
     gridTemplateColumns: `${mediaW.value}px 1fr ${inspectorW.value}px`,
     gridTemplateRows: `1fr auto ${timelineH.value}px`,
@@ -171,19 +167,9 @@ export function EditPage(): JSX.Element {
         <RowHandle onPointerDown={timelineH.onHandlePointerDown} />
       </DockRegion>
 
-      {/* Occlusion reserve: the never-dragged agent window keeps its default
-          rectangle above the collab row + timeline dock so the strip's
-          right-side entries stay clickable while the window is open. */}
-      <ExternalAgentFloatingWindow
-        defaultBottomReserve={COLLAB_ROW_HEIGHT + timelineH.value}
-      />
-      {/* The voiceover/music task surface must exist on the desktop too, not
-          only in the web editor shell. The runtime arms
-          the receipt correlator and recommended-root source for the session;
-          the dialog renders null while closed and portals to document.body
-          when open, so neither has any footprint in the grid above. The
-          CollabStatusBar hosts the entry button. */}
-      <AgentMediaTaskRuntime />
+      {/* The media-task ledger remains mounted so existing task records and
+          artifacts can still be inspected and imported. Generation is paused
+          until it has an independent task mechanism. */}
       <AgentMediaTaskDialog />
       {/* Window-level shortcut dispatch for the edit page (the web shell gets
           this from EditorInterface; the desktop tree never mounted it, which

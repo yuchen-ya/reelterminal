@@ -10,8 +10,8 @@
  *  - An `awaiting_import` task only imports while the currently open project
  *    is the task's recorded target; anything else keeps the task waiting.
  *    A target project that no longer exists anywhere fails the task for real.
- *  - Every trigger is idempotent: an already-imported task, a duplicate
- *    receipt, and a double-invoked import all collapse to one media item
+ *  - Every trigger is idempotent: an already-imported task and a
+ *    double-invoked import collapse to one media item
  *    (requestId-keyed facade ledger plus resultMediaId/terminal-state guards).
  *  - Failures are honest: import problems land on the record as real,
  *    retryable errors instead of fake progress.
@@ -20,7 +20,7 @@
 import type { AgentMediaTaskService } from "./agent-media-task-service";
 import { isTerminalTaskStatus } from "./task-machine";
 import type { AgentMediaTaskRecord } from "./types";
-import { pickArtifactFromScan } from "./receipts";
+import { pickTaskArtifactFromScan } from "./task-record-utils";
 import { checkProjectExists } from "./project-existence";
 import type { ProjectExistence } from "./project-existence";
 import {
@@ -29,7 +29,7 @@ import {
   scanTaskOutputDirectory,
 } from "./desktop-channel";
 
-export interface AgentTaskRuntimeDeps {
+export interface AgentTaskActionDeps {
   readonly service: AgentMediaTaskService;
   /** id of the currently open project, or null when none is open. */
   readonly getCurrentProjectId: () => string | null;
@@ -68,7 +68,7 @@ function failure(
   return { ok: false, taskId, code, message, ...(record ? { record } : {}) };
 }
 
-interface ResolvedRuntimeDeps {
+interface ResolvedTaskActionDeps {
   readonly service: AgentMediaTaskService;
   readonly getCurrentProjectId: () => string | null;
   readonly importArtifact: typeof importTaskArtifact;
@@ -77,7 +77,7 @@ interface ResolvedRuntimeDeps {
   readonly checkProject: (projectId: string) => Promise<ProjectExistence>;
 }
 
-function resolveDeps(deps: AgentTaskRuntimeDeps): ResolvedRuntimeDeps {
+function resolveDeps(deps: AgentTaskActionDeps): ResolvedTaskActionDeps {
   return {
     service: deps.service,
     getCurrentProjectId: deps.getCurrentProjectId,
@@ -97,7 +97,7 @@ function resolveDeps(deps: AgentTaskRuntimeDeps): ResolvedRuntimeDeps {
  */
 export async function importAwaitingTask(
   taskId: string,
-  deps: AgentTaskRuntimeDeps,
+  deps: AgentTaskActionDeps,
 ): Promise<AgentTaskActionOutcome> {
   const { service, getCurrentProjectId, importArtifact, artifactExists, checkProject } =
     resolveDeps(deps);
@@ -192,7 +192,7 @@ export async function importAwaitingTask(
  */
 export async function confirmTaskArtifactManually(
   taskId: string,
-  deps: AgentTaskRuntimeDeps,
+  deps: AgentTaskActionDeps,
 ): Promise<AgentTaskActionOutcome> {
   const { service, scanOutput } = resolveDeps(deps);
   const loaded = await service.get(taskId);
@@ -213,7 +213,7 @@ export async function confirmTaskArtifactManually(
     );
   }
   const scanned = await scanOutput(record.outputDirectory);
-  const picked = pickArtifactFromScan(scanned);
+  const picked = pickTaskArtifactFromScan(scanned);
   if (!picked.ok) {
     return failure(taskId, picked.code, picked.message, record);
   }
@@ -227,7 +227,7 @@ export async function confirmTaskArtifactManually(
 /** Manual failure mark for manual-only tasks (or a stuck submission). */
 export async function markTaskFailedManually(
   taskId: string,
-  deps: AgentTaskRuntimeDeps,
+  deps: AgentTaskActionDeps,
   reason?: string,
 ): Promise<AgentTaskActionOutcome> {
   const { service } = deps;
@@ -235,95 +235,8 @@ export async function markTaskFailedManually(
     code: "MANUAL_MARKED_FAILED",
     message:
       reason?.trim() ||
-      "用户在任务面板手动标记失败；外部会话可能仍在运行，如需停止请在 Agent 面板操作",
+      "用户在任务面板手动标记失败；此前已转交的外部任务可能仍会继续运行",
   });
   if (!marked.ok) return failure(taskId, marked.code, marked.message);
   return { ok: true, taskId, record: marked.value };
-}
-
-export interface AwaitReconciliationResult {
-  readonly failedAsMissing: readonly string[];
-  readonly checked: number;
-}
-
-/**
- * Background pass over `awaiting_import` tasks: a target project that the
- * existence oracle reports as deleted fails the task (references cleared);
- * anything else keeps waiting for the user to switch back. Safe to run on
- * every task-list change, but not free: the oracle opens the projects
- * database once per awaiting_import task (it does not cache), so a pass is
- * linear in the awaiting-import count.
- */
-export async function reconcileAwaitingImportTargets(
-  deps: AgentTaskRuntimeDeps,
-): Promise<AwaitReconciliationResult> {
-  const { service, checkProject } = resolveDeps(deps);
-  const listed = await service.list();
-  const failedAsMissing: string[] = [];
-  if (!listed.ok) return { failedAsMissing, checked: 0 };
-  let checked = 0;
-  for (const record of listed.value.tasks) {
-    if (record.status !== "awaiting_import") continue;
-    checked += 1;
-    const existence = await checkProject(record.targetProjectId);
-    if (existence.status !== "missing") continue;
-    const verified = await service.verifyTargetProjectBeforeImport(record.id, []);
-    if (verified.ok && verified.value.failedAsMissing) {
-      failedAsMissing.push(record.id);
-    }
-  }
-  return { failedAsMissing: [...failedAsMissing], checked };
-}
-
-export interface RecoveryResult {
-  readonly interrupted: readonly string[];
-  readonly artifactMissing: readonly string[];
-}
-
-/**
- * Renderer-session recovery, run once per renderer start (an app restart or
- * a plain renderer reload — the stored error code is named APP_RESTART, but
- * any fresh renderer invalidates the previous session's in-flight state)
- * before the user can act: tasks that were mid-flight when the previous
- * session ended cannot trust their in-progress state, and an
- * `awaiting_import` artifact that vanished from disk fails with an
- * explanation. Artifacts that still exist keep waiting and remain
- * importable. Records created after `createdBefore` belong to the running
- * session and are never touched.
- */
-export async function recoverInterruptedTasks(
-  deps: AgentTaskRuntimeDeps,
-  createdBefore?: string,
-): Promise<RecoveryResult> {
-  const { service, artifactExists } = resolveDeps(deps);
-  const listed = await service.list();
-  const interrupted: string[] = [];
-  const artifactMissing: string[] = [];
-  if (!listed.ok) return { interrupted, artifactMissing };
-  for (const record of listed.value.tasks) {
-    if (createdBefore && record.createdAt > createdBefore) continue;
-    if (
-      record.status === "queued" ||
-      record.status === "submitted" ||
-      record.status === "running"
-    ) {
-      const marked = await service.markError(record.id, {
-        code: "APP_RESTART",
-        message: "应用重启中断了该任务；可重试重新提交",
-      });
-      if (marked.ok) interrupted.push(record.id);
-      continue;
-    }
-    if (record.status === "awaiting_import" && record.resultPath) {
-      const present = await artifactExists(record.resultPath);
-      if (present === false) {
-        const marked = await service.markError(record.id, {
-          code: "ARTIFACT_MISSING",
-          message: "应用重开后产物文件已不存在，无法导入；可重试重新生成",
-        });
-        if (marked.ok) artifactMissing.push(record.id);
-      }
-    }
-  }
-  return { interrupted: [...interrupted], artifactMissing: [...artifactMissing] };
 }

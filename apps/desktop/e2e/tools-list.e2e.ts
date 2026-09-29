@@ -1,5 +1,5 @@
 /**
- * Legacy safety (D) — the live endpoint exposes EXACTLY the 24 facade tools
+ * Legacy safety (D) — the live endpoint exposes the complete generated facade catalog
  * (ADR 0004 Decisions 4 + 9): no internal-registry tool (e.g. the legacy
  * desktop MCP's execute_action) leaks onto the external surface, and an
  * unknown tool name is a JSON-RPC protocol error, never a domain result.
@@ -31,7 +31,7 @@ describe("legacy safety: tools/list is exactly the facade tool registry", () => 
     await launched?.close();
   });
 
-  test("tools/list returns exactly the 24 facade tools with schemas", async () => {
+  test("tools/list returns the complete generated facade catalog with schemas", async () => {
     const { tools } = await agent.client.listTools();
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([...FACADE_TOOL_NAMES].sort());

@@ -7,7 +7,7 @@ you are writing for; do not copy content across rows — link instead.
 |---|---|---|
 | [`README.md`](../README.md) (root) | What the project is, current stage, quick start, repo map | First-time visitor |
 | [`docs/product-scope.md`](product-scope.md) | Product boundary: external-agent ownership, finishing workflow, and native feature retention rule | Product + engineering |
-| [`docs/external-agent-conversation-adapter.md`](external-agent-conversation-adapter.md) | Open protocol for attaching an optional view to an external Agent conversation | Adapter authors |
+| [`docs/external-agent-conversation-adapter.md`](external-agent-conversation-adapter.md) | Retired external conversation protocol (historical) | Historical reference |
 | `packages/<pkg>/README.md` | That package's API, usage, guarantees, and limits | Package user |
 | [`docs/adr/`](adr/) | **Why** the design is what it is — point-in-time decisions, frozen once accepted | Maintainer |
 | [`docs/design-principles.md`](design-principles.md) | Enduring principles (Principle 1: Human–Agent Operational Parity) with an honest conformance table | Everyone |
@@ -34,16 +34,10 @@ you are writing for; do not copy content across rows — link instead.
 - [`adr/0002-chromium-runtime-slice-1b.md`](adr/0002-chromium-runtime-slice-1b.md) —
   Slice 1b: provider interfaces, runtime probe, honest export routes,
   containment, watchdog (incl. amendments A3–A7).
-- [`adr/0005-external-agent-conversation-bridge.md`](adr/0005-external-agent-conversation-bridge.md) —
-  provider-neutral external-session attachment foundation, landed loopback
-  reference transport, and the open thin-adapter contract. The full decision
-  set lives in [`adr/`](adr/) (0001–0008).
-- [`external-agent-conversation-adapter.md`](external-agent-conversation-adapter.md) —
-  capability levels, session attach, loopback descriptor, JSON-RPC/event
-  sequencing, ownership, safe event vocabulary, and downgrade rules.
-- [`../scripts/conversation-adapter/`](../scripts/conversation-adapter/) —
-  minimal `basic`/observable (`full`) fixtures and the network-free conformance
-  validator.
+- [`adr/0010-cli-command-api.md`](adr/0010-cli-command-api.md) — current
+  CLI-first architecture, command catalog, lifecycle and migration acceptance.
+  ADRs 0005–0007 and the external conversation adapter document are historical
+  and superseded; their implementation has been removed.
 - [`design-principles.md`](design-principles.md) — Principle 1:
   Human–Agent Operational Parity.
 - [`MATERIAL-LIBRARY.md`](MATERIAL-LIBRARY.md) — the user-level material

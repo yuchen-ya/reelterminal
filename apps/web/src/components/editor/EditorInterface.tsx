@@ -13,9 +13,7 @@ import { AudioMixer } from "../audio-mixer";
 import { KeyboardShortcutsOverlay } from "./KeyboardShortcutsOverlay";
 import { PanelErrorBoundary } from "../ErrorBoundary";
 import { AgentMediaTaskDialog } from "./dialogs/AgentMediaTaskDialog";
-import { AgentMediaTaskRuntime } from "./dialogs/AgentMediaTaskRuntime";
 import { SpotlightTour, MoGraphTour } from "./tour";
-import { ExternalAgentFloatingWindow } from "./agent/ExternalAgentFloatingWindow";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useEngineStore } from "../../stores/engine-store";
@@ -545,9 +543,6 @@ export const EditorInterface: React.FC = () => {
         onClose={() => setShowShortcutsOverlay(false)}
       />
 
-      <ExternalAgentFloatingWindow />
-
-      <AgentMediaTaskRuntime />
       <AgentMediaTaskDialog />
 
       <SpotlightTour />

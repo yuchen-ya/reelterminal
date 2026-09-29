@@ -123,7 +123,7 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
   });
 
   test("disable mid-connection fails MCP calls cleanly; re-enable reconnects with state intact", async () => {
-    // Human: disable the Agent Session via the real toggle. Both main's
+    // Human: disable Agent Access via the real toggle. Both main's
     // endpoint lifecycle and the renderer's sequenced status must converge.
     await disableAgentSessionViaUI(launched.page, launched.endpointFile);
     expect(existsSync(launched.endpointFile)).toBe(false);
@@ -196,6 +196,7 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
     const endpoint = JSON.parse(readFileSync(launched.endpointFile, "utf8")) as {
       url: string;
       port: number;
+      commandApi: { url: string };
       token: string;
     };
 
@@ -216,7 +217,7 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
     expect(statusJson).not.toContain(endpoint.token);
     // 3. The endpoint file is mode 0600.
     const mode = statSync(launched.endpointFile).mode & 0o777;
-    expect(mode.toString(8)).toBe("600");
+    if (process.platform !== "win32") expect(mode.toString(8)).toBe("600");
 
     // 4. The renderer cannot use the endpoint without the token (fetch with
     // no Authorization either rejects — CORS — or is answered 401).
@@ -231,7 +232,7 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
       } catch (error) {
         return { error: String(error) };
       }
-    }, endpoint.url);
+    }, `${endpoint.commandApi.url}/command`);
     if ("status" in rendererFetch) {
       expect(rendererFetch.status).toBe(401);
     } else {
@@ -239,18 +240,16 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
     }
 
     // 5. Auth is actually enforced server-side (loopback, token-compared).
-    const noToken = await postJson(endpoint.url, null, { jsonrpc: "2.0", id: 1, method: "ping" });
+    const noToken = await postJson(`${endpoint.commandApi.url}/command`, null, { command: "session.describe", arguments: {} });
     expect(noToken.status).toBe(401);
-    const wrongToken = await postJson(endpoint.url, "0".repeat(64), {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "ping",
+    const wrongToken = await postJson(`${endpoint.commandApi.url}/command`, "0".repeat(64), {
+      command: "session.describe",
+      arguments: {},
     });
     expect(wrongToken.status).toBe(401);
-    const withToken = await postJson(endpoint.url, endpoint.token, {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "ping",
+    const withToken = await postJson(`${endpoint.commandApi.url}/command`, endpoint.token, {
+      command: "session.describe",
+      arguments: {},
     });
     expect(withToken.status).toBe(200);
 

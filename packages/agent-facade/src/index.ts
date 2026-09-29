@@ -265,24 +265,8 @@ export { AgentFacadeSession, createAgentFacadeSession } from "./session";
 export type { AgentFacadeConfig } from "./session";
 export { createLiveFacade, LiveFacadeSession, LIVE_UNAVAILABLE_VERBS } from "./live-session";
 export type { LiveAgentFacade, LiveFacadeConfig } from "./live-session";
-export {
-  AGENT_WORK_MODES,
-  AGENT_WORK_MODE_SEMANTICS,
-  DEFAULT_AGENT_ACCESS_MODE,
-  DEFAULT_AGENT_WORK_MODE,
-  agentWorkModeSemantics,
-  isAgentAccessMode,
-  isAgentWorkMode,
-  migrateLegacyAgentMode,
-  normalizeAgentModePreference,
-} from "./work-mode";
-export type {
-  AgentAccessMode,
-  AgentModePreference,
-  AgentWorkMode,
-  AgentWorkModeSemantics,
-  LegacyAgentMode,
-} from "./work-mode";
+export { DEFAULT_AGENT_ACCESS_MODE, isAgentAccessMode, normalizeAgentAccessPreference } from "./access";
+export type { AgentAccessMode, AgentAccessPreference } from "./access";
 export {
   isLiveStoreConflict,
   LiveStoreConflictError,
@@ -292,16 +276,9 @@ export {
   LIVE_HEARTBEAT_INTERVAL_MS,
 } from "./desktop-protocol";
 export type {
-  ConversationAdapterAvailability,
-  ConversationCapabilityLevel,
   DesktopCollabControlApi,
   DesktopCollabSetAccessArgs,
-  DesktopCollabSetWorkModeArgs,
   DesktopCollabStatus,
-  DesktopConversationAdapterSummary,
-  DesktopConversationApi,
-  DesktopConversationEvent,
-  DesktopConversationState,
   DesktopLiveBridgeApi,
   DesktopLiveBridgeError,
   DesktopLiveBridgeKind,
@@ -327,83 +304,6 @@ export type {
   LiveEditorControlTargetKind,
 } from "./live-store";
 export { LiveWriterLease } from "./live-lease";
-export {
-  ConversationBridge,
-  ExternalConversationBridge,
-  ExternalConversationBridgeError,
-  createExternalConversationBridge,
-} from "./conversation-bridge";
-export {
-  ExternalConversationAdapterError,
-  createExternalConversationAdapterRouter,
-} from "./conversation-adapter";
-export type {
-  ExternalConversationAdapterRouter,
-  ExternalConversationProviderAdapter,
-} from "./conversation-adapter";
-export type {
-  ExternalConversationBridgeOptions,
-  ExternalConversationPromptReceipt,
-} from "./conversation-bridge";
-export {
-  EXTERNAL_CONVERSATION_CAPABILITIES,
-  EXTERNAL_CONVERSATION_METHODS,
-  OPENREEL_CONVERSATION_CLIENT,
-  OPENREEL_CONVERSATION_PROTOCOL_VERSION,
-  isExternalAgentInitializeResult,
-  isExternalAgentConversationCapabilities,
-  isExternalAgentSessionUpdate,
-  isExternalAgentSessionUpdateNotification,
-  normalizeExternalConversationCapabilities,
-  projectExternalAgentPromptResult,
-  projectExternalAgentSessionUpdate,
-} from "./conversation-protocol";
-export type {
-  ConversationAttachmentLease,
-  ExternalAgentApprovalDecision,
-  ExternalAgentApprovalParams,
-  ExternalAgentClientInfo,
-  ExternalAgentCloseParams,
-  ExternalAgentConnector,
-  ExternalAgentContent,
-  ExternalAgentInfo,
-  ExternalAgentInitializeParams,
-  ExternalAgentInitializeResult,
-  ExternalAgentNotification,
-  ExternalAgentPairing,
-  ExternalAgentPromptParams,
-  ExternalAgentPromptResult,
-  ExternalAgentResumeParams,
-  ExternalAgentSafeError,
-  ExternalAgentSessionCapabilities,
-  ExternalAgentSessionUpdate,
-  ExternalAgentSessionUpdateNotification,
-  ExternalAgentToolDisplayFields,
-  ExternalAgentToolStatus,
-  ExternalAgentTransport,
-  ExternalAgentVisualState,
-  ExternalAgentWorkModeContext,
-  ExternalAgentWorkModeParams,
-  ExternalAgentConversationCapabilities,
-  ExternalConversationDisplayState,
-  ExternalConversationCapability,
-  ExternalConversationCapabilityState,
-  ExternalConversationCapabilitySupport,
-  ExternalConversationDisconnectReason,
-  ExternalConversationError,
-  ExternalConversationErrorCode,
-  ExternalConversationEvent,
-  ExternalConversationFallback,
-  ExternalConversationLifecycle,
-  ExternalConversationMethod,
-  ExternalConversationOwnership,
-} from "./conversation-protocol";
-export {
-  createConversationDisplayState,
-  DEFAULT_CONVERSATION_DISPLAY_LIMIT,
-  reduceConversationDisplayState,
-} from "./conversation-state";
-export type { ConversationStatePatch } from "./conversation-state";
 export {
   FacadeError,
   FACADE_ERROR_CODES,
@@ -500,3 +400,6 @@ export type { ToolDefinition, ToolContext, PluginBindings } from "./plugin-api";
 export { toolDescription, toolPresentation } from "./tool-catalog";
 export { BUNDLED_PLUGINS, PLUGIN_TOOLS } from "./plugins";
 export type { SourceInspectInput, SourceInspectResult } from "./plugins/source-inspection";
+
+export { getCommandCatalog, getCommandCatalogEntry } from "./command-catalog";
+export type { CommandCatalogEntry, CommandCatalogMode, CommandEffect, RetryPolicy } from "./command-catalog";

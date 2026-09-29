@@ -48,16 +48,12 @@ describe("emitted MCP output schemas", () => {
       .toEqual(["asset", "clip", "text", "timeRange"]);
   });
 
-  it("exposes the same explicit work-mode context in session and editor reads", () => {
+  it("does not prescribe agent collaboration behavior", () => {
     for (const verb of ["session.describe", "editor.get_context"] as const) {
       const schema = EMITTED_VERB_OUTPUT_JSON_SCHEMAS[verb] as unknown as Schema;
       const value = (schema.properties as Schema).value as Schema;
-      expect(value.required).toEqual(
-        expect.arrayContaining(["workMode", "workModeSemantics"]),
-      );
-      expect((value.properties as Schema).workMode).toEqual({
-        enum: ["guided", "collaborative", "autonomous"],
-      });
+      expect(value.properties).not.toHaveProperty("workMode");
+      expect(value.properties).not.toHaveProperty("workModeSemantics");
     }
   });
 });

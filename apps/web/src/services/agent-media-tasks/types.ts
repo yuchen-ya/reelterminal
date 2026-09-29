@@ -1,12 +1,10 @@
 /**
  * Data contract for user-level agent media tasks (voiceover / music).
  *
- * The product never talks to a media provider itself: it records what the
- * user asked for, hands a composed text prompt to the already-connected
- * external Agent conversation, and later receives the generated audio back
- * through the product's own import path. These records are the durable
- * ledger for that exchange — user-level, deliberately outside the project
- * store, because the target project may not be open while a task is running.
+ * These durable records were created by the earlier voiceover/music handoff.
+ * Generation is paused until it has an independent task mechanism; the
+ * ledger remains user-level so existing output files can still be reviewed
+ * and imported even when their target project is closed.
  *
  * The status set and its transition semantics mirror the facade job state
  * machine (JOB_STATES / JobRegistry in @reelterminal/agent-facade jobs.ts):
@@ -36,9 +34,7 @@ export type AgentMediaTaskInsertIntent =
   (typeof AGENT_MEDIA_TASK_INSERT_INTENTS)[number];
 
 /**
- * Optional request refinements. These are plain wording hints relayed to the
- * external Agent inside the prompt text — never provider API parameters,
- * because the product holds no provider knowledge at all.
+ * Optional request refinements kept for compatibility with stored tasks.
  */
 export interface AgentMediaTaskOverrides {
   readonly language?: string;
@@ -47,15 +43,8 @@ export interface AgentMediaTaskOverrides {
 }
 
 /**
- * How a task result will be confirmed once the external Agent finishes.
- *  - "receipt": the agent_message channel is available, so the composed
- *    RESULT/ERROR receipt line is expected to arrive and can auto-advance
- *    the task.
- *  - "manual-only": the formal-reply capability bit is explicitly
- *    unsupported, so the conversation bridge drops the agent_message class
- *    and the correlator ignores any receipt that might still arrive on
- *    another channel. The task stays parked after submission until a human
- *    confirms or marks it failed.
+ * Historical confirmation mode retained because it is part of the stored
+ * record schema. The current renderer does not create or auto-confirm tasks.
  */
 export type AgentMediaTaskAutoConfirmMode = "receipt" | "manual-only";
 
@@ -65,8 +54,7 @@ export interface AgentMediaTaskRecord {
   /** Compatibility shim for future schema changes; readers stay conservative. */
   readonly recordVersion: number;
   /**
-   * Client-minted idempotency key, embedded in the prompt text as the receipt
-   * marker. Unique across the ledger: replaying it returns the existing task.
+   * Idempotency key retained with the stored record and reused for artifact import.
    */
   readonly requestId: string;
   readonly kind: AgentMediaTaskKind;

@@ -1,3 +1,4 @@
+import { projectGuardError, projectLedgerScope, type ProjectGuard } from "./project-guard";
 /**
  * Renderer side of the material-library live bridge: the desktop main
  * process facade forwards material.* verbs here, and this module executes
@@ -66,6 +67,7 @@ function bridgeError(error: MaterialBridgeError): MaterialBridgeReply {
 
 /** Handles one main→renderer material-library request (exported for tests). */
 export async function handleMaterialLibraryRequest(req: {
+  readonly guard?: ProjectGuard;
   readonly verb?: unknown;
   readonly params?: unknown;
 }): Promise<MaterialBridgeReply> {
@@ -182,7 +184,7 @@ export async function handleMaterialLibraryRequest(req: {
         return reply;
       }
       case "attach": {
-        const reply = await handleAttach(rawParams);
+        const reply = await handleAttach(rawParams, req.guard);
         notifyLibraryChanged(reply.ok);
         return reply;
       }
@@ -215,6 +217,7 @@ function notifyLibraryChanged(success: boolean): void {
 
 async function handleAttach(
   rawParams: Record<string, unknown>,
+  guard: ProjectGuard = {},
 ): Promise<MaterialBridgeReply> {
   const materialId = rawParams.materialId;
   if (!isString(materialId)) {
@@ -234,9 +237,11 @@ async function handleAttach(
   });
 
   return runExclusiveLiveWrite(async () => {
+    const conflict = projectGuardError(guard);
+    if (conflict) return conflict;
     // Same per-project bucketing as the live-bridge ledgers: a key committed
     // in one project must never replay into another after a project switch.
-    const projectId = useProjectStore.getState().project.id;
+    const projectId = projectLedgerScope();
     const projectLedger = idempotencyKey
       ? attachLedger.get(projectId)
       : undefined;
@@ -256,9 +261,7 @@ async function handleAttach(
       ...(typeof rawParams.startSec === "number" ? { startSec: rawParams.startSec } : {}),
       ...(typeof rawParams.endSec === "number" ? { endSec: rawParams.endSec } : {}),
       ...(typeof rawParams.addClip === "boolean" ? { addClip: rawParams.addClip } : {}),
-      ...(typeof rawParams.expectedRevision === "number"
-        ? { expectedRevision: rawParams.expectedRevision }
-        : {}),
+      expectedRevision: typeof rawParams.expectedRevision === "number" ? rawParams.expectedRevision : useProjectStore.getState().projectRevision,
       actor: "agent",
     });
     if (!result.ok) {

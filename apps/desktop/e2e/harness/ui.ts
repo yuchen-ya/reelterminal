@@ -34,15 +34,29 @@ async function waitFor(
 /* ------------------------------------------------------------------ */
 
 export async function createProjectViaUI(page: Page, formatLabel = "Horizontal"): Promise<void> {
-  // Start screen: the format cards are labelled "<Format> <Mode>".
-  await page.getByText("New Project", { exact: false }).first().waitFor({ timeout: 60_000 });
-  await page.getByLabel(new RegExp(`^${formatLabel} `)).click();
-  await waitForEditorReady(page);
+  try {
+    // launch.ts fixes the isolated E2E locale to English; retain a bounded
+    // diagnostic here so startup regressions reveal the actual visible page.
+    await page.getByText("New Project", { exact: false }).first().waitFor({ timeout: 30_000 });
+    await page.getByLabel(new RegExp(`^${formatLabel} `)).click();
+    await waitForEditorReady(page);
+  } catch (error) {
+    const state = await page.evaluate(() => ({
+      url: `${location.origin}${location.pathname}`,
+      language: document.documentElement.lang || navigator.language,
+      title: document.title,
+      bodyText: (document.body?.innerText ?? "").slice(0, 1_200),
+    })).catch(() => null);
+    const diagnostic = JSON.stringify(state).replace(/\b[a-f0-9]{64}\b/gi, "[redacted]");
+    throw new Error(
+      `Could not create a project through the start screen: ${error instanceof Error ? error.message : String(error)}; page=${diagnostic}`,
+    );
+  }
 }
 
 export async function waitForEditorReady(page: Page): Promise<void> {
-  // The collaboration status bar mounts with the editor workspace.
-  await page.getByRole("switch", { name: "Agent Session" }).waitFor({ timeout: 120_000 });
+  // The Agent Access status bar mounts with the editor workspace.
+  await page.getByRole("switch", { name: "Agent Access" }).waitFor({ timeout: 120_000 });
 }
 
 export async function openRecentProjectViaUI(page: Page, projectName: string): Promise<void> {
@@ -54,11 +68,11 @@ export async function openRecentProjectViaUI(page: Page, projectName: string): P
 }
 
 /* ------------------------------------------------------------------ */
-/* agent session toggle (real switch)                                  */
+/* command service toggle (real switch)                                */
 /* ------------------------------------------------------------------ */
 
 function agentSessionSwitch(page: Page): Locator {
-  return page.getByRole("switch", { name: "Agent Session" });
+  return page.getByRole("switch", { name: "Agent Access" });
 }
 
 export async function enableAgentSessionViaUI(page: Page, endpointFile?: string): Promise<void> {
@@ -72,13 +86,13 @@ export async function enableAgentSessionViaUI(page: Page, endpointFile?: string)
     if (await isOn()) return;
     await toggle.click();
     try {
-      await waitFor(isOn, 15_000, "Agent Session switch to turn on");
+      await waitFor(isOn, 15_000, "Agent Access switch to turn on");
       return;
     } catch {
       /* store still disagreeing — click again */
     }
   }
-  throw new Error("Agent Session switch could not be turned on after 4 clicks");
+  throw new Error("Agent Access switch could not be turned on after 4 clicks");
 }
 
 export async function disableAgentSessionViaUI(page: Page, endpointFile?: string): Promise<void> {
@@ -99,7 +113,7 @@ export async function disableAgentSessionViaUI(page: Page, endpointFile?: string
   await waitFor(
     async () => (await toggle.getAttribute("aria-checked")) === "false",
     60_000,
-    "Agent Session switch to turn off",
+    "Agent Access switch to turn off",
   );
 }
 

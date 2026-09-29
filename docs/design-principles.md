@@ -18,7 +18,7 @@ ReelTerminal owns:
 - the canonical `Project`, timeline, media inventory, editor context,
   revisions, undo/redo, preview, verification, and export;
 - direct human editing through the GUI;
-- a compact, typed **49-tool live facade** for an external Agent to inspect
+- a compact, typed **command catalog and live facade** for an external Agent to inspect
   and edit the same open project;
 - stable, human-readable Agent references such as `@A1`, `@A2`, and `@A3`;
 - English and Simplified Chinese (`zh-CN`) product UI.
@@ -49,11 +49,11 @@ equal peers with different paths:
 ```text
 human GUI ───────────────┐
                          ├─ canonical Project/actions ─ preview/export
-external Agent via MCP ─┘
+Agent via reelctl / MCP adapter ─┘
 ```
 
 The user acts directly in the GUI. The external Agent acts through the live
-facade's 49-tool MCP interface. Neither path gets a private project model or
+facade's Command API, reached through reelctl or its MCP adapter. Neither path gets a private project model or
 a privileged mutation backdoor.
 
 ### Requirements
@@ -75,16 +75,13 @@ a privileged mutation backdoor.
 | Machine-readable live state | **Yes (Slice 3 vertical)** — `editor.get_context` reports selection, playhead, ranges, canvas target, context revision, and stable references. |
 | Observable preview/export/verification | **Yes (provider-scoped)** — live capability preflights determine what this session can honestly render, export, and verify. |
 | Stable Agent references | **Yes** — selected entities receive monotonic session-local numbers; duplicate marks retain their number and deleted entities remain stale. |
-| GUI control and Agent control | **Yes** — the human always retains direct GUI control; Guided/Collaborative/Autonomous express interaction preference, while independent access and the writer lease enforce authorization. |
-| GUI buttons ↔ complete Agent command coverage | **Partial** — the 49-tool contract and closed edit-op set cover the live vertical, not every inherited editor feature. |
-| External conversation client in the GUI | **Yes** — the desktop conversation UI and loopback client transport attach to an existing external session; the external Agent/host supplies the server-side adapter and descriptor writer. |
+| GUI control and Agent control | **Yes** — the human always retains direct GUI control; read-only/write access and the writer lease enforce authorization; collaboration behavior belongs to the Agent. |
+| GUI buttons ↔ complete Agent command coverage | **Partial** — the command contract and closed edit-op set cover the live vertical, not every inherited editor feature. |
+| External conversation ownership | **External only** — no in-app conversation client or adapter. |
 | Simplified Chinese UI | **Yes (retained product UI)** — `en` and `zh-CN` locale wiring covers the retained static web surfaces, with English fallback for future or missing copy and a dry-run codemod check guarding current coverage. |
 
-> Correction note (2026-09-15, updated 2026-09-17): the snapshot above was
-> recorded on 2026-09-02, when the live facade exposed 25 tools. The contract
-> now exposes 49 tools (28 base verbs + 8 material verbs + 2 font verbs +
-> 6 preset verbs + 3 help verbs + 2 bundled plugins); counts in this document
-> reflect the current contract.
+> The current catalog is generated from the facade and bundled plugins; discover
+> its actual entries rather than relying on a fixed tool count.
 
 The machine-readable counterpart extends from state to usage: the facade
 also serves a shipped GUI manual as data (the read-only `help.*` verbs) —
@@ -92,25 +89,15 @@ curated, bilingual (`zh`/`en`) screen guides bound to the application
 version, so an Agent can explain how the editor's screens work without
 reading product source. The manual is hand-maintained static content, not
 a generated mirror of the UI, and it honestly reports what it does not
-have (six screens carry a delivered screenshot; the rest report their
-screenshot as pending).
+have (only current, validated screenshots are delivered; other screens report
+their screenshot as pending).
 
-## Principle 2: One World, Two Interfaces, Three Modes
+## Principle 2: One World, Two Interfaces
 
-*People and Agents may work independently or together, but the film has one
-canonical home.*
-
-The product has three operating modes over one project world:
-
-1. **Human-only** — the user edits through the GUI.
-2. **Agent-only** — an external Agent uses the headless facade and optional
-   headless MCP/CLI transport.
-3. **Human + Agent** — the user and an external Agent work live on the same
-   open project through the GUI and the live facade.
-
-The third mode does not mean ReelTerminal becomes an agent host. The Agent owns its
-own reasoning and conversation path; ReelTerminal provides the editing world and
-the live tool/context surface.
+The human edits through the GUI and the external Agent uses reelctl against the
+same open project. Collaboration style and initiative belong to the Agent.
+Explicit headless workflows remain available through their separate entry point;
+they do not silently replace the live desktop project.
 
 ### Hard constraints
 
@@ -130,8 +117,8 @@ the live tool/context surface.
 
 ### Current live vertical
 
-The live facade exposes the same 49-tool catalog in the desktop loopback MCP
-endpoint. In live mode, project creation/open are listed but unavailable
+The live facade exposes its catalog through the desktop loopback Command API.
+The CLI is primary; MCP is an explicitly started compatibility adapter. In live mode, project creation/open are listed but unavailable
 because the GUI owns the open project. Local video/audio/image import is available
 from the configured media roots and uses the shared GUI undo history.
 Live reads and edits travel through the renderer bridge, with context/revision
@@ -159,11 +146,10 @@ step of editing.
 - No feature is kept solely because it exists upstream; it must directly help
   turn inputs into a finished film or make that workflow safe and observable.
 
-The landed ReelTerminal conversation panel is a client of the user's external
-Agent session. It does not create a local conversation or inference lane. The
-external Agent/host owns the thin server-side `/conversation` adapter and its
-atomic `0600` descriptor writer; ReelTerminal supplies no universal provider
-connector and no embedded model.
+Agents use their own native chat. ReelTerminal provides the Command API and
+explicit MCP compatibility without a conversation panel, prompt channel,
+onboarding host or conversation descriptor. Editor state remains available on
+demand, and the Agent chooses how to use it in its context.
 
 ## Principle 4: References Are Context, Not Content
 
@@ -193,14 +179,12 @@ Capabilities describe what this session can actually do. A live facade must
 not claim that the GUI-owned lifecycle, a provider, a codec, or a transport is
 available when it is not.
 
-- The 49-tool catalog may include verbs that report `UNSUPPORTED` in live mode;
+- The command catalog may include verbs that report `UNSUPPORTED` in live mode;
   that is more useful than silently routing around the GUI.
 - Render, export, and verification availability comes from provider preflight
   and remains machine-readable.
-- A missing external conversation adapter is an integration/configuration
-  condition, not evidence of an embedded fallback. The desktop loopback client
-  and conversation UI are already landed; ReelTerminal supplies no universal
-  provider connector.
+- A missing or stale live endpoint means Agent Access is not ready. Prepare the
+  GUI; do not silently substitute a headless project or embedded Agent.
 - Progress and status must expose meaningful state without leaking raw prompts,
   credentials, or internal conversation data.
 

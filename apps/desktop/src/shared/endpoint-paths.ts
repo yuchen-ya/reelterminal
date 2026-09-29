@@ -21,11 +21,9 @@
  * — for explicit override targets — refuses the operation instead of
  * silently cross-connecting to another product or session.
  *
- * The standalone conversation adapter (scripts/conversation-adapter/) keeps
- * an equivalent inline implementation in endpoint-paths.mjs; a consistency
- * test pins both to the same outputs. Descriptors are credentials: nothing
- * in this module logs, returns, or echoes descriptor contents, and any
- * liveness probe is sent WITHOUT the bearer token.
+ * Descriptors are credentials: nothing in this module logs, returns, or
+ * echoes descriptor contents, and any liveness probe is sent WITHOUT the
+ * bearer token.
  */
 import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
@@ -38,15 +36,10 @@ export const ENDPOINT_PRODUCT_ID = "reelterminal";
 export const ENDPOINT_DIR_NAME = ".reelterminal";
 export const LEGACY_ENDPOINT_DIR_NAME = ".openreel";
 
-export type EndpointResource =
-  | "live-endpoint"
-  | "conversation-endpoint"
-  | "conversation-visual-state";
+export type EndpointResource = "live-endpoint";
 
 const RESOURCE_NAMES: Record<EndpointResource, string> = {
   "live-endpoint": "live-endpoint.json",
-  "conversation-endpoint": "conversation-endpoint.json",
-  "conversation-visual-state": "conversation-visual-state",
 };
 
 const OVERRIDE_ENV_NAMES: Record<
@@ -56,14 +49,6 @@ const OVERRIDE_ENV_NAMES: Record<
   "live-endpoint": {
     newName: "REELTERMINAL_LIVE_ENDPOINT_FILE",
     oldName: "OPENREEL_LIVE_ENDPOINT_FILE",
-  },
-  "conversation-endpoint": {
-    newName: "REELTERMINAL_CONVERSATION_ENDPOINT_FILE",
-    oldName: "OPENREEL_CONVERSATION_ENDPOINT_FILE",
-  },
-  "conversation-visual-state": {
-    newName: "REELTERMINAL_CONVERSATION_VISUAL_STATE_ROOT",
-    oldName: "OPENREEL_CONVERSATION_VISUAL_STATE_ROOT",
   },
 };
 
@@ -93,8 +78,7 @@ export function endpointOverrideEnvNames(
 /**
  * Raw override value with N02 readEnvAlias precedence (new name set wins,
  * empty string counts as set-and-empty). Call sites keep their historical
- * acceptance predicates: the live endpoint accepts any non-empty value,
- * conversation resources require an absolute path.
+ * acceptance predicate: the live endpoint accepts any non-empty value.
  */
 export function endpointOverridePath(
   env: NodeJS.ProcessEnv,
@@ -104,12 +88,8 @@ export function endpointOverridePath(
   return readEnvAlias(env, newName, oldName);
 }
 
-function acceptsOverride(
-  resource: EndpointResource,
-  value: string,
-): boolean {
-  if (resource === "live-endpoint") return value.length > 0;
-  return path.isAbsolute(value);
+function acceptsOverride(value: string): boolean {
+  return value.length > 0;
 }
 
 /* --------------------------- ownership model ----------------------------- */
@@ -146,47 +126,20 @@ function matchesLegacyLiveShape(value: unknown): boolean {
   );
 }
 
-/** Shape written by the conversation adapter before N03. */
-function matchesLegacyConversationShape(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    value.version === 1 &&
-    value.transport === "http-jsonrpc-long-poll" &&
-    typeof value.endpoint === "string" &&
-    value.endpoint.length > 0 &&
-    typeof value.token === "string" &&
-    value.token.length > 0 &&
-    typeof value.sessionId === "string" &&
-    value.sessionId.length > 0 &&
-    isRecord(value.agent) &&
-    typeof value.agent.name === "string" &&
-    value.agent.name.length > 0 &&
-    isRecord(value.adapter) &&
-    typeof value.adapter.name === "string" &&
-    value.adapter.name.length > 0
-  );
-}
-
 /**
  * Classify a parsed descriptor without looking at secret fields. The
  * product id of a foreign writer is safe to surface in error messages;
  * tokens and URLs never are.
  */
 export function classifyDescriptorOwnership(
-  resource: EndpointResource,
+  _resource: EndpointResource,
   parsed: unknown,
 ): DescriptorOwnership {
   if (!isRecord(parsed)) return "invalid";
   if (typeof parsed.product === "string") {
     return parsed.product === ENDPOINT_PRODUCT_ID ? "product" : "foreign";
   }
-  return resource === "live-endpoint"
-    ? matchesLegacyLiveShape(parsed)
-      ? "legacy-shape"
-      : "invalid"
-    : matchesLegacyConversationShape(parsed)
-      ? "legacy-shape"
-      : "invalid";
+  return matchesLegacyLiveShape(parsed) ? "legacy-shape" : "invalid";
 }
 
 export type DescriptorProbe =
@@ -256,12 +209,11 @@ export function isLoopbackHttpUrl(raw: string): boolean {
 
 /** Extract the endpoint URL of a descriptor without exposing any token. */
 export function descriptorEndpointUrl(
-  resource: EndpointResource,
+  _resource: EndpointResource,
   parsed: unknown,
 ): string | undefined {
   if (!isRecord(parsed)) return undefined;
-  const raw =
-    resource === "live-endpoint" ? parsed.url : parsed.endpoint;
+  const raw = parsed.url;
   return typeof raw === "string" && isLoopbackHttpUrl(raw) ? raw : undefined;
 }
 
@@ -337,7 +289,7 @@ export function resolveEndpointReadPath(
   const home = options.home ?? os.homedir();
   const exists = options.exists ?? existsSync;
   const override = endpointOverridePath(env, resource);
-  if (override !== undefined && acceptsOverride(resource, override)) {
+  if (override !== undefined && acceptsOverride(override)) {
     return { path: override };
   }
   const canonical = canonicalEndpointPath(home, resource);
@@ -345,9 +297,6 @@ export function resolveEndpointReadPath(
   const canonicalExists = exists(canonical);
   const legacyExists = exists(legacy);
   if (canonicalExists && legacyExists) {
-    // The visual-state root is a plain directory (no descriptor identity):
-    // canonical wins by pure precedence.
-    if (resource === "conversation-visual-state") return { path: canonical };
     // Canonical wins for anything this application family wrote; a foreign
     // product at the legacy path makes the choice unsafe → explicit path.
     const probe = probeDescriptorOwnership(legacy, resource);
@@ -370,9 +319,6 @@ export function resolveEndpointReadPath(
   }
   if (canonicalExists) return { path: canonical };
   if (legacyExists) {
-    if (resource === "conversation-visual-state") {
-      return { path: legacy, legacyDiscovery: true };
-    }
     const probe = probeDescriptorOwnership(legacy, resource);
     if (probe.kind === "unreadable") {
       return { path: legacy, conflict: invalidLegacyMessage(resource, legacy) };
@@ -450,7 +396,7 @@ export interface CompatWritebackPlan {
 }
 
 export interface CompatWritebackOptions {
-  readonly resource: "live-endpoint" | "conversation-endpoint";
+  readonly resource: "live-endpoint";
   /** The host's resolved write target (override or canonical). */
   readonly targetPath: string;
   /** True when the target came from an explicit option or env override. */

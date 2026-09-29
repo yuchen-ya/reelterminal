@@ -159,3 +159,22 @@ the live manifest.
 3. **macOS signing**: `MAC_CSC_LINK` / `MAC_CSC_KEY_PASSWORD` + `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` / `APPLE_TEAM_ID` (§3, §6) — required for mac auto-update to install.
 4. **Windows signing**: `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD`, or accept unsigned Windows (§4).
 5. Fill in the real support / source-offer contact in `LICENSES/FFMPEG.md`.
+
+
+## Live CLI distribution
+
+Windows packages include `reelctl.cmd` next to `ReelTerminal.exe`, and a second
+copy in `resources/bin`. Invoke the launcher by absolute path when the install
+folder is not on PATH. It runs the packaged CLI through Electron's bundled Node
+runtime (`ELECTRON_RUN_AS_NODE`), so users do not need a separate Node install.
+The `reelterminal-live-mcp.cmd` and `openreel-live-mcp.cmd` root launchers retain
+old MCP entry names and forward to `reelctl mcp serve --compat`.
+
+A source build exposes `dist/reelctl/index.js` (Node executable) and retains the
+old executable `dist/live-mcp/index.js` path for existing MCP configurations.
+The desktop does not install an Agent, change its configuration or start stdio
+MCP automatically. The GUI's Agent Access switch enables the local Command API.
+
+Packaging acceptance must invoke the actual `.cmd` launcher against the packed
+`app.asar`, including an offline `--help` check; testing only package.json bin
+entries does not validate this path. See ADR 0010 for protocol and migration rules.

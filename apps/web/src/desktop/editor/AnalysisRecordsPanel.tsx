@@ -443,7 +443,7 @@ export function AnalysisRecordsPanel() {
 
                     <section className="rounded-lg border border-border bg-bg-1 p-3">
                       <h3 className="text-xs font-semibold text-fg">Recheck with saved settings</h3>
-                      <p className="mt-1 text-[10px] leading-relaxed text-fg-muted">Creates a linked record. Enable Agent Session before running; analysis does not edit the project.</p>
+                      <p className="mt-1 text-[10px] leading-relaxed text-fg-muted">Creates a linked record. Enable Agent Access before running; analysis does not edit the project.</p>
                       {cloudRecheck && (
                         <label className="mt-3 flex items-start gap-2 rounded-md border border-sky-500/30 bg-sky-500/5 p-2 text-xs text-fg-2">
                           <input

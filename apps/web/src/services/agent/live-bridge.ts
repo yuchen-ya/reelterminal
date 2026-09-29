@@ -1,3 +1,4 @@
+import { currentProjectEpoch, projectGuardError, projectLedgerScope } from "./project-guard";
 import type {
   DesktopLiveBridgeError as LiveBridgeError,
   DesktopLiveBridgeReply as LiveBridgeReply,
@@ -171,6 +172,8 @@ async function handleHistoryControl(
   req: LiveBridgeRequest,
 ): Promise<Omit<LiveBridgeReply, "callId">> {
   return runExclusiveLiveWrite(async () => {
+    const conflict = projectGuardError(req);
+    if (conflict) return conflict;
     const store = useProjectStore.getState();
     if (!store.hasOpenProject) return noProject();
     if (req.historyAction !== "undo" && req.historyAction !== "redo") {
@@ -182,7 +185,7 @@ async function handleHistoryControl(
     const expectedRevision = req.expectedRevision;
     const key = req.idempotencyKey;
     const payload = JSON.stringify({ action: req.historyAction });
-    const projectLedger = key ? historyControlLedger.get(store.project.id) : undefined;
+    const projectLedger = key ? historyControlLedger.get(projectLedgerScope()) : undefined;
     const prior = key ? projectLedger?.get(key) : undefined;
     if (prior) {
       if (prior.payload !== payload) {
@@ -225,7 +228,7 @@ async function handleHistoryControl(
     if (key) {
       const ledger = projectLedger ?? new Map<string, HistoryControlLedgerEntry>();
       ledger.set(key, { payload, result: value });
-      historyControlLedger.set(store.project.id, ledger);
+      historyControlLedger.set(projectLedgerScope(), ledger);
     }
     return { ok: true, result: value };
   });
@@ -250,6 +253,8 @@ async function handleApplyActions(
       : "Agent edit";
 
   return runExclusiveLiveWrite(async () => {
+    const conflict = projectGuardError(req);
+    if (conflict) return conflict;
     const store = useProjectStore.getState();
     if (!store.hasOpenProject) return noProject();
 
@@ -263,7 +268,7 @@ async function handleApplyActions(
         : undefined;
     const payload = JSON.stringify({ actions: req.actions ?? null, groupLabel });
     const projectLedger = idempotencyKey
-      ? applyActionsLedger.get(store.project.id)
+      ? applyActionsLedger.get(projectLedgerScope())
       : undefined;
     const prior = idempotencyKey ? projectLedger?.get(idempotencyKey) : undefined;
     if (prior) {
@@ -312,7 +317,7 @@ async function handleApplyActions(
     const prepared = await prepareLiveMedia(actions, store.project);
     // Reading/persisting replacement bytes is asynchronous. Re-check the
     // canonical context before committing the entire prepared batch once.
-    if (useProjectStore.getState().project.id !== store.project.id ||
+    if (projectGuardError(req) || useProjectStore.getState().project.id !== store.project.id ||
         (req.expectedRevision !== undefined && getProjectRevision() !== req.expectedRevision) ||
         (req.expectedContextRevision !== undefined && getLiveEditorContext().contextRevision !== req.expectedContextRevision)) {
       await prepared.discard();
@@ -341,10 +346,10 @@ async function handleApplyActions(
 
     // Record only after the commit landed (a failed batch retries freely).
     if (idempotencyKey) {
-      let ledger = applyActionsLedger.get(store.project.id);
+      let ledger = applyActionsLedger.get(projectLedgerScope());
       if (!ledger) {
         ledger = new Map();
-        applyActionsLedger.set(store.project.id, ledger);
+        applyActionsLedger.set(projectLedgerScope(), ledger);
       }
       ledger.set(idempotencyKey, {
         payload,
@@ -374,6 +379,8 @@ async function handleImportMedia(
   req: LiveBridgeRequest,
 ): Promise<Omit<LiveBridgeReply, "callId">> {
   return runExclusiveLiveWrite(async () => {
+    const conflict = projectGuardError(req);
+    if (conflict) return conflict;
     const store = useProjectStore.getState();
     if (!store.hasOpenProject) return noProject();
     if (typeof req.path !== "string" || req.path.trim().length === 0) {
@@ -389,7 +396,7 @@ async function handleImportMedia(
         : undefined;
     const payload = JSON.stringify({ path: req.path, name: req.name ?? null });
     const projectLedger = idempotencyKey
-      ? mediaImportLedger.get(store.project.id)
+      ? mediaImportLedger.get(projectLedgerScope())
       : undefined;
     const prior = idempotencyKey ? projectLedger?.get(idempotencyKey) : undefined;
     if (prior) {
@@ -407,7 +414,7 @@ async function handleImportMedia(
     }
 
     const result = await store.importMediaFromPath(req.path, req.name, {
-      expectedRevision: req.expectedRevision,
+      expectedRevision: req.expectedRevision ?? getProjectRevision(),
       type: req.type,
       metadata: req.metadata,
       sourceFile: req.sourceFile,
@@ -462,10 +469,10 @@ async function handleImportMedia(
       },
     } as const;
     if (idempotencyKey) {
-      let ledger = mediaImportLedger.get(store.project.id);
+      let ledger = mediaImportLedger.get(projectLedgerScope());
       if (!ledger) {
         ledger = new Map();
-        mediaImportLedger.set(store.project.id, ledger);
+        mediaImportLedger.set(projectLedgerScope(), ledger);
       }
       ledger.set(idempotencyKey, { payload, result: committed });
     }
@@ -691,6 +698,8 @@ export async function handleLiveBridgeRequest(
   req: LiveBridgeRequest,
 ): Promise<Omit<LiveBridgeReply, "callId">> {
   try {
+    const conflict = projectGuardError(req);
+    if (conflict) return conflict;
     switch (req.kind) {
       case "getIdentity": {
         const store = useProjectStore.getState();
@@ -701,6 +710,7 @@ export async function handleLiveBridgeRequest(
             projectId: store.project.id,
             projectName: store.project.name,
             windowId: "main",
+            projectEpoch: currentProjectEpoch(),
           },
         };
       }
@@ -753,6 +763,7 @@ export async function handleLiveBridgeRequest(
         // The canonical user-level material library lives renderer-side;
         // the facade only validated/guarded the verb before forwarding.
         const reply = await handleMaterialLibraryRequest({
+          guard: req,
           verb: req.materialVerb,
           params: req.materialParams,
         });
@@ -772,6 +783,7 @@ export async function handleLiveBridgeRequest(
         // shared with the preset panels); apply expands into core actions
         // against the canonical project store right here.
         const reply = await handlePresetLibraryRequest({
+          guard: req,
           verb: req.presetVerb,
           params: req.presetParams,
         });

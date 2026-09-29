@@ -145,11 +145,8 @@ describe("capabilities.get / session.describe", () => {
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.value.runtime).toBe("node-headless");
-    expect(res.value.workMode).toBe("collaborative");
-    expect(res.value.workModeSemantics).toMatchObject({
-      id: "collaborative",
-      deliveryRequiresExplicitAuthorization: true,
-    });
+
+
     expect(res.value.access).toBeUndefined();
     expect(res.value.verbs).toEqual([
       "session.describe",

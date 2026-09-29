@@ -54,7 +54,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.1.0" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.2.0" as const;
 export const GUI_MANUAL_APP_VERSION = "1.0.0-alpha.10" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
@@ -553,71 +553,61 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
   {
     id: "voiceover-music-tasks",
     title: { zh: "配音与音乐任务", en: "Voiceover & Music Tasks" },
-    // @source apps/web/src/components/editor/dialogs/AgentMediaTaskDialog.tsx:200-258,315-334,356-418,442,701-739(DoneAudioPreview 154-192)
+    // @source apps/web/src/components/editor/dialogs/AgentMediaTaskDialog.tsx
     // @source apps/web/src/components/audio-mixer/AudioMixer.tsx:118-132
     // @source apps/web/src/components/editor/EditorActionRail.tsx:211
     // @source apps/web/src/services/agent-media-tasks/types.ts:20-30
     summary: {
-      zh: "把配音（TTS）或音乐要求交给已连接的外部 Agent 生成，完成后试听并插入时间线。",
-      en: "Hand a voiceover (TTS) or music request to the connected external agent, then audition and insert the result.",
+      zh: "这里保留旧版配音与音乐任务记录、试听和素材导入入口；新任务提交与重试暂时停用。",
+      en: "This screen preserves saved voiceover/music records, previews, and imports; new submission and retry are paused.",
     },
     entry: [
-      { zh: "音频混台面板中的\"配音/音乐\"入口按钮。", en: "The voiceover/music entry button inside the audio mixer panel." },
-      { zh: "左侧工具条\"更多\"菜单 → 配音与音乐任务。", en: "The action rail's More menu → Voiceover & Music Tasks." },
+      { zh: "桌面编辑器状态栏或音频混台面板中的\"配音/音乐任务\"入口。", en: "Open Voiceover / Music Tasks from the desktop status strip or audio mixer." },
     ],
     visibility: {
-      zh: "需要已连接的外部 Agent 会话；未连接时对话框给出连接引导而不是假装可用。",
-      en: "Requires a connected external agent session; without one the dialog shows connection guidance instead of pretending to work.",
+      zh: "任务历史始终可查看；只有目标项目打开时才能试听或导入对应项目的素材。",
+      en: "Task history is always available; preview and import require the task's target project to be open.",
     },
     steps: [
-      { zh: "选择类型：配音（TTS）或音乐；输入文本/要求。", en: "Pick the kind: voiceover (TTS) or music; enter the text/brief." },
-      { zh: "选择插入意图：完成后插入时间线，或仅存入项目媒体库。", en: "Choose the insert intent: insert into the timeline when done, or store library-only." },
-      { zh: "提交给已连接 Agent，在任务列表跟踪状态：排队、已提交、生成中、待导入、完成、失败、已取消（七种）。", en: "Submit to the connected agent and track the task states: queued, submitted, running, awaiting_import, done, error, cancelled (seven states)." },
-      { zh: "完成后先试听（内联音频预览），再点\"插入时间线\"落到目标项目。", en: "When done, audition inline first, then Insert to land it on the target project." },
-      { zh: "失败或已取消的任务可重试；仍在生成中的任务可取消。", en: "Failed or cancelled tasks can be retried; running tasks can be cancelled." },
+      { zh: "查看排队、已提交、生成中、待导入、完成、失败和已取消的旧任务记录。", en: "Review saved tasks in queued, submitted, running, awaiting_import, done, error, or cancelled states." },
+      { zh: "待导入产物可以导入；已完成产物可以试听并插入目标时间线。", en: "Import waiting artifacts, and preview or insert completed artifacts into the target timeline." },
+      { zh: "可以取消仍处于活动状态的旧任务；取消只更新本地记录。", en: "You can cancel a previously active task; this only updates its local record." },
     ],
     limitations: [
       {
-        zh: "产品自身从不生成音频——一切生成由外部 Agent 及其已配置的 provider 完成；没有可用 provider 时任务会失败并保持可重试，不会伪造结果。",
-        en: "The product itself never generates audio — generation is done by the connected external agent and its configured provider; with no usable provider the task fails and stays retryable instead of faking success.",
-      },
-      {
-        zh: "不承诺\"同参数必定得到相同输出\"；重复回调不会重复导入同一段音频。",
-        en: "Identical parameters do not guarantee identical output; duplicate completion callbacks never import the audio twice.",
+        zh: "配音 / 音乐新任务提交与重试暂时停用，待独立任务机制完成后恢复；已有记录和产物会保留。",
+        en: "New voiceover/music submission and retry are paused until generation has an independent task mechanism; saved records and artifacts are preserved.",
       },
       {
         zh: "试听仅在目标项目处于打开状态时可用（产物媒体属于该项目时才能预览）。",
         en: "Auditioning is only available while the target project is open (the result media belongs to that project).",
       },
     ],
-    keywords: ["voiceover", "tts", "music", "task", "retry", "cancel", "audition", "insert", "配音", "音乐", "任务", "重试", "取消", "试听", "插入"],
-    screenshot: GUI_MANUAL_SCREENSHOTS["voiceover-music-tasks"],
+    keywords: ["voiceover", "tts", "music", "task", "cancel", "audition", "insert", "配音", "音乐", "任务", "取消", "试听", "插入"],
   },
   {
-    id: "agent-session",
-    title: { zh: "Agent 会话面板", en: "Agent Session Panel" },
-    // @source apps/web/src/components/editor/EditorActionRail.tsx:159-162
-    // @source apps/web/src/components/editor/agent/ExternalAgentFloatingWindow.tsx:15,92
-    // @source apps/web/src/components/editor/agent/AgentConnectionGuide.tsx
+    id: "agent-access",
+    title: { zh: "Agent Access 状态", en: "Agent Access Status" },
+    // @source apps/web/src/desktop/editor/CollabStatusBar.tsx
     summary: {
-      zh: "与已连接外部 Agent 协作的会话面板（可浮动窗口），含连接引导与工作模式。",
-      en: "The collaboration panel for the connected external agent (docked or floating window), with connection guidance and work modes.",
+      zh: "显示桌面命令接口的可用状态、只读 / 可写权限与当前操作。ReelTerminal 不管理 Agent 登录或对话。",
+      en: "Shows desktop command-service availability, read-only or read/write access, and the active operation. ReelTerminal does not manage Agent sign-in or conversations.",
     },
     entry: [
-      { zh: "编辑器左侧工具条 → Agent 会话按钮（面板开/关，可弹出为浮动窗口）。", en: "The action rail's Agent Session button (toggles the panel; it can pop out as a floating window)." },
+      { zh: "桌面编辑器时间线正上方的状态栏。", en: "The status strip directly above the desktop timeline." },
     ],
     steps: [
-      { zh: "首次使用按连接引导完成外部 Agent 接入。", en: "First time: follow the connection guide to attach an external agent." },
-      { zh: "在会话中直接向 Agent 下达编辑指令；面板显示会话状态与协作模式。", en: "Issue editing instructions to the agent in the conversation; the panel shows session status and the collaboration mode." },
+      { zh: "使用开关启用或停用桌面命令接口。", en: "Use the switch to enable or disable the desktop command service." },
+      { zh: "状态栏显示当前访问为只读或可写，并在命令运行时显示操作名称。", en: "The strip shows read-only or read/write access and the active command while one is running." },
+      { zh: "Agent 通过 reelctl CLI 访问当前打开的项目；需要时可查询 schema 和上下文。", en: "Agents use the reelctl CLI to access the open project and can query schemas and context as needed." },
     ],
     limitations: [
       {
-        zh: "没有已配置的外部 Agent 时显示连接引导，不会伪装成可用会话。",
-        en: "Without a configured external agent the panel shows connection guidance — it never fakes an available session.",
+        zh: "ReelTerminal 不安装、登录或检测 Agent，也不管理对话、历史记录和上下文压缩。",
+        en: "ReelTerminal does not install, sign in, or detect Agents, and does not manage conversations, history, or context compression.",
       },
     ],
-    keywords: ["agent", "session", "conversation", "collaboration", "会话", "协作", "智能体"],
-    screenshot: GUI_MANUAL_SCREENSHOTS["agent-session"],
+    keywords: ["agent", "access", "CLI", "command", "Agent Access", "访问", "命令", "智能体"],
   },
   {
     id: "action-history",

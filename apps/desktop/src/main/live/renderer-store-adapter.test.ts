@@ -1,3 +1,4 @@
+import { commandProjectContext } from "./command-context";
 import { describe, it, expect, vi } from "vitest";
 import {
   isLiveStoreConflict,
@@ -31,6 +32,22 @@ const fakeAction = {
 } as unknown as Action;
 
 describe("createLiveStoreBridge", () => {
+  it("forwards request-local project guards without leaking across concurrent commands", async () => {
+    const { bridge, sent, validSender } = makeBridge();
+    const guarded = commandProjectContext.run(
+      { expectedProjectId: "p", expectedProjectEpoch: "epoch-1" },
+      async () => { await Promise.resolve(); return bridge.store.getState(); },
+    );
+    const unguarded = bridge.store.getContext();
+    await Promise.resolve();
+    const stateRequest = sent.find((r) => r.kind === "getState")!;
+    const contextRequest = sent.find((r) => r.kind === "getContext")!;
+    expect(stateRequest).toMatchObject({ expectedProjectId: "p", expectedProjectEpoch: "epoch-1" });
+    expect(contextRequest).not.toHaveProperty("expectedProjectId");
+    for (const request of sent) bridge.handleResponse(validSender, { callId: request.callId, ok: true, result: {} });
+    await Promise.all([guarded, unguarded]);
+  });
+
   it("correlates getState back to its request by callId", async () => {
     const { bridge, sent, validSender } = makeBridge();
     const pending = bridge.store.getState();

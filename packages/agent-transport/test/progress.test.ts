@@ -15,6 +15,7 @@ function status(state: JobStatusView["state"], percent: number | null, phase = "
     deliveryError: null,
     sourceRevision: 1,
     route: null,
+    upscalingRequestedButInactive: false,
     cancelRequested: false,
     createdAt: "2026-09-02T00:00:00.000Z",
     updatedAt: "2026-09-02T00:00:00.000Z",

@@ -35,8 +35,8 @@ describe("GUI manual version binding", () => {
   });
 
   it("pins the current content version (bump alongside real content changes)", () => {
-    // 1.1.0 = first delivered screenshot set (6 screens) on top of 1.0.3.
-    expect(GUI_MANUAL_CONTENT_VERSION).toBe("1.1.0");
+    // 1.2.0 = CLI-first access and task-history guidance on top of 1.1.0.
+    expect(GUI_MANUAL_CONTENT_VERSION).toBe("1.2.0");
   });
 
   it("binds to the desktop application version, not the facade version", () => {
@@ -122,8 +122,6 @@ describe("GUI manual content integrity", () => {
       "keyboard-shortcuts",
       "timeline",
       "work-assets",
-      "voiceover-music-tasks",
-      "agent-session",
       "export",
     ];
     const dataUrlPrefix = "data:image/png;base64,";
@@ -145,7 +143,7 @@ describe("GUI manual content integrity", () => {
     // The delivery must stay within the data-URL budget this form was chosen
     // for (self-contained MCP payloads): 1MB across all screens.
     expect(totalBytes).toBeLessThanOrEqual(1024 * 1024);
-    expect(deliveredIds).toHaveLength(6);
+    expect(deliveredIds).toHaveLength(4);
   });
 
   it("documents honest limitations on the screens that need them", () => {
@@ -190,7 +188,7 @@ describe("listManualScreens", () => {
     expect(result.manual.screenshots).toBe("delivered");
     for (const item of result.screens) {
       expect(item.hasScreenshot).toBe(
-        ["keyboard-shortcuts", "timeline", "work-assets", "voiceover-music-tasks", "agent-session", "export"].includes(item.id),
+        ["keyboard-shortcuts", "timeline", "work-assets", "export"].includes(item.id),
       );
       // Index payload stays restrained: identity + one-liners only, never
       // the page body fields.

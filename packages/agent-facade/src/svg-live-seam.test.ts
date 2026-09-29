@@ -196,7 +196,7 @@ describe("live svg.create per-op createdIds (store seam)", () => {
       store,
       lease,
       sessionId: "svg-agent-1",
-      workMode: "collaborative",
+
       access: "write",
       artifactRoot,
     });

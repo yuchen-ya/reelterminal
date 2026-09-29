@@ -1,3 +1,4 @@
+import { projectGuardError, projectLedgerScope, type ProjectGuard } from "./project-guard";
 /**
  * Renderer side of the preset-library live bridge: the desktop main process
  * facade forwards preset.* verbs here, and this module executes them against
@@ -234,6 +235,7 @@ function parseApplyTarget(raw: unknown):
 
 async function handleApply(
   rawParams: Record<string, unknown>,
+  guard: ProjectGuard = {},
 ): Promise<PresetBridgeReply> {
   const presetId = rawParams.presetId;
   if (!isString(presetId) || presetId.length === 0) {
@@ -260,13 +262,15 @@ async function handleApply(
   });
 
   return runExclusiveLiveWrite(async () => {
+    const conflict = projectGuardError(guard);
+    if (conflict) return conflict;
     const store = useProjectStore.getState();
     if (!store.hasOpenProject) {
       return bridgeError({ code: "NO_PROJECT", message: "No project is open" });
     }
     // Same per-project bucketing as the other live ledgers: a key committed
     // in one project must never replay into another after a project switch.
-    const projectId = store.project.id;
+    const projectId = projectLedgerScope();
     const projectLedger = idempotencyKey ? applyLedger.get(projectId) : undefined;
     const prior = idempotencyKey ? projectLedger?.get(idempotencyKey) : undefined;
     if (prior) {
@@ -289,7 +293,11 @@ async function handleApply(
       });
     }
 
+    const plannedRevision = getProjectRevision();
     const preset = await getCustomPresetService().get(presetId);
+    if (projectGuardError(guard) || projectLedgerScope() !== projectId || getProjectRevision() !== plannedRevision) {
+      return bridgeError({ code: "CONFLICT", message: "Project changed while loading the preset" });
+    }
     if (!preset.ok) return serviceError(preset);
 
     const expanded = expandPresetActions({
@@ -367,10 +375,10 @@ async function handleApply(
     };
 
     if (idempotencyKey) {
-      let ledger = applyLedger.get(store.project.id);
+      let ledger = applyLedger.get(projectId);
       if (!ledger) {
         ledger = new Map();
-        applyLedger.set(store.project.id, ledger);
+        applyLedger.set(projectId, ledger);
       }
       ledger.set(idempotencyKey, { payload, result });
       if (ledger.size > 500) {
@@ -384,6 +392,7 @@ async function handleApply(
 
 /** Handles one main→renderer preset-library request (exported for tests). */
 export async function handlePresetLibraryRequest(req: {
+  readonly guard?: ProjectGuard;
   readonly verb?: unknown;
   readonly params?: unknown;
 }): Promise<PresetBridgeReply> {
@@ -485,7 +494,7 @@ export async function handlePresetLibraryRequest(req: {
         return { ok: true, result: { ...result.value } };
       }
       case "apply": {
-        return await handleApply(rawParams);
+        return await handleApply(rawParams, req.guard);
       }
       default:
         return bridgeError({

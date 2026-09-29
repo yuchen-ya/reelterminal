@@ -58,7 +58,7 @@ describe("flow A: select text, external agent rewrites it", () => {
     await createProjectViaUI(launched.page);
     await createTextClipViaUI(launched.page);
     await selectTextClipViaUI(launched.page, ORIGINAL_TEXT);
-    // Human: enable the Agent Session via the real status-bar toggle.
+    // Human: enable Agent Access via the real status-bar toggle.
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
     await launched.waitForEndpointFile();
     // Agent: connect over real MCP stdio (shim → live endpoint).
@@ -173,9 +173,11 @@ describe("flow A: select text, external agent rewrites it", () => {
     const endpoint = JSON.parse(readFileSync(launched.endpointFile, "utf8")) as {
       url: string;
       token: string;
+      commandApi: { url: string; version: number };
     };
-    expect(endpoint.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
+    expect(endpoint.commandApi.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/v1$/);
+    expect(endpoint.commandApi.version).toBe(1);
     expect(typeof endpoint.token).toBe("string");
-    evidence.record("endpoint", { url: endpoint.url });
+    evidence.record("endpoint", { url: endpoint.commandApi.url });
   });
 });

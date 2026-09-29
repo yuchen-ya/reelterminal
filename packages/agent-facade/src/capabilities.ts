@@ -66,15 +66,10 @@ import {
 } from "@reelterminal/core/audio/noise-reduction-presets";
 import { SVG_MAX_CONTENT_BYTES } from "@reelterminal/core/graphics/svg-validation";
 import {
-  DEFAULT_AGENT_WORK_MODE,
-  agentWorkModeSemantics,
   type AgentAccessMode,
-  type AgentWorkMode,
-} from "./work-mode";
+} from "./access";
 
 export interface CapabilityContext {
-  /** Collaboration preference; defaults to Collaborative in headless hosts. */
-  readonly workMode?: AgentWorkMode;
   readonly mediaRoots: readonly string[];
   /**
    * Roots under which export.start destinationPath may deliver a verified
@@ -779,7 +774,7 @@ export async function buildSessionDescription(
   ctx: CapabilityContext,
 ): Promise<SessionDescription> {
   const caps = await buildCapabilities(ctx);
-  const workMode = ctx.workMode ?? DEFAULT_AGENT_WORK_MODE;
+
   return {
     facadeVersion: FACADE_VERSION,
     contractVersion: FACADE_CONTRACT_VERSION,
@@ -787,8 +782,7 @@ export async function buildSessionDescription(
     verbs: FACADE_VERBS,
     editOps: EDIT_OP_TYPES,
     errorCodes: FACADE_ERROR_CODES,
-    workMode,
-    workModeSemantics: agentWorkModeSemantics(workMode),
+
     stepLetters: {
       facadeToRuntime: "P",
       // Live mode owns no project lifecycle; media import is reported from
@@ -843,7 +837,7 @@ function liveNotes(
   const live = ctx.live!;
   return [
     "The renderer's project store is the canonical state; this session holds NO project copy and reaches it only through the CAS-guarded LiveProjectStore seam — every read is an on-demand snapshot, every mutation one action batch applied as one undo unit.",
-    `Work mode "${ctx.workMode ?? DEFAULT_AGENT_WORK_MODE}" changes default initiative and alignment density only. Session access "${live.access}" is enforced independently at this boundary: read-only access rejects write verbs with FORBIDDEN; at most one AI session holds the writer lease (write verbs without it fail CONFLICT with the holder). The human never takes the lease and can always edit.`,
+    `Session access "${live.access}" is enforced independently at this boundary: read-only access rejects write verbs with FORBIDDEN; at most one AI session holds the writer lease (write verbs without it fail CONFLICT with the holder). The human never takes the lease and can always edit.`,
     caps.preview.available
       ? "Text overlays render to real pixels via the configured render provider; pixel claims are E2E-verified only through preview.render_frame + verify.artifact."
       : "Text overlays are model-state only in this session: no render provider passed preflight, so pixel rendering is NOT claimed.",

@@ -6,7 +6,7 @@ import { FACADE_VERBS } from "./types";
  * renderer bridge must, records every committed batch, and can simulate a
  * concurrent human edit landing between the agent's snapshot read and its
  * apply. Covered: the visual.inspect read path and live/headless honesty, CAS conflict paths,
- * the access gate, work-mode context, the single-writer lease, live-unavailable
+ * the access gate, the single-writer lease, live-unavailable
  * lifecycle verbs, snapshot preview/export with stub providers, the
  * file-backed-media honesty rule, idempotent replay, and dispose.
  */
@@ -440,11 +440,6 @@ let lease: LiveWriterLease;
 
 function liveFacade(
   opts?: Partial<{
-    workMode:
-      | "guided"
-      | "collaborative"
-      | "autonomous"
-      | (() => "guided" | "collaborative" | "autonomous");
     access: "read-only" | "write" | (() => "read-only" | "write");
     sessionId: string;
     mediaRoots: readonly string[];
@@ -459,7 +454,6 @@ function liveFacade(
     store: opts?.store ?? store,
     lease,
     sessionId: opts?.sessionId ?? "agent-1",
-    workMode: opts?.workMode ?? "collaborative",
     access: opts?.access ?? "write",
     artifactRoot,
     ...(opts?.mediaRoots ? { mediaRoots: opts.mediaRoots } : {}),
@@ -504,11 +498,7 @@ describe("editor.get_context and visual.inspect read verbs", () => {
     if (!res.ok) return;
     expect(res.value).toEqual({
       mode: "live",
-      workMode: "collaborative",
-      workModeSemantics: expect.objectContaining({
-        id: "collaborative",
-        deliveryRequiresExplicitAuthorization: true,
-      }),
+
       projectRevision: 0,
       contextAvailable: true,
       contextRevision: 1,
@@ -575,8 +565,8 @@ describe("editor.get_context and visual.inspect read verbs", () => {
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.value.mode).toBe("headless");
-    expect(res.value.workMode).toBe("collaborative");
-    expect(res.value.workModeSemantics.id).toBe("collaborative");
+
+
     expect(res.value.projectRevision).toBe(0);
     expect(res.value.contextAvailable).toBe(false);
     expect(res.value.contextRevision).toBeNull();
@@ -1127,6 +1117,16 @@ describe("live edit.apply", () => {
     expect(retry.value.revision).toBe(ctx.value.revision + 1);
   });
 
+  it("does not replay a previous project result when identity validation fails", async () => {
+    const facade = liveFacade();
+    const params = { ops: [{ op: "track.add" as const, trackType: "video" as const }], idempotencyKey: "guarded-retry" };
+    expect((await facade["edit.apply"](params)).ok).toBe(true);
+    vi.spyOn(store, "getIdentity").mockRejectedValueOnce(new LiveStoreConflictError("Project opening changed"));
+    const retry = await facade["edit.apply"](params);
+    expect(retry).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+    expect(store.batches).toHaveLength(1);
+  });
+
   it("idempotencyKey replay returns the committed result without a second store batch", async () => {
     const facade = liveFacade();
     const first = await facade["edit.apply"]({
@@ -1220,23 +1220,6 @@ describe("live edit.apply", () => {
 /* ---------------------- work mode + access gate ---------------------- */
 
 describe("work mode + access gate + writer lease", () => {
-  it("reads a switched work mode without recreating the facade or changing access", async () => {
-    let workMode: "guided" | "collaborative" | "autonomous" = "collaborative";
-    const facade = liveFacade({ workMode: () => workMode, access: "write" });
-    const first = await facade["session.describe"]();
-    expect(first.ok && first.value.workMode).toBe("collaborative");
-
-    workMode = "guided";
-    const [second, context] = await Promise.all([
-      facade["session.describe"](),
-      facade["editor.get_context"](),
-    ]);
-    expect(second.ok && second.value.workMode).toBe("guided");
-    expect(second.ok && second.value.access).toBe("write");
-    expect(context.ok && context.value.workMode).toBe("guided");
-    expect(lease.holder()).toBe("agent-1");
-  });
-
   it("observes an explicit read-only to write recovery and acquires lazily", async () => {
     let access: "read-only" | "write" = "read-only";
     const facade = liveFacade({ access: () => access });
@@ -1259,10 +1242,10 @@ describe("work mode + access gate + writer lease", () => {
     expect(described.ok && described.value.writer).toBe(true);
   });
 
-  it.each(["guided", "collaborative", "autonomous"] as const)(
-    "%s work mode cannot expand read-only access",
-    async (workMode) => {
-      const facade = liveFacade({ workMode, access: "read-only" });
+  it(
+    "read-only access rejects mutations",
+    async () => {
+      const facade = liveFacade({ access: "read-only" });
       // All nine read-only verbs are allowed through the gate.
       expect((await facade["session.describe"]()).ok).toBe(true);
       expect((await facade["capabilities.get"]()).ok).toBe(true);
@@ -1317,7 +1300,7 @@ describe("work mode + access gate + writer lease", () => {
     if (describeRes.ok) {
       expect(describeRes.value.writer).toBe(false);
       expect(describeRes.value.leaseHolder).toBe("agent-other");
-      expect(describeRes.value.workMode).toBe("collaborative");
+
       expect(describeRes.value.access).toBe("write");
       expect(describeRes.value.sessionId).toBe("agent-1");
     }
@@ -1423,14 +1406,14 @@ describe("work mode + access gate + writer lease", () => {
   });
 
   it("session.describe mirrors the headless shape plus live fields", async () => {
-    const facade = liveFacade({ workMode: "autonomous" });
+    const facade = liveFacade();
     const res = await facade["session.describe"]();
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.value.runtime).toBe("live");
-    expect(res.value.workMode).toBe("autonomous");
-    expect(res.value.workModeSemantics.id).toBe("autonomous");
-    expect(res.value.workModeSemantics.deliveryRequiresExplicitAuthorization).toBe(true);
+
+
+
     expect(res.value.access).toBe("write");
     expect(res.value.writer).toBe(true);
     expect(res.value.leaseHolder).toBe("agent-1");

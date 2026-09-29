@@ -14,19 +14,18 @@ ReelTerminal owns:
 - the canonical project, timeline, media inventory, editor context, revisions,
   undo/redo history, preview, verification, and export;
 - direct human editing through the GUI;
-- a compact, typed MCP surface through which an external agent can inspect and
+- a protocol-neutral Command API and CLI through which an external agent can inspect and
   edit the same project;
 - stable human-readable Agent references such as `@A1`, `@A2`, and `@A3` that map
   to real editor entities;
-- an optional conversation *client* that attaches to a session owned by the
-  user's external agent;
 - first-class English and Simplified Chinese product UI.
 
 ReelTerminal does **not** own:
 
 - an embedded LLM or embedded agent;
 - model/provider selection, provider API keys, or a tool-use inference loop;
-- conversation creation, storage, history, summarization, or identity;
+- Agent installation/login, conversation creation/listing/resumption, prompt
+  forwarding, history, summarization, context compression, or identity;
 - generation features that are better supplied by the user's agent, a skill,
   ComfyUI, or another dedicated creation service.
 
@@ -43,7 +42,7 @@ actions:
 ```text
 human GUI ──────────────┐
                        ├─ canonical project/actions ─ preview/export
-external agent via MCP ─┘
+Agent via reelctl / MCP adapter ─┘
 ```
 
 Both paths share revision checks, conflict behavior, one undo history, and one
@@ -52,16 +51,11 @@ project. The human never loses the ability to edit.
 
 ## Conversation ownership
 
-The agent's native chat and an optional ReelTerminal conversation panel are two
-clients of the **same external agent session**. ReelTerminal may retain an in-memory
-render buffer while the panel is open, but it does not persist messages. On
-reconnect, history is loaded from the agent when the agent protocol supports
-it. Unsupported agents fall back to their native chat; ReelTerminal must never
-silently substitute an embedded model.
-
-MCP remains the editor tool/context protocol. A separate bidirectional agent
-client protocol is required for prompts, streamed session updates,
-permissions, cancellation, and session attachment.
+Agents use their native conversation interface. ReelTerminal neither renders
+that conversation nor starts/configures the Agent. The default entry point is
+`reelctl`; MCP clients explicitly start `reelctl mcp serve`. The desktop Command
+API is independent of both transports. Editor context is data the Agent reads
+on demand and is unrelated to LLM context management.
 
 ## Agent references
 
@@ -88,10 +82,10 @@ The first cleanup pass is intentionally vertical rather than cosmetic:
 
 | Keep | Remove |
 |---|---|
-| Live facade and its 25 registered tools | Legacy desktop MCP registry and its 304-tool endpoint |
-| External-agent connection, status, permissions, cancellation, and editor activity | Embedded OpenAI/Anthropic clients, inference loop, system prompt, token accounting, and local chat history |
+| Live facade and generated command catalog | Legacy desktop MCP registry and its 304-tool endpoint |
+| Agent Access, authorization, task cancellation, and editor activity | Embedded OpenAI/Anthropic clients, inference loop, system prompt, token accounting, and local chat history |
 | Timeline, media import, effects, transitions, titles, audio alignment, preview, verification, and export | Provider/model pickers, LLM API-key settings, auto-confirm/dry-run settings that apply only to the embedded agent |
-| Optional external-session conversation client | Any silent fallback to a bundled model or project-owned conversation |
+| Agent-owned native conversations | In-app chat, onboarding, conversation adapters, prompt forwarding and collaboration modes |
 
 This table is an architectural gate: a future change that reintroduces a
 removed responsibility needs an explicit product-scope decision, not merely a

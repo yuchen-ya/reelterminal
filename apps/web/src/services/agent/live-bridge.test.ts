@@ -99,7 +99,35 @@ describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
       projectId: project.id,
       projectName: project.name,
       windowId: "main",
+      projectEpoch: expect.any(String),
     });
+  });
+
+  it("rejects a plan after reopening the same project, before edits or replay", async () => {
+    const first = await handleLiveBridgeRequest(req("getIdentity"));
+    const identity = first.result as { projectId: string; projectEpoch: string };
+    const snapshot = useProjectStore.getState().getFullProject();
+    useProjectStore.getState().loadProject(snapshot);
+    const result = await handleLiveBridgeRequest(req("applyActions", {
+      expectedProjectId: identity.projectId,
+      expectedProjectEpoch: identity.projectEpoch,
+      expectedRevision: getProjectRevision(),
+      idempotencyKey: "old-project-plan",
+      actions: [act("track/add", { trackType: "video" })],
+    }));
+    expect(result).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+    expect(undoSize()).toBe(0);
+    const next = await handleLiveBridgeRequest(req("getIdentity"));
+    expect((next.result as typeof identity).projectEpoch).not.toBe(identity.projectEpoch);
+  });
+
+  it("rejects a request for another project even when its revision matches", async () => {
+    const result = await handleLiveBridgeRequest(req("historyControl", {
+      expectedProjectId: "a-different-project",
+      expectedRevision: getProjectRevision(),
+      historyAction: "undo",
+    }));
+    expect(result).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
   });
 
   it("getIdentity errors honestly when no project is open", async () => {

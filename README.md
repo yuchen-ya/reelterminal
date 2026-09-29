@@ -43,46 +43,12 @@ implemented features, reusable foundations, and remaining integration work.
 
 - The browser/desktop editor and the canonical ReelTerminal `Project` model share
   one editing world.
-- A token-authenticated loopback MCP endpoint exposes exactly **49 live-facade
-  tools**:
-
-  `session.describe` · `capabilities.get` · `project.create` · `project.open` ·
-  `project.save` · `project.rename` · `project.get_state` · `project.changes` ·
-  `media.import` · `media.render_html` · `media.analyze_start` · `analysis.list` · `analysis.get` ·
-  `timeline.get` · `timeline.query` · `editor.get_context` · `editor.control` ·
-  `edit.validate` · `edit.apply` · `history.get` · `history.control` ·
-  `preview.render_frame` · `preview.render_comparison` · `visual.inspect` ·
-  `export.start` · `job.status` · `job.cancel` · `verify.artifact` ·
-  `material.list` · `material.get` · `material.create` · `material.update` ·
-  `material.batch_update` · `material.remove` · `material.attach` ·
-  `material.undo` · `font.upload` · `font.list` · `preset.list` · `preset.get` ·
-  `preset.create` · `preset.update` · `preset.remove` · `preset.apply` ·
-  `help.list_screens` · `help.describe` · `help.search` ·
-  `media.inspect` · `media.import_preflight`.
-
-  This is 47 built-in verbs plus the two bundled plugins
-  `media.import_preflight` and `media.inspect`. The
-  source of truth is `FACADE_VERBS` in `packages/agent-facade/src/types.ts`
-  together with the startup plugin registry in `packages/agent-facade/src/plugins/`.
-  Registration does not imply runtime availability; read `capabilities.get`.
-
-  The facade verbs above use dotted names; on the MCP wire each dot becomes an
-  underscore (`session.describe` → `session_describe`, `editor.control` →
-  `editor_control`). `session_describe` reports the same 49 verbs.
-
-  In live mode, project creation/open remain GUI-owned. An Agent can import
-  local video, audio, and image files (PNG, JPEG, GIF, WebP) from the roots
-  reported by `capabilities.get`; the
-  media appears immediately in the open GUI project and uses the shared undo
-  history. `media.render_html` can also generate such an importable PNG
-  directly: constrained local HTML/CSS (inline markup or an `.html` file)
-  renders in the local headless Chromium into a media root — scripts and
-  network references rejected, blocked/missing subresources disclosed as
-  `missingAssets` — and the returned path imports through the same
-  `media.import` path. The other tools operate on that same project through
-  the live bridge.
+- A token-authenticated loopback Command API exposes the canonical command
+  catalog, including bundled plugins. `reelctl` is the default Agent entry point;
+  `reelctl mcp serve` is an explicit compatibility adapter. Discover commands
+  and parameters with `reelctl schema` and `reelctl help`.
 - Live revision and context checks, one-writer lease semantics, independent
-  Guided / Collaborative / Autonomous work modes, shared undo, and action
+  explicit read-only/write access, shared undo, and action
   activity status are in place.
 - `visual_inspect` provides bounded, read-only frame sampling by clip or time
   range, with revision-tagged PNG artifacts and a real contact sheet when the
@@ -146,11 +112,11 @@ implemented features, reusable foundations, and remaining integration work.
 - The retained product UI is wired for English and Simplified Chinese
   (`zh-CN`). English remains the fallback for newly introduced or missing copy;
   the new inspection panel currently uses English labels.
-- The desktop GUI conversation panel and loopback client transport are landed.
-  The shipped Codex reference adapter creates or resumes a Codex App Server
-  thread, connects that same thread to the 49-tool live MCP facade, and
-  projects only safe display events into the panel. Other Agent hosts can use
-  the provider-neutral adapter kit and conversation protocol.
+- Agents own their installation, authentication, conversations and context.
+  The desktop shows Agent Access and current activity. The former conversation
+  panel, onboarding, prompt forwarding and collaboration modes are removed.
+  Voiceover/music prompt submission is disabled pending independent tasks;
+  existing task records and artifacts remain available.
 - The legacy 304-tool desktop endpoint and the embedded BYOK agent/chat path
   are removed from the ReelTerminal product contract. The extraction audit and
   inherited source remain historical reference material only.
@@ -163,16 +129,12 @@ implemented features, reusable foundations, and remaining integration work.
 - The Chromium runtime provides preview, H.264/AAC export, and artifact
   verification through independent provider interfaces and honest preflight
   capability reporting.
-- Project persistence, the live-store seam, desktop IPC, the external MCP
-  endpoint, and the external-session conversation protocol/client projection
+- Project persistence, the live-store seam, desktop IPC, the Command API
+  endpoint, and the shared CLI/MCP command client
   provide the foundation for external-agent collaboration.
 
 ### Remaining integration work
 
-- External Agent hosts other than Codex must run and configure their thin
-  `/conversation` server-side adapter, own the descriptor writer lifecycle,
-  and remove the `0600` descriptor on exit. ReelTerminal has no universal
-  provider connector and never embeds a model.
 - Wider editing verbs and richer external-agent interoperability will be
   added only when they improve the finishing workflow and preserve the
   product boundary. Generators integrate outside ReelTerminal through the Agent.
@@ -187,13 +149,13 @@ boundary and retention rule.
 ```text
 human GUI ───────────────┐
                          ├─ canonical Project/actions ─ preview/export
-external Agent via MCP ─┘
+Agent → reelctl → Command API ─┘
 ```
 
 ```text
 packages/core              canonical Project model + editing engines
 packages/ui                shared React UI component library (Radix + Tailwind)
-packages/agent-facade      typed 49-verb facade, headless and live sessions
+packages/agent-facade      typed command catalog + facade, headless and live sessions
 packages/runtime-chromium  Chromium render/export providers + verification
 packages/agent-transport   optional headless MCP/CLI transport foundation
 packages/creation-schema   creation scene schema, primitives, and validation
@@ -203,7 +165,7 @@ packages/creation-core     C++20 native creation engine (C ABI; needs cmake/emsc
 packages/fxpkg             .fxpkg artifact contract, node graph validation, filter/template compiler
 packages/image-core        imperative image-editing core (adjustments, commands, masks, history)
 apps/web                   ReelTerminal editor GUI and renderer-side live bridge
-apps/desktop               desktop shell and external live MCP endpoint
+apps/desktop               desktop shell, Command API, reelctl and MCP adapter
 apps/studio                experimental VFX/filter creation workbench (local creation usable; publishing targets an out-of-repo worker)
 apps/image                 standalone image editor (experimental/dormant)
 docs/adr/                  point-in-time architecture decisions
@@ -245,7 +207,7 @@ monotonic: they are never renumbered or reused, including after deletion.
 
 ## What the facade covers
 
-The 49-tool contract is shared by headless and live facade sessions. In a
+The generated command contract is shared by headless and live facade sessions. In a
 headless session, project lifecycle and local media operations are available
 subject to configured roots. In a live session, the GUI owns the open project;
 the facade can import media and edit that shared project while reporting live
@@ -301,43 +263,25 @@ The runtime example covers create → import → edit → preview → export →
 
 ## Desktop live workflow
 
-Start the desktop editor, open a project, and open the **Agent** panel. The
-connection guide can enable **Agent Session**, check a locally installed and
-signed-in Codex, list its real stored conversations, and either resume the
-selected conversation or create a Codex-owned one for the Agent workspace.
-ReelTerminal starts its packaged adapter and live MCP connector, then shows the
-conversation only after the external-session handshake succeeds. No connector
-build or terminal command is part of the normal Codex desktop flow.
+Open the editor and project, enable **Agent Access**, then run:
 
-For another Agent host, choose **Other Agent** in the same guide. That host
-still owns and starts its thin conversation adapter; the guide detects the
-private descriptor, verifies the session, and explains how to repair a missing
-or invalid adapter. Adapter authors and headless integrations can configure the
-built `apps/desktop/dist/live-mcp/index.js` MCP server manually. By default it
-reads `~/.reelterminal/live-endpoint.json` inside the connector process to discover
-the current loopback endpoint (an owned legacy `~/.openreel/live-endpoint.json`
-is still discovered when the canonical file is absent).
+```powershell
+reelctl status
+reelctl context --compact
+reelctl schema edit.apply
+reelctl edit validate --file validation.json
+reelctl edit apply --file changes.json
+```
 
-The external Agent and the user remain equal peers over the same GUI project.
-The Agent can import local video/audio/images, inspect context, use stable references,
-edit, preview, export, and verify through the live facade; the user keeps direct
-GUI control and the shared undo path. `capabilities_get` reports the absolute
-media roots allowed by the desktop host. Its `mediaImport.recommendedRoot`
-points to the automatically created `ReelTerminal Agent Workspace` under
-Videos. Agents keep each self-initiated creation under `jobs/<date>-<slug>/`, using the
-standard source/generated/work/project/output/evidence layout in
-[`docs/AGENT-WORKSPACE.md`](docs/AGENT-WORKSPACE.md). The former
-`ReelTerminal Agent Imports` folder remains readable for backward compatibility
-but is not the destination for new work. Set
-`REELTERMINAL_LIVE_MEDIA_ROOTS` (legacy `OPENREEL_LIVE_MEDIA_ROOTS` is still
-read when the new name is unset) to a platform-delimited list of existing absolute
-directories before launch to replace those defaults. Other Agent hosts provide
-a thin `/conversation` adapter and publish the private descriptor described in
-[`docs/external-agent-conversation-adapter.md`](docs/external-agent-conversation-adapter.md).
+Use the context's project identity, project epoch and revision when preparing
+edits. CLI processes share the desktop's canonical state, undo history, jobs and
+idempotency records. See [the Agent guide](docs/AGENT-GUIDE.md),
+[workspace layout](docs/AGENT-WORKSPACE.md), and
+[architecture decision](docs/adr/0010-cli-command-api.md).
 
-For a standalone, headless workflow, use the optional `reelterminal-agent serve` or
-`reelterminal-agent run` transport documented in the root [`SKILL.md`](SKILL.md).
-Those commands are not the default ReelTerminal desktop entry point.
+MCP clients explicitly launch `reelctl mcp serve`; old live MCP launcher names
+remain compatibility aliases. Headless `reelterminal-agent` commands remain
+available for explicitly selected standalone workflows.
 
 ## Repository map and historical boundaries
 
@@ -345,7 +289,7 @@ Those commands are not the default ReelTerminal desktop entry point.
 |---|---|---|
 | `packages/core` | Canonical project and editing engines | Active foundation |
 | `packages/ui` | Shared React UI component library | Active foundation |
-| `packages/agent-facade` | Headless/live 49-tool contract | Active |
+| `packages/agent-facade` | Headless/live command catalog | Active |
 | `packages/runtime-chromium` | Render, export, and verification providers | Active foundation |
 | `packages/agent-transport` | Headless MCP/CLI transport foundation | Optional |
 | `packages/creation-schema` | Creation scene schema and validation | Active foundation |
@@ -379,8 +323,8 @@ pnpm typecheck
 pnpm lint
 ```
 
-Desktop live collaboration tests cover endpoint authentication and MCP shape,
-the 49-tool catalog, the renderer bridge, session host, lease, status events,
+Desktop live collaboration tests cover Command API authentication and MCP adapter parity,
+the generated command catalog, the renderer bridge, session host, lease, status events,
 and shared revision behavior.
 
 ## License and attribution

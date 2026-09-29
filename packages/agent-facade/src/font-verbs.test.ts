@@ -89,7 +89,7 @@ function facade(opts?: {
     store,
     lease,
     sessionId: "agent-1",
-    workMode: "collaborative",
+
     access: opts?.access ?? "write",
     artifactRoot,
     ...(opts?.mediaRoots ? { mediaRoots: opts.mediaRoots } : {}),

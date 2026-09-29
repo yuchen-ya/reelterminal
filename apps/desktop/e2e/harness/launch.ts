@@ -28,6 +28,9 @@ import {
   waitForProcessExit,
 } from "./teardown";
 
+const FIRST_WINDOW_TIMEOUT_MS = 90_000;
+const PAGE_LOAD_TIMEOUT_MS = 30_000;
+
 export interface LaunchedApp {
   readonly app: ElectronApplication;
   readonly page: Page;
@@ -35,10 +38,6 @@ export interface LaunchedApp {
   readonly userDataDir: string;
   /** Live endpoint descriptor path (REELTERMINAL_LIVE_ENDPOINT_FILE). */
   readonly endpointFile: string;
-  /** External conversation descriptor path (isolated from the user's home). */
-  readonly conversationEndpointFile: string;
-  /** Main-owned visual-state image root shared only with the test adapter. */
-  readonly conversationVisualStateRoot: string;
   readonly output: {
     readonly mainStdout: string[];
     readonly mainStderr: string[];
@@ -65,8 +64,6 @@ function makeRunDirs(runDir?: string): {
   runDir: string;
   userDataDir: string;
   endpointFile: string;
-  conversationEndpointFile: string;
-  conversationVisualStateRoot: string;
 } {
   const dir = runDir ?? mkdtempSync(path.join(tmpdir(), "reelterminal-e2e-"));
   mkdirSync(dir, { recursive: true });
@@ -74,8 +71,6 @@ function makeRunDirs(runDir?: string): {
     runDir: dir,
     userDataDir: path.join(dir, "user-data"),
     endpointFile: path.join(dir, "live-endpoint.json"),
-    conversationEndpointFile: path.join(dir, "conversation-endpoint.json"),
-    conversationVisualStateRoot: path.join(dir, "conversation-visual-state"),
   };
 }
 
@@ -94,7 +89,7 @@ async function launch(
   const rendererConsole: string[] = [];
 
   const app = await electron.launch({
-    args: [".", `--user-data-dir=${paths.userDataDir}`],
+    args: [".", "--lang=en-US", `--user-data-dir=${paths.userDataDir}`],
     cwd: DESKTOP_DIR,
     env: {
       ...process.env,
@@ -105,8 +100,6 @@ async function launch(
       // every other spec simply observes the additional honest capability.
       REELTERMINAL_LIVE_MEDIA_ROOTS: paths.runDir,
       REELTERMINAL_AGENT_WORKSPACE_ROOT: path.join(paths.runDir, "agent-workspace"),
-      REELTERMINAL_CONVERSATION_ENDPOINT_FILE: paths.conversationEndpointFile,
-      REELTERMINAL_CONVERSATION_VISUAL_STATE_ROOT: paths.conversationVisualStateRoot,
     },
     timeout: 120_000,
   });
@@ -124,9 +117,65 @@ async function launch(
   };
   app.on("window", capturePage);
 
-  const page = await app.firstWindow();
+  let page: Page;
+  let firstWindowTimer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    page = await Promise.race([
+      app.firstWindow(),
+      new Promise<never>((_, reject) => {
+        firstWindowTimer = setTimeout(
+          () => reject(new Error(`No Electron window appeared within ${FIRST_WINDOW_TIMEOUT_MS}ms`)),
+          FIRST_WINDOW_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } catch (error) {
+    const diagnostics = [
+      `Electron startup failed: ${error instanceof Error ? error.message : String(error)}`,
+      `processId=${app.process().pid ?? "unknown"}`,
+      `main stdout tail: ${mainStdout.slice(-30).join("").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
+      `main stderr tail: ${mainStderr.slice(-30).join("").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
+    ].join("\n");
+    try {
+      const child = app.process();
+      void app.close().catch(() => undefined);
+      if (!hasProcessExited(child)) child.kill("SIGKILL");
+      await waitForProcessExit(child, 5_000).catch(() => undefined);
+    } catch {
+      // Preserve the startup evidence; this app belongs to this E2E run.
+    }
+    throw new Error(diagnostics);
+  } finally {
+    if (firstWindowTimer) clearTimeout(firstWindowTimer);
+  }
   capturePage(page);
-  await page.waitForLoadState("domcontentloaded");
+  try {
+    await page.waitForLoadState("domcontentloaded", { timeout: PAGE_LOAD_TIMEOUT_MS });
+    // Every desktop UI E2E uses English labels. The isolated profile has no
+    // user preference, so explicitly seed that preference and reload before
+    // a spec starts driving the UI (the host OS can be zh-CN).
+    await page.evaluate(() => localStorage.setItem("openreel-locale", "en"));
+    await page.reload({ waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
+  } catch (error) {
+    const pageState = await page.evaluate(() => ({
+      url: `${location.origin}${location.pathname}`,
+      language: document.documentElement.lang || navigator.language,
+      title: document.title,
+      bodyText: (document.body?.innerText ?? "").slice(0, 1_200),
+    })).catch(() => null);
+    const safePageState = JSON.stringify(pageState).replace(/\b[a-f0-9]{64}\b/gi, "[redacted]");
+    const diagnostics = [
+      `Electron page failed to load: ${error instanceof Error ? error.message : String(error)}`,
+      `page=${safePageState}`,
+      `main stdout tail: ${mainStdout.slice(-30).join("").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
+      `main stderr tail: ${mainStderr.slice(-30).join("").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
+    ].join("\n");
+    const child = app.process();
+    void app.close().catch(() => undefined);
+    if (!hasProcessExited(child)) child.kill("SIGKILL");
+    await waitForProcessExit(child, 5_000).catch(() => undefined);
+    throw new Error(diagnostics);
+  }
 
   let closePromise: Promise<void> | undefined;
   const handle: LaunchedApp = {
@@ -135,8 +184,6 @@ async function launch(
     runDir: paths.runDir,
     userDataDir: paths.userDataDir,
     endpointFile: paths.endpointFile,
-    conversationEndpointFile: paths.conversationEndpointFile,
-    conversationVisualStateRoot: paths.conversationVisualStateRoot,
     output: { mainStdout, mainStderr, rendererConsole },
 
     async waitForEndpointFile(timeoutMs = 30_000) {
@@ -160,7 +207,6 @@ async function launch(
         const child = app.process();
         const errors: unknown[] = [];
         const appClosePromise = app.close();
-        let forced = false;
         let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
 
         const killChild = (): void => {
@@ -177,7 +223,6 @@ async function launch(
         // project_save first, which flushes autosave and keeps the guard quiet.
         const forceKill = new Promise<void>((resolve, reject) => {
           forceKillTimer = setTimeout(() => {
-            forced = true;
             try {
               killChild();
               resolve();
@@ -210,26 +255,10 @@ async function launch(
           errors.push(error);
         }
 
-        // If the force-kill path won the race, observe app.close()'s eventual
-        // outcome too. This keeps a late close failure visible and is bounded.
-        if (forced) {
-          let settleTimer: ReturnType<typeof setTimeout> | undefined;
-          try {
-            await Promise.race([
-              appClosePromise,
-              new Promise<never>((_, reject) => {
-                settleTimer = setTimeout(
-                  () => reject(new Error("app.close() did not settle after Electron exited")),
-                  5_000,
-                );
-              }),
-            ]);
-          } catch (error) {
-            errors.push(error);
-          } finally {
-            if (settleTimer) clearTimeout(settleTimer);
-          }
-        }
+        // Process exit is the teardown boundary. Playwright's app.close()
+        // promise can remain pending after the harness has force-killed an
+        // app blocked behind a native dialog; waiting on that promise would
+        // turn one failed spec into the full 420 s afterAll timeout.
 
         if (!options.keepRunDir && !paths.runDir.includes("keep")) {
           try {

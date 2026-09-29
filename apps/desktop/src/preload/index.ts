@@ -3,17 +3,11 @@ import { DESKTOP_EXPORT_PORT_MARKER } from "@reelterminal/agent-facade/desktop-p
 import { CHANNELS } from "../shared/channels";
 import type {
   AgentAccessMode,
-  AgentWorkMode,
   LiveBridgeReply,
   LiveBridgeRequest,
   LiveCollabStatus,
   LiveEvent,
 } from "../shared/live";
-import type {
-  ConversationVisualStateCapture,
-  DesktopConversationEvent,
-  DesktopConversationState,
-} from "../shared/conversation";
 
 // The desktop bridge is exposed under the primary name `window.reelterminal`.
 // The legacy `window.openreel` name is kept as a compatibility alias pointing
@@ -167,8 +161,6 @@ const api = {
       ipcRenderer.invoke(CHANNELS.collabDisable, undefined),
     getStatus: (): Promise<LiveCollabStatus> =>
       ipcRenderer.invoke(CHANNELS.collabGetStatus, undefined),
-    setWorkMode: (mode: AgentWorkMode) =>
-      ipcRenderer.invoke(CHANNELS.collabSetMode, { mode }) as Promise<LiveCollabStatus>,
     setAccess: (access: AgentAccessMode) =>
       ipcRenderer.invoke(CHANNELS.collabSetAccess, { access }) as Promise<LiveCollabStatus>,
     openWorkspace: () => ipcRenderer.invoke(CHANNELS.collabOpenWorkspace, undefined),
@@ -185,35 +177,6 @@ const api = {
     }) => ipcRenderer.invoke(CHANNELS.analysisRecordsRecheck, args),
     jobStatus: (jobId: string) =>
       ipcRenderer.invoke(CHANNELS.analysisRecordsJobStatus, { jobId }),
-  },
-  conversation: {
-    getState: () =>
-      ipcRenderer.invoke(CHANNELS.conversationGetState, undefined) as Promise<DesktopConversationState>,
-    attach: () =>
-      ipcRenderer.invoke(CHANNELS.conversationAttach, undefined) as Promise<DesktopConversationState>,
-    prompt: (text: string, visualState?: ConversationVisualStateCapture) =>
-      ipcRenderer.invoke(CHANNELS.conversationPrompt, {
-        text,
-        ...(visualState ? { visualState } : {}),
-      }) as Promise<DesktopConversationState>,
-    resolveApproval: (requestId: string, decision: "approved" | "denied") =>
-      ipcRenderer.invoke(CHANNELS.conversationResolveApproval, {
-        requestId,
-        decision,
-      }) as Promise<DesktopConversationState>,
-    cancel: () =>
-      ipcRenderer.invoke(CHANNELS.conversationCancel, undefined) as Promise<DesktopConversationState>,
-    detach: () =>
-      ipcRenderer.invoke(CHANNELS.conversationDetach, undefined) as Promise<DesktopConversationState>,
-    inspectSetup: () =>
-      ipcRenderer.invoke(CHANNELS.conversationSetupInspect, undefined),
-    startSetup: (args: unknown) =>
-      ipcRenderer.invoke(CHANNELS.conversationSetupStart, args),
-    onEvent: (cb: (event: DesktopConversationEvent) => void) => {
-      const handler = (_event: unknown, payload: DesktopConversationEvent) => cb(payload);
-      ipcRenderer.on(CHANNELS.conversationEvent, handler);
-      return () => ipcRenderer.removeListener(CHANNELS.conversationEvent, handler);
-    },
   },
   // Agent media tasks (voiceover/music): read-only view of the advertised
   // media roots plus the product-side artifact import forward. JSON-safe

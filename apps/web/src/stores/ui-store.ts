@@ -9,8 +9,7 @@ export type PanelId =
   | "effects"
   | "audioMixer"
   | "colorGrading"
-  | "subtitles"
-  | "externalAgent";
+  | "subtitles";
 
 export type SelectionType =
   | "clip"
@@ -224,13 +223,6 @@ const DEFAULT_PANELS: Record<PanelId, PanelState> = {
   audioMixer: { visible: false, width: 300 },
   colorGrading: { visible: false, width: 400 },
   subtitles: { visible: false, width: 300 },
-  externalAgent: {
-    visible: false,
-    width: 400,
-    height: 560,
-    minimized: false,
-    maximized: false,
-  },
 };
 
 export const useUIStore = create<UIState>()(
@@ -441,16 +433,6 @@ export const useUIStore = create<UIState>()(
         togglePanel: (panelId: PanelId) => {
           set((state) => {
             const panel = state.panels[panelId];
-            // The externalAgent surface floats; toggling it while it is open
-            // but minimized restores the window instead of hiding it.
-            if (panelId === "externalAgent" && panel.visible && panel.minimized) {
-              return {
-                panels: {
-                  ...state.panels,
-                  [panelId]: { ...panel, minimized: false },
-                },
-              };
-            }
             return {
               // Use spread operator to create new panels object (immutability for Zustand reactivity)
               panels: {
@@ -697,41 +679,16 @@ export const useUIStore = create<UIState>()(
       {
         // Persisted storage name — legacy registry, value frozen (UI prefs).
         name: LEGACY_LS_UI_PREFERENCES,
-        version: 4,
+        version: 5,
         migrate: (persisted: unknown, version: number) => {
-          const state = persisted as Record<string, unknown>;
+          const state = { ...(persisted as Record<string, unknown>) };
           if (version === 0) {
             state.snapSettings = DEFAULT_SNAP_SETTINGS;
           }
-          if (version < 2) {
-            const panels = (state.panels ?? {}) as Record<string, PanelState>;
-            if (!panels.agentChat) {
-              panels.agentChat = DEFAULT_PANELS.externalAgent;
-            }
-            state.panels = panels;
-          }
-          if (version < 3) {
-            const panels = (state.panels ?? {}) as Record<string, PanelState>;
-            panels.externalAgent =
-              panels.agentChat ?? DEFAULT_PANELS.externalAgent;
-            delete panels.agentChat;
-            state.panels = panels;
-          }
-          if (version < 4) {
-            const panels = (state.panels ?? {}) as Record<string, PanelState>;
-            // v4 adds floating-window geometry to the externalAgent panel;
-            // keep the persisted visible/width and fill the new fields.
-            state.panels = {
-              ...DEFAULT_PANELS,
-              ...panels,
-              externalAgent: {
-                ...DEFAULT_PANELS.externalAgent,
-                ...panels.externalAgent,
-                minimized: panels.externalAgent?.minimized ?? false,
-                maximized: panels.externalAgent?.maximized ?? false,
-              },
-            };
-          }
+          const panels = { ...((state.panels ?? {}) as Record<string, PanelState>) };
+          delete panels.agentChat;
+          delete panels.externalAgent;
+          state.panels = { ...DEFAULT_PANELS, ...panels };
           return state;
         },
         partialize: (state) => ({

@@ -41,6 +41,16 @@ extraResources:
     to: LICENSES
     filter:
       - "**/*"
+extraFiles:
+  # A packaged Windows launcher that invokes Electron's bundled Node runtime
+  # against the reelctl entry. It is also copied with resources/bin for callers
+  # that prefer an explicit resources path.
+  - from: resources/bin/reelctl.cmd
+    to: reelctl.cmd
+  - from: resources/bin/reelterminal-live-mcp.cmd
+    to: reelterminal-live-mcp.cmd
+  - from: resources/bin/openreel-live-mcp.cmd
+    to: openreel-live-mcp.cmd
 mac:
   category: public.app-category.video
   icon: build/icon.png

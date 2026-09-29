@@ -10,7 +10,6 @@ export {
 export type {
   DesktopCollabStatus as LiveCollabStatus,
   DesktopCollabSetAccessArgs as LiveCollabSetAccessArgs,
-  DesktopCollabSetWorkModeArgs as LiveCollabSetWorkModeArgs,
   DesktopLiveBridgeError as LiveBridgeError,
   DesktopLiveBridgeKind as LiveBridgeKind,
   DesktopLiveBridgeReply as LiveBridgeReply,
@@ -19,7 +18,6 @@ export type {
 } from "@reelterminal/agent-facade/desktop-protocol";
 export type {
   AgentAccessMode,
-  AgentWorkMode,
   LiveMediaImportRequest,
   LiveMediaImportResult,
 } from "@reelterminal/agent-facade";

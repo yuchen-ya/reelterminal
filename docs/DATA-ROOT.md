@@ -75,8 +75,8 @@ offers layered cleanup (see `apps/desktop/build/installer.nsh`): projects +
 app data, the Agent workspace, caches/logs — each with its own prompt, so
 "keep my data" is still the default answer. The uninstaller reads
 `<machineConfigDir>\uninstall-info.ini` (written by the app) to find the
-root. `~/.reelterminal/` (live/conversation endpoint descriptors) is a
-cross-process contract with external connectors and is left alone.
+root. `~/.reelterminal/live-endpoint.json` is a cross-process contract with
+local CLI and compatibility connectors and is left alone.
 
 ## Not (yet) in the root
 

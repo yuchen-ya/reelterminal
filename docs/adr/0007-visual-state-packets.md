@@ -1,5 +1,8 @@
 # ADR 0007: Visual state packets for external-Agent turns
 
+> Historical decision, superseded by [ADR 0010](0010-cli-command-api.md).
+> Conversation integration and collaboration modes are no longer shipped.
+
 **Status:** Accepted
 
 ## Context

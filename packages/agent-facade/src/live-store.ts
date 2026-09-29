@@ -128,6 +128,8 @@ export interface LiveEditorControlResult {
 }
 
 export interface LiveProjectIdentity {
+  /** Opaque identity of this particular project opening, including renderer reloads. */
+  readonly projectEpoch?: string;
   readonly projectId: string;
   readonly projectName: string;
   readonly windowId: string;

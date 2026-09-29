@@ -61,15 +61,9 @@ const state = await facade["project.get_state"]();
 
 ## Verbs
 
-The current registry exposes **49 tools: 47 built-in verbs plus the two
-bundled plugin tools** (`media_import_preflight`, `media.inspect`). The
-slice narrative below predates the later additions (the `material.*`,
-`analysis.*`, `font.*`, `preset.*`, and `help.*` verbs,
-`preview.render_comparison`,
-`media.import_preflight`)
-and does not itemize them.
-`FACADE_VERBS` in `src/types.ts` and `BUNDLED_PLUGINS` in `src/plugins/index.ts`
-are the catalog source of truth. MCP maps dots to underscores.
+The current registry is generated from built-in verbs and bundled plugins.
+Discover its actual entries with `getCommandCatalog(mode)`; do not hard-code
+a tool count in clients.
 
 Slice 1: `session.describe` · `capabilities.get` · `project.create` ·
 `project.rename` · `project.get_state` · `media.import` · `timeline.get` ·
@@ -88,7 +82,7 @@ Slice 6: `project.changes` · `timeline.query` · `edit.validate` ·
 `history.get` · `history.control` add bounded delta recovery, scoped reads,
 side-effect-free preflight, and canonical live undo/redo. `media.analyze_start`
 adds asynchronous media analysis over the generalized `job.status`/
-`job.cancel` path. Live and headless sessions implement the same 49-tool
+`job.cancel` path. Live and headless sessions implement the same command
 contract over a `LiveProjectStore` seam with no live project copy; headless
 history control reports `UNSUPPORTED` because it has no GUI/Core history stack.
 
@@ -156,7 +150,7 @@ no-op with `ok: true`.
 
 ## Live-mode contract differences (ADR 0004)
 
-Live sessions (`createLiveFacade`) implement the same 49 verbs against the
+Live sessions (`createLiveFacade`) implement the same registered verbs against the
 open GUI project. Where a verb's behavior must differ by mode, the contract
 states it up front instead of letting integrators discover it at runtime:
 
@@ -178,27 +172,22 @@ states it up front instead of letting integrators discover it at runtime:
   of the snapshot the ops were translated against (unconditional CAS), so a
   human edit landing between read and apply fails `CONFLICT`.
 
-## Agent work mode and authorization are separate
+## Access and protocol-independent commands
 
-`session.describe` and `editor.get_context` return `workMode` plus an explicit
-`workModeSemantics` object in both live and headless sessions. The values are
-`guided`, `collaborative` (default), and `autonomous`. They describe default
-initiative and alignment density only; they are deliberately not a workflow
-state machine and may change at any time.
+Live sessions expose explicit `access` (`read-only` or `write`) and writer-lease
+fields. Agents own collaboration style, conversations and context management;
+`workMode` and conversation adapters have been removed. Existing read-only
+preferences migrate without widening authorization.
 
-Live sessions report the independent `access` field (`read-only` or `write`) and
-the writer-lease fields. The verb gate reads `access`, never `workMode`, so
-selecting Autonomous cannot grant a write verb and selecting Guided cannot
-remove an existing authorization. Legacy combined values migrate as follows:
-`observe` → Guided + read-only, `assist` → Collaborative + write, and
-`autonomous` → Autonomous + write. This preserves the old read-only boundary.
-Headless sessions expose the same work-mode fields and default to Collaborative;
-they omit the live-only access/writer fields.
+`getCommandCatalog("live")` and `getCommandCatalog("headless")` describe the
+canonical verbs, schemas, effects and retry policies, including plugin commands.
+The desktop's Command API and reelctl use this catalog; MCP is an explicit
+adapter over the same API. See [ADR 0010](../../docs/adr/0010-cli-command-api.md).
 
-The optional external-conversation attachment carries this same context in
-`initialize`, `session/resume`, every `session/prompt`, and the namespaced
-`openreel/work_mode` change notification. ReelTerminal still retains no model,
-provider credential, inference loop, or long-term conversation history.
+The new CLI requires recorded project identity, opening epoch and revision for
+edit/apply and history control. The legacy MCP adapter keeps the facade's
+optional revision semantics described above for compatibility. All transports
+still use the same atomic mutation, idempotency and shared undo implementation.
 
 ## Slice 1b: preview / export / verify
 
@@ -560,7 +549,8 @@ screenshot delivery state.
 
 ## Slice boundaries (what this is NOT)
 
-No MCP/CLI transport, no cloud GPU, no project replace/reset, no OCR. The
+The facade itself contains no transport, cloud GPU, project replace/reset or OCR.
+The desktop supplies the Command API and CLI/MCP adapters. The
 facade ships the Slice-1b verbs and owns their state semantics, but contains
 no Chromium/Playwright/ffmpeg code — that lives in the runtime package.
 Text overlays are canonical model state (`project.textClips` on a

@@ -10,6 +10,9 @@ export default defineConfig({
     // Standalone stdio→HTTP MCP connector for the external live endpoint.
     // Tool names are bundled from the facade's canonical registry.
     "live-mcp/index": "src/live-mcp/index.ts",
+    "live-mcp/legacy": "src/live-mcp/legacy.ts",
+    // CLI for the project currently open in the desktop app.
+    "reelctl/index": "src/reelctl/index.ts",
   },
   format: ["cjs"],
   platform: "node",

@@ -13,10 +13,9 @@ export const FACADE_ERROR_CODES = [
   "ACTION_FAILED",
   "INTERNAL",
   /**
-   * The session's mode forbids the verb outright (ADR 0004 Decision 7:
-   * Observe sessions run read-only verbs only). Distinct from CONFLICT,
+   * The session's explicit read-only access forbids the verb outright. Distinct from CONFLICT,
    * which reports a retryable state/lease precondition — FORBIDDEN is a
-   * fixed property of the session's mode, not of the current state.
+   * property of the session's access authorization, not of the current state.
    */
   "FORBIDDEN",
 ] as const;

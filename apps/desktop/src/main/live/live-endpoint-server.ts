@@ -1,30 +1,9 @@
 /**
- * LiveEndpointServer — the token-authenticated loopback MCP endpoint for
- * EXTERNAL agents (ADR 0004 Decision 9). An external agent posts MCP
- * JSON-RPC here; every tools/call runs through the external live facade
- * session hosted in this process.
- *
- * Hardened shape: 127.0.0.1-only bind,
- * POST-only, 4 MB body cap, no GET/SSE. The MCP surface is exactly
- * initialize / ping / tools/list / tools/call:
- *
- *  - tools/list is answered IN MAIN from the facade's own verb list + emitted
- *    JSON Schemas (no renderer round-trip): registered tools, verb dots mapped to
- *    underscores (editor.get_context → editor_get_context), same envelope
- *    shape agent-transport produces.
- *  - tools/call returns the FacadeResult as ONE text content block plus
- *    verbatim structuredContent, isError: !result.ok (mirror of
- *    agent-transport serve.ts); an unknown tool is a JSON-RPC protocol error.
- *
- * Auth: a 32-byte random bearer token per endpoint lifetime, compared with
- * timingSafeEqual on EVERY request. The endpoint file
- * (~/.reelterminal/live-endpoint.json, mode 0600) is written on start and
- * deleted on stop; a legacy ~/.openreel descriptor that provably belonged
- * to this application family and no longer has a live publisher is
- * atomically updated so old connectors can discover the new host. THE TOKEN
- * IS NEVER SENT TO THE RENDERER AND NEVER LOGGED
- * It appears only in the 0600 endpoint file, never in any IPC payload,
- * status object, or response body beyond the file itself.
+ * Token-authenticated loopback Command API for external local clients.
+ * All commands pass through the host's shared live facade session. The API
+ * exposes the command catalog, safe editor status, guarded command dispatch,
+ * and verified image artifact reads. Credentials are only written to the
+ * private endpoint descriptor and never returned in API responses.
  */
 import {
   createServer,
@@ -40,10 +19,8 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
-  realpathSync,
   renameSync,
   rmSync,
-  statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -58,204 +35,31 @@ import {
   planLegacyCompatWriteback,
   ENDPOINT_PRODUCT_ID,
 } from "../../shared/endpoint-paths";
+import { readVerifiedImageArtifact } from "./artifact-images";
 import {
-  toolDescription,
-  toolPresentation,
-  EMITTED_VERB_JSON_SCHEMAS,
-  EMITTED_VERB_OUTPUT_JSON_SCHEMAS,
-  FACADE_VERBS,
-  FACADE_TOOL_TO_VERB,
-  LIVE_VERB_INPUT_SCHEMA_OVERRIDES,
-  facadeToolNameForVerb,
-  type FacadeToolName,
+  getCommandCatalog,
+  getCommandCatalogEntry,
+  FACADE_CONTRACT_VERSION,
+  type FacadeErrorCode,
   type FacadeResult,
   type FacadeVerb,
-  type JsonSchemaObject,
 } from "@reelterminal/agent-facade";
 
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
-
-/** MCP protocol versions supported by the live endpoint. */
-const DEFAULT_PROTOCOL_VERSION = "2024-11-05";
-const SUPPORTED_PROTOCOL_VERSIONS = new Set([
-  "2024-11-05",
-  "2025-03-26",
-  "2025-06-18",
-  "2025-11-25",
-]);
+const COMMAND_API_VERSION = 1;
 
 class BodyTooLargeError extends Error {}
-
-const MAX_MCP_IMAGE_BYTES = 8 * 1024 * 1024;
-
-/** Read only facade-verified images (PNG or budget-fitted JPEG) under the host artifact root. */
-export function visualImageContent(
-  result: FacadeResult<unknown>,
-  artifactRoot: string | undefined,
-): (
-  | { type: "image"; data: string; mimeType: "image/png" | "image/jpeg" }
-  | { type: "text"; text: string }
-)[] {
-  if (!result.ok || artifactRoot === undefined) return [];
-  const value = result.value as {
-    readonly contactSheet?: { readonly path?: unknown } | null;
-    readonly frames?: readonly { readonly artifact?: { readonly path?: unknown }; readonly regionArtifact?: { readonly path?: unknown } }[];
-  };
-  const contactPath = typeof value.contactSheet?.path === "string"
-    ? value.contactSheet.path
-    : undefined;
-  const framePaths = (value.frames ?? [])
-    .flatMap((frame) => [frame.artifact?.path, frame.regionArtifact?.path].filter(Boolean))
-    .filter((candidate): candidate is string => typeof candidate === "string")
-    .slice(0, 12);
-  // Prefer the single sheet, but fall back to frames if that artifact is no
-  // longer readable, fails PNG validation, or exceeds the image budget.
-  const hasRegions = value.frames?.some((frame) => frame.regionArtifact);
-  const paths = hasRegions || contactPath === undefined ? framePaths : [contactPath, ...framePaths];
-  let root: string;
-  try {
-    root = realpathSync(path.resolve(artifactRoot));
-  } catch {
-    return [];
-  }
-  const blocks: (
-    | { type: "image"; data: string; mimeType: "image/png" | "image/jpeg" }
-    | { type: "text"; text: string }
-  )[] = [];
-  let totalBase64 = 0;
-  let skipped = (value.frames ?? []).reduce((count, frame) => count + (frame.regionArtifact ? 2 : 1), 0) > 12;
-  for (const filePath of paths) {
-    if (!path.isAbsolute(filePath)) {
-      skipped = true;
-      continue;
-    }
-    let verified: string;
-    try {
-      verified = realpathSync(filePath);
-    } catch {
-      skipped = true;
-      continue;
-    }
-    const rel = path.relative(root, verified);
-    if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) {
-      skipped = true;
-      continue;
-    }
-    let bytes: Buffer;
-    try {
-      const info = statSync(verified);
-      if (!info.isFile() || info.size === 0 || info.size > MAX_MCP_IMAGE_BYTES) {
-        skipped = true;
-        continue;
-      }
-      bytes = readFileSync(verified);
-      if (bytes.length === 0 || bytes.length > MAX_MCP_IMAGE_BYTES) {
-        skipped = true;
-        continue;
-      }
-    } catch {
-      skipped = true;
-      continue;
-    }
-    // Image signature check at the transport boundary: frames are lossless
-    // PNG or the facade's budget-fitted JPEG re-encodes.
-    const isPng = bytes.length >= 8
-      && bytes.readUInt32BE(0) === 0x89504e47
-      && bytes.readUInt32BE(4) === 0x0d0a1a0a;
-    const isJpeg = bytes.length >= 3
-      && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-    if (!isPng && !isJpeg) {
-      skipped = true;
-      continue;
-    }
-    const encoded = bytes.toString("base64");
-    if (encoded.length > MAX_MCP_IMAGE_BYTES) {
-      skipped = true;
-      continue;
-    }
-    if (totalBase64 + encoded.length > MAX_MCP_IMAGE_BYTES * 2) {
-      skipped = true;
-      break;
-    }
-    blocks.push({ type: "image", data: encoded, mimeType: isPng ? "image/png" : "image/jpeg" });
-    totalBase64 += encoded.length;
-    if (contactPath !== undefined && filePath === contactPath) break;
-  }
-  if (skipped) {
-    blocks.push({
-      type: "text",
-      text: JSON.stringify({
-        visualImageLimitation:
-          "Some visual image artifacts were not embedded because the MCP image containment, signature, or response-size limit was reached; structuredContent retains every artifact reference.",
-      }),
-    });
-  }
-  return blocks;
-}
-
-/* ------------------------- registered facade tools -------------------------- */
-
-export interface LiveTool {
-  readonly name: string;
-  readonly description: string;
-  readonly inputSchema: JsonSchemaObject;
-  /** Successful/failed FacadeResult envelope shape, when declared. */
-  readonly outputSchema?: Record<string, unknown>;
-}
-
-export function toolNameForVerb(verb: FacadeVerb): FacadeToolName {
-  return facadeToolNameForVerb(verb);
-}
-
-/**
- * One short purpose string per tool (parameter semantics live in the facade
- * schemas, same discipline as agent-transport tools.ts) — live-mode honest:
- * project lifecycle remains GUI-owned while media import targets the open
- * GUI project through the canonical store bridge.
- */
-
-
-function buildLiveTools(): {
-  tools: readonly LiveTool[];
-  toolToVerb: ReadonlyMap<string, FacadeVerb>;
-} {
-  const tools: LiveTool[] = [];
-  const toolToVerb = new Map<string, FacadeVerb>();
-  for (const verb of FACADE_VERBS) {
-    // Live-honest input surface: live project.save takes no params (the GUI
-    // owns the save target) and must not advertise the headless checkpoint
-    // schema; every other verb serves the shared facade emission verbatim.
-    const inputSchema =
-      LIVE_VERB_INPUT_SCHEMA_OVERRIDES[verb] ?? EMITTED_VERB_JSON_SCHEMAS[verb];
-    if (inputSchema === undefined) {
-      throw new Error(`live endpoint: no emitted JSON schema for verb "${verb}"`);
-    }
-    const name = toolNameForVerb(verb);
-    tools.push({
-      name,
-      description: toolDescription(verb, "live"),
-      inputSchema,
-      outputSchema: EMITTED_VERB_OUTPUT_JSON_SCHEMAS[verb] as Readonly<
-        Record<string, unknown>
-      >,
-    });
-    toolToVerb.set(name, FACADE_TOOL_TO_VERB[name]);
-  }
-  return { tools, toolToVerb };
-}
-
-const { tools: LIVE_TOOLS, toolToVerb: LIVE_TOOL_TO_VERB } = buildLiveTools();
-
 /* --------------------------- endpoint file ------------------------------ */
 
 export interface LiveEndpointFile {
+  /** Deprecated convenience alias for commandApi.url; currently points to /v1. */
   readonly url: string;
   readonly port: number;
   readonly token: string;
+  /** Protocol-neutral entry point used by reelctl clients. */
+  readonly commandApi: { readonly url: string; readonly version: number };
   /**
-   * Written by this host since N03 so clients can verify descriptor
-   * ownership during legacy-path discovery. Readers that predate the field
-   * ignore it (they read url/port/token only).
+   * Allows clients to verify descriptor ownership during legacy-path discovery.
    */
   readonly product?: string;
 }
@@ -337,8 +141,7 @@ function removeEndpointFile(file: string): void {
 /**
  * Remove a legacy-path descriptor only when it is still the one this host
  * wrote (url and token both match). A file another instance replaced in
- * the meantime is left alone — the same ownership guard the conversation
- * adapter applies on shutdown.
+ * the meantime is left alone.
  */
 function removeOwnedEndpointFile(
   file: string,
@@ -360,32 +163,20 @@ function removeOwnedEndpointFile(
   }
 }
 
-/* ------------------------------ JSON-RPC -------------------------------- */
-
-interface JsonRpcMessage {
-  jsonrpc?: string;
-  id?: string | number | null;
-  method?: string;
-  params?: Record<string, unknown>;
-}
-
-interface JsonRpcResponse {
-  jsonrpc: "2.0";
-  id: string | number | null;
-  result?: unknown;
-  error?: { code: number; message: string };
-}
-
 export interface LiveEndpointOptions {
   /** Routes one facade verb call to the external live session (host-owned). */
   readonly callVerb: (
     verb: FacadeVerb,
     params: unknown,
+    guard?: CommandProjectGuard,
   ) => Promise<FacadeResult<unknown>>;
-  /** Fires on authenticated initialize, ping, or tools/call activity. */
+  /** Fires on every authenticated API request. */
   readonly onExternalActivity?: () => void;
-  readonly serverInfo: { name: string; version: string };
-  /** Facade-verified image artifacts may be embedded only from this root. */
+  /** Credential-free view of the current editor/session state. */
+  readonly getStatus?: () => Promise<CommandStatusSnapshot> | CommandStatusSnapshot;
+  /** Product name and version exposed to local clients. */
+  readonly serverInfo: { readonly name: string; readonly version: string };
+  /** Verified image reads are limited to this facade artifact directory. */
   readonly artifactRoot?: string;
   readonly host?: string;
   /** Defaults to REELTERMINAL_LIVE_PORT (legacy OPENREEL_), else random. */
@@ -399,105 +190,30 @@ export interface LiveEndpointOptions {
   readonly home?: string;
 }
 
+export interface CommandProjectGuard {
+  readonly expectedProjectId?: string;
+  readonly expectedProjectEpoch?: string;
+}
+
+export interface CommandStatusSnapshot {
+  readonly instanceId: string;
+  readonly projectId: string | null;
+  readonly projectEpoch: string | null;
+  readonly access: "read-only" | "write";
+  readonly currentAction: string | null;
+  readonly enabled: boolean;
+}
+
 export interface RunningLiveEndpoint {
   readonly server: Server;
   readonly port: number;
   readonly host: string;
+  /** Command API base URL. Kept as url for older descriptor readers. */
   readonly url: string;
+  readonly commandApiUrl: string;
   readonly endpointFile: string;
   /** Stops the server and deletes the endpoint file. */
   close(): Promise<void>;
-}
-
-function isNotification(msg: JsonRpcMessage): boolean {
-  return msg.id === undefined || msg.id === null;
-}
-
-async function handleLiveMessage(
-  message: JsonRpcMessage,
-  options: LiveEndpointOptions,
-): Promise<JsonRpcResponse | null> {
-  const id = message.id ?? null;
-  const reply = (result: unknown): JsonRpcResponse => ({
-    jsonrpc: "2.0",
-    id,
-    result,
-  });
-  const fail = (code: number, msg: string): JsonRpcResponse => ({
-    jsonrpc: "2.0",
-    id,
-    error: { code, message: msg },
-  });
-
-  try {
-    switch (message.method) {
-      case "initialize": {
-        options.onExternalActivity?.();
-        const requested = message.params?.protocolVersion;
-        // Echo the client's version only if supported; otherwise negotiate
-        // down to the default when the client requests an unknown version.
-        const protocolVersion =
-          typeof requested === "string" &&
-          SUPPORTED_PROTOCOL_VERSIONS.has(requested)
-            ? requested
-            : DEFAULT_PROTOCOL_VERSION;
-        return reply({
-          protocolVersion,
-          capabilities: { tools: { listChanged: false } },
-          serverInfo: options.serverInfo,
-        });
-      }
-      case "notifications/initialized":
-      case "notifications/cancelled":
-        return null;
-      case "ping":
-        options.onExternalActivity?.();
-        return reply({});
-      case "tools/list":
-        return reply({ tools: LIVE_TOOLS });
-      case "tools/call": {
-        options.onExternalActivity?.();
-        const name = message.params?.name;
-        if (typeof name !== "string" || name.length === 0) {
-          return fail(-32602, "Invalid params: missing tool name");
-        }
-        const verb = LIVE_TOOL_TO_VERB.get(name);
-        if (verb === undefined) {
-          // Transport-level failure ⇒ protocol error (never a domain result).
-          return fail(-32602, `Unknown tool: ${name}`);
-        }
-        const rawArgs = message.params?.arguments;
-        const args =
-          rawArgs && typeof rawArgs === "object" ? rawArgs : {};
-        const result = await options.callVerb(verb, args);
-        // The full FacadeResult JSON as ONE text content block, with
-        // structuredContent verbatim; domain failures are isError, never
-        // protocol errors.
-        const content: Array<
-          | { type: "text"; text: string }
-          | { type: "image"; data: string; mimeType: "image/png" | "image/jpeg" }
-        > = [{ type: "text", text: JSON.stringify(result) }];
-        if (toolPresentation(verb) === "image-collection" && result.ok) {
-          content.push(...visualImageContent(result, options.artifactRoot));
-        }
-        return reply({
-          content,
-          structuredContent: result as unknown as Record<string, unknown>,
-          isError: !result.ok,
-        });
-      }
-      default:
-        if (isNotification(message)) return null;
-        return fail(
-          -32601,
-          `Method not found: ${message.method ?? "(none)"}`,
-        );
-    }
-  } catch (error) {
-    if (isNotification(message)) return null;
-    const msg = error instanceof Error ? error.message : "Internal error";
-    return fail(-32603, msg);
-  }
 }
 
 /* -------------------------------- HTTP ---------------------------------- */
@@ -505,18 +221,24 @@ async function handleLiveMessage(
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let size = 0;
+    let tooLarge = false;
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => {
+      if (tooLarge) return;
       size += chunk.length;
       if (size > MAX_BODY_BYTES) {
+        tooLarge = true;
         reject(new BodyTooLargeError("Request body too large"));
-        req.destroy();
         return;
       }
       chunks.push(chunk);
     });
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
+    req.on("end", () => {
+      if (!tooLarge) resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    req.on("error", (error) => {
+      if (!tooLarge) reject(error);
+    });
   });
 }
 
@@ -544,10 +266,209 @@ function tokenMatches(provided: string | null, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function commandFailure(code: FacadeErrorCode, message: string): FacadeResult<never> {
+  return { ok: false, error: { code, message } };
+}
+
+function defaultCommandStatus(): CommandStatusSnapshot {
+  return {
+    instanceId: `pid-${process.pid}`,
+    projectId: null,
+    projectEpoch: null,
+    access: "write",
+    currentAction: null,
+    enabled: true,
+  };
+}
+
+async function handleCommandApiRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  options: LiveEndpointOptions,
+): Promise<boolean> {
+  const statusRoute = pathname === "/v1/status";
+  const catalogRoute = pathname === "/v1/catalog";
+  const commandRoute = pathname === "/v1/command";
+  const catalogEntryRoute = pathname.startsWith("/v1/catalog/");
+  const artifactRoute = pathname === "/v1/artifact";
+  if (!statusRoute && !catalogRoute && !commandRoute && !catalogEntryRoute && !artifactRoute) return false;
+
+  const allowedMethod = (statusRoute || catalogRoute || catalogEntryRoute || artifactRoute)
+    ? req.method === "GET"
+    : req.method === "POST";
+  if (!allowedMethod) {
+    sendJson(res, 405, commandFailure("INVALID_PARAMS", "Method not allowed"));
+    return true;
+  }
+  options.onExternalActivity?.();
+
+  if (statusRoute) {
+    const status = options.getStatus
+      ? await options.getStatus()
+      : defaultCommandStatus();
+    sendJson(res, 200, {
+      ok: true,
+      apiVersion: COMMAND_API_VERSION,
+      contractVersion: FACADE_CONTRACT_VERSION,
+      serverInfo: options.serverInfo,
+      instanceId: status.instanceId,
+      projectId: status.projectId,
+      projectEpoch: status.projectEpoch,
+      access: status.access,
+      currentAction: status.currentAction,
+      enabled: status.enabled,
+    });
+    return true;
+  }
+  if (catalogRoute) {
+    const requestedMode = new URL(req.url ?? "/v1/catalog", "http://127.0.0.1").searchParams.get("mode");
+    if (requestedMode !== null && requestedMode !== "live") {
+      sendJson(res, 400, commandFailure("INVALID_PARAMS", "The desktop endpoint only serves the live command catalog"));
+      return true;
+    }
+    sendJson(res, 200, {
+      ok: true,
+      apiVersion: COMMAND_API_VERSION,
+      contractVersion: FACADE_CONTRACT_VERSION,
+      serverInfo: options.serverInfo,
+      commands: getCommandCatalog("live"),
+    });
+    return true;
+  }
+  if (catalogEntryRoute) {
+    let name: string;
+    try {
+      name = decodeURIComponent(pathname.slice("/v1/catalog/".length));
+    } catch {
+      sendJson(res, 400, commandFailure("INVALID_PARAMS", "Malformed command name"));
+      return true;
+    }
+    if (!name || name.includes("/")) {
+      sendJson(res, 400, commandFailure("INVALID_PARAMS", "Expected one dotted command name"));
+      return true;
+    }
+    const command = getCommandCatalogEntry(name, "live");
+    if (!command) {
+      sendJson(res, 404, commandFailure("NOT_FOUND", `Unknown command: ${name}`));
+      return true;
+    }
+    sendJson(res, 200, {
+      ok: true,
+      apiVersion: COMMAND_API_VERSION,
+      contractVersion: FACADE_CONTRACT_VERSION,
+      serverInfo: options.serverInfo,
+      command,
+    });
+    return true;
+  }
+  if (artifactRoute) {
+    const requestUrl = new URL(req.url ?? "/v1/artifact", "http://127.0.0.1");
+    const artifactPath = requestUrl.searchParams.get("path");
+    const sha256 = requestUrl.searchParams.get("sha256");
+    if (!artifactPath || artifactPath.length > 4096 || !sha256) {
+      sendJson(res, 400, commandFailure("INVALID_PARAMS", "Expected artifact path and sha256"));
+      return true;
+    }
+    const artifact = readVerifiedImageArtifact(artifactPath, sha256, options.artifactRoot);
+    if (!artifact) {
+      sendJson(res, 404, commandFailure("NOT_FOUND", "Verified image artifact was not found"));
+      return true;
+    }
+    res.writeHead(200, {
+      "Content-Type": artifact.mimeType,
+      "Content-Length": artifact.bytes.length,
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    res.end(artifact.bytes);
+    return true;
+  }
+
+  let body: unknown;
+  try {
+    const text = await readBody(req);
+    if (!text) {
+      sendJson(res, 400, commandFailure("INVALID_PARAMS", "Empty request body"));
+      return true;
+    }
+    body = JSON.parse(text) as unknown;
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) {
+      if (!res.headersSent) sendJson(res, 413, commandFailure("INVALID_PARAMS", "Request body too large"));
+      return true;
+    }
+    sendJson(res, 400, commandFailure("INVALID_PARAMS", "Invalid JSON request body"));
+    return true;
+  }
+  if (!isRecord(body)) {
+    sendJson(res, 400, commandFailure("INVALID_PARAMS", "Request body must be a JSON object"));
+    return true;
+  }
+  const commandName = body.command;
+  if (typeof commandName !== "string" || commandName.length === 0) {
+    sendJson(res, 400, commandFailure("INVALID_PARAMS", "Missing command name"));
+    return true;
+  }
+  const command = getCommandCatalogEntry(commandName, "live");
+  if (!command) {
+    sendJson(res, 404, commandFailure("NOT_FOUND", `Unknown command: ${commandName}`));
+    return true;
+  }
+  const args = body.arguments === undefined ? {} : body.arguments;
+  if (!isRecord(args)) {
+    sendJson(res, 400, commandFailure("INVALID_PARAMS", "arguments must be a JSON object"));
+    return true;
+  }
+  const expectedProjectId = body.expectedProjectId;
+  const expectedProjectEpoch = body.expectedProjectEpoch;
+  if (expectedProjectId !== undefined && typeof expectedProjectId !== "string") {
+    sendJson(res, 400, commandFailure("INVALID_PARAMS", "expectedProjectId must be a string"));
+    return true;
+  }
+  if (expectedProjectEpoch !== undefined && typeof expectedProjectEpoch !== "string") {
+    sendJson(res, 400, commandFailure("INVALID_PARAMS", "expectedProjectEpoch must be a string"));
+    return true;
+  }
+
+  const guard: CommandProjectGuard = {
+    ...(expectedProjectId !== undefined ? { expectedProjectId } : {}),
+    ...(expectedProjectEpoch !== undefined ? { expectedProjectEpoch } : {}),
+  };
+  if (options.getStatus && Object.keys(guard).length > 0) {
+    const status = await options.getStatus();
+    if (
+      (expectedProjectId !== undefined && expectedProjectId !== status.projectId)
+      || (expectedProjectEpoch !== undefined && expectedProjectEpoch !== status.projectEpoch)
+    ) {
+      sendJson(res, 409, commandFailure("CONFLICT", "The open project changed since this request was prepared"));
+      return true;
+    }
+  }
+  try {
+    const result = await options.callVerb(
+      command.name,
+      args,
+      Object.keys(guard).length > 0 ? guard : undefined,
+    );
+    sendJson(res, 200, result);
+  } catch (error) {
+    sendJson(res, 500, commandFailure("INTERNAL", error instanceof Error ? error.message : "Command failed"));
+  }
+  return true;
+}
+
 export function startLiveEndpointServer(
   options: LiveEndpointOptions,
 ): Promise<RunningLiveEndpoint> {
   const host = options.host ?? "127.0.0.1";
+  if (host !== "127.0.0.1") {
+    return Promise.reject(new Error("The live Command API may only bind to 127.0.0.1"));
+  }
   // 32 random bytes per endpoint lifetime. Scoped to this closure: it is
   // written only to the 0600 endpoint file — never returned, never logged,
   // never sent to the renderer.
@@ -567,14 +488,15 @@ export function startLiveEndpointServer(
 
   const server = createServer((req, res) => {
     void (async () => {
-      if (req.method !== "POST") {
-        sendJson(res, 405, { error: "Method not allowed" });
+      let pathname: string;
+      try {
+        pathname = new URL(req.url ?? "/", `http://${host}`).pathname;
+      } catch {
+        sendJson(res, 400, commandFailure("INVALID_PARAMS", "Invalid request URL"));
         return;
       }
-      // Only the MCP path exists: POSTing anywhere else is a 404, not an
-      // implicitly accepted request (the endpoint file advertises /mcp).
-      const pathname = new URL(req.url ?? "/", `http://${host}`).pathname;
-      if (pathname !== "/mcp") {
+      const commandApiPath = pathname === "/v1" || pathname.startsWith("/v1/");
+      if (!commandApiPath) {
         sendJson(res, 404, { error: "Not found" });
         return;
       }
@@ -583,41 +505,12 @@ export function startLiveEndpointServer(
         return;
       }
       try {
-        const body = await readBody(req);
-        if (!body) {
-          sendJson(res, 400, { error: "Empty request body" });
-          return;
-        }
-        const parsed = JSON.parse(body) as JsonRpcMessage | JsonRpcMessage[];
-        const response = Array.isArray(parsed)
-          ? (
-              await Promise.all(
-                parsed.map((m) => handleLiveMessage(m, options)),
-              )
-            ).filter((r) => r !== null)
-          : await handleLiveMessage(parsed, options);
-        if (
-          response === null ||
-          (Array.isArray(response) && response.length === 0)
-        ) {
-          res.writeHead(202).end();
-          return;
-        }
-        sendJson(res, 200, response);
+        const handled = await handleCommandApiRequest(req, res, pathname, options);
+        if (!handled && !res.headersSent) sendJson(res, 404, { error: "Not found" });
       } catch (error) {
-        if (error instanceof BodyTooLargeError) {
-          if (!res.headersSent) {
-            sendJson(res, 413, { error: "Request body too large" });
-          }
-          return;
+        if (!res.headersSent) {
+          sendJson(res, 500, commandFailure("INTERNAL", error instanceof Error ? error.message : "Command API failed"));
         }
-        const isParse = error instanceof SyntaxError;
-        const message = error instanceof Error ? error.message : "Bad request";
-        sendJson(res, 400, {
-          jsonrpc: "2.0",
-          id: null,
-          error: { code: isParse ? -32700 : -32600, message },
-        });
       }
     })();
   });
@@ -633,8 +526,14 @@ export function startLiveEndpointServer(
       const address = server.address();
       const boundPort =
         typeof address === "object" && address ? address.port : 0;
-      const url = `http://127.0.0.1:${boundPort}/mcp`;
-      const descriptor: LiveEndpointFile = { url, port: boundPort, token };
+      const commandApiUrl = `http://127.0.0.1:${boundPort}/v1`;
+      const url = commandApiUrl;
+      const descriptor: LiveEndpointFile = {
+        url,
+        port: boundPort,
+        token,
+        commandApi: { url: commandApiUrl, version: COMMAND_API_VERSION },
+      };
       void (async () => {
         try {
           writeEndpointFile(endpointFile, descriptor);
@@ -686,6 +585,7 @@ export function startLiveEndpointServer(
           port: boundPort,
           host,
           url,
+          commandApiUrl,
           endpointFile,
           close: () =>
             new Promise<void>((resolveClose) => {

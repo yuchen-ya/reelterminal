@@ -2,18 +2,16 @@ import type { DesktopInspection } from "@reelterminal/agent-facade/desktop-proto
 import { create } from "zustand";
 import type {
   OpenReelAgentAccessMode,
-  OpenReelAgentWorkMode,
   OpenReelCollabStatus,
 } from "../types/global";
 
 /**
  * ADR 0004 Decisions 6+7: mirrors the desktop main-process collaboration
- * status (writer lease, external connection, work mode, current action)
- * for the CollabStatusBar. All IPC access is guarded so the store is a
+ * status (writer lease, access level, current action) for the access bar.
+ * All IPC access is guarded so the store is a
  * harmless no-op off desktop.
  */
 
-export type CollabMode = OpenReelAgentWorkMode;
 export type CollabStatus = OpenReelCollabStatus;
 
 interface CollabState extends CollabStatus {
@@ -22,7 +20,6 @@ interface CollabState extends CollabStatus {
   refresh: () => Promise<void>;
   enable: () => Promise<void>;
   disable: () => Promise<void>;
-  setWorkMode: (mode: CollabMode) => Promise<void>;
   setAccess: (access: OpenReelAgentAccessMode) => Promise<void>;
   applyStatus: (status: CollabStatus) => void;
   setCurrentAction: (action: string | null) => void;
@@ -40,7 +37,6 @@ export const useCollabStore = create<CollabState>()((set, get) => ({
   enabled: false,
   externalConnected: false,
   writer: null,
-  workMode: "collaborative",
   access: "write",
   currentAction: null,
 
@@ -88,16 +84,6 @@ export const useCollabStore = create<CollabState>()((set, get) => ({
     }
   },
 
-  setWorkMode: async (mode) => {
-    const control = collabControl();
-    if (!control) return;
-    try {
-      get().applyStatus(await control.setWorkMode(mode));
-    } catch {
-      /* ignore */
-    }
-  },
-
   setAccess: async (access) => {
     const control = collabControl();
     if (!control) return;
@@ -109,17 +95,9 @@ export const useCollabStore = create<CollabState>()((set, get) => ({
   },
 }));
 
-const eventActionLabel = (evt: Record<string, unknown>): string | null => {
-  for (const key of ["action", "label", "name", "verb"]) {
-    const value = evt[key];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return null;
-};
-
 /**
- * Subscribes to main→renderer pushes (collaboration status changes + the
- * current agent action). Returns an unsubscribe. No-op off desktop.
+ * Subscribes to main→renderer pushes (access status, inspection evidence and
+ * active command activity). Returns an unsubscribe. No-op off desktop.
  */
 export function installCollabEventListener(): () => void {
   if (typeof window === "undefined" || window.reelterminal?.platform !== "desktop") {
@@ -134,7 +112,9 @@ export function installCollabEventListener(): () => void {
     } else if (evt.type === "inspection") {
       useCollabStore.setState({ inspection: evt });
     } else if (evt.type === "action") {
-      useCollabStore.getState().setCurrentAction(eventActionLabel(evt));
+      useCollabStore
+        .getState()
+        .setCurrentAction(evt.phase === "start" ? evt.verb : null);
     }
   });
 }

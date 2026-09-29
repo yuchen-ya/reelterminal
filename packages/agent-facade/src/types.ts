@@ -53,7 +53,7 @@ import type {
 } from "./providers";
 
 export const FACADE_VERSION = "0.7.0" as const;
-export const FACADE_CONTRACT_VERSION = "facade-slice-7" as const;
+export const FACADE_CONTRACT_VERSION = "facade-slice-8" as const;
 export const FACADE_RUNTIME = "node-headless" as const;
 
 /* ------------------------------------------------------------------ */
@@ -135,26 +135,19 @@ export const FACADE_VERB_TO_TOOL: Readonly<
 ) as Readonly<Record<FacadeVerb, FacadeToolName>>;
 
 /* ------------------------------------------------------------------ */
-/* Work mode + the read-only verb gate                                */
+/* Access authorization + the read-only verb gate                                */
 /* ------------------------------------------------------------------ */
 
 export type {
   AgentAccessMode,
-  AgentModePreference,
-  AgentWorkMode,
-  AgentWorkModeSemantics,
-  LegacyAgentMode,
-} from "./work-mode";
+} from "./access";
 
 import type {
   AgentAccessMode,
-  AgentWorkMode,
-  AgentWorkModeSemantics,
-} from "./work-mode";
+} from "./access";
 
 /**
- * The read-only verb set every live access mode may call. Work mode never
- * participates in this gate. A read-only session rejects writes FORBIDDEN;
+ * The read-only verb set every live access mode may call. A read-only session rejects writes FORBIDDEN;
  * a writer-less write session rejects them CONFLICT with holder information.
  */
 export const READ_ONLY_VERBS = [
@@ -226,9 +219,7 @@ export interface SessionDescription {
   readonly stepLetters: StepLetters;
   readonly notes: readonly string[];
   /** Current collaboration preference; present in live and headless sessions. */
-  readonly workMode: AgentWorkMode;
-  readonly workModeSemantics: AgentWorkModeSemantics;
-  /** Live-only authorization field. Work mode never changes it. */
+  /** Live-only explicit authorization field. */
   readonly access?: AgentAccessMode;
   /** True when this session currently holds the writer lease. */
   readonly writer?: boolean;
@@ -916,8 +907,6 @@ export interface TimelineQueryResult {
  */
 export interface EditorGetContextResult {
   readonly mode: "live" | "headless";
-  readonly workMode: AgentWorkMode;
-  readonly workModeSemantics: AgentWorkModeSemantics;
   /** The project revision at the moment of the read. */
   readonly projectRevision: number;
   /**
@@ -941,6 +930,7 @@ export interface EditorGetContextResult {
   readonly identity: {
     readonly projectId: string | null;
     readonly projectName: string | null;
+    readonly projectEpoch?: string;
     /** Null in headless sessions (no window exists). */
     readonly windowId: string | null;
   };

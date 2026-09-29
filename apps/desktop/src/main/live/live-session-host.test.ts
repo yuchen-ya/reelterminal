@@ -13,14 +13,13 @@ import {
   type LiveMediaImportResult,
   type LiveProjectStore,
   type AgentAccessMode,
-  type AgentWorkMode,
 } from "@reelterminal/agent-facade";
 import {
   createLiveSessionHost,
   type LiveProviders,
   type LiveSessionHostDeps,
 } from "./live-session-host";
-import { createAgentModePreferenceStore } from "./work-mode-preference";
+import { createAgentAccessPreferenceStore } from "./access-preference";
 import type { LiveStoreBridge } from "./renderer-store-adapter";
 import type { LiveEvent } from "../../shared/live";
 
@@ -77,10 +76,7 @@ function makeFacadeFactory(
           !session.disposed && config.lease.holder() === config.sessionId,
         leaseHolder: config.lease.holder(),
         sessionId: config.sessionId,
-        workMode:
-          typeof config.workMode === "function"
-            ? config.workMode()
-            : config.workMode ?? "collaborative",
+
         access: access(),
       },
     });
@@ -166,7 +162,6 @@ interface Fixture {
   endpointFile: string;
   factoryCalls: Array<{
     sessionId: string;
-    workMode: AgentWorkMode;
     access: AgentAccessMode;
   }>;
 }
@@ -180,14 +175,13 @@ function makeFixture(
   const events: LiveEvent[] = [];
   const factoryCalls: Array<{
     sessionId: string;
-    workMode: AgentWorkMode;
     access: AgentAccessMode;
   }> = [];
   const { bridge, teardown } = makeBridgeStub();
   const closeProviders = vi.fn(async () => {});
   const providers: LiveProviders = { close: closeProviders };
   const factory = makeFacadeFactory(sessions, overrides);
-  const modePreferenceStore = createAgentModePreferenceStore(
+  const accessPreferenceStore = createAgentAccessPreferenceStore(
     path.join(tempDir, "agent-work-mode.json"),
   );
   const deps: LiveSessionHostDeps = {
@@ -199,10 +193,7 @@ function makeFixture(
     createFacade: (config) => {
       factoryCalls.push({
         sessionId: config.sessionId,
-        workMode:
-          typeof config.workMode === "function"
-            ? config.workMode()
-            : config.workMode ?? "collaborative",
+
         access:
           typeof config.access === "function"
             ? config.access()
@@ -214,7 +205,7 @@ function makeFixture(
     serverInfo: { name: "reelterminal-live", version: "test" },
     port: 0,
     endpointFilePath: endpointFile,
-    modePreferenceStore,
+    accessPreferenceStore,
   };
   return {
     deps,
@@ -259,7 +250,7 @@ describe("live session host enable/status/disable", () => {
       enabled: true,
       externalConnected: false,
       writer: null,
-      workMode: "collaborative",
+
       access: "write",
       currentAction: null,
     });
@@ -312,7 +303,7 @@ describe("live session host enable/status/disable", () => {
       enabled: false,
       externalConnected: false,
       writer: null,
-      workMode: "collaborative",
+
       access: "write",
       currentAction: null,
     });
@@ -419,7 +410,7 @@ describe("live session host verb dispatch + events", () => {
     const result = await host.callExternal("timeline.get", undefined);
     expect(result.ok).toBe(true);
     expect(fixture.factoryCalls).toEqual([
-      { sessionId: "external", workMode: "collaborative", access: "write" },
+      { sessionId: "external", access: "write" },
     ]);
     expect((await host.getStatus()).writer).toBe("external");
 
@@ -452,7 +443,7 @@ describe("live session host verb dispatch + events", () => {
     await host.callExternal("timeline.get", undefined);
     await host.callExternal("project.get_state", undefined);
     expect(fixture.factoryCalls).toEqual([
-      { sessionId: "external", workMode: "collaborative", access: "write" },
+      { sessionId: "external", access: "write" },
     ]);
     // The single external session owns the sole writer lease.
     expect(fixture.sessions[0]!.isWriter).toBe(true);
@@ -463,7 +454,7 @@ describe("live session host verb dispatch + events", () => {
     expect((await host.getStatus()).writer).toBe("external");
   });
 
-  it("externalConnected flips on the endpoint's first initialize and clears on disable", async () => {
+  it("externalConnected flips on the endpoint's first status read and clears on disable", async () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
     const host = createLiveSessionHost(fixture.deps);
@@ -472,16 +463,11 @@ describe("live session host verb dispatch + events", () => {
     expect((await host.getStatus()).externalConnected).toBe(false);
 
     const file = JSON.parse(readFileSync(fixture.endpointFile, "utf8")) as {
-      url: string;
+      commandApi: { url: string; version: number };
       token: string;
     };
-    const res = await fetch(file.url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${file.token}`,
-      },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }),
+    const res = await fetch(`${file.commandApi.url}/status`, {
+      headers: { Authorization: `Bearer ${file.token}` },
     });
     expect(res.status).toBe(200);
     expect((await host.getStatus()).externalConnected).toBe(true);
@@ -511,20 +497,15 @@ describe("live session host verb dispatch + events", () => {
     await host.enable();
 
     const file = JSON.parse(readFileSync(fixture.endpointFile, "utf8")) as {
-      url: string;
+      commandApi: { url: string; version: number };
       token: string;
     };
-    const post = (method: string) =>
-      fetch(file.url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${file.token}`,
-        },
-        body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params: {} }),
+    const statusRead = () =>
+      fetch(`${file.commandApi.url}/status`, {
+        headers: { Authorization: `Bearer ${file.token}` },
       });
 
-    await post("initialize");
+    await statusRead();
     await host.callExternal("timeline.get", undefined);
     expect((await host.getStatus()).externalConnected).toBe(true);
     expect((await host.getStatus()).writer).toBe("external");
@@ -532,7 +513,7 @@ describe("live session host verb dispatch + events", () => {
 
     // A newer authenticated heartbeat invalidates an already-queued expiry.
     const staleExpiry = scheduled.at(-1)!;
-    await post("ping");
+    await statusRead();
     staleExpiry();
     await flushPushes();
     expect((await host.getStatus()).externalConnected).toBe(true);
@@ -545,7 +526,7 @@ describe("live session host verb dispatch + events", () => {
     expect((await host.getStatus()).writer).toBeNull();
     expect(fixture.sessions[0]!.disposed).toBe(false);
 
-    await post("ping");
+    await statusRead();
     await host.callExternal("edit.apply", { ops: [] });
     expect((await host.getStatus()).externalConnected).toBe(true);
     expect((await host.getStatus()).writer).toBe("external");
@@ -589,28 +570,35 @@ describe("live session host verb dispatch + events", () => {
     await host.enable();
 
     const file = JSON.parse(readFileSync(fixture.endpointFile, "utf8")) as {
-      url: string;
+      commandApi: { url: string; version: number };
       token: string;
     };
-    await fetch(file.url, {
+    const statusRead = fetch(`${file.commandApi.url}/status`, {
+      headers: { Authorization: `Bearer ${file.token}` },
+    });
+    await statusRead;
+    const pendingVerb = fetch(`${file.commandApi.url}/command`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${file.token}`,
       },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize" }),
+      body: JSON.stringify({ command: "timeline.get", arguments: {} }),
     });
-    const pendingVerb = host.callExternal("timeline.get", undefined);
-    await flushPushes();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await flushPushes();
+      if ((await host.getStatus()).currentAction === "timeline.get") break;
+    }
+    expect((await host.getStatus()).currentAction).toBe("timeline.get");
 
     scheduled.at(-1)!();
     await flushPushes();
     expect((await host.getStatus()).externalConnected).toBe(true);
     expect(fixture.sessions[0]?.disposed).toBe(false);
-    expect(scheduled).toHaveLength(2);
+    expect(scheduled).toHaveLength(3);
 
     finishVerb();
-    await pendingVerb;
+    expect((await pendingVerb).status).toBe(200);
     scheduled.at(-1)!();
     await flushPushes();
     await flushPushes();
@@ -648,68 +636,12 @@ describe("live session host verb dispatch + events", () => {
   });
 });
 
-describe("live session host setWorkMode", () => {
-  it("persists a new work mode without recreating the external session", async () => {
-    const fixture = makeFixture();
-    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
-    const host = createLiveSessionHost(fixture.deps);
-    await host.enable();
-    cleanups.push(() => void host.disable());
-
-    await host.callExternal("timeline.get", undefined);
-    expect((await host.getStatus()).writer).toBe("external");
-
-    const status = await host.setWorkMode("guided");
-    expect(fixture.factoryCalls).toEqual([
-      { sessionId: "external", workMode: "collaborative", access: "write" },
-    ]);
-    expect(fixture.sessions[0]!.disposed).toBe(false);
-    expect(status.writer).toBe("external");
-    expect(status.workMode).toBe("guided");
-    expect(status.access).toBe("write");
-  });
-
-  it("setWorkMode with the current mode is a no-op (no session churn)", async () => {
-    const fixture = makeFixture();
-    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
-    const host = createLiveSessionHost(fixture.deps);
-    await host.enable();
-    cleanups.push(() => void host.disable());
-
-    await host.callExternal("timeline.get", undefined);
-    const status = await host.setWorkMode("collaborative");
-    expect(status.workMode).toBe("collaborative");
-    expect(fixture.factoryCalls).toEqual([
-      { sessionId: "external", workMode: "collaborative", access: "write" },
-    ]);
-  });
-
-  it("never changes a migrated read-only authorization when work mode changes", async () => {
-    const fixture = makeFixture();
-    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
-    fixture.deps.modePreferenceStore?.set({
-      workMode: "guided",
-      access: "read-only",
-    });
-    const host = createLiveSessionHost(fixture.deps);
-    await host.enable();
-    cleanups.push(() => void host.disable());
-
-    await host.callExternal("timeline.get", undefined);
-    expect((await host.getStatus()).writer).toBeNull();
-    const status = await host.setWorkMode("autonomous");
-    expect(status.workMode).toBe("autonomous");
-    expect(status.access).toBe("read-only");
-    expect(fixture.factoryCalls).toEqual([
-      { sessionId: "external", workMode: "guided", access: "read-only" },
-    ]);
-  });
-
+describe("live session host access", () => {
   it("explicitly restores migrated write access without replacing the session", async () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
-    fixture.deps.modePreferenceStore?.set({
-      workMode: "guided",
+    fixture.deps.accessPreferenceStore?.set({
+
       access: "read-only",
     });
     const host = createLiveSessionHost(fixture.deps);
@@ -720,8 +652,8 @@ describe("live session host setWorkMode", () => {
     const restored = await host.setAccess("write");
 
     expect(restored).toMatchObject({ access: "write", writer: null });
-    expect(fixture.deps.modePreferenceStore?.get()).toEqual({
-      workMode: "guided",
+    expect(fixture.deps.accessPreferenceStore?.get()).toEqual({
+
       access: "write",
     });
     expect(fixture.factoryCalls).toHaveLength(1);

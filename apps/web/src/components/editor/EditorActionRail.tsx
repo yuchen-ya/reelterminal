@@ -156,12 +156,6 @@ export const EditorActionRail: React.FC = () => {
         active={Boolean(panels.audioMixer?.visible)}
       />
       <RailButton
-        label={t("editorRail.externalAgent")}
-        icon="bubble.left.and.text.bubble.right"
-        onClick={() => togglePanel("externalAgent")}
-        active={Boolean(panels.externalAgent?.visible)}
-      />
-      <RailButton
         label={t("editorRail.projectData")}
         icon="curlybraces"
         onClick={() => openModal("scriptView")}

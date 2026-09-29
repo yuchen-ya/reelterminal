@@ -1,3 +1,4 @@
+import { commandProjectContext } from "./command-context";
 /**
  * RendererStoreAdapter — the main-process half of the ADR 0004 Decision 1
  * seam. Implements the facade's `LiveProjectStore` over a callId-correlated
@@ -110,7 +111,7 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
       }, timeoutMs);
       pending.set(callId, { resolve, reject, timer });
       try {
-        deps.send({ callId, kind, ...payload });
+        deps.send({ callId, kind, ...payload, ...commandProjectContext.getStore() });
       } catch (error) {
         clearTimeout(timer);
         pending.delete(callId);

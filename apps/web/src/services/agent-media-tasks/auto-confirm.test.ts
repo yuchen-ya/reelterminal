@@ -7,8 +7,7 @@ import {
 
 describe("decideTaskAutoConfirmation", () => {
   it("degrades to manual-only when formal_reply is explicitly unsupported", () => {
-    // The conversation bridge drops the whole agent_message class for this
-    // bit, so a RESULT receipt line can never arrive.
+    // Older records with this capability bit require manual confirmation.
     const decision = decideTaskAutoConfirmation({ formalReply: "unsupported" });
     expect(decision.mode).toBe("manual-only");
     expect(isManualConfirmOnly(decision)).toBe(true);

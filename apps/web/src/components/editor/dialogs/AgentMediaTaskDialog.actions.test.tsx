@@ -13,7 +13,6 @@ import type { MediaItem } from "@reelterminal/core";
 import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { useProjectStore } from "../../../stores/project-store";
 import { useUIStore } from "../../../stores/ui-store";
-import { useExternalConversationStore } from "../../../stores/external-conversation-store";
 import {
   AGENT_MEDIA_TASK_MODAL_ID,
   AgentMediaTaskDialog,
@@ -33,61 +32,11 @@ class MemoryAgentTaskStorage implements AgentTaskStorage {
   }
 }
 
-const SETUP_STATE = {
-  codex: { state: "ready", code: "ok" },
-  authentication: { state: "ready", code: "ok" },
-  liveConnector: { state: "ready", code: "ok" },
-  externalAdapter: { state: "missing", code: "adapter-missing" },
-  threads: [],
-  managedSessionId: null,
-};
-
-function conversationState(lifecycle: string) {
-  return {
-    sequence: 2,
-    adapter: {
-      availability: "available",
-      agentLabel: "Test Agent",
-      adapterName: "test",
-      sessionId: "s1",
-      capabilityLevel: "observable",
-      message: null,
-    },
-    conversation: {
-      lifecycle,
-      connectionId: "c1",
-      sessionId: "s1",
-      agent: null,
-      capabilities: { formalReply: "supported" },
-      ownership: null,
-      fallback: null,
-      lastError: null,
-      updates: [],
-      lastEventSequence: 0,
-    },
-  };
-}
-
-function stubDesktopApi(lifecycle: string, importArtifact: unknown) {
+function stubDesktopApi(importArtifact: unknown) {
   (window as unknown as { reelterminal?: unknown }).reelterminal = {
     platform: "desktop",
     publicOrigin: "https://desktop.test",
-    conversation: {
-      getState: async () => conversationState(lifecycle),
-      attach: async () => conversationState(lifecycle),
-      prompt: async () => conversationState(lifecycle),
-      resolveApproval: async () => conversationState(lifecycle),
-      cancel: async () => conversationState(lifecycle),
-      detach: async () => conversationState(lifecycle),
-      onEvent: () => () => undefined,
-      inspectSetup: async () => SETUP_STATE,
-      startSetup: async () => SETUP_STATE,
-    },
     agentTasks: {
-      getMediaRoots: async () => ({
-        recommendedRoot: "C:\\agent-workspace",
-        mediaRoots: ["C:\\agent-workspace"],
-      }),
       scanTaskOutput: async () => ({ files: [] }),
       importArtifact,
     },
@@ -220,12 +169,6 @@ describe("AgentMediaTaskDialog row actions", () => {
   });
 
   beforeEach(() => {
-    useExternalConversationStore.setState({
-      busy: false,
-      sending: false,
-      cancelling: false,
-      error: null,
-    });
     useUIStore.setState({ activeModal: null });
   });
 
@@ -242,7 +185,7 @@ describe("AgentMediaTaskDialog row actions", () => {
     await service.markAwaitingImport(submitted.id, {
       resultPath: "C:\\agent-workspace\\jobs\\amt_x\\output\\voice.wav",
     });
-    stubDesktopApi("ready", async () => ({
+    stubDesktopApi(async () => ({
       ok: true,
       value: { mediaId: "media-task-result", name: "voice.wav", revision: 4, replayed: false },
     }));
@@ -270,7 +213,7 @@ describe("AgentMediaTaskDialog row actions", () => {
     const submitted = await seedSubmittedTask(service, projectId);
     await service.markAwaitingImport(submitted.id, { resultPath: "C:\\a.wav" });
     await service.markDone(submitted.id, { resultMediaId: "media-task-result" });
-    stubDesktopApi("ready", async () => ({
+    stubDesktopApi(async () => ({
       ok: true,
       value: { mediaId: "media-task-result", name: "voice.wav", revision: 4, replayed: false },
     }));
@@ -296,7 +239,7 @@ describe("AgentMediaTaskDialog row actions", () => {
     openProjectWithMedia();
     const submitted = await seedSubmittedTask(service, "proj-other-open");
     await service.markAwaitingImport(submitted.id, { resultPath: "C:\\a.wav" });
-    stubDesktopApi("ready", async () => ({
+    stubDesktopApi(async () => ({
       ok: true,
       value: { mediaId: "m", name: "n", revision: 1, replayed: false },
     }));
@@ -313,34 +256,24 @@ describe("AgentMediaTaskDialog row actions", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps retry disabled with an explanation while the session lane is busy", async () => {
+  it("keeps retry disabled without mutating the saved attempt", async () => {
     const service = useMemoryService();
     const { projectId } = openProjectWithMedia();
-    const submitted = await seedSubmittedTask(service, projectId);
-    await service.markError(submitted.id, {
-      code: "APP_RESTART",
-      message: "interrupted by restart",
-    });
-    stubDesktopApi("ready", async () => ({
+    const saved = await seedSubmittedTask(service, projectId);
+    await service.markError(saved.id, { code: "APP_RESTART", message: "interrupted" });
+    stubDesktopApi(async () => ({
       ok: true,
       value: { mediaId: "m", name: "n", revision: 1, replayed: false },
     }));
-    stubProjectsDb([projectId]);
-    act(() => {
-      useExternalConversationStore.setState({ sending: true });
-    });
     openDialog();
     render(<AgentMediaTaskDialog />);
 
-    const retry = await screen.findByTestId("amt-retry", {}, { timeout: 4000 });
-    expect(retry).toBeDisabled();
-    expect(screen.getByTestId("amt-retry-busy-note")).toBeInTheDocument();
-
-    // Clicking a disabled button is a no-op: no attempt is burned.
-    fireEvent.click(retry);
-    const row = await service.get(submitted.id);
-    expect(row.ok && row.value.attempt).toBe(0);
-    expect(row.ok && row.value.requestId).toBe(submitted.requestId);
+    await screen.findByTestId("amt-row-" + saved.id);
+    expect(screen.getByTestId("amt-retry-paused-note")).toBeInTheDocument();
+    expect(screen.queryByTestId("amt-retry")).not.toBeInTheDocument();
+    const current = await service.get(saved.id);
+    expect(current.ok && current.value.attempt).toBe(saved.attempt);
+    expect(current.ok && current.value.requestId).toBe(saved.requestId);
   });
 
   it("offers manual confirm / fail buttons for a manual-only task", async () => {
@@ -349,7 +282,7 @@ describe("AgentMediaTaskDialog row actions", () => {
     const submitted = await seedSubmittedTask(service, projectId, {
       formalReply: "unsupported",
     });
-    stubDesktopApi("ready", async () => ({
+    stubDesktopApi(async () => ({
       ok: true,
       value: { mediaId: "m", name: "n", revision: 1, replayed: false },
     }));

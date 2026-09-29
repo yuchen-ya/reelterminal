@@ -1,10 +1,12 @@
+import { randomUUID } from "node:crypto";
+import { commandProjectContext, type CommandProjectGuard } from "./command-context";
+import { readVisualImageSet } from "./artifact-images";
 /**
  * LiveSessionHost — the desktop main-process singleton that owns live
  * human–agent collaboration (ADR 0004 Slice 3):
  *
  *  - ONE `LiveWriterLease` (Decision 6) belongs to the external agent's live
- *    facade session. The optional in-app conversation surface is only a view
- *    into that external session; it is not another writer or inference lane.
+ *    facade session. CLI and MCP clients share that external writer identity.
  *  - The external session shares one `LiveProjectStore` bridge to the
  *    canonical renderer store, one Chromium provider set, and one
  *    artifactRoot (<userData>/live-artifacts). It lives in MAIN, so it
@@ -29,9 +31,7 @@ import {
   type LiveAgentFacade,
   type LiveFacadeConfig,
   type AgentAccessMode,
-  type AgentWorkMode,
   DEFAULT_AGENT_ACCESS_MODE,
-  DEFAULT_AGENT_WORK_MODE,
 } from "@reelterminal/agent-facade";
 import type {
   ArtifactVerifier,
@@ -46,10 +46,9 @@ import { LIVE_ACTIVITY_TIMEOUT_MS } from "../../shared/live";
 import type { LiveStoreBridge } from "./renderer-store-adapter";
 import {
   startLiveEndpointServer,
-  visualImageContent,
   type RunningLiveEndpoint,
 } from "./live-endpoint-server";
-import type { AgentModePreferenceStore } from "./work-mode-preference";
+import type { AgentAccessPreferenceStore } from "./access-preference";
 
 export const LIVE_SESSION_IDS = {
   external: "external",
@@ -93,8 +92,8 @@ export interface LiveSessionHostDeps {
   readonly port?: number;
   /** Endpoint file override; defaults to ~/.reelterminal/live-endpoint.json. */
   readonly endpointFilePath?: string;
-  /** Persisted main-process source of truth shared with conversation transport. */
-  readonly modePreferenceStore?: AgentModePreferenceStore;
+  /** Persisted main-process source of truth for access authorization. */
+  readonly accessPreferenceStore?: AgentAccessPreferenceStore;
   /** Activity lease duration override for deterministic tests. */
   readonly activityTimeoutMs?: number;
   /** Timer seam for deterministic activity-lease tests. */
@@ -109,11 +108,10 @@ export interface LiveSessionHost {
   enable(): Promise<LiveCollabStatus>;
   disable(): Promise<LiveCollabStatus>;
   getStatus(): Promise<LiveCollabStatus>;
-  setWorkMode(mode: AgentWorkMode): Promise<LiveCollabStatus>;
-  /** Explicit authorization change; never coupled to work mode. */
+  /** Explicit authorization change. */
   setAccess(access: AgentAccessMode): Promise<LiveCollabStatus>;
   /** External endpoint → facade (lazy-creates the external session). */
-  callExternal(verb: FacadeVerb, params: unknown): Promise<FacadeResult<unknown>>;
+  callExternal(verb: FacadeVerb, params: unknown, guard?: CommandProjectGuard): Promise<FacadeResult<unknown>>;
   readonly isEnabled: boolean;
 }
 
@@ -147,6 +145,7 @@ function internalFailure(message: string): FacadeResult<unknown> {
 export function createLiveSessionHost(
   deps: LiveSessionHostDeps,
 ): LiveSessionHost {
+  const instanceId = randomUUID();
   let enabled = false;
   let bridge: LiveStoreBridge | null = null;
   let lease: LiveWriterLease | null = null;
@@ -176,11 +175,10 @@ export function createLiveSessionHost(
   let activityTimer: ReturnType<typeof setTimeout> | null = null;
   let activityGeneration = 0;
   let fallbackPreference = {
-    workMode: DEFAULT_AGENT_WORK_MODE,
     access: DEFAULT_AGENT_ACCESS_MODE,
   } as const;
-  const modePreferenceStore: AgentModePreferenceStore =
-    deps.modePreferenceStore ?? {
+  const accessPreferenceStore: AgentAccessPreferenceStore =
+    deps.accessPreferenceStore ?? {
       get: () => ({ ...fallbackPreference }),
       set: (preference) => {
         fallbackPreference = { ...preference };
@@ -210,16 +208,24 @@ export function createLiveSessionHost(
     const snapshotEnabled = enabled;
     const snapshotExternalConnected = externalConnected;
     const snapshotSession = externalSession;
-    const snapshotPreference = modePreferenceStore.get();
+    const snapshotPreference = accessPreferenceStore.get();
     const snapshotAction = currentAction();
     return {
       sequence,
       enabled: snapshotEnabled,
       externalConnected: snapshotExternalConnected,
       writer: snapshotEnabled ? await currentWriter(snapshotSession) : null,
-      workMode: snapshotPreference.workMode,
       access: snapshotPreference.access,
       currentAction: snapshotAction,
+    };
+  };
+
+  const getCommandStatus = async () => {
+    const editor = bridge ? await bridge.store.getIdentity().catch(() => null) : null;
+    return {
+      ...(await status()), instanceId,
+      projectId: editor?.projectId ?? null,
+      projectEpoch: editor?.projectEpoch ?? (editor ? `${instanceId}:${editor.projectId}` : null),
     };
   };
 
@@ -300,11 +306,8 @@ export function createLiveSessionHost(
         : {}),
       lease,
       sessionId: LIVE_SESSION_IDS.external,
-      // Work mode is read dynamically from the shared persisted source, so
-      // switching it never remounts this facade or the conversation view.
-      workMode: () => modePreferenceStore.get().workMode,
       // Access remains an independent authorization boundary.
-      access: () => modePreferenceStore.get().access,
+      access: () => accessPreferenceStore.get().access,
       artifactRoot: deps.artifactRoot,
     };
     return deps.createFacade(config);
@@ -360,9 +363,8 @@ export function createLiveSessionHost(
         }
       }
       if (result.ok && toolPresentation(verb) === "image-collection") {
-        const images = visualImageContent(result, deps.artifactRoot)
-          .filter((block) => block.type === "image")
-          .map((block) => `data:${block.mimeType};base64,${block.data}`);
+        const images = readVisualImageSet(result, deps.artifactRoot).images
+          .map((image) => `data:${image.mimeType};base64,${image.bytes.toString("base64")}`);
         if (images.length > 0) {
           const value = result.value as { mediaId?: string; sourceRevision?: number; frames?: { timeSec: number }[]; mediaName?: string; startSec?: number; endSec?: number; limitations?: string[] };
           deps.emitEvent({ type: "inspection", title: `${value.mediaName ?? verb}${value.mediaId ? ` · ${value.mediaId}` : ""}${value.sourceRevision !== undefined ? ` · revision ${value.sourceRevision}` : ""}`,
@@ -417,7 +419,8 @@ export function createLiveSessionHost(
         const createdProviders = deps.createProviders();
         try {
           endpoint = await startLiveEndpointServer({
-            callVerb: (verb, params) => host.callExternal(verb, params),
+            callVerb: (verb, params, guard) => host.callExternal(verb, params, guard),
+            getStatus: getCommandStatus,
             onExternalActivity,
             serverInfo: deps.serverInfo,
             artifactRoot: deps.artifactRoot,
@@ -480,18 +483,10 @@ export function createLiveSessionHost(
       return status();
     },
 
-    async setWorkMode(nextMode: AgentWorkMode) {
-      const current = modePreferenceStore.get();
-      if (nextMode === current.workMode) return status();
-      modePreferenceStore.set({ ...current, workMode: nextMode });
-      pushStatus();
-      return status();
-    },
-
     async setAccess(nextAccess: AgentAccessMode) {
-      const current = modePreferenceStore.get();
+      const current = accessPreferenceStore.get();
       if (nextAccess === current.access) return status();
-      modePreferenceStore.set({ ...current, access: nextAccess });
+      accessPreferenceStore.set({ ...current, access: nextAccess });
       // Revocation takes effect immediately and also releases the scarce
       // writer lease. Restoring write access reacquires lazily at the next
       // write verb, preserving the session's jobs and idempotency ledger.
@@ -502,7 +497,15 @@ export function createLiveSessionHost(
       return status();
     },
 
-    callExternal: (verb, params) => callVerb(verb, params),
+    callExternal: async (verb, params, guard) => {
+      if (!guard) return callVerb(verb, params);
+      const current = await getCommandStatus();
+      if ((guard.expectedProjectId !== undefined && guard.expectedProjectId !== current.projectId) ||
+          (guard.expectedProjectEpoch !== undefined && guard.expectedProjectEpoch !== current.projectEpoch)) {
+        return { ok: false, error: { code: "CONFLICT", message: "The open project changed; read context and rebuild the request." } };
+      }
+      return commandProjectContext.run(guard, () => callVerb(verb, params));
+    },
   };
 
   return host;

@@ -1,12 +1,7 @@
 import type {
   AgentAccessMode,
-  AgentWorkMode,
   DesktopCollabControlApi,
   DesktopCollabStatus,
-  DesktopConversationAdapterSummary,
-  DesktopConversationApi,
-  DesktopConversationEvent,
-  DesktopConversationState,
   DesktopLiveBridgeApi,
   DesktopLiveBridgeReply,
   DesktopLiveBridgeRequest,
@@ -181,41 +176,11 @@ export type OpenReelUpdaterStatus =
 
 /* Compatibility aliases for existing renderer imports. Definitions live in
  * @reelterminal/agent-facade/desktop-protocol. */
-export type OpenReelAgentWorkMode = AgentWorkMode;
 export type OpenReelAgentAccessMode = AgentAccessMode;
 export type OpenReelCollabStatus = DesktopCollabStatus;
 export type OpenReelLiveBridgeRequest = DesktopLiveBridgeRequest;
 export type OpenReelLiveBridgeReply = DesktopLiveBridgeReply;
 export type OpenReelLiveEvent = DesktopLiveEvent;
-export type OpenReelConversationAdapterSummary =
-  DesktopConversationAdapterSummary;
-export type OpenReelConversationState = DesktopConversationState;
-
-export type OpenReelConversationSetupProvider = "codex" | "external";
-export interface OpenReelConversationSetupCheck {
-  state: "ready" | "missing" | "error";
-  code: string;
-  /** Sanitized, path-free diagnostic summary for error checks. */
-  detail?: string | null;
-}
-export interface OpenReelCodexThreadSummary {
-  id: string;
-  title: string;
-  preview: string | null;
-  updatedAt: number | null;
-  active: boolean;
-}
-export interface OpenReelConversationSetupState {
-  codex: OpenReelConversationSetupCheck;
-  authentication: OpenReelConversationSetupCheck;
-  liveConnector: OpenReelConversationSetupCheck;
-  externalAdapter: OpenReelConversationSetupCheck;
-  threads: readonly OpenReelCodexThreadSummary[];
-  managedSessionId: string | null;
-}
-
-export type OpenReelConversationEvent = DesktopConversationEvent;
-
 /* ---- Agent media tasks (artifact receiving) ------------------------------ */
 
 export interface OpenReelAgentTaskMediaRoots {
@@ -324,57 +289,6 @@ export interface OpenReelAnalysisJobStatus {
       [key: string]: unknown;
     };
   } | null;
-}
-
-export interface OpenReelConversationVisualStateCapture {
-  version: 1;
-  stateRef: string;
-  baseRef?: string;
-  kind: "keyframe" | "delta" | "metadata";
-  projectRevision: number;
-  contextRevision: number;
-  playheadSeconds: number;
-  selectedClipIds: readonly string[];
-  selectedTextIds: readonly string[];
-  selectedMediaIds: readonly string[];
-  projectId?: string;
-  projectName?: string;
-  references?: readonly {
-    ref: string;
-    number: number;
-    kind: "video" | "audio" | "text" | "media";
-    entityId: string;
-    label: string;
-    timing: { startSeconds: number | null; endSeconds: number | null };
-    revisionAtMark: number;
-    stale: boolean;
-  }[];
-  reviewMarkers?: readonly {
-    ref: string;
-    number: number;
-    id: string;
-    target: Record<string, unknown>;
-    label?: string;
-  }[];
-  changed: readonly (
-    | "project"
-    | "preview"
-    | "timeline"
-    | "playhead"
-    | "selection"
-    | "references"
-  )[];
-  imagePngBase64?: string;
-  imageWidth?: number;
-  imageHeight?: number;
-  regions?: readonly {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    imageX: number;
-    imageY: number;
-  }[];
 }
 
 /**
@@ -542,19 +456,6 @@ interface ReelTerminalDesktopBridge {
           allowCloudUpload?: boolean;
         }): Promise<OpenReelFacadeReply<OpenReelAnalysisJobStart>>;
         jobStatus(jobId: string): Promise<OpenReelFacadeReply<OpenReelAnalysisJobStatus>>;
-      };
-      /** Optional GUI attachment to an externally-owned Agent conversation. */
-      conversation?: Omit<DesktopConversationApi, "prompt"> & {
-        prompt(
-          text: string,
-          visualState?: OpenReelConversationVisualStateCapture,
-        ): Promise<OpenReelConversationState>;
-        inspectSetup(): Promise<OpenReelConversationSetupState>;
-        startSetup(args: {
-          provider: OpenReelConversationSetupProvider;
-          threadId?: string;
-          createThread?: boolean;
-        }): Promise<OpenReelConversationSetupState>;
       };
       /** Agent media tasks: advertised roots + product-side artifact import. */
       agentTasks?: {

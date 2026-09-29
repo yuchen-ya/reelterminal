@@ -3,7 +3,7 @@ import type { FacadeVerb } from "./types";
 
 const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   session_describe:
-    "Describe the facade session: contract, runtime, current Agent work mode and its semantics, plus live access/writer state when applicable.",
+    "Describe the facade session: contract, runtime, and live access/writer state when applicable.",
   capabilities_get:
     "Report live provider capabilities and the recommended Agent workspace root/layout, with honest reasons when unavailable.",
   project_create:
@@ -28,7 +28,7 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   timeline_query:
     "Query a bounded timeline slice by namespaced refs, ids, time range, track/entity types, and allowlisted fields.",
   editor_get_context:
-    "Return the current Agent work mode plus editor context (selection, playhead, time range, canvas point); headless sessions answer honestly with contextAvailable:false.",
+    "Return editor context (selection, playhead, time range, canvas point); headless sessions answer honestly with contextAvailable:false.",
   editor_control:
     "Control ephemeral live-editor UI state: play, pause, seek, or select/reveal clip, text, or media targets without changing project revision or undo history.",
   edit_validate:
@@ -97,7 +97,7 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
 const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "session.describe":
-    "Describe this live collaboration session: runtime, current Agent work mode and explicit semantics, independent access/writer state, verbs, and error codes.",
+    "Describe this live collaboration session: runtime, independent access/writer state, available commands, and error codes.",
   "capabilities.get":
     "Report live provider capabilities (preview, visual inspection, export, verify) with honest reasons when unavailable.",
   "project.create":
@@ -123,7 +123,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "timeline.query":
     "Query a bounded local timeline slice by @A/R refs, ids, time, track/entity type, and allowlisted fields without dumping the full project.",
   "editor.get_context":
-    "Return the current Agent work mode plus live editor context: selection, playhead, time range, canvas point, namespaced Agent references A1/A2, and project/context revisions.",
+    "Return live editor context: selection, playhead, time range, canvas point, namespaced Agent references A1/A2, and project/context revisions.",
   "editor.control":
     "Control ephemeral live-editor UI state: play, pause, seek, or select/reveal one or more clip, text, or media targets without changing project revision or undo history.",
   "edit.validate":

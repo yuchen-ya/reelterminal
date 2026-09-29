@@ -6,8 +6,9 @@
   "main": "dist/main/index.js",
   "homepage": "https://github.com/yuchen-ya/reelterminal",
   "bin": {
-    "reelterminal-live-mcp": "dist/live-mcp/index.js",
-    "openreel-live-mcp": "dist/live-mcp/index.js"
+    "reelctl": "dist/reelctl/index.js",
+    "reelterminal-live-mcp": "dist/live-mcp/legacy.js",
+    "openreel-live-mcp": "dist/live-mcp/legacy.js"
   },
   "author": {
     "name": "yuchen-ya and contributors"

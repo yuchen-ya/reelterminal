@@ -109,7 +109,7 @@ export function createAnalysisRecordsService(
           error: {
             code: "UNSUPPORTED",
             message:
-              "Enable Agent Session to run a recheck. Browsing saved analysis remains available while it is disabled.",
+              "Enable Agent Access to run a recheck. Browsing saved analysis remains available while it is disabled.",
           },
         };
       }
@@ -139,7 +139,7 @@ export function createAnalysisRecordsService(
           ok: false,
           error: {
             code: "UNSUPPORTED",
-            message: "Agent Session was disabled before the recheck finished.",
+            message: "Agent Access was disabled before the recheck finished.",
           },
         };
       }

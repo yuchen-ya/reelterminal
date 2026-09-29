@@ -46,7 +46,7 @@ function installBridge(detail = record()) {
   const list = vi.fn(async () => ({ records: [detail], legacyUnscopedCount: 0 }));
   const recheck = vi.fn(async () => ({
     ok: false as const,
-    error: { code: "UNSUPPORTED", message: "Enable Agent Session to run a recheck." },
+    error: { code: "UNSUPPORTED", message: "Enable Agent Access to run a recheck." },
   }));
   window.reelterminal = {
     platform: "desktop",
@@ -188,6 +188,6 @@ describe("AnalysisRecordsPanel", () => {
       allowCloudUpload: true,
     }));
     expect(run).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent("Enable Agent Session");
+    expect(screen.getByRole("status")).toHaveTextContent("Enable Agent Access");
   });
 });

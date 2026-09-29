@@ -6,10 +6,10 @@ the user can understand, move, archive, or delete it as a unit.
 
 ## Find the root; do not guess it
 
-In a live desktop session, call `capabilities_get` before creating files. Use:
+In a live desktop session, run `reelctl call capabilities.get` before creating files. Use:
 
 ```text
-capabilities_get.mediaImport.recommendedRoot
+value.mediaImport.recommendedRoot
 ```
 
 The default desktop root is the `agent-workspace` folder inside the
@@ -46,34 +46,21 @@ Reusable, user-approved assets such as logos, fonts, and brand audio may go in
 `<recommendedRoot>/shared/`. Record their absolute source paths in the job's
 `brief.md`; do not silently mutate shared assets.
 
-One exception is cast by the product itself: a voiceover/music task handed
-over by the desktop GUI arrives as a prompt marked
-`[ReelTerminal 任务 openreel-task:<requestId>]` and precasts the job
-directory `jobs/<taskId>/output/` (a product-minted `amt_…` id, no date
-slug). For such a job, use the precast directory exactly as given — no
-date-slug rename, no brief.md, no standard subfolders — do not call
-`media_import` (the product imports the artifact), and reply with the
-one-line receipt the prompt specifies; see
-[`AGENT-GUIDE.md`](AGENT-GUIDE.md) for the receipt contract. Everything
-else on this page keeps applying to self-initiated jobs.
-
 ## Operating rules
 
 1. Write `brief.md` before generation. A short user prompt is sufficient; the
    Agent records its concrete interpretation without asking for tool steps.
 2. Generate or copy all importable media into `source/` or `generated/`, then
-   pass absolute paths to `media_import` — except a product-cast
-   `openreel-task:` hand-off, where the prompt forbids `media_import` and
-   the product imports the artifact itself (see the exception above).
+   pass absolute paths to `reelctl media import`.
 3. Keep helper code and disposable bulk data in `work/`, never at repository
    root or inside `apps/`, `packages/`, or `docs/`.
-4. Use `preview_render_frame` and `visual_inspect`; place retained inspection
+4. Use `reelctl preview frame` and `reelctl call visual.inspect`; place retained inspection
    evidence in `evidence/`.
-5. Export through ReelTerminal, wait for completion, run `verify_artifact`, and
+5. Export through ReelTerminal, wait for completion, run `reelctl call verify.artifact`, and
    only then copy or name the delivery in `output/`. Alternatively pass
    `export.start`'s `destinationPath` (`<recommendedRoot>/jobs/<slug>/output/<name>.mp4`)
    to deliver the verified artifact copy directly — it never overwrites, and
-   `job_status` reports `deliveredTo`/`deliveryError`.
+   `reelctl job status` reports `deliveredTo`/`deliveryError`.
 6. A successful task ends with a concise `project/manifest.json` listing the
    final file, duration, dimensions, verification result, and source paths.
 7. Never commit job contents to Git. Never delete another job, `source/`,

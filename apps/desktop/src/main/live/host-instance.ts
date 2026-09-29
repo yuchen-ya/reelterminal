@@ -27,7 +27,7 @@ import {
   installLiveStoreBridge,
   liveTargetWebContents,
 } from "./renderer-store-adapter";
-import { getAgentModePreferenceStore } from "./work-mode-instance";
+import { getAgentAccessPreferenceStore } from "./access-instance";
 import { agentWorkspaceDefault } from "../data-root";
 
 let host: LiveSessionHost | null = null;
@@ -151,7 +151,7 @@ export function getLiveSessionHost(): LiveSessionHost {
         }
       },
       serverInfo: { name: "reelterminal-live", version: app.getVersion() },
-      modePreferenceStore: getAgentModePreferenceStore(),
+      accessPreferenceStore: getAgentAccessPreferenceStore(),
     });
   }
   return host;

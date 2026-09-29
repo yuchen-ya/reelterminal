@@ -3,7 +3,7 @@
 ## Generated video work never belongs in the source tree
 
 For demos, evaluations, user videos, and other media-creation tasks, first call
-the live `capabilities_get` tool. Use
+`reelctl call capabilities.get` against the live desktop. Use
 `mediaImport.recommendedRoot/jobs/<YYYY-MM-DD>-<short-slug>/` and follow
 [`docs/AGENT-WORKSPACE.md`](docs/AGENT-WORKSPACE.md).
 
@@ -11,7 +11,7 @@ User-facing video creation defaults to the live desktop workflow. If
 `~/.reelterminal/live-endpoint.json` is absent (the legacy
 `~/.openreel/live-endpoint.json` location is still discovered when the
 canonical file is not there), launch/prepare the ReelTerminal GUI
-and enable Agent Session; do not silently switch to headless. Headless is only
+and enable Agent Access; do not silently switch to headless. Headless is only
 for an explicit headless request or a task that does not require GUI-visible
 collaboration.
 

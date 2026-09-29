@@ -38,22 +38,13 @@ function writeDescriptor(filePath: string, content: unknown): void {
   );
 }
 
-const RESOURCES: EndpointResource[] = [
-  "live-endpoint",
-  "conversation-endpoint",
-  "conversation-visual-state",
-];
+const RESOURCES: EndpointResource[] = ["live-endpoint"];
 
 describe("endpoint path constants", () => {
   it.each(RESOURCES)(
     "canonical path is ~/.reelterminal/<resource>, legacy is ~/.openreel/<resource>: %s",
     (resource) => {
-      const fileName =
-        resource === "live-endpoint"
-          ? "live-endpoint.json"
-          : resource === "conversation-endpoint"
-            ? "conversation-endpoint.json"
-            : "conversation-visual-state";
+      const fileName = "live-endpoint.json";
       expect(canonicalEndpointPath("/home/u", resource)).toBe(
         path.join("/home/u", ".reelterminal", fileName),
       );
@@ -90,7 +81,7 @@ describe("endpoint override resolution (readEnvAlias semantics)", () => {
   });
 
   it("returns undefined when neither name is set", () => {
-    expect(endpointOverridePath({}, "conversation-endpoint")).toBeUndefined();
+    expect(endpointOverridePath({}, "live-endpoint")).toBeUndefined();
   });
 });
 
@@ -115,17 +106,6 @@ describe("resolveEndpointReadPath", () => {
       exists: () => true,
     });
     expect(resolution).toEqual({ path: "/explicit/live.json" });
-  });
-
-  it("ignores a non-absolute conversation override and keeps discovery", () => {
-    const home = freshHome();
-    const canonical = canonicalEndpointPath(home, "conversation-endpoint");
-    writeDescriptor(canonical, { version: 1 });
-    const resolution = resolveEndpointReadPath("conversation-endpoint", {
-      env: { REELTERMINAL_CONVERSATION_ENDPOINT_FILE: "relative.json" },
-      home,
-    });
-    expect(resolution.path).toBe(canonical);
   });
 
   it("prefers the canonical file when both paths exist and legacy is owned", () => {
@@ -156,40 +136,6 @@ describe("resolveEndpointReadPath", () => {
     writeDescriptor(legacy, liveOwned);
     const resolution = resolveEndpointReadPath("live-endpoint", { env: {}, home });
     expect(resolution).toEqual({ path: legacy, legacyDiscovery: true });
-  });
-
-  it("discovers a pre-N03 (legacy-shape) descriptor as owned", () => {
-    const home = freshHome();
-    const legacy = legacyEndpointPath(home, "conversation-endpoint");
-    writeDescriptor(legacy, {
-      version: 1,
-      transport: "http-jsonrpc-long-poll",
-      endpoint: "http://127.0.0.1:4545/conversation",
-      token: "t".repeat(16),
-      sessionId: "s",
-      agent: { name: "Codex" },
-      adapter: { name: "kit", capabilityLevel: "basic" },
-    });
-    const resolution = resolveEndpointReadPath("conversation-endpoint", {
-      env: {},
-      home,
-    });
-    expect(resolution).toEqual({
-      path: legacy,
-      legacyDiscovery: true,
-    });
-  });
-
-  it("refuses a foreign legacy descriptor with explicit-path guidance", () => {
-    const home = freshHome();
-    const legacy = legacyEndpointPath(home, "conversation-endpoint");
-    writeDescriptor(legacy, { product: "not-reelterminal", version: 1 });
-    const resolution = resolveEndpointReadPath("conversation-endpoint", {
-      env: {},
-      home,
-    });
-    expect(resolution.conflict).toContain("another product");
-    expect(resolution.conflict).toContain("not-reelterminal");
   });
 
   it("refuses an unidentifiable legacy descriptor instead of reading it", () => {
@@ -264,11 +210,11 @@ describe("descriptor ownership classification", () => {
 describe("foreignDescriptorRefusal (explicit host targets)", () => {
   it("refuses a foreign descriptor and names the product and override", () => {
     const home = freshHome();
-    const file = legacyEndpointPath(home, "conversation-endpoint");
+    const file = legacyEndpointPath(home, "live-endpoint");
     writeDescriptor(file, { product: "rival-app" });
-    const message = foreignDescriptorRefusal("conversation-endpoint", file);
+    const message = foreignDescriptorRefusal("live-endpoint", file);
     expect(message).toContain("rival-app");
-    expect(message).toContain("REELTERMINAL_CONVERSATION_ENDPOINT_FILE");
+    expect(message).toContain("REELTERMINAL_LIVE_ENDPOINT_FILE");
     expect(message).toContain(file);
   });
 
@@ -284,7 +230,7 @@ describe("foreignDescriptorRefusal (explicit host targets)", () => {
 describe("isLoopbackHttpUrl", () => {
   it("accepts loopback HTTP(S) URLs without credentials", () => {
     expect(isLoopbackHttpUrl("http://127.0.0.1:9/mcp")).toBe(true);
-    expect(isLoopbackHttpUrl("http://localhost:9/conversation")).toBe(true);
+    expect(isLoopbackHttpUrl("http://localhost:9/mcp")).toBe(true);
     expect(isLoopbackHttpUrl("http://[::1]:9/mcp")).toBe(true);
   });
 

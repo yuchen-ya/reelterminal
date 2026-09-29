@@ -23,7 +23,7 @@ import {
   type AgentTaskCapabilityBits,
 } from "./auto-confirm";
 import { checkTargetProjectAvailability } from "./project-integrity";
-import { taskHasRequirementText, taskOutputDirectory } from "./prompt-composer";
+import { taskHasRequirementText, taskOutputDirectory } from "./task-record-utils";
 import { sanitizeGenerationInfo } from "./sanitize";
 import {
   AGENT_TASK_RECORD_VERSION,
@@ -571,9 +571,8 @@ export class AgentMediaTaskService {
   }
 
   /**
-   * Re-arm a terminal error/cancelled task: same record, attempt+1, fresh
-   * requestId (always minted here so a stale receipt for the previous
-   * attempt can never match), status back to queued.
+   * Historical ledger transition. The UI currently blocks retries until an
+   * independent generation mechanism is in place.
    */
   async retryTask(
     id: string,
@@ -592,8 +591,8 @@ export class AgentMediaTaskService {
         }
         const next: AgentMediaTaskRecord = { ...applied.record, revision: current.revision + 1 };
         await this.storage.commit([next], []);
-        // The previous requestId intentionally loses its index entry: it
-        // belongs to a dead attempt, and its late receipts must not resolve.
+        // The previous requestId loses its index entry so each stored
+        // attempt keeps a distinct idempotency identity.
         this.records.set(next.id, next);
         this.requestIdIndex.delete(current.requestId);
         this.requestIdIndex.set(next.requestId, next);
