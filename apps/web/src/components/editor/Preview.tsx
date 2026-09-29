@@ -43,6 +43,7 @@ import {
 import { toast } from "../../stores/notification-store";
 import { useThemeStore } from "../../stores/theme-store";
 import { getRenderBridge } from "../../bridges/render-bridge";
+import { getPlaybackBridge } from "../../bridges/playback-bridge";
 import {
   RendererFactory,
   type Renderer,
@@ -110,6 +111,11 @@ import {
   type PendingCanvasTransform,
 } from "./preview/canvas-transform";
 import { createPreviewTrackIndex } from "./preview/track-index";
+import {
+  FrameRenderScheduler,
+  type FrameRequestToken,
+} from "./preview/frame-scheduler";
+import { commitRenderedFrame } from "./preview/frame-commit";
 import { compareTracksForComposite } from "./preview/composite-track-order";
 import { clipBackgroundRemovalSettings } from "./preview/background-removal-settings";
 import { ProcessingOverlay } from "./ProcessingOverlay";
@@ -198,10 +204,6 @@ export const Preview: React.FC = () => {
   const renderBridgeInitialized = useRef<boolean>(false);
   const lastGoodFrameRef = useRef<ImageBitmap | null>(null);
   const offscreenCanvasRef = useRef<OffscreenCanvas | null>(null);
-  const decodeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const decodeDebounceResolveRef = useRef<((value: ImageBitmap | null) => void) | null>(
-    null,
-  );
   const decodeRequestSeqRef = useRef(0);
   const scrubVideoReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -441,13 +443,11 @@ export const Preview: React.FC = () => {
   }, [releaseVideoElement]);
 
   const cancelPendingScrubDecode = useCallback((): void => {
-    if (decodeDebounceRef.current) {
-      clearTimeout(decodeDebounceRef.current);
-      decodeDebounceRef.current = null;
-    }
-    decodeDebounceResolveRef.current?.(null);
-    decodeDebounceResolveRef.current = null;
+    // Bumping the sequence marks every in-flight decode stale — its result
+    // resolves to null at the next checkpoint instead of painting a frame
+    // from a media source that no longer exists.
     decodeRequestSeqRef.current += 1;
+    frameSchedulerRef.current?.invalidate();
   }, []);
 
   const releaseScrubVideoElements = useCallback((): void => {
@@ -462,14 +462,26 @@ export const Preview: React.FC = () => {
     videoElementCacheRef.current.clear();
   }, [cancelPendingScrubDecode, releaseVideoElement]);
 
+  const scheduleScrubVideoReleaseRef = useRef<() => void>(() => {});
   const scheduleScrubVideoRelease = useCallback((): void => {
     if (scrubVideoReleaseTimerRef.current) {
       clearTimeout(scrubVideoReleaseTimerRef.current);
     }
     scrubVideoReleaseTimerRef.current = setTimeout(() => {
+      // Never yank the decoders out from under an active drag or an
+      // in-flight render — re-arm instead of clearing.
+      if (
+        useTimelineStore.getState().isScrubbing ||
+        frameSchedulerRef.current?.busy
+      ) {
+        scrubVideoReleaseTimerRef.current = null;
+        scheduleScrubVideoReleaseRef.current();
+        return;
+      }
       releaseScrubVideoElements();
     }, 350);
   }, [releaseScrubVideoElements]);
+  scheduleScrubVideoReleaseRef.current = scheduleScrubVideoRelease;
 
   // Track canvas size changes for resize handles positioning
   useEffect(() => {
@@ -719,18 +731,21 @@ export const Preview: React.FC = () => {
   const motionPathClipId = useUIStore((state) => state.motionPathClipId);
   const select = useUIStore((state) => state.select);
 
-  const {
-    playheadPosition,
-    playbackState,
-    playbackLockedReason,
-    playbackRate,
-    isScrubbing,
-    pause,
-    togglePlayback,
-    seekTo,
-    seekRelative,
-    setPlayheadPosition,
-  } = useTimelineStore();
+  // Field-by-field selectors instead of a whole-store subscription: scrub
+  // ticks change playheadPosition/isScrubbing many times per second and must
+  // not drag every unrelated timeline field through a full Preview re-render.
+  const playheadPosition = useTimelineStore((state) => state.playheadPosition);
+  const playbackState = useTimelineStore((state) => state.playbackState);
+  const playbackLockedReason = useTimelineStore(
+    (state) => state.playbackLockedReason,
+  );
+  const playbackRate = useTimelineStore((state) => state.playbackRate);
+  const isScrubbing = useTimelineStore((state) => state.isScrubbing);
+  const pause = useTimelineStore((state) => state.pause);
+  const togglePlayback = useTimelineStore((state) => state.togglePlayback);
+  const setPlayheadPosition = useTimelineStore(
+    (state) => state.setPlayheadPosition,
+  );
 
   useEffect(() => {
     isScrubbingRef.current = isScrubbing;
@@ -872,6 +887,9 @@ export const Preview: React.FC = () => {
     const nativeImageBitmapCache = nativeImageBitmapCacheRef.current;
     return () => {
       releaseScrubVideoElements();
+      // Expire every in-flight render and free the remembered frame — a late
+      // task must never paint into an unmounted canvas.
+      frameSchedulerRef.current?.invalidate();
 
       for (const [, entry] of nativeVideoCache) {
         releaseVideoElement(entry);
@@ -882,6 +900,9 @@ export const Preview: React.FC = () => {
         bitmap.close();
       }
       nativeImageBitmapCache.clear();
+
+      lastGoodFrameRef.current?.close();
+      lastGoodFrameRef.current = null;
     };
   }, [releaseScrubVideoElements, releaseVideoElement]);
 
@@ -1617,232 +1638,248 @@ export const Preview: React.FC = () => {
         scrubVideoReleaseTimerRef.current = null;
       }
 
-      if (decodeDebounceRef.current) {
-        clearTimeout(decodeDebounceRef.current);
-        decodeDebounceRef.current = null;
-      }
-      decodeDebounceResolveRef.current?.(null);
-      decodeDebounceResolveRef.current = null;
+      // No trailing debounce here: the FrameRenderScheduler already keeps at
+      // most one render in flight with the latest target pending, so a plain
+      // decode runs as soon as it is asked for. (A trailing debounce reset by
+      // every pointer move meant a continuous drag produced zero frames.)
+      try {
+        const clipLocalTime = time - clip.startTime;
+        const speedEngine = getSpeedEngine();
+        const adjustedLocalTime = speedEngine.getSourceTimeAtPlaybackTime(
+          clip.id,
+          clipLocalTime,
+        );
+        const isStabilized = vidstab.hasStabilized(clip.id);
+        const mediaTime = isStabilized ? adjustedLocalTime : (clip.inPoint || 0) + adjustedLocalTime;
+        const cacheKey = scrubVideoCacheKey(clip.mediaId, isStabilized);
+        let cached = videoElementCacheRef.current.get(cacheKey);
 
-      return new Promise<ImageBitmap | null>((resolve) => {
-        decodeDebounceResolveRef.current = resolve;
-        decodeDebounceRef.current = setTimeout(async () => {
-          decodeDebounceRef.current = null;
-          decodeDebounceResolveRef.current = null;
+        if (!cached) {
+          const url = URL.createObjectURL(mediaBlob);
+          const video = document.createElement("video");
+          video.src = url;
+          video.muted = true;
+          video.playsInline = true;
+          video.preload = "metadata";
+          video.crossOrigin = "anonymous";
+
+          await new Promise<void>((res, rej) => {
+            const timeoutId = setTimeout(
+              () => rej(new Error("Video load timeout")),
+              10000,
+            );
+            video.onloadedmetadata = () => {
+              clearTimeout(timeoutId);
+              res();
+            };
+            video.onerror = () => {
+              clearTimeout(timeoutId);
+              rej(new Error("Video load failed"));
+            };
+          });
 
           if (isStaleRequest()) {
-            resolve(null);
+            releaseVideoElement({ video, url });
+            return null;
+          }
+
+          cached = { video, url, lastUsed: Date.now() };
+          videoElementCacheRef.current.set(cacheKey, cached);
+
+          while (videoElementCacheRef.current.size > 2) {
+            evictOldestVideoElement();
+          }
+        }
+
+        cached.lastUsed = Date.now();
+        const { video } = cached;
+
+        const clampedTime = Math.max(
+          0,
+          Math.min(mediaTime, video.duration - 0.001),
+        );
+        const seekTime =
+          clampedTime <= 0 && video.duration > 0.002 ? 0.001 : clampedTime;
+        let seekConfirmed = false;
+        if (
+          Math.abs(video.currentTime - seekTime) > 0.01 ||
+          video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+        ) {
+          video.currentTime = seekTime;
+          await new Promise<void>((res) => {
+            let settled = false;
+            let timeoutId: ReturnType<typeof setTimeout> | null = null;
+            const onSeeked = () => {
+              if (settled) return;
+              settled = true;
+              seekConfirmed = true;
+              if (timeoutId) clearTimeout(timeoutId);
+              video.removeEventListener("seeked", onSeeked);
+              res();
+            };
+            video.addEventListener("seeked", onSeeked);
+            timeoutId = setTimeout(() => {
+              if (settled) return;
+              settled = true;
+              video.removeEventListener("seeked", onSeeked);
+              res();
+            }, 250);
+          });
+        } else {
+          seekConfirmed = true;
+        }
+
+        if (isStaleRequest()) return null;
+
+        // Frame callback info: the presented frame's media time, when the
+        // browser reports one. Used below to confirm the element really
+        // shows a frame at (or contaning) the target time.
+        let presentedTime: number | null = null;
+        await new Promise<void>((res) => {
+          if (!("requestVideoFrameCallback" in video)) {
+            res();
             return;
           }
 
-          try {
-            const clipLocalTime = time - clip.startTime;
-            const speedEngine = getSpeedEngine();
-            const adjustedLocalTime = speedEngine.getSourceTimeAtPlaybackTime(
-              clip.id,
-              clipLocalTime,
-            );
-            const isStabilized = vidstab.hasStabilized(clip.id);
-            const mediaTime = isStabilized ? adjustedLocalTime : (clip.inPoint || 0) + adjustedLocalTime;
-            const cacheKey = scrubVideoCacheKey(clip.mediaId, isStabilized);
-            let cached = videoElementCacheRef.current.get(cacheKey);
-
-            if (!cached) {
-              const url = URL.createObjectURL(mediaBlob);
-              const video = document.createElement("video");
-              video.src = url;
-              video.muted = true;
-              video.playsInline = true;
-              video.preload = "metadata";
-              video.crossOrigin = "anonymous";
-
-              await new Promise<void>((res, rej) => {
-                const timeoutId = setTimeout(
-                  () => rej(new Error("Video load timeout")),
-                  10000,
-                );
-                video.onloadedmetadata = () => {
-                  clearTimeout(timeoutId);
-                  res();
-                };
-                video.onerror = () => {
-                  clearTimeout(timeoutId);
-                  rej(new Error("Video load failed"));
-                };
-              });
-
-              if (isStaleRequest()) {
-                releaseVideoElement({ video, url });
-                resolve(null);
-                return;
-              }
-
-              cached = { video, url, lastUsed: Date.now() };
-              videoElementCacheRef.current.set(cacheKey, cached);
-
-              while (videoElementCacheRef.current.size > 2) {
-                evictOldestVideoElement();
-              }
-            }
-
-            cached.lastUsed = Date.now();
-            const { video } = cached;
-
-            const clampedTime = Math.max(
-              0,
-              Math.min(mediaTime, video.duration - 0.001),
-            );
-            const seekTime =
-              clampedTime <= 0 && video.duration > 0.002 ? 0.001 : clampedTime;
+          let settled = false;
+          let timeoutId: ReturnType<typeof setTimeout> | null = null;
+          const finish = (_now: number, metadata?: { mediaTime?: number }) => {
+            if (settled) return;
+            settled = true;
             if (
-              Math.abs(video.currentTime - seekTime) > 0.01 ||
-              video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+              metadata &&
+              typeof metadata.mediaTime === "number" &&
+              Number.isFinite(metadata.mediaTime)
             ) {
-              video.currentTime = seekTime;
-              await new Promise<void>((res) => {
-                let settled = false;
-                let timeoutId: ReturnType<typeof setTimeout> | null = null;
-                const onSeeked = () => {
-                  if (settled) return;
-                  settled = true;
-                  if (timeoutId) clearTimeout(timeoutId);
-                  video.removeEventListener("seeked", onSeeked);
-                  res();
-                };
-                video.addEventListener("seeked", onSeeked);
-                timeoutId = setTimeout(() => {
-                  if (settled) return;
-                  settled = true;
-                  video.removeEventListener("seeked", onSeeked);
-                  res();
-                }, 250);
-              });
+              presentedTime = metadata.mediaTime;
             }
+            if (timeoutId) clearTimeout(timeoutId);
+            res();
+          };
 
-            if (isStaleRequest()) {
-              resolve(null);
-              return;
+          (
+            video as HTMLVideoElement & {
+              requestVideoFrameCallback: (
+                cb: (now: number, metadata?: { mediaTime?: number }) => void,
+              ) => number;
             }
+          ).requestVideoFrameCallback(finish);
+          timeoutId = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            res();
+          }, 300);
+        });
 
-            await new Promise<void>((res) => {
-              if (!("requestVideoFrameCallback" in video)) {
-                res();
-                return;
-              }
+        if (isStaleRequest()) return null;
 
-              let settled = false;
-              let timeoutId: ReturnType<typeof setTimeout> | null = null;
-              const finish = () => {
-                if (settled) return;
-                settled = true;
-                if (timeoutId) clearTimeout(timeoutId);
-                res();
-              };
-
-              video.requestVideoFrameCallback(finish);
-              timeoutId = setTimeout(finish, 300);
-            });
-
-            if (isStaleRequest()) {
-              resolve(null);
-              return;
-            }
-
-            await new Promise<void>((res) => {
-              if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-                res();
-                return;
-              }
-
-              let settled = false;
-              let timeoutId: ReturnType<typeof setTimeout> | null = null;
-              const finish = () => {
-                if (settled) return;
-                settled = true;
-                if (timeoutId) clearTimeout(timeoutId);
-                video.removeEventListener("loadeddata", finish);
-                video.removeEventListener("canplay", finish);
-                res();
-              };
-
-              video.addEventListener("loadeddata", finish);
-              video.addEventListener("canplay", finish);
-              timeoutId = setTimeout(finish, 250);
-            });
-
-            if (isStaleRequest()) {
-              resolve(null);
-              return;
-            }
-
-            const tempCanvas = document.createElement("canvas");
-            tempCanvas.width = canvasWidth;
-            tempCanvas.height = canvasHeight;
-            const tempCtx = tempCanvas.getContext("2d");
-            if (!tempCtx) {
-              resolve(null);
-              return;
-            }
-
-            const videoAspect = video.videoWidth / video.videoHeight;
-            const canvasAspect = canvasWidth / canvasHeight;
-            let drawWidth = canvasWidth;
-            let drawHeight = canvasHeight;
-            let offsetX = 0;
-            let offsetY = 0;
-
-            if (videoAspect > canvasAspect) {
-              drawHeight = canvasWidth / videoAspect;
-              offsetY = (canvasHeight - drawHeight) / 2;
-            } else {
-              drawWidth = canvasHeight * videoAspect;
-              offsetX = (canvasWidth - drawWidth) / 2;
-            }
-
-            if (
-              canvasFillModeRef.current === "blur" &&
-              video.videoWidth > 0 &&
-              video.videoHeight > 0
-            ) {
-              drawBlurredBackdrop(
-                tempCtx,
-                video,
-                video.videoWidth,
-                video.videoHeight,
-                canvasWidth,
-                canvasHeight,
-              );
-            } else {
-              tempCtx.fillStyle = previewBgRef.current;
-              tempCtx.fillRect(0, 0, canvasWidth, canvasHeight);
-            }
-            tempCtx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
-
-            const frame = await createImageBitmap(tempCanvas);
-            if (isStaleRequest()) {
-              frame.close();
-              resolve(null);
-              return;
-            }
-            scheduleScrubVideoRelease();
-            resolve(frame);
-          } catch {
-            // Evict with the same key the entry was cached under (a stabilized
-            // clip caches under `${mediaId}:stabilized`, not its plain mediaId).
-            const failedKey = scrubVideoCacheKey(
-              clip.mediaId,
-              vidstab.hasStabilized(clip.id),
-            );
-            const cached = videoElementCacheRef.current.get(failedKey);
-            if (cached) {
-              releaseVideoElement(cached);
-              videoElementCacheRef.current.delete(failedKey);
-            }
-            scheduleScrubVideoRelease();
-            resolve(null);
+        await new Promise<void>((res) => {
+          if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+            res();
+            return;
           }
-        }, 50);
-      });
+
+          let settled = false;
+          let timeoutId: ReturnType<typeof setTimeout> | null = null;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            if (timeoutId) clearTimeout(timeoutId);
+            video.removeEventListener("loadeddata", finish);
+            video.removeEventListener("canplay", finish);
+            res();
+          };
+
+          video.addEventListener("loadeddata", finish);
+          video.addEventListener("canplay", finish);
+          timeoutId = setTimeout(finish, 250);
+        });
+
+        if (isStaleRequest()) return null;
+
+        // Decode success is judged by media state, the target time and the
+        // frame-callback info — never by pixel colors (legitimate black or
+        // white frames exist). A timed-out wait is NOT success by itself: the
+        // element must confirm it actually presents a frame at the target.
+        // Tolerance is generous because HTMLVideoElement is not frame-exact.
+        const FRAME_TIME_TOLERANCE = 0.1;
+        const atTargetTime =
+          Math.abs(video.currentTime - seekTime) <= FRAME_TIME_TOLERANCE;
+        const presentedAtTarget =
+          presentedTime === null ||
+          Math.abs(presentedTime - seekTime) <= FRAME_TIME_TOLERANCE * 2;
+        const frameReady =
+          video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+          video.videoWidth > 0 &&
+          video.videoHeight > 0;
+        if (!frameReady || !atTargetTime || !presentedAtTarget || !seekConfirmed) {
+          // Unconfirmed (timeout / stale frame / released element): fail the
+          // decode instead of baking a blank placeholder into a "valid" frame.
+          return null;
+        }
+
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = canvasWidth;
+        tempCanvas.height = canvasHeight;
+        const tempCtx = tempCanvas.getContext("2d");
+        if (!tempCtx) return null;
+
+        const videoAspect = video.videoWidth / video.videoHeight;
+        const canvasAspect = canvasWidth / canvasHeight;
+        let drawWidth = canvasWidth;
+        let drawHeight = canvasHeight;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        if (videoAspect > canvasAspect) {
+          drawHeight = canvasWidth / videoAspect;
+          offsetY = (canvasHeight - drawHeight) / 2;
+        } else {
+          drawWidth = canvasHeight * videoAspect;
+          offsetX = (canvasWidth - drawWidth) / 2;
+        }
+
+        if (
+          canvasFillModeRef.current === "blur" &&
+          video.videoWidth > 0 &&
+          video.videoHeight > 0
+        ) {
+          drawBlurredBackdrop(
+            tempCtx,
+            video,
+            video.videoWidth,
+            video.videoHeight,
+            canvasWidth,
+            canvasHeight,
+          );
+        } else {
+          tempCtx.fillStyle = previewBgRef.current;
+          tempCtx.fillRect(0, 0, canvasWidth, canvasHeight);
+        }
+        tempCtx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+
+        const frame = await createImageBitmap(tempCanvas);
+        if (isStaleRequest()) {
+          frame.close();
+          return null;
+        }
+        scheduleScrubVideoRelease();
+        return frame;
+      } catch {
+        // Evict with the same key the entry was cached under (a stabilized
+        // clip caches under `${mediaId}:stabilized`, not its plain mediaId).
+        const failedKey = scrubVideoCacheKey(
+          clip.mediaId,
+          vidstab.hasStabilized(clip.id),
+        );
+        const cached = videoElementCacheRef.current.get(failedKey);
+        if (cached) {
+          releaseVideoElement(cached);
+          videoElementCacheRef.current.delete(failedKey);
+        }
+        scheduleScrubVideoRelease();
+        return null;
+      }
     },
     [
       evictOldestVideoElement,
@@ -1876,7 +1913,10 @@ export const Preview: React.FC = () => {
 
   // Render a single frame using MediaBunny (for scrubbing/seeking)
   const renderFrameDirectly = useCallback(
-    async (time: number): Promise<boolean> => {
+    async (
+      time: number,
+      token?: FrameRequestToken,
+    ): Promise<boolean> => {
       const canvas = canvasRef.current;
       if (!canvas) return false;
 
@@ -1903,9 +1943,31 @@ export const Preview: React.FC = () => {
       if (hasActiveCompound) {
         const frame = await getRenderBridge().renderFrame(time);
         if (frame) {
-          mainCtx.clearRect(0, 0, canvas.width, canvas.height);
-          mainCtx.drawImage(frame.image, 0, 0, canvas.width, canvas.height);
-          return true;
+          // Same commit discipline as the decode path. `frame.image` stays
+          // owned by the render bridge / engine store — never closed here.
+          const scheduler = frameSchedulerRef.current;
+          const commitResult = await commitRenderedFrame(
+            {
+              isCurrent: () => !token || !scheduler || scheduler.isCurrent(token),
+              claimCommit: () =>
+                !token || !scheduler || scheduler.markCommitted(token),
+              lastGood: lastGoodFrameRef,
+            },
+            {
+              produce: () => createImageBitmap(frame.image),
+              paint: () => {
+                mainCtx.clearRect(0, 0, canvas.width, canvas.height);
+                mainCtx.drawImage(
+                  frame.image,
+                  0,
+                  0,
+                  canvas.width,
+                  canvas.height,
+                );
+              },
+            },
+          );
+          return commitResult === "committed";
         }
       }
 
@@ -2437,15 +2499,26 @@ export const Preview: React.FC = () => {
       }
 
       if (hasRenderedFrame && offscreenCanvasRef.current) {
-        mainCtx.clearRect(0, 0, canvas.width, canvas.height);
-        mainCtx.drawImage(offscreenCanvasRef.current, 0, 0);
-        try {
-          lastGoodFrameRef.current?.close();
-          lastGoodFrameRef.current = await createImageBitmap(
-            offscreenCanvasRef.current,
-          );
-        } catch {}
-        return true;
+        // Single commit entry: only a complete frame belonging to the newest
+        // request reaches the canvas, and the remembered bitmap is replaced
+        // create-first so a failed encode can never lose the old picture.
+        const scheduler = frameSchedulerRef.current;
+        const commitResult = await commitRenderedFrame(
+          {
+            isCurrent: () => !token || !scheduler || scheduler.isCurrent(token),
+            claimCommit: () =>
+              !token || !scheduler || scheduler.markCommitted(token),
+            lastGood: lastGoodFrameRef,
+          },
+          {
+            produce: () => createImageBitmap(offscreenCanvasRef.current!),
+            paint: (frame) => {
+              mainCtx.clearRect(0, 0, canvas.width, canvas.height);
+              mainCtx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+            },
+          },
+        );
+        return commitResult === "committed";
       }
 
       const hasActiveContent =
@@ -2460,6 +2533,12 @@ export const Preview: React.FC = () => {
         activeTextClips.length > 0;
 
       if (hadBackground && hasActiveContent && offscreenCanvasRef.current) {
+        // Partial result (decode failed or superseded): keep the previously
+        // confirmed picture on screen — never clear the canvas to a solid
+        // placeholder while a frame is still expected.
+        if (token && frameSchedulerRef.current) {
+          if (!frameSchedulerRef.current.isCurrent(token)) return false;
+        }
         mainCtx.clearRect(0, 0, canvas.width, canvas.height);
         if (
           renderBase === "lastFrame" ||
@@ -2524,17 +2603,8 @@ export const Preview: React.FC = () => {
     playheadPositionRef.current = playheadPosition;
   }, [playheadPosition]);
 
-  useEffect(() => {
-    setImageLoadCallback(() => {
-      if (!isPlayingRef.current) {
-        renderFrameDirectlyRef.current(playheadPositionRef.current);
-      }
-    });
-    return () => setImageLoadCallback(null);
-  }, []);
-
   const renderFallbackFrame = useCallback(
-    async (time: number) => {
+    async (time: number, _token?: FrameRequestToken) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
@@ -2546,7 +2616,6 @@ export const Preview: React.FC = () => {
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      const emptyBg = isDark ? "#0f0f11" : "#ffffff";
       const emptyText = isDark ? "#52525b" : "#a1a1aa";
       const textPrimary = isDark ? "#ffffff" : "#18181b";
       const textSecondary = isDark ? "#a1a1aa" : "#71717a";
@@ -2554,23 +2623,18 @@ export const Preview: React.FC = () => {
       const activeShapeClips = getActiveShapeClips(allShapeClips, time);
       const activeTextClips = getActiveTextClips(allTextClips, time);
 
-      const videoTracks = timelineTracks.filter(
-        (t) => (t.type === "video" || t.type === "image") && !t.hidden,
-      );
-
-      const hasVideoContent = videoTracks.some((track) =>
-        track.clips.some(
-          (clip) =>
-            time >= clip.startTime && time < clip.startTime + clip.duration,
-        ),
-      );
-
-      ctx.fillStyle = hasVideoContent
-        ? isDark
-          ? "#18181b"
-          : "#f4f4f5"
-        : emptyBg;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Never clear a confirmed picture to a solid placeholder while a frame
+      // is still expected: the last successfully committed frame stays on
+      // screen and only real overlays are redrawn over it.
+      const lastGood = lastGoodFrameRef.current;
+      if (lastGood) {
+        ctx.drawImage(lastGood, 0, 0, canvas.width, canvas.height);
+      } else {
+        // Nothing confirmed yet — or the timeline genuinely has no visible
+        // content here. Show the project background (canvas fill mode), not
+        // a flat theme slab.
+        fillPreviewBackground(ctx, time, canvas.width, canvas.height);
+      }
 
       const allRenderableTracks = timelineTracks
         .map((track, idx) => ({ track, originalIndex: idx }))
@@ -2586,6 +2650,9 @@ export const Preview: React.FC = () => {
 
       for (const { track } of allRenderableTracks) {
         if (track.type === "video" || track.type === "image") {
+          // The name plate is only honest when no picture exists at all;
+          // over a kept frame it would just obscure the preview.
+          if (lastGood) continue;
           for (const clip of track.clips) {
             const clipStart = clip.startTime;
             const clipEnd = clip.startTime + clip.duration;
@@ -2704,6 +2771,48 @@ export const Preview: React.FC = () => {
       tr,
     ],
   );
+
+  const renderFallbackFrameRef = useRef(renderFallbackFrame);
+  useEffect(() => {
+    renderFallbackFrameRef.current = renderFallbackFrame;
+  }, [renderFallbackFrame]);
+
+  // Single owner of paused-preview frame rendering: at most one render in
+  // flight, only the latest requested target kept pending. Replaces the old
+  // trailing debounce in decodeClipFrame — that debounce was reset by every
+  // pointer move, so a continuous drag produced zero frames until the pointer
+  // stopped. Every async draw entry (scrub effect, image loads, transform
+  // commits, preview invalidations) routes through requestFrameRender so an
+  // old task can never paint over a newer seek.
+  const frameSchedulerRef = useRef<FrameRenderScheduler | null>(null);
+  if (!frameSchedulerRef.current) {
+    frameSchedulerRef.current = new FrameRenderScheduler(async (token) => {
+      try {
+        const rendered = await renderFrameDirectlyRef.current(token.time, token);
+        if (!rendered) {
+          await renderFallbackFrameRef.current(token.time, token);
+        }
+      } catch (error) {
+        console.warn("[Preview] frame render failed:", error);
+      }
+    });
+  }
+
+  const requestFrameRender = useCallback((time: number) => {
+    frameSchedulerRef.current?.request(
+      time,
+      useProjectStore.getState().projectRevision,
+    );
+  }, []);
+
+  useEffect(() => {
+    setImageLoadCallback(() => {
+      if (!isPlayingRef.current) {
+        requestFrameRender(playheadPositionRef.current);
+      }
+    });
+    return () => setImageLoadCallback(null);
+  }, [requestFrameRender]);
 
   // Check if we can use native video element playback (much faster, hardware-accelerated)
   const canUseNativeVideoPlayback = useCallback(
@@ -3699,8 +3808,16 @@ export const Preview: React.FC = () => {
         }
 
         try {
-          lastGoodFrameRef.current?.close();
-          lastGoodFrameRef.current = await createImageBitmap(canvas);
+          // Create-and-validate the replacement before touching the old
+          // bitmap — a failed encode must not lose the remembered frame.
+          const nextFrame = await createImageBitmap(canvas);
+          if (nextFrame.width > 0 && nextFrame.height > 0) {
+            const previousFrame = lastGoodFrameRef.current;
+            lastGoodFrameRef.current = nextFrame;
+            previousFrame?.close();
+          } else {
+            nextFrame.close();
+          }
         } catch {}
 
         lastPresentedFrameAtRef.current = performance.now();
@@ -5335,8 +5452,18 @@ export const Preview: React.FC = () => {
             lastPresentedFrameAtRef.current = performance.now();
 
             try {
-              lastGoodFrameRef.current?.close();
-              lastGoodFrameRef.current = await createImageBitmap(offscreenCanvasRef.current!);
+              // Create-and-validate the replacement before touching the old
+              // bitmap — a failed encode must not lose the remembered frame.
+              const nextFrame = await createImageBitmap(
+                offscreenCanvasRef.current!,
+              );
+              if (nextFrame.width > 0 && nextFrame.height > 0) {
+                const previousFrame = lastGoodFrameRef.current;
+                lastGoodFrameRef.current = nextFrame;
+                previousFrame?.close();
+              } else {
+                nextFrame.close();
+              }
             } catch {}
           } else if (lastGoodFrameRef.current) {
             ctx.drawImage(
@@ -5559,8 +5686,7 @@ export const Preview: React.FC = () => {
   const projectRevision = useProjectStore((state) => state.projectRevision);
   const lastRevisionForRenderRef = useRef<number>(projectRevision);
   const modifiedRenderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const renderInFlightRef = useRef<boolean>(false);
-  const pendingRenderTimeRef = useRef<number | null>(null);
+  const wasScrubbingRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (isPlaying) return;
@@ -5573,6 +5699,9 @@ export const Preview: React.FC = () => {
 
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    const scrubJustEnded = wasScrubbingRef.current && !isScrubbing;
+    wasScrubbingRef.current = isScrubbing;
 
     const playheadChanged = playheadPosition !== lastPlayheadForRenderRef.current;
     const modifiedChanged = project.modifiedAt !== lastModifiedAtRef.current;
@@ -5588,46 +5717,28 @@ export const Preview: React.FC = () => {
     const isLargeJump =
       Math.abs(playheadPosition - previousRenderTime) > 1 ||
       playheadPosition < previousRenderTime - 0.25;
-    if (isLargeJump) {
+    // Tear down the decoder cache only on genuine jumps (clicks, shortcut
+    // seeks). Adjacent scrub positions look like large jumps at fit zoom —
+    // destroying the <video> elements there cancelled every in-flight decode
+    // and left the preview blank for the whole drag.
+    if (isLargeJump && !isScrubbing) {
       releaseScrubVideoElements();
     }
     lastPreviewRenderTimeRef.current = playheadPosition;
 
-    const doRender = async (time: number) => {
-      if (renderInFlightRef.current) {
-        // Coalesce: remember the latest requested position and render it
-        // once the current render completes. This is what makes scrubbing
-        // feel responsive even when each render is slower than mouse moves.
-        pendingRenderTimeRef.current = time;
-        return;
-      }
-      renderInFlightRef.current = true;
-      try {
-        const rendered = await renderFrameDirectly(time);
-        if (!rendered) {
-          await renderFallbackFrame(time);
-        }
-      } finally {
-        renderInFlightRef.current = false;
-        const next = pendingRenderTimeRef.current;
-        if (next !== null && next !== time) {
-          pendingRenderTimeRef.current = null;
-          doRender(next);
-        } else {
-          pendingRenderTimeRef.current = null;
-        }
-      }
-    };
-
     if (playheadChanged) {
-      doRender(playheadPosition);
+      requestFrameRender(playheadPosition);
+    } else if (scrubJustEnded) {
+      // Drag release must paint the exact release position even when the
+      // store value did not change (the last move already landed there).
+      requestFrameRender(playheadPosition);
     } else if (modifiedChanged || revisionChanged) {
       if (modifiedRenderTimerRef.current) {
         clearTimeout(modifiedRenderTimerRef.current);
       }
       modifiedRenderTimerRef.current = setTimeout(() => {
         modifiedRenderTimerRef.current = null;
-        doRender(playheadPosition);
+        requestFrameRender(playheadPosition);
       }, 150);
     }
 
@@ -5641,6 +5752,7 @@ export const Preview: React.FC = () => {
     playheadPosition,
     isPlaying,
     isScrubbing,
+    requestFrameRender,
     renderFrameDirectly,
     renderFallbackFrame,
     releaseScrubVideoElements,
@@ -5666,8 +5778,8 @@ export const Preview: React.FC = () => {
     if (isPlaying || previewInvalidateCounter === 0) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
-    renderFrameDirectly(playheadPosition);
-  }, [previewInvalidateCounter, isPlaying, renderFrameDirectly, playheadPosition]);
+    requestFrameRender(playheadPosition);
+  }, [previewInvalidateCounter, isPlaying, requestFrameRender, playheadPosition]);
 
   const selectedClipId = useMemo(() => {
     const clipSelection = selectedItems.find((item) => item.type === "clip");
@@ -6729,9 +6841,9 @@ export const Preview: React.FC = () => {
     setCanvasSnapGuides({ x: null, y: null });
 
     if (wasInteracting) {
-      renderFrameDirectly(playheadPosition);
+      requestFrameRender(playheadPosition);
     }
-  }, [commitPendingTransform, renderFrameDirectly, playheadPosition]);
+  }, [commitPendingTransform, requestFrameRender, playheadPosition]);
 
   const handleCropChange = useCallback(
     (crop: { x: number; y: number; width: number; height: number }) => {
@@ -6767,7 +6879,7 @@ export const Preview: React.FC = () => {
         setLiveTransform(null);
 
         if (wasInteracting) {
-          renderFrameDirectly(playheadPosition);
+          requestFrameRender(playheadPosition);
         }
       };
 
@@ -6776,31 +6888,124 @@ export const Preview: React.FC = () => {
     }
   }, [
     interactionMode,
-    renderFrameDirectly,
+    requestFrameRender,
     playheadPosition,
     commitPendingTransform,
   ]);
 
-  const handleScrubClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const percentage = Math.max(0, Math.min(1, x / rect.width));
-      const newTime = percentage * (actualEndTime || 10);
-      seekTo(newTime);
+  // ---- Preview scrub bar: pointer-drag seeking -------------------------
+  // Pointer capture keeps the gesture alive outside the thin bar; position
+  // updates are coalesced to one per frame so pointermove never resets audio
+  // or triggers heavy work. The final position commits through the unified
+  // seek command (master clock + audio + store together) so the playback
+  // clock cannot pull the playhead back.
+  const scrubBarRef = useRef<HTMLDivElement>(null);
+  const scrubDragRef = useRef<{
+    pointerId: number;
+    rafId: number | null;
+    latestTime: number;
+  } | null>(null);
+
+  const scrubTimeFromClientX = useCallback(
+    (clientX: number): number => {
+      const rect = scrubBarRef.current?.getBoundingClientRect();
+      if (!rect || rect.width <= 0) return playheadPosition;
+      const percentage = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      return percentage * (actualEndTime || 10);
     },
-    [actualEndTime, seekTo],
+    [actualEndTime, playheadPosition],
+  );
+
+  const flushScrubTarget = useCallback(() => {
+    const drag = scrubDragRef.current;
+    if (!drag) return;
+    drag.rafId = null;
+    getPlaybackBridge().scrubTo(drag.latestTime);
+  }, []);
+
+  const handleScrubPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      const time = scrubTimeFromClientX(e.clientX);
+      e.currentTarget.setPointerCapture(e.pointerId);
+      scrubDragRef.current = {
+        pointerId: e.pointerId,
+        rafId: null,
+        latestTime: time,
+      };
+      getPlaybackBridge().startScrubbing();
+      getPlaybackBridge().scrubTo(time);
+    },
+    [scrubTimeFromClientX],
+  );
+
+  const handleScrubPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const drag = scrubDragRef.current;
+      if (!drag || drag.pointerId !== e.pointerId) return;
+      drag.latestTime = scrubTimeFromClientX(e.clientX);
+      if (drag.rafId === null) {
+        drag.rafId = requestAnimationFrame(flushScrubTarget);
+      }
+    },
+    [scrubTimeFromClientX, flushScrubTarget],
+  );
+
+  const handleScrubPointerEnd = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const drag = scrubDragRef.current;
+      if (!drag || drag.pointerId !== e.pointerId) return;
+      scrubDragRef.current = null;
+      if (drag.rafId !== null) {
+        cancelAnimationFrame(drag.rafId);
+      }
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+      // Commit the exact release position — endScrubbing moves the master
+      // clock and audio there and Preview paints the final precise frame.
+      getPlaybackBridge().scrubTo(drag.latestTime);
+      getPlaybackBridge().endScrubbing();
+    },
+    [],
+  );
+
+  const handleScrubKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const step = e.shiftKey ? 1 : 1 / 30;
+      let target: number | null = null;
+      switch (e.key) {
+        case "ArrowLeft":
+          target = playheadPosition - step;
+          break;
+        case "ArrowRight":
+          target = playheadPosition + step;
+          break;
+        case "Home":
+          target = 0;
+          break;
+        case "End":
+          target = actualEndTime || 0;
+          break;
+        default:
+          return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      void getPlaybackBridge().requestSeek(
+        Math.max(0, Math.min(target, actualEndTime || target)),
+      );
+    },
+    [playheadPosition, actualEndTime],
   );
 
   const handleSkipBack = useCallback(() => {
-    seekRelative(-5);
-  }, [seekRelative]);
+    void getPlaybackBridge().requestSeekRelative(-5);
+  }, []);
 
   const handleSkipForward = useCallback(() => {
-    const current = useTimelineStore.getState().playheadPosition;
-    const end = actualEndTime > 0 ? actualEndTime : project.timeline.duration || 0;
-    seekTo(end > 0 ? Math.min(current + 5, end) : current + 5);
-  }, [seekTo, actualEndTime, project.timeline.duration]);
+    void getPlaybackBridge().requestSeekRelative(5);
+  }, []);
 
   const handleFullscreen = useCallback(() => {
     const container = containerRef.current;
@@ -7466,16 +7671,32 @@ export const Preview: React.FC = () => {
             : "z-20 bg-bg-1"
         }`}
       >
-        {/* Scrub Bar - integrated at top of controls */}
+        {/* Scrub Bar - integrated at top of controls. Pointer capture keeps
+            the drag alive outside the thin bar; the padded wrapper widens the
+            hit area so hover never resizes the drag target. */}
         <div
-          className="h-1.5 bg-bg-2 cursor-pointer group hover:h-2.5 transition-all relative"
-          onClick={handleScrubClick}
+          ref={scrubBarRef}
+          role="slider"
+          tabIndex={0}
+          aria-label={tr("Scrub bar")}
+          aria-valuemin={0}
+          aria-valuemax={Math.max(0, Math.round(actualEndTime))}
+          aria-valuenow={Math.round(playheadPosition * 100) / 100}
+          aria-valuetext={`${formatTime(playheadPosition)} / ${formatTime(actualEndTime)}`}
+          className="group relative cursor-pointer py-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          onPointerDown={handleScrubPointerDown}
+          onPointerMove={handleScrubPointerMove}
+          onPointerUp={handleScrubPointerEnd}
+          onPointerCancel={handleScrubPointerEnd}
+          onKeyDown={handleScrubKeyDown}
         >
-          <div
-            className="h-full bg-accent relative pointer-events-none shadow-glow"
-            style={{ width: `${progressPercentage}%` }}
-          >
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity transform scale-0 group-hover:scale-100 duration-100 border border-black/20" />
+          <div className="h-1.5 bg-bg-2 rounded-full relative overflow-hidden">
+            <div
+              className="h-full bg-accent relative pointer-events-none shadow-glow"
+              style={{ width: `${progressPercentage}%` }}
+            >
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity transform scale-0 group-hover:scale-100 duration-100 border border-black/20" />
+            </div>
           </div>
         </div>
 

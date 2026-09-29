@@ -8,6 +8,7 @@ import { toast } from "../stores/notification-store";
 import { t } from "../i18n";
 import { useUIStore } from "../stores/ui-store";
 import { useTimelineStore } from "../stores/timeline-store";
+import { getPlaybackBridge } from "../bridges/playback-bridge";
 import {
   deleteTimelineItem,
   duplicateTimelineItem,
@@ -37,8 +38,6 @@ export function useKeyboardShortcuts() {
     useUIStore();
   const {
     togglePlayback,
-    seekRelative,
-    seekTo,
     playheadPosition,
     zoomIn,
     zoomOut,
@@ -49,41 +48,44 @@ export function useKeyboardShortcuts() {
     togglePlayback();
   }, [togglePlayback]);
 
+  // Keyboard seeks go through the unified seek command (master clock + audio
+  // + store together) — store-only seekTo leaves the playback clock free to
+  // pull the playhead back on the next tick.
   const handleFrameBack = useCallback(() => {
-    seekRelative(-1 / 30);
-  }, [seekRelative]);
+    void getPlaybackBridge().requestSeekRelative(-1 / 30);
+  }, []);
 
   const handleFrameForward = useCallback(() => {
-    seekRelative(1 / 30);
-  }, [seekRelative]);
+    void getPlaybackBridge().requestSeekRelative(1 / 30);
+  }, []);
 
   const handleSecondBack = useCallback(() => {
-    seekRelative(-1);
-  }, [seekRelative]);
+    void getPlaybackBridge().requestSeekRelative(-1);
+  }, []);
 
   const handleSecondForward = useCallback(() => {
-    seekRelative(1);
-  }, [seekRelative]);
+    void getPlaybackBridge().requestSeekRelative(1);
+  }, []);
 
   const handleJump5Back = useCallback(() => {
-    seekRelative(-5);
-  }, [seekRelative]);
+    void getPlaybackBridge().requestSeekRelative(-5);
+  }, []);
 
   const handleJump5Forward = useCallback(() => {
-    seekRelative(5);
-  }, [seekRelative]);
+    void getPlaybackBridge().requestSeekRelative(5);
+  }, []);
 
   const handleGoToStart = useCallback(() => {
-    seekTo(0);
-  }, [seekTo]);
+    void getPlaybackBridge().requestSeek(0);
+  }, []);
 
   const handleGoToEnd = useCallback(() => {
     const maxEnd = getTimelineItemRanges(project).reduce(
       (latest, item) => Math.max(latest, item.startTime + item.duration),
       0,
     );
-    seekTo(maxEnd);
-  }, [seekTo, project]);
+    void getPlaybackBridge().requestSeek(maxEnd);
+  }, [project]);
 
   const handlePrevClip = useCallback(() => {
     const currentTime = playheadPosition;
@@ -99,8 +101,8 @@ export function useKeyboardShortcuts() {
       }
     }
 
-    seekTo(prevEdge);
-  }, [seekTo, project, playheadPosition]);
+    void getPlaybackBridge().requestSeek(prevEdge);
+  }, [project, playheadPosition]);
 
   const handleNextClip = useCallback(() => {
     const currentTime = playheadPosition;
@@ -117,9 +119,9 @@ export function useKeyboardShortcuts() {
     }
 
     if (nextEdge !== Infinity) {
-      seekTo(nextEdge);
+      void getPlaybackBridge().requestSeek(nextEdge);
     }
-  }, [seekTo, project, playheadPosition]);
+  }, [project, playheadPosition]);
 
   const handleUndo = useCallback(() => {
     undo();

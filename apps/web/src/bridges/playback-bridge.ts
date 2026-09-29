@@ -240,16 +240,52 @@ export class PlaybackBridge {
   }
 
   /**
+   * Unified seek command — the single owner of user/agent position changes.
+   * Moves the master clock and audio together with the timeline store so the
+   * playhead can never be "pulled back" by the playback clock, and hands the
+   * frame to Preview (the sole render owner) through the store update.
+   *
+   * `pause: true` (the UI default) stops playback on a user seek and keeps it
+   * stopped; agent-driven seeks pass `pause: false` to keep playing from the
+   * new position.
+   */
+  async requestSeek(
+    time: number,
+    options?: { pause?: boolean },
+  ): Promise<void> {
+    const shouldPause = options?.pause ?? true;
+    if (shouldPause && useTimelineStore.getState().playbackState === "playing") {
+      this.pause();
+    }
+    if (this.playbackController) {
+      try {
+        await this.playbackController.syncClockTo(time);
+      } catch (error) {
+        // The position still commits below — a failed clock sync must not
+        // leave the playhead where the user did not put it.
+        console.warn("[PlaybackBridge] seek clock sync failed:", error);
+      }
+    }
+    useTimelineStore.getState().seekTo(time);
+  }
+
+  /**
+   * Relative form of {@link requestSeek} (keyboard frame/second steps).
+   */
+  async requestSeekRelative(delta: number): Promise<void> {
+    const current = useTimelineStore.getState().playheadPosition;
+    await this.requestSeek(Math.max(0, current + delta));
+  }
+
+  /**
    * Seek to a specific time
    *
    * Update both video and audio positions synchronously
    * Feature: core-ui-integration, Property 7: Seek Position Synchronization
    */
   async seek(time: number): Promise<void> {
-    if (this.playbackController) {
-      await this.playbackController.seek(time);
-    }
-    useTimelineStore.getState().seekTo(time);
+    // Agent seeks keep the play state — playback continues from `time`.
+    await this.requestSeek(time, { pause: false });
   }
 
   /**
@@ -259,9 +295,16 @@ export class PlaybackBridge {
     if (this.playbackController) {
       this.playbackController.startScrubbing();
     }
-    useTimelineStore
-      .getState()
-      .startScrubbing(useTimelineStore.getState().playheadPosition);
+    const timelineState = useTimelineStore.getState();
+    if (timelineState.playbackState === "playing") {
+      // The controller pauses itself but its statechange is swallowed while
+      // scrubbing, so mirror the pause into the store: Preview needs the
+      // paused state to run its scrub-render path at all.
+      timelineState.pause();
+    }
+    timelineState.startScrubbing(
+      useTimelineStore.getState().playheadPosition,
+    );
   }
 
   /**
@@ -281,12 +324,16 @@ export class PlaybackBridge {
     const timelineState = useTimelineStore.getState();
     const finalPosition =
       timelineState.scrubPosition ?? timelineState.playheadPosition;
+    // Drop the drag state first so a failing final commit can never leave the
+    // UI stuck in scrub mode; the final position is committed right after.
+    timelineState.endScrubbing();
     if (this.playbackController) {
-      // Synchronize the master clock/audio once at the final drag position.
-      void this.playbackController.scrubTo(finalPosition);
       this.playbackController.endScrubbing();
     }
-    timelineState.endScrubbing();
+    // Commit the exact release position through the unified seek path
+    // (master clock + audio + store). Preview requests the final precise
+    // frame itself when it sees the scrub end.
+    void this.requestSeek(finalPosition);
   }
 
   /**

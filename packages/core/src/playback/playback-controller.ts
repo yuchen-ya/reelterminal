@@ -275,8 +275,17 @@ export class PlaybackController {
     }
   }
 
-  async seek(time: number): Promise<void> {
-    if (!this.project) return;
+  /**
+   * Move the master clock and audio to `time` without rendering a frame.
+   * Preview owns the visible canvas, so UI seek commands sync through this
+   * rather than `seek()`/`scrubTo()` — those run a second heavy render that
+   * races Preview's own render pipeline (and trips the isRenderingFrame
+   * latch, silently dropping follow-up frames).
+   *
+   * Returns the clamped position that was applied.
+   */
+  async syncClockTo(time: number): Promise<number> {
+    if (!this.project) return 0;
 
     const wasPlaying = this.state === "playing";
 
@@ -290,6 +299,19 @@ export class PlaybackController {
       this.stopAudioPlayback();
       await this.startAudioPlayback();
     }
+
+    this.masterClock.reportVideoTime(clampedTime);
+
+    return clampedTime;
+  }
+
+  async seek(time: number): Promise<void> {
+    if (!this.project) return;
+
+    const duration = this.project.timeline.duration;
+    const clampedTime = Math.max(0, Math.min(time, duration));
+
+    await this.syncClockTo(clampedTime);
 
     await this.renderFrameAtTime(clampedTime);
 
