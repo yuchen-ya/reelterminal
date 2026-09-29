@@ -217,7 +217,7 @@ export function parseWorkflowLines(text: string): {
       ) {
         errors.push({
           line: lineNo,
-          message: `step "${id}": unknown verb ${JSON.stringify(verb)} — expected one of the 16 facade verbs`,
+          message: `step "${id}": unknown verb ${JSON.stringify(verb)} — expected one of the ${FACADE_CALL_KEYS.length} facade verbs`,
         });
         continue;
       }

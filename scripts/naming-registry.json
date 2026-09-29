@@ -90,8 +90,6 @@
 
     { "files": "apps/web/src/types/global.d.ts", "pattern": "openreel[a-z]|\\.openreel|openreel\\?", "category": 5, "reason": "兼容入口+桥镜像类型：window.openreel 兼容别名声明与 OpenReel* TS 类型镜像（规则 §9.4 已裁决保留；如需统一另立机械卡）。" },
     { "files": "apps/web/src/stores/collab-store.ts", "pattern": "openreel[a-z]", "category": 5, "reason": "桥镜像类型：OpenReel* 类型导入（镜像 window.openreel 桥，§9.4 裁决保留）。" },
-    { "files": "apps/web/src/desktop/editor/AnalysisRecordsPanel.tsx", "pattern": "openreel[a-z]", "category": 5, "reason": "桥镜像类型：OpenReel* 类型导入（§9.4 裁决保留）。" },
-    { "files": "apps/web/src/desktop/editor/AnalysisRecordsPanel.test.tsx", "pattern": "openreel[a-z]|originalOpenReel", "category": 5, "reason": "桥镜像类型：OpenReel* 类型与别名变量名（§9.4 裁决保留）。" },
     { "files": "apps/web/src/desktop/editor/CollabStatusBar.test.tsx", "pattern": "openreel[a-z]", "category": 5, "reason": "桥镜像类型：OpenReel* 类型测试引用（§9.4 裁决保留）。" },
     { "files": "apps/web/src/desktop/UpdateBanner.tsx", "pattern": "openreel[a-z]", "category": 5, "reason": "桥镜像类型：OpenReelUpdaterStatus 类型导入（§9.4 裁决保留）。" },
     { "files": "apps/web/src/motion/components/primitives.tsx", "pattern": "openreel[a-z]", "category": 5, "reason": "内部导入别名：Button as OpenReelButton 等内部 TS 别名（零外部表面，§9.4 同类）。" },

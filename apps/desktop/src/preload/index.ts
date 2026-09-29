@@ -141,6 +141,9 @@ const api = {
         void handler(req);
       };
       ipcRenderer.on(CHANNELS.liveRequest, listener);
+      // Tell the main-process command bridge that renderer-side store calls
+      // can now be handled. The endpoint may start before this React effect.
+      ipcRenderer.send(CHANNELS.liveRendererBridgeReady);
       return () => ipcRenderer.removeListener(CHANNELS.liveRequest, listener);
     },
     respond: (reply: LiveBridgeReply) =>

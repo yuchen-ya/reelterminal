@@ -16,9 +16,8 @@ import { bindBundledTools } from "./plugin-runtime";
  *    `LiveWriterLease` for write-enabled sessions; a session without it runs
  *    read-only and its write verbs fail CONFLICT naming the holder. The
  *    human never takes the lease and can always edit.
- *  - Work mode controls collaboration behavior only. Read/write access is a
- *    separate facade boundary: read-only access rejects write verbs with
- *    FORBIDDEN, while every work mode sees the same authorized verb surface.
+ *  - Read/write access is an independent facade boundary: read-only access
+ *    rejects write verbs with FORBIDDEN.
  *  - Honesty: project.create/project.open remain GUI-owned; media.import
  *    validates and delegates through the explicit live store bridge; preview/export run on a snapshot
  *    and require its media to be file-backed and readable from THIS process
@@ -790,6 +789,7 @@ export class LiveFacadeSession {
         this.config.store.getState(),
         this.config.store.getContext(),
       ]);
+      const requirementItems = state.project.requirements?.items ?? [];
       return ok<EditorGetContextResult>({
         mode: "live",
 
@@ -803,6 +803,13 @@ export class LiveFacadeSession {
         timeRange: context.timeRange ? { ...context.timeRange } : null,
         canvasPoint: context.canvasPoint ? { ...context.canvasPoint } : null,
         references: context.references ? { ...context.references } : {},
+        requirements: {
+          ready: requirementItems.filter((item) => item.status === "ready").length,
+          inProgress: requirementItems.filter((item) => item.status === "in_progress").length,
+          ids: requirementItems
+            .filter((item) => item.status === "ready" || item.status === "in_progress")
+            .map((item) => `Q${item.number}`),
+        },
         identity: {
           projectId: identity.projectId,
           projectName: identity.projectName,

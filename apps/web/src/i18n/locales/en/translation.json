@@ -5,6 +5,7 @@
     "close": "Close",
     "loading": "Loading…",
     "open": "Open",
+    "openProjectPicker": "Open Project",
     "settings": "Settings",
     "systemDefault": "System default"
   },
@@ -124,7 +125,11 @@
       "agentAccess": "Agent Access",
       "cliAvailable": "CLI available",
       "cliUnavailable": "CLI unavailable",
+      "agentReadable": "Agent can read project",
+      "agentStarting": "Agent access starting",
       "writable": "Read/write",
+      "allowEditing": "Allow Agent editing",
+      "stopEditing": "Stop Agent editing",
       "setReadOnly": "Set read-only",
       "setReadOnlyDescription": "Prevent the CLI from changing the current project"
     }
@@ -269,6 +274,61 @@
     "unreadableNote": "{{count}} task record(s) written by a newer app version are hidden.",
     "generationPausedNotice": "Voiceover and music submission and retry are temporarily paused. Existing task records and artifacts are preserved and remain available to review, import, and insert.",
     "retryPausedNote": "Retry is paused until generation moves to an independent task mechanism."
+  },
+  "requirementBoard": {
+    "title": "Requirements",
+    "new": "New requirement",
+    "items": "Project requirements",
+    "titlePlaceholder": "Describe the outcome in one line",
+    "descriptionPlaceholder": "Add editing requirements, goals, and constraints…",
+    "oneTimeInstruction": "Instruction for this requirement",
+    "instructionPlaceholder": "This instruction applies only to the current requirement",
+    "instructionLabels": {
+      "planFirst": "Plan first",
+      "execute": "Execute",
+      "inspectOnly": "Inspect only"
+    },
+    "instructions": {
+      "planFirst": "Analyze and propose a plan, then wait for confirmation before editing.",
+      "execute": "Complete the work after write access is granted, then report the result.",
+      "inspectOnly": "Inspect and report issues without changing the project."
+    },
+    "references": "Linked markers",
+    "unnamedReference": "Unnamed marker",
+    "publish": "Publish to board",
+    "pullHint": "Agents can read these on demand through reelctl",
+    "empty": "No requirements yet.",
+    "remove": "Delete requirement",
+    "status": {
+      "draft": "Draft",
+      "ready": "Ready",
+      "in_progress": "In progress",
+      "blocked": "Blocked",
+      "done": "Done"
+    }
+  },
+  "audioRequirement": {
+    "title": "AI Voiceover & Music",
+    "cardDescription": "Create a voiceover or music requirement for an Agent",
+    "note": "The requirement is stored in the project board and read through reelctl.",
+    "kind": "Task type",
+    "voiceover": "Voiceover",
+    "music": "Music",
+    "script": "Script",
+    "description": "Music description",
+    "duration": "Target duration",
+    "additional": "Additional requirements",
+    "delivery": "Import the generated audio into the current project media library.",
+    "voiceoverTitle": "Generate project voiceover",
+    "musicTitle": "Generate project music",
+    "agentInstruction": "Read this requirement and generate the audio file. After project write access is granted, import it into the media library and attach the resulting media ID to this requirement.",
+    "scriptPlaceholder": "Enter the text to read…",
+    "musicPlaceholder": "Describe the music style, mood, and purpose…",
+    "durationPlaceholder": "Target duration in seconds (optional)",
+    "additionalPlaceholder": "Language, voice, tempo, looping, and other requirements…",
+    "create": "Create generation requirement",
+    "created": "Requirement published to the board.",
+    "history": "View legacy tasks and existing artifacts"
   },
   "floatingWindow": {
     "minimize": "Minimize",

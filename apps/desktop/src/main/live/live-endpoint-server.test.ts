@@ -44,7 +44,7 @@ let identity = {
   instanceId: "instance-test",
   projectId: "project-test",
   projectEpoch: "epoch-test",
-  access: "write" as const,
+  access: "read-only" as const,
   currentAction: null as string | null,
   enabled: true,
 };
@@ -221,7 +221,7 @@ describe("live protocol-neutral Command API", () => {
       instanceId: "instance-test",
       projectId: "project-test",
       projectEpoch: "epoch-test",
-      access: "write",
+      access: "read-only",
       currentAction: null,
       enabled: true,
     });

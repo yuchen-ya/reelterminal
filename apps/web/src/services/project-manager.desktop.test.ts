@@ -5,6 +5,7 @@ const store = new Map<string, string>();
 
 beforeEach(() => {
   store.clear();
+  vi.spyOn(projectManager, "addToRecent").mockResolvedValue();
   (window as any).reelterminal = {
     platform: "desktop",
     fs: {
@@ -20,6 +21,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (window as any).reelterminal;
+  vi.restoreAllMocks();
 });
 
 const project: any = {

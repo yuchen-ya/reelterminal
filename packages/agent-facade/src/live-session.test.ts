@@ -509,6 +509,7 @@ describe("editor.get_context and visual.inspect read verbs", () => {
       timeRange: { startSeconds: 1, endSeconds: 3.5 },
       canvasPoint: { x: 0.5, y: 0.85 },
       references: {},
+      requirements: { ready: 0, inProgress: 0, ids: [] },
       identity: {
         projectId: store.project.id,
         projectName: "Live Demo",

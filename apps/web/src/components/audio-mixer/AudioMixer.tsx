@@ -11,13 +11,10 @@ import type { ChannelStripState } from "./types";
 import { volumeToDb, formatDb } from "./types";
 import { getRealtimeAudioGraph } from "@reelterminal/core";
 import { ToolcraftIconButton as IconButton } from "@reelterminal/ui";
-import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { ToolcraftSlider as Slider } from "@reelterminal/ui";
 import { ToolcraftText as Text } from "@reelterminal/ui";
 import { X } from "@/icons/lucide-compat";
-import { AudioLines } from "@/icons/lucide-compat";
 import { useTranslation } from "react-i18next";
-import { useUIStore } from "../../stores/ui-store";
 
 export interface AudioMixerProps {
   /** Whether the mixer panel is visible */
@@ -114,25 +111,6 @@ const MasterChannel: React.FC<{
   );
 };
 
-/**
- * Entry button that opens the voiceover / music generation dialog. Lives in
- * the mixer header so the audio context is where generation is asked for;
- * the dialog itself is shared with the editor rail entry.
- */
-const GenerateAudioEntry: React.FC = () => {
-  const { t: tr } = useTranslation();
-  const openModal = useUIStore((state) => state.openModal);
-  return (
-    <Button
-      label={tr("agentMediaTasks.entry")}
-      icon={<AudioLines size={12} aria-hidden />}
-      variant="secondary"
-      size="sm"
-      data-testid="audio-mixer-generate-entry"
-      onClick={() => openModal("agentMediaTask")}
-    />
-  );
-};
 
 /**
  * AudioMixer component
@@ -331,7 +309,6 @@ export const AudioMixer: React.FC<AudioMixerProps> = ({
       <div className="flex items-center justify-between mb-4">
         <Text type="body" weight="semibold" className="text-lg text-white">{tr("Audio Mixer")}</Text>
         <div className="flex items-center gap-2">
-          <GenerateAudioEntry />
           {onClose && (
             <IconButton
               label={tr("Close mixer")}

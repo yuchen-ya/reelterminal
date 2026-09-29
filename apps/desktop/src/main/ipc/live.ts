@@ -29,14 +29,17 @@ function assertMainWindowSender(sender: unknown): void {
 }
 
 export function registerLiveIpc(host: LiveSessionHost): void {
+  // Compatibility for renderers that still use the former service toggle:
+  // the endpoint now follows app lifetime, while these channels only grant
+  // or revoke this launch's write authorization.
   ipcMain.handle(CHANNELS.collabEnable, async (event) => {
     assertMainWindowSender(event.sender);
-    return host.enable();
+    return host.setAccess("write");
   });
 
   ipcMain.handle(CHANNELS.collabDisable, async (event) => {
     assertMainWindowSender(event.sender);
-    return host.disable();
+    return host.setAccess("read-only");
   });
 
   ipcMain.handle(CHANNELS.collabGetStatus, async (event) => {

@@ -319,11 +319,14 @@ app.whenReady().then(async () => {
       context: payload.context,
     });
   });
-  // Live project command endpoint plus the desktop access-status control.
-  registerLiveIpc(getLiveSessionHost());
-  registerAgentTaskIpc(getLiveSessionHost());
-  registerAnalysisRecordsIpc(getLiveSessionHost());
+  // The local command endpoint is a desktop-host service. It starts for every
+  // app launch in read-only mode; the renderer only controls write access.
+  const liveSessionHost = getLiveSessionHost();
+  registerLiveIpc(liveSessionHost);
+  registerAgentTaskIpc(liveSessionHost);
+  registerAnalysisRecordsIpc(liveSessionHost);
   createWindow();
+  await liveSessionHost.enable();
   initAutoUpdater();
   installApplicationMenu(process.platform, (id) => {
     if (id === "openLicenses") {

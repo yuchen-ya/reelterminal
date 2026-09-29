@@ -139,6 +139,44 @@ describe("reelctl command parsing and safety", () => {
     expect(api.command).toHaveBeenCalledTimes(2);
     expect(JSON.parse(stdout[0]!)).toMatchObject({ ok: true, value: { state: "done" } });
   });
+
+  it("lists compact project requirements without exposing the full project", async () => {
+    const api = makeClient([entry("project.get_state", "project_get_state")]);
+    (api.command as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      value: {
+        revision: 4,
+        project: {
+          requirements: {
+            items: [
+              { id: "r1", number: 1, title: "Opening", status: "ready", priority: "high", markerIds: ["m1"], updatedAt: 12, description: "large body" },
+              { id: "r2", number: 2, title: "Done", status: "done", priority: "normal", markerIds: [], updatedAt: 8 },
+            ],
+          },
+        },
+      },
+    });
+    const stdout: string[] = [];
+    await expect(runReelctl(["requirements", "list", "--status", "ready", "--compact"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
+    expect(JSON.parse(stdout[0]!)).toEqual({ ok: true, value: { revision: 4, requirements: [{ ref: "Q1", title: "Opening", status: "ready", priority: "high", markerIds: ["m1"], updatedAt: 12 }] } });
+  });
+
+  it("updates a requirement through one revision-guarded edit.apply", async () => {
+    const api = makeClient([
+      entry("project.get_state", "project_get_state"),
+      entry("edit.apply", "edit_apply", "idempotent"),
+    ]);
+    (api.command as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ ok: true, value: { revision: 7, project: { requirements: { items: [{ id: "internal", number: 3, title: "Audio", status: "ready", markerIds: [] }] } } } })
+      .mockResolvedValueOnce({ ok: true, value: { revision: 8 } });
+    const stdout: string[] = [];
+    await expect(runReelctl(["requirements", "update", "Q3", "--status", "in_progress", "--agent-note", "Started"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
+    expect(api.command).toHaveBeenLastCalledWith(
+      "edit.apply",
+      { ops: [{ op: "requirement.update", requirementId: "Q3", status: "in_progress", agentNote: "Started" }], expectedRevision: 7 },
+      expect.objectContaining({ expectedProjectId: "p", expectedProjectEpoch: "e", retry: "idempotent" }),
+    );
+  });
 });
 
 describe("reelctl output contracts", () => {
@@ -172,6 +210,7 @@ describe("reelctl output contracts", () => {
       value: {
         projectRevision: 11, contextRevision: 7, identity: { projectId: "p", projectEpoch: "e" },
         canvasPoint: { x: 4, y: 8 }, playheadSeconds: 2, fullProject: { huge: true },
+        requirements: { ready: 1, inProgress: 0, ids: ["Q1"] },
       },
     });
     expect(compact).toEqual({
@@ -179,6 +218,7 @@ describe("reelctl output contracts", () => {
       value: {
         projectRevision: 11, contextRevision: 7, identity: { projectId: "p", projectEpoch: "e" },
         canvasPoint: { x: 4, y: 8 }, playheadSeconds: 2,
+        requirements: { ready: 1, inProgress: 0, ids: ["Q1"] },
       },
     });
   });

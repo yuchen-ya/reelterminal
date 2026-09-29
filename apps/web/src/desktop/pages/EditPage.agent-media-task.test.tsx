@@ -4,7 +4,7 @@
  * button must open it through the standard ui-store modal id. Heavy page
  * panels are stubbed; the strip and the dialog run for real.
  */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type React from "react";
 
@@ -12,13 +12,7 @@ import { EditPage } from "./EditPage";
 import { useUIStore } from "../../stores/ui-store";
 import { useProjectStore } from "../../stores/project-store";
 import { createEmptyProject } from "../../stores/project/project-helpers";
-import {
-  AgentMediaTaskService,
-  setAgentMediaTaskServiceForTests,
-} from "../../services/agent-media-tasks/agent-media-task-service";
-import type { AgentTaskStorage } from "../../services/agent-media-tasks/storage";
-import type { AgentMediaTaskRecord } from "../../services/agent-media-tasks/types";
-import { AGENT_MEDIA_TASK_MODAL_ID } from "../../components/editor/dialogs/AgentMediaTaskDialog";
+import { REQUIREMENT_BOARD_MODAL_ID } from "../editor/RequirementBoardDialog";
 
 vi.mock("../../components/editor/AssetsPanel", () => ({
   AssetsPanel: (): React.ReactElement => <div data-testid="stub-assets" />,
@@ -38,61 +32,45 @@ vi.mock("../../components/editor/agent/ExternalAgentFloatingWindow", () => ({
 vi.mock("../editor/AgentInspectionPanel", () => ({
   AgentInspectionPanel: (): React.ReactElement | null => null,
 }));
+vi.mock("../../components/editor/dialogs/AgentMediaTaskDialog", () => ({
+  AgentMediaTaskDialog: (): React.ReactElement | null => null,
+}));
+vi.mock("../editor/DesktopKeyboardShortcuts", () => ({
+  DesktopKeyboardShortcuts: (): React.ReactElement | null => null,
+}));
 
-class MemoryAgentTaskStorage implements AgentTaskStorage {
-  readonly rows = new Map<string, AgentMediaTaskRecord>();
-
-  async loadAll(): Promise<unknown[]> {
-    return [...this.rows.values()];
-  }
-
-  async commit(
-    upserts: readonly AgentMediaTaskRecord[],
-    deletes: readonly string[],
-  ): Promise<void> {
-    for (const record of upserts) this.rows.set(record.id, record);
-    for (const id of deletes) this.rows.delete(id);
-  }
-}
-
-describe("EditPage agent media task entry", () => {
+describe("EditPage lower collaboration panel", () => {
   beforeEach(() => {
     useProjectStore.setState({ project: createEmptyProject("Desktop Demo") });
     useUIStore.setState({ activeModal: null });
-    // jsdom has neither the desktop bridge nor IndexedDB here; the dialog
-    // and the runtime run against an in-memory ledger like the dialog tests.
-    setAgentMediaTaskServiceForTests(
-      new AgentMediaTaskService(new MemoryAgentTaskStorage()),
-    );
   });
 
   afterEach(() => {
-    setAgentMediaTaskServiceForTests(null);
-    useUIStore.setState({ activeModal: null });
+    act(() => useUIStore.setState({ activeModal: null }));
     delete (window as unknown as { reelterminal?: unknown }).reelterminal;
   });
 
-  it("mounts the dialog closed and opens it from the strip entry", () => {
+  it("opens the requirement board from the strip entry", async () => {
     render(<EditPage />);
+    await screen.findByTestId("stub-timeline");
 
     // The strip hosts the desktop entry button.
-    const entry = screen.getByTestId("collab-agent-media-entry");
-    // Closed dialog renders null — no layout footprint until opened.
-    expect(screen.queryByTestId("amt-generation-paused")).not.toBeInTheDocument();
+    const entry = screen.getByTestId("requirement-board-entry");
+    expect(screen.queryByRole("dialog", { name: "Requirements" })).not.toBeInTheDocument();
 
     fireEvent.click(entry);
 
-    expect(useUIStore.getState().activeModal).toBe(AGENT_MEDIA_TASK_MODAL_ID);
-    // The shared dialog stays mounted and shows that generation is paused.
-    expect(screen.getByTestId("amt-generation-paused")).toBeInTheDocument();
+    expect(useUIStore.getState().activeModal).toBe(REQUIREMENT_BOARD_MODAL_ID);
+    expect(screen.getByRole("dialog", { name: "Requirements" })).toBeInTheDocument();
   });
 
-  it("does not open the dialog from the Agent Access switch", () => {
+  it("keeps write authorization separate from the requirement board", async () => {
     render(<EditPage />);
+    await screen.findByTestId("stub-timeline");
 
-    fireEvent.click(screen.getByRole("switch", { name: "Agent Access" }));
+    fireEvent.click(screen.getByTestId("agent-access-toggle"));
 
     expect(useUIStore.getState().activeModal).toBeNull();
-    expect(screen.queryByTestId("amt-generation-paused")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Requirements" })).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,6 @@
 export * from "./project";
 export * from "./work-asset";
+export * from "./requirement";
 export * from "./timeline";
 export * from "./actions";
 export * from "./effects";

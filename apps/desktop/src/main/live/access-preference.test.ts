@@ -1,8 +1,7 @@
 import {
   mkdtempSync,
-  readFileSync,
+  readdirSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,11 +12,11 @@ import { createAgentAccessPreferenceStore } from "./access-preference";
 const directories: string[] = [];
 
 const fixture = (value?: unknown) => {
-  const directory = mkdtempSync(path.join(tmpdir(), "reelterminal-work-mode-"));
+  const directory = mkdtempSync(path.join(tmpdir(), "reelterminal-agent-access-"));
   directories.push(directory);
   const file = path.join(directory, "agent-work-mode.json");
   if (value !== undefined) writeFileSync(file, JSON.stringify(value));
-  return { directory, file, store: createAgentAccessPreferenceStore(file) };
+  return { directory, file, store: createAgentAccessPreferenceStore() };
 };
 
 afterEach(() => {
@@ -26,52 +25,28 @@ afterEach(() => {
   }
 });
 
-describe("Agent access preference migration", () => {
-  it("defaults to the existing write boundary", () => {
-    const { file, store } = fixture();
-    expect(store.get()).toEqual({
-      access: "write",
-    });
-    if (process.platform !== "win32") {
-      expect(statSync(file).mode & 0o777).toBe(0o600);
-    }
-  });
-
-  it.each([
-    ["observe", "read-only"],
-    ["assist", "write"],
-    ["autonomous", "write"],
-  ] as const)("migrates legacy %s without widening access", (mode, access) => {
-    const { file, store } = fixture({ mode });
-    expect(store.get()).toEqual({ access });
-    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({
-      version: 2,
-      access,
-    });
-  });
-
-  it("migrates a legacy raw Observe value as read-only", () => {
-    expect(fixture("observe").store.get()).toEqual({
-      access: "read-only",
-    });
-  });
-
-  it("preserves explicit read-only authorization while removing the old work mode", () => {
-    const { file, store } = fixture({ version: 1, workMode: "autonomous", access: "read-only" });
+describe("per-launch Agent access grant", () => {
+  it("starts read-only", () => {
+    const { store } = fixture();
     expect(store.get()).toEqual({ access: "read-only" });
-    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({ version: 2, access: "read-only" });
   });
 
-  it("persists a change and notifies subscribers once", () => {
-    const { file, store } = fixture();
+  it("ignores a write grant left by the retired persistent preference", () => {
+    const { store } = fixture({ version: 2, access: "write" });
+    expect(store.get()).toEqual({ access: "read-only" });
+  });
+
+  it("keeps an explicit write grant in memory for this launch only", () => {
+    const { directory, store } = fixture();
     const seen: unknown[] = [];
     store.subscribe((preference) => seen.push(preference));
-    store.set({ access: "read-only" });
-    expect(seen).toEqual([{ access: "read-only" }]);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({
-      access: "read-only",
-    });
-    expect(createAgentAccessPreferenceStore(file).get()).toEqual({
+
+    store.set({ access: "write" });
+
+    expect(store.get()).toEqual({ access: "write" });
+    expect(seen).toEqual([{ access: "write" }]);
+    expect(readdirSync(directory)).toEqual([]);
+    expect(createAgentAccessPreferenceStore().get()).toEqual({
       access: "read-only",
     });
   });

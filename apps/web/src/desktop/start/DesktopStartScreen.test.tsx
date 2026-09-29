@@ -1,6 +1,6 @@
 import "../../test/install-local-storage-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { useUIStore } from "../../stores/ui-store";
 
@@ -63,6 +63,31 @@ describe("DesktopStartScreen", () => {
 
     expect(actionMocks.startNewMotionProject).toHaveBeenCalledWith(DESKTOP_FORMATS[2]);
     expect(actionMocks.startNewProject).not.toHaveBeenCalled();
+    expect(useUIStore.getState().desktopPage).toBe("motion");
+  });
+
+  it("opens a recent project using its project id", async () => {
+    actionMocks.listRecentProjects.mockResolvedValue([
+      { id: "project-123", name: "Recent Cut", lastOpened: Date.now() },
+    ]);
+    render(<DesktopStartScreen />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Recent Cut" }));
+    await waitFor(() => expect(actionMocks.openRecentProject).toHaveBeenCalledWith("project-123"));
+    await waitFor(() => expect(useUIStore.getState().desktopPage).toBe("edit"));
+    expect(useUIStore.getState().desktopPage).toBe("edit");
+  });
+
+  it("keeps the start screen active when opening a recent project fails", async () => {
+    actionMocks.openRecentProject.mockResolvedValue(false);
+    actionMocks.listRecentProjects.mockResolvedValue([
+      { id: "missing-project", name: "Missing project", lastOpened: Date.now() },
+    ]);
+    useUIStore.setState({ desktopPage: "motion" });
+    render(<DesktopStartScreen />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Missing project" }));
+    await waitFor(() => expect(actionMocks.openRecentProject).toHaveBeenCalledWith("missing-project"));
     expect(useUIStore.getState().desktopPage).toBe("motion");
   });
 });

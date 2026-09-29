@@ -17,6 +17,7 @@ import {
   sweepOrphanProjectMedia,
 } from "../../services/project-media-gc";
 import { useEngineStore } from "../engine-store";
+import { projectManager } from "../../services/project-manager";
 import {
   calculateTimelineDuration,
   createEmptyProject,
@@ -51,6 +52,7 @@ export function createProjectLifecycleSlice(
       name?: string,
       settings?: Partial<ProjectSettings>,
     ) => {
+      projectManager.clearCurrentFileHandle();
       // Leaving the previous project destroys its undo history, so bytes that
       // only that history could restore are reclaimed now.
       void flushProjectMediaBytes(get().project);
@@ -214,6 +216,9 @@ export function createProjectLifecycleSlice(
       const result = await actionExecutor.execute(action, project);
       if (result.success) {
         set({ project: { ...project } });
+        void projectManager.updateRecentMetadata({ ...project }).catch((error) => {
+          console.warn("[ProjectStore] Failed to update recent project name:", error);
+        });
       }
       return result;
     },

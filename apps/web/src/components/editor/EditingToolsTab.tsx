@@ -10,6 +10,7 @@ import {
   Wand2,
   FileStack,
   Volume2,
+  AudioLines,
 } from "@/icons/lucide-compat";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
@@ -19,8 +20,9 @@ import { FilterPresetsPanel } from "./inspector/FilterPresetsPanel";
 import { MusicLibraryPanel } from "./inspector/MusicLibraryPanel";
 import { TemplatesBrowserPanel } from "./inspector/TemplatesBrowserPanel";
 import { MultiCameraPanel } from "./inspector/MultiCameraPanel";
+import { AudioGenerationRequirementPanel } from "./AudioGenerationRequirementPanel";
 
-type FeatureId = "templates" | "captions" | "filters" | "music" | "multicam" | null;
+type FeatureId = "templates" | "captions" | "filters" | "music" | "aiAudio" | "multicam" | null;
 
 interface FeatureCardProps {
   icon: React.ElementType;
@@ -125,6 +127,8 @@ export const EditingToolsTab: React.FC = () => {
         return <FilterPresetsPanel />;
       case "music":
         return <MusicLibraryPanel />;
+      case "aiAudio":
+        return <AudioGenerationRequirementPanel />;
       case "multicam":
         return <MultiCameraPanel />;
       default:
@@ -218,6 +222,18 @@ export const EditingToolsTab: React.FC = () => {
             activeRing="ring-teal-500/30"
             isActive={activeFeature === "music"}
             onClick={() => handleFeatureClick("music")}
+          />
+          <FeatureCard
+            icon={AudioLines}
+            title={t("audioRequirement.title")}
+            description={t("audioRequirement.cardDescription")}
+            iconColor="text-violet-400"
+            iconBg="bg-violet-500/20"
+            activeBorder="border-violet-500/50"
+            activeBg="bg-violet-500/10"
+            activeRing="ring-violet-500/30"
+            isActive={activeFeature === "aiAudio"}
+            onClick={() => handleFeatureClick("aiAudio")}
           />
         </FeatureSection>
 

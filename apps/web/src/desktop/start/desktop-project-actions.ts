@@ -1,5 +1,8 @@
+import type { Project } from "@reelterminal/core";
 import { useProjectStore } from "../../stores/project-store";
-import { checkForRecovery, type AutoSaveMetadata } from "../../services/auto-save";
+import { loadProjectMedia } from "../../services/media-storage";
+import { projectManager } from "../../services/project-manager";
+import { restoreMediaItem } from "../../utils/media-recovery";
 
 export interface NewProjectFormat {
   id: string;
@@ -34,29 +37,47 @@ export function startNewMotionProject(format: NewProjectFormat): void {
 export interface RecentEntry {
   id: string;
   name: string;
-  savedAt: number;
+  lastOpened: number;
 }
 
 export async function listRecentProjects(): Promise<RecentEntry[]> {
-  const saves = await checkForRecovery();
-  const latestByProject = new Map<string, AutoSaveMetadata>();
-
-  for (const save of saves) {
-    if (!latestByProject.has(save.projectId)) {
-      latestByProject.set(save.projectId, save);
-    }
-  }
-
-  return Array.from(latestByProject.values())
-    .sort((a, b) => b.timestamp - a.timestamp)
-    .slice(0, 10)
-    .map((save) => ({
-      id: save.id,
-      name: save.projectName,
-      savedAt: save.timestamp,
-    }));
+  const recentProjects = await projectManager.getRecentProjects();
+  return recentProjects.map((recent) => ({
+    id: recent.id,
+    name: recent.name,
+    lastOpened: recent.lastOpened,
+  }));
 }
 
-export async function openRecentProject(saveId: string): Promise<boolean> {
-  return useProjectStore.getState().recoverFromAutoSave(saveId);
+async function loadProjectIntoStore(project: Project): Promise<void> {
+  const storedMedia = await loadProjectMedia(project.id);
+  const blobsById = new Map(storedMedia.map((record) => [record.id, record.blob]));
+  const items = await Promise.all(
+    project.mediaLibrary.items.map((item) =>
+      restoreMediaItem(item, blobsById.get(item.id)),
+    ),
+  );
+
+  useProjectStore.getState().loadProject({
+    ...project,
+    mediaLibrary: { ...project.mediaLibrary, items },
+  });
+}
+
+export async function openProject(): Promise<boolean> {
+  const project = await projectManager.openProject();
+  if (!project) return false;
+  await loadProjectIntoStore(project);
+  return true;
+}
+
+export async function openRecentProject(projectId: string): Promise<boolean> {
+  const recentProjects = await projectManager.getRecentProjects();
+  const recent = recentProjects.find((entry) => entry.id === projectId);
+  if (!recent) return false;
+
+  const project = await projectManager.openRecentProject(recent);
+  if (!project) return false;
+  await loadProjectIntoStore(project);
+  return true;
 }

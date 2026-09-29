@@ -39,9 +39,9 @@ function formatDimensions(format: NewProjectFormat): string {
   return `${format.width} × ${format.height} · ${format.frameRate}fps`;
 }
 
-function formatSavedAt(savedAt: number): string {
-  const date = new Date(savedAt);
-  const diffDays = Math.floor((Date.now() - savedAt) / (1000 * 60 * 60 * 24));
+function formatLastOpened(lastOpened: number): string {
+  const date = new Date(lastOpened);
+  const diffDays = Math.floor((Date.now() - lastOpened) / (1000 * 60 * 60 * 24));
   if (diffDays <= 0) return i18n.t("desktop.start.today");
   if (diffDays === 1) return i18n.t("desktop.start.yesterday");
   if (diffDays < 7) return i18n.t("desktop.start.daysAgo", { count: diffDays });
@@ -75,11 +75,10 @@ export function DesktopStartScreen(): JSX.Element {
     };
   }, []);
 
-  const handleOpenRecent = useCallback(async (saveId: string) => {
-    setOpeningId(saveId);
+  const handleOpenRecent = useCallback(async (projectId: string) => {
+    setOpeningId(projectId);
     try {
-      setDesktopPage("edit");
-      await openRecentProject(saveId);
+      if (await openRecentProject(projectId)) setDesktopPage("edit");
     } finally {
       setOpeningId(null);
     }
@@ -213,7 +212,7 @@ export function DesktopStartScreen(): JSX.Element {
                   <li key={entry.id} className="p-1.5">
                     <ClickableCard
                       label={t("desktop.start.openProject", { name: entry.name })}
-                      isDisabled={openingId === entry.id}
+                      isDisabled={openingId !== null}
                       onClick={() => handleOpenRecent(entry.id)}
                       padding={2}
                       variant="transparent"
@@ -228,7 +227,7 @@ export function DesktopStartScreen(): JSX.Element {
                             {entry.name}
                           </Text>
                           <Text type="supporting" display="block" className="mt-0.5">
-                            {formatSavedAt(entry.savedAt)}
+                            {formatLastOpened(entry.lastOpened)}
                           </Text>
                         </span>
                       </div>

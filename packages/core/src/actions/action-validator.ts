@@ -15,6 +15,7 @@ import type {
   ProjectAction,
   MarkerAction,
   ProjectMarkerAction,
+  ProjectRequirementAction,
   WorkAssetAction,
   ReferenceComparisonAction,
 } from "../types/actions";
@@ -26,6 +27,7 @@ import type {
   Clip,
 } from "../types";
 import { WORK_ASSET_MAX_MEMBERS } from "../types/work-asset";
+import { REQUIREMENT_PRIORITIES, REQUIREMENT_STATUSES } from "../types/requirement";
 import { getActionHandler } from "./registry";
 
 export class ActionValidator {
@@ -77,6 +79,11 @@ export class ActionValidator {
         action as ProjectMarkerAction,
         project,
       );
+    } else if (type.startsWith("requirement/")) {
+      return this.validateProjectRequirementAction(
+        action as ProjectRequirementAction,
+        project,
+      );
     } else if (type.startsWith("workAsset/")) {
       return this.validateWorkAssetAction(action as WorkAssetAction, project);
     } else if (type.startsWith("media/")) {
@@ -112,6 +119,37 @@ export class ActionValidator {
         message: `Unknown action type: ${type}`,
       },
     ];
+  }
+
+  private validateProjectRequirementAction(
+    action: ProjectRequirementAction,
+    project: Project,
+  ): ValidationError[] {
+    const errors: ValidationError[] = [];
+    const items = project.requirements?.items ?? [];
+    if (action.type === "requirement/add" || action.type === "requirement/restore") {
+      const item = action.params.requirement;
+      if (!item || typeof item !== "object") {
+        return [{ code: "INVALID_PARAMS", message: "Requirement must be an object", path: "params.requirement" }];
+      }
+      if (!item.id || typeof item.id !== "string") errors.push({ code: "INVALID_PARAMS", message: "Requirement id is required", path: "params.requirement.id" });
+      if (!Number.isInteger(item.number) || item.number < 1) errors.push({ code: "INVALID_PARAMS", message: "Requirement number must be a positive integer", path: "params.requirement.number" });
+      if (!item.title?.trim()) errors.push({ code: "INVALID_PARAMS", message: "Requirement title is required", path: "params.requirement.title" });
+      if (!(REQUIREMENT_STATUSES as readonly string[]).includes(item.status)) errors.push({ code: "INVALID_PARAMS", message: "Requirement status is invalid", path: "params.requirement.status" });
+      if (!(REQUIREMENT_PRIORITIES as readonly string[]).includes(item.priority)) errors.push({ code: "INVALID_PARAMS", message: "Requirement priority is invalid", path: "params.requirement.priority" });
+      if (action.type === "requirement/add" && items.some((entry) => entry.id === item.id)) errors.push({ code: "INVALID_PARAMS", message: `Requirement ${item.id} already exists`, path: "params.requirement.id" });
+      return errors;
+    }
+    if (!("requirementId" in action.params)) return errors;
+    const id = action.params.requirementId;
+    if (!items.some((item) => item.id === id)) errors.push({ code: "INVALID_PARAMS", message: `Requirement ${id} not found`, path: "params.requirementId" });
+    if (action.type === "requirement/update") {
+      const { patch } = action.params;
+      if (patch.title !== undefined && !patch.title.trim()) errors.push({ code: "INVALID_PARAMS", message: "Requirement title cannot be empty", path: "params.patch.title" });
+      if (patch.status !== undefined && !(REQUIREMENT_STATUSES as readonly string[]).includes(patch.status)) errors.push({ code: "INVALID_PARAMS", message: "Requirement status is invalid", path: "params.patch.status" });
+      if (patch.priority !== undefined && !(REQUIREMENT_PRIORITIES as readonly string[]).includes(patch.priority)) errors.push({ code: "INVALID_PARAMS", message: "Requirement priority is invalid", path: "params.patch.priority" });
+    }
+    return errors;
   }
 
   /**

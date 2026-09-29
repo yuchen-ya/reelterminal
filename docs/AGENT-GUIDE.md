@@ -5,6 +5,7 @@ Start ReelTerminal, open a project, and enable **Agent Access**. Run:
 ```powershell
 reelctl status
 reelctl context --compact
+reelctl requirements list --status ready --compact
 reelctl schema edit.apply
 reelctl help media inspect
 ```

@@ -1,5 +1,3 @@
-import { app } from "electron";
-import path from "node:path";
 import {
   createAgentAccessPreferenceStore,
   type AgentAccessPreferenceStore,
@@ -8,8 +6,7 @@ import {
 let store: AgentAccessPreferenceStore | null = null;
 
 export function getAgentAccessPreferenceStore(): AgentAccessPreferenceStore {
-  store ??= createAgentAccessPreferenceStore(
-    path.join(app.getPath("userData"), "agent-work-mode.json"),
-  );
+  // Access is deliberately scoped to this process and starts read-only.
+  store ??= createAgentAccessPreferenceStore();
   return store;
 }

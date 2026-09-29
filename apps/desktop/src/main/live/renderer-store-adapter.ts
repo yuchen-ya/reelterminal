@@ -40,7 +40,26 @@ import type {
   LiveMediaImportRequest,
   LiveMediaImportResult,
 } from "../../shared/live";
-import { getEditorWebContents } from "../editor-window";
+import {
+  getEditorWebContents,
+  isEditorRendererReady,
+  markEditorRendererReady,
+} from "../editor-window";
+
+let readyListenerInstalled = false;
+
+function installReadyListener(): void {
+  if (readyListenerInstalled) return;
+  readyListenerInstalled = true;
+  // The renderer-side handler is installed from DesktopApp's effect. Ignore
+  // every other sender and keep the ready marker scoped to the active editor.
+  ipcMain.on(CHANNELS.liveRendererBridgeReady, (event: IpcMainEvent) => {
+    const contents = getEditorWebContents();
+    if (contents && event.sender === contents && !contents.isDestroyed()) {
+      markEditorRendererReady(contents);
+    }
+  });
+}
 
 /** Reads + requestSave are quick store operations. */
 const READ_TIMEOUT_MS = 10_000;
@@ -367,10 +386,18 @@ export function liveTargetWebContents(): WebContents | null {
  * reload reject on timeout, and teardown rejects them immediately.
  */
 export function installLiveStoreBridge(): LiveStoreBridge {
+  installReadyListener();
   const bridge = createLiveStoreBridge({
     send: (request) => {
       const contents = getEditorWebContents();
       if (!contents) throw new Error("No editor window is open");
+      if (
+        !isEditorRendererReady(contents) ||
+        (typeof contents.isLoadingMainFrame === "function" &&
+          contents.isLoadingMainFrame())
+      ) {
+        throw new Error("The editor interface is still loading; retry this command shortly");
+      }
       contents.send(CHANNELS.liveRequest, request);
     },
     isValidSender: (sender) => {

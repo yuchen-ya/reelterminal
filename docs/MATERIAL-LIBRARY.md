@@ -9,10 +9,11 @@ them.
 
 - Human entry point: the **Library** tab in the editor's left assets panel
   (plus "Save to material library" in a project media item's context menu).
-- Agent entry point: the `material_*` MCP tools in a live desktop session
-  (`material_list`, `material_get`, `material_create`, `material_update`,
-  `material_batch_update`, `material_remove`, `material_attach`,
-  `material_undo`). Headless sessions honestly report them UNSUPPORTED —
+- Agent entry point: `reelctl call material.<verb>` in a live desktop session
+  (`material.list`, `material.get`, `material.create`, `material.update`,
+  `material.batch_update`, `material.remove`, `material.attach`,
+  `material.undo`). The optional MCP adapter exposes compatibility aliases.
+  Headless sessions honestly report them UNSUPPORTED —
   the library lives in the GUI renderer's persistent storage.
 
 ## Not the same as project work assets

@@ -44,7 +44,6 @@
 - 工作区为 `E:\1my_projects\reelterminal`；AGENTS.md 的旧 macOS checkout 路径不适用。本轮用户批准在当前提供的仓库内编写及执行方案，继续使用一个 checkout，不创建 worktree。
 - 2026-09-15 已有 13 个修改文件，以及未跟踪 `.gitattributes`、`.zcode/`。现有改动不是干净基线，不能直接混入本轮提交。
 - `apps/web/src/services/agent/live-bridge.ts` 的安装函数依赖桌面 preload；本轮不尝试通过移动调用位置来接通浏览器 Agent。
-- `ExternalAgentPanelContainer.tsx` 在缺少 conversation API 时直接返回，需要核实并修复浏览器的长期检查状态。
 - `api-endpoints.ts` 已集中部分云地址；仍须检查配置覆盖、零散服务地址、CDN、模型与遥测等外联。
 - `live-session.ts` 的间接依赖包含 Node 子进程与文件操作，抽掉两条 import 并不足以浏览器化；这项工作已排除。
 

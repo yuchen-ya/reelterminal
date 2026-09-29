@@ -45,7 +45,7 @@ function makeFacadeFactory(
     const access = () =>
       typeof config.access === "function"
         ? config.access()
-        : config.access ?? "write";
+        : config.access ?? "read-only";
     const isWriter =
       access() === "write" && config.lease.acquire(config.sessionId);
     const session: StubSession = {
@@ -58,8 +58,14 @@ function makeFacadeFactory(
     for (const verb of FACADE_VERBS) {
       verbs[verb] = async (params?: unknown) => {
         session.calls.push({ verb, params });
-        if (verb === "edit.apply" && config.lease.holder() === null) {
+        if (verb === "edit.apply" && access() === "write" && config.lease.holder() === null) {
           config.lease.acquire(config.sessionId);
+        }
+        if (verb === "edit.apply" && access() === "read-only") {
+          return {
+            ok: false,
+            error: { code: "FORBIDDEN", message: "this live session has read-only access" },
+          };
         }
         return (
           verbResults?.[verb] ?? {
@@ -181,9 +187,7 @@ function makeFixture(
   const closeProviders = vi.fn(async () => {});
   const providers: LiveProviders = { close: closeProviders };
   const factory = makeFacadeFactory(sessions, overrides);
-  const accessPreferenceStore = createAgentAccessPreferenceStore(
-    path.join(tempDir, "agent-work-mode.json"),
-  );
+  const accessPreferenceStore = createAgentAccessPreferenceStore();
   const deps: LiveSessionHostDeps = {
     artifactRoot: path.join(tempDir, "live-artifacts"),
     mediaRoots: [tempDir],
@@ -197,7 +201,7 @@ function makeFixture(
         access:
           typeof config.access === "function"
             ? config.access()
-            : config.access ?? "write",
+          : config.access ?? "read-only",
       });
       return factory(config);
     },
@@ -251,7 +255,7 @@ describe("live session host enable/status/disable", () => {
       externalConnected: false,
       writer: null,
 
-      access: "write",
+      access: "read-only",
       currentAction: null,
     });
     expect(existsSync(fixture.endpointFile)).toBe(true);
@@ -304,7 +308,7 @@ describe("live session host enable/status/disable", () => {
       externalConnected: false,
       writer: null,
 
-      access: "write",
+      access: "read-only",
       currentAction: null,
     });
     expect(fixture.sessions.every((s) => s.disposed)).toBe(true);
@@ -400,7 +404,7 @@ describe("live session host enable/status/disable", () => {
 });
 
 describe("live session host verb dispatch + events", () => {
-  it("lazy-creates the external session on first use and surfaces it as writer", async () => {
+  it("lazy-creates a read-only external session by default", async () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
     const host = createLiveSessionHost(fixture.deps);
@@ -410,9 +414,9 @@ describe("live session host verb dispatch + events", () => {
     const result = await host.callExternal("timeline.get", undefined);
     expect(result.ok).toBe(true);
     expect(fixture.factoryCalls).toEqual([
-      { sessionId: "external", access: "write" },
+      { sessionId: "external", access: "read-only" },
     ]);
-    expect((await host.getStatus()).writer).toBe("external");
+    expect((await host.getStatus()).writer).toBeNull();
 
     await flushPushes();
     const actions = actionEvents(fixture.events);
@@ -433,7 +437,7 @@ describe("live session host verb dispatch + events", () => {
     expect(statuses.at(-1)?.currentAction).toBeNull();
   });
 
-  it("reuses the external session for every endpoint verb and keeps the lease", async () => {
+  it("reuses the read-only external session for every endpoint verb", async () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
     const host = createLiveSessionHost(fixture.deps);
@@ -443,15 +447,14 @@ describe("live session host verb dispatch + events", () => {
     await host.callExternal("timeline.get", undefined);
     await host.callExternal("project.get_state", undefined);
     expect(fixture.factoryCalls).toEqual([
-      { sessionId: "external", access: "write" },
+      { sessionId: "external", access: "read-only" },
     ]);
-    // The single external session owns the sole writer lease.
-    expect(fixture.sessions[0]!.isWriter).toBe(true);
+    expect(fixture.sessions[0]!.isWriter).toBe(false);
     expect(fixture.sessions[0]!.config.mediaRoots).toEqual([fixture.tempDir]);
     expect(fixture.sessions[0]!.config.deliveryRoots).toEqual([
       path.join(fixture.tempDir, "workspace"),
     ]);
-    expect((await host.getStatus()).writer).toBe("external");
+    expect((await host.getStatus()).writer).toBeNull();
   });
 
   it("externalConnected flips on the endpoint's first status read and clears on disable", async () => {
@@ -495,6 +498,7 @@ describe("live session host verb dispatch + events", () => {
       clearActivityTimeout,
     });
     await host.enable();
+    await host.setAccess("write");
 
     const file = JSON.parse(readFileSync(fixture.endpointFile, "utf8")) as {
       commandApi: { url: string; version: number };
@@ -619,6 +623,7 @@ describe("live session host verb dispatch + events", () => {
     await host.enable();
     cleanups.push(() => void host.disable());
 
+    await host.setAccess("write");
     const result = await host.callExternal("edit.apply", { ops: [] });
     expect(result.ok).toBe(false);
     await flushPushes();
@@ -637,31 +642,33 @@ describe("live session host verb dispatch + events", () => {
 });
 
 describe("live session host access", () => {
-  it("explicitly restores migrated write access without replacing the session", async () => {
+  it("grants write access for this launch without replacing the session", async () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
-    fixture.deps.accessPreferenceStore?.set({
-
-      access: "read-only",
-    });
     const host = createLiveSessionHost(fixture.deps);
     await host.enable();
     cleanups.push(() => void host.disable());
 
     await host.callExternal("timeline.get", undefined);
+    const deniedBeforeGrant = await host.callExternal("edit.apply", { ops: [] });
+    expect(deniedBeforeGrant).toMatchObject({
+      ok: false,
+      error: { code: "FORBIDDEN" },
+    });
     const restored = await host.setAccess("write");
 
     expect(restored).toMatchObject({ access: "write", writer: null });
-    expect(fixture.deps.accessPreferenceStore?.get()).toEqual({
-
-      access: "write",
-    });
+    expect(fixture.deps.accessPreferenceStore?.get()).toEqual({ access: "write" });
     expect(fixture.factoryCalls).toHaveLength(1);
     expect(
       typeof fixture.sessions[0]!.config.access === "function"
         ? fixture.sessions[0]!.config.access()
         : fixture.sessions[0]!.config.access,
     ).toBe("write");
+
+    const allowedAfterGrant = await host.callExternal("edit.apply", { ops: [] });
+    expect(allowedAfterGrant.ok).toBe(true);
+    expect((await host.getStatus()).writer).toBe("external");
   });
 
   it("revokes access immediately and releases the external writer lease", async () => {
@@ -671,6 +678,7 @@ describe("live session host access", () => {
     await host.enable();
     cleanups.push(() => void host.disable());
 
+    await host.setAccess("write");
     await host.callExternal("timeline.get", undefined);
     expect((await host.getStatus()).writer).toBe("external");
 

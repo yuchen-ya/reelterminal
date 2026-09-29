@@ -529,6 +529,7 @@ export class AgentFacadeSession {
         timeRange: null,
         canvasPoint: null,
         references: {},
+        requirements: { ready: 0, inProgress: 0, ids: [] },
         identity: {
           projectId: this.project?.id ?? null,
           projectName: this.project?.name ?? null,

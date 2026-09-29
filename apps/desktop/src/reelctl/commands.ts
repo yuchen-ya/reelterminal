@@ -331,6 +331,9 @@ Usage:
   reelctl media analyze --media-id m1 --type audioSummary
   reelctl preview frame --time 12.5
   reelctl history get | undo | redo
+  reelctl requirements list [--status ready] [--compact]
+  reelctl requirements get Q1
+  reelctl requirements update Q1 --status in_progress [--agent-note text] [--result-media-id id]
   reelctl export start --file request.json
   reelctl job status --job-id <id> | wait <id> [--timeout-ms 1800000] | cancel --job-id <id>
   reelctl schema <command>

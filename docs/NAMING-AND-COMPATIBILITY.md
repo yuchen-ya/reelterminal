@@ -89,7 +89,7 @@ when both are set"）——本规则将该模式推广为全仓约定。
   上表文档化 env、端点默认路径、MCP 配置名。每条兼容入口共享同一实现并
   有对应测试（旧名可达、新名优先）。
 - **端点目录迁移**：正式默认
-  `~/.reelterminal/{live-endpoint.json, conversation-endpoint.json, conversation-visual-state/}`；
+  `~/.reelterminal/live-endpoint.json`；旧 conversation 描述符只属于历史版本，不再由当前程序读取；
   旧 `~/.openreel/` 同名路径仅作兼容读。主进程、live-mcp 连接器、外置
   conversation adapter 的默认值必须同批切换。只对本应用拥有的旧描述符做
   原子兼容更新，不覆盖仍活跃的上游 OpenReel 端点；产品/协议/实例身份或

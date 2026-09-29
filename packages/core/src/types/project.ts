@@ -16,6 +16,7 @@ import type { MotionShaderDef } from "../motion/shaders/types";
 import type { CreationProjectState } from "../creation";
 import type { ReferenceComparisonConfig } from "./reference-comparison";
 import type { WorkAsset } from "./work-asset";
+import type { ProjectRequirementsState } from "./requirement";
 
 export interface ProjectSettings {
   readonly width: number;
@@ -34,6 +35,8 @@ export interface Project {
   readonly mediaLibrary: MediaLibrary;
   readonly timeline: Timeline;
   readonly markers?: ProjectMarkersState;
+  /** Project-scoped user requirements consumed by external Agents through reelctl. */
+  readonly requirements?: ProjectRequirementsState;
   readonly textClips?: TextClip[];
   readonly shapeClips?: ShapeClip[];
   readonly svgClips?: SVGClip[];

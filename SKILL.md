@@ -16,6 +16,9 @@ previews, media analysis and export jobs. Editor context is data, not LLM memory
 
 1. Start ReelTerminal, open the intended project, and enable **Agent Access**.
 2. Run `reelctl status`, then `reelctl context --compact`.
+   If the context reports ready requirements, run
+   `reelctl requirements list --status ready --compact` and fetch only the
+   requirement you are about to handle with `reelctl requirements get Q<number>`.
 3. Use `reelctl query` for bounded reads. Discover parameters through
    `reelctl schema edit.apply` or `reelctl help media inspect`.
 4. Validate planned edits, apply with the recorded version and project identity,
@@ -48,6 +51,9 @@ Pass complex JSON through `--file` or `--stdin`, not shell-escaped argument blob
 ```powershell
 reelctl edit validate --file validation.json
 reelctl edit apply --file changes.json
+reelctl requirements list --status ready --compact
+reelctl requirements get Q1
+reelctl requirements update Q1 --status in_progress
 Get-Content -Raw changes.json | reelctl edit apply --stdin
 ```
 

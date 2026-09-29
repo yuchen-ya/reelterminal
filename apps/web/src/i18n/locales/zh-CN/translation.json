@@ -5,6 +5,7 @@
     "close": "关闭",
     "loading": "加载中…",
     "open": "打开",
+    "openProjectPicker": "打开项目",
     "settings": "设置",
     "systemDefault": "跟随系统"
   },
@@ -124,7 +125,11 @@
       "agentAccess": "Agent Access",
       "cliAvailable": "CLI 可用",
       "cliUnavailable": "CLI 不可用",
+      "agentReadable": "Agent 可读取项目",
+      "agentStarting": "Agent 正在连接",
       "writable": "可写",
+      "allowEditing": "允许 Agent 剪辑",
+      "stopEditing": "停止 Agent 剪辑",
       "setReadOnly": "设为只读",
       "setReadOnlyDescription": "阻止 CLI 修改当前项目"
     }
@@ -269,6 +274,61 @@
     "unreadableNote": "有 {{count}} 条来自更新版本应用的任务记录已隐藏。",
     "generationPausedNotice": "配音和音乐生成提交及重试暂时停用。已有任务记录和产物会保留，你仍可查看、导入和插入已生成的素材。",
     "retryPausedNote": "重试暂时停用，待任务改为独立机制后恢复。"
+  },
+  "requirementBoard": {
+    "title": "需求看板",
+    "new": "新建需求",
+    "items": "项目需求",
+    "titlePlaceholder": "一句话说明要完成什么",
+    "descriptionPlaceholder": "补充剪辑要求、目标和限制…",
+    "oneTimeInstruction": "本次执行说明",
+    "instructionPlaceholder": "这段说明只属于当前需求",
+    "instructionLabels": {
+      "planFirst": "先给方案",
+      "execute": "直接执行",
+      "inspectOnly": "只检查"
+    },
+    "instructions": {
+      "planFirst": "请先分析并给出方案，等待确认后再修改。",
+      "execute": "请在获得写入权限后直接完成，并报告结果。",
+      "inspectOnly": "本次只检查并报告问题，不修改项目。"
+    },
+    "references": "关联标记",
+    "unnamedReference": "未命名标记",
+    "publish": "发布到看板",
+    "pullHint": "Agent 可通过 reelctl 按需读取",
+    "empty": "还没有需求。",
+    "remove": "删除需求",
+    "status": {
+      "draft": "草稿",
+      "ready": "待处理",
+      "in_progress": "处理中",
+      "blocked": "受阻",
+      "done": "已完成"
+    }
+  },
+  "audioRequirement": {
+    "title": "AI 配音与音乐",
+    "cardDescription": "创建可供 Agent 处理的配音或音乐需求",
+    "note": "需求会保存到项目看板，Agent 通过 reelctl 读取。",
+    "kind": "任务类型",
+    "voiceover": "配音",
+    "music": "音乐",
+    "script": "朗读文本",
+    "description": "音乐描述",
+    "duration": "目标时长",
+    "additional": "补充要求",
+    "delivery": "生成后将音频导入当前项目素材库。",
+    "voiceoverTitle": "生成项目配音",
+    "musicTitle": "生成项目音乐",
+    "agentInstruction": "读取本需求并生成音频文件；获得项目写权限后导入素材库，并把结果媒体 ID 回填到需求。",
+    "scriptPlaceholder": "输入需要朗读的文本…",
+    "musicPlaceholder": "描述音乐风格、情绪和用途…",
+    "durationPlaceholder": "目标时长（秒，可选）",
+    "additionalPlaceholder": "语言、声音、节奏、循环方式等补充要求…",
+    "create": "创建生成需求",
+    "created": "需求已发布到看板。",
+    "history": "查看旧版任务和已有产物"
   },
   "floatingWindow": {
     "minimize": "最小化",

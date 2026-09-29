@@ -49,6 +49,7 @@ export const CHANNELS = {
   crashReport: "reelterminal:crash:report",
   liveRequest: "reelterminal:live:request",
   liveResponse: "reelterminal:live:response",
+  liveRendererBridgeReady: "reelterminal:live:rendererBridgeReady",
   liveEvent: "reelterminal:live:event",
   collabEnable: "reelterminal:collab:enable",
   collabDisable: "reelterminal:collab:disable",

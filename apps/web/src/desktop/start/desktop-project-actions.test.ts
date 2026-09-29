@@ -1,28 +1,53 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const stubs = vi.hoisted(() => ({
+  createNewProject: vi.fn(),
+  loadProject: vi.fn(),
+  manager: {
+    getRecentProjects: vi.fn(),
+    openProject: vi.fn(),
+    openRecentProject: vi.fn(),
+  },
+  loadProjectMedia: vi.fn(),
+  restoreMediaItem: vi.fn(),
+}));
+
+vi.mock("../../stores/project-store", () => ({
+  useProjectStore: {
+    getState: vi.fn(() => ({
+      createNewProject: stubs.createNewProject,
+      loadProject: stubs.loadProject,
+    })),
+  },
+}));
+
+vi.mock("../../services/project-manager", () => ({
+  projectManager: stubs.manager,
+}));
+
+vi.mock("../../services/media-storage", () => ({
+  loadProjectMedia: stubs.loadProjectMedia,
+}));
+
+vi.mock("../../utils/media-recovery", () => ({
+  restoreMediaItem: stubs.restoreMediaItem,
+}));
+
 import {
   DESKTOP_FORMATS,
   startNewProject,
   startNewMotionProject,
   listRecentProjects,
+  openProject,
   openRecentProject,
 } from "./desktop-project-actions";
-import { useProjectStore } from "../../stores/project-store";
-import { checkForRecovery } from "../../services/auto-save";
-
-vi.mock("../../stores/project-store", () => ({
-  useProjectStore: { getState: vi.fn() },
-}));
-
-vi.mock("../../services/auto-save", () => ({
-  checkForRecovery: vi.fn(),
-}));
-
-const mockedGetState = vi.mocked(useProjectStore.getState);
-const mockedCheckForRecovery = vi.mocked(checkForRecovery);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  stubs.manager.getRecentProjects.mockResolvedValue([]);
+  stubs.manager.openProject.mockResolvedValue(null);
+  stubs.manager.openRecentProject.mockResolvedValue(null);
+  stubs.loadProjectMedia.mockResolvedValue([]);
 });
 
 describe("DESKTOP_FORMATS", () => {
@@ -51,16 +76,9 @@ describe("DESKTOP_FORMATS", () => {
 
 describe("startNewProject", () => {
   it("calls createNewProject with the format label and dimensions", () => {
-    const createNewProject = vi.fn();
-    mockedGetState.mockReturnValue({
-      createNewProject,
-    } as unknown as ReturnType<typeof useProjectStore.getState>);
-
     const format = DESKTOP_FORMATS[1];
     startNewProject(format);
-
-    expect(createNewProject).toHaveBeenCalledTimes(1);
-    expect(createNewProject).toHaveBeenCalledWith("Horizontal", {
+    expect(stubs.createNewProject).toHaveBeenCalledWith("Horizontal", {
       width: 1920,
       height: 1080,
       frameRate: 30,
@@ -70,16 +88,8 @@ describe("startNewProject", () => {
 
 describe("startNewMotionProject", () => {
   it("creates a Motion Creator project with the selected format dimensions", () => {
-    const createNewProject = vi.fn();
-    mockedGetState.mockReturnValue({
-      createNewProject,
-    } as unknown as ReturnType<typeof useProjectStore.getState>);
-
-    const format = DESKTOP_FORMATS[0];
-    startNewMotionProject(format);
-
-    expect(createNewProject).toHaveBeenCalledTimes(1);
-    expect(createNewProject).toHaveBeenCalledWith("Vertical Motion Creator", {
+    startNewMotionProject(DESKTOP_FORMATS[0]);
+    expect(stubs.createNewProject).toHaveBeenCalledWith("Vertical Motion Creator", {
       width: 1080,
       height: 1920,
       frameRate: 30,
@@ -87,60 +97,69 @@ describe("startNewMotionProject", () => {
   });
 });
 
-describe("openRecentProject", () => {
-  it("delegates to recoverFromAutoSave with the save id", async () => {
-    const recoverFromAutoSave = vi.fn().mockResolvedValue(true);
-    mockedGetState.mockReturnValue({
-      recoverFromAutoSave,
-    } as unknown as ReturnType<typeof useProjectStore.getState>);
-
-    const result = await openRecentProject("save-123");
-
-    expect(recoverFromAutoSave).toHaveBeenCalledWith("save-123");
-    expect(result).toBe(true);
-  });
-});
-
-describe("listRecentProjects", () => {
-  it("dedupes by project, sorts by recency, and maps to RecentEntry", async () => {
-    mockedCheckForRecovery.mockResolvedValue([
-      {
-        id: "save-a2",
-        projectId: "proj-a",
-        projectName: "Alpha",
-        timestamp: 2000,
-        slot: 1,
-        isRecovery: true,
-      },
-      {
-        id: "save-a1",
-        projectId: "proj-a",
-        projectName: "Alpha",
-        timestamp: 1000,
-        slot: 0,
-        isRecovery: true,
-      },
-      {
-        id: "save-b1",
-        projectId: "proj-b",
-        projectName: "Beta",
-        timestamp: 3000,
-        slot: 0,
-        isRecovery: true,
-      },
+describe("recent projects", () => {
+  it("maps project-manager recents to the start screen shape", async () => {
+    stubs.manager.getRecentProjects.mockResolvedValue([
+      { id: "project-a", name: "Alpha", lastOpened: 2000, fileHandle: { kind: "native", path: "a" } },
+      { id: "project-b", name: "Beta", lastOpened: 3000 },
     ]);
 
-    const entries = await listRecentProjects();
-
-    expect(entries).toEqual([
-      { id: "save-b1", name: "Beta", savedAt: 3000 },
-      { id: "save-a2", name: "Alpha", savedAt: 2000 },
+    await expect(listRecentProjects()).resolves.toEqual([
+      { id: "project-a", name: "Alpha", lastOpened: 2000 },
+      { id: "project-b", name: "Beta", lastOpened: 3000 },
     ]);
+    expect(stubs.manager.getRecentProjects).toHaveBeenCalledOnce();
   });
 
-  it("returns an empty array when there are no saves", async () => {
-    mockedCheckForRecovery.mockResolvedValue([]);
-    const entries = await listRecentProjects();
-    expect(entries).toEqual([]);
+  it("opens the selected recent project, restores media, and loads it into the store", async () => {
+    const item = { id: "media-1", type: "video" };
+    const restoredItem = { ...item, blob: new Blob(["media"]) };
+    const project = {
+      id: "project-a",
+      name: "Alpha",
+      timeline: { duration: 0, tracks: [] },
+      mediaLibrary: { items: [item] },
+    };
+    const blob = new Blob(["media"]);
+    stubs.manager.getRecentProjects.mockResolvedValue([
+      { id: "project-a", name: "Alpha", lastOpened: 2000 },
+    ]);
+    stubs.manager.openRecentProject.mockResolvedValue(project);
+    stubs.loadProjectMedia.mockResolvedValue([{ id: "media-1", blob }]);
+    stubs.restoreMediaItem.mockResolvedValue(restoredItem);
+
+    await expect(openRecentProject("project-a")).resolves.toBe(true);
+
+    expect(stubs.manager.openRecentProject).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "project-a", name: "Alpha" }),
+    );
+    expect(stubs.restoreMediaItem).toHaveBeenCalledWith(item, blob);
+    expect(stubs.loadProject).toHaveBeenCalledWith({
+      ...project,
+      mediaLibrary: { items: [restoredItem] },
+    });
+  });
+
+  it("returns false when the project-manager cannot open the selected item", async () => {
+    stubs.manager.getRecentProjects.mockResolvedValue([
+      { id: "missing", name: "Missing", lastOpened: 2000 },
+    ]);
+    stubs.manager.openRecentProject.mockResolvedValue(null);
+
+    await expect(openRecentProject("missing")).resolves.toBe(false);
+    expect(stubs.loadProject).not.toHaveBeenCalled();
+  });
+
+  it("opens a project through the file picker and adopts it into the store", async () => {
+    const project = {
+      id: "picked",
+      name: "Picked",
+      timeline: { duration: 0, tracks: [] },
+      mediaLibrary: { items: [] },
+    };
+    stubs.manager.openProject.mockResolvedValue(project);
+
+    await expect(openProject()).resolves.toBe(true);
+    expect(stubs.loadProject).toHaveBeenCalledWith(project);
   });
 });

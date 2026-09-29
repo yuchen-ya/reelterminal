@@ -1,11 +1,11 @@
 import type { JSX } from "react";
 import { useEffect } from "react";
-import { AudioLines } from "@/icons/lucide-compat";
+import { MessageSquare } from "@/icons/lucide-compat";
 import { useTranslation } from "react-i18next";
 import { useCollabStore, installCollabEventListener } from "../../stores/collab-store";
 import { useUIStore } from "../../stores/ui-store";
-import { AGENT_MEDIA_TASK_MODAL_ID } from "../../components/editor/dialogs/AgentMediaTaskDialog";
-import { AnalysisRecordsPanel } from "./AnalysisRecordsPanel";
+import { REQUIREMENT_BOARD_MODAL_ID } from "./RequirementBoardDialog";
+import { useProjectStore } from "../../stores/project-store";
 
 /** Compact status for local CLI access to the open desktop project. */
 export function CollabStatusBar(): JSX.Element {
@@ -13,10 +13,11 @@ export function CollabStatusBar(): JSX.Element {
   const enabled = useCollabStore((state) => state.enabled);
   const access = useCollabStore((state) => state.access);
   const currentAction = useCollabStore((state) => state.currentAction);
-  const enable = useCollabStore((state) => state.enable);
-  const disable = useCollabStore((state) => state.disable);
   const setAccess = useCollabStore((state) => state.setAccess);
   const openModal = useUIStore((state) => state.openModal);
+  const readyRequirements = useProjectStore((state) =>
+    (state.project.requirements?.items ?? []).filter((item) => item.status === "ready").length,
+  );
 
   useEffect(() => {
     void useCollabStore.getState().refresh();
@@ -30,23 +31,15 @@ export function CollabStatusBar(): JSX.Element {
       aria-label={t("desktop.collaboration.accessStatus")}
       data-testid="agent-access-status"
     >
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label={t("desktop.collaboration.agentAccess")}
-        onClick={() => void (enabled ? disable() : enable())}
-        className="flex items-center gap-1.5 text-fg-muted"
-        data-testid="cli-availability"
-      >
+      <span className="flex items-center gap-1.5 text-fg-muted" data-testid="cli-availability">
         <span
           aria-hidden
           className={`h-1.5 w-1.5 rounded-full ${enabled ? "bg-status-success" : "bg-fg-muted"}`}
         />
         {enabled
-          ? t("desktop.collaboration.cliAvailable")
-          : t("desktop.collaboration.cliUnavailable")}
-      </button>
+          ? t("desktop.collaboration.agentReadable")
+          : t("desktop.collaboration.agentStarting")}
+      </span>
 
       <span className="rounded-[5px] bg-bg-2 px-1.5 py-0.5" data-testid="agent-access-mode">
         {access === "read-only"
@@ -55,6 +48,7 @@ export function CollabStatusBar(): JSX.Element {
       </span>
       <button
         type="button"
+        aria-pressed={access === "write"}
         onClick={() => void setAccess(access === "read-only" ? "write" : "read-only")}
         className="rounded-[5px] px-1.5 py-0.5 font-medium text-accent hover:bg-accent-soft"
         title={t(
@@ -65,8 +59,8 @@ export function CollabStatusBar(): JSX.Element {
         data-testid="agent-access-toggle"
       >
         {access === "read-only"
-          ? t("desktop.collaboration.restoreWrite")
-          : t("desktop.collaboration.setReadOnly")}
+          ? t("desktop.collaboration.allowEditing")
+          : t("desktop.collaboration.stopEditing")}
       </button>
 
       {currentAction ? (
@@ -76,16 +70,16 @@ export function CollabStatusBar(): JSX.Element {
       ) : null}
 
       <div className="ml-auto flex items-center">
-        <AnalysisRecordsPanel />
         <button
           type="button"
-          data-testid="collab-agent-media-entry"
-          aria-label={t("agentMediaTasks.entry")}
-          onClick={() => openModal(AGENT_MEDIA_TASK_MODAL_ID)}
+          data-testid="requirement-board-entry"
+          aria-label={t("requirementBoard.title")}
+          onClick={() => openModal(REQUIREMENT_BOARD_MODAL_ID)}
           className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors text-fg-2 hover:bg-hover hover:text-fg"
         >
-          <AudioLines size={13} aria-hidden />
-          {t("agentMediaTasks.entry")}
+          <MessageSquare size={13} aria-hidden />
+          {t("requirementBoard.title")}
+          {readyRequirements > 0 ? <span className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold text-accent-fg">{readyRequirements}</span> : null}
         </button>
       </div>
     </div>

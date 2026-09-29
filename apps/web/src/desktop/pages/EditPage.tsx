@@ -11,6 +11,7 @@ import { AgentMediaTaskDialog } from "../../components/editor/dialogs/AgentMedia
 import { PanelErrorBoundary } from "../../components/ErrorBoundary";
 import { CollabStatusBar } from "../editor/CollabStatusBar";
 import { AgentInspectionPanel } from "../editor/AgentInspectionPanel";
+import { RequirementBoardDialog } from "../editor/RequirementBoardDialog";
 import { DesktopKeyboardShortcuts } from "../editor/DesktopKeyboardShortcuts";
 import { Icon } from "@/icons/Icon";
 import { useResizable } from "../editor/useResizable";
@@ -99,8 +100,6 @@ function RowHandle({
   );
 }
 
-/** Height of the CollabStatusBar row wrapper below (`h-8`, grid row "collab"). */
-
 export function EditPage(): JSX.Element {
   const { t } = useTranslation();
   const mediaW = useResizable({
@@ -128,13 +127,12 @@ export function EditPage(): JSX.Element {
     storageKey: LEGACY_LS_DESKTOP_TIMELINE_HEIGHT,
   });
 
-  // The grid stays a three-column editor layout with a compact local CLI
-  // access status row above the timeline.
+  const lowerPanelHeight = timelineH.value + 32;
   const gridStyle: React.CSSProperties = {
     gridTemplateColumns: `${mediaW.value}px 1fr ${inspectorW.value}px`,
-    gridTemplateRows: `1fr auto ${timelineH.value}px`,
+    gridTemplateRows: `1fr ${lowerPanelHeight}px`,
     gridTemplateAreas:
-      "'media stage inspector' 'collab collab collab' 'timeline timeline timeline'",
+      "'media stage inspector' 'lower lower lower'",
   };
 
   return (
@@ -155,22 +153,26 @@ export function EditPage(): JSX.Element {
         <ColumnHandle edge="left" onPointerDown={inspectorW.onHandlePointerDown} />
       </DockRegion>
 
-      <div className="h-8 min-h-0" style={{ gridArea: "collab" }}>
-        <CollabStatusBar />
-        <AgentInspectionPanel />
-      </div>
-
-      <DockRegion label={t("desktop.editor.timeline")} name={t("desktop.editor.timeline")} area="timeline" icon="rectangle.split.3x1" className="bg-tl-bg">
-        <Suspense fallback={<PanelLoading />}>
-          <Timeline />
-        </Suspense>
+      <div className="relative flex min-h-0 flex-col overflow-hidden bg-bg-1" style={{ gridArea: "lower" }}>
         <RowHandle onPointerDown={timelineH.onHandlePointerDown} />
-      </DockRegion>
+        <div className="h-8 shrink-0">
+          <CollabStatusBar />
+          <AgentInspectionPanel />
+        </div>
+        <div className="min-h-0 flex-1">
+          <DockRegion label={t("desktop.editor.timeline")} name={t("desktop.editor.timeline")} area="auto" icon="rectangle.split.3x1" className="bg-tl-bg">
+            <Suspense fallback={<PanelLoading />}>
+              <Timeline />
+            </Suspense>
+          </DockRegion>
+        </div>
+      </div>
 
       {/* The media-task ledger remains mounted so existing task records and
           artifacts can still be inspected and imported. Generation is paused
           until it has an independent task mechanism. */}
       <AgentMediaTaskDialog />
+      <RequirementBoardDialog />
       {/* Window-level shortcut dispatch for the edit page (the web shell gets
           this from EditorInterface; the desktop tree never mounted it, which
           left every keyboard shortcut dead there). Renders null until the

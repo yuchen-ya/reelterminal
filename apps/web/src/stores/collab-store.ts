@@ -37,7 +37,7 @@ export const useCollabStore = create<CollabState>()((set, get) => ({
   enabled: false,
   externalConnected: false,
   writer: null,
-  access: "write",
+  access: "read-only",
   currentAction: null,
 
   applyStatus: (status) => {

@@ -279,7 +279,7 @@ function defaultCommandStatus(): CommandStatusSnapshot {
     instanceId: `pid-${process.pid}`,
     projectId: null,
     projectEpoch: null,
-    access: "write",
+    access: "read-only",
     currentAction: null,
     enabled: true,
   };

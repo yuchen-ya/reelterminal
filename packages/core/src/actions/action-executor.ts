@@ -14,6 +14,7 @@ import type {
   ProjectAction,
   MarkerAction,
   ProjectMarkerAction,
+  ProjectRequirementAction,
   WorkAssetAction,
   ReferenceComparisonAction,
 } from "../types/actions";
@@ -32,6 +33,8 @@ import type {
   Marker,
   ProjectMarker,
   ProjectMarkersState,
+  ProjectRequirement,
+  ProjectRequirementsState,
   WorkAsset,
 } from "../types";
 import type {
@@ -358,6 +361,8 @@ export class ActionExecutor {
       this.applyProjectAction(action as ProjectAction, project);
     } else if (type.startsWith("projectMarker/")) {
       this.applyProjectMarkerAction(action as ProjectMarkerAction, project);
+    } else if (type.startsWith("requirement/")) {
+      this.applyProjectRequirementAction(action as ProjectRequirementAction, project);
     } else if (type.startsWith("workAsset/")) {
       this.applyWorkAssetAction(action as WorkAssetAction, project);
     } else if (type.startsWith("media/")) {
@@ -836,6 +841,49 @@ export class ActionExecutor {
         };
         break;
       }
+    }
+  }
+
+  private applyProjectRequirementAction(
+    action: ProjectRequirementAction,
+    project: Project,
+  ): void {
+    const mutable = project as { requirements?: ProjectRequirementsState };
+    const current = mutable.requirements ?? { nextNumber: 1, items: [] };
+    switch (action.type) {
+      case "requirement/add":
+      case "requirement/restore": {
+        const requirement = structuredClone(action.params.requirement);
+        mutable.requirements = {
+          nextNumber: Math.max(current.nextNumber, requirement.number + 1),
+          items: [
+            ...current.items.filter((item) => item.id !== requirement.id),
+            requirement,
+          ],
+        };
+        break;
+      }
+      case "requirement/update": {
+        mutable.requirements = {
+          nextNumber: current.nextNumber,
+          items: current.items.map((item) =>
+            item.id === action.params.requirementId
+              ? ({
+                  ...item,
+                  ...structuredClone(action.params.patch),
+                  updatedAt: Date.now(),
+                } satisfies ProjectRequirement)
+              : item,
+          ),
+        };
+        break;
+      }
+      case "requirement/remove":
+        mutable.requirements = {
+          nextNumber: current.nextNumber,
+          items: current.items.filter((item) => item.id !== action.params.requirementId),
+        };
+        break;
     }
   }
 

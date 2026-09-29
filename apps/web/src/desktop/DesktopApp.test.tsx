@@ -91,7 +91,8 @@ describe("DesktopApp", () => {
     expect(getByTestId("desktop-workspace")).toBeTruthy();
     // The desktop chrome itself exposes the rename entry.
     expect(getByTestId("desktop-project-name-control")).toBeTruthy();
-    expect(getByRole("textbox", { name: "Project name" })).toHaveValue("My Project");
+    expect(getByRole("button", { name: "My Project" })).toBeTruthy();
+    expect(getByRole("button", { name: "Rename project" })).toBeTruthy();
   });
 
   it("shows the video export only while the Video Editing workspace is active", () => {

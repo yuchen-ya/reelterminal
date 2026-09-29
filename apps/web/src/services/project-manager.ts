@@ -311,6 +311,11 @@ class ProjectManager {
     return project;
   }
 
+  /** Detach the next project from the file selected for the previous one. */
+  clearCurrentFileHandle(): void {
+    this.currentFileHandle = null;
+  }
+
   async saveProject(project: Project): Promise<boolean> {
     if (this.currentFileHandle) {
       return this.saveToFileHandle(project, this.currentFileHandle);
@@ -495,6 +500,7 @@ class ProjectManager {
         try {
           const content = await file.text();
           const project = this.parseProjectContent(content);
+          this.currentFileHandle = null;
           await this.addToRecent(project);
           this.emit("projectOpened", { project });
           resolve(project);
@@ -555,7 +561,12 @@ class ProjectManager {
       }
     }
 
-    return this.loadProjectFromDb(recentProject.id);
+    const project = await this.loadProjectFromDb(recentProject.id);
+    if (project) {
+      this.currentFileHandle = null;
+      await this.updateRecentTimestamp(recentProject.id);
+    }
+    return project;
   }
 
   private async loadProjectFromDb(id: string): Promise<Project | null> {
@@ -609,13 +620,20 @@ class ProjectManager {
     project: Project,
     fileHandle?: ProjectFileRef,
   ): Promise<void> {
+    if (!this.db) await this.initialize();
     if (!this.db) return;
+
+    const existing = await this.loadRecentRecord(project.id);
+    const resolvedFileHandle = fileHandle ?? existing?.fileHandle;
+    if (!resolvedFileHandle) {
+      await this.saveProjectSnapshot(project);
+    }
 
     const recentProject: RecentProject = {
       id: project.id,
       name: project.name,
       lastOpened: Date.now(),
-      fileHandle,
+      fileHandle: resolvedFileHandle,
       duration: project.timeline.duration,
       trackCount: project.timeline.tracks.length,
     };
@@ -631,6 +649,58 @@ class ProjectManager {
         resolve();
       };
 
+      tx.onerror = () => resolve();
+    });
+  }
+
+  /** Update the recent-list label without dropping its associated file handle. */
+  async updateRecentMetadata(project: Project): Promise<void> {
+    if (!this.db) await this.initialize();
+    if (!this.db) return;
+
+    const recent = await this.loadRecentRecord(project.id);
+    if (!recent) return;
+
+    recent.name = project.name;
+    recent.duration = project.timeline.duration;
+    recent.trackCount = project.timeline.tracks.length;
+    if (!recent.fileHandle) await this.saveProjectSnapshot(project);
+
+    await new Promise<void>((resolve) => {
+      const tx = this.db!.transaction(RECENT_STORE, "readwrite");
+      tx.objectStore(RECENT_STORE).put(recent);
+      tx.oncomplete = () => {
+        this.emit("recentUpdated");
+        resolve();
+      };
+      tx.onerror = () => resolve();
+    });
+  }
+
+  private async loadRecentRecord(id: string): Promise<RecentProject | undefined> {
+    if (!this.db) return undefined;
+    return new Promise((resolve) => {
+      const tx = this.db!.transaction(RECENT_STORE, "readonly");
+      const request = tx.objectStore(RECENT_STORE).get(id);
+      request.onsuccess = () => resolve(request.result as RecentProject | undefined);
+      request.onerror = () => resolve(undefined);
+    });
+  }
+
+  private async saveProjectSnapshot(project: Project): Promise<void> {
+    if (!this.db) return;
+    const snapshot: Project = {
+      ...project,
+      mediaLibrary: {
+        ...project.mediaLibrary,
+        items: project.mediaLibrary.items.map((item) => ({ ...item, blob: null })),
+      },
+    };
+
+    await new Promise<void>((resolve) => {
+      const tx = this.db!.transaction(PROJECTS_STORE, "readwrite");
+      tx.objectStore(PROJECTS_STORE).put(snapshot);
+      tx.oncomplete = () => resolve();
       tx.onerror = () => resolve();
     });
   }

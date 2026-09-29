@@ -72,6 +72,7 @@ import {
   type MediaRemoveOp,
   type MarkerAddOp,
   type MarkerRemoveOp,
+  type RequirementUpdateOp,
   type TransitionAddOp,
   type TransitionRemoveOp,
   type TransitionUpdateOp,
@@ -1101,6 +1102,45 @@ export const MARKER_REMOVE_SCHEMA: ObjectSchema = {
     describe: "a positive integer",
     required: true,
     emits: { kind: "leaf", schema: { type: "integer", minimum: 1 } },
+  },
+};
+
+const isRequirementResultMediaIds = (value: unknown): boolean =>
+  Array.isArray(value) &&
+  value.length <= 100 &&
+  value.every((item) => typeof item === "string" && item.length > 0);
+
+export const REQUIREMENT_UPDATE_SCHEMA: ObjectSchema = {
+  op: {
+    check: (value) => value === "requirement.update",
+    describe: '"requirement.update"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "requirement.update" } },
+  },
+  requirementId: {
+    check: isNonEmptyString,
+    describe: "a requirement ref such as Q3 or an internal requirement id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  status: {
+    check: oneOf(["draft", "ready", "in_progress", "blocked", "done"]),
+    describe: "draft, ready, in_progress, blocked, or done",
+    emits: { kind: "leaf", schema: { enum: ["draft", "ready", "in_progress", "blocked", "done"] } },
+  },
+  agentNote: {
+    check: (value) => typeof value === "string" && value.length <= 10_000,
+    describe: "a string of at most 10000 characters",
+    emits: { kind: "leaf", schema: { type: "string" } },
+  },
+  resultMediaIds: {
+    check: isRequirementResultMediaIds,
+    describe: "an array of at most 100 project media ids",
+    emits: {
+      kind: "array",
+      maxItems: 100,
+      items: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+    },
   },
 };
 
@@ -2497,6 +2537,13 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       return validateObject<MarkerAddOp>(raw, MARKER_ADD_SCHEMA, label);
     case "marker.remove":
       return validateObject<MarkerRemoveOp>(raw, MARKER_REMOVE_SCHEMA, label);
+    case "requirement.update": {
+      const op = validateObject<RequirementUpdateOp>(raw, REQUIREMENT_UPDATE_SCHEMA, label);
+      if (op.status === undefined && op.agentNote === undefined && op.resultMediaIds === undefined) {
+        throw invalidParams(`${label}: at least one of status, agentNote, or resultMediaIds is required`);
+      }
+      return op;
+    }
     case "workAsset.capture": {
       const op = validateObject<WorkAssetCaptureOp>(
         raw,
@@ -3959,6 +4006,41 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
         );
       }
       return [makeAction("reference/clearComparison", {})];
+    }
+
+    case "requirement.update": {
+      const displayMatch = /^Q(\d+)$/i.exec(op.requirementId.trim());
+      const requirement = (draft.requirements?.items ?? []).find((item) =>
+        displayMatch
+          ? item.number === Number(displayMatch[1])
+          : item.id === op.requirementId,
+      );
+      if (!requirement) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `requirement.update: requirement "${op.requirementId}" not found`,
+          { requirementId: op.requirementId },
+        );
+      }
+      if (op.resultMediaIds) {
+        const known = new Set(draft.mediaLibrary.items.map((item) => item.id));
+        const missing = op.resultMediaIds.filter((id) => !known.has(id));
+        if (missing.length > 0) {
+          throw new FacadeError(
+            "NOT_FOUND",
+            `requirement.update: result media not found: ${missing.join(", ")}`,
+            { missingMediaIds: missing },
+          );
+        }
+      }
+      return [makeAction("requirement/update", {
+        requirementId: requirement.id,
+        patch: {
+          ...(op.status === undefined ? {} : { status: op.status }),
+          ...(op.agentNote === undefined ? {} : { agentNote: op.agentNote }),
+          ...(op.resultMediaIds === undefined ? {} : { resultMediaIds: [...op.resultMediaIds] }),
+        },
+      })];
     }
 
     case "media.replace": {

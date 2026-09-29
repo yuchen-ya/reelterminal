@@ -107,6 +107,7 @@ describe("capabilities.get / session.describe", () => {
       "media.remove",
       "marker.add",
       "marker.remove",
+      "requirement.update",
       "track.update",
       "subtitle.importSrt",
       "clip.setColorGrade",

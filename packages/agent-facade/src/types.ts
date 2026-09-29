@@ -927,6 +927,12 @@ export interface EditorGetContextResult {
   readonly canvasPoint: { readonly x: number; readonly y: number } | null;
   /** Ephemeral editor-session references keyed by their stable number. */
   readonly references: LiveEditorReferences;
+  /** Compact project requirement signal; fetch details with reelctl requirements. */
+  readonly requirements: {
+    readonly ready: number;
+    readonly inProgress: number;
+    readonly ids: readonly string[];
+  };
   readonly identity: {
     readonly projectId: string | null;
     readonly projectName: string | null;
@@ -1016,6 +1022,7 @@ export const EDIT_OP_TYPES = [
   "media.remove",
   "marker.add",
   "marker.remove",
+  "requirement.update",
   "track.update",
   "subtitle.importSrt",
   "clip.setColorGrade",
@@ -1378,6 +1385,16 @@ export interface MarkerAddOp {
 export interface MarkerRemoveOp {
   readonly op: "marker.remove";
   readonly number: number;
+}
+
+/** Update Agent-owned progress/result fields on a persisted project requirement. */
+export interface RequirementUpdateOp {
+  readonly op: "requirement.update";
+  /** Stable display ref (Q3) or internal requirement id. */
+  readonly requirementId: string;
+  readonly status?: "draft" | "ready" | "in_progress" | "blocked" | "done";
+  readonly agentNote?: string;
+  readonly resultMediaIds?: readonly string[];
 }
 
 export interface SubtitleImportSrtOp {
@@ -1774,6 +1791,7 @@ export type EditOp =
   | TransitionRemoveOp
   | MarkerAddOp
   | MarkerRemoveOp
+  | RequirementUpdateOp
   | SubtitleImportSrtOp
   | ClipSetColorGradeOp
   | ClipSetKeyframesOp

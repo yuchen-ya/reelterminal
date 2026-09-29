@@ -1,19 +1,8 @@
-/**
- * Reference comparison panel (P1) — the GUI surface of the ONE shared
- * referenceComparison config on the canonical project. The Agent writes the
- * same config through edit.apply; both sides see identical state, and layout/
- * audio-side changes made here go through the same undoable core actions.
- *
- * Sync model (docs: reference comparison): referenceSec(timelineSec) =
- * refStartSec + (timelineSec - timelineStartSec) at rate 1. Transport
- * controls drive the CANONICAL playhead (timeline store), and the reference
- * <video> follows the mapping; beyond the reference range the video clamps
- * to the nearest frame and the readout says so. The reference is drawn with
- * object-contain (aspect preserved, letterboxed — never cropped), and only
- * ONE side's audio ever plays (config.audioSide).
- */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { mapTimelineToReference, type ReferenceComparisonConfig } from "@reelterminal/core/types/reference-comparison";
+import {
+  mapTimelineToReference,
+  type ReferenceComparisonConfig,
+} from "@reelterminal/core/types/reference-comparison";
 import type { Action } from "@reelterminal/core/types/actions";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
@@ -22,8 +11,19 @@ import { useTranslation } from "react-i18next";
 interface MediaItemLike {
   readonly id: string;
   readonly name?: string;
+  readonly type?: string;
   readonly blob?: Blob | null;
   readonly originalUrl?: string;
+  readonly metadata: { readonly duration: number };
+}
+
+export function resolveReferenceMediaUrl(
+  item: Pick<MediaItemLike, "blob" | "originalUrl"> | undefined,
+  createObjectUrl: (blob: Blob) => string = (blob) => URL.createObjectURL(blob),
+): { readonly url: string | null; readonly revoke: boolean } {
+  if (item?.blob) return { url: createObjectUrl(item.blob), revoke: true };
+  if (item?.originalUrl) return { url: item.originalUrl, revoke: false };
+  return { url: null, revoke: false };
 }
 
 function setComparisonAction(config: ReferenceComparisonConfig): Action {
@@ -35,6 +35,26 @@ function setComparisonAction(config: ReferenceComparisonConfig): Action {
   };
 }
 
+function clearComparisonAction(): Action {
+  return {
+    type: "reference/clearComparison",
+    id: `reference-clear-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: Date.now(),
+    params: {},
+  };
+}
+
+function timeLabel(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "00:00.00";
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds - minutes * 60;
+  return `${String(minutes).padStart(2, "0")}:${remaining.toFixed(2).padStart(5, "0")}`;
+}
+
+/**
+ * In-player reference comparison. The timeline frame is mirrored from the
+ * canonical preview renderer; only the main player owns transport controls.
+ */
 export const ReferenceComparisonPanel: React.FC<{
   timelineCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   userMuted?: boolean;
@@ -44,38 +64,43 @@ export const ReferenceComparisonPanel: React.FC<{
   const executeAction = useProjectStore((state) => state.executeAction);
   const playheadPosition = useTimelineStore((state) => state.playheadPosition);
   const playbackState = useTimelineStore((state) => state.playbackState);
-  const togglePlayback = useTimelineStore((state) => state.togglePlayback);
-  const seekRelative = useTimelineStore((state) => state.seekRelative);
-  const seekToStart = useTimelineStore((state) => state.seekToStart);
-
-  const [open, setOpen] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const mirrorRef = useRef<HTMLCanvasElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const frameRate = project?.settings.frameRate ?? 30;
-
   const config = project?.referenceComparison ?? null;
-  const referenceItem: MediaItemLike | undefined = useMemo(
-    () => config ? project?.mediaLibrary?.items?.find((item) => (item as MediaItemLike).id === config.referenceMediaId) : undefined,
-    [config, project],
+  const mediaItems = useMemo(
+    () => (project?.mediaLibrary?.items ?? []) as MediaItemLike[],
+    [project?.mediaLibrary?.items],
+  );
+  const videoItems = useMemo(
+    () => mediaItems.filter((item) => item.type === "video" && item.metadata.duration > 0),
+    [mediaItems],
+  );
+  const referenceItem = useMemo(
+    () => config ? mediaItems.find((item) => item.id === config.referenceMediaId) : undefined,
+    [config, mediaItems],
   );
 
-  const referenceUrl = useMemo(() => {
-    const blob = (referenceItem as { blob?: Blob | null } | undefined)?.blob;
-    if (blob) return URL.createObjectURL(blob);
-    return undefined;
-  }, [referenceItem]);
-  useEffect(() => {
-    return () => {
-      if (referenceUrl) URL.revokeObjectURL(referenceUrl);
-    };
-  }, [referenceUrl]);
-
+  const [referenceUrl, setReferenceUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [referenceTime, setReferenceTime] = useState(0);
+  const mirrorRef = useRef<HTMLCanvasElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const mapping = config ? mapTimelineToReference(config, playheadPosition) : null;
 
-  // Mirror the canonical rendered canvas; do not create another timeline renderer.
   useEffect(() => {
-    if (!config || !open) return;
+    const resolved = resolveReferenceMediaUrl(referenceItem);
+    setReferenceUrl(resolved.url);
+    setReferenceTime(referenceItem ? config?.refStartSec ?? 0 : 0);
+    setError(null);
+    return () => {
+      if (resolved.revoke && resolved.url) URL.revokeObjectURL(resolved.url);
+    };
+  }, [config?.refStartSec, config?.referenceMediaId, referenceItem]);
+
+  // Mirror the canonical renderer so comparison and the ordinary player show
+  // exactly the same timeline frame without creating another timeline render.
+  useEffect(() => {
+    if (!config) return;
     let frame = 0;
     const draw = () => {
       const source = timelineCanvasRef.current;
@@ -91,171 +116,328 @@ export const ReferenceComparisonPanel: React.FC<{
     };
     draw();
     return () => cancelAnimationFrame(frame);
-  }, [config, open, timelineCanvasRef]);
+  }, [config, timelineCanvasRef]);
 
-  // Resync on scrubs, config changes, metadata readiness and playback drift.
-  // Outside the mapped interval HOLD the frame and silence reference audio.
   const syncReference = useCallback(() => {
     const video = videoRef.current;
-    if (!video || !config || !Number.isFinite(video.duration)) return;
+    if (!video || !config || !Number.isFinite(video.duration) || video.duration <= 0) return;
     const state = useTimelineStore.getState();
     const mapped = mapTimelineToReference(config, state.playheadPosition);
     const target = Math.max(0, Math.min(mapped.referenceSec, config.refEndSec - 1e-4, video.duration - 1e-4));
     const playing = state.playbackState === "playing" && mapped.clamped === "none" && mapped.referenceSec < config.refEndSec;
     const tolerance = playing ? 2 / frameRate : 0.001;
     if (Math.abs(video.currentTime - target) > tolerance) video.currentTime = target;
+    setReferenceTime(video.currentTime);
     video.muted = userMuted || config.audioSide !== "reference" || !playing;
     if (playing) {
-      if (video.paused) void video.play().catch(() => setError("Reference playback could not start. Press Play to retry."));
+      if (video.paused) void video.play().catch(() => setError(t("Reference playback could not start.")));
     } else video.pause();
-  }, [config, frameRate, userMuted]);
+  }, [config, frameRate, userMuted, t]);
 
-  useEffect(() => { syncReference(); }, [syncReference, playheadPosition, playbackState, referenceUrl]);
-  useEffect(() => () => { videoRef.current?.pause(); }, []);
+  useEffect(() => {
+    syncReference();
+  }, [syncReference, playheadPosition, playbackState, referenceUrl]);
+
+  useEffect(() => () => videoRef.current?.pause(), []);
 
   const updateConfig = useCallback((patch: Partial<ReferenceComparisonConfig>) => {
     if (!config) return;
     void executeAction(setComparisonAction({ ...config, ...patch })).then((result) => {
-      setError(result.success ? null : result.error?.message ?? "Could not update comparison");
+      setError(result.success ? null : result.error?.message ?? t("Could not update comparison."));
     });
-  }, [config, executeAction]);
+  }, [config, executeAction, t]);
+
+  const selectReference = useCallback((mediaId: string) => {
+    const media = videoItems.find((item) => item.id === mediaId);
+    if (!media) return;
+    const next: ReferenceComparisonConfig = {
+      referenceMediaId: media.id,
+      refStartSec: 0,
+      refEndSec: media.metadata.duration,
+      timelineStartSec: playheadPosition,
+      rate: 1,
+      audioSide: "timeline",
+      layout: config?.layout ?? "side-by-side",
+    };
+    void executeAction(setComparisonAction(next)).then((result) => {
+      setError(result.success ? null : result.error?.message ?? t("Could not configure comparison."));
+    });
+  }, [config?.layout, executeAction, playheadPosition, t, videoItems]);
+
+  const alignCurrentFrame = useCallback(() => {
+    if (!config || !videoRef.current || !Number.isFinite(videoRef.current.currentTime)) return;
+    const duration = Number.isFinite(videoRef.current.duration)
+      ? videoRef.current.duration
+      : referenceItem?.metadata.duration ?? config.refEndSec;
+    const alignedReferenceTime = Math.max(0, Math.min(videoRef.current.currentTime, duration - 1 / frameRate));
+    updateConfig({
+      refStartSec: alignedReferenceTime,
+      refEndSec: Math.max(config.refEndSec, alignedReferenceTime + 1 / frameRate),
+      timelineStartSec: playheadPosition,
+    });
+  }, [config, frameRate, playheadPosition, referenceItem?.metadata.duration, updateConfig]);
+
+  const clearComparison = useCallback(() => {
+    void executeAction(clearComparisonAction()).then((result) => {
+      setError(result.success ? null : result.error?.message ?? t("Could not clear comparison."));
+      setAdvancedOpen(false);
+    });
+  }, [executeAction, t]);
+
+  const handleReferenceError = useCallback(() => {
+    if (referenceItem?.originalUrl && referenceUrl !== referenceItem.originalUrl) {
+      setReferenceUrl(referenceItem.originalUrl);
+      setError(null);
+      return;
+    }
+    setError(t("Reference media could not be loaded."));
+  }, [referenceItem?.originalUrl, referenceUrl, t]);
+
+  const handleReferenceScrub = (value: number) => {
+    const video = videoRef.current;
+    if (!video || playbackState === "playing") return;
+    video.currentTime = value;
+    setReferenceTime(value);
+  };
 
   if (!config) {
     return (
-      <div className="px-3 py-1.5 text-[11px] text-[var(--text-secondary)]">
-        <label>{t("Reference comparison")}
-          <select aria-label="Reference media" defaultValue="" className="ml-2 bg-bg-2" onChange={(event) => {
-            const media = project.mediaLibrary.items.find((item) => item.id === event.target.value);
-            if (!media) return;
-            void executeAction(setComparisonAction({ referenceMediaId: media.id, refStartSec: 0,
-              refEndSec: media.metadata.duration, timelineStartSec: 0, rate: 1,
-              audioSide: "timeline", layout: "side-by-side" })).then((result) => {
-                setError(result.success ? null : result.error?.message ?? "Could not configure comparison");
-              });
-          }}>
-            <option value="" disabled>{t("Choose reference video")}</option>
-            {project.mediaLibrary.items.filter((item) => item.type === "video" && item.metadata.duration > 0)
-              .map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-        </label>
-        {error && <p role="alert">{error}</p>}
+      <div
+        className="absolute inset-0 z-40 pointer-events-none"
+        data-reference-comparison="inactive"
+        onClick={(event) => event.stopPropagation()}
+        onMouseMove={(event) => event.stopPropagation()}
+      >
+        <div className="absolute right-2 top-2 pointer-events-auto">
+          <label className="flex items-center gap-2 rounded-md border border-white/15 bg-black/75 px-2 py-1.5 text-[11px] text-white shadow-lg backdrop-blur-sm">
+            <span>{t("Reference comparison")}</span>
+            <select
+              aria-label={t("Choose reference video")}
+              defaultValue=""
+              className="max-w-44 bg-transparent text-white outline-none"
+              onChange={(event) => selectReference(event.target.value)}
+            >
+              <option value="" disabled className="text-black">{t("Choose reference video")}</option>
+              {videoItems.map((item) => (
+                <option key={item.id} value={item.id} className="text-black">{item.name ?? item.id}</option>
+              ))}
+            </select>
+          </label>
+          {videoItems.length === 0 && (
+            <p className="mt-1 rounded bg-black/75 px-2 py-1 text-[10px] text-white/75">
+              {t("Add a video to the media library to compare it.")}
+            </p>
+          )}
+          {error && <p role="alert" className="mt-1 rounded bg-black/80 px-2 py-1 text-[10px] text-red-300">{error}</p>}
+        </div>
       </div>
     );
   }
 
-  return (
-    <div className="border-t border-[var(--border-color)] bg-[var(--bg-secondary)] select-none">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-      >
-        <span className={`transition-transform ${open ? "rotate-90" : ""}`}>▶</span>
-        {t("Reference comparison")}
-        <span className="ml-auto tabular-nums">
-          TL {playheadPosition.toFixed(2)}s → REF {mapping ? mapping.referenceSec.toFixed(2) : "–"}s
-          {mapping && mapping.clamped !== "none" ? ` (clamped ${mapping.clamped})` : ""}
-        </span>
-      </button>
+  const isOverlay = config.layout === "overlay";
+  const canAlign = Boolean(referenceUrl && videoRef.current && Number.isFinite(videoRef.current.duration));
 
-      {config && (
-        <div className="px-3 pb-3" hidden={!open}>
-          {error && <p role="alert">{error}</p>}
-          {!referenceUrl && <p role="status">Reference media is unavailable. Restore the file or choose another reference.</p>}
-          <div className="flex items-stretch gap-3">
-            <div className="flex-1 min-w-0">
-              <div className="text-[10px] text-[var(--text-secondary)] mb-1">
-                {config.layout === "overlay" ? "Timeline + reference overlay" : "Left: reference · Right: timeline"}
-                {" · "}{referenceItem?.name ?? config.referenceMediaId}
-              </div>
-              <div data-testid="comparison-surfaces" style={{ display: "grid", gridTemplateColumns: config.layout === "overlay" ? "1fr" : "1fr 1fr", background: "black" }}>
-                <canvas ref={mirrorRef} aria-label="Comparison timeline frame" style={{ gridArea: config.layout === "overlay" ? "1 / 1" : "1 / 2", width: "100%", height: "100%", maxHeight: 224, objectFit: "contain" }} />
-              {/* object-contain: aspect preserved, letterboxed, never cropped */}
-              <video
-                ref={videoRef}
-                src={referenceUrl}
-                muted={userMuted || config.audioSide !== "reference"}
-                onLoadedMetadata={syncReference}
-                onError={() => setError("Reference media could not be loaded.")}
-                aria-label="Comparison reference video"
-                style={{ gridArea: "1 / 1", width: "100%", height: "100%", maxHeight: 224, objectFit: "contain", opacity: config.layout === "overlay" ? (config.overlayOpacity ?? 0.5) : 1, zIndex: 1 }}
-                playsInline
-                preload="auto"
-                className="w-full max-h-56 bg-black rounded-md object-contain"
-              />
-              </div>
-              {(["refStartSec", "refEndSec", "timelineStartSec"] as const).map((field) => (
-                <label key={field} className="inline-flex gap-1 mr-2 text-[10px]">
-                  {{ refStartSec: "Reference in", refEndSec: "Reference out", timelineStartSec: "Timeline start" }[field]}
-                  <input key={`${field}-${config[field]}`} aria-label={field} type="number" min={0} step={1 / frameRate}
-                    defaultValue={config[field]} className="w-16 bg-bg-2" onBlur={(event) => {
-                      const value = Number(event.target.value);
-                      if (Number.isFinite(value) && value !== config[field]) updateConfig({ [field]: value });
-                    }} />
-                </label>
-              ))}
-            </div>
-            <div className="w-44 shrink-0 flex flex-col gap-1.5 text-[11px]">
-              <div className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)]">Sync transport</div>
-              <div className="flex gap-1">
-                <button type="button" className="px-2 py-1 rounded bg-[var(--bg-tertiary)] hover:brightness-110" onClick={() => seekToStart()}>⏮</button>
-                <button type="button" className="px-2 py-1 rounded bg-[var(--bg-tertiary)] hover:brightness-110" onClick={() => seekRelative(-1 / frameRate)}>−1f</button>
-                <button type="button" className="px-2 py-1 rounded bg-[var(--bg-tertiary)] hover:brightness-110" onClick={togglePlayback}>
-                  {playbackState === "playing" ? "⏸ Pause" : "▶ Play"}
-                </button>
-                <button type="button" className="px-2 py-1 rounded bg-[var(--bg-tertiary)] hover:brightness-110" onClick={() => seekRelative(1 / frameRate)}>+1f</button>
-              </div>
-              <div className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)] pt-1">Layout</div>
-              <div className="flex gap-1">
-                {(["side-by-side", "overlay"] as const).map((layout) => (
-                  <button
-                    key={layout}
-                    type="button"
-                    disabled={config.layout === layout}
-                    className="flex-1 px-2 py-1 rounded bg-[var(--bg-tertiary)] hover:brightness-110 disabled:opacity-50"
-                    onClick={() => updateConfig({ layout })}
-                  >
-                    {layout === "side-by-side" ? "L | R" : "Overlay"}
-                  </button>
-                ))}
-              </div>
-              {config.layout === "overlay" && (
-                <label className="flex items-center gap-2">
-                  <span className="text-[var(--text-secondary)]">Opacity</span>
-                  <input
-                    type="range"
-                    min={0.05}
-                    max={1}
-                    step={0.05}
-                    value={config.overlayOpacity ?? 0.5}
-                    onChange={(event) => updateConfig({ overlayOpacity: Number(event.target.value) })}
-                    className="flex-1"
-                  />
-                </label>
-              )}
-              <div className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)] pt-1">Audio side</div>
-              <div className="flex gap-1">
-                {(["timeline", "reference", "none"] as const).map((side) => (
-                  <button
-                    key={side}
-                    type="button"
-                    disabled={config.audioSide === side}
-                    className="flex-1 px-1.5 py-1 rounded bg-[var(--bg-tertiary)] hover:brightness-110 disabled:opacity-50"
-                    onClick={() => updateConfig({ audioSide: side })}
-                  >
-                    {side === "timeline" ? "TL" : side === "reference" ? "REF" : "Mute"}
-                  </button>
-                ))}
-              </div>
-              <button type="button" onClick={() => void executeAction({ type: "reference/clearComparison", id: crypto.randomUUID(), timestamp: Date.now(), params: {} })}>Clear comparison</button>
-              <div className="text-[10px] text-[var(--text-secondary)] pt-1 leading-snug">
-                Mapping: rate {config.rate} · ref {config.refStartSec}s–{config.refEndSec}s ↔ timeline from {config.timelineStartSec}s.
-                {mapping?.clamped === "after" ? " Beyond refEnd the reference holds its last frame." : ""}
-              </div>
-            </div>
+  return (
+    <div
+      data-testid="reference-comparison-viewport"
+      data-reference-comparison="active"
+      className="absolute inset-0 z-40 overflow-hidden rounded-[inherit] bg-black"
+      onClick={(event) => event.stopPropagation()}
+      onMouseMove={(event) => event.stopPropagation()}
+    >
+      {!referenceUrl ? (
+        <div role="status" className="absolute inset-0 grid place-content-center gap-2 bg-[#39100d] text-center text-white">
+          <strong>{t("Reference media is unavailable")}</strong>
+          <span className="text-sm">{t("Restore the file or choose another reference video.")}</span>
+        </div>
+      ) : isOverlay ? (
+        <div className="absolute inset-0" data-testid="comparison-surfaces">
+          <canvas
+            ref={mirrorRef}
+            aria-label={t("Timeline video")}
+            className="absolute inset-0 h-full w-full object-contain"
+          />
+          <video
+            ref={videoRef}
+            src={referenceUrl}
+            muted={userMuted || config.audioSide !== "reference"}
+            onLoadedMetadata={syncReference}
+            onTimeUpdate={(event) => setReferenceTime(event.currentTarget.currentTime)}
+            onError={handleReferenceError}
+            aria-label={t("Reference video")}
+            playsInline
+            preload="auto"
+            className="absolute inset-0 h-full w-full object-contain"
+            style={{ opacity: config.overlayOpacity ?? 0.5, pointerEvents: "none" }}
+          />
+          <span className="absolute bottom-2 left-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{t("Timeline")}</span>
+        </div>
+      ) : (
+        <div className="absolute inset-0 flex" data-testid="comparison-surfaces">
+          <div className="relative min-w-0 flex-1 bg-black">
+            <video
+              ref={videoRef}
+              src={referenceUrl}
+              muted={userMuted || config.audioSide !== "reference"}
+              onLoadedMetadata={syncReference}
+              onTimeUpdate={(event) => setReferenceTime(event.currentTarget.currentTime)}
+              onError={handleReferenceError}
+              aria-label={t("Reference video")}
+              playsInline
+              preload="auto"
+              className="h-full w-full object-contain"
+            />
+            <span className="absolute bottom-2 left-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{t("Reference")}</span>
+          </div>
+          <div className="relative min-w-0 flex-1 bg-black">
+            <canvas
+              ref={mirrorRef}
+              aria-label={t("Timeline video")}
+              className="h-full w-full object-contain"
+            />
+            <span className="absolute bottom-2 right-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{t("Timeline")}</span>
           </div>
         </div>
       )}
+
+      <div className="absolute left-2 right-2 top-2 z-10 flex flex-wrap items-center gap-1.5 rounded-md border border-white/15 bg-black/75 p-1.5 text-[11px] text-white shadow-lg backdrop-blur-sm">
+        <label className="sr-only" htmlFor="reference-comparison-media">{t("Choose reference video")}</label>
+        <select
+          id="reference-comparison-media"
+          aria-label={t("Choose reference video")}
+          value={config.referenceMediaId}
+          className="max-w-48 min-w-24 bg-transparent text-white outline-none"
+          onChange={(event) => selectReference(event.target.value)}
+        >
+          {videoItems.map((item) => (
+            <option key={item.id} value={item.id} className="text-black">{item.name ?? item.id}</option>
+          ))}
+        </select>
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            aria-pressed={config.layout === "side-by-side"}
+            onClick={() => updateConfig({ layout: "side-by-side" })}
+            className="rounded px-2 py-1 hover:bg-white/15 aria-pressed:bg-emerald-700"
+          >{t("Side by side")}</button>
+          <button
+            type="button"
+            aria-pressed={config.layout === "overlay"}
+            onClick={() => updateConfig({ layout: "overlay" })}
+            className="rounded px-2 py-1 hover:bg-white/15 aria-pressed:bg-emerald-700"
+          >{t("Overlay comparison")}</button>
+          <button
+            type="button"
+            aria-expanded={advancedOpen}
+            onClick={() => setAdvancedOpen((open) => !open)}
+            className="rounded px-2 py-1 hover:bg-white/15"
+          >{t("Advanced")}</button>
+          <button
+            type="button"
+            aria-label={t("Close reference comparison")}
+            title={t("Close reference comparison")}
+            onClick={clearComparison}
+            className="rounded px-2 py-1 text-white/75 hover:bg-white/15 hover:text-white"
+          >×</button>
+        </div>
+      </div>
+
+      {advancedOpen && (
+        <div className="absolute right-2 top-14 z-20 w-72 max-w-[calc(100%-1rem)] rounded-md border border-white/15 bg-black/90 p-3 text-[11px] text-white shadow-xl backdrop-blur-sm">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <label htmlFor="reference-position">{t("Reference position")}</label>
+            <output>{timeLabel(referenceTime)}</output>
+          </div>
+          <input
+            id="reference-position"
+            aria-label={t("Reference position")}
+            type="range"
+            min={0}
+            max={referenceItem?.metadata.duration ?? config.refEndSec}
+            step={1 / frameRate}
+            value={Math.min(referenceTime, referenceItem?.metadata.duration ?? config.refEndSec)}
+            disabled={playbackState === "playing" || !referenceUrl}
+            onChange={(event) => handleReferenceScrub(Number(event.target.value))}
+            className="mb-2 w-full accent-emerald-500"
+          />
+          <button
+            type="button"
+            disabled={!canAlign || playbackState === "playing"}
+            onClick={alignCurrentFrame}
+            className="mb-2 w-full rounded bg-emerald-700 px-2 py-1.5 font-medium disabled:opacity-50"
+          >{t("Align this reference frame to the timeline playhead")}</button>
+          <label className="mb-2 flex items-center justify-between gap-2">
+            <span>{t("Reference end")}</span>
+            <input
+              aria-label={t("Reference end")}
+              type="number"
+              min={config.refStartSec + 1 / frameRate}
+              max={referenceItem?.metadata.duration}
+              step={1 / frameRate}
+              key={`reference-end-${config.refEndSec}`}
+              defaultValue={config.refEndSec}
+              onBlur={(event) => {
+                const value = Number(event.currentTarget.value);
+                if (Number.isFinite(value) && value !== config.refEndSec) updateConfig({ refEndSec: value });
+              }}
+              className="w-24 rounded bg-white/10 px-1.5 py-1 text-right text-white"
+            />
+          </label>
+          <label className="mb-2 flex items-center justify-between gap-2">
+            <span>{t("Timeline start")}</span>
+            <input
+              aria-label={t("Timeline start")}
+              type="number"
+              min={0}
+              step={1 / frameRate}
+              key={`timeline-start-${config.timelineStartSec}`}
+              defaultValue={config.timelineStartSec}
+              onBlur={(event) => {
+                const value = Number(event.currentTarget.value);
+                if (Number.isFinite(value) && value !== config.timelineStartSec) updateConfig({ timelineStartSec: Math.max(0, value) });
+              }}
+              className="w-24 rounded bg-white/10 px-1.5 py-1 text-right text-white"
+            />
+          </label>
+          {isOverlay && (
+            <label className="mb-2 flex items-center gap-2">
+              <span className="shrink-0">{t("Overlay opacity")}</span>
+              <input
+                aria-label={t("Overlay opacity")}
+                type="range"
+                min={0.05}
+                max={1}
+                step={0.05}
+                value={config.overlayOpacity ?? 0.5}
+                onChange={(event) => updateConfig({ overlayOpacity: Number(event.target.value) })}
+                className="flex-1 accent-emerald-500"
+              />
+            </label>
+          )}
+          <fieldset>
+            <legend className="mb-1">{t("Audio source")}</legend>
+            <div className="flex gap-1">
+              {([
+                ["timeline", t("Timeline audio")],
+                ["reference", t("Reference audio")],
+                ["none", t("Mute all")],
+              ] as const).map(([side, label]) => (
+                <button
+                  key={side}
+                  type="button"
+                  aria-pressed={config.audioSide === side}
+                  onClick={() => updateConfig({ audioSide: side })}
+                  className="flex-1 rounded bg-white/10 px-1.5 py-1 hover:bg-white/20 aria-pressed:bg-emerald-700"
+                >{label}</button>
+              ))}
+            </div>
+          </fieldset>
+          {mapping?.clamped !== "none" && (
+            <p className="mt-2 text-amber-300">{t("Reference playback is outside the mapped range.")}</p>
+          )}
+        </div>
+      )}
+      {error && <p role="alert" className="absolute bottom-2 left-2 z-20 max-w-[80%] rounded bg-black/85 px-2 py-1 text-[11px] text-red-300">{error}</p>}
     </div>
   );
 };

@@ -592,6 +592,7 @@ export type TimelineAction =
   | SubtitleAction
   | MarkerAction
   | ProjectMarkerAction
+  | ProjectRequirementAction
   | WorkAssetAction
   | ReferenceComparisonAction;
 
@@ -603,3 +604,17 @@ export type ReferenceComparisonAction =
       params: { config: import("./reference-comparison").ReferenceComparisonConfig };
     }
   | { type: "reference/clearComparison"; params: Record<string, never> };
+
+export type ProjectRequirementAction =
+  | {
+      type: "requirement/add" | "requirement/restore";
+      params: { requirement: import("./requirement").ProjectRequirement };
+    }
+  | {
+      type: "requirement/update";
+      params: {
+        requirementId: string;
+        patch: import("./requirement").ProjectRequirementPatch;
+      };
+    }
+  | { type: "requirement/remove"; params: { requirementId: string } };

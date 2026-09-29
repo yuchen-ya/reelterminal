@@ -34,6 +34,7 @@ import type {
   ClipColorGrading,
   MotionComposition,
   MotionCompositionInstance,
+  ProjectRequirementPatch,
 } from "@reelterminal/core";
 import {
   ActionExecutor,
@@ -47,6 +48,10 @@ import {
 } from "@reelterminal/core";
 import { createMarkerSlice } from "./project/marker-slice";
 import { createProjectMarkersSlice } from "./project/project-markers-slice";
+import {
+  createProjectRequirementsSlice,
+  type CreateProjectRequirementInput,
+} from "./project/requirements-slice";
 import { createWorkAssetsSlice } from "./project/work-assets-slice";
 import { createSubtitleSlice } from "./project/subtitle-slice";
 import { createTrackSlice } from "./project/track-slice";
@@ -433,6 +438,13 @@ export interface ProjectState {
     label?: string,
   ) => Promise<ActionResult>;
   removeProjectMarker: (number: number) => Promise<ActionResult>;
+
+  addProjectRequirement: (input: CreateProjectRequirementInput) => Promise<ActionResult>;
+  updateProjectRequirement: (
+    requirementId: string,
+    patch: ProjectRequirementPatch,
+  ) => Promise<ActionResult>;
+  removeProjectRequirement: (requirementId: string) => Promise<ActionResult>;
 
   // Graphics actions
   createShapeClip: (
@@ -3331,6 +3343,7 @@ export const useProjectStore = create<ProjectState>()(
 
       // Project review marker actions
       ...createProjectMarkersSlice(set, get),
+      ...createProjectRequirementsSlice(set, get),
 
       // Project work asset actions
       ...createWorkAssetsSlice(set, get),

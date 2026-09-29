@@ -152,6 +152,11 @@ import {
 } from "./preview/frame-compositor";
 import { ASPECT_PRESETS, aspectLabelFor } from "./preview/display-options";
 import { ReferenceComparisonPanel } from "./preview/ReferenceComparisonPanel";
+import {
+  computePreviewFrameSize,
+  previewFrameOverflows,
+  type PreviewZoom,
+} from "./preview/preview-viewport";
 
 // Cache key for the scrub-decode video element cache (videoElementCacheRef).
 // Stabilized clips decode from their own blob, so they cache under a dedicated
@@ -320,13 +325,14 @@ export const Preview: React.FC = () => {
 
   const [userMuted, setIsMuted] = useState(false);
   const comparisonAudioSide = useProjectStore((state) => state.project?.referenceComparison?.audioSide);
+  const referenceComparison = useProjectStore((state) => state.project?.referenceComparison ?? null);
   const isMuted = userMuted || (comparisonAudioSide !== undefined && comparisonAudioSide !== "timeline");
   const [isRenderBridgeReady, setIsRenderBridgeReady] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [videoAreaSize, setVideoAreaSize] = useState({ width: 0, height: 0 });
   const [isMaximized, setIsMaximized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [previewZoom, setPreviewZoom] = useState<PreviewZoom>({ mode: "fit" });
   const [showZoomMenu, setShowZoomMenu] = useState(false);
   const [showQualityMenu, setShowQualityMenu] = useState(false);
   const [showAspectMenu, setShowAspectMenu] = useState(false);
@@ -346,13 +352,12 @@ export const Preview: React.FC = () => {
     (state) => state.clearCanvasPoint,
   );
 
-  const ZOOM_OPTIONS = [
-    { label: "50%", value: 0.5 },
-    { label: "75%", value: 0.75 },
-    { label: "100%", value: 1 },
-    { label: "125%", value: 1.25 },
-    { label: "150%", value: 1.5 },
-    { label: "200%", value: 2 },
+  const ZOOM_OPTIONS: ReadonlyArray<{ label: string; zoom: PreviewZoom }> = [
+    { label: "Fit to window", zoom: { mode: "fit" } },
+    ...[50, 75, 100, 125, 150, 200].map((value) => ({
+      label: `${value}%`,
+      zoom: { mode: "percent" as const, value },
+    })),
   ];
 
   const isDark = useThemeStore((state) => state.isDark);
@@ -655,34 +660,14 @@ export const Preview: React.FC = () => {
   );
 
   const previewFrameSize = useMemo(() => {
-    if (videoAreaSize.width <= 0 || videoAreaSize.height <= 0) {
-      return { width: 0, height: 0 };
-    }
-
-    const aspectRatio = settings.width / settings.height;
-    // Fill the available preview area (minus a small margin) while preserving
-    // the project aspect ratio, instead of capping at a fixed small size which
-    // left the monitor floating in unused space on larger screens.
-    const PREVIEW_PADDING = 24;
-    const availableWidth = Math.max(1, videoAreaSize.width - PREVIEW_PADDING * 2);
-    const availableHeight = Math.max(
-      1,
-      videoAreaSize.height - PREVIEW_PADDING * 2,
-    );
-
-    let width = availableWidth;
-    let height = width / aspectRatio;
-
-    if (height > availableHeight) {
-      height = availableHeight;
-      width = height * aspectRatio;
-    }
-
-    return {
-      width: width * zoomLevel,
-      height: height * zoomLevel,
-    };
-  }, [settings.height, settings.width, videoAreaSize, zoomLevel]);
+    return computePreviewFrameSize({
+      viewport: videoAreaSize,
+      project: { width: settings.width, height: settings.height },
+      zoom: previewZoom,
+      columns: referenceComparison?.layout === "side-by-side" ? 2 : 1,
+    });
+  }, [settings.height, settings.width, videoAreaSize, previewZoom, referenceComparison?.layout]);
+  const previewFrameHasOverflow = previewFrameOverflows(previewFrameSize, videoAreaSize);
 
   // Keep a ref to timelineTracks for use in playback effect without causing re-runs
   const timelineTracksRef = useRef(timelineTracks);
@@ -6022,6 +6007,7 @@ export const Preview: React.FC = () => {
   // graphics-selection handler underneath.
   const handleTargetPointClickCapture = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      if ((event.target as HTMLElement).closest("[data-reference-comparison]")) return;
       if (!targetPointArmed) return;
       event.preventDefault();
       event.stopPropagation();
@@ -7012,7 +6998,7 @@ export const Preview: React.FC = () => {
     if (!container) return;
 
     if (!document.fullscreenElement) {
-      setZoomLevel(1);
+      setPreviewZoom({ mode: "fit" });
       container
         .requestFullscreen()
         .then(() => {
@@ -7034,7 +7020,7 @@ export const Preview: React.FC = () => {
   }, []);
 
   const handleMaximize = useCallback(() => {
-    setZoomLevel(1);
+    setPreviewZoom({ mode: "fit" });
     setIsMaximized((prev) => !prev);
   }, []);
 
@@ -7163,9 +7149,9 @@ export const Preview: React.FC = () => {
       {/* Video Area */}
       <div
         ref={videoAreaRef}
-        className={`flex-1 min-h-0 min-w-0 relative flex items-center justify-center bg-bg-1 transition-all duration-300 ${
+        className={`flex-1 min-h-0 min-w-0 relative flex bg-bg-1 transition-all duration-300 ${
           isMaximized || isFullscreen ? "p-0" : "p-[18px]"
-        } ${zoomLevel > 1 ? "overflow-auto" : ""}`}
+        } ${previewFrameHasOverflow ? "items-start justify-start overflow-auto" : "items-center justify-center overflow-hidden"}`}
         onMouseMove={interactionMode !== "none" ? handleMouseMove : undefined}
         onMouseUp={handleMouseUp}
       >
@@ -7179,20 +7165,13 @@ export const Preview: React.FC = () => {
                 ? "shadow-2xl rounded-[10px] ring-1 ring-border shadow-[0_0_50px_rgba(0,0,0,0.5)]"
                 : "rounded-[10px] ring-1 ring-border shadow-sm"
           }`}
-          style={
-            isMaximized || isFullscreen
-              ? {
-                  width: "100%",
-                  height: "100%",
-                  maxWidth: "none",
-                }
-              : {
-                  width: `${previewFrameSize.width}px`,
-                  height: `${previewFrameSize.height}px`,
-                  maxWidth: "100%",
-                  maxHeight: "100%",
-                }
-          }
+          style={{
+            width: `${previewFrameSize.width}px`,
+            height: `${previewFrameSize.height}px`,
+            maxWidth: "none",
+            maxHeight: "none",
+            flex: "none",
+          }}
           onMouseMove={!isPlaying ? handleGraphicsMouseMove : undefined}
           onClick={!isPlaying ? handleGraphicsClick : undefined}
           onClickCapture={handleTargetPointClickCapture}
@@ -7659,6 +7638,7 @@ export const Preview: React.FC = () => {
                 </div>
               );
             })}
+          <ReferenceComparisonPanel timelineCanvasRef={canvasRef} userMuted={userMuted} />
         </div>
         </ContextMenu>
       </div>
@@ -7889,7 +7869,7 @@ export const Preview: React.FC = () => {
             >
               <div className="flex items-center gap-1">
                 <ZoomIn size={12} />
-                <span>{Math.round(zoomLevel * 100)}%</span>
+                <span>{previewZoom.mode === "fit" ? tr("Fit") : `${Math.round(previewZoom.value)}%`}</span>
               </div>
             </Button>
             {showZoomMenu && (
@@ -7901,15 +7881,16 @@ export const Preview: React.FC = () => {
                 <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-bg-elev border border-border rounded-md shadow-md py-1 z-50 min-w-[80px]">
                   {ZOOM_OPTIONS.map((opt) => (
                     <Button
-                      key={opt.value}
+                      key={opt.label}
                       label={tr(opt.label)}
                       variant="ghost"
                       onClick={() => {
-                        setZoomLevel(opt.value);
+                        setPreviewZoom(opt.zoom);
                         setShowZoomMenu(false);
                       }}
                       className={`w-full px-3 py-1.5 text-[11px] font-mono text-left hover:bg-hover transition-colors ${
-                        zoomLevel === opt.value
+                        previewZoom.mode === opt.zoom.mode &&
+                        (opt.zoom.mode === "fit" || (previewZoom.mode === "percent" && previewZoom.value === opt.zoom.value))
                           ? "text-accent"
                           : "text-fg-2"
                       }`}
@@ -7993,7 +7974,6 @@ export const Preview: React.FC = () => {
         </div>
       </div>
       {/* Reference comparison (P1) — the GUI surface of the shared config */}
-      <ReferenceComparisonPanel timelineCanvasRef={canvasRef} userMuted={userMuted} />
     </div>
   );
 };

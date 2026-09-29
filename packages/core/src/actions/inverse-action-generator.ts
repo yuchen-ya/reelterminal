@@ -13,6 +13,7 @@ import type {
   ProjectAction,
   MarkerAction,
   ProjectMarkerAction,
+  ProjectRequirementAction,
   WorkAssetAction,
 } from "../types/actions";
 import type { Project, MediaItem } from "../types/project";
@@ -89,6 +90,11 @@ export class InverseActionGenerator {
         action as ProjectMarkerAction & Action,
         projectBefore,
       );
+    } else if (type.startsWith("requirement/")) {
+      return this.generateProjectRequirementInverse(
+        action as ProjectRequirementAction & Action,
+        projectBefore,
+      );
     } else if (type.startsWith("workAsset/")) {
       return this.generateWorkAssetInverse(
         action as WorkAssetAction & Action,
@@ -134,6 +140,31 @@ export class InverseActionGenerator {
           name: asset.name,
         });
       }
+    }
+  }
+
+  private generateProjectRequirementInverse(
+    action: ProjectRequirementAction & Action,
+    projectBefore: Project,
+  ): Action | null {
+    const requirementId =
+      action.type === "requirement/add" || action.type === "requirement/restore"
+        ? action.params.requirement.id
+        : action.params.requirementId;
+    const existing = (projectBefore.requirements?.items ?? []).find(
+      (item) => item.id === requirementId,
+    );
+    switch (action.type) {
+      case "requirement/add":
+      case "requirement/restore":
+        return this.createInverseAction(action, "requirement/remove", { requirementId });
+      case "requirement/remove":
+      case "requirement/update":
+        return existing
+          ? this.createInverseAction(action, "requirement/restore", {
+              requirement: structuredClone(existing),
+            })
+          : null;
     }
   }
 

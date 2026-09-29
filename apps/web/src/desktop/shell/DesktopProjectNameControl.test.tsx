@@ -8,9 +8,14 @@ vi.mock("../../stores/project-store", () => ({
   useProjectStore: () => ({
     project: { id: "project-1", name: "My Project" },
     createNewProject: vi.fn(),
-    recoverFromAutoSave: vi.fn(),
     renameProject,
   }),
+}));
+
+vi.mock("../../desktop/start/desktop-project-actions", () => ({
+  listRecentProjects: vi.fn().mockResolvedValue([]),
+  openProject: vi.fn(),
+  openRecentProject: vi.fn(),
 }));
 
 vi.mock("../../stores/notification-store", () => ({
@@ -29,65 +34,57 @@ describe("DesktopProjectNameControl", () => {
     cleanup();
   });
 
-  it("renders the project name input and the pencil rename entry", () => {
+  it("shows the project name once and one rename entry", () => {
     render(<DesktopProjectNameControl />);
 
-    const input = screen.getByRole("textbox", { name: "Project name" });
-    expect(input).toHaveValue("My Project");
-    // Mouse-discoverable rename affordance: explicit pencil button.
-    expect(screen.getByRole("button", { name: "Rename project" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "My Project" })).toBeTruthy();
+    expect(screen.getAllByText("My Project")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Rename project" })).toHaveLength(1);
   });
 
-  it("focuses and selects the name from the pencil button", () => {
+  it("opens the inline editor from the pencil button", () => {
     render(<DesktopProjectNameControl />);
 
-    const input = screen.getByRole("textbox", { name: "Project name" }) as HTMLInputElement;
-    expect(document.activeElement).not.toBe(input);
-
     fireEvent.click(screen.getByRole("button", { name: "Rename project" }));
+    const input = screen.getByRole("textbox", { name: "Project name" }) as HTMLInputElement;
 
+    expect(input).toHaveValue("My Project");
     expect(document.activeElement).toBe(input);
-    expect(input.selectionStart).toBe(0);
-    expect(input.selectionEnd).toBe("My Project".length);
+    expect(screen.queryByRole("button", { name: "My Project" })).toBeNull();
   });
 
   it("commits a typed name on Enter through renameProject", async () => {
     render(<DesktopProjectNameControl />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename project" }));
 
     const input = screen.getByRole("textbox", { name: "Project name" });
     fireEvent.change(input, { target: { value: "  Renamed Project " } });
-    input.focus(); // Enter blurs the focused input; jsdom needs real focus
+    input.focus();
     fireEvent.keyDown(input, { key: "Enter" });
 
-    await waitFor(() => {
-      expect(renameProject).toHaveBeenCalledWith("Renamed Project");
-    });
+    await waitFor(() => expect(renameProject).toHaveBeenCalledWith("Renamed Project"));
   });
 
-  it("commits on blur with the same semantics", async () => {
+  it("commits on blur", async () => {
     render(<DesktopProjectNameControl />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename project" }));
 
     const input = screen.getByRole("textbox", { name: "Project name" });
     fireEvent.change(input, { target: { value: "Blurred Name" } });
     fireEvent.blur(input);
 
-    await waitFor(() => {
-      expect(renameProject).toHaveBeenCalledWith("Blurred Name");
-    });
+    await waitFor(() => expect(renameProject).toHaveBeenCalledWith("Blurred Name"));
   });
 
   it("Escape cancels the draft without renaming", () => {
     render(<DesktopProjectNameControl />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename project" }));
 
     const input = screen.getByRole("textbox", { name: "Project name" });
     fireEvent.change(input, { target: { value: "Discarded" } });
-    // Real sequence: the input is focused while typing, and the Escape
-    // keydown handler itself blurs it — the blur must not commit the
-    // discarded draft through the stale onBlur closure.
-    input.focus();
     fireEvent.keyDown(input, { key: "Escape" });
 
-    expect(input).toHaveValue("My Project");
+    expect(screen.getByRole("button", { name: "My Project" })).toBeTruthy();
     expect(renameProject).not.toHaveBeenCalled();
   });
 
@@ -97,16 +94,13 @@ describe("DesktopProjectNameControl", () => {
       error: { message: "name rejected" },
     });
     render(<DesktopProjectNameControl />);
+    fireEvent.click(screen.getByRole("button", { name: "Rename project" }));
 
     const input = screen.getByRole("textbox", { name: "Project name" });
     fireEvent.change(input, { target: { value: "Bad Name" } });
     fireEvent.blur(input);
 
-    await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith("Rename project", "name rejected");
-    });
-    await waitFor(() => {
-      expect(input).toHaveValue("My Project");
-    });
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Rename project", "name rejected"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "My Project" })).toBeTruthy());
   });
 });

@@ -92,7 +92,7 @@ export interface LiveSessionHostDeps {
   readonly port?: number;
   /** Endpoint file override; defaults to ~/.reelterminal/live-endpoint.json. */
   readonly endpointFilePath?: string;
-  /** Persisted main-process source of truth for access authorization. */
+  /** In-memory main-process source of truth for this launch's access grant. */
   readonly accessPreferenceStore?: AgentAccessPreferenceStore;
   /** Activity lease duration override for deterministic tests. */
   readonly activityTimeoutMs?: number;

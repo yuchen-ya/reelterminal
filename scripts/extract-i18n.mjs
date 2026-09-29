@@ -38,7 +38,6 @@ const I18N_DIR = path.join(ROOT, "i18n");
 // `.name` reads would incorrectly translate user content that happens to
 // match an English catalog key.
 const MANUAL_I18N_FILES = new Set([
-  "components/editor/agent/ExternalAgentPanel.tsx",
   "stores/agent-reference-targets.ts",
   "stores/agent-references-store.ts",
 ]);

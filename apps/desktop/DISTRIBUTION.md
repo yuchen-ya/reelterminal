@@ -168,7 +168,7 @@ copy in `resources/bin`. Invoke the launcher by absolute path when the install
 folder is not on PATH. It runs the packaged CLI through Electron's bundled Node
 runtime (`ELECTRON_RUN_AS_NODE`), so users do not need a separate Node install.
 The `reelterminal-live-mcp.cmd` and `openreel-live-mcp.cmd` root launchers retain
-old MCP entry names and forward to `reelctl mcp serve --compat`.
+old MCP entry names and forward to `reelctl mcp serve`.
 
 A source build exposes `dist/reelctl/index.js` (Node executable) and retains the
 old executable `dist/live-mcp/index.js` path for existing MCP configurations.

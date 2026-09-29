@@ -95,6 +95,76 @@ function entryCanBeIdempotent(entry: CommandCatalogEntry): boolean {
   return entry.retry === "idempotent" && hasSchemaProperty(entry, "idempotencyKey");
 }
 
+function requirementItems(result: FacadeResult<unknown>): readonly Record<string, unknown>[] {
+  if (!result.ok || !isRecord(result.value)) return [];
+  const project = result.value.project;
+  if (!isRecord(project) || !isRecord(project.requirements) || !Array.isArray(project.requirements.items)) return [];
+  return project.requirements.items.filter(isRecord);
+}
+
+function requirementRef(item: Record<string, unknown>): string {
+  return typeof item.number === "number" ? `Q${item.number}` : String(item.id ?? "Q?");
+}
+
+async function runRequirements(
+  client: LiveCommandClient,
+  argv: readonly string[],
+): Promise<{ readonly result: FacadeResult<unknown>; readonly human: boolean; readonly compact: boolean }> {
+  const action = argv[1];
+  if (action !== "list" && action !== "get" && action !== "update") {
+    throw new LiveCliError("Usage: reelctl requirements list|get|update [Q1]", "args", 2);
+  }
+  const parsed = parseFlags(argv.slice(2));
+  const state = await client.command("project.get_state", {}, { retry: "safe", addIdempotencyKey: false });
+  if (!state.ok) return { result: state, human: parsed.human, compact: parsed.compact };
+  const items = requirementItems(state);
+  const revision = isRecord(state.value) && typeof state.value.revision === "number" ? state.value.revision : 0;
+  if (action === "list") {
+    const requestedStatus = typeof parsed.flags.status === "string" ? parsed.flags.status : undefined;
+    const filtered = items.filter((item) => requestedStatus === undefined || item.status === requestedStatus);
+    const summaries = filtered.map((item) => ({
+      ref: requirementRef(item),
+      title: item.title,
+      status: item.status,
+      priority: item.priority,
+      markerIds: item.markerIds,
+      updatedAt: item.updatedAt,
+    }));
+    return { result: successResult({ revision, requirements: summaries }), human: parsed.human, compact: parsed.compact };
+  }
+  const ref = parsed.positional[0];
+  if (!ref) throw new LiveCliError(`requirements ${action} requires a requirement ref such as Q1`, "args", 2);
+  const item = items.find((candidate) => requirementRef(candidate).toLowerCase() === ref.toLowerCase() || candidate.id === ref);
+  if (!item) return { result: { ok: false, error: { code: "NOT_FOUND", message: `Requirement ${ref} was not found` } }, human: parsed.human, compact: parsed.compact };
+  if (action === "get") return { result: successResult({ revision, requirement: { ...item, ref: requirementRef(item) } }), human: parsed.human, compact: parsed.compact };
+
+  const status = parsed.flags.status;
+  const agentNote = parsed.flags.agentNote ?? parsed.flags.note;
+  const rawMedia = parsed.flags.resultMediaId;
+  const resultMediaIds = rawMedia === undefined ? undefined : (Array.isArray(rawMedia) ? rawMedia : [rawMedia]);
+  if (status === undefined && agentNote === undefined && resultMediaIds === undefined) {
+    throw new LiveCliError("requirements update needs --status, --agent-note, or --result-media-id", "args", 2);
+  }
+  const endpointStatus = await client.status();
+  const entry = await client.catalogEntry("edit.apply");
+  const result = await client.command("edit.apply", {
+    ops: [{
+      op: "requirement.update",
+      requirementId: requirementRef(item),
+      ...(status === undefined ? {} : { status }),
+      ...(agentNote === undefined ? {} : { agentNote }),
+      ...(resultMediaIds === undefined ? {} : { resultMediaIds }),
+    }],
+    expectedRevision: revision,
+  }, {
+    retry: entry.retry ?? "never",
+    addIdempotencyKey: entryCanBeIdempotent(entry),
+    ...(typeof endpointStatus.projectId === "string" ? { expectedProjectId: endpointStatus.projectId } : {}),
+    ...(typeof endpointStatus.projectEpoch === "string" ? { expectedProjectEpoch: endpointStatus.projectEpoch } : {}),
+  });
+  return { result, human: parsed.human, compact: parsed.compact };
+}
+
 async function waitForJob(
   client: LiveCommandClient,
   invocation: ParsedInvocation,
@@ -239,6 +309,12 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
   if (argv[0] === "call") {
     const call = await runGenericCall(client, argv);
     output(formatResult(call.result, call.format));
+    return resultExitCode(call.result);
+  }
+
+  if (argv[0] === "requirements") {
+    const call = await runRequirements(client, argv);
+    output(formatResult(call.result, { human: call.human, compact: call.compact }));
     return resultExitCode(call.result);
   }
 

@@ -440,6 +440,14 @@ const editorContext = (): OutputSchemaNode =>
       timeRange: nullable(openObject()),
       canvasPoint: nullable(objectSchema({ x: numberSchema(0, 1), y: numberSchema(0, 1) }, ["x", "y"])),
       references: editorReferences(),
+      requirements: objectSchema(
+        {
+          ready: integerSchema(0),
+          inProgress: integerSchema(0),
+          ids: arraySchema(stringSchema()),
+        },
+        ["ready", "inProgress", "ids"],
+      ),
       identity: objectSchema(
         { projectId: nullable(stringSchema()), projectName: nullable(stringSchema()), projectEpoch: stringSchema(), windowId: nullable(stringSchema()) },
         ["projectId", "projectName", "windowId"],
@@ -457,6 +465,7 @@ const editorContext = (): OutputSchemaNode =>
       "timeRange",
       "canvasPoint",
       "references",
+      "requirements",
       "identity",
     ],
   );

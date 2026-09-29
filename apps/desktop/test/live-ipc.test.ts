@@ -46,6 +46,8 @@ describe("collabOpenWorkspace IPC", () => {
     videosDir = mkdtempSync(path.join(tmpdir(), "orel-videos-"));
     handlers.clear();
     openPath.mockClear();
+    vi.mocked(stubHost.enable).mockClear();
+    vi.mocked(stubHost.disable).mockClear();
     vi.mocked(stubHost.setAccess).mockClear();
     registerLiveIpc(stubHost);
   });
@@ -84,6 +86,13 @@ describe("collabOpenWorkspace IPC", () => {
     const handler = handlers.get(CHANNELS.collabSetAccess)!;
     await handler({ sender: fakeSender }, { access: "write" });
     expect(stubHost.setAccess).toHaveBeenCalledWith("write");
+  });
+
+  it("keeps the endpoint online when the legacy renderer toggle is disabled", async () => {
+    const handler = handlers.get(CHANNELS.collabDisable)!;
+    await handler({ sender: fakeSender });
+    expect(stubHost.setAccess).toHaveBeenCalledWith("read-only");
+    expect(stubHost.disable).not.toHaveBeenCalled();
   });
 
   it("rejects an unknown access value at the IPC boundary", async () => {
