@@ -53,4 +53,12 @@ describe("project requirement actions", () => {
     expect((await executor.undo(value)).success).toBe(true);
     expect(value.requirements?.items[0]).toEqual(requirement);
   });
+  it("rejects malformed object references at the action boundary", async () => {
+    const value = project();
+    const executor = new ActionExecutor();
+    const result = await executor.execute(action("requirement/add", { requirement: { ...requirement, references: [{ ref: "A1", kind: "media", entityId: "", label: "Bad", timing: { startSeconds: null, endSeconds: null } }] } }), value);
+    expect(result.success).toBe(false);
+    expect(value.requirements?.items ?? []).toHaveLength(0);
+  });
+
 });

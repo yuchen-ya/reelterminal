@@ -1,8 +1,16 @@
 import type { JSX } from "react";
-import { useEffect } from "react";
-import { MessageSquare } from "@/icons/lucide-compat";
+import { useEffect, useState } from "react";
+import {
+  LayoutTemplate,
+  LockKeyhole,
+  Pencil,
+  ChevronDown,
+} from "@/icons/lucide-compat";
 import { useTranslation } from "react-i18next";
-import { useCollabStore, installCollabEventListener } from "../../stores/collab-store";
+import {
+  useCollabStore,
+  installCollabEventListener,
+} from "../../stores/collab-store";
 import { useUIStore } from "../../stores/ui-store";
 import { REQUIREMENT_BOARD_MODAL_ID } from "./RequirementBoardDialog";
 import { useProjectStore } from "../../stores/project-store";
@@ -10,13 +18,17 @@ import { useProjectStore } from "../../stores/project-store";
 /** Compact status for local CLI access to the open desktop project. */
 export function CollabStatusBar(): JSX.Element {
   const { t } = useTranslation();
+  const [menuOpen, setMenuOpen] = useState(false);
   const enabled = useCollabStore((state) => state.enabled);
   const access = useCollabStore((state) => state.access);
   const currentAction = useCollabStore((state) => state.currentAction);
   const setAccess = useCollabStore((state) => state.setAccess);
   const openModal = useUIStore((state) => state.openModal);
-  const readyRequirements = useProjectStore((state) =>
-    (state.project.requirements?.items ?? []).filter((item) => item.status === "ready").length,
+  const readyRequirements = useProjectStore(
+    (state) =>
+      (state.project.requirements?.items ?? []).filter(
+        (item) => item.status === "ready",
+      ).length,
   );
 
   useEffect(() => {
@@ -31,40 +43,80 @@ export function CollabStatusBar(): JSX.Element {
       aria-label={t("desktop.collaboration.accessStatus")}
       data-testid="agent-access-status"
     >
-      <span className="flex items-center gap-1.5 text-fg-muted" data-testid="cli-availability">
-        <span
-          aria-hidden
-          className={`h-1.5 w-1.5 rounded-full ${enabled ? "bg-status-success" : "bg-fg-muted"}`}
-        />
-        {enabled
-          ? t("desktop.collaboration.agentReadable")
-          : t("desktop.collaboration.agentStarting")}
-      </span>
-
-      <span className="rounded-[5px] bg-bg-2 px-1.5 py-0.5" data-testid="agent-access-mode">
-        {access === "read-only"
-          ? t("desktop.collaboration.readOnly")
-          : t("desktop.collaboration.writable")}
-      </span>
-      <button
-        type="button"
-        aria-pressed={access === "write"}
-        onClick={() => void setAccess(access === "read-only" ? "write" : "read-only")}
-        className="rounded-[5px] px-1.5 py-0.5 font-medium text-accent hover:bg-accent-soft"
-        title={t(
-          access === "read-only"
-            ? "desktop.collaboration.restoreWriteDescription"
-            : "desktop.collaboration.setReadOnlyDescription",
+      <div className="relative">
+        <button
+          type="button"
+          disabled={!enabled}
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          data-testid="agent-access-toggle"
+          onClick={() => setMenuOpen(!menuOpen)}
+          className={`flex h-7 items-center gap-1.5 rounded-md border border-border px-2 text-[11px] hover:bg-hover disabled:opacity-40 ${access === "write" ? "bg-accent-soft text-accent" : "bg-bg-2 text-fg-2"}`}
+        >
+          {access === "write" ? (
+            <Pencil size={12} />
+          ) : (
+            <LockKeyhole size={12} />
+          )}
+          <span>
+            {t(
+              enabled
+                ? "desktop.collaboration.agentReadable"
+                : "desktop.collaboration.agentStarting",
+            )}
+          </span>
+          <span aria-hidden>·</span>
+          <span data-testid="agent-access-mode">
+            {t(
+              access === "write"
+                ? "desktop.collaboration.writable"
+                : "desktop.collaboration.readOnly",
+            )}
+          </span>
+          <ChevronDown size={12} />
+        </button>
+        {menuOpen && (
+          <>
+            <button
+              className="fixed inset-0 z-40 cursor-default"
+              aria-label={t("common.close")}
+              onClick={() => setMenuOpen(false)}
+            />
+            <div
+              role="menu"
+              className="absolute bottom-full left-0 z-50 mb-1 w-44 rounded-md border border-border bg-bg-1 p-1 shadow-lg"
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setMenuOpen(false);
+              }}
+            >
+              {(["read-only", "write"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  role="menuitemradio"
+                  aria-checked={access === mode}
+                  className={`block w-full rounded px-3 py-2 text-left text-xs hover:bg-hover ${access === mode ? "bg-accent-soft text-accent" : "text-fg"}`}
+                  onClick={async () => {
+                    await setAccess(mode);
+                    setMenuOpen(false);
+                  }}
+                >
+                  {t(
+                    mode === "write"
+                      ? "desktop.collaboration.allowEditing"
+                      : "desktop.collaboration.readOnly",
+                  )}
+                </button>
+              ))}
+            </div>
+          </>
         )}
-        data-testid="agent-access-toggle"
-      >
-        {access === "read-only"
-          ? t("desktop.collaboration.allowEditing")
-          : t("desktop.collaboration.stopEditing")}
-      </button>
+      </div>
 
       {currentAction ? (
-        <span className="min-w-0 truncate text-accent" data-testid="agent-current-action">
+        <span
+          className="min-w-0 truncate text-accent"
+          data-testid="agent-current-action"
+        >
           {t("desktop.collaboration.agentAction", { action: currentAction })}
         </span>
       ) : null}
@@ -77,9 +129,13 @@ export function CollabStatusBar(): JSX.Element {
           onClick={() => openModal(REQUIREMENT_BOARD_MODAL_ID)}
           className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors text-fg-2 hover:bg-hover hover:text-fg"
         >
-          <MessageSquare size={13} aria-hidden />
+          <LayoutTemplate size={13} aria-hidden />
           {t("requirementBoard.title")}
-          {readyRequirements > 0 ? <span className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold text-accent-fg">{readyRequirements}</span> : null}
+          {readyRequirements > 0 ? (
+            <span className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold text-accent-fg">
+              {readyRequirements}
+            </span>
+          ) : null}
         </button>
       </div>
     </div>

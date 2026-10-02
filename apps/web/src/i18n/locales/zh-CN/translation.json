@@ -1,4 +1,16 @@
 {
+  "projectAssets": {
+    "previewSource": "预览源媒体",
+    "title": "项目素材",
+    "all": "全部",
+    "media": "原始媒体",
+    "single": "剪辑片段",
+    "multi": "组合",
+    "capture": "保存时间线所选",
+    "name": "为剪辑或组合命名",
+    "save": "保存",
+    "search": "搜索项目素材"
+  },
   "common": {
     "apply": "应用",
     "cancel": "取消",
@@ -96,7 +108,7 @@
     "editor": {
       "loading": "正在加载编辑器…",
       "failed": "编辑器启动失败：{{message}}",
-      "media": "素材",
+      "media": "项目素材",
       "viewer": "预览",
       "inspector": "检查器",
       "agent": "智能体",
@@ -125,9 +137,9 @@
       "agentAccess": "Agent Access",
       "cliAvailable": "CLI 可用",
       "cliUnavailable": "CLI 不可用",
-      "agentReadable": "Agent 可读取项目",
-      "agentStarting": "Agent 正在连接",
-      "writable": "可写",
+      "agentReadable": "Agent",
+      "agentStarting": "Agent 连接中",
+      "writable": "可编辑",
       "allowEditing": "允许 Agent 剪辑",
       "stopEditing": "停止 Agent 剪辑",
       "setReadOnly": "设为只读",
@@ -276,12 +288,13 @@
     "retryPausedNote": "重试暂时停用，待任务改为独立机制后恢复。"
   },
   "requirementBoard": {
-    "title": "需求看板",
+    "editTitle": "任务标题",
+    "title": "看板",
     "new": "新建需求",
     "items": "项目需求",
     "titlePlaceholder": "一句话说明要完成什么",
     "descriptionPlaceholder": "补充剪辑要求、目标和限制…",
-    "oneTimeInstruction": "本次执行说明",
+    "oneTimeInstruction": "执行方式",
     "instructionPlaceholder": "这段说明只属于当前需求",
     "instructionLabels": {
       "planFirst": "先给方案",
@@ -296,16 +309,30 @@
     "references": "关联标记",
     "unnamedReference": "未命名标记",
     "publish": "发布到看板",
-    "pullHint": "Agent 可通过 reelctl 按需读取",
-    "empty": "还没有需求。",
+    "pullHint": "任务供外部 Agent 读取，发布后等待处理",
+    "empty": "暂无任务。选中素材或片段，即可添加到看板。",
     "remove": "删除需求",
     "status": {
       "draft": "草稿",
       "ready": "待处理",
       "in_progress": "处理中",
       "blocked": "受阻",
-      "done": "已完成"
-    }
+      "done": "已完成",
+      "review": "待确认"
+    },
+    "agentReferences": "关联对象",
+    "referenceHint": "在素材或时间线上右键“添加到看板”，或先添加智能体引用。",
+    "addFromSelection": "添加到看板",
+    "details": "详细要求与验收条件",
+    "acceptance": "验收条件（每行一项）",
+    "accept": "确认完成",
+    "locate": "定位检查",
+    "missingReference": "对象已失效",
+    "result": "结果",
+    "taskStatus": "任务状态",
+    "filter": "按状态筛选",
+    "all": "全部",
+    "saveFailed": "保存失败，请重试。"
   },
   "audioRequirement": {
     "title": "AI 配音与音乐",
@@ -392,8 +419,8 @@
   },
   "assets": {
     "tabs": {
-      "media": "素材",
-      "work": "工作素材",
+      "media": "项目素材",
+      "work": "剪辑片段",
       "text": "文字",
       "graphics": "图形",
       "effects": "效果",
@@ -401,7 +428,7 @@
       "tools": "剪辑工具",
       "recipes": "组合方案",
       "templates": "项目模板",
-      "library": "素材库"
+      "library": "个人素材库"
     },
     "descriptions": {
       "media": "导入视频、音频和静态图片。",
@@ -676,20 +703,20 @@
     }
   },
   "workAssets": {
-    "saveToWork": "保存到工作素材",
+    "saveToWork": "保存为剪辑素材",
     "saveSelectionToWork": "将 {{count}} 个选中片段保存为工作素材",
     "captureDisabled": "仅基于项目媒体的片段可捕捉",
     "captureDisabledMulti": "部分选中片段无法捕捉——请检查是否存在媒体缺失、占位媒体或引擎生成内容",
-    "captureFailed": "无法保存到工作素材",
-    "saved": "已保存到工作素材",
+    "captureFailed": "无法保存为剪辑素材",
+    "saved": "已保存为剪辑素材",
     "unsupportedConfirmTitle": "部分片段参数不会被捕捉",
     "unsupportedConfirmBody": "工作素材不会包含以下参数：\n{{fields}}\n\n仍要捕捉吗？",
     "unsupportedReasons": {
       "recomputed": "分析产物，创建实例时会重新计算",
       "instanceLocal": "片段实例本地的溯源信息，不属于可复用快照"
     },
-    "searchPlaceholder": "搜索工作素材",
-    "listTitle": "工作素材",
+    "searchPlaceholder": "搜索剪辑素材",
+    "listTitle": "剪辑片段与组合",
     "memberBadge": "{{count}} 个成员",
     "multiRestoreNote": "实例按相对时间与轨道关系还原；新建轨道的竖直顺序可能与源不同",
     "renameAction": "重命名",
@@ -709,8 +736,8 @@
     "missingMembersSource_other": "{{count}} 个成员的源媒体已删除，该条目无法加入时间线",
     "sourceMissingShort": "源媒体已删除",
     "emptyTitle": "还没有工作素材",
-    "emptyDetail": "在时间线片段或媒体卡片上右键选择“保存到工作素材”，之后可再次加入时间线。工作素材随本项目保存；跨项目素材请使用素材库。",
-    "noResults": "没有符合搜索的工作素材。"
+    "emptyDetail": "在时间线片段或媒体卡片上右键选择“保存为剪辑素材”，之后可再次加入时间线。工作素材随本项目保存；跨项目素材请使用素材库。",
+    "noResults": "没有符合搜索的剪辑片段或组合。"
   },
   "Track a region, apply its motion as transform keyframes": "跟踪区域，将其运动应用为变换关键帧",
   "Matching the region frame by frame (correlation)...": "正在逐帧匹配该区域（相关性匹配）…",

@@ -1,4 +1,16 @@
 {
+  "projectAssets": {
+    "previewSource": "Preview source media",
+    "title": "Project assets",
+    "all": "All",
+    "media": "Source media",
+    "single": "Saved clips",
+    "multi": "Combinations",
+    "capture": "Save timeline selection",
+    "name": "Name this clip or combination",
+    "save": "Save",
+    "search": "Search project assets"
+  },
   "common": {
     "apply": "Apply",
     "cancel": "Cancel",
@@ -96,7 +108,7 @@
     "editor": {
       "loading": "Loading editor…",
       "failed": "Editor failed to start: {{message}}",
-      "media": "Media",
+      "media": "Project assets",
       "viewer": "Viewer",
       "inspector": "Inspector",
       "agent": "Agent",
@@ -125,10 +137,10 @@
       "agentAccess": "Agent Access",
       "cliAvailable": "CLI available",
       "cliUnavailable": "CLI unavailable",
-      "agentReadable": "Agent can read project",
-      "agentStarting": "Agent access starting",
-      "writable": "Read/write",
-      "allowEditing": "Allow Agent editing",
+      "agentReadable": "Agent",
+      "agentStarting": "Agent connecting",
+      "writable": "Editable",
+      "allowEditing": "Allow editing",
       "stopEditing": "Stop Agent editing",
       "setReadOnly": "Set read-only",
       "setReadOnlyDescription": "Prevent the CLI from changing the current project"
@@ -276,12 +288,13 @@
     "retryPausedNote": "Retry is paused until generation moves to an independent task mechanism."
   },
   "requirementBoard": {
-    "title": "Requirements",
+    "editTitle": "Task title",
+    "title": "Board",
     "new": "New requirement",
     "items": "Project requirements",
     "titlePlaceholder": "Describe the outcome in one line",
     "descriptionPlaceholder": "Add editing requirements, goals, and constraints…",
-    "oneTimeInstruction": "Instruction for this requirement",
+    "oneTimeInstruction": "Execution mode",
     "instructionPlaceholder": "This instruction applies only to the current requirement",
     "instructionLabels": {
       "planFirst": "Plan first",
@@ -296,16 +309,30 @@
     "references": "Linked markers",
     "unnamedReference": "Unnamed marker",
     "publish": "Publish to board",
-    "pullHint": "Agents can read these on demand through reelctl",
-    "empty": "No requirements yet.",
+    "pullHint": "External agents read pending tasks; publishing does not start execution",
+    "empty": "No tasks here. Select media or clips to add a task.",
     "remove": "Delete requirement",
     "status": {
       "draft": "Draft",
       "ready": "Ready",
       "in_progress": "In progress",
       "blocked": "Blocked",
-      "done": "Done"
-    }
+      "done": "Done",
+      "review": "Awaiting review"
+    },
+    "agentReferences": "Linked objects",
+    "referenceHint": "Right-click media or clips to add to the board, or mark an agent reference.",
+    "addFromSelection": "Add to board",
+    "details": "Details and acceptance criteria",
+    "acceptance": "Acceptance criteria (one per line)",
+    "accept": "Accept result",
+    "locate": "Locate for review",
+    "missingReference": "Object unavailable",
+    "result": "Result",
+    "taskStatus": "Task status",
+    "filter": "Filter by status",
+    "all": "All",
+    "saveFailed": "Could not save. Try again."
   },
   "audioRequirement": {
     "title": "AI Voiceover & Music",
@@ -392,7 +419,7 @@
   },
   "assets": {
     "tabs": {
-      "media": "Media",
+      "media": "Project assets",
       "work": "Work Assets",
       "text": "Text",
       "graphics": "Graphics",
@@ -401,7 +428,7 @@
       "tools": "Editing Tools",
       "recipes": "Recipes",
       "templates": "Project Templates",
-      "library": "Library"
+      "library": "Personal library"
     },
     "descriptions": {
       "media": "Import footage, audio, and stills.",
@@ -689,7 +716,7 @@
       "instanceLocal": "instance-local clip provenance, not part of the reusable snapshot"
     },
     "searchPlaceholder": "Search work assets",
-    "listTitle": "Work Assets",
+    "listTitle": "Saved clips and combinations",
     "memberBadge": "{{count}} members",
     "multiRestoreNote": "Instances restore by relative time and track relationships; the vertical order of the freshly created tracks may differ from the source",
     "renameAction": "Rename",

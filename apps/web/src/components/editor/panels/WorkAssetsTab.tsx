@@ -1,3 +1,10 @@
+import {
+  openBoardForEntities,
+  locateRequirementReference,
+} from "../../../services/requirement-board";
+import { useAgentReferencesStore } from "../../../stores/agent-references-store";
+import { markAgentReferences } from "../../../stores/editor-context-store";
+import { AgentReferenceBadge } from "../timeline/AgentReferenceBadge";
 import React, { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -135,7 +142,48 @@ const WorkAssetRow: React.FC<{
     [isRenaming, startRename],
   );
 
+  const reference = useAgentReferencesStore((state) =>
+    Object.values(state.references).find(
+      (item) => item.kind === "workAsset" && item.entityId === asset.id,
+    ),
+  );
+  const agentReferenceMenuItem: ContextMenuOption = {
+    label: reference
+      ? t("agentReferences.remove", { number: reference.number })
+      : t("agentReferences.add"),
+    onClick: () => {
+      if (reference)
+        useAgentReferencesStore.getState().remove(reference.number);
+      else
+        markAgentReferences([
+          {
+            kind: "workAsset",
+            entityId: asset.id,
+            label: asset.name,
+            timing: { startSeconds: null, endSeconds: null },
+            trackOrder: 0,
+          },
+        ]);
+    },
+  };
   const contextMenuItems: ContextMenuOption[] = [
+    agentReferenceMenuItem,
+    {
+      label: t("requirementBoard.addFromSelection"),
+      onClick: () => openBoardForEntities([asset.id]),
+    },
+    {
+      label: t("projectAssets.previewSource"),
+      isDisabled: missingSource,
+      onClick: () =>
+        locateRequirementReference({
+          ref: "",
+          kind: "media",
+          entityId: asset.sourceMediaId,
+          label: sourceName ?? asset.name,
+          timing: { startSeconds: null, endSeconds: null },
+        }),
+    },
     {
       label: t("workAssets.renameAction"),
       icon: <Pencil size={14} aria-hidden />,
@@ -212,6 +260,12 @@ const WorkAssetRow: React.FC<{
         </div>
 
         <div className="flex-1 min-w-0">
+          <div className="mb-1 flex items-center gap-1 text-[10px] text-fg-muted">
+            <span>
+              {t(isMulti ? "projectAssets.multi" : "projectAssets.single")}
+            </span>
+            <AgentReferenceBadge kind="workAsset" entityId={asset.id} />
+          </div>
           {isRenaming ? (
             renameInput
           ) : (
@@ -234,11 +288,16 @@ const WorkAssetRow: React.FC<{
               <span className="tabular-nums">
                 {t("workAssets.memberBadge", { count: memberCount })}
               </span>
-              {laneSummary && <span className="text-fg-muted">· {laneSummary}</span>}
+              {laneSummary && (
+                <span className="text-fg-muted">· {laneSummary}</span>
+              )}
             </div>
           )}
           <div className="flex items-center gap-1.5 text-[10px] text-fg-muted flex-wrap">
-            <span className="truncate max-w-[45%]" title={sourceName ?? undefined}>
+            <span
+              className="truncate max-w-[45%]"
+              title={sourceName ?? undefined}
+            >
               {missingSource
                 ? t("workAssets.sourceMissingShort")
                 : (sourceName ?? asset.sourceMediaId)}
@@ -323,7 +382,11 @@ const WorkAssetRow: React.FC<{
  * Library tab, which holds the user's cross-project material library — work
  * assets live inside this project and are saved with it.
  */
-export const WorkAssetsTab: React.FC = () => {
+export const WorkAssetsTab: React.FC<{
+  embedded?: boolean;
+  search?: string;
+  kind?: "single" | "multi";
+}> = ({ embedded = false, search: sharedSearch, kind }) => {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
 
@@ -332,10 +395,12 @@ export const WorkAssetsTab: React.FC = () => {
     (state) => state.project.mediaLibrary.items,
   );
 
-  const normalizedSearch = search.trim().toLowerCase();
+  const normalizedSearch = (sharedSearch ?? search).trim().toLowerCase();
 
   const sortedAssets = useMemo(() => {
-    const items = [...(workAssets ?? [])];
+    const items = [...(workAssets ?? [])].filter(
+      (asset) => !kind || asset.kind === kind,
+    );
     // Explicit ordering: the restore path may reorder the underlying array,
     // so the list never depends on it. Newest capture first, stable tiebreak
     // on the stable id.
@@ -345,7 +410,7 @@ export const WorkAssetsTab: React.FC = () => {
         : b.createdAt - a.createdAt,
     );
     return items;
-  }, [workAssets]);
+  }, [workAssets, kind]);
 
   const filteredAssets = useMemo(
     () =>
@@ -488,29 +553,36 @@ export const WorkAssetsTab: React.FC = () => {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="px-4 pt-[18px] shrink-0">
-        <Text
-          type="supporting"
-          color="secondary"
-          display="block"
-          className="mb-3 text-[11px] text-fg-3"
-        >
-          {t("assets.descriptions.work")}
-        </Text>
-        <div className="flex items-center gap-2 mb-[14px] rounded-[9px] border border-border bg-bg px-2.5 py-1.5">
-          <Search size={13} className="shrink-0 text-fg-3" aria-hidden />
-          <input
-            value={search}
-            aria-label={t("workAssets.searchPlaceholder")}
-            placeholder={t("workAssets.searchPlaceholder")}
-            onChange={(event) => setSearch(event.target.value)}
-            className="w-full bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-3"
-          />
+      {!embedded && (
+        <div className="px-4 pt-[18px] shrink-0">
+          <Text
+            type="supporting"
+            color="secondary"
+            display="block"
+            className="mb-3 text-[11px] text-fg-3"
+          >
+            {t("assets.descriptions.work")}
+          </Text>
+          <div className="flex items-center gap-2 mb-[14px] rounded-[9px] border border-border bg-bg px-2.5 py-1.5">
+            <Search size={13} className="shrink-0 text-fg-3" aria-hidden />
+            <input
+              value={search}
+              aria-label={t("workAssets.searchPlaceholder")}
+              placeholder={t("workAssets.searchPlaceholder")}
+              onChange={(event) => setSearch(event.target.value)}
+              className="w-full bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-3"
+            />
+          </div>
         </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar">
-        <div className="px-4 pb-[18px]">
+      )}
+      <div
+        className={
+          embedded
+            ? "mt-4"
+            : "min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar"
+        }
+      >
+        <div className={embedded ? "pb-4" : "px-4 pb-[18px]"}>
           {sortedAssets.length > 0 && (
             <div className="flex items-center justify-between mb-3">
               <span className="text-[13px] font-semibold text-fg-2">
@@ -521,7 +593,13 @@ export const WorkAssetsTab: React.FC = () => {
               </span>
             </div>
           )}
-          {sortedAssets.length === 0 ? (
+          {sortedAssets.length === 0 &&
+          embedded &&
+          !kind ? null : sortedAssets.length === 0 && embedded ? (
+            <p className="py-4 text-center text-xs text-fg-muted">
+              {t("workAssets.noResults")}
+            </p>
+          ) : sortedAssets.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-8 text-center">
               <div className="w-16 h-16 rounded-2xl bg-bg-2 border border-border flex items-center justify-center mb-4 shadow-inner">
                 <FolderPlus size={24} className="text-fg-muted" />
@@ -554,7 +632,9 @@ export const WorkAssetsTab: React.FC = () => {
                 <WorkAssetRow
                   key={asset.id}
                   asset={asset}
-                  missingSource={missingByAssetId.get(asset.id)?.missingSource ?? false}
+                  missingSource={
+                    missingByAssetId.get(asset.id)?.missingSource ?? false
+                  }
                   missingMediaCount={
                     missingByAssetId.get(asset.id)?.missingMediaCount ?? 0
                   }

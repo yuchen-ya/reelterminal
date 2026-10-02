@@ -171,6 +171,20 @@ describe("WorkAssetsTab", () => {
     ).toBeInTheDocument();
   });
 
+  it("shares the project-assets search and filters clips separately from combinations", () => {
+    useProjectStore.setState({ hasOpenProject: true, project: projectWith([
+      workAsset({ id: "single", name: "Opening close-up" }),
+      multiWorkAsset({ id: "multi", name: "Opening sequence" }),
+    ], [mediaItem("media-a", "take-one.mp4"), mediaItem("media-b", "take-two.mp4")]) });
+    const { rerender } = render(<WorkAssetsTab embedded search="opening" kind="single" />);
+    expect(screen.getByText("Opening close-up")).toBeInTheDocument();
+    expect(screen.queryByText("Opening sequence")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    rerender(<WorkAssetsTab embedded search="opening" kind="multi" />);
+    expect(screen.getByText("Opening sequence")).toBeInTheDocument();
+    expect(screen.queryByText("Opening close-up")).not.toBeInTheDocument();
+  });
+
   it("lists entries with name, source media, range, and count", () => {
     useProjectStore.setState({
       hasOpenProject: true,

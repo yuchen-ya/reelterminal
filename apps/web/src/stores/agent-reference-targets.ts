@@ -138,6 +138,10 @@ export function getAgentReferenceTargetsForProject(
     });
   }
 
+  for (const asset of project.workAssets ?? []) {
+    targets.push({ kind: "workAsset", entityId: asset.id, label: asset.name,
+      timing: { startSeconds: null, endSeconds: null }, trackOrder: mediaBaseOrder + project.mediaLibrary.items.length });
+  }
   return targets;
 }
 

@@ -1124,9 +1124,9 @@ export const REQUIREMENT_UPDATE_SCHEMA: ObjectSchema = {
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
   },
   status: {
-    check: oneOf(["draft", "ready", "in_progress", "blocked", "done"]),
-    describe: "draft, ready, in_progress, blocked, or done",
-    emits: { kind: "leaf", schema: { enum: ["draft", "ready", "in_progress", "blocked", "done"] } },
+    check: oneOf(["draft", "ready", "in_progress", "blocked", "review", "done"]),
+    describe: "draft, ready, in_progress, blocked, review (awaiting user acceptance), or done",
+    emits: { kind: "leaf", schema: { enum: ["draft", "ready", "in_progress", "blocked", "review", "done"] } },
   },
   agentNote: {
     check: (value) => typeof value === "string" && value.length <= 10_000,
@@ -4036,7 +4036,7 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       return [makeAction("requirement/update", {
         requirementId: requirement.id,
         patch: {
-          ...(op.status === undefined ? {} : { status: op.status }),
+          ...(op.status === undefined ? {} : { status: op.status === "done" ? "review" : op.status }),
           ...(op.agentNote === undefined ? {} : { agentNote: op.agentNote }),
           ...(op.resultMediaIds === undefined ? {} : { resultMediaIds: [...op.resultMediaIds] }),
         },

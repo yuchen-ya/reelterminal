@@ -1,3 +1,4 @@
+import { openBoardForEntities } from "../../../services/requirement-board";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import type { ToolcraftContextMenuOption as ContextMenuOption } from "@reelterminal/ui";
@@ -339,6 +340,7 @@ export function useClipContextMenuItems({
       icon: <Hash size={14} aria-hidden />,
       onClick: handleAddAgentReference,
     },
+    { label: t("requirementBoard.addFromSelection"), onClick: () => { openBoardForEntities(selectedClipIds.includes(clip.id) ? selectedClipIds : [clip.id]); onClose?.(); } },
     ...reviewMarkerMenuItems,
     {
       label: isMultiCapture

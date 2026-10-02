@@ -1,119 +1,545 @@
 import { useEffect, useMemo, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
-import { MessageSquare, Plus, Trash2, X } from "@/icons/lucide-compat";
-import type { ProjectRequirementStatus } from "@reelterminal/core";
+import { LayoutTemplate, Plus, Trash2, X } from "@/icons/lucide-compat";
+import type {
+  ProjectRequirementStatus,
+  RequirementReference,
+} from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
+import { useAgentReferencesStore } from "../../stores/agent-references-store";
+import { getAgentReferenceTargetsForProject } from "../../stores/agent-reference-targets";
+import { locateRequirementReference } from "../../services/requirement-board";
 
 export const REQUIREMENT_BOARD_MODAL_ID = "requirement-board";
-
 const STATUS_ORDER: readonly ProjectRequirementStatus[] = [
   "ready",
   "in_progress",
   "blocked",
+  "review",
   "done",
   "draft",
 ];
-
 const INSTRUCTIONS = ["planFirst", "execute", "inspectOnly"] as const;
+const fieldClass =
+  "w-full rounded-md border border-border bg-bg-2 px-3 py-2 text-xs text-fg outline-none focus:border-accent";
 
 export function RequirementBoardDialog(): JSX.Element | null {
   const { t } = useTranslation();
-  const open = useUIStore((state) => state.activeModal === REQUIREMENT_BOARD_MODAL_ID);
+  const open = useUIStore(
+    (state) => state.activeModal === REQUIREMENT_BOARD_MODAL_ID,
+  );
+  const modalData = useUIStore((state) => state.modalData);
   const close = useUIStore((state) => state.closeModal);
   const project = useProjectStore((state) => state.project);
   const add = useProjectStore((state) => state.addProjectRequirement);
   const update = useProjectStore((state) => state.updateProjectRequirement);
   const remove = useProjectStore((state) => state.removeProjectRequirement);
+  const references = useAgentReferencesStore((state) => state.references);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [instruction, setInstruction] = useState("");
+  const [instruction, setInstruction] =
+    useState<(typeof INSTRUCTIONS)[number]>("planFirst");
+  const [criteria, setCriteria] = useState("");
+  const [referenceIds, setReferenceIds] = useState<string[]>([]);
   const [markerIds, setMarkerIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState<ProjectRequirementStatus | "all">("all");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
+    setTitle("");
+    setDescription("");
+    setCriteria("");
+    setReferenceIds([]);
+    setMarkerIds([]);
+    setSelectedId(null);
+    setError("");
+  }, [project.id]);
+  useEffect(() => {
     if (!open) return;
+    if (Array.isArray(modalData?.referenceIds))
+      setReferenceIds(
+        modalData.referenceIds.filter(
+          (id): id is string => typeof id === "string",
+        ),
+      );
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [close, open]);
+  }, [close, open, modalData]);
 
   const requirements = useMemo(
-    () => [...(project.requirements?.items ?? [])].sort((a, b) => b.updatedAt - a.updatedAt),
+    () =>
+      [...(project.requirements?.items ?? [])].sort(
+        (a, b) => b.updatedAt - a.updatedAt,
+      ),
     [project.requirements],
   );
-  const markers = useMemo(
-    () => [...(project.markers?.items ?? [])].sort((a, b) => a.number - b.number),
-    [project.markers],
+  const targets = useMemo(
+    () => getAgentReferenceTargetsForProject(project),
+    [project],
   );
-
+  const markers = project.markers?.items ?? [];
+  const selected = requirements.find((item) => item.id === selectedId);
+  const availableReferences = Object.values(references).map((reference) => ({
+    ...reference,
+    ref: `A${reference.number}`,
+  }));
+  const isLive = (reference: RequirementReference) =>
+    targets.some(
+      (target) =>
+        target.kind === reference.kind &&
+        target.entityId === reference.entityId,
+    );
   if (!open || typeof document === "undefined") return null;
 
   const createRequirement = async () => {
-    if (!title.trim()) return;
+    if (!title.trim() || busy) return;
     setBusy(true);
+    setError("");
     try {
       const result = await add({
         title,
         description,
-        instruction,
+        instruction: t(`requirementBoard.instructions.${instruction}`),
         markerIds,
+        references: availableReferences
+          .filter(
+            (reference) =>
+              referenceIds.includes(reference.entityId) && isLive(reference),
+          )
+          .map(({ ref, kind, entityId, label, timing }) => ({
+            ref,
+            kind,
+            entityId,
+            label,
+            timing,
+          })),
+        acceptanceCriteria: criteria
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean),
         status: "ready",
       });
       if (result.success) {
         setTitle("");
         setDescription("");
-        setInstruction("");
+        setCriteria("");
+        setReferenceIds([]);
         setMarkerIds([]);
-      }
+      } else
+        setError(result.error?.message ?? t("requirementBoard.saveFailed"));
     } finally {
       setBusy(false);
     }
   };
+  const referenceButton = (reference: RequirementReference) => (
+    <button
+      key={`${reference.kind}:${reference.entityId}`}
+      type="button"
+      disabled={!isLive(reference)}
+      onClick={() => locateRequirementReference(reference)}
+      className="rounded border border-border bg-bg-2 px-2 py-1 text-xs text-accent disabled:text-status-warning"
+      title={t(
+        isLive(reference)
+          ? "requirementBoard.locate"
+          : "requirementBoard.missingReference",
+      )}
+    >
+      {reference.ref} · {reference.label}
+      {!isLive(reference) ? ` · ${t("requirementBoard.missingReference")}` : ""}
+    </button>
+  );
 
   return createPortal(
-    <div className="fixed inset-0 z-[var(--z-dialog)] flex items-center justify-center bg-black/50 p-5" onClick={close}>
-      <div role="dialog" aria-modal="true" aria-label={t("requirementBoard.title")} className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-border bg-bg-1 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+    <div
+      className="reelterminal-desktop fixed inset-0 z-[var(--z-dialog)] flex items-center justify-center bg-black/50 p-5"
+      onClick={close}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("requirementBoard.title")}
+        className="flex h-[min(760px,88vh)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-border bg-bg-1 text-fg shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
         <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-          <MessageSquare size={16} className="text-accent" aria-hidden />
-          <h2 className="flex-1 text-sm font-bold text-fg">{t("requirementBoard.title")}</h2>
-          <button type="button" aria-label={t("common.close")} onClick={close} className="grid h-7 w-7 place-items-center rounded text-fg-muted hover:bg-hover hover:text-fg"><X size={15} /></button>
+          <LayoutTemplate size={16} className="text-accent" />
+          <h2 className="flex-1 text-sm font-semibold">
+            {t("requirementBoard.title")}
+          </h2>
+          <span className="text-xs text-fg-muted">
+            {t("requirementBoard.pullHint")}
+          </span>
+          <button
+            type="button"
+            aria-label={t("common.close")}
+            onClick={close}
+            className="rounded p-1 text-fg-muted hover:bg-hover"
+          >
+            <X size={16} />
+          </button>
         </header>
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(260px,0.8fr)_minmax(340px,1.2fr)] overflow-hidden">
-          <section className="overflow-y-auto border-r border-border p-4">
-            <h3 className="text-xs font-semibold text-fg">{t("requirementBoard.new")}</h3>
-            <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("requirementBoard.titlePlaceholder")} className="mt-3 w-full rounded-md border border-border bg-bg-2 px-3 py-2 text-xs text-fg outline-none focus:border-accent" />
-            <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder={t("requirementBoard.descriptionPlaceholder")} rows={5} className="mt-2 w-full resize-y rounded-md border border-border bg-bg-2 px-3 py-2 text-xs text-fg outline-none focus:border-accent" />
-            <p className="mt-3 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">{t("requirementBoard.oneTimeInstruction")}</p>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {INSTRUCTIONS.map((key) => (
-                <button key={key} type="button" onClick={() => setInstruction(t(`requirementBoard.instructions.${key}`))} className="rounded-md border border-border bg-bg-2 px-2 py-1 text-[10px] text-fg-2 hover:border-accent hover:text-fg">{t(`requirementBoard.instructionLabels.${key}`)}</button>
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-auto md:grid-cols-[minmax(0,1fr)_340px]">
+          <section className="min-h-0 overflow-y-auto p-4">
+            <div
+              className="mb-4 flex flex-wrap gap-1"
+              aria-label={t("requirementBoard.filter")}
+            >
+              {(["all", ...STATUS_ORDER] as const).map((status) => (
+                <button
+                  key={status}
+                  onClick={() => setFilter(status)}
+                  aria-pressed={filter === status}
+                  className={`rounded-md px-2 py-1.5 text-xs ${filter === status ? "bg-accent-soft text-accent" : "text-fg-2 hover:bg-hover"}`}
+                >
+                  {t(
+                    status === "all"
+                      ? "requirementBoard.all"
+                      : `requirementBoard.status.${status}`,
+                  )}{" "}
+                  ·{" "}
+                  {
+                    requirements.filter(
+                      (item) => status === "all" || item.status === status,
+                    ).length
+                  }
+                </button>
               ))}
             </div>
-            <textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} placeholder={t("requirementBoard.instructionPlaceholder")} rows={3} className="mt-2 w-full resize-y rounded-md border border-border bg-bg-2 px-3 py-2 text-xs text-fg outline-none focus:border-accent" />
-            {markers.length > 0 ? <>
-              <p className="mt-3 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">{t("requirementBoard.references")}</p>
-              <div className="mt-1.5 max-h-28 space-y-1 overflow-y-auto rounded-md border border-border p-2">
-                {markers.map((marker) => <label key={marker.id} className="flex items-center gap-2 text-[11px] text-fg-2"><input type="checkbox" checked={markerIds.includes(marker.id)} onChange={(event) => setMarkerIds((current) => event.target.checked ? [...current, marker.id] : current.filter((id) => id !== marker.id))} /><span className="font-mono text-status-warning">R{marker.number}</span><span className="truncate">{marker.label ?? t("requirementBoard.unnamedReference")}</span></label>)}
+            <div className="space-y-2">
+              {requirements
+                .filter((item) => filter === "all" || item.status === filter)
+                .map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setSelectedId(item.id)}
+                    className={`block w-full rounded-lg border p-3 text-left hover:bg-hover ${selectedId === item.id ? "border-accent bg-accent-soft" : "border-border bg-bg-2"}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs text-accent">
+                        Q{item.number}
+                      </span>
+                      <strong className="flex-1 truncate text-sm">
+                        {item.title}
+                      </strong>
+                      <span
+                        className={`text-xs ${item.status === "blocked" ? "text-status-warning" : "text-fg-muted"}`}
+                      >
+                        {t(`requirementBoard.status.${item.status}`)}
+                      </span>
+                    </div>
+                    {!!item.references?.length && (
+                      <p className="mt-2 truncate text-xs text-fg-2">
+                        {item.references
+                          .map(
+                            (reference) =>
+                              `${reference.ref} ${reference.label}`,
+                          )
+                          .join(" · ")}
+                      </p>
+                    )}
+                    {item.agentNote && (
+                      <p className="mt-2 line-clamp-2 text-xs text-fg-2">
+                        {item.agentNote}
+                      </p>
+                    )}
+                  </button>
+                ))}
+              {requirements.filter(
+                (item) => filter === "all" || item.status === filter,
+              ).length === 0 && (
+                <p className="py-12 text-center text-sm text-fg-muted">
+                  {t("requirementBoard.empty")}
+                </p>
+              )}
+            </div>
+          </section>
+          <aside className="overflow-y-auto border-l border-border p-4">
+            {selected ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <strong className="text-sm">
+                    Q{selected.number} · {selected.title}
+                  </strong>
+                  <button
+                    onClick={() => setSelectedId(null)}
+                    className="text-xs text-accent"
+                  >
+                    {t("requirementBoard.new")}
+                  </button>
+                </div>
+                <input
+                  key={`${selected.id}-title`}
+                  aria-label={t("requirementBoard.editTitle")}
+                  defaultValue={selected.title}
+                  className={fieldClass}
+                  onBlur={async (event) => {
+                    const title = event.target.value.trim();
+                    if (!title || title === selected.title) return;
+                    const result = await update(selected.id, { title });
+                    if (!result.success)
+                      setError(
+                        result.error?.message ??
+                          t("requirementBoard.saveFailed"),
+                      );
+                  }}
+                />
+                <textarea
+                  key={`${selected.id}-description`}
+                  aria-label={t("requirementBoard.details")}
+                  defaultValue={selected.description}
+                  rows={4}
+                  className={fieldClass}
+                  onBlur={async (event) => {
+                    if (event.target.value === selected.description) return;
+                    const result = await update(selected.id, {
+                      description: event.target.value,
+                    });
+                    if (!result.success)
+                      setError(
+                        result.error?.message ??
+                          t("requirementBoard.saveFailed"),
+                      );
+                  }}
+                />
+                <div className="flex flex-wrap gap-1.5">
+                  {selected.references?.map(referenceButton)}
+                </div>
+                {selected.markerIds.length > 0 && (
+                  <p className="text-xs text-status-warning">
+                    {selected.markerIds
+                      .map((id) => {
+                        const marker = markers.find((entry) => entry.id === id);
+                        return marker
+                          ? `R${marker.number}`
+                          : t("requirementBoard.missingReference");
+                      })
+                      .join(" · ")}
+                  </p>
+                )}
+                <p className="text-xs text-fg-muted">{selected.instruction}</p>
+                {!!selected.acceptanceCriteria?.length && (
+                  <div>
+                    <h3 className="mb-2 text-xs font-semibold">
+                      {t("requirementBoard.acceptance")}
+                    </h3>
+                    <ul className="list-inside list-disc space-y-1 text-xs text-fg-2">
+                      {selected.acceptanceCriteria.map((line, index) => (
+                        <li key={index}>{line}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {selected.agentNote && (
+                  <p className="whitespace-pre-wrap rounded border-l-2 border-accent bg-bg-2 p-3 text-xs">
+                    {selected.agentNote}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-1.5">
+                  {selected.resultMediaIds?.map((id) => {
+                    const media = project.mediaLibrary.items.find(
+                      (item) => item.id === id,
+                    );
+                    return referenceButton({
+                      ref: t("requirementBoard.result"),
+                      kind: "media",
+                      entityId: id,
+                      label: media?.name ?? id,
+                      timing: { startSeconds: null, endSeconds: null },
+                    });
+                  })}
+                </div>
+                <select
+                  aria-label={t("requirementBoard.taskStatus")}
+                  value={selected.status}
+                  className={fieldClass}
+                  onChange={async (event) => {
+                    const result = await update(selected.id, {
+                      status: event.target.value as ProjectRequirementStatus,
+                    });
+                    if (!result.success)
+                      setError(
+                        result.error?.message ??
+                          t("requirementBoard.saveFailed"),
+                      );
+                  }}
+                >
+                  {STATUS_ORDER.map((status) => (
+                    <option key={status} value={status}>
+                      {t(`requirementBoard.status.${status}`)}
+                    </option>
+                  ))}
+                </select>
+                {selected.status === "review" && (
+                  <button
+                    className="w-full rounded bg-accent px-3 py-2 text-xs font-medium text-accent-fg"
+                    onClick={async () => {
+                      const result = await update(selected.id, {
+                        status: "done",
+                      });
+                      if (!result.success)
+                        setError(
+                          result.error?.message ??
+                            t("requirementBoard.saveFailed"),
+                        );
+                    }}
+                  >
+                    {t("requirementBoard.accept")}
+                  </button>
+                )}
+                <button
+                  aria-label={t("requirementBoard.remove")}
+                  className="flex items-center gap-1 text-xs text-fg-muted hover:text-status-error"
+                  onClick={async () => {
+                    const result = await remove(selected.id);
+                    if (result.success) setSelectedId(null);
+                    else
+                      setError(
+                        result.error?.message ??
+                          t("requirementBoard.saveFailed"),
+                      );
+                  }}
+                >
+                  <Trash2 size={13} />
+                  {t("requirementBoard.remove")}
+                </button>
               </div>
-            </> : null}
-            <button type="button" disabled={busy || !title.trim()} onClick={() => void createRequirement()} className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-accent px-3 py-2 text-xs font-semibold text-accent-fg disabled:opacity-50"><Plus size={14} />{t("requirementBoard.publish")}</button>
-          </section>
-          <section className="overflow-y-auto p-4">
-            <div className="flex items-center justify-between"><h3 className="text-xs font-semibold text-fg">{t("requirementBoard.items")}</h3><span className="text-[10px] text-fg-muted">{t("requirementBoard.pullHint")}</span></div>
-            {requirements.length === 0 ? <p className="mt-8 text-center text-xs text-fg-muted">{t("requirementBoard.empty")}</p> : <ul className="mt-3 space-y-2">{requirements.map((item) => (
-              <li key={item.id} className="rounded-lg border border-border bg-bg-2/60 p-3">
-                <div className="flex items-center gap-2"><span className="font-mono text-[11px] font-bold text-accent">Q{item.number}</span><strong className="min-w-0 flex-1 truncate text-xs text-fg">{item.title}</strong><select value={item.status} onChange={(event) => void update(item.id, { status: event.target.value as ProjectRequirementStatus })} className="rounded border border-border bg-bg-1 px-1.5 py-1 text-[10px] text-fg-2">{STATUS_ORDER.map((status) => <option key={status} value={status}>{t(`requirementBoard.status.${status}`)}</option>)}</select><button type="button" aria-label={t("requirementBoard.remove")} onClick={() => void remove(item.id)} className="text-fg-muted hover:text-status-error"><Trash2 size={13} /></button></div>
-                {item.description ? <p className="mt-2 whitespace-pre-wrap text-[11px] leading-relaxed text-fg-2">{item.description}</p> : null}
-                {item.instruction ? <p className="mt-2 rounded bg-bg-3 px-2 py-1.5 text-[10px] text-fg-muted">{item.instruction}</p> : null}
-                {item.markerIds.length > 0 ? <p className="mt-2 text-[10px] text-status-warning">{item.markerIds.map((id) => { const marker = markers.find((entry) => entry.id === id); return marker ? `R${marker.number}` : id; }).join(" · ")}</p> : null}
-                {item.agentNote ? <p className="mt-2 border-l-2 border-accent pl-2 text-[10px] text-fg-2">{item.agentNote}</p> : null}
-              </li>
-            ))}</ul>}
-          </section>
+            ) : (
+              <form
+                className="space-y-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void createRequirement();
+                }}
+              >
+                <h3 className="text-sm font-semibold">
+                  {t("requirementBoard.new")}
+                </h3>
+                <input
+                  autoFocus
+                  aria-label={t("requirementBoard.new")}
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder={t("requirementBoard.titlePlaceholder")}
+                  className={fieldClass}
+                />
+                <fieldset>
+                  <legend className="mb-2 text-xs text-fg-muted">
+                    {t("requirementBoard.oneTimeInstruction")}
+                  </legend>
+                  <div className="flex flex-wrap gap-1">
+                    {INSTRUCTIONS.map((key) => (
+                      <label
+                        key={key}
+                        className={`cursor-pointer rounded-md border px-2 py-1.5 text-xs ${instruction === key ? "border-accent bg-accent-soft text-accent" : "border-border text-fg-2"}`}
+                      >
+                        <input
+                          className="sr-only"
+                          type="radio"
+                          name="instruction"
+                          checked={instruction === key}
+                          onChange={() => setInstruction(key)}
+                        />
+                        {t(`requirementBoard.instructionLabels.${key}`)}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <div>
+                  <h4 className="mb-2 text-xs text-fg-muted">
+                    {t("requirementBoard.agentReferences")}
+                  </h4>
+                  {availableReferences.length === 0 && (
+                    <p className="text-xs text-fg-muted">
+                      {t("requirementBoard.referenceHint")}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1">
+                    {availableReferences.map((reference) => (
+                      <label
+                        key={reference.number}
+                        className="flex items-center gap-1 rounded border border-border px-2 py-1 text-xs text-fg-2"
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={!isLive(reference)}
+                          checked={referenceIds.includes(reference.entityId)}
+                          onChange={(event) =>
+                            setReferenceIds((ids) =>
+                              event.target.checked
+                                ? [...ids, reference.entityId]
+                                : ids.filter((id) => id !== reference.entityId),
+                            )
+                          }
+                        />
+                        {reference.ref} · {reference.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <details>
+                  <summary className="cursor-pointer text-xs text-fg-2">
+                    {t("requirementBoard.details")}
+                  </summary>
+                  <div className="mt-3 space-y-3">
+                    <textarea
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      placeholder={t("requirementBoard.descriptionPlaceholder")}
+                      rows={4}
+                      className={fieldClass}
+                    />
+                    <textarea
+                      aria-label={t("requirementBoard.acceptance")}
+                      value={criteria}
+                      onChange={(event) => setCriteria(event.target.value)}
+                      placeholder={t("requirementBoard.acceptance")}
+                      rows={3}
+                      className={fieldClass}
+                    />
+                    {markers.map((marker) => (
+                      <label
+                        key={marker.id}
+                        className="flex items-center gap-2 text-xs text-fg-2"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={markerIds.includes(marker.id)}
+                          onChange={(event) =>
+                            setMarkerIds((ids) =>
+                              event.target.checked
+                                ? [...ids, marker.id]
+                                : ids.filter((id) => id !== marker.id),
+                            )
+                          }
+                        />
+                        R{marker.number} · {marker.label}
+                      </label>
+                    ))}
+                  </div>
+                </details>
+                <button
+                  type="submit"
+                  disabled={busy || !title.trim()}
+                  className="flex w-full items-center justify-center gap-2 rounded-md bg-accent px-3 py-2 text-xs font-semibold text-accent-fg disabled:opacity-40"
+                >
+                  <Plus size={14} />
+                  {t("requirementBoard.publish")}
+                </button>
+              </form>
+            )}
+            {error && (
+              <p role="alert" className="mt-3 text-xs text-status-error">
+                {error}
+              </p>
+            )}
+          </aside>
         </div>
       </div>
     </div>,

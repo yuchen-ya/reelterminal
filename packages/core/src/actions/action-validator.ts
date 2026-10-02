@@ -126,6 +126,15 @@ export class ActionValidator {
     project: Project,
   ): ValidationError[] {
     const errors: ValidationError[] = [];
+    const references = "requirement" in action.params ? action.params.requirement?.references : "patch" in action.params ? action.params.patch.references : undefined;
+    if (references !== undefined && (!Array.isArray(references) || references.some((reference) =>
+      !reference || typeof reference.entityId !== "string" || !reference.entityId.trim() ||
+      typeof reference.ref !== "string" || typeof reference.label !== "string" ||
+      !["video", "audio", "text", "media", "workAsset"].includes(reference.kind) || !reference.timing ||
+      [reference.timing.startSeconds, reference.timing.endSeconds].some((time) => time !== null && (typeof time !== "number" || !Number.isFinite(time) || time < 0))
+    ))) {
+      errors.push({ code: "INVALID_PARAMS", message: "Requirement references are invalid", path: "references" });
+    }
     const items = project.requirements?.items ?? [];
     if (action.type === "requirement/add" || action.type === "requirement/restore") {
       const item = action.params.requirement;

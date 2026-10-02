@@ -1,3 +1,5 @@
+import { captureWorkAssetFromClip, captureWorkAssetFromClips } from "@reelterminal/core/work-assets/capture";
+import { openBoardForEntities } from "../../services/requirement-board";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatDuration } from "../../utils/format";
 import { useTranslation } from "react-i18next";
@@ -92,6 +94,7 @@ export function useMediaContextMenuItems({
       icon: <Hash size={14} aria-hidden />,
       onClick: () => markAgentReferenceForMedia(item),
     },
+    { label: t("requirementBoard.addFromSelection"), icon: <Plus size={14} />, onClick: () => openBoardForEntities([item.id]) },
     {
       label: t("media.renameAction"),
       icon: <Pencil size={14} aria-hidden />,
@@ -144,7 +147,6 @@ export function useMediaContextMenuItems({
 type MediaViewMode = "large" | "small" | "list";
 type AssetsTab =
   | "media"
-  | "work"
   | "library"
   | "text"
   | "graphics"
@@ -163,11 +165,6 @@ const ASSETS_TABS: ReadonlyArray<{
     value: "media",
     labelKey: "assets.tabs.media",
     descriptionKey: "assets.descriptions.media",
-  },
-  {
-    value: "work",
-    labelKey: "assets.tabs.work",
-    descriptionKey: "assets.descriptions.work",
   },
   {
     value: "library",
@@ -216,7 +213,6 @@ export { DEFAULT_TITLE_STYLE, TEXT_STYLE_PRESETS };
 
 const TAB_ICONS: Record<AssetsTab, React.ElementType> = {
   media: Video,
-  work: FolderPlus,
   library: BookMarked,
   text: Type,
   graphics: Shapes,
@@ -682,6 +678,10 @@ const LoadingIndicator: React.FC<{ message: string }> = ({ message }) => (
 export const AssetsPanel: React.FC = () => {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [assetFilter, setAssetFilter] = useState<"all" | "media" | "single" | "multi">("all");
+  const selectedTimelineItems = useUIStore((state) => state.selectedItems);
+  const [captureName, setCaptureName] = useState<string | null>(null);
+  const [capturing, setCapturing] = useState(false);
   const [activeTab, setActiveTabRaw] = useState<AssetsTab>("media");
   const playheadPosition = useTimelineStore((state) => state.playheadPosition);
 
@@ -696,6 +696,14 @@ export const AssetsPanel: React.FC = () => {
       const id = (event as CustomEvent<{ id?: unknown }>).detail?.id;
       if (typeof id !== "string" || id.length === 0) return;
       setActiveTabRaw("media");
+      setAssetFilter("all");
+      setMediaSearch("");
+      setShowOnlyMissing(false);
+      if ((event as CustomEvent<{ workAsset?: boolean }>).detail.workAsset) requestAnimationFrame(() => {
+        const card = Array.from(document.querySelectorAll<HTMLElement>("[data-work-asset-id]")).find((element) => element.dataset.workAssetId === id);
+        card?.scrollIntoView({ block: "nearest" });
+        card?.focus();
+      });
     };
     window.addEventListener("reelterminal:live-reveal-media", handleLiveReveal);
     return () =>
@@ -1084,17 +1092,61 @@ export const AssetsPanel: React.FC = () => {
       backgroundCategory === "all" || preset.category === backgroundCategory,
   );
 
+  const captureSelection = async () => {
+    if (!captureName?.trim() || capturing) return;
+    const clipIds = selectedTimelineItems
+      .filter((item) => item.type === "clip")
+      .map((item) => item.id);
+    if (!clipIds.length) return;
+    const {
+      project: current,
+      saveClipAsWorkAsset,
+      saveClipsAsWorkAsset,
+    } = useProjectStore.getState();
+    const preview =
+      clipIds.length === 1
+        ? captureWorkAssetFromClip(current, clipIds[0])
+        : captureWorkAssetFromClips(current, clipIds);
+    if (!preview.ok) {
+      toast.error(t("workAssets.captureFailed"), preview.message);
+      return;
+    }
+    if (
+      preview.asset.unsupportedParams.length &&
+      !window.confirm(
+        t("workAssets.unsupportedConfirmBody", {
+          fields: preview.asset.unsupportedParams
+            .map((param) => `${param.field}: ${param.reason}`)
+            .join("\n"),
+        }),
+      )
+    )
+      return;
+    setCapturing(true);
+    try {
+      const result =
+        clipIds.length === 1
+          ? await saveClipAsWorkAsset(clipIds[0], { name: captureName.trim() })
+          : await saveClipsAsWorkAsset(clipIds, { name: captureName.trim() });
+      if (result.ok) {
+        setCaptureName(null);
+        setAssetFilter("all");
+        toast.success(t("workAssets.saved"), result.asset.name);
+      } else toast.error(t("workAssets.captureFailed"), result.message);
+    } finally {
+      setCapturing(false);
+    }
+  };
+
   const renderSectionContent = (tab: AssetsTab): React.ReactNode => {
     switch (tab) {
-      case "work":
-        return <WorkAssetsTab />;
       case "library":
         return <MaterialLibraryPanel />;
       case "media":
         return (
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="px-4 pt-[18px] shrink-0">
-              <div className="font-bold text-[18px] text-fg mb-[14px]">{t("Media")}</div>
+              <div className="font-bold text-[18px] text-fg mb-[14px]">{t("projectAssets.title")}</div>
               <div className="flex gap-2 mb-[18px]">
                 <button
                   type="button"
@@ -1158,11 +1210,19 @@ export const AssetsPanel: React.FC = () => {
                 </button>
               </div>
 
+              <button type="button" disabled={!selectedTimelineItems.some((item) => item.type === "clip")} onClick={() => setCaptureName("")}
+                className="mb-3 flex w-full items-center justify-center gap-2 rounded-md border border-border px-2 py-2 text-xs text-fg-2 hover:bg-hover disabled:opacity-40"><FolderPlus size={14} />{t("projectAssets.capture")}</button>
+              {captureName !== null && <form className="mb-3 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); void captureSelection(); }}>
+                <input autoFocus aria-label={t("workAssets.renameAriaLabel")} placeholder={t("projectAssets.name")} value={captureName} onChange={(event) => setCaptureName(event.target.value)} className="w-full rounded border border-border bg-bg-2 px-2 py-1 text-xs text-fg" />
+                <button disabled={!captureName.trim() || capturing} className="rounded bg-accent px-2 py-1 text-xs text-accent-fg disabled:opacity-40">{t("projectAssets.save")}</button>
+                <button type="button" onClick={() => setCaptureName(null)} className="text-xs text-fg-muted">{t("common.cancel")}</button>
+              </form>}
+              <div className="mb-3 flex flex-wrap gap-1">{(["all", "media", "single", "multi"] as const).map((kind) => <button key={kind} type="button" aria-pressed={assetFilter === kind} onClick={() => setAssetFilter(kind)} className={`rounded px-2 py-1 text-xs ${assetFilter === kind ? "bg-accent-soft text-accent" : "text-fg-2 hover:bg-hover"}`}>{t(`projectAssets.${kind}`)}</button>)}</div>
               <div className="flex items-center gap-2 mb-[18px] rounded-[9px] border border-border bg-bg px-2.5 py-1.5">
                 <Search size={13} className="shrink-0 text-fg-3" aria-hidden />
                 <input
                   value={mediaSearch}
-                  placeholder={t("media.searchPlaceholder")}
+                  placeholder={t("projectAssets.search")}
                   onChange={(event) => setMediaSearch(event.target.value)}
                   className="w-full bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-3"
                 />
@@ -1206,6 +1266,7 @@ export const AssetsPanel: React.FC = () => {
               onDragLeave={handleDragLeave}
             >
               <div className="px-4 pb-[18px] relative">
+                {(assetFilter === "all" || assetFilter === "media") && <>
                 {filteredItems.length > 0 && (
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-[13px] font-semibold text-fg-2">{t("Project Media")}</span>
@@ -1213,6 +1274,7 @@ export const AssetsPanel: React.FC = () => {
                   </div>
                 )}
                 {filteredItems.length === 0 ? (
+                  assetFilter === "all" && (project.workAssets?.length ?? 0) > 0 ? null :
                   <EmptyState onImport={triggerFileInput} />
                 ) : (
                   <div className="grid grid-cols-2 gap-3">
@@ -1245,6 +1307,9 @@ export const AssetsPanel: React.FC = () => {
                     </div>
                   </div>
                 )}
+
+                </>}
+                {assetFilter !== "media" && <WorkAssetsTab embedded search={mediaSearch} kind={assetFilter === "all" ? undefined : assetFilter} />}
 
                 {isDragOver && (
                   <div className="absolute inset-4 border-2 border-dashed border-accent rounded-xl flex items-center justify-center bg-accent-soft pointer-events-none z-50 backdrop-blur-sm">

@@ -49,7 +49,7 @@ import type {
  * point" on the project frame (null until the user sets one), and ephemeral
  * stable-numbered agent references.
  */
-export type LiveEditorReferenceKind = "video" | "audio" | "text" | "media";
+export type LiveEditorReferenceKind = "video" | "audio" | "text" | "media" | "workAsset";
 
 export interface LiveEditorReference {
   /** Namespaced human/model reference id (A1, A2, ...). */

@@ -32,7 +32,7 @@ describe("requirement.update edit op", () => {
       type: "requirement/update",
       params: {
         requirementId: "requirement-internal",
-        patch: { status: "done", agentNote: "Imported", resultMediaIds: ["audio-1"] },
+        patch: { status: "review", agentNote: "Imported", resultMediaIds: ["audio-1"] },
       },
     }]);
   });

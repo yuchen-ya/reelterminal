@@ -1,6 +1,8 @@
 # ReelTerminal external Agent guide
 
-Start ReelTerminal, open a project, and enable **Agent Access**. Run:
+Start ReelTerminal and open a project. The command service becomes available
+automatically with read-only access. For edits, open the **Agent · Read-only** menu in the status strip and select
+**Allow editing**. Select **Read-only** in the same menu to revoke write access. Run:
 
 ```powershell
 reelctl status
@@ -39,3 +41,23 @@ in-app conversation panel and three collaboration modes have been removed.
 Read-only/write authorization remains independent. Voiceover/music submission
 and retry through the old prompt channel are disabled; existing records and
 artifacts are retained pending an independent task mechanism.
+
+## Board and project assets
+
+The **Board** stores tasks for external agents to pull; publishing a task does
+not launch an agent. Use `reelctl requirements get Q1` to read the full task,
+including its execution instruction, acceptance criteria, and `references`.
+Each reference persists its entity kind and ID plus an A-label/name/time snapshot;
+resolve by kind and ID, since A numbers belong to the original editor session.
+`workAsset` references identify saved clips or combinations in `project.workAssets`.
+
+Report work with `requirement.update`, using `in_progress`, `blocked` (with an
+explanation in `agentNote`), or `review` (with notes and `resultMediaIds`). Agent
+updates using `done` also enter `review`; the user confirms completion in the
+Board. Existing completed tasks remain completed.
+
+**Project assets** combines source media with saved clips and combinations.
+Import external files, or save a named timeline selection from the same panel.
+Saved clips reference their source media and retain supported edit parameters;
+removing a saved clip does not delete the source. The separate **Personal library**
+continues to hold cross-project materials.

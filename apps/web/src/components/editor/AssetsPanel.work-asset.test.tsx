@@ -1,5 +1,5 @@
 import "../../test/install-local-storage-mock";
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MediaItem, Project } from "@reelterminal/core";
 import type { ToolcraftContextMenuOption as ContextMenuOption } from "@reelterminal/ui";
@@ -7,7 +7,7 @@ import { useNotificationStore } from "../../stores/notification-store";
 import { createEmptyProject } from "../../stores/project/project-helpers";
 import { useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
-import { useMediaContextMenuItems } from "./AssetsPanel";
+import { AssetsPanel, useMediaContextMenuItems } from "./AssetsPanel";
 
 function mediaItem(id: string, name: string): MediaItem {
   return {
@@ -107,4 +107,19 @@ describe("media context menu work-asset capture", () => {
       .notifications.filter((n) => n.type === "success");
     expect(successes.some((n) => n.title === "Saved to work assets")).toBe(true);
   });
+  it("saves a named timeline selection into the unified project assets panel", async () => {
+    useProjectStore.setState({ hasOpenProject: true, project: testProject([mediaItem("media-a", "take-one.mp4")]) });
+    await useProjectStore.getState().addClipToNewTrack("media-a");
+    const track = useProjectStore.getState().project.timeline.tracks.find((item) => item.clips.length > 0)!;
+    useUIStore.getState().select({ type: "clip", id: track.clips[0].id, trackId: track.id });
+    render(<AssetsPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Save timeline selection" }));
+    fireEvent.change(screen.getByPlaceholderText("Name this clip or combination"), { target: { value: "Opening edit" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(useProjectStore.getState().project.workAssets?.[0].name).toBe("Opening edit"));
+    expect(screen.getByText("Opening edit")).toBeInTheDocument();
+    expect(useProjectStore.getState().project.mediaLibrary.items).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Work Assets" })).not.toBeInTheDocument();
+  });
+
 });

@@ -1392,7 +1392,7 @@ export interface RequirementUpdateOp {
   readonly op: "requirement.update";
   /** Stable display ref (Q3) or internal requirement id. */
   readonly requirementId: string;
-  readonly status?: "draft" | "ready" | "in_progress" | "blocked" | "done";
+  readonly status?: "draft" | "ready" | "in_progress" | "blocked" | "review" | "done";
   readonly agentNote?: string;
   readonly resultMediaIds?: readonly string[];
 }

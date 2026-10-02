@@ -17,6 +17,7 @@ export interface CreateProjectRequirementInput {
   readonly instruction?: string;
   readonly priority?: ProjectRequirement["priority"];
   readonly status?: ProjectRequirement["status"];
+  readonly references?: ProjectRequirement["references"];
   readonly markerIds?: readonly string[];
   readonly acceptanceCriteria?: readonly string[];
 }
@@ -49,6 +50,7 @@ export function createProjectRequirementsSlice(
         ...(input.instruction?.trim() ? { instruction: input.instruction.trim() } : {}),
         priority: input.priority ?? "normal",
         status: input.status ?? "ready",
+        references: structuredClone(input.references ?? []),
         markerIds: [...(input.markerIds ?? [])],
         ...(input.acceptanceCriteria?.length
           ? { acceptanceCriteria: input.acceptanceCriteria.map((item) => item.trim()).filter(Boolean) }

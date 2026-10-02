@@ -80,7 +80,7 @@ describe("CollabStatusBar Agent Access status", () => {
     installBridge({ enabled: true, access: "read-only", currentAction: "edit.apply" });
     await renderBar();
 
-    expect(await screen.findByText("Agent can read project")).toBeInTheDocument();
+    expect(await screen.findByText("Agent")).toBeInTheDocument();
     expect(screen.getByTestId("agent-access-mode")).toHaveTextContent("Read-only");
     expect(screen.getByTestId("agent-current-action")).toHaveTextContent("edit.apply");
     expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
@@ -91,7 +91,8 @@ describe("CollabStatusBar Agent Access status", () => {
     const { setAccess } = installBridge({ enabled: true, access: "read-only" });
     await renderBar();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Allow Agent editing" }));
+    fireEvent.click(screen.getByTestId("agent-access-toggle"));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Allow editing" }));
     await waitFor(() => expect(setAccess).toHaveBeenCalledWith("write"));
   });
 
@@ -99,14 +100,15 @@ describe("CollabStatusBar Agent Access status", () => {
     installBridge({ enabled: false });
     await renderBar();
 
-    expect(await screen.findByText("Agent access starting")).toBeInTheDocument();
+    expect(await screen.findByText("Agent connecting")).toBeInTheDocument();
   });
 
   it("revokes editing without stopping the command service", async () => {
     const { setAccess } = installBridge({ enabled: true, access: "write" });
     await renderBar();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Stop Agent editing" }));
+    fireEvent.click(screen.getByTestId("agent-access-toggle"));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Read-only" }));
     await waitFor(() => expect(setAccess).toHaveBeenCalledWith("read-only"));
   });
 });
