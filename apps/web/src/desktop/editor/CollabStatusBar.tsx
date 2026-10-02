@@ -1,11 +1,6 @@
 import type { JSX } from "react";
 import { useEffect, useState } from "react";
-import {
-  LayoutTemplate,
-  LockKeyhole,
-  Pencil,
-  ChevronDown,
-} from "@/icons/lucide-compat";
+import { LayoutTemplate, LockKeyhole, Pencil } from "@/icons/lucide-compat";
 import { useTranslation } from "react-i18next";
 import {
   useCollabStore,
@@ -18,7 +13,7 @@ import { useProjectStore } from "../../stores/project-store";
 /** Compact status for local CLI access to the open desktop project. */
 export function CollabStatusBar(): JSX.Element {
   const { t } = useTranslation();
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [changingAccess, setChangingAccess] = useState(false);
   const enabled = useCollabStore((state) => state.enabled);
   const access = useCollabStore((state) => state.access);
   const currentAction = useCollabStore((state) => state.currentAction);
@@ -43,74 +38,43 @@ export function CollabStatusBar(): JSX.Element {
       aria-label={t("desktop.collaboration.accessStatus")}
       data-testid="agent-access-status"
     >
-      <div className="relative">
-        <button
-          type="button"
-          disabled={!enabled}
-          aria-expanded={menuOpen}
-          aria-haspopup="menu"
-          data-testid="agent-access-toggle"
-          onClick={() => setMenuOpen(!menuOpen)}
-          className={`flex h-7 items-center gap-1.5 rounded-md border border-border px-2 text-[11px] hover:bg-hover disabled:opacity-40 ${access === "write" ? "bg-accent-soft text-accent" : "bg-bg-2 text-fg-2"}`}
-        >
-          {access === "write" ? (
-            <Pencil size={12} />
-          ) : (
-            <LockKeyhole size={12} />
-          )}
-          <span>
-            {t(
-              enabled
-                ? "desktop.collaboration.agentReadable"
-                : "desktop.collaboration.agentStarting",
-            )}
-          </span>
-          <span aria-hidden>·</span>
-          <span data-testid="agent-access-mode">
-            {t(
-              access === "write"
-                ? "desktop.collaboration.writable"
-                : "desktop.collaboration.readOnly",
-            )}
-          </span>
-          <ChevronDown size={12} />
-        </button>
-        {menuOpen && (
-          <>
-            <button
-              className="fixed inset-0 z-40 cursor-default"
-              aria-label={t("common.close")}
-              onClick={() => setMenuOpen(false)}
-            />
-            <div
-              role="menu"
-              className="absolute bottom-full left-0 z-50 mb-1 w-44 rounded-md border border-border bg-bg-1 p-1 shadow-lg"
-              onKeyDown={(event) => {
-                if (event.key === "Escape") setMenuOpen(false);
-              }}
-            >
-              {(["read-only", "write"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  role="menuitemradio"
-                  aria-checked={access === mode}
-                  className={`block w-full rounded px-3 py-2 text-left text-xs hover:bg-hover ${access === mode ? "bg-accent-soft text-accent" : "text-fg"}`}
-                  onClick={async () => {
-                    await setAccess(mode);
-                    setMenuOpen(false);
-                  }}
-                >
-                  {t(
-                    mode === "write"
-                      ? "desktop.collaboration.allowEditing"
-                      : "desktop.collaboration.readOnly",
-                  )}
-                </button>
-              ))}
-            </div>
-          </>
+      <button
+        type="button"
+        disabled={!enabled || changingAccess}
+        aria-pressed={access === "write"}
+        title={t(
+          access === "read-only"
+            ? "desktop.collaboration.restoreWriteDescription"
+            : "desktop.collaboration.setReadOnlyDescription",
         )}
-      </div>
+        data-testid="agent-access-toggle"
+        onClick={async () => {
+          setChangingAccess(true);
+          try {
+            await setAccess(access === "write" ? "read-only" : "write");
+          } finally {
+            setChangingAccess(false);
+          }
+        }}
+        className={`flex h-7 items-center gap-1.5 rounded-md border border-border px-2 text-[11px] hover:bg-hover disabled:opacity-40 ${access === "write" ? "bg-accent-soft text-accent" : "bg-bg-2 text-fg-2"}`}
+      >
+        {access === "write" ? <Pencil size={12} /> : <LockKeyhole size={12} />}
+        <span>
+          {t(
+            enabled
+              ? "desktop.collaboration.agentReadable"
+              : "desktop.collaboration.agentStarting",
+          )}
+        </span>
+        <span aria-hidden>·</span>
+        <span data-testid="agent-access-mode">
+          {t(
+            access === "write"
+              ? "desktop.collaboration.writable"
+              : "desktop.collaboration.readOnly",
+          )}
+        </span>
+      </button>
 
       {currentAction ? (
         <span

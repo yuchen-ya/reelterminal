@@ -171,6 +171,15 @@ describe("WorkAssetsTab", () => {
     ).toBeInTheDocument();
   });
 
+  it("explains how to create saved clips before any search", () => {
+    useProjectStore.setState({ hasOpenProject: true, project: projectWith([], []) });
+    const { rerender } = render(<WorkAssetsTab embedded kind="single" search="" />);
+    expect(screen.getByText(/No saved clips yet/)).toBeInTheDocument();
+    expect(screen.queryByText("No work assets match the search.")).not.toBeInTheDocument();
+    rerender(<WorkAssetsTab embedded kind="single" search="opening" />);
+    expect(screen.getByText("No work assets match the search.")).toBeInTheDocument();
+  });
+
   it("shares the project-assets search and filters clips separately from combinations", () => {
     useProjectStore.setState({ hasOpenProject: true, project: projectWith([
       workAsset({ id: "single", name: "Opening close-up" }),

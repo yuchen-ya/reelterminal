@@ -103,6 +103,8 @@ export function RequirementBoardDialog(): JSX.Element | null {
     setBusy(true);
     setError("");
     try {
+      const number =
+        useProjectStore.getState().project.requirements?.nextNumber ?? 1;
       const result = await add({
         title,
         description,
@@ -127,6 +129,13 @@ export function RequirementBoardDialog(): JSX.Element | null {
         status: "ready",
       });
       if (result.success) {
+        setSelectedId(
+          useProjectStore
+            .getState()
+            .project.requirements?.items.find((item) => item.number === number)
+            ?.id ?? null,
+        );
+        setFilter("all");
         setTitle("");
         setDescription("");
         setCriteria("");
@@ -165,7 +174,7 @@ export function RequirementBoardDialog(): JSX.Element | null {
         role="dialog"
         aria-modal="true"
         aria-label={t("requirementBoard.title")}
-        className="flex h-[min(760px,88vh)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-border bg-bg-1 text-fg shadow-2xl"
+        className="flex h-[min(580px,88vh)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-bg-1 text-fg shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="flex items-center gap-2 border-b border-border px-4 py-3">
@@ -173,19 +182,19 @@ export function RequirementBoardDialog(): JSX.Element | null {
           <h2 className="flex-1 text-sm font-semibold">
             {t("requirementBoard.title")}
           </h2>
-          <span className="text-xs text-fg-muted">
+          <span className="text-xs text-fg-2">
             {t("requirementBoard.pullHint")}
           </span>
           <button
             type="button"
             aria-label={t("common.close")}
             onClick={close}
-            className="rounded p-1 text-fg-muted hover:bg-hover"
+            className="rounded p-1 text-fg-2 hover:bg-hover"
           >
             <X size={16} />
           </button>
         </header>
-        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-auto md:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-auto md:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
           <section className="min-h-0 overflow-y-auto p-4">
             <div
               className="mb-4 flex flex-wrap gap-1"
@@ -229,7 +238,7 @@ export function RequirementBoardDialog(): JSX.Element | null {
                         {item.title}
                       </strong>
                       <span
-                        className={`text-xs ${item.status === "blocked" ? "text-status-warning" : "text-fg-muted"}`}
+                        className={`text-xs ${item.status === "blocked" ? "text-status-warning" : "text-fg-2"}`}
                       >
                         {t(`requirementBoard.status.${item.status}`)}
                       </span>
@@ -254,7 +263,7 @@ export function RequirementBoardDialog(): JSX.Element | null {
               {requirements.filter(
                 (item) => filter === "all" || item.status === filter,
               ).length === 0 && (
-                <p className="py-12 text-center text-sm text-fg-muted">
+                <p className="py-12 text-center text-sm text-fg-2">
                   {t("requirementBoard.empty")}
                 </p>
               )}
@@ -265,7 +274,7 @@ export function RequirementBoardDialog(): JSX.Element | null {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <strong className="text-sm">
-                    Q{selected.number} · {selected.title}
+                    Q{selected.number} · {t("requirementBoard.taskDetails")}
                   </strong>
                   <button
                     onClick={() => setSelectedId(null)}
@@ -274,40 +283,53 @@ export function RequirementBoardDialog(): JSX.Element | null {
                     {t("requirementBoard.new")}
                   </button>
                 </div>
-                <input
-                  key={`${selected.id}-title`}
-                  aria-label={t("requirementBoard.editTitle")}
-                  defaultValue={selected.title}
-                  className={fieldClass}
-                  onBlur={async (event) => {
-                    const title = event.target.value.trim();
-                    if (!title || title === selected.title) return;
-                    const result = await update(selected.id, { title });
-                    if (!result.success)
-                      setError(
-                        result.error?.message ??
-                          t("requirementBoard.saveFailed"),
-                      );
-                  }}
-                />
-                <textarea
-                  key={`${selected.id}-description`}
-                  aria-label={t("requirementBoard.details")}
-                  defaultValue={selected.description}
-                  rows={4}
-                  className={fieldClass}
-                  onBlur={async (event) => {
-                    if (event.target.value === selected.description) return;
-                    const result = await update(selected.id, {
-                      description: event.target.value,
-                    });
-                    if (!result.success)
-                      setError(
-                        result.error?.message ??
-                          t("requirementBoard.saveFailed"),
-                      );
-                  }}
-                />
+                <label className="block space-y-1.5 text-xs text-fg-2">
+                  <span>{t("requirementBoard.editTitle")}</span>
+                  <input
+                    key={`${selected.id}-title`}
+                    aria-label={t("requirementBoard.editTitle")}
+                    defaultValue={selected.title}
+                    className={fieldClass}
+                    onBlur={async (event) => {
+                      const title = event.target.value.trim();
+                      if (!title) {
+                        event.target.value = selected.title;
+                        return;
+                      }
+                      if (title === selected.title) return;
+                      const result = await update(selected.id, { title });
+                      if (!result.success)
+                        setError(
+                          result.error?.message ??
+                            t("requirementBoard.saveFailed"),
+                        );
+                    }}
+                  />
+                </label>
+                <label className="block space-y-1.5 text-xs text-fg-2">
+                  <span>{t("requirementBoard.descriptionLabel")}</span>
+                  <textarea
+                    key={`${selected.id}-description`}
+                    aria-label={t("requirementBoard.details")}
+                    defaultValue={selected.description}
+                    rows={4}
+                    className={fieldClass}
+                    onBlur={async (event) => {
+                      if (event.target.value === selected.description) return;
+                      const result = await update(selected.id, {
+                        description: event.target.value,
+                      });
+                      if (!result.success)
+                        setError(
+                          result.error?.message ??
+                            t("requirementBoard.saveFailed"),
+                        );
+                    }}
+                  />
+                </label>
+                <p className="text-xs text-fg-2">
+                  {t("requirementBoard.autoSaveHint")}
+                </p>
                 <div className="flex flex-wrap gap-1.5">
                   {selected.references?.map(referenceButton)}
                 </div>
@@ -323,7 +345,7 @@ export function RequirementBoardDialog(): JSX.Element | null {
                       .join(" · ")}
                   </p>
                 )}
-                <p className="text-xs text-fg-muted">{selected.instruction}</p>
+                <p className="text-xs text-fg-2">{selected.instruction}</p>
                 {!!selected.acceptanceCriteria?.length && (
                   <div>
                     <h3 className="mb-2 text-xs font-semibold">
@@ -395,7 +417,7 @@ export function RequirementBoardDialog(): JSX.Element | null {
                 )}
                 <button
                   aria-label={t("requirementBoard.remove")}
-                  className="flex items-center gap-1 text-xs text-fg-muted hover:text-status-error"
+                  className="flex items-center gap-1 text-xs text-fg-2 hover:text-status-error"
                   onClick={async () => {
                     const result = await remove(selected.id);
                     if (result.success) setSelectedId(null);
@@ -430,7 +452,7 @@ export function RequirementBoardDialog(): JSX.Element | null {
                   className={fieldClass}
                 />
                 <fieldset>
-                  <legend className="mb-2 text-xs text-fg-muted">
+                  <legend className="mb-2 text-xs text-fg-2">
                     {t("requirementBoard.oneTimeInstruction")}
                   </legend>
                   <div className="flex flex-wrap gap-1">
@@ -452,11 +474,11 @@ export function RequirementBoardDialog(): JSX.Element | null {
                   </div>
                 </fieldset>
                 <div>
-                  <h4 className="mb-2 text-xs text-fg-muted">
+                  <h4 className="mb-2 text-xs text-fg-2">
                     {t("requirementBoard.agentReferences")}
                   </h4>
                   {availableReferences.length === 0 && (
-                    <p className="text-xs text-fg-muted">
+                    <p className="text-xs text-fg-2">
                       {t("requirementBoard.referenceHint")}
                     </p>
                   )}

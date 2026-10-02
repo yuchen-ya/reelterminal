@@ -1,5 +1,8 @@
 {
   "projectAssets": {
+    "emptySaved": "No saved clips yet. Select timeline clips, then choose Save timeline selection above.",
+    "libraryContents": "Saved materials",
+
     "previewSource": "Preview source media",
     "title": "Project assets",
     "all": "All",
@@ -108,7 +111,7 @@
     "editor": {
       "loading": "Loading editor…",
       "failed": "Editor failed to start: {{message}}",
-      "media": "Project assets",
+      "media": "Assets",
       "viewer": "Viewer",
       "inspector": "Inspector",
       "agent": "Agent",
@@ -288,6 +291,10 @@
     "retryPausedNote": "Retry is paused until generation moves to an independent task mechanism."
   },
   "requirementBoard": {
+    "taskDetails": "Task details",
+    "descriptionLabel": "Description",
+    "autoSaveHint": "Title and description save automatically when you leave the field.",
+
     "editTitle": "Task title",
     "title": "Board",
     "new": "New requirement",

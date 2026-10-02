@@ -1,5 +1,8 @@
 {
   "projectAssets": {
+    "emptySaved": "还没有保存的剪辑。选中时间线片段，点击上方“保存时间线所选”即可创建。",
+    "libraryContents": "收藏内容",
+
     "previewSource": "预览源媒体",
     "title": "项目素材",
     "all": "全部",
@@ -108,7 +111,7 @@
     "editor": {
       "loading": "正在加载编辑器…",
       "failed": "编辑器启动失败：{{message}}",
-      "media": "项目素材",
+      "media": "素材",
       "viewer": "预览",
       "inspector": "检查器",
       "agent": "智能体",
@@ -288,6 +291,10 @@
     "retryPausedNote": "重试暂时停用，待任务改为独立机制后恢复。"
   },
   "requirementBoard": {
+    "taskDetails": "任务详情",
+    "descriptionLabel": "详细要求",
+    "autoSaveHint": "修改标题或要求后，移出输入框即可自动保存。",
+
     "editTitle": "任务标题",
     "title": "看板",
     "new": "新建需求",

@@ -67,6 +67,8 @@ describe("RequirementBoardDialog", () => {
       status: "ready",
     });
     expect(screen.getByText("Q1")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Task title" })).toHaveValue("Tighten the opening");
+    expect(screen.getByText("Description")).toBeInTheDocument();
   });
   it("keeps object references after a session reset and locates the saved object", async () => {
     const media = {

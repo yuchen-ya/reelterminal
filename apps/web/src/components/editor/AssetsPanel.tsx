@@ -1217,7 +1217,7 @@ export const AssetsPanel: React.FC = () => {
                 <button disabled={!captureName.trim() || capturing} className="rounded bg-accent px-2 py-1 text-xs text-accent-fg disabled:opacity-40">{t("projectAssets.save")}</button>
                 <button type="button" onClick={() => setCaptureName(null)} className="text-xs text-fg-muted">{t("common.cancel")}</button>
               </form>}
-              <div className="mb-3 flex flex-wrap gap-1">{(["all", "media", "single", "multi"] as const).map((kind) => <button key={kind} type="button" aria-pressed={assetFilter === kind} onClick={() => setAssetFilter(kind)} className={`rounded px-2 py-1 text-xs ${assetFilter === kind ? "bg-accent-soft text-accent" : "text-fg-2 hover:bg-hover"}`}>{t(`projectAssets.${kind}`)}</button>)}</div>
+              <div className="mb-3 grid grid-cols-2 gap-1">{(["all", "media", "single", "multi"] as const).map((kind) => <button key={kind} type="button" aria-pressed={assetFilter === kind} onClick={() => setAssetFilter(kind)} className={`rounded px-2 py-1 text-xs ${assetFilter === kind ? "bg-accent-soft text-accent" : "text-fg-2 hover:bg-hover"}`}>{t(`projectAssets.${kind}`)}</button>)}</div>
               <div className="flex items-center gap-2 mb-[18px] rounded-[9px] border border-border bg-bg px-2.5 py-1.5">
                 <Search size={13} className="shrink-0 text-fg-3" aria-hidden />
                 <input

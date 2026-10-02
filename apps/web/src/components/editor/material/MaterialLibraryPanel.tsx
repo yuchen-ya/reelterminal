@@ -314,7 +314,7 @@ export function MaterialLibraryPanel() {
       {/* header */}
       <div className="flex flex-col gap-2.5 px-4 pt-[18px] shrink-0">
         <div className="flex items-center justify-between">
-          <div className="font-bold text-[18px] text-fg">{t("material.title")}</div>
+          <div className="text-xs font-medium text-fg-2">{t("projectAssets.libraryContents")}</div>
           <div className="relative flex items-center gap-1.5">
             {latestAgentEntry ? (
               <button

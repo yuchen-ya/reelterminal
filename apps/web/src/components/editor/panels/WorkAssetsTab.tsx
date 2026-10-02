@@ -597,7 +597,7 @@ export const WorkAssetsTab: React.FC<{
           embedded &&
           !kind ? null : sortedAssets.length === 0 && embedded ? (
             <p className="py-4 text-center text-xs text-fg-muted">
-              {t("workAssets.noResults")}
+              {t(sortedAssets.length === 0 && !normalizedSearch ? "projectAssets.emptySaved" : "workAssets.noResults")}
             </p>
           ) : sortedAssets.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-8 text-center">
@@ -624,7 +624,7 @@ export const WorkAssetsTab: React.FC<{
             </div>
           ) : filteredAssets.length === 0 ? (
             <div className="p-6 text-center text-xs text-fg-muted">
-              {t("workAssets.noResults")}
+              {t(sortedAssets.length === 0 && !normalizedSearch ? "projectAssets.emptySaved" : "workAssets.noResults")}
             </div>
           ) : (
             <div className="flex flex-col gap-2">

@@ -92,7 +92,7 @@ describe("CollabStatusBar Agent Access status", () => {
     await renderBar();
 
     fireEvent.click(screen.getByTestId("agent-access-toggle"));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Allow editing" }));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     await waitFor(() => expect(setAccess).toHaveBeenCalledWith("write"));
   });
 
@@ -108,7 +108,7 @@ describe("CollabStatusBar Agent Access status", () => {
     await renderBar();
 
     fireEvent.click(screen.getByTestId("agent-access-toggle"));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: "Read-only" }));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     await waitFor(() => expect(setAccess).toHaveBeenCalledWith("read-only"));
   });
 });

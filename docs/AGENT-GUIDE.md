@@ -1,8 +1,8 @@
 # ReelTerminal external Agent guide
 
 Start ReelTerminal and open a project. The command service becomes available
-automatically with read-only access. For edits, open the **Agent · Read-only** menu in the status strip and select
-**Allow editing**. Select **Read-only** in the same menu to revoke write access. Run:
+automatically with read-only access. For edits, click the **Agent · Read-only** button in the status strip. It switches
+to **Agent · Editable**; click again to revoke write access. Run:
 
 ```powershell
 reelctl status
