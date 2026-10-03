@@ -368,7 +368,7 @@ describe("media.render_html", () => {
     expect(described.ok).toBe(true);
     if (described.ok) {
       expect(described.value.verbs).toContain("media.render_html");
-      expect(described.value.verbs).toHaveLength(49);
+      expect(described.value.verbs).toHaveLength(53);
     }
     const bad = await facade["media.render_html"]({
       ...inline("<p>x</p>"),

@@ -22,7 +22,12 @@ export interface ToolDefinition<Name extends string = string, Input = unknown, O
   /** Initial extension surface is read-only; edits keep using edit.apply. */
   readonly effect: "read";
   readonly requires?: readonly ("render" | "artifactRoot" | "mediaRoots")[];
-  readonly schemaCases: readonly { name: string; params: unknown; expectValid: boolean }[];
+  /**
+   * Boundary corpus cases for this tool. `schemaValid: true` with
+   * `expectValid: false` pins a cross-field rule the emitted schema cannot
+   * express (same convention as verb-schema-corpus.ts).
+   */
+  readonly schemaCases: readonly { name: string; params: unknown; expectValid: boolean; schemaValid?: boolean }[];
   readonly presentation?: "image-collection";
   readonly execute: (input: Input, context: ToolContext) => Promise<Output>;
 }
@@ -30,7 +35,10 @@ export interface ToolDefinition<Name extends string = string, Input = unknown, O
 export function defineTool<const Name extends string, Input, Output>(
   definition: ToolDefinition<Name, Input, Output>,
 ): ToolDefinition<Name, Input, Output> {
-  if (!/^[a-z][a-z0-9]*(?:[._][a-z0-9]+)*$/.test(definition.name)) {
+  // Segments may contain underscores (media.render_html verb style); the
+  // dots→underscores MCP spelling stays collision-checked by
+  // assertUniqueToolNames below.
+  if (!/^[a-z][a-z0-9]*(?:[._][a-z0-9][a-z0-9_]*)*$/.test(definition.name)) {
     throw new Error(`Invalid tool name: ${definition.name}`);
   }
   return Object.freeze(definition);

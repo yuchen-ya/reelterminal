@@ -15,8 +15,8 @@ import { HELP_VERBS } from "./gui-manual";
  * preview, export, verification, live editor context, and bundled tools.
  * Mutations are serialized, revision-checked, and idempotent.
  *
- * The current registry exposes 49 tools (28 base verbs + 8 material verbs +
- *   2 font verbs + 6 preset verbs + 3 help verbs + 2 bundled plugin tools);
+ * The current registry exposes 53 tools (28 base verbs + 8 material verbs +
+ *   2 font verbs + 6 preset verbs + 3 help verbs + 6 bundled plugin tools);
  *   FACADE_VERBS, MATERIAL_VERBS, FONT_VERBS, PRESET_VERBS, HELP_VERBS, and
  *   PLUGIN_TOOLS below are the mechanical source of truth for the live
  *   catalog.
@@ -303,6 +303,22 @@ export interface Capabilities {
     readonly asynchronous: true;
     readonly types: Readonly<Record<MediaAnalysisType, CapabilityStatus>>;
     readonly largeResultsAsArtifacts: true;
+  };
+  /**
+   * Frame-exact production tools (optimization plan M1): precise extraction,
+   * contact sheets, pairwise compare, static-mask patches. Availability is
+   * derived from the local ffmpeg/ffprobe preflight plus the session's
+   * artifact/media roots — reported honestly when either is missing.
+   */
+  readonly frameTools: {
+    readonly ffmpeg: CapabilityStatus;
+    readonly contactSheetLabelFont: { readonly path: string | null };
+    readonly limits: {
+      readonly maxFramesPerExtract: number;
+      readonly maxSheetCells: number;
+      readonly maxComparePairs: number;
+      readonly maxPatchRangeFrames: number;
+    };
   };
   readonly professionalEditing: Readonly<{
     subtitles: CapabilityStatus;

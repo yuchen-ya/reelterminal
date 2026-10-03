@@ -199,6 +199,10 @@ describe("capabilities.get / session.describe", () => {
       "help.search",
       "media.inspect",
       "media.import_preflight",
+      "frames.extract",
+      "frames.contact_sheet",
+      "video.compare",
+      "patch.apply",
     ]);
     expect(res.value.stepLetters.facadeToRuntime).toBe("P");
     expect(res.value.stepLetters.createProject).toBe("P");
