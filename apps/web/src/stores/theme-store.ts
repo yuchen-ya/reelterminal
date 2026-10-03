@@ -56,7 +56,7 @@ export const useThemeStore = create<ThemeState>()(
       },
     }),
     {
-      // Persisted storage name — legacy registry, value frozen (theme prefs).
+      // Persisted storage identifier for theme preferences.
       name: LEGACY_LS_THEME,
       onRehydrateStorage: () => (state) => {
         if (state) {

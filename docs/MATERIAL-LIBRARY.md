@@ -182,13 +182,13 @@ file with `details.reason:"missing_file"`, outside media roots), `NOT_FOUND`,
 `CONFLICT` (CAS, referenced-without-force, idempotency payload mismatch),
 `UNSUPPORTED` (no bridge / headless).
 
-## What is deliberately NOT built (yet)
+## Current limits
 
-No vector/semantic search (plain multi-token substring), no automatic link
-crawling or content fetching, no skill install/execution, no dedupe or
-auto-deletion, no cloud sync/permissions/team features, no relationship-graph
-UI. Web (non-desktop) runs keep full UI + storage, but cannot verify
-path-referenced materials created on desktop ("Unverified" badge) and expose
-no agent tools (live-only). The workspace rules in
+Search uses plain multi-token substring matching. The library does not crawl
+links, fetch content, install or execute skills, deduplicate or auto-delete
+records, sync to the cloud, manage teams or permissions, or show a relationship
+graph. The web app keeps its UI and storage but cannot verify path-referenced
+materials created on desktop (shown as "Unverified") and does not expose Agent
+tools. The workspace rules in
 [`AGENT-WORKSPACE.md`](AGENT-WORKSPACE.md) still apply: generated media
 belongs in the Agent workspace, not the repository.

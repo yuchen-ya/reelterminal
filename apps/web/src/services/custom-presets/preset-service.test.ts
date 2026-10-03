@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Mock } from "vitest";
 import type { CustomPresetRecord } from "@reelterminal/core/presets/types";
 import { PRESET_RECORD_VERSION } from "@reelterminal/core/presets/types";
 import { PresetStorageUnavailableError, type PresetStorage } from "./storage";
@@ -58,10 +59,10 @@ async function makeService(storage?: PresetStorage): Promise<CustomPresetService
   return service;
 }
 
-let eventSpy: ReturnType<typeof vi.fn>;
+let eventSpy: Mock<EventListener>;
 
 beforeEach(() => {
-  eventSpy = vi.fn();
+  eventSpy = vi.fn<EventListener>();
   window.addEventListener(CUSTOM_PRESETS_UPDATED_EVENT, eventSpy);
 });
 

@@ -1,5 +1,5 @@
 /**
- * Signal ownership + stdout purity tests (ADR 0003 Decisions 6/7) against
+ * Signal ownership and stdout purity tests against
  * the REAL binary:
  *  - first SIGTERM ⇒ bounded disposal stderr logs, exit 143
  *  - second signal ⇒ immediate hard exit (no disposal promises)

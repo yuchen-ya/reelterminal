@@ -1,157 +1,54 @@
 # Contributing to ReelTerminal
 
-This is the **ReelTerminal** repository (`yuchen-ya/reelterminal`): an
-agent-native video finishing editor forked from OpenReel. This guide describes
-how to set it up, where the project-specific code lives, and what "done" means
-here.
+ReelTerminal is a video-finishing editor with a desktop GUI and a shared API
+for external Agents. Start with the [README](README.md) and the
+[documentation index](docs/README.md).
 
-> **Attribution.** This repository is a fork of
-> [OpenReel](https://github.com/Augani/openreel-video) by **Augustus Otu and
-> Contributors**, MIT licensed. The browser editor (`apps/web`), the desktop /
-> studio / image apps, and the core engines and canonical `Project` model
-> (`packages/core`) are inherited from upstream; copyright and license are
-> retained ([LICENSE](LICENSE)). The extraction audit, the agent facade,
-> Chromium runtime, and external-Agent integration are maintained by
-> ReelTerminal. Upstream claims do not automatically become ReelTerminal
-> claims.
+## Attribution and licensing
 
-## What this repo is (and is not)
+The repository includes code from the MIT-licensed OpenReel project. Preserve
+its copyright and license notice in [`LICENSE`](LICENSE). The repository also
+contains separately licensed dependencies and assets; see
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and the notices beside each
+package or asset.
 
-Read [`README.md`](README.md) first, especially the product boundary and
-current-status sections. ReelTerminal keeps a deliberately small, tested Agent
-surface over a large inherited editor codebase. Do not present unverified
-inherited behavior as ReelTerminal-specific work.
+The `apps/image` app depends on `@imgly/background-removal`, which is licensed
+under AGPL-3.0. Its license text is included in that app's public assets.
 
-Design background, in reading order:
+## Set up
 
-- [`docs/design-principles.md`](docs/design-principles.md) — enduring
-  principles (Principle 1: Human–Agent Operational Parity) with an honest
-  conformance table.
-- [`docs/adr/`](docs/adr/) — why the design is what it is. ADRs are frozen
-  once accepted; correct them by amendment, not silent rewrite.
-- [`docs/README.md`](docs/README.md) — docs index and house rules.
-
-## Getting started
-
-Prerequisites (as verified on macOS arm64 and Ubuntu CI):
-
-- **Windows**: use Git Bash; `corepack pnpm install` works the same (verified
-  on Windows x64)
-- **Node 22** (CI uses 22; the `engines` floor is 18)
-- **pnpm 11.7** via corepack — the repo pins `packageManager: pnpm@11.7.0`
-- **ffmpeg + ffprobe** on `PATH` — needed by the runtime's artifact verifier
-- **Chromium** via Playwright (installed below)
+Use Node.js 22.13.0 or newer, Corepack, and the repository-pinned pnpm 11.7.0:
 
 ```bash
 git clone https://github.com/yuchen-ya/reelterminal.git
 cd reelterminal
-
 corepack pnpm install
-
-# one-time browser install for the render/export runtime
 pnpm --filter @reelterminal/runtime-chromium exec playwright-core install chromium
-
-# focused test suites — the lab's verified surface
-pnpm --filter @reelterminal/agent-facade test:run       # pure Node
-pnpm --filter @reelterminal/runtime-chromium test:run   # real Chromium + ffmpeg
-
-# the inherited browser editor GUI (optional)
-pnpm dev
 ```
 
-## Repository layout
+FFmpeg and ffprobe are required by runtime verification tests. Start the browser
+editor with `pnpm dev`.
 
-```
-apps/web                   inherited browser editor GUI (Vite/React)
-apps/desktop|studio|image  inherited Electron / auxiliary apps
-packages/core              canonical Project model + engines (inherited)
-packages/agent-facade      typed headless/live API (17 verbs)
-packages/runtime-chromium  Chromium render/export + verification
-packages/agent-transport   optional headless MCP/workflow transport
-audit/                     frozen extraction audit + machine evidence
-docs/adr|slice-1b          ADRs and committed platform evidence
-```
-
-Workspace packages are unified under `@reelterminal/*` (renamed atomically from
-the inherited `@openreel/*` scope; the workspace is private with no published
-packages or external consumers). Inherited runtime identifiers that cross
-version boundaries—`.openreel` project-format files, persistence keys, legacy
-CLI/endpoint compatibility entries, and `openreel-*` protocol markers—remain
-supported compatibility contracts as governed by
-[`docs/NAMING-AND-COMPATIBILITY.md`](docs/NAMING-AND-COMPATIBILITY.md). The
-product and repository are named `ReelTerminal`.
-
-## Making changes
-
-### Scope discipline
-
-- Changes to the lab's verified surface (`agent-facade`,
-  `runtime-chromium`) must come with tests and, when they change behavior,
-  updated package-README limits and — for durable decisions — an ADR or ADR
-  amendment.
-- Inherited code: fix build breakage and real bugs; do not refactor or
-  "clean up" wholesale. The audit (`audit/`) is frozen historical evidence —
-  never rewrite it; amend instead.
-- Do not widen claims: if a test does not cover it, do not document it as
-  verified.
-
-### Branches and commits
+## Checks
 
 ```bash
-git checkout -b feat/add-transition-effects   # feat/ | fix/ | docs/ | chore/
-```
-
-Follow conventional commits:
-
-```
-feat: add crossfade transition verb
-fix: resolve timeline scrubbing lag
-docs: update ADR 0002 with amendment A8
-chore: bump playwright-core
-```
-
-Keep commits focused and atomic; rebase onto `origin/main` before opening a PR.
-
-### Coding standards (inherited baseline)
-
-- TypeScript strict mode; prefer `interface` for object shapes; avoid `any`
-  (use `unknown` or proper types).
-- Naming: components `PascalCase`, functions `camelCase`, constants
-  `UPPER_SNAKE_CASE`; files `kebab-case.ts` or `PascalCase.tsx` for components.
-- Comment *why*, not *what*; add JSDoc for public APIs; no stray
-  `console.log` or TODOs without an issue.
-
-## Testing
-
-```bash
-pnpm test        # repo-wide, single run
-# Windows: requires Node >= 21 (Node 22 recommended) for the repo-wide suite
 pnpm typecheck
 pnpm lint
-pnpm build       # wasm + web build
+pnpm test
+pnpm build
 ```
 
-CI (`.github/workflows/`): `ci.yml` runs typecheck/lint/tests + build on
-Ubuntu with Node 22, Chromium, and ffmpeg; `chromium-e2e.yml` runs the focused
-Slice-1b suites and always uploads the probe/verify evidence artifact.
+For focused work, run the affected package checks. Desktop live collaboration
+tests are in `apps/desktop`; the GitHub workflows show the CI checks and
+platforms.
 
-For runtime changes, tests must produce real evidence (probe/verify JSON),
-not just assertions — see `packages/runtime-chromium/README.md`.
+## Changes and pull requests
 
-## Submitting changes
+- Keep changes focused on the reported behavior.
+- Add or update tests for observable behavior changes.
+- Update current user or API documentation when a public contract changes.
+- Keep comments short and explain behavior that is not clear from the code.
+- Describe the change and list the checks you ran in the pull request.
 
-1. Push your branch and open a PR against `main` (the PR template asks for
-   description, testing, and verification evidence).
-2. Keep the description honest about what was verified and what was not.
-3. Respond to review feedback; push updates to the same branch.
-4. ReelTerminal PRs are reviewed directly by the maintainer.
-
-## Questions
-
-Open a [GitHub issue](https://github.com/yuchen-ya/reelterminal/issues).
-For the upstream OpenReel product itself, see
-[upstream](https://github.com/Augani/openreel-video).
-
----
-
-Thank you for contributing — and for keeping ReelTerminal's reporting honest. 🎬
+Open security reports privately using [`SECURITY.md`](SECURITY.md). Use GitHub
+issues for ordinary bugs and feature requests.

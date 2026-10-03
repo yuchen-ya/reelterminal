@@ -313,7 +313,9 @@ describe("motion masks", () => {
       ellipse: vi.fn(),
       closePath: vi.fn(),
     };
-    const path2dCtor = vi.fn(() => path2d);
+    const path2dCtor = vi.fn(function () {
+      return path2d;
+    });
     const originalPath2d = globalThis.Path2D;
     (globalThis as { Path2D: unknown }).Path2D = path2dCtor;
 
@@ -354,7 +356,9 @@ describe("motion masks", () => {
       closePath: vi.fn(),
     };
     const originalPath2d = globalThis.Path2D;
-    (globalThis as { Path2D: unknown }).Path2D = vi.fn(() => path2d);
+    (globalThis as { Path2D: unknown }).Path2D = vi.fn(function () {
+      return path2d;
+    });
 
     const ctx = { clip: vi.fn() } as unknown as CanvasRenderingContext2D;
 
@@ -401,7 +405,9 @@ describe("motion masks", () => {
     const originalPath2d = globalThis.Path2D;
 
     const clipCtx = { clip: vi.fn() } as unknown as CanvasRenderingContext2D;
-    (globalThis as { Path2D: unknown }).Path2D = vi.fn(() => clipPath2d);
+    (globalThis as { Path2D: unknown }).Path2D = vi.fn(function () {
+      return clipPath2d;
+    });
     try {
       applyMotionLayerMasksToCanvas(clipCtx, layer);
     } finally {
@@ -420,7 +426,9 @@ describe("motion masks", () => {
       fillStyle: "#000000",
       canvas: { width: 320, height: 180 },
     } as unknown as OffscreenCanvasRenderingContext2D;
-    (globalThis as { Path2D: unknown }).Path2D = vi.fn(() => alphaPath2d);
+    (globalThis as { Path2D: unknown }).Path2D = vi.fn(function () {
+      return alphaPath2d;
+    });
     try {
       paintMotionLayerMaskAlphaToCanvas(alphaCtx, layer);
     } finally {

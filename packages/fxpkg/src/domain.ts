@@ -1,11 +1,11 @@
 /**
- * Marketplace domain types + submission state machine (STUDIO_PLAN §33, §37).
+ * Marketplace domain types and submission state machine.
  * Shared by the marketplace API (apps/cloud) and the studio app.
  */
 import type { AbiVersion, AssetKind } from "./types";
 import type { Manifest } from "./manifest";
 
-/** Asset version review lifecycle (STUDIO_PLAN §37.1). */
+/** Asset version review lifecycle. */
 export type ReviewState =
   | "submitted"
   | "validating"
@@ -17,7 +17,7 @@ export type ReviewState =
   | "deprecated"
   | "banned";
 
-/** Submission state machine states (STUDIO_PLAN §37.1). */
+/** Submission state machine states. */
 export type SubmissionState =
   | "draft_editing"
   | "client_packaging"
@@ -155,7 +155,7 @@ export interface Payout {
   periodEnd: string;
 }
 
-/** Marketplace event taxonomy (STUDIO_PLAN §41.1). Only EXPORT_COMPLETED pays. */
+/** Marketplace event taxonomy. Only EXPORT_COMPLETED creates payable value. */
 export type EventType = "ASSET_INSTALLED" | "ASSET_APPLIED" | "EXPORT_COMPLETED";
 
 export const PAYABLE_EVENTS: EventType[] = ["EXPORT_COMPLETED"];

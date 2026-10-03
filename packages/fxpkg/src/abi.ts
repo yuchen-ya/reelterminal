@@ -1,5 +1,5 @@
 /**
- * ABI registry (STUDIO_PLAN §8). The ABI defines the host-provided uniforms,
+ * The ABI defines the host-provided uniforms,
  * the resource caps, and — together with the node library — which node
  * operations the compiler may emit for a given version.
  *
@@ -13,7 +13,7 @@ export const ABI_VERSIONS: AbiVersion[] = ["1.0", "1.1", "1.2"];
 
 export const CURRENT_ABI: AbiVersion = "1.2";
 
-/** Host-provided uniforms available to every graph (STUDIO_PLAN §8, §11). */
+/** Host-provided uniforms available to every graph. */
 export const HOST_UNIFORMS = [
   { id: "u_source", kind: "texture", desc: "input frame texture" },
   { id: "u_samp", kind: "sampler", desc: "linear sampler" },
@@ -22,7 +22,7 @@ export const HOST_UNIFORMS = [
   { id: "u_frame", kind: "int", desc: "frame index" },
 ] as const;
 
-/** Resource caps per ABI version (STUDIO_PLAN §19.1, §20.4, §21.2). */
+/** Resource caps per ABI version. */
 export const ABI_CAPS: Record<AbiVersion, ResourceCaps> = {
   "1.0": {
     maxParticles: 2048,

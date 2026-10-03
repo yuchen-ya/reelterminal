@@ -1,7 +1,7 @@
 /**
- * Path containment for local-media import (security boundary of Slice 1).
+ * Path containment for local-media import.
  *
- * Slice 1 accepts plain local paths only: every candidate path must resolve to
+ * Only plain local paths are accepted: every candidate path must resolve to
  * a real location inside at least one caller-configured media root. All checks
  * run against realpath results so symlink escapes fail containment, separators
  * are normalized, and Windows comparisons are case-insensitive.
@@ -16,7 +16,7 @@ import path from "node:path";
 const URL_SCHEME_RE = /^([a-zA-Z][a-zA-Z0-9+.-]*):/;
 
 /**
- * True when the string looks like a URL scheme we do not accept — slice 1
+ * True when the string looks like a URL scheme we do not accept — this
  * accepts plain local paths only (`http:`, `https:`, `file:`, `data:`,
  * `blob:`, `ftp:`, ...).
  *

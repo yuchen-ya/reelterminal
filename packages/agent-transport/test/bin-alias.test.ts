@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * N02 CLI naming contract: `reelterminal-agent` is the primary command and
+ * `reelterminal-agent` is the primary command and
  * `agent-video` a thin alias. Both package.json bin entries MUST point at the
  * same entry file, and the entry must dispatch on argv[2] only (no argv[1] /
  * basename branching), which is what makes the alias share one implementation
@@ -15,7 +15,7 @@ const pkg = JSON.parse(readFileSync(path.join(pkgDir, "package.json"), "utf8")) 
   bin: Record<string, string>;
 };
 
-describe("CLI bin naming (N02)", () => {
+describe("CLI bin naming", () => {
   it("exposes reelterminal-agent as the primary command", () => {
     expect(pkg.bin["reelterminal-agent"]).toBe("dist/cli.js");
   });

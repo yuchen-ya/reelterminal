@@ -2,17 +2,16 @@ import { reviewVideo, videoReviewPreflight } from "./video-review";
 import { analyzeLocalAudio, audioAnalysisPreflight } from "./audio-analysis";
 import { bindBundledTools } from "./plugin-runtime";
 /**
- * LiveFacadeSession — the live human–agent collaboration facade
- * (ADR 0004: Slice 3). A SEPARATE implementation of the same registered
- * contract as AgentFacadeSession (Decision 11: headless is untouched):
+ * LiveFacadeSession — the live agent facade. It implements the same
+ * registered contract as AgentFacadeSession:
  *
  *  - It holds NO project copy. The renderer's store stays canonical
- *    (Decision 1); every verb works from on-demand `LiveProjectStore`
- *    snapshots, and every mutation is translated to core actions by the
- *    SAME ops.ts translator as headless (Decision 2: one contract) and
+ *    every verb works from on-demand `LiveProjectStore` snapshots, and every
+ *    mutation is translated to core actions by the same ops.ts translator as
+ *    headless, then
  *    committed through `store.applyActions` as ONE undo unit with CAS
  *    preconditions (Decisions 3/4).
- *  - One AI writer at a time (Decision 6): construction acquires the
+ *  - One AI writer at a time: construction acquires the
  *    `LiveWriterLease` for write-enabled sessions; a session without it runs
  *    read-only and its write verbs fail CONFLICT naming the holder. The
  *    human never takes the lease and can always edit.
@@ -67,7 +66,7 @@ import {
   pendingArtifactPath,
   publishArtifact,
 } from "./inspection-artifacts";
-import { JobRegistry, jobStatusView } from "./jobs";
+import { cancelExportWithin, JobRegistry, jobStatusView } from "./jobs";
 import { queryTimeline } from "./timeline-query";
 import { validateEditPlan } from "./edit-validation";
 import type { LiveWriterLease } from "./live-lease";
@@ -739,6 +738,7 @@ export class LiveFacadeSession {
         );
       }
       try {
+        this.gate("history.control");
         const controlled = await this.config.store.historyControl(valid.action, {
           expectedRevision: valid.expectedRevision ?? state.revision,
           ...(valid.idempotencyKey !== undefined
@@ -941,6 +941,7 @@ export class LiveFacadeSession {
       };
       let committed: LiveApplyActionsResult;
       try {
+        this.gate("project.rename");
         committed = await this.config.store.applyActions(
           [{
             type: "project/rename",
@@ -1125,6 +1126,7 @@ export class LiveFacadeSession {
 
       let committed: LiveMediaImportResult;
       try {
+        this.gate("media.import");
         // Preserve the store receiver: concrete bridges may implement this
         // as a class method with stateful revision/history bookkeeping.
         committed = await this.config.store.importMedia(request, {
@@ -1255,6 +1257,7 @@ export class LiveFacadeSession {
       }
       await requireProviderPreflight(provider, "media.render_html");
 
+      this.gate("media.render_html");
       const artifact = await produceHtmlRenderArtifact({
         provider,
         mediaRoots: roots,
@@ -1599,6 +1602,7 @@ export class LiveFacadeSession {
 
       let committed: LiveApplyActionsResult;
       try {
+        this.gate("edit.apply");
         committed = await this.config.store.applyActions(actions, {
           groupLabel: "agent: edit.apply",
           // The renderer CAS is UNCONDITIONAL in live mode: a caller that
@@ -1774,6 +1778,7 @@ export class LiveFacadeSession {
       const tempPath = pendingArtifactPath(rendersDir, stem, "png");
       const finalPath = resolvePath(rendersDir, `${stem}.png`);
 
+      this.gate("preview.render_frame");
       const rendered = await provider.renderFramePng({
         project: structuredClone(project),
         sourceRevision,
@@ -2404,9 +2409,12 @@ export class LiveFacadeSession {
 
       const jobId = `job-${crypto.randomUUID()}`;
       const exportsDir = resolvePath(artifactRoot, "exports");
+      this.gate("export.start");
       await prepareArtifactDir(exportsDir, artifactRoot, "export.start");
       const jobDir = resolvePath(exportsDir, jobId);
+      this.gate("export.start");
       await prepareArtifactDir(jobDir, artifactRoot, "export.start");
+      this.gate("export.start");
       this.jobs.create(jobId, sourceRevision);
       if (valid.idempotencyKey !== undefined) {
         this.ledger.set("export.start", valid.idempotencyKey, {
@@ -2586,12 +2594,7 @@ export class LiveFacadeSession {
       this.jobs.markCancelRequested(valid.jobId);
       try {
         // The cancel path must never wedge the session's serialized lane.
-        await Promise.race([
-          provider.cancel(valid.jobId),
-          new Promise<"timeout">((resolveTimeout) =>
-            setTimeout(() => resolveTimeout("timeout" as const), 10_000),
-          ),
-        ]);
+        await cancelExportWithin(provider, valid.jobId);
       } catch (error) {
         throw new FacadeError(
           "JOB_FAILED",
@@ -2796,6 +2799,7 @@ export class LiveFacadeSession {
     bridgeVerb: MaterialLibraryBridgeVerb,
     params: Record<string, unknown>,
   ): Promise<T> {
+    this.gate(verb);
     const bridge = this.config.materialLibrary;
     if (typeof bridge !== "function") {
       throw new FacadeError(
@@ -3251,6 +3255,7 @@ export class LiveFacadeSession {
     bridgeVerb: FontLibraryBridgeVerb,
     params: Record<string, unknown>,
   ): Promise<T> {
+    this.gate(verb);
     const bridge = this.config.fontLibrary;
     if (typeof bridge !== "function") {
       throw new FacadeError(
@@ -3392,6 +3397,7 @@ export class LiveFacadeSession {
     bridgeVerb: PresetLibraryBridgeVerb,
     params: Record<string, unknown>,
   ): Promise<T> {
+    this.gate(verb);
     const bridge = this.config.presetLibrary;
     if (typeof bridge !== "function") {
       throw new FacadeError(
@@ -3839,21 +3845,22 @@ export class LiveFacadeSession {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.releaseWriterLease();
+    await this.chain.catch(() => undefined);
+
     const provider = this.config.exportProvider;
-    for (const job of this.jobs.list()) {
+    const cancellations = this.jobs.list().map(async (job) => {
       if (job.state === "queued" || job.state === "running") {
         this.jobs.markCancelRequested(job.jobId);
         if (job.kind === "analysis") {
           this.analysisControllers.get(job.jobId)?.abort();
         } else if (provider) {
-          await provider.cancel(job.jobId).catch(() => undefined);
+          await cancelExportWithin(provider, job.jobId).catch(() => false);
         }
         this.jobs.markCancelled(job.jobId);
       }
-    }
-    this.releaseWriterLease();
-    // Let the serialized lane drain (a verb in flight finishes first).
-    await this.chain.catch(() => undefined);
+    });
+    await Promise.all(cancellations);
   }
 
   /* ---------------------------- internals ----------------------------- */

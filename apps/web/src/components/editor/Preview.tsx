@@ -151,7 +151,7 @@ import {
   type PreviewFrameSource,
 } from "./preview/frame-compositor";
 import { ASPECT_PRESETS, aspectLabelFor } from "./preview/display-options";
-import { ReferenceComparisonPanel } from "./preview/ReferenceComparisonPanel";
+import { ReferenceComparisonControl, ReferenceComparisonPanel } from "./preview/ReferenceComparisonPanel";
 import {
   computePreviewFrameSize,
   previewFrameOverflows,
@@ -168,7 +168,7 @@ const scrubVideoCacheKey = (mediaId: string, isStabilized: boolean): string =>
 // Playback frame sourcing must never block the render loop indefinitely: a
 // wedged hardware decoder leaves `CanvasSink.getCanvas` pending forever, which
 // pins the per-session `isProcessingFrame` latch and freezes the picture while
-// the audio-driven clock keeps advancing (ADR 0009).
+// the audio-driven clock keeps advancing.
 const DECODE_TIMEOUT_MS = 1500;
 const PLAYBACK_STALL_TIMEOUT_MS = 2000;
 const PLAYBACK_WATCHDOG_INTERVAL_MS = 500;
@@ -199,7 +199,7 @@ interface ClipWithPlaceholder {
   isPlaceholder?: boolean;
 }
 
-export const Preview: React.FC = () => {
+export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true }) => {
   const { t: tr } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -340,7 +340,7 @@ export const Preview: React.FC = () => {
   const [showSafeMargins, setShowSafeMargins] = useState(false);
   const [canvasSnappingEnabled, setCanvasSnappingEnabled] = useState(true);
 
-  // ADR 0004 Decision 5: "agent target point" affordance. While armed, the
+  // "agent target point" affordance. While armed, the
   // next real click on the preview canvas is converted to normalized 0..1
   // coordinates against the project frame and stored in the editor context.
   const [targetPointArmed, setTargetPointArmed] = useState(false);
@@ -985,7 +985,7 @@ export const Preview: React.FC = () => {
   // Watchdog heartbeat: timestamp of the last frame actually presented to the
   // visible canvas. A wedged render loop leaves the picture frozen while the
   // audio clock keeps publishing time, so the heartbeat is the only reliable
-  // stall signal (ADR 0009).
+  // stall signal.
   const lastPresentedFrameAtRef = useRef<number>(0);
   const playbackRestartCountRef = useRef<number>(0);
   const [playbackSessionNonce, setPlaybackSessionNonce] = useState(0);
@@ -3811,9 +3811,7 @@ export const Preview: React.FC = () => {
         });
       };
 
-      // Presentation-loop safety rail: an uncaught rejection inside the frame
-      // body used to kill the rAF chain silently while the audio-driven clock
-      // kept advancing (ADR 0009).
+      // Keep frame errors bounded so presentation can stop with the clock.
       let drawFrameErrors = 0;
       const drawFrame = async (): Promise<void> => {
         try {
@@ -3945,7 +3943,7 @@ export const Preview: React.FC = () => {
     }
     const playbackStartPosition = startPositionRef.current;
 
-    // Stall watchdog (ADR 0009): the audio-driven clock keeps publishing time
+    // Stall watchdog: the audio-driven clock keeps publishing time
     // even when a render loop wedges mid-await, so "playing but no presented
     // frame" is the only reliable freeze signal. Recover by rebuilding the
     // playback pipeline at the live playhead instead of freezing silently.
@@ -5690,7 +5688,7 @@ export const Preview: React.FC = () => {
 
     const playheadChanged = playheadPosition !== lastPlayheadForRenderRef.current;
     const modifiedChanged = project.modifiedAt !== lastModifiedAtRef.current;
-    // ADR 0004 Decision 3: projectRevision bumps on every committed mutation
+    // projectRevision bumps on every committed mutation
     // (manual, agent, undo/redo), including paths that never stamp modifiedAt.
     const revisionChanged = projectRevision !== lastRevisionForRenderRef.current;
 
@@ -6003,7 +6001,7 @@ export const Preview: React.FC = () => {
 
   // Agent target point: while armed, the next real click on the canvas is a
   // genuine user gesture that pins a normalized 0..1 frame position for the
-  // agent (ADR 0004 Decision 5). Capture phase so the click never reaches the
+  // agent. Capture phase so the click never reaches the
   // graphics-selection handler underneath.
   const handleTargetPointClickCapture = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -7122,7 +7120,7 @@ export const Preview: React.FC = () => {
       className="w-full h-full min-h-0 min-w-0 bg-stage-bg flex flex-col relative group overflow-hidden outline-none"
     >
       {/* ── Panel bar header (mockup: 'Player') ───────────────── */}
-      {!isMaximized && !isFullscreen && (
+      {showHeader && !isMaximized && !isFullscreen && (
         <div className="flex items-center px-3.5 py-2 border-b border-border bg-bg-1 gap-2.5 min-h-[38px] shrink-0">
           <Text type="label" color="primary" weight="semibold" className="text-[13px] tracking-tight text-fg m-0">{tr("Player")}</Text>
           <div className="ml-auto flex items-center gap-1">
@@ -7902,6 +7900,8 @@ export const Preview: React.FC = () => {
               </>
             )}
           </div>
+
+          <ReferenceComparisonControl />
 
           <IconButton
             label={tr("Canvas snapping")}

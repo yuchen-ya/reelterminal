@@ -1,5 +1,5 @@
 /**
- * Session construction + bounded disposal (ADR 0003 Decisions 1 and 7).
+ * Session construction and bounded disposal.
  *
  * One process == one `AgentFacadeSession`, wired exactly like the canonical
  * example (runtime-chromium/examples/hello-world-e2e.mts) plus
@@ -33,7 +33,7 @@ export interface TransportSession {
    */
   readonly trackJob: (jobId: string) => void;
   /**
-   * Bounded disposal (Decision 7 cleanup matrix row 1/2): cancel every
+   * Bounded disposal: cancel every
    * tracked job via the PUBLIC job.cancel verb path, then close the
    * provider runtime. Each phase is logged; close is raced against a
    * generous outer bound (the runtime's own teardown is bounded at
@@ -63,8 +63,7 @@ export function createTransportSession(config: TransportConfig): TransportSessio
   const dispose = async (reason: string): Promise<void> => {
     // 1. Request cancel on every tracked job through the PUBLIC verb path.
     //    The facade lane serializes these behind any in-flight verb — the
-    //    ADR's documented composed bound (in-flight ceiling + 10 s cancel
-    //    race) is accepted; the second signal is the escape hatch.
+    //    The facade bounds cancellation; a second signal is the escape hatch.
     if (trackedJobs.size > 0) {
       logInfo("dispose", "requesting cancel on tracked jobs via job.cancel", {
         reason,

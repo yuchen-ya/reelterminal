@@ -1,5 +1,5 @@
 /**
- * ffmpeg/ffprobe resolution + process helpers (ADR 0002 #4).
+ * ffmpeg/ffprobe resolution and process helpers.
  *
  * Binaries come ONLY from explicit configuration or the system PATH — never
  * from the repository (no binaries are committed) and never from a network

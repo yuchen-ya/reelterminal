@@ -23,8 +23,7 @@ import type {
 
 import { LEGACY_IDB_TEMPLATES } from "../legacy/physical-identifiers";
 
-// Persisted database name — legacy registry, value frozen (renaming orphans
-// user template data). See packages/core/src/legacy/physical-identifiers.ts.
+// Persisted database name for user templates.
 const TEMPLATE_DB_NAME = LEGACY_IDB_TEMPLATES;
 const TEMPLATE_STORE_NAME = "templates";
 const TEMPLATE_DB_VERSION = 1;

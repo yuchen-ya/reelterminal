@@ -1,13 +1,11 @@
 /**
- * Electron app launcher for the live-collaboration E2E (ADR 0004).
+ * Electron app launcher for desktop end-to-end tests.
  *
  * One temp run dir per launch: `--user-data-dir` isolates the Chromium
  * profile (IndexedDB autosave, caches) and the live-artifacts root, while
  * REELTERMINAL_LIVE_ENDPOINT_FILE redirects the endpoint descriptor so a test run
  * never touches the developer's real ~/.reelterminal (or legacy ~/.openreel)
- * file. (`--user-data-dir` is
- * honored by Electron for app.getPath("userData") — verified by
- * e2e/scratch/probe.mjs.)
+ * file. Electron uses `--user-data-dir` for app.getPath("userData").
  *
  * Main-process stdout/stderr and every renderer console/pageerror line are
  * captured for the token-hygiene assertion: the live endpoint token must

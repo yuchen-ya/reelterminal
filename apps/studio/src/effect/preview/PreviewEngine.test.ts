@@ -7,13 +7,15 @@ import { registerAllBehaviors } from "../behaviors/registry";
 registerAllBehaviors();
 
 vi.mock("./DetectorPool", () => ({
-  DetectorPool: vi.fn().mockImplementation(() => ({
-    ensure: vi.fn(async () => undefined),
-    releaseUnused: vi.fn(),
-    disposeAll: vi.fn(),
-    has: vi.fn(() => false),
-    get: vi.fn(),
-  })),
+  DetectorPool: vi.fn().mockImplementation(function () {
+    return {
+      ensure: vi.fn(async () => undefined),
+      releaseUnused: vi.fn(),
+      disposeAll: vi.fn(),
+      has: vi.fn(() => false),
+      get: vi.fn(),
+    };
+  }),
 }));
 
 describe("PreviewEngine", () => {

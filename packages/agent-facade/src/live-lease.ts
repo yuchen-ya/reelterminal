@@ -1,5 +1,5 @@
 /**
- * The single-AI-writer lease (ADR 0004 Decision 6).
+ * The single-agent-writer lease.
  *
  * At most one external agent session holds write access at a time. The human
  * never acquires the lease and can

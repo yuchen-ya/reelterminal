@@ -5,12 +5,9 @@ import { startLiveEndpointServer } from "./live-endpoint-server";
 import { canonicalEndpointPath } from "../../shared/endpoint-paths";
 
 /**
- * 写回失败恢复 (N03): when the legacy mirror publish fails AFTER the plan
- * decided to write back (here: the legacy parent path is a regular file, so
- * mkdir fails on every platform), the host must keep serving its canonical
- * descriptor, log a credential-free failure line, and leave no temporary
- * residue. Mocked at the plan boundary because a real cross-platform
- * "rename fails" fixture is not portable.
+ * A legacy mirror publish failure keeps the canonical endpoint available,
+ * logs a credential-free message, and leaves no temporary files. The legacy
+ * parent path is a regular file to make directory creation fail consistently.
  */
 const fixture = vi.hoisted(() => ({ root: "", legacyPath: "" }));
 
@@ -21,7 +18,7 @@ vi.mock("../../shared/endpoint-paths", async (importOriginal) => {
   const { tmpdir } = await import("node:os");
   const path = (await import("node:path")).default;
   fixture.root = mkdtempSync(path.join(tmpdir(), "reelterminal-writeback-fail-"));
-  // ".openreel" exists as a FILE: any mkdir underneath fails everywhere.
+  // `.openreel` is a file, so creating a mirror directory beneath it fails.
   const legacyParent = path.join(fixture.root, ".openreel");
   mkdirSync(path.dirname(legacyParent), { recursive: true });
   writeFileSync(legacyParent, "not a directory\n");

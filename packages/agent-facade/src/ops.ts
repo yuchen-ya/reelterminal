@@ -125,8 +125,7 @@ import { resolveContainedPathDetailed } from "./media/path-roots";
 /* ------------------------------------------------------------------ */
 
 /**
- * The op declarations below are the SINGLE hand-maintained definition
- * of the closed edit.apply op set (ADR 0003 Decision 4): the runtime
+ * These declarations define the closed edit.apply op set. The runtime
  * validator (validateEditOp) and the emitted draft-2020-12 JSON Schema
  * (jsonschema.ts, via verb-schemas.ts) both derive from them. Rules that
  * JSON Schema cannot express (clip.trim's at-least-one-of in/out, text.update's

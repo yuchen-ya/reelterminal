@@ -1,3 +1,0 @@
-# sha256 — scenario1 (run; simulated client)
-674aa3c450fe93f7e595d3bf14aeee9990e7ced9255dc3300c12f2e29af08b10  s1 preview PNG
-b0f992c4dd99ac8a5bf775b090b0184fa073b0e5141812e502df5457942ce688  s1 exported MP4

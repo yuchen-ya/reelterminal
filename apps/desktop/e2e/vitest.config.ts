@@ -1,5 +1,5 @@
 /**
- * Vitest config for the Electron live-collaboration E2E (ADR 0004).
+ * Vitest config for desktop end-to-end tests.
  *
  * Deliberately SEPARATE from the package's default `vitest run` (test:run):
  * the default unit-test config never sees `*.e2e.ts` files, so `test:run`

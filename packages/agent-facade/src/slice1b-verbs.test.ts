@@ -1,5 +1,5 @@
 /**
- * Slice-1b verb contract tests with STUB providers (no Chromium): the facade
+ * Render and export verb contract tests with stub providers (no Chromium): the facade
  * side of the boundary is pinned here — capability independence, preflight
  * gating, idempotency, revision preconditions, containment, job lifecycle
  * wiring and the no-fake-artifact invariant.
@@ -169,7 +169,7 @@ async function makeProjectWithMedia(facade: AgentFacade, mediaRoot: string) {
 
 /* ------------------------------ tests ------------------------------ */
 
-describe("slice-1b verb contracts (stub providers)", () => {
+describe("render and export verb contracts (stub providers)", () => {
   let mediaRoot: string;
   let artifactRoot: string;
 

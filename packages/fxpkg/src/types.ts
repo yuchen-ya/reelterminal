@@ -1,14 +1,13 @@
 /**
  * Core data contracts for the .fxpkg artifact format and node graph.
- * These types are the spine of the studio → marketplace → editor → render farm
- * pipeline (STUDIO_PLAN §6–§12).
+ * These types define package manifests, graphs, and marketplace records.
  */
 
 export type AssetKind = "template" | "filter" | "effect";
 
 export type AbiVersion = "1.0" | "1.1" | "1.2";
 
-/** Edge value types in the node graph (STUDIO_PLAN §10.3). */
+/** Edge value types in the node graph. */
 export type PortType =
   | "texture"
   | "mask"
@@ -25,7 +24,7 @@ export type PortType =
   | "sampler"
   | "any";
 
-/** User-exposed parameter value types (STUDIO_PLAN §7.2). */
+/** User-exposed parameter value types. */
 export type ParamType = "float" | "int" | "bool" | "color" | "enum" | "vec2";
 
 export interface ParamDecl {
@@ -66,7 +65,7 @@ export interface Graph {
   nodes: GraphNode[];
   edges: GraphEdge[];
   params: ParamDecl[];
-  /** records the blueprint a beginner-mode graph was generated from (§9A.3) */
+  /** Records the blueprint that generated this graph. */
   authoring?: {
     mode: "blueprint" | "advanced";
     blueprintId?: string;
@@ -74,7 +73,7 @@ export interface Graph {
   };
 }
 
-/** Resource caps enforced at compile + submission time (STUDIO_PLAN §8, §20.4). */
+/** Resource caps enforced during compilation and submission. */
 export interface ResourceCaps {
   maxParticles: number;
   maxParticleSystems: number;
@@ -85,7 +84,7 @@ export interface ResourceCaps {
   maxResolution: [number, number];
 }
 
-/** Detection capabilities a graph may request (STUDIO_PLAN §15). */
+/** Detection capabilities a graph may request. */
 export type DetectionCapability = "subject_mask" | "pose" | "face" | "depth";
 
 export interface AssetRequirements {

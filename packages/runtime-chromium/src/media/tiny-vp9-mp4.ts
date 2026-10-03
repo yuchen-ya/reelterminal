@@ -1,20 +1,10 @@
 /**
- * Deterministic VP9-in-MP4 test fixture, embedded as base64 so that no
- * binary artifact ever lives in the repository.
+ * VP9-in-MP4 input fixture for Chromium tests, embedded as base64.
  *
- * Why VP9 (not H.264): this fixture is decoded INSIDE stock Chromium by the
- * Slice-1b E2E. Playwright's open-source Chromium build omits proprietary
- * H.264 decoding on Linux, while VP9 decodes everywhere Chromium runs — so
- * the same fixture serves local Windows and Linux CI identically. Only the
- * INPUT is VP9; the exported artifact is always H.264.
+ * VP9 is used because Playwright's open-source Chromium build omits
+ * proprietary H.264 decoding on Linux. Exported artifacts use H.264.
  *
- * Generated ONCE with ffmpeg 8.1.1 (Gyan full build), outside the repo:
- *   ffmpeg -y -f lavfi -i testsrc2=size=320x180:rate=10:duration=6 \
- *     -an -c:v libvpx-vp9 -crf 38 -b:v 0 -pix_fmt yuv420p \
- *     -movflags +faststart tiny-vp9-6s.mp4
- *
- * Content: 60 frames of the moving testsrc2 pattern, video-only
- * (vp9 / yuv420p / 320x180 @ 10 fps, faststart moov).
+ * Content: 60 video-only frames at 320x180 and 10 fps.
  * sha256: b5b24647ab4e230cd3bf0c9a6145edfeb834550e4489093ef5e449f6c37b59cf
  */
 import { writeFileSync } from "node:fs";

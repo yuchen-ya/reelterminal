@@ -3,16 +3,15 @@ import { audioAnalysisPreflight, AUDIO_LIMITS } from "./audio-analysis";
 import { COLOR_POLICY as COLOR_POLICY_DISCLOSURE } from "./color-policy";
 import { PLUGIN_TOOLS } from "./plugins";
 /**
- * Live capability reporting (fixes RUNNER-06 "capability lies by omission" —
- * and its twin, capability inflation): every claim is derived from what THIS
+ * Live capability reporting derives each claim from what this
  * session has actually been given and from each provider's own live
  * preflight, never from a static manifest.
  *
- * Slice-1b rule (ADR 0002 #1): RenderProvider, ExportProvider and
- * ArtifactVerifier are INDEPENDENT interfaces. Injecting one never flips
- * another's capability — a runtime that can rasterize frames may still be
- * unable to encode H.264, and the dormant Slice-1 renderAdapter seam flips
- * nothing at all. A capability reports available only when (a) the facade
+ * RenderProvider, ExportProvider, and ArtifactVerifier are independent
+ * interfaces. Injecting one never changes another's capability — a runtime
+ * that can rasterize frames may still be unable to encode H.264, and a
+ * ProjectRenderAdapter does not affect availability. A capability reports
+ * available only when (a) the facade
  * ships the verb that consumes it and (b) the provider's real preflight
  * passed. Preflight freshness is the provider's contract (the Chromium
  * providers probe their OWN job-carrying runtime and cache only for that
@@ -79,8 +78,7 @@ export interface CapabilityContext {
    */
   readonly deliveryRoots?: readonly string[];
   /**
-   * Dormant Slice-1 seam, recorded for diagnostics only. Has NO effect on
-   * any capability — no facade verb consumes it (see render/adapter.ts).
+   * No facade verb consumes this adapter or derives a capability from it.
    */
   readonly renderAdapter?: ProjectRenderAdapter;
   readonly renderProvider?: RenderProvider;
@@ -93,7 +91,7 @@ export interface CapabilityContext {
    */
   readonly artifactRoot?: string;
   /**
-   * Live-session marker (ADR 0004 Decisions 6/7/11). When present the
+   * Live-session marker. When present the
    * reported runtime is "live" and the live-unavailable verbs are listed
    * honestly — never implied by omission. Media import is available only
    * when the host supplies both configured roots and the explicit store
@@ -820,7 +818,7 @@ function headlessNotes(
       ? "visual.inspect samples 1–12 real provider-rendered PNG frames for an explicit clip or time range; the default runtime provider is Chromium, contact-sheet composition is runtime-dependent, and individual frame artifacts remain available."
       : "visual.inspect is unavailable in this session: it needs the same artifactRoot and passing RenderProvider preflight as preview.render_frame.",
     ctx.renderAdapter
-      ? `a Slice-1 ProjectRenderAdapter ("${ctx.renderAdapter.id}") is injected but permanently dormant: no facade verb consumes it and it flips no capability.`
+      ? `A ProjectRenderAdapter ("${ctx.renderAdapter.id}") is configured, but no facade verb consumes it.`
       : "preview and visual inspection share the RenderProvider preflight; export and verify use their own ExportProvider / ArtifactVerifier preflights, and no capability is inferred from an unrelated provider.",
     "project.create is a single-initialization lifecycle verb outside the revision machinery: it takes no expectedRevision; an exact idempotent retry replays the creation result without resetting the project, and any other create while a project is open fails CONFLICT (no replace/reset).",
     `media.import accepts local files under the configured media roots only (${ctx.mediaRoots.length} root(s)); arbitrary URLs are not accepted.`,

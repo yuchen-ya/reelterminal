@@ -116,7 +116,7 @@ export const useColorStore = create<ColorState & ColorActions>()(
       },
     }),
     {
-      // LEGACY PERSISTED STORAGE NAME — value frozen (user palettes).
+      // Persisted storage name for user palettes.
       // Registered in packages/core/src/legacy/physical-identifiers.ts
       // (LEGACY_LS_IMAGE_COLORS); apps/image does not depend on core.
       name: LEGACY_LS_IMAGE_COLORS,

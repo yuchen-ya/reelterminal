@@ -1,25 +1,12 @@
-# Blender - license & attribution
+# Blender
 
-ReelTerminal Desktop can use Blender as an optional rigging sidecar. Blender is
-invoked as a separate process for model inspection, cleanup, armature work,
-animation retargeting, and GLB/glTF export. It is not linked into ReelTerminal.
+Blender is an optional rigging sidecar invoked by the desktop application.
+Desktop packages include files placed under `resources/rigging/`.
 
-## License
+Blender is distributed under GNU GPL-2.0-or-later. A package that includes
+Blender must include the applicable license and make the complete corresponding
+source for the bundled version available under the GPL terms.
 
-Blender is free software distributed under the GNU General Public License. If an
-ReelTerminal build bundles Blender, the build must include Blender's license notices
-and make the corresponding Blender source code available according to the GPL.
-
-- Blender project: <https://www.blender.org>
-- Blender license overview: <https://www.blender.org/about/license/>
-- Blender source: <https://projects.blender.org/blender/blender>
-
-The ReelTerminal application is licensed separately. Only bundled Blender binaries
-and Blender's own source are covered by Blender's GPL terms.
-
-## Distribution note
-
-ReelTerminal is free and is not being sold, which fits the project direction, but
-free distribution is still distribution. Bundled Blender packages should keep
-the GPL license text, attribution, version/provenance notes, and a clear path to
-the corresponding source code.
+- [Blender license](https://www.blender.org/about/license/)
+- [Blender source](https://projects.blender.org/blender/blender)
+- The GPL-2.0 text is included in this directory.

@@ -25,7 +25,7 @@ export const LIVE_ACTIVITY_TIMEOUT_MS = 45_000;
  * MessagePort to the renderer (a live port cannot cross contextBridge).
  * Single source of truth: the sender (apps/desktop/src/preload) and the
  * receiver (apps/web native-ffmpeg-backend) must reference THIS constant —
- * a drifted literal breaks desktop export with a 15s timeout (N02-ACC B1).
+ * Both the preload bridge and renderer use the same message marker.
  */
 export const DESKTOP_EXPORT_PORT_MARKER = '__reelterminalExportPort';
 

@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { DesktopTitleBar } from "./shell/DesktopTitleBar";
 import { Workspace } from "./shell/Workspace";
 import { DesktopProjectNameControl } from "./shell/DesktopProjectNameControl";
@@ -16,7 +16,9 @@ import { useUIStore } from "../stores/ui-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { SettingsDialog } from "../components/editor/settings/SettingsDialog";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
-import { Settings } from "@/icons/lucide-compat";
+import { Settings, CircleHelp } from "@/icons/lucide-compat";
+import { DesktopHelpDialog } from "./editor/DesktopHelpDialog";
+import { stopTour } from "../components/editor/tour";
 import { useTranslation } from "react-i18next";
 import { toast } from "../stores/notification-store";
 import { ToastContainer } from "../components/Toast";
@@ -34,6 +36,7 @@ export function DesktopApp(): JSX.Element {
   const hasProject = useProjectStore((state) => state.hasOpenProject);
   const desktopPage = useUIStore((state) => state.desktopPage);
   const isVideoEditing = desktopPage !== "motion";
+  const [helpOpen, setHelpOpen] = useState(false);
 
   // Drive native-menu actions into the app: undo/redo hit the project store
   // directly; new/open/export are broadcast as events for the relevant UI to
@@ -43,6 +46,10 @@ export function DesktopApp(): JSX.Element {
     if (!bridge?.onMenuAction) return;
     return bridge.onMenuAction((id) => {
       switch (id) {
+        case "help":
+          stopTour();
+          setHelpOpen(true);
+          break;
         case "undo":
           void useProjectStore.getState().undo();
           break;
@@ -150,7 +157,15 @@ export function DesktopApp(): JSX.Element {
         // edit and motion pages rename the same project).
         projectControl={hasProject ? <DesktopProjectNameControl /> : null}
       >
-        {hasProject && isVideoEditing ? <DesktopExportButton /> : null}
+        {hasProject && isVideoEditing ? <span data-tour="desktop-export"><DesktopExportButton /></span> : null}
+        <Button
+          label={t("desktop.help.title")}
+          variant="secondary"
+          size="sm"
+          icon={<CircleHelp size={15} aria-hidden />}
+          onClick={() => setHelpOpen(true)}
+          className="mr-2"
+        />
         <Button
           label={t("desktop.settings")}
           variant="secondary"
@@ -182,6 +197,7 @@ export function DesktopApp(): JSX.Element {
       </div>
       <UpdateBanner />
       <SettingsDialog />
+      <DesktopHelpDialog open={helpOpen} onOpenChange={setHelpOpen} canTour={hasProject && isVideoEditing} />
       <ToastContainer />
     </div>
   );

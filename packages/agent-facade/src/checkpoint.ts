@@ -1,35 +1,17 @@
 /**
- * `openreel-project@2` — the one honest checkpoint format behind
- * project.save / project.open (ADR 0003 Decision 10, r2.2).
+ * Checkpoint format used by project.save and project.open.
  *
- * Format history: v1 was the initial closed document; v2 (2026-09) added
- * the OPTIONAL `markers` project field (persisted project markers — pure
- * metadata, never rendered or exported). The schema is closed, so the
- * additive change required the bump (10.2 evolution rule); v1 documents
- * are refused at the format gate like any other unsupported version —
- * honest refusal, never a silent downgrade or a guessed migration.
+ * Only document version 2 is accepted. A checkpoint stores project state
+ * and media references; it does not store the job registry or session
+ * configuration. `stateSha256` detects accidental corruption, but is not
+ * tamper-proofing because it can be recomputed after an edit.
  *
- * A checkpoint is data the agent can see and the facade re-validates —
- * never session magic. Exactly one thing is durable: this file. The
- * idempotency ledger, the job registry, provider handles and session
- * configuration are NEVER saved (10.2), and `stateSha256` is corruption
- * detection, not tamper-proofing: anyone can recompute it after a
- * deliberate edit, and a hand-edited checkpoint that passes structural
- * validation is operator input, trusted at the operator's level (10.6).
+ * The digest is lowercase hex SHA-256 over the UTF-8 bytes of `stableStringify`
+ * applied to `{formatVersion, revision, project, mediaRefs}`.
  *
- * Hash recipe (10.2, pinned): lowercase hex SHA-256 over the UTF-8 bytes of
- * the facade's own `stableStringify` (idempotency.ts — lexicographically
- * sorted object keys, arrays in order, `undefined` omitted) applied to
- * `{formatVersion, revision, project, mediaRefs}`. One canonicalizer, so
- * every future binding hashes identically.
- *
- * Atomic publication (10.3, fourth-round refined): temp sibling
- * `<name>.<uuid>.tmp` → flush + fsync → default mode publishes with
- * `link(temp, target)` + `unlink(temp)` (EEXIST ⇒ CONFLICT — a filesystem
- * guarantee, not an advisory check; link-less filesystems fail honestly),
- * `overwrite:true` renames over the target (symlink targets still refused),
- * then a best-effort directory fsync (swallowed — bounded, not guaranteed,
- * impossible on Windows).
+ * Saves use a temporary sibling file, flush and sync it, then publish it with
+ * a link or an overwrite rename. Symlink targets are refused. Directory sync
+ * is best-effort because some platforms do not support it.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, open, realpath, rename, link, rm, unlink } from "node:fs/promises";
@@ -64,12 +46,10 @@ import { PROJECT_SETTINGS_SCHEMA } from "./verb-schemas";
 /* Format constants                                                    */
 /* ------------------------------------------------------------------ */
 
-// Persisted checkpoint format string — legacy registry, value frozen (it is a
-// format-compatibility gate: renaming makes every existing checkpoint
-// unreadable). See packages/core/src/legacy/physical-identifiers.ts.
+// Persisted format identifier. Keep it stable so existing checkpoints remain readable.
 export const CHECKPOINT_FORMAT = LEGACY_CHECKPOINT_FORMAT;
 export const CHECKPOINT_FORMAT_VERSION = 2 as const;
-/** The only supported document version in this slice (10.4 step 2). */
+/** Supported checkpoint document versions. */
 export const SUPPORTED_CHECKPOINT_FORMAT_VERSIONS: readonly number[] = [
   CHECKPOINT_FORMAT_VERSION,
 ];
@@ -446,12 +426,7 @@ interface ParsedCheckpointFields {
   readonly mediaRefs: unknown;
 }
 
-/**
- * Step 2 (Format): JSON parses, `format === "openreel-project"`,
- * `formatVersion ∈ {2}`. Anything else ⇒ UNSUPPORTED naming found vs
- * supported — an honest refusal, never a silent downgrade or a guessed
- * migration. (A truncated/garbage file fails here as not-valid-JSON.)
- */
+/** Validate JSON and checkpoint format. Only format version 2 is supported. */
 export function parseCheckpointText(text: string): ParsedCheckpointFields {
   const supported = `{${SUPPORTED_CHECKPOINT_FORMAT_VERSIONS.join(", ")}}`;
   let parsed: unknown;

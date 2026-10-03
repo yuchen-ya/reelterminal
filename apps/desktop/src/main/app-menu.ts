@@ -68,7 +68,7 @@ export function buildMenuTemplate(platform: string): MenuNode[] {
   template.push({
     label: "Help",
     submenu: [
-      { label: "ReelTerminal Help" },
+      { label: "ReelTerminal Help", actionId: "help", accelerator: "F1" },
       { label: "Open Source Licenses", actionId: "openLicenses" },
     ],
   });

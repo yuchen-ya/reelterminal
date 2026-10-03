@@ -1,14 +1,7 @@
 /**
- * Data contract for user-level agent media tasks (voiceover / music).
- *
- * These durable records were created by the earlier voiceover/music handoff.
- * Generation is paused until it has an independent task mechanism; the
- * ledger remains user-level so existing output files can still be reviewed
- * and imported even when their target project is closed.
- *
- * The status set and its transition semantics mirror the facade job state
- * machine (JOB_STATES / JobRegistry in @reelterminal/agent-facade jobs.ts):
- * forward-only movement and frozen terminal states.
+ * Durable voiceover/music task records for reviewing and importing output files.
+ * Task generation is unavailable. Status transitions are forward-only;
+ * terminal states are immutable.
  */
 
 export const AGENT_TASK_RECORD_VERSION = 1;
@@ -43,8 +36,8 @@ export interface AgentMediaTaskOverrides {
 }
 
 /**
- * Historical confirmation mode retained because it is part of the stored
- * record schema. The current renderer does not create or auto-confirm tasks.
+ * Confirmation mode in stored task records. The renderer does not create
+ * or automatically confirm tasks.
  */
 export type AgentMediaTaskAutoConfirmMode = "receipt" | "manual-only";
 

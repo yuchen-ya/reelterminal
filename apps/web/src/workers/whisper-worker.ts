@@ -150,11 +150,7 @@ self.onmessage = async (
       backend,
     });
   } catch (error) {
-    // Classify while the real Error object is still here. postMessage can
-    // structured-clone Error objects, but the worker protocol posts plain
-    // strings (the old implementation posted only error.message), so the
-    // panel can no longer tell a network refusal from an HTTP status on
-    // its own.
+    // Classify the error before sending plain fields through postMessage.
     const classified = classifyWhisperDownloadError(error);
     post(requestId, {
       type: "error",

@@ -30,8 +30,8 @@ import { handlePresetLibraryRequest } from "./preset-bridge";
 import { prepareLiveMedia } from "./prepare-live-media";
 
 /**
- * Renderer side of the ADR 0004 Decision 1 seam: the desktop main-process live
- * facade session reaches the canonical project store exclusively through these
+ * Renderer side of the desktop main-process live facade. The session reaches
+ * the canonical project store through these
  * five requests. Mutations never arrive as state — only as core Actions, which
  * the renderer applies itself, CAS-checked, inside one owned history group.
  */
@@ -285,7 +285,7 @@ async function handleApplyActions(
       return { ok: true, result: { ...prior.result, replayed: true } };
     }
 
-    // CAS first (ADR 0004 Decisions 3 + 4): a stale expectation rejects the
+    // Check the revision before applying anything; a stale expectation rejects the
     // whole batch before anything is applied.
     if (req.expectedRevision !== undefined) {
       const currentRevision = getProjectRevision();

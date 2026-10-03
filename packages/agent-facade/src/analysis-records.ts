@@ -1,9 +1,5 @@
 /**
- * Traceable, re-checkable analysis records (P2).
- *
- * Analysis results used to be session-ephemeral (an in-memory JobRegistry
- * entry, gone when the session ended) and carried only partial provenance.
- * These records make every analysis durable and auditable:
+ * Durable analysis records with provenance, source fingerprints, and rechecks.
  *
  *  - PROVENANCE: each record names its sources — "local-measurement"
  *    (technicalQuality/audioSummary, measured by local ffmpeg/mediabunny),

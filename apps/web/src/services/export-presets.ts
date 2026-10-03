@@ -771,7 +771,7 @@ export const ALL_EXPORT_PRESETS: PlatformExportPreset[] = [
   ...AUDIO_PRESETS,
 ];
 
-// Persisted localStorage key — legacy registry, value frozen (user export
+// Persisted localStorage key for user export
 // presets). See packages/core/src/legacy/physical-identifiers.ts.
 const CUSTOM_PRESETS_KEY = LEGACY_LS_CUSTOM_EXPORT_PRESETS;
 

@@ -1,8 +1,8 @@
 /**
  * IndexedDB persistence for user-level agent media tasks.
  *
- * A dedicated database (its name is the frozen legacy `AGENT_TASKS_DB_NAME`
- * re-exported below from ../legacy-storage-keys — registry:
+ * A dedicated database named `AGENT_TASKS_DB_NAME`, re-exported from
+ * ../legacy-storage-keys and registered in
  * packages/core/src/legacy/physical-identifiers.ts), deliberately separate
  * from the project storage engine's database, the material library and the
  * preset store so none of their schema versioning or GC semantics are
@@ -21,8 +21,7 @@
 import type { AgentMediaTaskRecord } from "./types";
 import { LEGACY_AGENT_TASKS_DB_NAME } from "../legacy-storage-keys";
 
-// Persisted database name — legacy registry re-export, value frozen (user
-// task history). See packages/core/src/legacy/physical-identifiers.ts.
+// Persisted database name for agent task records.
 export const AGENT_TASKS_DB_NAME = LEGACY_AGENT_TASKS_DB_NAME;
 export const AGENT_TASKS_DB_VERSION = 1;
 export const AGENT_TASKS_STORE = "tasks";

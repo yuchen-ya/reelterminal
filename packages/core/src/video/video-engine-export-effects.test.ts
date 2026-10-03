@@ -25,17 +25,21 @@ const mocks = vi.hoisted(() => {
     applyColorWheels,
     applyCpuGrading,
     colorGradingDispose,
-    VideoEffectsEngine: vi.fn().mockImplementation(() => ({
-      initialize: effectsInitialize,
-      applyEffects: effectsApply,
-      dispose: effectsDispose,
-    })),
-    ColorGradingEngine: vi.fn().mockImplementation(() => ({
-      initialize: colorGradingInitialize,
-      applyColorWheels,
-      applyCpuGrading,
-      dispose: colorGradingDispose,
-    })),
+    VideoEffectsEngine: vi.fn().mockImplementation(function () {
+      return {
+        initialize: effectsInitialize,
+        applyEffects: effectsApply,
+        dispose: effectsDispose,
+      };
+    }),
+    ColorGradingEngine: vi.fn().mockImplementation(function () {
+      return {
+        initialize: colorGradingInitialize,
+        applyColorWheels,
+        applyCpuGrading,
+        dispose: colorGradingDispose,
+      };
+    }),
   };
 });
 

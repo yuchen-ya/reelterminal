@@ -1,9 +1,4 @@
-/**
- * Shared contract constants + assertion helpers for the slice-2d E2E. All
- * wordings below are quoted from the facade implementation (reading the
- * implementation for format/wording details is allowed; changing it is not)
- * and from ADR 0003 Decisions 6/10 and Appendix D.
- */
+/** Shared constants and assertion helpers for agent transport scenarios. */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -78,10 +73,7 @@ function safeShort(value) {
   return text.length > 300 ? `${text.slice(0, 300)}…` : text;
 }
 
-/* --------------------- checkpoint hash recipe (10.2) -------------------- */
-
-/** The facade's stableStringify (packages/agent-facade/src/idempotency.ts):
- * lexicographically sorted object keys, arrays in order, undefined omitted. */
+/** Serialize values with sorted object keys and array order preserved. */
 export function stableStringify(value) {
   if (Array.isArray(value)) {
     return `[${value.map(stableStringify).join(",")}]`;
@@ -96,8 +88,7 @@ export function stableStringify(value) {
   return JSON.stringify(value) ?? "null";
 }
 
-/** stateSha256 = lowercase hex sha256 over stableStringify({formatVersion,
- * revision, project, mediaRefs}) — pinned by ADR 0003 Decision 10.2. */
+/** Compute the checkpoint digest from its persisted fields. */
 export function computeStateSha256({ formatVersion, revision, project, mediaRefs }) {
   return createHash("sha256")
     .update(stableStringify({ formatVersion, revision, project, mediaRefs }), "utf8")

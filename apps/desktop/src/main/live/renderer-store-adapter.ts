@@ -1,11 +1,11 @@
 import { commandProjectContext } from "./command-context";
 /**
- * RendererStoreAdapter — the main-process half of the ADR 0004 Decision 1
- * seam. Implements the facade's `LiveProjectStore` over a callId-correlated
+ * RendererStoreAdapter implements the facade's `LiveProjectStore` over a
+ * callId-correlated
  * IPC bridge to the canonical renderer store. Its channel namespace is
  * "reelterminal:live:request" / "reelterminal:live:response".
  *
- * Hardening (DESK-06 lesson): a response only resolves its pending call when
+ * A response only resolves its pending call when
  * it arrives from the CURRENT target window's webContents — foreign or stale
  * senders are dropped silently, and the call falls back to its timeout.
  *

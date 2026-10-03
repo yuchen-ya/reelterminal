@@ -1,9 +1,9 @@
 /**
- * Browser-side entry for the Chromium render runtime (ADR 0002 #2).
+ * Browser-side entry for the Chromium render runtime.
  *
  * This file is bundled to a single ESM by esbuild (node/bundle.ts) and loaded
- * into a bare Playwright page. It is the ONLY browser-side code Slice 1b
- * adds: a minimal render worker that reuses the existing core engines —
+ * into a bare Playwright page. It is a minimal render worker that reuses the
+ * core engines —
  * VideoEngine (OffscreenCanvas compositor), TitleEngine (text rasterizer),
  * ExportEngine + WebCodecsBackend + mediabunny (MP4 muxing).
  *

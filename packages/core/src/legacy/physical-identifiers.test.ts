@@ -1,12 +1,8 @@
 /**
- * Drift protection for the legacy physical identifier registry (N04).
+ * Persisted identifier value tests.
  *
- * Every exported constant is asserted against its HARDCODED historical
- * literal. These values are persisted user-data identifiers
- * (docs/NAMING-AND-COMPATIBILITY.md §4 "持久化保留为 legacy"); if this test
- * fails, someone changed a value instead of keeping it frozen — restore the
- * literal. Rebranding a persisted identifier orphans user data and is NOT a
- * valid fix for a failing assertion here.
+ * Exported constants are checked against the user-data keys, file suffixes,
+ * and cache names used by the applications.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -52,7 +48,7 @@ import {
   LEGACY_LS_IMAGE_COLORS,
 } from "./physical-identifiers";
 
-describe("legacy physical identifier registry drift protection (N04)", () => {
+describe("legacy physical identifier registry", () => {
   it("IndexedDB database names keep their historical literals", () => {
     expect(LEGACY_IDB_PROJECTS).toBe("openreel-projects");
     expect(LEGACY_IDB_AGENT_TASKS).toBe("openreel-agent-tasks");
@@ -119,8 +115,7 @@ describe("legacy physical identifier registry drift protection (N04)", () => {
 
   it("plain-JS service workers keep the registered cache names in their source", () => {
     // sw.js files are standalone plain JS and cannot import the registry;
-    // pin their literals by reading the source (same pattern as the N02
-    // export-port-marker pairing test).
+    // Pin the literals in the standalone service-worker source.
     const webSw = readFileSync(
       fileURLToPath(
         new URL("../../../../apps/web/public/sw.js", import.meta.url),

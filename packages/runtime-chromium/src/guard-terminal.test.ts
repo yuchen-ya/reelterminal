@@ -139,9 +139,7 @@ describe("summarizeProbe (capability honesty)", () => {
   });
 
   it("never derives the video-only frames route by default", () => {
-    // No H.264 encode, but ffmpeg IS present: the old behavior silently
-    // fell back to frames→ffmpeg (which drops audio). Now: unavailable,
-    // with the experiment's availability reported as a separate fact.
+    // Report the video-only frames route separately from export availability.
     const summary = summarizeProbe(
       factsOf({ firstEncodableVideo: { avc: null, vp9: "vp9", vp8: null } }),
       true,

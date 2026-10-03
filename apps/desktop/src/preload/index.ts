@@ -125,12 +125,10 @@ const api = {
     install: () => ipcRenderer.invoke(CHANNELS.updaterInstall),
   },
   crash: {
-    // Fire-and-forget renderer error reporting; the main process attaches app
-    // version/platform and forwards to the cloud crash collector.
-    report: (payload: { message: string; stack?: string; type?: string; context?: unknown }) =>
-      ipcRenderer.send(CHANNELS.crashReport, payload),
+    report: (payload: { type?: string }) =>
+      ipcRenderer.send(CHANNELS.crashReport, { type: payload?.type }),
   },
-  // Live human–agent collaboration (ADR 0004). The main-process session host
+  // Live human–agent collaboration. The main-process session host
   // owns the external facade session; this control surface only carries
   // JSON-safe status/control values across the contextBridge.
   liveBridge: {

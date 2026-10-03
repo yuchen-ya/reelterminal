@@ -4,8 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    # stacked-PR CI: include the slice-3 stack base while PRs #5/#6 are open
-    branches: [main, feat/agent-transport-slice-2]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -20,11 +19,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # The full-monorepo install + Chromium + browser-profile residue brings
-      # ubuntu runners within ENOSPC range (observed 2026-08-31: suites dying
-      # with "no space left on device" mid-run). Reclaim the big preinstalled
-      # toolchains this repo never uses before installing.
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
@@ -43,9 +37,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      # packages/runtime-chromium launches real Chromium in its tests, and
-      # ubuntu-latest ships no ffmpeg (frames-route encoder + verifier).
       - name: Install Chromium for Playwright
         run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install --with-deps chromium
 
@@ -62,10 +53,6 @@ jobs:
 
       - name: Run tests
         run: pnpm test
-
-      # Records where the space actually went if a suite still tips the
-      # runner into ENOSPC — the next tuning decision (concurrency caps,
-      # profile cleanup) should be driven by measurement, not guesses.
       - name: Disk-usage diagnostic (top /tmp consumers)
         if: always()
         run: |

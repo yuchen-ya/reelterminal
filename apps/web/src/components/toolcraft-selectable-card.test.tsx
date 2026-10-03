@@ -2,28 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ToolcraftSelectableCard } from "@reelterminal/ui";
 
-/**
- * Contract tests for ToolcraftSelectableCard's activation dispatch.
- *
- * The component consumes @reelterminal/ui source directly (same resolution as
- * production code). It lives in the web suite because packages/ui has no
- * test runner of its own (no vitest/RTL/jsdom devDependencies, no test
- * script, pnpm strict isolation), and installing dependencies is out of
- * scope for this fix.
- *
- * Regression context (F06): the previous internal contract fired the
- * consumer's onClick and then, unless preventDefault was called, the
- * consumer's onChange as well. Consumers that passed the same non-idempotent
- * handler to both props (a selection toggle) were invoked twice per
- * activation, netting zero. The fixed contract is mutually exclusive:
- * onClick presence suppresses onChange; onChange-only usage is unchanged.
- *
- * Note on keyboard/AT activation: Space keyup and accessibility APIs
- * (AXPress/AXToggle) all produce a native DOM click on this <button>, which
- * is exactly what these tests dispatch. jsdom does not implement keyboard
- * activation behavior, so the key-to-click synthesis itself is browser
- * behavior outside test scope.
- */
+/** Verifies single callback dispatch for selectable-card activation. */
 describe("ToolcraftSelectableCard activation dispatch", () => {
   it("dispatches only onClick once when both onClick and onChange are given", () => {
     const onClick = vi.fn();

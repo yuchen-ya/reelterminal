@@ -1,6 +1,5 @@
 /**
- * Flow A — 选中文字，让 Agent 改写 (ADR 0004 Mutual Legibility + Shared
- * Reversibility over the EXTERNAL agent channel).
+ * 选中文字，让 Agent 通过外部连接改写。
  *
  * Human side: real UI input only (Playwright mouse/keyboard on the Electron
  * window). Agent side: a real MCP JSON-RPC client → live endpoint. The test
@@ -119,7 +118,7 @@ describe("flow A: select text, external agent rewrites it", () => {
     await evidence.screenshot("after-agent-rewrite");
   });
 
-  // Shared Reversibility (ADR 0004 hard constraint 4): the human undoes and
+  // The human undoes the agent edit and
   // redoes the agent's batch with REAL keyboard input (Playwright
   // Meta+z / Meta+Shift+z → DOM-level handler in DesktopApp — the G-01 fix;
   // one agent edit.apply batch is exactly one GUI undo unit).

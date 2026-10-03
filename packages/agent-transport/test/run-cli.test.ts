@@ -1,5 +1,5 @@
 /**
- * `agent-video run` CLI tests against the REAL binary (slice 2c):
+ * `reelterminal-agent run` CLI tests against the built binary:
  * startup refusals (exit 2), static validation failures (exit 2, no
  * stdout), real pure-Node workflows (project.create → edit.apply →
  * timeline.get; import/save/open are pure Node too), stop-on-first-

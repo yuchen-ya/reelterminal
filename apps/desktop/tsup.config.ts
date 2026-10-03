@@ -20,11 +20,10 @@ export default defineConfig({
   // Only electron is provided by the runtime. Everything else (electron-updater
   // and its transitive deps like fs-extra) is bundled into the main process so
   // the packaged asar needs no JS node_modules — pnpm's symlinked store is not
-  // fully copied into the asar, which dropped electron-updater's deps and
-  // crashed the app on launch ("Cannot find module 'fs-extra'").
+  // fully copied into the asar.
   // The live-collaboration workspace packages ship TypeScript source (their
   // package "main" IS the .ts file), so they must be inlined into the bundle —
-  // same pattern as agent-transport (ADR 0003 Appendix A). esbuild /
+  // esbuild /
   // playwright-core / mediabunny stay external (esbuild needs its platform
   // binary, playwright-core its browser registry); they are real dependencies
   // of this package so the bundle's require() resolves them from

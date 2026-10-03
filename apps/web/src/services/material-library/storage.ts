@@ -1,9 +1,9 @@
 /**
  * IndexedDB persistence for the user-level material library.
  *
- * A dedicated database (its name is the frozen legacy
- * `MATERIAL_LIBRARY_DB_NAME` re-exported below from ../legacy-storage-keys —
- * registry: packages/core/src/legacy/physical-identifiers.ts), deliberately
+ * A dedicated database named `MATERIAL_LIBRARY_DB_NAME`, re-exported from
+ * ../legacy-storage-keys and registered in
+ * packages/core/src/legacy/physical-identifiers.ts. It is deliberately
  * separate from the project storage engine's own database so its schema
  * versioning is untouched. Three object stores:
  *
@@ -22,8 +22,7 @@ import type {
 } from "@reelterminal/core/material/types";
 import { LEGACY_MATERIAL_LIBRARY_DB_NAME } from "../legacy-storage-keys";
 
-// Persisted database name — legacy registry re-export, value frozen
-// (user materials/journal/blobs). See packages/core/src/legacy/physical-identifiers.ts.
+// Persisted database name for materials, journal entries, and blobs.
 export const MATERIAL_LIBRARY_DB_NAME = LEGACY_MATERIAL_LIBRARY_DB_NAME;
 export const MATERIAL_LIBRARY_DB_VERSION = 1;
 

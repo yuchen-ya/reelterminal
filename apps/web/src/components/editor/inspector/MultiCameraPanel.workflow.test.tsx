@@ -100,9 +100,7 @@ describe("MultiCameraPanel workflow", () => {
     useProjectStore.setState({ hasOpenProject: false });
   });
 
-  // F06 regression: a single activation used to toggle the clip twice
-  // (onClick + onChange both wired to the same toggle), so the selection
-  // always netted zero and Create Group stayed disabled.
+  // One click selects the clip and enables Create Group.
   it("toggles a clip exactly once per click", async () => {
     render(<MultiCameraPanel />);
 

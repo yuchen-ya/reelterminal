@@ -1,10 +1,10 @@
 /**
- * Filter compiler (STUDIO_PLAN §11, Appendix A). Compiles a validated filter
+ * Compiles a validated filter
  * graph into a single fused WGSL compute pass plus pipeline.json.
  *
  * v1 scope: inline-fusable color/math chains (Source → … → Output). Nodes that
  * require their own pass (blur/sampling/compute/composite) return a structured
- * error pointing at the offending nodes — multi-pass scheduling is Phase 2.
+ * error pointing at the offending nodes. This compiler supports a single pass.
  */
 import type { Graph } from "../types";
 import { getNode } from "../nodelib";

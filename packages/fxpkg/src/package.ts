@@ -1,6 +1,6 @@
 /**
- * .fxpkg assembly (STUDIO_PLAN §6). Produces the strict file layout, computes
- * artifact checksums, fills the manifest, and emits the attestation envelope.
+ * Assemble .fxpkg files with a strict layout, computed checksums, a complete
+ * manifest, and an attestation envelope.
  *
  * Real tar packing happens at the studio build server (which also signs the
  * attestation with its private key); this module produces the canonical file
@@ -102,7 +102,7 @@ export function buildPackage(input: BuildPackageInput): BuildPackageResult {
   return { ok: true, bundle: { files, manifest, attestation, sizeReport } };
 }
 
-/** Recompute and compare checksums (consumer-side integrity check, §6.3). */
+/** Recompute and compare package checksums. */
 export function verifyChecksums(files: FileMap, manifest: Manifest): { ok: boolean; mismatches: string[] } {
   const mismatches: string[] = [];
   for (const [path, expected] of Object.entries(manifest.checksums)) {

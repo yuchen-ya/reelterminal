@@ -1,6 +1,6 @@
 /**
  * Central endpoint-directory resolution for the desktop host and the
- * live-mcp connector (docs/NAMING-AND-COMPATIBILITY.md §4 "端点目录迁移").
+ * live-mcp connector.
  *
  * Canonical location:  ~/.reelterminal/<resource>
  * Legacy location:     ~/.openreel/<resource>
@@ -14,9 +14,8 @@
  *      (ii) the legacy descriptor passes ownership validation.
  *
  * Descriptor ownership: descriptors written by this application carry
- * `product: "reelterminal"` (added in N03). Descriptors written by earlier
- * versions of this application family have no product field and are
- * recognized by their exact known structure (`legacy-shape`). A descriptor
+ * `product: "reelterminal"`. Unmarked descriptors that match the supported
+ * legacy structure are recognized as `legacy-shape`. A descriptor
  * with a different product id is never discovered, never written back, and
  * — for explicit override targets — refuses the operation instead of
  * silently cross-connecting to another product or session.
@@ -76,9 +75,9 @@ export function endpointOverrideEnvNames(
 }
 
 /**
- * Raw override value with N02 readEnvAlias precedence (new name set wins,
- * empty string counts as set-and-empty). Call sites keep their historical
- * acceptance predicate: the live endpoint accepts any non-empty value.
+ * Raw override value using readEnvAlias precedence (new name set wins,
+ * empty string counts as set-and-empty). The live endpoint accepts any
+ * non-empty value.
  */
 export function endpointOverridePath(
   env: NodeJS.ProcessEnv,
@@ -97,8 +96,7 @@ function acceptsOverride(value: string): boolean {
 /**
  * - `product`: the descriptor carries `product: "reelterminal"`.
  * - `legacy-shape`: no product field, but the JSON matches the exact
- *   structure this application family wrote before the product field
- *   existed (pre-N03 ReelTerminal/OpenReel lineage).
+ *   supported unmarked endpoint structure.
  * - `foreign`: carries an explicit `product` id of another application.
  * - `invalid`: not recognizable as any descriptor shape this application
  *   family wrote (unparseable, wrong types, or truncated).
@@ -113,7 +111,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Shape written by live-endpoint-server.ts before N03: {url, port, token}. */
+/** Check the supported unmarked endpoint structure. */
 function matchesLegacyLiveShape(value: unknown): boolean {
   return (
     isRecord(value) &&
@@ -223,7 +221,7 @@ export interface EndpointPathResolution {
   /** The path a reader should open. */
   readonly path: string;
   /**
-   * When set, discovery refused to choose and the reader must fail with
+   * When set, discovery cannot choose and the reader must fail with
    * this message instead of reading anything (explicit-path guidance).
    */
   readonly conflict?: string;

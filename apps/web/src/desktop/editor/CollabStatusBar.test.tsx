@@ -101,6 +101,7 @@ describe("CollabStatusBar Agent Access status", () => {
     await renderBar();
 
     expect(await screen.findByText("Agent connecting")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-access-toggle")).toBeDisabled();
   });
 
   it("revokes editing without stopping the command service", async () => {

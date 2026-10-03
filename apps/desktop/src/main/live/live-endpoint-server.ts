@@ -546,9 +546,9 @@ export function startLiveEndpointServer(
           reject(error);
           return;
         }
-        // N03 compat write-back: when serving from the canonical path, also
+        // When serving from the canonical path, also
         // republish the descriptor at the legacy path IF it holds this
-        // application family's descriptor and nothing live is behind it —
+        // an owned descriptor and nothing live is behind it —
         // so connectors that only read ~/.openreel discover the new host.
         // Any other legacy content (foreign product, unidentifiable,
         // still-served) is left untouched with a credential-free log line.

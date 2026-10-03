@@ -1,5 +1,5 @@
 /**
- * The Electron-backed LiveSessionHost singleton (ADR 0004): production
+ * The Electron-backed LiveSessionHost singleton: production
  * wiring for createLiveSessionHost — the renderer-store bridge, Chromium
  * providers (same createChromiumProviders + FfmpegArtifactVerifier pattern
  * as agent-transport's session.ts), the facade factory, the liveEvents push

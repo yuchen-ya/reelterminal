@@ -1,10 +1,8 @@
 export const CHANNELS = {
   probeHardware: "reelterminal:probeHardware",
-  // Menu action relay (main → renderer). Previously a bypassing literal in
-  // app-menu.ts + preload; collected here so channel names have one source.
+  // Menu action relay (main → renderer).
   menuAction: "reelterminal:menu:action",
-  // MessagePort handoff for native export (main → renderer). Previously a
-  // bypassing literal in ipc/export.ts + preload; collected here.
+  // MessagePort handoff for native export (main → renderer).
   exportPortHandoff: "reelterminal:export-port",
   fsShowSaveDialog: "reelterminal:fs:showSaveDialog",
   fsShowOpenDialog: "reelterminal:fs:showOpenDialog",

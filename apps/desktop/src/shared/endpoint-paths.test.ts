@@ -173,7 +173,7 @@ describe("descriptor ownership classification", () => {
     ).toBe("foreign");
   });
 
-  it("recognizes the pre-N03 live shape {url, port, token} as legacy-shape", () => {
+  it("recognizes the legacy live endpoint shape {url, port, token}", () => {
     expect(
       classifyDescriptorOwnership("live-endpoint", {
         url: "http://127.0.0.1:1/mcp",
@@ -181,7 +181,7 @@ describe("descriptor ownership classification", () => {
         token: "x",
       }),
     ).toBe("legacy-shape");
-    // A missing port is not a shape this family ever wrote.
+    // A missing port does not match the supported legacy shape.
     expect(
       classifyDescriptorOwnership("live-endpoint", { url: "http://127.0.0.1:1/mcp", token: "x" }),
     ).toBe("invalid");

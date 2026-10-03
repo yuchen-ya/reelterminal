@@ -32,7 +32,7 @@ describe("payable value", () => {
   });
 });
 
-describe("attribution (§41.3)", () => {
+describe("attribution", () => {
   const filter: AppliedAsset = { assetVersionId: "f", kind: "filter", clipCount: 3, totalDurationMs: 9000 };
   const effect: AppliedAsset = { assetVersionId: "e", kind: "effect", clipCount: 1, totalDurationMs: 2000 };
   const template: AppliedAsset = { assetVersionId: "t", kind: "template", clipCount: 1, totalDurationMs: 15000 };
@@ -51,7 +51,7 @@ describe("attribution (§41.3)", () => {
   });
 });
 
-describe("KYC tiers (§42.3)", () => {
+describe("KYC tiers", () => {
   it("levels by lifetime earnings", () => {
     expect(requiredKycLevel(5_000)).toBe(0);
     expect(requiredKycLevel(50_000)).toBe(1);
@@ -63,7 +63,7 @@ describe("KYC tiers (§42.3)", () => {
   });
 });
 
-describe("anti-fraud (§43)", () => {
+describe("anti-fraud", () => {
   const base = { userId: "u", assetId: "a", day: "2026-05-01", durationMs: 8000, containsUserMedia: true, contentHash: "abc" };
   it("rejects short exports and missing media", () => {
     expect(checkExportPayable(base).payable).toBe(true);
@@ -76,7 +76,7 @@ describe("anti-fraud (§43)", () => {
   });
 });
 
-describe("event sealing (§41.5)", () => {
+describe("event sealing", () => {
   it("verifies a sealed event and rejects tampering", () => {
     const sig = sealEvent('{"e":"EXPORT_COMPLETED"}', "nonce1", "secret");
     expect(verifyEvent('{"e":"EXPORT_COMPLETED"}', "nonce1", "secret", sig)).toBe(true);
@@ -85,7 +85,7 @@ describe("event sealing (§41.5)", () => {
   });
 });
 
-describe("holdback + payout batch (§42.2)", () => {
+describe("holdback and payout batch", () => {
   it("payable date is +30d", () => {
     expect(payableAfter("2026-05-01T00:00:00.000Z")).toBe("2026-05-31T00:00:00.000Z");
   });
@@ -104,7 +104,7 @@ describe("holdback + payout batch (§42.2)", () => {
   });
 });
 
-describe("rails (§42.1)", () => {
+describe("payout rails", () => {
   it("routes by country", () => {
     expect(selectRail("US")).toBe("stripe");
     expect(selectRail("NG")).toBe("paystack");
@@ -119,7 +119,7 @@ describe("rails (§42.1)", () => {
   });
 });
 
-describe("submission state machine (§37.1)", () => {
+describe("submission state machine", () => {
   it("allows valid transitions only", () => {
     expect(canTransition("human_review", "approved")).toBe(true);
     expect(canTransition("approved", "published")).toBe(true);

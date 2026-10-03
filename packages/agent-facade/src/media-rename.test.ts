@@ -9,10 +9,9 @@
  *    and the revision does not move,
  *  - unknown media ids fail NOT_FOUND,
  *  - timeline.query exposes displayName next to name so agent search and the
- *    GUI panel agree; items never renamed carry no displayName (old projects
- *    fall back to the source filename),
+ *    GUI panel agree; items without displayName use the source filename,
  *  - the op translates to the same core media/rename action the GUI rename
- *    uses, so undo restores the previously displayed name (core history).
+ *    uses, so undo restores the display name.
  */
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { createAgentFacade } from "./index";
@@ -191,8 +190,7 @@ describe("media.rename undo (core action history)", () => {
     const history = new ActionHistory();
     const executor = new ActionExecutor(history);
 
-    // The item had NO displayName (old-project shape), so the previously
-    // displayed name was the source filename.
+    // Items without displayName use the source filename.
     const first = await executor.execute(
       mk("media/rename", { mediaId: "media-1", name: "中文标题" }),
       project,

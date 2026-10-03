@@ -1,13 +1,4 @@
-/**
- * Path (a) — the Pi-class `run` path: the runner authors Appendix-B.6 JSONL
- * workflows and invokes the REAL built `agent-video run`. One invocation is
- * one fresh facade session; per Appendix D step 6, deliberately-failing
- * probes are their own run invocations (or one --keep-going run whose
- * nonzero exit is the expected outcome).
- *
- * Every invocation's workflow text, stdout step lines, exit code, and stderr
- * tail land in the recorder transcript.
- */
+/** Execute a workflow and record its input, output, and exit status. */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";

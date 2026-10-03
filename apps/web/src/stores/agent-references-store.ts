@@ -23,6 +23,7 @@ interface AgentReferencesState {
   readonly nextNumber: number;
   mark: (targets: readonly AgentReferenceTarget[], revisionAtMark: number) => MarkedAgentReference[];
   syncStale: (activeTargets: readonly AgentReferenceTarget[]) => void;
+  remove: (number: number) => void;
   reset: () => void;
 }
 
@@ -123,6 +124,12 @@ export const useAgentReferencesStore = create<AgentReferencesState>()((set, get)
     }
 
     if (changed) set({ references });
+  },
+
+  remove: (number) => {
+    const references = { ...get().references };
+    delete references[String(number)];
+    set({ references });
   },
 
   reset: () => {

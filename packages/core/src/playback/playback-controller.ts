@@ -115,7 +115,7 @@ export class PlaybackController {
       return;
     }
 
-    // Preview presentation owns on-screen frames during playback (ADR 0009).
+    // Preview presentation owns on-screen frames during playback.
     // The per-tick composite render below this line produced a frame that
     // nothing displayed (setDisplayCanvas has no callers) and competed with
     // the preview render loop for CPU/GPU/decoders. Report the clock as

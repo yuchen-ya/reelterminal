@@ -48,7 +48,7 @@ function isNativeRef(ref: unknown): ref is NativeFileRef {
   );
 }
 
-// Persisted database name — legacy registry, value frozen (user projects).
+// Persisted database name for user projects.
 const PROJECT_DB_NAME = LEGACY_PROJECT_DB_NAME;
 const PROJECT_DB_VERSION = 1;
 const PROJECTS_STORE = "projects";

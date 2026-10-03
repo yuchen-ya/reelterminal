@@ -15,7 +15,6 @@ import {
   Image,
   ArrowLeftToLine,
   ListChecks,
-  Hash,
 } from "@/icons/lucide-compat";
 import type { Clip, Track } from "@reelterminal/core";
 import {
@@ -30,7 +29,8 @@ import { getTimelineTrackSelection } from "../../../utils/timeline-item-actions"
 import {
   markAgentReferenceForSelection,
 } from "../../../stores/editor-context-store";
-import { getAgentReferenceTargetForClip } from "../../../stores/agent-reference-targets";
+import { agentReferenceKindForTrack, getAgentReferenceTargetForClip } from "../../../stores/agent-reference-targets";
+import { useAgentReferenceMenuItem } from "../agent-reference-menu";
 import { useProjectMarkerMenuItems } from "../project-marker-menu";
 
 interface ClipContextMenuProps {
@@ -197,6 +197,10 @@ export function useClipContextMenuItems({
     onClose?.();
   };
 
+  const agentReferenceMenuItem = useAgentReferenceMenuItem(
+    agentReferenceKindForTrack(track.type), clip.id, handleAddAgentReference, onClose,
+  );
+
   const handleCopyEffects = () => {
     copyEffects(clip.id);
     onClose?.();
@@ -335,11 +339,7 @@ export function useClipContextMenuItems({
       icon: <ListChecks size={14} aria-hidden />,
       onClick: handleSelectTrackClips,
     },
-    {
-      label: t("agentReferences.add"),
-      icon: <Hash size={14} aria-hidden />,
-      onClick: handleAddAgentReference,
-    },
+    agentReferenceMenuItem,
     { label: t("requirementBoard.addFromSelection"), onClick: () => { openBoardForEntities(selectedClipIds.includes(clip.id) ? selectedClipIds : [clip.id]); onClose?.(); } },
     ...reviewMarkerMenuItems,
     {

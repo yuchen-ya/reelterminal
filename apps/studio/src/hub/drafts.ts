@@ -3,7 +3,7 @@ import type { Scene } from "../effect/scene";
 import type { FilterDoc } from "../filter/types";
 import { LEGACY_IDB_STUDIO_DRAFTS } from "@reelterminal/core/legacy/physical-identifiers";
 
-// Persisted database name — legacy registry, value frozen (user drafts).
+// Persisted database identifier for user drafts.
 // See packages/core/src/legacy/physical-identifiers.ts.
 const DB_NAME = LEGACY_IDB_STUDIO_DRAFTS;
 const STORE = "drafts";

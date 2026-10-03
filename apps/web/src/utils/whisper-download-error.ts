@@ -1,13 +1,8 @@
 /**
  * Classification for local caption model download failures.
  *
- * The whisper worker downloads model files over fetch
- * (apps/web/src/workers/whisper-worker.ts, `MODEL_HOST`). When that fails,
- * the raw browser error ("Failed to fetch") used to be rendered verbatim.
- * This module classifies the thrown value into evidence-backed kinds so
- * the UI can show an understandable, localized explanation plus an
- * actionable suggestion — without inventing causes that are not in the
- * error itself.
+ * Classifies download errors for localized explanations and actionable
+ * suggestions, using only evidence present in the error.
  */
 
 export type WhisperDownloadErrorKind = "network" | "http" | "storage" | "unknown";

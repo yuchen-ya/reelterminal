@@ -1,5 +1,5 @@
 /**
- * @reelterminal/runtime-chromium — the Slice-1b Chromium render/export runtime.
+ * @reelterminal/runtime-chromium — Chromium render and export providers.
  *
  * Implements the facade's independent provider interfaces
  * (@reelterminal/agent-facade providers.ts) over real Chromium (playwright-core):

@@ -94,6 +94,32 @@ describe("validator", () => {
     const g: Graph = { ...warmVignette, nodes: warmVignette.nodes.filter((n) => n.type !== "Output") };
     expect(validateGraph(g).errors.some((e) => e.code === "no_output")).toBe(true);
   });
+  it("rejects parameter ids that could alter generated shader identifiers", () => {
+    const unsafeParamId = "amount; loop {}";
+    const graph: Graph = {
+      ...warmVignette,
+      params: [{ ...warmVignette.params[0]!, id: unsafeParamId }],
+      nodes: warmVignette.nodes.map((node) =>
+        node.type === "Param"
+          ? { ...node, config: { ...node.config, param: unsafeParamId } }
+          : node,
+      ),
+    };
+
+    const issues = validateGraph(graph).errors;
+    expect(issues.some((issue) => issue.code === "invalid_param_id")).toBe(true);
+    expect(issues.some((issue) => issue.code === "invalid_param_reference")).toBe(true);
+
+    const duplicateGraph: Graph = {
+      ...warmVignette,
+      params: [...warmVignette.params, { ...warmVignette.params[0]! }],
+    };
+    expect(
+      validateGraph(duplicateGraph).errors.some(
+        (issue) => issue.code === "duplicate_param_id",
+      ),
+    ).toBe(true);
+  });
   it("flags ABI-too-new nodes", () => {
     const g: Graph = {
       ...warmVignette,
@@ -226,6 +252,13 @@ describe("manifest + package", () => {
   it("validates a good manifest and rejects a bad id", () => {
     expect(validateManifest({ ...baseManifest, checksums: {} }).ok).toBe(true);
     expect(validateManifest({ ...baseManifest, id: "noslash", checksums: {} }).ok).toBe(false);
+    expect(
+      validateManifest({
+        ...baseManifest,
+        params: [{ ...baseManifest.params[0], id: "amount; loop {}" }],
+        checksums: {},
+      }).ok,
+    ).toBe(false);
   });
 
   it("enforces size limits", () => {

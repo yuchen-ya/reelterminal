@@ -9,7 +9,7 @@ const act = (type: string, params: Record<string, unknown>): Action => ({
   params,
 });
 
-describe("projectRevision (ADR 0004 Decision 3)", () => {
+describe("projectRevision", () => {
   beforeEach(() => {
     useProjectStore.getState().createNewProject();
   });

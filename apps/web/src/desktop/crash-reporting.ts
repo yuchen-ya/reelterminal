@@ -10,17 +10,23 @@ const recent = new Map<string, number>();
 
 export function reportRendererCrash(input: RendererCrashInput): void {
   try {
-    const crash = window.reelterminal?.crash;
-    if (!crash) return;
     const message = input.message?.slice(0, 8000);
     if (!message) return;
     const type = input.type ?? "renderer-error";
+    console.error("[renderer] application error:", {
+      type,
+      message,
+      stack: input.stack,
+      context: input.context,
+    });
+    const crash = window.reelterminal?.crash;
+    if (!crash) return;
     const key = `${type}:${message}`;
     const now = Date.now();
     const last = recent.get(key);
     if (last && now - last < DEDUPE_MS) return;
     recent.set(key, now);
-    crash.report({ message, stack: input.stack, type, context: input.context });
+    crash.report({ type });
   } catch {
     // The reporter must never throw.
   }

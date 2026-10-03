@@ -1,6 +1,5 @@
 /**
- * Facade provider implementations over the real Chromium runtime
- * (ADR 0002 #1/#4/#6).
+ * Facade provider implementations over the Chromium runtime.
  *
  * - ChromiumRenderProvider: preview.render_frame backing (hydrate → render →
  *   PNG under artifactRoot).

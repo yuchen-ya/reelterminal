@@ -191,8 +191,7 @@ export class NativeFFmpegBackend implements EncoderBackend {
       }, 15000);
 
       const handler = (event: MessageEvent) => {
-        // The marker is the shared constant the preload posts (N02-ACC B1):
-        // a literal here drifted from the sender once already.
+        // The preload and receiver share this marker constant.
         const data = event.data as Record<string, unknown> | null;
         if (data?.[DESKTOP_EXPORT_PORT_MARKER] && event.ports.length > 0) {
           clearTimeout(timeout);

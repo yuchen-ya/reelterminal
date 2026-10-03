@@ -163,7 +163,7 @@ interface Fixture {
   sessions: StubSession[];
   events: LiveEvent[];
   teardown: ReturnType<typeof vi.fn>;
-  closeProviders: Mock<[], Promise<void>>;
+  closeProviders: Mock<() => Promise<void>>;
   tempDir: string;
   endpointFile: string;
   factoryCalls: Array<{

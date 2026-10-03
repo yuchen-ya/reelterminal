@@ -10,7 +10,8 @@ Everything cloud-specific (credential env var, endpoint allowlist, request shape
 
 Install FFmpeg/ffprobe on PATH with libx264 and AAC encoders. These steps configure the **default qwen3.5-omni-flash provider** (see the provider seam above). Set `DASHSCOPE_API_KEY` in the **ReelTerminal desktop process environment**, then launch/restart that process. Setting it only in an external Agent/MCP client's environment does not configure the desktop host. Do not send a key in tool parameters, commit it, or put it in a project file.
 
-For development on macOS, quit the previous desktop process after saving work, then use zsh from the sole checkout:
+For development on macOS, launch the desktop from a shell with the key in its
+environment:
 
 ```zsh
 read -s 'DASHSCOPE_API_KEY?Alibaba API key: '
@@ -19,7 +20,10 @@ pnpm --filter @reelterminal/desktop start
 unset DASHSCOPE_API_KEY
 ```
 
-Input is hidden and the key is not a command-line argument or shell-history entry. On Windows, the `read -s 'VAR?prompt'` block above is zsh-only: from Git Bash use `read -s -p 'Alibaba API key: ' DASHSCOPE_API_KEY && export DASHSCOPE_API_KEY`, or in PowerShell set `$env:DASHSCOPE_API_KEY = Read-Host 'Alibaba API key'`, before launching the desktop process. Build the current source before launching (`pnpm --filter @reelterminal/desktop build`). This version has no GUI credential form or persistent key storage; a Finder launch does not inherit this terminal's environment.
+Input is hidden and the key is not a command-line argument or shell-history
+entry. On Windows, use Git Bash or set `$env:DASHSCOPE_API_KEY` in PowerShell
+before launching the desktop. A desktop started from Finder does not inherit a
+terminal's environment.
 
 Default endpoint: `https://dashscope.aliyuncs.com/compatible-mode/v1` (Beijing). Optional `REELTERMINAL_QWEN_BASE_URL` accepts the official Singapore `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`, or an Alibaba workspace endpoint `https://<workspace>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1` / `https://<workspace>.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`. Use a matching regional key and model access. Arbitrary destinations and redirects are rejected to prevent credential forwarding.
 
@@ -58,10 +62,11 @@ Default endpoint: `https://dashscope.aliyuncs.com/compatible-mode/v1` (Beijing).
 - Maximum 1,200 output tokens, 128 KiB SSE, 10,000 text characters; no retry or automatic JSON repair. Results stay bounded in the existing job summary rather than creating a large transcript artifact. Actual charge and remaining quota are not estimated or queried.
 - Provider sampling FPS is unknown. Compression and sampling may miss brief flashes, HUD details or sync offsets. The earlier controlled cloud experiment missed a known 600ms mismatch; a confident model opinion is not sufficient acceptance evidence. Local dense frames/ROI and deterministic audio measurements remain necessary.
 
-## Validation and next priorities
+## Limits
 
-Automated tests use real FFmpeg preparation and mocked cloud SSE; they do not consume a key or upload user media. They cover configuration boundaries, output truncation/limits, source offsets, immutable live/headless state, idempotency, queued/in-flight cancellation, UTF-8 SSE decoding and GUI opinion labeling. A generated AV fixture verifies that the actual upload copy retains its flash and audio-transient offsets after trimming. The prior real API experiment established the model/endpoint video+audio request route; new source tests do not claim another cloud evaluation or listening pass.
-
-Next: a user-facing secure credential settings UI, direct revision-pinned timeline-range rendering with mixed audio, independent AV loop preview, and controlled model sampling evaluations. These are not advertised as implemented.
+The model's timestamps are relative to the uploaded excerpt. Provider sampling
+rate is unknown, and compression may miss brief details. The result is an
+opinion, not an acceptance test. Use local frame inspection, audio measurements,
+and verification of the exported composition for final checks.
 
 Official API reference: [Qwen-Omni](https://help.aliyun.com/zh/model-studio/qwen-omni), [Qwen3.5-Omni-Flash](https://help.aliyun.com/zh/model-studio/qwen3-5-omni-flash).

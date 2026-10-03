@@ -1,5 +1,5 @@
 /**
- * Absolute-path boundary tests (ADR 0003 Decision 6): the explicit
+ * Absolute-path boundary tests: the explicit
  * per-verb path-field map, rejection wording, and `~` refusal. The
  * workflow `$ref`-fed relative path rejection is pinned end-to-end in
  * run-cli.test.ts; here the boundary itself is exercised in isolation.

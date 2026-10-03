@@ -33,8 +33,7 @@ const DEFAULT_CONFIG: AutoSaveConfig = {
   debounceTime: 2000, // 2 seconds
 };
 
-// Persisted database name — legacy registry, value frozen (autosave slots are
-// user project data). See packages/core/src/legacy/physical-identifiers.ts.
+// Persisted database name for user autosave slots.
 const AUTO_SAVE_DB_NAME = LEGACY_AUTO_SAVE_DB_NAME;
 const AUTO_SAVE_DB_VERSION = 1;
 const AUTO_SAVE_STORE = "autosaves";

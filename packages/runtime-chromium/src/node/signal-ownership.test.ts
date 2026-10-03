@@ -1,19 +1,3 @@
-/**
- * ADR 0003 Decision 7 — the one scoped runtime change this slice allows.
- *
- * Playwright's DEFAULT launch registers its own SIGINT/SIGTERM/SIGHUP
- * handlers, which kill the browser immediately — racing (and defeating) the
- * embedding transport's bounded cancel→dispose shutdown path. The runtime
- * now passes handleSIGINT/SIGTERM/SIGHUP: false at chromium.launch, so the
- * ONLY signal handlers in a process embedding this runtime belong to the
- * embedder.
- *
- * This test pins exactly that: with a foreign SIGTERM handler installed
- * (as the transport owns), a SIGTERM delivered to the process must NOT
- * close the browser — the browser stays connected and keeps serving page
- * ops — while the foreign handler still fires. Needs real Chromium; skips
- * with a printed reason when the launch preflight fails.
- */
 import { afterAll, describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
 import { chromium } from "playwright-core";
@@ -26,15 +10,19 @@ const hasChromium = (() => {
     return false;
   }
 })();
+const supportsPosixSignals = process.platform !== "win32";
 
 if (!hasChromium) {
   console.warn(
     "[signal-ownership] SKIP: Playwright-managed Chromium not installed on this machine",
   );
 }
+if (!supportsPosixSignals) {
+  console.warn("[signal-ownership] SKIP: process signal semantics differ on Windows");
+}
 
-describe.skipIf(!hasChromium)(
-  "Decision 7: signal ownership (handleSIGINT/SIGTERM/SIGHUP false)",
+describe.skipIf(!hasChromium || !supportsPosixSignals)(
+  "signal ownership",
   () => {
     const runtime = new ChromiumRuntime();
     let sawSigterm = false;

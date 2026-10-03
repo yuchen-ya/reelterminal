@@ -55,8 +55,22 @@ export function createProjectPersistenceSlice(
           await initializeAutoSaveService();
           autoSaveManager.start(() => get().getFullProject());
           if (!unsubscribeProjectChanges) {
+            let previousProject = get().getFullProject();
             unsubscribeProjectChanges = deps.subscribeToProject(() => {
-              autoSaveManager.markDirty(get().getFullProject());
+              const currentProject = get().getFullProject();
+              if (currentProject.id !== previousProject.id) {
+                if (autoSaveManager.hasUnsavedChanges(previousProject)) {
+                  void autoSaveManager.forceSave(previousProject).catch((error) => {
+                    console.warn(
+                      "[ProjectStore] Failed to save project before switching:",
+                      error,
+                    );
+                  });
+                }
+              } else {
+                autoSaveManager.markDirty(currentProject);
+              }
+              previousProject = currentProject;
             });
           }
           autoSaveInitialized = true;
@@ -75,6 +89,11 @@ export function createProjectPersistenceSlice(
     },
 
     recoverFromAutoSave: async (saveId: string) => {
+      const startingProject = get().project;
+      const startingRevision = get().projectRevision;
+      const isRecoveryTargetCurrent = () =>
+        get().project === startingProject &&
+        get().projectRevision === startingRevision;
       const recoveredProject = await autoSaveManager.recover(saveId);
       if (recoveredProject) {
         // Auto-save recovery parses raw JSON and never passes through
@@ -91,6 +110,22 @@ export function createProjectPersistenceSlice(
             restoreMediaItem(item, blobMap.get(item.id)),
           ),
         );
+
+        if (!isRecoveryTargetCurrent()) {
+          const originalItems = new Map(
+            normalizedProject.mediaLibrary.items.map((item) => [item.id, item]),
+          );
+          for (const item of restoredItems) {
+            const originalThumbnail = originalItems.get(item.id)?.thumbnailUrl;
+            if (
+              item.thumbnailUrl?.startsWith("blob:") &&
+              item.thumbnailUrl !== originalThumbnail
+            ) {
+              URL.revokeObjectURL(item.thumbnailUrl);
+            }
+          }
+          return false;
+        }
 
         const projectWithMedia: Project = {
           ...normalizedProject,

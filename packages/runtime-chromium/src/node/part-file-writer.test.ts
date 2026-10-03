@@ -1,14 +1,11 @@
 /**
- * PartFileWriter byte accounting — regression for the slice-2d E2E finding
- * (docs/slice-2/evidence/findings/FINDINGS.md, finding 1).
+ * PartFileWriter byte accounting for chunked MP4 writes.
  *
  * The chunked mediabunny StreamTarget writes with absolute positions and
  * REWRITES regions (header patches after a mid-stream flush). `bytes` must
  * be the high-water mark of written end positions — i.e. the real file
- * size — never a sum of every write. When it was a sum, any export whose
- * MP4 exceeded one 4 MiB chunk reported 8 bytes too many and the facade's
- * honest artifact guard ("provider wrote fewer bytes … than it reported")
- * rejected the good file, so >4 MiB exports always terminalized as error.
+ * size — never a sum of every write. Overlapping writes must not inflate the
+ * reported file size.
  */
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";

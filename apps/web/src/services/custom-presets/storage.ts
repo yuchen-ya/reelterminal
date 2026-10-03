@@ -1,8 +1,8 @@
 /**
  * IndexedDB persistence for user-level custom presets.
  *
- * A dedicated database (its name is the frozen legacy `CUSTOM_PRESETS_DB_NAME`
- * re-exported below from ../legacy-storage-keys — registry:
+ * A dedicated database named `CUSTOM_PRESETS_DB_NAME`, re-exported from
+ * ../legacy-storage-keys and registered in
  * packages/core/src/legacy/physical-identifiers.ts), deliberately separate
  * from the project storage engine's own database so its schema versioning is
  * untouched, and separate from the material library so preset CRUD can never
@@ -19,8 +19,7 @@
 import type { CustomPresetRecord } from "@reelterminal/core/presets/types";
 import { LEGACY_CUSTOM_PRESETS_DB_NAME } from "../legacy-storage-keys";
 
-// Persisted database name — legacy registry re-export, value frozen
-// (user custom presets). See packages/core/src/legacy/physical-identifiers.ts.
+// Persisted database name for user custom presets.
 export const CUSTOM_PRESETS_DB_NAME = LEGACY_CUSTOM_PRESETS_DB_NAME;
 export const CUSTOM_PRESETS_DB_VERSION = 1;
 export const CUSTOM_PRESETS_STORE = "presets";

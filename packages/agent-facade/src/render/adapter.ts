@@ -1,17 +1,16 @@
 /**
- * Render/hydration adapter seam — RESERVED for the Slice 1b Chromium runtime.
+ * Reserved project rendering adapter interface.
  *
- * Slice 1 ships NO implementation of this interface, and no facade verb
- * consumes one. The facade's canonical serialized Project (see
+ * No facade verb consumes this interface. The facade's canonical serialized
+ * Project (see
  * project.get_state) is the contract the future Chromium adapter hydrates
  * from: it re-creates engine-side overlay state (titleEngine etc.) from
  * `project.textClips`, decodes media, and produces pixels for preview/export.
  *
- * DORMANCY RULE: injecting an adapter into the Slice-1 session changes
- * nothing observable. Because no verb calls hydrateFromProject/renderFrame,
+ * Injecting an adapter changes nothing observable. Because no verb calls
+ * hydrateFromProject/renderFrame,
  * capabilities.get must keep reporting preview/export as unavailable even
- * with an adapter present; availability flips only when Slice 1b adds the
- * verbs that actually drive the adapter.
+ * with an adapter present.
  */
 import type { Project } from "@reelterminal/core/types/project";
 

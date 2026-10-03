@@ -14,7 +14,8 @@ previews, media analysis and export jobs. Editor context is data, not LLM memory
 
 ## Connect and discover
 
-1. Start ReelTerminal, open the intended project, and enable **Agent Access**.
+1. Start ReelTerminal and open the intended project. The command service
+   provides read-only access; select **Allow editing** to grant write access.
 2. Run `reelctl status`, then `reelctl context --compact`.
    If the context reports ready requirements, run
    `reelctl requirements list --status ready --compact` and fetch only the
@@ -95,13 +96,13 @@ retains jobs across CLI exits and activity timeouts, but disabling Agent Access
 or exiting the application ends the host session. User-level libraries and
 project data retain their existing persistence rules.
 
-The old in-app voiceover/music prompt channel is disabled pending an independent
-task mechanism. Existing task records and generated files are retained. Generate
-assets in the external Agent workflow and import them through the normal API.
+Voiceover and music generation tasks are not available in ReelTerminal. Generate
+assets with the external Agent and import them through the normal API.
 
 ## Compatibility access
 
-Only MCP clients start `reelctl mcp serve`. The legacy
+The [Command API guide](docs/COMMAND-API.md) describes the live service and
+CLI contract. Only MCP clients start `reelctl mcp serve`. The legacy
 `reelterminal-live-mcp` and `openreel-live-mcp` launchers invoke the same adapter.
 MCP schemas come from the live Command Catalog, and calls use the Command API.
 The desktop does not launch an MCP stdio process or configure the Agent.

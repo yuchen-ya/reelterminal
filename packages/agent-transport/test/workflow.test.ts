@@ -1,5 +1,5 @@
 /**
- * Workflow engine unit tests (ADR 0003 B.6, in-process — no Chromium):
+ * Workflow engine unit tests (in-process, without Chromium):
  * static validation failures, `$ref` structural substitution (single-pass,
  * whole-value splice), pointer misses, bounded await semantics, stop-on-
  * first-failure vs --keep-going exit codes, and absolute-path rejection

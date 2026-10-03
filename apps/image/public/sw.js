@@ -1,10 +1,4 @@
-// LEGACY PERSISTED CACHE NAME (N04) — standalone plain JS, cannot import the
-// central registry; value must stay in sync with
-// packages/core/src/legacy/physical-identifiers.ts (LEGACY_SW_CACHE_IMAGE,
-// pinned there by a source-reading drift test). Renaming orphans user caches:
-// this SW deletes every cache whose key differs, so old caches written under
-// the registered name would survive only until quota eviction.
-// docs/NAMING-AND-COMPATIBILITY.md §4 "持久化保留为 legacy".
+// Keep this persisted cache name aligned with the shared identifier registry.
 const CACHE_NAME = 'openreel-image-v1';
 const STATIC_ASSETS = [
   '/',

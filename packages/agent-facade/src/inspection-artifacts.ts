@@ -112,7 +112,9 @@ export async function fingerprintFile(path: string): Promise<FileContentFingerpr
       return { sizeBytes: -1, mtimeMs: -1, sha256: null };
     }
     const signature = fileStatSignature(before);
-    const cached = fileDigestCache.get(path);
+    const cached = process.platform === "win32"
+      ? undefined
+      : fileDigestCache.get(path);
     let sha256: string;
     if (cached?.signature === signature) {
       sha256 = cached.sha256;

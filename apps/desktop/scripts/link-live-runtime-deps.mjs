@@ -1,5 +1,5 @@
 /**
- * Post-build fixup for the live-collaboration runtime (ADR 0004 Slice 3).
+ * Copy runtime browser sources beside the desktop main-process bundle.
  *
  * The main-process bundle inlines @reelterminal/runtime-chromium, whose
  * node/bundle.ts builds the Chromium browser entry at RUNTIME with esbuild

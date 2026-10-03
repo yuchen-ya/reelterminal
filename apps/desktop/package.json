@@ -17,7 +17,8 @@
   "scripts": {
     "build:main": "node scripts/prepare-aurora-native.mjs && tsup && node scripts/link-live-runtime-deps.mjs",
     "build:renderer": "cross-env REELTERMINAL_DESKTOP=1 pnpm --filter @reelterminal/web build",
-    "build": "pnpm run build:renderer && pnpm run build:main",
+    "build": "pnpm run build:renderer && pnpm run build:main && pnpm run build:user-guide",
+    "build:user-guide": "node scripts/build-user-guide.mjs",
     "predev": "pnpm run build:renderer",
     "dev": "tsup --watch --onSuccess \"electron .\"",
     "start": "electron .",
@@ -31,23 +32,22 @@
     "dist": "pnpm run fetch:ffmpeg && pnpm run build && electron-builder"
   },
   "dependencies": {
-    "@esbuild/win32-x64": "0.27.7",
     "@reelterminal/agent-facade": "workspace:*",
     "@reelterminal/core": "workspace:*",
     "@reelterminal/runtime-chromium": "workspace:*",
-    "electron-updater": "^6.3.9",
-    "esbuild": "^0.27.7",
-    "mediabunny": "^1.25.3",
+    "electron-updater": "^6.8.9",
+    "esbuild": "^0.28.1",
+    "mediabunny": "^1.55.4",
     "playwright-core": "^1.60.0",
-    "zod": "^3.23.8"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/node": "^20.14.0",
+    "@types/node": "^20.19.41",
     "cross-env": "^10.1.0",
-    "electron": "^33.0.0",
-    "electron-builder": "^24.13.3",
-    "tsup": "^8.0.0",
-    "typescript": "^5.4.5",
-    "vitest": "^1.6.0"
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   }
 }

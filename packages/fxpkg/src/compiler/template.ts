@@ -1,7 +1,7 @@
 /**
- * Template compiler (STUDIO_PLAN §11.1, §12.2, Appendix B). Flattens a template
+ * Flattens a template
  * definition into an EDL (edit decision list) — the pure-JSON output templates
- * compile to. Trivial runtime cost; runs locally on every platform (§24).
+ * compile to. It runs locally on every platform.
  */
 
 export type SlotKind = "video" | "text" | "audio" | "image";
@@ -98,7 +98,7 @@ export function compileTemplate(src: TemplateSource): TemplateCompileResult {
   return { ok: true, edl };
 }
 
-/** Collect every fx reference in a template (for resolving against Approved versions, §38.2). */
+/** Collect every effect reference in a template. */
 export function templateFxRefs(src: TemplateSource): string[] {
   const refs = new Set<string>();
   for (const track of src.tracks) {

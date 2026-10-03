@@ -1,6 +1,6 @@
 import { FACADE_VERBS } from "./types";
 /**
- * Live facade session tests (ADR 0004 Slice 3): createLiveFacade over an
+ * Live facade session tests: createLiveFacade over an
  * in-memory FakeLiveStore that owns a real Project, keeps revision and
  * contextRevision counters, CAS-checks applyActions exactly like the
  * renderer bridge must, records every committed batch, and can simulate a
@@ -1015,8 +1015,7 @@ describe("live edit.apply", () => {
     const tracksBefore = store.project.timeline.tracks.length;
     const facade = liveFacade();
     store.beforeApply = async () => {
-      // A human edit lands between the agent's snapshot read (translate)
-      // and its apply — exactly the window an unguarded call used to miss.
+      // A human edit lands between the agent's snapshot read and apply.
       await store.humanEdit({
         type: "track/add",
         id: "human-mid-apply",
@@ -1221,6 +1220,33 @@ describe("live edit.apply", () => {
 /* ---------------------- work mode + access gate ---------------------- */
 
 describe("work mode + access gate + writer lease", () => {
+  it("rechecks access after asynchronous edit preparation before committing", async () => {
+    let access: "read-only" | "write" = "write";
+    let releaseStateRead!: () => void;
+    let signalStateRead!: () => void;
+    const stateReadGate = new Promise<void>((resolve) => { releaseStateRead = resolve; });
+    const stateReadStarted = new Promise<void>((resolve) => { signalStateRead = resolve; });
+    const getState = store.getState.bind(store);
+    store.getState = async () => {
+      signalStateRead();
+      await stateReadGate;
+      return getState();
+    };
+    const facade = liveFacade({ access: () => access });
+    const applying = facade["edit.apply"]({
+      ops: [{ op: "track.add", trackType: "video" }],
+    });
+    await stateReadStarted;
+
+    access = "read-only";
+    releaseStateRead();
+    const result = await applying;
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("FORBIDDEN");
+    expect(store.batches).toHaveLength(0);
+  });
+
   it("observes an explicit read-only to write recovery and acquires lazily", async () => {
     let access: "read-only" | "write" = "read-only";
     const facade = liveFacade({ access: () => access });
@@ -2087,6 +2113,83 @@ describe("live preview/export on a store snapshot (Decision 10)", () => {
     const after = await facade["job.status"]({ jobId: started.value.jobId });
     expect(after.ok && after.value.state).toBe("cancelled");
     expect(lease.holder()).toBeNull();
+  });
+
+  it("disposal prevents an in-flight export start from launching", async () => {
+    await seedTextProject();
+    const stub = stubExportProvider();
+    let releasePreflight!: () => void;
+    let signalPreflightStarted!: () => void;
+    const preflightGate = new Promise<void>((resolve) => { releasePreflight = resolve; });
+    const preflightStarted = new Promise<void>((resolve) => { signalPreflightStarted = resolve; });
+    const provider: ExportProvider = {
+      ...stub.provider,
+      preflight: async () => {
+        signalPreflightStarted();
+        await preflightGate;
+        return availablePreflight();
+      },
+    };
+    const facade = liveFacade({ exportProvider: provider });
+    const starting = facade["export.start"]({});
+    await preflightStarted;
+
+    const disposing = facade.dispose();
+    releasePreflight();
+    const started = await starting;
+    expect(started).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+    await disposing;
+
+    expect(stub.requests).toHaveLength(0);
+    expect(lease.holder()).toBeNull();
+  });
+
+  it("disposal settles jobs when the export provider never answers cancellation", async () => {
+    await seedTextProject();
+    const stub = stubExportProvider();
+    const provider: ExportProvider = {
+      ...stub.provider,
+      cancel: async () => new Promise<void>(() => undefined),
+    };
+    const facade = liveFacade({ exportProvider: provider });
+    const started = await facade["export.start"]({});
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+    await stub.awaitStart(started.value.jobId);
+
+    vi.useFakeTimers();
+    try {
+      const disposed = facade.dispose();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await disposed;
+
+      const after = await facade["job.status"]({ jobId: started.value.jobId });
+      expect(after.ok && after.value.state).toBe("cancelled");
+      expect(lease.holder()).toBeNull();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears the cancellation deadline when the provider answers", async () => {
+    await seedTextProject();
+    const stub = stubExportProvider();
+    const facade = liveFacade({ exportProvider: stub.provider });
+    const started = await facade["export.start"]({});
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+    await stub.awaitStart(started.value.jobId);
+
+    vi.useFakeTimers();
+    try {
+      const cancelled = await facade["job.cancel"]({ jobId: started.value.jobId });
+      expect(cancelled.ok && cancelled.value.state).toBe("cancelled");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+    await facade.dispose();
   });
 
   it("stale expectedRevision on preview/export → CONFLICT against the snapshot read", async () => {

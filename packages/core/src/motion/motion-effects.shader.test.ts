@@ -46,7 +46,7 @@ describe("shader effect params", () => {
     const prop = getMotionEffectKeyframeProperty("e1", "levels" as never);
     expect(parseMotionEffectKeyframeProperty(prop)).toEqual({ effectId: "e1", param: "levels" });
   });
-  it("no longer drops the previously-unwhitelisted levels param (10/23 bug)", () => {
+  it("preserves the levels parameter in the compiled shader", () => {
     expect(parseMotionEffectKeyframeProperty("effect.x.gamma")).toEqual({ effectId: "x", param: "gamma" });
   });
 });

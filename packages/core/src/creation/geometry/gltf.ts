@@ -87,8 +87,7 @@ export function meshToGltf(mesh: Mesh, options: MeshToGltfOptions = {}): GltfDoc
   const indexCount = mesh.indices.length;
 
   return {
-    // Legacy generator string embedded in exported assets — value frozen for
-    // provenance (legacy registry, docs/NAMING §5.4).
+    // Generator identifier embedded in exported assets.
     asset: { version: "2.0", generator: LEGACY_GEOMETRY_GENERATOR },
     scene: 0,
     scenes: [{ nodes: [0] }],

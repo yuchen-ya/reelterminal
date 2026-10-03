@@ -1,11 +1,11 @@
 import { toolPresentation } from "@reelterminal/agent-facade";
 /**
- * `reelterminal-agent serve` — the MCP stdio server (ADR 0003 Decisions 1/2/5/7).
+ * `reelterminal-agent serve` MCP stdio server.
  *
  * One long-lived stdio MCP server process == one AgentFacadeSession. The
  * public surface is the registered tools of the facade contract (including
  * `editor_get_context` and `visual_inspect`); every result is the facade
- * `FacadeResult` JSON as a single text content block (B.4), `ok:false` ⇒
+ * `FacadeResult` JSON as a single text content block, `ok:false` ⇒
  * `isError:true` — domain failures are never JSON-RPC protocol errors and
  * never string-mangled; agents match on `error.code`. Transport-level
  * failures (unknown tool, shutting down) use the JSON-RPC protocol-error

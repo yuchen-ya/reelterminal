@@ -7,6 +7,8 @@ import type { Action } from "@reelterminal/core/types/actions";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { useTranslation } from "react-i18next";
+import { Columns2 } from "@/icons/lucide-compat";
+import { ToolcraftPopover } from "@reelterminal/ui";
 
 interface MediaItemLike {
   readonly id: string;
@@ -42,6 +44,99 @@ function clearComparisonAction(): Action {
     timestamp: Date.now(),
     params: {},
   };
+}
+
+function selectComparisonAction(
+  media: MediaItemLike,
+  playheadPosition: number,
+  layout: ReferenceComparisonConfig["layout"] = "side-by-side",
+): Action {
+  return setComparisonAction({
+    referenceMediaId: media.id,
+    refStartSec: 0,
+    refEndSec: media.metadata.duration,
+    timelineStartSec: playheadPosition,
+    rate: 1,
+    audioSide: "timeline",
+    layout,
+  });
+}
+
+/** Optional comparison entry in the player toolbar, away from the picture. */
+export function ReferenceComparisonControl() {
+  const { t } = useTranslation();
+  const project = useProjectStore((state) => state.project);
+  const executeAction = useProjectStore((state) => state.executeAction);
+  const playheadPosition = useTimelineStore((state) => state.playheadPosition);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const config = project.referenceComparison;
+  const videoItems = project.mediaLibrary.items.filter(
+    (item) => item.type === "video" && item.metadata.duration > 0,
+  );
+
+  const apply = async (action: Action) => {
+    const result = await executeAction(action);
+    setError(result.success ? null : result.error?.message ?? t("Could not configure comparison."));
+    if (result.success) setOpen(false);
+  };
+
+  return (
+    <ToolcraftPopover
+      placement="above"
+      alignment="end"
+      label={t("Reference comparison")}
+      isOpen={open}
+      onOpenChange={setOpen}
+      content={
+        <div className="w-64 space-y-3 bg-bg-elev p-3 text-xs text-fg">
+          <label className="block space-y-2">
+            <span className="font-medium">{t("Reference comparison")}</span>
+            <select
+              aria-label={t("Choose reference video")}
+              value={config?.referenceMediaId ?? ""}
+              disabled={videoItems.length === 0}
+              className="h-8 w-full rounded-md border border-border bg-bg-2 px-2 text-fg outline-none focus:border-accent"
+              onChange={(event) => {
+                const media = videoItems.find((item) => item.id === event.target.value);
+                if (media) {
+                  void apply(selectComparisonAction(media, playheadPosition, config?.layout));
+                }
+              }}
+            >
+              <option value="" disabled>{t("Choose reference video")}</option>
+              {videoItems.map((item) => (
+                <option key={item.id} value={item.id}>{item.name ?? item.id}</option>
+              ))}
+            </select>
+          </label>
+          {videoItems.length === 0 && (
+            <p className="text-fg-muted">{t("Add a video to the media library to compare it.")}</p>
+          )}
+          {config && (
+            <button
+              type="button"
+              className="h-8 w-full rounded-md border border-border bg-bg-2 hover:bg-hover"
+              onClick={() => void apply(clearComparisonAction())}
+            >
+              {t("Close reference comparison")}
+            </button>
+          )}
+          {error && <p role="alert" className="text-red-400">{error}</p>}
+        </div>
+      }
+    >
+      <button
+        type="button"
+        title={t("Reference comparison")}
+        aria-label={t("Reference comparison")}
+        className={`flex h-[34px] shrink-0 items-center gap-1.5 rounded-[7px] px-2 text-[11px] font-medium transition-colors ${config ? "bg-accent-soft text-accent" : "bg-bg-2 text-fg-2 hover:bg-bg-3 hover:text-fg"}`}
+      >
+        <Columns2 size={16} aria-hidden />
+        {t("desktop.editor.compare")}
+      </button>
+    </ToolcraftPopover>
+  );
 }
 
 function timeLabel(seconds: number): string {
@@ -150,16 +245,7 @@ export const ReferenceComparisonPanel: React.FC<{
   const selectReference = useCallback((mediaId: string) => {
     const media = videoItems.find((item) => item.id === mediaId);
     if (!media) return;
-    const next: ReferenceComparisonConfig = {
-      referenceMediaId: media.id,
-      refStartSec: 0,
-      refEndSec: media.metadata.duration,
-      timelineStartSec: playheadPosition,
-      rate: 1,
-      audioSide: "timeline",
-      layout: config?.layout ?? "side-by-side",
-    };
-    void executeAction(setComparisonAction(next)).then((result) => {
+    void executeAction(selectComparisonAction(media, playheadPosition, config?.layout)).then((result) => {
       setError(result.success ? null : result.error?.message ?? t("Could not configure comparison."));
     });
   }, [config?.layout, executeAction, playheadPosition, t, videoItems]);
@@ -200,39 +286,7 @@ export const ReferenceComparisonPanel: React.FC<{
     setReferenceTime(value);
   };
 
-  if (!config) {
-    return (
-      <div
-        className="absolute inset-0 z-40 pointer-events-none"
-        data-reference-comparison="inactive"
-        onClick={(event) => event.stopPropagation()}
-        onMouseMove={(event) => event.stopPropagation()}
-      >
-        <div className="absolute right-2 top-2 pointer-events-auto">
-          <label className="flex items-center gap-2 rounded-md border border-white/15 bg-black/75 px-2 py-1.5 text-[11px] text-white shadow-lg backdrop-blur-sm">
-            <span>{t("Reference comparison")}</span>
-            <select
-              aria-label={t("Choose reference video")}
-              defaultValue=""
-              className="max-w-44 bg-transparent text-white outline-none"
-              onChange={(event) => selectReference(event.target.value)}
-            >
-              <option value="" disabled className="text-black">{t("Choose reference video")}</option>
-              {videoItems.map((item) => (
-                <option key={item.id} value={item.id} className="text-black">{item.name ?? item.id}</option>
-              ))}
-            </select>
-          </label>
-          {videoItems.length === 0 && (
-            <p className="mt-1 rounded bg-black/75 px-2 py-1 text-[10px] text-white/75">
-              {t("Add a video to the media library to compare it.")}
-            </p>
-          )}
-          {error && <p role="alert" className="mt-1 rounded bg-black/80 px-2 py-1 text-[10px] text-red-300">{error}</p>}
-        </div>
-      </div>
-    );
-  }
+  if (!config) return null;
 
   const isOverlay = config.layout === "overlay";
   const canAlign = Boolean(referenceUrl && videoRef.current && Number.isFinite(videoRef.current.duration));

@@ -1,9 +1,9 @@
 /**
- * The Standard Node Library (STUDIO_PLAN §12). This is the product surface:
+ * The standard node library defines the product surface:
  * the set of typed operations creators (and blueprints) compose into graphs.
  *
  * Inline-fusable color/math nodes carry an `emitInline` WGSL emitter used by
- * the filter compiler (§11). Detection / particle / overlay / temporal nodes
+ * the filter compiler. Detection, particle, overlay, and temporal nodes
  * are declared with their ports + caps so the validator and palette can use
  * them; their runtime is provided by packages/core and the render farm.
  */
@@ -60,7 +60,7 @@ export interface NodeSpec {
   /** minimum ABI version that includes this node */
   minAbi: AbiVersion;
   passKind: PassKind;
-  /** hidden from the user-facing palette (blueprint/system internals, §12) */
+  /** Hidden from the user-facing palette. */
   systemOwned?: boolean;
   /** WGSL helper functions this node needs, appended once to the shader prelude */
   prelude?: string;
@@ -93,10 +93,10 @@ const PRELUDE_HUE = `fn fx_hue(c: vec4<f32>, deg: f32) -> vec4<f32> {
 
 /**
  * Standard library node specifications, keyed by node id.
- * Mirrors STUDIO_PLAN §12.2–§12.4.
+ * Node specifications keyed by node ID.
  */
 export const NODES: Record<string, NodeSpec> = {
-  // ── Inputs (§12.3) ──────────────────────────────────────────────────────
+  // ── Inputs ─────────────────────────────────────────────────────────────
   Source: {
     id: "Source", category: "input", label: "Source", minAbi: "1.0", passKind: "input",
     inputs: [], outputs: [{ id: "out", name: "rgba", type: "texture" }],
@@ -128,7 +128,7 @@ export const NODES: Record<string, NodeSpec> = {
     emitInline: ({ cfg }) => `vec4<f32>(vec3<f32>(${n(cfg.color, 0)}), 1.0)`,
   },
 
-  // ── Math (§12.3) ────────────────────────────────────────────────────────
+  // ── Math ───────────────────────────────────────────────────────────────
   Add: {
     id: "Add", category: "math", label: "Add", minAbi: "1.0", passKind: "inline",
     inputs: [{ id: "a", name: "a", type: "any" }, { id: "b", name: "b", type: "any" }],
@@ -174,7 +174,7 @@ export const NODES: Record<string, NodeSpec> = {
       `(${n(cfg.outMin, 0)} + (${inputs.x} - ${n(cfg.inMin, 0)}) * (${n(cfg.outMax, 1) - n(cfg.outMin, 0)}) / (${n(cfg.inMax, 1) - n(cfg.inMin, 0)}))`,
   },
 
-  // ── Color (§12.3) ───────────────────────────────────────────────────────
+  // ── Color ──────────────────────────────────────────────────────────────
   Brightness: {
     id: "Brightness", category: "color", label: "Brightness", minAbi: "1.0", passKind: "inline",
     inputs: [{ id: "in", name: "rgba", type: "texture" }],
@@ -254,7 +254,7 @@ export const NODES: Record<string, NodeSpec> = {
     emitInline: ({ inputs, cfg }) => `fx_grain(${inputs.in}, fx_uv, u_time, ${n(cfg.strength, 0.1)})`,
   },
 
-  // ── Spatial (§12.3) ─────────────────────────────────────────────────────
+  // ── Spatial ────────────────────────────────────────────────────────────
   Vignette: {
     id: "Vignette", category: "spatial", label: "Vignette", minAbi: "1.0", passKind: "inline",
     inputs: [{ id: "in", name: "rgba", type: "texture" }],
@@ -306,7 +306,7 @@ export const NODES: Record<string, NodeSpec> = {
       `select(${inputs.in}, vec4<f32>(vec3<f32>(${n(cfg.color, 0)}), 1.0), (fx_uv.y < ${n(cfg.height, 0.12)}) || (fx_uv.y > (1.0 - ${n(cfg.height, 0.12)})))`,
   },
 
-  // ── Sampling (§12.3) ────────────────────────────────────────────────────
+  // ── Sampling ──────────────────────────────────────────────────────────
   GaussianBlur: {
     id: "GaussianBlur", category: "sampling", label: "Gaussian Blur", minAbi: "1.0", passKind: "sampling",
     inputs: [{ id: "in", name: "rgba", type: "texture" }],
@@ -329,7 +329,7 @@ export const NODES: Record<string, NodeSpec> = {
     emitInline: ({ inputs }) => `vec4<f32>(vec3<f32>(${inputs.in}.r), ${inputs.in}.r)`,
   },
 
-  // ── Detection (§12.4) ───────────────────────────────────────────────────
+  // ── Detection ─────────────────────────────────────────────────────────
   SubjectMask: {
     id: "SubjectMask", category: "detection", label: "Subject Mask", minAbi: "1.0", passKind: "external",
     inputs: [{ id: "src", name: "frame", type: "texture" }],
@@ -382,7 +382,7 @@ export const NODES: Record<string, NodeSpec> = {
     outputs: [{ id: "buf", name: "landmarks", type: "landmark_buffer" }],
   },
 
-  // ── Particles (§12.4, §20) ──────────────────────────────────────────────
+  // ── Particles ──────────────────────────────────────────────────────────
   ParticleEmitter: {
     id: "ParticleEmitter", category: "particles", label: "Particle Emitter", minAbi: "1.0", passKind: "compute",
     inputs: [{ id: "spawn", name: "spawn", type: "vec2" }, { id: "rate", name: "rate", type: "float" }],
@@ -404,7 +404,7 @@ export const NODES: Record<string, NodeSpec> = {
     outputs: [{ id: "pts", name: "spawn", type: "vec2" }],
   },
 
-  // ── Overlays (§12.4, §21) ───────────────────────────────────────────────
+  // ── Overlays ───────────────────────────────────────────────────────────
   Sprite: {
     id: "Sprite", category: "overlays", label: "Sprite", minAbi: "1.0", passKind: "render",
     inputs: [{ id: "anchor", name: "anchor", type: "vec2" }],
@@ -431,7 +431,7 @@ export const NODES: Record<string, NodeSpec> = {
     outputs: [{ id: "out", name: "anchor", type: "vec3" }],
   },
 
-  // ── Temporal (§12.4, §19) ───────────────────────────────────────────────
+  // ── Temporal ──────────────────────────────────────────────────────────
   FrameHistory: {
     id: "FrameHistory", category: "temporal", label: "Frame History", minAbi: "1.1", passKind: "compute",
     inputs: [{ id: "in", name: "rgba", type: "texture" }],
@@ -453,7 +453,7 @@ export const NODES: Record<string, NodeSpec> = {
     outputs: [{ id: "out", name: "motion", type: "vec2" }],
   },
 
-  // ── Behavior drivers (§12.4) ────────────────────────────────────────────
+  // ── Behavior drivers ───────────────────────────────────────────────────
   AudioLevel: {
     id: "AudioLevel", category: "behavior", label: "Audio Level", minAbi: "1.1", passKind: "external",
     inputs: [], outputs: [{ id: "v", name: "level", type: "float" }],
@@ -480,7 +480,7 @@ export const NODES: Record<string, NodeSpec> = {
       `(${inputs.in} * (0.5 + 0.5 * sin(u_time * ${n(cfg.speed, 1)})))`,
   },
 
-  // ── Composite (§12.3, §22) ──────────────────────────────────────────────
+  // ── Composite ─────────────────────────────────────────────────────────
   Layer: {
     id: "Layer", category: "composite", label: "Layer", minAbi: "1.0", passKind: "composite",
     inputs: [
@@ -520,14 +520,14 @@ export const NODES: Record<string, NodeSpec> = {
     outputs: [{ id: "out", name: "rgba", type: "texture" }],
   },
 
-  // ── Output (§12.3) ──────────────────────────────────────────────────────
+  // ── Output ────────────────────────────────────────────────────────────
   Output: {
     id: "Output", category: "output", label: "Output", minAbi: "1.0", passKind: "output",
     inputs: [{ id: "in", name: "rgba", type: "texture" }],
     outputs: [],
   },
 
-  // ── System-owned blueprint safety nodes (§9A.6) ─────────────────────────
+  // ── System-owned blueprint safety nodes ─────────────────────────────────
   TemporalSmooth: {
     id: "TemporalSmooth", category: "system", label: "Temporal Smooth", minAbi: "1.0", passKind: "compute", systemOwned: true,
     inputs: [{ id: "in", name: "mask", type: "mask" }],
@@ -549,7 +549,7 @@ export const NODES: Record<string, NodeSpec> = {
     outputs: [{ id: "out", name: "state", type: "particles" }],
   },
 
-  // ── Template nodes (§12.2) ──────────────────────────────────────────────
+  // ── Template nodes ─────────────────────────────────────────────────────
   VideoSlot: {
     id: "VideoSlot", category: "template", label: "Video Slot", minAbi: "1.0", passKind: "template",
     inputs: [], outputs: [{ id: "out", name: "clip", type: "texture" }],

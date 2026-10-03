@@ -5,26 +5,15 @@ import { FONT_VERBS } from "./font-library";
 import { PRESET_VERBS } from "./preset-verbs";
 import { HELP_VERBS } from "./gui-manual";
 /**
- * Public contract of the in-process agent facade (Slice 1 + Slice 1b +
- * Slice 2a persistence, ADR 0003 Decision 10).
+ * Public contract of the in-process agent facade.
  *
  * The facade is a pure-Node, transport-agnostic library. The core `Project`
  * is the canonical state; every mutation is an atomic, serialized,
  * revision-checked, idempotency-aware operation over that state.
  *
- * Slice 1 verbs: session.describe · capabilities.get · project.create ·
- *   project.get_state · media.import · timeline.get · edit.apply
- * Slice 1b verbs (ADR 0002): preview.render_frame · export.start ·
- *   job.status · job.cancel · verify.artifact
- * Slice 2a verbs (ADR 0003 Decision 10): project.open · project.save —
- *   the openreel-project@2 checkpoint pair (cross-session persistence).
- * Slice 3 verbs (ADR 0004 Decision 4): editor.get_context — the live/
- *   headless-honest editor-context read plus the read-only visual.inspect
- *   slice. Slice 6 grows the compact contract to 24 verbs.
- * Slice 4 widens edit.apply's closed finishing vocabulary to include clip
- *   move/split/duplicate/ripple-delete, constant speed/reverse, visual
- *   transforms/crop, audio fades, and clip transitions without adding new
- *   verbs.
+ * The contract includes project editing and persistence, local media import,
+ * preview, export, verification, live editor context, and bundled tools.
+ * Mutations are serialized, revision-checked, and idempotent.
  *
  * The current registry exposes 49 tools (28 base verbs + 8 material verbs +
  *   2 font verbs + 6 preset verbs + 3 help verbs + 2 bundled plugin tools);
@@ -190,7 +179,7 @@ export function isReadOnlyVerb(verb: FacadeVerb): verb is ReadOnlyVerb {
 /* ------------------------------------------------------------------ */
 
 /**
- * Runtime classification per E2E step (audit/e2e-contract.md letters:
+ * Runtime classification used by E2E diagnostics:
  * P pure Node · A adapter · C Chromium · D desktop · X missing/unverified).
  * Pixel/export/verify letters are computed live from provider preflights:
  * they stay "X" until the capability is genuinely usable in THIS session.
@@ -253,7 +242,7 @@ export interface Capabilities {
   readonly runtime: typeof FACADE_RUNTIME | "live";
   /**
    * Verbs that exist in the contract but are honestly unavailable in THIS
-   * session's mode (ADR 0004 Decision 11: live sessions report their
+   * session's mode (live sessions report their
    * GUI-owned/unavailable verbs here). Absent in headless
    * sessions, where availability is reported per-capability below. In live
    * sessions only project.create/open are always GUI-owned; media.import is
@@ -378,7 +367,7 @@ export interface Capabilities {
  * a retry carrying the same key and the same payload replays the committed
  * creation result WITHOUT resetting the project; the same key with a
  * different payload — like any other create attempted while a project is
- * open — fails CONFLICT. Slice 1 ships no replace/reset verb.
+ * open — fails CONFLICT. The facade does not expose a replace/reset verb.
  */
 export interface ProjectCreateParams {
   readonly name?: string;
@@ -419,7 +408,7 @@ export interface ProjectCreateResult extends ProjectState {
 }
 
 /* ------------------------------------------------------------------ */
-/* project.open / project.save (Slice 2a, ADR 0003 Decision 10)        */
+/* project.open / project.save                                        */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -472,7 +461,7 @@ export interface ProjectSaveResult {
 }
 
 /**
- * Live-mode project.save result (ADR 0004 Decision 11): the save is routed
+ * Live-mode project.save result: the save is routed
  * to the GUI's own save path via LiveProjectStore.requestSave(), so the
  * facade honestly has no checkpoint path/bytes/hash to report — the GUI
  * owns where and how the project file is written. Only the revision at
@@ -893,7 +882,7 @@ export interface TimelineQueryResult {
 }
 
 /* ------------------------------------------------------------------ */
-/* editor.get_context (ADR 0004 Decision 4)                             */
+/* editor.get_context                                                 */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -995,7 +984,7 @@ export interface MediaRelinkOp {
 }
 
 /* ------------------------------------------------------------------ */
-/* edit.apply — closed op set (Slice 1 + widened op vocabulary)        */
+/* edit.apply — closed operation set                                  */
 /* ------------------------------------------------------------------ */
 
 export const EDIT_OP_TYPES = [
@@ -1815,7 +1804,7 @@ export interface EditApplyParams {
   readonly ops: readonly EditOp[];
   readonly expectedRevision?: number;
   /**
-   * CAS guard on the editor context (ADR 0004 Decision 4): an agent that
+   * CAS guard on the editor context: an agent that
    * derived its ops from selection/playhead/canvas point MUST carry the
    * contextRevision those reads returned; a stale value fails CONFLICT and
    * nothing is applied. Live sessions CAS it at the store; headless
@@ -1923,7 +1912,7 @@ export interface HistoryControlResult {
 }
 
 /* ------------------------------------------------------------------ */
-/* preview.render_frame (Slice 1b)                                     */
+/* preview.render_frame                                                */
 /* ------------------------------------------------------------------ */
 
 export interface PreviewRenderFrameParams {
@@ -2015,7 +2004,7 @@ export interface VisualInspectResult {
 }
 
 /* ------------------------------------------------------------------ */
-/* export.start (Slice 1b)                                             */
+/* export.start                                                        */
 /* ------------------------------------------------------------------ */
 
 /** Closed settings subset for this slice: MP4/H.264 only. */
@@ -2137,7 +2126,7 @@ export interface ExportStartResult {
 }
 
 /* ------------------------------------------------------------------ */
-/* job.status / job.cancel (Slice 1b)                                  */
+/* job.status / job.cancel                                             */
 /* ------------------------------------------------------------------ */
 
 export interface JobParams {
@@ -2189,7 +2178,7 @@ export interface JobStatusView {
 }
 
 /* ------------------------------------------------------------------ */
-/* verify.artifact (Slice 1b)                                          */
+/* verify.artifact                                                     */
 /* ------------------------------------------------------------------ */
 
 export interface VerifyArtifactParams {

@@ -2,9 +2,8 @@
 
 Pure-Node, in-process, transport-agnostic agent facade over the ReelTerminal
 canonical `Project` state, with headless and live sessions and bundled
-read-only tool extensions. Original design: `audit/facade-v0.md`,
-`docs/adr/0001-headless-facade-slice-1.md`,
-`docs/adr/0002-chromium-runtime-slice-1b.md`.
+read-only tool extensions. The desktop CLI and MCP adapter use the same
+command catalog.
 
 ```ts
 import { createAgentFacade } from "@reelterminal/agent-facade";
@@ -65,28 +64,13 @@ The current registry is generated from built-in verbs and bundled plugins.
 Discover its actual entries with `getCommandCatalog(mode)`; do not hard-code
 a tool count in clients.
 
-Slice 1: `session.describe` · `capabilities.get` · `project.create` ·
-`project.rename` · `project.get_state` · `media.import` · `timeline.get` ·
-`edit.apply`
+Lifecycle commands create, open, save, rename, and read a project. Editing
+commands import media and apply typed, atomic batches. Context, history, scoped
+queries, preflight validation, media analysis, preview, export, verification,
+and job control complete the catalog. Discover exact commands and schemas with
+`getCommandCatalog(mode)`.
 
-Slice 1b: `preview.render_frame` · `export.start` · `job.status` ·
-`job.cancel` · `verify.artifact`
-
-Slice 2a: `project.open` · `project.save`
-
-Slice 3 (ADR 0004): `editor.get_context` — the live/headless-honest
-editor-context read. `editor.control` adds ephemeral live playback and
-selection/reveal controls.
-
-Slice 6: `project.changes` · `timeline.query` · `edit.validate` ·
-`history.get` · `history.control` add bounded delta recovery, scoped reads,
-side-effect-free preflight, and canonical live undo/redo. `media.analyze_start`
-adds asynchronous media analysis over the generalized `job.status`/
-`job.cancel` path. Live and headless sessions implement the same command
-contract over a `LiveProjectStore` seam with no live project copy; headless
-history control reports `UNSUPPORTED` because it has no GUI/Core history stack.
-
-Visual slice: `visual.inspect` — a read-only sample of 1–12 frames selected
+`visual.inspect` — a read-only sample of 1–12 frames selected
 by exactly one of `clipId` (a timeline clip id from `timeline.get`) or an
 explicit `timeRange` of the shape `{"startSec": <number ≥ 0>, "endSec":
 <number > startSec>}` in timeline seconds. Each frame is a real
@@ -116,7 +100,7 @@ no-op with `ok: true`.
   `expectedRevision`); an exact idempotent retry replays the committed
   creation result with `replayed: true` and does NOT reset the project,
   while any other create attempted with a project open fails `CONFLICT`.
-  Slice 1 has no replace/reset verb.
+  There is no project replace/reset verb.
 - **Atomic batches**: every mutation is a snapshot transaction over a
   `structuredClone`d draft; any failure discards the draft and the original
   project is byte-exact untouched. One committed call bumps `revision`
@@ -139,16 +123,14 @@ no-op with `ok: true`.
   otherwise it reports `[overlayId]`. Read `applied[i].createdIds` by op —
   there is no guessed `results[].clipId` field.
 - **Honest capabilities**: `capabilities.get` reports what this runtime
-  actually has, per capability, from live provider preflights. The three
-  Slice-1b provider interfaces are independent (`RenderProvider`,
-  `ExportProvider`, `ArtifactVerifier` in `src/providers.ts`): injecting one
-  never flips another's capability, and the dormant Slice-1
-  `ProjectRenderAdapter` seam flips nothing at all. A capability is
+  actually has, per capability, from live provider preflights. The independent
+  provider interfaces (`RenderProvider`, `ExportProvider`, and
+  `ArtifactVerifier` in `src/providers.ts`) do not imply one another. A capability is
   available only when the facade ships the verb AND the provider's real
   preflight passed; the verb itself re-checks and fails `UNSUPPORTED`
   otherwise.
 
-## Live-mode contract differences (ADR 0004)
+## Live-mode contract
 
 Live sessions (`createLiveFacade`) implement the same registered verbs against the
 open GUI project. Where a verb's behavior must differ by mode, the contract
@@ -175,21 +157,21 @@ states it up front instead of letting integrators discover it at runtime:
 ## Access and protocol-independent commands
 
 Live sessions expose explicit `access` (`read-only` or `write`) and writer-lease
-fields. Agents own collaboration style, conversations and context management;
-`workMode` and conversation adapters have been removed. Existing read-only
-preferences migrate without widening authorization.
+fields. Agents own conversations and context management; ReelTerminal owns the
+open project and enforces access and revision checks.
 
 `getCommandCatalog("live")` and `getCommandCatalog("headless")` describe the
 canonical verbs, schemas, effects and retry policies, including plugin commands.
 The desktop's Command API and reelctl use this catalog; MCP is an explicit
-adapter over the same API. See [ADR 0010](../../docs/adr/0010-cli-command-api.md).
+adapter over the same API. See the
+[Command API guide](../../docs/COMMAND-API.md).
 
 The new CLI requires recorded project identity, opening epoch and revision for
 edit/apply and history control. The legacy MCP adapter keeps the facade's
 optional revision semantics described above for compatibility. All transports
 still use the same atomic mutation, idempotency and shared undo implementation.
 
-## Slice 1b: preview / export / verify
+## Preview, export, and verification
 
 The facade stays pure Node; pixel/export/verify backing arrives through the
 provider interfaces. The reference implementation is
@@ -547,24 +529,14 @@ screenshot delivery state.
   remaining professional gaps instead of exposing no-op
   schemas.
 
-## Slice boundaries (what this is NOT)
+## Responsibility boundaries
 
-The facade itself contains no transport, cloud GPU, project replace/reset or OCR.
-The desktop supplies the Command API and CLI/MCP adapters. The
-facade ships the Slice-1b verbs and owns their state semantics, but contains
+The facade contains no transport, cloud GPU, or OCR. The desktop supplies the
+Command API and CLI/MCP adapters. The facade owns command and state semantics, but contains
 no Chromium/Playwright/ffmpeg code — that lives in the runtime package.
 Text overlays are canonical model state (`project.textClips` on a
-`type:"text"` track); pixel claims exist only when a render provider passed
-its live preflight in the session. The Slice-1 `ProjectRenderAdapter` seam
-(`src/render/adapter.ts`) remains permanently dormant: no verb consumes it.
-
-## Invariants
-
-See [`./docs/project-invariants.md`](docs/project-invariants.md)
-(evidence-backed MUST/MUST-NOT list the facade implements against: canonical
-TextClip shape, MEDIA-04 trim split, blob-free MediaItems, duration
-recomputation, facade-owned idempotency). Paths above starting with `audit/`
-or `docs/adr/` are repo-root-relative; this one lives inside the package.
+`type:"text"` track); pixel output is available only when a render provider
+passes the session preflight.
 
 ## Tests
 

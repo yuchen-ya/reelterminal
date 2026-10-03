@@ -120,8 +120,7 @@ export class VideoEffectsEngine {
   }
 
   private async doInitialize(): Promise<boolean> {
-    // Effects always render through the CPU (Canvas2D) path; the GPU
-    // pipelines that this init used to feed were dead payload.
+    // Effects render through the CPU (Canvas2D) path.
     return true;
   }
 

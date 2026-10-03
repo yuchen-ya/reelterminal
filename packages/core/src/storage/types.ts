@@ -3,8 +3,7 @@ import { LEGACY_IDB_STORAGE_ENGINE } from "../legacy/physical-identifiers";
 
 export const DB_VERSION = 3;
 
-// Persisted database name — legacy registry, value frozen (renaming loses all
-// user projects/media). See packages/core/src/legacy/physical-identifiers.ts.
+// Persisted database name for projects and media.
 export const DB_NAME = LEGACY_IDB_STORAGE_ENGINE;
 
 export const STORES = {

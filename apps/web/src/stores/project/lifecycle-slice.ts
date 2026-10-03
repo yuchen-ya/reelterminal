@@ -156,19 +156,43 @@ export function createProjectLifecycleSlice(
       if (placeholders.length > 0 && "FileSystemFileHandle" in window) {
         (async () => {
           const loadedProjectId = fixedProject.id;
+          const loadedActionExecutor = get().actionExecutor;
           const stillMissing: typeof placeholders = [];
+          const isLoadedProjectCurrent = () =>
+            get().project.id === loadedProjectId &&
+            get().actionExecutor === loadedActionExecutor;
+          const isCurrentPlaceholder = (candidate: (typeof placeholders)[number]) => {
+            const currentProject = get().project;
+            const currentItem = currentProject.mediaLibrary.items.find(
+              (item) => item.id === candidate.id,
+            );
+            const expectedSource = candidate.sourceFile;
+            const currentSource = currentItem?.sourceFile;
+            return (
+              isLoadedProjectCurrent() &&
+              currentItem?.isPlaceholder === true &&
+              !!expectedSource &&
+              currentSource?.name === expectedSource.name &&
+              currentSource.size === expectedSource.size &&
+              currentSource.lastModified === expectedSource.lastModified &&
+              currentSource.folder === expectedSource.folder
+            );
+          };
 
           // Tier 1: try individual file handles (follow file across folder moves)
           for (const item of placeholders) {
             if (!item.sourceFile) continue;
-            if (get().project.id !== loadedProjectId) return;
+            if (!isLoadedProjectCurrent()) return;
+            if (!isCurrentPlaceholder(item)) continue;
             try {
               const handle = await loadFileHandle(item.sourceFile.name, item.sourceFile.size);
+              if (!isCurrentPlaceholder(item)) continue;
               if (!handle) { stillMissing.push(item); continue; }
               const file = await handle.getFile();
+              if (!isCurrentPlaceholder(item)) continue;
               await get().replaceMediaAsset(item.id, file, item.sourceFile.folder);
             } catch {
-              stillMissing.push(item); // stale handle
+              if (isCurrentPlaceholder(item)) stillMissing.push(item);
             }
           }
 
@@ -176,11 +200,12 @@ export function createProjectLifecycleSlice(
           if (stillMissing.length > 0) {
             try {
               const dirInfo = await loadDirectoryHandle(fixedProject.id);
-              if (get().project.id !== loadedProjectId) return;
+              if (!isLoadedProjectCurrent()) return;
               if (dirInfo) {
                 const fileMap = new Map<string, { file: File; folder: string }>();
                 const entries = (dirInfo.handle as unknown as { entries: () => AsyncIterableIterator<[string, FileSystemHandle]> }).entries();
                 for await (const [, fh] of entries) {
+                  if (!isLoadedProjectCurrent()) return;
                   if ((fh as FileSystemHandle).kind === "file") {
                     const f = await (fh as FileSystemFileHandle).getFile();
                     fileMap.set(`${f.name.toLowerCase()}:${f.size}`, { file: f, folder: dirInfo.folderName });
@@ -188,7 +213,8 @@ export function createProjectLifecycleSlice(
                 }
                 for (const item of stillMissing) {
                   if (!item.sourceFile) continue;
-                  if (get().project.id !== loadedProjectId) return;
+                  if (!isLoadedProjectCurrent()) return;
+                  if (!isCurrentPlaceholder(item)) continue;
                   const entry = fileMap.get(`${item.sourceFile.name.toLowerCase()}:${item.sourceFile.size}`);
                   if (entry) {
                     try {

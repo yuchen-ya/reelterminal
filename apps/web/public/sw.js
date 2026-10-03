@@ -4,19 +4,11 @@
  * Handles offline functionality by caching application assets.
  * Implements a cache-first strategy for static assets and network-first for API calls.
  *
- * Requirements: 35.1, 35.2, 35.4
- * - 35.1: Cache all application assets on first load for offline use
- * - 35.2: Function fully for all non-AI features when offline
- * - 35.4: Inform user that AI requires internet connectivity
+ * Caches application assets for offline use and leaves API requests online.
  */
 
-// LEGACY PERSISTED CACHE NAMES (N04) — this file is standalone plain JS and
-// cannot import the central registry; its values must stay in sync with
-// packages/core/src/legacy/physical-identifiers.ts (pinned there by a
-// source-reading drift test). Renaming orphans user caches: the retention
-// cleanup below matches the "openreel-" prefix and could no longer delete
-// caches written under an older name, leaving them until quota eviction.
-// docs/NAMING-AND-COMPATIBILITY.md §4 "持久化保留为 legacy".
+// Keep these persisted cache names aligned with the shared identifier
+// registry and cleanup prefix.
 const CACHE_NAME = "openreel-v2";
 const STATIC_CACHE_NAME = "openreel-static-v2";
 const DYNAMIC_CACHE_NAME = "openreel-dynamic-v2";
@@ -309,8 +301,7 @@ async function getCacheStatus() {
 }
 
 /**
- * Clear all caches under the legacy "openreel-" prefix (see the N04 block
- * above: renamed caches would no longer match this retention cleanup).
+ * Clear all caches under the persisted "openreel-" prefix.
  */
 async function clearAllCaches() {
   const cacheNames = await caches.keys();

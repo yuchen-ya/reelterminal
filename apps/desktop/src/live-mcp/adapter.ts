@@ -14,7 +14,7 @@ import { validateLoopbackUrl } from "../reelctl/client";
 
 export { endpointFilePath };
 export const validateLiveEndpointUrl = (raw: string): URL => validateLoopbackUrl(raw, "live endpoint");
-/** Legacy descriptor shape helper retained for migration compatibility tests. */
+/** Read a supported endpoint descriptor shape. */
 export const readEndpoint = readEndpointCredentials;
 
 interface RpcMessage {

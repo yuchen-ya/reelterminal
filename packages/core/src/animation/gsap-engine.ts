@@ -1,8 +1,4 @@
-import gsap from "gsap";
-import { MotionPathPlugin } from "gsap/MotionPathPlugin";
 import type { EasingType, Keyframe } from "../types/timeline";
-
-gsap.registerPlugin(MotionPathPlugin);
 
 export interface GSAPMotionPathPoint {
   x: number;
@@ -349,37 +345,7 @@ export function motionPathToKeyframes(
 }
 
 class GSAPAnimationEngine {
-  private timelines: Map<string, gsap.core.Timeline> = new Map();
   private motionPaths: Map<string, MotionPathConfig> = new Map();
-
-  createTimeline(clipId: string, config?: GSAPAnimationConfig): gsap.core.Timeline {
-    if (this.timelines.has(clipId)) {
-      this.timelines.get(clipId)!.kill();
-    }
-
-    const timeline = gsap.timeline({
-      paused: true,
-      defaults: {
-        duration: config?.duration || 1,
-        ease: config?.ease || "none",
-      },
-    });
-
-    this.timelines.set(clipId, timeline);
-    return timeline;
-  }
-
-  getTimeline(clipId: string): gsap.core.Timeline | undefined {
-    return this.timelines.get(clipId);
-  }
-
-  removeTimeline(clipId: string): void {
-    const timeline = this.timelines.get(clipId);
-    if (timeline) {
-      timeline.kill();
-      this.timelines.delete(clipId);
-    }
-  }
 
   setMotionPath(clipId: string, config: Omit<MotionPathConfig, "clipId">): void {
     this.motionPaths.set(clipId, { ...config, clipId });
@@ -476,10 +442,6 @@ class GSAPAnimationEngine {
   }
 
   dispose(): void {
-    for (const timeline of this.timelines.values()) {
-      timeline.kill();
-    }
-    this.timelines.clear();
     this.motionPaths.clear();
   }
 }

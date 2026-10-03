@@ -108,7 +108,10 @@ export const TourPopover: React.FC<TourPopoverProps> = ({
       }
     >
       <div
-        className="relative bg-background-secondary border border-border rounded-xl shadow-2xl pointer-events-auto"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t(step.title)}
+        className="relative bg-bg-elev border border-border rounded-xl shadow-2xl pointer-events-auto"
         style={{ width: isCentered ? POPOVER_WIDTH : "100%" }}
       >
         {arrowPosition && !isCentered && (

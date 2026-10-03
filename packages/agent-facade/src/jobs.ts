@@ -1,7 +1,7 @@
 /**
- * Facade-owned job registry (audit/facade-v0.md contract #4, ADR 0002 #6).
+ * Facade-owned job registry.
  *
- * Jobs are long-running runtime operations (video export in this slice).
+ * Jobs are long-running provider operations such as video export.
  * The facade owns the state machine and the idempotency semantics; the
  * provider only reports transitions through callbacks. States:
  *
@@ -15,7 +15,11 @@
  * write to a temporary name and only publish a completed file, so no
  * success-looking artifact can survive a non-done state.
  */
-import type { ArtifactRef, ExportProgressEvent } from "./providers";
+import type {
+  ArtifactRef,
+  ExportProgressEvent,
+  ExportProvider,
+} from "./providers";
 import type { AnalysisJobResult, JobStatusView } from "./types";
 
 /** The public job.status view of a registry record (a fresh copy). */
@@ -80,6 +84,26 @@ export interface JobRecord {
 export type JobTerminalState = "done" | "error" | "cancelled";
 
 const TERMINAL: ReadonlySet<JobState> = new Set(["done", "error", "cancelled"]);
+
+const EXPORT_CANCEL_TIMEOUT_MS = 10_000;
+
+export async function cancelExportWithin(
+  provider: ExportProvider,
+  jobId: string,
+  timeoutMs = EXPORT_CANCEL_TIMEOUT_MS,
+): Promise<boolean> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      provider.cancel(jobId).then(() => true),
+      new Promise<boolean>((resolve) => {
+        timeout = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
 
 export class JobRegistry {
   private readonly jobs = new Map<string, JobRecord>();

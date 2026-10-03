@@ -35,8 +35,8 @@ describe("GUI manual version binding", () => {
   });
 
   it("pins the current content version (bump alongside real content changes)", () => {
-    // 1.2.0 = CLI-first access and task-history guidance on top of 1.1.0.
-    expect(GUI_MANUAL_CONTENT_VERSION).toBe("1.2.0");
+    // 1.3.0 adds desktop quick start and updates current GUI entry paths.
+    expect(GUI_MANUAL_CONTENT_VERSION).toBe("1.3.0");
   });
 
   it("binds to the desktop application version, not the facade version", () => {

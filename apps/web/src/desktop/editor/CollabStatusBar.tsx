@@ -33,7 +33,7 @@ export function CollabStatusBar(): JSX.Element {
 
   return (
     <div
-      className="flex h-full items-center gap-3 border-b border-border bg-bg-1 px-3 text-[11px] text-fg-2"
+      className="flex h-full items-center gap-2 border-b border-border bg-bg-1 px-3 text-xs text-fg-2"
       role="status"
       aria-label={t("desktop.collaboration.accessStatus")}
       data-testid="agent-access-status"
@@ -91,7 +91,7 @@ export function CollabStatusBar(): JSX.Element {
           data-testid="requirement-board-entry"
           aria-label={t("requirementBoard.title")}
           onClick={() => openModal(REQUIREMENT_BOARD_MODAL_ID)}
-          className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors text-fg-2 hover:bg-hover hover:text-fg"
+          className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-border bg-bg-2 px-2.5 text-[11px] font-medium text-fg transition-colors hover:bg-hover"
         >
           <LayoutTemplate size={13} aria-hidden />
           {t("requirementBoard.title")}

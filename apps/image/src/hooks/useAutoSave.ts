@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useProjectStore } from '../stores/project-store';
 
 const AUTO_SAVE_DELAY = 2000;
-// LEGACY PERSISTED KEY PREFIX — value frozen (user autosave data). apps/image
+// Persisted key prefix for image-project autosave data.
 // does not depend on @reelterminal/core; the value is registered in
 // packages/core/src/legacy/physical-identifiers.ts (LEGACY_LS_IMAGE_AUTOSAVE_PREFIX)
 // and pinned by the drift test there. Renaming loses user autosaves.

@@ -89,7 +89,7 @@ async function fetchModelObjectUrl(
 ): Promise<string | null> {
   try {
     const res = await fetchUrl({ url, maxBytes: MODEL_MAX_BYTES });
-    if (!res.ok) return url;
+    if (!res.ok) return null;
     const blob = new Blob([res.body], {
       type: inferModelMime(url, res.contentType),
     });
@@ -97,7 +97,7 @@ async function fetchModelObjectUrl(
     modelObjectUrls.set(url, objectUrl);
     return objectUrl;
   } catch {
-    return url;
+    return null;
   }
 }
 

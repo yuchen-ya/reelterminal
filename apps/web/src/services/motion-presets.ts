@@ -56,7 +56,7 @@ export interface AppliedMotionPreset {
   type: "in" | "out" | "emphasis";
 }
 
-// Persisted database name — legacy registry, value frozen (user motion presets).
+// Persisted database name for user motion presets.
 const DB_NAME = LEGACY_MOTION_PRESETS_DB_NAME;
 const DB_VERSION = 1;
 const STORE_NAME = "userPresets";

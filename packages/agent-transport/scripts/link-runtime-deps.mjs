@@ -2,8 +2,8 @@
  * Post-build fixup: the bundled CLI keeps esbuild / playwright-core /
  * mediabunny external (they must run from their real installed locations —
  * esbuild needs its platform binary, playwright-core its browser registry).
- * They are dependencies of @reelterminal/runtime-chromium, not of this package
- * (ADR 0003: the transport adds no runtime dependencies of its own), so the
+ * They are dependencies of @reelterminal/runtime-chromium, not of this package,
+ * so the
  * bundle resolves them by linking each package into dist/node_modules —
  * the directory Node consults first for code inside dist/.
  *

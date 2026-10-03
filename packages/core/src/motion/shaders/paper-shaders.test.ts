@@ -83,6 +83,26 @@ describe("paper shader defs", () => {
     expect(new Set(libIds).size).toBe(libIds.length);
   });
 
+  it("preserves Gem Smoke project identity and uniform parameter names", () => {
+    const gemSmoke = requireDef("paper-gem-smoke");
+    expect(gemSmoke.category).toBe("effect");
+    expect(gemSmoke.inputUniform).toBe("u_image");
+    expect(gemSmoke.colorArrayParams).toEqual({
+      uniform: "u_colors",
+      countUniform: "u_colorsCount",
+      max: 6,
+    });
+    expect(gemSmoke.params.map((param) => param.name)).toEqual([
+      "color1",
+      "color2",
+      "color3",
+      "size",
+      "innerGlow",
+      "outerGlow",
+    ]);
+    expect(gemSmoke.glsl).toContain("uniform vec4 u_colors[6]");
+  });
+
   it("wires the shared Paper vertex shader on every def", () => {
     expect(PAPER_VERTEX_SHADER).toContain("#version 300 es");
     for (const def of PAPER_SHADER_DEFS) {

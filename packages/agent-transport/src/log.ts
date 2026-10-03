@@ -1,5 +1,5 @@
 /**
- * stderr logging for the agent transport (ADR 0003 Decision 6).
+ * stderr logging for the agent transport.
  *
  * stdout is reserved for protocol bytes only (MCP frames in `serve`, step
  * JSON lines in `run`, the `doctor` report) — EVERY log lands here, as

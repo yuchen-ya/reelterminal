@@ -15,6 +15,9 @@ import { RequirementBoardDialog } from "../editor/RequirementBoardDialog";
 import { DesktopKeyboardShortcuts } from "../editor/DesktopKeyboardShortcuts";
 import { Icon } from "@/icons/Icon";
 import { useResizable } from "../editor/useResizable";
+import { SpotlightTour, stopTour } from "../../components/editor/tour";
+import { DESKTOP_TOUR_STEPS } from "../editor/desktop-tour-steps";
+import { useEffect } from "react";
 
 const Preview = lazy(() =>
   import("../../components/editor/Preview").then((m) => ({ default: m.Preview })),
@@ -102,6 +105,7 @@ function RowHandle({
 
 export function EditPage(): JSX.Element {
   const { t } = useTranslation();
+  useEffect(() => () => stopTour(), []);
   const mediaW = useResizable({
     initial: 320,
     min: 220,
@@ -127,7 +131,7 @@ export function EditPage(): JSX.Element {
     storageKey: LEGACY_LS_DESKTOP_TIMELINE_HEIGHT,
   });
 
-  const lowerPanelHeight = timelineH.value + 32;
+  const lowerPanelHeight = timelineH.value + 36;
   const gridStyle: React.CSSProperties = {
     gridTemplateColumns: `${mediaW.value}px 1fr ${inspectorW.value}px`,
     gridTemplateRows: `1fr ${lowerPanelHeight}px`,
@@ -144,7 +148,7 @@ export function EditPage(): JSX.Element {
 
       <DockRegion label={t("desktop.editor.viewer")} name={t("desktop.editor.viewer")} area="stage" icon="play.fill" className="bg-stage-bg">
         <Suspense fallback={<PanelLoading />}>
-          <Preview />
+          <Preview showHeader={false} />
         </Suspense>
       </DockRegion>
 
@@ -155,7 +159,7 @@ export function EditPage(): JSX.Element {
 
       <div className="relative flex min-h-0 flex-col overflow-hidden bg-bg-1" style={{ gridArea: "lower" }}>
         <RowHandle onPointerDown={timelineH.onHandlePointerDown} />
-        <div className="h-8 shrink-0">
+        <div className="h-9 shrink-0">
           <CollabStatusBar />
           <AgentInspectionPanel />
         </div>
@@ -178,6 +182,7 @@ export function EditPage(): JSX.Element {
           left every keyboard shortcut dead there). Renders null until the
           "?" overlay opens. */}
       <DesktopKeyboardShortcuts />
+      <SpotlightTour steps={DESKTOP_TOUR_STEPS} />
     </div>
   );
 }

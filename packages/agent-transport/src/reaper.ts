@@ -1,11 +1,11 @@
 /**
- * Browser-reaper verification (ADR 0003 Appendix E, third-round finding 5).
+ * Browser process cleanup probe.
  *
  * Decision 7 gives the transport ownership of signals; the residue row for
  * SIGKILL/hard-crash relies on Chromium dying with the process. Upstream
  * marks Playwright's zombie protection 未验证 per platform — this probe
- * verifies it EMPIRICALLY on the running host and reports the finding
- * honestly in `doctor`'s JSON (it never patches or works around anything).
+ * verifies process cleanup on the running host and reports the result in
+ * `doctor`'s JSON.
  *
  * Method: a child process launches Chromium through playwright-core
  * exactly as the runtime does (headless, pipe transport, signal handlers

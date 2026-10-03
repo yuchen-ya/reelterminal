@@ -1,7 +1,6 @@
 /**
- * Cross-cutting (C) — shared revision/CAS against real human edits, session
- * disable/reconnect, save→reopen recovery, and the token security boundary
- * (ADR 0004 Decisions 3, 6, 9).
+ * Shared revision checks, session disable/reconnect, save/reopen recovery,
+ * and endpoint token handling.
  *
  * Human side: real UI input only. External agent: authenticated live endpoint.
  */

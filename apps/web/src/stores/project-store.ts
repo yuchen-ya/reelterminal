@@ -125,7 +125,7 @@ export interface ProjectState {
   project: Project;
   hasOpenProject: boolean;
   /**
-   * ADR 0004 Decision 3: one monotonic, in-memory revision for the canonical
+   * one monotonic, in-memory revision for the canonical
    * project. Bumped by a single store subscription whenever the `project`
    * reference changes (manual edits, agent edits, undo, redo, project switch).
    * Never persisted into project files, autosave records, or checkpoints.
@@ -4344,7 +4344,7 @@ export const useProjectStore = create<ProjectState>()(
   }),
 );
 
-// ADR 0004 Decision 3: the single choke point for the shared project revision.
+// the single choke point for the shared project revision.
 // Every committed mutation path (manual edits, agent edits, engine-aware
 // overlay edits, undo, redo, project load) replaces the `project` reference,
 // so one reference comparison here covers them all. In-memory only.
@@ -4401,7 +4401,7 @@ useProjectStore.subscribe((state, prevState) => {
   }
 });
 
-/** Current shared project revision (ADR 0004 Decision 3). */
+/** Current shared project revision. */
 export function getProjectRevision(): number {
   return useProjectStore.getState().projectRevision;
 }

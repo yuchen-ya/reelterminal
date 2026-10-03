@@ -25,8 +25,7 @@ import {
 import { readEndpoint } from "../../live-mcp/index";
 
 /**
- * N03 cross-version matrix (docs/NAMING-AND-COMPATIBILITY.md §4). Every
- * fixture lives in a per-test temporary home; the real ~/.reelterminal and
+ * Every fixture lives in a per-test temporary home; the real ~/.reelterminal and
  * ~/.openreel are never touched and descriptor contents are never printed —
  * assertions look at structural fields only.
  */
@@ -76,13 +75,13 @@ async function start(home: Home): Promise<RunningLiveEndpoint> {
 }
 
 const DEAD_LEGACY_DESCRIPTOR = {
-  // Port 1 is never the test host: a stale pre-N03 descriptor.
+  // Port 1 has no test server listening and provides an unmarked fixture.
   url: "http://127.0.0.1:1/mcp",
   port: 1,
   token: "0".repeat(64),
 };
 
-describe("live endpoint cross-version matrix (N03)", () => {
+describe("live endpoint compatibility", () => {
   it("新→新: serves the canonical descriptor and never creates a legacy file", async () => {
     const home = freshHome();
     const running = await start(home);
@@ -110,7 +109,7 @@ describe("live endpoint cross-version matrix (N03)", () => {
     expect(readdirSync(path.dirname(home.canonical))).toEqual([]);
   });
 
-  it("新→旧: a connector discovers an owned pre-N03 legacy descriptor", async () => {
+  it("discovers an owned legacy descriptor", async () => {
     const home = freshHome();
     writeDescriptor(home.legacy, DEAD_LEGACY_DESCRIPTOR);
     const resolution = resolveEndpointReadPath("live-endpoint", {
@@ -314,7 +313,7 @@ describe("live endpoint cross-version matrix (N03)", () => {
     expect(readDescriptor(overrideTarget).product).toBe("someone-elses-session");
   });
 
-  it("显式 override 指向自家描述符: starts normally and replaces it (pre-N03 behavior kept)", async () => {
+  it("starts with an explicit override to an owned legacy descriptor", async () => {
     const home = freshHome();
     const overrideTarget = path.join(home.root, "override", "live-endpoint.json");
     writeDescriptor(overrideTarget, DEAD_LEGACY_DESCRIPTOR);

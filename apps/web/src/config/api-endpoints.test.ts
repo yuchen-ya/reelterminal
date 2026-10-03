@@ -123,11 +123,10 @@ describe("api-endpoints cloud registry", () => {
 });
 
 /**
- * N02 env naming contract (docs/NAMING-AND-COMPATIBILITY.md §3): the new
- * VITE_REELTERMINAL_* names win when set; the legacy VITE_OPENREEL_* names
- * stay readable as a fallback so existing deployments do not change target.
+ * Current environment names take precedence over supported VITE_OPENREEL_*
+ * aliases so existing deployments retain their configured service target.
  */
-describe("api-endpoints env alias precedence (N02)", () => {
+describe("api-endpoints env alias precedence", () => {
   const NEW_KEYS = [
     "VITE_REELTERMINAL_CLOUD",
     "VITE_REELTERMINAL_CLOUD_URL",

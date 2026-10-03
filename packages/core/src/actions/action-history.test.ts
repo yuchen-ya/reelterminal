@@ -12,7 +12,7 @@ const act = (type: string, params: Record<string, unknown> = {}): Action => ({
 const inv = (type: string, params: Record<string, unknown> = {}): Action =>
   act(type, params);
 
-describe("ActionHistory group ownership (ADR 0004 Decision 12)", () => {
+describe("ActionHistory group ownership", () => {
   it("keeps proximity grouping unchanged when no owner is used", () => {
     const history = new ActionHistory();
     history.beginGroup("batch");

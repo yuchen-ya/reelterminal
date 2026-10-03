@@ -1,5 +1,5 @@
 /**
- * ChromiumRuntime — the Node-side host for the real browser (ADR 0002).
+ * ChromiumRuntime — the Node-side host for Chromium.
  *
  * One runtime = one Chromium process = one page. All page operations are
  * serialized through a mutex EXCEPT cooperative aborts, which must reach the
@@ -312,10 +312,10 @@ export class ChromiumRuntime {
     try {
       const launchedBrowser = await chromium.launch({
         headless: this.options.headless ?? true,
-        // ADR 0003 Decision 7: signal ownership belongs to the embedding
-        // transport — Playwright's default SIGINT/SIGTERM/SIGHUP handlers
+        // Signal ownership belongs to the embedding transport. Playwright's
+        // default SIGINT/SIGTERM/SIGHUP handlers
         // would kill the browser out from under the bounded cancel/dispose
-        // path. Nothing else about the launch changes.
+        // path.
         handleSIGINT: false,
         handleSIGTERM: false,
         handleSIGHUP: false,

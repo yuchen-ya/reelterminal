@@ -21,7 +21,7 @@ import {
 } from "./agent-references-store";
 
 /**
- * ADR 0004 Decision 4: ephemeral editor context shared with live agent
+ * Ephemeral editor context shared with the live agent
  * sessions. Playhead and selection are NOT duplicated here — they are read
  * from the source stores on demand; this store only owns the two pieces of
  * context that have no other home (canvas target point, selected time range)

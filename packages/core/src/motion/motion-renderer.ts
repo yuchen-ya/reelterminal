@@ -239,6 +239,7 @@ export interface MotionRendererAssetResolver {
   resolveImageAsset(
     asset: MotionAsset,
   ): Promise<MotionRenderableImage | null> | MotionRenderableImage | null;
+  /** Returns a frame owned by the renderer, which closes it after drawing. */
   resolveVideoFrame?(
     asset: MotionAsset,
     localTime: number,
@@ -1399,7 +1400,8 @@ export class MotionRenderer {
     const modelUrl = object.kind === "model" ? object.modelUrl : undefined;
     if (!modelUrl || !options.assetResolver?.resolveModelUrl) return object;
     const resolved = await options.assetResolver.resolveModelUrl(modelUrl);
-    if (!resolved || resolved === modelUrl) return object;
+    if (resolved === null) return { ...object, modelUrl: "" };
+    if (resolved === modelUrl) return object;
     return { ...object, modelUrl: resolved };
   }
 
@@ -2695,34 +2697,40 @@ export class MotionRenderer {
     );
     if (!frame) return;
 
-    const sourceWidth = getRenderableImageWidth(frame);
-    const sourceHeight = getRenderableImageHeight(frame);
-    if (sourceWidth <= 0 || sourceHeight <= 0) return;
+    try {
+      const sourceWidth = getRenderableImageWidth(frame);
+      const sourceHeight = getRenderableImageHeight(frame);
+      if (sourceWidth <= 0 || sourceHeight <= 0) return;
 
-    const boundsWidth = layer.width ?? asset.width ?? sourceWidth;
-    const boundsHeight = layer.height ?? asset.height ?? sourceHeight;
-    const { width, height, x, y } = fitNestedComposition(
-      sourceWidth,
-      sourceHeight,
-      boundsWidth,
-      boundsHeight,
-      layer.fit ?? "contain",
-    );
-    if (transform && hasMotion3DRotation(transform)) {
-      this.drawPerspectiveImage(
-        ctx,
-        frame,
+      const boundsWidth = layer.width ?? asset.width ?? sourceWidth;
+      const boundsHeight = layer.height ?? asset.height ?? sourceHeight;
+      const { width, height, x, y } = fitNestedComposition(
         sourceWidth,
         sourceHeight,
-        x,
-        y,
-        width,
-        height,
-        transform,
+        boundsWidth,
+        boundsHeight,
+        layer.fit ?? "contain",
       );
-      return;
+      if (transform && hasMotion3DRotation(transform)) {
+        this.drawPerspectiveImage(
+          ctx,
+          frame,
+          sourceWidth,
+          sourceHeight,
+          x,
+          y,
+          width,
+          height,
+          transform,
+        );
+        return;
+      }
+      ctx.drawImage(frame, x, y, width, height);
+    } finally {
+      if ("close" in frame && typeof frame.close === "function") {
+        frame.close();
+      }
     }
-    ctx.drawImage(frame, x, y, width, height);
   }
 
   private renderText(

@@ -1,7 +1,7 @@
 /**
  * Artifact output containment + hashing + provider-preflight gates,
  * extracted verbatim from AgentFacadeSession so the live session
- * (createLiveFacade, ADR 0004) produces artifacts under its artifactRoot
+ * live sessions produce artifacts under their artifactRoot
  * with byte-identical discipline: real directories only (never through
  * symlinks/junctions), realpath containment before AND after every write,
  * streaming sha256 (artifacts are never buffered wholesale), and a live

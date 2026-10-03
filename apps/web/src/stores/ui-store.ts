@@ -677,7 +677,7 @@ export const useUIStore = create<UIState>()(
         },
       }),
       {
-        // Persisted storage name — legacy registry, value frozen (UI prefs).
+        // Persisted storage identifier for UI preferences.
         name: LEGACY_LS_UI_PREFERENCES,
         version: 5,
         migrate: (persisted: unknown, version: number) => {

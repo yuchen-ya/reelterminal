@@ -164,7 +164,7 @@ export function readLiveEndpoint(home?: string): LiveEndpoint {
   };
 }
 
-/** Compatibility-only reader used by the live-endpoint migration tests. */
+/** Read an endpoint descriptor through the compatibility resolver. */
 export function readEndpointCredentials(home?: string): { readonly url: string; readonly token: string } {
   const resolution = resolveEndpointReadPath("live-endpoint", {
     env: process.env,

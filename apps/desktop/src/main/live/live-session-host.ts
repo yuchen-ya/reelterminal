@@ -2,10 +2,9 @@ import { randomUUID } from "node:crypto";
 import { commandProjectContext, type CommandProjectGuard } from "./command-context";
 import { readVisualImageSet } from "./artifact-images";
 /**
- * LiveSessionHost — the desktop main-process singleton that owns live
- * human–agent collaboration (ADR 0004 Slice 3):
+ * LiveSessionHost — the desktop main-process singleton for live agent access:
  *
- *  - ONE `LiveWriterLease` (Decision 6) belongs to the external agent's live
+ *  - One `LiveWriterLease` belongs to the external agent's live
  *    facade session. CLI and MCP clients share that external writer identity.
  *  - The external session shares one `LiveProjectStore` bridge to the
  *    canonical renderer store, one Chromium provider set, and one

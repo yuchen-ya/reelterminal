@@ -214,7 +214,7 @@ const MIN_WORKSPACE_HEIGHT = 260;
 const TIMELINE_RESIZE_STEP = 32;
 const MOTION_HEADER_HEIGHT = 60;
 const MOTION_FOOTER_HEIGHT = 28;
-// Persisted localStorage keys — legacy registry, value frozen (panel layout).
+// Persisted localStorage keys for motion panel layout.
 const LEFT_PANEL_STORAGE_KEY = LEGACY_LS_MOTION_LEFT_PANEL_WIDTH;
 const RIGHT_PANEL_STORAGE_KEY = LEGACY_LS_MOTION_RIGHT_PANEL_WIDTH;
 const TIMELINE_HEIGHT_STORAGE_KEY = LEGACY_LS_MOTION_TIMELINE_HEIGHT;

@@ -1,7 +1,7 @@
 /**
  * @reelterminal/fxpkg — the .fxpkg artifact contract, node library, graph validator,
  * filter/template compilers, and blueprint engine. The shared spine of the
- * studio → marketplace → editor → render-farm pipeline (STUDIO_PLAN Parts II–III).
+ * studio, marketplace, editor, and render-farm packages.
  */
 export * from "./types";
 export * from "./abi";

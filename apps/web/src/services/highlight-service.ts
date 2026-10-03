@@ -31,12 +31,7 @@ const DEFAULT_PREFERENCES: HighlightPreferences = {
 type ProgressCallback = (phase: string, progress: number, message: string) => void;
 
 /**
- * Base URL of the highlight AI, read from the central endpoint registry.
- * This replaces the former module-private VITE_CLOUD_API_URL read; the
- * registry still honors that variable as a compatibility alias, and in
- * dev builds the URL now follows the shared dev/prod switch like every
- * other first-party cloud service (previously it always pointed at
- * production).
+ * Highlight service URL from the shared cloud endpoint configuration.
  */
 const API_BASE = REELTERMINAL_CLOUD_URL;
 

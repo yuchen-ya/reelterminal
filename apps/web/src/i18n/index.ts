@@ -6,7 +6,7 @@ import zhCN from "./locales/zh-CN/translation.json";
 import upstreamZh from "./locales/zh-CN/upstream-translation.json";
 import { LEGACY_LS_LOCALE } from "../services/legacy-storage-keys";
 
-// Persisted localStorage key — legacy registry, value frozen (user language
+// Persisted localStorage key for the user's language
 // preference). See packages/core/src/legacy/physical-identifiers.ts.
 export const LOCALE_STORAGE_KEY = LEGACY_LS_LOCALE;
 export const SYSTEM_LANGUAGE = "system" as const;

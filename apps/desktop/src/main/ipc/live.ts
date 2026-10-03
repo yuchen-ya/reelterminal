@@ -1,5 +1,5 @@
 /**
- * Live collaboration IPC (ADR 0004): the renderer-facing handles behind
+ * Live collaboration IPC exposes the renderer-facing handles behind
  * window.reelterminal.collabControl.
  *
  * Every channel is restricted to the main editor window's webContents. Agent

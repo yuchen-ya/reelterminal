@@ -10,7 +10,7 @@
  *
  * The record format is JSON and persists in the renderer's IndexedDB
  * (legacy store name registered in src/legacy/physical-identifiers.ts).
- * `schemaVersion` gates future migrations.
+ * `schemaVersion` identifies the stored record format.
  *
  * Separation guarantees (load-bearing):
  *  - `userNotes` is written by the human. Agent tools update `aiSummary`,

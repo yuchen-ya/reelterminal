@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const fixture = vi.hoisted(() => ({
+  comparisonEnabled: true,
   project: {
     settings: { frameRate: 30 },
     mediaLibrary: {
@@ -36,7 +37,10 @@ const fixture = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../stores/project-store", () => ({
-  useProjectStore: (selector: (state: unknown) => unknown) => selector(fixture),
+  useProjectStore: (selector: (state: unknown) => unknown) => selector({
+    ...fixture,
+    project: { ...fixture.project, referenceComparison: fixture.comparisonEnabled ? fixture.project.referenceComparison : null },
+  }),
 }));
 vi.mock("../../../stores/timeline-store", () => ({
   useTimelineStore: Object.assign(
@@ -45,10 +49,11 @@ vi.mock("../../../stores/timeline-store", () => ({
   ),
 }));
 
-import { ReferenceComparisonPanel, resolveReferenceMediaUrl } from "./ReferenceComparisonPanel";
+import { ReferenceComparisonControl, ReferenceComparisonPanel, resolveReferenceMediaUrl } from "./ReferenceComparisonPanel";
 
 describe("in-player reference comparison", () => {
   beforeEach(() => {
+    fixture.comparisonEnabled = true;
     fixture.timeline.playheadPosition = 2.5;
     fixture.timeline.playbackState = "paused";
     fixture.project.referenceComparison.layout = "overlay";
@@ -70,6 +75,14 @@ describe("in-player reference comparison", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  it("keeps the picture clear and places comparison in the toolbar", () => {
+    fixture.comparisonEnabled = false;
+    render(<><ReferenceComparisonPanel timelineCanvasRef={{ current: null }} /><ReferenceComparisonControl /></>);
+    expect(screen.queryByTestId("reference-comparison-viewport")).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByRole("button", { name: "Reference comparison" })).toHaveTextContent("Compare");
   });
 
   it("places both frames inside the player and keeps timeline transport out of the comparison UI", async () => {

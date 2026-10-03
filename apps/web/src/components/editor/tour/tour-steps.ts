@@ -75,5 +75,5 @@ export const TOUR_STEPS: TourStep[] = [
   },
 ];
 
-// Persisted localStorage key — legacy registry, value frozen (tour state).
+// Persisted localStorage key for tour state.
 export const ONBOARDING_KEY = LEGACY_LS_ONBOARDING_COMPLETE;

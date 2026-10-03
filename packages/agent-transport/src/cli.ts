@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * `reelterminal-agent` — the ADR 0003 slice-2 agent transport CLI.
+ * `reelterminal-agent` CLI.
  * `agent-video` remains available as a thin alias to this same entry point.
  *
- * Three subcommands (Decision 3):
+ * Commands:
  *   serve                — the MCP stdio server; one process == one session
  *   run --workflow <abs> — executable JSONL workflow over a fresh session
  *   doctor               — one machine-readable environment report
  *
- * stdout discipline (Decision 6): stdout carries ONLY MCP frames, step
+ * stdout carries only MCP frames, step
  * JSON lines, or the doctor report — everything else (logs, usage errors)
  * goes to stderr as single-line JSON. Dependency console.* is redirected
  * to stderr before any dependency module runs.
@@ -21,7 +21,7 @@ import {
   setLogLevel,
 } from "./log";
 
-const USAGE = `reelterminal-agent — ReelTerminal agent video transport (ADR 0003)
+const USAGE = `reelterminal-agent — ReelTerminal agent transport
 (legacy command name: agent-video, same entry point)
 
 Usage:

@@ -1,6 +1,6 @@
 import { PLUGIN_TOOLS } from "./plugins";
 /**
- * Adversarial corpus per verb (ADR 0003 Decision 4 item 3): dependency-free
+ * Adversarial corpus per verb: dependency-free
  * DATA ONLY — no imports, no logic. The transport's differential test
  * evaluates every case twice and asserts one classification:
  *

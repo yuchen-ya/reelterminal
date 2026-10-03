@@ -1,16 +1,16 @@
 /**
  * Money: attribution, payable value, KYC tiers, anti-fraud, payout rails, and
- * event sealing (STUDIO_PLAN §41–§43). Pure logic + adapter interfaces; live
+ * event sealing. Pure logic and adapter interfaces; live
  * rail integrations (Stripe/Paystack/Wise) plug in behind PayoutRail.
  */
 import type { AssetKind } from "./types";
 import type { Attribution, EarningsEntry, EventType, Rail } from "./domain";
 import { hmacSha256Hex, sha256Hex } from "./sha256";
 
-export const PLATFORM_CUT = 0.3; // §41.4
-export const MIN_EXPORT_MS = 5000; // §43.1
-export const HOLDBACK_DAYS = 30; // §42.2
-export const MIN_PAYOUT_CENTS = 2000; // $20 (§42.2)
+export const PLATFORM_CUT = 0.3;
+export const MIN_EXPORT_MS = 5000;
+export const HOLDBACK_DAYS = 30;
+export const MIN_PAYOUT_CENTS = 2000; // $20
 
 export interface PayableSplit {
   grossCents: number;
@@ -18,7 +18,7 @@ export interface PayableSplit {
   creatorPoolCents: number;
 }
 
-/** Split gross export value into platform cut + creator pool (§41.4). */
+/** Split gross export value into the platform cut and creator pool. */
 export function payableValue(grossCents: number, platformCut = PLATFORM_CUT): PayableSplit {
   const platformCents = Math.round(grossCents * platformCut);
   return { grossCents, platformCents, creatorPoolCents: grossCents - platformCents };
@@ -36,7 +36,7 @@ export interface AppliedAsset {
 }
 
 /**
- * Primary attribution (STUDIO_PLAN §41.3): exactly one asset gets 100% of the
+ * Exactly one asset gets 100% of the
  * payable share — template first, else heaviest effect, else heaviest filter.
  */
 export function computeAttribution(exportId: string, applied: AppliedAsset[]): Attribution[] {
@@ -51,7 +51,7 @@ export function computeAttribution(exportId: string, applied: AppliedAsset[]): A
   return [{ exportId, assetVersionId: primary.assetVersionId, share: 1, isPrimary: true }];
 }
 
-// ── KYC tiers (§42.3) ─────────────────────────────────────────────────────
+// ── KYC tiers ────────────────────────────────────────────────────────────
 export type KycLevel = 0 | 1 | 2;
 
 /** Required KYC level for a creator's lifetime earnings (gates payout, not signup). */
@@ -65,7 +65,7 @@ export function payoutAllowed(lifetimeCents: number, kycLevel: number): boolean 
   return kycLevel >= requiredKycLevel(lifetimeCents);
 }
 
-// ── Anti-fraud (§43) ────────────────────────────────────────────────────────
+// ── Anti-fraud ───────────────────────────────────────────────────────────
 export interface ExportEventInput {
   userId: string;
   assetId: string;
@@ -87,12 +87,12 @@ export function checkExportPayable(e: ExportEventInput): PayableCheck {
   return { payable: reasons.length === 0, reasons };
 }
 
-/** Dedup key: same export submitted N times shouldn't pay N times (§43.1). */
+/** Deduplication key for payable export events. */
 export function exportDedupeKey(e: ExportEventInput): string {
   return sha256Hex(`${e.userId}|${e.assetId}|${e.day}|${e.contentHash}`);
 }
 
-// ── Event sealing (§41.5) ──────────────────────────────────────────────────
+// ── Event sealing ───────────────────────────────────────────────────────
 export function sealEvent(payloadJson: string, nonce: string, secret: string): string {
   return hmacSha256Hex(secret, `${payloadJson}.${nonce}`);
 }
@@ -106,7 +106,7 @@ export function verifyEvent(payloadJson: string, nonce: string, secret: string, 
   return diff === 0;
 }
 
-// ── Holdback + payout batch (§42.2) ─────────────────────────────────────────
+// ── Holdback and payout batch ─────────────────────────────────────────────
 export function payableAfter(earnedAtIso: string, holdbackDays = HOLDBACK_DAYS): string {
   const d = new Date(earnedAtIso);
   d.setUTCDate(d.getUTCDate() + holdbackDays);
@@ -121,7 +121,7 @@ export interface PayoutDraft {
 
 /**
  * Monthly batch: sum payable ledger entries per creator past holdback, applying
- * the minimum threshold; below-threshold balances roll over (§42.2).
+ * the minimum threshold; below-threshold balances roll over.
  */
 export function computePayoutBatch(entries: EarningsEntry[], asOfIso: string): PayoutDraft[] {
   const asOf = new Date(asOfIso).getTime();
@@ -143,7 +143,7 @@ export function computePayoutBatch(entries: EarningsEntry[], asOfIso: string): P
   return drafts;
 }
 
-// ── Payout rails (§42.1) ────────────────────────────────────────────────────
+// ── Payout rails ─────────────────────────────────────────────────────────
 const STRIPE_COUNTRIES = new Set(["US", "GB", "CA", "AU", "IE", "DE", "FR", "ES", "IT", "NL", "SE", "NO", "DK", "FI"]);
 const PAYSTACK_COUNTRIES = new Set(["NG", "GH", "KE", "ZA"]);
 

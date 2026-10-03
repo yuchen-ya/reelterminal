@@ -88,9 +88,27 @@
       "motionCreation": "Motion Creation",
       "loading": "Loading…"
     },
+    "help": {
+      "title": "Help",
+      "description": "Start with your first video and find steps whenever you need them.",
+      "topics": "Help topics",
+      "search": "Search tools, steps, or shortcuts",
+      "noResults": "No topics found. Try a shorter keyword.",
+      "startTour": "Interface tour",
+      "tourNeedsProject": "Open a video editing project to start the interface tour.",
+      "entry": "Where to start",
+      "steps": "Steps",
+      "shortcuts": "Current shortcuts",
+      "notes": "Notes",
+      "agentTourTitle": "Agent collaboration (optional)",
+      "agentTourDescription": "Access starts read-only and does not limit manual editing. Use Allow editing for Agent changes, then Set read-only to revoke access. Requirements records your goals.",
+      "exportTourTitle": "Save and export",
+      "exportTourDescription": "Save the project for later editing. Use Export in the title bar, choose a preset or switch to Custom for MP4 and the project's settings, then Start Export. Check the finished picture and sound.",
+      "tourComplete": "Import a clip and drag it onto the timeline to try your first edit. Help in the title bar offers Quick Start, a searchable manual, and the tour."
+    },
     "start": {
       "newProject": "New Project",
-      "chooseWorkspace": "Choose a workspace and format. You can change this later.",
+      "chooseWorkspace": "New here? Choose Video Editor, then a frame format. Use Help in the title bar for step-by-step instructions.",
       "videoEditor": "Video Editor",
       "videoEditorDescription": "Cut, trim, caption, color, and export quickly.",
       "motionCreator": "Motion Creator",
@@ -112,7 +130,8 @@
       "loading": "Loading editor…",
       "failed": "Editor failed to start: {{message}}",
       "media": "Assets",
-      "viewer": "Viewer",
+      "viewer": "Player",
+      "compare": "Compare",
       "inspector": "Inspector",
       "agent": "Agent",
       "timeline": "Timeline",
@@ -134,8 +153,8 @@
     "collaboration": {
       "readOnly": "Read-only",
       "restoreWrite": "Enable editing",
-      "restoreWriteDescription": "Explicitly restore write access for the external agent. Human edits and undo remain available.",
-      "agentAction": "Agent: {{action}}",
+      "restoreWriteDescription": "Allow the agent to edit this project",
+      "agentAction": "{{action}}",
       "accessStatus": "Agent Access status",
       "agentAccess": "Agent Access",
       "cliAvailable": "CLI available",
@@ -144,7 +163,7 @@
       "agentStarting": "Agent connecting",
       "writable": "Editable",
       "allowEditing": "Allow editing",
-      "stopEditing": "Stop Agent editing",
+      "stopEditing": "Set read-only",
       "setReadOnly": "Set read-only",
       "setReadOnlyDescription": "Prevent the CLI from changing the current project"
     }
@@ -234,7 +253,7 @@
     "playerTitle": "Player",
     "playerDescription": "The center player shows the current frame and playback controls. Crop, fit, and review changes here before export.",
     "playerTipControls": "Use playback controls under the canvas",
-    "playerTipLive": "The green dot means live preview is active",
+    "playerTipLive": "Open reference comparison from Compare when you need it",
     "playerTipFullscreen": "Fullscreen and fit tools are in the player controls",
     "inspectorTitle": "Inspector",
     "inspectorDescription": "Select a clip to edit its properties. Transform, color, effects, speed, and animation controls appear here.",
@@ -250,7 +269,8 @@
     "goToStep": "Go to step {{number}}"
   },
   "agentReferences": {
-    "add": "Add Agent reference",
+    "add": "Add reference",
+    "remove": "Remove reference A{{number}}",
     "ariaLabel": "Agent references",
     "sessionHint": "References are temporary for this open project session",
     "referenceLabel": "Agent reference A{{number}} {{state}}",

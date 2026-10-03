@@ -1,17 +1,4 @@
-/**
- * Web-side re-exports of the legacy physical identifier registry (N04).
- *
- * The single source of truth is
- * `packages/core/src/legacy/physical-identifiers.ts` (see its header for why
- * these values are frozen and must never be re-branded). This module only
- * re-exports the identifiers consumed by the web renderer so call sites have
- * a local import path; it defines NO values of its own. Drift is covered by
- * `packages/core/src/legacy/physical-identifiers.test.ts` (constant ===
- * historical literal) and `legacy-identifiers.test.ts` (web runtime names,
- * including source reads of the plain-JS service workers).
- *
- * Rules doc: docs/NAMING-AND-COMPATIBILITY.md §4 "持久化保留为 legacy".
- */
+/** Web renderer exports of the shared persisted identifier registry. */
 export {
   // IndexedDB database names (user data)
   LEGACY_IDB_PROJECTS as LEGACY_PROJECT_DB_NAME,

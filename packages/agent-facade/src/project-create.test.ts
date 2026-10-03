@@ -6,8 +6,8 @@
  *  - same idempotencyKey + same payload replays the committed creation
  *    result WITHOUT resetting the project;
  *  - same key + different payload, or ANY other create while a project is
- *    open, fails CONFLICT with zero side effects — Slice 1 has no
- *    replace/reset;
+ *    open, fails CONFLICT with zero side effects; the facade has no
+ *    replace/reset verb;
  *  - it accepts no expectedRevision (unknown field → INVALID_PARAMS).
  *
  * Settings hardening: width/height/sampleRate/channels must be positive

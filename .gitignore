@@ -42,9 +42,7 @@ coverage/
 .cache/
 .temp/
 .docs/
-# Documentation is tracked by default. (The old "docs/* ignored by default,
-# force-add real docs" policy is gone — it silently swallowed new docs and
-# made every addition a force-add.) Precise exceptions only: local scratch.
+# Local documentation drafts and scratch files
 docs/**/*.local.md
 docs/**/scratch/
 .worktrees/
@@ -63,6 +61,7 @@ apps/desktop/resources/rigging/blender/
 
 # Desktop electron-builder output
 apps/desktop/release/
+apps/desktop/resources/help/
 
 # Desktop electron-builder config lives under build/ which the global build/ rule ignores
 !apps/desktop/build/
@@ -88,7 +87,7 @@ xcuserdata/
 # Brainstorming session artifacts
 .superpowers/
 
-# One-off design handoff exports (see docs/CLEANUP-DECISIONS-2026-09.md)
+# Local design handoff exports
 creating-views/project/uploads/
 
 # Signing certs — never commit

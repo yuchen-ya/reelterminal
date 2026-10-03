@@ -42,6 +42,10 @@ extraResources:
     filter:
       - "**/*"
 extraFiles:
+  - from: resources/help
+    to: help
+    filter:
+      - "*.html"
   # A packaged Windows launcher that invokes Electron's bundled Node runtime
   # against the reelctl entry. It is also copied with resources/bin for callers
   # that prefer an explicit resources path.
@@ -63,16 +67,7 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # Sign downloadable (non-App-Store) builds with the Developer ID Application
-  # cert present in this team's keychain. `pnpm pack` (--dir) skips signing.
-  # electron-builder adds the "Developer ID Application:" prefix itself — supply
-  # only the common name (name + Team ID) or it errors on the duplicate prefix.
-  identity: "Augustus Otu (864H636QW4)"
-  # Notarization runs on `pnpm dist`. teamId is set here; credentials come from
-  # env at build time: APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD (or APPLE_API_KEY +
-  # APPLE_API_KEY_ID + APPLE_API_ISSUER). See apps/desktop/DISTRIBUTION.md.
-  notarize:
-    teamId: "864H636QW4"
+  notarize: true
 win:
   icon: build/icon.png
   target:

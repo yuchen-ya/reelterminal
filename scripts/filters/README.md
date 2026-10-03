@@ -17,4 +17,5 @@ Outputs land in `out/cube/*.cube` and `out/manifest.json`.
 ## Deploy
     ./deploy.sh   # uploads out/ to R2 via wrangler
 
-See `docs/superpowers/specs/2026-05-22-filter-presets-design.md` for design.
+Recipe structure is defined by the YAML files in `recipes/`; validation and
+output rules are implemented by `generate.py`.

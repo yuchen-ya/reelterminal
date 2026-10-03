@@ -59,7 +59,7 @@ describe("Text3DFontFailureNotice", () => {
 
   it("clears the notice after a user retry succeeds and stays gone without auto-retry", async () => {
     const { status, Text3DFontFailureNotice } = await loadFresh();
-    const fetchMock = vi.fn<[], Promise<Response>>(() =>
+    const fetchMock = vi.fn<() => Promise<Response>>(() =>
       Promise.reject(new Error("ERR_CONNECTION_FAILED")),
     );
     window.fetch = fetchMock as unknown as typeof window.fetch;

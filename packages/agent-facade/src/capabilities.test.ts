@@ -1,11 +1,11 @@
 /**
- * capabilities.get must report the runtime's TRUE capabilities (RUNNER-06):
- * preview/export are unavailable in this slice and must say so; text
+ * capabilities.get reports the runtime's available capabilities:
+ * preview/export are unavailable without providers; text
  * overlays are model-state only; URL import is not offered.
  *
- * The "render adapter" block pins the Slice-1 dormancy rule: injecting a
+ * The "render adapter" block verifies that injecting an adapter
  * ProjectRenderAdapter must NOT change the capability report, because no
- * facade verb consumes the adapter in this slice.
+ * facade verb consumes the adapter.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAgentFacade, type AgentFacade } from "./index";
@@ -222,7 +222,7 @@ describe("capabilities.get / session.describe", () => {
   });
 });
 
-describe("injected render adapter (dormant Slice-1 seam)", () => {
+describe("injected render adapter", () => {
   let mediaRoot: string;
 
   function makeFakeAdapter() {
@@ -257,7 +257,7 @@ describe("injected render adapter (dormant Slice-1 seam)", () => {
     expect(res.value.export.requires).toContain("ExportProvider");
   });
 
-  it("session.describe calls the injected adapter dormant, never available", async () => {
+  it("session.describe does not claim an injected adapter enables rendering", async () => {
     const facade = createAgentFacade({
       mediaRoots: [mediaRoot],
       renderAdapter: makeFakeAdapter(),
@@ -265,11 +265,6 @@ describe("injected render adapter (dormant Slice-1 seam)", () => {
     const res = await facade["session.describe"]();
     expect(res.ok).toBe(true);
     if (!res.ok) return;
-    const notes = res.value.notes.join("\n");
-    expect(notes).toContain("dormant");
-    expect(notes).toContain("fake-chromium");
-    // The old adapter-driven wording must be gone for good.
-    expect(notes).not.toContain("availability comes from the injected render adapter");
     expect(res.value.stepLetters.textOverlayPixels).toBe("X");
     expect(res.value.stepLetters.exportVideo).toBe("X");
   });

@@ -1,16 +1,14 @@
 import { bindBundledTools, type BundledToolBindings } from "./plugin-runtime";
 /**
- * @reelterminal/agent-facade — the agent-facing facade (Slice 1 + Slice 1b +
- * Slice 2a persistence + Slice 3 live collaboration).
+ * @reelterminal/agent-facade — the agent-facing facade.
  *
  * Pure-Node, in-process, transport-agnostic. The public surface is the
  * registered `AgentFacade` object returned by createAgentFacade(); verb
- * names mirror audit/facade-v0.md + ADR 0003 Appendix B.1 + ADR 0004
- * (editor.get_context/editor.control). All verbs return FacadeResult<T> and never throw
+ * names are registered in the public contract. All verbs return FacadeResult<T> and never throw
  * for domain errors. Pixel/export/verify backing arrives via the
  * independent provider interfaces (providers.ts); the facade never imports
- * Chromium, Playwright or ffmpeg itself. Live sessions (createLiveFacade,
- * ADR 0004) implement the same verb contract over a LiveProjectStore seam
+ * Chromium, Playwright or ffmpeg itself. Live sessions (createLiveFacade)
+ * implement the same verb contract over a LiveProjectStore seam
  * with no project copy.
  */
 import {

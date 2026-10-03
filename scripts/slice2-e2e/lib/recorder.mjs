@@ -1,11 +1,4 @@
-/**
- * Evidence recorder for the slice-2d black-box E2E (ADR 0003 Appendix D).
- *
- * One transcript.jsonl per scenario × path captures EVERY observation: doctor
- * reports, run stdout lines, MCP request/response frames, and each assertion
- * with its pass/fail. An assertion table (assertions.md) is rendered next to
- * it. Any failed assertion throws — the raw transcript is the failure dump.
- */
+/** Record scenario observations, assertions, and artifact digests. */
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -60,12 +53,7 @@ export class Recorder {
     );
   }
 
-  /**
-   * Record one contract step (an Appendix D step letter) made of machine
-   * checks. `checks` is an array of { name, pass, detail }. Throws on the
-   * first failed check AFTER recording it, so the transcript carries the raw
-   * observation that failed.
-   */
+  /** Record a group of checks and stop after recording the first failure. */
   async step(stepId, title, checks) {
     const rows = [];
     for (const check of checks) {

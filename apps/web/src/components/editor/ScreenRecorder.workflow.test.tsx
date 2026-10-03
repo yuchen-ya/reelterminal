@@ -30,7 +30,7 @@ vi.mock("../../services/screen-recorder", async (importOriginal) => {
 // double-bound (onClick + onChange to the same toggle) like MultiCameraPanel.
 // That is not the case at HEAD — both cards pass onChange only, so the
 // component-level double-dispatch contract never bit this component. These
-// tests lock the single-toggle behavior in against the fixed contract.
+// tests verify single-toggle behavior.
 describe("ScreenRecorder audio options workflow", () => {
   beforeEach(() => {
     useRecorderStore.setState({

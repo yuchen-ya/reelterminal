@@ -1,11 +1,11 @@
 /**
- * Manifest schema + validation (STUDIO_PLAN §6.2, §7). Every .fxpkg has a
+ * Manifest schema and validation. Every .fxpkg has a
  * manifest.json; the loader checks declared requirements before loading.
  */
 import { z } from "zod";
 
 export const ParamDeclSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, "id must be a valid parameter identifier"),
   type: z.enum(["float", "int", "bool", "color", "enum", "vec2"]),
   label: z.string(),
   default: z.union([z.number(), z.boolean(), z.string(), z.tuple([z.number(), z.number()])]),
@@ -67,7 +67,7 @@ export function validateManifest(input: unknown): ManifestValidationResult {
   };
 }
 
-/** Size limits enforced at submission (STUDIO_PLAN §6.2). */
+/** Maximum sizes accepted for package components. */
 export const SIZE_LIMITS = {
   totalPackage: 50 * 1024 * 1024,
   singleAsset: 10 * 1024 * 1024,

@@ -1,6 +1,5 @@
 /**
- * `reelterminal-agent run` — the B.6 executable workflow format (ADR 0003
- * Decision 3 / Appendix B.6).
+ * `reelterminal-agent run` JSONL workflow format.
  *
  * JSONL, one step per line, two step kinds:
  *   {"id","verb","params"}                     — a facade verb call

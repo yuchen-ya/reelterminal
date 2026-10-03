@@ -7,7 +7,6 @@ import {
   Shapes,
   Type,
   ListChecks,
-  Hash,
 } from "@/icons/lucide-compat";
 import type { ShapeClip, SVGClip, StickerClip, TextClip } from "@reelterminal/core";
 import { useProjectStore } from "../../../stores/project-store";
@@ -16,6 +15,7 @@ import { getTimelineTrackSelection } from "../../../utils/timeline-item-actions"
 import { markAgentReferenceForSelection } from "../../../stores/editor-context-store";
 import { getAgentReferenceTargetForGraphic, getAgentReferenceTargetForText } from "../../../stores/agent-reference-targets";
 import { useProjectMarkerMenuItems } from "../project-marker-menu";
+import { useAgentReferenceMenuItem } from "../agent-reference-menu";
 
 type GraphicsClipType = ShapeClip | SVGClip | StickerClip | TextClip;
 
@@ -97,6 +97,10 @@ export function useGraphicsClipContextMenuItems({
     onClose?.();
   };
 
+  const agentReferenceMenuItem = useAgentReferenceMenuItem(
+    clipType === "text" ? "text" : "media", clip.id, handleAddAgentReference, onClose,
+  );
+
   // Review markers: the backend target union can only reference text overlays
   // here (shape/SVG/sticker clips live outside timeline tracks, so a "clip"
   // target for them fails core validation). Their badges still render from the
@@ -163,11 +167,7 @@ export function useGraphicsClipContextMenuItems({
       icon: <ListChecks size={14} aria-hidden />,
       onClick: handleSelectTrackClips,
     },
-    {
-      label: t("agentReferences.add"),
-      icon: <Hash size={14} aria-hidden />,
-      onClick: handleAddAgentReference,
-    },
+    agentReferenceMenuItem,
     ...reviewMarkerMenuItems,
     { type: "divider" },
   );

@@ -45,7 +45,7 @@ import { ToolcraftSelectableCard as SelectableCard } from "@reelterminal/ui";
 import { ToolcraftText as Text } from "@reelterminal/ui";
 import { ToolcraftContextMenu as ContextMenu, type ToolcraftContextMenuOption as ContextMenuOption } from "@reelterminal/ui";
 import { StickerPickerPanel } from "./inspector/StickerPickerPanel";
-import { Hash } from "@/icons/lucide-compat";
+import { useAgentReferenceMenuItem } from "./agent-reference-menu";
 import { AgentReferenceBadge } from "./timeline/AgentReferenceBadge";
 import { ProjectMarkerBadgeStack } from "./ProjectMarkerBadge";
 import { useProjectMarkerMenuItems } from "./project-marker-menu";
@@ -88,12 +88,11 @@ export function useMediaContextMenuItems({
     kind: "asset",
     mediaId: item.id,
   });
+  const agentReferenceMenuItem = useAgentReferenceMenuItem(
+    "media", item.id, () => markAgentReferenceForMedia(item),
+  );
   const contextMenuItems: ContextMenuOption[] = [
-    {
-      label: t("agentReferences.add"),
-      icon: <Hash size={14} aria-hidden />,
-      onClick: () => markAgentReferenceForMedia(item),
-    },
+    agentReferenceMenuItem,
     { label: t("requirementBoard.addFromSelection"), icon: <Plus size={14} />, onClick: () => openBoardForEntities([item.id]) },
     {
       label: t("media.renameAction"),
@@ -905,18 +904,40 @@ export const AssetsPanel: React.FC = () => {
   // Handle asset replacement
   const handleReplaceAsset = useCallback(
     async (itemId: string) => {
+      const startingSession = useProjectStore.getState();
       const input = document.createElement("input");
       input.type = "file";
       input.accept = "video/*,audio/*,image/*";
       input.onchange = async (e) => {
         const file = (e.target as HTMLInputElement).files?.[0];
         if (file) {
+          const currentSession = useProjectStore.getState();
+          if (
+            currentSession.project.id !== startingSession.project.id ||
+            currentSession.actionExecutor !== startingSession.actionExecutor
+          ) {
+            toast.error(
+              "Asset replacement cancelled",
+              "The active project changed while the file picker was open.",
+            );
+            return;
+          }
           setIsImporting(true);
           setImportProgress(`Replacing asset...`);
           try {
-            await replaceMediaAsset(itemId, file);
+            const result = await replaceMediaAsset(itemId, file);
+            if (!result.success) {
+              toast.error(
+                "Asset replacement failed",
+                result.error?.message ?? "The selected media could not be used.",
+              );
+            }
           } catch (error) {
             console.error("Asset replacement failed:", error);
+            toast.error(
+              "Asset replacement failed",
+              error instanceof Error ? error.message : "The selected media could not be used.",
+            );
           } finally {
             setIsImporting(false);
             setImportProgress("");
@@ -929,6 +950,7 @@ export const AssetsPanel: React.FC = () => {
   );
 
   const handleRelinkFromFolder = useCallback(async () => {
+    const startingSession = useProjectStore.getState();
     if (!("showDirectoryPicker" in window)) {
       toast.error("Folder picker not supported", "Please relink assets individually using the refresh button on each missing asset.");
       return;
@@ -940,7 +962,18 @@ export const AssetsPanel: React.FC = () => {
       return; // user cancelled
     }
 
-    const { project } = useProjectStore.getState();
+    const selectedProjectSession = useProjectStore.getState();
+    const { project } = selectedProjectSession;
+    if (
+      project.id !== startingSession.project.id ||
+      selectedProjectSession.actionExecutor !== startingSession.actionExecutor
+    ) {
+      toast.error(
+        "Relinking cancelled",
+        "The active project changed while the folder picker was open.",
+      );
+      return;
+    }
     const placeholders = project.mediaLibrary.items.filter((item) => item.isPlaceholder);
     if (placeholders.length === 0) return;
 
@@ -958,31 +991,84 @@ export const AssetsPanel: React.FC = () => {
       }
     }
 
+    const projectAfterScan = useProjectStore.getState();
+    if (
+      projectAfterScan.project.id !== project.id ||
+      projectAfterScan.actionExecutor !== selectedProjectSession.actionExecutor
+    ) {
+      toast.error(
+        "Relinking cancelled",
+        "The active project changed while the folder was being scanned.",
+      );
+      return;
+    }
+
     setIsImporting(true);
     let linked = 0;
+    let matched = 0;
+    let failed = 0;
+    let cancelled = false;
     for (const item of placeholders) {
+      const currentSession = useProjectStore.getState();
+      if (
+        currentSession.project.id !== project.id ||
+        currentSession.actionExecutor !== selectedProjectSession.actionExecutor
+      ) {
+        cancelled = true;
+        break;
+      }
       // Match on original source file name + size (same strategy as auto-restore)
       const key = item.sourceFile
         ? `${item.sourceFile.name.toLowerCase()}:${item.sourceFile.size}`
         : null;
       const entry = key ? fileMap.get(key) : null;
       if (entry) {
+        matched++;
         setImportProgress(`Relinking ${item.name}…`);
         try {
           // Save individual file handle for future auto-restore
           try { await saveFileHandle(entry.file.name, entry.file.size, entry.handle); } catch { /* best-effort */ }
-          await replaceMediaAsset(item.id, entry.file, dirHandle.name);
-          linked++;
+          const currentSession = useProjectStore.getState();
+          if (
+            currentSession.project.id !== project.id ||
+            currentSession.actionExecutor !== selectedProjectSession.actionExecutor
+          ) {
+            cancelled = true;
+            break;
+          }
+          const result = await replaceMediaAsset(item.id, entry.file, dirHandle.name);
+          if (result.success) {
+            linked++;
+          } else {
+            failed++;
+          }
         } catch (err) {
           console.error(`[AssetsPanel] Failed to relink ${item.name}:`, err);
+          failed++;
         }
       }
     }
     setIsImporting(false);
     setImportProgress("");
 
-    if (linked > 0) {
+    if (cancelled) {
+      toast.error(
+        "Relinking cancelled",
+        "The active project changed while assets were being relinked.",
+      );
+    } else if (linked > 0) {
       toast.success(`Relinked ${linked} of ${placeholders.length} asset${placeholders.length !== 1 ? "s" : ""}`);
+      if (failed > 0) {
+        toast.error(
+          `${failed} asset${failed !== 1 ? "s" : ""} could not be relinked`,
+          "Some matching files could not be restored.",
+        );
+      }
+    } else if (matched > 0) {
+      toast.error(
+        "Relinking failed",
+        `${failed} matching file${failed !== 1 ? "s" : ""} could not be restored.`,
+      );
     } else {
       toast.error("No matches found", "None of the files in the selected folder matched the missing assets by filename.");
     }

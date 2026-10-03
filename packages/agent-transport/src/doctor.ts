@@ -1,6 +1,5 @@
 /**
- * `reelterminal-agent doctor` — the honest environment report (ADR 0003
- * Decision 3, Appendix E requirements).
+ * `reelterminal-agent doctor` environment report.
  *
  * ONE machine-readable JSON report on stdout; exit codes:
  *   0 usable   — every runtime preflight passed AND all three root
@@ -188,9 +187,7 @@ export interface DoctorReport {
   readonly command: "doctor";
   readonly ts: string;
   readonly transport: {
-    // Machine-readable since slice 2c; historical evidence archives store
-    // the pre-N02 value "agent-video". The command name itself keeps the
-    // agent-video alias, so consumers can re-identify the binary regardless.
+    // The report uses the primary command name; agent-video remains a CLI alias.
     readonly name: "reelterminal-agent";
     readonly version: string;
     readonly pid: number;
@@ -204,7 +201,7 @@ export interface DoctorReport {
       readonly projectRoots: string;
       readonly log: string;
     };
-    /** Legacy OPENREEL_* names still honored as a fallback (N02). */
+    /** Supported OPENREEL_* aliases. */
     readonly envLegacy: {
       readonly mediaRoots: string;
       readonly artifactRoot: string;
@@ -476,10 +473,7 @@ export async function doctorCommand(argv: readonly string[]): Promise<number> {
         projectRoots: CONFIG_NEW_NAMES.projectRootsEnv,
         log: CONFIG_NEW_NAMES.logLevelEnv,
       },
-      // Machine-readable note (N02): config.env above advertises the
-      // canonical REELTERMINAL_* names; the legacy OPENREEL_AVE_* /
-      // OPENREEL_TRANSPORT_LOG names remain readable as a fallback, and
-      // historical evidence archives reference them.
+      // Current environment names and supported aliases.
       envLegacy: {
         mediaRoots: CONFIG_DEFAULTS.mediaRootsEnv,
         artifactRoot: CONFIG_DEFAULTS.artifactRootEnv,

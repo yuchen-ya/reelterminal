@@ -2,12 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 // The preload runs against Electron's contextBridge, which copies values
 // across worlds, so a real renderer cannot assert
-// `window.openreel === window.reelterminal` directly. What the migration
-// contract needs instead is structural: the preload must expose ONE api
-// object under both names (never two factory instances), because two
-// objects would double every ipcRenderer registration and commit one user
-// action twice. The mocked contextBridge keeps the references it receives,
-// which is exactly what we assert here.
+// `window.openreel === window.reelterminal` directly. The preload must expose
+// one API object under both names; two objects would register IPC listeners
+// twice. The mocked contextBridge preserves the references for this check.
 const electron = vi.hoisted(() => {
   const exposed = new Map<string, unknown>();
   return {
@@ -44,7 +41,7 @@ const exposedApi = (name: string): AnyApi => {
   return api as AnyApi;
 };
 
-describe("preload bridge naming (N02)", () => {
+describe("preload bridge naming", () => {
   it("exposes the primary name reelterminal and keeps openreel as an alias", () => {
     expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledWith(
       "reelterminal",
@@ -79,5 +76,23 @@ describe("preload bridge naming (N02)", () => {
     // bypassing string literals (those are what drifted during the rename).
     expect(CHANNELS.menuAction).toBe("reelterminal:menu:action");
     expect(CHANNELS.exportPortHandoff).toBe("reelterminal:export-port");
+  });
+
+  it("sends only the renderer error category over the crash IPC channel", () => {
+    const crash = exposedApi("reelterminal").crash as {
+      report(payload: { type?: string }): void;
+    };
+
+    crash.report({
+      type: "react-error",
+      message: "private project data",
+      stack: "private stack",
+      context: { path: "private" },
+    } as unknown as { type?: string });
+
+    expect(electron.ipcRenderer.send).toHaveBeenCalledWith(
+      CHANNELS.crashReport,
+      { type: "react-error" },
+    );
   });
 });

@@ -6,7 +6,7 @@ import type {
 } from "../types/global";
 
 /**
- * ADR 0004 Decisions 6+7: mirrors the desktop main-process collaboration
+ * Mirrors the desktop main-process collaboration
  * status (writer lease, access level, current action) for the access bar.
  * All IPC access is guarded so the store is a
  * harmless no-op off desktop.

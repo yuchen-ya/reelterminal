@@ -1,10 +1,6 @@
 /**
- * Pure read projections of a canonical `Project` (extracted from
- * AgentFacadeSession so the live session — ADR 0004 Decision 1, which
- * holds NO project copy and works from LiveProjectStore snapshots —
- * projects state byte-identically to headless). One projection logic, two
- * session runtimes: a live `project.get_state`/`timeline.get` is the same
- * view over a snapshot as headless is over its private project.
+ * Read-only projections of a canonical `Project`. Both session types use the
+ * same logic for `project.get_state` and `timeline.get`.
  */
 import type { Project } from "@reelterminal/core/types/project";
 import type {

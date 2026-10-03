@@ -1,0 +1,956 @@
+{
+  "googleFonts": [
+    {
+      "family": "Bungee",
+      "upstreamFamily": "Bungee",
+      "license": "OFL",
+      "licenseFile": "licenses/bungee/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/bungee",
+      "copyright": [
+        "Copyright 2023 The Bungee Project Authors (https://github.com/djrrb/Bungee)"
+      ],
+      "files": [
+        "N0bU2SZBIuF2PU_0A3R1C9zfme_Q.woff2",
+        "N0bU2SZBIuF2PU_0AnR1C9zfme_Q.woff2",
+        "N0bU2SZBIuF2PU_0DXR1C9zfmQ.woff2"
+      ]
+    },
+    {
+      "family": "Black Ops One",
+      "upstreamFamily": "Black Ops One",
+      "license": "OFL",
+      "licenseFile": "licenses/blackopsone/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/blackopsone",
+      "copyright": [
+        "Copyright 2022 The PinyonScript Project Authors (https://github.com/SorkinType/Black-Ops)"
+      ],
+      "files": [
+        "qWcsB6-ypo7xBdr6Xshe96H3aDbbtxsis4IxXw.woff2",
+        "qWcsB6-ypo7xBdr6Xshe96H3aDTbtxsis4IxXw.woff2",
+        "qWcsB6-ypo7xBdr6Xshe96H3aDvbtxsis4I.woff2",
+        "qWcsB6-ypo7xBdr6Xshe96H3aDXbtxsis4IxXw.woff2"
+      ]
+    },
+    {
+      "family": "Bebas Neue",
+      "upstreamFamily": "Bebas Neue",
+      "license": "OFL",
+      "licenseFile": "licenses/bebasneue/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/bebasneue",
+      "copyright": [
+        "Copyright 2019 The Bebas Neue Project Authors (https://github.com/dharmatype/Bebas-Neue)"
+      ],
+      "files": [
+        "JTUSjIg69CK48gW7PXoo9WdhyyTh89ZNpQ.woff2",
+        "JTUSjIg69CK48gW7PXoo9WlhyyTh89Y.woff2"
+      ]
+    },
+    {
+      "family": "Alfa Slab One",
+      "upstreamFamily": "Alfa Slab One",
+      "license": "OFL",
+      "licenseFile": "licenses/alfaslabone/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/alfaslabone",
+      "copyright": [
+        "Copyright 2016 The Alfa Slab One Project Authors (http://www.jmsole.cl | info@jmsole.cl), with Reserved Font Name \\"
+      ],
+      "files": [
+        "6NUQ8FmMKwSEKjnm5-4v-4Jh2d1he_escmAm9w.woff2",
+        "6NUQ8FmMKwSEKjnm5-4v-4Jh2dJhe_escmA.woff2",
+        "6NUQ8FmMKwSEKjnm5-4v-4Jh2dxhe_escmAm9w.woff2"
+      ]
+    },
+    {
+      "family": "Anton",
+      "upstreamFamily": "Anton",
+      "license": "OFL",
+      "licenseFile": "licenses/anton/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/anton",
+      "copyright": [
+        "Copyright 2020 The Anton Project Authors (https://github.com/googlefonts/AntonFont.git)"
+      ],
+      "files": [
+        "1Ptgg87LROyAm3K8-C8CSKlvPfE.woff2",
+        "1Ptgg87LROyAm3K9-C8CSKlvPfE.woff2",
+        "1Ptgg87LROyAm3Kz-C8CSKlv.woff2"
+      ]
+    },
+    {
+      "family": "Bangers",
+      "upstreamFamily": "Bangers",
+      "license": "OFL",
+      "licenseFile": "licenses/bangers/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/bangers",
+      "copyright": [
+        "Copyright 2010 The Bangers Project Authors (https://github.com/googlefonts/bangers)"
+      ],
+      "files": [
+        "FeVQS0BTqb0h60ACH55Q2J5hm24.woff2",
+        "FeVQS0BTqb0h60ACH5BQ2J5hm25mww.woff2",
+        "FeVQS0BTqb0h60ACH5FQ2J5hm25mww.woff2"
+      ]
+    },
+    {
+      "family": "Archivo Black",
+      "upstreamFamily": "Archivo Black",
+      "license": "OFL",
+      "licenseFile": "licenses/archivoblack/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/archivoblack",
+      "copyright": [
+        "Copyright 2017 The Archivo Black Project Authors (https://github.com/Omnibus-Type/ArchivoBlack)"
+      ],
+      "files": [
+        "HTxqL289NzCGg4MzN6KJ7eW6CYKF_jzx13HOvQ.woff2",
+        "HTxqL289NzCGg4MzN6KJ7eW6CYyF_jzx13E.woff2"
+      ]
+    },
+    {
+      "family": "Abril Fatface",
+      "upstreamFamily": "Abril Fatface",
+      "license": "OFL",
+      "licenseFile": "licenses/abrilfatface/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/abrilfatface",
+      "copyright": [
+        "Copyright (c) 2011, Copyright (c) 2011, TypeTogether (www.type-together.com info@type-together.com), with Reserved Font Names \\"
+      ],
+      "files": [
+        "zOL64pLDlL1D99S8g8PtiKchq-dmjcDidBc.woff2",
+        "zOL64pLDlL1D99S8g8PtiKchq-lmjcDidBeT5g.woff2"
+      ]
+    },
+    {
+      "family": "Caveat",
+      "upstreamFamily": "Caveat",
+      "license": "OFL",
+      "licenseFile": "licenses/caveat/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/caveat",
+      "copyright": [
+        "Copyright 2014 The Caveat Project Authors (https://github.com/googlefonts/caveat)"
+      ],
+      "files": [
+        "Wnz6HAc5bAfYB2Q7aDYYiAzcPDKo.woff2",
+        "Wnz6HAc5bAfYB2Q7azYYiAzcPDKo.woff2",
+        "Wnz6HAc5bAfYB2Q7YjYYiAzcPDKo.woff2",
+        "Wnz6HAc5bAfYB2Q7ZjYYiAzcPA.woff2"
+      ]
+    },
+    {
+      "family": "Creepster",
+      "upstreamFamily": "Creepster",
+      "license": "OFL",
+      "licenseFile": "licenses/creepster/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/creepster",
+      "copyright": [
+        "Copyright (c) 2011, Font Diner, Inc DBA Sideshow (diner@fontdiner.com), with Reserved Font Names \\"
+      ],
+      "files": [
+        "AlZy_zVUqJz4yMrniH4Rcn35fh4Dog.woff2"
+      ]
+    },
+    {
+      "family": "Comfortaa",
+      "upstreamFamily": "Comfortaa",
+      "license": "OFL",
+      "licenseFile": "licenses/comfortaa/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/comfortaa",
+      "copyright": [
+        "Copyright 2011 The Comfortaa Project Authors (https://github.com/alexeiva/comfortaa), with Reserved Font Name \\"
+      ],
+      "files": [
+        "1Ptsg8LJRfWJmhDAuUs4Q4FqL_KWxWMT.woff2",
+        "1Ptsg8LJRfWJmhDAuUs4QIFqL_KWxWMT.woff2",
+        "1Ptsg8LJRfWJmhDAuUs4QoFqL_KWxWMT.woff2",
+        "1Ptsg8LJRfWJmhDAuUs4SYFqL_KWxWMT.woff2",
+        "1Ptsg8LJRfWJmhDAuUs4ToFqL_KWxWMT.woff2",
+        "1Ptsg8LJRfWJmhDAuUs4TYFqL_KWxQ.woff2"
+      ]
+    },
+    {
+      "family": "Cinzel",
+      "upstreamFamily": "Cinzel",
+      "license": "OFL",
+      "licenseFile": "licenses/cinzel/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/cinzel",
+      "copyright": [
+        "Copyright 2020 The Cinzel Project Authors (https://github.com/NDISCOVER/Cinzel)"
+      ],
+      "files": [
+        "8vIJ7ww63mVu7gt7-GT7PkRXM8Xx.woff2",
+        "8vIJ7ww63mVu7gt79mT7PkRXMw.woff2"
+      ]
+    },
+    {
+      "family": "DM Sans",
+      "upstreamFamily": "DM Sans",
+      "license": "OFL",
+      "licenseFile": "licenses/dmsans/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/dmsans",
+      "copyright": [
+        "Copyright 2014 The DM Sans Project Authors (https://github.com/googlefonts/dm-fonts)"
+      ],
+      "files": [
+        "rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu0-K6z9mXg.woff2",
+        "rP2Yp2ywxg089UriI5-g4vlH9VoD8Cmcqbu6-K6z9mXgjU0.woff2"
+      ]
+    },
+    {
+      "family": "DM Serif Display",
+      "upstreamFamily": "DM Serif Display",
+      "license": "OFL",
+      "licenseFile": "licenses/dmserifdisplay/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/dmserifdisplay",
+      "copyright": [
+        "Copyright 2014 - 2017 Adobe Systems Incorporated (http://www.adobe.com/), with Reserved Font Name \\'Source\\'. Copyright 2019 Google LLC."
+      ],
+      "files": [
+        "-nFnOHM81r4j6k0gjAW3mujVU2B2G_5x0vrx52jJ3Q.woff2",
+        "-nFnOHM81r4j6k0gjAW3mujVU2B2G_Bx0vrx52g.woff2"
+      ]
+    },
+    {
+      "family": "Dancing Script",
+      "upstreamFamily": "Dancing Script",
+      "license": "OFL",
+      "licenseFile": "licenses/dancingscript/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/dancingscript",
+      "copyright": [
+        "Copyright 2016 The Dancing Script Project Authors (https://github.com/googlefonts/DancingScript), with Reserved Font Name \\'Dancing Script\\'."
+      ],
+      "files": [
+        "If2RXTr6YS-zF4S-kcSWSVi_szLgiuEHiC4W.woff2",
+        "If2RXTr6YS-zF4S-kcSWSVi_szLuiuEHiC4Wl-8.woff2",
+        "If2RXTr6YS-zF4S-kcSWSVi_szLviuEHiC4Wl-8.woff2"
+      ]
+    },
+    {
+      "family": "Concert One",
+      "upstreamFamily": "Concert One",
+      "license": "OFL",
+      "licenseFile": "licenses/concertone/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/concertone",
+      "copyright": [
+        "Copyright (c) 2011, 2011 Johan Kallas (johankallas@gmail.com), Copyright (c) 2011, 2011 Mihkel Virkus (mihkelvirkus@gmail.com), with Reserved Font Name Concert."
+      ],
+      "files": [
+        "VEM1Ro9xs5PjtzCu-srDqSTijP6gukAR.woff2",
+        "VEM1Ro9xs5PjtzCu-srDqSTsjP6gukARXRY.woff2"
+      ]
+    },
+    {
+      "family": "Geist Mono",
+      "upstreamFamily": "Geist Mono",
+      "license": "OFL",
+      "licenseFile": "licenses/geistmono/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/geistmono",
+      "copyright": [
+        "Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font.git)"
+      ],
+      "files": [
+        "or3nQ6H-1_WfwkMZI_qYFg08vz7MhEIVVeA.woff2",
+        "or3nQ6H-1_WfwkMZI_qYFrcdmhHkjko.woff2",
+        "or3nQ6H-1_WfwkMZI_qYFrgdmhHkjkotbA.woff2",
+        "or3nQ6H-1_WfwkMZI_qYFrkdmhHkjkotbA.woff2",
+        "or3nQ6H-1_WfwkMZI_qYFrMdmhHkjkotbA.woff2",
+        "or3nQ6H-1_WfwkMZI_qYFrodmhHkjkotbA.woff2"
+      ]
+    },
+    {
+      "family": "Geist",
+      "upstreamFamily": "Geist",
+      "license": "OFL",
+      "licenseFile": "licenses/geist/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/geist",
+      "copyright": [
+        "Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font)"
+      ],
+      "files": [
+        "gyByhwUxId8gMEwcGFWNOITd.woff2",
+        "gyByhwUxId8gMEwRGFWNOITddY4.woff2",
+        "gyByhwUxId8gMEwSGFWNOITddY4.woff2",
+        "gyByhwUxId8gMEwTGFWNOITddY4.woff2",
+        "gyByhwUxId8gMEwYGFWNOITddY4.woff2"
+      ]
+    },
+    {
+      "family": "Great Vibes",
+      "upstreamFamily": "Great Vibes",
+      "license": "OFL",
+      "licenseFile": "licenses/greatvibes/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/greatvibes",
+      "copyright": [
+        "Copyright 2010 The Great Vibes Pro Project Authors (https://github.com/googlefonts/great-vibes)"
+      ],
+      "files": [
+        "RWmMoKWR9v4ksMfaWd_JN9XBiaQoDmlrMlY.woff2",
+        "RWmMoKWR9v4ksMfaWd_JN9XFiaQoDmlr.woff2",
+        "RWmMoKWR9v4ksMfaWd_JN9XIiaQoDmlrMlY.woff2",
+        "RWmMoKWR9v4ksMfaWd_JN9XJiaQoDmlrMlY.woff2",
+        "RWmMoKWR9v4ksMfaWd_JN9XKiaQoDmlrMlY.woff2",
+        "RWmMoKWR9v4ksMfaWd_JN9XLiaQoDmlrMlY.woff2"
+      ]
+    },
+    {
+      "family": "Inter",
+      "upstreamFamily": "Inter",
+      "license": "OFL",
+      "licenseFile": "licenses/inter/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/inter",
+      "copyright": [
+        "Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter)"
+      ],
+      "files": [
+        "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa0ZL7W0Q5n-wU.woff2",
+        "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1pL7W0Q5n-wU.woff2",
+        "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2",
+        "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa25L7W0Q5n-wU.woff2",
+        "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2JL7W0Q5n-wU.woff2",
+        "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2pL7W0Q5n-wU.woff2",
+        "UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2ZL7W0Q5n-wU.woff2"
+      ]
+    },
+    {
+      "family": "Lato",
+      "upstreamFamily": "Lato",
+      "license": "OFL",
+      "licenseFile": "licenses/lato/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/lato",
+      "copyright": [
+        "Copyright (c) 2011-2015 by tyPoland Lukasz Dziedzic (http://www.typoland.com/) with Reserved Font Name \\"
+      ],
+      "files": [
+        "S6u9w4BMUTPHh50XSwaPGQ3q5d0N7w.woff2",
+        "S6u9w4BMUTPHh50XSwiPGQ3q5d0.woff2",
+        "S6u9w4BMUTPHh6UVSwaPGQ3q5d0N7w.woff2",
+        "S6u9w4BMUTPHh6UVSwiPGQ3q5d0.woff2",
+        "S6u9w4BMUTPHh7USSwaPGQ3q5d0N7w.woff2",
+        "S6u9w4BMUTPHh7USSwiPGQ3q5d0.woff2",
+        "S6uyw4BMUTPHjx4wXiWtFCc.woff2",
+        "S6uyw4BMUTPHjxAwXiWtFCfQ7A.woff2"
+      ]
+    },
+    {
+      "family": "Fredoka One",
+      "upstreamFamily": "Fredoka One",
+      "license": "OFL",
+      "licenseFile": "licenses/fredokaone/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/be2838a23fd2918408e22b25c54135da76525ff6/ofl/fredokaone",
+      "copyright": [
+        "Copyright (c) 2011 Milena B Brandao (milenabbrandao@gmail.com), with Reserved Font Name \\"
+      ],
+      "files": [
+        "k3kUo8kEI-tA1RRcTZGmTlHGCaen8wf-.woff2"
+      ]
+    },
+    {
+      "family": "Lexend",
+      "upstreamFamily": "Lexend",
+      "license": "OFL",
+      "licenseFile": "licenses/lexend/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/lexend",
+      "copyright": [
+        "Copyright 2019 The Lexend Project Authors (https://github.com/googlefonts/lexend)"
+      ],
+      "files": [
+        "wlpwgwvFAVdoq2_v-6QU82RHaA.woff2",
+        "wlpwgwvFAVdoq2_v9aQU82RHaBBX.woff2",
+        "wlpwgwvFAVdoq2_v9KQU82RHaBBX.woff2"
+      ]
+    },
+    {
+      "family": "Merriweather",
+      "upstreamFamily": "Merriweather",
+      "license": "OFL",
+      "licenseFile": "licenses/merriweather/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/merriweather",
+      "copyright": [
+        "Copyright 2024 The Merriweather Project Authors (https://github.com/EbenSorkin/Merriweather4) with Reserved Font Name \\"
+      ],
+      "files": [
+        "u-4e0qyriQwlOrhSvowK_l5UcA6zuSYEqOzpPe3HOZJ5eX1WtLaQwmYiSeqkJ-mXq1Gi3iE.woff2",
+        "u-4e0qyriQwlOrhSvowK_l5UcA6zuSYEqOzpPe3HOZJ5eX1WtLaQwmYiSeqlJ-mXq1Gi3iE.woff2",
+        "u-4e0qyriQwlOrhSvowK_l5UcA6zuSYEqOzpPe3HOZJ5eX1WtLaQwmYiSeqnJ-mXq1Gi3iE.woff2",
+        "u-4e0qyriQwlOrhSvowK_l5UcA6zuSYEqOzpPe3HOZJ5eX1WtLaQwmYiSeqqJ-mXq1Gi.woff2",
+        "u-4e0qyriQwlOrhSvowK_l5UcA6zuSYEqOzpPe3HOZJ5eX1WtLaQwmYiSequJ-mXq1Gi3iE.woff2"
+      ]
+    },
+    {
+      "family": "Lobster",
+      "upstreamFamily": "Lobster",
+      "license": "OFL",
+      "licenseFile": "licenses/lobster/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/lobster",
+      "copyright": [
+        "Copyright 2010 The Lobster Project Authors (https://github.com/impallari/The-Lobster-Font), with Reserved Font Name \\"
+      ],
+      "files": [
+        "neILzCirqoswsqX9zo-mM4MwWJXNqA.woff2",
+        "neILzCirqoswsqX9zo2mM4MwWJXNqA.woff2",
+        "neILzCirqoswsqX9zoamM4MwWJXNqA.woff2",
+        "neILzCirqoswsqX9zoKmM4MwWJU.woff2",
+        "neILzCirqoswsqX9zoymM4MwWJXNqA.woff2"
+      ]
+    },
+    {
+      "family": "Lora",
+      "upstreamFamily": "Lora",
+      "license": "OFL",
+      "licenseFile": "licenses/lora/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/lora",
+      "copyright": [
+        "Copyright 2011 The Lora Project Authors (https://github.com/cyrealtype/Lora-Cyrillic), with Reserved Font Name \\"
+      ],
+      "files": [
+        "0QIvMX1D_JOuM2T7I_FMl_GW8g.woff2",
+        "0QIvMX1D_JOuM3b7I_FMl_GW8g.woff2",
+        "0QIvMX1D_JOuMw77I_FMl_GW8g.woff2",
+        "0QIvMX1D_JOuMwf7I_FMl_GW8g.woff2",
+        "0QIvMX1D_JOuMwr7I_FMl_E.woff2",
+        "0QIvMX1D_JOuMwT7I_FMl_GW8g.woff2",
+        "0QIvMX1D_JOuMwX7I_FMl_GW8g.woff2"
+      ]
+    },
+    {
+      "family": "Nunito",
+      "upstreamFamily": "Nunito",
+      "license": "OFL",
+      "licenseFile": "licenses/nunito/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/nunito",
+      "copyright": [
+        "Copyright 2014 The Nunito Project Authors (https://github.com/googlefonts/nunito)"
+      ],
+      "files": [
+        "XRXV3I6Li01BKofIMeaBTMnFcQIG.woff2",
+        "XRXV3I6Li01BKofINeaBTMnFcQ.woff2",
+        "XRXV3I6Li01BKofIO-aBTMnFcQIG.woff2",
+        "XRXV3I6Li01BKofIOOaBTMnFcQIG.woff2",
+        "XRXV3I6Li01BKofIOuaBTMnFcQIG.woff2"
+      ]
+    },
+    {
+      "family": "Montserrat",
+      "upstreamFamily": "Montserrat",
+      "license": "OFL",
+      "licenseFile": "licenses/montserrat/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/montserrat",
+      "copyright": [
+        "Copyright 2011 The Montserrat Project Authors (https://github.com/JulietaUla/Montserrat)"
+      ],
+      "files": [
+        "JTUSjIg1_i6t8kCHKm459W1hyyTh89ZNpQ.woff2",
+        "JTUSjIg1_i6t8kCHKm459WdhyyTh89ZNpQ.woff2",
+        "JTUSjIg1_i6t8kCHKm459WlhyyTh89Y.woff2",
+        "JTUSjIg1_i6t8kCHKm459WRhyyTh89ZNpQ.woff2",
+        "JTUSjIg1_i6t8kCHKm459WZhyyTh89ZNpQ.woff2"
+      ]
+    },
+    {
+      "family": "Outfit",
+      "upstreamFamily": "Outfit",
+      "license": "OFL",
+      "licenseFile": "licenses/outfit/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/outfit",
+      "copyright": [
+        "Copyright 2021 The Outfit Project Authors (https://github.com/Outfitio/Outfit-Fonts)"
+      ],
+      "files": [
+        "QGYvz_MVcBeNP4NJtEtqUYLknw.woff2",
+        "QGYvz_MVcBeNP4NJuktqUYLkn8BJ.woff2"
+      ]
+    },
+    {
+      "family": "Oswald",
+      "upstreamFamily": "Oswald",
+      "license": "OFL",
+      "licenseFile": "licenses/oswald/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/oswald",
+      "copyright": [
+        "Copyright 2016 The Oswald Project Authors (https://github.com/googlefonts/OswaldFont)"
+      ],
+      "files": [
+        "TK3iWkUHHAIjg752FD8Gl-1PK62t.woff2",
+        "TK3iWkUHHAIjg752Fj8Gl-1PK62t.woff2",
+        "TK3iWkUHHAIjg752Fz8Gl-1PK62t.woff2",
+        "TK3iWkUHHAIjg752GT8Gl-1PKw.woff2",
+        "TK3iWkUHHAIjg752HT8Gl-1PK62t.woff2"
+      ]
+    },
+    {
+      "family": "Permanent Marker",
+      "upstreamFamily": "Permanent Marker",
+      "license": "APACHE2",
+      "licenseFile": "licenses/permanentmarker/LICENSE.txt",
+      "source": "https://github.com/google/fonts/tree/main/apache/permanentmarker",
+      "copyright": [
+        "Copyright (c) 2010 by Font Diner, Inc. All rights reserved."
+      ],
+      "files": [
+        "Fh4uPib9Iyv2ucM6pGQMWimMp004La2Cf5b6jlg.woff2"
+      ]
+    },
+    {
+      "family": "Open Sans",
+      "upstreamFamily": "Open Sans",
+      "license": "OFL",
+      "licenseFile": "licenses/opensans/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/opensans",
+      "copyright": [
+        "Copyright 2020 The Open Sans Project Authors (https://github.com/googlefonts/opensans)"
+      ],
+      "files": [
+        "memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS-mu0SC55I.woff2",
+        "memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTS2mu0SC55K5gw.woff2",
+        "memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSCmu0SC55K5gw.woff2",
+        "memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSGmu0SC55K5gw.woff2",
+        "memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSKmu0SC55K5gw.woff2",
+        "memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSOmu0SC55K5gw.woff2",
+        "memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSumu0SC55K5gw.woff2",
+        "memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTSymu0SC55K5gw.woff2",
+        "memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTUGmu0SC55K5gw.woff2",
+        "memvYaGs126MiZpBA-UvWbX2vVnXBbObj2OVTVOmu0SC55K5gw.woff2"
+      ]
+    },
+    {
+      "family": "Pacifico",
+      "upstreamFamily": "Pacifico",
+      "license": "OFL",
+      "licenseFile": "licenses/pacifico/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/pacifico",
+      "copyright": [
+        "Copyright 2018 The Pacifico Project Authors (https://github.com/googlefonts/Pacifico)"
+      ],
+      "files": [
+        "FwZY7-Qmy14u9lezJ-6D6MmBp0u-zK4.woff2",
+        "FwZY7-Qmy14u9lezJ-6H6MmBp0u-.woff2",
+        "FwZY7-Qmy14u9lezJ-6I6MmBp0u-zK4.woff2",
+        "FwZY7-Qmy14u9lezJ-6J6MmBp0u-zK4.woff2",
+        "FwZY7-Qmy14u9lezJ-6K6MmBp0u-zK4.woff2"
+      ]
+    },
+    {
+      "family": "Playfair Display",
+      "upstreamFamily": "Playfair Display",
+      "license": "OFL",
+      "licenseFile": "licenses/playfairdisplay/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/playfairdisplay",
+      "copyright": [
+        "Copyright 2017 The Playfair Display Project Authors (https://github.com/clauseggers/Playfair-Display), with Reserved Font Name \\"
+      ],
+      "files": [
+        "nuFiD-vYSZviVYUb_rj3ij__anPXDTjYgEM86xRbPQ.woff2",
+        "nuFiD-vYSZviVYUb_rj3ij__anPXDTLYgEM86xRbPQ.woff2",
+        "nuFiD-vYSZviVYUb_rj3ij__anPXDTPYgEM86xRbPQ.woff2",
+        "nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgEM86xQ.woff2"
+      ]
+    },
+    {
+      "family": "Press Start 2P",
+      "upstreamFamily": "Press Start 2P",
+      "license": "OFL",
+      "licenseFile": "licenses/pressstart2p/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/pressstart2p",
+      "copyright": [
+        "Copyright 2012 The Press Start 2P Project Authors (cody@zone38.net), with Reserved Font Name \\"
+      ],
+      "files": [
+        "e3t4euO8T-267oIAQAu6jDQyK3nbivNm4I81PZQ.woff2",
+        "e3t4euO8T-267oIAQAu6jDQyK3nRivNm4I81PZQ.woff2",
+        "e3t4euO8T-267oIAQAu6jDQyK3nVivNm4I81.woff2",
+        "e3t4euO8T-267oIAQAu6jDQyK3nWivNm4I81PZQ.woff2",
+        "e3t4euO8T-267oIAQAu6jDQyK3nYivNm4I81PZQ.woff2"
+      ]
+    },
+    {
+      "family": "Poppins",
+      "upstreamFamily": "Poppins",
+      "license": "OFL",
+      "licenseFile": "licenses/poppins/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/poppins",
+      "copyright": [
+        "Copyright 2020 The Poppins Project Authors (https://github.com/itfoundry/Poppins)"
+      ],
+      "files": [
+        "pxiByp8kv8JHgFVrLBT5Z11lFd2JQEl8qw.woff2",
+        "pxiByp8kv8JHgFVrLBT5Z1JlFd2JQEl8qw.woff2",
+        "pxiByp8kv8JHgFVrLBT5Z1xlFd2JQEk.woff2",
+        "pxiByp8kv8JHgFVrLCz7Z11lFd2JQEl8qw.woff2",
+        "pxiByp8kv8JHgFVrLCz7Z1JlFd2JQEl8qw.woff2",
+        "pxiByp8kv8JHgFVrLCz7Z1xlFd2JQEk.woff2",
+        "pxiByp8kv8JHgFVrLDD4Z11lFd2JQEl8qw.woff2",
+        "pxiByp8kv8JHgFVrLDD4Z1JlFd2JQEl8qw.woff2",
+        "pxiByp8kv8JHgFVrLDD4Z1xlFd2JQEk.woff2",
+        "pxiByp8kv8JHgFVrLDz8Z11lFd2JQEl8qw.woff2",
+        "pxiByp8kv8JHgFVrLDz8Z1JlFd2JQEl8qw.woff2",
+        "pxiByp8kv8JHgFVrLDz8Z1xlFd2JQEk.woff2",
+        "pxiByp8kv8JHgFVrLEj6Z11lFd2JQEl8qw.woff2",
+        "pxiByp8kv8JHgFVrLEj6Z1JlFd2JQEl8qw.woff2",
+        "pxiByp8kv8JHgFVrLEj6Z1xlFd2JQEk.woff2",
+        "pxiByp8kv8JHgFVrLGT9Z11lFd2JQEl8qw.woff2",
+        "pxiByp8kv8JHgFVrLGT9Z1JlFd2JQEl8qw.woff2",
+        "pxiByp8kv8JHgFVrLGT9Z1xlFd2JQEk.woff2",
+        "pxiEyp8kv8JHgFVrJJbecnFHGPezSQ.woff2",
+        "pxiEyp8kv8JHgFVrJJfecnFHGPc.woff2",
+        "pxiEyp8kv8JHgFVrJJnecnFHGPezSQ.woff2"
+      ]
+    },
+    {
+      "family": "Raleway",
+      "upstreamFamily": "Raleway",
+      "license": "OFL",
+      "licenseFile": "licenses/raleway/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/raleway",
+      "copyright": [
+        "Copyright 2010 The Raleway Project Authors (impallari@gmail.com), with Reserved Font Name \\"
+      ],
+      "files": [
+        "1Ptug8zYS_SKggPNyC0IT4ttDfA.woff2",
+        "1Ptug8zYS_SKggPNyCAIT4ttDfCmxA.woff2",
+        "1Ptug8zYS_SKggPNyCIIT4ttDfCmxA.woff2",
+        "1Ptug8zYS_SKggPNyCkIT4ttDfCmxA.woff2",
+        "1Ptug8zYS_SKggPNyCMIT4ttDfCmxA.woff2"
+      ]
+    },
+    {
+      "family": "Righteous",
+      "upstreamFamily": "Righteous",
+      "license": "OFL",
+      "licenseFile": "licenses/righteous/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/righteous",
+      "copyright": [
+        "Copyright (c) 2011 by Brian J. Bonislawsky DBA Astigmatic (AOETI) (astigma@astigmatic.com), with Reserved Font Name \\"
+      ],
+      "files": [
+        "1cXxaUPXBpj2rGoU7C9WhnGFq8Kk1doH.woff2",
+        "1cXxaUPXBpj2rGoU7C9WiHGFq8Kk1Q.woff2"
+      ]
+    },
+    {
+      "family": "Roboto Condensed",
+      "upstreamFamily": "Roboto Condensed",
+      "license": "OFL",
+      "licenseFile": "licenses/robotocondensed/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/robotocondensed",
+      "copyright": [
+        "Copyright 2011 Google Inc. All Rights Reserved."
+      ],
+      "files": [
+        "ieVl2ZhZI2eCN5jzbjEETS9weq8-19-7DQk6YvNkeg.woff2",
+        "ieVl2ZhZI2eCN5jzbjEETS9weq8-1927DQk6YvNkeg.woff2",
+        "ieVl2ZhZI2eCN5jzbjEETS9weq8-1967DQk6YvNkeg.woff2",
+        "ieVl2ZhZI2eCN5jzbjEETS9weq8-19a7DQk6YvNkeg.woff2",
+        "ieVl2ZhZI2eCN5jzbjEETS9weq8-19G7DQk6YvNkeg.woff2",
+        "ieVl2ZhZI2eCN5jzbjEETS9weq8-19K7DQk6YvM.woff2",
+        "ieVl2ZhZI2eCN5jzbjEETS9weq8-19y7DQk6YvNkeg.woff2"
+      ]
+    },
+    {
+      "family": "Quicksand",
+      "upstreamFamily": "Quicksand",
+      "license": "OFL",
+      "licenseFile": "licenses/quicksand/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/quicksand",
+      "copyright": [
+        "Copyright 2019 The Quicksand Project Authors (https://github.com/andrew-paglinawan/QuicksandFamily.git), with Reserved Font Name \\"
+      ],
+      "files": [
+        "6xKtdSZaM9iE8KbpRA_hJFQNYuDyP7bh.woff2",
+        "6xKtdSZaM9iE8KbpRA_hJVQNYuDyP7bh.woff2",
+        "6xKtdSZaM9iE8KbpRA_hK1QNYuDyPw.woff2"
+      ]
+    },
+    {
+      "family": "Roboto Mono",
+      "upstreamFamily": "Roboto Mono",
+      "license": "OFL",
+      "licenseFile": "licenses/robotomono/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/robotomono",
+      "copyright": [
+        "Copyright 2015 The Roboto Mono Project Authors (https://github.com/googlefonts/robotomono)"
+      ],
+      "files": [
+        "L0x5DF4xlVMF-BfR8bXMIjhEq3-cXbKDO1w.woff2",
+        "L0x5DF4xlVMF-BfR8bXMIjhFq3-cXbKDO1w.woff2",
+        "L0x5DF4xlVMF-BfR8bXMIjhGq3-cXbKDO1w.woff2",
+        "L0x5DF4xlVMF-BfR8bXMIjhIq3-cXbKDO1w.woff2",
+        "L0x5DF4xlVMF-BfR8bXMIjhLq3-cXbKD.woff2",
+        "L0x5DF4xlVMF-BfR8bXMIjhPq3-cXbKDO1w.woff2"
+      ]
+    },
+    {
+      "family": "Roboto",
+      "upstreamFamily": "Roboto",
+      "license": "OFL",
+      "licenseFile": "licenses/roboto/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/roboto",
+      "copyright": [
+        "Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic)"
+      ],
+      "files": [
+        "KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3-UBHMdazTgWw.woff2",
+        "KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3CUBHMdazTgWw.woff2",
+        "KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3GUBHMdazTgWw.woff2",
+        "KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3iUBHMdazTgWw.woff2",
+        "KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3KUBHMdazTgWw.woff2",
+        "KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3OUBHMdazTgWw.woff2",
+        "KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBHMdazQ.woff2",
+        "KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMawCUBHMdazTgWw.woff2",
+        "KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMaxKUBHMdazTgWw.woff2"
+      ]
+    },
+    {
+      "family": "Roboto Slab",
+      "upstreamFamily": "Roboto Slab",
+      "license": "APACHE2",
+      "licenseFile": "licenses/robotoslab/LICENSE.txt",
+      "source": "https://github.com/google/fonts/tree/main/apache/robotoslab",
+      "copyright": [
+        "Copyright 2018 The Roboto Slab Project Authors (https://github.com/googlefonts/robotoslab)"
+      ],
+      "files": [
+        "BngMUXZYTXPIvIBgJJSb6ufA5qWr4xCCQ_k.woff2",
+        "BngMUXZYTXPIvIBgJJSb6ufB5qWr4xCCQ_k.woff2",
+        "BngMUXZYTXPIvIBgJJSb6ufC5qWr4xCCQ_k.woff2",
+        "BngMUXZYTXPIvIBgJJSb6ufD5qWr4xCCQ_k.woff2",
+        "BngMUXZYTXPIvIBgJJSb6ufJ5qWr4xCCQ_k.woff2",
+        "BngMUXZYTXPIvIBgJJSb6ufN5qWr4xCC.woff2",
+        "BngMUXZYTXPIvIBgJJSb6ufO5qWr4xCCQ_k.woff2"
+      ]
+    },
+    {
+      "family": "Rock Salt",
+      "upstreamFamily": "Rock Salt",
+      "license": "APACHE2",
+      "licenseFile": "licenses/rocksalt/LICENSE.txt",
+      "source": "https://github.com/google/fonts/tree/main/apache/rocksalt",
+      "copyright": [
+        "Copyright (c) 2010 by Font Diner, Inc DBA Sideshow. All rights reserved."
+      ],
+      "files": [
+        "MwQ0bhv11fWD6QsAVOZrt0M6p7NGrQ.woff2"
+      ]
+    },
+    {
+      "family": "Sacramento",
+      "upstreamFamily": "Sacramento",
+      "license": "OFL",
+      "licenseFile": "licenses/sacramento/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/sacramento",
+      "copyright": [
+        "Copyright (c) 2012 by Brian J. Bonislawsky DBA Astigmatic (AOETI) (astigma@astigmatic.com), with Reserved Font Name \\'Sacramento\\'"
+      ],
+      "files": [
+        "buEzpo6gcdjy0EiZMBUG4C0f_f5Iai0.woff2",
+        "buEzpo6gcdjy0EiZMBUG4CMf_f5Iai0Ycw.woff2"
+      ]
+    },
+    {
+      "family": "Rubik",
+      "upstreamFamily": "Rubik",
+      "license": "OFL",
+      "licenseFile": "licenses/rubik/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/rubik",
+      "copyright": [
+        "Copyright 2015 The Rubik Project Authors (https://github.com/googlefonts/rubik)"
+      ],
+      "files": [
+        "iJWKBXyIfDnIV7nBrXyw023e.woff2",
+        "iJWKBXyIfDnIV7nDrXyw023e1Ik.woff2",
+        "iJWKBXyIfDnIV7nErXyw023e1Ik.woff2",
+        "iJWKBXyIfDnIV7nFrXyw023e1Ik.woff2",
+        "iJWKBXyIfDnIV7nMrXyw023e1Ik.woff2",
+        "iJWKBXyIfDnIV7nPrXyw023e1Ik.woff2"
+      ]
+    },
+    {
+      "family": "Space Grotesk",
+      "upstreamFamily": "Space Grotesk",
+      "license": "OFL",
+      "licenseFile": "licenses/spacegrotesk/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/spacegrotesk",
+      "copyright": [
+        "Copyright 2020 The Space Grotesk Project Authors (https://github.com/floriankarsten/space-grotesk)"
+      ],
+      "files": [
+        "V8mDoQDjQSkFtoMM3T6r8E7mPb54C_k3HqUtEw.woff2",
+        "V8mDoQDjQSkFtoMM3T6r8E7mPb94C_k3HqUtEw.woff2",
+        "V8mDoQDjQSkFtoMM3T6r8E7mPbF4C_k3HqU.woff2"
+      ]
+    },
+    {
+      "family": "Satisfy",
+      "upstreamFamily": "Satisfy",
+      "license": "APACHE2",
+      "licenseFile": "licenses/satisfy/LICENSE.txt",
+      "source": "https://github.com/google/fonts/tree/main/apache/satisfy",
+      "copyright": [
+        "Copyright (c) 2011 by Font Diner, Inc. All rights reserved."
+      ],
+      "files": [
+        "rP2Hp2yn6lkG50LoCZOIHTWEBlw.woff2"
+      ]
+    },
+    {
+      "family": "Staatliches",
+      "upstreamFamily": "Staatliches",
+      "license": "OFL",
+      "licenseFile": "licenses/staatliches/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/staatliches",
+      "copyright": [
+        "Copyright 2018 The Staatliches Project Authors (https://github.com/googlefonts/staatliches)"
+      ],
+      "files": [
+        "HI_OiY8KO6hCsQSoAPmtMYebvpCfOMPT.woff2",
+        "HI_OiY8KO6hCsQSoAPmtMYeVvpCfOMPTjMY.woff2"
+      ]
+    },
+    {
+      "family": "Space Mono",
+      "upstreamFamily": "Space Mono",
+      "license": "OFL",
+      "licenseFile": "licenses/spacemono/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/spacemono",
+      "copyright": [
+        "Copyright 2016 The Space Mono Project Authors (https://github.com/googlefonts/spacemono)"
+      ],
+      "files": [
+        "i7dMIFZifjKcF5UAWdDRaPpZUFqaHi6WZ3S_Yg.woff2",
+        "i7dMIFZifjKcF5UAWdDRaPpZUFuaHi6WZ3S_Yg.woff2",
+        "i7dMIFZifjKcF5UAWdDRaPpZUFWaHi6WZ3Q.woff2",
+        "i7dPIFZifjKcF5UAWdDRYE58RXi4EwSsbg.woff2",
+        "i7dPIFZifjKcF5UAWdDRYE98RXi4EwSsbg.woff2",
+        "i7dPIFZifjKcF5UAWdDRYEF8RXi4EwQ.woff2"
+      ]
+    },
+    {
+      "family": "Teko",
+      "upstreamFamily": "Teko",
+      "license": "OFL",
+      "licenseFile": "licenses/teko/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/teko",
+      "copyright": [
+        "Copyright 2023 The Teko Project Authors (https://www.github.com/googlefonts/teko)"
+      ],
+      "files": [
+        "LYjNdG7kmE0gfa19pQlCpVoXVQ.woff2",
+        "LYjNdG7kmE0gfaJ9pQlCpVoXVQ.woff2",
+        "LYjNdG7kmE0gfaN9pQlCpVo.woff2"
+      ]
+    },
+    {
+      "family": "Titan One",
+      "upstreamFamily": "Titan One",
+      "license": "OFL",
+      "licenseFile": "licenses/titanone/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/titanone",
+      "copyright": [
+        "Copyright (c) 2011 Rodrigo Fuenzalida (hello@rfuenzalida.com), with Reserved Font Name \\"
+      ],
+      "files": [
+        "mFTzWbsGxbbS_J5cQcjClDgm-khykw.woff2",
+        "mFTzWbsGxbbS_J5cQcjCmjgm-khyk-RW.woff2"
+      ]
+    },
+    {
+      "family": "Ubuntu",
+      "upstreamFamily": "Ubuntu",
+      "license": "UFL",
+      "licenseFile": "licenses/ubuntu/UFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ufl/ubuntu",
+      "copyright": [
+        "Copyright 2011 Canonical Ltd. Licensed under the Ubuntu Font Licence 1.0"
+      ],
+      "files": [
+        "4iCs6KVjbNBYlgoKcg72nU6AF7xm.woff2",
+        "4iCs6KVjbNBYlgoKcQ72nU6AF7xm.woff2",
+        "4iCs6KVjbNBYlgoKcw72nU6AF7xm.woff2",
+        "4iCs6KVjbNBYlgoKew72nU6AF7xm.woff2",
+        "4iCs6KVjbNBYlgoKfA72nU6AF7xm.woff2",
+        "4iCs6KVjbNBYlgoKfw72nU6AFw.woff2",
+        "4iCv6KVjbNBYlgoC1Czjs2yNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoC1CzjsGyNPYZvgw.woff2",
+        "4iCv6KVjbNBYlgoC1CzjtGyNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoC1CzjvGyNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoC1CzjvmyNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoC1CzjvWyNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoCjC3js2yNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoCjC3jsGyNPYZvgw.woff2",
+        "4iCv6KVjbNBYlgoCjC3jtGyNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoCjC3jvGyNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoCjC3jvmyNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoCjC3jvWyNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoCxCvjs2yNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoCxCvjsGyNPYZvgw.woff2",
+        "4iCv6KVjbNBYlgoCxCvjtGyNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoCxCvjvGyNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoCxCvjvmyNPYZvg7UI.woff2",
+        "4iCv6KVjbNBYlgoCxCvjvWyNPYZvg7UI.woff2"
+      ]
+    },
+    {
+      "family": "Work Sans",
+      "upstreamFamily": "Work Sans",
+      "license": "OFL",
+      "licenseFile": "licenses/worksans/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/worksans",
+      "copyright": [
+        "Copyright 2019 The Work Sans Project Authors (https://github.com/weiweihuanghuang/Work-Sans)"
+      ],
+      "files": [
+        "QGYsz_wNahGAdqQ43Rh_c6DptfpA4cD3.woff2",
+        "QGYsz_wNahGAdqQ43Rh_cqDptfpA4cD3.woff2",
+        "QGYsz_wNahGAdqQ43Rh_fKDptfpA4Q.woff2"
+      ]
+    },
+    {
+      "family": "Zilla Slab",
+      "upstreamFamily": "Zilla Slab",
+      "license": "OFL",
+      "licenseFile": "licenses/zillaslab/OFL.txt",
+      "source": "https://github.com/google/fonts/tree/main/ofl/zillaslab",
+      "copyright": [
+        "Copyright 2017, The Mozilla Foundation"
+      ],
+      "files": [
+        "dFa5ZfeM_74wlPZtksIFYoEf6H2pW3pwfa3Efg.woff2",
+        "dFa5ZfeM_74wlPZtksIFYoEf6HOpW3pwfa0.woff2",
+        "dFa5ZfeM_74wlPZtksIFYpEY6H2pW3pwfa3Efg.woff2",
+        "dFa5ZfeM_74wlPZtksIFYpEY6HOpW3pwfa0.woff2",
+        "dFa5ZfeM_74wlPZtksIFYskZ6H2pW3pwfa3Efg.woff2",
+        "dFa5ZfeM_74wlPZtksIFYskZ6HOpW3pwfa0.woff2",
+        "dFa5ZfeM_74wlPZtksIFYuUe6H2pW3pwfa3Efg.woff2",
+        "dFa5ZfeM_74wlPZtksIFYuUe6HOpW3pwfa0.woff2",
+        "dFa6ZfeM_74wlPZtksIFajo6_V6LVlA.woff2",
+        "dFa6ZfeM_74wlPZtksIFajQ6_V6LVlBKdA.woff2"
+      ]
+    },
+    {
+      "family": "Yellowtail",
+      "upstreamFamily": "Yellowtail",
+      "license": "APACHE2",
+      "licenseFile": "licenses/yellowtail/LICENSE.txt",
+      "source": "https://github.com/google/fonts/tree/main/apache/yellowtail",
+      "copyright": [
+        "Copyright (c) 2011 by Brian J. Bonislawsky DBA Astigmatic (AOETI). All rights reserved. Available under the Apache 2.0 licence. http://www.apache.org/licenses/LICENSE-2.0.html"
+      ],
+      "files": [
+        "OZpGg_pnoDtINPfRIlLohlvHwWL9f4k.woff2",
+        "OZpGg_pnoDtINPfRIlLohlXHwWL9f4nluA.woff2"
+      ]
+    }
+  ],
+  "additionalFonts": [
+    {
+      "family": "Helvetiker",
+      "source": "https://github.com/mrdoob/three.js/tree/dev/examples/fonts",
+      "license": "MgOpen font license embedded in the typeface metadata",
+      "licenseFile": "licenses/helvetiker/LICENSE.txt",
+      "copyright": [
+        "Copyright (c) Magenta ltd, 2004.",
+        "Copyright (c) Μagenta ltd, 2004"
+      ],
+      "files": [
+        "helvetiker_bold.typeface.json",
+        "helvetiker_regular.typeface.json"
+      ]
+    }
+  ]
+}

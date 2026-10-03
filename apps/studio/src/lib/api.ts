@@ -1,5 +1,5 @@
 /**
- * Studio API client (STUDIO_PLAN §34.2). Talks to the marketplace/studio Worker.
+ * Studio API client for the marketplace and studio Worker.
  * Dev identity is sent via headers (matches the API auth shim); production swaps
  * to cookie/JWT. Base URL is configurable via VITE_API_URL.
  */

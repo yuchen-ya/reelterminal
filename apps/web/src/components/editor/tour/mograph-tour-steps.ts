@@ -127,5 +127,5 @@ export const MOGRAPH_TOUR_STEPS: MoGraphTourStep[] = [
   },
 ];
 
-// Persisted localStorage key — legacy registry, value frozen (tour state).
+// Persisted localStorage key for tour state.
 export const MOGRAPH_TOUR_KEY = LEGACY_LS_MOGRAPH_TOUR_COMPLETE;

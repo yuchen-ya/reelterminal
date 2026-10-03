@@ -1,5 +1,5 @@
 /**
- * JobRegistry state-machine unit tests (audit/facade-v0.md contract #4):
+ * JobRegistry state-machine tests:
  * queued/running/done/error/cancelled transitions, terminal-state sealing,
  * and the no-artifact-on-failure invariant.
  */

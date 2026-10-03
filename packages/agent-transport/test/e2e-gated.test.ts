@@ -1,8 +1,8 @@
 /**
- * Chromium-gated E2E through the REAL `reelterminal-agent run` binary (the B.6
- * closed loop, Appendix B.6 example): import → edit → export → await →
+ * Chromium-gated E2E through the built `reelterminal-agent run` binary:
+ * import → edit → export → await →
  * verify, plus the cross-process persistence loop with pixels-adjacent
- * verification (Appendix D scenario shapes, expressed as workflows).
+ * verification.
  *
  * Every assertion here needs real Chromium + ffmpeg. When a preflight
  * fails the suite SKIPS with a printed reason (runtime-chromium gating

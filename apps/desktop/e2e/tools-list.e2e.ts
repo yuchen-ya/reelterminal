@@ -1,8 +1,8 @@
 /**
- * Legacy safety (D) — the live endpoint exposes the complete generated facade catalog
- * (ADR 0004 Decisions 4 + 9): no internal-registry tool (e.g. the legacy
- * desktop MCP's execute_action) leaks onto the external surface, and an
- * unknown tool name is a JSON-RPC protocol error, never a domain result.
+ * The live endpoint exposes the complete generated facade catalog: no
+ * internal-registry tool (e.g. the desktop MCP's execute_action) leaks onto
+ * the external surface, and an unknown tool name is a JSON-RPC protocol
+ * error, never a domain result.
  */
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { FACADE_TOOL_NAMES } from "@reelterminal/agent-facade";
@@ -11,7 +11,7 @@ import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
 import { createEvidence, type EvidenceRecord } from "./harness/evidence";
 import { createProjectViaUI, enableAgentSessionViaUI } from "./harness/ui";
 
-describe("legacy safety: tools/list is exactly the facade tool registry", () => {
+describe("tools/list is exactly the facade tool registry", () => {
   let launched: LaunchedApp;
   let agent: ExternalAgent;
   let evidence: EvidenceRecord;

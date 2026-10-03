@@ -198,11 +198,10 @@ describe("FfmpegArtifactVerifier", () => {
     ).rejects.toThrow();
   });
 
-  it("extractFrameRgba handles rasters above the old 16 MiB stdio cap (4K)", async () => {
+  it("extractFrameRgba handles 4K frames larger than 16 MiB", async () => {
     const binaries = await resolveFfmpegBinaries();
     if (!binaries) throw new Error("ffmpeg required for this test");
-    // A solid-red 3840x2160 clip: 33,177,600 RGBA bytes per frame — over the
-    // old 16 MiB stdout cap that silently truncated extraction.
+    // A solid-red 3840x2160 clip produces 33,177,600 RGBA bytes per frame.
     const bigPath = path.join(workDir, "red-4k.mp4");
     const { runProcess } = await import("./node/ffmpeg");
     await runProcess(binaries.ffmpeg, [

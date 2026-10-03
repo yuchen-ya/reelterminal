@@ -1,9 +1,9 @@
 import { reviewVideo, videoReviewPreflight } from "./video-review";
 import { analyzeLocalAudio, analyzeSilence, analyzeBeatGrid, audioAnalysisPreflight } from "./audio-analysis";
 /**
- * AgentFacadeSession — the Slice-1 in-process facade.
+ * Core in-process agent facade session.
  *
- * Guarantees (audit/facade-v0.md contracts #1–#3, #5):
+ * Guarantees:
  *  - Project is the canonical state; all mutations go through ONE serialized
  *    execution lane (promise-chained), never interleaved.
  *  - Every mutating verb runs as a snapshot transaction: ops are applied to a
@@ -59,7 +59,7 @@ import {
   pendingArtifactPath,
   publishArtifact,
 } from "./inspection-artifacts";
-import { JobRegistry, jobStatusView } from "./jobs";
+import { cancelExportWithin, JobRegistry, jobStatusView } from "./jobs";
 import { ProjectChangeJournal } from "./project-changes";
 import { queryTimeline } from "./timeline-query";
 import { validateEditPlan } from "./edit-validation";
@@ -260,7 +260,7 @@ export interface AgentFacadeConfig {
   readonly mediaRoots?: readonly string[];
   /**
    * Absolute roots that project.open / project.save may read and write
-   * checkpoint files under (ADR 0003 Decision 10.1). The transport
+   * checkpoint files under. The transport
    * canonicalizes them to realpath at startup; the facade treats them as
    * opaque containment roots exactly like mediaRoots. Default: none —
    * both persistence verbs then fail UNSUPPORTED.
@@ -275,9 +275,7 @@ export interface AgentFacadeConfig {
    */
   readonly deliveryRoots?: readonly string[];
   /**
-   * Dormant Slice-1 seam, kept for contract stability. Injecting an adapter
-   * changes NOTHING observable: no facade verb consumes it and it flips no
-   * capability (see render/adapter.ts and capabilities.ts).
+   * No facade verb consumes this adapter or derives a capability from it.
    */
   readonly renderAdapter?: ProjectRenderAdapter;
   /**
@@ -287,16 +285,16 @@ export interface AgentFacadeConfig {
    * deliveredTo location inside a delivery root's jobs/<slug>/output dir.
    */
   readonly artifactRoot?: string;
-  /** Slice-1b preview.render_frame backing (independent capability). */
+  /** Provider for preview.render_frame. */
   readonly renderProvider?: RenderProvider;
-  /** Slice-1b export.start backing (independent capability). */
+  /** Provider for export.start. */
   readonly exportProvider?: ExportProvider;
-  /** Slice-1b verify.artifact backing (independent capability). */
+  /** Provider for verify.artifact. */
   readonly artifactVerifier?: ArtifactVerifier;
 }
 
-// The per-verb param declarations are the SINGLE hand-maintained source
-// (ADR 0003 Decision 4): validation below and the emitted draft-2020-12
+// The per-verb parameter declarations are the single maintained source;
+// validation below and the emitted draft-2020-12
 // JSON Schemas (jsonschema.ts) both derive from them.
 
 /** Max media file size accepted for Chromium reads (2 GiB safety valve). */
@@ -506,7 +504,7 @@ export class AgentFacadeSession {
   }
 
   /**
-   * editor.get_context (ADR 0004 Decision 4) — headless honesty: there is
+   * editor.get_context — headless honesty: there is
    * no editor, so every context field is null/empty and contextAvailable is
    * false. Only the project revision and identity are real (read from the
    * session's own state); windowId is always null — never fabricated.
@@ -634,7 +632,7 @@ export class AgentFacadeSession {
       if (this.project) {
         throw new FacadeError(
           "CONFLICT",
-          "project.create: this session already has an open project — project.create is a single-initialization lifecycle verb and Slice 1 provides no replace/reset",
+          "project.create: this session already has an open project; the facade has no replace/reset verb",
         );
       }
 
@@ -1351,7 +1349,7 @@ export class AgentFacadeSession {
         "edit.apply params",
       );
       if (!this.project) return this.noProject();
-      // ADR 0004 Decision 4: the context CAS exists only where an editor
+      // The context CAS exists only where an editor
       // context exists. Headless has none — reject honestly rather than
       // silently ignoring a guard the agent believes protects it.
       if (valid.expectedContextRevision !== undefined) {
@@ -1444,7 +1442,7 @@ export class AgentFacadeSession {
     });
   }
 
-  /* --------------------- Slice-1b: preview/export --------------------- */
+  /* --------------------- Preview and export --------------------------- */
 
   /**
    * preview.render_frame — rasterize ONE real PNG frame through the
@@ -2353,12 +2351,7 @@ export class AgentFacadeSession {
         // The cancel path must never wedge the session's serialized lane:
         // a provider that stops answering yields a bounded wait; the cancel
         // request stays registered and the job still settles via callbacks.
-        await Promise.race([
-          provider.cancel(valid.jobId),
-          new Promise<"timeout">((resolveTimeout) =>
-            setTimeout(() => resolveTimeout("timeout" as const), 10_000),
-          ),
-        ]);
+        await cancelExportWithin(provider, valid.jobId);
       } catch (error) {
         throw new FacadeError(
           "JOB_FAILED",

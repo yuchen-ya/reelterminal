@@ -6,6 +6,8 @@ import {
   createEmptyCreationState,
   getActiveCreationScene,
   normalizeCreationState,
+  removeCreationAsset,
+  removeCreationSceneObject,
   summarizeCreationState,
   validateCreationState,
 } from "./runtime";
@@ -263,6 +265,96 @@ describe("creation runtime", () => {
         "RENDER_BINDING_OBJECT_NOT_FOUND",
       ]),
     );
+  });
+
+  it("cleans scene references when assets or objects are removed", () => {
+    const parent = createCreationSceneObject({
+      id: "object-parent",
+      name: "Parent",
+      assetId: "asset-phone",
+    });
+    const child = createCreationSceneObject({
+      id: "object-child",
+      name: "Child",
+      assetId: "asset-child",
+      parentId: parent.id,
+    });
+    const scene = {
+      ...createCreationScene({ id: "scene-bound", name: "Bound scene", now: 1 }),
+      objects: [parent, child],
+      animations: [
+        {
+          id: "clip",
+          name: "Object motion",
+          duration: 1,
+          tracks: [
+            {
+              id: "track-parent",
+              targetId: parent.id,
+              channel: "position" as const,
+              keyframes: [
+                { time: 0, value: vec3(), easing: "linear" as const },
+                { time: 1, value: vec3(1, 0, 0), easing: "linear" as const },
+              ],
+            },
+            {
+              id: "track-child",
+              targetId: child.id,
+              channel: "position" as const,
+              keyframes: [
+                { time: 0, value: vec3(), easing: "linear" as const },
+                { time: 1, value: vec3(0, 1, 0), easing: "linear" as const },
+              ],
+            },
+          ],
+        },
+      ],
+      renderBindings: [
+        {
+          id: "binding",
+          kind: "motion-scene3d" as const,
+          compositionId: "composition",
+          layerId: "layer",
+          objectBindings: [
+            { sceneObjectId: parent.id, renderObjectId: "render-parent" },
+            { sceneObjectId: child.id, renderObjectId: "render-child" },
+          ],
+          createdAt: 1,
+          modifiedAt: 1,
+        },
+      ],
+    };
+    const state: CreationProjectState = {
+      ...createEmptyCreationState(),
+      assets: [asset(), asset("asset-child")],
+      scenes: [scene],
+      activeSceneId: scene.id,
+    };
+
+    const afterAssetRemoval = removeCreationAsset(state, "asset-phone");
+    const sceneAfterAssetRemoval = afterAssetRemoval.scenes[0]!;
+    expect(sceneAfterAssetRemoval.objects).toEqual([
+      { ...child, parentId: undefined },
+    ]);
+    expect(sceneAfterAssetRemoval.animations[0]?.tracks.map((track) => track.targetId)).toEqual([
+      child.id,
+    ]);
+    expect(sceneAfterAssetRemoval.renderBindings[0]?.objectBindings).toEqual([
+      { sceneObjectId: child.id, renderObjectId: "render-child" },
+    ]);
+    expect(validateCreationState(afterAssetRemoval)).toEqual([]);
+
+    const afterObjectRemoval = removeCreationSceneObject(
+      afterAssetRemoval,
+      scene.id,
+      child.id,
+      2,
+    );
+    const sceneAfterObjectRemoval = afterObjectRemoval.scenes[0]!;
+    expect(sceneAfterObjectRemoval.objects).toEqual([]);
+    expect(sceneAfterObjectRemoval.animations[0]?.tracks).toEqual([]);
+    expect(sceneAfterObjectRemoval.renderBindings[0]?.objectBindings).toEqual([]);
+    expect(validateCreationState(afterObjectRemoval)).toEqual([]);
   });
 
   it("normalizes partially persisted creation state", () => {

@@ -1,7 +1,7 @@
 /**
  * Dependency-free SHA-256 (hex) so checksums are deterministic and identical
  * across browser (studio) and Node (validator/CI) without Web Crypto's async
- * surface. Used for .fxpkg artifact checksums (STUDIO_PLAN §7) and cache keys.
+ * surface. Used for .fxpkg checksums and cache keys.
  */
 
 const K = new Uint32Array([
@@ -79,7 +79,7 @@ export function sha256Prefixed(input: string | Uint8Array): string {
 
 const BLOCK = 64;
 
-/** HMAC-SHA256 (hex). Used to seal marketplace events (STUDIO_PLAN §41.5). */
+/** HMAC-SHA256 (hex) for marketplace event signatures. */
 export function hmacSha256Hex(key: string | Uint8Array, message: string | Uint8Array): string {
   const keyBytes = typeof key === "string" ? new TextEncoder().encode(key) : key;
   const msgBytes = typeof message === "string" ? new TextEncoder().encode(message) : message;

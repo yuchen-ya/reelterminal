@@ -1,5 +1,5 @@
 /**
- * Slice-1b capability provider interfaces (ADR 0002 decision 1).
+ * Capability provider interfaces.
  *
  * The facade stays pure Node and transport-agnostic: it defines the
  * contracts, a runtime package (e.g. @reelterminal/runtime-chromium) supplies the

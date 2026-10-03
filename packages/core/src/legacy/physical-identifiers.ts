@@ -1,37 +1,8 @@
 /**
- * Central registry of LEGACY PHYSICAL IDENTIFIERS (N04).
- *
- * These are the persisted, on-disk / in-browser identifiers inherited from the
- * upstream OpenReel codebase: IndexedDB database names, Service Worker cache
- * names, localStorage keys, the agent checkpoint format string, the GLB/GLTF
- * generator string written into exported assets, and the Blender object names
- * embedded in user .blend assets by the rigging sidecar.
- *
- * WHY THE VALUES MUST NOT CHANGE
- * ------------------------------
- * Renaming any of these values orphans existing user data: projects, autosave
- * slots, material libraries, presets, fonts, settings and caches would become
- * unreadable, old Service Worker caches would stop matching cleanup logic, and
- * previously exported/embedded assets would lose their provenance marker.
- * This implements rules doc `docs/NAMING-AND-COMPATIBILITY.md` §4
- * "持久化保留为 legacy" and §5 class 4 (legacy 持久化标识). No physical
- * storage migration exists in this round; introducing one requires a reviewed
- * per-item migration design first (detect → copy → verify → switch → recover).
- *
- * RULES FOR THIS MODULE
- * ---------------------
- * - Values are frozen: every constant must stay byte-identical to the
- *   historical literal it names. A drift test
- *   (`packages/core/src/legacy/physical-identifiers.test.ts`) asserts each
- *   constant against a hardcoded expected literal; changing a value fails it.
- * - NEW identifiers (new keys, new caches, new databases) must use
- *   `reelterminal` / `ReelTerminal` naming and do NOT belong here.
- * - Consumers import these constants instead of repeating the literals, so
- *   the registry is the single source of truth for grep and review.
- * - `apps/web/public/sw.js` and `apps/image/public/sw.js` are standalone
- *   plain-JS files and cannot import this module; their cache-name literals
- *   carry a comment pointing here and are pinned by source-reading drift
- *   tests. Keep the two in sync.
+ * Persisted storage keys, cache names, format markers, and embedded asset names.
+ * Keep values stable so saved data and asset round trips remain readable.
+ * Consumers import these constants; standalone service workers use matching literals.
+ * New identifiers use ReelTerminal naming.
  */
 
 /* ------------------------------------------------------------------------- */
@@ -111,8 +82,7 @@ export const LEGACY_GEOMETRY_GENERATOR = "openreel-cpu-geometry-kernel";
 /**
  * Blender humanoid object name created by the rigging sidecar
  * (`apps/desktop/src/main/sidecar/rigging-backend.ts` `--name` default).
- * Embeds into user .blend assets; renaming breaks round-trip recognition of
- * previously rigged characters.
+ * Identifies humanoids in .blend assets for rigging round trips.
  */
 export const LEGACY_RIGGING_HUMANOID_NAME = "OpenReelHumanoid";
 

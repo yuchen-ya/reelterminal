@@ -102,7 +102,7 @@ export class ServeClient {
   }
 
   /** MCP handshake; returns the initialize result. */
-  async initialize({ clientName = "slice2-e2e-simulated-mcp" } = {}) {
+  async initialize({ clientName = "reelterminal-e2e-simulated-mcp" } = {}) {
     const id = this.nextId++;
     const request = {
       jsonrpc: "2.0",

@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
- * highlight-service used to read VITE_CLOUD_API_URL directly at module
- * scope. It now takes its base URL from the central endpoint registry,
- * so the URL follows the shared overrides (and the dev/prod switch).
+ * The service takes its base URL from the central endpoint registry,
+ * including shared environment overrides and the dev/prod switch.
  * The registry reads env at module scope, hence the resetModules +
  * dynamic import pattern; the core analyzer is mocked out because the
  * audio graph is irrelevant to URL formation. The real CloudRequestError
@@ -44,7 +43,7 @@ afterEach(() => {
   clearCloudEnv();
 });
 
-describe("highlight-service URL registry migration", () => {
+describe("highlight-service URL configuration", () => {
   it("posts highlights to REELTERMINAL_CLOUD_URL, honoring VITE_OPENREEL_CLOUD_URL", async () => {
     clearCloudEnv();
     vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://selfhosted.example");

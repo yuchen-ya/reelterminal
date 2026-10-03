@@ -62,8 +62,10 @@ const req = (
 const undoSize = (): number =>
   useProjectStore.getState().actionExecutor.getHistory().getUndoStackSize();
 
-describe("live-bridge (ADR 0004 Decision 1 seam)", () => {
+describe("live-bridge", () => {
   beforeEach(() => {
+    mockImportFile.mockReset();
+    mockSaveMediaBlob.mockClear();
     mockImportFile.mockImplementation(async (file: File) => ({
       success: true,
       media: {

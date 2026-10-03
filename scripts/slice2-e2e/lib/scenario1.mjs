@@ -1,14 +1,4 @@
-/**
- * Appendix D scenario 1 — `slice2-transport-e2e`, executed COMPLETELY over
- * two paths:
- *   (a) run  — the runner authors Appendix-B.6 JSONL workflows and invokes
- *              the real `agent-video run` (Pi-class; negative probes are
- *              separate invocations or one --keep-going run whose nonzero
- *              exit is the expected outcome).
- *   (b) mcp  — a scripted stdio MCP client over the real `serve`
- *              (label: simulated).
- * Every step letter of Appendix D maps to machine-checked assertions.
- */
+/** Check project creation, media import, editing, preview, and export. */
 import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -67,22 +57,13 @@ const VERIFY_EXPECT = {
   width: PROJECT_SETTINGS.width,
   height: PROJECT_SETTINGS.height,
   durationSec: CLIP_DURATION_SEC,
-  // The ADR's literal 1/30 s is unachievable: the muxed silent AAC track
-  // always extends the probed FORMAT duration to ~5.077 s (finding 2 in
-  // REPORT.md). 0.12 s is the runtime's own "±1 frame + mux epsilon"
-  // tolerance (providers.ts ArtifactProbeExpectation, slice-1b e2e).
+  // Container duration includes AAC encoder priming and padding.
   durationToleranceSec: 0.12,
 };
 
-// Every export_start passes an explicit bitrate that keeps the MP4 under
-// mediabunny's 4 MiB StreamTarget chunk size. That guard-rail dates from
-// finding 1 (PartFileWriter overcount, REPORT.md) — FIXED in 1866110, so
-// fresh resolution runs set SLICE2_E2E_FORCE_MULTICHUNK=1 to pin 8000 kbps
-// (~5 MB, multi-chunk with mid-stream rewrites: the exact finding-1 shape,
-// now expected to pass). The default 1080p bitrate (~7465 kbps => ~4.66 MB)
-// is also multi-chunk; 4000 kbps (~2.5 MB) stays single-chunk. ADR Appendix
-// D does not pin bitrate.
-const EXPORT_SETTINGS = process.env.SLICE2_E2E_FORCE_MULTICHUNK === "1"
+// The default bitrate keeps exports within the runtime's chunk size. Set the
+// environment variable to exercise multi-chunk writes.
+const EXPORT_SETTINGS = process.env.REELTERMINAL_E2E_FORCE_MULTICHUNK === "1"
   ? { videoBitrateKbps: 8000 }
   : { videoBitrateKbps: 4000 };
 
@@ -184,8 +165,7 @@ export async function scenario1Run({ env, recorder, cliPath }) {
   await recorder.step("4", "media_import ⇒ revision 1, mediaId, duration >= 5 s", importChecks(importValue));
   await recorder.step("5", "edit_apply ⇒ revision 2 (0→1→2 arithmetic)", editChecks(editValue));
 
-  // Step 6 — honesty probes, each expected-failing probe its OWN run
-  // invocation (Appendix D step 6, Pi-class multi-invocation rule).
+  // Run each expected-failing validation probe in its own invocation.
   // The file must EXIST for the probe to reach the containment verdict: a
   // nonexistent path is classified "cannot be read" before the roots check.
   const outsidePath = path.join(env.scratchDir, "outside.mp4");

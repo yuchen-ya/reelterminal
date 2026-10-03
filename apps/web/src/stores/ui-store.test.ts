@@ -17,8 +17,8 @@ describe("ui-store inspectorActiveTab", () => {
   });
 });
 
-describe("ui-store conversation panel migration", () => {
-  it("drops obsolete chat panel preferences while keeping editor panel preferences", () => {
+describe("ui-store panel preferences", () => {
+  it("removes unsupported conversation panels and preserves editor panels", () => {
     const migrated = useUIStore.persist.getOptions().migrate?.(
       {
         panels: {

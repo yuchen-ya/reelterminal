@@ -7,7 +7,7 @@ export interface HistoryEntry {
   readonly description: string;
   readonly groupId?: string;
   /**
-   * Undo-unit owner (ADR 0004 Decision 12): "agent" for AI batches, undefined
+   * Undo-unit owner: "agent" for AI batches, undefined
    * for human edits. Open groups are owner-scoped, so a human edit can never
    * join an Agent undo unit (and vice versa), even when their gestures overlap.
    */
@@ -169,8 +169,7 @@ export class ActionHistory {
   private maxHistorySize: number;
   /**
    * Groups may overlap when a live Agent batch lands during a human gesture.
-   * Keep them as owner-scoped frames instead of one global slot: replacing a
-   * human frame with an Agent frame used to strand the tail of the gesture.
+   * Owner-scoped frames keep each gesture's actions in its own history group.
    */
   private openGroups: OpenActionGroup[] = [];
   private activeOwner: string | undefined = undefined;
@@ -581,7 +580,7 @@ export class ActionHistory {
   }
 
   /**
-   * Owner of the top undo entry (ADR 0004 Decision 12), without popping it.
+   * Owner of the top undo entry, without popping it.
    * Agent rollback loops check this before each undo step so a human's
    * interleaved undo unit is never eaten; undefined = human/default owner or
    * an empty stack.

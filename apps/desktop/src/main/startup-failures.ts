@@ -14,14 +14,8 @@ const ERR_ABORTED = -3;
 const MAX_AUTO_RETRIES = 2;
 
 /**
- * Handler for a rejected `app.whenReady()` chain: host construction
- * can throw before `createWindow()` (e.g. `mkdirSync` on an unwritable
- * userData/Videos path), which used to leave a live process with no window and
- * no dialog. Reports, tells the user, and exits with a non-zero code so the
- * failure is never silent.
- *
- * English-only copy: the main process has no i18n; every existing native
- * dialog in this process (lifecycle.ts) is English.
+ * Shows startup failures in a native dialog and exits with a nonzero code.
+ * Native dialogs use English because the main process has no i18n runtime.
  */
 export function handleStartupFailure(reason: unknown): void {
   const { message } = describeError(reason);
@@ -67,13 +61,8 @@ function loadErrorPageUrl(errorCode: number, errorDescription: string): string {
 }
 
 /**
- * Recovers from main-frame load failures of the editor window (missing
- * renderer assets, AV quarantine, protocol handler faults used to leave a
- * permanent white screen with only Ctrl+R). Registers `did-fail-load`
- * plus a passive `will-navigate` reset that never blocks navigation; the
- * success path is untouched. Auto-retries are limited, after which
- * an inline error page with a working Retry action is shown (manual retries
- * are unlimited).
+ * Retries main-frame load failures twice, then shows an inline error page
+ * with a manual Retry action. Renderer navigation resets the error-page guard.
  */
 export function installLoadFailureRecovery(win: BrowserWindow): void {
   const contents = win.webContents;
@@ -115,15 +104,8 @@ export function installLoadFailureRecovery(win: BrowserWindow): void {
 }
 
 /**
- * Honest notification when the preload bridge fails to inject:
- * without `window.reelterminal` the renderer silently falls back to the browser
- * shell, so the user used to get a window that looked normal while native
- * menu, native export, updates, and lifecycle flush were all gone. This only
- * informs — it creates no substitute desktop API.
- *
- * `preload-error` fires both when the preload file cannot be loaded (missing
- * or quarantined) and when it throws, covering the installed-build corruption
- * cases. English-only copy: the main process has no i18n.
+ * Warns when the preload bridge fails and native desktop features are unavailable.
+ * The main process displays native dialogs in English.
  */
 export function installPreloadFailureNotice(win: BrowserWindow): void {
   let notified = false;

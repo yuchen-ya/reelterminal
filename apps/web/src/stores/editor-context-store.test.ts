@@ -12,7 +12,7 @@ import { getProjectRevision } from "./project-store";
 
 const revision = (): number => useEditorContextStore.getState().contextRevision;
 
-describe("editor-context-store (ADR 0004 Decision 4)", () => {
+describe("editor-context-store", () => {
   beforeEach(() => {
     useTimelineStore.getState().seekTo(0);
     useUIStore.getState().clearSelection();

@@ -16,7 +16,7 @@
 
 import { LEGACY_PROJECT_DB_NAME } from "../legacy-storage-keys";
 
-// Persisted database name — legacy registry, value frozen (user projects).
+// Persisted database name for user projects.
 const PROJECT_DB_NAME = LEGACY_PROJECT_DB_NAME;
 const PROJECTS_STORE = "projects";
 

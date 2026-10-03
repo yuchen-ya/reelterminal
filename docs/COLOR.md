@@ -56,9 +56,6 @@ metadata re-label is never used to "fix" a pixel conversion.
   **BT.709 limited** with explicit flags
   (`scale=out_color_matrix=bt709:out_range=tv` +
   x264/x265 `colorprim/transfer/colormatrix=bt709` + `-color_range tv`).
-  Historically these routes converted through swscale's default BT.601 matrix
-  and wrote **no VUI at all**, leaving every downstream player to guess — a
-  real pixel + metadata double error on saturated colors.
 
 ### Out of scope (reported, not faked)
 

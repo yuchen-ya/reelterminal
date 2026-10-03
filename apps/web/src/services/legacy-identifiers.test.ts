@@ -1,20 +1,4 @@
-/**
- * Legacy-identifier regression fixtures (N04) — IndexedDB part.
- *
- * WHAT THIS IS: proof that databases written under the LEGACY persisted
- * names (see packages/core/src/legacy/physical-identifiers.ts) remain fully
- * readable and writable by the current code — i.e. old user data survives
- * the branding migration because the physical identifiers were kept, not
- * migrated.
- *
- * WHAT THIS IS NOT: this is NOT a data-migration test. No migration exists
- * in this round (docs/NAMING-AND-COMPATIBILITY.md §4: physical identifiers
- * stay as legacy; any migration requires a reviewed design first).
- *
- * Node environment (not jsdom): jsdom declares a non-configurable
- * `indexedDB` global that cannot be replaced. Each round trip deliberately
- * re-opens the database through a NEW storage instance to simulate
- * "close app → reopen app".
+/** Verify IndexedDB access through the persisted database names.
  *
  * @vitest-environment node
  */
@@ -49,7 +33,7 @@ import { PRESET_PAYLOAD_SCHEMA_VERSION } from "@reelterminal/core/presets/types"
 import type { AgentMediaTaskRecord } from "./agent-media-tasks/types";
 
 /** The registry must be what the web modules actually use (no silent fork). */
-describe("web storage modules bind to the legacy registry names", () => {
+describe("web storage modules use the registered database names", () => {
   it("material library / custom presets / agent tasks DB names", () => {
     expect(MATERIAL_LIBRARY_DB_NAME).toBe(LEGACY_MATERIAL_LIBRARY_DB_NAME);
     expect(MATERIAL_LIBRARY_DB_NAME).toBe("openreel-material-library");

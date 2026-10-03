@@ -5,7 +5,7 @@ import {
 
 const CUSTOM_FONT_EVENT = "reelterminal:custom-fonts-updated";
 
-// Persisted database name — legacy registry, value frozen (user font uploads).
+// Persisted database name for user font uploads.
 const DB_NAME = LEGACY_CUSTOM_FONTS_DB_NAME;
 const DB_VERSION = 1;
 const STORE_FONTS = "fonts";

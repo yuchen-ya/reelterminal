@@ -1,7 +1,7 @@
 /**
- * Repeatable Chromium runtime probe (ADR 0002 #3).
+ * Chromium runtime probe.
  *
- * Records machine-readable facts about every primitive Slice 1b depends on —
+ * Records machine-readable facts about the runtime primitives —
  * OffscreenCanvas (+ PNG encode smoke), VideoDecoder per codec, VideoEncoder
  * per codec × hardware preference, AudioEncoder AAC, mediabunny loadability,
  * ExportEngine initialization, the exact `getFirstEncodableVideoCodec(["avc"])`

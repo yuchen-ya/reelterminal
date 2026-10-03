@@ -75,8 +75,7 @@ function buildGlbJson(mesh: Mesh, binary: MeshBinary, options: MeshToGltfOptions
   const bounds = computeMeshBounds(mesh.positions);
   const vertexCount = mesh.positions.length / 3;
   const json = {
-    // Legacy generator string embedded in exported assets — value frozen for
-    // provenance (legacy registry, docs/NAMING §5.4).
+    // Generator identifier embedded in exported assets.
     asset: { version: "2.0", generator: LEGACY_GEOMETRY_GENERATOR },
     scene: 0,
     scenes: [{ nodes: [0] }],

@@ -172,7 +172,7 @@ export type OpenReelUpdaterStatus =
   | { state: "downloaded"; version: string }
   | { state: "error"; message: string };
 
-/* ---- Live collaboration (ADR 0004) --------------------------------------- */
+/* ---- Live collaboration --------------------------------------- */
 
 /* Compatibility aliases for existing renderer imports. Definitions live in
  * @reelterminal/agent-facade/desktop-protocol. */
@@ -401,7 +401,7 @@ interface ReelTerminalDesktopBridge {
         install(): Promise<void>;
       };
       crash: {
-        report(payload: { message: string; stack?: string; type?: string; context?: unknown }): void;
+        report(payload: { type?: string }): void;
       };
       media: {
         generateProxy(args: { srcPath: string; preset: "low" | "medium" | "high" }): Promise<{ outPath: string }>;
@@ -430,7 +430,7 @@ interface ReelTerminalDesktopBridge {
           args: OpenReelRigHumanoidModelArgs,
         ): Promise<OpenReelRigHumanoidModelResult>;
       };
-      /** Main→renderer live-store requests (ADR 0004 Decision 1 seam). */
+      /** Main→renderer live-store requests. */
       liveBridge?: DesktopLiveBridgeApi;
       /** Main→renderer push: collaboration status + current agent action. */
       liveEvents?: DesktopLiveEventsApi;

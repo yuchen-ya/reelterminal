@@ -30,22 +30,22 @@
     "build:wasm:beat": "asc src/wasm/beat-detection/assembly/index.ts -o src/wasm/beat-detection/build/beat.wasm --optimize --runtime stub"
   },
   "devDependencies": {
+    "@types/node": "^20.14.0",
     "@types/three": "^0.182.0",
-    "assemblyscript": "^0.27.0",
-    "fast-check": "^3.19.0",
-    "typescript": "^5.4.5",
-    "vitest": "^1.6.0"
+    "assemblyscript": "^0.27.37",
+    "fast-check": "^3.23.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@mediapipe/tasks-vision": "^0.10.35",
-    "@paper-design/shaders": "^0.0.76",
-    "gsap": "^3.14.2",
-    "immer": "^11.0.1",
-    "mediabunny": "^1.25.3",
+    "@paper-design/shaders": "0.0.72",
+    "immer": "^11.1.18",
+    "mediabunny": "^1.55.4",
     "polygon-clipping": "0.15.7",
     "three": "^0.182.0",
-    "uuid": "^13.0.0"
+    "uuid": "^13.0.2"
   }
 }

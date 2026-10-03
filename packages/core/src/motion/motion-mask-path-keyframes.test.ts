@@ -203,7 +203,9 @@ describe("mask path keyframes", () => {
       closePath: vi.fn(),
     };
     const originalPath2d = globalThis.Path2D;
-    (globalThis as { Path2D: unknown }).Path2D = vi.fn(() => path2d);
+    (globalThis as { Path2D: unknown }).Path2D = vi.fn(function () {
+      return path2d;
+    });
     const ctx = { clip: vi.fn() } as unknown as CanvasRenderingContext2D;
     try {
       applyMotionLayerMasksToCanvas(ctx, evaluated);

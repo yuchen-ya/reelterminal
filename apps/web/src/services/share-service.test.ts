@@ -53,13 +53,15 @@ class FakeXHR {
 
 describe("share-service cloud opt-out", () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
-  let xhrCtor: Mock<[], FakeXHR>;
+  let xhrCtor: Mock<() => FakeXHR>;
 
   beforeEach(() => {
     FakeXHR.instances = [];
     fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
-    xhrCtor = vi.fn(() => new FakeXHR());
+    xhrCtor = vi.fn(function () {
+      return new FakeXHR();
+    });
     vi.stubGlobal("XMLHttpRequest", xhrCtor);
   });
 

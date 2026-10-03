@@ -1,10 +1,9 @@
 /**
  * Harness shim for core's `media/extract-audio` module.
  *
- * The product module falls back to ffmpeg.wasm (@ffmpeg/core) in browsers;
- * those wasm assets do not exist inside the minimal harness page (and must
- * never be committed/downloaded per the Slice-1b constraints), so the wasm
- * load deadlocks the export. This shim reproduces the module's exact
+ * The product module falls back to ffmpeg.wasm (@ffmpeg/core) in browsers.
+ * Those wasm assets are not bundled in the harness page, so this shim
+ * implements the same
  * contract over mediabunny instead:
  *
  *   - no audio track (or undecodable one) → error NAMED "NoAudioStreamError"

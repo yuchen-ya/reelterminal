@@ -137,6 +137,7 @@ vi.mock("../services/auto-save", () => ({
   autoSaveManager: {
     start: vi.fn(),
     markDirty: vi.fn(),
+    hasUnsavedChanges: vi.fn(() => false),
     checkForRecovery: vi.fn().mockResolvedValue([]),
     recover: vi.fn().mockResolvedValue(null),
     startAutoSave: vi.fn(),

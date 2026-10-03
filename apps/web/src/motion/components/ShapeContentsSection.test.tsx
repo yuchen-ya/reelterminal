@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
   fireEvent,
@@ -92,6 +92,9 @@ function renderSection(layer: MotionShapeLayer) {
 }
 
 describe("ShapeContentsSection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
   afterEach(() => {
     cleanup();
     useProjectStore.setState({ hasOpenProject: false });

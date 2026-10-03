@@ -62,8 +62,7 @@ export const useSettingsStore = create<SettingsState>()(
         closeSettings: () => set({ settingsOpen: false }),
       }),
       {
-        // Persisted storage name — legacy registry, value frozen (user
-        // settings). See packages/core/src/legacy/physical-identifiers.ts.
+        // Persisted storage identifier for user settings.
         name: LEGACY_LS_SETTINGS,
         version: 3,
         migrate: (persisted, version) => {

@@ -1,9 +1,4 @@
-/**
- * `agent-video doctor` driver (Appendix D step 1). Doctor reads ONLY the
- * OPENREEL_AVE_* env configuration, so it is spawned with the scenario's
- * roots in its environment and no root flags. One single-line JSON report
- * arrives on stdout; stderr carries the JSON logs.
- */
+/** Run doctor with isolated roots and capture its JSON report. */
 import { spawn } from "node:child_process";
 
 export async function runDoctor({ cliPath, env, recorder, label }) {
@@ -36,7 +31,7 @@ export async function runDoctor({ cliPath, env, recorder, label }) {
   return { exitCode, report };
 }
 
-/** Standard doctor assertions (Appendix D step 1 + honesty sections). */
+/** Check the doctor report against the test environment. */
 export function doctorChecks({ exitCode, report, env }) {
   const roots = report.config?.roots ?? {};
   return [

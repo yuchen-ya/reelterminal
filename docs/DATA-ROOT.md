@@ -19,18 +19,15 @@ Storage**, which is also where it can be changed.
   logs/                            reserved
 ```
 
-Default root: `ReelTerminal` under the OS Videos folder (a media app's data
-belongs next to media; it also keeps the legacy Agent workspace on the same
-volume so adopting it is an atomic rename). The root is deliberately NOT
-under the installation directory — uninstall must never be the thing that
-deletes user data.
+Default root: `ReelTerminal` under the OS Videos folder. The root is outside
+the installation directory so uninstall does not remove user data.
 
 ## Choosing a location
 
 Precedence (see `apps/desktop/src/shared/data-root.ts`):
 
-1. `REELTERMINAL_DATA_ROOT` — absolute path, no legacy alias (new knob). An
-   empty or relative value is ignored, same convention as
+1. `REELTERMINAL_DATA_ROOT` — absolute path. An empty or relative value is
+   ignored, same convention as
    `REELTERMINAL_AGENT_WORKSPACE_ROOT`.
 2. The pointer file `<machineConfigDir>/data-root.json` written by
    Settings → Storage ("Change data folder"). `<machineConfigDir>` is
@@ -43,30 +40,25 @@ Precedence (see `apps/desktop/src/shared/data-root.ts`):
 `REELTERMINAL_USER_DATA_DIR` remains the isolated-test seam: when set, the
 data-root machinery is bypassed entirely and userData points where it says.
 
-## Migration
+## Moving the data root
 
-Data moves only at startup, **before the Chromium profile is first touched**
-(never a live copy of in-use data). Sources are, in order: the previous root
-recorded in the pointer when the user changed the location, then the
-pre-data-root flat locations (`%APPDATA%\@reelterminal\desktop` as Electron's
-old default userData, and `Videos\ReelTerminal Agent Workspace`).
+Data moves at startup, before the Chromium profile is first touched. The app
+does not copy live, in-use data.
 
 Per item (`apps/desktop/src/main/data-root-migration.ts`):
 
-- missing source → no-op (fresh installs never migrate);
+- missing source → no-op;
 - non-empty target → never merged or overwritten; the item is skipped and
   the source is left in place, reported in Settings → Storage;
-- fast path: directory rename (atomic-ish, leaves no copy behind);
+- fast path: directory rename;
 - rename impossible (cross-volume/locked) → verified copy through a
-  `<target>.migrating` staging directory (file-count + byte parity), revealed
-  with one rename; the source is kept as the backup — nothing is deleted;
-- an interrupted copy leaves only staging, which the next run drops and
-  retries; reruns are idempotent.
+  `<target>.migrating` staging directory, then one rename; the source remains
+  as a backup;
+- interrupted staging is removed and retried at the next launch.
 
-If an item fails and nothing has moved yet, the session abstains: it runs
-from the previous location and retries next launch. If a later item fails
-after earlier moves, the session adopts the root (the data is already there)
-and reports the leftovers.
+If an item fails before any data has moved, the app keeps the source root and
+retries next launch. If a later item fails, the app uses the selected root and
+reports the remaining source items.
 
 ## Uninstall
 
@@ -78,10 +70,9 @@ app data, the Agent workspace, caches/logs — each with its own prompt, so
 root. `~/.reelterminal/live-endpoint.json` is a cross-process contract with
 local CLI and compatibility connectors and is left alone.
 
-## Not (yet) in the root
+## Related data
 
-- The endpoint descriptors under `~/.reelterminal/` — external contract, see
-  `AGENT-GUIDE.md`.
-- Physical storage identifiers (`openreel-*` database/key names) are legacy
-  by policy (`NAMING-AND-COMPATIBILITY.md` §4) and unchanged here; a rename
-  is a separate, versioned migration decision.
+- The live endpoint descriptor is stored under `~/.reelterminal/`, outside the
+  data root; see [`AGENT-GUIDE.md`](AGENT-GUIDE.md).
+- Browser persistence identifiers are documented in
+  [`NAMING-AND-COMPATIBILITY.md`](NAMING-AND-COMPATIBILITY.md).

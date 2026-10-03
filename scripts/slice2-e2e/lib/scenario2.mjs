@@ -1,11 +1,4 @@
-/**
- * Appendix D scenario 2 — `slice2-persistence-e2e` (r2.2, Decision 10),
- * executed COMPLETELY over two paths (run / mcp-simulated) and BOTH kill
- * variants of step 3 (clean SIGTERM after save, SIGKILL after save — both
- * must pass). The checkpoint file is the only state crossing the process
- * boundary; the corruption honesty probes of step 6d run in fresh
- * processes, one probe per process.
- */
+/** Check project persistence across clean and forced process termination. */
 import { existsSync } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -157,9 +150,7 @@ export async function scenario2Run({ env, recorder, cliPath, variant }) {
 
   // Steps 4b+5+6 — process B (one fresh session): open, deep-equal timeline,
   // continue edit, save v2, save-conflict on v1, previewB, export, verify.
-  // --keep-going: step 5c (save onto v1 without overwrite) FAILS BY DESIGN —
-  // the workflow must continue to preview/export/verify; its nonzero exit is
-  // the expected outcome (Appendix D step 6, Pi-class rule).
+  // --keep-going lets later export checks run after the expected save conflict.
   const bRun = await runWorkflow({
     cliPath,
     recorder,

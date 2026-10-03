@@ -29,7 +29,7 @@ function settingsChecks(settings, label) {
   ];
 }
 
-/* Appendix D step 2 — discover. */
+/* Discovery and capability checks. */
 export function discoverChecks(describeValue, capsValue) {
   const verbs = describeValue?.verbs ?? [];
   const codes = describeValue?.errorCodes ?? [];
@@ -55,7 +55,7 @@ export function discoverChecks(describeValue, capsValue) {
   ];
 }
 
-/* Appendix D step 3 — create. */
+/* Project creation checks. */
 export function createChecks(value) {
   return [
     eq("create: revision 0", value?.revision, 0),
@@ -64,7 +64,7 @@ export function createChecks(value) {
   ];
 }
 
-/* Appendix D step 4 — import. */
+/* Media import checks. */
 export function importChecks(value) {
   return [
     eq("import: revision 1", value?.revision, 1),
@@ -78,7 +78,7 @@ export function importChecks(value) {
   ];
 }
 
-/* Appendix D step 5 — edit (revision arithmetic 0→1→2). */
+/* Edit and revision checks. */
 export function editChecks(value) {
   return [
     eq("edit: revision 2 (create→0, import→1, edit→2; each committed mutation bumps exactly once)", value?.revision, 2),
@@ -92,8 +92,7 @@ export function editChecks(value) {
   ];
 }
 
-/* Appendix D step 6 (world probe) — timeline_get shows exactly the
- * constructed world. */
+/* Timeline state checks. */
 export function timelineWorldChecks(timeline) {
   const video = timeline?.tracks?.find((t) => t.id === "v1");
   const text = timeline?.tracks?.find((t) => t.id === "t1");
@@ -128,7 +127,7 @@ export function timelineWorldChecks(timeline) {
   ];
 }
 
-/* Appendix D step 6 — honesty probes. */
+/* Input validation and replay checks. */
 export function outsideRootsChecks(result) {
   return [
     eq("outside-roots import: ok:false", result?.ok, false),
@@ -161,8 +160,7 @@ export function conflictChecks(result) {
   ];
 }
 
-/* Appendix D step 7 — preview. Scenario 2's previewB renders the project
- * AFTER the continued edit, so its sourceRevision is passed explicitly. */
+/* Preview checks use the revision expected for the current scenario. */
 export async function previewChecks(value, env, expectedSourceRevision = 2) {
   const artifact = value?.artifact;
   const inside = artifact ? await pathInsideRoot(artifact.path, env.artifactRoot) : false;
@@ -185,9 +183,7 @@ export async function previewChecks(value, env, expectedSourceRevision = 2) {
   ];
 }
 
-/* Appendix D step 8 — export reaches terminal done. Scenario 2's process-B
- * export snapshots the project AFTER the continued edit, so its
- * sourceRevision is passed explicitly (revisionBefore + 1). */
+/* Export checks use the revision expected for the current scenario. */
 export function exportStartedChecks(value, expectedSourceRevision = 2) {
   return [
     matches("export_start: jobId minted", value?.jobId, (j) => typeof j === "string" && j.startsWith("job-")),
@@ -213,7 +209,7 @@ export function exportDoneChecks(status, expectedSourceRevision = 2) {
   ];
 }
 
-/* Appendix D step 9 — verify battery. */
+/* Export verification checks. */
 export function verifyProbeChecks(verifyValue) {
   const probe = verifyValue?.probe;
   return [
@@ -235,7 +231,7 @@ export function verifyProbeChecks(verifyValue) {
     {
       name: "verify: duration 5 s within the mux-epsilon tolerance (0.12 s)",
       pass: Math.abs((probe?.durationSec ?? -1) - 5) <= 0.12,
-      detail: `durationSec=${probe?.durationSec} — the probed FORMAT duration carries the muxed silent AAC track's priming/padding (~77 ms); the video stream itself is exactly ${EXPECTED_FRAMES} frames. The ADR's literal 1/30 s tolerance is unachievable for any export of this runtime (documented as finding 2 in REPORT.md); 0.12 s is the runtime's own "±1 frame + mux epsilon" precedent.`,
+      detail: `durationSec=${probe?.durationSec}; the AAC track includes encoder priming and padding, and the video stream contains ${EXPECTED_FRAMES} frames.`,
     },
     eq(`verify: probe.frameCount == ${EXPECTED_FRAMES} (5 s x 30 fps)`, probe?.frameCount, EXPECTED_FRAMES),
     matches("verify: probe sha256 recorded", probe?.sha256, (s) => typeof s === "string" && /^[0-9a-f]{64}$/.test(s)),
@@ -268,7 +264,7 @@ export function compareDifferentChecks(verifyValue, referenceLabel) {
   ];
 }
 
-/* Appendix D step 10 — cleanup honesty. */
+/* Process cleanup and restart checks. */
 export function postRestartReadsChecks({ timelineResult, job1Result, job2Result }) {
   return [
     eq("fresh session timeline_get: NOT_FOUND (no project)", timelineResult?.error?.code, "NOT_FOUND"),

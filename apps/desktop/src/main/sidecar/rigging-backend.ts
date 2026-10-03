@@ -110,8 +110,7 @@ async function resolveRigOutput(args: RigHumanoidModelArgs): Promise<string> {
   return outputPath;
 }
 
-/** Exported for the legacy-identifier drift test (N04): pins the embedded
- * Python text to the frozen registry values. */
+/** Exported so tests can check the embedded Python text against shared values. */
 export function blenderRigScript(): string {
   return String.raw`
 import argparse

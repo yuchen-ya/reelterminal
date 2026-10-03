@@ -1,6 +1,6 @@
 import { FACADE_VERBS, FACADE_CONTRACT_VERSION } from "@reelterminal/agent-facade";
 /**
- * Protocol tests (ADR 0003 deliverable 5, slice 2b): spawn the REAL
+ * Protocol tests spawn the built
  * `agent-video serve` binary and drive the MCP handshake end to end.
  *
  *  - initialize (serverInfo carries the transport's own facts)
@@ -85,7 +85,7 @@ describe("reelterminal-agent serve (real binary)", () => {
     });
   });
 
-  it("session_describe passthrough: contract facade-slice-7, 9 error codes", async () => {
+  it("session_describe passthrough preserves the contract version and error codes", async () => {
     const reply = await callTool("session_describe", {});
     expect(reply.error).toBeUndefined();
     expect(reply.result.isError).toBeFalsy();

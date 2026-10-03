@@ -1,5 +1,5 @@
 /**
- * Absolute-path boundary (ADR 0003 Decision 6).
+ * Absolute-path boundary.
  *
  * Every path INPUT is absolute-only. At EXECUTION time (run workflows) each
  * path param is checked AFTER `$ref` substitution — a reference can legally
@@ -9,7 +9,7 @@
  * never expanded.
  *
  * Note the division of labor with the facade: the facade itself enforces
- * absoluteness only for project.open/project.save (Decision 10.1) — for
+ * absoluteness only for project.open/project.save — for
  * media.import and verify.artifact a relative value would otherwise fall
  * through to the facade's cwd-relative containment resolution
  * (path-roots.ts resolves against process.cwd()), so the transport

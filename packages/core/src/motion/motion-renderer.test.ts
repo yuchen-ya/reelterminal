@@ -5,12 +5,60 @@ import type {
   MotionComposition,
   MotionEffect,
   MotionGroupLayer,
+  MotionVideoLayer,
+  MotionObject3D,
   MotionScene3DLayer,
   MotionTransform,
 } from "./types";
 import { DEFAULT_MOTION_TRANSFORM } from "./types";
 
 describe("MotionRenderer scene3d rendering", () => {
+  it("omits a model when the asset resolver reports a failed fetch", async () => {
+    const renderer = new MotionRenderer();
+    const object: MotionObject3D = {
+      kind: "model",
+      modelUrl: "https://model.example/scene.glb",
+    };
+    const resolveModelUrl = (
+      renderer as unknown as {
+        resolveMotionObjectModelUrl: (
+          model: MotionObject3D,
+          options: {
+            assetResolver?: {
+              resolveModelUrl?: (url: string) => Promise<string | null> | string | null;
+            };
+          },
+        ) => Promise<MotionObject3D>;
+      }
+    ).resolveMotionObjectModelUrl.bind(renderer);
+
+    const resolved = await resolveModelUrl(object, {
+      assetResolver: { resolveModelUrl: async () => null },
+    });
+
+    expect(resolved.modelUrl).toBe("");
+  });
+
+  it("keeps the original model URL when no resolver is installed", async () => {
+    const renderer = new MotionRenderer();
+    const object: MotionObject3D = {
+      kind: "model",
+      modelUrl: "https://model.example/scene.glb",
+    };
+    const resolveModelUrl = (
+      renderer as unknown as {
+        resolveMotionObjectModelUrl: (
+          model: MotionObject3D,
+          options: { assetResolver?: undefined },
+        ) => Promise<MotionObject3D>;
+      }
+    ).resolveMotionObjectModelUrl.bind(renderer);
+
+    const resolved = await resolveModelUrl(object, {});
+
+    expect(resolved).toBe(object);
+  });
+
   it("uses the native scene renderer even when the Three.js fallback is unavailable", async () => {
     const renderer = new MotionRenderer();
     const image = { close: vi.fn() } as unknown as ImageBitmap;
@@ -191,5 +239,61 @@ describe("MotionRenderer scene3d rendering", () => {
       false,
     );
     expect(outputContext.drawImage).toHaveBeenCalledWith(canvas, 0, 0);
+  });
+});
+
+describe("MotionRenderer video rendering", () => {
+  it("closes resolver-owned video frames after drawing", async () => {
+    const renderer = new MotionRenderer();
+    const frame = { width: 16, height: 9, close: vi.fn() } as unknown as ImageBitmap;
+    const drawImage = vi.fn();
+    const resolveVideoFrame = vi.fn().mockResolvedValue(frame);
+    const composition = {
+      width: 1280,
+      height: 720,
+      assets: [{ id: "video-asset", type: "video", name: "Footage", duration: 4 }],
+    } as unknown as MotionComposition;
+    const layer: MotionVideoLayer = {
+      id: "video-layer",
+      type: "video",
+      name: "Footage",
+      startTime: 0,
+      duration: 4,
+      visible: true,
+      locked: false,
+      transform: DEFAULT_MOTION_TRANSFORM,
+      keyframes: [],
+      assetId: "video-asset",
+      width: 16,
+      height: 9,
+    };
+    const renderVideo = (
+      renderer as unknown as {
+        renderVideo(
+          ctx: OffscreenCanvasRenderingContext2D,
+          composition: MotionComposition,
+          layer: MotionVideoLayer,
+          localTime: number,
+          options: {
+            assetResolver: {
+              resolveImageAsset: () => null;
+              resolveVideoFrame: typeof resolveVideoFrame;
+            };
+          },
+        ): Promise<void>;
+      }
+    ).renderVideo.bind(renderer);
+
+    await renderVideo(
+      { drawImage } as unknown as OffscreenCanvasRenderingContext2D,
+      composition,
+      layer,
+      0.5,
+      { assetResolver: { resolveImageAsset: () => null, resolveVideoFrame } },
+    );
+
+    expect(resolveVideoFrame).toHaveBeenCalledWith(composition.assets[0], 0.5);
+    expect(drawImage).toHaveBeenCalledWith(frame, -8, -4.5, 16, 9);
+    expect(frame.close).toHaveBeenCalledOnce();
   });
 });

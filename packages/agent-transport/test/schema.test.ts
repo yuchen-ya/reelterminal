@@ -1,6 +1,6 @@
 import { FACADE_VERBS } from "@reelterminal/agent-facade";
 /**
- * Schema differential tests (ADR 0003 Decision 4 items 2/3/5):
+ * Schema parity tests:
  *
  * (a) CI deep-equal — the served tools/list inputSchemas deep-equal the
  *     facade emission EMITTED_VERB_JSON_SCHEMAS (the transport assigns

@@ -1,5 +1,5 @@
 /**
- * Draft-2020-12 JSON Schema emitter (ADR 0003 Decision 4).
+ * Draft-2020-12 JSON Schema emitter.
  *
  * Dependency-free: the closed `ObjectSchema` declarations in
  * verb-schemas.ts / ops.ts ARE the single hand-maintained definition of
@@ -7,7 +7,7 @@
  * transport assigns verbatim to its `tools/list` entries. There is no
  * second hand-written schema anywhere.
  *
- * Emission contract (Decision 4 item 4, Appendix C client facts):
+ * The emitted schemas use these shapes:
  *  - flat top-level object; the discriminated edit.apply op union lives as
  *    a nested `anyOf` inside `items` (root-level combinators are never
  *    emitted);
@@ -117,7 +117,7 @@ export const EMITTED_VERB_JSON_SCHEMAS: Readonly<
 ) as Readonly<Record<FacadeVerb, JsonSchemaObject>>;
 
 /**
- * Live-mode input-schema overrides (ADR 0004). The live facade implements the
+ * Live-mode input-schema overrides. The live facade implements the
  * same bundled verbs, but live `project.save` is NOT a checkpoint write: it takes
  * no params (the GUI owns the save target) and flushes the GUI's autosave
  * snapshot, reporting only the revision. Advertising the headless checkpoint

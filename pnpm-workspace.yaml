@@ -1,6 +1,14 @@
 packages:
   - "apps/*"
   - "packages/*"
+overrides:
+  '@opentelemetry/core@<2.8.0': 2.8.0
+  '@xmldom/xmldom@<0.9.12': 0.9.12
+  'brace-expansion@^2': 2.1.7
+  'minimatch@^9.0.0': 9.0.7
+  'sharp@<0.35.4': 0.35.4
+  'undici@<7.29.1': 7.29.1
+  'ws@<8.21.0': 8.21.0
 onlyBuiltDependencies:
   - electron
 ignoredBuiltDependencies:
@@ -13,8 +21,21 @@ ignoredBuiltDependencies:
 allowBuilds:
   core-js: false
   electron: true
+  electron-winstaller: false
   esbuild: false
   onnxruntime-node: false
   protobufjs: false
   sharp: false
   workerd: false
+minimumReleaseAgeExclude:
+  - electron@44.5.1
+  - esbuild@0.28.1
+  - vitest@4.1.11
+  - '@vitest/mocker@4.1.11'
+  - '@opentelemetry/core@2.8.0'
+  - '@xmldom/xmldom@0.9.12'
+  - brace-expansion@2.1.7
+  - minimatch@9.0.7
+  - sharp@0.35.4
+  - ws@8.21.0
+  - undici@7.29.1

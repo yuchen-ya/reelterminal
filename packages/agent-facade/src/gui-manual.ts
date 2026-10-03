@@ -54,7 +54,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.2.0" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.3.0" as const;
 export const GUI_MANUAL_APP_VERSION = "1.0.0-alpha.10" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
@@ -111,6 +111,52 @@ export interface ManualCapability {
 }
 
 export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
+  {
+    id: "quick-start",
+    title: { zh: "快速开始", en: "Quick Start" },
+    // @source apps/web/src/desktop/start/DesktopStartScreen.tsx
+    // @source apps/web/src/desktop/editor/DesktopHelpDialog.tsx
+    summary: {
+      zh: "先完成一条短视频：新建 → 导入 → 剪辑 → 保存 → 导出。不需要连接智能体。",
+      en: "Finish a short video first: create → import → edit → save → export. An Agent connection is optional.",
+    },
+    entry: [
+      { zh: "Windows 安装版：安装后打开 ReelTerminal。便携版：解压完整 ZIP 后，打开目录内的 ReelTerminal.exe；不要只复制 EXE。", en: "Windows installer: install and open ReelTerminal. Portable build: extract the entire ZIP and open ReelTerminal.exe inside it; keep its supporting files together." },
+      { zh: "首页选择“视频编辑器”，再点击横屏（16:9）、竖屏（9:16）或方形（1:1）。动画制作使用“动态图形创作”，它是另一个工作区。", en: "On the start screen, choose Video Editor, then Horizontal (16:9), Vertical (9:16), or Square (1:1). Motion Creator is a separate workspace for animation." },
+    ],
+    steps: [
+      { zh: "导入：点击左侧素材面板的“导入”，选择本地视频、音频或图片。素材出现在列表后，拖到下方时间线。导入素材不会自动放到轨道上。", en: "Import: use Import in the left media panel to choose local video, audio, or images. Drag an imported item onto the timeline; importing alone does not place it on a track." },
+      { zh: "剪辑：拖动片段调整位置，拖动两端修剪长度。把播放头移到切点，选中片段后按 S 分割；选中不要的部分后按 Delete。", en: "Edit: drag a clip to move it and drag its edges to trim. Move the playhead to a cut, select the clip, and press S to split; select unwanted parts and press Delete." },
+      { zh: "检查：点击播放器下方的播放按钮，或按空格播放/暂停。选中片段后，在右侧检查器调整变换、音量或效果；先确认片段已选中。", en: "Review: use the player Play button or Space to play/pause. Select a clip before adjusting its transform, volume, or effects in the right inspector." },
+      { zh: "保存：默认快捷键 Ctrl+S（Mac 为 Cmd+S）立即保存到本机项目存储，之后从首页“最近项目”继续编辑。导出视频用于播放或分享；本机存储和自动保存不能替代文件备份。", en: "Save: the default Ctrl+S (Cmd+S on Mac) immediately saves to local project storage; reopen it from Recent on the start screen. Exported video is for playback or sharing; local storage and autosave do not replace a file backup." },
+      { zh: "导出：点击顶栏“导出”，先选择一个预设，或切到“自定义”保留 MP4 和项目画面参数，再点“开始导出”选择保存位置。未选预设时按钮会禁用。完成后打开输出文件，检查画面、声音和结尾。", en: "Export: click Export, choose a preset or switch to Custom to keep MP4 and the project's frame settings, then Start Export and choose a destination. Start Export is disabled until a preset is selected in Presets mode. Check the finished picture, sound, and ending." },
+      { zh: "可选：需要智能体协助时，先打开项目，再在状态栏点击“允许编辑”；右键素材或片段可添加引用，再次右键可移除。参考对比在播放器工具栏的“对比”里，默认不遮挡画面。", en: "Optional: open a project, then use Allow editing in the status strip for Agent edits. Right-click media or clips to add a reference and right-click again to remove it. Reference comparison lives under Compare in the player toolbar." },
+    ],
+    shortcutIds: ["playback.playPause", "editing.split", "editing.undo", "file.save", "file.export"],
+    limitations: [
+      { zh: "快捷键可在“设置 → 快捷键”中更改；本页操作键是默认值。不知道从哪里开始时，先点“界面导览”。", en: "Bindings can be changed in Settings → Shortcuts; keys above are defaults. Use the interface tour to find the main controls." },
+      { zh: "素材丢失：优先检查原文件是否被移动、外接盘是否断开。导出失败：先检查时间线里有片段、保存目录可写，再查看错误提示。不要通过清空整个数据目录处理启动问题。", en: "Missing media: check whether source files moved or an external drive disconnected. Export failure: check that the timeline has clips and the destination is writable, then read the error message. Do not erase the entire data folder to troubleshoot startup." },
+    ],
+    keywords: ["start", "beginner", "install", "portable", "save", "quickstart", "新手", "安装", "便携", "上手", "保存"],
+  },
+  {
+    id: "motion-quick-start",
+    title: { zh: "动态图形入门", en: "Motion Quick Start" },
+    // @source apps/web/src/motion/MotionCreatorApp.tsx
+    // @source apps/web/src/motion/components/MotionStartPanel.tsx
+    // @source apps/web/src/motion/MotionCreatorShell.tsx
+    summary: { zh: "从一个文字或形状图层开始制作短动画；普通视频剪辑请切换到“视频编辑”。", en: "Start a short animation with one text or shape layer. Use Video Editing for ordinary footage editing." },
+    entry: [
+      { zh: "首页选择“动态图形创作”和画面比例，或在打开的项目上方切换到“动态图形”。场景准备完成后进入图层工作区。", en: "Choose Motion Creator and a frame format on the start screen, or switch to Motion Design above an open project. The scene opens in the layer workspace when ready." },
+    ],
+    steps: [
+      { zh: "先用起始面板中的“文字”或“形状”添加一个图层；也可以从“模板”选择现有场景。", en: "Use Text or Shape in the start panel to add one layer, or choose a scene from Templates." },
+      { zh: "选中图层，在右侧属性面板修改文字、位置、尺寸或颜色。", en: "Select the layer and edit its text, position, size, or color in the right Properties panel." },
+      { zh: "用“预设”尝试入场或退场动画，再移动下方时间线的播放头检查不同时间的效果。", en: "Try an entrance or exit from Presets, then move the timeline playhead to inspect the animation over time." },
+      { zh: "使用当前场景的导出入口生成 MP4。动态图形的图层时间线与视频编辑时间线不同，切换工作区不会把场景自动剪成普通视频片段。", en: "Use the current scene's export entry to produce MP4. Motion layers and the video editing timeline are separate; switching workspaces does not automatically turn a scene into a footage clip." },
+    ],
+    keywords: ["motion", "animation", "layers", "动态图形", "动画", "图层"],
+  },
   {
     id: "project-switcher",
     title: { zh: "项目切换器与项目改名", en: "Project Switcher & Renaming" },
@@ -169,8 +215,8 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     },
     entry: [
       {
-        zh: "编辑器左侧工具条底部的\"更多\"菜单 → 设置。",
-        en: "The action rail's More menu (bottom of the left tool rail) → Settings.",
+        zh: "桌面版：窗口顶栏“设置”。浏览器版：左侧工具条“更多”菜单 → 设置。",
+        en: "Desktop: Settings in the title bar. Browser: the action rail's More menu → Settings.",
       },
     ],
     steps: [
@@ -562,7 +608,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       en: "This screen preserves saved voiceover/music records, previews, and imports; new submission and retry are paused.",
     },
     entry: [
-      { zh: "桌面编辑器状态栏或音频混台面板中的\"配音/音乐任务\"入口。", en: "Open Voiceover / Music Tasks from the desktop status strip or audio mixer." },
+      { zh: "浏览器版音频混台中的“配音/音乐任务”入口；桌面状态栏已移除此入口，旧记录仍保留。", en: "Voiceover / Music Tasks in the browser audio mixer. The desktop status-strip entry has been removed; existing records are retained." },
     ],
     visibility: {
       zh: "任务历史始终可查看；只有目标项目打开时才能试听或导入对应项目的素材。",
@@ -597,7 +643,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       { zh: "桌面编辑器时间线正上方的状态栏。", en: "The status strip directly above the desktop timeline." },
     ],
     steps: [
-      { zh: "使用开关启用或停用桌面命令接口。", en: "Use the switch to enable or disable the desktop command service." },
+      { zh: "打开项目后，命令接口自动可用；默认只读。点击“允许编辑”授予修改权限，点击“设为只读”收回修改权限。", en: "The command service becomes available when a project is open and starts read-only. Allow editing grants write access; Set read-only revokes it." },
       { zh: "状态栏显示当前访问为只读或可写，并在命令运行时显示操作名称。", en: "The strip shows read-only or read/write access and the active command while one is running." },
       { zh: "Agent 通过 reelctl CLI 访问当前打开的项目；需要时可查询 schema 和上下文。", en: "Agents use the reelctl CLI to access the open project and can query schemas and context as needed." },
     ],
@@ -638,7 +684,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       en: "Search jumps straight to editor features and actions by keyword; results filter by the currently selected clip types.",
     },
     entry: [
-      { zh: "编辑器左侧工具条 → 搜索按钮。", en: "The action rail's Search button." },
+      { zh: "浏览器版左侧工具条 → 搜索按钮。桌面版可以用“帮助”中的搜索查找说明，但该搜索不直接执行编辑操作。", en: "Browser: the action rail's Search button. Desktop: Help search finds instructions and does not execute editing actions." },
     ],
     steps: [
       { zh: "输入关键词（如 \"背景移除\"、\"文字属性\"）列出匹配的功能项。", en: "Type keywords (e.g. \"background removal\", \"text properties\") to list matching feature entries." },
@@ -658,15 +704,15 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     // @source apps/web/src/components/editor/Toolbar.tsx:476,504-589,611
     // @source apps/web/src/components/editor/ExportDialog.tsx:65(web ProRes/alpha warning)
     summary: {
-      zh: "顶栏导出按钮提供快速 MP4 导出、格式预设菜单与完整设置的自定义导出对话框。",
-      en: "The toolbar Export button offers quick MP4 export, a format-presets menu, and the full custom export dialog.",
+      zh: "桌面版顶栏“导出”打开完整设置对话框，确认参数后生成本地视频文件。浏览器版另有快速导出与预设菜单。",
+      en: "Desktop Export opens the full settings dialog and creates a local video after you confirm parameters. The browser build also provides quick export and preset menus.",
     },
     entry: [
       { zh: "编辑器顶栏右侧的\"导出\"按钮（快捷键 Cmd/Ctrl+E 打开导出）。", en: "The Export button at the right of the top toolbar (Cmd/Ctrl+E opens export)." },
-      { zh: "\"导出选项\"菜单列出格式预设；\"自定义导出…\"打开完整设置对话框。", en: "The Export options menu lists format presets; Custom export… opens the full settings dialog." },
+      { zh: "桌面版直接打开设置对话框。浏览器版的“导出选项”菜单列出预设，“自定义导出…”打开完整设置。", en: "Desktop opens the settings dialog directly. Browser Export options lists presets; Custom export… opens full settings." },
     ],
     steps: [
-      { zh: "快速导出：直接点\"导出\"生成 MP4。", en: "Quick export: click Export to produce an MP4 directly." },
+      { zh: "桌面版：先选预设，或切换“自定义”使用 MP4 与项目参数，再点“开始导出”选择保存位置。预设模式未选择预设时不能开始。浏览器版直接点“导出”可快速生成 MP4。", en: "Desktop: choose a preset, or switch to Custom for MP4 and the project's settings, then Start Export and choose a destination. Presets mode requires a selected preset. Browser: clicking Export can produce an MP4 directly." },
       { zh: "自定义导出：在对话框中设置分辨率、帧率等完整参数（含 AI 画质放大选项）后开始导出。", en: "Custom export: set full parameters (resolution, frame rate, and an AI upscaling option) in the dialog, then start." },
       { zh: "导出是后台任务，可随时取消；完成后得到本地视频文件。", en: "Exporting is a background job that can be cancelled; the finished video lands as a local file." },
     ],
@@ -691,11 +737,11 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     // @source apps/web/src/components/editor/tour/tour-steps.ts:10-76
     // @source apps/web/src/components/editor/tour/mograph-tour-steps.ts:11-128
     summary: {
-      zh: "两种分步导览：编辑器布局导览与动画/效果（Motion Graphics）导览，从\"更多\"菜单启动。",
-      en: "Two step-by-step tours: the editor layout tour and the motion graphics (animation/effects) tour, launched from the More menu.",
+      zh: "桌面版首次进入视频编辑器会显示分步导览；之后可在“帮助 → 快速开始”重新打开。浏览器版保留布局与动画/效果导览。",
+      en: "Desktop shows a tour on first entering the video editor; reopen it from Help → Quick Start. The browser build also retains layout and animation/effects tours.",
     },
     entry: [
-      { zh: "编辑器左侧工具条\"更多\"菜单 → 编辑器导览 / 动画与效果导览。", en: "The action rail's More menu → Editor Tour / Animation & Effects Tour." },
+      { zh: "桌面版：打开视频项目 → 顶栏“帮助” → 快速开始 → 界面导览。浏览器版：左侧“更多”菜单 → 编辑器导览 / 动画与效果导览。", en: "Desktop: open a video project → Help → Quick Start → Interface tour. Browser: action rail More → Editor Tour / Animation & Effects Tour." },
     ],
     steps: [
       {

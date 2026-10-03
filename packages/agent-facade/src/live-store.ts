@@ -1,5 +1,5 @@
 /**
- * The live state seam (ADR 0004 Decision 1).
+ * Live project store interface.
  *
  * In live sessions the renderer's zustand store remains the single canonical
  * holder of the open `Project`; the facade session (running in the desktop

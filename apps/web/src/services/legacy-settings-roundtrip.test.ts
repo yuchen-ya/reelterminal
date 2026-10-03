@@ -1,19 +1,4 @@
-/**
- * Legacy-identifier regression fixtures (N04) — localStorage part.
- *
- * WHAT THIS IS: proof that settings written under the LEGACY localStorage
- * keys (see packages/core/src/legacy/physical-identifiers.ts) are still
- * rehydrated by the current code and keep being written back under the SAME
- * legacy keys — settings survive the branding migration because the physical
- * keys were kept, not migrated.
- *
- * WHAT THIS IS NOT: NOT a data-migration test. No migration exists in this
- * round (docs/NAMING-AND-COMPATIBILITY.md §4).
- *
- * jsdom environment: provides localStorage and `document` for the zustand
- * persist stores. Modules are re-imported with a reset registry so each test
- * observes a fresh "app start" (persist rehydration reads localStorage then).
- */
+/** Verify persisted settings are rehydrated and saved under their registered keys. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LEGACY_LS_LOCALE,
@@ -35,18 +20,17 @@ afterEach(() => {
 
 describe("legacy localStorage keys survive a settings round trip", () => {
   it("theme store rehydrates a legacy payload and writes back under the same key", async () => {
-    // Legacy install wrote its settings under the legacy persist name.
+    // Seed the supported theme storage key.
     localStorage.setItem(
       LEGACY_LS_THEME,
       JSON.stringify({ state: { mode: "dark", isDark: true }, version: 0 }),
     );
 
-    // Current app reopens: zustand persist must rehydrate from the legacy key.
+    // The store reads the persisted value during initialization.
     const { useThemeStore } = await import("../stores/theme-store");
     expect(useThemeStore.getState().mode).toBe("dark");
 
-    // User changes a setting; the store saves back under the SAME legacy key
-    // (no migration, no rebranding of the physical key).
+    // Setting changes are saved under the same persisted key.
     useThemeStore.getState().setMode("light");
     const saved = localStorage.getItem(LEGACY_LS_THEME);
     expect(saved).not.toBeNull();

@@ -1,13 +1,12 @@
 # @reelterminal/runtime-chromium
 
-Real-Chromium render/export runtime for the ReelTerminal agent facade (Slice 1b,
-ADR 0002). It hydrates the canonical `Project` into the existing core engines
+Real-Chromium render/export runtime for the ReelTerminal agent facade. It
+hydrates the canonical `Project` into the core engines
 bundled into a headless Chromium page and produces **real pixels**: PNG frame
 previews and H.264 MP4 exports, with ffprobe/ffmpeg-based artifact
 verification.
 
-No MCP, no CLI, no product-UI changes: this package implements the
-transport-agnostic provider interfaces defined by
+This package implements the provider interfaces defined by
 [`@reelterminal/agent-facade`](../agent-facade/README.md) (`RenderProvider`,
 `ExportProvider`, `ArtifactVerifier`).
 
@@ -58,7 +57,7 @@ node hello-world-e2e.mjs --input /abs/input.mp4 --media-root /abs/media \
 Outside: any esbuild ≥0.20. `playwright-core` must stay external so its
 browser registry resolves.)
 
-## Facade verbs added by Slice 1b
+## Facade verbs
 
 All verbs return `{ok:true,value} | {ok:false,error}` and never throw for
 domain errors.
@@ -209,7 +208,7 @@ prerequisites as the `videoOnlyFramesRouteAvailable` fact).
 
 ```bash
 pnpm --filter @reelterminal/runtime-chromium test:run   # probe + E2E + jobs + verify
-pnpm --filter @reelterminal/agent-facade test:run       # facade incl. Slice-1
+pnpm --filter @reelterminal/agent-facade test:run
 ```
 
 Generated PNGs/MP4s, browsers and ffmpeg binaries are never committed.

@@ -1,5 +1,5 @@
 /**
- * Typed facade error taxonomy (audit/facade-v0.md contract #5).
+ * Typed facade error taxonomy.
  * Domain failures are reported via `{ ok: false, error }` results — callers
  * must never rely on string matching, only on `code`.
  */

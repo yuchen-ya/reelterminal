@@ -1,5 +1,5 @@
 /**
- * Emitter contract tests (ADR 0003 Decision 4 item 6): per-verb structural
+ * Per-verb JSON Schema structure tests:
  * assertions on the emitted draft-2020-12 schemas — closed objects, required
  * arrays, enums, const discriminators, the nested op-union shape, no `$ref`
  * anywhere, the client property-name regex, and no root-level combinators.
@@ -134,7 +134,7 @@ describe("emitted schema per-verb structure", () => {
     expect(schema.required).toEqual(["ops"]);
     const props = schema.properties as Schema;
     expect(props.expectedRevision).toEqual({ type: "integer", minimum: 0 });
-    // ADR 0004 Decision 4: the live context CAS guard, same integer shape.
+    // The live context CAS guard uses the same integer shape.
     expect(props.expectedContextRevision).toEqual({ type: "integer", minimum: 0 });
     const ops = props.ops as Schema;
     expect(ops).toEqual({

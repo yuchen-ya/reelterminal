@@ -63,8 +63,7 @@ export interface CodecRecommendation {
   qualityRating: "good" | "better" | "best";
 }
 
-// Persisted localStorage key — legacy registry, value frozen (renaming would
-// drop every user's cached device profile). See src/legacy/physical-identifiers.ts.
+// Persisted localStorage key for the device profile cache.
 const STORAGE_KEY = LEGACY_LS_DEVICE_PROFILE;
 
 export function getCpuTier(cores: number): DeviceTier {

@@ -1,30 +1,8 @@
 #!/usr/bin/env node
-/**
- * slice-2d black-box E2E runner (ADR 0003 Appendix D, implementation slice
- * 2d). Spawns the REAL built `packages/agent-transport/dist/cli.js` and
- * executes Appendix D scenario 1 (`slice2-transport-e2e`) and scenario 2
- * (`slice2-persistence-e2e`) completely, each over two paths:
- *
- *   --path run   the runner authors Appendix-B.6 JSONL workflows and invokes
- *                `agent-video run` (Pi-class; deliberately-failing probes are
- *                separate invocations or one --keep-going run whose nonzero
- *                exit is the expected outcome)
- *   --path mcp   a scripted stdio MCP client over `serve` (label: simulated —
- *                see the honesty rule in Appendix D; a client may be claimed
- *                "verified" only when executed by that client's real binary)
- *
- * Evidence (transcripts, per-step assertion tables, sha256 manifests) lands
- * under docs/slice-2/evidence/. Generated media/artifacts/checkpoints live
- * in a fresh OS temp env dir per scenario execution and are deleted unless
- * --keep-evidence is passed.
- *
- * Usage:
- *   node scripts/slice2-e2e/run.mjs [--scenario 1|2|all] [--path run|mcp|all]
- *        [--evidence-dir <abs>] [--keep-evidence] [--cli <abs cli.js>]
- */
+/** Run agent transport scenarios and write evidence outside the source tree. */
 import { existsSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
-import { arch, platform, release } from "node:os";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { arch, platform, release, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -43,7 +21,7 @@ function parseArgs(argv) {
     scenario: "all",
     path: "all",
     keepEvidence: false,
-    evidenceDir: path.join(repoRoot, "docs", "slice-2", "evidence"),
+    evidenceDir: null,
     cli: path.join(repoRoot, "packages", "agent-transport", "dist", "cli.js"),
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -85,6 +63,9 @@ async function main() {
       `built CLI not found at ${options.cli} — run: corepack pnpm --filter @reelterminal/agent-transport build`,
     );
   }
+  options.evidenceDir ??= await mkdtemp(path.join(tmpdir(), "reelterminal-agent-e2e-"));
+  await mkdir(options.evidenceDir, { recursive: true });
+  console.log(`Evidence directory: ${options.evidenceDir}`);
 
   const plan = [];
   if (options.scenario === "1" || options.scenario === "all") {
@@ -101,7 +82,7 @@ async function main() {
       plan.push({ scenario: 2, path: "mcp", variant: "SIGKILL" });
     }
   }
-  console.log(`slice2-e2e: ${plan.length} execution(s) planned: ${plan.map((p) => JSON.stringify(p)).join(", ")}`);
+  console.log(`agent-e2e: ${plan.length} execution(s) planned: ${plan.map((p) => JSON.stringify(p)).join(", ")}`);
 
   const results = [];
   for (const entry of plan) {
@@ -144,14 +125,14 @@ async function main() {
     }
   }
 
-  // Environment + client-probe blocks (refreshed on every invocation).
+  // Record host details and installed client probes.
   await writeEnvironmentBlock(options);
   const probes = await probeClientClis();
   await writeFile(
     path.join(options.evidenceDir, "client-probe.json"),
     `${JSON.stringify(
       {
-        note: "Honesty rule (Appendix D): a client may be claimed 'verified' only when executed by that client's real binary. Both paths in this evidence are scripted simulators and are labeled 'simulated'.",
+        note: "Workflow and MCP clients in this run are scripted and labeled simulated.",
         probedAt: new Date().toISOString(),
         probes,
       },
@@ -162,7 +143,7 @@ async function main() {
   );
 
   const failed = results.filter((r) => r.status === "FAIL");
-  console.log("\n=== slice2-e2e summary ===");
+  console.log("\n=== agent-e2e summary ===");
   for (const result of results) {
     console.log(
       `${result.status}  scenario${result.scenario} ${result.path}${result.variant ? ` ${result.variant}` : ""}  ${result.passed ?? 0}/${result.total ?? 0} checks  → ${result.dir}`,
@@ -202,9 +183,9 @@ async function writeEnvironmentBlock(options) {
     await env.cleanup();
   }
   const block = {
-    note: "Environment block of the slice-2d evidence run (Appendix D evidence contract).",
+    note: "Environment details for this run.",
     generatedAt: new Date().toISOString(),
-    repo: "agent-video-engine-lab",
+    repo: "reelterminal",
     repoHeadSha: sha,
     cli: { path: options.cli, sha256: cliSha },
     host: { platform: platform(), arch: arch(), osRelease: release() },

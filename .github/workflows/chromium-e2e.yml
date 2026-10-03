@@ -1,20 +1,10 @@
 name: Chromium E2E
 
-# Focused Slice-1b + Slice-2 signal: the real-Chromium runtime probe, the
-# full create→import→trim→text→render→export→verify E2E, and the
-# agent-transport suite (serve/run/doctor over the REAL built binary,
-# including its Chromium-gated E2E tests) on Linux, with the
-# machine-readable probe result and verification reports uploaded as
-# evidence. The general CI workflow runs the same tests as part of
-# `pnpm test`; this workflow exists to surface them separately and to
-# collect the artifacts.
-
 on:
   push:
     branches: [main]
   pull_request:
-    # stacked-PR CI: include the slice-3 stack base while PRs #5/#6 are open
-    branches: [main, feat/agent-transport-slice-2]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -23,17 +13,12 @@ concurrency:
 
 jobs:
   chromium-e2e:
-    name: Chromium E2E (Slice 1b runtime + Slice 2 transport)
+    name: Chromium runtime and Agent transport E2E
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # The full-monorepo install + Chromium + browser-profile residue brings
-      # ubuntu runners within ENOSPC range (observed: runtime-chromium suite
-      # dying with "no space left on device" mid-run). Reclaim the big
-      # preinstalled toolchains this repo never uses before installing.
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
@@ -55,9 +40,6 @@ jobs:
 
       - name: Install Chromium for Playwright
         run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install --with-deps chromium
-
-      # ubuntu-latest does NOT ship ffmpeg: the frames-route encoder and the
-      # artifact verifier need real ffmpeg/ffprobe binaries.
       - name: Install ffmpeg
         run: |
           sudo apt-get update
@@ -76,34 +58,16 @@ jobs:
       - name: Typecheck agent-transport
         run: pnpm --filter @reelterminal/agent-transport typecheck
 
-      - name: Run Slice-1 facade tests (must stay green)
+      - name: Run facade tests
         run: pnpm --filter @reelterminal/agent-facade test:run
-
-      # ulimit -c 0: the runtime/transport suites SIGKILL real Chromium
-      # (reaper, signal-ownership, watchdog) — apport/core dumps of a
-      # multi-GB browser process fill the root disk on ubuntu runners.
       - name: Run Chromium runtime tests (probe, E2E, jobs, verify)
         run: |
           ulimit -c 0
           pnpm --filter @reelterminal/runtime-chromium test:run
-
-      # Slice 2 transport: the protocol/signal/workflow/doctor suites spawn
-      # the REAL built binary — their vitest global-setup builds dist/cli.js
-      # and links the external runtime deps — and the e2e-gated file drives
-      # the Appendix-B.6 closed loop through it. Its own step so a transport
-      # regression is distinguishable from a runtime one.
       - name: Run agent-transport tests (serve/run/doctor over the real binary, e2e-gated)
         run: |
           ulimit -c 0
           pnpm --filter @reelterminal/agent-transport test:run
-
-      # Evidence MUST exist and MUST upload: the probe/verify JSON is the
-      # machine-readable proof of what this run measured. The directory is
-      # hidden (.artifacts), which upload-artifact skips by default — hence
-      # include-hidden-files — and a missing upload fails the job, never
-      # warns silently. v4 artifacts are immutable by name: without
-      # overwrite a rerun of this job 409s on the artifact the failed
-      # attempt already created, which masks the rerun's own result.
       - name: Upload machine-readable evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -113,17 +77,8 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           overwrite: true
-
-  # Stretch (slice 2d): per-OS matrix for the two suites that don't need more
-  # than Playwright's own browser management. macOS runs the same commands
-  # verified locally. Windows is deliberately EXCLUDED: the transport's
-  # Decision-7 signal tests assert POSIX signal exit codes (SIGTERM ⇒ 143,
-  # second-signal hard exit), which Node cannot deliver/observe on Windows;
-  # gating them platform-conditional would go beyond trivial gating and could
-  # not be verified by the author of this workflow — an honest exclusion
-  # beats a fragile leg.
   transport-suite-matrix:
-    name: Facade + Transport suites (${{ matrix.os }})
+    name: Facade and transport suites (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -153,8 +108,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      # --with-deps is Linux-only (apt packages); macOS needs no system deps.
       - name: Install Chromium for Playwright (Linux)
         if: runner.os == 'Linux'
         run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install --with-deps chromium
@@ -162,9 +115,6 @@ jobs:
       - name: Install Chromium for Playwright (macOS)
         if: runner.os == 'macOS'
         run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install chromium
-
-      # The transport e2e-gated suite and the artifact verifier need real
-      # ffmpeg/ffprobe binaries; neither runner image ships them.
       - name: Install ffmpeg (Linux)
         if: runner.os == 'Linux'
         run: |

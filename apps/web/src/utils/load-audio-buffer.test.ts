@@ -28,7 +28,9 @@ function noAudioStreamError(): Error {
 }
 
 describe("loadAudioBuffer", () => {
-  beforeEach(() => extractAudioWav.mockReset());
+  beforeEach(() => {
+    extractAudioWav.mockReset();
+  });
   afterEach(() => {
     vi.restoreAllMocks();
   });

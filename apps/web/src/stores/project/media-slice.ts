@@ -3,7 +3,11 @@ import type { StoreApi } from "zustand";
 import type { Action, MediaItem } from "@reelterminal/core";
 import type { ProjectState } from "../project-store";
 import { getMediaBridge, initializeMediaBridge } from "../../bridges/media-bridge";
-import { saveMediaBlob, deleteMediaBlob } from "../../services/media-storage";
+import {
+  deleteMediaBlob,
+  loadMediaBlob,
+  saveMediaBlob,
+} from "../../services/media-storage";
 import {
   ensureProjectMediaGc,
   reconcileProjectMediaBytes,
@@ -179,10 +183,36 @@ function revokeMediaItemBlobUrls(item: MediaItem): void {
   }
 }
 
+const mediaReplacementQueues = new Map<string, Promise<void>>();
+
+async function withMediaReplacementLock<T>(
+  mediaId: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = mediaReplacementQueues.get(mediaId);
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  mediaReplacementQueues.set(mediaId, current);
+
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (mediaReplacementQueues.get(mediaId) === current) {
+      mediaReplacementQueues.delete(mediaId);
+    }
+  }
+}
+
 export function createMediaSlice(set: Set, get: Get): MediaSlice {
   return {
     importMedia: async (file: File, options: ImportMediaOptions = {}) => {
       ensureProjectMediaGc(get().actionHistory, () => get().project);
+      const persistenceProjectId = get().project.id;
+      const persistenceActionExecutor = get().actionExecutor;
       if (options.sourcePath !== undefined && !isAbsoluteLocalPath(options.sourcePath)) {
         return importError(
           "INVALID_PARAMS",
@@ -335,6 +365,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
           options.expectedRevision !== undefined &&
           options.expectedRevision !== get().projectRevision
         ) {
+          revokeMediaItemBlobUrls(newMediaItem);
           return importError(
             "INVALID_PARAMS",
             `Project revision mismatch: expected ${options.expectedRevision}, current ${get().projectRevision}`,
@@ -342,11 +373,19 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
           );
         }
 
-        // Persistence is part of the import transaction. Saving after the
-        // canonical commit used to report success even when IndexedDB failed,
-        // leaving a media card that could not survive reload. Persist first;
-        // only publish the project/history mutation after durable bytes exist.
-        const persistenceProjectId = get().project.id;
+        if (
+          get().project.id !== persistenceProjectId ||
+          get().actionExecutor !== persistenceActionExecutor
+        ) {
+          revokeMediaItemBlobUrls(newMediaItem);
+          return importError(
+            "INVALID_PARAMS",
+            "The active project changed while media was being decoded",
+          );
+        }
+
+        // Persist bytes before publishing the project/history mutation so
+        // a successful import survives reload.
         // Until the project entry is published the bytes have no other owner.
         // Concurrent reclamation (eviction, project switch, load sweep) must
         // treat them as live during this window.
@@ -360,6 +399,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
           );
         } catch (err) {
           releaseUncommittedMediaBlob(newMediaItem.id);
+          revokeMediaItemBlobUrls(newMediaItem);
           console.error("[ProjectStore] Failed to persist media blob:", err);
           return importError(
             "DECODE_ERROR",
@@ -372,6 +412,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
           if (!discardPersistedBlob) return;
           discardPersistedBlob = false;
           releaseUncommittedMediaBlob(newMediaItem.id);
+          revokeMediaItemBlobUrls(newMediaItem);
           await deleteMediaBlob(newMediaItem.id).catch((error) =>
             console.warn("[ProjectStore] Failed to discard uncommitted media blob:", error),
           );
@@ -381,7 +422,10 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
           // The user may switch projects while persistence is in flight. A
           // stored blob must never be committed into a different project.
           const commitProject = get().project;
-          if (commitProject.id !== persistenceProjectId) {
+          if (
+            commitProject.id !== persistenceProjectId ||
+            get().actionExecutor !== persistenceActionExecutor
+          ) {
             await discardUncommittedBlob();
             return importError(
               "DECODE_ERROR",
@@ -458,7 +502,7 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
               // remains under that stable id while the import is undone.
               params: { file, mediaItem: newMediaItem },
             };
-            const executor = get().actionExecutor;
+            const executor = persistenceActionExecutor;
             const history = executor.getHistory();
             const groupId = history.beginGroup(
               options.historyGroupLabel,
@@ -477,6 +521,17 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
             if (!actionResult.success) {
               await discardUncommittedBlob();
               return actionResult;
+            }
+
+            if (
+              get().project.id !== persistenceProjectId ||
+              get().actionExecutor !== persistenceActionExecutor
+            ) {
+              await discardUncommittedBlob();
+              return importError(
+                "INVALID_PARAMS",
+                "The active project changed while media was being committed",
+              );
             }
 
             committedMediaId = newMediaItem.id;
@@ -505,8 +560,13 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
               );
               if (thumbs.length > 0) {
                 const currentProject = get().project;
+                if (
+                  currentProject.id !== persistenceProjectId ||
+                  get().actionExecutor !== persistenceActionExecutor
+                ) return;
                 const mediaIndex = currentProject.mediaLibrary.items.findIndex(
-                  (m) => m.id === committedMediaId,
+                  (m) =>
+                    m.id === committedMediaId && m.blob === newMediaItem.blob,
                 );
                 if (mediaIndex !== -1) {
                   const updatedItems = [...currentProject.mediaLibrary.items];
@@ -639,7 +699,10 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
       file: File,
       sourceFolder?: string,
     ) => {
-      const { project } = get();
+      const { project, actionExecutor: projectActionExecutor } = get();
+      if (!project.mediaLibrary.items.some((item) => item.id === mediaId)) {
+        return importError("INVALID_PARAMS", "Media item does not exist");
+      }
 
       try {
         const mediaBridge = getMediaBridge();
@@ -751,44 +814,132 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
           },
         };
 
-        const updatedItems = project.mediaLibrary.items.map((item) =>
-          item.id === mediaId ? updatedItem : item,
-        );
+        const replacementResult = await withMediaReplacementLock(
+          mediaId,
+          async () => {
+            const projectBeforeSave = get().project;
+            const previousItem = projectBeforeSave.mediaLibrary.items.find(
+              (item) => item.id === mediaId,
+            );
+            if (
+              projectBeforeSave.id !== project.id ||
+              get().actionExecutor !== projectActionExecutor ||
+              !previousItem
+            ) {
+              revokeMediaItemBlobUrls(updatedItem);
+              return importError(
+                "INVALID_PARAMS",
+                "Project or media changed during replacement",
+              );
+            }
 
-        // Persistence is part of the replacement transaction, with the same
-        // ordering as importMedia: durable bytes for this id must exist before
-        // the project entry is published. Saving only after the commit used to
-        // leave the previous blob in IndexedDB, so a save/reload silently
-        // restored the old content while the entry named the new file.
-        try {
-          await saveMediaBlob(project.id, mediaId, file, updatedItem.metadata);
-        } catch (err) {
-          console.error("[ProjectStore] Failed to persist replaced media blob:", err);
-          return {
-            success: false,
-            error: {
-              code: "DECODE_ERROR" as const,
-              message: "Failed to persist replaced media for project recovery",
-            },
-          };
-        }
+            let previousBlob =
+              previousItem.blob instanceof Blob ? previousItem.blob : null;
+            if (!previousBlob) {
+              try {
+                previousBlob = await loadMediaBlob(mediaId);
+              } catch (error) {
+                console.error(
+                  "[ProjectStore] Failed to read existing media before replacement:",
+                  error,
+                );
+                revokeMediaItemBlobUrls(updatedItem);
+                return importError(
+                  "DECODE_ERROR",
+                  "Failed to preserve existing media before replacement",
+                );
+              }
+            }
 
-        set({
-          project: {
-            ...project,
-            mediaLibrary: { items: updatedItems },
-            modifiedAt: Date.now(),
+            if (
+              get().project.id !== project.id ||
+              get().actionExecutor !== projectActionExecutor
+            ) {
+              revokeMediaItemBlobUrls(updatedItem);
+              return importError(
+                "INVALID_PARAMS",
+                "Project or media changed during replacement",
+              );
+            }
+
+            try {
+              await saveMediaBlob(project.id, mediaId, file, updatedItem.metadata);
+            } catch (error) {
+              console.error(
+                "[ProjectStore] Failed to persist replaced media blob:",
+                error,
+              );
+              revokeMediaItemBlobUrls(updatedItem);
+              return importError(
+                "DECODE_ERROR",
+                "Failed to persist replaced media for project recovery",
+              );
+            }
+
+            const latestProject = get().project;
+            const latestItem = latestProject.mediaLibrary.items.find(
+              (item) => item.id === mediaId,
+            );
+            if (
+              latestProject.id !== project.id ||
+              get().actionExecutor !== projectActionExecutor ||
+              latestItem !== previousItem
+            ) {
+              const rollbackItem =
+                latestProject.id === project.id && latestItem
+                  ? latestItem
+                  : previousItem;
+              const rollbackBlob =
+                rollbackItem.blob instanceof Blob ? rollbackItem.blob : previousBlob;
+              try {
+                if (rollbackBlob) {
+                  await saveMediaBlob(
+                    project.id,
+                    mediaId,
+                    rollbackBlob,
+                    rollbackItem.metadata,
+                  );
+                } else {
+                  await deleteMediaBlob(mediaId);
+                }
+              } catch (error) {
+                console.error(
+                  "[ProjectStore] Failed to restore media after replacement was cancelled:",
+                  error,
+                );
+                revokeMediaItemBlobUrls(updatedItem);
+                return importError(
+                  "DECODE_ERROR",
+                  "Project or media changed during replacement and the previous media could not be restored",
+                );
+              }
+
+              revokeMediaItemBlobUrls(updatedItem);
+              return importError(
+                "INVALID_PARAMS",
+                "Project or media changed during replacement",
+              );
+            }
+
+            set({
+              project: {
+                ...latestProject,
+                mediaLibrary: {
+                  ...latestProject.mediaLibrary,
+                  items: latestProject.mediaLibrary.items.map((item) =>
+                    item.id === mediaId ? updatedItem : item,
+                  ),
+                },
+                modifiedAt: Date.now(),
+              },
+            });
+
+            revokeMediaItemBlobUrls(previousItem);
+            return { success: true as const };
           },
-        });
-
-        // The previous item left the library for good — replacement bypasses
-        // the undo history — so its blob URLs can never be reached again.
-        const previousItem = project.mediaLibrary.items.find(
-          (item) => item.id === mediaId,
         );
-        if (previousItem) {
-          revokeMediaItemBlobUrls(previousItem);
-        }
+
+        if (!replacementResult.success) return replacementResult;
 
         if (updatedItem.type === "video" && !updatedItem.thumbnailUrl) {
           setTimeout(async () => {
@@ -799,6 +950,13 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
               );
               if (thumbs.length > 0) {
                 const currentProject = get().project;
+                if (
+                  currentProject.id !== project.id ||
+                  get().actionExecutor !== projectActionExecutor ||
+                  !currentProject.mediaLibrary.items.some(
+                    (item) => item.id === mediaId && item.blob === file,
+                  )
+                ) return;
                 const updatedItemsWithThumbs =
                   currentProject.mediaLibrary.items.map((item) =>
                     item.id === mediaId

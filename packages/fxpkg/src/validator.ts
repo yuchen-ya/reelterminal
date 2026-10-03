@@ -1,7 +1,7 @@
 /**
- * Graph validator (STUDIO_PLAN §11.1 step 1). Runs in three places — browser
- * preview, studio backend at submit, and CI — from one schema and node
- * registry. Never trusts client output; the backend re-validates from source.
+ * Validate graphs in browser preview, studio submission, and CI using the
+ * same schema and node registry. The backend validates submitted source
+ * independently of client results.
  */
 import type { Graph, PortType } from "./types";
 import { getNode } from "./nodelib";
@@ -143,11 +143,35 @@ export function validateGraph(graph: Graph): ValidationResult {
   }
 
   // params used by Param nodes must be declared
-  const declaredParams = new Set(graph.params.map((p) => p.id));
+  const declaredParams = new Set<string>();
+  for (const param of graph.params) {
+    if (typeof param.id !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(param.id)) {
+      push({
+        code: "invalid_param_id",
+        message: `Parameter id "${param.id}" is not a valid identifier`,
+        severity: "error",
+      });
+    }
+    if (declaredParams.has(param.id)) {
+      push({
+        code: "duplicate_param_id",
+        message: `Duplicate parameter id "${param.id}"`,
+        severity: "error",
+      });
+    }
+    declaredParams.add(param.id);
+  }
   for (const node of graph.nodes) {
     if (node.type === "Param") {
       const pid = node.config?.param;
-      if (typeof pid === "string" && !declaredParams.has(pid)) {
+      if (typeof pid !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(pid)) {
+        push({
+          code: "invalid_param_reference",
+          message: `Param node must reference a valid parameter identifier`,
+          severity: "error",
+          nodeId: node.id,
+        });
+      } else if (!declaredParams.has(pid)) {
         push({ code: "undeclared_param", message: `Param node references undeclared param "${pid}"`, severity: "error", nodeId: node.id });
       }
     }

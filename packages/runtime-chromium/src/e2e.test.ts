@@ -1,5 +1,5 @@
 /**
- * Slice-1b target E2E (the audit/e2e-contract.md 7-step path, for real):
+ * Chromium render and export E2E:
  *
  *   project.create(320x180@30) → import 6 s input.mp4 → clip 0–5 s
  *   → "Hello world" 0–5 s → Chromium renders a REAL PNG at 2.5 s
@@ -55,7 +55,7 @@ async function waitForJob(
   }
 }
 
-describe("slice-1b chromium E2E", () => {
+describe("Chromium render and export", () => {
   let mediaRoot: string;
   let artifactRoot: string;
   let inputPath: string;
@@ -137,7 +137,7 @@ describe("slice-1b chromium E2E", () => {
 
     // 1) project.create 320x180@30 ---------------------------------------
     const created = await facade["project.create"]({
-      name: "Slice 1b E2E",
+      name: "Chromium render and export",
       settings: { width: 320, height: 180, frameRate: 30, sampleRate: 48000, channels: 2 },
     });
     expect(created.ok).toBe(true);

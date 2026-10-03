@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useSyncExternalStore } from "react";
-import { TOUR_STEPS, ONBOARDING_KEY } from "./tour-steps";
+import { TOUR_STEPS, ONBOARDING_KEY, type TourStep } from "./tour-steps";
 
 interface TourState {
   isActive: boolean;
@@ -39,13 +39,13 @@ export function stopTour() {
   setTourState({ isActive: false });
 }
 
-export function useTour() {
+export function useTour(steps: readonly TourStep[] = TOUR_STEPS) {
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
 
-  const step = TOUR_STEPS[state.currentStep];
+  const step = steps[state.currentStep];
   const isFirstStep = state.currentStep === 0;
-  const isLastStep = state.currentStep === TOUR_STEPS.length - 1;
+  const isLastStep = state.currentStep === steps.length - 1;
 
   const updateTargetRect = useCallback(() => {
     if (!step?.target) {
@@ -102,10 +102,10 @@ export function useTour() {
   }, []);
 
   const goToStep = useCallback((index: number) => {
-    if (index >= 0 && index < TOUR_STEPS.length) {
+    if (index >= 0 && index < steps.length) {
       setTourState({ currentStep: index });
     }
-  }, []);
+  }, [steps.length]);
 
   useEffect(() => {
     const completed = localStorage.getItem(ONBOARDING_KEY);
@@ -121,6 +121,9 @@ export function useTour() {
     if (!state.isActive) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!["Escape", "ArrowRight", "Enter", "ArrowLeft"].includes(e.key)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
       if (e.key === "Escape") {
         skip();
       } else if (e.key === "ArrowRight" || e.key === "Enter") {
@@ -130,8 +133,8 @@ export function useTour() {
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [state.isActive, next, prev, skip]);
 
   return {
@@ -141,7 +144,7 @@ export function useTour() {
     targetRect,
     isFirstStep,
     isLastStep,
-    totalSteps: TOUR_STEPS.length,
+    totalSteps: steps.length,
     start,
     next,
     prev,

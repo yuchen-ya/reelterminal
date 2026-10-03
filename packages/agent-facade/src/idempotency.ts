@@ -1,5 +1,5 @@
 /**
- * Idempotency ledger (audit/facade-v0.md contract #3).
+ * Session-scoped idempotency ledger.
  *
  * Core mints fresh entity ids per call, so dedupe must live in the facade:
  * a mutating call carrying an idempotencyKey records its committed result;

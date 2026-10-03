@@ -4,8 +4,8 @@ import { readEnvAlias } from "./env-alias";
 import { endpointFilePath } from "../live-mcp/index";
 
 /**
- * N02 env naming contract (docs/NAMING-AND-COMPATIBILITY.md §3), exercised on
- * the shared resolver plus one real main-process read point (the live
+ * Environment aliases are exercised on the shared resolver and one
+ * main-process read point (the live
  * endpoint descriptor path). Resolution: new REELTERMINAL_* name set → use
  * it; else legacy OPENREEL_* name; else the built-in default.
  */
@@ -18,7 +18,7 @@ afterEach(() => {
   delete process.env[OLD_FILE];
 });
 
-describe("readEnvAlias precedence matrix (N02)", () => {
+describe("readEnvAlias precedence", () => {
   it("1. new name set wins over the old name", () => {
     expect(readEnvAlias({ NEW: "n", OLD: "o" }, "NEW", "OLD")).toBe("n");
   });

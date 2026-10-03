@@ -1,5 +1,5 @@
 /**
- * Blueprint engine (STUDIO_PLAN §9A). Blueprints are curated effect engines
+ * Blueprints generate effect graphs
  * that generate safe graphs from semantic, creator-facing controls. Beginner
  * mode is the default; the generated graph uses only approved nodes plus hidden
  * safety nodes (TemporalSmooth, ConfidenceGate, FallbackComposite, BudgetClamp).
@@ -12,7 +12,7 @@ export interface Blueprint {
   kind: AssetKind;
   label: string;
   difficulty: "low" | "medium" | "high";
-  /** semantic controls exposed to the creator (§9A.5) */
+  /** Controls exposed to the creator. */
   controls: ParamDecl[];
   build: (values: Record<string, number | string | boolean | [number, number]>) => Graph;
 }
@@ -25,7 +25,7 @@ function val<T>(values: Record<string, unknown>, id: string, fallback: T): T {
   return (values[id] as T) ?? fallback;
 }
 
-// ── Passthrough (Phase 0 milestone) ──────────────────────────────────────
+// ── Passthrough ──────────────────────────────────────────────────────────
 const passthrough: Blueprint = {
   id: "passthrough.v1",
   version: "1.0.0",
@@ -48,7 +48,7 @@ const passthrough: Blueprint = {
   }),
 };
 
-// ── Warm look (a simple filter blueprint, §48 Phase 2) ───────────────────
+// ── Warm look ────────────────────────────────────────────────────────────
 const warmLook: Blueprint = {
   id: "warm-look.v1",
   version: "1.0.0",
@@ -89,7 +89,7 @@ const warmLook: Blueprint = {
   },
 };
 
-// ── Snow around subject (§9A.1) ──────────────────────────────────────────
+// ── Snow around subject ─────────────────────────────────────────────────
 const snow: Blueprint = {
   id: "snow.subject.v1",
   version: "1.0.0",
@@ -107,7 +107,7 @@ const snow: Blueprint = {
     const interaction = String(val(v, "subject_interaction", "surround"));
     // Snow is ambient: the emitter spawns across the frame (spawn input left
     // unconnected). The subject mask is only used for the occlusion matte so
-    // flakes can pass behind the subject (§9A.1).
+    // Flakes can pass behind the subject.
     const nodes: GraphNode[] = [
       { id: "src", type: "Source", position: { x: 16, y: 240 } },
       { id: "emit", type: "ParticleEmitter", position: { x: 420, y: 40 }, config: { rate: 160, max: 2048 } },
@@ -128,7 +128,7 @@ const snow: Blueprint = {
       edge("layer", "out", "out", "in"),
     ];
     if (interaction !== "none") {
-      // occlusion matte: snow behind the subject is hidden by a cutout (§9A.1)
+      // The subject cutout hides snow behind the subject.
       nodes.push({ id: "mask", type: "SubjectMask", position: { x: 16, y: 40 } });
       nodes.push({ id: "smooth", type: "TemporalSmooth", position: { x: 200, y: 40 } });
       nodes.push({ id: "cut", type: "Cutout", position: { x: 420, y: 360 } });
@@ -155,7 +155,7 @@ const snow: Blueprint = {
   },
 };
 
-// ── Fire Aura (§9A.4 high difficulty, Appendix C reference effect) ────────
+// ── Fire Aura ───────────────────────────────────────────────────────────
 const fireAura: Blueprint = {
   id: "fire-aura.v1",
   version: "1.0.0",
@@ -215,7 +215,7 @@ const fireAura: Blueprint = {
   }),
 };
 
-// ── Three of Me / Clone (§9A.4, Appendix D) — multiply a body in a video ──
+// ── Three of Me / Clone ──────────────────────────────────────────────────
 const cloneThree: Blueprint = {
   id: "clone.three.v1",
   version: "1.0.0",

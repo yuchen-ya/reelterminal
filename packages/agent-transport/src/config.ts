@@ -1,5 +1,5 @@
 /**
- * Process configuration — the ONLY config surface (ADR 0003 Appendix B.5).
+ * Process configuration.
  *
  * Flags beat env; no config files. Roots must be ABSOLUTE (Decision 6):
  * at startup each root must exist, be a directory, and is canonicalized to
@@ -22,10 +22,7 @@ export const CONFIG_DEFAULTS = {
 } as const;
 
 /**
- * New-name (REELTERMINAL_*) counterparts of CONFIG_DEFAULTS. These are the
- * documented contract going forward (SKILL.md / AGENT-WORKSPACE); the legacy
- * OPENREEL_* names stay readable as a fallback so existing host
- * configurations keep working (docs/NAMING-AND-COMPATIBILITY.md §3).
+ * Current REELTERMINAL_* names take precedence over supported OPENREEL_* aliases.
  */
 export const CONFIG_NEW_NAMES = {
   mediaRootsEnv: "REELTERMINAL_AVE_MEDIA_ROOTS",
@@ -36,8 +33,7 @@ export const CONFIG_NEW_NAMES = {
 } as const;
 
 /**
- * Env alias resolution (docs/NAMING-AND-COMPATIBILITY.md §3): the new
- * REELTERMINAL_* name wins when set (an empty string counts as set), the
+ * The REELTERMINAL_* name wins when set (an empty string counts as set), the
  * legacy OPENREEL_* name is read only when the new name is unset, otherwise
  * undefined — call sites keep their own default/empty semantics.
  */
@@ -85,7 +81,7 @@ interface ParsedArgv {
 }
 
 /**
- * Hand-rolled switch (Appendix A row 13) — three subcommands need no
+ * The commands need no
  * framework. Repeatable: --media-root, --project-root. Single: --artifact-root,
  * --log-level, --workflow. Boolean: --keep-going.
  */

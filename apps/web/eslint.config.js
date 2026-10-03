@@ -45,6 +45,7 @@ export default [
       "no-console": ["warn", { allow: ["warn", "error"] }],
       "prefer-const": "warn",
       "no-unused-vars": "off",
+      "no-undef": "off",
       "no-empty": "warn",
       "no-case-declarations": "warn",
       "react-hooks/rules-of-hooks": "warn",

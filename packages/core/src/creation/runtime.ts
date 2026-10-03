@@ -138,9 +138,40 @@ export function removeCreationAsset(
   return {
     ...state,
     assets: removeById(state.assets, assetId),
-    scenes: state.scenes.map((scene) => ({
-      ...scene,
-      objects: scene.objects.filter((object) => object.assetId !== assetId),
+    scenes: state.scenes.map((scene) => {
+      const removedObjectIds = new Set(
+        scene.objects
+          .filter((object) => object.assetId === assetId)
+          .map((object) => object.id),
+      );
+      return removeSceneObjectsAndReferences(scene, removedObjectIds);
+    }),
+  };
+}
+
+function removeSceneObjectsAndReferences(
+  scene: CreationScene,
+  removedObjectIds: ReadonlySet<string>,
+): CreationScene {
+  if (removedObjectIds.size === 0) return scene;
+  return {
+    ...scene,
+    objects: scene.objects
+      .filter((object) => !removedObjectIds.has(object.id))
+      .map((object) =>
+        object.parentId && removedObjectIds.has(object.parentId)
+          ? { ...object, parentId: undefined }
+          : object,
+      ),
+    animations: scene.animations.map((clip) => ({
+      ...clip,
+      tracks: clip.tracks.filter((track) => !removedObjectIds.has(track.targetId)),
+    })),
+    renderBindings: scene.renderBindings.map((binding) => ({
+      ...binding,
+      objectBindings: binding.objectBindings.filter(
+        (objectBinding) => !removedObjectIds.has(objectBinding.sceneObjectId),
+      ),
     })),
   };
 }
@@ -275,21 +306,7 @@ export function removeCreationSceneObject(
     ...state,
     scenes: state.scenes.map((scene) =>
       scene.id === sceneId
-        ? touchScene(
-            {
-              ...scene,
-              objects: scene.objects
-                .filter((object) => object.id !== objectId)
-                .map((object) =>
-                  object.parentId === objectId ? { ...object, parentId: undefined } : object,
-                ),
-              animations: scene.animations.map((clip) => ({
-                ...clip,
-                tracks: clip.tracks.filter((track) => track.targetId !== objectId),
-              })),
-            },
-            timestamp,
-          )
+        ? touchScene(removeSceneObjectsAndReferences(scene, new Set([objectId])), timestamp)
         : scene,
     ),
   };

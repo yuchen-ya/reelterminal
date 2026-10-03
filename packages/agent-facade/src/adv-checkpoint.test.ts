@@ -1,6 +1,5 @@
 /**
- * ADV REGRESSION — checkpoint persistence under attack (ADR 0003 Decision
- * 10 + fourth-round refinements, Appendix E items 14–19). Every refusal is
+ * Checkpoint persistence validation. Every refusal is
  * in the documented class with the documented wording; every failure leaves
  * the session empty and unchanged; no failed save leaves anything at the
  * target path.
@@ -144,7 +143,7 @@ describe("ADV checkpoint: open-side corruption & structure refusals", () => {
     }
   });
 
-  it("formatVersion:1 (the pre-markers document) ⇒ the same UNSUPPORTED refusal — no silent downgrade, no guessed migration", async () => {
+  it("rejects unsupported checkpoint versions without changing project state", async () => {
     const doc = await readDoc(basePath);
     doc.formatVersion = 1;
     const mutated = join(projectRoot, "v1.openreel.json");

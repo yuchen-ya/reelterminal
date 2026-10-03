@@ -2,7 +2,7 @@ import { LEGACY_LS_TIMELINE_WORKSPACE } from "../services/legacy-storage-keys";
 import { create } from "zustand";
 import { persist, subscribeWithSelector } from "zustand/middleware";
 
-// Persisted localStorage key — legacy registry, value frozen (workspace layout).
+// Persisted localStorage key for workspace layout.
 export const TIMELINE_WORKSPACE_STORAGE_KEY = LEGACY_LS_TIMELINE_WORKSPACE;
 
 /**

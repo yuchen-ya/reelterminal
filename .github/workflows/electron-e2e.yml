@@ -1,24 +1,10 @@
 name: Electron E2E
 
-# Slice-3 (ADR 0004) live human–agent collaboration E2E: the REAL built
-# Electron app driven by real UI input (Playwright `_electron`), a real MCP
-# JSON-RPC client driving the shipped stdio live connector as the external
-# agent, pixel-verified render frames, and the token security
-# boundary — with machine-readable evidence uploaded from
-# apps/desktop/e2e/.artifacts (mirroring the chromium-e2e evidence pattern).
-#
-# macOS-only, deliberately: the suite boots the app windowed and its timing
-# was validated by the author on macOS alone. An ubuntu+xvfb leg was NOT
-# added because it could not be validated locally — an honest exclusion
-# beats an unverified one (same discipline as the chromium workflow's
-# Windows exclusion).
-
 on:
   push:
     branches: [main]
   pull_request:
-    # stacked-PR CI: include the slice-3 stack base while PRs #5/#6 are open
-    branches: [main, feat/agent-transport-slice-2]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -27,7 +13,7 @@ concurrency:
 
 jobs:
   electron-e2e:
-    name: Electron live-collaboration E2E (macOS)
+    name: Live-collaboration E2E (macOS)
     runs-on: macos-latest
 
     steps:
@@ -45,14 +31,8 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      # preview.render_frame runs the runtime-chromium providers in the
-      # desktop MAIN process — needs the Playwright-managed Chromium.
       - name: Install Chromium for Playwright
         run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install chromium
-
-      # Pixel assertions decode the rendered PNG with ffmpeg; the artifact
-      # verifier needs ffprobe. Neither ships on macos runners.
       - name: Install ffmpeg
         run: brew install ffmpeg
 
@@ -60,31 +40,14 @@ jobs:
         run: |
           ffmpeg -version | head -1
           ffprobe -version | head -1
-
-      # The e2e launches the REAL build: renderer (vite), main (tsup), and the
-      # external-agent live connector shipped for stdio MCP clients.
       - name: Build desktop app
         run: pnpm --filter @reelterminal/desktop build
-
-      # Disk footprint is modest on macOS runners (no docker images, one
-      # Chromium): unlike the ubuntu chromium-e2e leg, no reclaim step is
-      # needed — keep the report for the day that stops being true.
       - name: Disk usage report
         run: df -h /
-
-      # ulimit -c 0: the runtime SIGKILLs real Chromium on teardown; core
-      # dumps of a multi-GB browser process are useless and huge.
       - name: Run Electron E2E (flows A+B, cross-cutting, endpoint safety)
         run: |
           ulimit -c 0
           pnpm --filter @reelterminal/desktop test:e2e
-
-      # Evidence MUST exist and MUST upload: revisions, conflict codes,
-      # pixel stats, security probes, and screenshots are the
-      # machine-readable proof of what this run measured. Hidden directory
-      # (.artifacts) — hence include-hidden-files — and a missing upload
-      # fails the job, never warns silently. v4 artifacts are immutable by
-      # name: overwrite lets a rerun replace the failed attempt's upload.
       - name: Upload machine-readable evidence
         if: always()
         uses: actions/upload-artifact@v4

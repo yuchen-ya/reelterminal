@@ -1,10 +1,9 @@
 /**
- * ADV REGRESSION (from adversarial review defects D2/D3): idempotency.
+ * Idempotency behavior:
  *
  * 1. Cross-verb key reuse: the ledger is scoped per session+project+VERB —
  *    a key used by media.import must never leak a wrong-shaped replay into
- *    edit.apply (fixed: previously a flat namespace leaked the import
- *    payload into an EditApplyResult-shaped ok:true).
+ *    edit.apply, so the result types remain isolated.
  * 2. Payload mismatch: same key + different payload is a CONFLICT, never a
  *    blind replay; same key + same payload replays even with a stale
  *    expectedRevision.

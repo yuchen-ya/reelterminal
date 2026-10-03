@@ -1,11 +1,4 @@
-/**
- * Environment contract of Appendix D (setup script work, never agent work):
- * a fresh mediaRoots dir holding a synthesized, visually distinctive
- * input.mp4 (ffmpeg testsrc2 + moving drawtext timecode, so consecutive
- * frames visibly differ), fresh EMPTY artifactRoot and projectRoots dirs,
- * and a scratch dir for workflow files / probe copies. Paths cross to the
- * CLI only via flags/env.
- */
+/** Prepare isolated media, project, artifact, and workflow directories. */
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
@@ -16,7 +9,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 export const PROJECT_SETTINGS = { width: 1920, height: 1080, frameRate: 30 };
-/** Appendix D scenario 1: 5 s x 30 fps = 150 frames. */
+/** Five-second test clip at 30 fps. */
 export const CLIP_DURATION_SEC = 5;
 export const EXPECTED_FRAMES = 150;
 
@@ -27,7 +20,7 @@ export class E2EEnvironment {
   }
 
   async setup() {
-    const base = this.root ?? path.join(tmpdir(), "slice2-e2e");
+    const base = this.root ?? path.join(tmpdir(), "reelterminal-agent-e2e");
     await mkdir(base, { recursive: true });
     this.envDir = await mkdtemp(path.join(base, "env-"));
     this.mediaRoot = path.join(this.envDir, "media");
@@ -57,7 +50,7 @@ export class E2EEnvironment {
     const font = fontCandidates.find((candidate) => existsSync(candidate));
     const source = "testsrc2=size=1920x1080:rate=30:duration=6";
     const filter = hasDrawtext && font
-      ? `${source},drawtext=fontfile='${font}':text='slice2-e2e %{pts\\:hms}':fontsize=96:fontcolor=white:x=(w-text_w)/2:y=80`
+      ? `${source},drawtext=fontfile='${font}':text='reelterminal-e2e %{pts\\:hms}':fontsize=96:fontcolor=white:x=(w-text_w)/2:y=80`
       : source;
     await execFileAsync("ffmpeg", [
       "-y",

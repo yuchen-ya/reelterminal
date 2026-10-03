@@ -53,7 +53,7 @@ import {
   getDataRootInfo,
   changeDataRoot,
 } from "./data-root";
-import { registerEditorWindow } from "./editor-window";
+import { getEditorWebContents, registerEditorWindow } from "./editor-window";
 import {
   fileWriters,
   showSaveDialog,
@@ -302,21 +302,17 @@ app.whenReady().then(async () => {
   ipcMain.handle(CHANNELS.windowIsMaximized, (e) =>
     windowIsMaximized(BrowserWindow.fromWebContents(e.sender)),
   );
-  ipcMain.on(CHANNELS.crashReport, (_e, raw) => {
-    const payload = (raw ?? {}) as {
-      message?: unknown;
-      stack?: unknown;
-      type?: unknown;
-      context?: unknown;
-    };
-    const message = typeof payload.message === "string" ? payload.message : "";
-    if (!message) return;
+  ipcMain.on(CHANNELS.crashReport, (event, raw) => {
+    if (event.sender !== getEditorWebContents()) return;
+    const type =
+      typeof raw === "object" && raw !== null && !Array.isArray(raw) &&
+      typeof (raw as { type?: unknown }).type === "string"
+        ? (raw as { type: string }).type
+        : "renderer-error";
     reportError({
-      type: typeof payload.type === "string" ? payload.type : "renderer-error",
+      type,
       source: "renderer",
-      message,
-      stack: typeof payload.stack === "string" ? payload.stack : undefined,
-      context: payload.context,
+      message: "Renderer reported an error",
     });
   });
   // The local command endpoint is a desktop-host service. It starts for every

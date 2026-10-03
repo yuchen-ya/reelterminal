@@ -11,7 +11,7 @@
     "preview": "pnpm --filter @reelterminal/web preview",
     "deploy": "pnpm build && pnpm --filter @reelterminal/web deploy",
     "deploy:preview": "pnpm build && pnpm --filter @reelterminal/web deploy:preview",
-    "test": "pnpm -r test:run",
+    "test": "pnpm -r test:run --maxWorkers=2",
     "test:watch": "pnpm -r test",
     "lint": "pnpm -r lint",
     "lint:naming": "node scripts/naming-lint.mjs",
@@ -43,16 +43,15 @@
   },
   "homepage": "https://github.com/yuchen-ya/reelterminal#readme",
   "engines": {
-    "node": ">=18.0.0",
-    "pnpm": ">=8.0.0"
+    "node": ">=22.13.0",
+    "pnpm": ">=11.7.0"
   },
   "packageManager": "pnpm@11.7.0",
   "dependencies": {
-    "mediabunny": "^1.25.3"
+    "mediabunny": "^1.55.4"
   },
   "workspaces": [
     "apps/*",
     "packages/*"
-  ],
-  "devDependencies": {}
+  ]
 }

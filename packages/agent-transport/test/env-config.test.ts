@@ -127,13 +127,12 @@ describe("B.5 env config honored by the commands (integration)", () => {
 });
 
 /**
- * N02 env alias precedence matrix (docs/NAMING-AND-COMPATIBILITY.md §3):
- * the new REELTERMINAL_* names win when set (an empty string counts as
+ * Current environment names take precedence over supported aliases when set
+ * (an empty string counts as
  * set), the legacy OPENREEL_* names stay readable as a fallback, and the
- * flag/default behavior is unchanged. Appended by N02; every pre-existing
- * test line above is untouched.
+ * flag and default behavior remains unchanged.
  */
-describe("B.5+N02 env alias precedence (new REELTERMINAL_* over legacy OPENREEL_*)", () => {
+describe("environment alias precedence", () => {
   it("prefers REELTERMINAL_AVE_MEDIA_ROOTS when both names are set", () => {
     const merged = mergeEnvRoots(
       { mediaRoots: [], projectRoots: [], deliveryRoots: [] },

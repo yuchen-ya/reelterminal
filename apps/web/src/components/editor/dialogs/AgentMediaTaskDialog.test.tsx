@@ -48,7 +48,7 @@ function openDialog(): void {
   useUIStore.setState({ activeModal: AGENT_MEDIA_TASK_MODAL_ID });
 }
 
-describe("AgentMediaTaskDialog migration state", () => {
+describe("AgentMediaTaskDialog state", () => {
   beforeEach(() => {
     useProjectStore.setState({ project: createEmptyProject("Dialog Demo") });
     useUIStore.setState({ activeModal: null });

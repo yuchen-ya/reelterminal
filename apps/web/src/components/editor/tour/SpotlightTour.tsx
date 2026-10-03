@@ -2,8 +2,9 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { TourPopover } from "./TourPopover";
 import { useTour } from "./useTour";
+import type { TourStep } from "./tour-steps";
 
-export const SpotlightTour: React.FC = () => {
+export const SpotlightTour: React.FC<{ steps?: readonly TourStep[] }> = ({ steps }) => {
   const {
     isActive,
     currentStep,
@@ -16,7 +17,7 @@ export const SpotlightTour: React.FC = () => {
     prev,
     skip,
     goToStep,
-  } = useTour();
+  } = useTour(steps);
 
   if (!isActive || !step) {
     return null;

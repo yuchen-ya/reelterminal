@@ -157,6 +157,42 @@ describe("web motion asset resolver", () => {
     await expect(resolver.resolveModelUrl?.(url)).resolves.toBe(url);
   });
 
+  it("does not fall back to a remote model URL when the desktop bridge refuses it", async () => {
+    const fetchUrl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 302,
+      statusText: "Found",
+      contentType: "",
+      body: new ArrayBuffer(0),
+      error: "Redirect responses are not followed",
+    });
+    Object.defineProperty(window, "reelterminal", {
+      configurable: true,
+      value: { media: { fetchUrl } },
+    });
+    const resolver = createWebMotionAssetResolver([]);
+    const url = "https://model.example/scene.glb";
+
+    await expect(resolver.resolveModelUrl?.(url)).resolves.toBeNull();
+    expect(fetchUrl).toHaveBeenCalledWith({
+      url,
+      maxBytes: 256 * 1024 * 1024,
+    });
+  });
+
+  it("does not fall back to a remote model URL when the desktop bridge rejects", async () => {
+    const fetchUrl = vi.fn().mockRejectedValue(new Error("request failed"));
+    Object.defineProperty(window, "reelterminal", {
+      configurable: true,
+      value: { media: { fetchUrl } },
+    });
+    const resolver = createWebMotionAssetResolver([]);
+
+    await expect(
+      resolver.resolveModelUrl?.("https://model.example/scene.glb"),
+    ).resolves.toBeNull();
+  });
+
   it("renders bound creation scene3d layers through the desktop Aurora bridge", async () => {
     const image = {
       close: vi.fn(),

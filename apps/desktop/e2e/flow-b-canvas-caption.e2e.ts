@@ -1,6 +1,5 @@
 /**
- * Flow B — 选位置，让 Agent 加字幕 (ADR 0004 Decisions 4+5: canvas point as a
- * real user gesture, context CAS) plus the stale-context CONFLICT leg.
+ * 选中画布位置，让 Agent 添加字幕，并检查过期上下文会返回冲突。
  *
  * Human side: real UI input only. Agent side: real MCP stdio client.
  * Pixel assertion decodes the facade's preview.render_frame PNG with ffmpeg

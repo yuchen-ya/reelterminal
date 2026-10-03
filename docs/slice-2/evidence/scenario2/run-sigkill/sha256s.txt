@@ -1,5 +1,0 @@
-# sha256 — scenario2 (run; SIGKILL variant; simulated client)
-674aa3c450fe93f7e595d3bf14aeee9990e7ced9255dc3300c12f2e29af08b10  s2 previewA PNG
-eacc93305d5646786a1afdfe7eff8c9e710da2600515e993f3123d1da28a5ac4  s2 e2e-v1.openreel.json
-8aa5e24cd060589d6a3fc863b16401d12ca5b2276c5c8b0351eec4da24a39333  s2 previewB PNG
-d6f4d42483ac20c9a9da34b98a417deb5c27c079f06794664247ca8e5978940c  s2 exported MP4

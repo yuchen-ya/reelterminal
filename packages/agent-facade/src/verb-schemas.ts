@@ -1,11 +1,11 @@
 import { PLUGIN_TOOLS } from "./plugins";
 /**
  * The SINGLE hand-maintained schema declaration per facade verb
- * (ADR 0003 Decision 4). Both consumers derive from these objects:
+ * Both consumers derive from these objects:
  *
  *  - the runtime boundary validators (session.ts drives `validateObject`
  *    with exactly these declarations — same checks, same labels, same
- *    error ordering as before the migration); and
+ *    stable error ordering); and
  *  - the emitted draft-2020-12 JSON Schemas (jsonschema.ts renders them
  *    for the transport's `tools/list`, which assigns them verbatim).
  *
@@ -170,8 +170,8 @@ export const PROJECT_CREATE_SCHEMA: ObjectSchema = {
 };
 
 /**
- * project.open {path, idempotencyKey?} — lifecycle verb (ADR 0003
- * Decision 10.4): no expectedRevision (single-initialization, outside the
+ * project.open {path, idempotencyKey?} — persistence verb: no expectedRevision
+ * (single-initialization, outside the
  * revision machinery), create-style idempotent replay only.
  */
 export const PROJECT_OPEN_SCHEMA: ObjectSchema = {
@@ -1878,10 +1878,10 @@ export const MEDIA_RENDER_HTML_SCHEMA: ObjectSchema = {
 };
 
 /* ------------------------------------------------------------------ */
-/* The verb declaration map (single source, Decision 4)                */
+/* The verb declaration map                                          */
 /* ------------------------------------------------------------------ */
 
-/** Verb param declaration order mirrors FACADE_VERBS (Appendix B.1). */
+/** Verb parameter declaration order mirrors FACADE_VERBS. */
 export const VERB_PARAM_SCHEMAS: {
   readonly [verb: string]: ObjectSchema;
 } = {

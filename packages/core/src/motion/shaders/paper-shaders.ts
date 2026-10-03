@@ -1,4 +1,4 @@
-// Adapted from @paper-design/shaders (https://github.com/paper-design/shaders), Apache-2.0.
+// Shader sources from @paper-design/shaders are used under MIT.
 import {
   ShaderFitOptions,
   defaultObjectSizing,
@@ -8,7 +8,6 @@ import {
   dotGridFragmentShader,
   dotOrbitFragmentShader,
   flutedGlassFragmentShader,
-  gemSmokeFragmentShader,
   godRaysFragmentShader,
   grainGradientFragmentShader,
   halftoneCmykFragmentShader,
@@ -251,6 +250,77 @@ interface PaperEntry {
 const NOISE = "u_noiseTexture";
 const IMAGE = "u_image";
 const COLORS = colorArray("u_colors", "u_colorsCount", 10);
+
+const GEM_SMOKE_FRAGMENT_SHADER = `#version 300 es
+precision highp float;
+
+in mediump vec2 v_imageUV;
+out vec4 fragColor;
+
+uniform sampler2D u_image;
+uniform float u_time;
+uniform mediump float u_imageAspectRatio;
+uniform vec4 u_colors[6];
+uniform float u_colorsCount;
+uniform float u_size;
+uniform float u_innerGlow;
+uniform float u_outerGlow;
+
+float hash21(vec2 point) {
+  point = fract(point * vec2(123.34, 456.21));
+  point += dot(point, point + 45.32);
+  return fract(point.x * point.y);
+}
+
+float valueNoise(vec2 point) {
+  vec2 cell = floor(point);
+  vec2 local = fract(point);
+  local = local * local * (3.0 - 2.0 * local);
+  float lower = mix(hash21(cell), hash21(cell + vec2(1.0, 0.0)), local.x);
+  float upper = mix(hash21(cell + vec2(0.0, 1.0)), hash21(cell + vec2(1.0, 1.0)), local.x);
+  return mix(lower, upper, local.y);
+}
+
+float smokeNoise(vec2 point) {
+  float value = 0.0;
+  float weight = 0.5;
+  for (int octave = 0; octave < 4; octave++) {
+    value += valueNoise(point) * weight;
+    point = mat2(1.6, -1.2, 1.2, 1.6) * point + 3.7;
+    weight *= 0.5;
+  }
+  return value;
+}
+
+vec4 palette(float position) {
+  int count = max(int(u_colorsCount), 1);
+  float scaled = clamp(position, 0.0, 1.0) * float(count - 1);
+  int first = int(floor(scaled));
+  int second = min(first + 1, count - 1);
+  return mix(u_colors[first], u_colors[second], fract(scaled));
+}
+
+void main() {
+  vec4 source = texture(u_image, v_imageUV);
+  vec2 point = (v_imageUV - 0.5) * vec2(max(u_imageAspectRatio, 0.01), 1.0);
+  float size = mix(2.5, 8.0, clamp(u_size, 0.0, 1.0));
+  vec2 flow = point * size + vec2(u_time * 0.035, -u_time * 0.021);
+  flow += 0.18 * vec2(
+    sin(flow.y * 3.0 + u_time * 0.15),
+    cos(flow.x * 2.5 - u_time * 0.12)
+  );
+
+  float smoke = smokeNoise(flow);
+  float radius = length(point);
+  float plume = smoothstep(0.28, 0.76, smoke);
+  float edge = 1.0 - smoothstep(0.08, 0.92, radius);
+  float glow = edge * plume * (0.45 + 0.35 * u_innerGlow + 0.2 * u_outerGlow);
+  vec4 tint = palette(smoke + 0.16 * (0.5 - radius));
+  float amount = clamp(glow * 0.82, 0.0, 0.82);
+
+  fragColor = vec4(mix(source.rgb, tint.rgb, amount), source.a);
+}
+`;
 
 const ENTRIES: readonly PaperEntry[] = [
   {
@@ -707,7 +777,7 @@ const ENTRIES: readonly PaperEntry[] = [
     id: "paper-gem-smoke",
     name: "Gem Smoke",
     category: "effect",
-    glsl: gemSmokeFragmentShader,
+    glsl: GEM_SMOKE_FRAGMENT_SHADER,
     staticUniforms: IMAGE_STATIC,
     inputUniform: IMAGE,
     colorArrayParams: colorArray("u_colors", "u_colorsCount", 6),

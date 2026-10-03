@@ -27,9 +27,7 @@ export interface ShortcutPreset {
 
 export type ShortcutHandler = (e: KeyboardEvent) => void;
 
-// Persisted localStorage keys and the built-in preset id are legacy registry
-// values — frozen (renaming loses user shortcut customizations / preset
-// selection). See packages/core/src/legacy/physical-identifiers.ts.
+// Persisted localStorage keys and the built-in preset identifier.
 import {
   LEGACY_LS_SHORTCUTS,
   LEGACY_LS_SHORTCUT_PRESET,

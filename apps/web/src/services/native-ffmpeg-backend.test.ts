@@ -83,15 +83,8 @@ describe("native ffmpeg backend helpers", () => {
 });
 
 
-/**
- * N02-ACC B1 regression: the export MessagePort handoff marker is ONE
- * shared constant referenced by the sender (desktop preload) and this
- * receiver. A drifted literal on either side deadlocks desktop native
- * export behind the 15s awaitExportPort timeout — exactly what shipped
- * in the N02 round. This test pins the wire value and checks both ends
- * by source so a reintroduced literal fails here, not in a user export.
- */
-describe("export port marker pairing (N02-ACC B1)", () => {
+/** Verify the export MessagePort marker is shared by both endpoints. */
+describe("export port marker pairing", () => {
   const receiverSource = readFileSync(new URL("./native-ffmpeg-backend.ts", import.meta.url), "utf8");
   const preloadSource = readFileSync(
     path.resolve(fileURLToPath(new URL("../../../../apps/desktop/src/preload/index.ts", import.meta.url))),

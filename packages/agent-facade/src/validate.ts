@@ -1,5 +1,5 @@
 /**
- * Strict boundary validation (audit/facade-v0.md contract #1, ADV-03/NF-3).
+ * Strict boundary validation.
  *
  * Every verb argument object is checked against a CLOSED key set: unknown
  * keys, wrong types and missing required fields all fail with INVALID_PARAMS
@@ -28,7 +28,7 @@ type FieldCheck = (value: unknown) => boolean;
 export type ObjectSchema = Record<string, FieldRule>;
 
 /* ------------------------------------------------------------------ */
-/* Draft-2020-12 emission metadata (ADR 0003 Decision 4)               */
+/* JSON Schema emission metadata                                      */
 /* ------------------------------------------------------------------ */
 
 /**

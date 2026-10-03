@@ -1,7 +1,5 @@
 /**
- * Persistence happy paths (ADR 0003 Decision 10): the checkpoint — not the
- * process — carries the project across a session boundary. A fresh session
- * IS the new process at unit level. Pinned here:
+ * Checkpoint persistence behavior across session boundaries:
  *
  *  - save→open→continue: revision arithmetic continuous across sessions;
  *    the opened timeline deep-equals the pre-save timeline;
@@ -11,8 +9,6 @@
  *    create-after-open CONFLICT;
  *  - honest refusals: NOT_FOUND / UNSUPPORTED / INVALID_PARAMS;
  *  - the ledger after open is empty (keys minted pre-save do not replay);
- *  - contract bump: facade-slice-6, 24 verbs, 9 error codes (superseded by slice-7; see below)
- *    guarded project.rename mutation and the six Slice 6 verbs).
  */
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -504,7 +500,7 @@ describe("persistence: save → fresh session open → continue", () => {
     expect(overlayClip?.transform.position).toEqual({ x: 0.5, y: 0.15 });
   });
 
-  it("session.describe reports the slice-7 contract with registered verbs and 9 error codes", async () => {
+  it("session.describe reports the current contract and registered verbs", async () => {
     const facade = newSession();
     const res = await facade["session.describe"]();
     expect(res.ok).toBe(true);
