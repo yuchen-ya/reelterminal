@@ -15,7 +15,7 @@
  *
  * Idempotent: re-running replaces stale copies.
  */
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,4 +37,17 @@ mkdirSync(outDir, { recursive: true });
 for (const name of SOURCES) {
   copyFileSync(path.join(browserSourceDir, name), path.join(outDir, name));
   process.stderr.write(`[link-live-runtime-deps] dist/browser/${name}\n`);
+}
+
+// The agent-facade's OpenCV worker scripts (image.align / motion.track) are
+// located relative to the module: in the CJS bundle that is inside dist/, so
+// they must exist at <dist>/python/. Same idempotent-copy discipline as the
+// browser sources.
+const pythonSourceDir = path.join(packageDir, "..", "..", "packages", "agent-facade", "python");
+const pythonOutDir = path.join(packageDir, "dist", "python");
+mkdirSync(pythonOutDir, { recursive: true });
+for (const name of readdirSync(pythonSourceDir)) {
+  if (!name.endsWith(".py")) continue;
+  copyFileSync(path.join(pythonSourceDir, name), path.join(pythonOutDir, name));
+  process.stderr.write(`[link-live-runtime-deps] dist/python/${name}\n`);
 }

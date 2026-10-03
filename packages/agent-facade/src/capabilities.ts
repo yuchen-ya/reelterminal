@@ -1,6 +1,8 @@
 import { videoReviewPreflight } from "./video-review";
 import { ffmpegToolPreflight, probeLabelFont } from "./media/ffmpeg-bin";
 import { MAX_EXTRACT_FRAMES, MAX_SHEET_CELLS } from "./media/frame-exact";
+import { MAX_TRACK_FRAMES } from "./plugins/motion-tools";
+import { opencvToolPreflight } from "./media/opencv-runner";
 import { audioAnalysisPreflight, AUDIO_LIMITS } from "./audio-analysis";
 import { COLOR_POLICY as COLOR_POLICY_DISCLOSURE } from "./color-policy";
 import { PLUGIN_TOOLS } from "./plugins";
@@ -172,6 +174,7 @@ export async function buildCapabilities(
   const videoReady = await videoReviewPreflight();
   const ffmpegReady = await ffmpegToolPreflight();
   const labelFont = await probeLabelFont();
+  const opencvReady = await opencvToolPreflight();
   const mediaImportAvailable = ctx.live
     ? ctx.live.mediaImportAvailable && ctx.mediaRoots.length > 0
     : ctx.mediaRoots.length > 0;
@@ -490,6 +493,41 @@ export async function buildCapabilities(
         maxPatchRangeFrames: MAX_EXTRACT_FRAMES,
       },
     },
+    motionTools: {
+      opencv: opencvReady,
+      align: !opencvReady.available
+        ? { available: false, reason: opencvReady.reason, requires: "a Python interpreter with opencv-python and numpy (REELTERMINAL_OPENCV_PYTHON or PATH)" }
+        : {
+            available: true,
+            details: {
+              verbs: ["image.align"],
+              methods: ["translation", "similarity", "affine"],
+              methodBackends: {
+                translation: "ECC (findTransformECC, mask-supported; matrix inverted to the moving->reference direction)",
+                similarity: "ORB features + RANSAC estimateAffinePartial2D (rotation+uniform scale+translation)",
+                affine: "ORB features + RANSAC estimateAffine2D (6-DOF)",
+              },
+              scores: "method-specific (ECC correlation coefficient vs ORB inlier count/RMSE/ratio) — NOT a unified confidence, never comparable across methods",
+              constraints: "both rasters must match exactly (max 4096px); optional stableRegion rectangle restricts estimation and residual scoring; estimation failures return status \"failed\" with a reasonCode, never an identity matrix",
+              candidateOnly: "aligned image and matrix are candidates under the artifact root; the timeline is never touched",
+            },
+          },
+      track: !opencvReady.available
+        ? { available: false, reason: opencvReady.reason, requires: "a Python interpreter with opencv-python and numpy (REELTERMINAL_OPENCV_PYTHON or PATH)" }
+        : {
+            available: true,
+            details: {
+              verb: "motion.track",
+              algorithm: "corner seeds (goodFeaturesToTrack inside the region) + LK sparse optical flow (pyrLK) + forward-backward check + RANSAC similarity (estimateAffinePartial2D)",
+              frameSource: "frames extracted by the M1 frame-exact core — zero-based decode indices with real PTS per frame, exact for VFR sources; source-native playback only (timeline speed/reverse mapping is the caller's job)",
+              failureSemantics: "the tracker never re-seeds across a loss: forward-backward collapse, too few RANSAC inliers or the region leaving the raster ends the run at that frame with a reason; later frames are not_tracked with null matrices — never a plausible-looking glide across cuts",
+              outputs: "per-frame cumulative 3x3 region transforms, forward-backward/inlier error statistics, termination reason, overlay PNGs + a review contact sheet, manifest.json",
+              limits: { maxFramesPerTrack: MAX_TRACK_FRAMES },
+              candidateOnly: "tracking data and overlays are candidates; no timeline keyframes are written and the GUI motion engine state is untouched",
+              claimsNotMade: "correspondence statistics only — nothing about physical plausibility or action naturalness",
+            },
+          },
+    },
     mediaAnalysis: {
       asynchronous: true,
       types: Object.fromEntries(
@@ -565,9 +603,9 @@ export async function buildCapabilities(
               ? {
                   available: false,
                   reason:
-                    "Headless motion analysis is not available yet: tracking needs rendered frames. In the desktop GUI the motion-tracking engine already lands its result as transform keyframes via clip.setKeyframes (undoable, persisted, consumed by render and export).",
+                    "The \"motion\" analysis type (clip transform-keyframe analysis) has no installed provider here. File-based region tracking IS available as the motion.track plugin verb — see the motionTools capability for its real availability (it needs a local OpenCV interpreter). In the desktop GUI the motion-tracking engine lands its result as transform keyframes via clip.setKeyframes (undoable, persisted, consumed by render and export).",
                   requires:
-                    "a RenderProvider that supplies frames for the tracked range",
+                    "a MediaAnalysisProvider for the \"motion\" type, or use the motion.track verb for file-based candidate tracking",
                 }
               : {
                 available: false,

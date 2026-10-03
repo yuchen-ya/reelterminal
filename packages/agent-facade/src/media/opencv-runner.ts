@@ -111,8 +111,8 @@ async function isFile(path: string): Promise<boolean> {
 /**
  * Worker-script location: explicit override first, then the package source
  * tree (src/media/../../python), then a dist copy beside the bundled desktop
- * main (dist/main/../../python — link-live-runtime-deps.mjs writes it).
- * Both relative forms resolve from this module's own URL, so the lookup
+ * main (dist/main/../python — link-live-runtime-deps.mjs writes it). The
+ * relative forms all resolve from this module's own URL, so the lookup
  * follows wherever this code actually runs from.
  */
 export async function resolveOpenCvScript(name: string): Promise<string | null> {
@@ -122,7 +122,7 @@ export async function resolveOpenCvScript(name: string): Promise<string | null> 
     if (await isFile(candidate)) return candidate;
   }
   const moduleDir = fileURLToPath(new URL(".", import.meta.url));
-  for (const relative of ["../../python", "../../../python"]) {
+  for (const relative of ["../../python", "../../../python", "../python"]) {
     const candidate = join(moduleDir, relative, name);
     if (await isFile(candidate)) return candidate;
   }

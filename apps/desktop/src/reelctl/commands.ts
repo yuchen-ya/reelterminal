@@ -35,6 +35,8 @@ const ALIASES: Readonly<Record<string, string>> = {
   "frames sheet": "frames.contact_sheet",
   "video compare": "video.compare",
   "patch apply": "patch.apply",
+  "image align": "image.align",
+  "motion track": "motion.track",
 };
 
 function fail(message: string): never {
@@ -343,6 +345,8 @@ Usage:
   reelctl frames sheet --file frames.json
   reelctl video compare --file compare.json
   reelctl patch apply --file patch.json
+  reelctl image align --file align.json
+  reelctl motion track --file track.json
   reelctl preview frame --time 12.5
   reelctl history get | undo | redo
   reelctl requirements list [--status ready] [--compact]

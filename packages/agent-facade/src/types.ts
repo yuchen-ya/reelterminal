@@ -320,6 +320,17 @@ export interface Capabilities {
       readonly maxPatchRangeFrames: number;
     };
   };
+  /**
+   * Motion & alignment production tools (optimization plan M2), backed by a
+   * probed local OpenCV interpreter. Availability mirrors the same
+   * preflight the verbs gate on — a capability that reports available must
+   * never let its verb fail UNSUPPORTED.
+   */
+  readonly motionTools: {
+    readonly opencv: CapabilityStatus;
+    readonly align: CapabilityStatus;
+    readonly track: CapabilityStatus;
+  };
   readonly professionalEditing: Readonly<{
     subtitles: CapabilityStatus;
     trackControls: CapabilityStatus;
