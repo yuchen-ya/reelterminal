@@ -23,6 +23,7 @@
 import { isAbsolute } from "node:path";
 
 import type { AgentFacade, FacadeResult } from "@reelterminal/agent-facade";
+import { FACADE_VERBS } from "@reelterminal/agent-facade";
 
 import { parseArgv, resolveConfig, mergeEnvRoots, mergeEnvLogLevel, refuseStartup, type TransportConfig } from "./config";
 import { logError, logInfo, setLogLevel } from "./log";
@@ -727,24 +728,10 @@ export async function executeWorkflow(
 /* CLI driver                                                          */
 /* ------------------------------------------------------------------ */
 
-const FACADE_CALL_KEYS = [
-  "session.describe",
-  "capabilities.get",
-  "project.create",
-  "project.open",
-  "project.save",
-  "project.get_state",
-  "media.import",
-  "timeline.get",
-  "editor.get_context",
-  "edit.apply",
-  "preview.render_frame",
-  "visual.inspect",
-  "export.start",
-  "job.status",
-  "job.cancel",
-  "verify.artifact",
-] as const;
+// Derived from the facade registry so a newly added facade verb is callable
+// here without editing another allowlist (the hand-maintained copy had
+// already drifted to a subset of the verbs).
+const FACADE_CALL_KEYS: readonly string[] = FACADE_VERBS;
 
 export async function runCommand(argv: readonly string[]): Promise<number> {
   let parsed;
