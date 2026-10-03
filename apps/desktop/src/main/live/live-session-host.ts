@@ -365,10 +365,17 @@ export function createLiveSessionHost(
         const images = readVisualImageSet(result, deps.artifactRoot).images
           .map((image) => `data:${image.mimeType};base64,${image.bytes.toString("base64")}`);
         if (images.length > 0) {
-          const value = result.value as { mediaId?: string; sourceRevision?: number; frames?: { timeSec: number }[]; mediaName?: string; startSec?: number; endSec?: number; limitations?: string[] };
+          const value = result.value as { mediaId?: string; sourceRevision?: number; frames?: { timeSec?: number; ptsTimeSec?: number }[]; mediaName?: string; startSec?: number; endSec?: number; limitations?: string[] };
+          // verbs shape frames[] differently (visual.inspect uses timeSec,
+          // frames.extract uses ptsTimeSec) — collect whichever is numeric
+          // instead of assuming one field exists on every frame.
+          const sampleTimes = (value.frames ?? [])
+            .map((frame) => typeof frame?.timeSec === "number" ? frame.timeSec
+              : typeof frame?.ptsTimeSec === "number" ? frame.ptsTimeSec : null)
+            .filter((time) => time !== null) as number[];
           deps.emitEvent({ type: "inspection", title: `${value.mediaName ?? verb}${value.mediaId ? ` · ${value.mediaId}` : ""}${value.sourceRevision !== undefined ? ` · revision ${value.sourceRevision}` : ""}`,
             range: typeof value.startSec === "number" && typeof value.endSec === "number" ? `${value.startSec.toFixed(3)}–${value.endSec.toFixed(3)} s` : null,
-            images, limitations: [...(value.limitations ?? []), ...(value.frames ? [`Sample times: ${value.frames.map((frame) => frame.timeSec.toFixed(3)).join(", ")} s`] : [])] });
+            images, limitations: [...(value.limitations ?? []), ...(sampleTimes.length > 0 ? [`Sample times: ${sampleTimes.map((time) => time.toFixed(3)).join(", ")} s`] : [])] });
         }
       }
       deps.emitEvent({
