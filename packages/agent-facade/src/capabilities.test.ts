@@ -205,6 +205,8 @@ describe("capabilities.get / session.describe", () => {
       "patch.apply",
       "image.align",
       "motion.track",
+      "mask.refine",
+      "patch.propagate",
     ]);
     expect(res.value.stepLetters.facadeToRuntime).toBe("P");
     expect(res.value.stepLetters.createProject).toBe("P");

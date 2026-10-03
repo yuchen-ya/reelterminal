@@ -49,6 +49,8 @@ describe("reelctl command parsing and safety", () => {
     });
     expect(parseInvocation(["preview", "frame", "--time", "12.5"]).arguments).toEqual({ timeSec: 12.5 });
     expect(parseInvocation(["job", "wait", "job-1"]).arguments).toEqual({ jobId: "job-1" });
+    expect(parseInvocation(["mask", "refine"]).commandName).toBe("mask.refine");
+    expect(parseInvocation(["patch", "propagate"]).commandName).toBe("patch.propagate");
   });
 
   it("keeps identity flags out of the closed history argument schema", () => {

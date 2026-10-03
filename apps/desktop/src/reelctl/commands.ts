@@ -37,6 +37,8 @@ const ALIASES: Readonly<Record<string, string>> = {
   "patch apply": "patch.apply",
   "image align": "image.align",
   "motion track": "motion.track",
+  "mask refine": "mask.refine",
+  "patch propagate": "patch.propagate",
 };
 
 function fail(message: string): never {
@@ -347,6 +349,8 @@ Usage:
   reelctl patch apply --file patch.json
   reelctl image align --file align.json
   reelctl motion track --file track.json
+  reelctl mask refine --file mask.json
+  reelctl patch propagate --file propagate.json
   reelctl preview frame --time 12.5
   reelctl history get | undo | redo
   reelctl requirements list [--status ready] [--compact]

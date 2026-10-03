@@ -330,6 +330,8 @@ export interface Capabilities {
     readonly opencv: CapabilityStatus;
     readonly align: CapabilityStatus;
     readonly track: CapabilityStatus;
+    readonly maskRefine: CapabilityStatus;
+    readonly patchPropagate: CapabilityStatus;
   };
   readonly professionalEditing: Readonly<{
     subtitles: CapabilityStatus;

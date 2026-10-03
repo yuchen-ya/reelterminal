@@ -2,6 +2,7 @@ import { videoReviewPreflight } from "./video-review";
 import { ffmpegToolPreflight, probeLabelFont } from "./media/ffmpeg-bin";
 import { MAX_EXTRACT_FRAMES, MAX_SHEET_CELLS } from "./media/frame-exact";
 import { MAX_TRACK_FRAMES } from "./plugins/motion-tools";
+import { MAX_PATCH_PROPAGATE_FRAMES } from "./plugins/patch-propagation";
 import { opencvToolPreflight } from "./media/opencv-runner";
 import { audioAnalysisPreflight, AUDIO_LIMITS } from "./audio-analysis";
 import { COLOR_POLICY as COLOR_POLICY_DISCLOSURE } from "./color-policy";
@@ -175,6 +176,10 @@ export async function buildCapabilities(
   const ffmpegReady = await ffmpegToolPreflight();
   const labelFont = await probeLabelFont();
   const opencvReady = await opencvToolPreflight();
+  const [maskReady, propagateReady] = await Promise.all([
+    opencvToolPreflight(["mask_refine.py"]),
+    opencvToolPreflight(["propagate.py"]),
+  ]);
   const mediaImportAvailable = ctx.live
     ? ctx.live.mediaImportAvailable && ctx.mediaRoots.length > 0
     : ctx.mediaRoots.length > 0;
@@ -495,6 +500,24 @@ export async function buildCapabilities(
     },
     motionTools: {
       opencv: opencvReady,
+      maskRefine: !maskReady.available || noArtifactRoot || ctx.mediaRoots.length === 0
+        ? { available: false, reason: !maskReady.available ? maskReady.reason : "Requires configured media and artifact roots" }
+        : { available: true, details: {
+            verb: "mask.refine",
+            algorithm: "explicit PNG alpha mask or rectangle-initialized GrabCut, then bounded dilation/erosion and Gaussian feathering",
+            outputs: "grayscale alpha PNG and optional source overlay; candidate only, no timeline edits",
+            limitations: "rectangle initialization is a segmentation proposal, not guaranteed character matting; inspect before adoption",
+          } },
+      patchPropagate: !propagateReady.available || !ffmpegReady.available || noArtifactRoot || ctx.mediaRoots.length === 0
+        ? { available: false, reason: !propagateReady.available ? propagateReady.reason : !ffmpegReady.available ? ffmpegReady.reason : "Requires configured media and artifact roots" }
+        : { available: true, details: {
+            verb: "patch.propagate",
+            algorithm: "masked LK sparse optical flow, forward-backward checks and RANSAC similarity; suspected scene/appearance change gates",
+            limits: { maxFrames: MAX_PATCH_PROPAGATE_FRAMES, maxDimension: 4096, maxFramePixels: 16000000, maxTotalFramePixels: 250000000 },
+            outputs: "lossless candidate PNGs, frame/PTS manifest and inspection overlays; no implicit video encoding or timeline edits",
+            failureSemantics: "first detected loss stops propagation; that and later frames remain original with needsRepair and null transforms",
+            limitations: "similarity-only short rigid-region propagation; not nonrigid character animation, automatic occlusion completion or guaranteed detection of every cut",
+          } },
       align: !opencvReady.available
         ? { available: false, reason: opencvReady.reason, requires: "a Python interpreter with opencv-python and numpy (REELTERMINAL_OPENCV_PYTHON or PATH)" }
         : {
@@ -541,7 +564,7 @@ export async function buildCapabilities(
                   fields: ["containerMetadata", "duration", "geometry", "codec", "fileSize", "sourceFingerprint", "color"],
                   color: COLOR_POLICY_DISCLOSURE,
                   ...(ffmpegReady.available
-                    ? { frameFacts: "technicalQuality.frames adds decoded/header frame count, time base and the sampled-PTS CFR/VFR verdict via local ffprobe" }
+                    ? { frameFacts: "technicalQuality.frames adds decoded/header frame count, time base and a bounded whole-stream PTS CFR/VFR verdict via local ffprobe; incomplete scans report unknown" }
                     : { frameFacts: "technicalQuality.frames is null without local ffmpeg/ffprobe (install on PATH or set REELTERMINAL_FFMPEG_PATH/REELTERMINAL_FFPROBE_PATH)" }),
                 },
               }
