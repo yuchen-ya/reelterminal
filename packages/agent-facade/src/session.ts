@@ -1,5 +1,8 @@
 import { reviewVideo, videoReviewPreflight } from "./video-review";
 import { analyzeLocalAudio, analyzeSilence, analyzeBeatGrid, audioAnalysisPreflight } from "./audio-analysis";
+import { runVideoCandidateAnalyses, videoCandidatesPreflight, type VideoCandidateBundle } from "./video-candidates";
+import { resolveToolFfmpeg } from "./media/ffmpeg-bin";
+import { probeVideoFacts } from "./media/frame-exact";
 /**
  * Core in-process agent facade session.
  *
@@ -1222,8 +1225,16 @@ export class AgentFacadeSession {
         const ready = await audioAnalysisPreflight();
         if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
       }
+      const videoCandidateTypes = valid.analysisTypes.filter(
+        (type) => type === "sceneCuts" || type === "blackFrames" || type === "duplicateFrames",
+      );
+      if (videoCandidateTypes.length > 0) {
+        const ready = await videoCandidatesPreflight();
+        if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
+      }
       const unavailable = valid.analysisTypes.filter(
-        (type) => type !== "technicalQuality" && type !== "audioSummary" && type !== "videoReview" && type !== "silence" && type !== "beatGrid",
+        (type) => type !== "technicalQuality" && type !== "audioSummary" && type !== "videoReview" && type !== "silence" && type !== "beatGrid" &&
+          type !== "sceneCuts" && type !== "blackFrames" && type !== "duplicateFrames",
       );
       if (unavailable.length > 0) {
         throw new FacadeError(
@@ -1231,7 +1242,7 @@ export class AgentFacadeSession {
           `media.analyze_start: unavailable analysis types: ${unavailable.join(", ")}`,
           {
             unavailableTypes: unavailable,
-            availableTypes: ["technicalQuality", "audioSummary", "silence", "beatGrid"],
+            availableTypes: ["technicalQuality", "audioSummary", "silence", "beatGrid", "sceneCuts", "blackFrames", "duplicateFrames"],
           },
         );
       }
@@ -2832,6 +2843,33 @@ export class AgentFacadeSession {
       const beatGrid = analysisTypes.includes("beatGrid")
         ? await analyzeBeatGrid(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .975 + percent * .025 : analysisTypes.includes("audioSummary") || analysisTypes.includes("silence") ? .75 + percent * .25 : percent })) : undefined;
       if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
+      const videoCandidateTypes = analysisTypes.filter(
+        (type) => type === "sceneCuts" || type === "blackFrames" || type === "duplicateFrames",
+      );
+      let candidates: VideoCandidateBundle | undefined;
+      if (videoCandidateTypes.length > 0) {
+        const binaries = await resolveToolFfmpeg();
+        if (!binaries) throw new FacadeError("UNSUPPORTED", "Local video candidate analysis needs ffmpeg/ffprobe on PATH (or REELTERMINAL_FFMPEG_PATH / REELTERMINAL_FFPROBE_PATH)");
+        candidates = await runVideoCandidateAnalyses(binaries, sourcePath, range, analysisTypes, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: .5 + percent * .4 }));
+      }
+      if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
+      // Frame-exact technical facts: reuse the candidate run's probe, or
+      // probe best-effort for technicalQuality alone. Absence is reported,
+      // never guessed.
+      let frameFacts: Awaited<ReturnType<typeof probeVideoFacts>> | null = candidates?.facts ?? null;
+      let frameFactsUnavailableNote: string | null = null;
+      if (!frameFacts && analysisTypes.includes("technicalQuality")) {
+        const binaries = await resolveToolFfmpeg();
+        if (binaries) {
+          try {
+            frameFacts = await probeVideoFacts(binaries.ffprobe, sourcePath, { signal: controller.signal });
+          } catch (error) {
+            frameFactsUnavailableNote = `frame facts unavailable: ${error instanceof Error ? error.message : String(error)}`;
+          }
+        } else {
+          frameFactsUnavailableNote = "ffmpeg/ffprobe not configured — decoded frame count, time base and the CFR/VFR verdict are unknown (install on PATH or set REELTERMINAL_FFMPEG_PATH/REELTERMINAL_FFPROBE_PATH)";
+        }
+      }
       const after = await stat(sourcePath);
       if (after.size !== file.size || after.mtimeMs !== file.mtimeMs) throw new FacadeError("CONFLICT", "Source changed during analysis; retry");
       const sourceFingerprint = { size: file.size, lastModified: Math.round(file.mtimeMs) };
@@ -2851,11 +2889,25 @@ export class AgentFacadeSession {
           codec: probe.codec,
           fileSize: probe.fileSize,
           color: assessColorSupport(color),
+          // Frame-exact facts (decoded count, time base, CFR/VFR verdict)
+          // come from ffprobe when available; absent means honestly absent.
+          ...(frameFacts ? { frames: {
+            decodedFrameCount: frameFacts.decodedFrameCount,
+            headerFrameCount: frameFacts.headerFrameCount,
+            timeBase: frameFacts.timeBase,
+            rFrameRate: frameFacts.rFrameRate,
+            avgFrameRate: frameFacts.avgFrameRate,
+            frameTiming: frameFacts.timing,
+          } } : { frames: null }),
+          ...(frameFactsUnavailableNote ? { frameFactsUnavailable: frameFactsUnavailableNote } : {}),
           sourceFingerprint: {
             size: file.size,
             lastModified: Math.round(file.mtimeMs),
           },
         },
+        ...(candidates?.sceneCuts ? { sceneCuts: { ...candidates.sceneCuts, mediaId, sourceFingerprint } } : {}),
+        ...(candidates?.blackFrames ? { blackFrames: { ...candidates.blackFrames, mediaId, sourceFingerprint } } : {}),
+        ...(candidates?.duplicateFrames ? { duplicateFrames: { ...candidates.duplicateFrames, mediaId, sourceFingerprint } } : {}),
       };
       // Durable, traceable record (P2): observations/inferences/
       // recommendations stay separated, provenance and honest unknowns are
@@ -2898,6 +2950,15 @@ export class AgentFacadeSession {
           ...(analysisTypes.includes("beatGrid")
             ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-pcm-beat-engine", analysisType: "beatGrid" }]
             : []),
+          ...(analysisTypes.includes("sceneCuts")
+            ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-scene-score", analysisType: "sceneCuts" }]
+            : []),
+          ...(analysisTypes.includes("blackFrames")
+            ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-blackdetect", analysisType: "blackFrames" }]
+            : []),
+          ...(analysisTypes.includes("duplicateFrames")
+            ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-freezedetect", analysisType: "duplicateFrames" }]
+            : []),
           ...(video ? [{ kind: "cloud-opinion" as const, provider: video.provider, analysisType: "videoReview" }] : []),
         ],
         observations: [
@@ -2905,6 +2966,9 @@ export class AgentFacadeSession {
           ...(audio ? [{ source: "audioSummary", facts: audio }] : []),
           ...(silence ? [{ source: "silence", facts: silence }] : []),
           ...(beatGrid ? [{ source: "beatGrid", facts: beatGrid }] : []),
+          ...(candidates?.sceneCuts ? [{ source: "sceneCuts", facts: candidates.sceneCuts }] : []),
+          ...(candidates?.blackFrames ? [{ source: "blackFrames", facts: candidates.blackFrames }] : []),
+          ...(candidates?.duplicateFrames ? [{ source: "duplicateFrames", facts: candidates.duplicateFrames }] : []),
         ],
         inferences: [
           ...(audio?.bpmCandidates
