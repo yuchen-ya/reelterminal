@@ -1,5 +1,8 @@
 # Media review and replacement
 
+For local alpha cleanup and conservative short-range patch propagation, see
+[Mask refinement and propagation](MASK-PROPAGATION.md).
+
 This guide describes reference comparison, media replacement, and traceable
 analysis. Color handling is documented in [COLOR.md](COLOR.md).
 
@@ -18,7 +21,7 @@ the source file; ranges are half-open `[startFrame, endFrame)`. Extraction
 selects on those indices directly (never `seconds × nominal rate`), and every
 returned frame carries its real PTS from `showinfo`. Seconds↔frame
 conversion is claimed only when the stream's frame timing was **verified
-CFR** (sampled PTS agree with the header rates); VFR sources get real PTS
+CFR** (the bounded complete PTS scan agrees with the header rates; incomplete scans report unknown); VFR sources get real PTS
 values and honest nulls instead of guessed indices.
 
 1. **Locate candidates** — `media.analyze_start` with the local analysis
