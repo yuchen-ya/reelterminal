@@ -2,7 +2,10 @@
 
 New read-only Agent tools can be added without editing transport routers,
 allowlists, facade interfaces, capability maps, or session dispatch tables.
-The first production plugin is `src/plugins/source-inspection.ts`.
+The production plugins are `src/plugins/source-inspection.ts` and
+`src/plugins/frame-tools.ts` (the M1 frame-exact production tools:
+`frames.extract`, `frames.contact_sheet`, `video.compare`, `patch.apply`;
+see `docs/MEDIA-REVIEW-WORKFLOWS.md` in the repository root).
 
 ## Authoring
 

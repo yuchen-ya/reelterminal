@@ -24,6 +24,14 @@ reelctl edit validate --file validation.json
 reelctl edit apply --file changes.json
 ```
 
+Frame-exact production tools (see
+[MEDIA-REVIEW-WORKFLOWS.md](MEDIA-REVIEW-WORKFLOWS.md)) share the same
+catalog: `reelctl frames extract`, `reelctl frames sheet`,
+`reelctl video compare`, `reelctl patch apply`, and the candidate analysis
+types via `reelctl media analyze --media-id m1 --type sceneCuts --type
+blackFrames --type duplicateFrames`. `reelctl schema <command>` shows each
+command's exact arguments.
+
 Edit requests use the current project identity, project epoch, and revision.
 The desktop applies a batch through the shared action history, so Agent edits
 are visible in the GUI and can be undone there.

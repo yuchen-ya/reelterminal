@@ -3,6 +3,72 @@
 This guide describes reference comparison, media replacement, and traceable
 analysis. Color handling is documented in [COLOR.md](COLOR.md).
 
+## Frame-exact repair loop (scene candidates → extract → patch → compare → adopt)
+
+The M1 frame-exact tools cover the recurring manual repair loop — locate a
+frame range, inspect it, patch a region, verify, then adopt through the
+NORMAL undoable edit path. All four verbs are read-only candidate producers:
+they never touch the timeline, and every result lands under the session's
+`artifactRoot` with per-artifact hashes. Adoption always flows through
+`edit.validate` / `edit.apply` / `media.replace`, so the GUI and CLI keep one
+state, revision checks, and undo history.
+
+Coordinates: frame numbers are **zero-based decode/presentation indices** of
+the source file; ranges are half-open `[startFrame, endFrame)`. Extraction
+selects on those indices directly (never `seconds × nominal rate`), and every
+returned frame carries its real PTS from `showinfo`. Seconds↔frame
+conversion is claimed only when the stream's frame timing was **verified
+CFR** (sampled PTS agree with the header rates); VFR sources get real PTS
+values and honest nulls instead of guessed indices.
+
+1. **Locate candidates** — `media.analyze_start` with the local analysis
+   types (job system, cancellation, durable records, recheck):
+   - `sceneCuts`: FFmpeg content-valued scene score (PySceneDetect
+     Content-style semantics) → boundary candidates with
+     `{frameIndex, ptsTimeSec, score}`; each candidate's frame IS the
+     representative frame (the new shot's first frame).
+   - `blackFrames`: `blackdetect` luma ranges → candidates; intentional dark
+     scenes are NOT failures.
+   - `duplicateFrames`: `freezedetect` repetition ranges → candidates;
+     intentional freeze frames and static graphics repeat legitimately.
+   All three report `parameters` + `limitations` and never auto-edit.
+   `technicalQuality` now also carries `frames` (decoded/header frame count,
+   time base, CFR/VFR verdict) when local ffprobe is available.
+2. **Extract** — `frames.extract {source: {mediaId} | {path}, selection:
+   {frames: [...]} | {startFrame, endFrame}}` → lossless PNGs named
+   `f<frame:06d>.png` plus a per-frame `{frame, ptsTimeSec, artifact}`
+   mapping. ≤600 frames per call; paths with spaces/Chinese characters are
+   ordinary argv values.
+3. **Contact sheet** — `frames.contact_sheet {frames: [{path, frame?,
+   label?}], columns, cellWidth, roi?}` → one grid PNG with a black label
+   strip BELOW each cell (labels never cover content), no stretching, and a
+   `cells[]` position mapping. Without a usable system font the sheet omits
+   text labels and says so.
+4. **Patch** — `patch.apply {source, range: {startFrame, endFrame,
+   frames?}, patch: {path, x, y, width, height}}` with a FULL-FRAME patch
+   PNG and an integer-pixel rectangle mask in the source raster → candidate
+   frame sequence + `manifest.json` (per-frame status/sha256). Untouched
+   frames are byte-identical copies; every patched frame is pixel-VERIFIED
+   so everything outside the mask is unchanged, and the whole call fails
+   (listing the failing frames) if that contract breaks. Frame count and
+   order are preserved.
+5. **Compare** — `video.compare {reference, candidate, positions:
+   [{referenceFrame, candidateFrame}], layout, roi?}` compares the ORIGINAL
+   SOURCE FILES at explicit indices (use `preview.render_comparison` for
+   timeline renders): side-by-side / overlay / difference composites plus
+   ROI-restricted `meanAbsDiff` / `changedPixelsRatio` (same semantics as
+   `verify.artifact`). Metrics are alignment evidence, never a naturalness
+   verdict; audio is out of scope.
+6. **Adopt** — assemble the accepted candidate into a new production file,
+   then `media.replace {mediaId, filePath, scope}` (or `edit.apply`) as ONE
+   undo unit; `history.control undo` reverts it. Nothing is adopted
+   implicitly by steps 1–5.
+
+Dependencies: the tools need local `ffmpeg` + `ffprobe` (PATH, or
+`REELTERMINAL_FFMPEG_PATH` / `REELTERMINAL_FFPROBE_PATH`). Missing binaries
+fail `UNSUPPORTED` with the concrete reason, and `capabilities.get` reports
+the same under `frameTools` (ffmpeg preflight, label font, per-call limits).
+
 ## Reference comparison (sync compare against a reference)
 
 One shared configuration lives on the canonical project
@@ -81,7 +147,8 @@ Every `media.analyze_start` completion now persists a durable record under
 summary (`analysisRecord: {id, recordPath, recheckOf}`):
 
 - **Provenance per source**: `local-measurement` (technicalQuality,
-  audioSummary), `static-sampling` (frame/contact-sheet inspections),
+  audioSummary, sceneCuts, blackFrames, duplicateFrames),
+  `static-sampling` (frame/contact-sheet inspections),
   `cloud-opinion` (provider + model text stored verbatim AS DATA — never
   executed, never a verdict).
 - **Separation**: `observations` (measured facts), `inferences` (analyzer

@@ -1,4 +1,6 @@
 import { videoReviewPreflight } from "./video-review";
+import { ffmpegToolPreflight, probeLabelFont } from "./media/ffmpeg-bin";
+import { MAX_EXTRACT_FRAMES, MAX_SHEET_CELLS } from "./media/frame-exact";
 import { audioAnalysisPreflight, AUDIO_LIMITS } from "./audio-analysis";
 import { COLOR_POLICY as COLOR_POLICY_DISCLOSURE } from "./color-policy";
 import { PLUGIN_TOOLS } from "./plugins";
@@ -168,6 +170,8 @@ export async function buildCapabilities(
 ): Promise<Capabilities> {
   const audioReady = await audioAnalysisPreflight();
   const videoReady = await videoReviewPreflight();
+  const ffmpegReady = await ffmpegToolPreflight();
+  const labelFont = await probeLabelFont();
   const mediaImportAvailable = ctx.live
     ? ctx.live.mediaImportAvailable && ctx.mediaRoots.length > 0
     : ctx.mediaRoots.length > 0;
@@ -476,6 +480,16 @@ export async function buildCapabilities(
       const missing = (tool.requires ?? []).filter((requirement) => requirement === "render" ? !previewRaw.available : requirement === "artifactRoot" ? noArtifactRoot : ctx.mediaRoots.length === 0);
       return [tool.name, { available: missing.length === 0, ...(missing.length ? { reason: `Missing plugin prerequisites: ${missing.join(", ")}`, requires: missing.join(", ") } : {}), details: { effect: tool.effect, presentation: tool.presentation ?? "text" } }];
     })),
+    frameTools: {
+      ffmpeg: ffmpegReady,
+      contactSheetLabelFont: { path: labelFont },
+      limits: {
+        maxFramesPerExtract: MAX_EXTRACT_FRAMES,
+        maxSheetCells: MAX_SHEET_CELLS,
+        maxComparePairs: 6,
+        maxPatchRangeFrames: MAX_EXTRACT_FRAMES,
+      },
+    },
     mediaAnalysis: {
       asynchronous: true,
       types: Object.fromEntries(
@@ -488,6 +502,9 @@ export async function buildCapabilities(
                   provider: "built-in-mediabunny-stat",
                   fields: ["containerMetadata", "duration", "geometry", "codec", "fileSize", "sourceFingerprint", "color"],
                   color: COLOR_POLICY_DISCLOSURE,
+                  ...(ffmpegReady.available
+                    ? { frameFacts: "technicalQuality.frames adds decoded/header frame count, time base and the sampled-PTS CFR/VFR verdict via local ffprobe" }
+                    : { frameFacts: "technicalQuality.frames is null without local ffmpeg/ffprobe (install on PATH or set REELTERMINAL_FFMPEG_PATH/REELTERMINAL_FFPROBE_PATH)" }),
                 },
               }
             : type === "silence" || type === "beatGrid"
@@ -521,6 +538,28 @@ export async function buildCapabilities(
                             coordinateSpace: "source",
                             changesProject: false,
                           },
+                    }
+            : type === "sceneCuts" || type === "blackFrames" || type === "duplicateFrames"
+              ? !ctx.mediaRoots.length
+                ? {
+                    available: false,
+                    reason: "No media roots are configured, so the source file cannot be read for local candidate analysis.",
+                    requires: "a configured media root containing the source",
+                  }
+                : !ffmpegReady.available
+                  ? { available: false, reason: ffmpegReady.reason }
+                  : {
+                      available: true,
+                      details: {
+                        provider: type === "sceneCuts" ? "local-ffmpeg-scene-score" : type === "blackFrames" ? "local-ffmpeg-blackdetect" : "local-ffmpeg-freezedetect",
+                        fields: type === "sceneCuts" ? ["candidates[].frameIndex", "candidates[].ptsTimeSec", "candidates[].score", "parameters", "limitations"] : ["candidates[].startSec/endSec", "candidates[].startFrameIndex/endFrameIndexExclusive", "parameters", "limitations"],
+                        ...(type === "duplicateFrames" ? { closedAtStreamEnd: "a freeze running into the analyzed stream end has no measured end; flagged honestly on the candidate" } : {}),
+                        candidatesOnly: "detector output is review candidates with parameters and limitations — never verdicts, never automatic edits",
+                        ffmpeg: ffmpegReady.available ? ffmpegReady.details : undefined,
+                        workflow: "verify boundaries with frames.extract + frames.contact_sheet, then act through edit.apply (one undo unit)",
+                        coordinateSpace: "source",
+                        changesProject: false,
+                      },
                     }
             : type === "motion"
               ? {

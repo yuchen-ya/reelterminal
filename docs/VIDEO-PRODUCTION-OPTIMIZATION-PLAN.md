@@ -2,6 +2,15 @@
 
 日期：2026-10-03。现有改动快照：`913a6b1`。
 
+> **实施状态（2026-10-03）**：M1 已实现——`frames.extract` /
+> `frames.contact_sheet` / `video.compare` / `patch.apply` 四个只读候选
+> 工具，`media.analyze_start` 新增本地候选分析类型 `sceneCuts` /
+> `blackFrames` / `duplicateFrames`，`technicalQuality` 增加解码帧数、
+> 时间基准与 CFR/VFR 判定。后端为本地 FFmpeg/FFprobe（`REELTERMINAL_FFMPEG_PATH` /
+> `REELTERMINAL_FFPROBE_PATH` 或 PATH），capabilities 以 `frameTools` 段如实
+> 报告。用法见 [`MEDIA-REVIEW-WORKFLOWS.md`](MEDIA-REVIEW-WORKFLOWS.md) 的
+> "Frame-exact repair loop" 一节。M2/M3 仍为路线图。
+
 ## 目标与依据
 
 把《DEEPSEEK的忘酌》实际制作中反复编写的抽帧、分析、局部合成、检查与回填脚本，整理为可发现、可验证、可撤销应用的产品能力。CLI、MCP 与 GUI 共用现有 Command API 和项目状态，不另建编辑器。

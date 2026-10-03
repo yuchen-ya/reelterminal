@@ -31,6 +31,10 @@ const ALIASES: Readonly<Record<string, string>> = {
   "job status": "job.status",
   "job wait": "job.status",
   "job cancel": "job.cancel",
+  "frames extract": "frames.extract",
+  "frames sheet": "frames.contact_sheet",
+  "video compare": "video.compare",
+  "patch apply": "patch.apply",
 };
 
 function fail(message: string): never {
@@ -187,6 +191,11 @@ function commandFromWords(words: readonly string[]): { readonly commandName: str
 
 function normalizeArgs(commandName: string, raw: Record<string, unknown>): Record<string, unknown> {
   const result = { ...raw };
+  if (commandName === "media.analyze_start" && result.type !== undefined && result.analysisTypes === undefined) {
+    const types = Array.isArray(result.type) ? result.type : [result.type];
+    delete result.type;
+    result.analysisTypes = types;
+  }
   if (commandName === "timeline.query") {
     if (result.ref !== undefined) {
       const refs = Array.isArray(result.ref) ? result.ref : [result.ref];
@@ -329,6 +338,11 @@ Usage:
   reelctl media import --file request.json
   reelctl media inspect --media-id m1 --start-sec 0 --end-sec 8
   reelctl media analyze --media-id m1 --type audioSummary
+  reelctl media analyze --media-id m1 --type sceneCuts --type blackFrames
+  reelctl frames extract --media-id m1 --start-frame 100 --end-frame 104
+  reelctl frames sheet --file frames.json
+  reelctl video compare --file compare.json
+  reelctl patch apply --file patch.json
   reelctl preview frame --time 12.5
   reelctl history get | undo | redo
   reelctl requirements list [--status ready] [--compact]

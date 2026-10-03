@@ -69,6 +69,10 @@ function commandNameFromText(text: string): string {
     "job status": "job.status",
     "job wait": "job.status",
     "job cancel": "job.cancel",
+    "frames extract": "frames.extract",
+    "frames sheet": "frames.contact_sheet",
+    "video compare": "video.compare",
+    "patch apply": "patch.apply",
   };
   return known[text] ?? text;
 }
