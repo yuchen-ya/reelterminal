@@ -80,7 +80,7 @@ async function probeInterpreter(
   try {
     const { stdout } = await runToolProcess(
       candidate.python,
-      [...(candidate.launcherArgs ?? []), "-c", IMPORT_PROBE_SNIPPET],
+      [...(candidate.launcherArgs ?? []), "-I", "-c", IMPORT_PROBE_SNIPPET],
       { timeoutMs: 30_000 },
     );
     const cv2 = /cv2 (\S+)/.exec(stdout.toString("utf8"))?.[1];
@@ -157,7 +157,7 @@ export function resolveOpenCvRuntime(): Promise<OpenCvRuntime | null> {
 }
 
 /** Preflight shape shared with capabilities reporting. */
-export async function opencvToolPreflight(): Promise<
+export async function opencvToolPreflight(requiredScripts: readonly string[] = ["align.py", "track.py"]): Promise<
   { available: true; details: { python: string; cv2Version: string; numpyVersion: string; scriptDir: string } }
   | { available: false; reason: string }
 > {
@@ -172,11 +172,12 @@ export async function opencvToolPreflight(): Promise<
         : "no interpreter on PATH (python3/python) can import cv2+numpy — install Python with opencv-python and numpy, or set REELTERMINAL_OPENCV_PYTHON to an interpreter that has them",
     };
   }
-  const script = await resolveOpenCvScript("align.py");
-  if (!script) {
+  const scripts = await Promise.all(requiredScripts.map(resolveOpenCvScript));
+  const missing = requiredScripts.filter((_, index) => !scripts[index]);
+  if (missing.length > 0 || scripts.length === 0) {
     return {
       available: false,
-      reason: 'the OpenCV worker scripts (align.py / track.py) were not found beside this build — set REELTERMINAL_OPENCV_SCRIPT_DIR to the directory containing them, or restore packages/agent-facade/python',
+      reason: `the required OpenCV worker scripts (${missing.join(" / ") || "none specified"}) were not found beside this build — set REELTERMINAL_OPENCV_SCRIPT_DIR to the directory containing them, or restore packages/agent-facade/python`,
     };
   }
   return {
@@ -185,7 +186,7 @@ export async function opencvToolPreflight(): Promise<
       python: interpreter.python,
       cv2Version: interpreter.cv2Version,
       numpyVersion: interpreter.numpyVersion,
-      scriptDir: dirname(script),
+      scriptDir: dirname(scripts[0]!),
     },
   };
 }
@@ -249,12 +250,11 @@ export async function runOpenCvScript(
   request: Record<string, unknown>,
   options: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<OpenCvResponse> {
-  const runtime = await resolveOpenCvRuntime();
-  if (!runtime) {
-    const pre = await opencvToolPreflight();
+  const pre = await opencvToolPreflight([scriptName]);
+  if (!pre.available) {
     throw new FacadeError(
       "UNSUPPORTED",
-      pre.available ? "OpenCV runtime vanished between preflight and call" : pre.reason,
+      pre.reason,
     );
   }
   const script = await resolveOpenCvScript(scriptName);
@@ -264,5 +264,5 @@ export async function runOpenCvScript(
       `OpenCV worker script "${scriptName}" is not installed beside this build (looked in REELTERMINAL_OPENCV_SCRIPT_DIR and the package python/ directory)`,
     );
   }
-  return runWorkerProtocol(runtime.python, script, request, options);
+  return runWorkerProtocol(pre.details.python, script, request, options);
 }

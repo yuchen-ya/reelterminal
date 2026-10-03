@@ -149,6 +149,12 @@ describe("script + runtime resolution", () => {
     }
   });
 
+  it("does not claim a tool is available when its requested worker is missing", async () => {
+    const result = await opencvToolPreflight(["missing-tool-worker.py"]);
+    expect(result.available).toBe(false);
+    if (!result.available) expect(result.reason.length).toBeGreaterThan(0);
+  });
+
   it("probes the real interpreter only when one can import cv2+numpy", async () => {
     const pre = await opencvToolPreflight();
     if (!pre.available) {

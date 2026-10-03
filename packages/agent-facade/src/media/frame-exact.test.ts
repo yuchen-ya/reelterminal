@@ -18,6 +18,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { runToolProcess, resolveToolFfmpeg, probeLabelFont } from "./ffmpeg-bin";
 import {
   probeVideoFacts,
+  frameIndexFromPts,
   extractFramesExact,
   resolveTargetFrames,
   buildSelectExpr,
@@ -74,6 +75,47 @@ describe("probeVideoFacts", () => {
     expect(facts.timing.fps).toBeCloseTo(10, 5);
     expect(facts.decodedFrameCount).toBe(75);
     expect(facts.timeBase).toBe("1/10240");
+  });
+
+  it.skipIf(skip())("does not call a late VFR tail CFR based on the first three seconds", async () => {
+    const lateVfrPath = join(dir, "late-vfr-tail.mp4");
+    await runToolProcess(binaries!.ffmpeg, [
+      "-hide_banner", "-loglevel", "error", "-y",
+      "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=10:duration=6",
+      "-vf", "select='not(eq(n,45))'", "-fps_mode", "vfr",
+      "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", lateVfrPath,
+    ]);
+
+    const probed = await runToolProcess(binaries!.ffprobe, [
+      "-v", "error", "-select_streams", "v:0",
+      "-show_streams", "-show_frames",
+      "-show_entries", "stream=r_frame_rate,avg_frame_rate:frame=pts_time",
+      "-of", "json", lateVfrPath,
+    ]);
+    const probe = JSON.parse(probed.stdout.toString("utf8")) as {
+      streams: { r_frame_rate: string; avg_frame_rate: string }[];
+      frames: { pts_time: string }[];
+    };
+    const pts = probe.frames.map((frame) => Number(frame.pts_time));
+    const headerRate = (value: string) => {
+      const [numerator, denominator] = value.split("/").map(Number);
+      return numerator! / denominator!;
+    };
+    const rRate = headerRate(probe.streams[0]!.r_frame_rate);
+    const avgRate = headerRate(probe.streams[0]!.avg_frame_rate);
+    const firstThreeSeconds = pts.filter((value) => value < 3.0);
+    const prefixDeltas = firstThreeSeconds.slice(1).map((value, index) => value - firstThreeSeconds[index]!);
+    const allDeltas = pts.slice(1).map((value, index) => value - pts[index]!);
+
+    expect(pts).toHaveLength(59);
+    expect(Math.abs(rRate - avgRate) / avgRate).toBeLessThan(0.02);
+    expect(prefixDeltas.every((delta) => Math.abs(delta - 0.1) < 1e-4)).toBe(true);
+    expect(allDeltas.some((delta) => Math.abs(delta - 0.2) < 1e-4)).toBe(true);
+
+    const facts = await probeVideoFacts(binaries!.ffprobe, lateVfrPath);
+    expect(facts.timing.timing).toBe("vfr");
+    expect(facts.timing.sampledFrameCount).toBe(59);
+    expect(frameIndexFromPts(4.6, facts)).toBeNull();
   });
 
   it.skipIf(skip())("survives paths with spaces and Chinese characters", async () => {

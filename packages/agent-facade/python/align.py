@@ -174,25 +174,42 @@ def ecc_translation(ref_gray, mov_gray, stable_region, iterations, epsilon):
     warp = np.eye(2, 3, dtype=np.float32)
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT,
                 int(iterations), float(epsilon))
-    mask = gradient_support_mask(mask_for(ref_gray.shape, stable_region), ref_gray)
-    if int(np.count_nonzero(mask)) < 64:
+    template_mask = gradient_support_mask(mask_for(ref_gray.shape, stable_region), ref_gray)
+    if int(np.count_nonzero(template_mask)) < 64:
         return None, failed(
             "ecc-translation", "insufficient_features",
             "the scored region has too little gradient support for ECC estimation",
             {"eccIterationsRequested": iterations, "eccEpsilon": epsilon})
-    try:
-        cc, warp = cv2.findTransformECC(
-            ref_gray, mov_gray, warp, cv2.MOTION_TRANSLATION, criteria, mask, 5)
-    except cv2.error as exc:
-        message = str(exc)
-        if "converge" in message.lower():
+    # OpenCV's inputMask is expressed in inputImage (moving-image) pixels,
+    # while stableRegion and gradient support are defined in template
+    # (reference-image) pixels. Start with the same mask to find a nearby
+    # estimate, then remap the reference support into moving coordinates and
+    # refine from that estimate. The short remap loop avoids scoring unrelated
+    # pixels when the two valid regions are displaced.
+    input_mask = template_mask
+    cc = 0.0
+    for _ in range(3):
+        try:
+            cc, warp = cv2.findTransformECC(
+                ref_gray, mov_gray, warp, cv2.MOTION_TRANSLATION, criteria, input_mask, 5)
+        except cv2.error as exc:
+            message = str(exc)
+            if "converge" in message.lower():
+                return None, failed(
+                    "ecc-translation", "ecc_not_converged",
+                    f"findTransformECC did not converge (low texture or a shift larger than the basin of attraction): {message}",
+                    {"eccIterationsRequested": iterations, "eccEpsilon": epsilon})
+            # Anything else (bad dtype, bad mask, internal limit) is a script
+            # error, not an estimation outcome — re-raise for the protocol layer.
+            raise
+        input_mask = cv2.warpAffine(
+            template_mask, warp, (ref_gray.shape[1], ref_gray.shape[0]),
+            flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        if int(np.count_nonzero(input_mask)) < 64:
             return None, failed(
-                "ecc-translation", "ecc_not_converged",
-                f"findTransformECC did not converge (low texture or a shift larger than the basin of attraction): {message}",
+                "ecc-translation", "insufficient_features",
+                "the transformed stable region has too little valid gradient support in the moving image",
                 {"eccIterationsRequested": iterations, "eccEpsilon": epsilon})
-        # Anything else (bad dtype, bad mask, internal limit) is a script
-        # error, not an estimation outcome — re-raise for the protocol layer.
-        raise
     # Invert the template->input warp: [R|t] with R = I for translation.
     forward = np.vstack([warp, [[0.0, 0.0, 1.0]]])
     backward = np.linalg.inv(forward)

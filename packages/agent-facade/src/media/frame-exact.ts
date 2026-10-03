@@ -16,7 +16,7 @@
 import { mkdir, readdir, rename, rm, stat, copyFile } from "node:fs/promises";
 import { join } from "node:path";
 import { FacadeError } from "../errors";
-import { runToolProcess } from "./ffmpeg-bin";
+import { FfmpegToolError, runToolProcess } from "./ffmpeg-bin";
 
 /* ------------------------------------------------------------------ */
 /* ffprobe facts                                                       */
@@ -104,35 +104,79 @@ export interface VideoFacts {
 }
 
 /**
- * Sample real frame PTS to tell CFR from VFR. CFR requires BOTH a constant
- * sampled delta AND agreement with the header rates — a nominal rate alone
- * proves nothing (that is exactly the approximation this module refuses to
- * make for seconds→frame claims).
+ * Inspect the complete frame PTS sequence before claiming stream-wide CFR.
+ * The scan is bounded by packet count and wall time; if either limit is hit,
+ * timing is unknown and callers must not convert seconds to frame indices.
  */
+const MAX_TIMING_SCAN_PACKETS = 50_000;
+const TIMING_SCAN_TIMEOUT_MS = 30_000;
+
 export async function assessFrameTiming(
   ffprobe: string,
   filePath: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<FrameTimingAssessment> {
-  const sampled = await ffprobeJson(ffprobe, filePath, { readIntervalsSec: 3, signal: options.signal });
-  const stream = sampled.streams?.[0];
-  const csv = await runToolProcess(
-    ffprobe,
-    ["-v", "error", "-select_streams", "v:0", "-read_intervals", "%+3",
-      "-show_entries", "frame=pts_time", "-of", "csv=p=0", filePath],
-    { signal: options.signal },
-  );
-  const pts = csv.stdout
-    .toString("utf8")
-    .split(/\r?\n/)
-    .filter((line) => line.trim().length > 0) // the trailing empty line is Number("") === 0, not a frame
-    .map((line) => Number(line.trim().replace(/,$/, "")))
-    .filter((value) => Number.isFinite(value) && value >= 0);
+  const nominalFps = (stream: ProbeStreamJson | undefined): number | null =>
+    parseFrameRate(stream?.avg_frame_rate ?? stream?.r_frame_rate);
+  let probe: {
+    streams?: ProbeStreamJson[];
+    packets_and_frames?: { type?: string; pts_time?: string }[];
+  };
+  try {
+    const result = await runToolProcess(
+      ffprobe,
+      ["-v", "error", "-select_streams", "v:0",
+        "-read_intervals", `%+#${MAX_TIMING_SCAN_PACKETS}`,
+        "-show_streams", "-show_packets", "-show_frames",
+        "-show_entries", "stream=r_frame_rate,avg_frame_rate:packet=pts_time:frame=pts_time",
+        "-of", "json", filePath],
+      { timeoutMs: TIMING_SCAN_TIMEOUT_MS, signal: options.signal },
+    );
+    try {
+      probe = JSON.parse(result.stdout.toString("utf8")) as typeof probe;
+    } catch (error) {
+      throw new FacadeError("JOB_FAILED", `ffprobe produced invalid timing JSON for ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  } catch (error) {
+    if (error instanceof FfmpegToolError &&
+      (/timed out after \d+ ms/.test(error.message) || error.message.includes("exceeded the resource cap"))) {
+      return {
+        timing: "unknown",
+        fps: null,
+        method: `whole-stream PTS scan exceeded its ${TIMING_SCAN_TIMEOUT_MS} ms or output limit; constant timing cannot be verified`,
+        sampledFrameCount: 0,
+      };
+    }
+    throw error;
+  }
+
+  const stream = probe.streams?.[0];
+  const records = probe.packets_and_frames ?? [];
+  const packetCount = records.reduce((count, record) => count + (record.type === "packet" ? 1 : 0), 0);
+  const frameRecords = records.filter((record) => record.type === "frame");
+  const pts = frameRecords.map((record) =>
+    record.pts_time === undefined ? Number.NaN : Number(record.pts_time));
+  if (packetCount >= MAX_TIMING_SCAN_PACKETS) {
+    return {
+      timing: "unknown",
+      fps: null,
+      method: `whole-stream PTS scan reached its ${MAX_TIMING_SCAN_PACKETS}-packet limit; constant timing cannot be verified`,
+      sampledFrameCount: pts.length,
+    };
+  }
+  if (pts.some((value) => !Number.isFinite(value))) {
+    return {
+      timing: "unknown",
+      fps: null,
+      method: "one or more decoded frames have no finite PTS; constant timing cannot be verified",
+      sampledFrameCount: pts.length,
+    };
+  }
   if (pts.length < 3) {
     return {
       timing: "unknown",
-      fps: parseFrameRate(stream?.avg_frame_rate ?? stream?.r_frame_rate),
-      method: `only ${pts.length} sampled frame PTS; cannot verify constant spacing`,
+      fps: nominalFps(stream),
+      method: `only ${pts.length} decoded frame PTS; cannot verify constant spacing`,
       sampledFrameCount: pts.length,
     };
   }
@@ -151,7 +195,7 @@ export async function assessFrameTiming(
     return {
       timing: "cfr",
       fps: avgRate,
-      method: `${pts.length} sampled frame PTS spaced ${median.toFixed(6)}s apart, agreeing with header r/avg_frame_rate`,
+      method: `all ${pts.length} decoded frame PTS are spaced ${median.toFixed(6)}s apart, agreeing with header r/avg_frame_rate`,
       sampledFrameCount: pts.length,
     };
   }
@@ -159,8 +203,8 @@ export async function assessFrameTiming(
     timing: "vfr",
     fps: headerAgrees ? avgRate : null,
     method: constant
-      ? "sampled PTS spacing is constant but disagrees with the header rates"
-      : `sampled PTS spacing varies (min ${deltas[0]!.toFixed(6)}s, max ${deltas[deltas.length - 1]!.toFixed(6)}s)`,
+      ? "all decoded PTS spacing is constant but disagrees with the header rates"
+      : `decoded PTS spacing varies (min ${deltas[0]!.toFixed(6)}s, max ${deltas[deltas.length - 1]!.toFixed(6)}s)`,
     sampledFrameCount: pts.length,
   };
 }
