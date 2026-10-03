@@ -266,6 +266,136 @@ export interface ExtractResult {
 
 export const MAX_EXTRACT_FRAMES = 600;
 
+/** Ordered-decode fallback cap: beyond this, refuse instead of grinding. */
+const MAX_ORDERED_DECODE_FRAMES = 50_000;
+
+/**
+ * Extract exact frames as lossless PNGs, named f<frame:06d>.png, with the
+ * showinfo-verified PTS mapping.
+ *
+ * Fast path: showinfo logs EVERY decoded frame with its global counter n
+ * BEFORE the select filter, so the counter is the true decode index. The
+ * requested indices are trusted only when the passed-through frames' counters
+ * match them exactly. Some sources (concat-demuxer VFR files, streams with
+ * discontinuities) RESET that counter mid-stream — trusting it would silently
+ * return the WRONG frames, so any disagreement (including duplicate matches)
+ * falls back to an ordered decode of frames [0, maxRequested], pairing the
+ * k-th decoded output with requested position k. The ordered pairing is
+ * correct by construction for "the n-th frame when played" and independent
+ * of any in-stream counter.
+ */
+export async function extractFramesExact(
+  ffmpeg: string,
+  sourcePath: string,
+  indices: readonly number[],
+  destDir: string,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<{ frames: ExtractedFrame[]; limitations: string[] }> {
+  await mkdir(destDir, { recursive: true });
+  const limitations: string[] = [];
+  const expr = buildSelectExpr(indices);
+  let decoded: { counter: number; ptsTimeSec: number }[];
+  try {
+    // showinfo BEFORE select: its counter is the global decode index.
+    const { stderr } = await runToolProcess(
+      ffmpeg,
+      ["-hide_banner", "-nostdin", "-loglevel", "info", "-i", sourcePath,
+        "-vf", `showinfo,${expr}`, "-an", "-fps_mode", "passthrough", join(destDir, "tmp-%06d.png")],
+      options,
+    );
+    decoded = parseShowinfo(stderr);
+  } catch (error) {
+    await rm(destDir, { recursive: true, force: true });
+    throw error;
+  }
+  // The k-th tmp file is the k-th frame select passed through; recover the
+  // decode index of each passed frame from the full showinfo log.
+  const requested = new Set(indices);
+  const passed = decoded.filter((item) => requested.has(item.counter));
+  const counterTrusted = passed.length === indices.length &&
+    passed.every((item, position) => item.counter === indices[position]);
+  if (!counterTrusted) {
+    // The decode counter disagrees with the request (reset, drift or
+    // duplicate matches) — wipe the pass-1 output and re-extract by ordered
+    // decoding, which cannot drift because it pairs by output position.
+    for (const entry of await readdir(destDir)) {
+      if (entry.startsWith("tmp-")) await rm(join(destDir, entry), { force: true });
+    }
+    limitations.push(
+      "The stream's decoded-frame counter was not continuous (select-based indexing unsafe — typical of concat-demuxer VFR sources); extraction fell back to ordered decoding and paired frames by output position.",
+    );
+    return extractFramesOrdered(ffmpeg, sourcePath, indices, destDir, limitations, options);
+  }
+  return finalizeExtractedFrames(indices, passed, destDir, limitations);
+}
+
+/** Ordered decode of [0, maxRequested]; pairs output position -> request. */
+async function extractFramesOrdered(
+  ffmpeg: string,
+  sourcePath: string,
+  indices: readonly number[],
+  destDir: string,
+  limitations: string[],
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<{ frames: ExtractedFrame[]; limitations: string[] }> {
+  const maxIndex = indices[indices.length - 1]!;
+  if (maxIndex + 1 > MAX_ORDERED_DECODE_FRAMES) {
+    await rm(destDir, { recursive: true, force: true });
+    throw new FacadeError(
+      "JOB_FAILED",
+      `extraction: the source's decoded-frame counter is not continuous and the highest requested index (${maxIndex}) exceeds the ordered-decode cap (${MAX_ORDERED_DECODE_FRAMES}) — split the source or re-encode it to a continuous stream first`,
+    );
+  }
+  let stderr: string;
+  try {
+    ({ stderr } = await runToolProcess(
+      ffmpeg,
+      ["-hide_banner", "-nostdin", "-loglevel", "info", "-i", sourcePath,
+        "-vf", "showinfo", "-an", "-fps_mode", "passthrough",
+        "-frames:v", String(maxIndex + 1), join(destDir, "tmp-%06d.png")],
+      options,
+    ));
+  } catch (error) {
+    await rm(destDir, { recursive: true, force: true });
+    throw error;
+  }
+  const shown = parseShowinfo(stderr);
+  if (shown.length < maxIndex + 1) {
+    await rm(destDir, { recursive: true, force: true });
+    throw new FacadeError(
+      "JOB_FAILED",
+      `extraction mismatch: requested frame ${maxIndex} but the source decodes only ${shown.length} frame(s) — the requested index is beyond the last frame`,
+    );
+  }
+  return finalizeExtractedFrames(indices, indices.map((index) => shown[index]!), destDir, limitations);
+}
+
+/** Rename tmp outputs (pass-position order) and attach the showinfo PTS. */
+async function finalizeExtractedFrames(
+  indices: readonly number[],
+  shown: readonly { ptsTimeSec: number }[],
+  destDir: string,
+  limitations: string[],
+): Promise<{ frames: ExtractedFrame[]; limitations: string[] }> {
+  const frames: ExtractedFrame[] = [];
+  for (const [position, requested] of indices.entries()) {
+    const tempPath = join(destDir, `tmp-${String(position + 1).padStart(6, "0")}.png`);
+    const info = await stat(tempPath).catch(() => null);
+    if (!info?.isFile()) {
+      await rm(destDir, { recursive: true, force: true });
+      throw new FacadeError("JOB_FAILED", `extraction output missing for requested frame ${requested}`);
+    }
+    const finalPath = join(destDir, `f${String(requested).padStart(6, "0")}.png`);
+    await rename(tempPath, finalPath);
+    frames.push({ path: finalPath, frame: requested, ptsTimeSec: shown[position]!.ptsTimeSec });
+  }
+  // Clean any stragglers (defensive; count checks above should prevent them).
+  for (const entry of await readdir(destDir)) {
+    if (entry.startsWith("tmp-")) await rm(join(destDir, entry), { force: true });
+  }
+  return { frames, limitations };
+}
+
 /**
  * Normalize an explicit frame list (sorted, deduplicated) and a half-open
  * range into one sorted unique index list, enforcing the global cap.
@@ -336,55 +466,6 @@ export function parseShowinfo(stderr: string): { counter: number; ptsTimeSec: nu
   return out;
 }
 
-/**
- * Extract exact frames as lossless PNGs, named f<frame:06d>.png, with the
- * showinfo-verified PTS mapping. The select filter matches decode indices,
- * so precision does not depend on the frame rate at all; the PTS cross-check
- * additionally catches CFR-index disagreements loudly instead of silently.
- */
-export async function extractFramesExact(
-  ffmpeg: string,
-  sourcePath: string,
-  indices: readonly number[],
-  destDir: string,
-  options: { signal?: AbortSignal; timeoutMs?: number } = {},
-): Promise<{ frames: ExtractedFrame[]; limitations: string[] }> {
-  await mkdir(destDir, { recursive: true });
-  const tempPattern = join(destDir, "tmp-%06d.png");
-  const expr = buildSelectExpr(indices);
-  const { stderr } = await runToolProcess(
-    ffmpeg,
-    ["-hide_banner", "-nostdin", "-loglevel", "info", "-i", sourcePath,
-      "-vf", `${expr},showinfo`, "-an", "-fps_mode", "passthrough", tempPattern],
-    options,
-  );
-  const shown = parseShowinfo(stderr);
-  if (shown.length !== indices.length) {
-    await rm(destDir, { recursive: true, force: true });
-    throw new FacadeError(
-      "JOB_FAILED",
-      `extraction mismatch: requested ${indices.length} frame(s) but ffmpeg emitted ${shown.length} — the requested indices may exceed the source's frame count`,
-    );
-  }
-  const limitations: string[] = [];
-  const frames: ExtractedFrame[] = [];
-  for (const [position, requested] of indices.entries()) {
-    const tempPath = join(destDir, `tmp-${String(position + 1).padStart(6, "0")}.png`);
-    const info = await stat(tempPath).catch(() => null);
-    if (!info?.isFile()) {
-      await rm(destDir, { recursive: true, force: true });
-      throw new FacadeError("JOB_FAILED", `extraction output missing for requested frame ${requested}`);
-    }
-    const finalPath = join(destDir, `f${String(requested).padStart(6, "0")}.png`);
-    await rename(tempPath, finalPath);
-    frames.push({ path: finalPath, frame: requested, ptsTimeSec: shown[position]!.ptsTimeSec });
-  }
-  // Clean any stragglers (defensive; count check above should prevent them).
-  for (const entry of await readdir(destDir)) {
-    if (entry.startsWith("tmp-")) await rm(join(destDir, entry), { force: true });
-  }
-  return { frames, limitations };
-}
 
 /* ------------------------------------------------------------------ */
 /* Candidate detection (scene / black / freeze)                        */

@@ -38,6 +38,11 @@ import sys
 import cv2
 import numpy as np
 
+# A correct alignment of lossless PNG inputs leaves a grayscale mean-abs
+# residual far below this; a converged-but-wrong estimate (e.g. ECC dragged
+# off by zero-gradient fill inside the scored region) leaves a large one.
+WEAK_ALIGNMENT_RESIDUAL = 0.15
+
 
 def emit_ok(result):
     json.dump({"ok": True, "result": result}, sys.stdout)
@@ -70,6 +75,25 @@ def mask_for(shape, stable_region):
         w, h = int(stable_region["width"]), int(stable_region["height"])
         mask[y:y + h, x:x + w] = 255
     return mask
+
+
+def gradient_support_mask(mask, gray):
+    """Restrict the estimation mask to pixels with local gradient support.
+
+    Zero-gradient areas (letterbox fill, flat borders) carry no translation
+    information and can drag masked ECC into a false optimum — measured on
+    the acceptance fixture, a 24px fill border inside the stable region
+    produced a confidently wrong matrix (cc 0.13) while the gradient-filtered
+    mask converged with cc 0.98. Edge pixels are dilated back in so the
+    boundaries that DO constrain motion stay usable.
+    """
+    sobel_x = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
+    sobel_y = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
+    magnitude = cv2.magnitude(sobel_x, sobel_y)
+    support = np.zeros_like(mask)
+    support[magnitude > 8.0] = 255
+    support = cv2.dilate(support, np.ones((5, 5), np.uint8))
+    return cv2.bitwise_and(mask, support)
 
 
 def clip_polygon_to_raster(polygon, raster_w, raster_h):
@@ -150,7 +174,12 @@ def ecc_translation(ref_gray, mov_gray, stable_region, iterations, epsilon):
     warp = np.eye(2, 3, dtype=np.float32)
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT,
                 int(iterations), float(epsilon))
-    mask = mask_for(ref_gray.shape, stable_region)
+    mask = gradient_support_mask(mask_for(ref_gray.shape, stable_region), ref_gray)
+    if int(np.count_nonzero(mask)) < 64:
+        return None, failed(
+            "ecc-translation", "insufficient_features",
+            "the scored region has too little gradient support for ECC estimation",
+            {"eccIterationsRequested": iterations, "eccEpsilon": epsilon})
     try:
         cc, warp = cv2.findTransformECC(
             ref_gray, mov_gray, warp, cv2.MOTION_TRANSLATION, criteria, mask, 5)
@@ -307,6 +336,26 @@ def main():
         "residual": residual(ref_gray, cv2.cvtColor(aligned, cv2.COLOR_BGR2GRAY),
                              valid_mask, stable_region),
     })
+    scored = result["residual"]
+    if scored.get("meanAbsDiffGray") is not None and scored["meanAbsDiffGray"] > WEAK_ALIGNMENT_RESIDUAL:
+        # A "converged" estimate that leaves the scored region looking unlike
+        # the reference is a WRONG answer, not a weak success: report it as a
+        # failed estimation. The matrix stays in the payload as evidence; the
+        # aligned image is withdrawn.
+        try:
+            os.remove(aligned_output)
+        except OSError:
+            pass
+        result.update({
+            "status": "failed",
+            "reasonCode": "weak_correlation",
+            "reason": (f"the estimated transform leaves a mean grayscale residual of "
+                       f"{scored['meanAbsDiffGray']} inside the scored region (threshold "
+                       f"{WEAK_ALIGNMENT_RESIDUAL}) — the estimate is not trustworthy; "
+                       f"the matrix is reported as evidence only and the aligned image "
+                       f"is withdrawn"),
+        })
+        result["diagnostics"]["weakAlignmentResidualThreshold"] = WEAK_ALIGNMENT_RESIDUAL
     return emit_ok(result)
 
 
