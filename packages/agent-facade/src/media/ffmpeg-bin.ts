@@ -37,7 +37,7 @@ const MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
 export function runToolProcess(
   exe: string,
   args: readonly string[],
-  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+  options: { timeoutMs?: number; signal?: AbortSignal; input?: string } = {},
 ): Promise<RunResult> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   return new Promise((resolvePromise, reject) => {
@@ -48,8 +48,16 @@ export function runToolProcess(
     const child = spawn(exe, [...args], {
       shell: false,
       windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [options.input !== undefined ? "pipe" : "ignore", "pipe", "pipe"] as const,
     });
+    if (options.input !== undefined) {
+      child.stdin!.on("error", () => {
+        // EPIPE when the child exits before draining stdin: the close
+        // handler reports the real exit status, so the pipe error itself
+        // is not the failure.
+      });
+      child.stdin!.end(options.input);
+    }
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let stdoutBytes = 0;
@@ -67,7 +75,7 @@ export function runToolProcess(
     );
     const onAbort = () => stop(new FfmpegToolError("Cancelled"));
     options.signal?.addEventListener("abort", onAbort, { once: true });
-    child.stdout.on("data", (chunk: Buffer) => {
+    child.stdout!.on("data", (chunk: Buffer) => {
       stdoutBytes += chunk.length;
       if (stdoutBytes > MAX_OUTPUT_BYTES) {
         stop(new FfmpegToolError("tool process output exceeded the resource cap"));
@@ -75,7 +83,7 @@ export function runToolProcess(
         stdoutChunks.push(chunk);
       }
     });
-    child.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+    child.stderr!.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
     child.on("error", (error) => {
       if (!settled) failure = failure ?? new FfmpegToolError(`failed to spawn ${exe}: ${error.message}`);
     });

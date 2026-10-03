@@ -203,6 +203,8 @@ describe("capabilities.get / session.describe", () => {
       "frames.contact_sheet",
       "video.compare",
       "patch.apply",
+      "image.align",
+      "motion.track",
     ]);
     expect(res.value.stepLetters.facadeToRuntime).toBe("P");
     expect(res.value.stepLetters.createProject).toBe("P");

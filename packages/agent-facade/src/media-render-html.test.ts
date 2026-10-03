@@ -362,13 +362,13 @@ describe("media.render_html", () => {
     }
   });
 
-  it("registers the verb in the contract (49 tools) and validates params", async () => {
+  it("registers the verb in the contract and validates params", async () => {
     const facade = facadeWith(fakeProvider().provider);
     const described = await facade["session.describe"]();
     expect(described.ok).toBe(true);
     if (described.ok) {
       expect(described.value.verbs).toContain("media.render_html");
-      expect(described.value.verbs).toHaveLength(53);
+      expect(described.value.verbs).toHaveLength(55);
     }
     const bad = await facade["media.render_html"]({
       ...inline("<p>x</p>"),
