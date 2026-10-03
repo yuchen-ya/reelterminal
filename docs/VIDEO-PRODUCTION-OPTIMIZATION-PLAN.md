@@ -9,7 +9,13 @@
 > 时间基准与 CFR/VFR 判定。后端为本地 FFmpeg/FFprobe（`REELTERMINAL_FFMPEG_PATH` /
 > `REELTERMINAL_FFPROBE_PATH` 或 PATH），capabilities 以 `frameTools` 段如实
 > 报告。用法见 [`MEDIA-REVIEW-WORKFLOWS.md`](MEDIA-REVIEW-WORKFLOWS.md) 的
-> "Frame-exact repair loop" 一节。M2/M3 仍为路线图。
+> "Frame-exact repair loop" 一节。M2 的 `image.align`（平移/相似/仿射，
+> ECC 与 ORB+RANSAC）与 `motion.track`（LK 稀疏光流＋前后向检查＋RANSAC
+> 相似估计，丢失即停、不跨切镜重播）已实现，后端为探测到的本地
+> OpenCV 解释器（`REELTERMINAL_OPENCV_PYTHON`/PATH，绝不自动安装），
+> capabilities 以 `motionTools` 段如实报告；`mask.refine` 与遮罩传播、
+> M3 仍为路线图。`sceneCuts` 的算法描述已修正为 FFmpeg select 的 luma-SAD
+> 实测；`duplicateFrames` 明确为冻结/近静止区间候选，不支持任意重复帧检索。
 
 ## 目标与依据
 

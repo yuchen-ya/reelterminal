@@ -23,14 +23,17 @@ values and honest nulls instead of guessed indices.
 
 1. **Locate candidates** — `media.analyze_start` with the local analysis
    types (job system, cancellation, durable records, recheck):
-   - `sceneCuts`: FFmpeg content-valued scene score (PySceneDetect
-     Content-style semantics) → boundary candidates with
+   - `sceneCuts`: FFmpeg select scene score — inter-frame SAD over the LUMA
+     plane only (libavfilter `ff_scene_sad`; a plain pixel-difference
+     detector, NOT PySceneDetect HSV-Content) → boundary candidates with
      `{frameIndex, ptsTimeSec, score}`; each candidate's frame IS the
      representative frame (the new shot's first frame).
    - `blackFrames`: `blackdetect` luma ranges → candidates; intentional dark
      scenes are NOT failures.
-   - `duplicateFrames`: `freezedetect` repetition ranges → candidates;
-     intentional freeze frames and static graphics repeat legitimately.
+   - `duplicateFrames`: `freezedetect` ranges → FROZEN/near-static INTERVAL
+     candidates (consecutive near-identical frames only — this is NOT
+     arbitrary duplicate-frame retrieval); intentional freeze frames and
+     static graphics repeat legitimately.
    All three report `parameters` + `limitations` and never auto-edit.
    `technicalQuality` now also carries `frames` (decoded/header frame count,
    time base, CFR/VFR verdict) when local ffprobe is available.
@@ -68,6 +71,75 @@ Dependencies: the tools need local `ffmpeg` + `ffprobe` (PATH, or
 `REELTERMINAL_FFMPEG_PATH` / `REELTERMINAL_FFPROBE_PATH`). Missing binaries
 fail `UNSUPPORTED` with the concrete reason, and `capabilities.get` reports
 the same under `frameTools` (ffmpeg preflight, label font, per-call limits).
+
+## Image alignment and region motion tracking (optimization plan M2)
+
+`image.align` and `motion.track` are read-only candidate producers backed by
+a **probed local OpenCV interpreter** — Python is resolved from
+`REELTERMINAL_OPENCV_PYTHON` / `REELTERMINAL_PYTHON_PATH` or PATH
+(`python3`/`python`) and accepted only when it can import `cv2` + `numpy`.
+Nothing is ever downloaded or auto-installed, no interpreter path is
+hardcoded, and absence is honest: the verbs fail `UNSUPPORTED` and
+`capabilities.get` reports the same under `motionTools.opencv`.
+
+**`image.align`** estimates how one PNG still must be transformed to sit on
+another:
+
+```bash
+reelctl image align --file align.json
+# align.json:
+# { "reference": {"path": "C:/w/ref.png"}, "moving": {"path": "C:/w/mov.png"},
+#   "transform": "translation" | "similarity" | "affine",
+#   "stableRegion": {"x":0,"y":0,"width":150,"height":240} }
+```
+
+- `translation` runs ECC (mask-supported, sub-pixel); `similarity` and
+  `affine` run ORB feature matching + RANSAC
+  (`estimateAffinePartial2D` / `estimateAffine2D`). No free-form deformation
+  is fitted.
+- Output: the homogeneous **moving→reference** matrix (row-major 3×3, the
+  direction `warpAffine(moving, M)` needs), the aligned candidate PNG, its
+  **valid-coverage polygon** (black fill outside the warped image is
+  excluded), a grayscale residual computed only inside
+  `validCoverage ∩ stableRegion`, and **method-specific scores** — the ECC
+  correlation coefficient vs ORB inlier count/RMSE/RANSAC ratio. These are
+  different measurements, never a unified confidence.
+- Both rasters must match exactly (≤4096px). Low texture, too few features,
+  no overlap and failed estimation return `status: "failed"` with a
+  `reasonCode` — never an identity matrix, never a guessed result.
+
+**`motion.track`** follows a user-drawn region through an explicit
+source-frame range:
+
+```bash
+reelctl motion track --file track.json
+# track.json:
+# { "source": {"mediaId": "m1"}, "range": {"startFrame": 10, "endFrame": 42},
+#   "region": {"x": 14, "y": 54, "width": 60, "height": 60},
+#   "options": {"maxForwardBackwardError": 2, "minInliers": 4, "overlayCount": 12} }
+```
+
+- Algorithm: corner seeds (`goodFeaturesToTrack` inside the region) → LK
+  sparse optical flow with forward–backward checking → RANSAC similarity
+  estimation. Points that fail drop out and are never re-seeded, so drift
+  stays visible in `trackedPointCount` / `inlierRmsePx`.
+- Frames are extracted by the M1 frame-exact core: zero-based decode indices
+  with the **real PTS per frame** (`frameMapping`), exact for VFR sources.
+  Tracking is defined for source-native playback only; timeline speed /
+  reverse mappings are the caller's job and are deliberately not guessed.
+- Failure is a first-class result: the first frame whose forward–backward
+  check or RANSAC fit collapses ends the run with `lostAtFrame` +
+  `terminationReasonCode` (`forward_backward_error`,
+  `insufficient_inliers`, `region_out_of_bounds`, …), and every later frame
+  is `not_tracked` with a null matrix. The tracker **never glides across a
+  cut** and never re-seeds to keep the numbers looking alive.
+- Outputs: per-frame cumulative region transform (row-major 3×3, start-frame
+  region → this frame), per-frame error statistics, trajectory overlay PNGs
+  + a review contact sheet, and `manifest.json` under the artifact root.
+  At most 240 frames per call. No timeline keyframes are written and the
+  GUI's motion engine state is untouched; nothing about physical
+  plausibility or action naturalness is claimed — success means a
+  trustworthy report, not automatic repair.
 
 ## Reference comparison (sync compare against a reference)
 

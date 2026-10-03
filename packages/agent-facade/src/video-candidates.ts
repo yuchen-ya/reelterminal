@@ -60,7 +60,7 @@ export async function analyzeSceneCuts(
     candidates: candidates.slice(0, MAX_CANDIDATES),
     candidateCount: candidates.length,
     truncated: candidates.length > MAX_CANDIDATES,
-    algorithm: "FFmpeg content-valued scene detector (select=gt(scene,T) HSV luma/chroma change score, PySceneDetect Content-style semantics) — local FFmpeg only, no model fallback",
+    algorithm: "FFmpeg select filter scene score — inter-frame SAD over the LUMA plane only (libavfilter ff_scene_sad, shared with the framerate filter). This is a plain pixel-difference detector, NOT PySceneDetect HSV-Content: its sensitivity to chroma-only cuts and graded transitions differs. Local FFmpeg only, no model fallback",
     limitations: [...limitations,
       "Candidates, never edits: nothing is cut or marked; verify boundaries with frames.extract / a contact sheet before acting."],
   };
@@ -113,8 +113,10 @@ export async function analyzeDuplicateFrames(
     candidates: candidates.slice(0, MAX_CANDIDATES),
     candidateCount: candidates.length,
     truncated: candidates.length > MAX_CANDIDATES,
-    algorithm: "FFmpeg freezedetect noise-threshold repetition ranges (consecutive near-identical frames) — local measurement, not a review verdict",
-    limitations,
+    algorithm: "FFmpeg freezedetect noise-threshold repetition ranges — FROZEN/near-static INTERVAL candidates (consecutive near-identical frames), NOT arbitrary duplicate-frame retrieval: two identical frames far apart in time, or similar-but-not-consecutive frames, are not found by this detector",
+    limitations: [...limitations,
+      "Duplicate/repetition semantics: these are frozen/near-static interval candidates only (freezedetect compares consecutive frames). Non-consecutive duplicate retrieval is a different, unsupported capability.",
+      "Intentional freeze frames, static graphics and still shots repeat legitimately — these are review candidates, never failures."],
   };
 }
 

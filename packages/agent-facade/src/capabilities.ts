@@ -590,6 +590,14 @@ export async function buildCapabilities(
                       available: true,
                       details: {
                         provider: type === "sceneCuts" ? "local-ffmpeg-scene-score" : type === "blackFrames" ? "local-ffmpeg-blackdetect" : "local-ffmpeg-freezedetect",
+                        ...(type === "sceneCuts"
+                          ? { algorithm: "FFmpeg select scene score: inter-frame SAD over the luma plane only (libavfilter ff_scene_sad) — a plain pixel-difference detector, NOT PySceneDetect HSV-Content" }
+                          : {}),
+                        ...(type === "duplicateFrames"
+                          ? {
+                              semantics: "FROZEN/near-static INTERVAL candidates (freezedetect compares CONSECUTIVE frames) — this is NOT arbitrary duplicate-frame retrieval: identical or similar frames that are not consecutive are not found",
+                            }
+                          : {}),
                         fields: type === "sceneCuts" ? ["candidates[].frameIndex", "candidates[].ptsTimeSec", "candidates[].score", "parameters", "limitations"] : ["candidates[].startSec/endSec", "candidates[].startFrameIndex/endFrameIndexExclusive", "parameters", "limitations"],
                         ...(type === "duplicateFrames" ? { closedAtStreamEnd: "a freeze running into the analyzed stream end has no measured end; flagged honestly on the candidate" } : {}),
                         candidatesOnly: "detector output is review candidates with parameters and limitations — never verdicts, never automatic edits",
