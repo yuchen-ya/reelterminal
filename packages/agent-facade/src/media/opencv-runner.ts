@@ -109,11 +109,11 @@ async function isFile(path: string): Promise<boolean> {
 }
 
 /**
- * Worker-script location: explicit override first, then the package source
- * tree (src/media/../../python), then a dist copy beside the bundled desktop
- * main (dist/main/../python — link-live-runtime-deps.mjs writes it). The
- * relative forms all resolve from this module's own URL, so the lookup
- * follows wherever this code actually runs from.
+ * Worker-script location: explicit override first, then relative candidates
+ * that cover every layout this code runs from — the package source tree
+ * (src/media/../../python), a dist copy beside the bundled desktop main
+ * (dist/python), and the workspace sibling of a bundled CLI
+ * (packages/agent-facade/python next to packages/agent-transport/dist).
  */
 export async function resolveOpenCvScript(name: string): Promise<string | null> {
   const override = process.env.REELTERMINAL_OPENCV_SCRIPT_DIR;
@@ -122,7 +122,13 @@ export async function resolveOpenCvScript(name: string): Promise<string | null> 
     if (await isFile(candidate)) return candidate;
   }
   const moduleDir = fileURLToPath(new URL(".", import.meta.url));
-  for (const relative of ["../../python", "../../../python", "../python"]) {
+  for (const relative of [
+    "../../python",
+    "../../../python",
+    "../python",
+    "../../agent-facade/python",
+    "../../../agent-facade/python",
+  ]) {
     const candidate = join(moduleDir, relative, name);
     if (await isFile(candidate)) return candidate;
   }
@@ -138,15 +144,13 @@ let cachedRuntime: Promise<OpenCvRuntime | null> | null = null;
  */
 export function resolveOpenCvRuntime(): Promise<OpenCvRuntime | null> {
   cachedRuntime ??= (async () => {
-    const interpreter = await findInterpreter();
-    if (!interpreter) return null;
-    const script = await resolveOpenCvScript("align.py");
-    if (!script) return null;
+    const pre = await opencvToolPreflight();
+    if (!pre.available) return null;
     return {
-      python: interpreter.python,
-      cv2Version: interpreter.cv2Version,
-      numpyVersion: interpreter.numpyVersion,
-      scriptDir: dirname(script),
+      python: pre.details.python,
+      cv2Version: pre.details.cv2Version,
+      numpyVersion: pre.details.numpyVersion,
+      scriptDir: pre.details.scriptDir,
     };
   })();
   return cachedRuntime;
@@ -157,8 +161,8 @@ export async function opencvToolPreflight(): Promise<
   { available: true; details: { python: string; cv2Version: string; numpyVersion: string; scriptDir: string } }
   | { available: false; reason: string }
 > {
-  const runtime = await resolveOpenCvRuntime();
-  if (!runtime) {
+  const interpreter = await findInterpreter();
+  if (!interpreter) {
     const explicit =
       process.env.REELTERMINAL_OPENCV_PYTHON ?? process.env.REELTERMINAL_PYTHON_PATH;
     return {
@@ -168,13 +172,20 @@ export async function opencvToolPreflight(): Promise<
         : "no interpreter on PATH (python3/python) can import cv2+numpy — install Python with opencv-python and numpy, or set REELTERMINAL_OPENCV_PYTHON to an interpreter that has them",
     };
   }
+  const script = await resolveOpenCvScript("align.py");
+  if (!script) {
+    return {
+      available: false,
+      reason: 'the OpenCV worker scripts (align.py / track.py) were not found beside this build — set REELTERMINAL_OPENCV_SCRIPT_DIR to the directory containing them, or restore packages/agent-facade/python',
+    };
+  }
   return {
     available: true,
     details: {
-      python: runtime.python,
-      cv2Version: runtime.cv2Version,
-      numpyVersion: runtime.numpyVersion,
-      scriptDir: runtime.scriptDir,
+      python: interpreter.python,
+      cv2Version: interpreter.cv2Version,
+      numpyVersion: interpreter.numpyVersion,
+      scriptDir: dirname(script),
     },
   };
 }
