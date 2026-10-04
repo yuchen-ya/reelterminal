@@ -135,8 +135,6 @@ export function installPackagedEsbuildBinaryPath(
   }
   const bundle = packagedBrowserEntryBundlePath(context);
   if (bundle) {
-    // New name preferred; runtime-chromium still reads the legacy
-    // OPENREEL_BROWSER_ENTRY_BUNDLE as a fallback (docs §3).
     env.REELTERMINAL_BROWSER_ENTRY_BUNDLE = bundle;
     installed = true;
   }

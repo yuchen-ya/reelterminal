@@ -20,7 +20,7 @@ export function ReviewRangeControl() {
     try {
       const store = useProjectStore.getState();
       const range = createReviewRange(store.project, start, end);
-      const api = (window.reelterminal ?? window.openreel)?.production;
+      const api = window.reelterminal?.production;
       if (!api)
         throw new Error(
           "Frame-bound review evidence requires the desktop render backend",

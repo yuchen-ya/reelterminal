@@ -76,9 +76,9 @@ describe("doctor: report shape and environment facts", () => {
       return;
     }
     const { exitCode, report } = await runDoctor({
-      OPENREEL_AVE_MEDIA_ROOTS: roots.mediaRoot,
-      OPENREEL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
-      OPENREEL_AVE_PROJECT_ROOTS: roots.projectRoot,
+      REELTERMINAL_AVE_MEDIA_ROOTS: roots.mediaRoot,
+      REELTERMINAL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
+      REELTERMINAL_AVE_PROJECT_ROOTS: roots.projectRoot,
     });
     expect(exitCode).toBe(0);
     expect(report.verdict.classification).toBe("usable");
@@ -101,9 +101,9 @@ describe("doctor: report shape and environment facts", () => {
       return;
     }
     const { exitCode, report } = await runDoctor({
-      OPENREEL_AVE_MEDIA_ROOTS: "relative/media",
-      OPENREEL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
-      OPENREEL_AVE_PROJECT_ROOTS: roots.projectRoot,
+      REELTERMINAL_AVE_MEDIA_ROOTS: "relative/media",
+      REELTERMINAL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
+      REELTERMINAL_AVE_PROJECT_ROOTS: roots.projectRoot,
     });
     expect(exitCode).toBe(1);
     expect(report.config.roots.mediaRoots[0].status).toBe("relative");
@@ -116,9 +116,9 @@ describe("doctor: report shape and environment facts", () => {
       return;
     }
     const { exitCode, report } = await runDoctor({
-      OPENREEL_AVE_MEDIA_ROOTS: "/",
-      OPENREEL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
-      OPENREEL_AVE_PROJECT_ROOTS: roots.projectRoot,
+      REELTERMINAL_AVE_MEDIA_ROOTS: "/",
+      REELTERMINAL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
+      REELTERMINAL_AVE_PROJECT_ROOTS: roots.projectRoot,
     });
     expect(exitCode).toBe(1);
     expect(report.config.warnings.join("\n")).toContain("over-broad root");
@@ -136,8 +136,8 @@ describe("doctor: orphan-artifact listing and checkpoint residue", () => {
     await writeFile(path.join(rendersDir, "frame-x.png"), Buffer.alloc(16, 3));
 
     const { report } = await runDoctor({
-      OPENREEL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
-      OPENREEL_AVE_PROJECT_ROOTS: roots.projectRoot,
+      REELTERMINAL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
+      REELTERMINAL_AVE_PROJECT_ROOTS: roots.projectRoot,
     });
     const jobDir = report.orphans.jobDirs.find((j: any) => j.dir.endsWith("job-orphan-1"));
     expect(jobDir).toBeDefined();
@@ -152,7 +152,7 @@ describe("doctor: orphan-artifact listing and checkpoint residue", () => {
   it("lists stray *.tmp files under projectRoots as inert residue — never valid checkpoints", async () => {
     await writeFile(path.join(roots.projectRoot, "promo-v9.abc123.tmp"), Buffer.alloc(8, 1));
     const { report } = await runDoctor({
-      OPENREEL_AVE_PROJECT_ROOTS: roots.projectRoot,
+      REELTERMINAL_AVE_PROJECT_ROOTS: roots.projectRoot,
     });
     const residue = report.checkpoints.tmpResidue as any[];
     expect(residue.some((f) => f.path.endsWith("promo-v9.abc123.tmp"))).toBe(true);
@@ -178,9 +178,9 @@ describe("doctor: exit code 2 unusable", () => {
     try {
       const handle = spawnCli(["doctor", "--log-level", "error"], {
         PATH: emptyBin,
-        OPENREEL_AVE_MEDIA_ROOTS: roots.mediaRoot,
-        OPENREEL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
-        OPENREEL_AVE_PROJECT_ROOTS: roots.projectRoot,
+        REELTERMINAL_AVE_MEDIA_ROOTS: roots.mediaRoot,
+        REELTERMINAL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
+        REELTERMINAL_AVE_PROJECT_ROOTS: roots.projectRoot,
       });
       const exitCode = await handle.exitCode;
       // The chromium runtime may still be healthy — the ffmpeg gap alone is

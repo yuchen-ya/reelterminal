@@ -1,7 +1,6 @@
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { app } from "electron";
-import { readEnvAlias } from "../../shared/env-alias";
 import type { RiggingBackendMode } from "../../shared/ipc-contract";
 
 export interface BlenderCandidate {
@@ -29,7 +28,7 @@ export function bundledBlenderPath(): string {
 
 export function blenderCandidates(env: NodeJS.ProcessEnv = process.env): BlenderCandidate[] {
   const configured =
-    readEnvAlias(env, "REELTERMINAL_BLENDER_PATH", "OPENREEL_BLENDER_PATH") ||
+    env.REELTERMINAL_BLENDER_PATH ||
     env.BLENDER_PATH;
   const candidates: BlenderCandidate[] = [];
   if (configured) candidates.push({ path: configured, mode: "configured" });

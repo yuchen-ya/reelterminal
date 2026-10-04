@@ -23,8 +23,8 @@ async function loadService(): Promise<ServiceModule> {
 }
 
 function clearCloudEnv(): void {
-  delete (import.meta.env as Record<string, unknown>).VITE_OPENREEL_CLOUD;
-  delete (import.meta.env as Record<string, unknown>).VITE_OPENREEL_CLOUD_URL;
+  delete (import.meta.env as Record<string, unknown>).VITE_REELTERMINAL_CLOUD;
+  delete (import.meta.env as Record<string, unknown>).VITE_REELTERMINAL_CLOUD_URL;
 }
 
 class FakeXHR {
@@ -74,7 +74,7 @@ describe("share-service cloud opt-out", () => {
 
   it.each([undefined, "off"])("rejects uploads before any XHR with cloud setting %s", async (value) => {
     clearCloudEnv();
-    if (value !== undefined) vi.stubEnv("VITE_OPENREEL_CLOUD", value);
+    if (value !== undefined) vi.stubEnv("VITE_REELTERMINAL_CLOUD", value);
     const { uploadForSharing } = await loadService();
 
     await expect(
@@ -88,7 +88,7 @@ describe("share-service cloud opt-out", () => {
 
   it("short-circuits every read with zero network when the cloud is off", async () => {
     clearCloudEnv();
-    vi.stubEnv("VITE_OPENREEL_CLOUD", "off");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "off");
     const { getShareInfo, getShareDownloadUrl, checkShareHealth } =
       await loadService();
 
@@ -101,8 +101,8 @@ describe("share-service cloud opt-out", () => {
 
   it("uploads and reads only with an explicitly enabled backend", async () => {
     clearCloudEnv();
-    vi.stubEnv("VITE_OPENREEL_CLOUD", "on");
-    vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://service.example");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "on");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://service.example");
     const { uploadForSharing, getShareInfo } = await loadService();
 
     await expect(
@@ -134,8 +134,8 @@ describe("share-service cloud opt-out", () => {
     "stays networked for non-off values (%s)",
     async (value) => {
       clearCloudEnv();
-      vi.stubEnv("VITE_OPENREEL_CLOUD", value);
-      vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://service.example");
+      vi.stubEnv("VITE_REELTERMINAL_CLOUD", value);
+      vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://service.example");
       const { checkShareHealth } = await loadService();
 
       fetchSpy.mockResolvedValue({ ok: true, status: 200 });

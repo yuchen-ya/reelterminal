@@ -39,9 +39,7 @@ import {
 
 import {
   CONFIG_DEFAULTS,
-  CONFIG_NEW_NAMES,
   parseArgv,
-  readEnvAlias,
   refuseStartup,
 } from "./config";
 import { logInfo, setLogLevel } from "./log";
@@ -187,7 +185,7 @@ export interface DoctorReport {
   readonly command: "doctor";
   readonly ts: string;
   readonly transport: {
-    // The report uses the primary command name; agent-video remains a CLI alias.
+    // The report uses the installed command name.
     readonly name: "reelterminal-agent";
     readonly version: string;
     readonly pid: number;
@@ -196,13 +194,6 @@ export interface DoctorReport {
   };
   readonly config: {
     readonly env: {
-      readonly mediaRoots: string;
-      readonly artifactRoot: string;
-      readonly projectRoots: string;
-      readonly log: string;
-    };
-    /** Supported OPENREEL_* aliases. */
-    readonly envLegacy: {
       readonly mediaRoots: string;
       readonly artifactRoot: string;
       readonly projectRoots: string;
@@ -288,21 +279,9 @@ export async function doctorCommand(argv: readonly string[]): Promise<number> {
 
   // 1. Lenient root inspection (env-only — flags belong to serve/run).
   const env = process.env;
-  const rawMediaRootsEnv = readEnvAlias(
-    env,
-    CONFIG_NEW_NAMES.mediaRootsEnv,
-    CONFIG_DEFAULTS.mediaRootsEnv,
-  );
-  const rawProjectRootsEnv = readEnvAlias(
-    env,
-    CONFIG_NEW_NAMES.projectRootsEnv,
-    CONFIG_DEFAULTS.projectRootsEnv,
-  );
-  const rawArtifactRoot = readEnvAlias(
-    env,
-    CONFIG_NEW_NAMES.artifactRootEnv,
-    CONFIG_DEFAULTS.artifactRootEnv,
-  );
+  const rawMediaRootsEnv = env[CONFIG_DEFAULTS.mediaRootsEnv];
+  const rawProjectRootsEnv = env[CONFIG_DEFAULTS.projectRootsEnv];
+  const rawArtifactRoot = env[CONFIG_DEFAULTS.artifactRootEnv];
   const rawMediaRoots =
     rawMediaRootsEnv !== undefined
       ? rawMediaRootsEnv.split(path.delimiter).filter((s) => s.length > 0)
@@ -468,13 +447,6 @@ export async function doctorCommand(argv: readonly string[]): Promise<number> {
     },
     config: {
       env: {
-        mediaRoots: CONFIG_NEW_NAMES.mediaRootsEnv,
-        artifactRoot: CONFIG_NEW_NAMES.artifactRootEnv,
-        projectRoots: CONFIG_NEW_NAMES.projectRootsEnv,
-        log: CONFIG_NEW_NAMES.logLevelEnv,
-      },
-      // Current environment names and supported aliases.
-      envLegacy: {
         mediaRoots: CONFIG_DEFAULTS.mediaRootsEnv,
         artifactRoot: CONFIG_DEFAULTS.artifactRootEnv,
         projectRoots: CONFIG_DEFAULTS.projectRootsEnv,

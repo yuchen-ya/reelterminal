@@ -7,7 +7,7 @@ export async function adoptReviewCandidate(
   candidateMediaId: string,
   label: string,
 ): Promise<void> {
-  const api = (window.reelterminal ?? window.openreel)?.production;
+  const api = window.reelterminal?.production;
   if (!api)
     throw new Error(
       "Strict candidate adoption requires the desktop FFprobe backend",

@@ -208,7 +208,7 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
 
     // 1. No token accessor on the renderer bridge (top-level key scan).
     const bridgeKeys = await launched.page.evaluate(() =>
-      Object.keys((window as unknown as { openreel: object }).openreel),
+      Object.keys((window as unknown as { reelterminal: object }).reelterminal),
     );
     expect(bridgeKeys.filter((k) => /token/i.test(k))).toEqual([]);
 
@@ -216,9 +216,9 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
     const statusJson = await launched.page.evaluate(() =>
       (
         window as unknown as {
-          openreel: { collabControl: { getStatus(): Promise<unknown> } };
+          reelterminal: { collabControl: { getStatus(): Promise<unknown> } };
         }
-      ).openreel.collabControl.getStatus().then((s) => JSON.stringify(s)),
+      ).reelterminal.collabControl.getStatus().then((s) => JSON.stringify(s)),
     );
     expect(statusJson).not.toContain(endpoint.token);
     // 3. The endpoint file is mode 0600.

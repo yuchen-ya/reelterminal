@@ -16,18 +16,6 @@
       "reason": "真实上游资源：许可核对保留模型、样例和 WASM 资源的服务提供方名称及域名。"
     },
     {
-      "files": "apps/web/src/components/editor/preview/ReviewRangeControl.tsx",
-      "pattern": "window\\.openreel",
-      "category": 5,
-      "reason": "兼容入口：复用旧桌面桥接别名读取 production API。"
-    },
-    {
-      "files": "apps/web/src/services/production-review.ts",
-      "pattern": "window\\.openreel",
-      "category": 5,
-      "reason": "兼容入口：复用旧桌面桥接别名读取 production API。"
-    },
-    {
       "files": "apps/desktop/e2e/harness/launch.ts",
       "pattern": "openreel-locale",
       "category": 4,
@@ -57,75 +45,10 @@
       "reason": "上游归属：注释标注 web 编辑器 forked from the OpenReel browser editor，归因保留。"
     },
     {
-      "files": "apps/desktop/src/main/crash-reporter.ts",
-      "pattern": "OPENREEL_CRASH_ENDPOINT",
-      "category": 5,
-      "reason": "兼容入口：OPENREEL_CRASH_ENDPOINT 定义或验证当前支持的旧名称或别名。"
-    },
-    {
-      "files": "apps/web/src/config/api-endpoints.ts",
-      "pattern": "OPENREEL_|OpenReel cloud",
-      "category": 5,
-      "reason": "兼容入口：OPENREEL_|OpenReel cloud 定义或验证当前支持的旧名称或别名。"
-    },
-    {
-      "files": "apps/web/src/config/api-endpoints.test.ts",
-      "pattern": "OPENREEL_|OPENREEL",
-      "category": 5,
-      "reason": "兼容入口：旧 env 名双读行为测试（新名优先、off 禁用语义）。"
-    },
-    {
       "files": "apps/web/src/services/share-service.ts",
       "pattern": "OpenReel cloud|openreel\\.video",
       "category": 3,
       "reason": "真实第三方域名/服务：分享上传指向真实云服务，注释如实归因。"
-    },
-    {
-      "files": "apps/web/src/services/share-service.test.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：VITE_OPENREEL_CLOUD(off 禁用语义) 双读行为测试。"
-    },
-    {
-      "files": "apps/web/src/services/share-origin.test.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*|\\.openreel",
-      "category": 3,
-      "reason": "外部资源：openreel[-_.][a-z0-9_-]*|\\.openreel 指向应用当前使用的服务域名或部署资源。"
-    },
-    {
-      "files": "apps/web/src/services/highlight-service.test.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：VITE_OPENREEL_CLOUD_URL 旧 env 名双读行为测试。"
-    },
-    {
-      "files": "apps/web/src/services/template-cloud-service.test.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：VITE_OPENREEL_CLOUD off 禁用语义双读行为测试。"
-    },
-    {
-      "files": "apps/web/src/utils/whisper-download-error.test.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 3,
-      "reason": "真实第三方域名：下载错误消息中 media.openreel.video 的测试断言。"
-    },
-    {
-      "files": "apps/web/src/components/editor/inspector/AutoCaptionPanel.model-download-failure.test.tsx",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 3,
-      "reason": "真实第三方域名：media.openreel.video 错误文案的测试断言。"
-    },
-    {
-      "files": "apps/web/src/components/MobileBlocker.tsx",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 3,
-      "reason": "外部资源：openreel[-_.][a-z0-9_-]* 指向应用当前使用的服务域名或部署资源。"
-    },
-    {
-      "files": "apps/web/wrangler.toml",
-      "category": 3,
-      "reason": "真实外部资源：Cloudflare Pages 项目名 openreel、域名与桶绑定（部署身份，迁移属运维决策）。"
     },
     {
       "files": "apps/web/package.json",
@@ -138,39 +61,9 @@
       "reason": "真实外部资源：wrangler pages deploy --project-name=openreel-image（已存在的部署目标）。"
     },
     {
-      "files": "infra/transcribe-gpu/main.py",
-      "category": 3,
-      "reason": "外部资源：infra/transcribe-gpu/main.py 指向应用当前使用的服务域名或部署资源。"
-    },
-    {
       "files": "infra/transcribe-gpu/setup.sh",
       "category": 3,
       "reason": "外部资源：infra/transcribe-gpu/setup.sh 指向应用当前使用的服务域名或部署资源。"
-    },
-    {
-      "files": "infra/cloudflare/whisper-tiny-r2.md",
-      "category": 3,
-      "reason": "外部资源：infra/cloudflare/whisper-tiny-r2.md 指向应用当前使用的服务域名或部署资源。"
-    },
-    {
-      "files": "infra/cloudflare/openreel-r2-cors.json",
-      "category": 3,
-      "reason": "真实外部资源：R2 CORS 配置（文件名即资源名）与 app.openreel.video 前端源。"
-    },
-    {
-      "files": "scripts/filters/deploy.sh",
-      "category": 3,
-      "reason": "真实外部资源：filters.openreel.video 域与 openreel-filters bucket 部署脚本（含其内部 env 覆盖名 OPENREEL_FILTERS_BUCKET，与真实资源一致）。"
-    },
-    {
-      "files": "scripts/filters/generate.py",
-      "category": 3,
-      "reason": "真实第三方域名：DEFAULT_BASE_URL filters.openreel.video（已存在托管域）。"
-    },
-    {
-      "files": "scripts/filters/tests/test_recipe_loader.py",
-      "category": 3,
-      "reason": "真实第三方域名：filters.openreel.video URL 生成的测试断言。"
     },
     {
       "files": ".gitignore",
@@ -346,12 +239,6 @@
       "reason": "legacy 持久化标识：.openreel-build 标记的迁移测试断言。"
     },
     {
-      "files": "apps/desktop/src/main/sidecar/rigging-backend.ts",
-      "pattern": "OPENREEL_BLENDER_PATH",
-      "category": 5,
-      "reason": "兼容入口：Blender 探测失败错误消息中的 legacy env 名提示（双读契约；rigging 对象名经注册模块常量引用，字面量只在 legacy 测试与注册模块中）。"
-    },
-    {
       "files": "apps/web/src/types/global.d.ts",
       "pattern": "openreel[a-z]|\\.openreel|openreel\\?",
       "category": 5,
@@ -382,24 +269,6 @@
       "reason": "兼容入口：openreel[a-z] 定义或验证当前支持的旧名称或别名。"
     },
     {
-      "files": "apps/desktop/src/preload/index.ts",
-      "pattern": "\\.openreel|openreel[-_.][a-z0-9_-]*|\\(\"openreel\"",
-      "category": 5,
-      "reason": "兼容入口：\\.openreel|openreel[-_.][a-z0-9_-]*|\\(\"openreel\" 定义或验证当前支持的旧名称或别名。"
-    },
-    {
-      "files": "apps/desktop/src/preload/index.test.ts",
-      "pattern": "\\.openreel|\"openreel\"|openreel as an alias",
-      "category": 5,
-      "reason": "兼容入口：window.openreel 别名可达性测试（旧名可达、新名优先）。"
-    },
-    {
-      "files": "apps/desktop/e2e/cross-cutting.e2e.ts",
-      "pattern": "\\.openreel|openreel[-_.][a-z0-9_-]*|openreel:",
-      "category": 5,
-      "reason": "兼容入口：e2e 断言 window.openreel 别名表面与新名并存。"
-    },
-    {
       "files": "apps/desktop/src/shared/endpoint-paths.ts",
       "pattern": "/\\.openreel/|openreel[-_.][a-z0-9_-]*|\\.openreel|ReelTerminal/OpenReel",
       "category": 5,
@@ -410,18 +279,6 @@
       "pattern": "/\\.openreel/|\\.openreel|openreel[-_.][a-z0-9_-]*",
       "category": 5,
       "reason": "兼容入口：/\\.openreel/|\\.openreel|openreel[-_.][a-z0-9_-]* 定义或验证当前支持的旧名称或别名。"
-    },
-    {
-      "files": "apps/desktop/src/shared/env-alias.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：openreel[-_.][a-z0-9_-]* 定义或验证当前支持的旧名称或别名。"
-    },
-    {
-      "files": "apps/desktop/src/shared/env-alias.test.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：readEnvAlias 优先级语义测试（新名优先/空串语义/旧名回退）。"
     },
     {
       "files": "apps/desktop/src/main/live/live-endpoint-server.ts",
@@ -442,75 +299,10 @@
       "reason": "兼容入口：新旧端点路径兼容矩阵测试。"
     },
     {
-      "files": "apps/desktop/src/main/live/live-endpoint-writeback-failure.test.ts",
-      "pattern": "\\.openreel",
-      "category": 5,
-      "reason": "兼容入口：\\.openreel 定义或验证当前支持的旧名称或别名。"
-    },
-    {
-      "files": "apps/desktop/src/main/live/host-instance.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：OPENREEL_AGENT_WORKSPACE_ROOT/OPENREEL_LIVE_* 旧 env 名双读。"
-    },
-    {
-      "files": "apps/desktop/src/main/live/live-session-host.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：REELTERMINAL_LIVE_PORT 旧名回退注释与双读。"
-    },
-    {
       "files": "apps/desktop/src/main/live/live-session-host.test.ts",
       "pattern": "openreel[-_.][a-z0-9_-]*",
       "category": 5,
       "reason": "兼容入口：live 会话宿主旧 env 名回退测试。"
-    },
-    {
-      "files": "apps/desktop/src/live-mcp/index.test.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：新路径优先/旧路径兼容发现的连接器测试（夹具文件名即新旧路径形态）。"
-    },
-    {
-      "files": "apps/desktop/package.json",
-      "category": 5,
-      "reason": "兼容入口：apps/desktop/package.json 定义或验证当前支持的旧名称或别名。"
-    },
-    {
-      "files": "apps/desktop/test/bin-alias.test.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：旧 CLI 命令名薄别名测试（openreel-live-mcp/agent-video → 新名同实现）。"
-    },
-    {
-      "files": "apps/desktop/src/main/index.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：OPENREEL_USER_DATA_DIR 旧 env 名双读。"
-    },
-    {
-      "files": "apps/desktop/src/main/sidecar/blender-path.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：OPENREEL_BLENDER_PATH 旧 env 名双读（对外文档化契约）。"
-    },
-    {
-      "files": "apps/desktop/src/main/esbuild-binary-path.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：OPENREEL_BROWSER_ENTRY_BUNDLE 旧 env 名回退注释。"
-    },
-    {
-      "files": "apps/desktop/tsup.config.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：构建配置中 OPENREEL_BROWSER_ENTRY_BUNDLE 旧名注释。"
-    },
-    {
-      "files": "apps/desktop/scripts/build-browser-entry.mjs",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：OPENREEL_BROWSER_ENTRY_BUNDLE 旧 env 名注释。"
     },
     {
       "files": "apps/desktop/e2e/harness/launch.ts",
@@ -531,40 +323,10 @@
       "reason": "内部标记：性能 e2e 的 schema 标记串 openreel.preview-gui-performance/v1（e2e 内部产物标记）。"
     },
     {
-      "files": "packages/agent-transport/src/config.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：openreel[-_.][a-z0-9_-]* 定义或验证当前支持的旧名称或别名。"
-    },
-    {
-      "files": "packages/agent-transport/src/cli.ts",
-      "pattern": "OPENREEL",
-      "category": 5,
-      "reason": "兼容入口：OPENREEL 定义或验证当前支持的旧名称或别名。"
-    },
-    {
-      "files": "packages/agent-transport/src/doctor.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：openreel[-_.][a-z0-9_-]* 定义或验证当前支持的旧名称或别名。"
-    },
-    {
-      "files": "packages/agent-transport/src/log.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：OPENREEL_TRANSPORT_LOG 旧 env 名 help 文档。"
-    },
-    {
       "files": "packages/agent-transport/test/env-config.test.ts",
       "pattern": "openreel[-_.][a-z0-9_-]*",
       "category": 5,
       "reason": "兼容入口：OPENREEL_AVE_*/TRANSPORT_LOG 双读优先级测试矩阵。"
-    },
-    {
-      "files": "packages/agent-transport/test/doctor.test.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：doctor 对 legacy env 双读与 transport.name 的测试。"
     },
     {
       "files": "packages/agent-transport/test/run-cli.test.ts",
@@ -577,18 +339,6 @@
       "pattern": "openreel[-_.][a-z0-9_-]*",
       "category": 4,
       "reason": "legacy 持久化标识：e2e 夹具 *.openreel.json 项目文件名（格式后缀）。"
-    },
-    {
-      "files": "packages/agent-facade/src/delivery.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：交付根说明中的 legacy OPENREEL_AVE_DELIVERY_ROOTS 回退表述。"
-    },
-    {
-      "files": "packages/runtime-chromium/src/node/bundle.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：OPENREEL_BROWSER_ENTRY_BUNDLE 旧 env 名双读（新名优先）。"
     },
     {
       "files": "packages/runtime-chromium/src/node/bundle.test.ts",
@@ -652,26 +402,9 @@
       "reason": "兼容入口：AGENTS.md 定义或验证当前支持的旧名称或别名。"
     },
     {
-      "files": "apps/web/src/components/editor/panels/HighlightExtractorPanel.test.tsx",
-      "pattern": "openreel[-_.][a-z0-9_-]*|openreel (public )?cloud",
-      "category": 3,
-      "reason": "外部资源：openreel[-_.][a-z0-9_-]*|openreel (public )?cloud 指向应用当前使用的服务域名或部署资源。"
-    },
-    {
-      "files": "apps/web/src/components/welcome/TemplateGallery.test.tsx",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：VITE_OPENREEL_CLOUD 旧 env 名 off 禁用语义测试。"
-    },
-    {
       "files": "docs/MATERIAL-LIBRARY.md",
       "category": 4,
       "reason": "legacy 持久化标识：文档记录 IndexedDB 库名 openreel-material-library / openreel-db（存储标识符说明）。"
-    },
-    {
-      "files": "docs/AGENT-GUIDE.md",
-      "category": 5,
-      "reason": "兼容文档：openreel-task: 对外协议前缀与 legacy ~/.openreel 端点路径兼容说明。"
     },
     {
       "files": "packages/agent-facade/README.md",
@@ -680,27 +413,9 @@
       "reason": "legacy 持久化格式：桌面实时保存不写入的历史 .openreel checkpoint 文件扩展名。"
     },
     {
-      "files": "apps/desktop/electron-builder.yml",
-      "pattern": "openreel-live-mcp\\.cmd",
-      "category": 5,
-      "reason": "兼容入口：打包旧 openreel-live-mcp.cmd 命令别名；薄包装与 ReelTerminal MCP adapter 共用 reelctl 实现。"
-    },
-    {
       "files": "docs/NAMING-AND-COMPATIBILITY.md",
       "category": 5,
       "reason": "规则文档自身：命名与兼容权威文本，条目/示例/对照表必然提及旧名（本注册表的规则层来源）。"
-    },
-    {
-      "files": "scripts/slice2-e2e/lib/env.mjs",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：e2e 场景以 OPENREEL_AVE_* 旧 env 名拉起 transport（与受测契约一致）。"
-    },
-    {
-      "files": "scripts/slice2-e2e/lib/mcp.mjs",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：e2e 文档注释中的 OPENREEL_AVE_* env 说明。"
     },
     {
       "files": "scripts/slice2-e2e/lib/scenario2.mjs",
@@ -717,18 +432,6 @@
       "files": "scripts/naming-registry.json",
       "category": 5,
       "reason": "注册表数据文件：条目模式字符串本身包含旧名。"
-    },
-    {
-      "files": "apps/desktop/src/aurora-host/native-renderer.ts",
-      "pattern": "OPENREEL_AURORA_RENDERER_PATH",
-      "category": 5,
-      "reason": "兼容入口：OPENREEL_AURORA_RENDERER_PATH 定义或验证当前支持的旧名称或别名。"
-    },
-    {
-      "files": "apps/web/src/components/editor/inspector/TemplatesBrowserPanel.test.tsx",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 5,
-      "reason": "兼容入口：VITE_OPENREEL_CLOUD 旧 env 名 off 禁用语义测试。"
     },
     {
       "files": "apps/web/src/services/native-ffmpeg-backend.test.ts",
@@ -770,18 +473,6 @@
       "pattern": "OpenReel",
       "category": 2,
       "reason": "上游归属：贡献指南标识 MIT 许可代码的来源。"
-    },
-    {
-      "files": "apps/desktop/src/main/crash-reporter.test.ts",
-      "pattern": "OPENREEL_CRASH_ENDPOINT",
-      "category": 5,
-      "reason": "兼容入口：测试覆盖崩溃报告地址的 OPENREEL_CRASH_ENDPOINT 别名。"
-    },
-    {
-      "files": "docs/COMMAND-API.md",
-      "pattern": "openreel-live-mcp",
-      "category": 5,
-      "reason": "兼容入口：命令参考说明 openreel-live-mcp 别名。"
     }
   ]
 }

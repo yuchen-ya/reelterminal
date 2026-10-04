@@ -18,7 +18,6 @@ import {
   fsyncSync,
   mkdirSync,
   openSync,
-  readFileSync,
   renameSync,
   rmSync,
   unlinkSync,
@@ -26,13 +25,10 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { readEnvAlias } from "../../shared/env-alias";
 import {
   canonicalEndpointPath,
-  describeWritebackDecision,
   endpointOverridePath,
   foreignDescriptorRefusal,
-  planLegacyCompatWriteback,
   ENDPOINT_PRODUCT_ID,
 } from "../../shared/endpoint-paths";
 import { readVerifiedImageArtifact } from "./artifact-images";
@@ -72,10 +68,9 @@ export interface LiveEndpointFileResolution {
 
 /**
  * Resolve the host's descriptor write target. An explicit option or env
- * override (REELTERMINAL_LIVE_ENDPOINT_FILE, legacy OPENREEL_) is used
- * exactly and disables compat write-back; otherwise the canonical
- * ~/.reelterminal path is served (and a qualifying legacy descriptor is
- * updated for old readers). `home` is injectable for tests.
+ * override (REELTERMINAL_LIVE_ENDPOINT_FILE) is used
+ * exactly; otherwise the canonical ~/.reelterminal path is served.
+ * `home` is injectable for tests.
  */
 export function liveEndpointFileResolution(
   explicitPath?: string,
@@ -138,30 +133,6 @@ function removeEndpointFile(file: string): void {
   }
 }
 
-/**
- * Remove a legacy-path descriptor only when it is still the one this host
- * wrote (url and token both match). A file another instance replaced in
- * the meantime is left alone.
- */
-function removeOwnedEndpointFile(
-  file: string,
-  endpoint: Pick<LiveEndpointFile, "url" | "token">,
-): void {
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      !Array.isArray(parsed) &&
-      (parsed as { url?: unknown }).url === endpoint.url &&
-      (parsed as { token?: unknown }).token === endpoint.token
-    ) {
-      rmSync(file, { force: true });
-    }
-  } catch {
-    // Nothing identifiable to remove.
-  }
-}
 
 export interface LiveEndpointOptions {
   /** Routes one facade verb call to the external live session (host-owned). */
@@ -179,7 +150,7 @@ export interface LiveEndpointOptions {
   /** Verified image reads are limited to this facade artifact directory. */
   readonly artifactRoot?: string;
   readonly host?: string;
-  /** Defaults to REELTERMINAL_LIVE_PORT (legacy OPENREEL_), else random. */
+  /** Defaults to REELTERMINAL_LIVE_PORT, else random. */
   readonly port?: number;
   /** Defaults to the canonical/overridden endpoint path resolution. */
   readonly endpointFilePath?: string;
@@ -518,7 +489,7 @@ export function startLiveEndpointServer(
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     const envPort = Number(
-      readEnvAlias(process.env, "REELTERMINAL_LIVE_PORT", "OPENREEL_LIVE_PORT") ?? 0,
+      process.env.REELTERMINAL_LIVE_PORT ?? 0,
     );
     const port = options.port ?? (Number.isFinite(envPort) && envPort > 0 ? envPort : 0);
     server.listen(port, host, () => {
@@ -546,40 +517,6 @@ export function startLiveEndpointServer(
           reject(error);
           return;
         }
-        // When serving from the canonical path, also
-        // republish the descriptor at the legacy path IF it holds this
-        // an owned descriptor and nothing live is behind it —
-        // so connectors that only read ~/.openreel discover the new host.
-        // Any other legacy content (foreign product, unidentifiable,
-        // still-served) is left untouched with a credential-free log line.
-        // Awaited before resolve() so a subsequent close() can remove the
-        // mirror deterministically.
-        let legacyMirror: string | null = null;
-        if (!endpointResolution.explicit) {
-          try {
-            const plan = await planLegacyCompatWriteback({
-              resource: "live-endpoint",
-              targetPath: endpointFile,
-              explicitTarget: endpointResolution.explicit,
-              home: options.home,
-            });
-            if (plan.writeback) {
-              writeEndpointFile(plan.legacyPath, descriptor);
-              legacyMirror = plan.legacyPath;
-            } else {
-              const note = describeWritebackDecision(plan);
-              if (note) console.error(`[live-endpoint] ${note}.`);
-            }
-          } catch (error) {
-            // The canonical descriptor is already published; a failed legacy
-            // update must not take the running host down.
-            console.error(
-              `[live-endpoint] legacy compat descriptor update failed: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
-          }
-        }
         resolve({
           server,
           port: boundPort,
@@ -589,9 +526,6 @@ export function startLiveEndpointServer(
           endpointFile,
           close: () =>
             new Promise<void>((resolveClose) => {
-              if (legacyMirror !== null) {
-                removeOwnedEndpointFile(legacyMirror, descriptor);
-              }
               removeEndpointFile(endpointFile);
               server.close(() => resolveClose());
             }),

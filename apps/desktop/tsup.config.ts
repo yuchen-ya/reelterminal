@@ -49,8 +49,7 @@ export default defineConfig({
   // the spawned esbuild.exe is an ordinary process and cannot read the TS
   // sources inside app.asar. With the pre-bundle present, bundle.ts serves it
   // via REELTERMINAL_BROWSER_ENTRY_BUNDLE (set by
-  // src/main/esbuild-binary-path.ts; the legacy OPENREEL_BROWSER_ENTRY_BUNDLE
-  // name is still read as a fallback) and never spawns esbuild at all. The
+  // src/main/esbuild-binary-path.ts) and never spawns esbuild at all. The
   // hook runs after clean+emit, so the
   // artifact lands in the freshly-written dist/. A failure here fails the
   // build (process.exitCode + rethrow) — never ship an app without it.

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
  * `reelterminal-agent` CLI.
- * `agent-video` remains available as a thin alias to this same entry point.
  *
  * Commands:
  *   serve                — the MCP stdio server; one process == one session
@@ -22,7 +21,6 @@ import {
 } from "./log";
 
 const USAGE = `reelterminal-agent — ReelTerminal agent transport
-(legacy command name: agent-video, same entry point)
 
 Usage:
   reelterminal-agent serve [options]        Start the MCP stdio server (one process == one session)
@@ -44,9 +42,6 @@ Environment (flags beat env):
   REELTERMINAL_AVE_PROJECT_ROOTS    path-separator list
   REELTERMINAL_AVE_DELIVERY_ROOTS   path-separator list
   REELTERMINAL_TRANSPORT_LOG        error | info | debug
-
-  Legacy OPENREEL_AVE_* / OPENREEL_TRANSPORT_LOG names are still read when
-  the REELTERMINAL_* name is unset; when both are set the new name wins.
 
 Every root and path input must be ABSOLUTE (relative paths and '~' are
 refused, never resolved against the cwd). Missing/relative/non-directory

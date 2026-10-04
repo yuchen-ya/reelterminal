@@ -23,8 +23,8 @@ folder is not on PATH. The desktop does not change Agent configuration.
 
 ## MCP compatibility
 
-Configure an MCP-capable Agent to launch `reelctl mcp serve`. Existing
-`reelterminal-live-mcp` and `openreel-live-mcp` launcher names remain aliases.
+Configure an MCP-capable Agent to launch `reelctl mcp serve`. The
+`reelterminal-live-mcp` launcher invokes that adapter.
 The adapter obtains the live catalog and forwards to the authenticated Command
 API.
 

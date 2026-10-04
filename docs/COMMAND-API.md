@@ -39,8 +39,8 @@ are visible in the GUI and can be undone there.
 ## MCP and headless sessions
 
 MCP clients can start `reelctl mcp serve`. It uses the same command catalog and
-live session as the CLI. The `reelterminal-live-mcp` and
-`openreel-live-mcp` launchers are aliases for that command.
+live session as the CLI. The `reelterminal-live-mcp`
+launcher invokes that command.
 
 For a standalone workflow, use `reelterminal-agent` and configure its project,
 media, artifact, and delivery roots. A headless session owns its own project;

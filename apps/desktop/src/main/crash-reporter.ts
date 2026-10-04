@@ -1,5 +1,4 @@
 import { app } from "electron";
-import { readEnvAlias } from "../shared/env-alias";
 
 const REPORT_TIMEOUT_MS = 4000;
 
@@ -24,11 +23,7 @@ export interface CrashReportInput {
 }
 
 function reportEndpoint(): string | null {
-  const configured = readEnvAlias(
-    process.env,
-    "REELTERMINAL_CRASH_ENDPOINT",
-    "OPENREEL_CRASH_ENDPOINT",
-  );
+  const configured = process.env.REELTERMINAL_CRASH_ENDPOINT;
   if (!configured?.trim()) return null;
 
   try {

@@ -7,7 +7,6 @@
 import "./esbuild-binary-path";
 import { app, BrowserWindow, ipcMain, shell } from "electron";
 import path from "node:path";
-import { readEnvAlias } from "../shared/env-alias";
 import { z } from "zod";
 import { registerAppSchemePrivileges, handleAppScheme, APP_INDEX } from "./protocol";
 import { installNavigationGuard } from "./nav-guard";
@@ -114,11 +113,7 @@ registerAppSchemePrivileges();
 // included) to a scratch directory before any path is resolved. Production
 // launches never set it; smoke tests use it so they cannot touch the user's
 // real material library, autosave, or workspace.
-const isolatedUserDataDir = readEnvAlias(
-  process.env,
-  "REELTERMINAL_USER_DATA_DIR",
-  "OPENREEL_USER_DATA_DIR",
-);
+const isolatedUserDataDir = process.env.REELTERMINAL_USER_DATA_DIR;
 if (isolatedUserDataDir && path.isAbsolute(isolatedUserDataDir)) {
   app.setPath("userData", isolatedUserDataDir);
 }

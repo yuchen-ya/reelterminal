@@ -165,7 +165,7 @@ function wrapNative(module: NativeCreationModule, kind: "native" | "wasm"): Crea
 
 function nativeAddonCandidates(): readonly string[] {
   const candidates = new Set<string>();
-  const explicit = process.env.OPENREEL_CREATION_ADDON_PATH?.trim();
+  const explicit = process.env.REELTERMINAL_CREATION_ADDON_PATH?.trim();
   if (explicit) candidates.add(path.resolve(explicit));
 
   let current = path.resolve(process.cwd());

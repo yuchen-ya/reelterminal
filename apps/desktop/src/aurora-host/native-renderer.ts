@@ -6,7 +6,6 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { readEnvAlias } from "../shared/env-alias";
 import type {
   Mesh,
   RayTraceOptions,
@@ -178,11 +177,7 @@ function parseNativeRenderResponse(buffer: Buffer): AuroraRenderedFrame {
 
 function nativeRendererCandidates(): readonly string[] {
   const candidates = new Set<string>();
-  const explicit = readEnvAlias(
-    process.env,
-    "REELTERMINAL_AURORA_RENDERER_PATH",
-    "OPENREEL_AURORA_RENDERER_PATH",
-  )?.trim();
+  const explicit = process.env.REELTERMINAL_AURORA_RENDERER_PATH?.trim();
   if (explicit) {
     candidates.add(path.resolve(explicit));
   }
@@ -220,11 +215,7 @@ function nativeRendererCandidates(): readonly string[] {
 }
 
 export function findNativeAuroraRendererPath(): string | null {
-  const explicit = readEnvAlias(
-    process.env,
-    "REELTERMINAL_AURORA_RENDERER_PATH",
-    "OPENREEL_AURORA_RENDERER_PATH",
-  )?.trim();
+  const explicit = process.env.REELTERMINAL_AURORA_RENDERER_PATH?.trim();
   if (explicit) {
     const resolved = path.resolve(explicit);
     return existsSync(resolved) ? resolved : null;

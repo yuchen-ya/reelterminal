@@ -82,9 +82,9 @@ export class E2EEnvironment {
   /** Serve/run CLI config, passed ONLY via flags or env by the callers. */
   cliEnv() {
     return {
-      OPENREEL_AVE_MEDIA_ROOTS: this.mediaRoot,
-      OPENREEL_AVE_ARTIFACT_ROOT: this.artifactRoot,
-      OPENREEL_AVE_PROJECT_ROOTS: this.projectRoot,
+      REELTERMINAL_AVE_MEDIA_ROOTS: this.mediaRoot,
+      REELTERMINAL_AVE_ARTIFACT_ROOT: this.artifactRoot,
+      REELTERMINAL_AVE_PROJECT_ROOTS: this.projectRoot,
     };
   }
 

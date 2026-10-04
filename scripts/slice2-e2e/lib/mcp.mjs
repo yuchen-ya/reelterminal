@@ -12,7 +12,7 @@ export class ServeClient {
   /**
    * @param cliPath absolute path to packages/agent-transport/dist/cli.js
    * @param args serve arguments (e.g. ["--media-root", ...])
-   * @param env extra env (OPENREEL_AVE_*); process.env is inherited
+   * @param env extra env (REELTERMINAL_AVE_*); process.env is inherited
    * @param recorder transcript recorder (optional)
    * @param label which actor this process represents (e.g. "mcp/A")
    */

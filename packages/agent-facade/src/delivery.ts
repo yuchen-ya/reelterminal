@@ -94,7 +94,7 @@ export async function resolveDeliveryDestination(
       `${verb}: destinationPath was given but this session has no delivery roots configured`,
       {
         requires:
-          "a delivery root (headless: REELTERMINAL_AVE_DELIVERY_ROOTS, legacy OPENREEL_AVE_DELIVERY_ROOTS still honored; live: the desktop Agent workspace root)",
+          "a delivery root (headless: REELTERMINAL_AVE_DELIVERY_ROOTS; live: the desktop Agent workspace root)",
       },
     );
   }

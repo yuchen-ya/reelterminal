@@ -12,9 +12,7 @@
  * and writes the finished bundle to apps/desktop/dist/browser-entry.mjs, which
  * electron-builder packs into app.asar (files: dist/**). At runtime bundle.ts
  * serves this artifact directly when REELTERMINAL_BROWSER_ENTRY_BUNDLE points
- * at it (set by src/main/esbuild-binary-path.ts in packaged installs only;
- * bundle.ts still reads the legacy OPENREEL_BROWSER_ENTRY_BUNDLE name as a
- * fallback, docs/NAMING-AND-COMPATIBILITY.md §3).
+ * at it (set by src/main/esbuild-binary-path.ts in packaged installs only).
  *
  * KEEP IN SYNC with packages/runtime-chromium/src/node/bundle.ts doBuild():
  * the esbuild options below mirror that runtime dev-path build (same entry,

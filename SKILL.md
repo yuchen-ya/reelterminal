@@ -1,5 +1,5 @@
 ---
-name: agent-video
+name: reelterminal
 description: >-
   Create and edit videos in the open ReelTerminal desktop project using reelctl:
   inspect editor context, import assets, apply edits, preview, export, and verify.
@@ -102,8 +102,8 @@ assets with the external Agent and import them through the normal API.
 ## Compatibility access
 
 The [Command API guide](docs/COMMAND-API.md) describes the live service and
-CLI contract. Only MCP clients start `reelctl mcp serve`. The legacy
-`reelterminal-live-mcp` and `openreel-live-mcp` launchers invoke the same adapter.
+CLI contract. Only MCP clients start `reelctl mcp serve`. The
+`reelterminal-live-mcp` launcher invokes the same adapter.
 MCP schemas come from the live Command Catalog, and calls use the Command API.
 The desktop does not launch an MCP stdio process or configure the Agent.
 
@@ -111,6 +111,6 @@ The desktop does not launch an MCP stdio process or configure the Agent.
 
 The existing `reelterminal-agent doctor`, `serve`, and `run --workflow <abs>`
 remain separate headless entry points. They create their own facade session and
-do not attach to the GUI. `agent-video` is the legacy alias. Use --help to discover
+do not attach to the GUI. Use --help to discover
 required absolute media/artifact/project/delivery roots; map them to the same
 external job layout. Do not substitute a headless project for the user's GUI.

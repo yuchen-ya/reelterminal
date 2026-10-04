@@ -11,11 +11,11 @@ describe("shareBaseOrigin", () => {
   it("uses publicOrigin on desktop for share + deep links", () => {
     (window as unknown as { reelterminal: unknown }).reelterminal = {
       platform: "desktop",
-      publicOrigin: "https://app.openreel.video",
+      publicOrigin: "https://editor.example",
     };
-    expect(shareBaseOrigin()).toBe("https://app.openreel.video");
-    expect(generateShareableLink("share")).toMatch(/^https:\/\/app\.openreel\.video#\//);
-    expect(getSharePageUrl("x")).toBe("https://app.openreel.video#/share/x");
+    expect(shareBaseOrigin()).toBe("https://editor.example");
+    expect(generateShareableLink("share")).toMatch(/^https:\/\/editor\.example#\//);
+    expect(getSharePageUrl("x")).toBe("https://editor.example#/share/x");
   });
 
   it("uses window.location origin+pathname on web", () => {

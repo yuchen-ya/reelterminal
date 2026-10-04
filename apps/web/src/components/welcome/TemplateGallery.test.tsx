@@ -42,7 +42,7 @@ vi.mock("../../stores/engine-store", () => ({
 }));
 
 function clearCloudEnv(): void {
-  delete (import.meta.env as Record<string, unknown>).VITE_OPENREEL_CLOUD;
+  delete (import.meta.env as Record<string, unknown>).VITE_REELTERMINAL_CLOUD;
 }
 
 async function renderGallery() {
@@ -60,9 +60,9 @@ afterEach(() => {
 });
 
 describe("TemplateGallery cloud opt-out", () => {
-  it("renders an explicit disabled state and issues zero requests when VITE_OPENREEL_CLOUD=off", async () => {
+  it("renders an explicit disabled state and issues zero requests when VITE_REELTERMINAL_CLOUD=off", async () => {
     clearCloudEnv();
-    vi.stubEnv("VITE_OPENREEL_CLOUD", "off");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "off");
     engineStub.state.builtins = [engineStub.makeBuiltin()];
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
@@ -80,7 +80,7 @@ describe("TemplateGallery cloud opt-out", () => {
 
   it("shows the disabled copy as the empty state when the cloud is off and no built-ins exist", async () => {
     clearCloudEnv();
-    vi.stubEnv("VITE_OPENREEL_CLOUD", "off");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "off");
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 

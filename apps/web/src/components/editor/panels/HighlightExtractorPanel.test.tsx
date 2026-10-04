@@ -38,7 +38,7 @@ vi.mock("@reelterminal/core", () => ({
 }));
 
 function clearCloudEnv(): void {
-  delete (import.meta.env as Record<string, unknown>).VITE_OPENREEL_CLOUD;
+  delete (import.meta.env as Record<string, unknown>).VITE_REELTERMINAL_CLOUD;
 }
 
 function seedProjectWithMedia(): void {
@@ -72,7 +72,7 @@ afterEach(() => {
 describe("HighlightExtractorPanel cloud opt-out", () => {
   it("disables analysis with an explicit explanation and zero work when the cloud is off", async () => {
     clearCloudEnv();
-    vi.stubEnv("VITE_OPENREEL_CLOUD", "off");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "off");
     seedProjectWithMedia();
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);

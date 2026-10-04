@@ -9,9 +9,7 @@
  * - Packaged installs: the entry was PRE-BUNDLED at build time by
  *   apps/desktop/scripts/build-browser-entry.mjs into
  *   <resources>/app.asar/dist/browser-entry.mjs, and the desktop main process
- *   points REELTERMINAL_BROWSER_ENTRY_BUNDLE at it (esbuild-binary-path.ts;
- *   the legacy OPENREEL_BROWSER_ENTRY_BUNDLE name is still read as a
- *   fallback, docs/NAMING-AND-COMPATIBILITY.md §3). The
+ *   points REELTERMINAL_BROWSER_ENTRY_BUNDLE at it (esbuild-binary-path.ts). The
  *   finished artifact is served as-is. The runtime esbuild build below can
  *   never work there: the spawned esbuild.exe is an ordinary process and
  *   cannot read the TS sources inside app.asar.
@@ -35,7 +33,7 @@ export function buildBrowserEntry(): Promise<string> {
 
 /** Injectable context for the resolution below (tests); all optional. */
 export interface BrowserEntryContext {
-  /** Env consulted for REELTERMINAL_BROWSER_ENTRY_BUNDLE (legacy OPENREEL_ fallback); defaults to process.env. */
+  /** Env consulted for REELTERMINAL_BROWSER_ENTRY_BUNDLE; defaults to process.env. */
   env?: NodeJS.ProcessEnv;
   /** Existence probe for the pre-bundle path; defaults to fs.existsSync. */
   fileExists?: (candidate: string) => boolean;
@@ -64,10 +62,7 @@ export function loadPrebundledBrowserEntry(
   const fileExists = context.fileExists ?? existsSync;
   const readText =
     context.readText ?? ((path: string) => readFileSync(path, "utf8"));
-  // New name preferred; the legacy OPENREEL_ name keeps older desktop
-  // builds working (docs/NAMING-AND-COMPATIBILITY.md §3).
-  const fromEnv =
-    env.REELTERMINAL_BROWSER_ENTRY_BUNDLE ?? env.OPENREEL_BROWSER_ENTRY_BUNDLE;
+  const fromEnv = env.REELTERMINAL_BROWSER_ENTRY_BUNDLE;
   if (!fromEnv) return undefined;
   if (!fileExists(fromEnv)) return undefined;
   return readText(fromEnv);

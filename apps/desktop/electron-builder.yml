@@ -59,8 +59,6 @@ extraFiles:
     to: reelctl.cmd
   - from: resources/bin/reelterminal-live-mcp.cmd
     to: reelterminal-live-mcp.cmd
-  - from: resources/bin/openreel-live-mcp.cmd
-    to: openreel-live-mcp.cmd
 mac:
   category: public.app-category.video
   icon: build/icon.png

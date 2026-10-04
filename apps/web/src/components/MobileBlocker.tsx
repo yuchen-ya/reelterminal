@@ -69,7 +69,7 @@ export function MobileBlocker() {
           <Button
             as="a"
             label={t("mobile.learnMore")}
-            href="https://openreel.video"
+            href="https://github.com/yuchen-ya/reelterminal"
             className="inline-flex items-center gap-2 px-8 py-3 bg-primary hover:bg-primary-hover active:bg-primary-active text-white font-medium rounded-lg transition-all duration-200 shadow-glow hover:shadow-glow-lg transform hover:scale-[1.02] active:scale-[0.98]"
           />
         </div>

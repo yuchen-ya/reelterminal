@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-// The preload runs against Electron's contextBridge, which copies values
-// across worlds, so a real renderer cannot assert
-// `window.openreel === window.reelterminal` directly. The preload must expose
-// one API object under both names; two objects would register IPC listeners
-// twice. The mocked contextBridge preserves the references for this check.
 const electron = vi.hoisted(() => {
   const exposed = new Map<string, unknown>();
   return {
@@ -42,32 +37,22 @@ const exposedApi = (name: string): AnyApi => {
 };
 
 describe("preload bridge naming", () => {
-  it("exposes the primary name reelterminal and keeps openreel as an alias", () => {
+  it("exposes only the reelterminal bridge", () => {
     expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledWith(
       "reelterminal",
       expect.anything(),
     );
-    expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledWith(
-      "openreel",
-      expect.anything(),
-    );
-    expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledTimes(2);
+    expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledTimes(1);
   });
 
-  it("exposes the SAME object under both names (one implementation, no double registration)", () => {
-    expect(exposedApi("openreel")).toBe(exposedApi("reelterminal"));
-  });
 
-  it("a call through either name lands on the same IPC channel exactly once", async () => {
+  it("a bridge call invokes the hardware channel exactly once", async () => {
     const viaNew = exposedApi("reelterminal");
-    const viaOld = exposedApi("openreel");
-    await Promise.all([viaNew.probeHardware(), viaOld.probeHardware()]);
-    // Two bridge calls (one per name), but every call sends exactly one
-    // invoke on the shared channel — a second registration would double it.
+    await viaNew.probeHardware();
     const probeCalls = electron.ipcRenderer.invoke.mock.calls.filter(
       ([channel]) => channel === CHANNELS.probeHardware,
     );
-    expect(probeCalls).toHaveLength(2);
+    expect(probeCalls).toHaveLength(1);
     for (const [channel] of probeCalls) expect(channel).toBe(CHANNELS.probeHardware);
   });
 

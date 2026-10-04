@@ -3,10 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "ADR 0003 slice 2b/2c: the reelterminal-agent CLI (legacy command name: agent-video) — MCP stdio server (serve), executable workflow runner (run), and environment doctor. One process == one AgentFacadeSession.",
+  "description": "ADR 0003 slice 2b/2c: the reelterminal-agent CLI — MCP stdio server (serve), executable workflow runner (run), and environment doctor. One process == one AgentFacadeSession.",
   "bin": {
-    "reelterminal-agent": "dist/cli.js",
-    "agent-video": "dist/cli.js"
+    "reelterminal-agent": "dist/cli.js"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",

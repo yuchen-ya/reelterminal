@@ -4,7 +4,7 @@
  * stdout is reserved for protocol bytes only (MCP frames in `serve`, step
  * JSON lines in `run`, the `doctor` report) — EVERY log lands here, as
  * single-line JSON `{ts, level, scope, msg, ...}`, level-gated by
- * `--log-level` / `OPENREEL_TRANSPORT_LOG` (error | info | debug; default
+ * `--log-level` / `REELTERMINAL_TRANSPORT_LOG` (error | info | debug; default
  * info). Dependency `console.*` is redirected onto this writer by cli.ts.
  */
 

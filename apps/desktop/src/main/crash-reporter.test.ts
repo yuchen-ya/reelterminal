@@ -10,12 +10,10 @@ import { reportError } from "./crash-reporter";
 
 describe("crash reporting", () => {
   const originalEndpoint = process.env.REELTERMINAL_CRASH_ENDPOINT;
-  const originalLegacyEndpoint = process.env.OPENREEL_CRASH_ENDPOINT;
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 });
 
   beforeEach(() => {
     delete process.env.REELTERMINAL_CRASH_ENDPOINT;
-    delete process.env.OPENREEL_CRASH_ENDPOINT;
     fetchMock.mockClear();
     vi.stubGlobal("fetch", fetchMock);
   });
@@ -23,8 +21,6 @@ describe("crash reporting", () => {
   afterEach(() => {
     if (originalEndpoint === undefined) delete process.env.REELTERMINAL_CRASH_ENDPOINT;
     else process.env.REELTERMINAL_CRASH_ENDPOINT = originalEndpoint;
-    if (originalLegacyEndpoint === undefined) delete process.env.OPENREEL_CRASH_ENDPOINT;
-    else process.env.OPENREEL_CRASH_ENDPOINT = originalLegacyEndpoint;
     vi.unstubAllGlobals();
   });
 

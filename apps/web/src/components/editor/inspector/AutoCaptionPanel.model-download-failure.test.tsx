@@ -155,7 +155,7 @@ describe("AutoCaptionPanel model download failure feedback", () => {
     await renderPanel();
     const worker = lastWorker();
     worker.scriptedLoadFailure = new Error(
-      'Could not locate file: "https://media.openreel.video/models/onnx-community/whisper-large-v3-turbo_timestamped/resolve/main/config.json".',
+      'Could not locate file: "https://huggingface.co/onnx-community/whisper-large-v3-turbo_timestamped/resolve/main/config.json".',
     );
 
     await clickAsync(screen.getByRole("button", { name: "Download Large V3 Turbo" }));

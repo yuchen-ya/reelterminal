@@ -31,28 +31,7 @@ describe("loadPrebundledBrowserEntry", () => {
     ).toBe("TEXT-OF:D:/app/app.asar/dist/browser-entry.mjs");
   });
 
-  it("still honors the legacy OPENREEL_BROWSER_ENTRY_BUNDLE name as a fallback", () => {
-    expect(
-      loadPrebundledBrowserEntry({
-        env: { OPENREEL_BROWSER_ENTRY_BUNDLE: "D:/app/app.asar/dist/browser-entry.mjs" },
-        fileExists: () => true,
-        readText: (p) => `TEXT-OF:${p}`,
-      }),
-    ).toBe("TEXT-OF:D:/app/app.asar/dist/browser-entry.mjs");
-  });
 
-  it("prefers the new name when both env names are set", () => {
-    expect(
-      loadPrebundledBrowserEntry({
-        env: {
-          REELTERMINAL_BROWSER_ENTRY_BUNDLE: "D:/new/browser-entry.mjs",
-          OPENREEL_BROWSER_ENTRY_BUNDLE: "D:/legacy/browser-entry.mjs",
-        },
-        fileExists: () => true,
-        readText: (p) => `TEXT-OF:${p}`,
-      }),
-    ).toBe("TEXT-OF:D:/new/browser-entry.mjs");
-  });
 
   it("returns undefined when the env var is unset (dev checkout)", () => {
     expect(loadPrebundledBrowserEntry({ env: {} })).toBeUndefined();

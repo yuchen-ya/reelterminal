@@ -8,9 +8,7 @@ import {
   rmSync,
   statSync,
   writeFileSync,
-  chmodSync,
 } from "node:fs";
-import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -50,7 +48,6 @@ function freshHome(): Home {
 
 afterEach(() => {
   delete process.env.REELTERMINAL_LIVE_ENDPOINT_FILE;
-  delete process.env.OPENREEL_LIVE_ENDPOINT_FILE;
   while (homes.length > 0) {
     rmSync(homes.pop()!, { recursive: true, force: true });
   }
@@ -123,124 +120,22 @@ describe("live endpoint compatibility", () => {
     expect(loaded.token).toBe(DEAD_LEGACY_DESCRIPTOR.token);
   });
 
-  it("旧→新: replaces a dead owned legacy descriptor (atomic write-back) and cleans up on close", async () => {
+
+
+
+
+  it("publishes only the canonical descriptor and leaves a saved legacy descriptor untouched", async () => {
     const home = freshHome();
     writeDescriptor(home.legacy, DEAD_LEGACY_DESCRIPTOR);
-    if (process.platform !== "win32") {
-      chmodSync(home.legacy, 0o600);
-    }
-    const running = await start(home);
-    try {
-      // Canonical descriptor published…
-      expect(readDescriptor(home.canonical).product).toBe(ENDPOINT_PRODUCT_ID);
-      // …and the legacy descriptor atomically republished to this instance
-      // so read-only-legacy (old) connectors discover the new host.
-      const mirror = readDescriptor(home.legacy);
-      expect(mirror.url).toBe(running.url);
-      expect(mirror.port).toBe(running.port);
-      expect(mirror.product).toBe(ENDPOINT_PRODUCT_ID);
-      expect(mirror.token).toHaveLength(64);
-      if (process.platform !== "win32") {
-        expect(statSync(home.legacy).mode & 0o777).toBe(0o600);
-      }
-      // A single publish = one rename: no partial temporary files remain.
-      expect(readdirSync(path.dirname(home.legacy)).filter((name) =>
-        name.endsWith(".tmp"),
-      )).toEqual([]);
-      expect(readdirSync(path.dirname(home.canonical)).filter((name) =>
-        name.endsWith(".tmp"),
-      )).toEqual([]);
-    } finally {
-      await running.close();
-    }
-    // Both owned descriptors are removed; the legacy directory remains.
-    expect(existsSync(home.canonical)).toBe(false);
-    expect(existsSync(home.legacy)).toBe(false);
-    expect(existsSync(path.dirname(home.legacy))).toBe(true);
-
-    // Idempotent restart: with no legacy file present, nothing is mirrored.
-    const second = await start(home);
-    try {
-      expect(existsSync(home.legacy)).toBe(false);
-    } finally {
-      await second.close();
-    }
-  });
-
-  it("旧→新 again: the replica descriptor is removed with the host, twice in a row", async () => {
-    const home = freshHome();
-    for (let round = 0; round < 2; round += 1) {
-      writeDescriptor(home.legacy, DEAD_LEGACY_DESCRIPTOR);
-      const running = await start(home);
-      expect(readDescriptor(home.legacy).url).toBe(running.url);
-      await running.close();
-      expect(existsSync(home.legacy)).toBe(false);
-      expect(existsSync(home.canonical)).toBe(false);
-    }
-  });
-
-  it("陈旧坏 JSON: an unidentifiable legacy file is left untouched and logged", async () => {
-    const home = freshHome();
-    mkdirSync(path.dirname(home.legacy), { recursive: true });
-    writeFileSync(home.legacy, "{ truncated", { mode: 0o600 });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const running = await start(home);
     try {
       expect(readDescriptor(home.canonical).product).toBe(ENDPOINT_PRODUCT_ID);
-      expect(readFileSync(home.legacy, "utf8")).toBe("{ truncated");
-      const notes = errorSpy.mock.calls
-        .map((call) => call.join(" "))
-        .filter((line) => line.includes("could not be identified"));
-      expect(notes).toHaveLength(1);
-      // Credential safety: the log names the path and reason only.
-      expect(notes[0]).not.toContain("token");
+      expect(readDescriptor(home.legacy)).toEqual(DEAD_LEGACY_DESCRIPTOR);
     } finally {
-      errorSpy.mockRestore();
       await running.close();
     }
-    expect(readFileSync(home.legacy, "utf8")).toBe("{ truncated");
     expect(existsSync(home.canonical)).toBe(false);
-  });
-
-  it("陈旧活跃端口: a live publisher behind the legacy descriptor blocks the write-back", async () => {
-    const home = freshHome();
-    let sawAuthorization: string | undefined;
-    let requests = 0;
-    const publisher = createServer((req, res) => {
-      requests += 1;
-      sawAuthorization = req.headers.authorization;
-      res.writeHead(401).end();
-    });
-    await new Promise<void>((resolve) => publisher.listen(0, "127.0.0.1", resolve));
-    const address = publisher.address();
-    const port = typeof address === "object" && address ? address.port : 0;
-    const legacyContent = {
-      url: `http://127.0.0.1:${port}/mcp`,
-      port,
-      token: "1".repeat(64),
-    };
-    writeDescriptor(home.legacy, legacyContent);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    let running: RunningLiveEndpoint | undefined;
-    try {
-      running = await start(home);
-      // The pre-existing descriptor still belongs to the running instance.
-      expect(readDescriptor(home.legacy)).toEqual(legacyContent);
-      const notes = errorSpy.mock.calls
-        .map((call) => call.join(" "))
-        .filter((line) => line.includes("running instance"));
-      expect(notes).toHaveLength(1);
-      // The liveness probe sent no Authorization header — credentials never
-      // leave the descriptor file.
-      expect(requests).toBeGreaterThanOrEqual(1);
-      expect(sawAuthorization).toBeUndefined();
-    } finally {
-      errorSpy.mockRestore();
-      await running?.close();
-      await new Promise<void>((resolve) => publisher.close(() => resolve()));
-    }
-    expect(readDescriptor(home.legacy)).toEqual(legacyContent);
-    expect(existsSync(home.canonical)).toBe(false);
+    expect(readDescriptor(home.legacy)).toEqual(DEAD_LEGACY_DESCRIPTOR);
   });
 
   it("新旧并存且身份不一致: the host serves canonical and never overwrites a foreign legacy file", async () => {
@@ -257,10 +152,6 @@ describe("live endpoint compatibility", () => {
     try {
       expect(running.endpointFile).toBe(home.canonical);
       expect(readDescriptor(home.legacy)).toEqual(foreign);
-      const notes = errorSpy.mock.calls
-        .map((call) => call.join(" "))
-        .filter((line) => line.includes("belongs to another product"));
-      expect(notes).toHaveLength(1);
     } finally {
       errorSpy.mockRestore();
       await running.close();

@@ -6,8 +6,7 @@
  * Legacy location:     ~/.openreel/<resource>
  *
  * Per-resource resolution order:
- *   1. explicit override env (new `REELTERMINAL_*` name first, legacy
- *      `OPENREEL_*` fallback via the shared readEnvAlias semantics);
+ *   1. explicit REELTERMINAL_* override;
  *   2. the canonical `~/.reelterminal/` path;
  *   3. compatibility discovery of the legacy `~/.openreel/` path — read-only
  *      positioning, and only when (i) the canonical path does not exist and
@@ -21,13 +20,11 @@
  * silently cross-connecting to another product or session.
  *
  * Descriptors are credentials: nothing in this module logs, returns, or
- * echoes descriptor contents, and any liveness probe is sent WITHOUT the
- * bearer token.
+ * echoes descriptor contents.
  */
 import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { readEnvAlias } from "./env-alias";
 
 /** Product identity written into endpoint descriptors by this application. */
 export const ENDPOINT_PRODUCT_ID = "reelterminal";
@@ -43,11 +40,10 @@ const RESOURCE_NAMES: Record<EndpointResource, string> = {
 
 const OVERRIDE_ENV_NAMES: Record<
   EndpointResource,
-  { readonly newName: string; readonly oldName: string }
+  { readonly newName: string }
 > = {
   "live-endpoint": {
     newName: "REELTERMINAL_LIVE_ENDPOINT_FILE",
-    oldName: "OPENREEL_LIVE_ENDPOINT_FILE",
   },
 };
 
@@ -68,23 +64,16 @@ export function legacyEndpointPath(
   return path.join(home, LEGACY_ENDPOINT_DIR_NAME, RESOURCE_NAMES[resource]);
 }
 
-export function endpointOverrideEnvNames(
-  resource: EndpointResource,
-): { readonly newName: string; readonly oldName: string } {
-  return OVERRIDE_ENV_NAMES[resource];
-}
-
 /**
- * Raw override value using readEnvAlias precedence (new name set wins,
- * empty string counts as set-and-empty). The live endpoint accepts any
- * non-empty value.
+ * Raw REELTERMINAL_* override value; empty string counts as set-and-empty.
+ * The live endpoint accepts any non-empty value.
  */
 export function endpointOverridePath(
   env: NodeJS.ProcessEnv,
   resource: EndpointResource,
 ): string | undefined {
-  const { newName, oldName } = OVERRIDE_ENV_NAMES[resource];
-  return readEnvAlias(env, newName, oldName);
+  const { newName } = OVERRIDE_ENV_NAMES[resource];
+  return env[newName];
 }
 
 function acceptsOverride(value: string): boolean {
@@ -183,36 +172,6 @@ export function isOwnedDescriptor(
   ownership: DescriptorOwnership,
 ): boolean {
   return ownership === "product" || ownership === "legacy-shape";
-}
-
-/** Loopback-only http(s) URL check; liveness probes never leave the machine. */
-export function isLoopbackHttpUrl(raw: string): boolean {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return false;
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
-  if (url.username || url.password) return false;
-  const host = url.hostname.toLowerCase();
-  return (
-    host === "127.0.0.1" ||
-    host === "localhost" ||
-    host === "[::1]" ||
-    host === "::1" ||
-    host === "0.0.0.0"
-  );
-}
-
-/** Extract the endpoint URL of a descriptor without exposing any token. */
-export function descriptorEndpointUrl(
-  _resource: EndpointResource,
-  parsed: unknown,
-): string | undefined {
-  if (!isRecord(parsed)) return undefined;
-  const raw = parsed.url;
-  return typeof raw === "string" && isLoopbackHttpUrl(raw) ? raw : undefined;
 }
 
 /* --------------------------- read resolution ----------------------------- */
@@ -375,138 +334,4 @@ export function foreignDescriptorRefusal(
   }
   const foreignProduct = readForeignProductId(filePath) ?? "unknown";
   return foreignOverrideMessage(resource, filePath, foreignProduct);
-}
-
-/* ------------------------- host compat write-back ------------------------ */
-
-export type CompatWritebackReason =
-  | "owned-stale" // write back: legacy holds this app family's dead descriptor
-  | "no-legacy" // nothing at the legacy path
-  | "alive" // a running instance still serves the legacy endpoint
-  | "foreign" // another product's descriptor — never overwrite
-  | "invalid" // unidentifiable file — never overwrite
-  | "explicit-target"; // host was given an explicit/env target, not the default
-
-export interface CompatWritebackPlan {
-  readonly writeback: boolean;
-  readonly reason: CompatWritebackReason;
-  readonly legacyPath: string;
-}
-
-export interface CompatWritebackOptions {
-  readonly resource: "live-endpoint";
-  /** The host's resolved write target (override or canonical). */
-  readonly targetPath: string;
-  /** True when the target came from an explicit option or env override. */
-  readonly explicitTarget: boolean;
-  readonly env?: NodeJS.ProcessEnv;
-  readonly home?: string;
-  readonly exists?: (candidate: string) => boolean;
-  readonly probeAlive?: (endpointUrl: string) => Promise<boolean>;
-}
-
-/**
- * Default liveness probe: one GET without any Authorization header. Any
- * HTTP response means a server is still publishing on that endpoint; the
- * bearer token is never sent, read, or logged.
- */
-export async function probeLoopbackEndpointAlive(
-  endpointUrl: string,
-  timeoutMs = 1_500,
-): Promise<boolean> {
-  if (!isLoopbackHttpUrl(endpointUrl)) return false;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(endpointUrl, {
-      method: "GET",
-      redirect: "error",
-      signal: controller.signal,
-    });
-    return response.status >= 100 && response.status < 600;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * Decide whether a host that is about to serve `targetPath` should ALSO
- * republish its descriptor at the legacy path so read-only-legacy clients
- * can discover it. Only an owned (product or legacy-shape) and provably
- * dead legacy descriptor is replaced; the decision reads no secret values.
- */
-export async function planLegacyCompatWriteback(
-  options: CompatWritebackOptions,
-): Promise<CompatWritebackPlan> {
-  const home = options.home ?? os.homedir();
-  const exists = options.exists ?? existsSync;
-  const legacyPath = legacyEndpointPath(home, options.resource);
-  if (options.explicitTarget || options.targetPath !== canonicalEndpointPath(home, options.resource)) {
-    return { writeback: false, reason: "explicit-target", legacyPath };
-  }
-  if (!exists(legacyPath)) {
-    return { writeback: false, reason: "no-legacy", legacyPath };
-  }
-  const probe = probeDescriptorOwnership(legacyPath, options.resource);
-  if (probe.kind === "unreadable") {
-    return { writeback: false, reason: "invalid", legacyPath };
-  }
-  if (probe.ownership === "foreign" || probe.ownership === "invalid") {
-    return { writeback: false, reason: probe.ownership, legacyPath };
-  }
-  const url = descriptorEndpointUrl(
-    options.resource,
-    parseDescriptorForProbe(legacyPath),
-  );
-  if (url === undefined) {
-    return { writeback: false, reason: "invalid", legacyPath };
-  }
-  const alive = await (options.probeAlive ?? probeLoopbackEndpointAlive)(url);
-  return {
-    writeback: !alive,
-    reason: alive ? "alive" : "owned-stale",
-    legacyPath,
-  };
-}
-
-function parseDescriptorForProbe(filePath: string): unknown {
-  try {
-    const info = readFileSync(filePath);
-    if (info.byteLength > MAX_DESCRIPTOR_PROBE_BYTES) return undefined;
-    return JSON.parse(info.toString("utf8"));
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Human-readable, credential-free explanation for a declined write-back,
- * for host logs. `logCompatNotice` never receives descriptor contents.
- */
-export function describeWritebackDecision(
-  plan: CompatWritebackPlan,
-): string | undefined {
-  switch (plan.reason) {
-    case "alive":
-      return (
-        `legacy descriptor at ${plan.legacyPath} is still served by a ` +
-        `running instance; it was left untouched and the new host serves ` +
-        `on its own canonical descriptor only`
-      );
-    case "foreign":
-      return (
-        `legacy descriptor at ${plan.legacyPath} belongs to another ` +
-        `product; it was left untouched (the host serves on its canonical ` +
-        `descriptor)`
-      );
-    case "invalid":
-      return (
-        `legacy descriptor at ${plan.legacyPath} could not be identified ` +
-        `as a ReelTerminal descriptor; it was left untouched`
-      );
-    default:
-      return undefined;
-  }
 }

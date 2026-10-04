@@ -41,7 +41,7 @@ describe("classifyWhisperDownloadError", () => {
   it("maps the transformers.js HTTP failure phrases to their status codes", () => {
     const notFound = classifyWhisperDownloadError(
       new Error(
-        'Could not locate file: "https://media.openreel.video/models/example/resolve/main/config.json".',
+        'Could not locate file: "https://huggingface.co/example/resolve/main/config.json".',
       ),
     );
     expect(notFound.kind).toBe("http");

@@ -39,7 +39,7 @@ vi.mock("../../../stores/engine-store", () => ({
 }));
 
 function clearCloudEnv(): void {
-  delete (import.meta.env as Record<string, unknown>).VITE_OPENREEL_CLOUD;
+  delete (import.meta.env as Record<string, unknown>).VITE_REELTERMINAL_CLOUD;
 }
 
 async function renderBrowser() {
@@ -122,7 +122,7 @@ describe("TemplatesBrowserPanel cloud load failure", () => {
 
   it("keeps the off build's disabled banner authoritative with no failure state and zero requests", async () => {
     clearCloudEnv();
-    vi.stubEnv("VITE_OPENREEL_CLOUD", "off");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "off");
     engineStub.state.local = [engineStub.makeLocal()];
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);

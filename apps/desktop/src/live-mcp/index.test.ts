@@ -33,16 +33,13 @@ function client(overrides: Partial<LiveCommandClient> = {}): LiveCommandClient {
 describe("reelctl MCP adapter endpoint compatibility", () => {
   afterEach(() => {
     delete process.env.REELTERMINAL_LIVE_ENDPOINT_FILE;
-    delete process.env.OPENREEL_LIVE_ENDPOINT_FILE;
   });
 
   it("defaults to the canonical live endpoint descriptor path", () => {
     expect(endpointFilePath()).toBe(path.join(os.homedir(), ".reelterminal", "live-endpoint.json"));
   });
 
-  it("respects ReelTerminal and legacy descriptor overrides", () => {
-    process.env.OPENREEL_LIVE_ENDPOINT_FILE = path.join(os.tmpdir(), "legacy.json");
-    expect(endpointFilePath()).toBe(process.env.OPENREEL_LIVE_ENDPOINT_FILE);
+  it("respects the ReelTerminal descriptor override", () => {
     process.env.REELTERMINAL_LIVE_ENDPOINT_FILE = path.join(os.tmpdir(), "new.json");
     expect(endpointFilePath()).toBe(process.env.REELTERMINAL_LIVE_ENDPOINT_FILE);
   });

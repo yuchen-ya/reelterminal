@@ -5,14 +5,10 @@ import path from "node:path";
 import {
   canonicalEndpointPath,
   classifyDescriptorOwnership,
-  describeWritebackDecision,
   endpointOverridePath,
   foreignDescriptorRefusal,
-  isLoopbackHttpUrl,
   legacyEndpointPath,
-  planLegacyCompatWriteback,
   probeDescriptorOwnership,
-  probeLoopbackEndpointAlive,
   resolveEndpointReadPath,
   ENDPOINT_PRODUCT_ID,
   type EndpointResource,
@@ -55,32 +51,27 @@ describe("endpoint path constants", () => {
   );
 });
 
-describe("endpoint override resolution (readEnvAlias semantics)", () => {
-  it("prefers the new REELTERMINAL_* name", () => {
+describe("endpoint override resolution", () => {
+  it("reads the REELTERMINAL_* override", () => {
     expect(
       endpointOverridePath(
-        { REELTERMINAL_LIVE_ENDPOINT_FILE: "/n", OPENREEL_LIVE_ENDPOINT_FILE: "/o" },
+        { REELTERMINAL_LIVE_ENDPOINT_FILE: "/n" },
         "live-endpoint",
       ),
     ).toBe("/n");
   });
 
-  it("falls back to the legacy OPENREEL_* name", () => {
-    expect(
-      endpointOverridePath({ OPENREEL_LIVE_ENDPOINT_FILE: "/o" }, "live-endpoint"),
-    ).toBe("/o");
-  });
 
-  it("treats an empty new name as set-and-empty, never consulting the old name", () => {
+  it("preserves an empty override", () => {
     expect(
       endpointOverridePath(
-        { REELTERMINAL_LIVE_ENDPOINT_FILE: "", OPENREEL_LIVE_ENDPOINT_FILE: "/o" },
+        { REELTERMINAL_LIVE_ENDPOINT_FILE: "" },
         "live-endpoint",
       ),
     ).toBe("");
   });
 
-  it("returns undefined when neither name is set", () => {
+  it("returns undefined when the override is unset", () => {
     expect(endpointOverridePath({}, "live-endpoint")).toBeUndefined();
   });
 });
@@ -224,182 +215,5 @@ describe("foreignDescriptorRefusal (explicit host targets)", () => {
     expect(foreignDescriptorRefusal("live-endpoint", file)).toBeUndefined();
     writeDescriptor(file, { product: ENDPOINT_PRODUCT_ID });
     expect(foreignDescriptorRefusal("live-endpoint", file)).toBeUndefined();
-  });
-});
-
-describe("isLoopbackHttpUrl", () => {
-  it("accepts loopback HTTP(S) URLs without credentials", () => {
-    expect(isLoopbackHttpUrl("http://127.0.0.1:9/mcp")).toBe(true);
-    expect(isLoopbackHttpUrl("http://localhost:9/mcp")).toBe(true);
-    expect(isLoopbackHttpUrl("http://[::1]:9/mcp")).toBe(true);
-  });
-
-  it("rejects remote hosts, credentials, and junk", () => {
-    expect(isLoopbackHttpUrl("https://example.com/mcp")).toBe(false);
-    expect(isLoopbackHttpUrl("http://user:pw@127.0.0.1:9/mcp")).toBe(false);
-    expect(isLoopbackHttpUrl("not a url")).toBe(false);
-  });
-});
-
-describe("planLegacyCompatWriteback", () => {
-  const liveTarget = (home: string) => canonicalEndpointPath(home, "live-endpoint");
-  const deadProbe = async () => false;
-  const aliveProbe = async () => true;
-
-  it("declines explicit or non-canonical targets", async () => {
-    const home = freshHome();
-    expect(
-      await planLegacyCompatWriteback({
-        resource: "live-endpoint",
-        targetPath: "/custom/live.json",
-        explicitTarget: true,
-        home,
-        probeAlive: deadProbe,
-      }),
-    ).toMatchObject({ writeback: false, reason: "explicit-target" });
-    expect(
-      await planLegacyCompatWriteback({
-        resource: "live-endpoint",
-        targetPath: "/custom/live.json",
-        explicitTarget: false,
-        home,
-        probeAlive: deadProbe,
-      }),
-    ).toMatchObject({ writeback: false, reason: "explicit-target" });
-  });
-
-  it("declines when no legacy descriptor exists", async () => {
-    const home = freshHome();
-    expect(
-      await planLegacyCompatWriteback({
-        resource: "live-endpoint",
-        targetPath: liveTarget(home),
-        explicitTarget: false,
-        home,
-        probeAlive: deadProbe,
-      }),
-    ).toMatchObject({ writeback: false, reason: "no-legacy" });
-  });
-
-  it("writes back an owned, dead legacy descriptor (product and legacy-shape)", async () => {
-    for (const content of [
-      { product: ENDPOINT_PRODUCT_ID, url: "http://127.0.0.1:1/mcp", port: 1, token: "t" },
-      { url: "http://127.0.0.1:1/mcp", port: 1, token: "t" },
-    ]) {
-      const home = freshHome();
-      const legacy = legacyEndpointPath(home, "live-endpoint");
-      writeDescriptor(legacy, content);
-      expect(
-        await planLegacyCompatWriteback({
-          resource: "live-endpoint",
-          targetPath: liveTarget(home),
-          explicitTarget: false,
-          home,
-          probeAlive: deadProbe,
-        }),
-      ).toMatchObject({ writeback: true, reason: "owned-stale", legacyPath: legacy });
-    }
-  });
-
-  it("declines foreign or unidentifiable legacy files without probing", async () => {
-    const home = freshHome();
-    const legacy = legacyEndpointPath(home, "live-endpoint");
-    writeDescriptor(legacy, { product: "another-product", junk: true });
-    expect(
-      await planLegacyCompatWriteback({
-        resource: "live-endpoint",
-        targetPath: liveTarget(home),
-        explicitTarget: false,
-        home,
-        probeAlive: aliveProbe,
-      }),
-    ).toMatchObject({ writeback: false, reason: "foreign" });
-
-    writeDescriptor(legacy, "}{");
-    expect(
-      await planLegacyCompatWriteback({
-        resource: "live-endpoint",
-        targetPath: liveTarget(home),
-        explicitTarget: false,
-        home,
-        probeAlive: aliveProbe,
-      }),
-    ).toMatchObject({ writeback: false, reason: "invalid" });
-  });
-
-  it("declines a legacy descriptor that is still being served", async () => {
-    const home = freshHome();
-    const legacy = legacyEndpointPath(home, "live-endpoint");
-    writeDescriptor(legacy, { url: "http://127.0.0.1:9/mcp", port: 9, token: "t" });
-    expect(
-      await planLegacyCompatWriteback({
-        resource: "live-endpoint",
-        targetPath: liveTarget(home),
-        explicitTarget: false,
-        home,
-        probeAlive: aliveProbe,
-      }),
-    ).toMatchObject({ writeback: false, reason: "alive" });
-    expect(describeWritebackDecision(await planLegacyCompatWriteback({
-      resource: "live-endpoint",
-      targetPath: liveTarget(home),
-      explicitTarget: false,
-      home,
-      probeAlive: aliveProbe,
-    }))).toContain("running instance");
-  });
-
-  it("declines a live descriptor whose URL is not loopback (probe refuses)", async () => {
-    const home = freshHome();
-    const legacy = legacyEndpointPath(home, "live-endpoint");
-    writeDescriptor(legacy, { url: "https://example.com/mcp", port: 9, token: "t" });
-    expect(
-      await planLegacyCompatWriteback({
-        resource: "live-endpoint",
-        targetPath: liveTarget(home),
-        explicitTarget: false,
-        home,
-        // The default probe would refuse non-loopback URLs; a fake probe
-        // returning true must not be reached — descriptorEndpointUrl filters.
-        probeAlive: aliveProbe,
-      }),
-    ).toMatchObject({ writeback: false, reason: "invalid" });
-  });
-});
-
-describe("probeLoopbackEndpointAlive (default probe)", () => {
-  it("sees a live loopback server and never sends credentials", async () => {
-    const { createServer } = await import("node:http");
-    let sawAuthorization: string | undefined;
-    const server = createServer((req, res) => {
-      sawAuthorization = req.headers.authorization;
-      res.writeHead(405).end();
-    });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const address = server.address();
-    const port = typeof address === "object" && address ? address.port : 0;
-    try {
-      const alive = await probeLoopbackEndpointAlive(
-        `http://127.0.0.1:${port}/mcp`,
-        1_000,
-      );
-      expect(alive).toBe(true);
-      // Credential safety: the liveness probe authenticates nothing.
-      expect(sawAuthorization).toBeUndefined();
-    } finally {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    }
-  });
-
-  it("reports dead endpoints as not alive", async () => {
-    expect(
-      await probeLoopbackEndpointAlive("http://127.0.0.1:1/mcp", 500),
-    ).toBe(false);
-  });
-
-  it("refuses non-loopback URLs outright", async () => {
-    expect(
-      await probeLoopbackEndpointAlive("https://openreel.video/mcp", 500),
-    ).toBe(false);
   });
 });

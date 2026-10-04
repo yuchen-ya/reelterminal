@@ -1,7 +1,7 @@
 import { FACADE_VERBS, FACADE_CONTRACT_VERSION } from "@reelterminal/agent-facade";
 /**
  * Protocol tests spawn the built
- * `agent-video serve` binary and drive the MCP handshake end to end.
+ * `reelterminal-agent serve` binary and drive the MCP handshake end to end.
  *
  *  - initialize (serverInfo carries the transport's own facts)
  *  - tools/list: all registered tools of the facade contract, inputSchemas deep-equal the

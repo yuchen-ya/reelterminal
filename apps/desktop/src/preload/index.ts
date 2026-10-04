@@ -9,10 +9,7 @@ import type {
   LiveEvent,
 } from "../shared/live";
 
-// The desktop bridge is exposed under the primary name `window.reelterminal`.
-// The legacy `window.openreel` name is kept as a compatibility alias pointing
-// at the SAME object (one implementation, one set of IPC listeners — never a
-// second registration), so an action taken through either name commits once.
+// The desktop bridge is exposed as window.reelterminal.
 const api = {
   platform: "desktop",
   publicOrigin: "",
@@ -232,7 +229,3 @@ const api = {
 };
 
 contextBridge.exposeInMainWorld("reelterminal", api);
-// Deprecated compatibility alias: the SAME object under the legacy name so
-// external hosts/skills still reach one bridge implementation. Do not register
-// a second implementation here — `window.openreel === window.reelterminal`.
-contextBridge.exposeInMainWorld("openreel", api);

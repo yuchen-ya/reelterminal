@@ -291,12 +291,7 @@ export interface OpenReelAnalysisJobStatus {
   } | null;
 }
 
-/**
- * Shape of the desktop preload bridge object. The Electron preload exposes the
- * SAME object under the primary name `window.reelterminal` and the legacy
- * compatibility alias `window.openreel` (one implementation, never two), so
- * both Window keys share this single type — do not fork it.
- */
+/** Shape of the desktop preload bridge exposed as window.reelterminal. */
 interface ReelTerminalDesktopBridge {
       platform: "desktop";
       publicOrigin: string;
@@ -485,6 +480,5 @@ declare global {
      * implementation). Kept for external host/skill compatibility; new
      * renderer code must read `window.reelterminal`.
      */
-    openreel?: ReelTerminalDesktopBridge;
   }
 }

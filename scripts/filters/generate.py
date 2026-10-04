@@ -15,7 +15,7 @@ from scripts.filters.manifest import build_manifest_entry, write_manifest
 from scripts.filters.recipe import load_recipe, recipe_to_transform_steps
 
 
-DEFAULT_BASE_URL = "https://filters.openreel.video"
+DEFAULT_BASE_URL = ""
 ROOT = Path(__file__).parent
 RECIPE_ROOT = ROOT / "recipes"
 OUT_ROOT = ROOT / "out"

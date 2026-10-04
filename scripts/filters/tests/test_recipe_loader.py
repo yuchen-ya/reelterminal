@@ -75,7 +75,8 @@ steps:
         recipe_to_transform_steps(recipe)
 
 
-def test_build_manifest_entry_includes_sha_and_bytes(tmp_path: Path):
+@pytest.mark.parametrize("base_url", ["", "https://filters.example"])
+def test_build_manifest_entry_includes_sha_and_bytes(tmp_path: Path, base_url: str):
     cube_path = tmp_path / "demo.cube"
     cube_path.write_bytes(b"hello world")
     recipe = Recipe(
@@ -89,10 +90,10 @@ def test_build_manifest_entry_includes_sha_and_bytes(tmp_path: Path):
     entry = build_manifest_entry(
         recipe=recipe,
         cube_path=cube_path,
-        base_url="https://filters.openreel.video",
+        base_url=base_url,
     )
     assert entry["id"] == "cinematic.demo"
-    assert entry["cubeUrl"] == "https://filters.openreel.video/cube/cinematic.demo.cube"
+    assert entry["cubeUrl"] == f"{base_url}/cube/cinematic.demo.cube"
     assert entry["sha256"] == hashlib.sha256(b"hello world").hexdigest()
     assert entry["bytes"] == len(b"hello world")
 
@@ -109,7 +110,7 @@ def test_write_manifest_validates_against_schema(tmp_path: Path):
                 "category": "x",
                 "accent": "#000000",
                 "sort": 1,
-                "cubeUrl": "https://filters.openreel.video/cube/x.y.cube",
+                "cubeUrl": "https://filters.example/cube/x.y.cube",
                 "sha256": "a" * 64,
                 "bytes": 100,
             }

@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-BUCKET="${OPENREEL_FILTERS_BUCKET:-openreel-filters}"
+BUCKET="${REELTERMINAL_FILTERS_BUCKET:?Set REELTERMINAL_FILTERS_BUCKET to your own R2 bucket}"
 OUT="${OUT_DIR:-out}"
 
 if [[ ! -f "$OUT/manifest.json" ]]; then
@@ -27,4 +27,4 @@ wrangler r2 object put "$BUCKET/manifest.json" \
   --cache-control "public, max-age=300, s-maxage=3600" \
   --remote
 
-echo "Done. https://filters.openreel.video/manifest.json"
+echo "Done. Uploaded manifest.json to $BUCKET."
