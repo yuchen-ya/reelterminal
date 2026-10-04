@@ -155,9 +155,11 @@ async function launch(
       window.setContentSize(1024, 720);
       return window.getContentSize();
     });
-    if (contentSize[0] !== 1024 || contentSize[1] !== 720) {
+    // macOS CI limits the requested height to its 700px desktop work area.
+    // Both platforms still exercise the small layout with real pointer events.
+    if (contentSize[0] !== 1024 || contentSize[1] < 700 || contentSize[1] > 720) {
       throw new Error(
-        `Could not set E2E content to 1024x720; actual content is ${contentSize[0]}x${contentSize[1]}`,
+        `Could not set E2E content to width 1024 and height 700–720; actual content is ${contentSize[0]}x${contentSize[1]}`,
       );
     }
   }
