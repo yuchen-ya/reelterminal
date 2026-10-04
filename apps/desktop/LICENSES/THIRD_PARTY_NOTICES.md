@@ -16,6 +16,9 @@ copyright and license notice included as `LICENSE.txt`.
   [`FFMPEG.md`](FFMPEG.md).
 - Blender binaries may be included under `resources/rigging/`. See
   [`BLENDER.md`](BLENDER.md) before distributing a package containing Blender.
+- `resources/aurora/` holds prebuilt native sidecars built from the
+  in-repository `packages/creation-core` sources (see
+  [`../DISTRIBUTION.md`](../DISTRIBUTION.md)); they are not third-party code.
 - The renderer includes local font assets and their family-specific license
   texts under `resources/renderer/fonts/licenses/`.
 
@@ -27,7 +30,6 @@ The desktop runtime includes the following packages:
 |---|---:|---|
 | `@paper-design/shaders` | 0.0.72 | `PAPER-DESIGN-SHADERS-0.0.72-MIT.txt` |
 | `mediabunny` | 1.55.4 | `MEDIABUNNY-1.55.4-MPL-2.0.txt` |
-| `posthog-js` | 1.335.2 | `POSTHOG-JS-1.335.2-APACHE-2.0.txt` |
 
 The installed renderer and application dependencies are identified by their
 upstream package manifests. This notice covers the files and sidecars bundled

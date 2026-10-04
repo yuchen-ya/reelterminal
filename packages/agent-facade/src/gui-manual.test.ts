@@ -122,7 +122,6 @@ describe("GUI manual content integrity", () => {
       "keyboard-shortcuts",
       "timeline",
       "work-assets",
-      "export",
     ];
     const dataUrlPrefix = "data:image/png;base64,";
     const pngMagic = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -143,7 +142,7 @@ describe("GUI manual content integrity", () => {
     // The delivery must stay within the data-URL budget this form was chosen
     // for (self-contained MCP payloads): 1MB across all screens.
     expect(totalBytes).toBeLessThanOrEqual(1024 * 1024);
-    expect(deliveredIds).toHaveLength(4);
+    expect(deliveredIds).toHaveLength(3);
   });
 
   it("documents honest limitations on the screens that need them", () => {
@@ -188,7 +187,7 @@ describe("listManualScreens", () => {
     expect(result.manual.screenshots).toBe("delivered");
     for (const item of result.screens) {
       expect(item.hasScreenshot).toBe(
-        ["keyboard-shortcuts", "timeline", "work-assets", "export"].includes(item.id),
+        ["keyboard-shortcuts", "timeline", "work-assets"].includes(item.id),
       );
       // Index payload stays restrained: identity + one-liners only, never
       // the page body fields.

@@ -198,7 +198,7 @@ FFprobe, rendering, job execution or project mutations with mocks.
   their persisted snapshot reachable from the desktop start screen.
 
 Retained local evidence (outside the checkout):
-`C:/Users/Administrator/AppData/Local/Temp/reelterminal-e2e-1Cnxwg/jobs/2026-10-04-m3-live-1791090499978/`.
+`<temp-dir>/reelterminal-e2e-<run>/jobs/<date>-m3-live-<id>/`.
 The `project/manifest.json` records assertions; `evidence/` contains selected-frame,
 strict-rejection, adoption and reopened-project screenshots. This is a synthetic
 acceptance project; the user's existing projects were not modified.

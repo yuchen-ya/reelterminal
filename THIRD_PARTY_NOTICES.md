@@ -35,7 +35,6 @@ package carries these license texts in
 |---|---:|---|---|
 | `@paper-design/shaders` | 0.0.72 | MIT | [`PAPER-DESIGN-SHADERS-0.0.72-MIT.txt`](apps/desktop/LICENSES/PAPER-DESIGN-SHADERS-0.0.72-MIT.txt) |
 | `mediabunny` | 1.55.4 | MPL-2.0 | [`MEDIABUNNY-1.55.4-MPL-2.0.txt`](apps/desktop/LICENSES/MEDIABUNNY-1.55.4-MPL-2.0.txt) |
-| `posthog-js` | 1.335.2 | Apache-2.0 | [`POSTHOG-JS-1.335.2-APACHE-2.0.txt`](apps/desktop/LICENSES/POSTHOG-JS-1.335.2-APACHE-2.0.txt) |
 
 ## Fonts
 
@@ -55,3 +54,16 @@ Binary release requirements are described in
 [`apps/desktop/DISTRIBUTION.md`](apps/desktop/DISTRIBUTION.md).
 Electron Builder includes a copy of the project MIT license and desktop notices
 from that directory. Font license files are copied with the renderer assets.
+
+## Aurora native sidecars
+
+`apps/desktop/resources/aurora/` contains prebuilt macOS native sidecars
+(`creation_aurora_renderer`, `libcreation_core.dylib`). They are build outputs
+of the in-repository MIT-licensed `packages/creation-core` C++ sources, staged
+by `apps/desktop/scripts/prepare-aurora-native.mjs`; they are not third-party
+code. Rebuild them with
+`pnpm --filter @reelterminal/creation-core build:native` plus the prepare
+script, and see
+[`apps/desktop/DISTRIBUTION.md`](apps/desktop/DISTRIBUTION.md) for packaging
+notes. When absent, the desktop uses the CPU reference implementation from
+`@reelterminal/core/creation`.

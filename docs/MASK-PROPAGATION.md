@@ -30,8 +30,8 @@ Example `mask.json` (paths must be inside configured roots):
 ```json
 {
   "initialization": {
-    "mask": {"path": "E:/media/mask.png"},
-    "source": {"path": "E:/media/frame.png"}
+    "mask": {"path": "/media-root/mask.png"},
+    "source": {"path": "/media-root/frame.png"}
   },
   "dilatePx": 1,
   "erodePx": 0,
@@ -67,8 +67,8 @@ reelctl patch propagate --file propagate.json
 {
   "source": {"mediaId": "imported-video-id"},
   "range": {"startFrame": 10, "endFrame": 42},
-  "patch": {"path": "E:/media/first-frame-patch.png"},
-  "mask": {"path": "E:/media/refined-mask.png"},
+  "patch": {"path": "/media-root/first-frame-patch.png"},
+  "mask": {"path": "/media-root/refined-mask.png"},
   "options": {"maxForwardBackwardError": 2, "minInliers": 4, "overlayCount": 12}
 }
 ```

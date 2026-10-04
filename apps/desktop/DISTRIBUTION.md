@@ -59,3 +59,16 @@ If a package includes Blender, include the Blender license and corresponding
 source materials for the bundled version. See
 [`LICENSES/BLENDER.md`](LICENSES/BLENDER.md). The repository does not provide a
 Blender download or source-offer service.
+
+## Aurora native sidecars
+
+`resources/aurora/` may contain prebuilt native sidecars
+(`creation_aurora_renderer`, `libcreation_core.dylib`) checked in from a macOS
+build of the in-repository [`packages/creation-core`](../../packages/creation-core)
+C++ sources. They are convenience artifacts, not third-party code: rebuild them
+locally with `pnpm --filter @reelterminal/creation-core build:native` followed by
+`node apps/desktop/scripts/prepare-aurora-native.mjs`, or delete them — when the
+sidecars are absent, the desktop falls back to the CPU reference implementation
+in `@reelterminal/core/creation`. The checked-in binaries were not produced by a
+reproducible build pipeline; verify or rebuild them before trusting them in a
+release.

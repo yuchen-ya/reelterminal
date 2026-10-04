@@ -88,8 +88,13 @@ xcuserdata/
 # Brainstorming session artifacts
 .superpowers/
 
-# Local design handoff exports
-creating-views/project/uploads/
+# Local design handoff exports — regenerate locally, never commit
+creating-views/
+
+# AI assistant tool caches
+.serena/
+.pytest_cache/
+.obsidian/
 
 # Signing certs — never commit
 *.p12

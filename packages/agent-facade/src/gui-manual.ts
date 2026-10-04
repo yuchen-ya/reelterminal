@@ -728,7 +728,6 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       },
     ],
     keywords: ["export", "render", "mp4", "prores", "upscale", "导出", "渲染", "放大"],
-    screenshot: GUI_MANUAL_SCREENSHOTS["export"],
   },
   {
     id: "editor-tours",
