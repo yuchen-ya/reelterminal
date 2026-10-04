@@ -60,6 +60,8 @@ jobs:
         shell: bash
         run: df -h /
       - name: Run Electron E2E (flows A+B, cross-cutting, endpoint safety)
+        env:
+          REELTERMINAL_E2E_SMALL_WINDOW: "1"
         shell: bash
         run: |
           ulimit -c 0

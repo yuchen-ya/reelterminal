@@ -148,6 +148,19 @@ async function launch(
     if (firstWindowTimer) clearTimeout(firstWindowTimer);
   }
   capturePage(page);
+  if (process.env.REELTERMINAL_E2E_SMALL_WINDOW === "1") {
+    const contentSize = await app.evaluate(({ BrowserWindow }) => {
+      const [window] = BrowserWindow.getAllWindows();
+      if (!window) throw new Error("Electron window disappeared before resize");
+      window.setContentSize(1024, 720);
+      return window.getContentSize();
+    });
+    if (contentSize[0] !== 1024 || contentSize[1] !== 720) {
+      throw new Error(
+        `Could not set E2E content to 1024x720; actual content is ${contentSize[0]}x${contentSize[1]}`,
+      );
+    }
+  }
   try {
     await page.waitForLoadState("domcontentloaded", { timeout: PAGE_LOAD_TIMEOUT_MS });
     // Every desktop UI E2E uses English labels. The isolated profile has no

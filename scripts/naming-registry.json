@@ -10,6 +10,12 @@
   },
   "entries": [
     {
+      "files": "docs/ASSET-LICENSE-REVIEW.md",
+      "pattern": "OpenReel",
+      "category": 3,
+      "reason": "真实上游资源：许可核对保留模型、样例和 WASM 资源的服务提供方名称及域名。"
+    },
+    {
       "files": "apps/web/src/components/editor/preview/ReviewRangeControl.tsx",
       "pattern": "window\\.openreel",
       "category": 5,

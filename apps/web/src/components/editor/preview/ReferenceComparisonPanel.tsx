@@ -394,10 +394,9 @@ export const ReferenceComparisonPanel: React.FC<{
             className="rounded px-2 py-1 text-white/75 hover:bg-white/15 hover:text-white"
           >×</button>
         </div>
-      </div>
 
       {advancedOpen && (
-        <div className="absolute right-2 top-14 z-20 w-72 max-w-[calc(100%-1rem)] rounded-md border border-white/15 bg-black/90 p-3 text-[11px] text-white shadow-xl backdrop-blur-sm">
+        <div className="absolute right-0 top-full mt-2 z-20 w-72 max-w-[calc(100%-1rem)] rounded-md border border-white/15 bg-black/90 p-3 text-[11px] text-white shadow-xl backdrop-blur-sm">
           <div className="mb-1 flex items-center justify-between gap-2">
             <label htmlFor="reference-position">{t("Reference position")}</label>
             <output>{timeLabel(referenceTime)}</output>
@@ -491,6 +490,7 @@ export const ReferenceComparisonPanel: React.FC<{
           )}
         </div>
       )}
+      </div>
       {error && <p role="alert" className="absolute bottom-2 left-2 z-20 max-w-[80%] rounded bg-black/85 px-2 py-1 text-[11px] text-red-300">{error}</p>}
     </div>
   );

@@ -1242,7 +1242,7 @@ export const AssetsPanel: React.FC = () => {
         return <MaterialLibraryPanel />;
       case "media":
         return (
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar">
             <div className="px-4 pt-[18px] shrink-0">
               {productionMedia && <MediaProductionEditor key={productionMedia.id} item={productionMedia} onClose={() => setProductionMediaId(null)} />}
               <div className="font-bold text-[18px] text-fg mb-[14px]">{t("projectAssets.title")}</div>
@@ -1363,7 +1363,7 @@ export const AssetsPanel: React.FC = () => {
             )}
 
             <div
-              className={`min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar ${isDragOver ? "bg-accent-soft" : ""}`}
+              className={isDragOver ? "bg-accent-soft" : ""}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
