@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   DATA_ROOT_DIR_NAME,
   DATA_ROOT_POINTER_FILE,
@@ -83,19 +83,19 @@ describe("pointer serialization", () => {
 
 describe("resolveDataRoot", () => {
   const pointer = {
-    dataRoot: join("D:", "Pointer", "RT"),
+    dataRoot: resolve("pointer-root"),
     changedAt: 1,
   };
-  const defaultRoot = join("C:", "Videos", "ReelTerminal");
+  const defaultRoot = resolve("default-root");
 
   it("prefers an absolute env override", () => {
     expect(
       resolveDataRoot({
-        envDataRoot: join("E:", "EnvRT"),
+        envDataRoot: resolve("env-root"),
         pointer,
         defaultRoot,
       }),
-    ).toEqual({ root: join("E:", "EnvRT"), source: "env" });
+    ).toEqual({ root: resolve("env-root"), source: "env" });
   });
 
   it("ignores empty or relative env values and falls through", () => {
