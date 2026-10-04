@@ -62,7 +62,7 @@ jobs:
 
       - name: Run tests
         # Browser/media suites and DOM workers share the runner memory and CPU.
-        run: pnpm -r --workspace-concurrency=1 test:run
+        run: pnpm -r --workspace-concurrency=1 test:run --maxWorkers=2
       - name: Disk-usage diagnostic (top /tmp consumers)
         if: always()
         run: |

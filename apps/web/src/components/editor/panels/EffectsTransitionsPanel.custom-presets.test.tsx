@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Clip } from "@reelterminal/core";
 import type { CustomPresetRecord } from "@reelterminal/core/presets/types";
-import { PRESET_PAYLOAD_SCHEMA_VERSION } from "@reelterminal/core/presets/types";
+import { PRESET_PAYLOAD_SCHEMA_VERSION, PRESET_RECORD_VERSION } from "@reelterminal/core/presets/types";
 import { disposeTransitionBridge } from "../../../bridges/transition-bridge";
 import type { PresetStorage } from "../../../services/custom-presets/storage";
 import {
@@ -226,11 +226,22 @@ describe("EffectsTransitionsPanel custom preset merge", () => {
     expect(names).toEqual(["Apply to selected clips", "Rename", "Delete"]);
   });
 
-  it("keeps rename-input keys and double-clicks from applying the preset", async () => {
-    const preset = await seedPreset("effect", "Cool Look", {
+  it("keeps rename-input keys and double-clicks from applying the preset", () => {
+    const preset: CustomPresetRecord = {
+      id: "preset-rename-guard",
       kind: "effect",
-      effects: [{ type: "blur", params: { radius: 18 } }],
-    });
+      name: "Cool Look",
+      tags: [],
+      recordVersion: PRESET_RECORD_VERSION,
+      revision: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      payload: {
+        schemaVersion: PRESET_PAYLOAD_SCHEMA_VERSION,
+        kind: "effect",
+        effects: [{ type: "blur", params: { radius: 18 } }],
+      },
+    };
     const onApply = vi.fn();
     let renaming = true;
     let draft = "Cool Look 2";
