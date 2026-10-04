@@ -1,6 +1,6 @@
 from pathlib import Path
 
-import pytest
+import numpy as np
 
 from scripts.filters.generate import generate_one
 
@@ -12,14 +12,12 @@ def test_sample_generates_expected_cube(tmp_path: Path):
     cube_dir = tmp_path / "cube"
     cube_dir.mkdir()
     cube_path, _ = generate_one(FIXTURES / "sample.yaml", cube_dir)
-    actual = cube_path.read_text()
-    if not GOLDEN_CUBE.exists():
-        GOLDEN_CUBE.write_text(actual)
-        pytest.skip("seeded golden file; rerun")
-    expected = GOLDEN_CUBE.read_text()
-    if actual != expected:
-        diff_path = tmp_path / "actual.cube"
-        diff_path.write_text(actual)
-        raise AssertionError(
-            f"Golden mismatch.\nExpected: {GOLDEN_CUBE}\nActual:   {diff_path}\nIf intentional: copy actual over golden and commit."
-        )
+    actual = cube_path.read_text().splitlines()
+    expected = GOLDEN_CUBE.read_text().splitlines()
+    assert actual[:4] == expected[:4]
+    assert len(actual) == len(expected)
+    # Different NumPy/platform arithmetic can round the final serialized digit
+    # either way. Keep the golden numeric comparison at the six-decimal precision.
+    actual_values = np.array([list(map(float, line.split())) for line in actual[4:]])
+    expected_values = np.array([list(map(float, line.split())) for line in expected[4:]])
+    np.testing.assert_allclose(actual_values, expected_values, rtol=0, atol=1e-6 + np.finfo(float).eps)

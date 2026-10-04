@@ -204,8 +204,6 @@ async function launch(
         const gracefulTimeoutMs = options.gracefulTimeoutMs ?? 15_000;
         const child = app.process();
         const errors: unknown[] = [];
-        const appClosePromise = app.close();
-        let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
 
         const killChild = (): void => {
           if (hasProcessExited(child)) return;
@@ -215,48 +213,25 @@ async function launch(
           }
         };
 
-        // A dirty project pops a NATIVE unsaved-changes dialog Playwright cannot
-        // answer; race the graceful close against a force kill so teardown never
-        // wedges the suite. Specs that need the graceful leg (save/reopen) call
-        // project_save first, which flushes autosave and keeps the guard quiet.
-        const forceKill = new Promise<void>((resolve, reject) => {
-          forceKillTimer = setTimeout(() => {
-            try {
-              killChild();
-              resolve();
-            } catch (error) {
-              reject(error);
-            }
-          }, gracefulTimeoutMs);
-        });
-
+        // E2E profiles are disposable. Calling app.exit bypasses Chromium's
+        // native before-unload dialog, which can block both close and relaunch.
+        if (!hasProcessExited(child)) {
+          void app.evaluate(({ app }) => app.exit(0)).catch(() => undefined);
+        }
         try {
-          await Promise.race([appClosePromise, forceKill]);
-        } catch (error) {
-          // Preserve the real close error, but still take ownership of process
-          // exit and directory cleanup before surfacing it.
-          errors.push(error);
+          await waitForProcessExit(child, gracefulTimeoutMs);
+        } catch {
           try {
             killChild();
           } catch (killError) {
             errors.push(killError);
           }
-        } finally {
-          if (forceKillTimer) clearTimeout(forceKillTimer);
+          try {
+            await waitForProcessExit(child);
+          } catch (error) {
+            errors.push(error);
+          }
         }
-
-        // A SIGKILL request is not process-exit readiness. Chromium descendants
-        // can still touch the profile until Electron actually exits.
-        try {
-          await waitForProcessExit(child);
-        } catch (error) {
-          errors.push(error);
-        }
-
-        // Process exit is the teardown boundary. Playwright's app.close()
-        // promise can remain pending after the harness has force-killed an
-        // app blocked behind a native dialog; waiting on that promise would
-        // turn one failed spec into the full 420 s afterAll timeout.
 
         if (!options.keepRunDir && !paths.runDir.includes("keep")) {
           try {

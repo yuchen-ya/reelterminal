@@ -41,6 +41,7 @@ export function handleAppScheme(rendererRoot: string): void {
     }
 
     const headers = new Headers(response.headers);
+    headers.set("Content-Security-Policy", "default-src 'self' blob: data: https: http:; script-src 'self' blob: 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-src 'none'");
     headers.set("Cross-Origin-Opener-Policy", "same-origin");
     headers.set("Cross-Origin-Embedder-Policy", "require-corp");
     headers.set("Cross-Origin-Resource-Policy", "same-origin");

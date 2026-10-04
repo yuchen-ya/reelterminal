@@ -3,7 +3,7 @@
  * The test crosses the full MCP → main → renderer → canonical store path;
  * DOM assertions verify the user sees the same mutation without a reload.
  */
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { launchApp, type LaunchedApp } from "./harness/launch";
@@ -74,6 +74,7 @@ describe("live media import: external Agent → visible GUI project", () => {
     writeTone(path.join(launched.runDir, FILE_NAME));
     writeTone(path.join(launched.runDir, GUI_FILE_NAME));
     await createProjectViaUI(launched.page);
+    await launched.page.getByRole("button", { name: "Project assets", exact: true }).click();
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
     await launched.waitForEndpointFile();
     agent = await connectExternalAgent(launched.endpointFile);
@@ -88,17 +89,12 @@ describe("live media import: external Agent → visible GUI project", () => {
     const sourcePath = path.join(launched.runDir, FILE_NAME);
     const guiSourcePath = path.join(launched.runDir, GUI_FILE_NAME);
 
-    // Real Electron file input → preload webUtils.getPathForFile → canonical
-    // media provenance. This is the native boundary that unit tests can only
-    // mock; keep it before the Agent import so preview/export snapshots can
-    // trust GUI-selected files too.
+    // File-input import finishes asynchronously; wait for the canonical
+    // media item before checking its source path and visible card.
     await launched.page
       .locator('input[type="file"][aria-label="Import media"]')
       .setInputFiles(guiSourcePath);
-    await launched.page
-      .getByTitle(GUI_FILE_NAME, { exact: true })
-      .waitFor({ timeout: 30_000 });
-    const guiImportState = await agent.callTool<{
+    let guiImportState = await agent.callTool<{
       revision: number;
       project: {
         mediaLibrary: {
@@ -106,11 +102,25 @@ describe("live media import: external Agent → visible GUI project", () => {
         };
       };
     }>("project_get_state");
-    expect(guiImportState.ok).toBe(true);
+    await vi.waitFor(async () => {
+      guiImportState = await agent.callTool<{
+        revision: number;
+        project: {
+          mediaLibrary: {
+            items: Array<{ id: string; name: string; originalUrl?: string }>;
+          };
+        };
+      }>("project_get_state");
+      expect(guiImportState.ok).toBe(true);
+      expect(guiImportState.value!.project.mediaLibrary.items.some(
+        (item) => item.name === GUI_FILE_NAME,
+      )).toBe(true);
+    }, { timeout: 30_000, interval: 100 });
     const guiItem = guiImportState.value!.project.mediaLibrary.items.find(
       (item) => item.name === GUI_FILE_NAME,
     );
     expect(guiItem?.originalUrl).toBe(guiSourcePath);
+    await launched.page.locator(`[data-live-media-id="${guiItem!.id}"]`).waitFor({ timeout: 30_000 });
     const removedGuiImport = await agent.callTool("edit_apply", {
       ops: [{ op: "media.remove", mediaId: guiItem!.id }],
       expectedRevision: guiImportState.value!.revision,
@@ -129,18 +139,17 @@ describe("live media import: external Agent → visible GUI project", () => {
       idempotencyKey: "e2e-import-first",
     });
     expect(first.ok).toBe(true);
-    await launched.page.getByTitle(FILE_NAME, { exact: true }).waitFor({ timeout: 30_000 });
+    const firstImportedCard = launched.page.locator(`[data-live-media-id="${first.value!.mediaId}"]`);
+    await firstImportedCard.waitFor({ timeout: 30_000 });
 
     // A human uses the normal GUI undo path; the imported card disappears.
     await pressUndo(launched.page);
-    await launched.page
-      .getByTitle(FILE_NAME, { exact: true })
-      .waitFor({ state: "detached", timeout: 15_000 });
+    await firstImportedCard.waitFor({ state: "detached", timeout: 15_000 });
 
     // Redo must restore the same canonical media id/provenance, then a second
     // undo returns the project to the pre-import state for the fresh import.
     await pressRedo(launched.page);
-    await launched.page.getByTitle(FILE_NAME, { exact: true }).waitFor({ timeout: 15_000 });
+    await firstImportedCard.waitFor({ timeout: 15_000 });
     const afterRedo = await agent.callTool<{
       project: { mediaLibrary: { items: Array<{ id: string }> } };
     }>(
@@ -153,9 +162,7 @@ describe("live media import: external Agent → visible GUI project", () => {
       ),
     ).toBe(true);
     await pressUndo(launched.page);
-    await launched.page
-      .getByTitle(FILE_NAME, { exact: true })
-      .waitFor({ state: "detached", timeout: 15_000 });
+    await firstImportedCard.waitFor({ state: "detached", timeout: 15_000 });
 
     const context = await agent.callTool<{ projectRevision: number }>(
       "editor_get_context",
@@ -167,7 +174,14 @@ describe("live media import: external Agent → visible GUI project", () => {
       idempotencyKey: "e2e-import-second",
     });
     expect(imported.ok).toBe(true);
-    await launched.page.getByTitle(FILE_NAME, { exact: true }).waitFor({ timeout: 30_000 });
+    const importedCard = launched.page.locator(`[data-live-media-id="${imported.value!.mediaId}"]`);
+    await importedCard.waitFor({ timeout: 30_000 });
+    const importedState = await agent.callTool<{
+      project: { mediaLibrary: { items: Array<{ id: string; name: string; originalUrl?: string }> } };
+    }>("project_get_state");
+    expect(importedState.value?.project.mediaLibrary.items.find(
+      (item) => item.id === imported.value!.mediaId,
+    )).toMatchObject({ name: FILE_NAME, originalUrl: sourcePath });
 
     const trackAdded = await agent.callTool<{ revision: number }>("edit_apply", {
       ops: [{ op: "track.add", trackType: "audio" }],
@@ -210,9 +224,10 @@ describe("live media import: external Agent → visible GUI project", () => {
     await agent.close();
     launched = await launched.relaunch();
     await openRecentProjectViaUI(launched.page, "Horizontal");
+    await launched.page.getByRole("button", { name: "Project assets", exact: true }).click();
     await launched.page
       .getByRole("button", { name: `Select clip ${FILE_NAME}`, exact: true })
       .waitFor({ timeout: 30_000 });
-    await launched.page.getByTitle(FILE_NAME, { exact: true }).waitFor({ timeout: 30_000 });
+    await launched.page.locator(`[data-live-media-id="${imported.value!.mediaId}"]`).waitFor({ timeout: 30_000 });
   }, 300_000);
 });

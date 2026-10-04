@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { autoUpdater } from "electron-updater";
 import { CHANNELS } from "../shared/ipc-contract";
+import { assertEditorIpcSender } from "./ipc";
 
 export type UpdaterStatus =
   | { state: "checking" }
@@ -48,7 +49,8 @@ export function initAutoUpdater(): void {
 
   // Renderer-driven actions: start the download on user consent, and "install"
   // by quitting through the normal (guarded) path so the save prompt still runs.
-  ipcMain.handle(CHANNELS.updaterDownload, async () => {
+  ipcMain.handle(CHANNELS.updaterDownload, async (event) => {
+    assertEditorIpcSender(event);
     try {
       await autoUpdater.downloadUpdate();
     } catch (error) {
@@ -58,7 +60,8 @@ export function initAutoUpdater(): void {
       });
     }
   });
-  ipcMain.handle(CHANNELS.updaterInstall, () => {
+  ipcMain.handle(CHANNELS.updaterInstall, (event) => {
+    assertEditorIpcSender(event);
     app.quit();
   });
 

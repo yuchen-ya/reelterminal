@@ -4,6 +4,12 @@ The repository contains independently licensed dependencies and assets. This
 index identifies the checked-in items and optional desktop sidecars that need
 separate review. Workspace package manifests and `pnpm-lock.yaml` identify the
 JavaScript dependency set; this file is not a generated dependency inventory.
+Desktop builds generate `dependency-inventory.json` and `DEPENDENCY_LICENSES.txt`
+under `apps/desktop/resources/licenses/` and package them in `LICENSES/`.
+They include the production dependency closure of the desktop and renderer,
+preserving the license and notice files present in installed npm archives.
+Packages whose archives omit separate license texts are explicitly identified;
+review their upstream terms before publishing a binary release.
 
 ## Source attribution
 
@@ -42,7 +48,8 @@ embedded in its typeface metadata.
 
 ## Optional desktop sidecars
 
-Desktop packages can include FFmpeg and Blender binaries. Their notices and
+Default desktop packages exclude FFmpeg and Blender binaries. Users install
+these tools separately; development-only downloads remain available. Their notices and
 license texts are in [`apps/desktop/LICENSES/`](apps/desktop/LICENSES/).
 Binary release requirements are described in
 [`apps/desktop/DISTRIBUTION.md`](apps/desktop/DISTRIBUTION.md).

@@ -11,6 +11,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Test & Lint
@@ -51,6 +54,12 @@ jobs:
       - name: Run linting
         run: pnpm lint
 
+      - name: Check product naming
+        run: pnpm lint:naming
+
+      - name: Verify security patches and audit dependencies
+        run: pnpm audit:dependencies
+
       - name: Run tests
         run: pnpm test
       - name: Disk-usage diagnostic (top /tmp consumers)
@@ -82,3 +91,23 @@ jobs:
 
       - name: Build project
         run: pnpm build
+
+  auxiliary-tests:
+    name: Native and filter tools
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scripts/filters/requirements.txt
+      - name: Test native creation engine
+        run: |
+          cmake -S packages/creation-core -B packages/creation-core/build
+          cmake --build packages/creation-core/build
+          ctest --test-dir packages/creation-core/build --output-on-failure
+      - name: Test filter tools
+        run: |
+          python -m pip install -r scripts/filters/requirements.txt
+          python -m pytest scripts/filters/tests -v

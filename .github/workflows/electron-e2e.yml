@@ -11,10 +11,17 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   electron-e2e:
-    name: Live-collaboration E2E (macOS)
-    runs-on: macos-latest
+    name: Live-collaboration E2E (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
 
     steps:
       - name: Checkout repository
@@ -34,17 +41,24 @@ jobs:
       - name: Install Chromium for Playwright
         run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install chromium
       - name: Install ffmpeg
+        if: runner.os == 'macOS'
         run: brew install ffmpeg
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg --no-progress -y
 
       - name: Show ffmpeg/ffprobe used for verification
+        shell: bash
         run: |
           ffmpeg -version | head -1
           ffprobe -version | head -1
       - name: Build desktop app
         run: pnpm --filter @reelterminal/desktop build
       - name: Disk usage report
+        shell: bash
         run: df -h /
       - name: Run Electron E2E (flows A+B, cross-cutting, endpoint safety)
+        shell: bash
         run: |
           ulimit -c 0
           pnpm --filter @reelterminal/desktop test:e2e
@@ -52,7 +66,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: electron-e2e-evidence
+          name: electron-e2e-evidence-${{ matrix.os }}
           path: apps/desktop/e2e/.artifacts/
           include-hidden-files: true
           if-no-files-found: error

@@ -1643,7 +1643,7 @@ function getExpressionSummary(type: MotionExpressionType): string {
     case "posterize":
       return "Posterize samples this property's value at a lower rate.";
     case "expression":
-      return "Write a JavaScript expression: value, time, wiggle(), loopOut(), linear(), ease(), clamp(), random(), Math.";
+      return "Write an animation expression: value, time, wiggle(), loopOut(), linear(), ease(), clamp(), random(), Math. Use const/let and return for local values. Loops and browser globals are unavailable.";
     case "sine":
     case "wiggle":
     case "drift":

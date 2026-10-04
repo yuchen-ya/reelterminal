@@ -1,4 +1,5 @@
 import { evaluateKeyframesAt } from "../animation/evaluate-keyframes";
+import { compileExpression } from "../security/expression-interpreter";
 import {
   getMotionEffectKeyframeProperty,
   getMotionEffectParameterDescriptor,
@@ -217,7 +218,7 @@ export const MOTION_EXPRESSION_PRESETS: readonly MotionExpressionPreset[] = [
     type: "expression",
     name: "Expression",
     description:
-      "Write a JavaScript expression. Available: value, time, wiggle(freq, amp), loopOut(), linear(), ease(), clamp(), random(), Math.",
+      "Write an animation expression. Available: value, time, wiggle(freq, amp), loopOut(), linear(), ease(), clamp(), random(), Math. Local const/let values and return are supported; loops and browser globals are not.",
     create: (property, id = createExpressionId()) => ({
       id,
       property,
@@ -444,8 +445,6 @@ export const MOTION_EXPRESSION_SCOPE_KEYS = [
   "effect",
 ] as const;
 
-type MotionExpressionScopeKey = (typeof MOTION_EXPRESSION_SCOPE_KEYS)[number];
-
 interface MotionLayerHandle {
   readonly index: number;
   readonly name: string;
@@ -508,35 +507,6 @@ export function clearMotionExpressionError(expressionId: string): void {
   motionExpressionErrors.delete(expressionId);
 }
 
-function buildScopeArgs(scope: MotionExpressionScope): readonly unknown[] {
-  return MOTION_EXPRESSION_SCOPE_KEYS.map(
-    (key: MotionExpressionScopeKey) => scope[key],
-  );
-}
-
-interface CompiledMotionExpressionBody {
-  readonly compiled: CompiledMotionExpression | null;
-  readonly syntaxError: SyntaxError | null;
-}
-
-function compileMotionExpressionBody(body: string): CompiledMotionExpressionBody {
-  try {
-    const evaluator = new Function(
-      ...MOTION_EXPRESSION_SCOPE_KEYS,
-      body,
-    ) as (...args: unknown[]) => unknown;
-    return {
-      compiled: (scope) => evaluator(...buildScopeArgs(scope)),
-      syntaxError: null,
-    };
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      return { compiled: null, syntaxError: error };
-    }
-    throw error;
-  }
-}
-
 function firstLine(message: string): string {
   return message.split("\n", 1)[0] ?? message;
 }
@@ -545,22 +515,13 @@ function compileMotionExpression(code: string): CompiledMotionExpression | null 
   if (compiledExpressionCache.has(code)) {
     return compiledExpressionCache.get(code) ?? null;
   }
-  const returnForm = compileMotionExpressionBody(`"use strict"; return (${code});`);
-  let compiled = returnForm.compiled;
-  if (!compiled) {
-    const bodyForm = compileMotionExpressionBody(`"use strict"; ${code}`);
-    compiled = bodyForm.compiled;
-    if (!compiled) {
-      const message = firstLine(
-        returnForm.syntaxError?.message ??
-          bodyForm.syntaxError?.message ??
-          "unknown syntax error",
-      );
-      compileErrorCache.set(code, message);
-    }
-  }
-  if (compiled) {
+  let compiled: CompiledMotionExpression | null = null;
+  try {
+    compiled = compileExpression(code);
     compileErrorCache.delete(code);
+  } catch (error) {
+    if (!(error instanceof SyntaxError) && !(error instanceof RangeError)) throw error;
+    compileErrorCache.set(code, firstLine(error.message));
   }
   compiledExpressionCache.set(code, compiled);
   return compiled;

@@ -1,3 +1,5 @@
+import { compileExpression } from "../security/expression-interpreter";
+
 export interface ExpressionContext {
   time: number;
   value: any;
@@ -57,11 +59,10 @@ export class ExpressionEngine {
     const safeContext = this.createSafeContext();
 
     try {
-      return new Function(
-        ...Object.keys(safeContext),
-        `return (${expression});`,
-      ).bind(null, ...Object.values(safeContext));
+      const evaluate = compileExpression(expression);
+      return (context: ExpressionContext) => evaluate({ ...safeContext, ...context });
     } catch (error) {
+      if (!(error instanceof SyntaxError) && !(error instanceof RangeError)) throw error;
       console.error("Expression compilation error:", error);
       return () => 0;
     }

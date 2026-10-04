@@ -11,13 +11,25 @@ pnpm --filter @reelterminal/desktop dist
 ```
 
 `pack` creates an unpacked local build. `dist` creates installers for macOS
-(arm64 and x64), Windows (x64), and Linux (x64). Both packaging commands fetch
-the pinned FFmpeg binary for the build platform. To fetch every platform
-binary, run `node apps/desktop/scripts/fetch-ffmpeg.mjs --all`.
+(arm64 and x64), Windows (x64), and Linux (x64). These commands do not download
+or include FFmpeg or Blender binaries, even when a developer has fetched them
+locally. Install FFmpeg/ffprobe separately and put them on PATH. For desktop
+media processing, `REELTERMINAL_FFMPEG_PATH` can select an explicit executable;
+Agent runtime verification also supports `REELTERMINAL_FFPROBE_PATH`.
+Configure an installed Blender with `REELTERMINAL_BLENDER_PATH` for rigging.
 
 Electron Builder includes `apps/web/dist`, desktop resources, the application
-license notices, and the generated Help pages. Blender is an optional sidecar;
-files under `apps/desktop/resources/rigging/` are included in desktop packages.
+license notices, and the generated Help pages. The `resources/rigging/blender/`
+directory is excluded from packages; rigging helper scripts remain included.
+The build also generates a production dependency inventory and copies available
+npm license/notice texts into `LICENSES/`. For npm archives without a license
+file, the checked-in upstream source map supplies the complete text only when
+the package release or its recorded source revision can be matched. The
+inventory retains the upstream URL for each copied text. Entries without an
+archive or verified upstream text remain marked in the generated inventory;
+resolve those entries before publishing final installers. See
+[`LICENSES/RELEASE-READINESS.md`](LICENSES/RELEASE-READINESS.md) for the checked
+items and signing evidence.
 
 ## Signing and updates
 
@@ -32,8 +44,10 @@ separately.
 
 ## Third-party binaries
 
-Desktop packages fetch GPL-configured FFmpeg sidecars. Before distributing a
-package that contains them, provide the complete corresponding source for each
+The development-only `fetch:ffmpeg` command downloads pinned GPL-configured
+FFmpeg sidecars. Development builds can use them; distributed builds use the
+user-provided executable. If packaging is changed to distribute a
+package that contains these binaries, provide the complete corresponding source for each
 binary, including its build configuration and applicable patches, using a
 source-access method allowed by the relevant GPL version. The repository pins
 binary sources and hashes, but does not include the corresponding source

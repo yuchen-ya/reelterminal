@@ -25,9 +25,9 @@ vi.mock("electron", () => ({
   },
 }));
 
-const fakeSender = { id: "main-window-webcontents" };
-vi.mock("../src/main/live/renderer-store-adapter", () => ({
-  liveTargetWebContents: () => fakeSender,
+const fakeSender = { id: "main-window-webcontents", mainFrame: { url: "app://reelterminal/index.html" } };
+vi.mock("../src/main/editor-window", () => ({
+  getEditorWebContents: () => fakeSender,
 }));
 
 import { CHANNELS } from "../src/shared/channels";
@@ -60,7 +60,7 @@ describe("collabOpenWorkspace IPC", () => {
     const handler = handlers.get(CHANNELS.collabOpenWorkspace);
     expect(handler).toBeDefined();
 
-    const workspace = await handler!({ sender: fakeSender });
+    const workspace = await handler!({ sender: fakeSender, senderFrame: fakeSender.mainFrame });
 
     const expected = path.join(videosDir, "ReelTerminal Agent Workspace");
     expect(workspace).toBe(expected);
@@ -73,7 +73,7 @@ describe("collabOpenWorkspace IPC", () => {
   it("rejects senders other than the main editor window", async () => {
     const handler = handlers.get(CHANNELS.collabOpenWorkspace)!;
     await expect(handler({ sender: { id: "other" } })).rejects.toThrow(
-      /main editor window/,
+      /main editor frame/,
     );
     expect(openPath).not.toHaveBeenCalled();
   });
@@ -84,13 +84,13 @@ describe("collabOpenWorkspace IPC", () => {
 
   it("routes an explicit write-access recovery to the live host", async () => {
     const handler = handlers.get(CHANNELS.collabSetAccess)!;
-    await handler({ sender: fakeSender }, { access: "write" });
+    await handler({ sender: fakeSender, senderFrame: fakeSender.mainFrame }, { access: "write" });
     expect(stubHost.setAccess).toHaveBeenCalledWith("write");
   });
 
   it("keeps the endpoint online when the legacy renderer toggle is disabled", async () => {
     const handler = handlers.get(CHANNELS.collabDisable)!;
-    await handler({ sender: fakeSender });
+    await handler({ sender: fakeSender, senderFrame: fakeSender.mainFrame });
     expect(stubHost.setAccess).toHaveBeenCalledWith("read-only");
     expect(stubHost.disable).not.toHaveBeenCalled();
   });
@@ -98,7 +98,7 @@ describe("collabOpenWorkspace IPC", () => {
   it("rejects an unknown access value at the IPC boundary", async () => {
     const handler = handlers.get(CHANNELS.collabSetAccess)!;
     await expect(
-      handler({ sender: fakeSender }, { access: "owner" }),
+      handler({ sender: fakeSender, senderFrame: fakeSender.mainFrame }, { access: "owner" }),
     ).rejects.toThrow();
     expect(stubHost.setAccess).not.toHaveBeenCalled();
   });

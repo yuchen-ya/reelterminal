@@ -40,6 +40,9 @@ export async function createProjectViaUI(page: Page, formatLabel = "Horizontal")
     await page.getByText("New Project", { exact: false }).first().waitFor({ timeout: 30_000 });
     await page.getByLabel(new RegExp(`^${formatLabel} `)).click();
     await waitForEditorReady(page);
+    const skipTour = page.getByRole("button", { name: "Skip tour", exact: true }).last();
+    await skipTour.waitFor({ timeout: 15_000 });
+    await skipTour.click();
   } catch (error) {
     const state = await page.evaluate(() => ({
       url: `${location.origin}${location.pathname}`,
@@ -56,7 +59,7 @@ export async function createProjectViaUI(page: Page, formatLabel = "Horizontal")
 
 export async function waitForEditorReady(page: Page): Promise<void> {
   // The Agent Access status bar mounts with the editor workspace.
-  await page.getByRole("switch", { name: "Agent Access" }).waitFor({ timeout: 120_000 });
+  await page.getByTestId("agent-access-status").waitFor({ timeout: 120_000 });
 }
 
 export async function openRecentProjectViaUI(page: Page, projectName: string): Promise<void> {
@@ -72,13 +75,13 @@ export async function openRecentProjectViaUI(page: Page, projectName: string): P
 /* ------------------------------------------------------------------ */
 
 function agentSessionSwitch(page: Page): Locator {
-  return page.getByRole("switch", { name: "Agent Access" });
+  return page.getByTestId("agent-access-toggle");
 }
 
 export async function enableAgentSessionViaUI(page: Page, endpointFile?: string): Promise<void> {
   const toggle = agentSessionSwitch(page);
   const isOn = async (): Promise<boolean> =>
-    (await toggle.getAttribute("aria-checked")) === "true" &&
+    (await toggle.getAttribute("aria-pressed")) === "true" &&
     (endpointFile === undefined || existsSync(endpointFile));
   // Both the visible status and main-owned endpoint must agree before callers
   // proceed. Retries tolerate ordinary startup latency, not stale state.
@@ -97,21 +100,19 @@ export async function enableAgentSessionViaUI(page: Page, endpointFile?: string)
 
 export async function disableAgentSessionViaUI(page: Page, endpointFile?: string): Promise<void> {
   const toggle = agentSessionSwitch(page);
-  if ((await toggle.getAttribute("aria-checked")) !== "false") {
+  if ((await toggle.getAttribute("aria-pressed")) !== "false") {
     await toggle.click();
   }
   if (endpointFile !== undefined) {
-    // Main deletes the endpoint file on stop. (disable() can also block while
-    // the endpoint's server.close() drains the shim's HTTP keep-alive
-    // socket first — G-03. 60 s is headroom, not a weakened assertion.)
+    // Revoking editing leaves the app-lifetime command endpoint readable.
     await waitFor(
-      () => Promise.resolve(!existsSync(endpointFile)),
+      () => Promise.resolve(existsSync(endpointFile)),
       60_000,
-      "live endpoint file to be removed on disable",
+      "live endpoint remains available after revoking editing",
     );
   }
   await waitFor(
-    async () => (await toggle.getAttribute("aria-checked")) === "false",
+    async () => (await toggle.getAttribute("aria-pressed")) === "false",
     60_000,
     "Agent Access switch to turn off",
   );

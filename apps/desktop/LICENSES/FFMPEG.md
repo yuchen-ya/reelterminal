@@ -1,7 +1,8 @@
 # FFmpeg
 
-Desktop packaging fetches prebuilt FFmpeg binaries and runs them as external
-processes for media processing and verification. The pinned binary sources and
+Default desktop packages exclude FFmpeg binaries. Users install FFmpeg/ffprobe
+separately. The development-only fetch command downloads prebuilt FFmpeg for
+local use as an external process. The pinned binary sources and
 SHA-256 digests are listed in [`../resources/bin/MANIFEST.json`](../resources/bin/MANIFEST.json)
 and verified by `scripts/fetch-ffmpeg.mjs`.
 

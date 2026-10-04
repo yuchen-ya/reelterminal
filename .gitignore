@@ -62,6 +62,7 @@ apps/desktop/resources/rigging/blender/
 # Desktop electron-builder output
 apps/desktop/release/
 apps/desktop/resources/help/
+apps/desktop/resources/licenses/
 
 # Desktop electron-builder config lives under build/ which the global build/ rule ignores
 !apps/desktop/build/

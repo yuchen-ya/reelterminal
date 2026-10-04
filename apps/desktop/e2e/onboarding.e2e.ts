@@ -65,7 +65,7 @@ test("first-time user can find help, finish the tour, import, edit, save and exp
     await page.getByRole("button", { name: "Export", exact: true }).waitFor({ timeout: 120_000 });
     expect(existsSync(outputPath)).toBe(true);
     expect(statSync(outputPath).size).toBeGreaterThan(0);
-    execFileSync(path.join(DESKTOP_DIR, "resources/bin/win32-x64/ffmpeg.exe"), [
+    execFileSync(process.env.REELTERMINAL_FFMPEG_PATH || "ffmpeg", [
       "-v", "error", "-i", outputPath, "-f", "null", "-",
     ], { timeout: 30_000 });
   } finally {

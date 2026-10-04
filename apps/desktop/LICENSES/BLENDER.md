@@ -1,7 +1,8 @@
 # Blender
 
 Blender is an optional rigging sidecar invoked by the desktop application.
-Desktop packages include files placed under `resources/rigging/`.
+Default desktop packages include rigging helper scripts and exclude the
+`resources/rigging/blender/` binary directory. Users configure a separate installation.
 
 Blender is distributed under GNU GPL-2.0-or-later. A package that includes
 Blender must include the applicable license and make the complete corresponding

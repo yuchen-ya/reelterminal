@@ -13,7 +13,7 @@
     "test:run": "vitest run",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist node_modules/.vite"
+    "clean": "node -e \"for (const dir of ['dist', 'node_modules/.vite']) require('node:fs').rmSync(dir, { recursive: true, force: true })\""
   },
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",

@@ -1,0 +1,98 @@
+{
+  "@astryxdesign/core": {
+    "0.1.1": {
+      "file": "LICENSES/npm-upstream/astryx-core-0.1.1.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/facebook/astryx/v0.1.1/LICENSE"
+    }
+  },
+  "@esbuild/win32-x64": {
+    "0.28.2": {
+      "file": "LICENSES/npm-upstream/esbuild-win32-x64-0.28.2.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/npm/esbuild/LICENSE.md"
+    }
+  },
+  "@ffmpeg/ffmpeg": {
+    "0.12.15": {
+      "file": "LICENSES/npm-upstream/ffmpeg-wasm-v12.15.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/ffmpegwasm/ffmpeg.wasm/v12.15/LICENSE"
+    }
+  },
+  "@ffmpeg/types": {
+    "0.12.4": {
+      "file": "LICENSES/npm-upstream/ffmpeg-wasm-v12.15.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/ffmpegwasm/ffmpeg.wasm/v12.15/LICENSE"
+    }
+  },
+  "@ffmpeg/util": {
+    "0.12.2": {
+      "file": "LICENSES/npm-upstream/ffmpeg-wasm-v12.15.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/ffmpegwasm/ffmpeg.wasm/v12.15/LICENSE"
+    }
+  },
+  "@mediapipe/tasks-vision": {
+    "0.10.35": {
+      "file": "LICENSES/npm-upstream/mediapipe-tasks-vision-0.10.35.txt",
+      "license": "Apache-2.0",
+      "url": "https://raw.githubusercontent.com/google-ai-edge/mediapipe/v0.10.35/LICENSE"
+    }
+  },
+  "highlightjs-vue": {
+    "1.0.0": {
+      "file": "LICENSES/npm-upstream/cc0-1.0.txt",
+      "license": "CC0-1.0",
+      "url": "https://creativecommons.org/publicdomain/zero/1.0/legalcode.txt"
+    }
+  },
+  "@stylexjs/stylex": {
+    "0.18.3": {
+      "file": "LICENSES/npm-upstream/stylex-0.18.3.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/facebook/stylex/51a815ad3ef899d544373e90949a73f48d601035/LICENSE"
+    }
+  },
+  "onnxruntime-common": {
+    "1.21.0": {
+      "file": "LICENSES/npm-upstream/onnxruntime-v1.21.0.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.21.0/LICENSE"
+    },
+    "1.22.0-dev.20250409-89f8206ba4": {
+      "file": "LICENSES/npm-upstream/onnxruntime-dev-89f8206ba4.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/89f8206ba4/LICENSE"
+    }
+  },
+  "onnxruntime-node": {
+    "1.21.0": {
+      "file": "LICENSES/npm-upstream/onnxruntime-v1.21.0.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.21.0/LICENSE"
+    }
+  },
+  "onnxruntime-web": {
+    "1.22.0-dev.20250409-89f8206ba4": {
+      "file": "LICENSES/npm-upstream/onnxruntime-dev-89f8206ba4.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/microsoft/onnxruntime/89f8206ba4/LICENSE"
+    }
+  },
+  "splaytree": {
+    "3.2.3": {
+      "packageFile": "Readme.md",
+      "startMarker": "MIT License (MIT)",
+      "endMarker": "IN THE SOFTWARE.",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/w8r/splay-tree/0f3602340f9d7eec6c4af846126ed72249d2b0d4/Readme.md"
+    }
+  },
+  "reviewNotes": {
+    "format": [
+      "pnpm's production license inventory reports MIT, but the npm registry metadata and the exact package manifest do not declare a license. Treat MIT as unconfirmed pending an authoritative upstream statement."
+    ]
+  }
+}

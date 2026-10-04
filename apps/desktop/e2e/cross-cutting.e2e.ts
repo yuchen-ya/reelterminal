@@ -88,8 +88,11 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
   });
 
   test("shared revision: a real UI edit bumps the revision the agent CAS-guards", async () => {
+    const before = (await readTimeline()).textOverlays.find((o) => o.text === CAPTION_TEXT)!;
+    const clipBox = await timelineTextClip(launched.page, CAPTION_TEXT).boundingBox();
+    expect(clipBox).not.toBeNull();
     // Human: drag the caption on the timeline (real mouse drag).
-    await dragTextClipViaUI(launched.page, CAPTION_TEXT, 100); // ≈ +2s at 50px/s
+    await dragTextClipViaUI(launched.page, CAPTION_TEXT, 100);
 
     const ctx = await readContext();
     expect(ctx.projectRevision).toBeGreaterThan(revisionAfterAgentCreate);
@@ -98,8 +101,9 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
     const timeline = await readTimeline();
     const overlay = timeline.textOverlays.find((o) => o.text === CAPTION_TEXT);
     expect(overlay).toBeDefined();
-    // The drag moved the clip (tolerance: snap/rounding, ±0.8s).
-    expect(overlay!.startTime).toBeGreaterThan(2.5);
+    // Derive time from the rendered scale; initial timeline zoom varies by viewport.
+    expect(overlay!.startTime).toBeGreaterThan(before.startTime);
+    expect(overlay!.startTime).toBeCloseTo(before.startTime + 100 * before.duration / clipBox!.width, 1);
 
     // Agent replays an edit against the PRE-human-edit revision → CONFLICT.
     const stale = await agent!.callTool("edit_apply", {
@@ -121,30 +125,33 @@ describe("cross-cutting: revisions, sessions, lease, security", () => {
     await evidence.screenshot("after-human-drag");
   });
 
-  test("disable mid-connection fails MCP calls cleanly; re-enable reconnects with state intact", async () => {
-    // Human: disable Agent Access via the real toggle. Both main's
-    // endpoint lifecycle and the renderer's sequenced status must converge.
+  test("revoking editing keeps reads available and rejects writes; re-enable preserves state", async () => {
+    // Human: revoke editing while keeping the app-lifetime endpoint readable.
     await disableAgentSessionViaUI(launched.page, launched.endpointFile);
-    expect(existsSync(launched.endpointFile)).toBe(false);
+    expect(existsSync(launched.endpointFile)).toBe(true);
 
     const uiState = await launched.page.evaluate(() => ({
-      ariaChecked: document.querySelector('[role="switch"]')?.getAttribute("aria-checked"),
-      showsExternalConnected: document.body.innerText.includes("External agent connected"),
+      ariaPressed: document.querySelector('[data-testid="agent-access-toggle"]')?.getAttribute("aria-pressed"),
     }));
     expect(uiState).toEqual({
-      ariaChecked: "false",
-      showsExternalConnected: false,
+      ariaPressed: "false",
     });
     evidence.record("g04_store_vs_main_after_disable", {
-      mainDisabled: true,
+      writeAccess: false,
       rendererShows: uiState,
       statusSequenceContract: "renderer rejects status snapshots older than the disable acknowledgement",
     });
 
-    // Subsequent MCP calls fail cleanly (a surfaced error, never a hang).
-    await expect(agent!.callTool("editor_get_context")).rejects.toThrow();
+    expect((await agent!.callTool("editor_get_context")).ok).toBe(true);
+    const rejected = await agent!.callTool("edit_apply", {
+      expectedRevision: revisionAfterHumanDrag,
+      ops: [{ op: "track.add", trackType: "video" }],
+    });
+    expect(rejected.ok).toBe(false);
+    expect(rejected.error?.code).toBe("FORBIDDEN");
+    expect((await readContext()).projectRevision).toBe(revisionAfterHumanDrag);
 
-    // Human: re-enable via the real toggle; a NEW endpoint file appears.
+    // Human: grant editing again on the same endpoint.
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
     await launched.waitForEndpointFile();
     await agent!.close();

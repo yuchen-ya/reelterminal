@@ -13,3 +13,17 @@ latest release before checking whether a vulnerability still applies.
 
 Agent Access credentials authorize operations on the local editor. Keep endpoint
 descriptors and tokens private. Do not attach them to issues or logs.
+
+Motion expressions use a restricted interpreter, not a JavaScript execution
+context. Arithmetic, Math helpers, animation scope references, conditional
+expressions and local const/let values with return are supported. Browser and
+Node globals, constructors, prototype traversal, mutation, functions and loops
+are rejected. Input length, AST depth and node count are bounded.
+
+Run `pnpm audit:dependencies` for the dependency security gate. The installed
+`braces@3.0.3` has a committed pnpm patch rejecting brace/parenthesis nesting
+above 128 levels before recursive AST walking. The gate first tests the actual
+installed patch. The workspace excludes only GHSA-vfj7-8cjw-p6xm from the
+version-based advisory scan because the vulnerable code is locally patched.
+The registry currently has no fixed braces release. Replace the patch and exception when a
+fixed upstream version becomes available. All other advisories fail the gate.

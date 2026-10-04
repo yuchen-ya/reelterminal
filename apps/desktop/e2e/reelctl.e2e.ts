@@ -1,11 +1,17 @@
 import { spawn } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { copyFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { launchApp, type LaunchedApp } from "./harness/launch";
 import { DESKTOP_DIR } from "./harness/paths";
 import { connectExternalAgent, type ExternalAgent } from "./harness/mcp-client";
-import { createProjectViaUI, createTextClipViaUI, enableAgentSessionViaUI, timelineTextClip } from "./harness/ui";
+import {
+  createProjectViaUI,
+  createTextClipViaUI,
+  enableAgentSessionViaUI,
+  openRecentProjectViaUI,
+  timelineTextClip,
+} from "./harness/ui";
 
 interface Context {
   projectRevision: number;
@@ -94,5 +100,49 @@ describe("reelctl against a real desktop project", () => {
     expect(stale.code).toBe(3);
     expect(stale.result).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
     expect((await cli(["context"])).result.value.projectRevision).toBe(context.projectRevision);
+  });
+
+  test("CLI capability probe and media import persist through save and reopen", async () => {
+    const capabilities = await cli(["call", "capabilities.get"]);
+    expect(capabilities.code).toBe(0);
+    expect(capabilities.result.value.mediaImport.available).toBe(true);
+    expect(capabilities.result.value.mediaImport.mediaRoots).toContain(launched.runDir);
+
+    const sourcePath = path.join(launched.runDir, "reelctl-import.png");
+    copyFileSync(path.join(DESKTOP_DIR, "build/icon.png"), sourcePath);
+    const imported = await cli(["media", "import", sourcePath]);
+    expect(imported.code).toBe(0);
+    expect(imported.result.ok).toBe(true);
+    await launched.page.getByRole("button", { name: "Project assets", exact: true }).click();
+    const importedCard = launched.page.locator(`[data-live-media-id="${imported.result.value.mediaId}"]`);
+    await importedCard.waitFor();
+
+    const beforeSave = await agent.callTool<{
+      project: { mediaLibrary: { items: Array<{ id: string; name: string; originalUrl?: string }> } };
+    }>("project_get_state");
+    const media = beforeSave.value?.project.mediaLibrary.items.find(
+      (item) => item.id === imported.result.value.mediaId,
+    );
+    expect(media).toMatchObject({ name: "reelctl-import.png", originalUrl: sourcePath });
+
+    const saved = await cli(["call", "project.save"]);
+    expect(saved.code).toBe(0);
+    expect(saved.result.ok).toBe(true);
+    await agent.close();
+
+    launched = await launched.relaunch();
+    await openRecentProjectViaUI(launched.page, "Horizontal");
+    await launched.page.getByRole("button", { name: "Project assets", exact: true }).click();
+    await launched.page.locator(`[data-live-media-id="${imported.result.value.mediaId}"]`).waitFor();
+    await enableAgentSessionViaUI(launched.page, launched.endpointFile);
+    await launched.waitForEndpointFile();
+    agent = await connectExternalAgent(launched.endpointFile);
+
+    const afterReopen = await agent.callTool<{
+      project: { mediaLibrary: { items: Array<{ id: string; name: string; originalUrl?: string }> } };
+    }>("project_get_state");
+    expect(afterReopen.value?.project.mediaLibrary.items.find(
+      (item) => item.id === imported.result.value.mediaId,
+    )).toMatchObject({ name: "reelctl-import.png", originalUrl: sourcePath });
   });
 });

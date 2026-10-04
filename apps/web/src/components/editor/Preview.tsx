@@ -5665,6 +5665,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   ]);
 
   const lastModifiedAtRef = useRef<number>(project.modifiedAt);
+  const initialPausedFrameRequestedRef = useRef(false);
   const lastPlayheadForRenderRef = useRef<number>(playheadPosition);
   const projectRevision = useProjectStore((state) => state.projectRevision);
   const lastRevisionForRenderRef = useRef<number>(projectRevision);
@@ -5709,7 +5710,10 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     }
     lastPreviewRenderTimeRef.current = playheadPosition;
 
-    if (playheadChanged) {
+    if (!initialPausedFrameRequestedRef.current) {
+      initialPausedFrameRequestedRef.current = true;
+      requestFrameRender(playheadPosition);
+    } else if (playheadChanged) {
       requestFrameRender(playheadPosition);
     } else if (scrubJustEnded) {
       // Drag release must paint the exact release position even when the

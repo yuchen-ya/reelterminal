@@ -28,16 +28,22 @@ extraResources:
   - from: resources/bin
     to: bin
     filter:
-      - "**/*"
+      - "*.cmd"
+      - "MANIFEST.json"
   - from: resources/rigging
     to: rigging
     filter:
       - "**/*"
+      - "!blender{,/**}"
   - from: resources/aurora
     to: aurora
     filter:
       - "**/*"
   - from: LICENSES
+    to: LICENSES
+    filter:
+      - "**/*"
+  - from: resources/licenses
     to: LICENSES
     filter:
       - "**/*"

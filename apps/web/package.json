@@ -13,7 +13,7 @@
     "test:run": "vitest run",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist node_modules/.vite && find src -name '*.js' -o -name '*.js.map' -o -name '*.d.ts' -o -name '*.d.ts.map' | xargs rm -f 2>/dev/null || true"
+    "clean": "node -e \"for (const dir of ['dist', 'node_modules/.vite']) require('node:fs').rmSync(dir, { recursive: true, force: true })\""
   },
   "dependencies": {
     "@astryxdesign/core": "^0.1.1",
@@ -23,7 +23,6 @@
     "@reelterminal/core": "workspace:*",
     "@reelterminal/ui": "workspace:*",
     "framer-motion": "^12.43.0",
-    "gsap": "^3.14.2",
     "i18next": "^25.6.3",
     "lucide-react": "^0.555.0",
     "posthog-js": "^1.335.2",

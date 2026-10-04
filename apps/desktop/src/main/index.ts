@@ -11,7 +11,7 @@ import { readEnvAlias } from "../shared/env-alias";
 import { z } from "zod";
 import { registerAppSchemePrivileges, handleAppScheme, APP_INDEX } from "./protocol";
 import { installNavigationGuard } from "./nav-guard";
-import { handle } from "./ipc";
+import { handle, assertEditorIpcSender } from "./ipc";
 import { CHANNELS } from "../shared/ipc-contract";
 import { collectHardwareInfo } from "./ipc/hardware";
 import {
@@ -246,29 +246,35 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle(
     CHANNELS.auroraStartPreviewSession,
-    async (event, raw) =>
-      auroraPreviewSessionStartResultSchema.parse(
+    async (event, raw) => {
+      assertEditorIpcSender(event);
+      return auroraPreviewSessionStartResultSchema.parse(
         await startAuroraPreviewSession(
           event.sender,
           auroraPreviewSessionStartArgsSchema.parse(raw) as AuroraPreviewSessionStartArgs,
         ),
-      ),
+      );
+    },
   );
   ipcMain.handle(CHANNELS.auroraCancelPreviewSession, async (event, raw) => {
+    assertEditorIpcSender(event);
     const { sessionId } = auroraPreviewSessionCancelArgsSchema.parse(raw);
     await cancelAuroraPreviewSession(sessionId, event.sender);
   });
   ipcMain.handle(
     CHANNELS.auroraStartSequenceSession,
-    async (event, raw) =>
-      auroraSequenceSessionStartResultSchema.parse(
+    async (event, raw) => {
+      assertEditorIpcSender(event);
+      return auroraSequenceSessionStartResultSchema.parse(
         await startAuroraSequenceSession(
           event.sender,
           auroraSequenceSessionStartArgsSchema.parse(raw) as AuroraSequenceSessionStartArgs,
         ),
-      ),
+      );
+    },
   );
   ipcMain.handle(CHANNELS.auroraCancelSequenceSession, async (event, raw) => {
+    assertEditorIpcSender(event);
     const { sessionId } = auroraSequenceSessionCancelArgsSchema.parse(raw);
     await cancelAuroraSequenceSession(sessionId, event.sender);
   });
@@ -278,7 +284,10 @@ app.whenReady().then(async () => {
   handle(CHANNELS.riggingRigHumanoidModel, rigHumanoidModelArgsSchema, async (args) =>
     rigHumanoidModelResultSchema.parse(await rigHumanoidModel(args)),
   );
-  ipcMain.handle(CHANNELS.exportStart, (e, raw) => startExport(e.sender, raw));
+  ipcMain.handle(CHANNELS.exportStart, (e, raw) => {
+    assertEditorIpcSender(e);
+    return startExport(e.sender, raw);
+  });
   handle(
     CHANNELS.exportWriteAudioWav,
     z.object({ jobId: z.string(), wav: z.instanceof(ArrayBuffer) }),
@@ -296,12 +305,14 @@ app.whenReady().then(async () => {
   handle(CHANNELS.exportFinishAudio, z.object({ jobId: z.string() }), finishAudio);
   handle(CHANNELS.exportCancel, z.object({ jobId: z.string() }), cancelExport);
   ipcMain.handle(CHANNELS.windowControl, (e, raw) => {
+    assertEditorIpcSender(e);
     const parsed = windowControlArgsSchema.parse(raw);
     applyWindowControl(BrowserWindow.fromWebContents(e.sender), parsed.action);
   });
-  ipcMain.handle(CHANNELS.windowIsMaximized, (e) =>
-    windowIsMaximized(BrowserWindow.fromWebContents(e.sender)),
-  );
+  ipcMain.handle(CHANNELS.windowIsMaximized, (e) => {
+    assertEditorIpcSender(e);
+    return windowIsMaximized(BrowserWindow.fromWebContents(e.sender));
+  });
   ipcMain.on(CHANNELS.crashReport, (event, raw) => {
     if (event.sender !== getEditorWebContents()) return;
     const type =

@@ -15,6 +15,8 @@
     "test:watch": "pnpm -r test",
     "lint": "pnpm -r lint",
     "lint:naming": "node scripts/naming-lint.mjs",
+    "test:security": "node --test scripts/security/*.test.mjs",
+    "audit:dependencies": "pnpm test:security && pnpm audit",
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r clean"
   },

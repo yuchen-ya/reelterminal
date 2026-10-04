@@ -3,20 +3,11 @@ import path from "node:path";
 import { z } from "zod";
 import { CHANNELS } from "../../shared/channels";
 import type { LiveSessionHost } from "../live/live-session-host";
-import { liveTargetWebContents } from "../live/renderer-store-adapter";
+import { assertEditorIpcSender } from "./index";
 import { createAnalysisRecordsService } from "../analysis/analysis-records-service";
 
 const projectIdSchema = z.string().min(1).max(256);
 const recordIdSchema = z.string().regex(/^analysis-[0-9a-f-]{8,}$/i);
-
-function assertMainWindowSender(sender: unknown): void {
-  const contents = liveTargetWebContents();
-  if (!contents || sender !== contents) {
-    throw new Error(
-      "[ipc] analysis record channels are only available to the main editor window",
-    );
-  }
-}
 
 export function registerAnalysisRecordsIpc(host: LiveSessionHost): void {
   const service = createAnalysisRecordsService(
@@ -25,7 +16,7 @@ export function registerAnalysisRecordsIpc(host: LiveSessionHost): void {
   );
 
   ipcMain.handle(CHANNELS.analysisRecordsList, async (event, raw) => {
-    assertMainWindowSender(event.sender);
+    assertEditorIpcSender(event);
     const args = z
       .object({
         projectId: projectIdSchema,
@@ -38,7 +29,7 @@ export function registerAnalysisRecordsIpc(host: LiveSessionHost): void {
   });
 
   ipcMain.handle(CHANNELS.analysisRecordsGet, async (event, raw) => {
-    assertMainWindowSender(event.sender);
+    assertEditorIpcSender(event);
     const args = z
       .object({ projectId: projectIdSchema, recordId: recordIdSchema })
       .strict()
@@ -47,7 +38,7 @@ export function registerAnalysisRecordsIpc(host: LiveSessionHost): void {
   });
 
   ipcMain.handle(CHANNELS.analysisRecordsRecheck, async (event, raw) => {
-    assertMainWindowSender(event.sender);
+    assertEditorIpcSender(event);
     const args = z
       .object({
         projectId: projectIdSchema,
@@ -60,7 +51,7 @@ export function registerAnalysisRecordsIpc(host: LiveSessionHost): void {
   });
 
   ipcMain.handle(CHANNELS.analysisRecordsJobStatus, async (event, raw) => {
-    assertMainWindowSender(event.sender);
+    assertEditorIpcSender(event);
     const { jobId } = z
       .object({ jobId: z.string().regex(/^job-[0-9a-f-]{8,}$/i) })
       .strict()

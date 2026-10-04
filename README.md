@@ -39,6 +39,9 @@ its own license text at [`apps/image/public/licenses/AGPL-3.0.txt`](apps/image/p
 
 Prerequisites: Node.js 22.13.0 or newer, Corepack, and pnpm 11.7.0 (pinned by the repository).
 The Chromium runtime tests also need FFmpeg/ffprobe and Playwright Chromium.
+Desktop packages use a separately installed FFmpeg/ffprobe on PATH; they do
+not include FFmpeg or Blender binaries. Rigging requires a separate Blender
+installation configured with `REELTERMINAL_BLENDER_PATH`.
 
 ```bash
 git clone https://github.com/yuchen-ya/reelterminal.git

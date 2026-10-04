@@ -2,6 +2,8 @@ packages:
   - "apps/*"
   - "packages/*"
 overrides:
+  'http-cache-semantics@<4.2.1': 4.3.0
+  'esbuild@>=0.27.3 <0.28.1': 0.28.1
   '@opentelemetry/core@<2.8.0': 2.8.0
   '@xmldom/xmldom@<0.9.12': 0.9.12
   'brace-expansion@^2': 2.1.7
@@ -28,6 +30,7 @@ allowBuilds:
   sharp: false
   workerd: false
 minimumReleaseAgeExclude:
+  - http-cache-semantics@4.3.0
   - electron@44.5.1
   - esbuild@0.28.1
   - vitest@4.1.11
@@ -39,3 +42,10 @@ minimumReleaseAgeExclude:
   - sharp@0.35.4
   - ws@8.21.0
   - undici@7.29.1
+patchedDependencies:
+  braces@3.0.3: patches/braces@3.0.3.patch
+auditConfig:
+  # Mitigated by the pinned braces patch. The security gate verifies the
+  # installed depth guard before accepting this version-based exception.
+  ignoreGhsas:
+    - GHSA-vfj7-8cjw-p6xm

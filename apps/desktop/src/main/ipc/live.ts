@@ -11,7 +11,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { CHANNELS } from "../../shared/channels";
-import { liveTargetWebContents } from "../live/renderer-store-adapter";
+import { assertEditorIpcSender } from "./index";
 import { agentWorkspaceRoot } from "../live/host-instance";
 import type { LiveSessionHost } from "../live/live-session-host";
 
@@ -19,36 +19,27 @@ const setAccessArgsSchema = z.object({
   access: z.enum(["read-only", "write"]),
 });
 
-function assertMainWindowSender(sender: unknown): void {
-  const contents = liveTargetWebContents();
-  if (!contents || sender !== contents) {
-    throw new Error(
-      "[ipc] live collaboration channels are only available to the main editor window",
-    );
-  }
-}
-
 export function registerLiveIpc(host: LiveSessionHost): void {
   // Compatibility for renderers that still use the former service toggle:
   // the endpoint now follows app lifetime, while these channels only grant
   // or revoke this launch's write authorization.
   ipcMain.handle(CHANNELS.collabEnable, async (event) => {
-    assertMainWindowSender(event.sender);
+    assertEditorIpcSender(event);
     return host.setAccess("write");
   });
 
   ipcMain.handle(CHANNELS.collabDisable, async (event) => {
-    assertMainWindowSender(event.sender);
+    assertEditorIpcSender(event);
     return host.setAccess("read-only");
   });
 
   ipcMain.handle(CHANNELS.collabGetStatus, async (event) => {
-    assertMainWindowSender(event.sender);
+    assertEditorIpcSender(event);
     return host.getStatus();
   });
 
   ipcMain.handle(CHANNELS.collabSetAccess, async (event, raw) => {
-    assertMainWindowSender(event.sender);
+    assertEditorIpcSender(event);
     const { access } = setAccessArgsSchema.parse(raw);
     return host.setAccess(access);
   });
@@ -60,7 +51,7 @@ export function registerLiveIpc(host: LiveSessionHost): void {
    * Agent ran. Returns the absolute path so the UI can show it.
    */
   ipcMain.handle(CHANNELS.collabOpenWorkspace, async (event) => {
-    assertMainWindowSender(event.sender);
+    assertEditorIpcSender(event);
     const workspace = agentWorkspaceRoot();
     mkdirSync(path.join(workspace, "jobs"), { recursive: true });
     mkdirSync(path.join(workspace, "shared"), { recursive: true });

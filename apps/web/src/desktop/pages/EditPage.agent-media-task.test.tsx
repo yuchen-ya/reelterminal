@@ -13,6 +13,7 @@ import { useUIStore } from "../../stores/ui-store";
 import { useProjectStore } from "../../stores/project-store";
 import { createEmptyProject } from "../../stores/project/project-helpers";
 import { REQUIREMENT_BOARD_MODAL_ID } from "../editor/RequirementBoardDialog";
+import { t } from "../../i18n";
 
 vi.mock("../../components/editor/AssetsPanel", () => ({
   AssetsPanel: (): React.ReactElement => <div data-testid="stub-assets" />,
@@ -56,12 +57,12 @@ describe("EditPage lower collaboration panel", () => {
 
     // The strip hosts the desktop entry button.
     const entry = screen.getByTestId("requirement-board-entry");
-    expect(screen.queryByRole("dialog", { name: "Requirements" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: t("requirementBoard.title") })).not.toBeInTheDocument();
 
     fireEvent.click(entry);
 
     expect(useUIStore.getState().activeModal).toBe(REQUIREMENT_BOARD_MODAL_ID);
-    expect(screen.getByRole("dialog", { name: "Requirements" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: t("requirementBoard.title") })).toBeInTheDocument();
   });
 
   it("keeps write authorization separate from the requirement board", async () => {

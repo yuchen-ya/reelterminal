@@ -23,7 +23,7 @@ import { z } from "zod";
 import { resolveContainedPathDetailed } from "@reelterminal/agent-facade/media/path-roots";
 import type { FacadeResult } from "@reelterminal/agent-facade";
 import { CHANNELS } from "../../shared/channels";
-import { liveTargetWebContents } from "./renderer-store-adapter";
+import { assertEditorIpcSender } from "../ipc";
 import { liveMediaRoots } from "./host-instance";
 import type { LiveSessionHost } from "./live-session-host";
 
@@ -78,15 +78,6 @@ const importArtifactSchema = z
     idempotencyKey: z.string().regex(/^req_[A-Za-z0-9-]{8,64}$/),
   })
   .strict();
-
-function assertMainWindowSender(sender: unknown): void {
-  const contents = liveTargetWebContents();
-  if (!contents || sender !== contents) {
-    throw new Error(
-      "[ipc] agent task channels are only available to the main editor window",
-    );
-  }
-}
 
 export interface AgentTaskChannelCore {
   getMediaRoots(): AgentTaskMediaRoots;
@@ -187,12 +178,12 @@ export function registerAgentTaskIpc(host: LiveSessionHost): void {
   });
 
   ipcMain.handle(CHANNELS.agentTaskMediaRoots, (event) => {
-    assertMainWindowSender(event.sender);
+    assertEditorIpcSender(event);
     return core.getMediaRoots();
   });
 
   ipcMain.handle(CHANNELS.agentTaskScanOutput, async (event, raw) => {
-    assertMainWindowSender(event.sender);
+    assertEditorIpcSender(event);
     const { outputDirectory } = z
       .object({ outputDirectory: outputDirectorySchema })
       .strict()
@@ -201,7 +192,7 @@ export function registerAgentTaskIpc(host: LiveSessionHost): void {
   });
 
   ipcMain.handle(CHANNELS.agentTaskImport, async (event, raw) => {
-    assertMainWindowSender(event.sender);
+    assertEditorIpcSender(event);
     const args = importArtifactSchema.parse(raw);
     return core.importTaskArtifact(args);
   });
