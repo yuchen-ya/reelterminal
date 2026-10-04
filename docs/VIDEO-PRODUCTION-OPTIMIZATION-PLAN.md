@@ -2,7 +2,7 @@
 
 日期：2026-10-03。现有改动快照：`913a6b1`。
 
-> **实施状态（2026-10-03）**：M1 已实现——`frames.extract` /
+> **实施状态（2026-10-04）**：M1 已实现——`frames.extract` /
 > `frames.contact_sheet` / `video.compare` / `patch.apply` 四个只读候选
 > 工具，`media.analyze_start` 新增本地候选分析类型 `sceneCuts` /
 > `blackFrames` / `duplicateFrames`，`technicalQuality` 增加解码帧数、
@@ -13,8 +13,14 @@
 > ECC 与 ORB+RANSAC）与 `motion.track`（LK 稀疏光流＋前后向检查＋RANSAC
 > 相似估计，丢失即停、不跨切镜重播）已实现，后端为探测到的本地
 > OpenCV 解释器（`REELTERMINAL_OPENCV_PYTHON`/PATH，绝不自动安装），
-> capabilities 以 `motionTools` 段如实报告；`mask.refine` 与遮罩传播、
-> M3 仍为路线图。`sceneCuts` 的算法描述已修正为 FFmpeg select 的 luma-SAD
+> capabilities 以 `motionTools` 段如实报告；M2 的 `mask.refine` 与短段补片传播也已实现。
+> M3 最小实现已接入现有项目与 GUI：制作来源/候选状态及筛选、审片帧段到看板、
+> 候选对比与可撤销采用、本地分析批次的持久化/恢复、严格 CFR 帧数替换、
+> 目标分辨率文字栅格化及普通缩放/模型增强标注。批次仅覆盖已有本地分析 job，
+> 状态变化自动落盘，GUI 候选采用共用严格帧数校验，审片证据绑定所选帧与项目 revision。
+> 用法、验证及限制见 [PRODUCTION-MANAGEMENT.md](PRODUCTION-MANAGEMENT.md)。
+> 已通过隔离的真实 Electron live 自动化验收：导入、指定帧取证、严格采用/拒绝、
+> 对比、GUI 撤销、自动落盘、取消及进程重启恢复；未修改用户原项目，也未引入或自动运行外部模型。`sceneCuts` 的算法描述已修正为 FFmpeg select 的 luma-SAD
 > 实测；`duplicateFrames` 明确为冻结/近静止区间候选，不支持任意重复帧检索。
 
 ## 目标与依据
@@ -129,7 +135,7 @@ M1 必须包含真实可执行的 CLI/API 路径，不只写 schema、mock 或�
 7. live GUI 中检查候选导入、回填与撤销；无 GUI 环境时明确未验证项，不用 headless 冒充 live 验收。
 8. 更新命令发现、capabilities、schema、文档及必要发行说明；运行相关测试、类型检查与构建。只修本次相关回归。
 
-交付时报告实际新增/复用命令、验证证据、依赖安装方式、限制和提交哈希。达到 M1 验收后结束；M2/M3 是路线图，不自动扩大本次范围。
+交付时报告实际新增/复用命令、验证证据、依赖安装方式、限制和提交哈希。原方案默认实施到 M1；后续已按用户明确请求推进 M2/M3，当前范围与验收限制以上方实施状态及对应工作流文档为准。
 
 ## 参考与本地证据
 

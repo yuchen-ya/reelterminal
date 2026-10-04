@@ -448,6 +448,7 @@ export class AgentFacadeSession {
           const fileStat = await stat(absPath);
           return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
         },
+        async () => this.project,
       );
       validateEditBatch(ops);
       if (ops.length === 0) {
@@ -1404,6 +1405,7 @@ export class AgentFacadeSession {
           const fileStat = await stat(absPath);
           return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
         },
+        async () => this.project,
       );
 
       const outcome = await this.commitMutation<EditApplyPayload>({
@@ -2313,6 +2315,15 @@ export class AgentFacadeSession {
   }
 
   /** job.status — poll the facade-owned job registry. */
+  currentJob(jobId: string): JobStatusView | null {
+    const job = this.jobs.get(jobId);
+    return job ? jobStatusView(job) : null;
+  }
+
+  observeJob(jobId: string, persist: (job: JobStatusView) => void): void {
+    this.jobs.observe(jobId, persist);
+  }
+
   async jobStatus(params: JobParams): Promise<FacadeResult<JobStatusView>> {
     return this.enqueue(async () => {
       const valid = validateObject<JobParams>(params, JOB_PARAMS_SCHEMA, "job.status params");

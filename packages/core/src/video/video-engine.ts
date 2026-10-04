@@ -1018,7 +1018,7 @@ export class VideoEngine {
     this.renderParticlesToContext(ctx, time, width, height);
 
     for (const subtitle of activeSubtitles) {
-      this.renderSubtitleToCanvasCtx(ctx, subtitle, width, height);
+      this.renderSubtitleToCanvasCtx(ctx, subtitle, width, height, settings.width, settings.height);
     }
 
     await this.applyAdjustmentLayersToComposite(
@@ -1801,33 +1801,17 @@ export class VideoEngine {
     sourceHeight: number = height,
   ): Promise<void> {
     const clipLocalTime = time - textClip.startTime;
-    // Text style values (fontSize, stroke, shadow, metrics) are project-pixel
-    // denominated. Rasterize in project space and scale the finished layer
-    // into the target raster so text keeps its project-relative size at any
-    // preview/contact-sheet resolution (at project size this is the exact
-    // same pixels as before — a 1:1 pass-through).
     const result = titleEngine.renderText(
       textClip,
-      sourceWidth,
-      sourceHeight,
+      width,
+      height,
       clipLocalTime,
+      { width: sourceWidth, height: sourceHeight },
     );
-
-    let layer: OffscreenCanvas | HTMLCanvasElement = result.canvas;
-    if (sourceWidth !== width || sourceHeight !== height) {
-      const scaled = new OffscreenCanvas(width, height);
-      const scaledCtx = scaled.getContext("2d");
-      if (scaledCtx) {
-        scaledCtx.imageSmoothingEnabled = true;
-        scaledCtx.imageSmoothingQuality = "high";
-        scaledCtx.drawImage(result.canvas, 0, 0, width, height);
-        layer = scaled;
-      }
-    }
 
     await this.drawOverlayCanvasWithEffects(
       ctx,
-      layer,
+      result.canvas,
       textClip.effects ?? [],
       width,
       height,
@@ -2002,12 +1986,17 @@ export class VideoEngine {
     subtitle: Subtitle,
     canvasWidth: number,
     canvasHeight: number,
+    sourceWidth: number = canvasWidth,
+    sourceHeight: number = canvasHeight,
   ): void {
     const { text, style } = subtitle;
     if (!text || text.trim().length === 0) return;
 
     ctx.save();
 
+    ctx.scale(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
+    canvasWidth = sourceWidth;
+    canvasHeight = sourceHeight;
     const fontSize = style?.fontSize || 24;
     const fontFamily = style?.fontFamily || "Inter";
     const color = style?.color || "#ffffff";

@@ -18,6 +18,7 @@ import {
 import { createEmptyProject } from "./project/project-helpers";
 import { getEffectsBridge } from "../bridges/effects-bridge";
 import { autoSaveManager } from "../services/auto-save";
+import { projectManager } from "../services/project-manager";
 
 const { ffmpegProbeMock } = vi.hoisted(() => ({
   ffmpegProbeMock: {
@@ -2486,6 +2487,7 @@ describe("getFullProject / forceSave with momentarily-null engines", () => {
       project: overlayProject(),
       hasOpenProject: true,
     });
+    const recent = vi.spyOn(projectManager, "addToRecent").mockResolvedValue(undefined);
     await withNullEngines(async () => {
       await useProjectStore.getState().forceSave();
       const saved = vi.mocked(autoSaveManager.forceSave).mock.calls.at(-1)?.[0];
@@ -2493,7 +2495,8 @@ describe("getFullProject / forceSave with momentarily-null engines", () => {
       expect(saved?.shapeClips?.map((c) => c.id)).toEqual(["shape-1"]);
       expect(saved?.svgClips?.map((c) => c.id)).toEqual(["svg-1"]);
       expect(saved?.stickerClips?.map((c) => c.id)).toEqual(["sticker-1"]);
-    });
+      expect(recent).toHaveBeenCalledWith(saved);
+    }).finally(() => recent.mockRestore());
   });
 });
 

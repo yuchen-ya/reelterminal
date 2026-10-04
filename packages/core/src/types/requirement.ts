@@ -22,6 +22,7 @@ export interface RequirementReference {
 
 /** Persisted user requirement. This is project work state, never conversation history. */
 export interface ProjectRequirement {
+  readonly reviewRange?: import("./review-range").ReviewRange;
   readonly id: string;
   readonly number: number;
   readonly title: string;

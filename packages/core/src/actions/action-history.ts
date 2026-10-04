@@ -92,6 +92,7 @@ const ACTION_DESCRIPTIONS: Record<
   "media/import": () => "Import media",
   "media/delete": () => "Delete media",
   "media/rename": () => "Rename media",
+  "media/setProduction": () => "Update production record",
   "workAsset/create": (params) => {
     const asset = params.asset as { name?: string } | undefined;
     return asset?.name ? `Save work asset "${asset.name}"` : "Save work asset";

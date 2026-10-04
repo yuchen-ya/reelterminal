@@ -1,3 +1,5 @@
+import { validateMediaProduction } from "../types/media-production";
+import { validReviewRange } from "../types/review-range";
 import type {
   Project,
   MediaItem,
@@ -395,14 +397,18 @@ export function normalizeProjectWorkAssetFields(project: Project): Project {
 /**
  * Defensive repair for stored media items: an invalid `displayName` (wrong
  * type or blank after trim) is dropped so display sites fall back to the
- * source filename. Everything else passes through untouched — old projects
- * without displayName are unaffected.
+ * source filename. New production records are validated without discarding
+ * invalid history; legacy projects without those records are unaffected.
  */
 export function normalizeProjectMediaFields(project: Project): Project {
   const items = project.mediaLibrary?.items;
   if (!Array.isArray(items)) return project;
   let changed = false;
   const normalizedItems = items.map((item: MediaItem) => {
+    if (item.production !== undefined) {
+      const error = validateMediaProduction(item.production);
+      if (error) throw new Error(`Invalid production record for ${item.id}: ${error}`);
+    }
     if (
       item.displayName === undefined ||
       (typeof item.displayName === "string" && item.displayName.trim().length > 0)
@@ -453,6 +459,11 @@ export function normalizeProjectChromaFields(project: Project): Project {
 }
 
 export function normalizeProjectStoredFields(project: Project): Project {
+  for (const requirement of project.requirements?.items ?? []) {
+    if (requirement.reviewRange !== undefined && !validReviewRange(requirement.reviewRange)) {
+      throw new Error(`Invalid review range for ${requirement.id}`);
+    }
+  }
   return normalizeProjectMediaFields(
     normalizeProjectMarkerFields(
       normalizeProjectGeneratedShaderFields(

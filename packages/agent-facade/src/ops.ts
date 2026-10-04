@@ -1,3 +1,6 @@
+import { verifyReplacementFrames } from "./media/strict-replacement";
+import { validateMediaProduction } from "@reelterminal/core/types/media-production";
+import type { MediaSetProductionOp } from "./types";
 /**
  * The closed edit.apply op set: strict schema validation and translation
  * into core actions. Facade-level semantic checks that the generic core
@@ -1406,6 +1409,7 @@ export const REFERENCE_COMPARISON_CONFIG_SCHEMA: ObjectSchema = {
 };
 
 export const MEDIA_REPLACE_SCHEMA: ObjectSchema = {
+  preserveFrames: { check: isBoolean, describe: "Require equal decoded frame counts and verified CFR rate; preserve all clip timing", emits: { kind: "leaf", schema: { type: "boolean" } } },
   op: {
     check: (value) => value === "media.replace",
     describe: '"media.replace"',
@@ -1455,6 +1459,76 @@ export const MEDIA_RELINK_SCHEMA: ObjectSchema = {
     describe: "absolute path of the SAME content at its new location, inside a configured media root",
     required: true,
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+};
+
+export const MEDIA_PRODUCTION_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "media.setProduction",
+    describe: "media.setProduction",
+    required: true,
+    emits: { kind: "leaf", schema: { const: "media.setProduction" } },
+  },
+  mediaId: {
+    check: isNonEmptyString,
+    describe: "Project media version",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  production: {
+    check: (v) => validateMediaProduction(v) === null,
+    describe:
+      "Candidate status (pending/adopted/rejected), notes, and steps: operation (original/generation/redraw/composite/resize/modelEnhancement), tool, optional model, inputMediaIds, optional zero-based half-open source-frame range. modelEnhancement requires model. Declaration only; does not run a backend or change timeline references.",
+    required: true,
+    emits: {
+      kind: "leaf",
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        required: ["status", "notes", "steps"],
+        properties: {
+          status: { enum: ["pending", "adopted", "rejected"] },
+          notes: { type: "string", maxLength: 4000 },
+          steps: {
+            type: "array",
+            maxItems: 100,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["operation", "tool", "inputMediaIds"],
+              properties: {
+                operation: {
+                  enum: [
+                    "original",
+                    "generation",
+                    "redraw",
+                    "composite",
+                    "resize",
+                    "modelEnhancement",
+                  ],
+                },
+                tool: { type: "string", minLength: 1, maxLength: 200 },
+                model: { type: "string", minLength: 1, maxLength: 200 },
+                inputMediaIds: {
+                  type: "array",
+                  maxItems: 100,
+                  items: { type: "string", minLength: 1 },
+                },
+                range: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["startFrame", "endFrame"],
+                  properties: {
+                    startFrame: { type: "integer", minimum: 0 },
+                    endFrame: { type: "integer", minimum: 1 },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   },
 };
 
@@ -2807,6 +2881,8 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
     case "media.relink": {
       return validateObject<MediaRelinkOp>(raw, MEDIA_RELINK_SCHEMA, label);
     }
+    case "media.setProduction":
+      return validateObject<MediaSetProductionOp>(raw, MEDIA_PRODUCTION_SCHEMA, label);
     case "media.rename":
       return validateObject<MediaRenameOp>(raw, MEDIA_RENAME_SCHEMA, label);
     default:
@@ -2831,6 +2907,7 @@ export async function enrichMediaFileOps(
     sampleRate: number; channels: number;
   }>,
   statFile: (absPath: string) => Promise<{ name: string; size: number; lastModified: number }>,
+  getProject?: () => Promise<Project | null>,
 ): Promise<readonly EditOp[]> {
   const out: EditOp[] = [];
   for (const op of ops) {
@@ -2844,10 +2921,19 @@ export async function enrichMediaFileOps(
           { filePath: replace.filePath },
         );
       }
+      let verifiedDuration: number | undefined;
+      if (replace.preserveFrames) {
+        const project = await getProject?.();
+        const original = project?.mediaLibrary.items.find((item) => item.id === replace.mediaId);
+        if (!original?.originalUrl) throw new FacadeError("INVALID_PARAMS", "Strict replacement requires file-backed source media");
+        const verified = await verifyReplacementFrames(original.originalUrl, resolution.path, mediaRoots);
+        verifiedDuration = verified.durationSec;
+      }
       const probed = await probeFile(resolution.path);
       const mediaType = probed.hasVideo ? "video" : "audio";
       out.push({
         ...replace,
+        verifiedDuration,
         probedMediaItem: {
           id: `media-${crypto.randomUUID()}`,
           name: basename(resolution.path),
@@ -4074,7 +4160,9 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           { mediaId: op.mediaId, scope: op.scope },
         );
       }
-      const newDuration = probed.metadata.duration ?? 0;
+      if (op.preserveFrames && op.verifiedDuration === undefined) throw new FacadeError("INVALID_PARAMS", "Strict replacement must pass the file verification pre-pass");
+      const newDuration = op.verifiedDuration ?? probed.metadata.duration ?? 0;
+      if (op.preserveFrames && targets.some((clip) => clip.outPoint > newDuration + 1e-6)) throw new FacadeError("INVALID_PARAMS", "Clip range exceeds the verified source frame count");
       const actions: Action[] = [
         // The new version imports as its OWN item: the old file is never
         // overwritten, both versions coexist and remain distinguishable.
@@ -4097,7 +4185,7 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           );
         }
         // Clamp to the new source; the timeline can only shrink, never extend.
-        const outPoint = newDuration > 0 ? Math.min(clip.outPoint, newDuration) : clip.outPoint;
+        const outPoint = !op.preserveFrames && newDuration > 0 ? Math.min(clip.outPoint, newDuration) : clip.outPoint;
         const shortened = outPoint < clip.outPoint - 1e-6;
         if (shortened && (clip.speedKeyframes?.length || clip.freezeFrames?.length)) {
           throw new FacadeError("INVALID_PARAMS", "media.replace: shortening a clip with speed ramps or freeze frames requires an explicit trim first", { clipId: clip.id });
@@ -4142,6 +4230,10 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           sourceFile: facts,
         }),
       ];
+    }
+
+    case "media.setProduction": {
+      return [makeAction("media/setProduction", { mediaId: op.mediaId, production: op.production })];
     }
 
     case "media.rename": {

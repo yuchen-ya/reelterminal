@@ -674,6 +674,7 @@ export class LiveFacadeSession {
           const fileStat = await stat(absPath);
           return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
         },
+        async () => (await this.config.store.getState()).project,
       );
       validateEditBatch(ops);
       if (ops.length === 0) {
@@ -1527,6 +1528,7 @@ export class LiveFacadeSession {
           const fileStat = await stat(absPath);
           return { name: basename(absPath), size: fileStat.size, lastModified: Math.round(fileStat.mtimeMs) };
         },
+        async () => (await this.config.store.getState()).project,
       );
 
       // Caller-assigned clip ids cannot be honored live: the canonical
@@ -2562,6 +2564,15 @@ export class LiveFacadeSession {
   }
 
   /** job.status — poll this session's job registry (read-only verb). */
+  currentJob(jobId: string): JobStatusView | null {
+    const job = this.jobs.get(jobId);
+    return job ? jobStatusView(job) : null;
+  }
+
+  observeJob(jobId: string, persist: (job: JobStatusView) => void): void {
+    this.jobs.observe(jobId, persist);
+  }
+
   async jobStatus(params: JobParams): Promise<FacadeResult<JobStatusView>> {
     return this.enqueue(async () => {
       const valid = validateObject<JobParams>(params, JOB_PARAMS_SCHEMA, "job.status params");

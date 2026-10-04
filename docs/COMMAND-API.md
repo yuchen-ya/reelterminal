@@ -49,3 +49,12 @@ it does not open or replace the desktop project.
 Package-level API details are in
 [`../packages/agent-facade/README.md`](../packages/agent-facade/README.md) and
 [`../packages/runtime-chromium/README.md`](../packages/runtime-chromium/README.md).
+
+## Production management
+
+`media.production_list`, `batch.start`, `batch.get` and `batch.resume` are
+discovered through the shared CLI/MCP catalog. `edit.apply` adds
+`media.setProduction`; `media.replace` accepts `preserveFrames: true` for
+verified CFR/frame-count preservation. See
+[PRODUCTION-MANAGEMENT.md](PRODUCTION-MANAGEMENT.md) for shared GUI records,
+review-to-board adoption, batch persistence boundaries and rendering details.

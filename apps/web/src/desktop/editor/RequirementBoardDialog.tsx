@@ -1,3 +1,5 @@
+import { adoptReviewCandidate } from "../../services/production-review";
+import { useTimelineStore } from "../../stores/timeline-store";
 import { useEffect, useMemo, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import { LayoutTemplate, Plus, Trash2, X } from "@/icons/lucide-compat";
@@ -358,6 +360,37 @@ export function RequirementBoardDialog(): JSX.Element | null {
                     </ul>
                   </div>
                 )}
+                {selected.reviewRange && (
+                  <div className="space-y-2 rounded border border-border p-3 text-xs">
+                    <p>
+                      {t("production.timelineFrames")}: [
+                      {selected.reviewRange.startFrame},{" "}
+                      {selected.reviewRange.endFrame}) /{" "}
+                      {selected.reviewRange.frameRate} fps
+                    </p>
+                    {selected.reviewRange.evidence && <p>{t("production.evidenceFrame")}: {selected.reviewRange.evidence.timelineFrame} · r{selected.reviewRange.evidence.sourceRevision} · {selected.reviewRange.evidence.timeSec.toFixed(6)}s</p>}
+                  {selected.reviewRange.screenshot && (
+                      <img
+                        alt={t("production.previewScreenshot")}
+                        src={selected.reviewRange.screenshot}
+                        className="max-h-48 w-full object-contain"
+                      />
+                    )}
+                    <button
+                      onClick={() => {
+                        useTimelineStore
+                          .getState()
+                          .seekTo(
+                            selected.reviewRange!.startFrame /
+                              selected.reviewRange!.frameRate,
+                          );
+                        close();
+                      }}
+                    >
+                      {t("production.locate")}
+                    </button>
+                  </div>
+                )}
                 {selected.agentNote && (
                   <p className="whitespace-pre-wrap rounded border-l-2 border-accent bg-bg-2 p-3 text-xs">
                     {selected.agentNote}
@@ -368,13 +401,88 @@ export function RequirementBoardDialog(): JSX.Element | null {
                     const media = project.mediaLibrary.items.find(
                       (item) => item.id === id,
                     );
-                    return referenceButton({
-                      ref: t("requirementBoard.result"),
-                      kind: "media",
-                      entityId: id,
-                      label: media?.name ?? id,
-                      timing: { startSeconds: null, endSeconds: null },
-                    });
+                    return (
+                      <div key={id} className="flex items-center gap-2">
+                        {referenceButton({
+                          ref: t("requirementBoard.result"),
+                          kind: "media",
+                          entityId: id,
+                          label: media?.name ?? id,
+                          timing: { startSeconds: null, endSeconds: null },
+                        })}
+                        {media?.type === "video" && selected.reviewRange && (
+                          <button
+                            className="rounded border border-border p-1 text-xs"
+                            onClick={async () => {
+                              const review = selected.reviewRange!;
+                              const startSec =
+                                review.startFrame / review.frameRate;
+                              const mapping = review.mappings.find(
+                                (entry) =>
+                                  entry.timelineStartSec === startSec &&
+                                  entry.timelineEndSec >=
+                                    review.endFrame / review.frameRate,
+                              );
+                              if (!mapping) {
+                                setError(t("production.compareSingle"));
+                                return;
+                              }
+                              const result = await useProjectStore
+                                .getState()
+                                .executeAction({
+                                  type: "reference/setComparison",
+                                  id: crypto.randomUUID(),
+                                  timestamp: Date.now(),
+                                  params: {
+                                    config: {
+                                      referenceMediaId: media.id,
+                                      refStartSec: mapping.sourceStartSec,
+                                      refEndSec: mapping.sourceEndSec,
+                                      timelineStartSec:
+                                        mapping.timelineStartSec,
+                                      rate:
+                                        (mapping.sourceEndSec -
+                                          mapping.sourceStartSec) /
+                                        (mapping.timelineEndSec -
+                                          mapping.timelineStartSec),
+                                      audioSide: "timeline",
+                                      layout: "side-by-side",
+                                    },
+                                  },
+                                });
+                              if (!result.success) {
+                                setError(
+                                  result.error?.message ??
+                                    t("production.failed"),
+                                );
+                                return;
+                              }
+                              useTimelineStore.getState().seekTo(startSec);
+                              close();
+                            }}
+                          >
+                            {t("production.compare")}
+                          </button>
+                        )}
+                        {media?.type === "video" && selected.reviewRange && (
+                          <button
+                            className="rounded border border-border p-1 text-xs"
+                            disabled={busy}
+                            onClick={async () => {
+                              setBusy(true);
+                              setError("");
+                              try {
+                                await adoptReviewCandidate(selected.id, media.id, t("production.adopt"));
+                              } catch (failure) {
+                                setError(failure instanceof Error ? failure.message : String(failure));
+                              } finally { setBusy(false); }
+                            }}
+                          >
+                            {t("production.adopt")}
+                          </button>
+                        )}
+                      </div>
+                    );
                   })}
                 </div>
                 <select

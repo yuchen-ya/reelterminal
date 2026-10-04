@@ -437,6 +437,10 @@ interface ReelTerminalDesktopBridge {
       /** Live collaboration session control (desktop main session host). */
       collabControl?: DesktopCollabControlApi;
       /** Durable analysis records and explicit user-triggered rechecks. */
+      production?: {
+        verifyReplacement(args: { projectId: string; expectedRevision: number; sourceMediaId: string; candidateMediaId: string }): Promise<{ frameCount: number; frameRate: number; durationSec: number }>;
+        captureReview(args: { projectId: string; expectedRevision: number; timelineFrame: number }): Promise<{ screenshot: string; evidence: { projectId: string; sourceRevision: number; timelineFrame: number; timeSec: number; artifactPath: string } }>;
+      };
       analysisRecords?: {
         list(args: {
           projectId: string;

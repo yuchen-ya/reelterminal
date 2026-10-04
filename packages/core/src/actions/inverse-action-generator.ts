@@ -325,6 +325,12 @@ export class InverseActionGenerator {
         });
       }
 
+      case "media/setProduction": {
+        const media = projectBefore.mediaLibrary.items.find((item) => item.id === action.params.mediaId);
+        if (!media) return null;
+        return this.createInverseAction(action, "media/setProduction", { mediaId: media.id, production: media.production ? structuredClone(media.production) : null });
+      }
+
       case "media/rename": {
         const media = projectBefore.mediaLibrary.items.find(
           (item) => item.id === action.params.mediaId,

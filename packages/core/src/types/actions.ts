@@ -130,6 +130,7 @@ export type MediaAction =
    * file on disk are never touched. Undo restores the previously displayed
    * name (explicit displayName, or the source filename fallback).
    */
+  | { type: "media/setProduction"; params: { mediaId: string; production: import("./media-production").MediaProduction | null } }
   | { type: "media/rename"; params: { mediaId: string; name: string } }
   /**
    * Relink a missing/moved source FILE: only the file reference changes —

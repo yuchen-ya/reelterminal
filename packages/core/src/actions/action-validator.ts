@@ -1,3 +1,5 @@
+import { validReviewRange } from "../types/review-range";
+import { validateMediaProduction } from "../types/media-production";
 import type {
   Action,
   ValidationResult,
@@ -141,6 +143,7 @@ export class ActionValidator {
       if (!item || typeof item !== "object") {
         return [{ code: "INVALID_PARAMS", message: "Requirement must be an object", path: "params.requirement" }];
       }
+      if (item.reviewRange !== undefined && !validReviewRange(item.reviewRange)) errors.push({ code: "INVALID_PARAMS", message: "Invalid review frame range", path: "params.requirement.reviewRange" });
       if (!item.id || typeof item.id !== "string") errors.push({ code: "INVALID_PARAMS", message: "Requirement id is required", path: "params.requirement.id" });
       if (!Number.isInteger(item.number) || item.number < 1) errors.push({ code: "INVALID_PARAMS", message: "Requirement number must be a positive integer", path: "params.requirement.number" });
       if (!item.title?.trim()) errors.push({ code: "INVALID_PARAMS", message: "Requirement title is required", path: "params.requirement.title" });
@@ -287,6 +290,7 @@ export class ActionValidator {
         break;
 
       case "media/delete":
+      case "media/setProduction":
       case "media/rename":
         if (
           !action.params.mediaId ||
@@ -307,6 +311,16 @@ export class ActionValidator {
               message: `Media with ID ${action.params.mediaId} not found`,
               path: "params.mediaId",
             });
+          }
+        }
+
+        if (action.type === "media/setProduction" && action.params.production !== null) {
+          const message = validateMediaProduction(action.params.production);
+          if (message) errors.push({ code: "INVALID_PARAMS", message, path: "params.production" });
+          else for (const step of action.params.production.steps) {
+            if (step.inputMediaIds.some((id) => id === action.params.mediaId || !project.mediaLibrary.items.some((item) => item.id === id))) {
+              errors.push({ code: "INVALID_PARAMS", message: "Input versions must exist and cannot reference the output itself", path: "params.production.steps" });
+            }
           }
         }
 

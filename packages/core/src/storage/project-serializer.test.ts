@@ -927,3 +927,60 @@ describe("ProjectSerializer work assets", () => {
     expect(normalized.workAssets).toEqual([]);
   });
 });
+
+
+it("round-trips production history and review evidence and rejects malformed new metadata", () => {
+  const serializer = new ProjectSerializer(new MemoryStorageEngine());
+  const production = {
+    status: "pending" as const,
+    notes: "候选",
+    steps: [
+      {
+        operation: "generation" as const,
+        tool: "external",
+        model: "declared",
+        inputMediaIds: [],
+        range: { startFrame: 0, endFrame: 6 },
+      },
+    ],
+  };
+  const project = makeProject({
+    mediaLibrary: {
+      items: [makeMediaItem({ production })],
+    } as unknown as Project["mediaLibrary"],
+    requirements: {
+      nextNumber: 2,
+      items: [
+        {
+          id: "review-1",
+          number: 1,
+          title: "Review",
+          description: "",
+          priority: "normal",
+          status: "review",
+          markerIds: [],
+          createdAt: 1,
+          updatedAt: 1,
+          reviewRange: {
+            coordinateSpace: "timeline",
+            startFrame: 0,
+            endFrame: 1,
+            frameRate: 30,
+            projectModifiedAt: 1,
+            mappings: [],
+            screenshot: "data:image/jpeg;base64,YQ==",
+          },
+        },
+      ],
+    },
+  });
+  const restored = serializer.importFromJson(serializer.exportToJson(project));
+  expect(restored.mediaLibrary.items[0].production).toEqual(production);
+  expect(restored.requirements).toEqual(project.requirements);
+  const corrupted = serializer
+    .exportToJson(project)
+    .replace('"pending"', '"invalid-status"');
+  expect(() => serializer.importFromJson(corrupted)).toThrow(
+    /production record/,
+  );
+});

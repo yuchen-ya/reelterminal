@@ -1,3 +1,4 @@
+import type { MediaProduction } from "./media-production";
 import type { Timeline } from "./timeline";
 import type { TextClip } from "../text/types";
 import type { ShapeClip, SVGClip, StickerClip } from "../graphics/types";
@@ -101,6 +102,7 @@ export interface ProjectMarkersState {
 }
 
 export interface MediaItem {
+  readonly production?: MediaProduction;
   readonly id: string;
   readonly name: string;
   /**

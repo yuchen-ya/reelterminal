@@ -337,6 +337,7 @@ export interface Capabilities {
     subtitles: CapabilityStatus;
     trackControls: CapabilityStatus;
     mediaRename: CapabilityStatus;
+    mediaProduction: CapabilityStatus;
     transformKeyframes: CapabilityStatus;
     volumeKeyframes: CapabilityStatus;
     basicColorGrade: CapabilityStatus;
@@ -997,6 +998,9 @@ export interface MediaReplaceOp {
   readonly clipId?: string;
   /** Internal: probed media item injected by the session's async pre-pass. */
   readonly probedMediaItem?: unknown;
+  readonly preserveFrames?: boolean;
+  /** Internal verified source duration (derived from complete CFR frame counts). */
+  readonly verifiedDuration?: number;
 }
 
 /**
@@ -1051,6 +1055,7 @@ export const EDIT_OP_TYPES = [
   "media.replace",
   "media.relink",
   "media.rename",
+  "media.setProduction",
   "clip.setChromaKey",
   "clip.setNoiseReduction",
   "clip.setDucking",
@@ -1120,6 +1125,12 @@ export interface MediaRemoveOp {
  * resolve displayName ?? name, so old projects without a displayName keep
  * showing the source filename.
  */
+export interface MediaSetProductionOp {
+  readonly op: "media.setProduction";
+  readonly mediaId: string;
+  readonly production: import("@reelterminal/core/types/media-production").MediaProduction;
+}
+
 export interface MediaRenameOp {
   readonly op: "media.rename";
   readonly mediaId: string;
@@ -1818,6 +1829,7 @@ export type EditOp =
   | ReferenceClearComparisonOp
   | MediaReplaceOp
   | MediaRelinkOp
+  | MediaSetProductionOp
   | MediaRenameOp
   | ClipSetChromaKeyOp
   | ClipSetNoiseReductionOp

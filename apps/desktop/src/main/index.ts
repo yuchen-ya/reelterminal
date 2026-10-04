@@ -42,6 +42,8 @@ import {
 } from "./startup-failures";
 import { registerLiveIpc } from "./ipc/live";
 import { registerAgentTaskIpc } from "./live/agent-task-channels";
+import { registerProductionIpc } from "./ipc/production";
+import { liveMediaRoots } from "./live/host-instance";
 import { registerAnalysisRecordsIpc } from "./ipc/analysis-records";
 import {
   disposeLiveSessionHost,
@@ -332,6 +334,7 @@ app.whenReady().then(async () => {
   registerLiveIpc(liveSessionHost);
   registerAgentTaskIpc(liveSessionHost);
   registerAnalysisRecordsIpc(liveSessionHost);
+  registerProductionIpc(liveSessionHost, liveMediaRoots());
   createWindow();
   await liveSessionHost.enable();
   initAutoUpdater();

@@ -107,6 +107,31 @@ export async function cancelExportWithin(
 
 export class JobRegistry {
   private readonly jobs = new Map<string, JobRecord>();
+  private readonly observers = new Map<string, (job: JobStatusView) => void>();
+
+  /** Persist transitions before exposing them; terminal observers release automatically. */
+  observe(jobId: string, persist: (job: JobStatusView) => void): void {
+    const job = this.jobs.get(jobId);
+    if (!job) throw new Error(`Cannot observe unknown job ${jobId}`);
+    persist(jobStatusView(job));
+    if (!TERMINAL.has(job.state)) this.observers.set(jobId, persist);
+  }
+
+  private publish(record: JobRecord): void {
+    const observer = this.observers.get(record.jobId);
+    let next = record;
+    if (observer) {
+      try {
+        observer(jobStatusView(record));
+      } catch (error) {
+        // A disk failure must never expose a successfully checkpointed completion.
+        next = { ...record, state: "error", artifact: null, result: null,
+          error: { code: "BATCH_PERSISTENCE_FAILED", message: `Batch checkpoint failed: ${error instanceof Error ? error.message : String(error)}` } };
+      }
+    }
+    this.jobs.set(next.jobId, next);
+    if (TERMINAL.has(next.state)) this.observers.delete(next.jobId);
+  }
 
   create(
     jobId: string,
@@ -156,7 +181,7 @@ export class JobRegistry {
   markCancelRequested(jobId: string): JobRecord | null {
     const job = this.jobs.get(jobId);
     if (!job || TERMINAL.has(job.state)) return job ?? null;
-    this.jobs.set(jobId, { ...job, cancelRequested: true, updatedAt: new Date().toISOString() });
+    this.publish({ ...job, cancelRequested: true, updatedAt: new Date().toISOString() });
     return this.jobs.get(jobId) ?? null;
   }
 
@@ -254,7 +279,7 @@ export class JobRegistry {
     if (!job) return;
     const next = fn(job);
     if (next !== job) {
-      this.jobs.set(jobId, { ...next, updatedAt: new Date().toISOString() });
+      this.publish({ ...next, updatedAt: new Date().toISOString() });
     }
   }
 }

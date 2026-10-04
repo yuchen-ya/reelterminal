@@ -1,3 +1,4 @@
+import { ReviewRangeControl } from "./preview/ReviewRangeControl";
 import React, {
   useRef,
   useEffect,
@@ -7906,6 +7907,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           </div>
 
           <ReferenceComparisonControl />
+          <ReviewRangeControl />
 
           <IconButton
             label={tr("Canvas snapping")}

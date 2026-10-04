@@ -6,6 +6,12 @@ import { ok, toFailure, type FacadeResult } from "./errors";
 
 /** Trusted, bundled plugins. This is an authoring API, not a sandbox. */
 export interface ToolContext {
+  readonly analysisJobs?: {
+    current: (jobId: string) => import("./types").JobStatusView | null;
+    observe: (jobId: string, persist: (job: import("./types").JobStatusView) => void) => void;
+    start: (params: import("./types").MediaAnalyzeStartParams) => Promise<FacadeResult<import("./types").MediaAnalyzeStartResult>>;
+    status: (params: import("./types").JobParams) => Promise<FacadeResult<import("./types").JobStatusView>>;
+  };
   readonly mode: "live" | "headless";
   readonly snapshot: () => Promise<{ project: Project; revision: number }>;
   readonly renderProvider?: RenderProvider;

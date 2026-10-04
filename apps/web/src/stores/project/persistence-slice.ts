@@ -191,7 +191,10 @@ export function createProjectPersistenceSlice(
     forceSave: async () => {
       // Manual save is also the recovery path for a failed first-time setup.
       await get().initializeAutoSave();
-      await autoSaveManager.forceSave(get().getFullProject());
+      const project = get().getFullProject();
+      await autoSaveManager.forceSave(project);
+      // Desktop recovery starts from Recent; an autosave alone is not listed there.
+      await projectManager.addToRecent(project);
     },
 
     getFullProject: (): Project => {

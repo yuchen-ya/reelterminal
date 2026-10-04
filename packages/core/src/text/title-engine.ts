@@ -215,6 +215,7 @@ export class TitleEngine {
     width: number,
     height: number,
     time: number = 0,
+    layoutSize: { width: number; height: number } = { width, height },
   ): TextRenderResult {
     let canvas: HTMLCanvasElement | OffscreenCanvas;
     let ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -261,16 +262,21 @@ export class TitleEngine {
         canvas,
         width,
         height,
-        textMetrics: this.measureText("", clip.style, width),
+        textMetrics: this.measureText("", clip.style, layoutSize.width),
       };
     }
 
-    const metrics = this.measureText(visibleText, style, width);
+    const metrics = this.measureText(visibleText, style, layoutSize.width);
 
     ctx.save();
 
-    const posX = transform.position.x * width;
-    const posY = transform.position.y * height;
+    // Layout remains in project pixels; glyphs rasterize directly into the
+    // output canvas instead of enlarging a previously rendered bitmap.
+    const rasterScaleX = width / layoutSize.width;
+    const rasterScaleY = height / layoutSize.height;
+    ctx.scale(rasterScaleX, rasterScaleY);
+    const posX = transform.position.x * layoutSize.width;
+    const posY = transform.position.y * layoutSize.height;
 
     ctx.translate(posX, posY);
     ctx.rotate((transform.rotation * Math.PI) / 180);
@@ -278,6 +284,10 @@ export class TitleEngine {
     ctx.globalAlpha = opacity;
 
     this.applyTextStyle(ctx, style);
+    // Canvas shadows use device pixels and do not follow the CTM.
+    ctx.shadowBlur *= Math.sqrt(rasterScaleX * rasterScaleY);
+    ctx.shadowOffsetX *= rasterScaleX;
+    ctx.shadowOffsetY *= rasterScaleY;
 
     const lines = visibleText.split("\n");
     const lineHeight = style.fontSize * style.lineHeight;

@@ -12,6 +12,7 @@ type Get = StoreApi<ProjectState>["getState"];
 type Set = StoreApi<ProjectState>["setState"];
 
 export interface CreateProjectRequirementInput {
+  readonly reviewRange?: ProjectRequirement["reviewRange"];
   readonly title: string;
   readonly description?: string;
   readonly instruction?: string;
@@ -51,6 +52,7 @@ export function createProjectRequirementsSlice(
         priority: input.priority ?? "normal",
         status: input.status ?? "ready",
         references: structuredClone(input.references ?? []),
+        ...(input.reviewRange ? { reviewRange: structuredClone(input.reviewRange) } : {}),
         markerIds: [...(input.markerIds ?? [])],
         ...(input.acceptanceCriteria?.length
           ? { acceptanceCriteria: input.acceptanceCriteria.map((item) => item.trim()).filter(Boolean) }

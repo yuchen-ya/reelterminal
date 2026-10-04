@@ -662,6 +662,10 @@ export async function buildCapabilities(
         available: true,
         details: { op: "track.update", fields: ["name", "locked", "hidden", "muted", "solo"] },
       },
+      mediaProduction: {
+        available: true,
+        details: { op: "media.setProduction", statuses: ["pending", "adopted", "rejected"], operations: ["original", "generation", "redraw", "composite", "resize", "modelEnhancement"], strictReplacement: "media.replace preserveFrames: true (requires FFprobe, verified CFR, equal decoded counts)", modelBackend: "external and explicit; metadata never runs a model", textRendering: "existing independent text layers render at export resolution" },
+      },
       mediaRename: {
         available: true,
         details: { op: "media.rename", field: "displayName", maxNameLength: 120 },

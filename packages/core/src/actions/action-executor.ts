@@ -520,6 +520,16 @@ export class ActionExecutor {
         break;
       }
 
+      case "media/setProduction": {
+        const { mediaId, production } = action.params;
+        mediaLibrary.items = mediaLibrary.items.map((item: MediaItem) => {
+          if (item.id !== mediaId) return item;
+          const { production: previous, ...rest } = item;
+          return production === null ? rest : { ...rest, production: structuredClone(production) };
+        });
+        break;
+      }
+
       case "media/rename": {
         const params = action.params as { mediaId: string; name: string };
         // `name` is the new DISPLAY name. The source filename (`item.name`)

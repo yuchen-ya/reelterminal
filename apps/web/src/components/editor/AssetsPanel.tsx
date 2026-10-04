@@ -1,3 +1,5 @@
+import { MediaProductionEditor } from "./MediaProductionEditor";
+import { PRODUCTION_OPERATIONS } from "@reelterminal/core/types/media-production";
 import { captureWorkAssetFromClip, captureWorkAssetFromClips } from "@reelterminal/core/work-assets/capture";
 import { openBoardForEntities } from "../../services/requirement-board";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -93,6 +95,7 @@ export function useMediaContextMenuItems({
   );
   const contextMenuItems: ContextMenuOption[] = [
     agentReferenceMenuItem,
+    { label: t("production.title"), icon: <Pencil size={14} />, onClick: () => window.dispatchEvent(new CustomEvent("reelterminal:production-edit", { detail: item.id })) },
     { label: t("requirementBoard.addFromSelection"), icon: <Plus size={14} />, onClick: () => openBoardForEntities([item.id]) },
     {
       label: t("media.renameAction"),
@@ -750,10 +753,19 @@ export const AssetsPanel: React.FC = () => {
   // to the source filename for items never renamed (mediaDisplayName resolves
   // displayName ?? name).
   const [mediaSearch, setMediaSearch] = useState("");
+  const [productionMediaId, setProductionMediaId] = useState<string | null>(null);
+  const [productionFilter, setProductionFilter] = useState("");
+  useEffect(() => {
+    const edit = (event: Event) => setProductionMediaId((event as CustomEvent<string>).detail);
+    window.addEventListener("reelterminal:production-edit", edit);
+    return () => window.removeEventListener("reelterminal:production-edit", edit);
+  }, []);
+  const productionMedia = mediaItems.find((item) => item.id === productionMediaId);
+
   const normalizedMediaSearch = mediaSearch.trim().toLowerCase();
 
   // Filter media items by the missing-assets toggle and the search box, then optional sort
-  const baseFilteredItems = mediaItems.filter((item) =>
+  const baseFilteredItems = mediaItems.filter((item) => !productionFilter || item.production?.status === productionFilter || item.production?.steps.some((step) => step.operation === productionFilter)).filter((item) =>
     showOnlyMissing ? item.isPlaceholder : true,
   ).filter((item) =>
     normalizedMediaSearch
@@ -1232,7 +1244,12 @@ export const AssetsPanel: React.FC = () => {
         return (
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="px-4 pt-[18px] shrink-0">
+              {productionMedia && <MediaProductionEditor key={productionMedia.id} item={productionMedia} onClose={() => setProductionMediaId(null)} />}
               <div className="font-bold text-[18px] text-fg mb-[14px]">{t("projectAssets.title")}</div>
+              <select aria-label={t("production.filter")} className="mb-3 w-full rounded border border-border bg-bg-2 p-2 text-xs text-fg" value={productionFilter} onChange={(event) => setProductionFilter(event.target.value)}>
+                <option value="">{t("production.all")}</option>
+                {["pending", "adopted", "rejected", ...PRODUCTION_OPERATIONS].map((value) => <option key={value} value={value}>{t(`production.${value}`)}</option>)}
+              </select>
               <div className="flex gap-2 mb-[18px]">
                 <button
                   type="button"

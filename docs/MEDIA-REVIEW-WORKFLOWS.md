@@ -256,3 +256,10 @@ is enabled. Local rechecks omit all cloud fields. A record containing
 `videoReview` requires a new, unchecked-by-default upload authorization for
 each run; the earlier review's authorization is never reused. Provider status
 and prose remain labeled **Cloud opinion · not a pass**.
+
+## Production records, review tasks and batches
+
+The M3 workflow extends this repair loop with shared source/candidate records,
+frame-range review tasks, candidate adoption and local analysis batch recovery.
+See [PRODUCTION-MANAGEMENT.md](PRODUCTION-MANAGEMENT.md) for commands, GUI entry
+points, strict `media.replace` frame constraints and explicit support limits.

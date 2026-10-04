@@ -966,10 +966,10 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
                     <div className="flex items-center gap-2">
                       <Zap size={14} className="text-primary" />
                       <Text type="supporting" color="secondary" weight="bold" className="text-xs">
-                        {t("Enhance Quality (Upscaling)")}</Text>
+                        {t("production.exportResampling")}</Text>
                     </div>
                     <ToolcraftSwitchControl
-                      ariaLabel={t("Enhance Quality (Upscaling)")}
+                      ariaLabel={t("production.exportResampling")}
                       checked={customSettings.upscaling?.enabled ?? false}
                       showLabel={false}
                       onCheckedChange={(checked) =>

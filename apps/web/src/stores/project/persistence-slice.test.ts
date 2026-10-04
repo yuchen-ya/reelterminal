@@ -142,6 +142,15 @@ describe("project persistence initialization", () => {
       autoSaveMocks.forceSave.mock.invocationCallOrder.at(-1)!,
     );
     expect(autoSaveMocks.forceSave).toHaveBeenLastCalledWith(successful.project);
+    expect(addToRecent).toHaveBeenLastCalledWith(successful.project);
+    expect(autoSaveMocks.forceSave.mock.invocationCallOrder.at(-1)).toBeLessThan(addToRecent.mock.invocationCallOrder.at(-1)!);
+  });
+
+  it("does not advertise a saved recent project when persistence failed", async () => {
+    const { slice } = await createHarness();
+    autoSaveMocks.forceSave.mockRejectedValueOnce(new Error("storage full"));
+    await expect(slice.forceSave()).rejects.toThrow("storage full");
+    expect(addToRecent).not.toHaveBeenCalled();
   });
 
   it("queues an unsaved project snapshot when switching projects", async () => {

@@ -166,6 +166,10 @@ const api = {
       ipcRenderer.invoke(CHANNELS.collabSetAccess, { access }) as Promise<LiveCollabStatus>,
     openWorkspace: () => ipcRenderer.invoke(CHANNELS.collabOpenWorkspace, undefined),
   },
+  production: {
+    verifyReplacement: (args: unknown) => ipcRenderer.invoke(CHANNELS.productionVerifyReplacement, args),
+    captureReview: (args: unknown) => ipcRenderer.invoke(CHANNELS.productionCaptureReview, args),
+  },
   analysisRecords: {
     list: (args: { projectId: string; mediaId?: string; limit?: number }) =>
       ipcRenderer.invoke(CHANNELS.analysisRecordsList, args),

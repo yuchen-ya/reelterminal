@@ -4,18 +4,19 @@ import { bindTools, type PluginBindings } from "./plugin-api";
 import { PLUGIN_TOOLS } from "./plugins";
 import { FacadeError, type FacadeResult } from "./errors";
 import { resolveContainedPathDetailed } from "./media/path-roots";
-import type { ProjectState } from "./types";
+import type { MediaAnalyzeStartParams, MediaAnalyzeStartResult, JobParams, JobStatusView, ProjectState } from "./types";
 import type { RenderProvider } from "./providers";
 
 export type BundledToolBindings = PluginBindings<typeof PLUGIN_TOOLS>;
 
 export function bindBundledTools(
-  session: { projectGetState(): Promise<FacadeResult<ProjectState>> },
+  session: { currentJob(jobId: string): JobStatusView | null; observeJob(jobId: string, persist: (job: JobStatusView) => void): void; projectGetState(): Promise<FacadeResult<ProjectState>>; mediaAnalyzeStart(params: MediaAnalyzeStartParams): Promise<FacadeResult<MediaAnalyzeStartResult>>; jobStatus(params: JobParams): Promise<FacadeResult<JobStatusView>> },
   config: { mediaRoots?: readonly string[]; artifactRoot?: string; renderProvider?: RenderProvider },
   mode: "live" | "headless",
 ): BundledToolBindings {
   return bindTools(PLUGIN_TOOLS, {
     mode,
+    analysisJobs: { current: (id) => session.currentJob(id), observe: (id, persist) => session.observeJob(id, persist), start: (params) => session.mediaAnalyzeStart(params), status: (params) => session.jobStatus(params) },
     renderProvider: config.renderProvider,
     artifactRoot: config.artifactRoot,
     mediaRoots: config.mediaRoots ?? [],

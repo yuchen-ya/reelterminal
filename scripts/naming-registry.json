@@ -10,6 +10,18 @@
   },
   "entries": [
     {
+      "files": "apps/web/src/components/editor/preview/ReviewRangeControl.tsx",
+      "pattern": "window\\.openreel",
+      "category": 5,
+      "reason": "兼容入口：复用旧桌面桥接别名读取 production API。"
+    },
+    {
+      "files": "apps/web/src/services/production-review.ts",
+      "pattern": "window\\.openreel",
+      "category": 5,
+      "reason": "兼容入口：复用旧桌面桥接别名读取 production API。"
+    },
+    {
       "files": "apps/desktop/e2e/harness/launch.ts",
       "pattern": "openreel-locale",
       "category": 4,
