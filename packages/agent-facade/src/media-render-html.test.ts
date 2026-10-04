@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { deflateSync } from "node:zlib";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createAgentFacade } from "./index";
@@ -93,8 +93,8 @@ describe("media.render_html", () => {
   let otherRoot: string;
 
   beforeEach(async () => {
-    mediaRoot = await mkdtemp(path.join(tmpdir(), "htmlrender-media-"));
-    otherRoot = await mkdtemp(path.join(tmpdir(), "htmlrender-other-"));
+    mediaRoot = await realpath(await mkdtemp(path.join(tmpdir(), "htmlrender-media-")));
+    otherRoot = await realpath(await mkdtemp(path.join(tmpdir(), "htmlrender-other-")));
   });
 
   afterEach(async () => {

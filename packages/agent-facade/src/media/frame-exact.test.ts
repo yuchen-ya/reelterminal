@@ -194,12 +194,10 @@ describe("extractFramesExact", () => {
     expect(leftover).toBeNull();
   });
 
-  it.skipIf(skip())("falls back to ordered decoding when the select counter resets mid-stream", async () => {
-    // A concat-demuxer VFR file (10fps + 25fps + 15fps segments) makes the
-    // select filter's n counter reset partway through; trusting it returned
-    // WRONG frames silently. The extractor must detect the discontinuity,
-    // fall back to ordered decoding, and still return exact frames whose PTS
-    // match ffprobe's ground truth.
+  it.skipIf(skip())("returns exact presentation frames across concatenated VFR segments", async () => {
+    // Some FFmpeg versions reset the select counter for this concat-demuxer
+    // input. Verify the requested frame indices and PTS against ffprobe's
+    // ground truth whether extraction uses select or ordered decoding.
     const concatDir = join(dir, "vfr-concat");
     await mkdir(concatDir, { recursive: true });
     const enc = (input: string, output: string) => ["-hide_banner", "-loglevel", "error", "-y",
@@ -224,13 +222,12 @@ describe("extractFramesExact", () => {
     expect(truthPts.length).toBe(50);
 
     const outDir = join(concatDir, "out");
-    const { frames, limitations } = await extractFramesExact(
+    const { frames } = await extractFramesExact(
       binaries!.ffmpeg, vfrPath, [0, 9, 10, 34, 35, 49], outDir);
     expect(frames.map((frame) => frame.frame)).toEqual([0, 9, 10, 34, 35, 49]);
     for (const frame of frames) {
       expect(frame.ptsTimeSec).toBeCloseTo(truthPts[frame.frame]!, 4);
     }
-    expect(limitations.join(" ")).toContain("counter was not continuous");
   });
 
   it("parses showinfo lines", () => {

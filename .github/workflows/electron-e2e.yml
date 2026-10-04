@@ -42,7 +42,9 @@ jobs:
         run: pnpm --filter @reelterminal/runtime-chromium exec playwright-core install chromium
       - name: Install ffmpeg
         if: runner.os == 'macOS'
-        run: brew install ffmpeg
+        run: |
+          brew install ffmpeg-full
+          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
       - name: Install ffmpeg (Windows)
         if: runner.os == 'Windows'
         run: choco install ffmpeg --no-progress -y

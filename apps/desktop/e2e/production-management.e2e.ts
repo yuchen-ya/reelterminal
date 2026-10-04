@@ -151,7 +151,7 @@ test("M3 live: frame evidence, strict GUI adoption/undo, automatic checkpoints a
       .setInputFiles(source);
     const sourceCard = launched.page.locator("[data-live-media-id]").first();
     await sourceCard.waitFor();
-    await sourceCard.dblclick({ position: { x: 15, y: 15 } });
+    await sourceCard.dblclick();
     await launched.page
       .getByRole("button", { name: "Keep Current", exact: true })
       .click();

@@ -29,6 +29,7 @@ implements an alias. Current names take precedence when both are defined.
 | Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) | Browser page load. | IP address, user agent, referrer, and requested font families. | The hosted web editor uses the fixed Google Fonts stylesheet. Desktop packages use local fonts. |
 | PostHog host | When both PostHog environment values are configured. | Product event names and properties. | Omit either value to disable analytics. |
 | `api.openreel.video` | Cloud template reads, template publishing, highlight analysis, or share-service calls. | Reads send request metadata; publishing sends template JSON; highlight analysis sends transcript text and audio metrics; share upload sends the selected video. | `VITE_REELTERMINAL_CLOUD=off` disables first-party cloud calls. No editor screen currently invokes share upload. |
+| `app.openreel.video` | Desktop generation of a public share-page link. | Link generation itself sends no request; opening the link contacts the upstream site. | The desktop preload currently hard-codes this public origin. |
 | `cloud.openreel.video` | Cloud transcription. | Extracted clip audio and language settings. | The cloud action is labeled; the UI discloses audio upload before submission. The cloud switch disables the action. |
 | Whisper model host (`media.openreel.video/models/`) | Opening auto-captions and loading a model. | Model files only; recognition runs locally. | No URL override or disable switch. |
 | FFmpeg.wasm CDN (`unpkg.com`) | First operation that needs the fallback core. | Core files only. | `VITE_REELTERMINAL_FFMPEG_CORE_URL` changes the download location; the fallback cannot be disabled. |
@@ -50,6 +51,8 @@ implements an alias. Current names take precedence when both are defined.
 | Application | Destination | Trigger and data | Controls |
 |---|---|---|---|
 | `apps/studio` | jsDelivr and Google model storage | Loading MediaPipe code, WebAssembly, and models for subject or face previews. No user media is sent. | No URL override or disable switch. |
+| `apps/studio` | Google Fonts | Page load requests Geist and Geist Mono stylesheets and font files; sends ordinary request metadata. | No URL override or disable switch. |
+| `apps/studio` | Relative `/samples/` URLs | Selecting a built-in sample downloads video from the deployment's own origin. The sample hosting guide names `cdn.openreel.video` as the upstream production host. | No sample files are checked in. The deployment must supply them; their rights records are still unconfirmed. |
 | `apps/studio` | `VITE_API_URL` marketplace service | Listing, saving, validating, or submitting drafts sends graph JSON, titles, and manifests. Requests include the configured client identity headers. | Change the service base URL; requests and identity headers have no disable switch. |
 | `apps/image` | Google Fonts | Loading the app and its font choices sends request metadata and requested families. | No URL override or disable switch. |
 | `apps/image` | IMG.LY model/CDN hosts | First use of background removal downloads WebAssembly and model files. The image is processed locally. | The app uses the package's default asset host. |
@@ -60,6 +63,13 @@ Desktop Agent video review is opt-in through `DASHSCOPE_API_KEY`. It sends a
 bounded inspection copy of the video and the review question to the configured
 Qwen-compatible endpoint. The endpoint is restricted to approved HTTPS hosts.
 See [Cloud video review](CLOUD-VIDEO-REVIEW.md).
+
+## Resource provenance
+
+See [Asset, font, and model rights review](ASSET-LICENSE-REVIEW.md) for the
+checked-in resources and unresolved provenance of the sample videos, Whisper
+ONNX mirrors, and FFmpeg/vidstab WebAssembly cores. A working download URL is
+not evidence of permission to mirror or redistribute its contents.
 
 ## Uploads
 

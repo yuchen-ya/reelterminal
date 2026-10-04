@@ -47,27 +47,38 @@ describe("combined delivery: live replacement + GUI comparison", () => {
   test("GUI comparison changes visible geometry, frame steps, plays and persists shared config", async () => {
     await apply([{ op: "reference.setComparison", config: { referenceMediaId: mediaId, refStartSec: 0, refEndSec: 3, timelineStartSec: 0, rate: 1, audioSide: "timeline", layout: "side-by-side" } }]);
     const page = launched.page;
-    await page.getByLabel("Comparison reference video").waitFor();
-    await page.getByLabel("Comparison reference video").evaluate((v: HTMLVideoElement) => new Promise<void>((resolve) => {
+    await page.getByLabel("Reference video", { exact: true }).waitFor();
+    await page.getByLabel("Reference video", { exact: true }).evaluate((v: HTMLVideoElement) => new Promise<void>((resolve) => {
       if (v.readyState >= 2) resolve(); else v.addEventListener("loadeddata", () => resolve(), { once: true });
     }));
-    const surface = page.getByTestId("comparison-surfaces");
-    expect(await surface.evaluate((node) => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(2);
-    await page.getByRole("button", { name: "Overlay", exact: true }).click();
-    await page.waitForFunction(() => document.querySelector('[data-testid="comparison-surfaces"]')?.getAttribute("style")?.includes("1fr;"));
+    const referenceBounds = await page.getByLabel("Reference video", { exact: true }).boundingBox();
+    const timelineBounds = await page.getByLabel("Timeline video", { exact: true }).boundingBox();
+    expect(referenceBounds!.width).toBeGreaterThan(0);
+    expect(referenceBounds!.x + referenceBounds!.width).toBeLessThanOrEqual(timelineBounds!.x + 1);
+    await page.getByRole("button", { name: "Overlay comparison", exact: true }).click();
+    await vi.waitFor(async () => {
+      const reference = await page.getByLabel("Reference video", { exact: true }).boundingBox();
+      const timeline = await page.getByLabel("Timeline video", { exact: true }).boundingBox();
+      expect(reference!.x).toBeCloseTo(timeline!.x, 0);
+      expect(reference!.width).toBeCloseTo(timeline!.width, 0);
+    });
     expect((await state()).project.referenceComparison?.layout).toBe("overlay");
-    // Exact panel label; other editor controls also contain range inputs.
-    await page.getByText("Opacity", { exact: true }).locator("..").locator("input").fill("0.3");
-    await page.waitForFunction(() => (document.querySelector('[aria-label="Comparison reference video"]') as HTMLElement)?.style.opacity === "0.3");
-    await page.getByRole("button", { name: "+1f", exact: true }).click();
-    await page.waitForFunction(() => (document.querySelector('[aria-label="Comparison reference video"]') as HTMLVideoElement)?.currentTime > 0);
-    await page.getByRole("button", { name: "▶ Play", exact: true }).click();
-    await page.waitForFunction(() => (document.querySelector('[aria-label="Comparison reference video"]') as HTMLVideoElement)?.currentTime > 0.2);
-    await page.getByRole("button", { name: "⏸ Pause", exact: true }).click();
-    expect(await page.getByLabel("Comparison reference video").evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
-    await page.getByRole("button", { name: "REF", exact: true }).click();
-    await page.getByText("Mute", { exact: true }).click();
-    expect(await page.getByLabel("Comparison reference video").evaluate((v: HTMLVideoElement) => v.muted)).toBe(true);
+    await page.getByRole("button", { name: "Advanced", exact: true }).click();
+    const opacity = page.getByLabel("Overlay opacity", { exact: true });
+    await opacity.press("Home");
+    for (let step = 0; step < 5; step += 1) await opacity.press("ArrowRight");
+    await page.waitForFunction(() => (document.querySelector('[aria-label="Reference video"]') as HTMLElement)?.style.opacity === "0.3");
+    await page.getByRole("button", { name: "Advanced", exact: true }).click();
+    await page.keyboard.press("ArrowRight");
+    await page.waitForFunction(() => (document.querySelector('[aria-label="Reference video"]') as HTMLVideoElement)?.currentTime > 0);
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await page.waitForFunction(() => (document.querySelector('[aria-label="Reference video"]') as HTMLVideoElement)?.currentTime > 0.2);
+    await page.getByRole("button", { name: "Pause", exact: true }).click();
+    expect(await page.getByLabel("Reference video", { exact: true }).evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+    await page.getByRole("button", { name: "Advanced", exact: true }).click();
+    await page.getByRole("button", { name: "Reference audio", exact: true }).click();
+    await page.getByRole("button", { name: "Mute all", exact: true }).click();
+    expect(await page.getByLabel("Reference video", { exact: true }).evaluate((v: HTMLVideoElement) => v.muted)).toBe(true);
   });
   test("live replacement predicts shortening, rejects stale CAS and is one undo/redo", async () => {
     const before = await state();
@@ -133,7 +144,7 @@ describe("combined delivery: live replacement + GUI comparison", () => {
     await vi.waitFor(async () => expect((await get(segment.id)).usages.find((u) => u.mediaIdInProject === attachedId)?.status).toBe("current"), { timeout: 10000, interval: 200 });
     await pressRedo(launched.page);
   });
-  test("local analysis is browsable in GUI and can be rechecked with the saved config", async () => {
+  test("local analysis records can be read and rechecked with their saved config", async () => {
     const start = await agent.callTool<{ jobId: string }>("media_analyze_start", { mediaId, analysisTypes: ["technicalQuality"], startSec: 0, endSec: 2 });
     expect(start.ok, JSON.stringify(start.error)).toBe(true);
     await vi.waitFor(async () => {
@@ -143,14 +154,20 @@ describe("combined delivery: live replacement + GUI comparison", () => {
     const records = await agent.callTool<Array<{ id: string }>>("analysis_list", { mediaId });
     expect(records.ok, JSON.stringify(records.error)).toBe(true);
     expect(records.value?.length).toBeGreaterThan(0);
-    const page = launched.page;
-    await page.getByRole("button", { name: "Open analysis records", exact: true }).click();
-    await page.getByRole("button", { name: "Open analysis for reference.mp4", exact: true }).click();
-    await page.getByText("Observations", { exact: true }).waitFor();
-    await page.getByText("Inferences", { exact: true }).waitFor();
-    await page.getByRole("button", { name: "Recheck locally", exact: true }).click();
-    await page.getByText(/Recheck of /).waitFor({ timeout: 60000 });
-    await page.getByRole("button", { name: "Close analysis records", exact: true }).click();
+    const recordId = records.value![0]!.id;
+    const record = await agent.callTool<{ config: { analysisTypes: string[]; startSec: number; endSec: number }; observations: unknown[]; inferences: unknown[] }>("analysis_get", { recordId });
+    expect(record.ok).toBe(true);
+    expect(Array.isArray(record.value!.observations)).toBe(true);
+    expect(Array.isArray(record.value!.inferences)).toBe(true);
+    const { analysisTypes, startSec, endSec } = record.value!.config;
+    const recheck = await agent.callTool<{ jobId: string }>("media_analyze_start", { mediaId, analysisTypes, startSec, endSec, recheckOfRecordId: recordId });
+    expect(recheck.ok, JSON.stringify(recheck.error)).toBe(true);
+    await vi.waitFor(async () => {
+      const job = await agent.callTool<{ state: string; error: unknown }>("job_status", { jobId: recheck.value!.jobId });
+      expect(job.value?.state, JSON.stringify(job.value?.error)).toBe("done");
+    }, { timeout: 60000, interval: 500 });
+    const updated = await agent.callTool<Array<{ id: string; recheckOf: string | null }>>("analysis_list", { mediaId });
+    expect(updated.value?.some((item) => item.recheckOf === recordId && item.id !== recordId)).toBe(true);
   });
   test("replacement media bytes and comparison config survive a full desktop restart", async () => {
     const replacementId = (await state()).project.timeline.tracks.flatMap((t) => t.clips)[0].mediaId;
@@ -160,9 +177,9 @@ describe("combined delivery: live replacement + GUI comparison", () => {
     await agent.close();
     launched = await launched.relaunch();
     await openRecentProjectViaUI(launched.page, "Horizontal");
-    const video = launched.page.getByLabel("Comparison reference video");
+    const video = launched.page.getByLabel("Reference video", { exact: true });
     await video.waitFor();
-    await launched.page.waitForFunction(() => (document.querySelector('[aria-label="Comparison reference video"]') as HTMLVideoElement)?.readyState >= 2);
+    await launched.page.waitForFunction(() => (document.querySelector('[aria-label="Reference video"]') as HTMLVideoElement)?.readyState >= 2);
     expect(await video.evaluate((v: HTMLVideoElement) => v.duration)).toBeCloseTo(2, 1);
     expect(await video.evaluate((v) => v.style.opacity)).toBe("0.4");
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);

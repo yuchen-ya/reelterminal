@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { randomBytes } from "node:crypto";
 import { createAgentFacade } from "./index";
 import type { RenderProvider } from "./providers";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
@@ -20,7 +21,9 @@ async function noisePngBytes(width = 1024, height = 576): Promise<Buffer> {
   const dir = await mkdtemp(path.join(tmpdir(), "visual-noise-"));
   try {
     const png = path.join(dir, "noise.png");
-    await execute("ffmpeg", ["-hide_banner", "-v", "error", "-f", "lavfi", "-i", `nullsrc=s=${width}x${height},geq=random(1)*255:random(1)*255:random(1)*255`, "-frames:v", "1", "-y", png], { timeout: 30000 });
+    const raw = path.join(dir, "noise.rgb");
+    await writeFile(raw, randomBytes(width * height * 3));
+    await execute("ffmpeg", ["-hide_banner", "-v", "error", "-f", "rawvideo", "-pixel_format", "rgb24", "-video_size", `${width}x${height}`, "-i", raw, "-frames:v", "1", "-y", png], { timeout: 30000 });
     const { readFile } = await import("node:fs/promises");
     return readFile(png);
   } finally {

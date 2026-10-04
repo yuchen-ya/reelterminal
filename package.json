@@ -18,7 +18,7 @@
     "test:security": "node --test scripts/security/*.test.mjs",
     "audit:dependencies": "pnpm test:security && pnpm audit",
     "typecheck": "pnpm -r typecheck",
-    "clean": "pnpm -r clean"
+    "clean": "pnpm -r run clean"
   },
   "keywords": [
     "video-editor",

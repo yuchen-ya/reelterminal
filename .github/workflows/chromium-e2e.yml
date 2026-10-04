@@ -126,7 +126,9 @@ jobs:
 
       - name: Install ffmpeg (macOS)
         if: runner.os == 'macOS'
-        run: brew install ffmpeg
+        run: |
+          brew install ffmpeg-full
+          echo "$(brew --prefix ffmpeg-full)/bin" >> "$GITHUB_PATH"
 
       - name: Run facade suite (pure Node; platform-independent)
         run: pnpm --filter @reelterminal/agent-facade test:run

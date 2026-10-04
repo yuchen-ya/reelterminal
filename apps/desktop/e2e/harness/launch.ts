@@ -11,7 +11,7 @@
  * captured for the token-hygiene assertion: the live endpoint token must
  * never appear in any of them.
  */
-import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright-core";
@@ -63,8 +63,9 @@ function makeRunDirs(runDir?: string): {
   userDataDir: string;
   endpointFile: string;
 } {
-  const dir = runDir ?? mkdtempSync(path.join(tmpdir(), "reelterminal-e2e-"));
-  mkdirSync(dir, { recursive: true });
+  const requestedDir = runDir ?? mkdtempSync(path.join(tmpdir(), "reelterminal-e2e-"));
+  mkdirSync(requestedDir, { recursive: true });
+  const dir = realpathSync(requestedDir);
   return {
     runDir: dir,
     userDataDir: path.join(dir, "user-data"),

@@ -243,19 +243,16 @@ Query verbs (read-only, both headless and live): `analysis.list
 unchanged: `videoReview` still requires the explicit `cloudUpload: true`
 after user authorization; local analysis types never upload anything.
 
-The desktop collaboration bar's **Analysis** entry lists records for the open
-project and keeps observations, inferences, recommendations, unknowns, and
-cloud opinion visibly separate. Timestamped local evidence can seek to a
-constant-speed occurrence on the timeline or loop the analyzed range; ranges
-that are absent from the timeline or use variable-speed/freeze mapping are
-reported as unavailable rather than approximated. Current/source-changed/
-source-missing state is checked when the panel reads each record.
+Read durable analysis records through `analysis.list` and `analysis.get` in
+the CLI or MCP client. Observations, inferences, recommendations, unknowns,
+and cloud opinion remain separate fields. The current desktop collaboration
+bar exposes Agent Access and the Board; it has no standalone Analysis panel.
 
-The same panel can run a linked same-configuration recheck while Agent Session
-is enabled. Local rechecks omit all cloud fields. A record containing
-`videoReview` requires a new, unchecked-by-default upload authorization for
-each run; the earlier review's authorization is never reused. Provider status
-and prose remain labeled **Cloud opinion · not a pass**.
+To recheck, pass the saved local analysis configuration and
+`recheckOfRecordId` to `media.analyze_start` while editing is authorized.
+Local rechecks omit cloud upload fields. A record containing `videoReview`
+requires explicit `cloudUpload: true` for each new run; the earlier review's
+authorization is never reused. Cloud opinion is not acceptance evidence.
 
 ## Production records, review tasks and batches
 

@@ -36,7 +36,7 @@ test("first-time user can find help, finish the tour, import, edit, save and exp
     const sourcePath = path.join(runDir, "first-media.png");
     copyFileSync(path.join(DESKTOP_DIR, "build/icon.png"), sourcePath);
     await page.locator('input[type="file"][aria-label="Import media"]').setInputFiles(sourcePath);
-    await page.locator("[data-live-media-id]").first().dblclick({ position: { x: 15, y: 15 } });
+    await page.locator("[data-live-media-id]").first().dblclick();
     await page.getByRole("button", { name: "Select clip first-media.png", exact: true }).waitFor();
     await page.getByRole("button", { name: "Select clip first-media.png", exact: true }).click();
     await page.keyboard.press("Home");
