@@ -148,22 +148,22 @@ async function launch(
     if (firstWindowTimer) clearTimeout(firstWindowTimer);
   }
   capturePage(page);
-  if (process.env.REELTERMINAL_E2E_SMALL_WINDOW === "1") {
-    const contentSize = await app.evaluate(({ BrowserWindow }) => {
-      const [window] = BrowserWindow.getAllWindows();
-      if (!window) throw new Error("Electron window disappeared before resize");
-      window.setContentSize(1024, 720);
-      return window.getContentSize();
-    });
-    // macOS CI limits the requested height to its 700px desktop work area.
-    // Both platforms still exercise the small layout with real pointer events.
-    if (contentSize[0] !== 1024 || contentSize[1] < 700 || contentSize[1] > 720) {
-      throw new Error(
-        `Could not set E2E content to width 1024 and height 700–720; actual content is ${contentSize[0]}x${contentSize[1]}`,
-      );
-    }
-  }
   try {
+    if (process.env.REELTERMINAL_E2E_SMALL_WINDOW === "1") {
+      const contentSize = await app.evaluate(({ BrowserWindow }) => {
+        const [window] = BrowserWindow.getAllWindows();
+        if (!window) throw new Error("Electron window disappeared before resize");
+        window.setContentSize(1024, 720);
+        return window.getContentSize();
+      });
+      // macOS CI limits the requested height to its 700px desktop work area.
+      // Both platforms still exercise the small layout with real pointer events.
+      if (contentSize[0] !== 1024 || contentSize[1] < 700 || contentSize[1] > 720) {
+        throw new Error(
+          `Could not set E2E content to width 1024 and height 700–720; actual content is ${contentSize[0]}x${contentSize[1]}`,
+        );
+      }
+    }
     await page.waitForLoadState("domcontentloaded", { timeout: PAGE_LOAD_TIMEOUT_MS });
     // Every desktop UI E2E uses English labels. The isolated profile has no
     // user preference, so explicitly seed that preference and reload before
@@ -179,15 +179,20 @@ async function launch(
     })).catch(() => null);
     const safePageState = JSON.stringify(pageState).replace(/\b[a-f0-9]{64}\b/gi, "[redacted]");
     const diagnostics = [
-      `Electron page failed to load: ${error instanceof Error ? error.message : String(error)}`,
+      `Electron window setup failed: ${error instanceof Error ? error.message : String(error)}`,
       `page=${safePageState}`,
       `main stdout tail: ${mainStdout.slice(-30).join("").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
       `main stderr tail: ${mainStderr.slice(-30).join("").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]")}`,
     ].join("\n");
     const child = app.process();
-    void app.close().catch(() => undefined);
-    if (!hasProcessExited(child)) child.kill("SIGKILL");
-    await waitForProcessExit(child, 5_000).catch(() => undefined);
+    // Exit the native app before killing its Windows command wrapper.
+    void app.evaluate(({ app }) => app.exit(0)).catch(() => undefined);
+    try {
+      await waitForProcessExit(child, 5_000);
+    } catch {
+      if (!hasProcessExited(child)) child.kill("SIGKILL");
+      await waitForProcessExit(child, 5_000);
+    }
     throw new Error(diagnostics);
   }
 
