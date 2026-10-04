@@ -67,7 +67,7 @@ describe("SaveTemplateDialog cloud publish copy", () => {
     renderDialog();
     expect(
       screen.getByText(
-        "Publishes this template (name, description, and timeline structure) to the OpenReel public cloud template library, where other users can browse and use it.",
+        "Sends the template name, description and timeline structure to the template service, where other users may access it.",
       ),
     ).toBeInTheDocument();
     expect(
@@ -85,19 +85,17 @@ describe("SaveTemplateDialog cloud publish copy", () => {
 });
 
 describe("SaveTemplateDialog cloud-off precheck", () => {
-  it("disables the Cloud option, selects Local, and explains why", () => {
+  it("offers only local saving when cloud is unavailable", () => {
     stubs.cloudEnabled.value = false;
     renderDialog();
-    const cloud = screen.getByRole("checkbox", { name: "Cloud" });
-    expect(cloud).toBeDisabled();
-    expect(cloud).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByRole("checkbox", { name: "Cloud" })).toBeNull();
     expect(screen.getByRole("checkbox", { name: "Local" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
     expect(
       screen.getByText(
-        "Cloud templates are disabled in this build's configuration.",
+        "Saved locally in your browser storage",
       ),
     ).toBeInTheDocument();
   });

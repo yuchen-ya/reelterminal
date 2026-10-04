@@ -2,7 +2,7 @@
  * Centralized API endpoint configuration.
  *
  * Business modules import these constants for cloud configuration.
- * VITE_REELTERMINAL_CLOUD=off disables first-party cloud requests;
+ * Cloud integrations are off by default; VITE_REELTERMINAL_CLOUD=on opts in;
  * VITE_OPENREEL_CLOUD is accepted when the primary setting is unset.
  */
 
@@ -18,34 +18,20 @@ const readEnvAlias = (newName: string, oldName: string): string | undefined => {
   return env[oldName];
 };
 
-const isDev = import.meta.env.DEV;
+/** Cloud integrations require an explicit opt-in and a configured backend. */
+const cloudRequested =
+  readEnvAlias("VITE_REELTERMINAL_CLOUD", "VITE_OPENREEL_CLOUD")?.toLowerCase() === "on";
 
-/**
- * Domain-level switch for all first-party cloud services (cloud
- * templates, sharing, transcription, highlight AI). Only the exact
- * value `off` disables; there is deliberately no "enable" value.
- */
-export const REELTERMINAL_CLOUD_ENABLED =
-  readEnvAlias("VITE_REELTERMINAL_CLOUD", "VITE_OPENREEL_CLOUD")?.toLowerCase() !== "off";
-
-/**
- * ReelTerminal cloud services (templates, sharing, highlight AI).
- *
- * VITE_REELTERMINAL_CLOUD_URL takes precedence over VITE_OPENREEL_CLOUD_URL
- * and VITE_CLOUD_API_URL.
- */
 export const REELTERMINAL_CLOUD_URL =
-  readEnvAlias("VITE_REELTERMINAL_CLOUD_URL", "VITE_OPENREEL_CLOUD_URL") ||
-  env.VITE_CLOUD_API_URL ||
-  (isDev ? "http://localhost:8787" : "https://api.openreel.video");
-
-/**
- * Transcription service (GPU). Override with VITE_REELTERMINAL_TRANSCRIBE_URL
- * (legacy name VITE_OPENREEL_TRANSCRIBE_URL).
- */
+  (readEnvAlias("VITE_REELTERMINAL_CLOUD_URL", "VITE_OPENREEL_CLOUD_URL") ??
+    env.VITE_CLOUD_API_URL) || "";
 export const REELTERMINAL_TRANSCRIBE_URL =
-  readEnvAlias("VITE_REELTERMINAL_TRANSCRIBE_URL", "VITE_OPENREEL_TRANSCRIBE_URL") ||
-  "https://cloud.openreel.video";
+  readEnvAlias("VITE_REELTERMINAL_TRANSCRIBE_URL", "VITE_OPENREEL_TRANSCRIBE_URL") || "";
+
+export const REELTERMINAL_CLOUD_ENABLED =
+  cloudRequested && Boolean(REELTERMINAL_CLOUD_URL);
+export const REELTERMINAL_TRANSCRIBE_ENABLED =
+  cloudRequested && Boolean(REELTERMINAL_TRANSCRIBE_URL);
 
 /**
  * Runtime-loaded FFmpeg.wasm and vidstab cores. Override download locations with

@@ -25,13 +25,13 @@
     "systemDefault": "System default"
   },
   "templates": {
-    "cloudDisabledTitle": "Cloud templates disabled",
-    "cloudDisabledDetail": "Cloud templates are disabled in this build's configuration. Built-in templates are still available.",
+    "cloudDisabledTitle": "Built-in and local templates",
+    "cloudDisabledDetail": "Choose a built-in template or one saved on this device.",
     "cloudActionUnavailable": "Cloud templates are disabled in this build's configuration.",
     "cloudFailedTitle": "Cloud templates failed to load",
     "cloudFailedDetail": "Cloud templates couldn't be reached. Built-in templates are still available.",
     "retry": "Retry",
-    "cloudSaveNotice": "Publishes this template (name, description, and timeline structure) to the OpenReel public cloud template library, where other users can browse and use it.",
+    "cloudSaveNotice": "Sends the template name, description and timeline structure to the template service, where other users may access it.",
     "localSaveNotice": "Saved locally in your browser storage"
   },
   "media": {
@@ -58,12 +58,12 @@
     "shareDisabled": "Video sharing is disabled in this build's configuration.",
     "transcribeDisabled": "Cloud transcription is disabled in this build's configuration.",
     "transcribeButton": "Generate Captions (Cloud)",
-    "transcribeUploadNotice": "Generating captions uploads this clip's audio to the OpenReel cloud transcription service.",
+    "transcribeUploadNotice": "Generating captions uploads this clip's audio to the configured cloud transcription service.",
     "transcribeFailed": "Cloud transcription failed: {{message}}",
     "highlightDisabled": "AI highlight analysis is disabled in this build's configuration.",
     "highlightFailed": "AI highlight analysis failed: {{message}}",
     "failure": {
-      "network": "Could not reach the OpenReel cloud service. Check your connection and retry; if it persists, the service may be temporarily unavailable.",
+      "network": "Could not reach the configured cloud service. Check your connection and retry; if it persists, the service may be temporarily unavailable.",
       "server": "Cloud service error ({{status}}). The server hit a temporary problem — please retry later.",
       "rateLimited": "Too many requests. Please wait about a minute and retry.",
       "taskFailed": "Cloud job failed: {{message}}",

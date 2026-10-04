@@ -19,7 +19,7 @@ import { CaptionEditorPanel } from "../CaptionEditorPanel";
 import { AutoEditPanel } from "../../panels/AutoEditPanel";
 import { HighlightExtractorPanel } from "../../panels/HighlightExtractorPanel";
 import { InspectorSection } from "../shell/InspectorSection";
-import { REELTERMINAL_CLOUD_ENABLED } from "../../../../config/api-endpoints";
+import { REELTERMINAL_CLOUD_ENABLED, REELTERMINAL_TRANSCRIBE_ENABLED } from "../../../../config/api-endpoints";
 import { useTranslation } from "react-i18next";
 
 export interface AiTabProps {
@@ -76,7 +76,7 @@ export const AiTab: React.FC<AiTabProps> = ({
   onCaptionWordsPerLineChange,
 }) => {
   const { t } = useTranslation();
-  const cloudTranscribeEnabled = REELTERMINAL_CLOUD_ENABLED;
+  const cloudTranscribeEnabled = REELTERMINAL_TRANSCRIBE_ENABLED;
   // Explicit cancel for the in-flight run: aborts the upload and the
   // result polling and resets to the idle state — no half-added
   // captions, no error, and the request is never re-issued on its own.
@@ -129,7 +129,7 @@ export const AiTab: React.FC<AiTabProps> = ({
                 />
               </div>
 
-              <div className="space-y-1">
+              {cloudTranscribeEnabled && <div className="space-y-1">
                 <Selector
                   label={t("Target Language")}
                   size="sm"
@@ -157,7 +157,7 @@ export const AiTab: React.FC<AiTabProps> = ({
                     { label: t("Swedish"), value: "sv" },
                   ]}
                 />
-              </div>
+              </div>}
 
               {transcriptionProgress ? (
                 <div className="space-y-2">
@@ -221,7 +221,7 @@ export const AiTab: React.FC<AiTabProps> = ({
                         />
                       )}
                   </div>
-                ) : (
+                ) : cloudTranscribeEnabled ? (
                   <div className="space-y-1">
                     <Button
                       label={t("cloud.transcribeButton")}
@@ -250,7 +250,7 @@ export const AiTab: React.FC<AiTabProps> = ({
                       </Text>
                     )}
                   </div>
-                )}
+                ) : null}
               <Button
                 label={t("Import SRT / VTT as Text")}
                 onClick={() => srtInputRef.current?.click()}
@@ -298,7 +298,7 @@ export const AiTab: React.FC<AiTabProps> = ({
         </InspectorSection>
       )}
 
-      {showAudioEffects && (
+      {showAudioEffects && REELTERMINAL_CLOUD_ENABLED && cloudTranscribeEnabled && (
         <InspectorSection
           title={t("AI Highlights")}
           sectionId="ai-highlights"

@@ -4,7 +4,7 @@ import {
   type TranscriptWord,
   type AudioSegmentMetrics,
 } from "@reelterminal/core";
-import { REELTERMINAL_CLOUD_URL } from "../config/api-endpoints";
+import { REELTERMINAL_CLOUD_ENABLED, REELTERMINAL_CLOUD_URL } from "../config/api-endpoints";
 
 export interface HighlightResult {
   start: number;
@@ -57,6 +57,7 @@ export async function extractHighlights(
   preferences: Partial<HighlightPreferences> = {},
   onProgress?: ProgressCallback,
 ): Promise<HighlightResult[]> {
+  if (!REELTERMINAL_CLOUD_ENABLED) throw new Error("Cloud highlight analysis is unavailable in this local build.");
   const prefs = { ...DEFAULT_PREFERENCES, ...preferences };
 
   onProgress?.("analyze", 10, "Analyzing audio energy...");

@@ -2,7 +2,20 @@
 
 Checked 2026-10-04 against the source checkout and the resource URLs used by the applications.
 
-## Release decision
+## Local release update
+
+The local-first release removes the sample catalog, the private Whisper mirror
+and the default vidstab CDN. Studio accepts user-imported footage; Whisper
+loads the same ONNX Community repositories directly through Transformers.js;
+vidstab stays unavailable unless a deployment supplies its own core. Those
+retired private resources are not shipped or downloaded by default.
+
+The previous inspection below is retained as an audit record, not a claim that
+these discontinued resources remain release requirements. The public
+FFmpeg.wasm core still needs artifact-specific license/source review. Font
+notice mappings remain unchanged; model downloads remain network-dependent.
+
+## Historical findings before local-first changes
 
 The checked-in application marks and fonts have traceable terms. The runtime models served directly by Google and IMG.LY also have license evidence in their upstream model cards or package metadata. This review does **not** clear release while three externally hosted resource groups remain without artifact-level rights records:
 

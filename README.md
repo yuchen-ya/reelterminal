@@ -85,3 +85,15 @@ The repository includes the MIT-licensed OpenReel editor by Augustus Otu and
 contributors. Its copyright and license notice remain in [`LICENSE`](LICENSE).
 The repository also contains independently licensed dependencies, fonts, and
 optional desktop sidecars; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+## Local-first release
+
+ReelTerminal provides local editing, saving, export and local templates without
+an operated cloud backend. Hosted cloud templates, sharing, transcription,
+highlights and Studio marketplace services are not supplied by this release.
+PostHog tracking is removed. Studio previews use user-imported footage.
+
+Local captions download ONNX Community models directly from Hugging Face;
+segmentation, fonts and FFmpeg browser cores still use public resource hosts.
+Optional Agent cloud review uses the user's own provider key and explicit
+upload authorization. See [External network access](docs/EXTERNAL-DEPENDENCIES.md).

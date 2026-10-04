@@ -6,7 +6,7 @@ import { Video, Download } from "@/icons/lucide-compat";
 import { PropertySlider } from "./shell/PropertySlider";
 import { MockToggle } from "./shell/InspectorControls";
 import type { Clip } from "@reelterminal/core";
-import { getVidstabEngine, type VidstabProgress } from "@reelterminal/core";
+import { getVidstabEngine, getVidstabCoreUrl, type VidstabProgress } from "@reelterminal/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTranslation } from "react-i18next";
 
@@ -36,6 +36,7 @@ export const StabilizationSection: React.FC<StabilizationSectionProps> = ({
   );
 
   const vidstabEngine = getVidstabEngine();
+  const stabilizationAvailable = vidstabEngine.isLoaded() || Boolean(getVidstabCoreUrl(typeof crossOriginIsolated !== "undefined" && crossOriginIsolated ? "mt" : "st"));
   const isStabilized = vidstabEngine.hasStabilized(clip.id);
 
   const updateStabilization = useCallback(
@@ -145,6 +146,8 @@ export const StabilizationSection: React.FC<StabilizationSectionProps> = ({
         return "";
     }
   })();
+
+  if (!stabilizationAvailable) return null;
 
   return (
     <div className="space-y-3">

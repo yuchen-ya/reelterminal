@@ -14,6 +14,14 @@ import { useUIStore } from "../../stores/ui-store";
  * explicit Retry.
  */
 
+vi.mock("../../config/api-endpoints", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../config/api-endpoints")>(),
+  REELTERMINAL_TRANSCRIBE_ENABLED: true,
+  REELTERMINAL_TRANSCRIBE_URL: "https://transcribe.example",
+  REELTERMINAL_CLOUD_ENABLED: true,
+  REELTERMINAL_CLOUD_URL: "https://backend.example",
+}));
+
 const stubs = vi.hoisted(() => ({
   core: {
     initializeTranscriptionService: vi.fn(),

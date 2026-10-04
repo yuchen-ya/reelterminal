@@ -18,7 +18,7 @@ import {
   getAnimationStyleDisplayName,
 } from "@reelterminal/core";
 import {
-  REELTERMINAL_CLOUD_ENABLED,
+  REELTERMINAL_TRANSCRIBE_ENABLED,
   REELTERMINAL_TRANSCRIBE_URL,
 } from "../../config/api-endpoints";
 import {
@@ -644,7 +644,7 @@ export const InspectorPanel: React.FC = () => {
   const handleGenerateSubtitles = useCallback(async () => {
     if (!selectedClip || isTranscribing) return;
 
-    if (!REELTERMINAL_CLOUD_ENABLED) {
+    if (!REELTERMINAL_TRANSCRIBE_ENABLED) {
       // Cloud-disabled build: surface the explanation through the existing
       // error progress channel and return before any service is
       // constructed, so no audio extraction or upload can start.

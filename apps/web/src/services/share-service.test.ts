@@ -24,6 +24,7 @@ async function loadService(): Promise<ServiceModule> {
 
 function clearCloudEnv(): void {
   delete (import.meta.env as Record<string, unknown>).VITE_OPENREEL_CLOUD;
+  delete (import.meta.env as Record<string, unknown>).VITE_OPENREEL_CLOUD_URL;
 }
 
 class FakeXHR {
@@ -71,9 +72,9 @@ describe("share-service cloud opt-out", () => {
     clearCloudEnv();
   });
 
-  it("rejects the upload with the localized explanation before any XHR exists when the cloud is off", async () => {
+  it.each([undefined, "off"])("rejects uploads before any XHR with cloud setting %s", async (value) => {
     clearCloudEnv();
-    vi.stubEnv("VITE_OPENREEL_CLOUD", "off");
+    if (value !== undefined) vi.stubEnv("VITE_OPENREEL_CLOUD", value);
     const { uploadForSharing } = await loadService();
 
     await expect(
@@ -98,8 +99,10 @@ describe("share-service cloud opt-out", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("still uploads and reads over the network by default (no env set)", async () => {
+  it("uploads and reads only with an explicitly enabled backend", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_OPENREEL_CLOUD", "on");
+    vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://service.example");
     const { uploadForSharing, getShareInfo } = await loadService();
 
     await expect(
@@ -127,11 +130,12 @@ describe("share-service cloud opt-out", () => {
     expect(String(fetchSpy.mock.calls[0][0])).toContain("/shares/s1");
   });
 
-  it.each(["", "false", "0", "enabled"])(
+  it.each(["on", "ON"])(
     "stays networked for non-off values (%s)",
     async (value) => {
       clearCloudEnv();
       vi.stubEnv("VITE_OPENREEL_CLOUD", value);
+      vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://service.example");
       const { checkShareHealth } = await loadService();
 
       fetchSpy.mockResolvedValue({ ok: true, status: 200 });

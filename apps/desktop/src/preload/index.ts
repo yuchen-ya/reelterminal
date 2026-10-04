@@ -15,7 +15,7 @@ import type {
 // second registration), so an action taken through either name commits once.
 const api = {
   platform: "desktop",
-  publicOrigin: "https://app.openreel.video",
+  publicOrigin: "",
   probeHardware: () => ipcRenderer.invoke(CHANNELS.probeHardware, undefined),
   onMenuAction: (cb: (id: string) => void) => {
     const handler = (_event: unknown, id: string) => cb(id);

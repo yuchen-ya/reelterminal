@@ -34,7 +34,6 @@ import {
 } from "../WorkspaceModeTabs";
 import { Icon } from "@/icons/Icon";
 import { toast } from "../../stores/notification-store";
-import { useAnalytics, AnalyticsEvents } from "../../hooks/useAnalytics";
 import {
   ToolcraftDropdownMenu as DropdownMenu,
   ToolcraftDropdownMenuItem as DropdownMenuItem,
@@ -71,7 +70,6 @@ export const Toolbar: React.FC = () => {
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [isCompressOpen, setIsCompressOpen] = useState(false);
   const { importMedia } = useProjectStore();
-  const { track } = useAnalytics();
   const projectNameRef = useRef<HTMLInputElement>(null);
 
   // Local editable project name (committed onBlur / Enter)
@@ -111,20 +109,6 @@ export const Toolbar: React.FC = () => {
     [navigate, setDesktopPage],
   );
 
-  const handleExported = useCallback(
-    (videoSettings: Partial<VideoExportSettings>) => {
-      track(AnalyticsEvents.PROJECT_EXPORTED, {
-        format: videoSettings.format ?? "mp4",
-        codec: videoSettings.codec ?? "h264",
-        width: videoSettings.width ?? project.settings.width,
-        height: videoSettings.height ?? project.settings.height,
-        frameRate: videoSettings.frameRate ?? project.settings.frameRate,
-        duration: project.timeline?.duration ?? 0,
-      });
-    },
-    [project, track],
-  );
-
   const {
     state: exportState,
     runExport,
@@ -136,7 +120,7 @@ export const Toolbar: React.FC = () => {
     failExport,
     cancel: handleCancelExport,
     resetError,
-  } = useExportRunner({ project, onExported: handleExported });
+  } = useExportRunner({ project });
 
   const [deviceProfile, setDeviceProfile] = useState<DeviceProfile | null>(null);
   const [exportEstimates, setExportEstimates] = useState<Map<string, TimeEstimate>>(new Map());
@@ -221,10 +205,6 @@ export const Toolbar: React.FC = () => {
           if (finalResult?.success && finalResult.blob) {
             await writeBlobToWritable(finalResult.blob, writable);
             markComplete();
-            track(AnalyticsEvents.PROJECT_EXPORTED, {
-              format: "wav",
-              duration: project.timeline?.duration ?? 0,
-            });
           } else {
             try { await writable.abort(); } catch { void 0; }
             throw new Error(finalResult?.error?.message || "Export failed");
@@ -262,7 +242,7 @@ export const Toolbar: React.FC = () => {
         failExport(error);
       }
     },
-    [project, track, runExport, showSavePicker, beginExport, reportProgress, markComplete, finishExportSoon, failExport],
+    [project, runExport, showSavePicker, beginExport, reportProgress, markComplete, finishExportSoon, failExport],
   );
 
   const handleCustomExport = useCallback(
@@ -289,25 +269,13 @@ export const Toolbar: React.FC = () => {
 
         await runExport(exportSettings, ext, writable);
 
-        track(AnalyticsEvents.PROJECT_EXPORTED, {
-          format: settings.format,
-          codec: settings.codec,
-          width: settings.width,
-          height: settings.height,
-          frameRate: settings.frameRate,
-          duration: project.timeline?.duration ?? 0,
-          exportType: "custom",
-          upscaling: settings.upscaling?.enabled ?? false,
-        });
-
         finishExportSoon();
       } catch (error) {
         failExport(error);
       }
     },
-    [project, track, runExport, showSavePicker, beginExport, finishExportSoon, failExport],
+    [project, runExport, showSavePicker, beginExport, finishExportSoon, failExport],
   );
-
 
   const handleRecordingComplete = useCallback(
     async (screenBlob: Blob, webcamBlob?: Blob) => {

@@ -100,8 +100,11 @@ describe("HighlightExtractorPanel cloud opt-out", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("starts the cloud transcription as before by default (no env set)", async () => {
+  it("starts the cloud transcription as before with an explicitly configured backend", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "on");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://backend.example");
+    vi.stubEnv("VITE_REELTERMINAL_TRANSCRIBE_URL", "https://transcribe.example");
     seedProjectWithMedia();
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
@@ -137,6 +140,9 @@ describe("HighlightExtractorPanel cloud opt-out", () => {
 describe("HighlightExtractorPanel cloud failure presentation", () => {
   it("presents an unreachable cloud service with a categorized title, the raw detail, and an explicit Retry", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "on");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://backend.example");
+    vi.stubEnv("VITE_REELTERMINAL_TRANSCRIBE_URL", "https://transcribe.example");
     seedProjectWithMedia();
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
@@ -153,7 +159,7 @@ describe("HighlightExtractorPanel cloud failure presentation", () => {
     // message as the headline…
     expect(
       await screen.findByText(
-        "Could not reach the OpenReel cloud service. Check your connection and retry; if it persists, the service may be temporarily unavailable.",
+        "Could not reach the configured cloud service. Check your connection and retry; if it persists, the service may be temporarily unavailable.",
       ),
     ).toBeInTheDocument();
     // …with the raw message demoted to the detail line…
@@ -166,7 +172,7 @@ describe("HighlightExtractorPanel cloud failure presentation", () => {
     const service = stubs.core.initializeTranscriptionService.mock
       .results[0].value as { transcribeClip: ReturnType<typeof vi.fn> };
     await screen.findByText(
-      "Could not reach the OpenReel cloud service. Check your connection and retry; if it persists, the service may be temporarily unavailable.",
+      "Could not reach the configured cloud service. Check your connection and retry; if it persists, the service may be temporarily unavailable.",
     );
     expect(service.transcribeClip).toHaveBeenCalledTimes(2);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -174,6 +180,9 @@ describe("HighlightExtractorPanel cloud failure presentation", () => {
 
   it("presents a structured rate-limit failure through the same categorized wording", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "on");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://backend.example");
+    vi.stubEnv("VITE_REELTERMINAL_TRANSCRIBE_URL", "https://transcribe.example");
     seedProjectWithMedia();
     vi.stubGlobal(
       "fetch",
@@ -206,6 +215,9 @@ describe("HighlightExtractorPanel cloud failure presentation", () => {
 
   it("aborts the in-flight run when the panel unmounts", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "on");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://backend.example");
+    vi.stubEnv("VITE_REELTERMINAL_TRANSCRIBE_URL", "https://transcribe.example");
     seedProjectWithMedia();
     vi.stubGlobal("fetch", vi.fn());
     let capturedSignal: AbortSignal | undefined;

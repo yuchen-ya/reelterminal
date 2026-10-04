@@ -40,10 +40,6 @@ vi.mock("@reelterminal/core", () => ({
   estimateExportTime: vi.fn(),
 }));
 
-vi.mock("../../hooks/useAnalytics", () => ({
-  useAnalytics: () => ({ track: vi.fn() }),
-  AnalyticsEvents: { PROJECT_EXPORTED: "project_exported" },
-}));
 
 // Toolbar mounts several dialogs/panels beside the name input; stub them so
 // this suite exercises only the header's project-name behavior.

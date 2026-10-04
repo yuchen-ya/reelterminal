@@ -36,6 +36,10 @@ export class VidstabEngine {
 
   async load(onProgress?: (progress: VidstabProgress) => void): Promise<void> {
     if (this.loaded) return;
+    const variant = typeof crossOriginIsolated !== "undefined" && crossOriginIsolated ? "mt" : "st";
+    if (!getVidstabCoreUrl(variant)) {
+      throw new Error("Video stabilization is unavailable: no vidstab core is configured.");
+    }
     if (this.loading) return this.loading;
 
     this.loading = this.doLoad(onProgress);

@@ -1,3 +1,8 @@
-# Sample clips
+# Preview samples
 
-Drop `.mp4` files referenced by `index.json` here for local dev. In production, the CDN serves these from R2 under `https://cdn.openreel.video/samples/`.
+The release catalog is empty. Import your own video in Studio to preview an
+effect or filter. No upstream sample footage is bundled or fetched.
+
+Deployments that supply samples must record their own source, license and
+required consents before adding catalog entries. No sample CDN is provided
+or operated by ReelTerminal.

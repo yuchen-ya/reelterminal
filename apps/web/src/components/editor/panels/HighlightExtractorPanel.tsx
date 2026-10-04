@@ -15,6 +15,7 @@ import {
 } from "@reelterminal/core";
 import {
   REELTERMINAL_CLOUD_ENABLED,
+  REELTERMINAL_TRANSCRIBE_ENABLED,
   REELTERMINAL_TRANSCRIBE_URL,
 } from "../../../config/api-endpoints";
 import { t } from "../../../i18n";
@@ -66,7 +67,7 @@ export const HighlightExtractorPanel: React.FC<HighlightExtractorPanelProps> = (
 
   // Build-time cloud switch: highlight analysis (and its transcription
   // prerequisite) belongs to the first-party cloud domain.
-  const cloudEnabled = REELTERMINAL_CLOUD_ENABLED;
+  const cloudEnabled = REELTERMINAL_CLOUD_ENABLED && REELTERMINAL_TRANSCRIBE_ENABLED;
 
   const handleAnalyze = useCallback(async () => {
     if (!project) return;

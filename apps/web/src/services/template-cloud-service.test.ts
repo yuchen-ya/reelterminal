@@ -14,6 +14,7 @@ async function loadService(): Promise<ServiceModule> {
 
 function clearCloudEnv(): void {
   delete (import.meta.env as Record<string, unknown>).VITE_OPENREEL_CLOUD;
+  delete (import.meta.env as Record<string, unknown>).VITE_OPENREEL_CLOUD_URL;
 }
 
 describe("TemplateCloudService cloud opt-out", () => {
@@ -30,9 +31,9 @@ describe("TemplateCloudService cloud opt-out", () => {
     clearCloudEnv();
   });
 
-  it("short-circuits every method with zero network when VITE_OPENREEL_CLOUD=off", async () => {
+  it.each([undefined, "off"])("short-circuits every method with zero network with cloud setting %s", async (value) => {
     clearCloudEnv();
-    vi.stubEnv("VITE_OPENREEL_CLOUD", "off");
+    if (value !== undefined) vi.stubEnv("VITE_OPENREEL_CLOUD", value);
     const { templateCloudService } = await loadService();
 
     await expect(templateCloudService.listTemplates()).resolves.toEqual([]);
@@ -69,8 +70,10 @@ describe("TemplateCloudService cloud opt-out", () => {
     );
   });
 
-  it("keeps the cloud enabled and networked by default (no env set)", async () => {
+  it("uses an explicitly enabled backend", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_OPENREEL_CLOUD", "on");
+    vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://service.example");
     const { templateCloudService } = await loadService();
 
     expect(templateCloudService.isCloudEnabled()).toBe(true);
@@ -85,11 +88,12 @@ describe("TemplateCloudService cloud opt-out", () => {
     expect(String(fetchSpy.mock.calls[0][0])).toContain("/templates");
   });
 
-  it.each(["", "false", "0", "enabled"])(
+  it.each(["on", "ON"])(
     "stays enabled and networked for non-off values (%s)",
     async (value) => {
       clearCloudEnv();
       vi.stubEnv("VITE_OPENREEL_CLOUD", value);
+      vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://service.example");
       const { templateCloudService } = await loadService();
 
       expect(templateCloudService.isCloudEnabled()).toBe(true);
@@ -121,6 +125,8 @@ describe("TemplateCloudService listTemplatesWithStatus failure reporting", () =>
 
   it("reports failure instead of collapsing to an empty list when the request rejects", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_OPENREEL_CLOUD", "on");
+    vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://service.example");
     const { templateCloudService } = await loadService();
     fetchSpy.mockRejectedValue(new Error("network down"));
 
@@ -131,6 +137,8 @@ describe("TemplateCloudService listTemplatesWithStatus failure reporting", () =>
 
   it("reports failure for a non-ok response", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_OPENREEL_CLOUD", "on");
+    vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://service.example");
     const { templateCloudService } = await loadService();
     fetchSpy.mockResolvedValue({
       ok: false,
@@ -145,6 +153,8 @@ describe("TemplateCloudService listTemplatesWithStatus failure reporting", () =>
 
   it("returns the templates with failed: false when the cloud responds", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_OPENREEL_CLOUD", "on");
+    vi.stubEnv("VITE_OPENREEL_CLOUD_URL", "https://service.example");
     const { templateCloudService } = await loadService();
     fetchSpy.mockResolvedValue({
       ok: true,

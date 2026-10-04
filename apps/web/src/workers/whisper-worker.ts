@@ -9,12 +9,8 @@ import {
 } from "./whisper-models";
 import { classifyWhisperDownloadError } from "../utils/whisper-download-error";
 
-const MODEL_HOST = "https://media.openreel.video/models/";
-
 env.allowLocalModels = false;
 env.allowRemoteModels = true;
-env.remoteHost = MODEL_HOST;
-env.remotePathTemplate = "{model}/resolve/{revision}/";
 env.useBrowserCache = true;
 
 interface WhisperOutput {

@@ -1,6 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
 import { formatDurationCompact } from "../../utils/format";
-import { useAnalytics, AnalyticsEvents } from "../../hooks/useAnalytics";
 import {
   Play,
   Layers,
@@ -64,7 +63,6 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({
   const getTemplateEngine = useEngineStore((state) => state.getTemplateEngine);
   const getTitleEngine = useEngineStore((state) => state.getTitleEngine);
   const loadProject = useProjectStore((state) => state.loadProject);
-  const { track } = useAnalytics();
   const [values, setValues] = useState<ScriptableTemplateReplacements>({});
   const [isApplying, setIsApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -168,13 +166,6 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({
 
       loadProject({ ...project, modifiedAt: Date.now() });
 
-      track(AnalyticsEvents.TEMPLATE_USED, {
-        templateId: template.id,
-        templateName: template.name,
-        category: template.category,
-        placeholderCount: template.placeholders.length,
-      });
-
       onApply();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to apply template");
@@ -188,7 +179,6 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({
     template,
     values,
     onApply,
-    track,
   ]);
 
   return (

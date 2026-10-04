@@ -25,13 +25,13 @@
     "systemDefault": "跟随系统"
   },
   "templates": {
-    "cloudDisabledTitle": "云模板已禁用",
-    "cloudDisabledDetail": "当前构建配置已禁用云模板，内置模板仍可使用。",
+    "cloudDisabledTitle": "内置和本地模板",
+    "cloudDisabledDetail": "选择内置模板，或保存在这台设备上的模板。",
     "cloudActionUnavailable": "当前构建配置已禁用云模板。",
     "cloudFailedTitle": "云模板加载失败",
     "cloudFailedDetail": "无法连接云模板服务，内置模板仍可使用。",
     "retry": "重试",
-    "cloudSaveNotice": "将该模板（名称、描述与时间线结构）发布到 OpenReel 公开云模板库，其他用户可浏览使用。",
+    "cloudSaveNotice": "将模板名称、描述和时间线结构发送到模板服务，该服务的其他用户可能可以访问。",
     "localSaveNotice": "保存在本地浏览器存储中"
   },
   "media": {
@@ -58,12 +58,12 @@
     "shareDisabled": "当前构建配置已禁用视频分享。",
     "transcribeDisabled": "当前构建配置已禁用云转写。",
     "transcribeButton": "生成字幕（云端）",
-    "transcribeUploadNotice": "生成字幕会将该片段的音频上传至 OpenReel 云端转写服务。",
+    "transcribeUploadNotice": "生成字幕会将该片段的音频上传至 配置的云端转写服务。",
     "transcribeFailed": "云端转写失败：{{message}}",
     "highlightDisabled": "当前构建配置已禁用 AI 高光分析。",
     "highlightFailed": "AI 高光分析失败：{{message}}",
     "failure": {
-      "network": "无法连接 OpenReel 云端服务。请检查网络连接后重试；若持续失败，可能是服务暂时不可用。",
+      "network": "无法连接 配置的云端服务。请检查网络连接后重试；若持续失败，可能是服务暂时不可用。",
       "server": "云端服务出错（{{status}}）。服务端暂时故障，请稍后重试。",
       "rateLimited": "请求过于频繁，请约一分钟后再试。",
       "taskFailed": "云端任务失败：{{message}}",

@@ -249,8 +249,8 @@ export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
           <div className="space-y-2">
             <Text type="supporting" color="secondary" weight="bold" display="block">
               {tr("Save Location")}</Text>
-            <div className="grid grid-cols-2 gap-2">
-              <SelectableCard
+            <div className={cloudEnabled ? "grid grid-cols-2 gap-2" : "grid grid-cols-1 gap-2"}>
+              {cloudEnabled && <SelectableCard
                 label={tr("Cloud")}
                 isSelected={effectiveSaveLocation === "cloud"}
                 onChange={() => setSaveLocation("cloud")}
@@ -262,7 +262,7 @@ export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
                   <Cloud size={16} aria-hidden />
                   <Text type="label" weight="bold">{tr("Cloud")}</Text>
                 </div>
-              </SelectableCard>
+              </SelectableCard>}
               <SelectableCard
                 label={tr("Local")}
                 isSelected={effectiveSaveLocation === "local"}
@@ -277,9 +277,7 @@ export const SaveTemplateDialog: React.FC<SaveTemplateDialogProps> = ({
               </SelectableCard>
             </div>
             <Text type="supporting" color="secondary" display="block" className="text-[10px]">
-              {!cloudEnabled
-                ? tr("templates.cloudActionUnavailable")
-                : effectiveSaveLocation === "cloud"
+              {effectiveSaveLocation === "cloud"
                   ? tr("templates.cloudSaveNotice")
                   : tr("templates.localSaveNotice")}
             </Text>

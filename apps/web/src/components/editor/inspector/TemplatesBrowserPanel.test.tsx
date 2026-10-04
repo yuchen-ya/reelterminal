@@ -59,6 +59,8 @@ afterEach(() => {
 describe("TemplatesBrowserPanel cloud load failure", () => {
   it("shows a failure banner with retry beside local templates when the cloud fetch rejects", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "on");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://backend.example");
     engineStub.state.local = [engineStub.makeLocal()];
     vi.stubGlobal(
       "fetch",
@@ -84,6 +86,8 @@ describe("TemplatesBrowserPanel cloud load failure", () => {
 
   it("keeps the failed state distinct from the empty state and clears it after a successful retry", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "on");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://backend.example");
     const fetchSpy = vi.fn().mockRejectedValue(new Error("network down"));
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -136,6 +140,8 @@ describe("TemplatesBrowserPanel cloud load failure", () => {
 
   it("keeps the success path unchanged: cloud templates render and no state banner appears", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "on");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://backend.example");
     engineStub.state.local = [engineStub.makeLocal()];
     vi.stubGlobal(
       "fetch",

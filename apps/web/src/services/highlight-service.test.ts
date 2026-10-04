@@ -18,6 +18,8 @@ vi.mock("@reelterminal/core", async (importOriginal) => {
 });
 
 async function loadService() {
+  vi.stubEnv("VITE_REELTERMINAL_CLOUD", "on");
+  if (!import.meta.env.VITE_OPENREEL_CLOUD_URL && !import.meta.env.VITE_CLOUD_API_URL) vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://service.example");
   vi.resetModules();
   return import("./highlight-service");
 }
@@ -172,4 +174,14 @@ describe("highlight-service failure classification", () => {
     expect(err.kind).toBe("responseInvalid");
     expect(err.detail).toContain("no highlights list");
   });
+});
+
+
+it("does not upload transcript or audio metrics in the default local build", async () => {
+  clearCloudEnv();
+  vi.resetModules();
+  const fetchSpy = stubFetch();
+  const { extractHighlights } = await import("./highlight-service");
+  await expect(extractHighlights({} as AudioBuffer, [])).rejects.toThrow("unavailable");
+  expect(fetchSpy).not.toHaveBeenCalled();
 });

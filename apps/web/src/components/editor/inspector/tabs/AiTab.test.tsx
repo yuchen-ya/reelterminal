@@ -35,7 +35,8 @@ vi.mock("../../../../config/api-endpoints", async (importOriginal) => {
     >();
   return {
     ...actual,
-    get REELTERMINAL_CLOUD_ENABLED() {
+    get REELTERMINAL_CLOUD_ENABLED() { return stubs.cloudEnabled.value; },
+    get REELTERMINAL_TRANSCRIBE_ENABLED() {
       return stubs.cloudEnabled.value;
     },
   };
@@ -70,7 +71,7 @@ const baseProps: AiTabProps = {
 };
 
 const UPLOAD_NOTICE =
-  "Generating captions uploads this clip's audio to the OpenReel cloud transcription service.";
+  "Generating captions uploads this clip's audio to the configured cloud transcription service.";
 const BUTTON_LABEL = "Generate Captions (Cloud)";
 
 function renderAiTab(overrides: Partial<AiTabProps> = {}) {
@@ -104,17 +105,13 @@ describe("AiTab cloud transcription disclosure", () => {
     expect(screen.getByText(UPLOAD_NOTICE)).toBeInTheDocument();
   });
 
-  it("keeps the off-build disabled state with its explanation and no upload notice", () => {
+  it("keeps local captions available without an unsupported cloud action", () => {
     stubs.cloudEnabled.value = false;
     const { container } = renderAiTab();
     openAutoCaptionsSection(container);
 
-    expect(screen.getByRole("button", { name: BUTTON_LABEL })).toBeDisabled();
-    expect(
-      screen.getByText(
-        "Cloud transcription is disabled in this build's configuration.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: BUTTON_LABEL })).toBeNull();
+    expect(screen.getByRole("button", { name: "Import SRT / VTT as Text" })).toBeInTheDocument();
     expect(screen.queryByText(UPLOAD_NOTICE)).toBeNull();
   });
 });

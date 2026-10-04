@@ -73,7 +73,7 @@ describe("TemplateGallery cloud opt-out", () => {
     expect(await screen.findAllByText("Builtin Test Template")).not.toHaveLength(0);
     // The disabled state is explicit, not a silent empty list.
     expect(screen.getByTestId("cloud-templates-disabled")).toBeInTheDocument();
-    expect(screen.getAllByText("Cloud templates disabled").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Built-in and local templates").length).toBeGreaterThan(0);
     // Zero cloud requests despite the mount-time load.
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -87,13 +87,15 @@ describe("TemplateGallery cloud opt-out", () => {
     await renderGallery();
 
     expect(await screen.findByTestId("cloud-templates-disabled")).toBeInTheDocument();
-    expect(screen.getAllByText("Cloud templates disabled").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Built-in templates are still available/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Built-in and local templates").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Choose a built-in template or one saved on this device/).length).toBeGreaterThan(0);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("keeps the mount-time cloud fetch by default (no env set)", async () => {
+  it("keeps the mount-time cloud fetch with an explicitly configured backend", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "on");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://backend.example");
     engineStub.state.builtins = [engineStub.makeBuiltin()];
     const fetchSpy = vi.fn().mockResolvedValue({
       ok: true,
@@ -114,6 +116,8 @@ describe("TemplateGallery cloud opt-out", () => {
   // not silently render the ordinary "No templates found" empty state.
   it("shows a load-failure empty state with retry when the cloud fetch rejects (cloud on)", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "on");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://backend.example");
     const fetchSpy = vi.fn().mockRejectedValue(new Error("network down"));
     vi.stubGlobal("fetch", fetchSpy);
 
@@ -139,6 +143,8 @@ describe("TemplateGallery cloud opt-out", () => {
 
   it("shows a failure banner beside built-in templates when the cloud is unreachable", async () => {
     clearCloudEnv();
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD", "on");
+    vi.stubEnv("VITE_REELTERMINAL_CLOUD_URL", "https://backend.example");
     engineStub.state.builtins = [engineStub.makeBuiltin()];
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
 

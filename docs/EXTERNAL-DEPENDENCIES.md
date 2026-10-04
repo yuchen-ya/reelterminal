@@ -1,83 +1,61 @@
 # External network access
 
-This page describes runtime requests made by the applications. Build-time
-downloads, user-selected remote media URLs, and loopback desktop connections
-are listed separately from first-party service requests.
+ReelTerminal ships as a local editor. The publisher operates no template,
+sharing, transcription, marketplace, model-mirror or stabilization service.
+There are no default runtime requests to the upstream hosted services. Public resource
+downloads and user-configured provider requests are described below.
 
-## Configuration
+## Default behavior
+
+| Capability | Default delivery |
+|---|---|
+| Import, edit, save, export, local templates | Local application and files; no cloud backend required. |
+| Whisper captions | ONNX Community models downloaded directly from Hugging Face by Transformers.js; recognition runs locally. The existing model choices and browser cache remain. First-use download requires network access. |
+| Person/face segmentation | Public Google model storage, unpkg and jsDelivr downloads; processing stays local. |
+| FFmpeg.wasm fallback | `unpkg.com/@ffmpeg/core@0.12.6`; downloads code/WASM, not user media. Native FFmpeg is supplied by the user on PATH. |
+| Fonts | Desktop packages local fonts. Web/Image/Studio Google Fonts requests and the core Three.js font download remain. |
+| Mediabunny fallback | `esm.sh/mediabunny` only if the bundled import fails. |
+| Cloud templates, share uploads, cloud highlighter/transcription | Disabled. No default backend URL. Local templates, caption recognition and subtitle import remain available. |
+| Stabilization | Disabled without a deployment-supplied vidstab core; no private CDN default. |
+| Studio marketplace | Unused submission/API clients removed. Studio editing and package export remain local. |
+| Studio samples | Catalog empty; import your own footage. No upstream footage or CDN is supplied. |
+| Product analytics | PostHog and tracking calls removed. |
+| Updates | Packaged app checks this project's GitHub Releases. Download and installation require user action; signed installer/update acceptance remains pending. |
+
+Resource GET requests disclose ordinary request metadata (IP, user agent and
+possibly referrer). They do not upload the edited clip. Remote URLs contained
+in user projects contact their chosen hosts when loaded.
+
+## Explicit optional integrations
 
 | Setting | Effect | Default |
 |---|---|---|
-| `VITE_REELTERMINAL_CLOUD` | Disables first-party web cloud calls when set to `off`. | Enabled |
-| `VITE_REELTERMINAL_CLOUD_URL` | Changes the web templates, sharing, and highlight service base URL. | `https://api.openreel.video` in production; `http://localhost:8787` in development |
-| `VITE_REELTERMINAL_TRANSCRIBE_URL` | Changes the web transcription service base URL. | `https://cloud.openreel.video` |
-| `VITE_REELTERMINAL_FFMPEG_CORE_URL` | Changes the FFmpeg.wasm core download location. | Package CDN URL |
-| `VITE_REELTERMINAL_VIDSTAB_MT_URL`, `VITE_REELTERMINAL_VIDSTAB_ST_URL` | Change the multi-threaded or single-threaded stabilization core URL. | Package CDN URLs |
-| `VITE_PUBLIC_POSTHOG_KEY`, `VITE_PUBLIC_POSTHOG_HOST` | Enables PostHog analytics when both values are set. | Off |
-| `REELTERMINAL_CRASH_ENDPOINT` | Enables desktop crash reports when set to a valid HTTPS URL. | Off |
-| `DASHSCOPE_API_KEY` | Enables Agent video review. | Unavailable |
-| `REELTERMINAL_QWEN_BASE_URL` | Selects the approved Qwen-compatible review endpoint. | Alibaba DashScope |
-| `VITE_API_URL` | Sets the Studio marketplace API base URL. | `http://localhost:8787` |
+| `VITE_REELTERMINAL_CLOUD` | Only `on` opts in to a deployment-owned cloud integration. | Off |
+| `VITE_REELTERMINAL_CLOUD_URL` | Backend for template reads/publishing, sharing and highlight analysis. Required before these capabilities enable. | Empty |
+| `VITE_REELTERMINAL_TRANSCRIBE_URL` | Cloud transcription backend. Required independently before its action enables. | Empty |
+| `VITE_REELTERMINAL_FFMPEG_CORE_URL` | Overrides the public FFmpeg core download base. | Package CDN |
+| `VITE_REELTERMINAL_VIDSTAB_MT_URL`, `VITE_REELTERMINAL_VIDSTAB_ST_URL` | Supply the appropriate licensed core for the browser's thread mode. | Empty / disabled |
+| `DASHSCOPE_API_KEY` | Enables the user's optional Agent video review provider. Explicit upload authorization is still required. | Unavailable |
+| `REELTERMINAL_QWEN_BASE_URL` | Selects an approved Alibaba review endpoint. | Alibaba DashScope |
+| `REELTERMINAL_CRASH_ENDPOINT` | Enables minimal desktop crash reports to a deployment-owned HTTPS endpoint. | Off |
 
-Legacy environment names are accepted only where the corresponding component
-implements an alias. Current names take precedence when both are defined.
+Existing cloud environment aliases retain their precedence for explicit
+configured deployments. They no longer restore an upstream default URL.
+The application does not provide or promise those optional hosted services.
 
-## Web editor
+An enabled cloud action sends the content selected for that action: template
+JSON, a shared video, transcript/audio metrics, or transcription audio. Agent
+video review sends a bounded video excerpt and question using the user's key;
+see [Cloud video review](CLOUD-VIDEO-REVIEW.md). Configuring a provider key alone
+does not authorize uploading every file.
 
-| Destination | Trigger | Data sent | Controls |
-|---|---|---|---|
-| Google Fonts (`fonts.googleapis.com`, `fonts.gstatic.com`) | Browser page load. | IP address, user agent, referrer, and requested font families. | The hosted web editor uses the fixed Google Fonts stylesheet. Desktop packages use local fonts. |
-| PostHog host | When both PostHog environment values are configured. | Product event names and properties. | Omit either value to disable analytics. |
-| `api.openreel.video` | Cloud template reads, template publishing, highlight analysis, or share-service calls. | Reads send request metadata; publishing sends template JSON; highlight analysis sends transcript text and audio metrics; share upload sends the selected video. | `VITE_REELTERMINAL_CLOUD=off` disables first-party cloud calls. No editor screen currently invokes share upload. |
-| `app.openreel.video` | Desktop generation of a public share-page link. | Link generation itself sends no request; opening the link contacts the upstream site. | The desktop preload currently hard-codes this public origin. |
-| `cloud.openreel.video` | Cloud transcription. | Extracted clip audio and language settings. | The cloud action is labeled; the UI discloses audio upload before submission. The cloud switch disables the action. |
-| Whisper model host (`media.openreel.video/models/`) | Opening auto-captions and loading a model. | Model files only; recognition runs locally. | No URL override or disable switch. |
-| FFmpeg.wasm CDN (`unpkg.com`) | First operation that needs the fallback core. | Core files only. | `VITE_REELTERMINAL_FFMPEG_CORE_URL` changes the download location; the fallback cannot be disabled. |
-| Vidstab CDN (`mediashares.openreel.video`) | Enabling video stabilization. | Core files only. | The two `VITE_REELTERMINAL_VIDSTAB_*_URL` settings change download locations; stabilization requires a core. |
-| Google model storage, `unpkg.com`, and `cdn.jsdelivr.net` | First use of person segmentation. | Model and WebAssembly files only. | No URL override or disable switch. |
-| `esm.sh/mediabunny` | Only when the bundled `mediabunny` import fails. | Package files only. | No URL override or disable switch. |
-| `threejs.org` | Loading the default 3D text font. | Font data only. | No URL override or disable switch. |
-| URLs stored in a project | Import, preview, or render of project media with a remote URL. | A GET request to the URL's host. | Controlled by the project content. The target site receives the request metadata. |
+Crash reporting sends only an allowlisted event category and app/platform
+versions when its endpoint is configured; error message, stack and context
+remain local.
 
-## Desktop editor
+## Rights and release records
 
-| Destination | Trigger | Data sent | Controls |
-|---|---|---|---|
-| Configured crash endpoint | An uncaught application error, when `REELTERMINAL_CRASH_ENDPOINT` or its legacy alias contains a valid HTTPS URL. | Only `type`, `appVersion`, `platform`, and `electronVersion`. Event type is allowlisted or reported as `unknown`. | No endpoint is configured by default. Local error details remain in local diagnostics; `message`, `stack`, and `context` are not uploaded. |
-| GitHub Releases | Packaged app startup checks for an update. | Application version and platform metadata. | There is no update-check disable switch. Download and installation require user action. |
-
-## Studio and image apps
-
-| Application | Destination | Trigger and data | Controls |
-|---|---|---|---|
-| `apps/studio` | jsDelivr and Google model storage | Loading MediaPipe code, WebAssembly, and models for subject or face previews. No user media is sent. | No URL override or disable switch. |
-| `apps/studio` | Google Fonts | Page load requests Geist and Geist Mono stylesheets and font files; sends ordinary request metadata. | No URL override or disable switch. |
-| `apps/studio` | Relative `/samples/` URLs | Selecting a built-in sample downloads video from the deployment's own origin. The sample hosting guide names `cdn.openreel.video` as the upstream production host. | No sample files are checked in. The deployment must supply them; their rights records are still unconfirmed. |
-| `apps/studio` | `VITE_API_URL` marketplace service | Listing, saving, validating, or submitting drafts sends graph JSON, titles, and manifests. Requests include the configured client identity headers. | Change the service base URL; requests and identity headers have no disable switch. |
-| `apps/image` | Google Fonts | Loading the app and its font choices sends request metadata and requested families. | No URL override or disable switch. |
-| `apps/image` | IMG.LY model/CDN hosts | First use of background removal downloads WebAssembly and model files. The image is processed locally. | The app uses the package's default asset host. |
-
-## Agent video review
-
-Desktop Agent video review is opt-in through `DASHSCOPE_API_KEY`. It sends a
-bounded inspection copy of the video and the review question to the configured
-Qwen-compatible endpoint. The endpoint is restricted to approved HTTPS hosts.
-See [Cloud video review](CLOUD-VIDEO-REVIEW.md).
-
-## Resource provenance
-
-See [Asset, font, and model rights review](ASSET-LICENSE-REVIEW.md) for the
-checked-in resources and unresolved provenance of the sample videos, Whisper
-ONNX mirrors, and FFmpeg/vidstab WebAssembly cores. A working download URL is
-not evidence of permission to mirror or redistribute its contents.
-
-## Uploads
-
-| Action | Content sent | User disclosure |
-|---|---|---|
-| Cloud transcription | Extracted audio | The action is labeled as cloud and the UI discloses the upload. |
-| Template publishing | Template name, description, and timeline structure | The save dialog identifies publication to the shared template service. |
-| Highlight analysis | Transcript text and audio metrics | The UI shows progress and failures. |
-| Agent video review | Bounded video copy and review question | The feature requires the user's provider credential. |
-| Crash reporting | Event category and application/platform versions | Disabled unless a valid HTTPS endpoint is explicitly configured. |
-| PostHog analytics | Product event names and properties | Disabled unless both build-time values are configured. |
+See [Asset rights review](ASSET-LICENSE-REVIEW.md). Removed sample footage and
+retired private mirrors are not default release dependencies. FFmpeg core
+artifact/source/license records and the remaining npm notice gaps still need
+review before an installer is represented as fully cleared for distribution.

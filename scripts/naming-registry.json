@@ -64,21 +64,9 @@
     },
     {
       "files": "apps/web/src/config/api-endpoints.ts",
-      "pattern": "openreel\\.video",
-      "category": 3,
-      "reason": "外部资源：openreel\\.video 指向应用当前使用的服务域名或部署资源。"
-    },
-    {
-      "files": "apps/web/src/config/api-endpoints.ts",
       "pattern": "OPENREEL_|OpenReel cloud",
       "category": 5,
       "reason": "兼容入口：OPENREEL_|OpenReel cloud 定义或验证当前支持的旧名称或别名。"
-    },
-    {
-      "files": "apps/web/src/config/api-endpoints.test.ts",
-      "pattern": "openreel\\.video",
-      "category": 3,
-      "reason": "真实第三方域名：上述域名默认值的测试断言。"
     },
     {
       "files": "apps/web/src/config/api-endpoints.test.ts",
@@ -117,12 +105,6 @@
       "reason": "兼容入口：VITE_OPENREEL_CLOUD off 禁用语义双读行为测试。"
     },
     {
-      "files": "apps/web/src/workers/whisper-worker.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 3,
-      "reason": "外部资源：openreel[-_.][a-z0-9_-]* 指向应用当前使用的服务域名或部署资源。"
-    },
-    {
       "files": "apps/web/src/utils/whisper-download-error.test.ts",
       "pattern": "openreel[-_.][a-z0-9_-]*",
       "category": 3,
@@ -154,11 +136,6 @@
       "files": "apps/image/package.json",
       "category": 3,
       "reason": "真实外部资源：wrangler pages deploy --project-name=openreel-image（已存在的部署目标）。"
-    },
-    {
-      "files": "apps/web/.env.example",
-      "category": 5,
-      "reason": "兼容入口：.env 示例中旧 env 名（VITE_OPENREEL_*）与新名的双读说明。"
     },
     {
       "files": "infra/transcribe-gpu/main.py",
@@ -194,11 +171,6 @@
       "files": "scripts/filters/tests/test_recipe_loader.py",
       "category": 3,
       "reason": "真实第三方域名：filters.openreel.video URL 生成的测试断言。"
-    },
-    {
-      "files": "apps/studio/public/samples/README.md",
-      "category": 3,
-      "reason": "真实第三方域名：生产环境样例媒体托管于 cdn.openreel.video（真实 CDN）。"
     },
     {
       "files": ".gitignore",
@@ -680,34 +652,10 @@
       "reason": "兼容入口：AGENTS.md 定义或验证当前支持的旧名称或别名。"
     },
     {
-      "files": "apps/web/src/i18n/locales/en/translation.json",
-      "pattern": "OpenReel (public cloud|cloud)",
-      "category": 3,
-      "reason": "外部资源：OpenReel (public cloud|cloud) 指向应用当前使用的服务域名或部署资源。"
-    },
-    {
-      "files": "apps/web/src/i18n/locales/zh-CN/translation.json",
-      "pattern": "OpenReel (公开云|云端)",
-      "category": 3,
-      "reason": "外部资源：OpenReel (公开云|云端) 指向应用当前使用的服务域名或部署资源。"
-    },
-    {
-      "files": "apps/web/src/components/editor/inspector/tabs/AiTab.test.tsx",
-      "pattern": "openreel (public )?cloud",
-      "category": 3,
-      "reason": "外部资源：openreel (public )?cloud 指向应用当前使用的服务域名或部署资源。"
-    },
-    {
       "files": "apps/web/src/components/editor/panels/HighlightExtractorPanel.test.tsx",
       "pattern": "openreel[-_.][a-z0-9_-]*|openreel (public )?cloud",
       "category": 3,
       "reason": "外部资源：openreel[-_.][a-z0-9_-]*|openreel (public )?cloud 指向应用当前使用的服务域名或部署资源。"
-    },
-    {
-      "files": "apps/web/src/components/editor/SaveTemplateDialog.test.tsx",
-      "pattern": "openreel (public )?cloud",
-      "category": 3,
-      "reason": "外部资源：openreel (public )?cloud 指向应用当前使用的服务域名或部署资源。"
     },
     {
       "files": "apps/web/src/components/welcome/TemplateGallery.test.tsx",
@@ -719,12 +667,6 @@
       "files": "docs/MATERIAL-LIBRARY.md",
       "category": 4,
       "reason": "legacy 持久化标识：文档记录 IndexedDB 库名 openreel-material-library / openreel-db（存储标识符说明）。"
-    },
-    {
-      "files": "docs/EXTERNAL-DEPENDENCIES.md",
-      "pattern": "openreel\\.video",
-      "category": 3,
-      "reason": "外部资源：openreel\\.video 指向应用当前使用的服务域名或部署资源。"
     },
     {
       "files": "docs/AGENT-GUIDE.md",
@@ -805,12 +747,6 @@
       "pattern": "openreel[a-z]",
       "category": 5,
       "reason": "兼容入口：openreel[a-z] 定义或验证当前支持的旧名称或别名。"
-    },
-    {
-      "files": "packages/core/src/media/media-cdn-config.ts",
-      "pattern": "openreel[-_.][a-z0-9_-]*",
-      "category": 3,
-      "reason": "外部资源：openreel[-_.][a-z0-9_-]* 指向应用当前使用的服务域名或部署资源。"
     },
     {
       "files": "apps/desktop/resources/aurora/creation_aurora_renderer",
