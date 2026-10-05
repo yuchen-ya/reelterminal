@@ -815,7 +815,7 @@
     "modelEnhancement": "模型增强",
     "conflict": "项目或来源记录已更改，请关闭后重新打开。",
     "failed": "保存失败",
-    "review": "帧段建审片任务",
+    "review": "按帧段创建审片任务",
     "reviewTitle": "任务标题",
     "reviewDescription": "时间线零基帧段 [起始,结束)，右端不包含。独立渲染所选起始帧，绑定项目版本、参考设置及源秒映射，不使用播放头的旧预览。支持正向恒速片段。",
     "timelineFrames": "时间线帧段",

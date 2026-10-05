@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToolcraftPopover } from "@reelterminal/ui";
+import { ClipboardPlus } from "@/icons/lucide-compat";
 import { createReviewRange } from "@reelterminal/core/types/review-range";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
@@ -149,8 +150,13 @@ export function ReviewRangeControl() {
         </form>
       }
     >
-      <button type="button" className="px-2 text-xs text-fg-2">
-        {t("production.review")}
+      <button
+        type="button"
+        title={t("production.review")}
+        aria-label={t("production.review")}
+        className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-[7px] bg-bg-2 text-fg-2 transition-colors hover:bg-bg-3 hover:text-fg"
+      >
+        <ClipboardPlus size={16} aria-hidden />
       </button>
     </ToolcraftPopover>
   );

@@ -7684,8 +7684,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         </div>
 
         {/* Controls row */}
-        <div className="h-12 px-4 flex items-center gap-3">
-        <div className="flex items-center gap-2">
+        <div data-testid="preview-controls" className="min-h-12 px-4 py-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
           <span className="font-mono text-[13px] tabular-nums tracking-tight font-medium">
             <span className="text-fg-2">{formatTime(playheadPosition)}</span>
             <span className="text-fg-muted mx-1.5">/</span>
@@ -7693,7 +7693,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           </span>
         </div>
 
-        <div className="flex items-center gap-4 mx-auto">
+        <div className="flex shrink-0 items-center gap-4 mx-auto">
           <IconButton
             label={tr("Skip back 5s")}
             icon={<SkipBack size={18} />}
@@ -7735,7 +7735,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           />
         </div>
 
-        <div className="flex gap-1.5 items-center">
+        <div className="flex max-w-full shrink-0 flex-wrap gap-1.5 items-center whitespace-nowrap [&>button]:shrink-0 [&>div]:shrink-0">
           <IconButton
             label={tr("Set agent target point")}
             icon={<Crosshair size={16} />}
