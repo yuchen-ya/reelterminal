@@ -618,13 +618,14 @@ class ProjectManager {
 
   async addToRecent(
     project: Project,
-    fileHandle?: ProjectFileRef,
+    fileHandle?: ProjectFileRef | null,
   ): Promise<void> {
     if (!this.db) await this.initialize();
     if (!this.db) return;
 
     const existing = await this.loadRecentRecord(project.id);
-    const resolvedFileHandle = fileHandle ?? existing?.fileHandle;
+    // Recovery explicitly detaches a stale file; metadata updates preserve it.
+    const resolvedFileHandle = fileHandle === null ? undefined : fileHandle ?? existing?.fileHandle;
     if (!resolvedFileHandle) {
       await this.saveProjectSnapshot(project);
     }

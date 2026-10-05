@@ -6,7 +6,7 @@
  * reasoning and tool calls arrive through the external live endpoint; this
  * IPC surface only controls that session and reports its status.
  */
-import { ipcMain, shell } from "electron";
+import { app, ipcMain, shell } from "electron";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
@@ -14,12 +14,23 @@ import { CHANNELS } from "../../shared/channels";
 import { assertEditorIpcSender } from "./index";
 import { agentWorkspaceRoot } from "../live/host-instance";
 import type { LiveSessionHost } from "../live/live-session-host";
+import { agentStartupInfo } from "../live/agent-startup-info";
 
 const setAccessArgsSchema = z.object({
   access: z.enum(["read-only", "write"]),
 });
 
 export function registerLiveIpc(host: LiveSessionHost): void {
+  ipcMain.handle(CHANNELS.collabGetStartupInfo, (event) => {
+    assertEditorIpcSender(event);
+    return agentStartupInfo({
+      platform: process.platform,
+      packaged: app.isPackaged,
+      appPath: app.getAppPath(),
+      executablePath: process.execPath,
+      workspaceRoot: agentWorkspaceRoot(),
+    });
+  });
   // Compatibility for renderers that still use the former service toggle:
   // the endpoint now follows app lifetime, while these channels only grant
   // or revoke this launch's write authorization.

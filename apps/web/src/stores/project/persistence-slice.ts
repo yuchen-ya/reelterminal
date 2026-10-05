@@ -182,7 +182,8 @@ export function createProjectPersistenceSlice(
         // leftovers and are reclaimed.
         void sweepOrphanProjectMedia(projectWithMedia);
 
-        await projectManager.addToRecent(projectWithMedia);
+        projectManager.clearCurrentFileHandle();
+        await projectManager.addToRecent(projectWithMedia, null);
         return true;
       }
       return false;

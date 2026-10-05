@@ -11,6 +11,7 @@ export interface Notification {
   dismissible?: boolean;
   /** Fires when the card body is activated (click or Enter/Space). */
   onClick?: () => void;
+  onClickLabel?: string;
   /** Fires only when the user dismisses via X, never on programmatic removal. */
   onDismiss?: () => void;
 }

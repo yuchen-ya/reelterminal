@@ -35,6 +35,19 @@ afterEach(() => {
 });
 
 describe("ProjectManager recent projects", () => {
+  it("keeps the recovered snapshot reopenable instead of reopening its older file", async () => {
+    const project = makeProject("recovered-file-test", "Recovered edit");
+    await projectManager.addToRecent(project, { kind: "native", path: "C:/projects/old.oreel" });
+    await projectManager.addToRecent(project, null);
+
+    const recent = (await projectManager.getRecentProjects()).find((entry) => entry.id === project.id);
+    expect(recent?.fileHandle).toBeUndefined();
+    await expect(projectManager.openRecentProject(recent!)).resolves.toMatchObject({
+      id: project.id,
+      name: project.name,
+    });
+  });
+
   it("preserves a file handle while project metadata is renamed", async () => {
     const project = makeProject("recent-handle-test", "Before rename");
     const fileHandle = { kind: "native" as const, path: "C:/projects/edit.oreel" };

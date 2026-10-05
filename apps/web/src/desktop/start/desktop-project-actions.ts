@@ -3,6 +3,7 @@ import { useProjectStore } from "../../stores/project-store";
 import { loadProjectMedia } from "../../services/media-storage";
 import { projectManager } from "../../services/project-manager";
 import { restoreMediaItem } from "../../utils/media-recovery";
+import { autoSaveManager } from "../../services/auto-save";
 
 export interface NewProjectFormat {
   id: string;
@@ -38,15 +39,33 @@ export interface RecentEntry {
   id: string;
   name: string;
   lastOpened: number;
+  recoverySaveId?: string;
 }
 
 export async function listRecentProjects(): Promise<RecentEntry[]> {
-  const recentProjects = await projectManager.getRecentProjects();
-  return recentProjects.map((recent) => ({
-    id: recent.id,
-    name: recent.name,
-    lastOpened: recent.lastOpened,
-  }));
+  const [recentProjects, saves] = await Promise.all([
+    projectManager.getRecentProjects(),
+    autoSaveManager.checkForRecovery(),
+  ]);
+  const entries = new Map<string, RecentEntry>(
+    recentProjects.map((recent) => [recent.id, {
+      id: recent.id,
+      name: recent.name,
+      lastOpened: recent.lastOpened,
+    }]),
+  );
+  for (const save of saves) {
+    const existing = entries.get(save.projectId);
+    if (!existing || save.timestamp > existing.lastOpened) {
+      entries.set(save.projectId, {
+        id: save.projectId,
+        name: save.projectName,
+        lastOpened: save.timestamp,
+        recoverySaveId: save.id,
+      });
+    }
+  }
+  return [...entries.values()].sort((a, b) => b.lastOpened - a.lastOpened).slice(0, 10);
 }
 
 async function loadProjectIntoStore(project: Project): Promise<void> {
@@ -72,6 +91,10 @@ export async function openProject(): Promise<boolean> {
 }
 
 export async function openRecentProject(projectId: string): Promise<boolean> {
+  const entry = (await listRecentProjects()).find((item) => item.id === projectId);
+  if (entry?.recoverySaveId) {
+    return useProjectStore.getState().recoverFromAutoSave(entry.recoverySaveId);
+  }
   const recentProjects = await projectManager.getRecentProjects();
   const recent = recentProjects.find((entry) => entry.id === projectId);
   if (!recent) return false;

@@ -151,6 +151,12 @@
       "restartInstall": "重启并安装"
     },
     "collaboration": {
+      "startupTitle": "复制 Agent 启动提示词",
+      "startupDescription": "已允许编辑。点击此提示，复制连接命令和工作目录，然后发给你的 Agent。",
+      "copyStartupPrompt": "复制启动提示词",
+      "startupCopied": "启动提示词已复制",
+      "startupCopyFailed": "无法复制启动提示词",
+      "startupPrompt": "请通过 live CLI 协作编辑当前已打开的 ReelTerminal 桌面项目。\nCLI 命令前缀（每次调用请使用这个完整路径）：{{cliCommand}}\nAgent 工作目录：{{workspaceRoot}}\n\n首先执行：\n{{cliCommand}} status\n{{cliCommand}} call capabilities.get\n{{cliCommand}} context --compact\n{{cliCommand}} requirements list --status ready --compact\n编辑前用 schema/help 查询命令契约。保留当前项目的画面格式和已有状态，除非我明确要求，否则不要新建或替换项目。编辑使用最新 revision 和命令要求的安全保护参数。\n\n以 capabilities.get 返回的 recommendedRoot 为准确工作目录，在其中创建 jobs/<YYYY-MM-DD>-<short-slug>/，包含 brief.md、source/、generated/、work/、project/、output/ 和 evidence/。所有生成媒体、辅助脚本都放在该任务目录中，不要放入源码仓库。导出前预览检查，交付前验证，最终成片放在 output/。CLI 会自动读取 live endpoint 凭据；不要打印或复制其中的 token。\n\n读取当前上下文和 ready 需求后，继续处理我的任务；如果还没有具体任务，请询问我要编辑什么。",
       "readOnly": "只读",
       "restoreWrite": "允许编辑",
       "restoreWriteDescription": "允许智能体修改当前项目",

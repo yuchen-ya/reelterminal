@@ -72,6 +72,13 @@ local CLI and compatibility connectors and is left alone.
 
 ## Related data
 
+The desktop start screen and project switcher combine saved-file recent entries
+with local autosave records. Each project appears once, with its latest save;
+projects that were only autosaved can be reopened through the same list. A newer
+autosave takes precedence over the recent entry and restores stored media and
+overlays through the recovery path. Files exported elsewhere and old, separate
+Chromium profiles are not automatically scanned or merged into this list.
+
 - The live endpoint descriptor is stored under `~/.reelterminal/`, outside the
   data root; see [`AGENT-GUIDE.md`](AGENT-GUIDE.md).
 - Browser persistence identifiers are documented in

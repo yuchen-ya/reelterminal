@@ -54,6 +54,7 @@ export const CHANNELS = {
   collabGetStatus: "reelterminal:collab:getStatus",
   collabSetAccess: "reelterminal:collab:setAccess",
   collabOpenWorkspace: "reelterminal:collab:openWorkspace",
+  collabGetStartupInfo: "reelterminal:collab:getStartupInfo",
   productionVerifyReplacement: "reelterminal:production:verifyReplacement",
   productionCaptureReview: "reelterminal:production:captureReview",
   analysisRecordsList: "reelterminal:analysisRecords:list",

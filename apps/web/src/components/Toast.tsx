@@ -129,7 +129,7 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
       }}
       role={notification.onClick ? "button" : undefined}
       tabIndex={notification.onClick ? 0 : undefined}
-      title={notification.onClick ? t("Expand agent inspection") : undefined}
+      title={notification.onClick ? notification.onClickLabel ?? t("Expand agent inspection") : undefined}
       onClick={notification.onClick}
       onKeyDown={(event) => {
         if (!notification.onClick || event.target !== event.currentTarget) return;

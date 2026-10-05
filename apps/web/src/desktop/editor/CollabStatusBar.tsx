@@ -9,6 +9,7 @@ import {
 import { useUIStore } from "../../stores/ui-store";
 import { REQUIREMENT_BOARD_MODAL_ID } from "./RequirementBoardDialog";
 import { useProjectStore } from "../../stores/project-store";
+import { toast, useNotificationStore } from "../../stores/notification-store";
 
 /** Compact status for local CLI access to the open desktop project. */
 export function CollabStatusBar(): JSX.Element {
@@ -52,6 +53,27 @@ export function CollabStatusBar(): JSX.Element {
           setChangingAccess(true);
           try {
             await setAccess(access === "write" ? "read-only" : "write");
+            const status = useCollabStore.getState();
+            if (access === "read-only" && status.access === "write" && !status.startupHintShown) {
+              useCollabStore.setState({ startupHintShown: true });
+              const notificationId = useNotificationStore.getState().addNotification({
+                type: "info",
+                title: t("desktop.collaboration.startupTitle"),
+                message: t("desktop.collaboration.startupDescription"),
+                duration: 0,
+                onClickLabel: t("desktop.collaboration.copyStartupPrompt"),
+                onClick: async () => {
+                  try {
+                    const info = await window.reelterminal!.collabControl!.getStartupInfo();
+                    await navigator.clipboard.writeText(t("desktop.collaboration.startupPrompt", info));
+                    useNotificationStore.getState().removeNotification(notificationId);
+                    toast.success(t("desktop.collaboration.startupCopied"));
+                  } catch (error) {
+                    toast.error(t("desktop.collaboration.startupCopyFailed"), error instanceof Error ? error.message : String(error));
+                  }
+                },
+              });
+            }
           } finally {
             setChangingAccess(false);
           }

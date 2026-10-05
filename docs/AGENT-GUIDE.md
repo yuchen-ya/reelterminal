@@ -1,5 +1,10 @@
 # ReelTerminal external Agent guide
 
+The first time you allow editing in each app launch, a notification appears at
+the top right. Click it to copy a startup prompt for your external Agent. It
+includes this installation's absolute CLI command, the Agent workspace, and
+initial status/context/capabilities commands. It contains no endpoint token.
+
 Start ReelTerminal and open a project. The command service becomes available
 automatically with read-only access. For edits, click the **Agent · Read-only** button in the status strip. It switches
 to **Agent · Editable**; click again to revoke write access. Run:

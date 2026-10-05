@@ -15,6 +15,7 @@ import type {
 export type CollabStatus = OpenReelCollabStatus;
 
 interface CollabState extends CollabStatus {
+  startupHintShown: boolean;
   inspection: DesktopInspection | null;
   dismissInspection: () => void;
   refresh: () => Promise<void>;
@@ -31,6 +32,7 @@ const collabControl = () =>
     : undefined;
 
 export const useCollabStore = create<CollabState>()((set, get) => ({
+  startupHintShown: false,
   inspection: null,
   dismissInspection: () => set({ inspection: null }),
   sequence: 0,

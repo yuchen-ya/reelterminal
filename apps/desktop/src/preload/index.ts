@@ -153,6 +153,7 @@ const api = {
     },
   },
   collabControl: {
+    getStartupInfo: () => ipcRenderer.invoke(CHANNELS.collabGetStartupInfo, undefined),
     enable: (): Promise<LiveCollabStatus> =>
       ipcRenderer.invoke(CHANNELS.collabEnable, undefined),
     disable: (): Promise<LiveCollabStatus> =>

@@ -37,7 +37,7 @@ vi.mock("../../services/project-media-gc", () => ({
   sweepOrphanProjectMedia: vi.fn(),
 }));
 vi.mock("../../services/project-manager", () => ({
-  projectManager: { addToRecent },
+  projectManager: { addToRecent, clearCurrentFileHandle: vi.fn() },
 }));
 vi.mock("../../utils/media-recovery", () => ({ restoreMediaItem }));
 vi.mock("../engine-store", () => ({

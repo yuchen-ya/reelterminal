@@ -151,6 +151,12 @@
       "restartInstall": "Restart & Install"
     },
     "collaboration": {
+      "startupTitle": "Copy Agent startup prompt",
+      "startupDescription": "Editing is enabled. Click this notification to copy connection commands and the working folder for your agent.",
+      "copyStartupPrompt": "Copy startup prompt",
+      "startupCopied": "Startup prompt copied",
+      "startupCopyFailed": "Could not copy startup prompt",
+      "startupPrompt": "Work with the currently open ReelTerminal desktop project through its live CLI.\nCLI command prefix (use this full path for every call): {{cliCommand}}\nAgent workspace: {{workspaceRoot}}\n\nFirst run:\n{{cliCommand}} status\n{{cliCommand}} call capabilities.get\n{{cliCommand}} context --compact\n{{cliCommand}} requirements list --status ready --compact\nUse schema/help to discover commands before editing. Keep the open project's format and existing state; do not create or replace a project unless I request it. Use the latest revision and the required safety guards for edits.\n\nUse the recommendedRoot returned by capabilities.get as the authoritative workspace. Create jobs/<YYYY-MM-DD>-<short-slug>/ there, containing brief.md, source/, generated/, work/, project/, output/, and evidence/. Keep all generated media and helper scripts in that job, outside the source repository. Preview and verify before delivering exports in output/. The CLI reads the live endpoint descriptor automatically; never print or copy its token.\n\nRead the current context and ready requirements, then continue with my task. If the task is missing, ask me what to edit.",
       "readOnly": "Read-only",
       "restoreWrite": "Enable editing",
       "restoreWriteDescription": "Allow the agent to edit this project",

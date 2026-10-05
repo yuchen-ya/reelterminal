@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const stubs = vi.hoisted(() => ({
   createNewProject: vi.fn(),
   loadProject: vi.fn(),
+  recoverFromAutoSave: vi.fn(),
+  checkForRecovery: vi.fn(),
   manager: {
     getRecentProjects: vi.fn(),
     openProject: vi.fn(),
@@ -17,12 +19,16 @@ vi.mock("../../stores/project-store", () => ({
     getState: vi.fn(() => ({
       createNewProject: stubs.createNewProject,
       loadProject: stubs.loadProject,
+      recoverFromAutoSave: stubs.recoverFromAutoSave,
     })),
   },
 }));
 
 vi.mock("../../services/project-manager", () => ({
   projectManager: stubs.manager,
+}));
+vi.mock("../../services/auto-save", () => ({
+  autoSaveManager: { checkForRecovery: stubs.checkForRecovery },
 }));
 
 vi.mock("../../services/media-storage", () => ({
@@ -48,6 +54,7 @@ beforeEach(() => {
   stubs.manager.openProject.mockResolvedValue(null);
   stubs.manager.openRecentProject.mockResolvedValue(null);
   stubs.loadProjectMedia.mockResolvedValue([]);
+  stubs.checkForRecovery.mockResolvedValue([]);
 });
 
 describe("DESKTOP_FORMATS", () => {
@@ -98,6 +105,37 @@ describe("startNewMotionProject", () => {
 });
 
 describe("recent projects", () => {
+  it("lists autosave-only projects once and reopens the latest slot", async () => {
+    stubs.checkForRecovery.mockResolvedValue([
+      { id: "old", projectId: "project-a", projectName: "Old name", timestamp: 1000 },
+      { id: "latest", projectId: "project-a", projectName: "Recovered", timestamp: 3000 },
+    ]);
+    stubs.recoverFromAutoSave.mockResolvedValue(true);
+
+    await expect(listRecentProjects()).resolves.toEqual([
+      { id: "project-a", name: "Recovered", lastOpened: 3000, recoverySaveId: "latest" },
+    ]);
+    await expect(openRecentProject("project-a")).resolves.toBe(true);
+    expect(stubs.recoverFromAutoSave).toHaveBeenCalledWith("latest");
+    expect(stubs.manager.openRecentProject).not.toHaveBeenCalled();
+  });
+
+  it("chooses newer autosaves over a recent snapshot and retains newer file entries", async () => {
+    stubs.manager.getRecentProjects.mockResolvedValue([
+      { id: "project-a", name: "Saved", lastOpened: 1000 },
+      { id: "project-b", name: "File", lastOpened: 4000, fileHandle: { kind: "native", path: "b.oreel" } },
+    ]);
+    stubs.checkForRecovery.mockResolvedValue([
+      { id: "latest-a", projectId: "project-a", projectName: "Edited", timestamp: 3000 },
+      { id: "older-b", projectId: "project-b", projectName: "Old", timestamp: 2000 },
+    ]);
+
+    await expect(listRecentProjects()).resolves.toEqual([
+      { id: "project-b", name: "File", lastOpened: 4000 },
+      { id: "project-a", name: "Edited", lastOpened: 3000, recoverySaveId: "latest-a" },
+    ]);
+  });
+
   it("maps project-manager recents to the start screen shape", async () => {
     stubs.manager.getRecentProjects.mockResolvedValue([
       { id: "project-a", name: "Alpha", lastOpened: 2000, fileHandle: { kind: "native", path: "a" } },
@@ -105,8 +143,8 @@ describe("recent projects", () => {
     ]);
 
     await expect(listRecentProjects()).resolves.toEqual([
-      { id: "project-a", name: "Alpha", lastOpened: 2000 },
       { id: "project-b", name: "Beta", lastOpened: 3000 },
+      { id: "project-a", name: "Alpha", lastOpened: 2000 },
     ]);
     expect(stubs.manager.getRecentProjects).toHaveBeenCalledOnce();
   });

@@ -5,6 +5,8 @@ import { useUIStore } from "../../stores/ui-store";
 import { useCollabStore } from "../../stores/collab-store";
 import { REQUIREMENT_BOARD_MODAL_ID } from "./RequirementBoardDialog";
 import { useProjectStore } from "../../stores/project-store";
+import { useNotificationStore } from "../../stores/notification-store";
+import { ToastContainer } from "../../components/Toast";
 
 type TestBridge = {
   readonly platform: "desktop";
@@ -40,9 +42,14 @@ function installBridge(
     sequence: current.sequence + 1,
     access,
   }));
+  const getStartupInfo = vi.fn(async () => ({
+    cliCommand: "& 'C:/ReelTerminal/reelctl.cmd'",
+    workspaceRoot: "E:/Data/agent-workspace",
+  }));
   openreelWindow.reelterminal = {
     platform: "desktop",
     collabControl: {
+      getStartupInfo,
       enable: vi.fn(async () => current),
       disable: vi.fn(async () => current),
       setAccess,
@@ -50,7 +57,7 @@ function installBridge(
       openWorkspace: async () => "",
     },
   } as unknown as TestBridge;
-  return { setAccess };
+  return { setAccess, getStartupInfo };
 }
 
 async function renderBar(): Promise<void> {
@@ -66,6 +73,8 @@ describe("CollabStatusBar Agent Access status", () => {
     useUIStore.setState({ activeModal: null });
     useProjectStore.setState((state) => ({ project: { ...state.project, requirements: undefined } }));
     useCollabStore.setState({ sequence: 0, enabled: false, access: "write", currentAction: null });
+    useCollabStore.setState({ startupHintShown: false });
+    useNotificationStore.getState().clearAll();
   });
 
   afterEach(() => {
@@ -94,6 +103,39 @@ describe("CollabStatusBar Agent Access status", () => {
     fireEvent.click(screen.getByTestId("agent-access-toggle"));
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     await waitFor(() => expect(setAccess).toHaveBeenCalledWith("write"));
+  });
+
+  it("offers one startup hint per launch and copies live paths on activation", async () => {
+    const { getStartupInfo } = installBridge({ access: "read-only" });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    await renderBar();
+    render(<ToastContainer />);
+
+    fireEvent.click(screen.getByTestId("agent-access-toggle"));
+    fireEvent.click(await screen.findByRole("button", { name: /Copy Agent startup prompt/i }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    expect(getStartupInfo).toHaveBeenCalledOnce();
+    expect(writeText.mock.calls[0][0]).toContain("& 'C:/ReelTerminal/reelctl.cmd' status");
+    expect(writeText.mock.calls[0][0]).toContain("E:/Data/agent-workspace");
+    expect(writeText.mock.calls[0][0]).toContain("call capabilities.get");
+    await screen.findByText("Startup prompt copied");
+
+    useNotificationStore.getState().clearAll();
+    fireEvent.click(screen.getByTestId("agent-access-toggle"));
+    await waitFor(() => expect(screen.getByTestId("agent-access-mode")).toHaveTextContent("Read-only"));
+    fireEvent.click(screen.getByTestId("agent-access-toggle"));
+    await waitFor(() => expect(screen.getByTestId("agent-access-mode")).toHaveTextContent("Editable"));
+    expect(useNotificationStore.getState().notifications).toHaveLength(0);
+  });
+
+  it("does not offer a startup hint if granting write access fails", async () => {
+    const { setAccess } = installBridge({ access: "read-only" });
+    setAccess.mockRejectedValueOnce(new Error("IPC rejected"));
+    await renderBar();
+    fireEvent.click(screen.getByTestId("agent-access-toggle"));
+    await waitFor(() => expect(screen.getByTestId("agent-access-toggle")).not.toBeDisabled());
+    expect(useNotificationStore.getState().notifications).toHaveLength(0);
   });
 
   it("shows a short starting state while the always-on service initializes", async () => {
