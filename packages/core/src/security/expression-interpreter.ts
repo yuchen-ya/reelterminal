@@ -1,7 +1,7 @@
 import { parse, type Expression, type Node, type Statement } from "acorn";
 
 type Scope = Readonly<Record<string, unknown>>;
-type Evaluator = (scope: Scope) => unknown;
+type Evaluator = (scope: Scope, consumeOperation?: () => void) => unknown;
 
 const MAX_CODE_LENGTH = 8192;
 const MAX_NODES = 1024;
@@ -100,9 +100,10 @@ export function compileExpression(code: string): Evaluator {
   };
   program.body.forEach((node) => validate(node));
 
-  return (scope) => {
+  return (scope, consumeOperation) => {
     const values = new Map(Object.entries(scope));
     const evaluate = (node: Expression): unknown => {
+      consumeOperation?.();
       switch (node.type) {
         case "Literal":
           return node.value;

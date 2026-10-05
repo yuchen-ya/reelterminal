@@ -111,7 +111,7 @@ const EVENT_HANDLER_ATTR_RE = /\s(on[a-zA-Z]+)\s*=/i;
 // submission targets; xlink:href covers inline SVG. data: on <object> is
 // moot (the element itself is rejected).
 const URL_ATTR_RE =
-  /\b(?:xlink:href|href|src|poster|background|cite|longdesc|formaction|action|ping)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g;
+  /\b(?:xlink:href|href|src|poster|background|cite|longdesc|formaction|action|ping)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
 
 // CSS url(...) token: quoted or bare, terminated by the closing paren.
 const CSS_URL_RE = /url\s*\(\s*(?:"([^"]*)"|'([^']*)'|([^)"'\s]*))\s*\)/gi;

@@ -43,6 +43,9 @@ interface MotionExpressionGuardState {
   readonly memo: Map<string, number>;
   readonly cycleFlagged: Set<string>;
   activeExpressionId: string | null;
+  operationsRemaining: number;
+  callsRemaining: number;
+  exhausted: boolean;
 }
 
 function createMotionExpressionGuardState(): MotionExpressionGuardState {
@@ -52,10 +55,29 @@ function createMotionExpressionGuardState(): MotionExpressionGuardState {
     memo: new Map<string, number>(),
     cycleFlagged: new Set<string>(),
     activeExpressionId: null,
+    operationsRemaining: MOTION_EXPRESSION_MAX_OPERATIONS,
+    callsRemaining: MOTION_EXPRESSION_MAX_CALLS,
+    exhausted: false,
   };
 }
 
 const MOTION_EXPRESSION_MAX_DEPTH = 8;
+const MOTION_EXPRESSION_MAX_OPERATIONS = 8192;
+const MOTION_EXPRESSION_MAX_CALLS = 256;
+const MOTION_EXPRESSION_MAX_MEMO = 256;
+
+function consumeMotionExpressionBudget(
+  guard: MotionExpressionGuardState,
+  kind: "operation" | "call",
+): void {
+  const remaining = kind === "operation"
+    ? --guard.operationsRemaining
+    : --guard.callsRemaining;
+  if (guard.exhausted || remaining < 0) {
+    guard.exhausted = true;
+    throw new RangeError("Motion expression evaluation budget exceeded");
+  }
+}
 
 export interface MotionExpressionPreset {
   readonly type: MotionExpressionType;
@@ -487,7 +509,7 @@ type MotionExpressionScope = {
   readonly effect: (name: string) => (paramName: string) => number;
 };
 
-type CompiledMotionExpression = (scope: MotionExpressionScope) => unknown;
+type CompiledMotionExpression = (scope: MotionExpressionScope, consumeOperation?: () => void) => unknown;
 
 const compiledExpressionCache = new Map<string, CompiledMotionExpression | null>();
 
@@ -726,6 +748,7 @@ function evaluateCrossLayerProperty(
   if (typeof propertyId !== "string" || propertyId.length === 0) {
     throw new Error("value(property): property must be a non-empty string");
   }
+  consumeMotionExpressionBudget(guard, "call");
   const time = Math.max(0, finite(atTime, 0));
   const visitKey = `${target.id}:${propertyId}`;
   const memoKey = `${visitKey}@${time}`;
@@ -759,7 +782,9 @@ function evaluateCrossLayerProperty(
       },
       guard,
     );
-    guard.memo.set(memoKey, result);
+    if (!guard.exhausted && guard.memo.size < MOTION_EXPRESSION_MAX_MEMO) {
+      guard.memo.set(memoKey, result);
+    }
     return result;
   } finally {
     guard.visited.delete(visitKey);
@@ -824,6 +849,7 @@ function evaluateGuardedEffectParameter(
   localTime: number,
   guard: MotionExpressionGuardState,
 ): number {
+  consumeMotionExpressionBudget(guard, "call");
   const { composition, layer } = context;
   const time = Math.max(0, finite(localTime, 0));
   const property = getMotionEffectKeyframeProperty(effect.id, param);
@@ -866,7 +892,9 @@ function evaluateGuardedEffectParameter(
           ? 1
           : 0
         : evaluated;
-    guard.memo.set(memoKey, result);
+    if (!guard.exhausted && guard.memo.size < MOTION_EXPRESSION_MAX_MEMO) {
+      guard.memo.set(memoKey, result);
+    }
     return result;
   } finally {
     guard.visited.delete(visitKey);
@@ -992,7 +1020,10 @@ function evaluateCodeExpression(
   };
 
   try {
-    const result = compiled(scope);
+    const result = compiled(scope, () => consumeMotionExpressionBudget(guard, "operation"));
+    if (guard.exhausted) {
+      throw new RangeError("Motion expression evaluation budget exceeded");
+    }
     if (!guard.cycleFlagged.has(expression.id)) {
       clearMotionExpressionError(expression.id);
     }

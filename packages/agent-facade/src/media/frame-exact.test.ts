@@ -18,6 +18,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { runToolProcess, resolveToolFfmpeg, probeLabelFont } from "./ffmpeg-bin";
 import {
   probeVideoFacts,
+  ffprobeJson,
   frameIndexFromPts,
   extractFramesExact,
   resolveTargetFrames,
@@ -358,5 +359,49 @@ describe("static mask patch", () => {
       binaries!.ffmpeg, frames[0]!.path, frames[0]!.path, { width: 320, height: 180 },
     );
     expect(untouched.meanAbsDiff).toBe(0);
+  });
+});
+
+describe("self-contained frame inputs", () => {
+  it.skipIf(skip())("rejects an in-root HLS playlist referencing synthetic media outside its root", async () => {
+    const mediaRoot = join(dir, "allowed");
+    await mkdir(mediaRoot, { recursive: true });
+    const segment = join(dir, "outside.ts");
+    await runToolProcess(binaries!.ffmpeg, ["-hide_banner", "-loglevel", "error", "-y",
+      "-f", "lavfi", "-i", "color=red:size=64x64:rate=2:duration=1",
+      "-c:v", "libx264", "-f", "mpegts", segment]);
+    // A real playlist inside a root must not grant access to its references.
+    const playlist = join(mediaRoot, "playlist.m3u8");
+    await writeFile(playlist, "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:1\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:1,\n../outside.ts\n#EXT-X-ENDLIST\n");
+    const unrestricted = await runToolProcess(binaries!.ffprobe,
+      ["-v", "error", "-show_entries", "stream=width", "-of", "json", playlist]);
+    expect(JSON.parse(unrestricted.stdout.toString()).streams[0].width).toBe(64);
+    await expect(probeVideoFacts(binaries!.ffprobe, playlist)).rejects.toThrow(/whitelist|cannot probe/);
+    await expect(extractFramesExact(binaries!.ffmpeg, playlist, [0], join(dir, "blocked-hls"))).rejects.toThrow(/whitelist/);
+    await expect(detectBlackCandidates(binaries!.ffmpeg, playlist, { startSec: 0, endSec: 1 }, { minDurationSec: 0.1, pixelThreshold: 0.1 }, await probeVideoFacts(binaries!.ffprobe, samplePath))).rejects.toThrow(/whitelist/);
+  });
+  it.skipIf(skip())("rejects a concat input", async () => {
+    const list = join(dir, "indirect.mp4");
+    await writeFile(list, "ffconcat version 1.0\nfile 'sample.mp4'\n");
+    await expect(probeVideoFacts(binaries!.ffprobe, list)).rejects.toThrow(/whitelist|cannot probe/);
+    await expect(extractFramesExact(binaries!.ffmpeg, list, [0], join(dir, "blocked-concat"))).rejects.toThrow(/whitelist/);
+  });
+});
+
+describe("normal self-contained container compatibility", () => {
+  it.skipIf(skip())("probes and extracts WebM, TS and PNG without MOV-only options", async () => {
+    for (const [extension, codec, format] of [
+      ["webm", "libvpx-vp9", "webm"], ["ts", "libx264", "mpegts"],
+      ["png", "png", "image2"],
+    ]) {
+      const source = join(dir, `normal.${extension}`);
+      await runToolProcess(binaries!.ffmpeg, ["-hide_banner", "-loglevel", "error", "-y",
+        "-f", "lavfi", "-i", "color=blue:size=64x64:rate=2:duration=1",
+        "-frames:v", extension === "png" ? "1" : "2", "-c:v", codec!, "-f", format!, source]);
+      const probe = await ffprobeJson(binaries!.ffprobe, source);
+      expect(probe.streams?.[0]?.width).toBe(64);
+      const result = await extractFramesExact(binaries!.ffmpeg, source, [0], join(dir, `normal-${extension}`));
+      expect(result.frames).toHaveLength(1);
+    }
   });
 });

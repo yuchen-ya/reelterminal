@@ -1,6 +1,6 @@
 {
   "name": "reelterminal",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "ReelTerminal — the agent-native finishing editor for AI video. Built on OpenReel; workspace packages are unified under @reelterminal/*.",
   "type": "module",

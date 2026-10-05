@@ -39,6 +39,8 @@ import {
   HtmlValidationError,
 } from "@reelterminal/core/security/html-policy";
 
+import { isForbiddenLocalPath, hasRemoteFileAuthority } from "@reelterminal/core/security/local-path-policy";
+
 import type { ChromiumRuntime } from "./runtime";
 import type {
   RenderedHtmlPngInfo,
@@ -109,8 +111,10 @@ function isContainedRealPath(candidateReal: string, rootReal: string): boolean {
 }
 
 async function realpathOrNull(p: string): Promise<string | null> {
+  if (isForbiddenLocalPath(p)) return null;
   try {
-    return await realpath(p);
+    const resolved = await realpath(p);
+    return isForbiddenLocalPath(resolved) ? null : resolved;
   } catch {
     return null;
   }
@@ -143,25 +147,34 @@ function isFaviconRequestUrl(url: string): boolean {
   }
 }
 
-async function classifyRequestUrl(
+export async function classifyRequestUrl(
   url: string,
   entryReal: string,
   assetsRootReal: string | null,
+  resolveRealPath: (path: string) => Promise<string | null> = realpathOrNull,
 ): Promise<RequestVerdict> {
   if (url.startsWith("data:")) {
     return isAllowedDataUri(url)
       ? { allow: true }
       : { allow: false, blockedReason: "executable data: URI" };
   }
-  if (url.startsWith("file://")) {
+  if (/^file:/i.test(url)) {
+    if (hasRemoteFileAuthority(url)) {
+      return { allow: false, blockedReason: "remote file authority" };
+    }
     let filePath: string;
     try {
       filePath = fileURLToPath(url);
     } catch {
       return { allow: false, blockedReason: "malformed file URL" };
     }
-    const real = await realpathOrNull(filePath);
-    if (real === null) {
+    if (isForbiddenLocalPath(filePath) ||
+        (filePath !== entryReal &&
+         (assetsRootReal === null || !isContainedRealPath(filePath, assetsRootReal)))) {
+      return { allow: false, blockedReason: "outside the assets root or forbidden path" };
+    }
+    const real = await resolveRealPath(filePath);
+    if (real === null || isForbiddenLocalPath(real)) {
       return { allow: false, blockedReason: "not found" };
     }
     if (real === entryReal) return { allow: true };
@@ -218,6 +231,13 @@ export async function renderHtmlPng(
     throw new HtmlRenderError(
       `timeoutMs must be an integer in [${HTML_RENDER_MIN_TIMEOUT_MS}, ${HTML_RENDER_MAX_TIMEOUT_MS}], got ${timeoutMs}`,
     );
+  }
+
+  for (const candidate of [request.source.kind === "path" ? request.source.path : undefined,
+    request.assetsRoot, request.destPath]) {
+    if (candidate !== undefined && isForbiddenLocalPath(candidate)) {
+      throw new HtmlRenderError("Network and device paths are not allowed");
+    }
   }
 
   // ---- content + entry file resolution ------------------------------

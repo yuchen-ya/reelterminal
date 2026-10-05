@@ -32,6 +32,13 @@ types via `reelctl media analyze --media-id m1 --type sceneCuts --type
 blackFrames --type duplicateFrames`. `reelctl schema <command>` shows each
 command's exact arguments.
 
+Frame tools require a self-contained local media file. MP4/MOV, WebM/Matroska,
+AVI, FLV, MPEG/TS, Ogg, NUT, ASF and common still-image inputs are allowlisted;
+codec availability depends on the installed FFmpeg. HLS, concat, DASH and
+image-sequence playlists must be consolidated before use. MOV external tracks
+are disabled. Network shares and device paths are refused. See
+[the security policy](../SECURITY.md) for the limits of these checks.
+
 Edit requests use the current project identity, project epoch, and revision.
 The desktop applies a batch through the shared action history, so Agent edits
 are visible in the GUI and can be undone there.

@@ -13,10 +13,50 @@
  * timeouts, abort support. Paths with spaces/Chinese characters are ordinary
  * argv values.
  */
-import { mkdir, readdir, rename, rm, stat, copyFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, stat, copyFile, open } from "node:fs/promises";
 import { join } from "node:path";
+import { isForbiddenLocalPath } from "@reelterminal/core/security/local-path-policy";
 import { FacadeError } from "../errors";
 import { FfmpegToolError, runToolProcess } from "./ffmpeg-bin";
+
+// Exclude playlist/sequence demuxers that can open paths beyond the validated
+// source. Keep MOV external tracks disabled even with a user-provided FFmpeg.
+export const FRAME_INPUT_OPTIONS = [
+  "-protocol_whitelist", "file",
+  "-format_whitelist", "mov,matroska,webm,avi,flv,mpegts,mpeg,mpegvideo,ogg,nut,asf,wav,mp3,flac,aac,png_pipe,jpeg_pipe,bmp_pipe,webp_pipe,tiff_pipe,gif,apng",
+  "-enable_drefs", "0", "-use_absolute_path", "0",
+] as const;
+
+// Other containers cannot select MOV, so MOV-only options are unnecessary.
+const FRAME_NON_MOV_INPUT_OPTIONS = [
+  "-protocol_whitelist", "file",
+  "-format_whitelist", FRAME_INPUT_OPTIONS[3].split(",").filter((format) => format !== "mov").join(","),
+] as const;
+
+async function frameInputOptions(sourcePath: string): Promise<readonly string[]> {
+  if (isForbiddenLocalPath(sourcePath)) {
+    throw new FacadeError("INVALID_PARAMS", "Network and device paths are not allowed");
+  }
+  // Inspect only the first atom, without trusting an extension. Unrecognized
+  // MOV headers fail closed because the alternate whitelist excludes MOV.
+  const source = await open(sourcePath, "r");
+  const header = Buffer.alloc(8);
+  try {
+    await source.read(header, 0, header.length, 0);
+  } finally {
+    await source.close();
+  }
+  const atom = header.toString("ascii", 4, 8);
+  return ["ftyp", "moov", "mdat", "wide", "free", "skip", "uuid"].includes(atom)
+    ? FRAME_INPUT_OPTIONS
+    : FRAME_NON_MOV_INPUT_OPTIONS;
+}
+
+// Image-only inputs cannot select MOV or any playlist demuxer.
+const FRAME_IMAGE_INPUT_OPTIONS = [
+  "-protocol_whitelist", "file",
+  "-format_whitelist", "png_pipe,jpeg_pipe,bmp_pipe,webp_pipe,tiff_pipe,gif,apng",
+] as const;
 
 /* ------------------------------------------------------------------ */
 /* ffprobe facts                                                       */
@@ -62,7 +102,7 @@ export async function ffprobeJson(
   filePath: string,
   options: { countFrames?: boolean; readIntervalsSec?: number; signal?: AbortSignal } = {},
 ): Promise<ProbeJson> {
-  const args = ["-v", "error", "-select_streams", "v:0"];
+  const args = ["-v", "error", ...FRAME_INPUT_OPTIONS, "-select_streams", "v:0"];
   if (options.readIntervalsSec !== undefined) {
     args.push("-read_intervals", `%+${options.readIntervalsSec}`);
   }
@@ -125,7 +165,7 @@ export async function assessFrameTiming(
   try {
     const result = await runToolProcess(
       ffprobe,
-      ["-v", "error", "-select_streams", "v:0",
+      ["-v", "error", ...FRAME_INPUT_OPTIONS, "-select_streams", "v:0",
         "-read_intervals", `%+#${MAX_TIMING_SCAN_PACKETS}`,
         "-show_streams", "-show_packets", "-show_frames",
         "-show_entries", "stream=r_frame_rate,avg_frame_rate:packet=pts_time:frame=pts_time",
@@ -343,7 +383,7 @@ export async function extractFramesExact(
     // showinfo BEFORE select: its counter is the global decode index.
     const { stderr } = await runToolProcess(
       ffmpeg,
-      ["-hide_banner", "-nostdin", "-loglevel", "info", "-i", sourcePath,
+      ["-hide_banner", "-nostdin", "-loglevel", "info", ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
         "-vf", `showinfo,${expr}`, "-an", "-fps_mode", "passthrough", join(destDir, "tmp-%06d.png")],
       options,
     );
@@ -394,7 +434,7 @@ async function extractFramesOrdered(
   try {
     ({ stderr } = await runToolProcess(
       ffmpeg,
-      ["-hide_banner", "-nostdin", "-loglevel", "info", "-i", sourcePath,
+      ["-hide_banner", "-nostdin", "-loglevel", "info", ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
         "-vf", "showinfo", "-an", "-fps_mode", "passthrough",
         "-frames:v", String(maxIndex + 1), join(destDir, "tmp-%06d.png")],
       options,
@@ -560,7 +600,7 @@ export async function detectSceneCandidates(
   const duration = Math.max(0, range.endSec - range.startSec);
   const timeoutMs = 120_000 + Math.round(duration * 4_000);
   const args = ["-hide_banner", "-nostdin", "-loglevel", "warning", "-stats", "-stats_period", "1",
-    "-ss", String(range.startSec), "-t", String(duration), "-i", sourcePath,
+    "-ss", String(range.startSec), "-t", String(duration), ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
     "-vf", `select='gt(scene,${params.threshold})',metadata=print:file=-`,
     "-an", "-fps_mode", "passthrough", "-f", "null", "-"];
   const { stdout, stderr } = await runToolProcess(ffmpeg, args, { timeoutMs, signal: options.signal });
@@ -625,7 +665,7 @@ export async function detectBlackCandidates(
   const { stderr } = await runToolProcess(
     ffmpeg,
     ["-hide_banner", "-nostdin", "-loglevel", "info", "-stats", "-stats_period", "1",
-      "-ss", String(range.startSec), "-t", String(duration), "-i", sourcePath,
+      "-ss", String(range.startSec), "-t", String(duration), ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
       "-vf", `blackdetect=d=${params.minDurationSec}:pix_th=${params.pixelThreshold}`,
       "-an", "-f", "null", "-"],
     { timeoutMs: 120_000 + Math.round(duration * 4_000), signal: options.signal },
@@ -667,7 +707,7 @@ export async function detectFreezeCandidates(
   const { stderr } = await runToolProcess(
     ffmpeg,
     ["-hide_banner", "-nostdin", "-loglevel", "info", "-stats", "-stats_period", "1",
-      "-ss", String(range.startSec), "-t", String(duration), "-i", sourcePath,
+      "-ss", String(range.startSec), "-t", String(duration), ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
       "-vf", `freezedetect=n=${params.noiseThreshold}:d=${params.minDurationSec}`,
       "-an", "-f", "null", "-"],
     { timeoutMs: 120_000 + Math.round(duration * 4_000), signal: options.signal },
@@ -770,7 +810,7 @@ export async function composeContactSheet(
   const tile = `[seq]tile=${geometry.columns}x${geometry.rows}:padding=6:margin=4:color=black[out]`;
   const args = [
     "-hide_banner", "-nostdin", "-loglevel", "error", "-y",
-    ...inputs.flatMap((input) => ["-i", input.path]),
+    ...inputs.flatMap((input) => [...FRAME_IMAGE_INPUT_OPTIONS, "-i", input.path]),
     "-filter_complex", `${chains.join(";")};${concat};${tile}`,
     "-map", "[out]", "-frames:v", "1", destPath,
   ];
@@ -818,7 +858,7 @@ export async function composeCompareImage(
   await runToolProcess(
     ffmpeg,
     ["-hide_banner", "-nostdin", "-loglevel", "error", "-y",
-      "-i", referencePath, "-i", candidatePath,
+      ...FRAME_IMAGE_INPUT_OPTIONS, "-i", referencePath, ...FRAME_IMAGE_INPUT_OPTIONS, "-i", candidatePath,
       "-filter_complex", graph, "-map", "[out]", "-frames:v", "1", destPath],
     { signal: options.signal },
   );
@@ -844,7 +884,7 @@ export async function compareFrameMetrics(
     const filters = scale ? [`scale=${width}:${height}`] : [];
     const { stdout } = await runToolProcess(
       ffmpeg,
-      ["-hide_banner", "-nostdin", "-loglevel", "error", "-i", path,
+      ["-hide_banner", "-nostdin", "-loglevel", "error", ...FRAME_IMAGE_INPUT_OPTIONS, "-i", path,
         ...(filters.length > 0 ? ["-vf", filters.join(",")] : []),
         "-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"],
       { signal: options.signal },
@@ -904,7 +944,7 @@ export async function applyMaskComposite(
   await runToolProcess(
     ffmpeg,
     ["-hide_banner", "-nostdin", "-loglevel", "error", "-y",
-      "-i", originalFramePath, "-i", patchImagePath,
+      ...FRAME_IMAGE_INPUT_OPTIONS, "-i", originalFramePath, ...FRAME_IMAGE_INPUT_OPTIONS, "-i", patchImagePath,
       "-filter_complex",
       `[1:v]crop=${mask.width}:${mask.height}:${mask.x}:${mask.y}[p];[0:v][p]overlay=${mask.x}:${mask.y}:format=auto`,
       "-frames:v", "1", destPath],
@@ -927,7 +967,7 @@ export async function verifyOutsideMaskUnchanged(
   const decode = async (path: string) => {
     const { stdout } = await runToolProcess(
       ffmpeg,
-      ["-hide_banner", "-nostdin", "-loglevel", "error", "-i", path,
+      ["-hide_banner", "-nostdin", "-loglevel", "error", ...FRAME_IMAGE_INPUT_OPTIONS, "-i", path,
         "-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"],
       { signal: options.signal },
     );

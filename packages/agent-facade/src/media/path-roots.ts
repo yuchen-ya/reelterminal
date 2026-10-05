@@ -8,6 +8,7 @@
  */
 import { realpathSync } from "node:fs";
 import path from "node:path";
+import { isForbiddenLocalPath } from "@reelterminal/core/security/local-path-policy";
 
 /**
  * Matches a leading RFC 3986-ish scheme such as `http:`, `https:`, `file:`,
@@ -29,7 +30,7 @@ export function hasUrlScheme(p: string): boolean {
   if (!match) return false;
   // 2 == exactly one letter + ':' -> a Windows drive, not a URL scheme.
   // All registered schemes (http, file, data, ...) are at least 2 chars.
-  return match[1].length >= 3;
+  return match[1].length >= 2;
 }
 
 /**
@@ -67,11 +68,12 @@ export type ContainmentResult =
 export function resolveContainedPathDetailed(
   candidate: string,
   roots: readonly string[],
+  resolveRealPath: (path: string) => string = realpathSync,
 ): ContainmentResult {
   if (typeof candidate !== "string" || candidate.length === 0) {
     return { kind: "unresolvable" };
   }
-  if (hasUrlScheme(candidate)) return { kind: "outside" };
+  if (hasUrlScheme(candidate) || isForbiddenLocalPath(candidate)) return { kind: "outside" };
 
   // Realpath the candidate: collapses '..' segments *and* follows symlinks,
   // so both traversal and link escapes are eliminated before comparison.
@@ -81,7 +83,10 @@ export function resolveContainedPathDetailed(
     const absolute = path.isAbsolute(candidate)
       ? path.normalize(candidate)
       : path.resolve(process.cwd(), candidate);
-    resolvedReal = path.normalize(realpathSync(absolute));
+    if (isForbiddenLocalPath(absolute)) return { kind: "outside" };
+    const real = resolveRealPath(absolute);
+    if (isForbiddenLocalPath(real)) return { kind: "outside" };
+    resolvedReal = path.normalize(real);
   } catch {
     return { kind: "unresolvable" };
   }
@@ -89,12 +94,15 @@ export function resolveContainedPathDetailed(
   const comparableCandidate = comparablePath(resolvedReal);
 
   for (const root of roots) {
-    if (typeof root !== "string" || root.length === 0) continue;
+    if (typeof root !== "string" || root.length === 0 ||
+        hasUrlScheme(root) || isForbiddenLocalPath(root)) continue;
     let resolvedRoot: string;
     try {
       // Roots are realpath-resolved too: containers behind symlinks/junctions
       // still compare correctly against realpathed candidates.
-      resolvedRoot = path.normalize(realpathSync(root));
+      const real = resolveRealPath(root);
+      if (isForbiddenLocalPath(real)) continue;
+      resolvedRoot = path.normalize(real);
     } catch {
       continue; // Root itself unresolvable -> never grants containment.
     }

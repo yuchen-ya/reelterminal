@@ -226,3 +226,11 @@ describe("html policy — thrown variant", () => {
     expect(() => assertValidHtmlContent(OK)).not.toThrow();
   });
 });
+
+describe("case-insensitive HTML URL attributes", () => {
+  it.each(["SRC", "sRc", "HREF", "POSTER", "XLINK:HREF"])("rejects remote %s", (attribute) => {
+    expect(codeOf(`<img ${attribute}="file://server.invalid/share/image.png">`)).toBe("externalResource");
+    expect(codeOf(`<img ${attribute}=javascript:alert(1)>`)).toBe("unsafeProtocol");
+    expect(validateHtmlContent(`<img ${attribute}="local.png">`)).toEqual({ ok: true });
+  });
+});

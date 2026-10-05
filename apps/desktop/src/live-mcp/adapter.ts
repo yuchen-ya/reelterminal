@@ -148,7 +148,7 @@ export async function handleRpc(
               ? message.params?.protocolVersion
               : "2024-11-05",
             capabilities: { tools: { listChanged: false } },
-            serverInfo: { name: "reelctl-live", version: "1.0.0" },
+            serverInfo: { name: "reelctl-live", version: "1.0.1" },
           },
         };
       case "notifications/initialized":

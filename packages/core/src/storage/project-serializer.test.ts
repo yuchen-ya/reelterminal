@@ -5,6 +5,7 @@ import type {
   MotionComposition,
   MotionVideoLayer,
 } from "../motion/types";
+import { createMotionExpression, evaluateMotionPropertyValueAtTime } from "../motion/motion-expressions";
 import { DEFAULT_MOTION_TRANSFORM } from "../motion/types";
 import type { MotionShaderDef } from "../motion/shaders/types";
 import type {
@@ -983,4 +984,22 @@ it("round-trips production history and review evidence and rejects malformed new
   expect(() => serializer.importFromJson(corrupted)).toThrow(
     /production record/,
   );
+});
+
+describe("imported motion expression preservation", () => {
+  it("retains and evaluates a normal expression after JSON import normalization", () => {
+    const property = "transform.position.x";
+    const layer = makeVideoLayer({ expressions: [{
+      ...createMotionExpression("expression", property, "import-normal"), code: "value + time * 2",
+    }] });
+    const composition = makeComposition({ layers: [layer] });
+    const imported = normalizeProjectStoredFields(JSON.parse(JSON.stringify(
+      makeProject({ motionCompositions: [composition] }),
+    )));
+    const loaded = imported.motionCompositions![0]!;
+    expect(loaded.layers[0]!.expressions).toEqual(layer.expressions);
+    expect(evaluateMotionPropertyValueAtTime({ keyframes: loaded.layers[0]!.keyframes,
+      expressions: loaded.layers[0]!.expressions, property, localTime: 3, fallback: 5,
+      duration: loaded.duration, context: { composition: loaded, layer: loaded.layers[0]! } })).toBe(11);
+  });
 });

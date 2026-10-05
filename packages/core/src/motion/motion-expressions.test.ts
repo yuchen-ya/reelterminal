@@ -1264,3 +1264,32 @@ describe("motion expression static base values and current-time reads", () => {
     expect(value).toBeCloseTo(50, 5);
   });
 });
+
+describe("shared motion expression work budget", () => {
+  it("bounds different-time branching and restores the top-level keyed value", () => {
+    const property = "transform.position.x";
+    const layers: MotionLayer[] = Array.from({ length: 4 }, (_, index) => ({
+      ...makeLayer(), id: `budget-layer-${index}`, name: `Budget${index}`,
+      keyframes: [{ id: `budget-key-${index}`, property, time: 0, value: 7, easing: "linear" }],
+      expressions: index === 3 ? [] : [{
+        ...createMotionExpression("expression", property, `budget-expr-${index}`),
+        code: Array.from({ length: 10 }, (_, branch) =>
+          `thisComp.layer("Budget${index + 1}").valueAtTime("${property}", time * 11 + ${branch + 1})`
+        ).join(" + "),
+      }],
+    }));
+    const composition: MotionComposition = {
+      id: "budget-comp", name: "Budget", width: 100, height: 100, frameRate: 30,
+      duration: 5, backgroundColor: "#000000", layers, assets: [], variables: [],
+      markers: [], createdAt: 0, modifiedAt: 0,
+    };
+    const evaluate = () => evaluateMotionPropertyValueAtTime({ keyframes: layers[0].keyframes,
+      expressions: layers[0].expressions, property, localTime: 1, fallback: 99, duration: 5,
+      context: { composition, layer: layers[0] } });
+    expect(evaluate()).toBe(7);
+    expect(getMotionExpressionError("budget-expr-0")).toMatch(/budget exceeded/);
+    layers[0] = { ...layers[0], expressions: [{ ...layers[0].expressions![0], code: "value + 2" }] };
+    expect(evaluate()).toBe(9);
+    expect(getMotionExpressionError("budget-expr-0")).toBeNull();
+  });
+});
