@@ -7,16 +7,21 @@ The `reelterminal-live-mcp` launcher invokes `reelctl mcp serve`.
 
 ## Configuration
 
-Configuration uses only `REELTERMINAL_*` and `VITE_REELTERMINAL_*` names.
-Removed environment aliases and command names are no longer supported.
+Product configuration uses canonical `REELTERMINAL_*` and
+`VITE_REELTERMINAL_*` names. Removed upstream cloud environment aliases are no
+longer supported. Some explicit compatibility seams remain: the Blender
+resolver still accepts `BLENDER_PATH` after `REELTERMINAL_BLENDER_PATH`, and the
+MCP adapter exposes its catalog's compatibility tool aliases.
 Cloud integrations require an explicit opt-in and a configured backend;
 see [EXTERNAL-DEPENDENCIES.md](EXTERNAL-DEPENDENCIES.md).
 No default deployment points at the upstream project's hosted services.
 
 ## Persisted and protocol identifiers
 
-Existing project files with the `.openreel` extension and browser persistence
-keys beginning with `openreel` remain readable. Their exact values are
+Browser persistence keys beginning with `openreel` remain unchanged. The current
+GUI project picker accepts `.oreel` and `.json`; an older JSON project named
+`.openreel` must use a supported extension to appear in that picker. Existing
+serialized format markers are preserved. Their exact values are
 registered in [physical-identifiers.ts](../packages/core/src/legacy/physical-identifiers.ts).
 The `openreel-*` markers embedded in versioned protocol and generated asset
 formats remain part of their data formats.

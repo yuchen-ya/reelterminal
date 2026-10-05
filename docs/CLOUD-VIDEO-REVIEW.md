@@ -27,11 +27,11 @@ terminal's environment.
 
 Default endpoint: `https://dashscope.aliyuncs.com/compatible-mode/v1` (Beijing). Optional `REELTERMINAL_QWEN_BASE_URL` accepts the official Singapore `https://dashscope-intl.aliyuncs.com/compatible-mode/v1`, or an Alibaba workspace endpoint `https://<workspace>.cn-beijing.maas.aliyuncs.com/compatible-mode/v1` / `https://<workspace>.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`. Use a matching regional key and model access. Arbitrary destinations and redirects are rejected to prevent credential forwarding.
 
-`capabilities_get.mediaAnalysis.types.videoReview` reports configuration, destination, limits and local encoder availability. It does **not** contact Alibaba or validate balance/key/model access; HTTP authorization, region or quota errors are reported by the job without provider error bodies or automatic retries.
+`reelctl call capabilities.get` returns `value.mediaAnalysis.types.videoReview` with configuration, destination, limits and local encoder availability. It does **not** contact Alibaba or validate balance/key/model access; HTTP authorization, region or quota errors are reported by the job without provider error bodies or automatic retries.
 
 ## Use through the canonical live facade
 
-1. Check capabilities, inspect source candidates with `media_inspect`, and assess whether the source supports the requested edit. Cloud review may supplement this evidence.
+1. Check capabilities, inspect source candidates with `media.inspect`, and assess whether the source supports the requested edit. Cloud review may supplement this evidence.
 2. Obtain user authorization for uploading the chosen material. Configuring a key alone is not a request to analyze every file. Within authorized scope, start a bounded job:
 
 ```json

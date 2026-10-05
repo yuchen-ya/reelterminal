@@ -32,6 +32,11 @@ is not ready; prepare the GUI instead of silently selecting headless mode.
 In a source checkout, build with `pnpm --filter @reelterminal/desktop build:main`
 and invoke `node /absolute/path/to/apps/desktop/dist/reelctl/index.js` in place
 of `reelctl`. Installed distributions provide launchers alongside the app.
+Windows packaged launchers use PowerShell; use the GUI's copied prompt for the
+platform-specific full command. Its paths reflect the active installation and
+workspace at copy time. After changing installation or storage locations,
+restart the GUI and copy again. Explicit workspace/data-root environment
+overrides take precedence over the corresponding defaults/settings.
 
 The client privately reads `~/.reelterminal/live-endpoint.json`, or an owned
 legacy `~/.openreel/live-endpoint.json` when the canonical file is absent.
@@ -92,8 +97,10 @@ send media externally and is a fallible opinion, not a quality certificate.
 
 Export a project snapshot, wait for the job, then call `verify.artifact` before
 claiming technical success. Preserve job IDs and artifact paths. The desktop
-retains jobs across CLI exits and activity timeouts, but disabling Agent Access
-or exiting the application ends the host session. User-level libraries and
+retains jobs across CLI exits and activity timeouts. Setting Agent access to
+read-only revokes new writes and releases the writer lease, while preserving
+the command service, existing jobs and idempotency ledger. Exiting the
+application ends the host session. User-level libraries and
 project data retain their existing persistence rules.
 
 Voiceover and music generation tasks are not available in ReelTerminal. Generate

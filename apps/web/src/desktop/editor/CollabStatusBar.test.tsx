@@ -44,6 +44,7 @@ function installBridge(
   }));
   const getStartupInfo = vi.fn(async () => ({
     cliCommand: "& 'C:/ReelTerminal/reelctl.cmd'",
+    shell: "PowerShell",
     workspaceRoot: "E:/Data/agent-workspace",
   }));
   openreelWindow.reelterminal = {
@@ -119,6 +120,7 @@ describe("CollabStatusBar Agent Access status", () => {
     expect(writeText.mock.calls[0][0]).toContain("& 'C:/ReelTerminal/reelctl.cmd' status");
     expect(writeText.mock.calls[0][0]).toContain("E:/Data/agent-workspace");
     expect(writeText.mock.calls[0][0]).toContain("call capabilities.get");
+    expect(writeText.mock.calls[0][0]).toContain("PowerShell");
     await screen.findByText("Startup prompt copied");
 
     useNotificationStore.getState().clearAll();

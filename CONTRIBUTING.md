@@ -23,11 +23,15 @@ Use Node.js 22.13.0 or newer, Corepack, and the repository-pinned pnpm 11.7.0:
 git clone https://github.com/yuchen-ya/reelterminal.git
 cd reelterminal
 corepack pnpm install
+pnpm build:wasm
 pnpm --filter @reelterminal/runtime-chromium exec playwright-core install chromium
 ```
 
 FFmpeg and ffprobe are required by runtime verification tests. Start the browser
 editor with `pnpm dev`.
+The desktop build/start workflow is described in the root README. OpenCV tools
+optionally need a local Python with `cv2` and `numpy`; Blender is a separate
+optional rigging dependency. Missing optional tools are reported as unavailable.
 
 ## Checks
 
@@ -41,6 +45,10 @@ pnpm build
 For focused work, run the affected package checks. Desktop live collaboration
 tests are in `apps/desktop`; the GitHub workflows show the CI checks and
 platforms.
+The root `pnpm test` runs the packages' default Vitest suites. Desktop GUI/CLI/MCP
+acceptance uses a separate config: build the desktop, then run
+`pnpm --filter @reelterminal/desktop test:e2e`. Native C++ tests and the Python
+filter-tool checks are separate as well; see `.github/workflows/ci.yml`.
 
 ## Changes and pull requests
 

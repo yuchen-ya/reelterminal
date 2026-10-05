@@ -11,6 +11,7 @@ describe("Agent startup command", () => {
       workspaceRoot: "E:\\Data\\agent-workspace",
     })).toEqual({
       cliCommand: "& 'C:\\User''s Editor\\reelctl.cmd'",
+      shell: "PowerShell",
       workspaceRoot: "E:\\Data\\agent-workspace",
     });
   });
@@ -24,6 +25,7 @@ describe("Agent startup command", () => {
       workspaceRoot: "/data/agent-workspace",
     });
     expect(info.cliCommand).toBe("node '/work/editor/apps/desktop/dist/reelctl/index.js'");
+    expect(info.shell).toBe("POSIX shell (sh/bash/zsh)");
   });
 
   it("uses the installed Electron runtime on macOS", () => {

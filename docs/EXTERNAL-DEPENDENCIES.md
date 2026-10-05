@@ -20,7 +20,7 @@ downloads and user-configured provider requests are described below.
 | Studio marketplace | Unused submission/API clients removed. Studio editing and package export remain local. |
 | Studio samples | Catalog empty; import your own footage. No upstream footage or CDN is supplied. |
 | Product analytics | PostHog and tracking calls removed. |
-| Updates | Packaged app checks this project's GitHub Releases. Download and installation require user action; signed installer/update acceptance remains pending. |
+| Updates | Packaged app checks this project's GitHub Releases. Download requires user action; once downloaded, the update installs on the next normal quit after the unsaved-changes guard. Signed installer/update acceptance remains pending. |
 
 Resource GET requests disclose ordinary request metadata (IP, user agent and
 possibly referrer). They do not upload the edited clip. Remote URLs contained
@@ -39,8 +39,8 @@ in user projects contact their chosen hosts when loaded.
 | `REELTERMINAL_QWEN_BASE_URL` | Selects an approved Alibaba review endpoint. | Alibaba DashScope |
 | `REELTERMINAL_CRASH_ENDPOINT` | Enables minimal desktop crash reports to a deployment-owned HTTPS endpoint. | Off |
 
-Existing cloud environment aliases retain their precedence for explicit
-configured deployments. They no longer restore an upstream default URL.
+Cloud configuration reads the canonical `VITE_REELTERMINAL_*` variables above;
+removed upstream cloud-variable aliases do not restore a backend URL.
 The application does not provide or promise those optional hosted services.
 
 An enabled cloud action sends the content selected for that action: template

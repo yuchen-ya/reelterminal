@@ -5,13 +5,17 @@
 From the repository root:
 
 ```bash
+pnpm build:wasm
 pnpm --filter @reelterminal/desktop build
 pnpm --filter @reelterminal/desktop pack
 pnpm --filter @reelterminal/desktop dist
 ```
 
-`pack` creates an unpacked local build. `dist` creates installers for macOS
-(arm64 and x64), Windows (x64), and Linux (x64). These commands do not download
+`pack` creates an unpacked local build. `dist` builds the configured targets for
+the current host platform: macOS (arm64 and x64), Windows (x64), or Linux (x64).
+It does not build and sign all three operating systems in one invocation; use
+appropriate build hosts and signing credentials for each release target.
+`build:wasm` generates the core WASM assets omitted from Git. These commands do not download
 or include FFmpeg or Blender binaries, even when a developer has fetched them
 locally. Install FFmpeg/ffprobe separately and put them on PATH. For desktop
 media processing, `REELTERMINAL_FFMPEG_PATH` can select an explicit executable;

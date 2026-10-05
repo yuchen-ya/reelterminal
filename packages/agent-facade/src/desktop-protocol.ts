@@ -153,5 +153,5 @@ export interface DesktopCollabControlApi {
   /** Explicitly change the authorization boundary; independent of client behavior. */
   setAccess(access: AgentAccessMode): Promise<DesktopCollabStatus>;
   openWorkspace(): Promise<string>;
-  getStartupInfo(): Promise<{ cliCommand: string; workspaceRoot: string }>;
+  getStartupInfo(): Promise<{ cliCommand: string; shell: string; workspaceRoot: string }>;
 }

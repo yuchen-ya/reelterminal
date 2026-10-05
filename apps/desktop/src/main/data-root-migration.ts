@@ -97,6 +97,13 @@ async function migrateOne(
   const { kind, from, to } = source;
   const base = { kind, from, to } as const;
 
+  const resolvedFrom = path.resolve(from);
+  const resolvedTo = path.resolve(to);
+  const samePath = process.platform === "win32"
+    ? resolvedFrom.toLowerCase() === resolvedTo.toLowerCase()
+    : resolvedFrom === resolvedTo;
+  if (samePath) return { ...base, status: "skipped-target-exists" };
+
   const fromStat = await lstat(from).catch(() => null);
   if (!fromStat || !fromStat.isDirectory()) {
     return { ...base, status: "skipped-missing" };

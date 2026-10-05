@@ -42,8 +42,9 @@ const facade = createAgentFacade({
 
 The full 7-step scenario (create 320x180@30 → import `input.mp4` → clip 0–5 s
 → "Hello world" 0–5 s → PNG at 2.5 s → export `output.mp4` → verify) is in
-[`examples/hello-world-e2e.mts`](examples/hello-world-e2e.mts). Run it from
-anywhere with esbuild + node (paths are examples — use absolute ones):
+[`examples/hello-world-e2e.mts`](examples/hello-world-e2e.mts). Run the following
+from `packages/runtime-chromium/` with esbuild + node (input and output roots are
+examples — replace them with existing absolute paths):
 
 ```bash
 esbuild examples/hello-world-e2e.mts --bundle --platform=node --format=esm \

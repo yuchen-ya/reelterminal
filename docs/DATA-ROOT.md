@@ -1,9 +1,9 @@
 # The ReelTerminal data root
 
-Everything user-scoped lives under **one relocatable data root** so a user can
-find it, move it to another drive, back it up, and decide at uninstall time
-what stays. The root is created at first launch and shown in **Settings →
-Storage**, which is also where it can be changed.
+Managed user stores default to **one data root** so a user can find them,
+back them up, and choose a new location. The root is created at first launch
+and shown in **Settings → Storage**, which is also where it can be changed.
+Files saved/imported outside this root retain their chosen locations.
 
 ## Layout
 
@@ -15,7 +15,7 @@ Storage**, which is also where it can be changed.
                                    settings, live artifacts, caches
   projects/                        default save folder for .oreel projects
   agent-workspace/                 the Agent workspace (jobs/ + shared/);
-                                   `capabilities_get.mediaImport.recommendedRoot`
+                                   `capabilities.get` → `value.mediaImport.recommendedRoot`
   logs/                            reserved
 ```
 
@@ -45,9 +45,25 @@ data-root machinery is bypassed entirely and userData points where it says.
 Data moves at startup, before the Chromium profile is first touched. The app
 does not copy live, in-use data.
 
+The current automatic move covers the Chromium `app-data/` profile and
+`agent-workspace/`. It does not move existing `.oreel` files in `projects/`,
+the reserved `logs/` folder, or arbitrary external originals. A new empty
+`projects/` folder becomes the default for future Save As operations.
+Stored absolute project-file/media references are not automatically rewritten.
+Do not delete the previous location just because the profile move succeeded:
+check file references, reopen moved project files, and verify file-backed Agent
+preview/export tools before cleaning up originals. Old independent Chromium
+profiles are not record-merged into a non-empty destination.
+
+The startup prompt reads the active workspace at copy time. After the restart,
+copy it again for the new workspace; the CLI executable path stays at the app's
+installation location. `REELTERMINAL_AGENT_WORKSPACE_ROOT` can independently
+override the workspace. A `REELTERMINAL_DATA_ROOT` override continues to win
+over a location selected in Settings.
+
 Per item (`apps/desktop/src/main/data-root-migration.ts`):
 
-- missing source → no-op;
+- identical source/target paths or a missing source → no-op;
 - non-empty target → never merged or overwritten; the item is skipped and
   the source is left in place, reported in Settings → Storage;
 - fast path: directory rename;
@@ -73,9 +89,10 @@ local CLI and compatibility connectors and is left alone.
 ## Related data
 
 The desktop start screen and project switcher combine saved-file recent entries
-with local autosave records. Each project appears once, with its latest save;
+with local autosave records. They show at most ten distinct recent projects;
 projects that were only autosaved can be reopened through the same list. A newer
-autosave takes precedence over the recent entry and restores stored media and
+autosave timestamp than the recent entry's last-opened timestamp takes
+precedence and restores stored media and
 overlays through the recovery path. Files exported elsewhere and old, separate
 Chromium profiles are not automatically scanned or merged into this list.
 

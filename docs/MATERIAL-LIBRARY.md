@@ -18,10 +18,9 @@ them.
 
 ## Not the same as project work assets
 
-The assets panel also has a project-scoped **Work** tab, fed by
-"Save to work asset" in a timeline clip's context menu or "Save to Work
-Assets" on a media item's context menu (a media capture carries default
-clip parameters) (Agent side: the `workAsset.*` edit ops). A work asset is a snapshot of one clip — its
+The **Project assets** panel combines original media with saved clips and
+combinations. Use **Save timeline selection** in that panel to capture selected
+clips (Agent side: the `workAsset.*` edit ops). A work asset is a snapshot of one clip — its
 source media, range, speed, effects, and keyframes — stored INSIDE the
 open project: it saves, undoes, and reopens with the project, and
 instantiating it clones the snapshot into a new timeline clip. A work

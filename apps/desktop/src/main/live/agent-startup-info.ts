@@ -7,7 +7,7 @@ export function agentStartupInfo(input: {
   appPath: string;
   executablePath: string;
   workspaceRoot: string;
-}): { cliCommand: string; workspaceRoot: string } {
+}): { cliCommand: string; shell: string; workspaceRoot: string } {
   const paths = input.platform === "win32" ? path.win32 : path.posix;
   const quote = (value: string) => input.platform === "win32"
     ? `'${value.replaceAll("'", "''")}'`
@@ -21,5 +21,9 @@ export function agentStartupInfo(input: {
       ? `ELECTRON_RUN_AS_NODE=1 ${quote(input.executablePath)} ${entry}`
       : `node ${entry}`;
   }
-  return { cliCommand, workspaceRoot: input.workspaceRoot };
+  return {
+    cliCommand,
+    shell: input.platform === "win32" ? "PowerShell" : "POSIX shell (sh/bash/zsh)",
+    workspaceRoot: input.workspaceRoot,
+  };
 }

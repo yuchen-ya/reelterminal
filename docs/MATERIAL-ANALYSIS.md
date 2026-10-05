@@ -6,11 +6,11 @@ or apply edits.
 
 ## Source inspection
 
-`media_import_preflight {path}` checks that a file is inside the allowed media
+`media.import_preflight {path}` checks that a file is inside the allowed media
 roots and can be read. A successful preflight does not guarantee codec support.
 Live GUI imports are limited to 256 MiB.
 
-`media_inspect` samples up to 12 source timestamps. It accepts a source range,
+`media.inspect` samples up to 12 source timestamps. It accepts a source range,
 explicit timestamps or a sample count, and an optional normalized region of
 interest. Results include frame artifacts, source coordinates, and the current
 timeline mapping when a clip uses that media. The configured byte budget may
@@ -19,7 +19,7 @@ metadata before using it as evidence.
 
 ## Audio summary
 
-`media_analyze_start` with `analysisTypes: ["audioSummary"]` runs locally with
+`media.analyze_start` with `analysisTypes: ["audioSummary"]` runs locally with
 FFmpeg and ffprobe. It reports stream facts, integrated loudness, true peak,
 loudness range, bounded waveform levels, silence intervals, and onset
 candidates. It does not upload audio or modify the project.

@@ -5,34 +5,49 @@ canonical `Project` state, with headless and live sessions and bundled
 read-only tool extensions. The desktop CLI and MCP adapter use the same
 command catalog.
 
+This example creates a separate headless project; it does not attach to the GUI.
+Replace the absolute paths with an existing video at least five seconds long.
+Live desktop Agents should use the CLI workflow in the root Agent guide.
+
 ```ts
-import { createAgentFacade } from "@reelterminal/agent-facade";
+import { createAgentFacade, type FacadeResult } from "@reelterminal/agent-facade";
+
+function must<T>(result: FacadeResult<T>): T {
+  if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
+  return result.value;
+}
 
 const facade = createAgentFacade({ mediaRoots: ["/abs/path/to/media"] });
 
 // Single-initialization lifecycle verb: one project per session, ever.
 // An exact retry (same idempotencyKey + same payload) replays the creation
 // result without resetting anything; any other second create is a CONFLICT.
-await facade["project.create"]({ name: "Demo", idempotencyKey: "create-demo" });
-await facade["project.rename"]({
+const created = must(await facade["project.create"]({ name: "Demo", idempotencyKey: "create-demo" }));
+const renamed = must(await facade["project.rename"]({
   name: "Dam Letter",
-  expectedRevision: 0,
+  expectedRevision: created.revision,
   idempotencyKey: "rename-demo",
-});
-await facade["media.import"]({ path: "/abs/path/to/media/input.mp4" });
-await facade["edit.apply"]({
+}));
+const imported = must(await facade["media.import"]({
+  path: "/abs/path/to/media/input.mp4",
+  expectedRevision: renamed.revision,
+}));
+const mediaId = imported.mediaId;
+const firstBatch = must(await facade["edit.apply"]({
   ops: [
     { op: "track.add", trackType: "video", trackId: "v1" },
+    { op: "track.add", trackType: "text", trackId: "t1" },
     { op: "clip.add", trackId: "v1", mediaId, startTime: 0, clipId: "c1" },
     { op: "clip.trim", clipId: "c1", inPoint: 0, outPoint: 5 },
-    { op: "text.create", text: "Hello world", startTime: 0, duration: 5,
+    { op: "text.create", trackId: "t1", text: "Hello world", startTime: 0, duration: 5,
       // Normalized 0..1 frame coordinates (0.5/0.5 = center), identical in
       // preview and export. Keep the anchor point inside [0.05, 0.95].
       position: { x: 0.5, y: 0.15 } },
   ],
-  expectedRevision: 1,
+  expectedRevision: imported.revision,
   idempotencyKey: "batch-1",
-});
+}));
+const overlayId = firstBatch.applied.find((result) => result.op === "text.create")!.createdIds[0];
 // Later batches: track.remove (empty tracks only), media.remove (unreferenced
 // media only), clip.move, clip.split, clip.duplicate, clip.rippleDelete,
 // clip.setSpeed, clip.setReverse, clip.setTransform, clip.setFade,
@@ -44,7 +59,7 @@ await facade["edit.apply"]({
 // ids come from timeline.get/project.get_state. track.remove rejects a track
 // that still has clips, overlays, or transitions; media.remove rejects media
 // still referenced by any timeline clip.
-await facade["edit.apply"]({
+must(await facade["edit.apply"]({
   ops: [
     { op: "clip.move", clipId: "c1", startTime: 2 },
     { op: "clip.setSpeed", clipId: "c1", speed: 1.5 },
@@ -53,9 +68,10 @@ await facade["edit.apply"]({
     { op: "text.update", overlayId, style: { color: "#ffcc00" }, position: { x: 0.5, y: 0.85 } },
     { op: "clip.setVolume", clipId: "c1", volume: 1.5 },
   ],
+  expectedRevision: firstBatch.revision,
   idempotencyKey: "batch-2",
-});
-const state = await facade["project.get_state"]();
+}));
+const state = must(await facade["project.get_state"]());
 ```
 
 ## Verbs

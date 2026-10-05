@@ -5,6 +5,19 @@ the top right. Click it to copy a startup prompt for your external Agent. It
 includes this installation's absolute CLI command, the Agent workspace, and
 initial status/context/capabilities commands. It contains no endpoint token.
 
+The prompt is generated when you click Copy, using the running installation's
+paths. Windows commands use PowerShell; macOS/Linux commands use a POSIX shell.
+For development builds, the command requires the documented Node.js version on
+PATH. Packaged commands use Electron's included Node runtime.
+
+The CLI path follows the installation, while the workspace normally follows
+`<dataRoot>/agent-workspace`. Changing Settings → Storage requires restarting
+the app before the new workspace becomes active. Copy a new prompt after that
+restart; text already sent to an Agent does not update itself. An absolute
+`REELTERMINAL_AGENT_WORKSPACE_ROOT` override takes precedence over the default
+workspace, and `REELTERMINAL_DATA_ROOT` takes precedence over the Settings
+pointer. `capabilities.get` remains authoritative for the active media roots.
+
 Start ReelTerminal and open a project. The command service becomes available
 automatically with read-only access. For edits, click the **Agent · Read-only** button in the status strip. It switches
 to **Agent · Editable**; click again to revoke write access. Run:
@@ -23,15 +36,44 @@ See [COMMAND-API.md](COMMAND-API.md) for the live service and CLI contract.
 
 For a source build, run `pnpm --filter @reelterminal/desktop build:main` and use
 `node /absolute/path/to/apps/desktop/dist/reelctl/index.js` in place of `reelctl`.
-Installed launchers live beside the application; use an absolute path if their
-folder is not on PATH. The desktop does not change Agent configuration.
+Windows packaged launchers live beside the application; use an absolute path if
+their folder is not on PATH. macOS/Linux packaged prompts invoke the installed
+Electron executable with `ELECTRON_RUN_AS_NODE=1` and the CLI entry in app.asar.
+The desktop does not change Agent configuration.
 
 ## MCP compatibility
 
-Configure an MCP-capable Agent to launch `reelctl mcp serve`. The
-`reelterminal-live-mcp` launcher invokes that adapter.
+Configure an MCP-capable Agent to launch the CLI with `mcp serve` arguments. The
+Windows `reelterminal-live-mcp.cmd` launcher invokes that adapter. Use a real
+absolute path; neither a source checkout nor the installer guarantees a global
+`reelctl` command on PATH.
 The adapter obtains the live catalog and forwards to the authenticated Command
 API.
+
+For clients with a stdio configuration shaped as `command`, `args` and `env`,
+this Windows packaged example invokes the bundled runtime directly, without
+depending on the client's handling of `.cmd` files. Replace both paths with
+your actual installation and adapt the surrounding configuration to your client:
+
+```json
+{
+  "mcpServers": {
+    "reelterminal": {
+      "command": "C:\\Program Files\\ReelTerminal\\ReelTerminal.exe",
+      "args": [
+        "C:\\Program Files\\ReelTerminal\\resources\\app.asar\\dist\\reelctl\\index.js",
+        "mcp", "serve"
+      ],
+      "env": { "ELECTRON_RUN_AS_NODE": "1" }
+    }
+  }
+}
+```
+
+For a source build, use `node` as command and the absolute built CLI entry as
+the first argument, followed by `mcp`, `serve`; omit that Electron environment
+variable. For macOS/Linux packages, use the executable and entry paths from the
+copied prompt with the same arguments and Electron environment variable.
 
 The endpoint descriptor is a credential. Never print it or copy its token to a
 prompt. The client reads it privately and probes loopback liveness. A missing or

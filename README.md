@@ -56,7 +56,7 @@ AI 视频生成模型（Sora、Runway、Kling、Luma、CogVideoX、HunyuanVideo 
                                ▼
     ┌─────────────────────────────────────────────────────┐
     │          真实本地渲染 (Chromium / WebCodecs)         │
-    │         100% 像素级对齐 • 纯本地离线 • 严谨交付     │
+    │          共享项目模型 • 本地渲染 • 产物验证          │
     └─────────────────────────────────────────────────────┘
 ```
 
@@ -66,23 +66,23 @@ AI 视频生成模型（Sora、Runway、Kling、Luma、CogVideoX、HunyuanVideo 
 
 ### 🤝 人机双轨协同 (Hybrid GUI & Agent Architecture)
 - **共享单一真实源 (Single Source of Truth)**：人类在 Desktop GUI 中直观拖拽，外部 Agent 通过 `reelctl` CLI 或标准 **MCP (Model Context Protocol)** 协议操作同一个项目，修改实时双向同步。
-- **事务与并发保护 (Atomic Transactions & CAS)**：所有 Agent 编辑均采用原子批处理（Atomic Batches）与 Revision 乐观锁机制，出现冲突自动拦截，永不覆盖用户未保存的现场。
-- **共享撤销历史 (Shared Undo/Redo)**：智能体的每一次操作都被纳入应用的撤销栈，用户在界面上一键 `Ctrl+Z` 即可轻松回退 Agent 的修改。
+- **事务与并发保护 (Atomic Transactions & CAS)**：`edit.apply` 在原子批处理中应用时间线编辑。携带项目身份和 revision 的请求会拦截过期计划；发生冲突后需重新读取上下文并规划。
+- **共享撤销历史 (Shared Undo/Redo)**：Agent 时间线编辑进入当前项目的撤销历史，可通过 GUI 撤销。个人素材库使用独立的历史；预览、分析和导出任务不会成为时间线撤销操作。
 
 ### 🎯 帧级精修与资产闭环 (Frame-Exact Repair Loop)
 - **真·帧精度定位**：基于 0-based 真实解码帧索引与 PTS 时间戳，彻底告别“秒数 × 标称帧率”导致的音画漂移。
 - **局部修补与光流追踪 (Mask Refine & Motion Track)**：支持 OpenCV 驱动的单帧局部补丁传播、稀疏光流追踪与矩形/掩码羽化，实现 AI 瑕疵帧的定点替换。
-- **严格 CFR 替换 (Strict Replacement)**：`preserveFrames: true` 物理核验替换前后解码总帧数与恒定帧率（CFR），杜绝容器尾部浮点误差。
+- **严格 CFR 替换 (Strict Replacement)**：`preserveFrames: true` 验证恒定帧率（CFR）和解码帧数是否满足替换契约；无法确认或不满足契约时拒绝替换。
 - **全生命周期候选管理 (Production & Candidates)**：记录素材的生成模型、提示词、操作类型（`generation`、`redraw`、`composite` 等），支持一键对比与采纳。
 
 ### 🔒 严谨的工程模型 (Guarded Project Model)
-- **单初始化生命周期**：一次会话绑定唯一工程，杜绝多任务串项目风险。
+- **项目身份检查**：live 会话跟随 GUI 当前项目，项目切换会改变 project epoch。Agent 请求需携带项目身份，避免把旧计划应用到新项目；独立 headless 会话采用单项目初始化生命周期。
 - **幂等重试安全网**：内置 `idempotencyKey`，外部 Agent 在网络重发或模型重试时直接复用已提交结果，绝不发生重复追加素材。
 - **输入强沙箱隔离**：内置 HTML→PNG 安全转译引擎与 SVG 严格安全过滤网关，严防外来代码注入与越权访问。
 
 ### ⚡ 本地优先与隐私无忧 (Local-First Release)
-- **零强制云端依赖**：完全本地化的编辑、字幕（Transformers.js 本地 Whisper ONNX）、转码与渲染输出，不捆绑私有云或付费 API。
-- **色彩管线严密可信**：完整 SDR BT.709 与 BT.601 矩阵感知，导出与预览像素级严格统一（详细见 [COLOR.md](docs/COLOR.md)）。
+- **本地处理与可选网络资源**：导入、编辑、保存和基础导出不要求云端后端。Whisper 字幕在本机运行，但首次模型下载需要联网；分割模型等资源也可能需要下载，云视频审查则需要用户配置并明确授权（见 [EXTERNAL-DEPENDENCIES.md](docs/EXTERNAL-DEPENDENCIES.md)）。
+- **明确的色彩边界**：SDR 路径识别 BT.709 与 BT.601 矩阵；WebCodecs 和 FFmpeg 导出采用各自实际使用的矩阵标签。HDR 和 10-bit 精度不在当前支持范围内（见 [COLOR.md](docs/COLOR.md)）。
 - **可搬迁的数据根目录**：所有的素材、缓存与 Agent 工件均集中管理，清晰透明（详细见 [DATA-ROOT.md](docs/DATA-ROOT.md)）。
 
 ---
@@ -140,10 +140,14 @@ flowchart TD
 ## 🚀 Quick Start
 
 ### 前置要求
+以下要求用于源码开发。已打包的桌面应用和 Windows CLI 启动器使用自带的 Electron/Node 运行时，无需单独安装系统 Node.js。
+
 - **Node.js**: `>= 22.13.0`
 - **pnpm**: `11.7.0`（仓库已通过 `packageManager` 锁定）
 - **Corepack**: 启用 `corepack enable`
 - **FFmpeg & ffprobe**: 安装并加入系统 `PATH`（用于本地帧提取与音视频验证）
+
+OpenCV 对齐、追踪和掩码传播另需可导入 `cv2` 与 `numpy` 的本机 Python；Blender 绑定后端是独立的可选依赖。这些工具不会自动安装，实际可用性以 `capabilities.get` 为准。
 
 ### 安装与启动
 
@@ -154,6 +158,7 @@ cd reelterminal
 
 # 2. 安装项目依赖
 corepack pnpm install
+pnpm build:wasm
 
 # 3. 安装 Chromium 运行时内核（供自动化验证与无头渲染使用）
 pnpm --filter @reelterminal/runtime-chromium exec playwright-core install chromium
@@ -165,7 +170,10 @@ pnpm dev
 ### 桌面端开发与运行
 
 ```bash
-# 构建核心库与桌面端主进程
+# 首次安装依赖后先生成未提交 Git 的 WASM 资源
+pnpm build:wasm
+
+# 构建桌面主进程和 Web renderer
 pnpm --filter @reelterminal/desktop build
 
 # 启动桌面端应用程序
@@ -179,7 +187,8 @@ pnpm typecheck            # 全仓 TypeScript 类型检查
 pnpm lint                 # 代码风格与规范审查
 pnpm lint:naming          # 开源命名合规性审计 (naming-lint)
 pnpm audit:dependencies   # 依赖安全漏洞与本地 patch 校验
-pnpm test                 # 全量单元测试与 E2E 测试集
+pnpm test                 # 各包的默认 Vitest 测试，不含独立桌面 E2E 配置
+pnpm --filter @reelterminal/desktop test:e2e # 构建桌面后运行独立 GUI/CLI/MCP E2E
 ```
 
 ---
@@ -192,25 +201,27 @@ ReelTerminal 专为智能体协作设计。智能体无需关注视频编码底�
 在桌面端打开任意视频工程，底部状态栏会显示当前协作状态：
 - 默认状态为 **Agent · Read-only**（只读模式，允许状态读取与预览）。
 - 点击状态栏按钮切换为 **Agent · Editable**（允许写入），赋予 Agent 编辑权限。
+- 每次启动后首次允许编辑，右上角提示可复制当前电脑的启动提示词。它包含适用的 Shell、完整 CLI 路径和有效工作目录；修改存储位置并重启后，需要重新复制。CLI 路径跟随安装位置，工作目录跟随数据根目录或显式工作区配置。
 
 ### 2. 通过 MCP (Model Context Protocol) 接入
-以 **Claude Desktop** 或 **Cursor** 为例，在配置文件中添加：
+源码开发环境的 stdio 配置示例（请按客户端要求填写配置，并替换为本机实际路径）：
 
 ```json
 {
   "mcpServers": {
     "reelterminal": {
-      "command": "reelterminal-live-mcp",
-      "args": []
+      "command": "node",
+      "args": ["/absolute/path/to/reelterminal/apps/desktop/dist/reelctl/index.js", "mcp", "serve"]
     }
   }
 }
 ```
-> 若使用源码环境，直接执行 `reelctl mcp serve` 即可。
+源码 CLI 不会自动加入全局 PATH。Windows 安装版可使用应用旁的 `reelctl.cmd`；macOS/Linux 可使用启动提示词中的完整命令。安装版的 stdio 配置与客户端调用方式见 [Agent 指南](docs/AGENT-GUIDE.md)。
 
 ### 3. CLI 快速体验 (`reelctl`)
 
 ```powershell
+# 以下简写假设 reelctl 已在 PATH；否则使用 GUI 提示词中的完整命令前缀
 # 查看桌面宿主连接状态与只读/写入权限
 reelctl status
 
@@ -224,6 +235,7 @@ reelctl requirements list --status ready --compact
 reelctl media import --path "C:/path/to/video.mp4"
 
 # 提交原子剪辑批处理
+# changes.json 必须按 live schema 填写操作和保护参数，不是一个随仓库提供的示例文件
 reelctl edit apply --file changes.json
 ```
 
@@ -236,6 +248,7 @@ reelctl edit apply --file changes.json
    - `source/`：用户原始素材（只读保全）。
    - `generated/`：AI 生成的视音频及字幕产物。
    - `work/`：处理脚本、代理文件、中间帧缓存。
+   - `project/`：项目检查点、工作流和交付清单。
    - `output/`：经过校验的可交付成片。
    - `evidence/`：抽帧检查图、接触表、验证报告。
 
@@ -282,7 +295,7 @@ reelctl edit apply --file changes.json
 - 📦 **分发与合规**
   - [桌面端打包与分发手册](apps/desktop/DISTRIBUTION.md) — 多平台打包、签名要求与二进制依赖。
   - [第三方资产与字体权利审查](docs/ASSET-LICENSE-REVIEW.md) — 开源资产、字体、模型授权审查报告。
-  - [第三方许可证声明](THIRD_PARTY_NOTICES.md) — 完整开源依赖与版权归属清单。
+  - [第三方许可证声明](THIRD_PARTY_NOTICES.md) — 第三方依赖与版权归属说明；[分发审查记录](apps/desktop/LICENSES/RELEASE-READINESS.md)列出尚未完成的通知与签名验证。
 
 ---
 
@@ -300,6 +313,7 @@ reelctl edit apply --file changes.json
 - ReelTerminal 核心代码基于 [MIT License](LICENSE) 开源发布。
 - 本项目继承并深度改造自 Augustus Otu 及贡献者开源的 MIT 协议项目 [OpenReel](https://github.com/Augustus-Otu/openreel)。原始版权声明予以完整保留，见 [`LICENSE`](LICENSE)。
 - 本项目包含部分独立许可的第三方组件、字体和可选开发工具，具体条款请查阅 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+- 实验性 Image 应用使用独立 AGPL-3.0 许可的 `@imgly/background-removal`；根目录 MIT 许可不替代第三方条款。安装包发布还需完成上述分发审查记录中的未解决事项。
 
 ---
 
