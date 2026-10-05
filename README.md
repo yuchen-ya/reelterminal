@@ -295,7 +295,7 @@ reelctl edit apply --file changes.json
 - 📦 **分发与合规**
   - [桌面端打包与分发手册](apps/desktop/DISTRIBUTION.md) — 多平台打包、签名要求与二进制依赖。
   - [第三方资产与字体权利审查](docs/ASSET-LICENSE-REVIEW.md) — 开源资产、字体、模型授权审查报告。
-  - [第三方许可证声明](THIRD_PARTY_NOTICES.md) — 第三方依赖与版权归属说明；[分发审查记录](apps/desktop/LICENSES/RELEASE-READINESS.md)列出尚未完成的通知与签名验证。
+  - [第三方许可证声明](THIRD_PARTY_NOTICES.md) — 第三方依赖与版权归属说明；[分发审查记录](apps/desktop/LICENSES/RELEASE-READINESS.md)说明许可材料来源、仍待确认的版权通知与签名验证状态。
 
 ---
 
@@ -313,7 +313,7 @@ reelctl edit apply --file changes.json
 - ReelTerminal 核心代码基于 [MIT License](LICENSE) 开源发布。
 - 本项目继承并深度改造自 Augustus Otu 及贡献者开源的 MIT 协议项目 [OpenReel](https://github.com/Augustus-Otu/openreel)。原始版权声明予以完整保留，见 [`LICENSE`](LICENSE)。
 - 本项目包含部分独立许可的第三方组件、字体和可选开发工具，具体条款请查阅 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
-- 实验性 Image 应用使用独立 AGPL-3.0 许可的 `@imgly/background-removal`；根目录 MIT 许可不替代第三方条款。安装包发布还需完成上述分发审查记录中的未解决事项。
+- 实验性 Image 应用使用独立 AGPL-3.0 许可的 `@imgly/background-removal`；根目录 MIT 许可不替代第三方条款。许可材料与安装包签名是不同事项：源码开源无需购买签名证书；未签名 Windows 测试版需明确标注状态和安装限制，正式安装体验及 macOS 公证见[分发指南](apps/desktop/DISTRIBUTION.md)。
 
 ---
 

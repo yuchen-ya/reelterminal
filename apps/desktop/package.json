@@ -25,6 +25,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:licenses": "node --test scripts/build-third-party-notices.node-test.mjs",
     "test:e2e": "vitest run --config e2e/vitest.config.ts",
     "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs",
     "prepare:aurora": "node scripts/prepare-aurora-native.mjs",

@@ -26,12 +26,13 @@ Electron Builder includes `apps/web/dist`, desktop resources, the application
 license notices, and the generated Help pages. The `resources/rigging/blender/`
 directory is excluded from packages; rigging helper scripts remain included.
 The build also generates a production dependency inventory and copies available
-npm license/notice texts into `LICENSES/`. For npm archives without a license
-file, the checked-in upstream source map supplies the complete text only when
-the package release or its recorded source revision can be matched. The
-inventory retains the upstream URL for each copied text. Entries without an
-archive or verified upstream text remain marked in the generated inventory;
-resolve those entries before publishing final installers. See
+npm license/notice texts into `LICENSES/`. For archives without a license file,
+the source map includes identified upstream notices or explicitly labelled
+standard MIT/ISC reference terms accompanying the exact published package
+declaration. The generator verifies that declaration and keeps the reference
+distinct from a package-specific copyright statement. It preserves supplied
+copyright notices and does not invent missing holders or dates. The inventory
+retains the source URLs and review notes; missing materials remain visible. See
 [`LICENSES/RELEASE-READINESS.md`](LICENSES/RELEASE-READINESS.md) for the checked
 items and signing evidence.
 
@@ -39,8 +40,34 @@ items and signing evidence.
 
 macOS release builds enable hardened runtime and notarization. Configure an
 Apple signing identity and notarization credentials through the build
-environment. Windows release signing requires an Authenticode certificate
-configured for Electron Builder. Use `pack` for a local unpacked build.
+environment. Windows signing requires a trusted Authenticode identity configured
+for Electron Builder. Use `pack` for a local unpacked build.
+
+Code signing is separate from open-source licensing. Publishing the source
+repository does not require a signing certificate. An explicitly labelled
+unsigned Windows alpha is a possible early distribution choice; it will not
+display a verified publisher, may trigger SmartScreen, and may be blocked by
+Smart App Control or managed-device policies. Publish through the project's
+official release page with version/source links and SHA-256 checksums, state
+that the build is unsigned, and do not instruct users to disable system-wide
+security. Checksum files identify release artifacts but are not signatures.
+Signing is recommended for releases intended for ordinary end users and a
+smoother installation/update experience; it does not guarantee no SmartScreen
+warnings. See [Microsoft's guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation).
+
+macOS has a stronger default Gatekeeper boundary: Developer ID signing and
+notarization are the supported path for normal outside-Store installation.
+Keep unsigned local Mac builds identified as developer/test artifacts; do not
+present them as notarized public releases. See
+[Apple Developer ID](https://developer.apple.com/developer-id/).
+
+For eligible OSS projects, [SignPath Foundation](https://signpath.org/terms.html)
+offers free Windows signing subject to project review, verifiable builds and
+release approval. Acceptance is not guaranteed. Microsoft Artifact Signing
+Public Trust has identity/geographic eligibility restrictions; check the
+[current prerequisites](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart)
+before selecting it as an individual developer's signing route. Credentials and
+private keys belong in the signing service or protected CI secrets, never Git.
 
 The update feed is configured for GitHub Releases. The repository currently
 has no automated desktop release publisher; release assets must be published

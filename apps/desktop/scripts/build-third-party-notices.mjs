@@ -37,6 +37,17 @@ for (const pkg of packages) {
     if (source.license !== pkg.license) {
       throw new Error(`Upstream license mismatch for ${pkg.name}@${version}: ${source.license} != ${pkg.license}`);
     }
+    if (source.packageDeclaration) {
+      const manifest = pkg.paths
+        .map((packageRoot) => JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8")))
+        .find((candidate) => candidate.name === pkg.name && candidate.version === version);
+      const declaredLicenses = manifest
+        ? [manifest.license, ...(manifest.licenses ?? []).map((entry) => entry.type)]
+        : [];
+      if (!declaredLicenses.includes(source.license)) {
+        throw new Error(`Published license declaration mismatch for ${pkg.name}@${version}`);
+      }
+    }
     let contents;
     let filename;
     if (source.packageFile) {
@@ -58,11 +69,17 @@ for (const pkg of packages) {
       contents = readFileSync(sourcePath, "utf8");
       filename = source.file;
     }
-    const label = `${filename} (upstream ${version}: ${source.url})`;
+    const basis = source.standardReference ? "standard license reference" : "upstream notice";
+    const label = `${filename} (${basis} ${version}: ${source.standardTextUrl ?? source.url})`;
     const labels = texts.get(contents) ?? [];
     if (!labels.includes(label)) labels.push(label);
     texts.set(contents, labels);
-    licenseSources.push({ version, file: filename, url: source.url });
+    licenseSources.push({
+      version, file: filename, url: source.url,
+      ...(source.packageDeclaration ? { declarationVerified: true } : {}),
+      ...(source.standardTextUrl ? { standardTextUrl: source.standardTextUrl } : {}),
+      ...(source.standardReference ? { kind: "standard-reference" } : {}),
+    });
   }
   const item = {
     name: pkg.name, versions: pkg.versions, license: pkg.license,
@@ -79,7 +96,10 @@ for (const pkg of packages) {
   for (const note of licenseReviewNotes) sections.push(`License review: ${note}`);
   for (const source of licenseSources) sections.push(`Upstream license source for ${source.version}: ${source.url}`);
   if (packageLicenseFiles.length === 0 && licenseSources.length > 0) {
-    sections.push("The npm archive omits a standalone license file; the complete upstream license text is included below.");
+    sections.push("The npm archive omits a standalone license file; additional license materials are included below with their source and basis.");
+  }
+  if (licenseSources.some((source) => source.kind === "standard-reference")) {
+    sections.push("Standard license reference text accompanies the verified package license declaration. It is not a package-specific copyright notice; template/example copyright lines do not identify the package's copyright holder.");
   }
   for (const [contents, labels] of texts) {
     for (const label of labels) sections.push("", `--- ${label} ---`);

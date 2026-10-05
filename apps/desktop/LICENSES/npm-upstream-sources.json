@@ -92,7 +92,53 @@
   },
   "reviewNotes": {
     "format": [
-      "pnpm's production license inventory reports MIT, but the npm registry metadata and the exact package manifest do not declare a license. Treat MIT as unconfirmed pending an authoritative upstream statement."
+      "The published 0.2.2 manifest uses the legacy licenses array to declare MIT. Its format.js header supplies the original 2010–2013 Sami Samhuri copyright notice; that notice is preserved with the standard MIT terms."
+    ],
+    "guid-typescript": [
+      "The exact npm package declares ISC. The complete SPDX ISC reference text is provided alongside its published author metadata. This reference is not a package-specific copyright statement; no copyright holder or year has been invented."
+    ],
+    "lazy-val": [
+      "The exact npm package and release source manifest declare MIT. Complete SPDX MIT reference terms accompany the published author metadata. The template copyright placeholder is part of the standard reference, not an attribution to the package."
+    ],
+    "react-remove-scroll-bar": [
+      "The exact npm package declares MIT. The official upstream LICENSE supplies complete terms and its own 2025 Anton Korzunov notice. This later notice is reproduced as provided by upstream; it is not represented as a file originally shipped in the 2.3.8 archive."
     ]
+  },
+  "format": {
+    "0.2.2": {
+      "file": "LICENSES/npm-upstream/format-0.2.2-MIT.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/samsonjs/format/4f898096759776b7c84fa7a25b13c923dadfe46e/format.js",
+      "packageDeclaration": true,
+      "standardTextUrl": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/MIT.txt"
+    }
+  },
+  "guid-typescript": {
+    "1.0.9": {
+      "file": "LICENSES/npm-upstream/spdx-ISC-reference.txt",
+      "license": "ISC",
+      "url": "https://registry.npmjs.org/guid-typescript/1.0.9",
+      "packageDeclaration": true,
+      "standardReference": true,
+      "standardTextUrl": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/ISC.txt"
+    }
+  },
+  "lazy-val": {
+    "1.0.5": {
+      "file": "LICENSES/npm-upstream/spdx-MIT-reference.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/develar/lazy-val/b69ad4119f1b19bdab13c61ee2fcc88d46b89071/package.json",
+      "packageDeclaration": true,
+      "standardReference": true,
+      "standardTextUrl": "https://raw.githubusercontent.com/spdx/license-list-data/v3.27.0/text/MIT.txt"
+    }
+  },
+  "react-remove-scroll-bar": {
+    "2.3.8": {
+      "file": "LICENSES/npm-upstream/react-remove-scroll-bar-MIT.txt",
+      "license": "MIT",
+      "url": "https://raw.githubusercontent.com/theKashey/react-remove-scroll-bar/8ca9ba5ea52de03308fe8ced94f7b159a44d28ff/LICENSE",
+      "packageDeclaration": true
+    }
   }
 }
