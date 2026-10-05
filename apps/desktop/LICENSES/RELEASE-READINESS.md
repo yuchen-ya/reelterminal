@@ -1,6 +1,7 @@
 # Third-party license and signing review
 
 Checked on 2026-10-04 against the production dependency inventory for the desktop and web renderer.
+Upstream repository availability and the html-parse-stringify upgrade lead were rechecked on 2026-10-05; installed versions and the five unresolved notice items remain unchanged.
 
 ## npm license texts
 
@@ -11,8 +12,8 @@ Five active records still lack an attributable complete license text:
 | Package | Reported license | Evidence and release action |
 | --- | --- | --- |
 | `format@0.2.2` | MIT reported by pnpm | The npm registry metadata and exact published `package.json` declare no license; the exact source revision and archive have no complete license text. Treat the MIT classification as unconfirmed and obtain an upstream statement. [Exact source revision](https://github.com/samsonjs/format/tree/4f898096759776b7c84fa7a25b13c923dadfe46e) |
-| `guid-typescript@1.0.9` | ISC | The archive has no complete ISC text. Its npm metadata points to an upstream repository revision that is no longer available at the listed GitHub repository. Confirm the license and obtain its notice from the maintainer. [Upstream project](https://github.com/NicolasDeveloper/guid-typescript) |
-| `html-parse-stringify@3.0.1` | MIT | Neither the exact npm archive nor its source revision contains the full terms. The repository has a license file at a later release, but that does not verify the archived 3.0.1 source. [Exact source revision](https://github.com/henrikjoreteg/html-parse-stringify/tree/ce46022f537ef9b050fac592f9fcc30bf838e5ba) |
+| `guid-typescript@1.0.9` | ISC | The archive has no complete ISC text. The old repository URL now redirects to `snico-dev/guid-typescript` and is accessible; repository unavailability is not a current blocker. Confirm the complete license and copyright notice for 1.0.9 with the maintainer. [Upstream project](https://github.com/snico-dev/guid-typescript) |
+| `html-parse-stringify@3.0.1` | MIT | Neither the exact npm archive nor its source revision contains the full terms. The upstream README reports that 3.1.0 includes LICENSE in its npm package. The installed react-i18next dependency accepts `^3.0.1`, so 3.1.0 is an upgrade candidate: inspect that archive's complete text and run i18n regressions before updating the lockfile. A later release's license does not by itself verify the archived 3.0.1 source. [Upstream release notes](https://github.com/HenrikJoreteg/html-parse-stringify) |
 | `lazy-val@1.0.5` | MIT | The exact npm archive and source revision have no full license text in a license file, README, or source header. Obtain the release notice from upstream. [Exact source revision](https://github.com/develar/lazy-val/tree/b69ad4119f1b19bdab13c61ee2fcc88d46b89071) |
 | `react-remove-scroll-bar@2.3.8` | MIT | The exact npm archive and source revision have no full license text in a license file, README, or source header. Obtain the release notice from upstream. [Upstream project](https://github.com/theKashey/react-remove-scroll-bar) |
 
