@@ -432,7 +432,9 @@ class ProjectManager {
 
   async openProject(): Promise<Project | null> {
     if (isDesktopFs()) {
+      const dataRootInfo = await window.reelterminal!.dataRoot?.getInfo();
       const filePath = await window.reelterminal!.fs.showOpenDialog({
+        ...(dataRootInfo?.active ? { defaultDir: dataRootInfo.projects } : {}),
         filters: [{ name: "ReelTerminal Project", extensions: ["oreel", "json"] }],
       });
       if (!filePath) return null;

@@ -306,6 +306,7 @@ interface ReelTerminalDesktopBridge {
           filters: { name: string; extensions: string[] }[];
         }): Promise<string | null>;
         showOpenDialog(opts: {
+          defaultDir?: string;
           filters: { name: string; extensions: string[] }[];
           directory?: boolean;
         }): Promise<string | null>;

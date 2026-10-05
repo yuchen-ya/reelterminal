@@ -12,6 +12,7 @@ import { ToolcraftCard as Card } from "@reelterminal/ui";
 import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
 import { ToolcraftText as Text } from "@reelterminal/ui";
 import { useProjectStore } from "../../stores/project-store";
+import { useUIStore } from "../../stores/ui-store";
 import {
   listRecentProjects,
   openProject,
@@ -20,6 +21,7 @@ import {
 } from "../../desktop/start/desktop-project-actions";
 import { useAnchoredBelowStyle } from "../../utils/anchored-position";
 import { useTranslation } from "react-i18next";
+import { toast } from "../../stores/notification-store";
 
 function formatTimeAgo(timestamp: number): string {
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
@@ -29,7 +31,7 @@ function formatTimeAgo(timestamp: number): string {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
-export const ProjectSwitcher: React.FC = () => {
+export const ProjectSwitcher: React.FC<{ onNewProject?: () => void }> = ({ onNewProject }) => {
   const { t } = useTranslation();
   const { project, createNewProject } = useProjectStore();
   const [isOpen, setIsOpen] = useState(false);
@@ -88,24 +90,30 @@ export const ProjectSwitcher: React.FC = () => {
   const handleOpenProject = useCallback(async () => {
     setIsLoading(true);
     try {
-      if (await openProject()) setIsOpen(false);
+      if (await openProject()) {
+        useUIStore.getState().setDesktopPage("edit");
+        setIsOpen(false);
+      }
     } catch (error) {
-      console.error("[ProjectSwitcher] Failed to open project:", error);
+      toast.error(t("desktop.start.actionFailed"), error instanceof Error ? error.message : String(error));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const handleOpenRecent = useCallback(async (id: string) => {
     setIsLoading(true);
     try {
-      if (await openRecentProject(id)) setIsOpen(false);
+      if (await openRecentProject(id)) {
+        useUIStore.getState().setDesktopPage("edit");
+        setIsOpen(false);
+      }
     } catch (error) {
-      console.error("[ProjectSwitcher] Failed to open recent project:", error);
+      toast.error(t("desktop.start.actionFailed"), error instanceof Error ? error.message : String(error));
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   return (
     <div className="relative min-w-0" ref={triggerRef}>
@@ -139,7 +147,7 @@ export const ProjectSwitcher: React.FC = () => {
             <div className="p-2">
               <ClickableCard
                 label={t("New Project")}
-                onClick={() => closeAfter(createNewProject)}
+                onClick={() => closeAfter(onNewProject ?? createNewProject)}
                 isDisabled={isLoading}
                 padding={3}
                 variant="transparent"

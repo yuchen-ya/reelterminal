@@ -170,8 +170,8 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     },
     entry: [
       {
-        zh: "桌面应用：窗口标题栏品牌区右侧的项目名称输入框与切换按钮，项目打开时始终可见可点。",
-        en: "Desktop app: the project-name field and switch button to the right of the title-bar brand; visible and clickable whenever a project is open.",
+        zh: "桌面应用：编辑器标题栏品牌区右侧的项目名称按钮和铅笔按钮。新建引导页提供“返回当前项目”。",
+        en: "Desktop app: the project-name button and pencil to the right of the editor title-bar brand. The new-project chooser offers Back to current project.",
       },
       {
         zh: "网页（浏览器）版：编辑器顶栏中央的项目名称输入框与切换按钮。",
@@ -180,12 +180,16 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     ],
     steps: [
       {
-        zh: "改名：直接在项目名称输入框输入新名称，回车或点击别处提交，Esc 取消；输入框旁的铅笔按钮可聚焦并全选名称。切换器内也有重命名入口。",
-        en: "Rename: type the new name straight into the project-name field; Enter or clicking elsewhere commits, Escape cancels; the pencil button beside it focuses and selects the name. The switcher offers a rename entry too.",
+        zh: "改名：点击项目名称旁的铅笔按钮，输入新名称；回车或点击别处提交，Esc 取消。",
+        en: "Rename: click the pencil beside the project name and type a new name; Enter or clicking elsewhere commits, Escape cancels.",
       },
       {
-        zh: "新建项目：切换器里的新建入口会以新项目替换当前打开的项目。",
-        en: "New project: the switcher's new-project entry replaces the currently open project with a fresh one.",
+        zh: "新建项目：桌面切换器的“新建项目”先进入引导页，选择工作区与画面比例后才创建；点击“返回当前项目”可取消。真正切换前会自动保存当前项目，保存失败时保留当前内容。浏览器版的新建入口直接创建默认项目。",
+        en: "New project: the desktop switcher's New Project opens the workspace and frame-format chooser. Creation happens after selecting a format; Back to current project cancels. The current project is autosaved before switching, and a failed save preserves it. The browser entry creates a default project directly.",
+      },
+      {
+        zh: "打开项目：桌面首页和切换器均提供“打开项目”，文件选择器默认定位到设置中当前生效存储库的 projects 文件夹。取消选择不会替换当前项目。更改存储库并重启生效后使用新目录。",
+        en: "Open project: the desktop start screen and switcher offer Open Project. The file picker starts in the active storage root's projects folder. Cancelling preserves the current project. After a storage-root change takes effect on restart, it uses the new folder.",
       },
       {
         zh: "切换项目：从已保存项目列表中选择另一个项目。",

@@ -31,6 +31,24 @@ const project: any = {
 };
 
 describe("ProjectManager desktop fs", () => {
+  it("uses the active project folder on each open, including after a storage relocation", async () => {
+    const getInfo = vi.fn().mockResolvedValue({ active: true, projects: "E:/Library/projects" });
+    (window as any).reelterminal.dataRoot = { getInfo };
+    (window as any).reelterminal.fs.showOpenDialog.mockResolvedValue(null);
+    await expect(projectManager.openProject()).resolves.toBeNull();
+    expect((window as any).reelterminal.fs.showOpenDialog).toHaveBeenLastCalledWith(expect.objectContaining({ defaultDir: "E:/Library/projects" }));
+
+    getInfo.mockResolvedValue({ active: true, projects: "D:/New Library/projects" });
+    await projectManager.openProject();
+    expect((window as any).reelterminal.fs.showOpenDialog).toHaveBeenLastCalledWith(expect.objectContaining({ defaultDir: "D:/New Library/projects" }));
+  });
+
+  it("does not pass an inactive data-root folder to the native picker", async () => {
+    (window as any).reelterminal.dataRoot = { getInfo: vi.fn().mockResolvedValue({ active: false, projects: "" }) };
+    (window as any).reelterminal.fs.showOpenDialog.mockResolvedValue(null);
+    await projectManager.openProject();
+    expect((window as any).reelterminal.fs.showOpenDialog).toHaveBeenCalledWith({ filters: [{ name: "ReelTerminal Project", extensions: ["oreel", "json"] }] });
+  });
   it("saveProjectAs writes via window.reelterminal.fs and round-trips", async () => {
     const ok = await projectManager.saveProjectAs(project);
     expect(ok).toBe(true);

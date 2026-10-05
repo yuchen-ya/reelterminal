@@ -59,11 +59,13 @@ export async function showSaveDialog(args: {
 }
 
 export async function showOpenDialog(args: {
+  defaultDir?: string;
   filters: { name: string; extensions: string[] }[];
   directory?: boolean;
 }): Promise<string | null> {
   const win = BrowserWindow.getFocusedWindow() ?? undefined;
   const res = await dialog.showOpenDialog(win!, {
+    defaultPath: args.defaultDir,
     filters: args.directory ? [] : args.filters,
     properties: [args.directory ? "openDirectory" : "openFile"],
   });

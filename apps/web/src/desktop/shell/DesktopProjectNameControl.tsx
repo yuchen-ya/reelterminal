@@ -9,7 +9,7 @@ import { ProjectSwitcher } from "../../components/editor/ProjectSwitcher";
 import { useTranslation } from "react-i18next";
 
 /** One project title trigger with a single, discoverable rename affordance. */
-export function DesktopProjectNameControl(): JSX.Element {
+export function DesktopProjectNameControl({ onNewProject }: { onNewProject?: () => void }): JSX.Element {
   const { t } = useTranslation();
   const { project, renameProject } = useProjectStore();
   const projectNameRef = useRef<HTMLInputElement>(null);
@@ -79,7 +79,7 @@ export function DesktopProjectNameControl(): JSX.Element {
         />
       ) : (
         <>
-          <ProjectSwitcher />
+          <ProjectSwitcher onNewProject={onNewProject} />
           <ToolcraftIconButton
             label={t("Rename project")}
             icon={<Pencil size={12} aria-hidden />}

@@ -31,6 +31,7 @@ export const saveDialogArgsSchema = z.object({
   filters: z.array(z.object({ name: z.string(), extensions: z.array(z.string()) })),
 });
 export const openDialogArgsSchema = z.object({
+  defaultDir: z.string().optional(),
   filters: z.array(z.object({ name: z.string(), extensions: z.array(z.string()) })),
   /** Pick a directory instead of a file (data-root change flow). */
   directory: z.boolean().optional(),

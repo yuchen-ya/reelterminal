@@ -1,8 +1,16 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { readFileBytes } from "./fs";
+import { readFileBytes, showOpenDialog } from "./fs";
+import { openDialogArgsSchema } from "../../shared/ipc-contract";
+
+const openDialog = vi.hoisted(() => vi.fn());
+vi.mock("electron", () => ({
+  dialog: { showOpenDialog: openDialog },
+  shell: {},
+  BrowserWindow: { getFocusedWindow: () => undefined },
+}));
 
 const tempDirs: string[] = [];
 
@@ -33,5 +41,23 @@ describe("readFileBytes", () => {
     await expect(readFileBytes({ path: file, maxBytes: 4 })).rejects.toThrow(
       "4-byte read limit",
     );
+  });
+});
+
+describe("showOpenDialog", () => {
+  it("passes the project folder through IPC validation to the native dialog", async () => {
+    openDialog.mockResolvedValue({ canceled: false, filePaths: ["E:/Library/projects/cut.oreel"] });
+    const args = openDialogArgsSchema.parse({ defaultDir: "E:/Library/projects", filters: [{ name: "Project", extensions: ["oreel"] }] });
+    await expect(showOpenDialog(args)).resolves.toBe("E:/Library/projects/cut.oreel");
+    expect(openDialog).toHaveBeenLastCalledWith(undefined, {
+      defaultPath: "E:/Library/projects",
+      filters: args.filters,
+      properties: ["openFile"],
+    });
+  });
+
+  it("returns null when the native picker is cancelled", async () => {
+    openDialog.mockResolvedValue({ canceled: true, filePaths: [] });
+    await expect(showOpenDialog({ filters: [] })).resolves.toBeNull();
   });
 });

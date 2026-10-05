@@ -83,7 +83,13 @@ async function loadProjectIntoStore(project: Project): Promise<void> {
   });
 }
 
+export async function saveCurrentProject(): Promise<void> {
+  const state = useProjectStore.getState();
+  if (state.hasOpenProject) await state.forceSave();
+}
+
 export async function openProject(): Promise<boolean> {
+  await saveCurrentProject();
   const project = await projectManager.openProject();
   if (!project) return false;
   await loadProjectIntoStore(project);
@@ -91,6 +97,7 @@ export async function openProject(): Promise<boolean> {
 }
 
 export async function openRecentProject(projectId: string): Promise<boolean> {
+  await saveCurrentProject();
   const entry = (await listRecentProjects()).find((item) => item.id === projectId);
   if (entry?.recoverySaveId) {
     return useProjectStore.getState().recoverFromAutoSave(entry.recoverySaveId);

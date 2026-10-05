@@ -1,9 +1,10 @@
 import type { JSX } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DesktopTitleBar } from "./shell/DesktopTitleBar";
 import { Workspace } from "./shell/Workspace";
 import { DesktopProjectNameControl } from "./shell/DesktopProjectNameControl";
 import { DesktopStartScreen } from "./start/DesktopStartScreen";
+import { openProject } from "./start/desktop-project-actions";
 import { DesktopExportButton } from "./editor/DesktopExportButton";
 import { EditorBootstrapGate } from "./editor/EditorBootstrapGate";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -37,10 +38,31 @@ export function DesktopApp(): JSX.Element {
   const desktopPage = useUIStore((state) => state.desktopPage);
   const isVideoEditing = desktopPage !== "motion";
   const [helpOpen, setHelpOpen] = useState(false);
+  const [choosingProject, setChoosingProject] = useState(false);
+  const openingProject = useRef(false);
+  const showEditor = hasProject && !choosingProject;
 
-  // Drive native-menu actions into the app: undo/redo hit the project store
-  // directly; new/open/export are broadcast as events for the relevant UI to
-  // pick up (e.g. the export button opens its dialog on "export").
+  const handleNewProject = useCallback(() => {
+    stopTour();
+    setChoosingProject(true);
+  }, []);
+
+  const handleOpenProject = useCallback(async () => {
+    if (openingProject.current) return;
+    openingProject.current = true;
+    try {
+      if (await openProject()) {
+        useUIStore.getState().setDesktopPage("edit");
+        setChoosingProject(false);
+      }
+    } catch (error) {
+      toast.error(t("desktop.start.actionFailed"), error instanceof Error ? error.message : String(error));
+    } finally {
+      openingProject.current = false;
+    }
+  }, [t]);
+
+  // Native menu accelerators and title-bar entries use the same project flow.
   useEffect(() => {
     const bridge = window.reelterminal;
     if (!bridge?.onMenuAction) return;
@@ -57,7 +79,11 @@ export function DesktopApp(): JSX.Element {
           void useProjectStore.getState().redo();
           break;
         case "newProject":
+          handleNewProject();
+          break;
         case "open":
+          void handleOpenProject();
+          break;
         case "export":
           window.dispatchEvent(new CustomEvent(`reelterminal:menu:${id}`));
           break;
@@ -66,7 +92,7 @@ export function DesktopApp(): JSX.Element {
           break;
       }
     });
-  }, []);
+  }, [handleNewProject, handleOpenProject]);
 
   // DOM-level undo/redo (G-01 fix): the native menu accelerator above only
   // fires for real OS key events; this handler makes the SAME store
@@ -153,11 +179,11 @@ export function DesktopApp(): JSX.Element {
       <DesktopTitleBar
         platform={platform}
         // The desktop chrome carries the rename entry, not just the
-        // browser-only Toolbar. Shown whenever a project is open (both the
-        // edit and motion pages rename the same project).
-        projectControl={hasProject ? <DesktopProjectNameControl /> : null}
+        // browser-only Toolbar. Both editor workspaces rename the same project;
+        // the chooser hides this control until the user returns or chooses.
+        projectControl={showEditor ? <DesktopProjectNameControl onNewProject={handleNewProject} /> : null}
       >
-        {hasProject && isVideoEditing ? <span data-tour="desktop-export"><DesktopExportButton /></span> : null}
+        {showEditor && isVideoEditing ? <span data-tour="desktop-export"><DesktopExportButton /></span> : null}
         <Button
           label={t("desktop.help.title")}
           variant="secondary"
@@ -187,17 +213,24 @@ export function DesktopApp(): JSX.Element {
           }
         >
           {hasProject ? (
-            <EditorBootstrapGate>
-              <Workspace />
-            </EditorBootstrapGate>
-          ) : (
-            <DesktopStartScreen />
-          )}
+            // Keep the current editor and its engines mounted while choosing.
+            <div className="h-full" hidden={choosingProject}>
+              <EditorBootstrapGate>
+                <Workspace />
+              </EditorBootstrapGate>
+            </div>
+          ) : null}
+          {!hasProject || choosingProject ? (
+            <DesktopStartScreen
+              onProjectOpened={() => setChoosingProject(false)}
+              onCancel={hasProject ? () => setChoosingProject(false) : undefined}
+            />
+          ) : null}
         </ErrorBoundary>
       </div>
       <UpdateBanner />
       <SettingsDialog />
-      <DesktopHelpDialog open={helpOpen} onOpenChange={setHelpOpen} canTour={hasProject && isVideoEditing} />
+      <DesktopHelpDialog open={helpOpen} onOpenChange={setHelpOpen} canTour={showEditor && isVideoEditing} />
       <ToastContainer />
     </div>
   );

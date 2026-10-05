@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import type React from "react";
 import { Button } from "@astryxdesign/core/Button";
 
@@ -40,6 +40,12 @@ vi.mock("../components/editor/settings/SettingsDialog", () => ({
 }));
 
 const mockedUseProjectStore = vi.mocked(useProjectStore);
+const openProjectMock = vi.hoisted(() => vi.fn());
+
+vi.mock("./start/desktop-project-actions", async () => ({
+  ...await vi.importActual<typeof import("./start/desktop-project-actions")>("./start/desktop-project-actions"),
+  openProject: openProjectMock,
+}));
 
 function mockHasProject(value: boolean): void {
   mockedUseProjectStore.mockImplementation((selector) => {
@@ -58,6 +64,7 @@ function mockHasProject(value: boolean): void {
 }
 
 beforeEach(() => {
+  openProjectMock.mockReset().mockResolvedValue(false);
   useUIStore.setState({ desktopPage: "edit" });
   useSettingsStore.setState({ settingsOpen: false, settingsTab: "general" });
   (window as unknown as { reelterminal: unknown }).reelterminal = {
@@ -71,6 +78,42 @@ afterEach(() => {
 });
 
 describe("DesktopApp", () => {
+  it("opens the chooser from New Project and returns to the same mounted editor on cancel", async () => {
+    mockHasProject(true);
+    const view = render(<DesktopApp />);
+    const workspace = view.getByTestId("desktop-workspace");
+    fireEvent.click(view.getByRole("button", { name: "My Project" }));
+    fireEvent.click(await view.findByRole("button", { name: "New Project" }));
+    expect(view.getByRole("button", { name: "Back to current project" })).toBeTruthy();
+    expect(workspace.closest("[hidden]")).not.toBeNull();
+    expect(view.queryByRole("button", { name: "Video Export" })).toBeNull();
+
+    fireEvent.click(view.getByRole("button", { name: "Back to current project" }));
+    expect(view.getByTestId("desktop-workspace")).toBe(workspace);
+    expect(workspace.closest("[hidden]")).toBeNull();
+    expect(view.getByRole("button", { name: "My Project" })).toBeTruthy();
+  });
+
+  it("routes native New/Open accelerators through the chooser and project open flow", async () => {
+    mockHasProject(true);
+    let onMenuAction: (id: string) => void = () => {};
+    window.reelterminal!.onMenuAction = (handler) => {
+      onMenuAction = handler;
+      return () => {};
+    };
+    const view = render(<DesktopApp />);
+    act(() => onMenuAction("newProject"));
+    expect(view.getByRole("button", { name: "Back to current project" })).toBeTruthy();
+
+    act(() => onMenuAction("open"));
+    await waitFor(() => expect(openProjectMock).toHaveBeenCalledOnce());
+    expect(view.getByRole("button", { name: "Back to current project" })).toBeTruthy();
+
+    openProjectMock.mockResolvedValue(true);
+    act(() => onMenuAction("open"));
+    await waitFor(() => expect(view.queryByRole("button", { name: "Back to current project" })).toBeNull());
+    expect(view.getByRole("button", { name: "My Project" })).toBeTruthy();
+  });
   it("applies the desktop theme class to its root", () => {
     mockHasProject(false);
     const { container } = render(<DesktopApp />);

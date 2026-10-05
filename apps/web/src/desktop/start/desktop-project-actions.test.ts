@@ -5,6 +5,8 @@ const stubs = vi.hoisted(() => ({
   loadProject: vi.fn(),
   recoverFromAutoSave: vi.fn(),
   checkForRecovery: vi.fn(),
+  forceSave: vi.fn(),
+  hasOpenProject: false,
   manager: {
     getRecentProjects: vi.fn(),
     openProject: vi.fn(),
@@ -20,6 +22,8 @@ vi.mock("../../stores/project-store", () => ({
       createNewProject: stubs.createNewProject,
       loadProject: stubs.loadProject,
       recoverFromAutoSave: stubs.recoverFromAutoSave,
+      forceSave: stubs.forceSave,
+      hasOpenProject: stubs.hasOpenProject,
     })),
   },
 }));
@@ -55,6 +59,8 @@ beforeEach(() => {
   stubs.manager.openRecentProject.mockResolvedValue(null);
   stubs.loadProjectMedia.mockResolvedValue([]);
   stubs.checkForRecovery.mockResolvedValue([]);
+  stubs.hasOpenProject = false;
+  stubs.forceSave.mockReset().mockResolvedValue(undefined);
 });
 
 describe("DESKTOP_FORMATS", () => {
@@ -105,6 +111,23 @@ describe("startNewMotionProject", () => {
 });
 
 describe("recent projects", () => {
+  it("saves the current project before opening the picker, and preserves it on cancellation", async () => {
+    stubs.hasOpenProject = true;
+    await expect(openProject()).resolves.toBe(false);
+    expect(stubs.forceSave).toHaveBeenCalledOnce();
+    expect(stubs.forceSave.mock.invocationCallOrder[0]).toBeLessThan(stubs.manager.openProject.mock.invocationCallOrder[0]);
+    expect(stubs.loadProject).not.toHaveBeenCalled();
+  });
+
+  it("blocks file and recent-project switching after a failed save", async () => {
+    stubs.hasOpenProject = true;
+    stubs.forceSave.mockRejectedValue(new Error("storage full"));
+    await expect(openProject()).rejects.toThrow("storage full");
+    await expect(openRecentProject("project-a")).rejects.toThrow("storage full");
+    expect(stubs.manager.openProject).not.toHaveBeenCalled();
+    expect(stubs.manager.openRecentProject).not.toHaveBeenCalled();
+    expect(stubs.recoverFromAutoSave).not.toHaveBeenCalled();
+  });
   it("lists autosave-only projects once and reopens the latest slot", async () => {
     stubs.checkForRecovery.mockResolvedValue([
       { id: "old", projectId: "project-a", projectName: "Old name", timestamp: 1000 },

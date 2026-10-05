@@ -9,6 +9,8 @@ const actionMocks = vi.hoisted(() => ({
   openRecentProject: vi.fn(),
   startNewProject: vi.fn(),
   startNewMotionProject: vi.fn(),
+  openProject: vi.fn(),
+  saveCurrentProject: vi.fn(),
 }));
 
 vi.mock("./desktop-project-actions", async () => {
@@ -21,6 +23,8 @@ vi.mock("./desktop-project-actions", async () => {
     openRecentProject: actionMocks.openRecentProject,
     startNewProject: actionMocks.startNewProject,
     startNewMotionProject: actionMocks.startNewMotionProject,
+    openProject: actionMocks.openProject,
+    saveCurrentProject: actionMocks.saveCurrentProject,
   };
 });
 
@@ -34,6 +38,8 @@ describe("DesktopStartScreen", () => {
     actionMocks.openRecentProject.mockResolvedValue(true);
     actionMocks.startNewProject.mockReset();
     actionMocks.startNewMotionProject.mockReset();
+    actionMocks.saveCurrentProject.mockReset().mockResolvedValue(undefined);
+    actionMocks.openProject.mockReset().mockResolvedValue(false);
     useUIStore.setState({ desktopPage: "edit" });
   });
 
@@ -49,7 +55,7 @@ describe("DesktopStartScreen", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Horizontal/ }));
 
-    expect(actionMocks.startNewProject).toHaveBeenCalledWith(DESKTOP_FORMATS[1]);
+    await waitFor(() => expect(actionMocks.startNewProject).toHaveBeenCalledWith(DESKTOP_FORMATS[1]));
     expect(actionMocks.startNewMotionProject).not.toHaveBeenCalled();
     expect(useUIStore.getState().desktopPage).toBe("edit");
   });
@@ -61,7 +67,7 @@ describe("DesktopStartScreen", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /Motion Creator/ }));
     fireEvent.click(screen.getByRole("button", { name: /Square/ }));
 
-    expect(actionMocks.startNewMotionProject).toHaveBeenCalledWith(DESKTOP_FORMATS[2]);
+    await waitFor(() => expect(actionMocks.startNewMotionProject).toHaveBeenCalledWith(DESKTOP_FORMATS[2]));
     expect(actionMocks.startNewProject).not.toHaveBeenCalled();
     expect(useUIStore.getState().desktopPage).toBe("motion");
   });
@@ -89,5 +95,32 @@ describe("DesktopStartScreen", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Open Missing project" }));
     await waitFor(() => expect(actionMocks.openRecentProject).toHaveBeenCalledWith("missing-project"));
     expect(useUIStore.getState().desktopPage).toBe("motion");
+  });
+
+  it("preserves the chooser when saving fails, then allows retrying", async () => {
+    const onProjectOpened = vi.fn();
+    actionMocks.saveCurrentProject.mockRejectedValueOnce(new Error("storage full"));
+    render(<DesktopStartScreen onProjectOpened={onProjectOpened} />);
+    fireEvent.click(screen.getByRole("button", { name: /Horizontal/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Horizontal/ })).toBeEnabled());
+    expect(actionMocks.startNewProject).not.toHaveBeenCalled();
+    expect(onProjectOpened).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Horizontal/ }));
+    await waitFor(() => expect(onProjectOpened).toHaveBeenCalledOnce());
+    expect(actionMocks.startNewProject).toHaveBeenCalledWith(DESKTOP_FORMATS[1]);
+  });
+
+  it("keeps the chooser on file cancellation and exits after a successful open", async () => {
+    const onProjectOpened = vi.fn();
+    render(<DesktopStartScreen onProjectOpened={onProjectOpened} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open Project" }));
+    await waitFor(() => expect(actionMocks.openProject).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Open Project" })).toBeEnabled());
+    expect(onProjectOpened).not.toHaveBeenCalled();
+
+    actionMocks.openProject.mockResolvedValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "Open Project" }));
+    await waitFor(() => expect(onProjectOpened).toHaveBeenCalledOnce());
   });
 });

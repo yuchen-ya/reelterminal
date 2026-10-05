@@ -7,6 +7,7 @@ import { ToolcraftClickableCard as ClickableCard } from "@reelterminal/ui";
 import { ToolcraftHeading as Heading } from "@reelterminal/ui";
 import { ToolcraftSelectableCard as SelectableCard } from "@reelterminal/ui";
 import { ToolcraftText as Text } from "@reelterminal/ui";
+import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { Box, Smartphone, Monitor, Square, Film } from "@/icons/lucide-compat";
 
 import { ReelTerminalMark } from "@/components/brand/ReelTerminalMark";
@@ -17,11 +18,14 @@ import {
   startNewMotionProject,
   listRecentProjects,
   openRecentProject,
+  openProject,
+  saveCurrentProject,
   type NewProjectFormat,
   type RecentEntry,
 } from "./desktop-project-actions";
 import { useUIStore } from "../../stores/ui-store";
 import i18n from "../../i18n";
+import { toast } from "../../stores/notification-store";
 
 const FORMAT_ICONS: Record<string, React.ElementType> = {
   vertical: Smartphone,
@@ -50,13 +54,21 @@ function formatLastOpened(lastOpened: number): string {
 
 type ProjectMode = "edit" | "motion";
 
-export function DesktopStartScreen(): JSX.Element {
+export function DesktopStartScreen({
+  onProjectOpened,
+  onCancel,
+}: {
+  onProjectOpened?: () => void;
+  onCancel?: () => void;
+}): JSX.Element {
   const { t } = useTranslation();
   const [recents, setRecents] = useState<RecentEntry[]>([]);
   const [loadingRecents, setLoadingRecents] = useState<boolean>(true);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
   const [projectMode, setProjectMode] = useState<ProjectMode>("edit");
   const setDesktopPage = useUIStore((state) => state.setDesktopPage);
+  const busy = starting || openingId !== null;
 
   useEffect(() => {
     let active = true;
@@ -78,22 +90,48 @@ export function DesktopStartScreen(): JSX.Element {
   const handleOpenRecent = useCallback(async (projectId: string) => {
     setOpeningId(projectId);
     try {
-      if (await openRecentProject(projectId)) setDesktopPage("edit");
+      if (await openRecentProject(projectId)) {
+        setDesktopPage("edit");
+        onProjectOpened?.();
+      }
+    } catch (error) {
+      toast.error(t("desktop.start.actionFailed"), error instanceof Error ? error.message : String(error));
     } finally {
       setOpeningId(null);
     }
-  }, [setDesktopPage]);
+  }, [setDesktopPage, onProjectOpened, t]);
 
-  const handleStartProject = useCallback((format: NewProjectFormat) => {
-    if (projectMode === "motion") {
-      setDesktopPage("motion");
-      startNewMotionProject(format);
-      return;
+  const handleOpenProject = useCallback(async () => {
+    setStarting(true);
+    try {
+      if (await openProject()) {
+        setDesktopPage("edit");
+        onProjectOpened?.();
+      }
+    } catch (error) {
+      toast.error(t("desktop.start.actionFailed"), error instanceof Error ? error.message : String(error));
+    } finally {
+      setStarting(false);
     }
+  }, [setDesktopPage, onProjectOpened, t]);
 
-    setDesktopPage("edit");
-    startNewProject(format);
-  }, [projectMode, setDesktopPage]);
+  const handleStartProject = useCallback(async (format: NewProjectFormat) => {
+    setStarting(true);
+    try {
+      await saveCurrentProject();
+      if (projectMode === "motion") {
+        startNewMotionProject(format);
+      } else {
+        startNewProject(format);
+      }
+      setDesktopPage(projectMode);
+      onProjectOpened?.();
+    } catch (error) {
+      toast.error(t("desktop.start.actionFailed"), error instanceof Error ? error.message : String(error));
+    } finally {
+      setStarting(false);
+    }
+  }, [projectMode, setDesktopPage, onProjectOpened, t]);
 
   const formatModeLabel = projectMode === "motion"
     ? t("desktop.start.modeMotion")
@@ -102,6 +140,12 @@ export function DesktopStartScreen(): JSX.Element {
   return (
     <div className="h-full overflow-y-auto bg-bg text-fg">
       <div className="mx-auto flex max-w-4xl flex-col gap-10 px-8 py-12">
+        <div className="flex flex-wrap gap-3">
+          {onCancel ? (
+            <Button label={t("desktop.start.backToProject")} variant="secondary" onClick={onCancel} isDisabled={busy} />
+          ) : null}
+          <Button label={t("common.openProjectPicker")} variant="secondary" onClick={handleOpenProject} isDisabled={busy} />
+        </div>
         <section>
           <div className="flex items-center gap-3">
             <ReelTerminalMark size={28} className="text-accent" />
@@ -169,6 +213,7 @@ export function DesktopStartScreen(): JSX.Element {
                   key={format.id}
                   label={`${formatLabel} ${formatModeLabel}`}
                   onClick={() => handleStartProject(format)}
+                  isDisabled={busy}
                   padding={5}
                 >
                   <div className="relative flex flex-col items-start gap-3">
@@ -212,7 +257,7 @@ export function DesktopStartScreen(): JSX.Element {
                   <li key={entry.id} className="p-1.5">
                     <ClickableCard
                       label={t("desktop.start.openProject", { name: entry.name })}
-                      isDisabled={openingId !== null}
+                      isDisabled={busy}
                       onClick={() => handleOpenRecent(entry.id)}
                       padding={2}
                       variant="transparent"
