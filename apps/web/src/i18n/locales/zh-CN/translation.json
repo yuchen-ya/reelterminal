@@ -22,6 +22,7 @@
     "open": "打开",
     "openProjectPicker": "打开项目",
     "settings": "设置",
+    "githubRepository": "GitHub 仓库",
     "systemDefault": "跟随系统"
   },
   "templates": {

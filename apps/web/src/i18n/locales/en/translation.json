@@ -22,6 +22,7 @@
     "open": "Open",
     "openProjectPicker": "Open Project",
     "settings": "Settings",
+    "githubRepository": "GitHub repository",
     "systemDefault": "System default"
   },
   "templates": {

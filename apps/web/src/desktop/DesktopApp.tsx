@@ -17,7 +17,8 @@ import { useUIStore } from "../stores/ui-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { SettingsDialog } from "../components/editor/settings/SettingsDialog";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
-import { Settings, CircleHelp } from "@/icons/lucide-compat";
+import { ToolcraftTooltip } from "@reelterminal/ui";
+import { Settings, CircleHelp, Github } from "@/icons/lucide-compat";
 import { DesktopHelpDialog } from "./editor/DesktopHelpDialog";
 import { stopTour } from "../components/editor/tour";
 import { useTranslation } from "react-i18next";
@@ -184,6 +185,17 @@ export function DesktopApp(): JSX.Element {
         projectControl={showEditor ? <DesktopProjectNameControl onNewProject={handleNewProject} /> : null}
       >
         {showEditor && isVideoEditing ? <span data-tour="desktop-export"><DesktopExportButton /></span> : null}
+        <ToolcraftTooltip content={t("common.githubRepository")} placement="below">
+          <a
+            href="https://github.com/yuchen-ya/reelterminal"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={t("common.githubRepository")}
+            className="mr-2 inline-flex h-7 w-7 items-center justify-center rounded-[7px] border border-border bg-bg-2 text-fg-2 hover:bg-bg-3 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Github size={16} aria-hidden />
+          </a>
+        </ToolcraftTooltip>
         <Button
           label={t("desktop.help.title")}
           variant="secondary"
