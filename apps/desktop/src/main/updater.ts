@@ -43,9 +43,8 @@ export function initAutoUpdater(): void {
   // unsaved-changes guard first, so installing never bypasses the save prompt.
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
-  // Pre-1.0 testing: every build is a prerelease (1.0.0-alpha.N), so allow the
-  // updater to offer newer prereleases on the latest channel.
-  autoUpdater.allowPrerelease = true;
+  // The latest channel offers stable releases.
+  autoUpdater.allowPrerelease = false;
 
   // Renderer-driven actions: start the download on user consent, and "install"
   // by quitting through the normal (guarded) path so the save prompt still runs.

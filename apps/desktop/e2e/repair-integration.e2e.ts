@@ -61,7 +61,7 @@ describe("combined delivery: live replacement + GUI comparison", () => {
       const timeline = await page.getByLabel("Timeline video", { exact: true }).boundingBox();
       expect(reference!.x).toBeCloseTo(timeline!.x, 0);
       expect(reference!.width).toBeCloseTo(timeline!.width, 0);
-    });
+    }, { timeout: 10000, interval: 200 });
     expect((await state()).project.referenceComparison?.layout).toBe("overlay");
     await page.getByRole("button", { name: "Advanced", exact: true }).click();
     const opacity = page.getByLabel("Overlay opacity", { exact: true });

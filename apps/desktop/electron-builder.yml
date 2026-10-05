@@ -1,6 +1,6 @@
 appId: video.reelterminal.desktop
 productName: ReelTerminal
-# Predictable, space-free, arch-suffixed names → clean R2 URLs + a simple
+# Predictable, space-free, arch-suffixed names for release downloads and a simple
 # manifest (e.g. ReelTerminal-1.2.3-arm64.dmg, ReelTerminal-1.2.3-x64.exe).
 artifactName: ${productName}-${version}-${arch}.${ext}
 asar: true
@@ -10,8 +10,8 @@ asarUnpack:
 directories:
   output: release
 # Update feed for electron-updater. Builds embed app-update.yml pointing at the
-# R2-backed download subdomain and generate latest*.yml + blockmaps; the release
-# CI uploads everything to R2 (the generic provider does not upload itself).
+# GitHub Releases download URL and generate latest*.yml + blockmaps. Upload
+# these alongside the installers; the generic provider does not publish them.
 publish:
   provider: generic
   url: https://github.com/yuchen-ya/reelterminal/releases/latest/download

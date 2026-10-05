@@ -1,5 +1,7 @@
 <div align="center">
 
+[English](README_en.md) | **简体中文**
+
 <img src="docs/assets/logo.png" alt="ReelTerminal Logo" width="100" height="100" style="border-radius: 20px;" />
 
 # ReelTerminal
@@ -9,7 +11,7 @@
 *Generate anywhere; finish here.*
 
 <p align="center">
-  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v0.1.1-10B981?style=flat-square" alt="Version" /></a>
+  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.0.0-10B981?style=flat-square" alt="Version" /></a>
   <a href="docs/EXTERNAL-DEPENDENCIES.md"><img src="https://img.shields.io/badge/Privacy-100%25%20Local--First-059669?style=flat-square" alt="Local First" /></a>
   <a href="apps/desktop/DISTRIBUTION.md"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-64748B?style=flat-square" alt="Platform" /></a>
   <a href="https://github.com/yuchen-ya/reelterminal/issues"><img src="https://img.shields.io/badge/Feedback-Issues%20Welcome-3B82F6?style=flat-square" alt="Feedback" /></a>
@@ -32,6 +34,10 @@
 
 **ReelTerminal 试图提供一个平滑的折中解法：**  
 保留现代剪辑器直观的画布和时间线，创作者可以在桌面端随手拖拽微调；同时让你的 AI 助手（Cursor、Claude、Antigravity 等）能直接操作工程时间线——**你负责直观审美，AI 负责批量与结构化处理，改动随时可撤销。**
+
+![ReelTerminal 暗色桌面界面：画布、多轨时间线与 Agent 协作状态栏](docs/assets/desktop-screenshot.jpg)
+
+*真实桌面界面，使用演示工程展示画布、多轨时间线与 Agent 协作状态。*
 
 ---
 
@@ -59,6 +65,8 @@ flowchart LR
 3. 在弹出的通知中直接点击 **「复制启动提示词」**；
 4. 将复制好的内容**直接粘贴发给你的 AI 助手**（如 Cursor、Claude Code、Antigravity、Windsurf 等）——提示词中已自动准备好本地环境路径与协作规则，AI 会自动接入当前项目开始协同！
 
+本次发布提供 **Windows x64 安装包和便携 ZIP**。便携版请完整解压后运行 `ReelTerminal.exe`；macOS 安装包后续单独构建发布。Windows 构建尚未代码签名，安装时可能提示未知发布者。部分媒体处理功能需要另外安装 FFmpeg/ffprobe，详见[桌面发行说明](apps/desktop/DISTRIBUTION.md)。
+
 ---
 
 ### 方式二：开发者源码构建与启动
@@ -72,7 +80,8 @@ git clone https://github.com/yuchen-ya/reelterminal.git; cd reelterminal
 # 2. 安装依赖并构建 WASM 内核
 corepack pnpm install; pnpm build:wasm
 
-# 3. 运行桌面端（或运行 pnpm dev 启动 Web 轻量版）
+# 3. 构建并运行桌面端（或运行 pnpm dev 启动 Web 轻量版）
+pnpm --filter @reelterminal/desktop build
 pnpm --filter @reelterminal/desktop start
 ```
 

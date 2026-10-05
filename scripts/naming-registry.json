@@ -22,6 +22,12 @@
       "reason": "Isolated test profiles set the existing persisted locale key; no user profile is modified."
     },
     {
+      "files": "apps/desktop/e2e/preview-controls.e2e.ts",
+      "pattern": "openreel-locale",
+      "category": 4,
+      "reason": "The bilingual player-controls test uses the existing persisted locale key in an isolated profile."
+    },
+    {
       "files": "apps/web/src/i18n/locales/zh-CN/upstream-translation.json",
       "category": 2,
       "reason": "上游文案：中文语言资源收录并合并未命名空间化的界面字符串。"
@@ -31,6 +37,12 @@
       "pattern": "Augani|Augustus|forked from OpenReel|upstream OpenReel",
       "category": 2,
       "reason": "上游归属：致谢段的上游仓库名与作者名（github.com/Augani/openreel-video），保留。"
+    },
+    {
+      "files": "README_en.md",
+      "pattern": "Augustus",
+      "category": 2,
+      "reason": "The English README preserves the upstream project name, repository link and author attribution."
     },
     {
       "files": "package.json",

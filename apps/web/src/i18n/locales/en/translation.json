@@ -111,7 +111,7 @@
       "newProject": "New Project",
       "backToProject": "Back to current project",
       "actionFailed": "Could not switch projects",
-      "chooseWorkspace": "New here? Choose Video Editor, then a frame format. Use Help in the title bar for step-by-step instructions.",
+      "chooseWorkspace": "Choose Video Editor, then a frame format. Use Help in the title bar for step-by-step instructions.",
       "videoEditor": "Video Editor",
       "videoEditorDescription": "Cut, trim, caption, color, and export quickly.",
       "motionCreator": "Motion Creator",
