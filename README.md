@@ -11,7 +11,7 @@
 *Generate anywhere; finish here.*
 
 <p align="center">
-  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.0.1-10B981?style=flat-square" alt="Version" /></a>
+  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.0.2-10B981?style=flat-square" alt="Version" /></a>
   <a href="docs/EXTERNAL-DEPENDENCIES.md"><img src="https://img.shields.io/badge/Privacy-100%25%20Local--First-059669?style=flat-square" alt="Local First" /></a>
   <a href="apps/desktop/DISTRIBUTION.md"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-64748B?style=flat-square" alt="Platform" /></a>
   <a href="https://github.com/yuchen-ya/reelterminal/issues"><img src="https://img.shields.io/badge/Feedback-Issues%20Welcome-3B82F6?style=flat-square" alt="Feedback" /></a>
@@ -65,7 +65,7 @@ flowchart LR
 3. 在弹出的通知中直接点击 **「复制启动提示词」**；
 4. 将复制好的内容**直接粘贴发给你的 AI 助手**（如 Cursor、Claude Code、Antigravity、Windsurf 等）——提示词中已自动准备好本地环境路径与协作规则，AI 会自动接入当前项目开始协同！
 
-本次发布提供 **Windows x64 安装包和便携 ZIP**。便携版请完整解压后运行 `ReelTerminal.exe`；macOS 安装包后续单独构建发布。Windows 构建尚未代码签名，安装时可能提示未知发布者。部分媒体处理功能需要另外安装 FFmpeg/ffprobe，详见[桌面发行说明](apps/desktop/DISTRIBUTION.md)。
+本次发布提供 **Windows x64 安装包和便携 ZIP**，以及 **macOS（Apple Silicon / Intel）DMG 安装包**。Windows 便携版请完整解压后运行 `ReelTerminal.exe`。各平台安装包均未代码签名：Windows 安装时可能提示未知发布者；macOS 首次打开如被 Gatekeeper 拦截，请前往 系统设置 → 隐私与安全性 点击「仍要打开」。部分媒体处理功能需要另外安装 FFmpeg/ffprobe，详见[桌面发行说明](apps/desktop/DISTRIBUTION.md)。
 
 ---
 

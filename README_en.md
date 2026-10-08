@@ -10,7 +10,7 @@
 **Generate anywhere; finish here.**
 
 <p align="center">
-  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.0.1-10B981?style=flat-square" alt="Version" /></a>
+  <a href="https://github.com/yuchen-ya/reelterminal/releases"><img src="https://img.shields.io/badge/Release-v1.0.2-10B981?style=flat-square" alt="Version" /></a>
   <a href="docs/EXTERNAL-DEPENDENCIES.md"><img src="https://img.shields.io/badge/Privacy-100%25%20Local--First-059669?style=flat-square" alt="Local First" /></a>
   <a href="apps/desktop/DISTRIBUTION.md"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-64748B?style=flat-square" alt="Platform" /></a>
   <a href="https://github.com/yuchen-ya/reelterminal/issues"><img src="https://img.shields.io/badge/Feedback-Issues%20Welcome-3B82F6?style=flat-square" alt="Feedback" /></a>
@@ -63,7 +63,7 @@ flowchart LR
 3. Click **“Copy startup prompt”** in the notification.
 4. **Paste the prompt into your AI assistant**, such as Cursor, Claude Code, Antigravity, or Windsurf. It includes the local paths and collaboration rules needed to connect to the open project.
 
-This release includes a **Windows x64 installer and portable ZIP**. Extract the entire ZIP before running `ReelTerminal.exe`. macOS builds will follow separately. The Windows builds are unsigned and may show an unknown publisher during installation. Some media-processing features require a separate FFmpeg/ffprobe installation; see [desktop distribution](apps/desktop/DISTRIBUTION.md).
+This release includes a **Windows x64 installer and portable ZIP**, plus **macOS (Apple Silicon / Intel) DMG installers**. Extract the entire ZIP before running `ReelTerminal.exe`. Builds on all platforms are unsigned: Windows may show an unknown-publisher warning during installation; on macOS, if Gatekeeper blocks the first launch, open System Settings → Privacy & Security and click "Open Anyway". Some media-processing features require a separate FFmpeg/ffprobe installation; see [desktop distribution](apps/desktop/DISTRIBUTION.md).
 
 ---
 
