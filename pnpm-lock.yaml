@@ -17,6 +17,7 @@ overrides:
 
 patchedDependencies:
   braces@3.0.3: 7f56de506f4437d4278f18a94c67bfc8a7257f74759b16c45be2899b60e99892
+  plist@3.1.0: 5e96a8183577f236291776ff1f850b331c49e31e1a49a8886503ce66ae3499e5
 
 importers:
 
@@ -7219,7 +7220,7 @@ snapshots:
       lazy-val: 1.0.5
       minimatch: 10.2.6
       pkijs: 3.4.1
-      plist: 3.1.0
+      plist: 3.1.0(patch_hash=5e96a8183577f236291776ff1f850b331c49e31e1a49a8886503ce66ae3499e5)
       proper-lockfile: 4.1.2
       resedit: 1.7.2
       semver: 7.7.3
@@ -8909,7 +8910,7 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.2
 
-  plist@3.1.0:
+  plist@3.1.0(patch_hash=5e96a8183577f236291776ff1f850b331c49e31e1a49a8886503ce66ae3499e5):
     dependencies:
       '@xmldom/xmldom': 0.9.12
       base64-js: 1.5.1

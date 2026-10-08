@@ -1,6 +1,6 @@
 {
   "name": "@reelterminal/agent-transport",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "type": "module",
   "description": "ADR 0003 slice 2b/2c: the reelterminal-agent CLI — MCP stdio server (serve), executable workflow runner (run), and environment doctor. One process == one AgentFacadeSession.",

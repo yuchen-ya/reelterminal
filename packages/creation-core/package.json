@@ -1,6 +1,6 @@
 {
   "name": "@reelterminal/creation-core",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Native (C++20) creation engine core: C ABI over geometry/sdf/rig/sim/render kernels. The TypeScript CPU reference lives in @reelterminal/core/creation and is mirrored here for native builds.",
   "scripts": {
