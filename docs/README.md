@@ -3,7 +3,7 @@
 ## Product and usage
 
 - [`../README.md`](../README.md) — product overview and quick start.
-- [`USER-GUIDE.md`](USER-GUIDE.md) — desktop onboarding and editor help.
+- [`USER-GUIDE.md`](USER-GUIDE.md) — desktop onboarding, editor help, and save-versus-retain basics.
 - [`AGENT-GUIDE.md`](AGENT-GUIDE.md) — connecting an external Agent.
 - [`COMMAND-API.md`](COMMAND-API.md) — live command service and CLI contract.
 - [`AGENT-WORKSPACE.md`](AGENT-WORKSPACE.md) — task files and media workspace.
@@ -28,6 +28,12 @@
 - [`MASK-PROPAGATION.md`](MASK-PROPAGATION.md) — local mask refinement and short patch propagation.
 - [`build-chunking.md`](build-chunking.md) — production bundle boundaries.
 
+## Versions and multi-project
+
+- [`VERSION-NODES-UX.md`](VERSION-NODES-UX.md) — implemented interaction spec: compact node track, read-only version preview, explicit retention (save vs retain), adoption/deletion, and Agent-managed complexity; includes the acceptance checklist.
+- [`MULTI-PROJECT-VERSIONING.md`](MULTI-PROJECT-VERSIONING.md) — multi-project workspaces, immutable version nodes, media retention, and real-use acceptance checklist; interaction defers to VERSION-NODES-UX.
+- [`MULTI-PROJECT-USAGE.md`](MULTI-PROJECT-USAGE.md) — desktop version-track operations, save-versus-retain semantics, explicit CLI targets (`node.save`/`node.rename`/`node.restore`), and the external-evidence acceptance workflow.
+
 ## Distribution and attribution
 
 - [`ASSET-LICENSE-REVIEW.md`](ASSET-LICENSE-REVIEW.md) — review of artwork, fonts, and runtime model rights.
@@ -37,4 +43,3 @@
   packaging and release requirements.
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — setup, checks, and pull requests.
 - [`../SECURITY.md`](../SECURITY.md) — private security report instructions.
-

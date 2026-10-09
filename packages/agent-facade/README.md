@@ -50,7 +50,8 @@ const firstBatch = must(await facade["edit.apply"]({
 const overlayId = firstBatch.applied.find((result) => result.op === "text.create")!.createdIds[0];
 // Later batches: track.remove (empty tracks only), media.remove (unreferenced
 // media only), clip.move, clip.split, clip.duplicate, clip.rippleDelete,
-// clip.setSpeed, clip.setReverse, clip.setTransform, clip.setFade,
+// clip.setSpeed, clip.setReverse, clip.setSpeedConfig (full speed/ramp/freeze
+// replacement), clip.setTransform, clip.setFade,
 // transition.add/update/remove, marker.add (stable-numbered project markers:
 // asset/clip/text/timeRange targets, metadata only — never rendered),
 // marker.remove (by number),
@@ -86,13 +87,56 @@ queries, preflight validation, media analysis, preview, export, verification,
 and job control complete the catalog. Discover exact commands and schemas with
 `getCommandCatalog(mode)`.
 
+Live multi-project verbs address an explicit `projectId`/`workspaceId`:
+`workspace.list/create/close/delete/switch_view/list_drafts/recover_draft`
+manage workspaces; `node.save` retains the workspace as an immutable version
+node (auto-named when unnamed; identical content dedupes); `node.rename`
+changes only a node's name/summary display metadata; `node.restore` adopts a
+node into a workspace; `node.list/get/media/compare` read nodes; and
+`media.references`, `media.cleanup.plan/execute` back reference-safe cleanup.
+Regular saves — GUI Ctrl+S, autosave, and normal edit commands — only persist
+the editing workspace; only `node.save` creates nodes. Schemas:
+`src/workspace-schemas.ts`; types: `src/workspace-library.ts`.
+
+`clip.setSpeedConfig` replaces one clip's complete playback configuration in
+one atomic action: constant `speed` in [0.1, 20], `reversed`,
+`pitchCorrection`, up to 128 `keyframes`, and up to 128 `freezeFrames`.
+`keyframes[].time` and `freezeFrames[].sourceTime` are source seconds relative
+to `clip.inPoint`; freeze `startTime` is clip-local playback seconds and
+includes earlier freeze durations. When keyframes exist, they supply the speed
+curve in place of the base speed. The curve integrates in ascending
+source-relative time, then reverse reflects the resulting offset across the
+source span. A freeze's `sourceTime` is used literally even in reverse, and
+easing overshoot is clamped to [0.1, 20]. Freeze intervals may not overlap or
+start beyond the moving playback duration after preceding freezes are removed.
+`clip.split` and `clip.trim` currently reject speed-ramped or frozen clips;
+`ReviewRange` currently requires forward constant-speed clips.
+The GUI's linear split/trim/slip/roll/neighbor-trim paths also reject curves
+and freezes. Current audio schedulers use constant speed and do not evaluate
+nonlinear curves or freeze holds; pitch-correction state is persisted but is
+not consumed by these schedulers. The audio policy for freezes and nonlinear
+retiming remains to be designed.
+
+`timeline.mapSourceTimes` maps 1–64 explicit absolute timeline times for one
+clip through the same Core `SpeedEngine` used by rendering. It returns the
+snapshot revision, clip-local time, source-relative time, absolute source-media
+time (`inPoint + source-relative`), and freeze status. It only answers
+timeline-point to source-point queries; it does not provide an inverse or
+represent a nonlinear interval with two endpoints. Pass `expectedRevision` to
+reject a stale mapping request.
+
 `visual.inspect` — a read-only sample of 1–12 frames selected
 by exactly one of `clipId` (a timeline clip id from `timeline.get`) or an
 explicit `timeRange` of the shape `{"startSec": <number ≥ 0>, "endSec":
 <number > startSec>}` in timeline seconds. Each frame is a real
 provider-rendered artifact (lossless PNG, or a JPEG re-encode when the
-`maxFrameBytes` budget — default 1.5 MiB — would be exceeded) with `timeSec`,
-a deterministic label, the source revision, and a per-frame `fidelity` record
+`maxFrameBytes` budget — default 1.5 MiB — would be exceeded). `timeSec` is
+the legacy alias for `requestedTimelineTimeSec`; `renderedTimelineTimeSec`
+is `null` because the RenderProvider returns pixels without an actual-render-time receipt. `sourceFrameNumber`
+and `sourcePtsSec` are null because the render provider does not report the
+decoded media frame or PTS. The response pins the project `sourceRevision`
+and each referenced `mediaSources` identity (media id, size, modified time,
+and SHA-256), plus a deterministic label and per-frame `fidelity` record
 (source vs delivered raster, format, budget outcome; see `frame-budget.ts`).
 The default runtime provider is Chromium. Runtimes with contact-sheet support also return one real PNG contact-sheet
 artifact; otherwise `limitations` explains why individual frame artifacts are
@@ -473,7 +517,12 @@ screenshot delivery state.
   and the user's own provider credential, and fails before any request
   without them. The remaining declared
   types are individually unavailable in `capabilities.get`; they fail
-  `UNSUPPORTED` before job creation.
+  `UNSUPPORTED` before job creation. Analysis `startSec`/`endSec` and
+  time-coded findings use original-media source seconds, independent of any
+  timeline clip trim or speed. The job and durable record pin the project
+  `sourceRevision`; records also carry the subject `mediaId` and source file
+  fingerprint. A finding's source frame PTS or detector precision remains
+  unknown unless the underlying local probe reports it.
 - New closed edit ops with Core/GUI/renderer parity are `track.update`
   (name/lock/hide/mute/solo), `subtitle.importSrt` (256 KiB/500 cues),
   `clip.setColorGrade` (temperature/tint), `clip.setKeyframes` (renderer-

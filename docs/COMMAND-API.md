@@ -43,6 +43,18 @@ Edit requests use the current project identity, project epoch, and revision.
 The desktop applies a batch through the shared action history, so Agent edits
 are visible in the GUI and can be undone there.
 
+Workspace and node verbs share the same catalog. Regular saves — GUI Ctrl+S,
+autosave, and normal edit commands — only persist the editing workspace; a save
+never creates a version. `node.save` is the retention verb: it records the
+workspace as an immutable version node and requires `expectedRevision` plus an
+idempotency key (omit `name` to auto-name; unchanged content dedupes to the
+existing node). `node.rename` takes `projectId`, `nodeId`, `name` and optional
+`summary`; it changes only that display metadata — no revision, no idempotency
+key, no new version. `node.restore` adopts a node into a target workspace.
+`reelctl schema node.save` and `reelctl schema node.rename` show exact
+arguments; workspace operations are described in
+[MULTI-PROJECT-USAGE.md](MULTI-PROJECT-USAGE.md).
+
 ## MCP and headless sessions
 
 MCP clients can start `reelctl mcp serve`. It uses the same command catalog and

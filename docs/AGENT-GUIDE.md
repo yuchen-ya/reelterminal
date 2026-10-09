@@ -79,6 +79,17 @@ The endpoint descriptor is a credential. Never print it or copy its token to a
 prompt. The client reads it privately and probes loopback liveness. A missing or
 stale descriptor requires preparing the GUI, not switching to headless.
 
+## Saves and versions
+
+Normal saves (GUI Ctrl+S, autosave, and regular edit commands) only persist the
+editing workspace; a version node is created only by an explicit retention
+action. Use `node.save` (with `expectedRevision` and an idempotency key) when a
+task asks for a stage version to be retained, and `node.rename` to set a node's
+name and optional summary — metadata only, no new version. Previews and
+comparisons of history are read-only; adopting an older version is
+`node.restore` against the workspace's current revision. GUI project switches
+never retarget tasks you already submitted.
+
 ## Product boundary
 
 Agents own installation, login, conversations, history and context compression.

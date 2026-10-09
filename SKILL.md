@@ -81,6 +81,21 @@ stderr. Use --human for debugging and --fields to project results. For timeline.
 result envelope. Use returned artifact paths for large results. A result projection is not a
 replacement for revision/identity preconditions.
 
+## Saves and versions
+
+Regular saves — GUI Ctrl+S, autosave, and your edit commands — only persist the
+editing workspace; "saved" never means a version exists. Retain a stage version
+only when the task asks for one, via an explicit
+`reelctl call node.save --project-id … --workspace-id … --expected-revision …
+--idempotency-key …` (omit `--name` to auto-name; unchanged content dedupes to
+the existing node). Stage naming goes through `reelctl call node.rename`
+(name plus optional summary; metadata-only, no revision). Historical previews
+and player comparisons are read-only; adopting an older version is
+`node.restore` with the target workspace's current `expectedRevision`. A GUI
+project switch never retargets already-submitted tasks: each keeps its original
+project and workspace, and you must re-read context before writing to the
+newly switched-to project.
+
 ## Media and verification
 
 Before generating files, run `reelctl call capabilities.get` and use

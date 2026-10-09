@@ -54,7 +54,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.3.0" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.4.0" as const;
 export const GUI_MANUAL_APP_VERSION = "1.0.1" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
@@ -196,6 +196,18 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
         en: "Switch: pick another project from the saved-projects list.",
       },
       {
+        zh: "切换成功后出现一条自动淡出的通知“已切换到「项目名」”，附“复制 Agent 提示词”按钮；点击才复制，不会自动复制，也不会向任何 Agent 会话自动发送。连续切换只保留最后一条通知。",
+        en: "After a successful switch a self-fading notification \"Switched to \\\"name\\\"\" appears with a Copy Agent prompt button; copying happens only on click — never automatically, and nothing is sent to any Agent session. Back-to-back switches keep only the last notification.",
+      },
+      {
+        zh: "提示词包含这次切换后的项目 ID、编辑目标 ID、连接方式和外部工作目录，不含凭据；通知消失后可从项目菜单“复制 Agent 提示词”再次复制。已提交的后台任务不因 GUI 切换改变目标。",
+        en: "The prompt carries the switched-to project id, editing-target id, connection command, and external workspace root, with no credentials; after the notification fades, copy it again via the project menu's Copy Agent prompt. Already-submitted tasks keep their original target.",
+      },
+      {
+        zh: "项目菜单的其他操作：有多个编辑方案时出现“编辑方案”列表切换查看对象；“找回之前的编辑”列出可恢复的草稿；“试试另一种剪法”基于当前编辑隔离一个新方案。",
+        en: "Other project-menu actions: with more than one editing plan a Plans list switches the view; Recover previous edits lists restorable drafts; Try another cut starts an isolated alternative based on the current edit.",
+      },
+      {
         zh: "恢复：从自动保存快照恢复未预期的丢失。",
         en: "Recover: restore from an autosave snapshot after an unexpected loss.",
       },
@@ -206,7 +218,102 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
         en: "Renaming changes the display name and future suggested export/save names; it never renames an existing project file.",
       },
     ],
-    keywords: ["project", "rename", "switcher", "autosave", "title bar", "项目", "改名", "切换", "自动保存", "标题栏"],
+    keywords: ["project", "rename", "switcher", "autosave", "title bar", "agent prompt", "plans", "项目", "改名", "切换", "自动保存", "标题栏", "复制提示词", "编辑方案", "恢复草稿"],
+  },
+  {
+    id: "version-nodes",
+    title: { zh: "版本轨迹", en: "Version Track" },
+    // @source apps/web/src/desktop/editor/VersionNodeTrack.tsx
+    // @source apps/web/src/services/preview-session.ts
+    summary: {
+      zh: "时间线上方的圆点轨迹列出留存下来的版本：悬停查看、预览、重命名、从这里继续编辑或删除。",
+      en: "The dot track above the timeline lists retained versions: hover for details, preview, rename, continue editing from one, or delete.",
+    },
+    entry: [
+      {
+        zh: "留存过至少一个版本后，时间线上方的版本轨迹自动出现；首次留存之前没有这一行。",
+        en: "The version track appears above the timeline once at least one version is retained; there is no empty row before the first retention.",
+      },
+    ],
+    steps: [
+      {
+        zh: "悬停圆点显示版本名称、日期和可选摘要；单击选中以便键盘操作。实心强调色圆点是当前编辑位置，虚线外环表示正在预览的版本，空心菱形是 Agent 试剪方案。",
+        en: "Hover a dot for the version name, date, and optional summary; single-click selects it for keyboard use. The filled accent dot is the current edit, a dashed outline marks the previewed version, and hollow diamonds are Agent trial cuts.",
+      },
+      {
+        zh: "预览：双击或按 Enter 进入只读预览，横幅显示“正在预览「名称」”，提供“返回当前编辑”。预览中不能修改内容；退出后编辑内容、撤销和播放位置保持原样。Esc 返回当前编辑。",
+        en: "Preview: double-click or press Enter for a read-only preview; a banner shows Previewing \"name\" with Back to current editing. Preview content cannot be modified; on exit the edit, undo history, and playback position are unchanged. Esc returns to editing.",
+      },
+      {
+        zh: "采用：预览横幅中的“从这里继续编辑”把该版本应用到当前编辑；之前的未保存修改自动保护为可恢复草稿，可在顶部项目菜单“找回之前的编辑”中取回。",
+        en: "Adopt: Continue editing from here in the preview banner applies that version to the current edit; your prior unsaved changes are protected as a recoverable draft, retrievable via the project menu's Recover previous edits.",
+      },
+      {
+        zh: "重命名与删除：菜单键或 Shift+F10（相当于右键）打开节点菜单。重命名就地编辑，Enter 提交、Esc 取消。删除此版本会移入回收站并显示可撤销通知，不影响后续版本或素材。",
+        en: "Rename & delete: the menu key or Shift+F10 (equivalent to right-click) opens the node menu. Rename edits inline — Enter commits, Esc cancels. Delete moves the version to the recycle bin with an undoable notice and never touches later versions or media.",
+      },
+    ],
+    limitations: [
+      {
+        zh: "Ctrl+S 只保存当前编辑，不会在轨迹上创建节点；轨迹上只出现主动留存或关闭时按偏好留存的版本。",
+        en: "Ctrl+S only saves the current edit and never creates a track node; the track only shows versions retained explicitly or by the close-time preference.",
+      },
+      {
+        zh: "被删除的基准节点会在轨迹末端显示“当前编辑”端点，它只是位置标记，不代表可恢复版本。",
+        en: "If the base node is deleted, a \"Current editing\" endpoint chip appears at the track's end; it is a position marker, not a restorable version.",
+      },
+      {
+        zh: "Agent 试剪方案默认不改变当前编辑；双击预览后由用户决定是否采用。",
+        en: "Agent trial cuts never change the current edit by themselves; preview them and decide whether to adopt.",
+      },
+    ],
+    keywords: ["version", "node", "track", "preview", "adopt", "rename", "delete", "recycle", "版本", "轨迹", "节点", "预览", "采用", "重命名", "删除", "回收站", "试剪", "找回"],
+  },
+  {
+    id: "save-versus-retain",
+    title: { zh: "保存与留存版本", en: "Save vs. Retain a Version" },
+    // @source apps/web/src/desktop/CloseRetentionDialog.tsx
+    // @source apps/web/src/components/editor/settings/SavingPanel.tsx
+    // @source apps/web/src/components/editor/ProjectSwitcher.tsx (retain entry)
+    summary: {
+      zh: "Ctrl+S 和自动保存只保存当前编辑；“留存版本”才会创建可回看的版本节点。",
+      en: "Ctrl+S and autosave only save the current edit; retaining a version is what creates a look-back-able node.",
+    },
+    entry: [
+      {
+        zh: "留存入口：左上角项目菜单 → “留存当前版本”。关闭偏好：设置 → 项目与保存 → 关闭时留存版本。",
+        en: "Retain entry: top-left project menu → Retain current version. Close preference: Settings → Projects & Saving → Retain a version on close.",
+      },
+    ],
+    steps: [
+      {
+        zh: "保存：Ctrl+S 与自动保存把当前编辑写入本机项目存储。“已保存”只表示编辑已落盘，不代表存在版本节点。",
+        en: "Save: Ctrl+S and autosave write the current edit to local project storage. \"Saved\" only means the edit is on disk — it never implies a version node exists.",
+      },
+      {
+        zh: "留存：项目菜单的“留存当前版本”记录一个阶段。首个版本自动命名“初版”，之后用日期时间命名；内容与最近版本相同时不会产生重复节点。",
+        en: "Retain: the project menu's Retain current version records a stage. The first version is auto-named \"First version\", later ones use the date and time; unchanged content does not create a duplicate node.",
+      },
+      {
+        zh: "关闭时：工作区保存总是先执行。偏好为“每次询问”（默认）且当前编辑相对最近版本有变化时，弹一次“关闭前留存一个版本？”——可选“留存并关闭”“直接关闭”或取消；多项目有变化时只弹一个对话框。",
+        en: "On close: the workspace is always saved first. With the default Ask-every-time preference and changes worth retaining, one \"Save a version before closing?\" dialog appears — Save version & close, Close directly, or Cancel; multiple changed projects share a single dialog.",
+      },
+      {
+        zh: "偏好选项：每次询问（默认）、自动留存版本、不留存版本直接关闭。“不留存”仍然保存工作区，只是不创建版本；偏好随时可改，不影响已有历史。",
+        en: "Preference options: Ask every time (default), Save a version automatically, Close without saving a version. The skip option still saves the workspace — it only skips creating a version; the preference is changeable anytime and never deletes history.",
+      },
+    ],
+    limitations: [
+      {
+        zh: "保存工程文件、另存为是独立的文件操作，与留存版本互不替代；工程文件不包含内部版本轨迹。",
+        en: "Save project file and Save as are separate file operations, not substitutes for retention; project files do not contain the internal version track.",
+      },
+      {
+        zh: "删除版本只是移入回收站并可撤销；真正释放素材空间在项目管理的“释放空间”中完成。",
+        en: "Deleting a version only moves it to the recycle bin and is undoable; freeing storage happens separately via the project management's space release.",
+      },
+    ],
+    keywords: ["save", "autosave", "retain", "version", "close", "preference", "保存", "自动保存", "留存", "版本", "关闭", "偏好", "设置"],
   },
   {
     id: "settings-dialog",
