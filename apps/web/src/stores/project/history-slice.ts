@@ -9,6 +9,8 @@ import type {
 } from "@reelterminal/core";
 import type { ProjectState } from "../project-store";
 import type { ProjectStoreHelpers } from "./store-helpers";
+import { useUIStore } from "../ui-store";
+import { getTimelineSelectionItem } from "../../utils/timeline-item-actions";
 import type {
   EditingTemplateHistoryEntry,
   EditingTemplateApplicationState,
@@ -62,6 +64,18 @@ export function createHistorySlice(
     removeEditingTemplateApplicationStateFromProject,
     restoreEditingTemplateApplicationState,
   } = deps;
+
+  const applyHistoryChange = async (operation: () => Promise<ActionResult>): Promise<ActionResult> => {
+    const result = await operation();
+    const state = get();
+    if (result.success && state.isForeground) {
+      const ui = useUIStore.getState();
+      for (const id of ui.getSelectedClipIds()) {
+        if (!getTimelineSelectionItem(state, id)) ui.deselect(id);
+      }
+    }
+    return result;
+  };
 
   return {
     beginHistoryGroup: (description?: string, owner?: string) => {
@@ -281,7 +295,8 @@ export function createHistorySlice(
       return result;
       };
       const submit = get().submitWorkspaceMutation;
-      return submit && !options?.alreadySerialized ? submit(operation) : operation();
+      const apply = () => applyHistoryChange(operation);
+      return submit && !options?.alreadySerialized ? submit(apply) : apply();
     },
 
     redo: async (options) => {
@@ -499,7 +514,8 @@ export function createHistorySlice(
       return result;
       };
       const submit = get().submitWorkspaceMutation;
-      return submit && !options?.alreadySerialized ? submit(operation) : operation();
+      const apply = () => applyHistoryChange(operation);
+      return submit && !options?.alreadySerialized ? submit(apply) : apply();
     },
 
     canUndo: () => {

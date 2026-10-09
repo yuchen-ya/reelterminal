@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Clip, Project, TextClip } from "@reelterminal/core";
 import { createProjectStore, activateProjectStore, getActiveProjectRuntimeStore } from "../project-store";
 import { captureTimelineClipboard, getTimelineClipboard, planTimelinePaste } from "./timeline-clipboard";
+import { useUIStore } from "../ui-store";
 
 function fixture() {
   const project = createProjectStore().getState().project;
@@ -50,6 +51,7 @@ describe("timeline clipboard across historical preview", () => {
 
   it("keeps copied overlays after preview disposal and commits one undoable batch; stale revision is atomic", async () => {
     const previous = getActiveProjectRuntimeStore();
+    const previousSelection = useUIStore.getState().selectedItems;
     const source = createProjectStore();
     source.getState().createNewProject();
     await source.getState().addTrack("text");
@@ -73,15 +75,29 @@ describe("timeline clipboard across historical preview", () => {
       expect((await editing.getState().pasteClips(track.id, 10, { expectedRevision: currentRevision }))[0].success).toBe(true);
       expect(editing.getState().project.textClips).toHaveLength(2);
       expect(editing.getState().project.renderFonts).toEqual([font]);
+      const pastedId = editing.getState().lastPastedClipIds[0];
+      useUIStore.getState().selectMultiple([
+        { type: "text-clip", id: original.id, trackId: track.id },
+        { type: "text-clip", id: pastedId, trackId: track.id },
+      ]);
       await editing.getState().undo();
       expect(editing.getState().project.textClips).toHaveLength(1);
       expect(editing.getState().project.renderFonts).toBeUndefined();
+      expect(useUIStore.getState().getSelectedClipIds()).toEqual([original.id]);
+      expect(useUIStore.getState().lastSelectedItem?.id).toBe(original.id);
       await editing.getState().redo();
       expect(editing.getState().project.textClips).toHaveLength(2);
       expect(editing.getState().project.renderFonts).toEqual([font]);
+      expect(useUIStore.getState().getSelectedClipIds()).toEqual([original.id]);
+      await editing.getState().addTrack("audio");
+      await editing.getState().undo();
+      expect(useUIStore.getState().getSelectedClipIds()).toEqual([original.id]);
+      await editing.getState().redo();
+      expect(useUIStore.getState().getSelectedClipIds()).toEqual([original.id]);
       expect(editing.getState().clipboard[0].clip.id).toBe(original.id);
     } finally {
       activateProjectStore(previous);
+      useUIStore.getState().selectMultiple(previousSelection);
     }
   });
 });

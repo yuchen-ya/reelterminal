@@ -10,7 +10,7 @@ test("historical mixed clips copy to current editing with fixed media, relative 
   const job = process.env.REELTERMINAL_FIXES_JOB_ROOT;
   const original = process.env.REELTERMINAL_TEST_HEVC_SOURCE;
   if (!job || !original) throw new Error("Set the external job and original HEVC source");
-  const evidence = path.join(job, "evidence", "preview-copy");
+  const evidence = path.join(job, "evidence", process.env.REELTERMINAL_COPY_EVIDENCE_NAME ?? "preview-copy");
   mkdirSync(evidence, { recursive: true });
   const launched = await launchApp({ runDir: path.join(job, "work", `copy-profile-${crypto.randomUUID()}`), keepRunDir: true });
   const call = (command: string, args: Record<string, unknown> = {}) => {
@@ -23,6 +23,7 @@ test("historical mixed clips copy to current editing with fixed media, relative 
     return result.value;
   };
   const observations: Record<string, unknown> = {};
+  const shortcutBaseline = process.env.REELTERMINAL_R08_SHORTCUT_BASELINE === "1";
   try {
     await createProjectViaUI(launched.page);
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
@@ -91,10 +92,15 @@ test("historical mixed clips copy to current editing with fixed media, relative 
     observations.standardPaste = { pastedMedia, pastedTitle, revision: afterStandard.revision };
     await launched.page.keyboard.press("Control+z");
     await vi.waitFor(() => expect(count()).toBe(baselineCount));
+    observations.standardUndoInspector = await launched.page.getByTestId("inspector-properties").innerText();
+    await launched.page.screenshot({ path: path.join(evidence, "standard-undo-selection.png") });
+    if (!shortcutBaseline) await vi.waitFor(async () => expect(await launched.page.getByTestId("inspector-properties").getByText("No selection", { exact: true }).isVisible()).toBe(true), { timeout: 3000 });
     await launched.page.keyboard.press("Control+Shift+z");
     await vi.waitFor(() => expect(count()).toBe(baselineCount + 4));
+    if (!shortcutBaseline) expect(await launched.page.getByTestId("inspector-properties").getByText("No selection", { exact: true }).isVisible()).toBe(true);
     await launched.page.keyboard.press("Control+z");
     await vi.waitFor(() => expect(count()).toBe(baselineCount));
+    if (!shortcutBaseline) await vi.waitFor(async () => expect(await launched.page.getByTestId("inspector-properties").getByText("No selection", { exact: true }).isVisible()).toBe(true));
     call("editor.control", { ...target, action: "seek", timeSeconds: 30 });
     await launched.page.getByTestId("current-archive-entry").click();
     await launched.page.getByTestId(`version-node-${saved.node.id}`).dblclick();
@@ -115,7 +121,29 @@ test("historical mixed clips copy to current editing with fixed media, relative 
     await launched.page.screenshot({ path: path.join(evidence, "mixed-copy-result.png") });
     await launched.page.keyboard.press("Control+z");
     await vi.waitFor(() => expect(count()).toBe(baselineCount));
+    observations.shortcutUndoInspector = await launched.page.getByTestId("inspector-properties").innerText();
+    await launched.page.screenshot({ path: path.join(evidence, "shortcut-undo-selection.png") });
+    await vi.waitFor(async () => expect(await launched.page.getByTestId("inspector-properties").getByText("No selection", { exact: true }).isVisible()).toBe(true), { timeout: 3000 });
+    await launched.page.keyboard.press("Control+Shift+z");
+    await vi.waitFor(() => expect(count()).toBe(baselineCount + 4));
+    expect(await launched.page.getByTestId("inspector-properties").getByText("No selection", { exact: true }).isVisible()).toBe(true);
+    await launched.page.getByTestId("timeline-tracks-scroll").locator(`[data-live-editor-target-id="${shortcutMedia[0].id}"]`).click();
+    expect(await launched.page.locator(`[data-live-editor-target-id="${shortcutMedia[0].id}"]`).getAttribute("aria-pressed")).toBe("true");
+    await launched.page.keyboard.press("Control+z");
+    await vi.waitFor(() => expect(count()).toBe(baselineCount));
+    await vi.waitFor(async () => expect(await launched.page.getByTestId("inspector-properties").getByText("No selection", { exact: true }).isVisible()).toBe(true));
     observations.singleUndoRedo = true;
+    await launched.page.getByRole("button", { name: "Horizontal", exact: true }).click();
+    await launched.page.getByRole("button", { name: "New Project", exact: true }).click();
+    await launched.page.getByLabel(/^Vertical /).click();
+    await vi.waitFor(() => expect(call("editor.get_context").identity.projectId).not.toBe(target.projectId));
+    await launched.page.getByRole("button", { name: "Vertical", exact: true }).click();
+    await launched.page.getByRole("button", { name: "Open Horizontal", exact: true }).click();
+    await vi.waitFor(() => expect(call("editor.get_context").identity.projectId).toBe(target.projectId));
+    expect(count()).toBe(baselineCount);
+    await vi.waitFor(async () => expect(await launched.page.getByTestId("inspector-properties").getByText("No selection", { exact: true }).isVisible()).toBe(true));
+    observations.noGhostAfterProjectSwitch = true;
+    await launched.page.screenshot({ path: path.join(evidence, "undo-project-switch-selection.png") });
   } finally {
     writeFileSync(path.join(evidence, "copy-results.json"), JSON.stringify(observations, null, 2));
     await launched.close({ keepRunDir: true });

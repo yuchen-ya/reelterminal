@@ -4,7 +4,19 @@
 
 源代码在唯一开发 checkout 完成。正常配置中的 A 第二版、Agent 只读状态及用户素材原件未用于写入测试；所有可见桌面测试使用外部独立 profile。没有安装、发布、上传或替换原桌面包。外部工作根目录为 `E:\1Data\reelterminal\agent-workspace\jobs\2026-10-09-node-ux-fixes`。
 
-## 当前交付（按需面板版）
+## R08：撤销后幽灵选择（当前交付）
+
+新 sibling 包为外部 job 的 output/windows-test-r08/win-unpacked/ReelTerminal.exe，包含第三包1026293的全部修复和本次R08。包旁启动脚本沿用独立验收 profile/endpoint，但没有执行该脚本或操作共享窗口919374；第三包和先前包未覆盖。
+
+修前在第三包真实多选历史视频、音频、图片和文字，右键“复制到当前编辑”后一次undo已移除四个片段，检查器仍显示4 clips selected、Copy 0以及启用的删除按钮。截图与失败断言位于 evidence/r08-shortcut-before/ 和 r08-shortcut-before.log；标准Ctrl+C/返回/Ctrl+V路径同样先在 evidence/r08-before/ 复现。
+
+根因是历史动作移除片段后仍保留UI选择ID。现在成功撤销/重做完成后，只在前台工作区用现有片段解析器检查已选片段，再复用deselect清除已不存在的ID和lastSelectedItem；有效选择保留，后台工作区历史操作不清理当前GUI选择。没有改检查器文字、翻译、复制目标或片段数据契约。
+
+无GUI回归4文件104项通过、4项既有跳过；验证混合有效/已删除选择仅移除后者，普通编辑的undo/redo保留原选择。Web/desktop类型检查、完整desktop构建、Windows打包及git diff --check通过。修后源码和新Windows包的实际混合复制回归各通过一次：两条路径一次undo显示No selection，redo恢复片段且可以正常点选，再undo和跨项目切回都没有幽灵选择。剪贴板、固定历史媒体版本、相对时间、新片段ID及单组撤销仍通过原断言。
+
+修后证据在 evidence/r08-after/；新包证据在 evidence/r08-packaged/，包括copy-results.json、standard-undo-selection.png、shortcut-undo-selection.png和undo-project-switch-selection.png；对应日志r08-after.log、r08-packaged.log。接到暂停要求后停止可见测试，等主会话释放桌面后再按顺序回归；完成后测试窗口全部关闭并确认无剩余copy-profile进程，GUI已释放。仍待主会话独立复验，原主复验报告不改写。
+
+## 第三包交付（按需面板版）
 
 最新 Windows x64 unpacked 包：外部 job 的 output/windows-test-on-demand/win-unpacked/ReelTerminal.exe。旧 windows-test-build、windows-test-r01-r04 未覆盖。包旁 Start-Isolated-Test.ps1 保持原独立验收 user-data/endpoint 路径，仅交给主会话启动；本次没有启动共享验收 profile。
 
