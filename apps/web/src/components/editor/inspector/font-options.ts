@@ -2,6 +2,12 @@ import { useEffect, useState } from "react";
 import {
   LEGACY_CUSTOM_FONTS_DB_NAME,
 } from "../../../services/legacy-storage-keys";
+import { withMediaReferenceWrite } from "../../../services/media-storage";
+import { getFontDependencyReferences } from "../../../services/project-dependencies";
+import {
+  cacheCustomFontBytes,
+  forgetCustomFontBytes,
+} from "../../../services/custom-font-storage";
 
 const CUSTOM_FONT_EVENT = "reelterminal:custom-fonts-updated";
 
@@ -19,70 +25,7 @@ interface StoredFontRecord {
 const customFonts: string[] = [];
 /** Detected at registration; keeps listing honest when persistence failed. */
 const customFontFormats = new Map<string, FontFormat>();
-
-export const FONT_CATEGORIES = {
-  Popular: [
-    "Inter",
-    "Poppins",
-    "Montserrat",
-    "Roboto",
-    "Open Sans",
-    "Lato",
-    "Outfit",
-    "DM Sans",
-  ],
-  "Display & Headlines": [
-    "Bebas Neue",
-    "Anton",
-    "Oswald",
-    "Teko",
-    "Staatliches",
-    "Alfa Slab One",
-    "Archivo Black",
-    "Black Ops One",
-    "Titan One",
-    "Righteous",
-    "Concert One",
-    "Fredoka One",
-    "Bungee",
-  ],
-  "Elegant & Serif": [
-    "Playfair Display",
-    "Cinzel",
-    "Lora",
-    "Merriweather",
-    "DM Serif Display",
-    "Abril Fatface",
-    "Roboto Slab",
-    "Zilla Slab",
-  ],
-  "Modern & Clean": [
-    "Lexend",
-    "Quicksand",
-    "Nunito",
-    "Rubik",
-    "Work Sans",
-    "Raleway",
-    "Ubuntu",
-    "Space Grotesk",
-    "Comfortaa",
-  ],
-  "Handwritten & Script": [
-    "Pacifico",
-    "Lobster",
-    "Dancing Script",
-    "Great Vibes",
-    "Caveat",
-    "Sacramento",
-    "Satisfy",
-    "Yellowtail",
-    "Rock Salt",
-    "Permanent Marker",
-  ],
-  "Fun & Creative": ["Bangers", "Creepster", "Press Start 2P"],
-  Monospace: ["Roboto Mono", "Space Mono"],
-  System: ["Arial", "Helvetica", "Times New Roman", "Georgia", "Verdana"],
-} as const;
+export { FONT_CATEGORIES } from "../../../services/font-catalog";
 
 const FONT_EXTENSIONS = /\.(ttf|otf|woff2?)$/i;
 export const FONT_FILE_ACCEPT = ".ttf,.otf,.woff,.woff2";
@@ -190,22 +133,44 @@ async function loadStoredFonts(): Promise<StoredFontRecord[]> {
 }
 
 export async function removeCustomFont(family: string): Promise<void> {
-  const idx = customFonts.indexOf(family);
-  if (idx >= 0) {
-    customFonts.splice(idx, 1);
-    customFontFormats.delete(family);
-    notifyCustomFontChange();
-  }
-  const db = await openFontsDB();
-  if (!db) return;
-  await new Promise<void>((resolve) => {
-    const tx = db.transaction(STORE_FONTS, "readwrite");
-    tx.objectStore(STORE_FONTS).delete(family);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => resolve();
-    tx.onabort = () => resolve();
+  // Initialize the workspace snapshot provider before entering the shared
+  // reference-write queue; workspace migration may itself use that queue.
+  const initialReferences = await getFontDependencyReferences(family);
+  if (initialReferences.length > 0) throw referencedFontError(family, initialReferences);
+
+  await withMediaReferenceWrite(async () => {
+    const references = await getFontDependencyReferences(family);
+    if (references.length > 0) throw referencedFontError(family, references);
+
+    const idx = customFonts.indexOf(family);
+    if (idx >= 0) {
+      customFonts.splice(idx, 1);
+      customFontFormats.delete(family);
+      forgetCustomFontBytes(family);
+      notifyCustomFontChange();
+    }
+    const db = await openFontsDB();
+    if (!db) return;
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction(STORE_FONTS, "readwrite");
+      tx.objectStore(STORE_FONTS).delete(family);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
+    });
+    db.close();
   });
-  db.close();
+}
+
+function referencedFontError(
+  family: string,
+  references: readonly { readonly projectId: string; readonly referenceId: string; readonly kind: string }[],
+): Error {
+  const first = references[0];
+  const location = first
+    ? `${first.kind} ${first.referenceId} in project ${first.projectId}`
+    : "a saved project";
+  return new Error(`Cannot remove font "${family}" while ${location} references it`);
 }
 
 let initPromise: Promise<void> | null = null;
@@ -288,19 +253,23 @@ export async function registerFontBytes(
 
   try {
     const baseName = stripFontExtension(name).trim();
-    const fontFamily = toUniqueFontFamily(baseName);
-    const fontFace = new FontFace(fontFamily, data);
-    await fontFace.load();
-    document.fonts.add(fontFace);
+    const fontFamily = await withMediaReferenceWrite(async () => {
+      const assignedFamily = toUniqueFontFamily(baseName);
+      const fontFace = new FontFace(assignedFamily, data);
+      await fontFace.load();
+      document.fonts.add(fontFace);
 
-    if (!customFonts.includes(fontFamily)) {
-      customFonts.push(fontFamily);
-      customFontFormats.set(fontFamily, format);
-      notifyCustomFontChange();
-    }
+      if (!customFonts.includes(assignedFamily)) {
+        customFonts.push(assignedFamily);
+        customFontFormats.set(assignedFamily, format);
+        notifyCustomFontChange();
+      }
+      cacheCustomFontBytes(assignedFamily, data);
 
-    await persistFont(fontFamily, data).catch(() => {
-      // best-effort persistence; font is still usable this session
+      await persistFont(assignedFamily, data).catch(() => {
+        // best-effort persistence; font is still usable this session
+      });
+      return assignedFamily;
     });
 
     return { success: true, fontFamily, format };

@@ -23,7 +23,8 @@ import { PropertySlider } from "./shell/PropertySlider";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import {
-  getSpeedEngine,
+  SpeedEngine,
+  type Clip,
   type SpeedKeyframe,
   SPEED_MIN,
   SPEED_MAX,
@@ -31,14 +32,8 @@ import {
 } from "@reelterminal/core";
 import { useTranslation } from "react-i18next";
 
-interface ClipLike {
-  id: string;
-  startTime: number;
-  duration: number;
-}
-
 interface SpeedRampSectionProps {
-  clip: ClipLike;
+  clip: Clip;
 }
 
 interface SpeedPreset {
@@ -63,6 +58,7 @@ const SpeedCurveCanvas: React.FC<{
   keyframes: SpeedKeyframe[];
   duration: number;
   baseSpeed: number;
+  speedAtSourceTime: (time: number) => number;
   onAddKeyframe: (time: number, speed: number) => void;
   onRemoveKeyframe: (id: string) => void;
   onMoveKeyframe: (id: string, time: number, speed: number) => void;
@@ -70,6 +66,7 @@ const SpeedCurveCanvas: React.FC<{
   keyframes,
   duration,
   baseSpeed,
+  speedAtSourceTime,
   onAddKeyframe,
   onRemoveKeyframe,
   onMoveKeyframe,
@@ -134,23 +131,6 @@ const SpeedCurveCanvas: React.FC<{
     ctx.lineWidth = 2;
     ctx.beginPath();
 
-    const getSpeedAtTime = (t: number): number => {
-      if (sortedKeyframes.length === 0) return baseSpeed;
-      if (t <= sortedKeyframes[0].time) return sortedKeyframes[0].speed;
-      if (t >= sortedKeyframes[sortedKeyframes.length - 1].time) {
-        return sortedKeyframes[sortedKeyframes.length - 1].speed;
-      }
-      for (let i = 0; i < sortedKeyframes.length - 1; i++) {
-        if (t >= sortedKeyframes[i].time && t <= sortedKeyframes[i + 1].time) {
-          const kf1 = sortedKeyframes[i];
-          const kf2 = sortedKeyframes[i + 1];
-          const progress = (t - kf1.time) / (kf2.time - kf1.time);
-          return kf1.speed + (kf2.speed - kf1.speed) * progress;
-        }
-      }
-      return baseSpeed;
-    };
-
     const speedToY = (speed: number) => {
       const normalized =
         (Math.log(speed) - Math.log(SPEED_MIN)) /
@@ -163,7 +143,7 @@ const SpeedCurveCanvas: React.FC<{
     const steps = 100;
     for (let i = 0; i <= steps; i++) {
       const t = (i / steps) * duration;
-      const speed = getSpeedAtTime(t);
+      const speed = speedAtSourceTime(t);
       const x = timeToX(t);
       const y = speedToY(speed);
 
@@ -200,7 +180,7 @@ const SpeedCurveCanvas: React.FC<{
     ctx.fillText(`${SPEED_MAX}x`, 2, padding + 4);
     ctx.fillText("1x", 2, normalY + 4);
     ctx.fillText(`${SPEED_MIN}x`, 2, height - padding + 4);
-  }, [sortedKeyframes, duration, baseSpeed, hoveredKeyframe, draggingKeyframe]);
+  }, [sortedKeyframes, duration, baseSpeed, speedAtSourceTime, hoveredKeyframe, draggingKeyframe]);
 
   // ── Coordinate helpers (shared by mouse handlers and renderer) ──
   const CANVAS_PADDING = 20;
@@ -381,218 +361,88 @@ const SpeedCurveCanvas: React.FC<{
 export const SpeedRampSection: React.FC<SpeedRampSectionProps> = ({ clip }) => {
   const { t: tr } = useTranslation();
   const playheadPosition = useTimelineStore((state) => state.playheadPosition);
-  const speedEngine = useMemo(() => getSpeedEngine(), []);
-
+  const canonicalClip = useProjectStore((state) =>
+    state.project.timeline.tracks.flatMap((track) => track.clips).find((item) => item.id === clip.id),
+  ) ?? clip;
+  const sourceDuration = canonicalClip.outPoint - canonicalClip.inPoint;
+  const speedEngine = useMemo(() => {
+    const engine = new SpeedEngine();
+    engine.loadClips([canonicalClip]);
+    return engine;
+  }, [canonicalClip]);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showCurve, setShowCurve] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const currentSpeed = canonicalClip.speed ?? 1;
+  const isReverse = canonicalClip.reversed ?? false;
+  const keyframes = canonicalClip.speedKeyframes ?? [];
+  const freezeFrames = canonicalClip.freezeFrames ?? [];
+  const pitchCorrection = canonicalClip.pitchCorrection ?? true;
 
-  useEffect(() => {
-    speedEngine.initializeClip(clip.id, clip.duration);
-  }, [clip.id, clip.duration, speedEngine]);
+  const commit = (updates: Record<string, unknown>) => {
+    const { result } = useProjectStore.getState().executeActionBatch([{
+      type: "speed/setRampData",
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      params: {
+        clipId: clip.id,
+        speed: currentSpeed,
+        reversed: isReverse,
+        keyframes,
+        freezeFrames,
+        pitchCorrection,
+        ...updates,
+      },
+    }], { groupLabel: "Edit speed configuration", historyOwner: "human" });
+    setError(result.success ? null : result.error?.message ?? "Speed edit failed");
+  };
 
-  const speedData = useMemo(() => {
-    return speedEngine.getClipSpeedData(clip.id);
-  }, [clip.id, speedEngine]);
+  const handleSpeedChange = (speed: number) => commit({ speed });
+  const handleReverseToggle = () => commit({ reversed: !isReverse });
+  const handlePitchCorrectionToggle = () => commit({ pitchCorrection: !pitchCorrection });
+  const handleAddKeyframe = (time: number, speed: number) => commit({
+    keyframes: [
+      ...keyframes.filter((kf) => Math.abs(kf.time - time) >= 0.001),
+      { id: crypto.randomUUID(), time, speed, easing: "ease-in-out" },
+    ].sort((a, b) => a.time - b.time),
+  });
+  const handleRemoveKeyframe = (id: string) => commit({ keyframes: keyframes.filter((kf) => kf.id !== id) });
+  const handleMoveKeyframe = (id: string, time: number, speed: number) => commit({
+    keyframes: keyframes.map((kf) => kf.id === id ? { ...kf, time, speed } : kf).sort((a, b) => a.time - b.time),
+  });
 
-  const currentSpeed = speedData?.baseSpeed ?? 1;
-  const isReverse = speedData?.reverse ?? false;
-  const keyframes = useMemo(
-    () => speedData?.keyframes ?? [],
-    [speedData?.keyframes],
-  );
-  const freezeFrames = useMemo(
-    () => speedData?.freezeFrames ?? [],
-    [speedData?.freezeFrames],
-  );
-  const pitchCorrection = speedData?.pitchCorrection ?? true;
-
-  const handleSpeedChange = useCallback(
-    (speed: number) => {
-      speedEngine.setClipSpeed(clip.id, speed, clip.duration);
-      {
-        const rampData = speedEngine.getClipSpeedData(clip.id);
-        void useProjectStore.getState().executeAction({
-          type: "speed/setRampData",
-          id: crypto.randomUUID(),
-          timestamp: Date.now(),
-          params: {
-            clipId: clip.id,
-            keyframes: rampData?.keyframes,
-            freezeFrames: rampData?.freezeFrames,
-            pitchCorrection: rampData?.pitchCorrection,
-          },
-        });
-      }
-    },
-    [clip.id, clip.duration, speedEngine],
-  );
-
-  const handleReverseToggle = useCallback(() => {
-    speedEngine.setReverse(clip.id, !isReverse, clip.duration);
-    useProjectStore.setState((state) => ({
-      project: { ...state.project, modifiedAt: Date.now() },
-    }));
-  }, [clip.id, clip.duration, isReverse, speedEngine]);
-
-  const handlePitchCorrectionToggle = useCallback(() => {
-    speedEngine.setPitchCorrection(clip.id, !pitchCorrection);
-    useProjectStore.setState((state) => ({
-      project: { ...state.project, modifiedAt: Date.now() },
-    }));
-  }, [clip.id, pitchCorrection, speedEngine]);
-
-  const handleAddKeyframe = useCallback(
-    (time: number, speed: number) => {
-      speedEngine.addSpeedKeyframe(clip.id, time, speed, "ease-in-out");
-      {
-        const rampData = speedEngine.getClipSpeedData(clip.id);
-        void useProjectStore.getState().executeAction({
-          type: "speed/setRampData",
-          id: crypto.randomUUID(),
-          timestamp: Date.now(),
-          params: {
-            clipId: clip.id,
-            keyframes: rampData?.keyframes,
-            freezeFrames: rampData?.freezeFrames,
-            pitchCorrection: rampData?.pitchCorrection,
-          },
-        });
-      }
-    },
-    [clip.id, speedEngine],
-  );
-
-  const handleRemoveKeyframe = useCallback(
-    (keyframeId: string) => {
-      speedEngine.removeSpeedKeyframe(clip.id, keyframeId);
-      {
-        const rampData = speedEngine.getClipSpeedData(clip.id);
-        void useProjectStore.getState().executeAction({
-          type: "speed/setRampData",
-          id: crypto.randomUUID(),
-          timestamp: Date.now(),
-          params: {
-            clipId: clip.id,
-            keyframes: rampData?.keyframes,
-            freezeFrames: rampData?.freezeFrames,
-            pitchCorrection: rampData?.pitchCorrection,
-          },
-        });
-      }
-    },
-    [clip.id, speedEngine],
-  );
-
-  const handleMoveKeyframe = useCallback(
-    (keyframeId: string, time: number, speed: number) => {
-      speedEngine.updateSpeedKeyframe(clip.id, keyframeId, { time, speed });
-      {
-        const rampData = speedEngine.getClipSpeedData(clip.id);
-        void useProjectStore.getState().executeAction({
-          type: "speed/setRampData",
-          id: crypto.randomUUID(),
-          timestamp: Date.now(),
-          params: {
-            clipId: clip.id,
-            keyframes: rampData?.keyframes,
-            freezeFrames: rampData?.freezeFrames,
-            pitchCorrection: rampData?.pitchCorrection,
-          },
-        });
-      }
-    },
-    [clip.id, speedEngine],
-  );
-
-  const handleCreateFreezeFrame = useCallback(() => {
-    const currentTime = playheadPosition;
-    const clipStartTime = clip.startTime;
-    const relativeTime = currentTime - clipStartTime;
-
-    if (relativeTime >= 0 && relativeTime <= clip.duration) {
-      speedEngine.createFreezeFrame(clip.id, relativeTime, relativeTime, 2);
-      {
-        const rampData = speedEngine.getClipSpeedData(clip.id);
-        void useProjectStore.getState().executeAction({
-          type: "speed/setRampData",
-          id: crypto.randomUUID(),
-          timestamp: Date.now(),
-          params: {
-            clipId: clip.id,
-            keyframes: rampData?.keyframes,
-            freezeFrames: rampData?.freezeFrames,
-            pitchCorrection: rampData?.pitchCorrection,
-          },
-        });
-      }
+  const handleCreateFreezeFrame = () => {
+    const localTime = playheadPosition - canonicalClip.startTime;
+    if (localTime < 0 || localTime > canonicalClip.duration) return;
+    if (speedEngine.getFreezeFrameAtTime(clip.id, localTime)) {
+      setError("The playhead is already inside a freeze frame");
+      return;
     }
-  }, [clip.id, clip.startTime, clip.duration, speedEngine, playheadPosition]);
-
-  const handleRemoveFreezeFrame = useCallback(
-    (freezeId: string) => {
-      speedEngine.removeFreezeFrame(clip.id, freezeId);
+    commit({ freezeFrames: [
+      ...freezeFrames.map((ff) => ff.startTime >= localTime ? { ...ff, startTime: ff.startTime + 2 } : ff),
       {
-        const rampData = speedEngine.getClipSpeedData(clip.id);
-        void useProjectStore.getState().executeAction({
-          type: "speed/setRampData",
-          id: crypto.randomUUID(),
-          timestamp: Date.now(),
-          params: {
-            clipId: clip.id,
-            keyframes: rampData?.keyframes,
-            freezeFrames: rampData?.freezeFrames,
-            pitchCorrection: rampData?.pitchCorrection,
-          },
-        });
-      }
-    },
-    [clip.id, speedEngine],
-  );
-
-  const handleApplyCurvePreset = useCallback(
-    (presetId: string) => {
-      const preset = SPEED_CURVE_PRESETS.find((p) => p.id === presetId);
-      if (!preset) return;
-
-      keyframes.forEach((kf) => speedEngine.removeSpeedKeyframe(clip.id, kf.id));
-
-      for (const kf of preset.keyframes) {
-        const absoluteTime = kf.time * clip.duration;
-        speedEngine.addSpeedKeyframe(clip.id, absoluteTime, kf.speed, kf.easing);
-      }
-
-      setShowCurve(true);
-      {
-        const rampData = speedEngine.getClipSpeedData(clip.id);
-        void useProjectStore.getState().executeAction({
-          type: "speed/setRampData",
-          id: crypto.randomUUID(),
-          timestamp: Date.now(),
-          params: {
-            clipId: clip.id,
-            keyframes: rampData?.keyframes,
-            freezeFrames: rampData?.freezeFrames,
-            pitchCorrection: rampData?.pitchCorrection,
-          },
-        });
-      }
-    },
-    [clip.id, clip.duration, keyframes, speedEngine],
-  );
-
-  const handleReset = useCallback(() => {
-    speedEngine.setClipSpeed(clip.id, 1, clip.duration);
-    speedEngine.setReverse(clip.id, false, clip.duration);
-    keyframes.forEach((kf) => speedEngine.removeSpeedKeyframe(clip.id, kf.id));
-    freezeFrames.forEach((ff) => speedEngine.removeFreezeFrame(clip.id, ff.id));
-    useProjectStore.setState((state) => ({
-      project: { ...state.project, modifiedAt: Date.now() },
-    }));
-  }, [clip.id, clip.duration, keyframes, freezeFrames, speedEngine]);
-
-  const effectiveDuration = useMemo(() => {
-    return speedEngine.getEffectiveDuration(clip.id);
-  }, [clip.id, speedEngine, currentSpeed, keyframes]);
+        id: crypto.randomUUID(), clipId: clip.id,
+        sourceTime: speedEngine.getSourceTimeAtPlaybackTime(clip.id, localTime),
+        startTime: localTime, duration: 2,
+      },
+    ].sort((a, b) => a.startTime - b.startTime) });
+  };
+  const handleRemoveFreezeFrame = (id: string) => {
+    const removed = freezeFrames.find((ff) => ff.id === id)!;
+    commit({ freezeFrames: freezeFrames.filter((ff) => ff.id !== id).map((ff) =>
+      ff.startTime >= removed.startTime + removed.duration
+        ? { ...ff, startTime: ff.startTime - removed.duration } : ff,
+    ) });
+  };
+  const handleApplyCurvePreset = (presetId: string) => {
+    const preset = SPEED_CURVE_PRESETS.find((item) => item.id === presetId)!;
+    commit({ keyframes: preset.keyframes.map((kf) => ({
+      ...kf, id: crypto.randomUUID(), time: kf.time * sourceDuration,
+    })) });
+    setShowCurve(true);
+  };
+  const handleReset = () => commit({ speed: 1, reversed: false, keyframes: [], freezeFrames: [] });
+  const effectiveDuration = canonicalClip.duration;
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -602,6 +452,7 @@ export const SpeedRampSection: React.FC<SpeedRampSectionProps> = ({ clip }) => {
 
   return (
     <div className="space-y-3">
+      {error && <Text type="supporting" color="secondary" role="alert">{error}</Text>}
       <Card variant="muted" padding={2} className="border border-border">
         <Text type="supporting" color="secondary" className="text-[10px]">
           {tr("Effective duration: ")}{formatDuration(effectiveDuration)}
@@ -692,8 +543,9 @@ export const SpeedRampSection: React.FC<SpeedRampSectionProps> = ({ clip }) => {
         <div className="space-y-2">
           <SpeedCurveCanvas
             keyframes={keyframes}
-            duration={clip.duration}
+            duration={sourceDuration}
             baseSpeed={currentSpeed}
+            speedAtSourceTime={(time) => speedEngine.getSpeedAtTime(clip.id, time)}
             onAddKeyframe={handleAddKeyframe}
             onRemoveKeyframe={handleRemoveKeyframe}
             onMoveKeyframe={handleMoveKeyframe}

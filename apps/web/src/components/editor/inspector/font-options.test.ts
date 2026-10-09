@@ -29,6 +29,10 @@ class FakeFontFace {
 
 const fontsAdd = vi.fn();
 
+vi.mock("../../../services/project-dependencies", () => ({
+  getFontDependencyReferences: vi.fn(async () => []),
+}));
+
 async function loadModule() {
   return await import("./font-options");
 }

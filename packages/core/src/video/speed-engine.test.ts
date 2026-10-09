@@ -20,6 +20,41 @@ describe("SpeedEngine", () => {
     expect(speedEngine.getClipIds()).toEqual([]);
   });
 
+  it("includes every freeze in duration and resumes the same moving-source mapping", () => {
+    const clip = {
+      id: "freeze", inPoint: 7, outPoint: 17, speed: 2,
+      freezeFrames: [
+        { id: "second", clipId: "freeze", sourceTime: 6, startTime: 5, duration: 1 },
+        { id: "first", clipId: "freeze", sourceTime: 2, startTime: 1, duration: 2 },
+      ],
+    } as Clip;
+    speedEngine.loadClips([clip]);
+    expect(speedEngine.getEffectiveDuration(clip.id)).toBe(8);
+    expect(speedEngine.getSourceTimeAtPlaybackTime(clip.id, 2)).toBe(2);
+    expect(speedEngine.getSourceTimeAtPlaybackTime(clip.id, 3)).toBe(2);
+    expect(speedEngine.getSourceTimeAtPlaybackTime(clip.id, 4)).toBe(4);
+    expect(speedEngine.getSourceTimeAtPlaybackTime(clip.id, 5.5)).toBe(6);
+    expect(speedEngine.getSourceTimeAtPlaybackTime(clip.id, 8)).toBe(10);
+  });
+
+  it("uses one curved duration integral and handles reverse at both endpoints", () => {
+    const clip = {
+      id: "curve", inPoint: 4, outPoint: 14, reversed: true,
+      speedKeyframes: [
+        { id: "a", time: 0, speed: 1, easing: "linear" },
+        { id: "b", time: 10, speed: 2, easing: "linear" },
+      ],
+      freezeFrames: [{ id: "f", clipId: "curve", sourceTime: 3, startTime: 1, duration: 2 }],
+    } as Clip;
+    speedEngine.loadClips([clip]);
+    const duration = speedEngine.getEffectiveDuration(clip.id);
+    expect(duration).toBeCloseTo(10 * Math.log(2) + 2, 5);
+    expect(speedEngine.getSourceTimeAtPlaybackTime(clip.id, 0)).toBe(10);
+    expect(speedEngine.getSourceTimeAtPlaybackTime(clip.id, 2)).toBe(3);
+    expect(speedEngine.getSourceTimeAtPlaybackTime(clip.id, 10 * Math.log(1.5) + 2)).toBeCloseTo(5, 3);
+    expect(speedEngine.getSourceTimeAtPlaybackTime(clip.id, duration)).toBe(0);
+  });
+
   describe("Basic Speed Operations", () => {
     it("should return default speed of 1 for uninitialized clips", () => {
       expect(speedEngine.getClipSpeed("unknown-clip")).toBe(1);

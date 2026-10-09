@@ -107,13 +107,17 @@ const createProjectWithPersistedDucking = (): Project => {
 describe("AudioDuckingSection", () => {
   beforeEach(() => {
     useProjectStore.setState({
+      hasOpenProject: true,
       project: createProjectWithPersistedDucking(),
     });
   });
 
   afterEach(() => {
     cleanup();
-    useProjectStore.setState({ project: createEmptyProject("Reset") });
+    useProjectStore.setState({
+      project: createEmptyProject("Reset"),
+      hasOpenProject: false,
+    });
   });
 
   it("rehydrates persisted ducking and shows video tracks as valid trigger sources", () => {

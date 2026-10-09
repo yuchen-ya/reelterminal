@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { autoLearnNoiseProfile, type Project } from "@reelterminal/core";
 import { createEmptyProject } from "../../../stores/project/project-helpers";
 import { useProjectStore } from "../../../stores/project-store";
+import { loadAudioBuffer } from "../../../utils/load-audio-buffer";
 import {
   createNoiseReductionEffect,
   DEFAULT_NOISE_REDUCTION,
@@ -17,6 +18,10 @@ vi.mock("@reelterminal/core", async () => {
     autoLearnNoiseProfile: vi.fn(),
   };
 });
+
+vi.mock("../../../utils/load-audio-buffer", () => ({
+  loadAudioBuffer: vi.fn(),
+}));
 
 const clipId = "clip-noise";
 const trackId = "track-audio";
@@ -40,6 +45,16 @@ const createValidAnalyzedProfile = () => {
     fftSize: 2048,
   };
 };
+
+const createAnalysisAudioBuffer = (): AudioBuffer => ({
+  duration: 6,
+  length: 288_000,
+  numberOfChannels: 2,
+  sampleRate: 48_000,
+  getChannelData: () => new Float32Array(288_000),
+  copyFromChannel: () => {},
+  copyToChannel: () => {},
+} as unknown as AudioBuffer);
 
 const createProjectWithNoiseReduction = (): Project => {
   const project = createEmptyProject("Noise Reduction Persistence");
@@ -112,9 +127,7 @@ const createProjectForAnalysis = (): Project => {
           name: "noisy-video.mp4",
           type: "video",
           fileHandle: null,
-          blob: {
-            arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(8)),
-          } as unknown as Blob,
+          blob: new Blob([new Uint8Array(8)]),
           metadata: {
             duration: 6,
             width: 1920,
@@ -178,10 +191,12 @@ describe("NoiseReductionSection persistence", () => {
       value: window.AudioContext,
     });
     vi.mocked(autoLearnNoiseProfile).mockReset();
+    vi.mocked(loadAudioBuffer).mockResolvedValue(createAnalysisAudioBuffer());
     vi.spyOn(audioBridgeEffects, "initializeAudioBridgeEffects").mockResolvedValue(
       audioBridgeEffects.getAudioBridgeEffects(),
     );
     useProjectStore.setState({
+      hasOpenProject: true,
       project: createProjectWithNoiseReduction(),
     });
   });
@@ -189,7 +204,10 @@ describe("NoiseReductionSection persistence", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
-    useProjectStore.setState({ project: createEmptyProject("Reset") });
+    useProjectStore.setState({
+      project: createEmptyProject("Reset"),
+      hasOpenProject: false,
+    });
   });
 
   it("rehydrates persisted noise removal after the clip is selected again", async () => {
@@ -225,7 +243,10 @@ describe("NoiseReductionSection persistence", () => {
       sampleRate: 48000,
       createdAt: Date.now(),
     });
-    useProjectStore.setState({ project: createProjectForAnalysis() });
+    useProjectStore.setState({
+      project: createProjectForAnalysis(),
+      hasOpenProject: true,
+    });
 
     render(<NoiseReductionSection clipId={clipId} />);
 
@@ -255,7 +276,10 @@ describe("NoiseReductionSection persistence", () => {
 
   it("auto-learns a profile when a preset is clicked directly", async () => {
     vi.mocked(autoLearnNoiseProfile).mockResolvedValue(createValidAnalyzedProfile());
-    useProjectStore.setState({ project: createProjectForAnalysis() });
+    useProjectStore.setState({
+      project: createProjectForAnalysis(),
+      hasOpenProject: true,
+    });
 
     render(<NoiseReductionSection clipId={clipId} />);
 
@@ -276,7 +300,10 @@ describe("NoiseReductionSection persistence", () => {
 
   it("still recommends a preset when no pure noise-only profile can be learned", async () => {
     vi.mocked(autoLearnNoiseProfile).mockResolvedValue(null);
-    useProjectStore.setState({ project: createProjectForAnalysis() });
+    useProjectStore.setState({
+      project: createProjectForAnalysis(),
+      hasOpenProject: true,
+    });
 
     render(<NoiseReductionSection clipId={clipId} />);
 

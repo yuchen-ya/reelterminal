@@ -7,7 +7,6 @@ import { ToolcraftText as Text } from "@reelterminal/ui";
 import { ToolcraftTextInputControl } from "@reelterminal/ui";
 import { RotateCcw, Sparkles } from "@/icons/lucide-compat";
 import type { Clip } from "@reelterminal/core";
-import { getSpeedEngine } from "@reelterminal/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { MockToggle } from "./shell/InspectorControls";
 import { useTranslation } from "react-i18next";
@@ -30,16 +29,11 @@ const SPEED_PRESETS = [
 
 export const SpeedSection: React.FC<SpeedSectionProps> = ({ clip }) => {
   const { t } = useTranslation();
-  const speedEngine = getSpeedEngine();
   const { project } = useProjectStore();
-
-  const [currentSpeed, setCurrentSpeed] = useState(
-    speedEngine.getClipSpeed(clip.id) || 1,
-  );
-  const [isReversed, setIsReversed] = useState(() => {
-    const speedData = speedEngine.getClipSpeedData(clip.id);
-    return speedData?.reverse || false;
-  });
+  const canonicalClip = project.timeline.tracks.flatMap((track) => track.clips).find((item) => item.id === clip.id) ?? clip;
+  const currentSpeed = canonicalClip.speed ?? 1;
+  const isReversed = canonicalClip.reversed ?? false;
+  const [error, setError] = useState<string | null>(null);
 
   const [customSpeed, setCustomSpeed] = useState<string>(
     currentSpeed.toString(),
@@ -69,70 +63,24 @@ export const SpeedSection: React.FC<SpeedSectionProps> = ({ clip }) => {
     return undefined;
   };
 
-  const updateClipDuration = (speed: number) => {
-    const store = useProjectStore.getState();
-    void store.executeAction({
-      type: "clip/setSpeed",
-      id: crypto.randomUUID(),
-      timestamp: Date.now(),
-      params: { clipId: clip.id, speed },
-    });
+  const commit = (type: string, params: Record<string, unknown>) => {
     const audioClip = linkedAudioClip();
-    if (audioClip) {
-      void store.executeAction({
-        type: "clip/setSpeed",
-        id: crypto.randomUUID(),
-        timestamp: Date.now(),
-        params: { clipId: audioClip.id, speed },
-      });
-      speedEngine.setClipSpeed(audioClip.id, speed, audioClip.duration);
-    }
+    const ids = [clip.id, ...(audioClip ? [audioClip.id] : [])];
+    const { result } = useProjectStore.getState().executeActionBatch(ids.map((clipId) => ({
+      type, id: crypto.randomUUID(), timestamp: Date.now(), params: { clipId, ...params },
+    })), { groupLabel: "Edit clip speed", historyOwner: "human" });
+    setError(result.success ? null : result.error?.message ?? "Speed edit failed");
   };
-
-  const updateClipReverse = (reversed: boolean) => {
-    const store = useProjectStore.getState();
-    void store.executeAction({
-      type: "clip/setReverse",
-      id: crypto.randomUUID(),
-      timestamp: Date.now(),
-      params: { clipId: clip.id, reversed },
-    });
-    const audioClip = linkedAudioClip();
-    if (audioClip) {
-      void store.executeAction({
-        type: "clip/setReverse",
-        id: crypto.randomUUID(),
-        timestamp: Date.now(),
-        params: { clipId: audioClip.id, reversed },
-      });
-      speedEngine.setReverse(audioClip.id, reversed, audioClip.duration);
-    }
-  };
-
-  const handleSpeedPreset = (speed: number) => {
-    speedEngine.setClipSpeed(clip.id, speed, clip.duration);
-    updateClipDuration(speed);
-    setCurrentSpeed(speed);
-  };
-
+  const handleSpeedPreset = (speed: number) => commit("clip/setSpeed", { speed });
   const handleCustomSpeed = () => {
-    const speed = parseFloat(customSpeed);
-    if (!isNaN(speed) && speed >= 0.1 && speed <= 100) {
-      speedEngine.setClipSpeed(clip.id, speed, clip.duration);
-      updateClipDuration(speed);
-      setCurrentSpeed(speed);
-    }
+    const speed = Number(customSpeed);
+    if (Number.isFinite(speed) && speed >= 0.1 && speed <= 20) handleSpeedPreset(speed);
   };
-
-  const handleToggleReverse = () => {
-    const newReversed = !isReversed;
-    speedEngine.setReverse(clip.id, newReversed, clip.duration);
-    updateClipReverse(newReversed);
-    setIsReversed(newReversed);
-  };
+  const handleToggleReverse = () => commit("clip/setReverse", { reversed: !isReversed });
 
   return (
     <div className="space-y-3">
+      {error && <Text type="supporting" color="secondary" role="alert">{error}</Text>}
       <div className="grid grid-cols-3 gap-2">
         {SPEED_PRESETS.map((preset) => (
           <ClickableCard
@@ -170,7 +118,7 @@ export const SpeedSection: React.FC<SpeedSectionProps> = ({ clip }) => {
           </Text>
         </div>
         <Text type="supporting" color="secondary" className="text-xs">
-          {t("Range: 0.1× (slowest) to 100× (fastest)")}</Text>
+          {t("Range: 0.1× (slowest) to 20× (fastest)")}</Text>
       </div>
 
       {hasAudio() && (

@@ -310,7 +310,8 @@ async function getMediaBlob(
     if (item?.type === expectedType) {
       if (item.blob) return item.blob;
       if (item.fileHandle) return item.fileHandle.getFile();
-      if (item.originalUrl) return fetchBlob(item.originalUrl);
+      const mediaUrl = item.contentUrl ?? item.originalUrl;
+      if (mediaUrl) return fetchBlob(mediaUrl);
       if (expectedType === "image" && item.thumbnailUrl) {
         return fetchBlob(item.thumbnailUrl);
       }

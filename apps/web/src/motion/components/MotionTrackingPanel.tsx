@@ -163,7 +163,7 @@ export function MotionTrackingPanel({
     const videoMedia = mediaItems.find(
       (item) =>
         item.type === "video" &&
-        (item.blob || item.fileHandle || item.originalUrl),
+        (item.blob || item.fileHandle || item.contentUrl || item.originalUrl),
     );
     if (!videoMedia) {
       toast.error("No video source", "Import a video clip to auto-track from.");
@@ -171,12 +171,13 @@ export function MotionTrackingPanel({
     }
     setIsAutoTracking(true);
     try {
+      const sourceUrl = videoMedia.contentUrl ?? videoMedia.originalUrl;
       const blob = videoMedia.blob
         ? videoMedia.blob
         : videoMedia.fileHandle
           ? await videoMedia.fileHandle.getFile()
-          : videoMedia.originalUrl
-            ? await (await fetch(videoMedia.originalUrl)).blob()
+          : sourceUrl
+            ? await (await fetch(sourceUrl)).blob()
             : null;
       if (!blob) {
         toast.error("Auto-track failed", "Could not read the video source.");

@@ -429,6 +429,12 @@ const MediaThumbnail: React.FC<{
       ) : (
         <>
           <PanelIconButton
+            label={t("Replace asset")}
+            icon={<RefreshCw size={14} className="text-primary" />}
+            onClick={(e) => { e.stopPropagation(); onReplace(); }}
+            className="p-2 bg-primary/20 rounded-full hover:bg-primary/40 backdrop-blur-sm transition-colors"
+          />
+          <PanelIconButton
             label={t("Add to timeline")}
             icon={<Plus size={14} className="text-primary" />}
             onClick={(e) => { e.stopPropagation(); onAddToTimeline(); }}
@@ -524,6 +530,12 @@ const MediaThumbnail: React.FC<{
               </>
             ) : (
               <>
+                <PanelIconButton
+                  label={t("Replace asset")}
+                  icon={<RefreshCw size={12} className="text-primary" />}
+                  onClick={(e) => { e.stopPropagation(); onReplace(); }}
+                  className="p-1 bg-primary/20 rounded hover:bg-primary/40 transition-colors"
+                />
                 <PanelIconButton
                   label={t("Add to timeline")}
                   icon={<Plus size={12} className="text-primary" />}
@@ -737,6 +749,7 @@ export const AssetsPanel: React.FC = () => {
     deleteMedia,
     renameMedia,
     replaceMediaAsset,
+    relinkMediaAsset,
     updateSettings,
   } = useProjectStore();
   const mediaItems = project.mediaLibrary.items;
@@ -1048,7 +1061,7 @@ export const AssetsPanel: React.FC = () => {
             cancelled = true;
             break;
           }
-          const result = await replaceMediaAsset(item.id, entry.file, dirHandle.name);
+          const result = await relinkMediaAsset(item.id, entry.file, dirHandle.name);
           if (result.success) {
             linked++;
           } else {
@@ -1084,7 +1097,7 @@ export const AssetsPanel: React.FC = () => {
     } else {
       toast.error("No matches found", "None of the files in the selected folder matched the missing assets by filename.");
     }
-  }, [replaceMediaAsset]);
+  }, [relinkMediaAsset]);
 
   // Handle drag start for timeline placement
   const handleItemDragStart = useCallback(
@@ -1516,29 +1529,16 @@ export const AssetsPanel: React.FC = () => {
                         label={t(shape.label)}
                         onClick={async () => {
                           const state = useProjectStore.getState();
-                          const { createShapeClip, addTrack } = state;
-                          const tracksBefore = state.project.timeline.tracks;
-                          await addTrack("graphics", 0);
-                          const tracksAfter =
-                            useProjectStore.getState().project.timeline.tracks;
-                          const newGraphicsTrack = tracksAfter.find(
-                            (t) =>
-                              t.type === "graphics" &&
-                              !tracksBefore.some((bt) => bt.id === t.id),
+                          const created = await state.createShapeClipOnNewTrack(
+                            playheadPosition,
+                            shape.type,
                           );
-                          if (newGraphicsTrack) {
-                            const created = createShapeClip(
-                              newGraphicsTrack.id,
-                              playheadPosition,
-                              shape.type,
-                            );
-                            if (created) {
-                              select({
-                                type: "shape-clip",
-                                id: created.id,
-                                trackId: newGraphicsTrack.id,
-                              });
-                            }
+                          if (created && useProjectStore.getState().workspaceId === state.workspaceId) {
+                            select({
+                              type: "shape-clip",
+                              id: created.id,
+                              trackId: created.trackId,
+                            });
                           }
                         }}
                         className="aspect-square bg-background-tertiary rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-1 group"
@@ -1572,37 +1572,20 @@ export const AssetsPanel: React.FC = () => {
                         label={t(mesh.label)}
                         onClick={async () => {
                           const state = useProjectStore.getState();
-                          const { createShapeClip, addTrack, updateClipRotate3D } = state;
-                          const tracksBefore = state.project.timeline.tracks;
-                          await addTrack("graphics", 0);
-                          const tracksAfter =
-                            useProjectStore.getState().project.timeline.tracks;
-                          const newGraphicsTrack = tracksAfter.find(
-                            (t) =>
-                              t.type === "graphics" &&
-                              !tracksBefore.some((bt) => bt.id === t.id),
+                          // Include the initial depth in the same creation commit.
+                          const created = await state.createShapeClipOnNewTrack(
+                            playheadPosition,
+                            mesh.type,
+                            undefined,
+                            undefined,
+                            { x: -18, y: 28, z: 0 },
                           );
-                          if (newGraphicsTrack) {
-                            const created = createShapeClip(
-                              newGraphicsTrack.id,
-                              playheadPosition,
-                              mesh.type,
-                            );
-                            // Nudge the rotation so the 3D depth is
-                            // visible from the get-go (otherwise a
-                            // head-on cube looks like a flat square).
-                            if (created) {
-                              updateClipRotate3D(created.id, {
-                                x: -18,
-                                y: 28,
-                                z: 0,
-                              });
-                              select({
-                                type: "shape-clip",
-                                id: created.id,
-                                trackId: newGraphicsTrack.id,
-                              });
-                            }
+                          if (created && useProjectStore.getState().workspaceId === state.workspaceId) {
+                            select({
+                              type: "shape-clip",
+                              id: created.id,
+                              trackId: created.trackId,
+                            });
                           }
                         }}
                         className="aspect-square bg-background-tertiary rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-all flex flex-col items-center justify-center gap-1 group"
@@ -1624,6 +1607,7 @@ export const AssetsPanel: React.FC = () => {
                   <PanelButton
                     label={t("Import SVG File")}
                     onClick={() => {
+                      const target = useProjectStore.getState();
                       const input = document.createElement("input");
                       input.type = "file";
                       input.accept = ".svg";
@@ -1644,35 +1628,19 @@ export const AssetsPanel: React.FC = () => {
                             );
                             return;
                           }
-                          const state = useProjectStore.getState();
-                          const { importSVG, addTrack } = state;
-                          const tracksBefore = state.project.timeline.tracks;
-                          await addTrack("graphics", 0);
-                          const tracksAfter =
-                            useProjectStore.getState().project.timeline.tracks;
-                          const newGraphicsTrack = tracksAfter.find(
-                            (t) =>
-                              t.type === "graphics" &&
-                              !tracksBefore.some((bt) => bt.id === t.id),
+                          const created = await target.importSVGOnNewTrack(
+                            content,
+                            playheadPosition,
                           );
-                          if (newGraphicsTrack) {
-                            const created = importSVG(
-                              content,
-                              newGraphicsTrack.id,
-                              playheadPosition,
-                            );
-                            if (created) {
-                              select({
-                                type: "shape-clip",
-                                id: created.id,
-                                trackId: newGraphicsTrack.id,
-                              });
-                            } else {
-                              toast.error(
-                                t("assets.svgImport.rejected"),
-                                t("assets.svgImport.failed"),
-                              );
+                          if (created) {
+                            if (useProjectStore.getState().workspaceId === target.workspaceId) {
+                              select({ type: "shape-clip", id: created.id, trackId: created.trackId });
                             }
+                          } else {
+                            toast.error(
+                              t("assets.svgImport.rejected"),
+                              t("assets.svgImport.failed"),
+                            );
                           }
                         }
                       };
@@ -1705,33 +1673,18 @@ export const AssetsPanel: React.FC = () => {
                   label={t("Add Title")}
                   onClick={async () => {
                     const state = useProjectStore.getState();
-                    const { createTextClip, addTrack } = state;
-                    const tracksBefore = state.project.timeline.tracks;
-                    await addTrack("text", 0);
-                    const tracksAfter =
-                      useProjectStore.getState().project.timeline.tracks;
-                    const newTextTrack = tracksAfter.find(
-                      (t) =>
-                        t.type === "text" &&
-                        !tracksBefore.some((bt) => bt.id === t.id),
+                    const created = await state.createTextClipOnNewTrack(
+                      playheadPosition,
+                      t("New Title"),
+                      5,
+                      DEFAULT_TITLE_STYLE,
                     );
-                    if (newTextTrack) {
-                      const created = createTextClip(
-                        newTextTrack.id,
-                        playheadPosition,
-                        // Canvas-visible sample copy, not an internal id:
-                        // localize so zh users see a Chinese starter title.
-                        t("New Title"),
-                        5,
-                        DEFAULT_TITLE_STYLE,
-                      );
-                      if (created) {
-                        select({
-                          type: "text-clip",
-                          id: created.id,
-                          trackId: newTextTrack.id,
-                        });
-                      }
+                    if (created && useProjectStore.getState().workspaceId === state.workspaceId) {
+                      select({
+                        type: "text-clip",
+                        id: created.id,
+                        trackId: created.trackId,
+                      });
                     }
                   }}
                   className="flex min-h-[72px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-border bg-background-tertiary px-3 py-3 text-center transition-all hover:border-primary/50 hover:bg-primary/5"

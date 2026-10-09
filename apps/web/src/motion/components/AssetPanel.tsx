@@ -428,7 +428,7 @@ export function AssetPanel({ composition }: AssetPanelProps): JSX.Element {
         key: `media-${item.id}`,
         name: item.name,
         kind: item.type,
-        thumbnailUrl: item.thumbnailUrl ?? item.originalUrl ?? null,
+        thumbnailUrl: item.thumbnailUrl ?? item.contentUrl ?? item.originalUrl ?? null,
         onActivate:
           item.type === "image" ||
           item.type === "video" ||

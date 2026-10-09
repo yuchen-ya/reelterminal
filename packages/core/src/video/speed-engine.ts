@@ -36,8 +36,8 @@ export class SpeedEngine {
       baseSpeed: this.clampSpeed(clip.speed ?? 1),
       reverse: clip.reversed ?? false,
       originalDuration: Math.max(0, clip.outPoint - clip.inPoint),
-      keyframes: structuredClone(clip.speedKeyframes ?? []),
-      freezeFrames: structuredClone(clip.freezeFrames ?? []),
+      keyframes: structuredClone(clip.speedKeyframes ?? []).sort((a, b) => a.time - b.time),
+      freezeFrames: structuredClone(clip.freezeFrames ?? []).sort((a, b) => a.startTime - b.startTime),
       pitchCorrection: clip.pitchCorrection ?? true,
     });
   }
@@ -58,33 +58,15 @@ export class SpeedEngine {
   getEffectiveDuration(clipId: string): number {
     const data = this.clipSpeedData.get(clipId);
     if (!data) return 0;
-    if (data.keyframes.length > 0) {
-      return this.calculateVariableSpeedDuration(data);
-    }
-
-    return data.originalDuration / data.baseSpeed;
+    const movingDuration = data.keyframes.length > 0
+      ? this.calculateVariableSpeedDuration(data)
+      : data.originalDuration / data.baseSpeed;
+    return movingDuration + data.freezeFrames.reduce((sum, freeze) => sum + freeze.duration, 0);
   }
 
   private calculateVariableSpeedDuration(data: ClipSpeedData): number {
-    const keyframes = [...data.keyframes].sort((a, b) => a.time - b.time);
-
-    if (keyframes.length === 0) {
-      return data.originalDuration / data.baseSpeed;
-    }
-
-    // Integrate 1/speed over the original duration to get effective duration
-    // We use numerical integration with small time steps
-    const steps = 1000;
-    const dt = data.originalDuration / steps;
-    let effectiveDuration = 0;
-
-    for (let i = 0; i < steps; i++) {
-      const t = i * dt;
-      const speed = this.getSpeedAtSourceTime(data, t);
-      effectiveDuration += dt / speed;
-    }
-
-    return effectiveDuration;
+    // Use the same integral for the duration and its playback-to-source inverse.
+    return this.integratePlaybackTime(data, data.originalDuration);
   }
 
   private clampSpeed(speed: number): number {
@@ -232,7 +214,8 @@ export class SpeedEngine {
       return data.baseSpeed;
     }
 
-    const sorted = [...keyframes].sort((a, b) => a.time - b.time);
+    // Hydration and every keyframe writer keep this array sorted.
+    const sorted = keyframes;
 
     if (sourceTime <= sorted[0].time) {
       return sorted[0].speed;
@@ -252,7 +235,7 @@ export class SpeedEngine {
           linearProgress,
           kf1.easing,
         );
-        return kf1.speed + (kf2.speed - kf1.speed) * easedProgress;
+        return this.clampSpeed(kf1.speed + (kf2.speed - kf1.speed) * easedProgress);
       }
     }
 
@@ -320,12 +303,23 @@ export class SpeedEngine {
     return null;
   }
 
+  /** Clip-local playback seconds -> source seconds relative to inPoint.
+   * Freezes hold the specified source frame, then resume the moving-time mapping.
+   * Reverse reflects the moving source offset; freeze sourceTime is already the
+   * desired source offset and is not reflected again.
+   */
   getSourceTimeAtPlaybackTime(clipId: string, playbackTime: number): number {
     const data = this.clipSpeedData.get(clipId);
     if (!data) return playbackTime;
     const freezeFrame = this.getFreezeFrameAtTime(clipId, playbackTime);
     if (freezeFrame) {
       return freezeFrame.sourceTime;
+    }
+    // Compare against the complete duration before subtracting holds: floating
+    // point subtraction can otherwise put the final endpoint just inside the
+    // binary-search interval instead of returning the exact source boundary.
+    if (playbackTime >= this.getEffectiveDuration(clipId)) {
+      return data.reverse ? 0 : data.originalDuration;
     }
 
     let adjustedTime = playbackTime;
@@ -357,8 +351,8 @@ export class SpeedEngine {
 
     const effectiveDuration = this.calculateVariableSpeedDuration(data);
 
-    if (playbackTime <= 0) return 0;
-    if (playbackTime >= effectiveDuration) return data.originalDuration;
+    if (playbackTime <= 0) return data.reverse ? data.originalDuration : 0;
+    if (playbackTime >= effectiveDuration) return data.reverse ? 0 : data.originalDuration;
 
     let low = 0;
     let high = data.originalDuration;
@@ -387,12 +381,12 @@ export class SpeedEngine {
     data: ClipSpeedData,
     sourceTime: number,
   ): number {
-    const steps = Math.max(100, Math.ceil(sourceTime * 100));
+    const steps = 1000;
     const dt = sourceTime / steps;
     let playbackTime = 0;
 
     for (let i = 0; i < steps; i++) {
-      const t = i * dt;
+      const t = (i + 0.5) * dt;
       const speed = this.getSpeedAtSourceTime(data, t);
       playbackTime += dt / speed;
     }
@@ -455,6 +449,7 @@ export class SpeedEngine {
       };
       this.clipSpeedData.set(clipId, data);
     }
+    data.originalDuration = originalDuration;
     return data;
   }
 

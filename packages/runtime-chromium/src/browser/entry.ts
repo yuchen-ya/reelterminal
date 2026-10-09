@@ -47,10 +47,12 @@ interface HydrateReport {
   mediaMissing: string[];
   textClipsLoaded: number;
   svgClipsLoaded: number;
+  renderFontsLoaded: number;
   error?: string;
 }
 
 let currentProject: Project | null = null;
+let projectFontFaces: FontFace[] = [];
 
 /* ------------------------------ utilities ------------------------------ */
 
@@ -73,6 +75,42 @@ function mediaInput(): HTMLInputElement | null {
   return document.getElementById(MEDIA_INPUT_ID) as HTMLInputElement | null;
 }
 
+/** Replace the prior project's faces so a reused page cannot leak fonts across workspaces. */
+async function loadProjectRenderFonts(project: Project): Promise<number> {
+  for (const face of projectFontFaces) document.fonts.delete(face);
+  projectFontFaces = [];
+
+  const loaded: FontFace[] = [];
+  try {
+    for (const descriptor of project.renderFonts ?? []) {
+      if (
+        !descriptor.family.trim() ||
+        !/^data:font\/(?:woff2?|ttf|otf);base64,[A-Za-z0-9+/]+=*$/i.test(descriptor.dataUrl)
+      ) {
+        throw new Error(`Invalid captured font descriptor for ${descriptor.family || "<empty family>"}`);
+      }
+      const face = new FontFace(
+        descriptor.family,
+        `url(${JSON.stringify(descriptor.dataUrl)})`,
+        {
+          style: descriptor.style,
+          weight: descriptor.weight,
+          ...(descriptor.unicodeRange ? { unicodeRange: descriptor.unicodeRange } : {}),
+        },
+      );
+      await face.load();
+      document.fonts.add(face);
+      loaded.push(face);
+    }
+    projectFontFaces = loaded;
+    await document.fonts.ready;
+    return loaded.length;
+  } catch (error) {
+    for (const face of loaded) document.fonts.delete(face);
+    throw error;
+  }
+}
+
 /* ------------------------------ hydrate ------------------------------ */
 
 /**
@@ -86,6 +124,7 @@ async function hydrate(
 ): Promise<HydrateReport> {
   try {
     const project = JSON.parse(projectJson) as Project;
+    const renderFontsLoaded = await loadProjectRenderFonts(project);
     const input = mediaInput();
     const files = input?.files ? Array.from(input.files) : [];
     const missing: string[] = [];
@@ -131,6 +170,7 @@ async function hydrate(
       mediaMissing: missing,
       textClipsLoaded: (project.textClips ?? []).length,
       svgClipsLoaded: (project.svgClips ?? []).length,
+      renderFontsLoaded,
     };
   } catch (error) {
     currentProject = null;
@@ -140,6 +180,7 @@ async function hydrate(
       mediaMissing: [],
       textClipsLoaded: 0,
       svgClipsLoaded: 0,
+      renderFontsLoaded: 0,
       error: error instanceof Error ? error.message : String(error),
     };
   }

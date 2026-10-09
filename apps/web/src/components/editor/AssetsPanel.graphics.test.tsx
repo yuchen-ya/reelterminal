@@ -193,7 +193,8 @@ describe("AssetsPanel graphics workflow", () => {
     );
   });
 
-  it("keeps a live-revealed media target keyboard-focusable", () => {    const initial = useProjectStore.getState().project;
+  it("keeps a live-revealed media target focusable and exposes replacement for available content", () => {
+    const initial = useProjectStore.getState().project;
     useProjectStore.setState({
       project: {
         ...initial,
@@ -230,5 +231,7 @@ describe("AssetsPanel graphics workflow", () => {
     );
     expect(target).not.toBeNull();
     expect(target?.tabIndex).toBe(0);
+    fireEvent.mouseEnter(target!);
+    expect(screen.getByRole("button", { name: "Replace asset" })).toBeInTheDocument();
   });
 });

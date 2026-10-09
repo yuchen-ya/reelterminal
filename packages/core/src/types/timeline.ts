@@ -88,6 +88,7 @@ export interface ChromaKeySettings {
 
 export interface SpeedKeyframe {
   readonly id: string;
+  /** Source seconds relative to the clip's inPoint (not timeline seconds). */
   readonly time: number;
   readonly speed: number;
   readonly easing: EasingType;
@@ -96,7 +97,9 @@ export interface SpeedKeyframe {
 export interface FreezeFrame {
   readonly id: string;
   readonly clipId: string;
+  /** Source seconds relative to inPoint; holds this frame even in reverse. */
   readonly sourceTime: number;
+  /** Clip-local playback seconds including preceding freeze intervals. */
   readonly startTime: number;
   readonly duration: number;
 }

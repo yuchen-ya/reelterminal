@@ -17,9 +17,10 @@ async function resolveAudioBlob(
       return null;
     }
   }
-  if (item.originalUrl) {
+  const mediaUrl = item.contentUrl ?? item.originalUrl;
+  if (mediaUrl) {
     try {
-      const response = await fetch(item.originalUrl);
+      const response = await fetch(mediaUrl);
       return response.ok ? await response.blob() : null;
     } catch {
       return null;
