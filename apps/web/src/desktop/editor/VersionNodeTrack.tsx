@@ -254,7 +254,7 @@ export function VersionNodeTrack({
           const selectedRow = node.id === selectedId,
             current = node.id === base,
             previewing = preview.active && preview.info?.nodeId === node.id;
-          const trial = node.sourceWorkspaceKind === "trial" || snapshot.workspaces.some(entry => entry.kind === "trial" && entry.baseNodeId === node.id);
+          const trial = node.sourceWorkspaceKind === "trial";
           const children = currentLine.has(node.id) ? [] : descendantIds(node.id);
           return <div key={node.id} className="relative flex h-11 items-center">
             <button type="button" data-testid={`version-node-${node.id}`} data-base={current ? "true" : undefined} aria-pressed={selectedRow} aria-label={node.name} disabled={busy} className={`flex h-full min-w-0 flex-1 items-center text-left outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent hover:bg-hover ${selectedRow ? "bg-bg-2" : ""} ${feedback}`} onClick={() => {

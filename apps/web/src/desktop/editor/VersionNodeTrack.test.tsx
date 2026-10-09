@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useNotificationStore } from "../../stores/notification-store";
 
@@ -118,6 +118,27 @@ describe("inspector archive browser", () => {
     expect(fixture.enter).not.toHaveBeenCalled();
     expect(fixture.adopt).not.toHaveBeenCalled();
     expect(screen.getByTestId("version-node-child")).toHaveAttribute("data-base", "true");
+  });
+  it("marks retained trial provenance without reclassifying referenced ordinary save points", () => {
+    const snapshot = baseSnapshot();
+    const retainedTrial = { ...node("retained-trial", "project-a", "root", "Retained trial", 2_500), sourceWorkspaceKind: "trial" };
+    fixture.snapshot = {
+      ...snapshot,
+      nodes: [...snapshot.nodes, retainedTrial],
+      workspaces: [
+        ...snapshot.workspaces,
+        { id: "trial-copy", projectId: "project-a", kind: "trial", baseNodeId: "child", dirty: false },
+        { id: "export-copy", projectId: "project-a", kind: "trial", baseNodeId: "root", dirty: false },
+      ],
+    };
+    const view = render(<VersionNodeTrack />);
+    expect(within(screen.getByTestId("version-node-child")).getByText("Current")).toBeInTheDocument();
+    expect(within(screen.getByTestId("version-node-child")).queryByText("Trial")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("version-node-root")).queryByText("Trial")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("version-node-retained-trial")).getByText("Trial")).toBeInTheDocument();
+    fixture.snapshot = { ...snapshot, nodes: [...snapshot.nodes, retainedTrial] };
+    view.rerender(<VersionNodeTrack />);
+    expect(within(screen.getByTestId("version-node-retained-trial")).getByText("Trial")).toBeInTheDocument();
   });
   it("double click previews, while adopting needs the explicit action", async () => {
     render(<VersionNodeTrack />);
