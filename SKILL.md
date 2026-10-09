@@ -44,6 +44,12 @@ Never print, copy, log or paste either descriptor or its token. `status` probes
 liveness; file existence is not proof. A stale descriptor requires preparing the
 GUI. Clients use authenticated loopback requests and bypass system proxies.
 
+Review preserves original references. The Chromium worker can use local
+FFmpeg to decode source frames when browser decoding fails, then composites
+them through the existing engine. Both decoders failing is an error; a black
+source remains valid. New desktop snapshots capture available installed font
+bytes without replacing the chosen family; inspect unresolved dependencies.
+
 ## Commands and input
 
 Use `reelctl call <canonical.command> --file request.json` for any catalog entry.
@@ -81,10 +87,10 @@ stderr. Use --human for debugging and --fields to project results. For timeline.
 result envelope. Use returned artifact paths for large results. A result projection is not a
 replacement for revision/identity preconditions.
 
-## Saves and versions
+## Saves and save points
 
 Regular saves — GUI Ctrl+S, autosave, and your edit commands — only persist the
-editing workspace; "saved" never means a version exists. Retain a stage version
+editing workspace; "saved" never means a save point exists. The GUI calls a node a save point; create one
 only when the task asks for one, via an explicit
 `reelctl call node.save --project-id … --workspace-id … --expected-revision …
 --idempotency-key …` (omit `--name` to auto-name; unchanged content dedupes to

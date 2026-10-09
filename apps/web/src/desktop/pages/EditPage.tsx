@@ -6,13 +6,11 @@ import { useTranslation } from "react-i18next";
 import { ToolcraftText as Text } from "@reelterminal/ui";
 
 import { AssetsPanel } from "../../components/editor/AssetsPanel";
-import { InspectorPanel } from "../../components/editor/InspectorPanel";
+import { DesktopInspector } from "../editor/DesktopInspector";
 import { AgentMediaTaskDialog } from "../../components/editor/dialogs/AgentMediaTaskDialog";
 import { PanelErrorBoundary } from "../../components/ErrorBoundary";
 import { CollabStatusBar } from "../editor/CollabStatusBar";
 import { VersionPreviewBanner } from "../editor/VersionPreviewBanner";
-import { VersionNodeTrack } from "../editor/VersionNodeTrack";
-import { RequirementBoardDialog } from "../editor/RequirementBoardDialog";
 import { DesktopKeyboardShortcuts } from "../editor/DesktopKeyboardShortcuts";
 import { Icon } from "@/icons/Icon";
 import { useResizable } from "../editor/useResizable";
@@ -55,7 +53,7 @@ function DockRegion({
 }): JSX.Element {
   return (
     <div
-      className={`relative flex min-h-0 min-w-0 flex-col overflow-hidden ${className ?? "bg-bg-1"}`}
+      className={`relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden ${className ?? "bg-bg-1"}`}
       style={{ gridArea: area }}
     >
       <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-border bg-bg-1 px-3 text-[11px] font-medium uppercase tracking-wide text-fg-2">
@@ -132,7 +130,7 @@ export function EditPage(): JSX.Element {
     storageKey: LEGACY_LS_DESKTOP_TIMELINE_HEIGHT,
   });
 
-  const lowerPanelHeight = timelineH.value + 124;
+  const lowerPanelHeight = timelineH.value + 72;
   const gridStyle: React.CSSProperties = {
     gridTemplateColumns: `${mediaW.value}px 1fr ${inspectorW.value}px`,
     gridTemplateRows: `1fr ${lowerPanelHeight}px`,
@@ -154,7 +152,7 @@ export function EditPage(): JSX.Element {
       </DockRegion>
 
       <DockRegion label={t("desktop.editor.inspector")} name={t("desktop.editor.inspector")} area="inspector" icon="slider.horizontal.3">
-        <InspectorPanel />
+        <DesktopInspector />
         <ColumnHandle edge="left" onPointerDown={inspectorW.onHandlePointerDown} />
       </DockRegion>
 
@@ -164,7 +162,6 @@ export function EditPage(): JSX.Element {
           <CollabStatusBar />
         </div>
         <VersionPreviewBanner />
-        <VersionNodeTrack />
         <div className="min-h-0 flex-1">
           <DockRegion label={t("desktop.editor.timeline")} name={t("desktop.editor.timeline")} area="auto" icon="rectangle.split.3x1" className="bg-tl-bg">
             <Suspense fallback={<PanelLoading />}>
@@ -178,7 +175,6 @@ export function EditPage(): JSX.Element {
           artifacts can still be inspected and imported. Generation is paused
           until it has an independent task mechanism. */}
       <AgentMediaTaskDialog />
-      <RequirementBoardDialog />
       {/* Window-level shortcut dispatch for the edit page (the web shell gets
           this from EditorInterface; the desktop tree never mounted it, which
           left every keyboard shortcut dead there). Renders null until the

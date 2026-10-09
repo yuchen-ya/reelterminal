@@ -382,7 +382,7 @@ const mediaImportResult = (): OutputSchemaNode =>
       revision: integerSchema(0),
       mediaId: stringSchema(),
       name: stringSchema(),
-      type: enumSchema(["video", "audio"]),
+      type: enumSchema(["video", "audio", "image"]),
       metadata: importedMediaMetadata(),
       replayed: booleanSchema(),
     },

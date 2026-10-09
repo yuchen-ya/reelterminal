@@ -82,6 +82,9 @@ import { resolveCreationMotionSceneBinding } from "../creation/render-binding";
 // via the GUI). Warn ONCE per clip instead of failing the render — the frames
 // keep the original background, and the skip must not be silent.
 const bgRemovalUnavailableWarned = new Set<string>();
+export class VideoFrameDecodeError extends Error {}
+
+export type SourceFrameDecoder = (mediaId: string, time: number, width: number, height: number) => Promise<ImageBitmap>;
 const warnBackgroundRemovalUnavailable = (clipId: string): void => {
   if (bgRemovalUnavailableWarned.has(clipId)) return;
   bgRemovalUnavailableWarned.add(clipId);
@@ -135,6 +138,8 @@ export class VideoEngine {
     string,
     { video: HTMLVideoElement; url: string }
   > = new Map();
+  private sourceFrameDecoder: SourceFrameDecoder | null = null;
+  private readonly nativeDecodeUnavailable = new Set<string>();
   private compoundEngines = new Map<string, VideoEngine>();
   private renderingCompounds = new Set<string>();
 
@@ -162,6 +167,11 @@ export class VideoEngine {
    * Creates a new VideoEngine instance.
    */
   constructor() {}
+
+  /** Host decoder for sources the browser cannot decode; still uses this compositor. */
+  setSourceFrameDecoder(decoder: SourceFrameDecoder): void {
+    this.sourceFrameDecoder = decoder;
+  }
 
   /**
    * Initializes the VideoEngine, setting up decoders and GPU compositor.
@@ -459,50 +469,78 @@ export class VideoEngine {
     width: number,
     height: number,
   ): Promise<ImageBitmap | null> {
+    if (this.sourceFrameDecoder && this.nativeDecodeUnavailable.has(mediaId)) {
+      return this.sourceFrameDecoder(mediaId, time, width, height);
+    }
+    try {
+      return await this.decodeNativeVideoFrame(mediaId, blob, time, width, height);
+    } catch (error) {
+      if (!(error instanceof VideoFrameDecodeError) || !this.sourceFrameDecoder) throw error;
+      this.nativeDecodeUnavailable.add(mediaId);
+      return this.sourceFrameDecoder(mediaId, time, width, height);
+    }
+  }
+
+  private async decodeNativeVideoFrame(
+    mediaId: string, blob: Blob, time: number, width: number, height: number,
+  ): Promise<ImageBitmap> {
     let cached = this.videoElementCache.get(mediaId);
 
     if (!cached) {
       const url = URL.createObjectURL(blob);
       const video = document.createElement("video");
-      video.src = url;
       video.muted = true;
       video.playsInline = true;
       video.preload = "auto";
-
-      await new Promise<void>((resolve, reject) => {
-        video.onloadedmetadata = () => resolve();
-        video.onerror = () => reject(new Error("Video load failed"));
-        setTimeout(() => reject(new Error("Video load timeout")), 10000);
-      });
-
       cached = { video, url };
       this.videoElementCache.set(mediaId, cached);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const finish = (error?: Error) => {
+            clearTimeout(timer);
+            video.onloadeddata = null;
+            video.onerror = null;
+            if (error) reject(error);
+            else resolve();
+          };
+          const timer = setTimeout(() => finish(new VideoFrameDecodeError(`Video decode timeout: ${mediaId}`)), 10000);
+          video.onloadeddata = () => finish();
+          video.onerror = () => finish(new VideoFrameDecodeError(`Video decode failed: ${mediaId} (${video.error?.message ?? "unsupported source"})`));
+          video.src = url;
+        });
+      } catch (error) {
+        this.videoElementCache.delete(mediaId);
+        video.removeAttribute("src");
+        video.load();
+        URL.revokeObjectURL(url);
+        throw error;
+      }
     }
 
     const { video } = cached;
 
-    video.currentTime = time;
-
-    await new Promise<void>((resolve) => {
-      let resolved = false;
-      const onSeeked = () => {
-        if (resolved) return;
-        resolved = true;
-        video.removeEventListener("seeked", onSeeked);
-        resolve();
-      };
-      video.addEventListener("seeked", onSeeked);
-      if (video.readyState >= 2) {
-        onSeeked();
-      }
-      setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
+    if (Math.abs(video.currentTime - time) > 1e-4 || video.readyState < 2) {
+      await new Promise<void>((resolve, reject) => {
+        const finish = (error?: Error) => {
+          clearTimeout(timer);
           video.removeEventListener("seeked", onSeeked);
-          resolve();
-        }
-      }, 3000);
-    });
+          video.removeEventListener("error", onError);
+          if (error) reject(error);
+          else resolve();
+        };
+        const onSeeked = () => {
+          if (video.readyState >= 2 && !video.seeking) finish();
+        };
+        const onError = () => finish(new VideoFrameDecodeError(`Video seek failed: ${mediaId}`));
+        const timer = setTimeout(() => finish(new VideoFrameDecodeError(`Video seek timeout: ${mediaId} at ${time}s`)), 10000);
+        video.addEventListener("seeked", onSeeked);
+        video.addEventListener("error", onError);
+        video.currentTime = time;
+      });
+    }
+    if (video.readyState < 2 || video.videoWidth <= 0 || video.videoHeight <= 0) {
+      throw new VideoFrameDecodeError(`No decoded video frame: ${mediaId} at ${time}s`);
+    }
 
     if (
       !this.decodeCanvas ||
@@ -544,6 +582,7 @@ export class VideoEngine {
    * Clear the video element cache, releasing resources.
    */
   clearVideoElementCache(): void {
+    this.nativeDecodeUnavailable.clear();
     for (const [, cached] of this.videoElementCache) {
       cached.video.pause();
       cached.video.removeAttribute("src");

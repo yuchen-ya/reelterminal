@@ -12,7 +12,6 @@ import { EditPage } from "./EditPage";
 import { useUIStore } from "../../stores/ui-store";
 import { useProjectStore } from "../../stores/project-store";
 import { createEmptyProject } from "../../stores/project/project-helpers";
-import { REQUIREMENT_BOARD_MODAL_ID } from "../editor/RequirementBoardDialog";
 import { t } from "../../i18n";
 
 vi.mock("../../components/editor/AssetsPanel", () => ({
@@ -58,8 +57,9 @@ describe("EditPage lower collaboration panel", () => {
 
     fireEvent.click(entry);
 
-    expect(useUIStore.getState().activeModal).toBe(REQUIREMENT_BOARD_MODAL_ID);
-    expect(screen.getByRole("dialog", { name: t("requirementBoard.title") })).toBeInTheDocument();
+    expect(useUIStore.getState().desktopInspectorTab).toBe("board");
+    expect(useUIStore.getState().activeModal).toBeNull();
+    expect(screen.getByTestId("inspector-tab-board")).toHaveAttribute("aria-selected", "true");
   });
 
   it("keeps write authorization separate from the requirement board", async () => {

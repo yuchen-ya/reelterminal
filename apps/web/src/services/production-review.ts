@@ -1,18 +1,19 @@
 import { reviewCandidateActions } from "@reelterminal/core/types/review-range";
-import { useProjectStore } from "../stores/project-store";
+import { useProjectStore, type ProjectState } from "../stores/project-store";
 
 /** The only GUI adoption path: verify actual source files, then recheck the project. */
 export async function adoptReviewCandidate(
   requirementId: string,
   candidateMediaId: string,
   label: string,
+  store: { getState(): ProjectState } = useProjectStore,
 ): Promise<void> {
   const api = window.reelterminal?.production;
   if (!api)
     throw new Error(
       "Strict candidate adoption requires the desktop FFprobe backend",
     );
-  const before = useProjectStore.getState();
+  const before = store.getState();
   const requirement = before.project.requirements?.items.find(
     (item) => item.id === requirementId,
   );
@@ -29,7 +30,7 @@ export async function adoptReviewCandidate(
     sourceMediaId: [...sourceIds][0],
     candidateMediaId,
   });
-  const current = useProjectStore.getState();
+  const current = store.getState();
   if (
     current.project.id !== before.project.id ||
     current.projectRevision !== before.projectRevision ||

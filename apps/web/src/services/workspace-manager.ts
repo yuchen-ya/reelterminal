@@ -76,6 +76,8 @@ export interface ProjectNodeRecord {
   project: Project;
   mediaIds: string[];
   missingDependencies: string[];
+  /** Display provenance of a retained trial; never a synthetic workspace node. */
+  sourceWorkspaceKind?: "trial";
   /** Present while the node sits in the version recycle bin. */
   recycledAt?: number;
 }
@@ -233,7 +235,7 @@ interface PersistedTaskInput {
 type WorkspaceListener = () => void;
 type ProjectStore = ReturnType<typeof createProjectStore>;
 
-const FIRST_NODE_NAME_FALLBACK = "初版";
+const FIRST_NODE_NAME_FALLBACK = "首次存档";
 
 /** Capture the per-workspace editor view state from the global UI stores. */
 export function captureCurrentViewState(): WorkspaceViewState {
@@ -285,6 +287,10 @@ export function applyViewState(state: WorkspaceViewState | null): void {
 /** A real edit exists: empty skeleton projects never become retention candidates. */
 export function isSubstantiveProject(project: Project): boolean {
   return project.timeline.tracks.some((track) => track.clips.length > 0) ||
+    project.timeline.subtitles.length > 0 ||
+    [project.textClips, project.shapeClips, project.svgClips, project.stickerClips,
+      project.motionCompositions, project.motionInstances, project.nestedInstances]
+      .some((clips) => (clips?.length ?? 0) > 0) ||
     project.mediaLibrary.items.length > 0 ||
     (project.markers?.items.length ?? 0) > 0;
 }
@@ -374,6 +380,7 @@ function nodeSummary(node: ProjectNodeRecord): ProjectNodeSummary {
     formatVersion: node.formatVersion,
     mediaIds: [...node.mediaIds],
     missingDependencies: [...node.missingDependencies],
+    ...(node.sourceWorkspaceKind ? { sourceWorkspaceKind: node.sourceWorkspaceKind } : {}),
     ...(node.recycledAt !== undefined ? { recycledAt: node.recycledAt } : {}),
   };
 }
@@ -464,11 +471,13 @@ export class WorkspaceManager {
   private readonly nodes = new Map<string, ProjectNodeSummary>();
   private readonly workspaceBaseProjectKeys = new Map<string, string | null>();
   private readonly runtimes = new Map<string, ProjectStore>();
+  private readonly editedWorkspaces = new Set<string>();
   private readonly runtimeInitializations = new Map<string, Promise<ProjectStore>>();
   private readonly runtimeIds = new Map<string, string>();
   private readonly runtimeUnsubscribers = new Map<string, () => void>();
   private readonly workspaceWriteDrains = new Map<string, Promise<void>>();
   private readonly queuedWorkspaceWrites = new Map<string, WorkspaceRecord>();
+  private readonly failedWorkspaceWrites = new Map<string, WorkspaceRecord>();
   private readonly workspaceCommandTails = new Map<string, Promise<void>>();
   private readonly runtimeSuspension = new Map<string, number>();
   private readonly viewStates = new Map<string, WorkspaceViewState>();
@@ -555,6 +564,7 @@ export class WorkspaceManager {
     await this.initialize();
     const candidates: RetentionCandidate[] = [];
     for (const record of this.workspaces.values()) {
+      if (!this.editedWorkspaces.has(record.id)) continue;
       const project = this.projects.get(record.projectId);
       if (!project) continue;
       const runtime = this.runtimes.get(record.id);
@@ -573,7 +583,7 @@ export class WorkspaceManager {
         projectId: record.projectId,
         projectName: project.name,
         workspaceId: record.id,
-        workspaceName: record.name,
+        workspaceName: record.kind === "default" ? i18next.t("versioning.currentEndpoint", { defaultValue: "Current edit" }) : record.name,
       });
     }
     return candidates;
@@ -760,6 +770,15 @@ export class WorkspaceManager {
   async flushWorkspace(target: WorkspaceTarget): Promise<void> {
     await this.initialize();
     await this.flushWorkspaceWrites(target.workspaceId);
+  }
+
+  /** Flush loaded editor/Agent runtimes without opening unrelated projects. */
+  async flushOpenWorkspaces(): Promise<void> {
+    await this.initialize();
+    await Promise.all([...this.workspaceCommandTails.values()]);
+    for (const workspaceId of this.runtimes.keys()) {
+      await this.flushWorkspaceWrites(workspaceId);
+    }
   }
 
   /** Re-point the active store at a workspace runtime without switching projects (leaves preview). */
@@ -1115,6 +1134,7 @@ export class WorkspaceManager {
         project,
         mediaIds: projectMediaIds(project),
         missingDependencies: [],
+        ...(record.kind === "trial" ? { sourceWorkspaceKind: "trial" as const } : {}),
       };
     }
     const result = { nodeId: node.id, revision };
@@ -1556,6 +1576,7 @@ export class WorkspaceManager {
       this.runtimeSuspension.set(target.workspaceId, Math.max(0, (this.runtimeSuspension.get(target.workspaceId) ?? 1) - 1));
     }
     const updated = { ...workspace, baseNodeId: draft.baseNodeId, revision, updatedAt: Date.now(), dirty: true, project: cloneProject(preparedDraft) };
+    this.editedWorkspaces.add(target.workspaceId);
     this.workspaces.set(target.workspaceId, updated);
     this.workspaceBaseProjectKeys.set(target.workspaceId, draftBaseProjectKey);
     this.publish();
@@ -1921,7 +1942,12 @@ export class WorkspaceManager {
     if (this.runtimeUnsubscribers.has(record.id)) return;
     const unsubscribe = store.subscribe((state, previousState) => {
       if (state.project === previousState.project || (this.runtimeSuspension.get(record.id) ?? 0) > 0) return;
+      this.editedWorkspaces.add(record.id);
       const project = cloneProject(state.getFullProject());
+      if (state.project.name !== previousState.project.name) {
+        const projectRecord = this.projects.get(record.projectId)!;
+        this.projects.set(record.projectId, { ...projectRecord, name: project.name, modifiedAt: project.modifiedAt });
+      }
       const baseProjectKey = this.workspaceBaseProjectKeys.get(record.id) ?? null;
       const dirty = !baseProjectKey || baseProjectKey !== editableProjectKey(project);
       const updated: WorkspaceRecord = {
@@ -1954,7 +1980,15 @@ export class WorkspaceManager {
           const latest = this.queuedWorkspaceWrites.get(record.id);
           if (!latest) return;
           this.queuedWorkspaceWrites.delete(record.id);
-          await this.persistWorkspaceSnapshot(latest);
+          try {
+            await this.persistWorkspaceSnapshot(latest);
+            this.failedWorkspaceWrites.delete(record.id);
+          } catch (error) {
+            // Keep the failed snapshot retryable; a later close/save must not
+            // mistake a settled background drain for a successful disk write.
+            this.failedWorkspaceWrites.set(record.id, latest);
+            throw error;
+          }
         }
       } finally {
         this.workspaceWriteDrains.delete(record.id);
@@ -1972,7 +2006,7 @@ export class WorkspaceManager {
         ...workspace,
         project: cloneProject(await prepareProjectRenderFonts(workspace.project)),
       };
-      const tx = this.requireDb().transaction(WORKSPACES, "readwrite");
+      const tx = this.requireDb().transaction([WORKSPACES, PROJECTS], "readwrite");
       const completed = transactionDone(tx);
       const store = tx.objectStore(WORKSPACES);
       const persisted = await requestResult(store.get(workspace.id));
@@ -1982,6 +2016,7 @@ export class WorkspaceManager {
         return;
       }
       store.put(preparedWorkspace);
+      tx.objectStore(PROJECTS).put(this.projects.get(workspace.projectId)!);
       await completed;
     });
   }
@@ -2026,6 +2061,10 @@ export class WorkspaceManager {
   }
 
   private async flushWorkspaceWrites(workspaceId: string): Promise<void> {
+    const failed = this.failedWorkspaceWrites.get(workspaceId);
+    if (failed && !this.workspaceWriteDrains.has(workspaceId)) {
+      this.scheduleWorkspaceWrite(this.workspaces.get(workspaceId) ?? failed);
+    }
     while (true) {
       const drain = this.workspaceWriteDrains.get(workspaceId);
       if (!drain) return;

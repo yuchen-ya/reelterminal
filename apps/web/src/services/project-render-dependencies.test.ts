@@ -61,6 +61,30 @@ afterEach(() => {
 });
 
 describe("project render dependencies", () => {
+  it("captures the requested installed family and its real regular/bold faces", async () => {
+    setFontSources();
+    const regular = new Uint8Array([0, 1, 0, 0, 1]);
+    const bold = new Uint8Array([0, 1, 0, 0, 2]);
+    Object.assign(window, {
+      reelterminal: { platform: "desktop" },
+      queryLocalFonts: async () => [
+        { family: "Microsoft YaHei", style: "Regular", blob: async () => ({ arrayBuffer: async () => regular.buffer }) },
+        { family: "Microsoft YaHei", style: "Bold", blob: async () => ({ arrayBuffer: async () => bold.buffer }) },
+        { family: "Unreferenced font", style: "Regular", blob: vi.fn() },
+      ],
+    });
+    try {
+      const prepared = await prepareProjectRenderFonts(projectWith({ textClips: [{ style: { fontFamily: "Microsoft YaHei" } }] }));
+      expect(prepared.renderFonts).toEqual([
+        { family: "Microsoft YaHei", style: "normal", weight: "400", dataUrl: "data:font/ttf;base64,AAEAAAE=" },
+        { family: "Microsoft YaHei", style: "normal", weight: "700", dataUrl: "data:font/ttf;base64,AAEAAAI=" },
+      ]);
+      expect(await getMissingProjectRenderDependencyIds(prepared)).toEqual([]);
+    } finally {
+      delete (window as unknown as Record<string, unknown>).queryLocalFonts;
+      delete (window as unknown as Record<string, unknown>).reelterminal;
+    }
+  });
   it("captures bundled and persisted font bytes, while reporting unavailable faces", async () => {
     setFontSources();
     fontStorage.families = new Set(["Persisted Custom"]);

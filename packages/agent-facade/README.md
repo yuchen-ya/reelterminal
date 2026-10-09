@@ -5,6 +5,12 @@ canonical `Project` state, with headless and live sessions and bundled
 read-only tool extensions. The desktop CLI and MCP adapter use the same
 command catalog.
 
+The desktop calls an immutable node a **save point**. Current edits are saved
+separately; creating a save point is still `node.save`. Archives and Board live
+in the right inspector. API names, explicit workspace targets, revisions and
+idempotency remain unchanged. `media.import` results include `image` as well
+as `video` and `audio`.
+
 This example creates a separate headless project; it does not attach to the GUI.
 Replace the absolute paths with an existing video at least five seconds long.
 Live desktop Agents should use the CLI workflow in the root Agent guide.

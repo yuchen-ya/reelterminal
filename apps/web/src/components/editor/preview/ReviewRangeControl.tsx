@@ -69,7 +69,7 @@ export function ReviewRangeControl() {
         return;
       }
       setOpen(false);
-      useUIStore.getState().openModal("requirement-board");
+      useUIStore.getState().openModal("requirement-board", { projectId: useProjectStore.getState().project.id });
     } catch (failure) {
       // Translate capture/validation failures into a visible form error.
       setError(failure instanceof Error ? failure.message : String(failure));

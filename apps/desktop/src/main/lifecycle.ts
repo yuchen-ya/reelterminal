@@ -15,37 +15,28 @@ export function markQuitting(): void {
   quitting = true;
 }
 
-// Sentinel returned when the renderer does not reply within the timeout, so
-// callers can distinguish "no answer" from a genuine reply.
+// A destroyed window cannot authorize closing any other window.
 const NO_REPLY = Symbol("no-reply");
-
-// The renderer needs time to flush every open workspace and (optionally)
-// retain versions behind the close dialog, so this is far more generous than
-// the old dirty-state poll. Persistence is continuous — draft writes complete
-// during editing — which is also what an OS force-kill relies on, so a
-// renderer that goes silent is treated as safe to close rather than trapping
-// the user in a window that can never close.
-const PREPARE_CLOSE_TIMEOUT_MS = 20_000;
 
 function requestFromRenderer(
   win: BrowserWindow,
   sendChannel: string,
   replyChannel: string,
-  timeoutMs: number,
 ): Promise<unknown> {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (value: unknown): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      win.removeListener("closed", onClosed);
       ipcMain.removeListener(replyChannel, onReply);
       resolve(value);
     };
     const onReply = (event: IpcMainEvent, payload: unknown): void => {
       if (event.sender === win.webContents) finish(payload);
     };
-    const timer = setTimeout(() => finish(NO_REPLY), timeoutMs);
+    const onClosed = (): void => finish(NO_REPLY);
+    win.once("closed", onClosed);
     ipcMain.on(replyChannel, onReply);
     if (win.isDestroyed()) {
       finish(NO_REPLY);
@@ -81,10 +72,9 @@ async function handleGuardedClose(win: BrowserWindow): Promise<void> {
     win,
     CHANNELS.lifecyclePrepareCloseQuery,
     CHANNELS.lifecyclePrepareCloseReply,
-    PREPARE_CLOSE_TIMEOUT_MS,
   );
 
-  if (reply === NO_REPLY || isAllowReply(reply)) {
+  if (isAllowReply(reply)) {
     finalizeClose(win);
     return;
   }

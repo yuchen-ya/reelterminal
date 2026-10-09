@@ -771,6 +771,8 @@ export class ChromiumProviderPool {
       ...(config.ffprobePath ? { ffprobePath: config.ffprobePath } : {}),
     };
     this.runtime = new ChromiumRuntime({
+      ffmpegPath: config.ffmpegPath,
+      ffprobePath: config.ffprobePath,
       ...(config.executablePath ? { executablePath: config.executablePath } : {}),
       headless: config.headless ?? true,
       ...(config.pageOpTimeoutMs !== undefined

@@ -169,17 +169,7 @@ export function DesktopApp(): JSX.Element {
   // retain versions per the stored preference or ask once. The window stays
   // open on any failure or cancel.
   const flushAllWorkspaces = useCallback(async (): Promise<void> => {
-    await workspaceManager.initialize();
-    const projects = await workspaceManager.listProjects();
-    for (const project of projects) {
-      const workspaces = await workspaceManager.listWorkspaces(project.id);
-      for (const workspace of workspaces) {
-        await workspaceManager.flushWorkspace({
-          projectId: project.id,
-          workspaceId: workspace.id,
-        });
-      }
-    }
+    await workspaceManager.flushOpenWorkspaces();
   }, []);
 
   const retainAll = useCallback(
@@ -197,7 +187,7 @@ export function DesktopApp(): JSX.Element {
     [],
   );
 
-  const handlePrepareClose = useCallback(async (): Promise<boolean> => {
+  const prepareCloseDecision = useCallback(async (): Promise<boolean> => {
     try {
       await flushAllWorkspaces();
     } catch (error) {
@@ -213,10 +203,9 @@ export function DesktopApp(): JSX.Element {
     try {
       candidates = await workspaceManager.listRetentionCandidates();
     } catch (error) {
-      // Retention discovery must not block a close whose mandatory flush
-      // already succeeded; treat it as "nothing worth retaining".
       console.error("[lifecycle] retention candidate lookup failed:", error);
-      return true;
+      toast.error(t("closeRetention.flushFailed"), error instanceof Error ? error.message : undefined);
+      return false;
     }
     if (candidates.length === 0) return true;
 
@@ -243,6 +232,18 @@ export function DesktopApp(): JSX.Element {
     });
     return decision !== "cancel";
   }, [flushAllWorkspaces, retainAll, t]);
+
+  const handlePrepareClose = useCallback(async (): Promise<boolean> => {
+    if (!await prepareCloseDecision()) return false;
+    // Agent edits may finish while the user considers the dialog.
+    try {
+      await flushAllWorkspaces();
+      return true;
+    } catch (error) {
+      toast.error(t("closeRetention.flushFailed"), error instanceof Error ? error.message : undefined);
+      return false;
+    }
+  }, [prepareCloseDecision, flushAllWorkspaces, t]);
 
   // Subscribe once; the ref keeps the handler fresh without resubscribing
   // (main expects a stable listener for the lifetime of the window).

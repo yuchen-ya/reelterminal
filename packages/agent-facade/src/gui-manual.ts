@@ -54,7 +54,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.4.0" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.5.0" as const;
 export const GUI_MANUAL_APP_VERSION = "1.0.1" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
@@ -222,98 +222,112 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
   },
   {
     id: "version-nodes",
-    title: { zh: "版本轨迹", en: "Version Track" },
+    title: { zh: "存档记录", en: "Save Points" },
     // @source apps/web/src/desktop/editor/VersionNodeTrack.tsx
     // @source apps/web/src/services/preview-session.ts
     summary: {
-      zh: "时间线上方的圆点轨迹列出留存下来的版本：悬停查看、预览、重命名、从这里继续编辑或删除。",
-      en: "The dot track above the timeline lists retained versions: hover for details, preview, rename, continue editing from one, or delete.",
+      zh: "当前编辑会自动保存；像游戏存档点一样，创建存档点后可以回看并继续剪辑。记录放在右侧检查器，不占时间线空间。",
+      en: "Current edits are saved automatically. Like a game save point, a save point lets you look back and continue later. Records live in the right inspector and do not take timeline space.",
     },
     entry: [
       {
-        zh: "留存过至少一个版本后，时间线上方的版本轨迹自动出现；首次留存之前没有这一行。",
-        en: "The version track appears above the timeline once at least one version is retained; there is no empty row before the first retention.",
+        zh: "点击时间线上方状态行的“● 当前”，或右侧检查器的“存档”页签。此入口只查看记录，不创建存档、不跳播放头。",
+        en: "Click Current in the timeline status strip or Archives in the right inspector. Opening records never creates a save point or moves the playhead.",
       },
     ],
     steps: [
       {
-        zh: "悬停圆点显示版本名称、日期和可选摘要；单击选中以便键盘操作。实心强调色圆点是当前编辑位置，虚线外环表示正在预览的版本，空心菱形是 Agent 试剪方案。",
-        en: "Hover a dot for the version name, date, and optional summary; single-click selects it for keyboard use. The filled accent dot is the current edit, a dashed outline marks the previewed version, and hollow diamonds are Agent trial cuts.",
+        zh: "纵向记录较新在上，连线表示真实父子关系。小圆点有稳定辨识色，未选中时变暗；“当前”及细环表示编辑基准，“预览中”及虚线环表示只读预览。单击只显示详情。",
+        en: "Newer records appear above their ancestors with real parent links. Small points keep stable colors and dim when unselected. Current and a thin ring mark the editing base; Previewing and a dashed ring mark read-only preview. One click only shows details.",
       },
       {
-        zh: "预览：双击或按 Enter 进入只读预览，横幅显示“正在预览「名称」”，提供“返回当前编辑”。预览中不能修改内容；退出后编辑内容、撤销和播放位置保持原样。Esc 返回当前编辑。",
-        en: "Preview: double-click or press Enter for a read-only preview; a banner shows Previewing \"name\" with Back to current editing. Preview content cannot be modified; on exit the edit, undo history, and playback position are unchanged. Esc returns to editing.",
+        zh: "双击、Enter 或“预览存档”进入只读预览。全局横幅在切换检查器页签后仍保留；Esc 返回当前编辑，内容、撤销和播放位置恢复。与当前编辑对比会返回实际编辑画面并打开只读对比。",
+        en: "Double-click, Enter, or Preview save point opens read-only preview. Its global banner remains across inspector tabs. Esc returns to current edits with content, undo and playback position restored. Compare with current edit returns to the actual edit and opens a read-only comparison.",
       },
       {
-        zh: "采用：预览横幅中的“从这里继续编辑”把该版本应用到当前编辑；之前的未保存修改自动保护为可恢复草稿，可在顶部项目菜单“找回之前的编辑”中取回。",
-        en: "Adopt: Continue editing from here in the preview banner applies that version to the current edit; your prior unsaved changes are protected as a recoverable draft, retrievable via the project menu's Recover previous edits.",
+        zh: "只有“从这个存档继续编辑”才应用历史内容。之前的编辑自动保护，可从项目菜单“找回之前的编辑”取回；后续存档不会消失。",
+        en: "Only Continue from this save point applies historical content. Prior edits are protected and available from Recover previous edits in the project menu; later points stay intact.",
       },
       {
-        zh: "重命名与删除：菜单键或 Shift+F10（相当于右键）打开节点菜单。重命名就地编辑，Enter 提交、Esc 取消。删除此版本会移入回收站并显示可撤销通知，不影响后续版本或素材。",
-        en: "Rename & delete: the menu key or Shift+F10 (equivalent to right-click) opens the node menu. Rename edits inline — Enter commits, Esc cancels. Delete moves the version to the recycle bin with an undoable notice and never touches later versions or media.",
+        zh: "更多或右键提供重命名、从存档继续和移入回收站。重命名时 Enter 提交、Esc 取消；回收可撤销，不删除素材。缺少素材或字体时会明确提示无法完整恢复。",
+        en: "More or right-click offers rename, continue and recycle. Enter commits a rename and Esc cancels. Recycling is undoable and never deletes media. Missing media or fonts are disclosed as incomplete restoration.",
       },
     ],
     limitations: [
       {
-        zh: "Ctrl+S 只保存当前编辑，不会在轨迹上创建节点；轨迹上只出现主动留存或关闭时按偏好留存的版本。",
-        en: "Ctrl+S only saves the current edit and never creates a track node; the track only shows versions retained explicitly or by the close-time preference.",
+        zh: "Ctrl+S 只保存当前编辑，不创建存档点。未留存的试剪方案在项目菜单选择，不画假存档；已留存试剪用小菱形标记。",
+        en: "Ctrl+S saves current edits and never creates a save point. Unretained trial plans stay in the project menu without fake points; retained trials use small diamonds.",
       },
       {
-        zh: "被删除的基准节点会在轨迹末端显示“当前编辑”端点，它只是位置标记，不代表可恢复版本。",
-        en: "If the base node is deleted, a \"Current editing\" endpoint chip appears at the track's end; it is a position marker, not a restorable version.",
+        zh: "基准存档被回收时显示“当前编辑 · 基准存档已移入回收站”，不造可预览节点。",
+        en: "A recycled base is shown as Current edit · base save point is in the recycle bin, without a fabricated previewable point.",
       },
       {
-        zh: "Agent 试剪方案默认不改变当前编辑；双击预览后由用户决定是否采用。",
-        en: "Agent trial cuts never change the current edit by themselves; preview them and decide whether to adopt.",
+        zh: "Agent 试剪方案默认不改变当前编辑；未留存方案在项目菜单选择，留存后才显示版本节点。预览后由用户决定是否采用。",
+        en: "Agent trial cuts never change the current edit by themselves. Unretained plans are selected in the project menu; only retained versions appear as nodes. Preview and decide whether to adopt.",
       },
     ],
     keywords: ["version", "node", "track", "preview", "adopt", "rename", "delete", "recycle", "版本", "轨迹", "节点", "预览", "采用", "重命名", "删除", "回收站", "试剪", "找回"],
   },
   {
     id: "save-versus-retain",
-    title: { zh: "保存与留存版本", en: "Save vs. Retain a Version" },
+    title: { zh: "保存当前编辑与创建存档点", en: "Save Current Edits vs. Create a Save Point" },
     // @source apps/web/src/desktop/CloseRetentionDialog.tsx
     // @source apps/web/src/components/editor/settings/SavingPanel.tsx
     // @source apps/web/src/components/editor/ProjectSwitcher.tsx (retain entry)
     summary: {
-      zh: "Ctrl+S 和自动保存只保存当前编辑；“留存版本”才会创建可回看的版本节点。",
-      en: "Ctrl+S and autosave only save the current edit; retaining a version is what creates a look-back-able node.",
+      zh: "当前编辑会正常保存；创建存档点记录当时的工程状态，不包含之后的改动。",
+      en: "Current edits are saved normally. A save point records that moment's project state and excludes later changes.",
     },
     entry: [
       {
-        zh: "留存入口：左上角项目菜单 → “留存当前版本”。关闭偏好：设置 → 项目与保存 → 关闭时留存版本。",
-        en: "Retain entry: top-left project menu → Retain current version. Close preference: Settings → Projects & Saving → Retain a version on close.",
+        zh: "存档页或左上角项目菜单 → 创建存档点。关闭偏好：设置 → 项目与保存 → 关闭时创建存档点。",
+        en: "Archives or the top-left project menu → Create save point. Close preference: Settings → Projects & Saving → Create a save point on close.",
       },
     ],
     steps: [
       {
         zh: "保存：Ctrl+S 与自动保存把当前编辑写入本机项目存储。“已保存”只表示编辑已落盘，不代表存在版本节点。",
-        en: "Save: Ctrl+S and autosave write the current edit to local project storage. \"Saved\" only means the edit is on disk — it never implies a version node exists.",
+        en: "Save: Ctrl+S and autosave write the current edit to local project storage. \"Saved\" only means the edit is on disk — it never implies a save point exists.",
       },
       {
-        zh: "留存：项目菜单的“留存当前版本”记录一个阶段。首个版本自动命名“初版”，之后用日期时间命名；内容与最近版本相同时不会产生重复节点。",
-        en: "Retain: the project menu's Retain current version records a stage. The first version is auto-named \"First version\", later ones use the date and time; unchanged content does not create a duplicate node.",
+        zh: "创建存档点记录一个阶段。首个点自动命名“首次存档”，之后用日期时间命名；内容与基准相同时提示“当前内容已有存档点”，不产生重复记录。",
+        en: "Create save point records a stage. The first point is named First save point, later points use date and time. Content equal to its base reports an existing point instead of duplicating it.",
       },
       {
-        zh: "关闭时：工作区保存总是先执行。偏好为“每次询问”（默认）且当前编辑相对最近版本有变化时，弹一次“关闭前留存一个版本？”——可选“留存并关闭”“直接关闭”或取消；多项目有变化时只弹一个对话框。",
-        en: "On close: the workspace is always saved first. With the default Ask-every-time preference and changes worth retaining, one \"Save a version before closing?\" dialog appears — Save version & close, Close directly, or Cancel; multiple changed projects share a single dialog.",
+        zh: "关闭时：先保存打开的编辑方案。本次会话编辑过且尚未留存的内容（包括纯文字）按偏好询问或自动留存；未编辑的旧项目和导出副本不加入列表。询问一直等待你的决定，保存失败时保持窗口打开。",
+        en: "On close: open editing plans are saved first. Content edited in this session and not yet retained, including titles alone, follows your retention preference. Untouched old projects and export copies are excluded. The dialog waits for your decision; save failures keep the window open.",
       },
       {
-        zh: "偏好选项：每次询问（默认）、自动留存版本、不留存版本直接关闭。“不留存”仍然保存工作区，只是不创建版本；偏好随时可改，不影响已有历史。",
-        en: "Preference options: Ask every time (default), Save a version automatically, Close without saving a version. The skip option still saves the workspace — it only skips creating a version; the preference is changeable anytime and never deletes history.",
+        zh: "偏好选项：每次询问（默认）、自动创建存档点、不创建存档点直接关闭。“不创建存档点”仍然保存工作区，只是不创建版本；偏好随时可改，不影响已有历史。",
+        en: "Preference options: Ask every time (default), Create save points automatically, Close without creating a save point. The skip option still saves the workspace — it only skips creating a version; the preference is changeable anytime and never deletes history.",
       },
     ],
     limitations: [
       {
-        zh: "保存工程文件、另存为是独立的文件操作，与留存版本互不替代；工程文件不包含内部版本轨迹。",
-        en: "Save project file and Save as are separate file operations, not substitutes for retention; project files do not contain the internal version track.",
+        zh: "保存工程文件、另存为是独立的文件操作，与创建存档点互不替代；工程文件不包含内部存档记录。",
+        en: "Save project file and Save as are separate file operations, not substitutes for retention; project files do not contain the internal save point history.",
       },
       {
-        zh: "删除版本只是移入回收站并可撤销；真正释放素材空间在项目管理的“释放空间”中完成。",
-        en: "Deleting a version only moves it to the recycle bin and is undoable; freeing storage happens separately via the project management's space release.",
+        zh: "回收存档点只是移入回收站并可撤销；真正释放素材空间在项目管理的“释放空间”中完成。",
+        en: "Recycling a save point only moves it to the recycle bin and is undoable; freeing storage happens separately via the project management's space release.",
       },
     ],
     keywords: ["save", "autosave", "retain", "version", "close", "preference", "保存", "自动保存", "留存", "版本", "关闭", "偏好", "设置"],
+  },
+  {
+    id: "inspector-board",
+    title: { zh: "检查器与看板", en: "Inspector and Board" },
+    summary: { zh: "右侧属性、存档、看板三页签共用一块空间，不遮住播放器或时间线。", en: "Properties, Archives and Board share the right inspector without covering the player or timeline." },
+    entry: [{ zh: "状态行点击看板，或右侧检查器切到看板页签。引用对象的“添加到看板”也打开此页。", en: "Click Board in the status strip or inspector. Add to board on a referenced object opens the same panel." }],
+    steps: [
+      { zh: "列表按需处理的条目优先显示，已完成默认折叠。添加需求先填标题、说明，验收标准、执行约定和引用在详情中展开。发布不会启动 Agent。", en: "The list prioritizes items needing attention and collapses completed items. Add a title and description first; expand criteria, execution instructions and references as needed. Publishing never launches an Agent." },
+      { zh: "单击进入同一面板的详情，返回列表继续查看。定位、查看、对比与应用候选保持不同动作；应用仍做来源和版本验证。", en: "One click opens details in the same panel; Back to list returns. Locate, view, compare and apply remain separate, and application still validates sources and revision." },
+      { zh: "直接点击时间线或画布对象回到属性；看板定位和 Agent 更新不抢页签。切页签与切回项目会保留本次会话尚未提交的表单。", en: "Direct timeline or canvas selection returns to Properties. Board location and Agent updates keep the tab. Tab switches and returning to a project preserve this session's unsubmitted form." },
+      { zh: "历史预览时看板仍对应实际编辑方案，并显示目标提示。先返回当前编辑再定位或应用候选。", en: "During historical preview the board still belongs to the actual editing plan and shows that target. Return to current edits before locating or applying candidates." },
+    ],
+    limitations: [{ zh: "未提交表单仅在当前会话保留；发布后需求随工程保存。", en: "Unsubmitted forms are kept for the current session; published requirements are saved with the project." }],
+    keywords: ["board", "inspector", "requirements", "save point", "看板", "需求", "检查器", "存档"],
   },
   {
     id: "settings-dialog",
@@ -430,6 +444,10 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       {
         zh: "轨道：时间线上可添加轨道；删除轨道需内嵌确认，轨道上的片段会被移除，可通过撤销恢复。",
         en: "Tracks: add tracks from the timeline; deleting a track asks for an inline confirmation — its clips are removed and undo restores them.",
+      },
+      {
+        zh: "轨道多时在片段、轨道空白或轨道名称处用普通滚轮纵向查看，轨道头同步；工具栏和标尺固定。底部滚动条、触控板横向手势或 Shift+滚轮横移，Ctrl/Cmd+滚轮仍为缩放。",
+        en: "Use an ordinary wheel over clips, blank lanes or track names to scroll vertically; headers stay aligned and toolbar/ruler stay fixed. Use the bottom scrollbar, horizontal trackpad gestures or Shift+wheel to pan horizontally; Ctrl/Cmd+wheel still zooms.",
       },
     ],
     shortcutIds: [

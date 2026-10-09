@@ -12,10 +12,9 @@ import {
 import { beforeEach, describe, expect, it } from "vitest";
 import { ActionExecutor, ActionHistory } from "@reelterminal/core";
 import { createEmptyProject } from "../../stores/project/project-helpers";
-import { useProjectStore } from "../../stores/project-store";
+import { createProjectStore, useProjectStore } from "../../stores/project-store";
 import { useUIStore } from "../../stores/ui-store";
 import {
-  REQUIREMENT_BOARD_MODAL_ID,
   RequirementBoardDialog,
 } from "./RequirementBoardDialog";
 
@@ -30,13 +29,16 @@ describe("RequirementBoardDialog", () => {
       actionExecutor: new ActionExecutor(history),
     });
     useUIStore.setState({
-      activeModal: REQUIREMENT_BOARD_MODAL_ID,
+      activeModal: null,
+      desktopInspectorTab: "board",
+      boardOpenRequest: 0,
       modalData: null,
     });
   });
 
   it("persists a ready requirement and exposes its stable Q number", async () => {
     render(<RequirementBoardDialog />);
+    fireEvent.click(screen.getByRole("button", { name: "New requirement" }));
     fireEvent.change(
       screen.getByPlaceholderText("Describe the outcome in one line"),
       {
@@ -66,7 +68,7 @@ describe("RequirementBoardDialog", () => {
       title: "Tighten the opening",
       status: "ready",
     });
-    expect(screen.getByText("Q1")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Task title" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Task title" })).toHaveValue("Tighten the opening");
     expect(screen.getByText("Description")).toBeInTheDocument();
   });
@@ -84,6 +86,7 @@ describe("RequirementBoardDialog", () => {
     }));
     openBoardForEntities([media.id]);
     render(<RequirementBoardDialog />);
+    fireEvent.click(screen.getByText("Details and acceptance criteria"));
     expect(
       screen.getByRole("checkbox", { name: "A1 · Opening" }),
     ).toBeChecked();
@@ -145,8 +148,21 @@ describe("RequirementBoardDialog", () => {
     expect(
       useProjectStore.getState().project.requirements?.items[0].status,
     ).toBe("done");
-    expect(screen.getByRole("dialog").parentElement).toHaveClass(
-      "reelterminal-desktop",
-    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("keeps an unsubmitted form across tabs and submits to its explicit project store", async () => {
+    const actual = createProjectStore({ initialProject: createEmptyProject("Actual edit"), isForeground: false });
+    const preview = createProjectStore({ initialProject: createEmptyProject("Other displayed project"), isForeground: false });
+    const view = render(<RequirementBoardDialog store={actual} active />);
+    fireEvent.click(screen.getByRole("button", { name: "New requirement" }));
+    fireEvent.change(screen.getByPlaceholderText("Describe the outcome in one line"), { target: { value: "Keep my form" } });
+    view.rerender(<RequirementBoardDialog store={actual} active={false} />);
+    useProjectStore.setState({ project: preview.getState().project });
+    view.rerender(<RequirementBoardDialog store={actual} active />);
+    expect(screen.getByPlaceholderText("Describe the outcome in one line")).toHaveValue("Keep my form");
+    fireEvent.click(screen.getByRole("button", { name: "Publish to board" }));
+    await waitFor(() => expect(actual.getState().project.requirements?.items[0]?.title).toBe("Keep my form"));
+    expect(useProjectStore.getState().project.requirements?.items ?? []).toHaveLength(0);
   });
 });

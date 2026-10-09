@@ -1,4 +1,4 @@
-import type { RequirementReference } from "@reelterminal/core";
+import type { Project, RequirementReference } from "@reelterminal/core";
 import { useProjectStore } from "../stores/project-store";
 import { useUIStore } from "../stores/ui-store";
 import { useTimelineStore } from "../stores/timeline-store";
@@ -12,14 +12,15 @@ export function openBoardForEntities(entityIds: readonly string[]): void {
   );
   const references = markAgentReferences(targets);
   useUIStore.getState().openModal("requirement-board", {
+    projectId: project.id,
     referenceIds: references.map((reference) => reference.entityId),
   });
 }
 
 export function locateRequirementReference(
   reference: RequirementReference,
+  project: Project = useProjectStore.getState().project,
 ): boolean {
-  const { project } = useProjectStore.getState();
   const target = getAgentReferenceTargetsForProject(project).find(
     (item) =>
       item.entityId === reference.entityId && item.kind === reference.kind,

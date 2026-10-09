@@ -146,8 +146,8 @@ export const ProjectSwitcher: React.FC<{ onNewProject?: () => void }> = ({ onNew
     if (!activeTarget || versioningBusy) return;
     setVersioningBusy(true);
     try {
-      const { node } = await workspaceManager.saveNode({ target: activeTarget });
-      toast.success(t("versioning.retainSuccess", { name: node.name }));
+      const { node, replayed } = await workspaceManager.saveNode({ target: activeTarget });
+      toast.success(t(replayed ? "versioning.alreadyRetained" : "versioning.retainSuccess", { name: node.name }));
       setIsOpen(false);
     } catch (error) {
       reportVersioningError(error);

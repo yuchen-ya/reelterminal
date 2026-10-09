@@ -1,7 +1,7 @@
 import { TOUR_STEPS, type TourStep } from "../../components/editor/tour/tour-steps";
 
 export const DESKTOP_TOUR_STEPS: readonly TourStep[] = [
-  ...TOUR_STEPS.slice(0, -1),
+  ...TOUR_STEPS.slice(0, -1).map((step) => step.id === "inspector" ? { ...step, target: "[data-testid='desktop-inspector']" } : step),
   {
     id: "agent-access",
     target: "[data-testid='agent-access-status']",

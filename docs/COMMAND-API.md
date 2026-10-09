@@ -13,6 +13,10 @@ privately and must not print or log it.
 
 ## CLI
 
+`media.import` reports `video`, `audio`, or `image` in its result schema.
+`reelctl preview frame` is the CLI alias of `preview.render_frame`; use the
+catalog's command name when querying its schema.
+
 Use `reelctl` to inspect the session, get current context, discover commands,
 validate changes, and apply edits:
 

@@ -373,7 +373,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   // every render path (scrub, playback, transitions) picks up the current
   // value without re-creating callbacks. (Blur fill draws a cover-fit blurred
   // backdrop of the base clip in both preview and export.)
-  const previewBgRef = useRef<string>(isDark ? "#000000" : "#ffffff");
+  const previewBgRef = useRef<string>("#000000");
 
   // Canvas interaction state for resize/move
   const [interactionMode, setInteractionMode] =
@@ -651,14 +651,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       previewBgRef.current = canvasFillColor;
       return;
     }
-    const screenBg =
-      typeof window !== "undefined"
-        ? getComputedStyle(document.documentElement)
-            .getPropertyValue("--screen-bg")
-            .trim()
-        : "";
-    previewBgRef.current = screenBg || (isDark ? "#000000" : "#ffffff");
-  }, [canvasFillMode, canvasFillColor, isDark]);
+    previewBgRef.current = "#000000";
+  }, [canvasFillMode, canvasFillColor]);
 
   const playbackQuality = useUIStore((state) => state.playbackQuality);
   const setPlaybackQuality = useUIStore((state) => state.setPlaybackQuality);
@@ -2226,12 +2220,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
             activeShapeClips.length > 0 ||
             activeTextClips.length > 0)
         ) {
-          if (hasVideoContent) {
-            fillPreviewBackground(ctx, time, canvas.width, canvas.height);
-          } else {
-            ctx.fillStyle = isDark ? "#0f0f11" : "#ffffff";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-          }
+          fillPreviewBackground(ctx, time, canvas.width, canvas.height);
           shouldClearCanvas = false;
         }
 
@@ -6571,6 +6560,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
   const handleClipMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      useUIStore.getState().setDesktopInspectorTab("properties");
       e.stopPropagation();
       e.preventDefault();
 
@@ -6603,6 +6593,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
   const handleTextClipMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      useUIStore.getState().setDesktopInspectorTab("properties");
       e.stopPropagation();
       e.preventDefault();
 
@@ -6726,6 +6717,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
       const clip = findGraphicClipAtPoint(e.clientX, e.clientY);
       if (clip) {
+        useUIStore.getState().setDesktopInspectorTab("properties");
         select({ type: "shape-clip", id: clip.id });
         e.stopPropagation();
       }

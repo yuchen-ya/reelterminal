@@ -201,6 +201,25 @@ export async function prepareProjectRenderFonts(project: Project): Promise<Proje
     }
   }
 
+  // Desktop Chromium exposes installed SFNT bytes. Capture the actual family
+  // and all faces so isolated review does not depend on that machine's fonts.
+  const unresolved = new Set([...needed].filter(([family, displayFamily]) =>
+    !capturedFamilies.has(family) && !isRuntimeSystemFontFamily(displayFamily)).map(([family]) => family));
+  const desktopWindow = typeof window === "undefined" ? undefined : window as Window & {
+    queryLocalFonts?: () => Promise<Array<{ family: string; style: string; blob(): Promise<Blob> }>>;
+  };
+  if (unresolved.size > 0 && desktopWindow?.reelterminal && desktopWindow.queryLocalFonts) {
+    const localFonts = await desktopWindow.queryLocalFonts();
+    for (const font of localFonts) {
+      const family = font.family.toLowerCase();
+      if (!unresolved.has(family) || isRuntimeSystemFontFamily(font.family)) continue;
+      const data = await (await font.blob()).arrayBuffer();
+      const style = /italic|oblique/i.test(font.style) ? "italic" : "normal";
+      const weight = /bold/i.test(font.style) ? "700" : /light/i.test(font.style) ? "300" : "400";
+      renderFonts.push({ family: needed.get(family)!, style, weight, dataUrl: fontDataUrl(data) });
+    }
+  }
+
   return { ...project, renderFonts };
 }
 

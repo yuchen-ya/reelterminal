@@ -36,7 +36,7 @@ describe("RecoveryDraftsDialog", () => {
     expect(dialog).toBeInTheDocument();
     const row = await screen.findByTestId("recovery-draft-row");
     expect(row).toHaveTextContent(new Date(1_700_000_000_000).toLocaleString());
-    expect(row).toHaveTextContent("restore-protection");
+    expect(row).toHaveTextContent("Edits before switching versions");
 
     fireEvent.click(row);
     await waitFor(() => expect(fixture.recoverDraft).toHaveBeenCalledWith(target, "draft-1"));

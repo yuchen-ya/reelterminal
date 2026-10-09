@@ -20,10 +20,13 @@ import type { FileHandle } from "node:fs/promises";
 import type { Project } from "@reelterminal/core/types/project";
 
 import { buildBrowserEntry } from "./bundle";
+import { extractFrameRgba, resolveFfmpegBinaries } from "./ffmpeg";
 
 export interface ChromiumRuntimeOptions {
   /** Explicit chromium executable; defaults to the Playwright-managed one. */
   readonly executablePath?: string;
+  readonly ffmpegPath?: string;
+  readonly ffprobePath?: string;
   readonly headless?: boolean;
   readonly launchArgs?: readonly string[];
   /** Forward in-page console messages and page errors (diagnostics). */
@@ -220,6 +223,8 @@ export class ChromiumRuntime {
   private sinkBridge: SinkBridge | null = null;
   private sinkBindingsReady = false;
   private closed = false;
+  private sourceMediaFiles: Readonly<Record<string, string>> = {};
+  private sourceProject: Project | null = null;
   /**
    * Bumped every time the browser instance is replaced (recycle or crash).
    * Consumers key any per-browser cached state (probe results, exposed
@@ -357,6 +362,26 @@ export class ChromiumRuntime {
       const { port } = server.address() as AddressInfo;
 
       const page = await browser.newPage();
+      await page.exposeFunction("__decodeSourceFrame", async (mediaId: string, time: number, width: number, height: number) => {
+        const source = this.sourceMediaFiles[mediaId];
+        const media = this.sourceProject?.mediaLibrary.items.find((item) => item.id === mediaId);
+        if (!source || !media || !Number.isFinite(time) || time < 0 ||
+          !Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > 4096 || height > 4096) {
+          throw new Error("Invalid source frame decode request");
+        }
+        const binaries = await resolveFfmpegBinaries(this.options);
+        if (!binaries) throw new Error(`Source ${mediaId} is not browser-decodable and FFmpeg is unavailable`);
+        const sourceWidth = media.metadata.width;
+        const sourceHeight = media.metadata.height;
+        if (!sourceWidth || !sourceHeight) throw new Error(`Source geometry missing for ${mediaId}`);
+        const scale = Math.min(width / sourceWidth, height / sourceHeight, 1);
+        const frameWidth = Math.max(1, Math.round(sourceWidth * scale));
+        const frameHeight = Math.max(1, Math.round(sourceHeight * scale));
+        const rgba = await extractFrameRgba(binaries.ffmpeg, source, time, frameWidth, frameHeight, {
+          scale: { width: frameWidth, height: frameHeight }, timeoutMs: 30_000,
+        });
+        return { width: frameWidth, height: frameHeight, dataBase64: rgba.toString("base64") };
+      });
       // A lost RENDERER (OOM in a big raster, GPU process death, or the
       // page otherwise vanishing out from under us) does NOT fire the
       // browser's 'disconnected': the browser stays connected and the page
@@ -570,6 +595,8 @@ export class ChromiumRuntime {
     project: Project,
     mediaFiles: Readonly<Record<string, string>>,
   ): Promise<void> {
+    this.sourceMediaFiles = { ...mediaFiles };
+    this.sourceProject = project;
     const mediaIds = Object.keys(mediaFiles);
     const paths = mediaIds.map((id) => mediaFiles[id] as string);
     const projectJson = JSON.stringify(project);

@@ -1,916 +1,325 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import {
-  workspaceManager,
-  type ProjectNodeSummary,
-  type WorkspaceSummary,
-} from "../../services/workspace-manager";
+import { workspaceManager, type ProjectNodeSummary } from "../../services/workspace-manager";
 import { previewSession } from "../../services/preview-session";
+import { useUIStore } from "../../stores/ui-store";
 import { toast, useNotificationStore } from "../../stores/notification-store";
+import { createHistoryFrameRenderer } from "../../components/editor/preview/history-frame-renderer";
+import { activateHistoryComparison } from "../../components/editor/preview/ReferenceComparisonPanel";
+const PALETTE = ["#69aaa0", "#b493bc", "#c59b67", "#779ac5", "#a7ad73", "#c7838c", "#8fa3af", "#aa987b"];
+const ROW_HEIGHT = 44;
+const feedback = "transition-[color,background-color,opacity] duration-150 motion-reduce:transition-none";
 
-/**
- * Compact horizontal version track (docs/VERSION-NODES-UX.md 默认界面).
- *
- * One main line of small dots (oldest left, newest right) connected by a thin,
- * dimmer line; off-mainline branches hang below their anchor in a single
- * compact secondary level, with deeper subtrees folded behind a toggle
- * indicator. Hover and focus show summaries only — never a snapshot load.
- * States are distinguished by shape and ring (base = filled accent + ring,
- * previewed = rotated square + dashed outline, selected = faint ring), never
- * by brightness alone. The track renders nothing while the project has no
- * versions and no trial plans.
- */
-
-interface NodeMenuState {
-  nodeId: string;
-  x: number;
-  y: number;
+/** Identity colors survive rename, reordering and reopening; parent and child differ. */
+function nodeColors(nodes: readonly ProjectNodeSummary[]): Map<string, string> {
+  const byId = new Map(nodes.map(node => [node.id, node]));
+  const indices = new Map<string, number>();
+  const colorIndex = (node: ProjectNodeSummary): number => {
+    if (indices.has(node.id)) return indices.get(node.id)!;
+    let index = [...node.id].reduce((value, character) => value * 31 + character.charCodeAt(0) >>> 0, 0) % PALETTE.length;
+    const parent = node.parentNodeId ? byId.get(node.parentNodeId) : undefined;
+    if (parent && index === colorIndex(parent)) index = (index + 1) % PALETTE.length;
+    indices.set(node.id, index);
+    return index;
+  };
+  return new Map(nodes.map(node => [node.id, PALETTE[colorIndex(node)]!]));
 }
 
-interface RenameState {
-  nodeId: string;
-  value: string;
-  error: boolean;
-}
-
-interface TipState {
-  key: string;
-  anchor: { left: number; top: number; width: number };
-  title: string;
-  meta: string;
-  detail?: string;
-  warning?: string;
-}
-
-interface BranchColumn {
-  main: ProjectNodeSummary;
-  branches: ProjectNodeSummary[];
-}
-
-/** Ancestry chain of `start` (root first). Cycle-safe. */
-function ancestryChain(
-  start: ProjectNodeSummary,
-  byId: Map<string, ProjectNodeSummary>,
-): ProjectNodeSummary[] {
-  const chain: ProjectNodeSummary[] = [];
-  const seen = new Set<string>();
-  let current: ProjectNodeSummary | undefined = start;
-  while (current && !seen.has(current.id)) {
-    seen.add(current.id);
-    chain.push(current);
-    current = current.parentNodeId ? byId.get(current.parentNodeId) : undefined;
-  }
-  return chain.reverse();
-}
-
-function descendantsOf(
-  rootId: string,
-  childrenOf: Map<string, ProjectNodeSummary[]>,
-): ProjectNodeSummary[] {
-  const out: ProjectNodeSummary[] = [];
-  const queue = [...(childrenOf.get(rootId) ?? [])];
-  const seen = new Set<string>([rootId]);
-  while (queue.length > 0) {
-    const node = queue.shift()!;
-    if (seen.has(node.id)) continue;
-    seen.add(node.id);
-    out.push(node);
-    queue.push(...(childrenOf.get(node.id) ?? []));
-  }
-  return out.sort((a, b) => a.createdAt - b.createdAt);
-}
-
-interface TrackLayout {
-  columns: BranchColumn[];
-  /** Off-mainline nodes whose visible lineage never reaches the main chain. */
-  orphans: ProjectNodeSummary[];
-}
-
-function buildTrackLayout(
-  nodes: readonly ProjectNodeSummary[],
-  baseNodeId: string | null | undefined,
-): TrackLayout {
-  const ordered = [...nodes].sort((a, b) => a.createdAt - b.createdAt);
-  if (ordered.length === 0) return { columns: [], orphans: [] };
-  const byId = new Map(ordered.map((node) => [node.id, node]));
-
-  // Main line: the active workspace's ancestry chain. When the base reference
-  // is absent or recycled, walk from the most recent node instead.
-  const start = (baseNodeId ? byId.get(baseNodeId) : undefined) ?? ordered[ordered.length - 1];
-  const chain = ancestryChain(start, byId);
-  const chainIds = new Set(chain.map((node) => node.id));
-
-  const childrenOf = new Map<string, ProjectNodeSummary[]>();
-  for (const node of ordered) {
-    if (!node.parentNodeId) continue;
-    const siblings = childrenOf.get(node.parentNodeId) ?? [];
-    siblings.push(node);
-    childrenOf.set(node.parentNodeId, siblings);
-  }
-
-  // Level-1 branch roots: off-chain nodes whose parent sits on the main
-  // chain. Their deeper descendants stay folded behind the root's indicator.
-  const branchRoots = new Map<string, ProjectNodeSummary>();
-  const orphans: ProjectNodeSummary[] = [];
-  for (const node of ordered) {
-    if (chainIds.has(node.id)) continue;
-    let branchRoot: ProjectNodeSummary | undefined;
-    let cursor: ProjectNodeSummary | undefined = node;
-    const walked = new Set<string>();
-    while (cursor && !walked.has(cursor.id)) {
-      walked.add(cursor.id);
-      const parent: ProjectNodeSummary | undefined = cursor.parentNodeId
-        ? byId.get(cursor.parentNodeId)
-        : undefined;
-      if (parent && chainIds.has(parent.id)) {
-        branchRoot = cursor;
-        break;
-      }
-      if (!parent) break;
-      cursor = parent;
-    }
-    if (!branchRoot) {
-      orphans.push(node);
-      continue;
-    }
-    branchRoots.set(branchRoot.id, branchRoot);
-  }
-
-  const branchesByAnchor = new Map<string, ProjectNodeSummary[]>();
-  for (const root of branchRoots.values()) {
-    const anchorId = root.parentNodeId!;
-    const group = branchesByAnchor.get(anchorId) ?? [];
-    group.push(root);
-    branchesByAnchor.set(anchorId, group);
-  }
-
-  const columns: BranchColumn[] = chain.map((node) => ({
-    main: node,
-    branches: (branchesByAnchor.get(node.id) ?? []).sort((a, b) => a.createdAt - b.createdAt),
-  }));
-
-  return { columns, orphans: orphans.sort((a, b) => a.createdAt - b.createdAt) };
-}
-
-const STATE_TRANSITION =
-  "transition-[color,opacity,box-shadow] duration-200 ease-out motion-reduce:transition-none";
-
-const HIT_AREA_CLASSES = [
-  "grid h-7 w-7 shrink-0 place-items-center rounded-full outline-none",
-  "[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11",
-  "focus-visible:ring-1 focus-visible:ring-fg-2",
-].join(" ");
-
-/** Width-collapse placeholder so a deleted dot folds away smoothly. */
-function CollapsingUnit({ nodeId, onCollapsed }: { nodeId: string; onCollapsed: (id: string) => void }) {
-  const [collapsed, setCollapsed] = useState(false);
-  const callbackRef = useRef(onCollapsed);
-  callbackRef.current = onCollapsed;
-  const finishedRef = useRef(false);
-  useEffect(() => {
-    const finish = () => {
-      if (finishedRef.current) return;
-      finishedRef.current = true;
-      callbackRef.current(nodeId);
-    };
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
-      finish();
-      return;
-    }
-    const raf = requestAnimationFrame(() => setCollapsed(true));
-    const timer = window.setTimeout(finish, 240);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.clearTimeout(timer);
-    };
-  }, [nodeId]);
-  return (
-    <div className="flex shrink-0 flex-col">
-      <div className="flex h-7 items-center">
-        <span
-          aria-hidden
-          data-testid="version-node-collapsing"
-          className={`pointer-events-none transition-all duration-200 ease-out motion-reduce:transition-none ${
-            collapsed ? "w-0 opacity-0" : "w-7 opacity-100"
-          }`}
-        />
-      </div>
-    </div>
-  );
-}
-
-export function VersionNodeTrack() {
-  const { t } = useTranslation();
+/** Inspector archive browser: read summaries until the user asks to preview. */
+export function VersionNodeTrack({
+  projectId,
+  workspaceId,
+  active = true
+}: {
+  projectId?: string;
+  workspaceId?: string;
+  active?: boolean;
+} = {}) {
+  const {
+    t
+  } = useTranslation();
   const snapshot = useSyncExternalStore(workspaceManager.subscribe, workspaceManager.getSnapshot);
   const preview = useSyncExternalStore(previewSession.subscribe, previewSession.getSnapshot);
-
+  const focusRequest = useUIStore(state => state.archiveFocusRequest);
+  const id = projectId ?? snapshot.activeProjectId;
+  const editId = workspaceId ?? snapshot.activeWorkspaceId;
+  const workspace = snapshot.workspaces.find(entry => entry.id === editId);
+  const nodes = useMemo(() => snapshot.nodes.filter(node => node.projectId === id && node.recycledAt === undefined).sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id)), [snapshot.nodes, id]);
+  const byId = useMemo(() => new Map(nodes.map(node => [node.id, node])), [nodes]);
+  const colors = useMemo(() => nodeColors(snapshot.nodes.filter(node => node.projectId === id)), [snapshot.nodes, id]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<NodeMenuState | null>(null);
-  const [rename, setRename] = useState<RenameState | null>(null);
-  const [renameShake, setRenameShake] = useState(false);
-  const [sheetNodeId, setSheetNodeId] = useState<string | null>(null);
-  const [tip, setTip] = useState<TipState | null>(null);
-  const [expandedBranches, setExpandedBranches] = useState<Set<string>>(() => new Set());
-  const [collapsingIds, setCollapsingIds] = useState<string[]>([]);
-
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const seenNodeIdsRef = useRef<Set<string> | null>(null);
-  const lastFocusRef = useRef<{ workspaceId: string | null; baseNodeId: string | null } | null>(null);
-
-  const activeProjectId = snapshot.activeProjectId;
-  const activeWorkspace = snapshot.workspaces.find((entry) => entry.id === snapshot.activeWorkspaceId);
-  const projectNodes = useMemo(
-    () =>
-      activeProjectId
-        ? snapshot.nodes
-            .filter((node) => node.projectId === activeProjectId && node.recycledAt === undefined)
-            .sort((a, b) => a.createdAt - b.createdAt)
-        : [],
-    [snapshot.nodes, activeProjectId],
-  );
-  const projectTrials = useMemo(
-    () =>
-      activeProjectId
-        ? snapshot.workspaces.filter(
-            (workspace) => workspace.projectId === activeProjectId && workspace.kind === "trial",
-          )
-        : [],
-    [snapshot.workspaces, activeProjectId],
-  );
-  const baseNodeId = activeWorkspace?.baseNodeId ?? null;
-  /** Base reference points outside the visible list: the node was recycled. */
-  const baseRecycled = baseNodeId !== null && !projectNodes.some((node) => node.id === baseNodeId);
-  const previewedNodeId = preview.active ? preview.info?.nodeId ?? null : null;
-  const previewedWorkspaceId = preview.active ? preview.info?.workspaceId ?? null : null;
-
-  // Node appear/collapse bookkeeping: fresh ids fade in on the next paint,
-  // removed ids fold away via a collapsing placeholder.
-  const seenIds = seenNodeIdsRef.current;
-  const freshIds = useMemo(
-    () =>
-      seenIds
-        ? new Set(projectNodes.filter((node) => !seenIds.has(node.id)).map((node) => node.id))
-        : new Set<string>(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectNodes],
-  );
-  useEffect(() => {
-    const previous = seenNodeIdsRef.current;
-    seenNodeIdsRef.current = new Set(projectNodes.map((node) => node.id));
-    if (!previous) return;
-    const gone = [...previous].filter((id) => !projectNodes.some((node) => node.id === id));
-    if (gone.length > 0) {
-      setCollapsingIds((current) => [...current, ...gone.filter((id) => !current.includes(id))]);
+  const [folded, setFolded] = useState<Set<string>>(() => new Set());
+  const [rename, setRename] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{
+    nodeId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef(focusRequest);
+  const selected = selectedId ? byId.get(selectedId) : undefined;
+  const base = workspace?.baseNodeId ?? null;
+  const currentLine = useMemo(() => {
+    const lineage = new Set<string>();
+    let node = base ? byId.get(base) : nodes[0];
+    while (node) {
+      lineage.add(node.id);
+      node = node.parentNodeId ? byId.get(node.parentNodeId) : undefined;
     }
-  }, [projectNodes]);
-
-  const dismissCollapsing = useCallback((id: string) => {
-    setCollapsingIds((current) => current.filter((entry) => entry !== id));
-  }, []);
-
-  // Auto-scroll to the current node only when the edit target itself moved
-  // (workspace switch or a newly retained version), never on background updates.
-  useEffect(() => {
-    const key = { workspaceId: snapshot.activeWorkspaceId, baseNodeId };
-    const previous = lastFocusRef.current;
-    lastFocusRef.current = key;
-    if (!previous) return;
-    if (previous.workspaceId === key.workspaceId && previous.baseNodeId === key.baseNodeId) return;
-    scrollRef.current
-      ?.querySelector<HTMLElement>('[data-current="true"]')
-      ?.scrollIntoView({
-        behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-        inline: "center",
-        block: "nearest",
-      });
-  }, [snapshot.activeWorkspaceId, baseNodeId]);
-
-  const layout = useMemo(() => buildTrackLayout(projectNodes, baseNodeId), [projectNodes, baseNodeId]);
-
-  const byId = useMemo(() => new Map(projectNodes.map((node) => [node.id, node])), [projectNodes]);
-  const childrenOf = useMemo(() => {
-    const map = new Map<string, ProjectNodeSummary[]>();
-    for (const node of projectNodes) {
-      if (!node.parentNodeId) continue;
-      const siblings = map.get(node.parentNodeId) ?? [];
-      siblings.push(node);
-      map.set(node.parentNodeId, siblings);
+    return lineage;
+  }, [base, byId, nodes]);
+  const roots = nodes.filter(node => !currentLine.has(node.id) && (!node.parentNodeId || currentLine.has(node.parentNodeId) || !byId.has(node.parentNodeId)));
+  const laneFor = (node: ProjectNodeSummary): number => {
+    if (currentLine.has(node.id)) return 0;
+    let cursor = node;
+    while (cursor.parentNodeId && byId.has(cursor.parentNodeId) && !currentLine.has(cursor.parentNodeId)) cursor = byId.get(cursor.parentNodeId)!;
+    return 1 + Math.max(0, roots.findIndex(root => root.id === cursor.id)) % 3;
+  };
+  const descendantIds = (rootId: string) => nodes.filter(node => {
+    let cursor = node;
+    while (cursor.parentNodeId && byId.has(cursor.parentNodeId)) {
+      if (cursor.parentNodeId === rootId) return true;
+      cursor = byId.get(cursor.parentNodeId)!;
     }
-    return map;
-  }, [projectNodes]);
-  const chainIds = useMemo(
-    () => new Set(layout.columns.map((column) => column.main.id)),
-    [layout],
-  );
-
+    return false;
+  }).map(node => node.id);
+  const hiddenIds = new Set([...folded].flatMap(descendantIds));
+  const visible = nodes.filter(node => !hiddenIds.has(node.id));
+  const rowIndex = new Map(visible.map((node, index) => [node.id, index]));
   useEffect(() => {
-    void workspaceManager.initialize().catch(() => {
-      // Initialization failures surface via the bootstrap gate; the track
-      // simply stays empty until the snapshot populates.
-    });
-  }, []);
-
-  // The menu / rename / sheet own Escape (capture) so page-level shortcut
-  // handlers do not act while they are open.
-  useEffect(() => {
-    if (!menu && !rename && !sheetNodeId) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.stopPropagation();
-      event.preventDefault();
-      if (rename) setRename(null);
-      else if (sheetNodeId) setSheetNodeId(null);
-      else setMenu(null);
-    };
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [menu, rename, sheetNodeId]);
-
-  useEffect(() => {
-    if (!menu && !sheetNodeId) return;
-    const close = () => {
-      setMenu(null);
-      setSheetNodeId(null);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [menu, sheetNodeId]);
-
-  const showTip = useCallback(
-    (
-      key: string,
-      element: HTMLElement,
-      title: string,
-      meta: string,
-      detail?: string,
-      warning?: string,
-    ) => {
-      const rect = element.getBoundingClientRect();
-      setTip({ key, anchor: { left: rect.left, top: rect.top, width: rect.width }, title, meta, detail, warning });
-    },
-    [],
-  );
-
-  const nodeTip = useCallback(
-    (node: ProjectNodeSummary, element: HTMLElement) => {
-      showTip(
-        node.id,
-        element,
-        node.name,
-        new Date(node.createdAt).toLocaleString(),
-        node.summary || undefined,
-        node.missingDependencies.length > 0 ? t("versioning.missing") : undefined,
-      );
-    },
-    [showTip, t],
-  );
-
-  const trialTip = useCallback(
-    (workspace: WorkspaceSummary, element: HTMLElement) => {
-      showTip(
-        `trial:${workspace.id}`,
-        element,
-        t("versioning.agentTrial"),
-        workspace.name,
-        t("versioning.agentTrialHint"),
-      );
-    },
-    [showTip, t],
-  );
-
-  const hideTip = useCallback(() => setTip(null), []);
-
-  const isCoarsePointer = useMemo(
-    () => window.matchMedia?.("(pointer: coarse)")?.matches ?? false,
-    [],
-  );
-
-  const previewNode = useCallback(
-    (nodeId: string) => {
-      setSelectedId(nodeId);
-      setMenu(null);
-      setSheetNodeId(null);
-      void previewSession.enter({ kind: "node", nodeId }).catch((error: unknown) => {
-        toast.error(t("versioning.failed"), error instanceof Error ? error.message : String(error));
-      });
-    },
-    [t],
-  );
-
-  const previewTrial = useCallback(
-    (workspaceId: string) => {
-      setMenu(null);
-      setSheetNodeId(null);
-      void previewSession.enter({ kind: "workspace", workspaceId }).catch((error: unknown) => {
-        toast.error(t("versioning.failed"), error instanceof Error ? error.message : String(error));
-      });
-    },
-    [t],
-  );
-
-  const adoptNode = useCallback(
-    async (nodeId: string) => {
-      setMenu(null);
-      setSheetNodeId(null);
-      try {
-        await previewSession.enter({ kind: "node", nodeId });
-        await previewSession.adopt();
-      } catch (error) {
-        toast.error(t("versioning.failed"), error instanceof Error ? error.message : String(error));
-      }
-    },
-    [t],
-  );
-
-  const deleteNode = useCallback(
-    async (nodeId: string) => {
-      setMenu(null);
-      setSheetNodeId(null);
-      if (!activeProjectId) return;
-      try {
-        // Deleting the previewed node returns to current editing first.
-        const previewState = previewSession.getSnapshot();
-        if (previewState.active && previewState.info?.nodeId === nodeId) {
-          await previewSession.exit();
-        }
-        await workspaceManager.deleteNode({ projectId: activeProjectId, nodeId });
-        const notificationId = useNotificationStore.getState().addNotification({
-          type: "info",
-          title: t("versioning.deletedToast"),
-          duration: 6000,
-          onClickLabel: t("versioning.deleteUndo"),
-          onClick: () => {
-            void workspaceManager
-              .restoreDeletedNode({ projectId: activeProjectId, nodeId })
-              .catch((error: unknown) => {
-                toast.error(t("versioning.failed"), error instanceof Error ? error.message : String(error));
-              });
-            useNotificationStore.getState().removeNotification(notificationId);
-          },
-        });
-      } catch (error) {
-        toast.error(t("versioning.failed"), error instanceof Error ? error.message : String(error));
-      }
-    },
-    [activeProjectId, t],
-  );
-
-  const commitRename = useCallback(async () => {
-    if (!rename || !activeProjectId) return;
-    const name = rename.value.trim();
-    if (!name) {
-      // Empty name: error style only, never a request.
-      setRename((current) => (current ? { ...current, error: true } : current));
-      setRenameShake(true);
-      window.setTimeout(() => setRenameShake(false), 200);
+    if (!active) {
+      previousFocus.current = focusRequest;
       return;
     }
-    try {
-      await workspaceManager.renameNode({ projectId: activeProjectId, nodeId: rename.nodeId, name });
-      setRename(null);
+    if (previousFocus.current === focusRequest && selectedId !== null) return;
+    previousFocus.current = focusRequest;
+    setSelectedId(base && byId.has(base) ? base : nodes[0]?.id ?? null);
+    setFolded(new Set());
+    requestAnimationFrame(() => listRef.current?.querySelector('[data-base="true"]')?.scrollIntoView({
+      block: "nearest"
+    }));
+  }, [active, focusRequest, base, byId, nodes, selectedId]);
+  useEffect(() => {
+    if (!active) {
       setMenu(null);
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      const expandedMenu = listRef.current?.querySelector<HTMLDetailsElement>("details[open]");
+      if (event.key !== "Escape" || !menu && rename === null && !expandedMenu) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (expandedMenu) expandedMenu.open = false;
+      setMenu(null);
+      setRename(null);
+    };
+    const dismiss = () => setMenu(null);
+    document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("pointerdown", dismiss);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.removeEventListener("pointerdown", dismiss);
+    };
+  }, [active, menu, rename]);
+  const perform = async (operation: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await operation();
     } catch (error) {
       toast.error(t("versioning.failed"), error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
     }
-  }, [rename, activeProjectId, t]);
-
-  const openMenu = useCallback((nodeId: string, x: number, y: number) => {
-    setRename(null);
-    setMenu({ nodeId, x, y });
-  }, []);
-
-  if (!activeProjectId || (projectNodes.length === 0 && projectTrials.length === 0)) {
-    return null;
-  }
-
-  const renderDot = (node: ProjectNodeSummary, depth: number) => {
-    const isBase = node.id === baseNodeId;
-    const isPreviewed = previewedNodeId === node.id;
-    const isSelected = selectedId === node.id;
-    return (
-      <button
-        key={node.id}
-        type="button"
-        data-testid={`version-node-${node.id}`}
-        data-base={isBase ? "true" : undefined}
-        data-current={isBase ? "true" : undefined}
-        aria-pressed={isSelected}
-        aria-label={node.name}
-        className={HIT_AREA_CLASSES}
-        onClick={() => {
-          if (isCoarsePointer) {
-            // Touch: tap opens the info + action sheet; key actions must not
-            // hide behind hover or right-click.
-            setSheetNodeId(node.id);
-            return;
-          }
-          setSelectedId(node.id);
-        }}
-        onDoubleClick={() => previewNode(node.id)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            previewNode(node.id);
-            return;
-          }
-          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-            event.preventDefault();
-            const rect = event.currentTarget.getBoundingClientRect();
-            openMenu(node.id, rect.left, rect.bottom);
-          }
-        }}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          openMenu(node.id, event.clientX, event.clientY);
-        }}
-        onMouseEnter={(event) => nodeTip(node, event.currentTarget)}
-        onMouseLeave={hideTip}
-        onFocus={(event) => nodeTip(node, event.currentTarget)}
-        onBlur={hideTip}
-      >
-        <span
-          aria-hidden
-          className={[
-            STATE_TRANSITION,
-            "block h-2 w-2",
-            isPreviewed ? "rotate-45 rounded-[2px]" : "rounded-full",
-            isBase ? "bg-accent ring-1 ring-accent" : "bg-fg-3 group-hover:bg-fg-2",
-            isSelected && !isBase ? "ring-1 ring-fg-2" : "",
-            isPreviewed ? "outline outline-1 outline-dashed outline-fg-2" : "",
-            depth > 1 ? "opacity-90" : "",
-            freshIds.has(node.id) ? "animate-in fade-in duration-200 motion-reduce:animate-none" : "",
-          ].join(" ")}
-        />
-      </button>
-    );
   };
-
-  const renderTrialDot = (workspace: WorkspaceSummary) => {
-    const isPreviewed = previewedWorkspaceId === workspace.id && preview.info?.agentTrial === true;
-    return (
-      <button
-        key={workspace.id}
-        type="button"
-        data-testid={`version-trial-${workspace.id}`}
-        aria-label={t("versioning.agentTrial")}
-        className={`group shrink-0 opacity-70 hover:opacity-100 ${STATE_TRANSITION} ${HIT_AREA_CLASSES}`}
-        onDoubleClick={() => previewTrial(workspace.id)}
-        onClick={() => {
-          if (isCoarsePointer) previewTrial(workspace.id);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            previewTrial(workspace.id);
-          }
-        }}
-        onMouseEnter={(event) => trialTip(workspace, event.currentTarget)}
-        onMouseLeave={hideTip}
-        onFocus={(event) => trialTip(workspace, event.currentTarget)}
-        onBlur={hideTip}
-      >
-        <span
-          aria-hidden
-          className={[
-            STATE_TRANSITION,
-            "block h-2 w-2 rotate-45 rounded-[2px] border border-fg-2 bg-transparent",
-            isPreviewed ? "outline outline-1 outline-dashed outline-fg-2" : "",
-          ].join(" ")}
-        />
-      </button>
-    );
+  const previewNode = (nodeId: string) => {
+    setSelectedId(nodeId);
+    setMenu(null);
+    void perform(() => previewSession.enter({
+      kind: "node",
+      nodeId
+    }));
   };
-
-  const branchCell = (branch: ProjectNodeSummary): ReactNode => {
-    const descendants = descendantsOf(branch.id, childrenOf).filter((node) => !chainIds.has(node.id));
-    const expanded = expandedBranches.has(branch.id);
-    return (
-      <div key={branch.id} className="flex shrink-0 items-center">
-        <span aria-hidden className="h-px w-2 shrink-0 bg-border" />
-        {renderDot(branch, 1)}
-        {expanded
-          ? descendants.map((child) => (
-              <div key={child.id} className="flex shrink-0 items-center">
-                <span aria-hidden className="h-px w-2 shrink-0 bg-border" />
-                {renderDot(child, 2)}
-              </div>
-            ))
-          : null}
-        {descendants.length > 0 ? (
-          <button
-            type="button"
-            data-testid={`branch-fold-${branch.id}`}
-            aria-expanded={expanded}
-            aria-label={t("versioning.nodeCount", { count: descendants.length })}
-            className="grid h-4 w-4 shrink-0 place-items-center rounded-full text-fg-3 outline-none hover:text-fg-2 focus-visible:ring-1 focus-visible:ring-fg-2"
-            onClick={() =>
-              setExpandedBranches((current) => {
-                const next = new Set(current);
-                if (next.has(branch.id)) next.delete(branch.id);
-                else next.add(branch.id);
-                return next;
-              })
-            }
-          >
-            <span
-              aria-hidden
-              className={`block h-1.5 w-1.5 rounded-full border border-current ${STATE_TRANSITION}`}
-            />
-          </button>
-        ) : null}
-      </div>
-    );
+  const removeNode = (nodeId: string) => void perform(async () => {
+    setMenu(null);
+    if (previewSession.getSnapshot().info?.nodeId === nodeId) await previewSession.exit();
+    await workspaceManager.deleteNode({
+      projectId: id!,
+      nodeId
+    });
+    const notificationId = useNotificationStore.getState().addNotification({
+      type: "info",
+      title: t("versioning.deletedToast"),
+      duration: 6000,
+      onClickLabel: t("versioning.deleteUndo"),
+      onClick: () => {
+        void perform(async () => {
+          await workspaceManager.restoreDeletedNode({
+            projectId: id!,
+            nodeId
+          });
+        });
+        useNotificationStore.getState().removeNotification(notificationId);
+      }
+    });
+  });
+  const adopt = (nodeId: string) => void perform(async () => {
+    setMenu(null);
+    await previewSession.enter({
+      kind: "node",
+      nodeId
+    });
+    await previewSession.adopt();
+  });
+  const commitRename = () => {
+    if (!selected || !rename?.trim()) return;
+    void perform(async () => {
+      await workspaceManager.renameNode({
+        projectId: id!,
+        nodeId: selected.id,
+        name: rename.trim()
+      });
+      setRename(null);
+    });
   };
-
-  /** One vertical unit: main dot on the top line, its branch row below. */
-  const renderUnit = (key: string, main: ReactNode, branchRow: ReactNode) => (
-    <div key={key} className="flex shrink-0 flex-col items-center">
-      <div className="flex h-7 items-center">{main}</div>
-      {branchRow ? (
-        <>
-          <span aria-hidden className="h-1.5 w-px shrink-0 bg-border" />
-          <div className="flex h-7 items-center">{branchRow}</div>
-        </>
-      ) : null}
+  const compare = () => void perform(async () => {
+    if (previewSession.getSnapshot().active) await previewSession.exit();
+    const node = await workspaceManager.getNode(id!, selected!.id);
+    if (!node) throw new Error(t("versioning.failed"));
+    const renderer = await createHistoryFrameRenderer(id!, node);
+    const target = workspaceManager.getActiveTarget();
+    if (target?.projectId !== id || target.workspaceId !== editId) {
+      renderer.dispose();
+      return;
+    }
+    activateHistoryComparison({
+      projectId: id!,
+      nodeId: node.id,
+      name: node.name,
+      createdAt: node.createdAt,
+      durationSec: renderer.durationSec,
+      width: renderer.width,
+      height: renderer.height,
+      renderer
+    });
+  });
+  const save = () => void perform(async () => {
+    const result = await workspaceManager.saveNode({
+      target: {
+        projectId: id!,
+        workspaceId: editId!
+      }
+    });
+    setSelectedId(result.node.id);
+    setFolded(new Set());
+    toast.success(t(result.replayed ? "versioning.alreadyRetained" : "versioning.retainSuccess", {
+      name: result.node.name
+    }));
+    const target = workspaceManager.getActiveTarget();
+    if (target?.projectId === id && target.workspaceId === editId) useUIStore.getState().showCurrentArchive();
+  });
+  const menuActions = (nodeId: string, contextMenu = false) => <>
+    <button role="menuitem" data-testid={contextMenu ? "version-menu-preview" : undefined} onClick={() => previewNode(nodeId)}>{t("versioning.menuPreview")}</button>
+    <button role="menuitem" data-testid={contextMenu ? "version-menu-rename" : undefined} onClick={() => {
+      setSelectedId(nodeId);
+      setRename(byId.get(nodeId)!.name);
+      setMenu(null);
+    }}>{t("versioning.menuRename")}</button>
+    <button role="menuitem" data-testid={contextMenu ? "version-menu-adopt" : undefined} onClick={() => adopt(nodeId)}>{t("versioning.menuAdopt")}</button>
+    <button role="menuitem" data-testid={contextMenu ? "version-menu-delete" : undefined} className="text-destructive" onClick={() => removeNode(nodeId)}>{t("versioning.menuDelete")}</button>
+  </>;
+  if (!id || !editId) return null;
+  return <section aria-label={t("versioning.trackLabel")} data-testid="version-track" className="flex h-full min-h-0 flex-col text-xs text-fg">
+    <header className="shrink-0 space-y-2 border-b border-border p-3">
+      <div className="flex items-center justify-between gap-2"><h2 className="font-medium">{t("versioning.trackLabel")}</h2>
+        <button type="button" data-testid="create-save-point" disabled={busy} onClick={save} className={`rounded border border-border px-2 py-1 text-fg-2 hover:bg-hover ${feedback}`}>{t("versioning.retainMenu")}</button></div>
+      {preview.active ? <p className="leading-relaxed text-fg-2">{t("versioning.previewSaveTarget")}</p> : null}
+      {base && !byId.has(base) ? <p data-testid="current-edit-endpoint" className="text-fg-2">{t("versioning.recycledBase")}</p> : workspace?.dirty && nodes.length > 0 ? <p className="text-fg-2">{t("versioning.newEdits")}</p> : null}
+    </header>
+    <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar">
+      {nodes.length === 0 ? <p className="px-3 py-6 leading-relaxed text-fg-2">{t("versioning.emptyArchives")}</p> : <div className="relative">
+        <svg aria-hidden className="pointer-events-none absolute left-0 top-0 text-border-strong" width="68" height={visible.length * ROW_HEIGHT}>
+          {visible.map(node => {
+            const parent = node.parentNodeId ? byId.get(node.parentNodeId) : undefined;
+            if (!parent || !rowIndex.has(parent.id)) return null;
+            const x = 12 + laneFor(node) * 14,
+              px = 12 + laneFor(parent) * 14;
+            const y = rowIndex.get(node.id)! * ROW_HEIGHT + ROW_HEIGHT / 2,
+              py = rowIndex.get(parent.id)! * ROW_HEIGHT + ROW_HEIGHT / 2;
+            return <path key={node.id} data-parent-id={parent.id} data-child-id={node.id} d={`M ${x} ${y} V ${py - 12} Q ${x} ${py} ${px} ${py}`} fill="none" stroke="currentColor" strokeWidth="1" />;
+          })}
+        </svg>
+        {visible.map(node => {
+          const selectedRow = node.id === selectedId,
+            current = node.id === base,
+            previewing = preview.active && preview.info?.nodeId === node.id;
+          const trial = node.sourceWorkspaceKind === "trial" || snapshot.workspaces.some(entry => entry.kind === "trial" && entry.baseNodeId === node.id);
+          const children = currentLine.has(node.id) ? [] : descendantIds(node.id);
+          return <div key={node.id} className="relative flex h-11 items-center">
+            <button type="button" data-testid={`version-node-${node.id}`} data-base={current ? "true" : undefined} aria-pressed={selectedRow} aria-label={node.name} disabled={busy} className={`flex h-full min-w-0 flex-1 items-center text-left outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent hover:bg-hover ${selectedRow ? "bg-bg-2" : ""} ${feedback}`} onClick={() => {
+              setSelectedId(node.id);
+              setRename(null);
+            }} onDoubleClick={() => previewNode(node.id)} onKeyDown={event => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                previewNode(node.id);
+              }
+              if (event.key === "ContextMenu" || event.shiftKey && event.key === "F10") {
+                event.preventDefault();
+                const rect = event.currentTarget.getBoundingClientRect();
+                setMenu({
+                  nodeId: node.id,
+                  x: rect.left,
+                  y: rect.bottom
+                });
+              }
+            }} onContextMenu={event => {
+              event.preventDefault();
+              setSelectedId(node.id);
+              setMenu({
+                nodeId: node.id,
+                x: event.clientX,
+                y: event.clientY
+              });
+            }}>
+              <span className="relative h-full w-[68px] shrink-0" aria-hidden><span style={{
+                  left: 8 + laneFor(node) * 14,
+                  top: 18,
+                  backgroundColor: trial ? "var(--bg-1)" : colors.get(node.id),
+                  borderColor: colors.get(node.id),
+                  opacity: selectedRow || current || previewing ? 1 : 0.5
+                }} className={`absolute h-2 w-2 transition-opacity duration-200 motion-reduce:transition-none ${trial ? "rotate-45 rounded-[1px] border" : "rounded-full"} ${current ? "outline outline-1 outline-offset-2 outline-fg-2" : ""} ${previewing ? "outline outline-1 outline-offset-2 outline-dashed outline-fg" : ""}`} /></span>
+              <span className="min-w-0 flex-1 py-1"><span className="block truncate font-medium">{node.name}</span><span className="block truncate text-[10px] text-fg-3">{new Date(node.createdAt).toLocaleString()}</span></span>
+              {current || previewing ? <span className="ml-1 mr-2 shrink-0 text-[10px] text-fg-2">{t(previewing ? "versioning.previewingShort" : "versioning.current")}</span> : null}
+              {trial ? <span className="mr-2 shrink-0 text-[10px] text-fg-3">{t("versioning.trialDefault")}</span> : null}
+            </button>
+            {!currentLine.has(node.id) && children.length > 2 ? <button type="button" aria-expanded={!folded.has(node.id)} title={t("versioning.nodeCount", {
+              count: children.length
+            })} className="mr-2 rounded px-1 text-fg-3 hover:text-fg" onClick={() => setFolded(currentFolded => {
+              const next = new Set(currentFolded);
+              if (next.has(node.id)) next.delete(node.id);else next.add(node.id);
+              return next;
+            })}>{folded.has(node.id) ? `+${children.length}` : "−"}</button> : null}
+          </div>;
+        })}
+      </div>}
+      {selected ? <div className="space-y-3 border-t border-border p-3" data-testid="archive-details">
+        {rename !== null ? <div className="flex gap-1"><input data-testid="version-rename-input" aria-label={t("versioning.renameLabel")} autoFocus className="min-w-0 flex-1 rounded border border-border bg-bg-2 px-2 py-1" value={rename} onChange={event => setRename(event.target.value)} onKeyDown={event => {
+            if (event.key === "Enter") commitRename();
+          }} />
+          <button type="button" disabled={!rename.trim() || busy} onClick={commitRename}>{t("versioning.menuRename")}</button></div> : <h3 className="break-words font-medium">{selected.name}</h3>}
+        <p className="text-fg-3">{new Date(selected.createdAt).toLocaleString()}</p>
+        {selected.summary ? <p className="whitespace-pre-wrap break-words leading-relaxed text-fg-2">{selected.summary}</p> : null}
+        {selected.missingDependencies.length ? <p className="leading-relaxed text-status-warning">{t("versioning.missing")}</p> : null}
+        <div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => previewNode(selected.id)} className={`rounded border border-border px-2 py-1.5 hover:bg-hover ${feedback}`}>{t("versioning.menuPreview")}</button>
+          <button type="button" disabled={busy} onClick={compare} className={`rounded border border-border px-2 py-1.5 text-fg-2 hover:bg-hover ${feedback}`}>{t("versioning.compareCurrent")}</button>
+          <details><summary className="cursor-pointer rounded px-2 py-1.5 text-fg-2 hover:bg-hover">{t("versioning.more")}</summary><div role="menu" className="archive-menu mt-1 rounded border border-border bg-bg-2 p-1">{menuActions(selected.id)}</div></details></div>
+      </div> : null}
     </div>
-  );
-
-  const connector = (
-    <span aria-hidden className="h-px w-4 shrink-0 bg-border" />
-  );
-  /** Connectors align with the top (main) line of the taller unit columns. */
-  const connectorUnit = (
-    <div className="flex h-7 shrink-0 items-center self-start">{connector}</div>
-  );
-
-  const units: ReactNode[] = [];
-  layout.columns.forEach((column, index) => {
-    if (index > 0) units.push(<div key={`conn-${column.main.id}`}>{connectorUnit}</div>);
-    const branchRow =
-      column.branches.length > 0 ? <div className="flex items-center">{column.branches.map(branchCell)}</div> : null;
-    units.push(renderUnit(column.main.id, renderDot(column.main, 0), branchRow));
-  });
-  if (layout.orphans.length > 0) {
-    if (units.length > 0) units.push(<div key="conn-orphans">{connectorUnit}</div>);
-    units.push(
-      renderUnit(
-        "orphans",
-        <span aria-hidden className="h-2 w-2 shrink-0 rounded-full border border-dashed border-border" />,
-        <div className="flex items-center">
-          {layout.orphans.map((node, index) => (
-            <div key={node.id} className="flex shrink-0 items-center">
-              {index > 0 ? <span aria-hidden className="h-px w-2 shrink-0 bg-border" /> : null}
-              {renderDot(node, 1)}
-            </div>
-          ))}
-        </div>,
-      ),
-    );
-  }
-  if (baseRecycled) {
-    if (units.length > 0) units.push(<div key="conn-endpoint">{connectorUnit}</div>);
-    units.push(
-      <div key="endpoint" className="flex shrink-0 flex-col items-center">
-        <div className="flex h-7 items-center">
-          <span
-            data-testid="current-edit-endpoint"
-            data-current="true"
-            className="flex h-5 shrink-0 items-center whitespace-nowrap rounded-full border border-border bg-bg-2 px-2 text-[10px] text-fg-2"
-          >
-            {t("versioning.currentEndpoint")}
-          </span>
-        </div>
-      </div>,
-    );
-  }
-  projectTrials.forEach((workspace) => {
-    units.push(
-      <div key={`trial-${workspace.id}`} className="flex shrink-0 items-center pl-1">
-        <span aria-hidden className="h-px w-2 shrink-0 border-t border-dashed border-border" />
-        {renderTrialDot(workspace)}
-      </div>,
-    );
-  });
-  collapsingIds.forEach((id) => {
-    units.push(<CollapsingUnit key={`collapse-${id}`} nodeId={id} onCollapsed={dismissCollapsing} />);
-  });
-
-  const menuNode = menu ? byId.get(menu.nodeId) : undefined;
-  const sheetNode = sheetNodeId ? byId.get(sheetNodeId) : undefined;
-  const hasBranches =
-    layout.columns.some((column) => column.branches.length > 0) || layout.orphans.length > 0;
-
-  return (
-    <section
-      aria-label={t("versioning.trackLabel")}
-      data-testid="version-track"
-      data-project-id={activeProjectId}
-      data-workspace-id={activeWorkspace?.id}
-      className="shrink-0 overflow-hidden border-b border-border bg-bg-1"
-    >
-      <div ref={scrollRef} className="overflow-x-auto">
-        <div className={`flex min-w-max items-start px-2 ${hasBranches ? "py-1" : "h-9"}`}>
-          {units}
-        </div>
-      </div>
-
-      {/* Hover / focus tooltip: summaries only, never a snapshot load */}
-      {tip
-        ? createPortal(
-            <div
-              role="tooltip"
-              data-testid="version-node-tooltip"
-              style={tipStyle(tip.anchor)}
-              className="pointer-events-none fixed z-[var(--z-popover)] w-64 rounded-md border border-border bg-bg-2 px-2.5 py-1.5 text-xs text-fg shadow-md"
-            >
-              <p className="truncate font-medium">{tip.title}</p>
-              <p className="text-fg-2">{tip.meta}</p>
-              {tip.detail ? <p className="truncate text-fg-2">{tip.detail}</p> : null}
-              {tip.warning ? <p className="font-medium text-amber-500">{tip.warning}</p> : null}
-            </div>,
-            document.body,
-          )
-        : null}
-
-      {/* Node context menu: exactly four actions */}
-      {menu && menuNode
-        ? createPortal(
-            <div
-              role="menu"
-              data-testid="version-node-menu"
-              style={{ position: "fixed", left: menu.x, top: menu.y }}
-              className="z-[var(--z-popover)] w-52 rounded-md border border-border bg-bg-1 py-1 text-xs shadow-lg"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              {rename && rename.nodeId === menu.nodeId ? (
-                <div className="px-2 py-1.5">
-                  <style>{`@keyframes vnt-shake { 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
-@media (prefers-reduced-motion: reduce) { .vnt-shake { animation: none !important; } }`}</style>
-                  <label className="block text-fg-2">
-                    {t("versioning.renameLabel")}
-                    <input
-                      autoFocus
-                      data-testid="version-rename-input"
-                      aria-label={t("versioning.renameLabel")}
-                      value={rename.value}
-                      aria-invalid={rename.error}
-                      onChange={(event) =>
-                        setRename({ nodeId: rename.nodeId, value: event.target.value, error: false })
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          void commitRename();
-                        }
-                      }}
-                      className={`mt-1 w-full rounded border bg-bg-2 px-2 py-1 text-fg outline-none ${
-                        rename.error ? "border-destructive" : "border-border focus:border-accent"
-                      } ${renameShake ? "vnt-shake" : ""}`}
-                    />
-                  </label>
-                  <div className="mt-2 flex justify-end gap-1">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      data-testid="version-rename-cancel"
-                      className="rounded border border-border px-2 py-1 hover:bg-hover"
-                      onClick={() => {
-                        setRename(null);
-                        setMenu(null);
-                      }}
-                    >
-                      {t("common.cancel")}
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      data-testid="version-rename-commit"
-                      className="rounded bg-accent px-2 py-1 text-accent-fg hover:bg-accent-strong"
-                      onClick={() => void commitRename()}
-                    >
-                      {t("versioning.menuRename")}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    data-testid="version-menu-preview"
-                    className="block w-full px-3 py-1.5 text-left hover:bg-hover"
-                    onClick={() => previewNode(menu.nodeId)}
-                  >
-                    {t("versioning.menuPreview")}
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    data-testid="version-menu-rename"
-                    className="block w-full px-3 py-1.5 text-left hover:bg-hover"
-                    onClick={() => setRename({ nodeId: menu.nodeId, value: menuNode.name, error: false })}
-                  >
-                    {t("versioning.menuRename")}
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    data-testid="version-menu-adopt"
-                    className="block w-full px-3 py-1.5 text-left hover:bg-hover"
-                    onClick={() => void adoptNode(menu.nodeId)}
-                  >
-                    {t("versioning.menuAdopt")}
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    data-testid="version-menu-delete"
-                    className="block w-full px-3 py-1.5 text-left text-destructive hover:bg-hover"
-                    onClick={() => void deleteNode(menu.nodeId)}
-                  >
-                    {t("versioning.menuDelete")}
-                  </button>
-                </>
-              )}
-            </div>,
-            document.body,
-          )
-        : null}
-
-      {/* Touch action sheet: info header plus the same four actions */}
-      {sheetNode
-        ? createPortal(
-            <div
-              role="dialog"
-              aria-label={sheetNode.name}
-              data-testid="version-node-sheet"
-              className="fixed inset-x-2 bottom-2 z-[var(--z-modal)] rounded-lg border border-border bg-bg-1 p-3 text-xs shadow-xl"
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <p className="font-medium text-fg">{sheetNode.name}</p>
-              <p className="text-fg-2">{new Date(sheetNode.createdAt).toLocaleString()}</p>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  data-testid="version-sheet-preview"
-                  className="rounded border border-border px-2 py-1.5 hover:bg-hover"
-                  onClick={() => previewNode(sheetNode.id)}
-                >
-                  {t("versioning.menuPreview")}
-                </button>
-                <button
-                  type="button"
-                  data-testid="version-sheet-rename"
-                  className="rounded border border-border px-2 py-1.5 hover:bg-hover"
-                  onClick={() => {
-                    const nodeId = sheetNode.id;
-                    setSheetNodeId(null);
-                    setMenu({ nodeId, x: Math.max(8, window.innerWidth / 2 - 104), y: Math.max(8, window.innerHeight / 2 - 60) });
-                    setRename({ nodeId, value: sheetNode.name, error: false });
-                  }}
-                >
-                  {t("versioning.menuRename")}
-                </button>
-                <button
-                  type="button"
-                  data-testid="version-sheet-adopt"
-                  className="rounded border border-border px-2 py-1.5 hover:bg-hover"
-                  onClick={() => void adoptNode(sheetNode.id)}
-                >
-                  {t("versioning.menuAdopt")}
-                </button>
-                <button
-                  type="button"
-                  data-testid="version-sheet-delete"
-                  className="rounded border border-border px-2 py-1.5 text-destructive hover:bg-hover"
-                  onClick={() => void deleteNode(sheetNode.id)}
-                >
-                  {t("versioning.menuDelete")}
-                </button>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
-    </section>
-  );
-}
-
-function tipStyle(anchor: { left: number; top: number; width: number }): CSSProperties {
-  return {
-    position: "fixed",
-    left: Math.max(4, anchor.left + anchor.width / 2 - 128),
-    top: Math.max(4, anchor.top - 72),
-    width: 256,
-  };
+    {menu ? createPortal(<div role="menu" data-testid="version-node-menu" className="reelterminal-desktop archive-menu fixed z-[var(--z-popover)] w-52 rounded-md border border-border bg-bg-1 p-1 text-xs text-fg shadow-md" style={{
+      left: Math.max(4, Math.min(menu.x, window.innerWidth - 216)),
+      top: Math.max(4, Math.min(menu.y, window.innerHeight - 160))
+    }} onPointerDown={event => event.stopPropagation()}>{menuActions(menu.nodeId, true)}</div>, document.body) : null}
+  </section>;
 }

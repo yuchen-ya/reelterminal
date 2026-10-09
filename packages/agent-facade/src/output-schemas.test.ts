@@ -48,6 +48,12 @@ describe("emitted MCP output schemas", () => {
       .toEqual(["asset", "clip", "text", "timeRange"]);
   });
 
+  it("media.import describes every supported media result kind", () => {
+    const schema = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["media.import"] as unknown as Schema;
+    const value = (schema.properties as Schema).value as Schema;
+    expect((value.properties as Schema).type).toEqual({ enum: ["video", "audio", "image"] });
+  });
+
   it("makes evidence coordinates and identity explicit in visual and analysis results", () => {
     const visual = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["visual.inspect"] as unknown as Schema;
     const visualValue = (visual.properties as Schema).value as Schema;

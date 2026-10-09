@@ -7,7 +7,6 @@ import {
   installCollabEventListener,
 } from "../../stores/collab-store";
 import { useUIStore } from "../../stores/ui-store";
-import { REQUIREMENT_BOARD_MODAL_ID } from "./RequirementBoardDialog";
 import { useProjectStore } from "../../stores/project-store";
 import { toast, useNotificationStore } from "../../stores/notification-store";
 
@@ -26,7 +25,7 @@ export function CollabStatusBar(): JSX.Element {
   const readyRequirements = useProjectStore(
     (state) =>
       (state.project.requirements?.items ?? []).filter(
-        (item) => item.status === "ready",
+        (item) => item.status === "review" || item.status === "blocked",
       ).length,
   );
 
@@ -113,12 +112,17 @@ export function CollabStatusBar(): JSX.Element {
         {runningTasks.map((task) => `${t(task.kind === "export" ? "versioning.exportTask" : "versioning.analysisTask")} ${Math.round(task.progress?.percent ?? 0)}%`).join(" · ")}
       </span>}
 
-      <div className="ml-auto flex items-center">
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        <button type="button" data-testid="current-archive-entry" title={t("versioning.viewRecords")}
+          onClick={() => useUIStore.getState().showCurrentArchive()}
+          className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] text-fg-2 transition-colors duration-150 hover:bg-hover hover:text-fg motion-reduce:transition-none">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />{t("versioning.current")}
+        </button>
         <button
           type="button"
           data-testid="requirement-board-entry"
           aria-label={t("requirementBoard.title")}
-          onClick={() => openModal(REQUIREMENT_BOARD_MODAL_ID)}
+          onClick={() => openModal("requirement-board", { projectId: useProjectStore.getState().project.id })}
           className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-border bg-bg-2 px-2.5 text-[11px] font-medium text-fg transition-colors hover:bg-hover"
         >
           <LayoutTemplate size={13} aria-hidden />

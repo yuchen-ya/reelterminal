@@ -556,6 +556,7 @@ export const Timeline: React.FC = () => {
 
   const handleSelectClip = useCallback(
     (clipId: string, addToSelection: boolean) => {
+      useUIStore.getState().setDesktopInspectorTab("properties");
       const isTextClip = allTextClips.some((tc) => tc.id === clipId);
       if (isTextClip) {
         const textClip = allTextClips.find((tc) => tc.id === clipId);
@@ -589,6 +590,7 @@ export const Timeline: React.FC = () => {
 
   const handleSelectTransition = useCallback(
     (transitionId: string, trackId: string) => {
+      useUIStore.getState().setDesktopInspectorTab("properties");
       select({ type: "transition", id: transitionId, trackId });
     },
     [select],
@@ -1554,7 +1556,7 @@ export const Timeline: React.FC = () => {
 
       <div
         ref={containerRef}
-        className="flex-1 flex flex-col overflow-hidden relative"
+        className="min-h-0 flex-1 flex flex-col overflow-hidden relative"
         onClick={handleBackgroundClick}
         onContextMenuCapture={(e) => {
           // Read-only version preview: suppress the clip edit context menu
@@ -1597,7 +1599,7 @@ export const Timeline: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex-1 flex overflow-hidden">
+        <div className="min-h-0 flex-1 flex overflow-hidden">
           <div
             ref={trackHeadersRef}
             data-testid="timeline-track-headers-scroll"
@@ -1656,7 +1658,7 @@ export const Timeline: React.FC = () => {
             ref={tracksRef}
             data-live-editor-scroll-container="timeline"
             data-testid="timeline-tracks-scroll"
-            className="flex-1 bg-background relative overflow-auto custom-scrollbar"
+            className="min-h-0 min-w-0 flex-1 bg-background relative overflow-auto custom-scrollbar overscroll-contain"
             onScroll={(e) => {
               setScrollX(e.currentTarget.scrollLeft);
               const nextScrollTop = e.currentTarget.scrollTop;

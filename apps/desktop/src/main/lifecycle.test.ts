@@ -40,6 +40,8 @@ const makeWindow = () => {
       if (event === "close") closeHandler = handler;
     }),
     close: vi.fn(),
+    once: vi.fn(),
+    removeListener: vi.fn(),
     isDestroyed: vi.fn(() => false),
     webContents: {
       send: vi.fn(),
@@ -109,15 +111,16 @@ describe("desktop prepare-close guard", () => {
     expect(electron.app.quit).not.toHaveBeenCalled();
   });
 
-  it("proceeds with the close when the renderer never replies (20s timeout)", async () => {
-    // Silence means persistence is continuous (drafts are written during
-    // editing); a wedged renderer must not trap the user in an uncloseable
-    // window.
+  it("keeps waiting past 20s and honors the eventual renderer decision", async () => {
     const { win, close } = makeWindow();
 
     close();
-    await vi.advanceTimersByTimeAsync(20_000);
-
+    await vi.advanceTimersByTimeAsync(60_000);
+    close();
+    expect(win.webContents.send).toHaveBeenCalledOnce();
+    expect(win.close).not.toHaveBeenCalled();
+    electron.ipcMain.emit(CHANNELS.lifecyclePrepareCloseReply, { sender: win.webContents }, { allow: true });
+    await vi.advanceTimersByTimeAsync(0);
     expect(win.close).toHaveBeenCalledOnce();
   });
 

@@ -36,6 +36,7 @@ declare global {
     __exportClose?: () => Promise<void>;
     __exportAbort?: () => Promise<void>;
     __exportProgress?: (json: string) => Promise<void>;
+    __decodeSourceFrame?: (mediaId: string, time: number, width: number, height: number) => Promise<{ width: number; height: number; dataBase64: string }>;
   }
 }
 
@@ -162,6 +163,16 @@ async function hydrate(
     // cached frame would silently serve the previous project's pixels.
     videoEngine.clearCache();
     videoEngine.clearVideoElementCache();
+    if (window.__decodeSourceFrame) {
+      videoEngine.setSourceFrameDecoder(async (mediaId, time, width, height) => {
+        const frame = await window.__decodeSourceFrame!(mediaId, time, width, height);
+        const binary = atob(frame.dataBase64);
+        const rgba = Uint8ClampedArray.from(binary, (character) => character.charCodeAt(0));
+        const canvas = new OffscreenCanvas(frame.width, frame.height);
+        canvas.getContext("2d")!.putImageData(new ImageData(rgba, frame.width, frame.height), 0, 0);
+        return createImageBitmap(canvas);
+      });
+    }
 
     currentProject = project;
     return {

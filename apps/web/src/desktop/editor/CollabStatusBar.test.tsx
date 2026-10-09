@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CollabStatusBar } from "./CollabStatusBar";
 import { useUIStore } from "../../stores/ui-store";
 import { useCollabStore } from "../../stores/collab-store";
-import { REQUIREMENT_BOARD_MODAL_ID } from "./RequirementBoardDialog";
 import { useProjectStore } from "../../stores/project-store";
 import { useNotificationStore } from "../../stores/notification-store";
 import { ToastContainer } from "../../components/Toast";
@@ -164,6 +163,7 @@ describe("CollabStatusBar requirements access", () => {
   it("opens the project requirement board", async () => {
     await renderBar();
     fireEvent.click(screen.getByTestId("requirement-board-entry"));
-    expect(useUIStore.getState().activeModal).toBe(REQUIREMENT_BOARD_MODAL_ID);
+    expect(useUIStore.getState().desktopInspectorTab).toBe("board");
+    expect(useUIStore.getState().activeModal).toBeNull();
   });
 });

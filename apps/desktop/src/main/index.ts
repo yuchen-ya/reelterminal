@@ -9,7 +9,7 @@ import { app, BrowserWindow, ipcMain, shell } from "electron";
 import path from "node:path";
 import { z } from "zod";
 import { registerAppSchemePrivileges, handleAppScheme, APP_INDEX } from "./protocol";
-import { installNavigationGuard } from "./nav-guard";
+import { installNavigationGuard, isAllowedNavigation } from "./nav-guard";
 import { handle, assertEditorIpcSender } from "./ipc";
 import { CHANNELS } from "../shared/ipc-contract";
 import { collectHardwareInfo } from "./ipc/hardware";
@@ -180,6 +180,14 @@ function createWindow(): void {
     },
   });
   registerEditorWindow(win);
+  // Only the trusted editor may capture installed font bytes for snapshots.
+  win.webContents.session.setPermissionCheckHandler((contents, permission, origin) =>
+    permission !== "local-fonts" || (contents === win.webContents && isAllowedNavigation(origin, APP_INDEX)),
+  );
+  win.webContents.session.setPermissionRequestHandler((contents, permission, callback, details) => {
+    callback(permission !== "local-fonts" ||
+      (contents === win.webContents && isAllowedNavigation(details.requestingUrl, APP_INDEX)));
+  });
   attachUnsavedGuard(win);
   installNavigationGuard(win, APP_INDEX);
   // Failure-only handlers: they only add listeners (did-fail-load,

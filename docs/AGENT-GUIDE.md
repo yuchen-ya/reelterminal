@@ -34,6 +34,13 @@ Use [SKILL.md](../SKILL.md) for the editing workflow and
 [AGENT-WORKSPACE.md](AGENT-WORKSPACE.md) before generating media.
 See [COMMAND-API.md](COMMAND-API.md) for the live service and CLI contract.
 
+Desktop review keeps original media references. If browser video decoding is
+unavailable, the Chromium worker can decode source frames with local FFmpeg and
+pass them through the existing compositor; if neither decoder succeeds, review
+returns an error. A genuinely black source is valid. Installed font bytes used
+by new desktop snapshots are captured through Local Font Access, so isolated
+review can use the same family; unresolved fonts remain reported dependencies.
+
 For a source build, run `pnpm --filter @reelterminal/desktop build:main` and use
 `node /absolute/path/to/apps/desktop/dist/reelctl/index.js` in place of `reelctl`.
 Windows packaged launchers live beside the application; use an absolute path if
@@ -105,6 +112,12 @@ including its execution instruction, acceptance criteria, and `references`.
 Each reference persists its entity kind and ID plus an A-label/name/time snapshot;
 resolve by kind and ID, since A numbers belong to the original editor session.
 `workAsset` references identify saved clips or combinations in `project.workAssets`.
+
+The desktop Board is a tab in the right inspector alongside Properties and
+Archives. The Current entry only opens save point records; a save point maps
+to `node`, and normal saves never call `node.save`. Direct human timeline
+selection opens Properties; Agent selections and updates leave the tab alone.
+During historical preview, Board still targets the actual editing workspace.
 
 Report work with `requirement.update`, using `in_progress`, `blocked` (with an
 explanation in `agentNote`), or `review` (with notes and `resultMediaIds`). Agent

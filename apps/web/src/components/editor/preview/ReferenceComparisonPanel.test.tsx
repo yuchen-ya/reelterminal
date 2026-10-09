@@ -292,7 +292,7 @@ describe("history version comparison", () => {
     render(<ComparisonSourcePicker onClose={() => undefined} />);
 
     const historySelect = (await waitFor(() => {
-      const select = screen.getByRole("combobox", { name: "History version" }) as HTMLSelectElement;
+      const select = screen.getByRole("combobox", { name: "Historical save point" }) as HTMLSelectElement;
       expect(select.disabled).toBe(false);
       expect(screen.getByRole("option", { name: /^初剪 · / })).toBeTruthy();
       return select;
@@ -316,7 +316,7 @@ describe("history version comparison", () => {
     render(<ComparisonSourcePicker onClose={onClose} />);
 
     const historySelect = (await waitFor(() => {
-      const select = screen.getByRole("combobox", { name: "History version" }) as HTMLSelectElement;
+      const select = screen.getByRole("combobox", { name: "Historical save point" }) as HTMLSelectElement;
       expect(select.disabled).toBe(false);
       return select;
     })) as HTMLSelectElement;
@@ -327,7 +327,7 @@ describe("history version comparison", () => {
     });
 
     await waitFor(() =>
-      expect(fixture.toastError).toHaveBeenCalledWith("This history version cannot be loaded"),
+      expect(fixture.toastError).toHaveBeenCalledWith("Could not read this save point"),
     );
     expect(onClose).toHaveBeenCalled();
     expect(getHistoryComparisonSnapshot()).toBeNull();

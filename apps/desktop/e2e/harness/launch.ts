@@ -89,7 +89,8 @@ async function launch(
   const rendererConsole: string[] = [];
 
   const app = await electron.launch({
-    args: [".", "--lang=en-US", `--user-data-dir=${paths.userDataDir}`],
+    ...(process.env.REELTERMINAL_E2E_APP_EXECUTABLE ? { executablePath: process.env.REELTERMINAL_E2E_APP_EXECUTABLE } : {}),
+    args: [...(process.env.REELTERMINAL_E2E_APP_EXECUTABLE ? [] : ["."]), "--lang=en-US", `--user-data-dir=${paths.userDataDir}`],
     cwd: DESKTOP_DIR,
     env: {
       ...process.env,

@@ -94,7 +94,7 @@ describe("ProjectSwitcher versioning actions", () => {
   it("shows the project action entries and hides the plans section for a single workspace", async () => {
     render(<ProjectSwitcher />);
     await openMenu();
-    expect(screen.getByRole("button", { name: "Save a version" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create save point" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Recover previous edits" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy Agent prompt" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try another cut" })).toBeInTheDocument();
@@ -104,7 +104,7 @@ describe("ProjectSwitcher versioning actions", () => {
   it("retains a version without a name and toasts the auto-generated node name", async () => {
     render(<ProjectSwitcher />);
     await openMenu();
-    fireEvent.click(screen.getByRole("button", { name: "Save a version" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create save point" }));
     await waitFor(() =>
       expect(fixture.saveNode).toHaveBeenCalledWith({
         target: { projectId: "project-a", workspaceId: "workspace-a" },
@@ -112,7 +112,7 @@ describe("ProjectSwitcher versioning actions", () => {
     );
     await waitFor(() =>
       expect(
-        useNotificationStore.getState().notifications.some((entry) => entry.title === 'Version "Snapshot 1" saved'),
+        useNotificationStore.getState().notifications.some((entry) => entry.title === 'Save point “Snapshot 1” created'),
       ).toBe(true),
     );
   });

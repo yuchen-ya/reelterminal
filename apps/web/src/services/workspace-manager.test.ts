@@ -4,7 +4,7 @@ import i18next from "i18next";
 import type { Action, Project } from "@reelterminal/core";
 import { createEmptyProject } from "../stores/project/project-helpers";
 import { createProjectStore, getActiveProjectRuntimeStore } from "../stores/project-store";
-import { WorkspaceManager } from "./workspace-manager";
+import { WorkspaceManager, isSubstantiveProject } from "./workspace-manager";
 import * as renderDependencies from "./project-render-dependencies";
 
 function expectedFirstNodeName(): string {
@@ -817,6 +817,50 @@ describe("WorkspaceManager", () => {
     expect(await manager.listRetentionCandidates()).toEqual([]);
   });
 
+  it("retains a title-only edit, but excludes untouched old projects and copied export plans", async () => {
+    const manager = new WorkspaceManager();
+    const old = await manager.createProject(createEmptyProject("Old draft"));
+    const oldTarget = { projectId: old.project.id, workspaceId: old.defaultWorkspaceId };
+    await (await manager.getStore(oldTarget)).getState().createTextClipOnNewTrack(0, "Previous session");
+    await manager.flushOpenWorkspaces();
+
+    const restarted = new WorkspaceManager();
+    const created = await restarted.createProject(createEmptyProject("This session"));
+    const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+    const store = await restarted.getStore(target);
+    await store.getState().createTextClipOnNewTrack(0, "Only a title");
+    expect(store.getState().project.timeline.tracks.every((track) => track.clips.length === 0)).toBe(true);
+    await restarted.createWorkspace(target.projectId, { sourceWorkspaceId: target.workspaceId, name: "Export copy" });
+    await restarted.getStore(oldTarget); // A read must not turn an old draft into this session's edit.
+    expect(await restarted.listRetentionCandidates()).toEqual([
+      expect.objectContaining({ projectId: target.projectId, workspaceId: target.workspaceId }),
+    ]);
+    await restarted.saveNode({ target });
+    expect(await restarted.listRetentionCandidates()).toEqual([]);
+  });
+
+  it.each(["shapeClips", "svgClips", "stickerClips", "motionCompositions", "motionInstances", "nestedInstances"] as const)(
+    "recognizes the supported independent content collection %s", (key) => {
+      const project = createEmptyProject("Independent content");
+      expect(isSubstantiveProject(project)).toBe(false);
+      expect(isSubstantiveProject({ ...project, [key]: [{ id: "content" }] } as Project)).toBe(true);
+    },
+  );
+
+  it("keeps renamed catalog metadata durable without changing a retained snapshot", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(createEmptyProject("Original"));
+    const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+    const { node } = await manager.saveNode({ target });
+    const store = await manager.getStore(target);
+    expect((await store.getState().renameProject("Renamed")).success).toBe(true);
+    await manager.flushOpenWorkspaces();
+    expect((await manager.listProjects()).find((project) => project.id === target.projectId)?.name).toBe("Renamed");
+    const restarted = new WorkspaceManager();
+    expect((await restarted.listProjects()).find((project) => project.id === target.projectId)?.name).toBe("Renamed");
+    expect((await restarted.getNode(target.projectId, node.id))?.project.name).toBe("Original");
+  });
+
   it("reports the restore-protection draft id from restoreNode", async () => {
     const manager = new WorkspaceManager();
     const created = await manager.createProject(createEmptyProject("Protection draft"));
@@ -941,5 +985,21 @@ describe("WorkspaceManager", () => {
     const restarted = new WorkspaceManager();
     const reopened = await restarted.getWorkspaceContext(target);
     expect(reopened.store.getState().project.name).toBe("edit-3");
+  });
+
+  it("a settled failed background write still blocks close flush until a successful retry", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(createEmptyProject("Write failure"));
+    const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+    const persist = vi.spyOn(manager as unknown as { persistWorkspaceSnapshot: (workspace: unknown) => Promise<void> }, "persistWorkspaceSnapshot");
+    persist.mockRejectedValue(new Error("disk write failed"));
+    const store = await manager.getStore(target);
+    store.setState({ project: { ...store.getState().project, name: "Pending edit" } });
+    await expect(manager.flushOpenWorkspaces()).rejects.toThrow("disk write failed");
+    await expect(manager.flushOpenWorkspaces()).rejects.toThrow("disk write failed");
+    persist.mockRestore();
+    await manager.flushOpenWorkspaces();
+    const reopened = await new WorkspaceManager().getStore(target);
+    expect(reopened.getState().project.name).toBe("Pending edit");
   });
 });

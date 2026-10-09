@@ -35,6 +35,7 @@ vi.mock("../services/workspace-manager", () => {
       listProjects: vi.fn(async () => []),
       listWorkspaces: vi.fn(async () => []),
       flushWorkspace: vi.fn(async () => {}),
+      flushOpenWorkspaces: vi.fn(async () => {}),
       listRetentionCandidates: vi.fn(async () => []),
       // Read by the top-left project switcher's versioning actions.
       subscribe: vi.fn(() => () => {}),
@@ -212,7 +213,7 @@ describe("DesktopApp", () => {
     return { handler: () => prepare };
   }
 
-  it("prepare-close flushes every workspace and closes when nothing needs retention", async () => {
+  it("prepare-close flushes open workspaces and closes when nothing needs retention", async () => {
     mockHasProject(false);
     const { handler } = mockPrepareClose();
     vi.mocked(workspaceManager.listProjects).mockResolvedValue([
@@ -237,11 +238,8 @@ describe("DesktopApp", () => {
     expect(prepare).toBeTypeOf("function");
 
     await expect(prepare!()).resolves.toBe(true);
-    expect(workspaceManager.initialize).toHaveBeenCalled();
-    expect(workspaceManager.flushWorkspace).toHaveBeenCalledWith({
-      projectId: "p1",
-      workspaceId: "w1",
-    });
+    expect(workspaceManager.flushOpenWorkspaces).toHaveBeenCalledTimes(2);
+    expect(workspaceManager.listProjects).not.toHaveBeenCalled();
     expect(workspaceManager.saveNode).not.toHaveBeenCalled();
   });
 
@@ -249,7 +247,7 @@ describe("DesktopApp", () => {
     mockHasProject(false);
     useNotificationStore.getState().clearAll();
     const { handler } = mockPrepareClose();
-    vi.mocked(workspaceManager.flushWorkspace).mockRejectedValueOnce(
+    vi.mocked(workspaceManager.flushOpenWorkspaces).mockRejectedValueOnce(
       new Error("IndexedDB transaction aborted"),
     );
 

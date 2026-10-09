@@ -95,6 +95,11 @@ export interface UIState {
   playbackQuality: PreviewQuality;
   activeModal: string | null;
   modalData: Record<string, unknown> | null;
+  desktopInspectorTab: "properties" | "archives" | "board";
+  archiveFocusRequest: number;
+  boardOpenRequest: number;
+  setDesktopInspectorTab: (tab: "properties" | "archives" | "board") => void;
+  showCurrentArchive: () => void;
   contextMenu: {
     visible: boolean;
     x: number;
@@ -250,6 +255,11 @@ export const useUIStore = create<UIState>()(
 
         activeModal: null,
         modalData: null,
+        desktopInspectorTab: "properties",
+        archiveFocusRequest: 0,
+        boardOpenRequest: 0,
+        setDesktopInspectorTab: (desktopInspectorTab) => set({ desktopInspectorTab }),
+        showCurrentArchive: () => set((state) => ({ desktopInspectorTab: "archives", archiveFocusRequest: state.archiveFocusRequest + 1 })),
 
         contextMenu: null,
 
@@ -592,6 +602,10 @@ export const useUIStore = create<UIState>()(
         },
 
         openModal: (modalId: string, data?: Record<string, unknown>) => {
+          if (modalId === "requirement-board") {
+            set((state) => ({ desktopInspectorTab: "board", modalData: data ?? null, boardOpenRequest: state.boardOpenRequest + 1 }));
+            return;
+          }
           set({
             activeModal: modalId,
             modalData: data || null,

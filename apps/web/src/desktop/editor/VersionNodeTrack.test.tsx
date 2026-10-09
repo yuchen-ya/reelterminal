@@ -87,6 +87,7 @@ function baseSnapshot() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  HTMLElement.prototype.scrollIntoView = vi.fn();
   useNotificationStore.getState().clearAll();
   fixture.snapshot = baseSnapshot();
   fixture.preview = { active: false, busy: false, info: null };
@@ -100,229 +101,69 @@ beforeEach(() => {
   fixture.restoreDeletedNode.mockResolvedValue(undefined);
 });
 
-describe("VersionNodeTrack", () => {
-  it("renders nothing when the project has no nodes and no trial plans", () => {
-    fixture.snapshot = { ...baseSnapshot(), nodes: [] };
-    const { container } = render(<VersionNodeTrack />);
-    expect(container.querySelector('[data-testid="version-track"]')).toBeNull();
-    expect(screen.queryByLabelText("Version track")).not.toBeInTheDocument();
-  });
-
-  it("renders the project's dots from summaries only, without persistent labels", () => {
+describe("inspector archive browser", () => {
+  it("shows an honest empty state without fake unretained trial nodes", () => {
+    fixture.snapshot = { ...baseSnapshot(), nodes: [], workspaces: [{ id: "workspace-a", projectId: "project-a", baseNodeId: null }, { id: "trial", projectId: "project-a", kind: "trial" }] };
     render(<VersionNodeTrack />);
-    expect(screen.getByTestId("version-track")).toHaveAttribute("data-project-id", "project-a");
-    expect(screen.getByTestId("version-node-root")).toBeInTheDocument();
-    expect(screen.getByTestId("version-node-child")).toBeInTheDocument();
-    expect(screen.getByTestId("version-node-branch")).toBeInTheDocument();
-    expect(screen.queryByTestId("version-node-foreign")).not.toBeInTheDocument();
-    // No persistent name/date copy; tooltip only on demand.
-    expect(screen.queryByText("Root A")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("version-node-tooltip")).not.toBeInTheDocument();
-  });
-
-  it("marks the active workspace's base node with the accent fill and ring", () => {
-    render(<VersionNodeTrack />);
-    const base = screen.getByTestId("version-node-child");
-    expect(base).toHaveAttribute("data-base", "true");
-    expect(base.querySelector("span")).toHaveClass("bg-accent");
-    expect(base.querySelector("span")).toHaveClass("ring-accent");
-    const other = screen.getByTestId("version-node-root");
-    expect(other.querySelector("span")).not.toHaveClass("bg-accent");
-  });
-
-  it("distinguishes the previewed node by shape and dashed outline, not brightness", () => {
-    fixture.preview = {
-      active: true,
-      busy: false,
-      info: { projectId: "project-a", nodeId: "root", workspaceId: null, nodeName: "Root A", summary: "", createdAt: 1_000, missingDependencies: [], agentTrial: false },
-    };
-    render(<VersionNodeTrack />);
-    const previewDot = screen.getByTestId("version-node-root").querySelector("span");
-    expect(previewDot).toHaveClass("rotate-45");
-    expect(previewDot).toHaveClass("outline-dashed");
-    // The base node keeps its accent while a historical version is previewed.
-    const baseDot = screen.getByTestId("version-node-child").querySelector("span");
-    expect(baseDot).toHaveClass("bg-accent");
-    expect(baseDot).not.toHaveClass("rotate-45");
-  });
-
-  it("selects on single click without entering a preview", () => {
-    render(<VersionNodeTrack />);
-    const dot = screen.getByTestId("version-node-root");
-    expect(dot).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(dot);
-    expect(dot).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("No save points yet. Current edits are still saved normally.")).toBeInTheDocument();
+    expect(screen.queryByTestId("version-node-trial")).not.toBeInTheDocument();
     expect(fixture.enter).not.toHaveBeenCalled();
   });
-
-  it("previews on double click and on Enter", () => {
+  it("shows names and actual parent edges; one click only selects details", () => {
+    const { container } = render(<VersionNodeTrack />);
+    expect(screen.getByRole("button", { name: "Root A" })).toBeInTheDocument();
+    expect(container.querySelector('[data-child-id="branch"][data-parent-id="root"]')).not.toBeNull();
+    fireEvent.click(screen.getByTestId("version-node-root"));
+    expect(screen.getByTestId("archive-details")).toHaveTextContent("Root A");
+    expect(fixture.enter).not.toHaveBeenCalled();
+    expect(fixture.adopt).not.toHaveBeenCalled();
+    expect(screen.getByTestId("version-node-child")).toHaveAttribute("data-base", "true");
+  });
+  it("double click previews, while adopting needs the explicit action", async () => {
     render(<VersionNodeTrack />);
     fireEvent.doubleClick(screen.getByTestId("version-node-root"));
-    expect(fixture.enter).toHaveBeenCalledWith({ kind: "node", nodeId: "root" });
-    fireEvent.keyDown(screen.getByTestId("version-node-child"), { key: "Enter" });
-    expect(fixture.enter).toHaveBeenCalledWith({ kind: "node", nodeId: "child" });
-  });
-
-  it("opens a four-action context menu on right click and closes on Escape", () => {
-    render(<VersionNodeTrack />);
-    fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 10, clientY: 10 });
-    const menu = screen.getByTestId("version-node-menu");
-    expect(menu).toBeInTheDocument();
-    expect(screen.getByTestId("version-menu-preview")).toHaveTextContent("Preview this version");
-    expect(screen.getByTestId("version-menu-rename")).toHaveTextContent("Rename");
-    expect(screen.getByTestId("version-menu-adopt")).toHaveTextContent("Continue editing from here");
-    expect(screen.getByTestId("version-menu-delete")).toHaveTextContent("Delete this version");
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByTestId("version-node-menu")).not.toBeInTheDocument();
-  });
-
-  it("previews and adopts through the menu actions", async () => {
-    render(<VersionNodeTrack />);
-    fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 10, clientY: 10 });
-    fireEvent.click(screen.getByTestId("version-menu-preview"));
-    expect(fixture.enter).toHaveBeenCalledWith({ kind: "node", nodeId: "root" });
-
-    fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 10, clientY: 10 });
+    await waitFor(() => expect(fixture.enter).toHaveBeenCalledWith({ kind: "node", nodeId: "root" }));
+    expect(fixture.adopt).not.toHaveBeenCalled();
+    fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 20, clientY: 20 });
     fireEvent.click(screen.getByTestId("version-menu-adopt"));
-    await waitFor(() => expect(fixture.adopt).toHaveBeenCalled());
-    expect(fixture.enter).toHaveBeenCalledWith({ kind: "node", nodeId: "root" });
-    expect(fixture.enter.mock.invocationCallOrder[0]).toBeLessThan(fixture.adopt.mock.invocationCallOrder[0]);
+    await waitFor(() => expect(fixture.adopt).toHaveBeenCalledOnce());
   });
-
-  it("commits a trimmed rename inline and never creates a node", async () => {
+  it("renames through the same metadata command and rejects blank names", async () => {
     render(<VersionNodeTrack />);
-    fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 10, clientY: 10 });
+    fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 20, clientY: 20 });
     fireEvent.click(screen.getByTestId("version-menu-rename"));
     const input = screen.getByTestId("version-rename-input");
-    expect(input).toHaveValue("Root A");
-    fireEvent.change(input, { target: { value: "  Renamed stage  " } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    await waitFor(() =>
-      expect(fixture.renameNode).toHaveBeenCalledWith({
-        projectId: "project-a",
-        nodeId: "root",
-        name: "Renamed stage",
-      }),
-    );
-    expect(fixture.deleteNode).not.toHaveBeenCalled();
-    expect(fixture.enter).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.queryByTestId("version-node-menu")).not.toBeInTheDocument());
-  });
-
-  it("rejects an empty rename locally without a request and cancels cleanly", async () => {
-    render(<VersionNodeTrack />);
-    fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 10, clientY: 10 });
-    fireEvent.click(screen.getByTestId("version-menu-rename"));
-    const input = screen.getByTestId("version-rename-input");
-    fireEvent.change(input, { target: { value: "   " } });
+    fireEvent.change(input, { target: { value: " " } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(fixture.renameNode).not.toHaveBeenCalled();
-    expect(input).toHaveAttribute("aria-invalid", "true");
-    fireEvent.click(screen.getByTestId("version-rename-cancel"));
-    expect(fixture.renameNode).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("version-node-menu")).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "User name" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(fixture.renameNode).toHaveBeenCalledWith({ projectId: "project-a", nodeId: "root", name: "User name" }));
   });
-
-  it("deletes via the menu, exiting an active preview of that node first, and supports undo", async () => {
-    fixture.preview = {
-      active: true,
-      busy: false,
-      info: { projectId: "project-a", nodeId: "root", workspaceId: null, nodeName: "Root A", summary: "", createdAt: 1_000, missingDependencies: [], agentTrial: false },
-    };
+  it("recycles the previewed point only after returning to editing and offers undo", async () => {
+    fixture.preview = { active: true, info: { nodeId: "root" } };
     render(<VersionNodeTrack />);
-    fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 10, clientY: 10 });
+    fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 20, clientY: 20 });
     fireEvent.click(screen.getByTestId("version-menu-delete"));
     await waitFor(() => expect(fixture.deleteNode).toHaveBeenCalledWith({ projectId: "project-a", nodeId: "root" }));
-    expect(fixture.exit).toHaveBeenCalled();
-    expect(fixture.exit.mock.invocationCallOrder[0]).toBeLessThan(fixture.deleteNode.mock.invocationCallOrder[0]);
-
-    const notification = useNotificationStore
-      .getState()
-      .notifications.find((entry) => entry.title === "Version moved to the recycle bin");
-    expect(notification).toBeDefined();
-    expect(notification?.onClickLabel).toBe("Undo delete");
-    expect(notification?.duration).toBe(6000);
-
-    act(() => {
-      notification?.onClick?.();
-    });
-    await waitFor(() =>
-      expect(fixture.restoreDeletedNode).toHaveBeenCalledWith({ projectId: "project-a", nodeId: "root" }),
-    );
-    expect(
-      useNotificationStore.getState().notifications.some((entry) => entry.id === notification?.id),
-    ).toBe(false);
+    expect(fixture.exit).toHaveBeenCalledOnce();
+    await act(async () => { await useNotificationStore.getState().notifications[0]?.onClick?.(); });
+    expect(fixture.restoreDeletedNode).toHaveBeenCalledWith({ projectId: "project-a", nodeId: "root" });
   });
-
-  it("shows the non-interactive current-edit endpoint chip when the base node is recycled", () => {
-    fixture.snapshot = {
-      ...baseSnapshot(),
-      workspaces: [
-        { id: "workspace-a", projectId: "project-a", name: "Default", kind: "default", baseNodeId: "recycled", revision: 9, updatedAt: 0, dirty: false },
-      ],
-    };
-    render(<VersionNodeTrack />);
-    const chip = screen.getByTestId("current-edit-endpoint");
-    expect(chip).toBeInTheDocument();
-    expect(chip).toHaveTextContent("Current editing");
-    expect(chip.tagName).toBe("SPAN");
-    expect(screen.queryByTestId("version-node-recycled")).not.toBeInTheDocument();
+  it("stable distinct colors survive rename and list ordering", () => {
+    const view = render(<VersionNodeTrack />);
+    const color = (id: string) => screen.getByTestId(`version-node-${id}`).querySelector('[style]')?.getAttribute("style");
+    const rootColor = color("root"), childColor = color("child");
+    expect(rootColor).not.toBe(childColor);
+    fixture.snapshot = { ...baseSnapshot(), nodes: [...baseSnapshot().nodes].reverse().map((entry) => ({ ...entry, name: entry.id === "root" ? "Renamed" : entry.name })) };
+    view.rerender(<VersionNodeTrack />);
+    expect(color("root")).toBe(rootColor);
+    expect(color("child")).toBe(childColor);
   });
-
-  it("renders Agent trial workspaces as separate hollow diamonds previewing the workspace", () => {
-    fixture.snapshot = {
-      ...baseSnapshot(),
-      workspaces: [
-        ...(baseSnapshot().workspaces as unknown[]),
-        { id: "trial-1", projectId: "project-a", name: "Trial", kind: "trial", baseNodeId: "root", revision: 1, updatedAt: 0, dirty: false },
-      ],
-    };
+  it("keeps missing dependencies visible in the selected details", () => {
+    fixture.snapshot = { ...baseSnapshot(), nodes: [node("root", "project-a", null, "Missing", 1000, ["font-render:Unavailable"])] };
     render(<VersionNodeTrack />);
-    const trial = screen.getByTestId("version-trial-trial-1");
-    expect(trial).toHaveAttribute("aria-label", "Agent trial cut");
-    fireEvent.doubleClick(trial);
-    expect(fixture.enter).toHaveBeenCalledWith({ kind: "workspace", workspaceId: "trial-1" });
-  });
-
-  it("shows name, date, summary and missing-dependency warnings in the hover tooltip", () => {
-    fixture.snapshot = {
-      ...baseSnapshot(),
-      nodes: [node("root", "project-a", null, "Root A", 1_000, ["media-1"])],
-      workspaces: [
-        { id: "workspace-a", projectId: "project-a", name: "Default", kind: "default", baseNodeId: "root", revision: 7, updatedAt: 0, dirty: false },
-      ],
-    };
-    render(<VersionNodeTrack />);
-    const dot = screen.getByTestId("version-node-root");
-    fireEvent.mouseEnter(dot);
-    const tooltip = screen.getByTestId("version-node-tooltip");
-    expect(tooltip).toHaveTextContent("Root A");
-    expect(tooltip).toHaveTextContent(new Date(1_000).toLocaleString());
-    expect(tooltip).toHaveTextContent("Stage summary");
-    expect(tooltip).toHaveTextContent("Missing dependencies");
-    fireEvent.mouseLeave(dot);
-    expect(screen.queryByTestId("version-node-tooltip")).not.toBeInTheDocument();
-  });
-
-  it("keeps off-mainline nodes on a secondary row with a fold indicator for deeper subtrees", () => {
-    fixture.snapshot = {
-      ...baseSnapshot(),
-      nodes: [
-        node("root", "project-a", null, "Root A", 1_000),
-        node("child", "project-a", "root", "Continuation A", 2_000),
-        node("branch", "project-a", "root", "Alternate A", 1_500),
-        node("deep", "project-a", "branch", "Deep A", 1_600),
-      ],
-    };
-    render(<VersionNodeTrack />);
-    const fold = screen.getByTestId("branch-fold-branch");
-    expect(fold).toHaveAttribute("aria-expanded", "false");
-    // Deeper descendants stay folded until the indicator is clicked.
-    expect(screen.queryByTestId("version-node-deep")).not.toBeInTheDocument();
-    fireEvent.click(fold);
-    expect(screen.getByTestId("branch-fold-branch")).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByTestId("version-node-deep")).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("branch-fold-branch"));
-    expect(screen.queryByTestId("version-node-deep")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("version-node-root"));
+    expect(screen.getByTestId("archive-details")).toHaveTextContent("This save point is missing media or fonts and cannot be fully restored.");
   });
 });
