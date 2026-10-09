@@ -59,6 +59,8 @@ import { getActionHandler } from "./registry";
 import "./handlers";
 import { calculateProjectDuration } from "../timeline/project-duration";
 
+type ExecutableTimelineAction = TimelineAction & Pick<Action, "id">;
+
 export class ActionExecutor {
   private validator: ActionValidator;
   private history: ActionHistory;
@@ -115,7 +117,7 @@ export class ActionExecutor {
       projectSnapshot,
     );
     try {
-      await this.applyAction(action as TimelineAction, project);
+      await this.applyAction(action as ExecutableTimelineAction, project);
       // Resolve generated-id markers while this action's newly-created entity is
       // still the latest one. Deferring resolution until undo makes every entry
       // in a grouped add operation target the final created entity instead.
@@ -150,6 +152,7 @@ export class ActionExecutor {
     action: Action,
     project: Project,
     historyOwner?: string,
+    historyBeforeProject: Project = project,
   ): ActionResult {
     const validationResult = this.validator.validate(action, project);
     if (!validationResult.valid) {
@@ -162,10 +165,10 @@ export class ActionExecutor {
         },
       };
     }
-    const projectSnapshot = JSON.parse(JSON.stringify(project));
+    const projectSnapshot = JSON.parse(JSON.stringify(historyBeforeProject));
     const inverseAction = this.inverseGenerator.generate(action, projectSnapshot);
     try {
-      this.applyActionSync(action as TimelineAction, project);
+      this.applyActionSync(action as ExecutableTimelineAction, project);
       const resolvedInverseAction = inverseAction
         ? this.resolveSpecialMarkers(inverseAction)
         : null;
@@ -226,7 +229,7 @@ export class ActionExecutor {
     try {
       for (const inverseAction of inverseActions) {
         const resolvedAction = this.resolveSpecialMarkers(inverseAction);
-        await this.applyAction(resolvedAction as TimelineAction, project);
+        await this.applyAction(resolvedAction as ExecutableTimelineAction, project);
       }
       return { success: true, actionId: inverseActions[0].id };
     } catch (error) {
@@ -264,7 +267,7 @@ export class ActionExecutor {
 
     try {
       for (const action of actions) {
-        await this.applyAction(action as TimelineAction, project);
+        await this.applyAction(action as ExecutableTimelineAction, project);
       }
       return { success: true, actionId: actions[0].id };
     } catch (error) {
@@ -312,7 +315,7 @@ export class ActionExecutor {
   }
 
   private async applyAction(
-    action: TimelineAction,
+    action: ExecutableTimelineAction,
     project: Project,
   ): Promise<void> {
     const type = action.type;
@@ -330,7 +333,7 @@ export class ActionExecutor {
     this.recalculateTimelineDuration(project);
   }
 
-  private applyActionSync(action: TimelineAction, project: Project): void {
+  private applyActionSync(action: ExecutableTimelineAction, project: Project): void {
     const type = action.type;
     const handler = getActionHandler(type);
     if (handler) {
@@ -355,7 +358,7 @@ export class ActionExecutor {
   }
 
   /** Shared synchronous dispatcher used by both ordinary and draft execution. */
-  private applyBuiltInAction(action: TimelineAction, project: Project): void {
+  private applyBuiltInAction(action: ExecutableTimelineAction, project: Project): void {
     const type = action.type;
     if (type.startsWith("project/")) {
       this.applyProjectAction(action as ProjectAction, project);
@@ -366,25 +369,25 @@ export class ActionExecutor {
     } else if (type.startsWith("workAsset/")) {
       this.applyWorkAssetAction(action as WorkAssetAction, project);
     } else if (type.startsWith("media/")) {
-      this.applyMediaAction(action as MediaAction, project);
+      this.applyMediaAction(action as MediaAction & Pick<Action, "id">, project);
     } else if (type.startsWith("track/")) {
-      this.applyTrackAction(action as TrackAction, project);
+      this.applyTrackAction(action as TrackAction & Pick<Action, "id">, project);
     } else if (type.startsWith("clip/")) {
-      this.applyClipAction(action as ClipAction, project);
+      this.applyClipAction(action as ClipAction & Pick<Action, "id">, project);
     } else if (type.startsWith("effect/")) {
-      this.applyEffectAction(action as EffectAction, project);
+      this.applyEffectAction(action as EffectAction & Pick<Action, "id">, project);
     } else if (type.startsWith("transform/")) {
       this.applyTransformAction(action as TransformAction, project);
     } else if (type.startsWith("keyframe/")) {
-      this.applyKeyframeAction(action as KeyframeAction, project);
+      this.applyKeyframeAction(action as KeyframeAction & Pick<Action, "id">, project);
     } else if (type.startsWith("transition/")) {
-      this.applyTransitionAction(action as TransitionAction, project);
+      this.applyTransitionAction(action as TransitionAction & Pick<Action, "id">, project);
     } else if (type.startsWith("audio/")) {
       this.applyAudioAction(action as AudioAction, project);
     } else if (type.startsWith("subtitle/")) {
-      this.applySubtitleAction(action as SubtitleAction, project);
+      this.applySubtitleAction(action as SubtitleAction & Pick<Action, "id">, project);
     } else if (type.startsWith("marker/")) {
-      this.applyMarkerAction(action as MarkerAction, project);
+      this.applyMarkerAction(action as MarkerAction & Pick<Action, "id">, project);
     } else if (type.startsWith("reference/")) {
       this.applyReferenceComparisonAction(
         action as ReferenceComparisonAction,
@@ -475,7 +478,7 @@ export class ActionExecutor {
   }
 
   private applyMediaAction(
-    action: MediaAction | { type: string; params: Record<string, unknown> },
+    action: (MediaAction | { type: string; params: Record<string, unknown> }) & Pick<Action, "id">,
     project: Project,
   ): void {
     const mediaLibrary = project.mediaLibrary as any;
@@ -485,7 +488,7 @@ export class ActionExecutor {
         const params = action.params as { file: File; mediaItem?: MediaItem };
         const newMediaItem: MediaItem =
           params.mediaItem ?? {
-            id: `media-${Date.now()}`,
+            id: `media-${action.id}`,
             name: params.file.name,
             type: this.inferMediaType(params.file),
             fileHandle: null,
@@ -578,7 +581,7 @@ export class ActionExecutor {
   }
 
   private applyTrackAction(
-    action: TrackAction | { type: string; params: Record<string, unknown> },
+    action: (TrackAction | { type: string; params: Record<string, unknown> }) & Pick<Action, "id">,
     project: Project,
   ): void {
     const timeline = project.timeline as MutableTimeline;
@@ -602,7 +605,7 @@ export class ActionExecutor {
             (t: MutableTrack) => t.type === params.trackType,
           ).length + 1;
         const newTrack: MutableTrack = {
-          id: params.trackId ?? `track-${crypto.randomUUID()}`,
+          id: params.trackId ?? `track-${action.id}`,
           type: params.trackType as Track["type"],
           name: `${trackNames[params.trackType] || params.trackType} ${trackCount}`,
           clips: [],
@@ -638,11 +641,11 @@ export class ActionExecutor {
         );
         if (sourceIndex < 0) break;
         const source = timeline.tracks[sourceIndex];
-        const trackId = params.trackId ?? `track-${crypto.randomUUID()}`;
+        const trackId = params.trackId ?? `track-${action.id}`;
         const clipIdMap = new Map(
-          source.clips.map((clip) => [
+          source.clips.map((clip, index) => [
             clip.id,
-            `clip-${crypto.randomUUID()}`,
+            `clip-${action.id}-${index + 1}`,
           ]),
         );
         const names = new Set(timeline.tracks.map((track) => track.name));
@@ -662,9 +665,9 @@ export class ActionExecutor {
             id: clipIdMap.get(clip.id)!,
             trackId,
           })),
-          transitions: source.transitions.map((transition) => ({
+          transitions: source.transitions.map((transition, index) => ({
             ...structuredClone(transition),
-            id: `transition-${crypto.randomUUID()}`,
+            id: `transition-${action.id}-${index + 1}`,
             clipAId:
               clipIdMap.get(transition.clipAId) ?? transition.clipAId,
             clipBId: transition.clipBId
@@ -758,7 +761,7 @@ export class ActionExecutor {
   }
 
   private applyMarkerAction(
-    action: MarkerAction | { type: string; params: Record<string, unknown> },
+    action: (MarkerAction | { type: string; params: Record<string, unknown> }) & Pick<Action, "id">,
     project: Project,
   ): void {
     const timeline = project.timeline as MutableTimeline;
@@ -771,7 +774,7 @@ export class ActionExecutor {
           color: string;
         };
         const newMarker: Marker = {
-          id: `marker-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+          id: `marker-${action.id}`,
           time: params.time,
           label: params.label,
           color: params.color,
@@ -949,7 +952,7 @@ export class ActionExecutor {
   }
 
   private applyClipAction(
-    action: ClipAction | { type: string; params: Record<string, unknown> },
+    action: (ClipAction | { type: string; params: Record<string, unknown> }) & Pick<Action, "id">,
     project: Project,
   ): void {
     const timeline = project.timeline as MutableTimeline;
@@ -1005,12 +1008,12 @@ export class ActionExecutor {
           const newClip = params.sourceClip
             ? {
                 ...structuredClone(params.sourceClip),
-                id: params.clipId ?? crypto.randomUUID(),
+                id: params.clipId ?? `clip-${action.id}`,
                 trackId: params.trackId,
                 startTime: params.startTime,
               }
             : {
-                id: params.clipId ?? crypto.randomUUID(),
+                id: params.clipId ?? `clip-${action.id}`,
                 mediaId: params.mediaId,
                 trackId: params.trackId,
                 startTime: params.startTime,
@@ -1161,7 +1164,7 @@ export class ActionExecutor {
 
           const clip2 = {
             ...clip,
-            id: crypto.randomUUID(),
+            id: `clip-${action.id}-split`,
             startTime: splitTime,
             duration: clip.duration - splitOffset,
             ...(clip.reversed
@@ -1590,7 +1593,7 @@ export class ActionExecutor {
   }
 
   private applyEffectAction(
-    action: EffectAction | { type: string; params: Record<string, unknown> },
+    action: (EffectAction | { type: string; params: Record<string, unknown> }) & Pick<Action, "id">,
     project: Project,
   ): void {
     const timeline = project.timeline as MutableTimeline;
@@ -1606,7 +1609,7 @@ export class ActionExecutor {
           enabled?: boolean;
         };
         const newEffect = {
-          id: params.effectId ?? `effect-${Date.now()}`,
+          id: params.effectId ?? `effect-${action.id}`,
           type: params.effectType,
           params: params.params || {},
           enabled: params.enabled ?? true,
@@ -1775,7 +1778,7 @@ export class ActionExecutor {
   }
 
   private applyKeyframeAction(
-    action: KeyframeAction | { type: string; params: Record<string, unknown> },
+    action: (KeyframeAction | { type: string; params: Record<string, unknown> }) & Pick<Action, "id">,
     project: Project,
   ): void {
     const timeline = project.timeline as MutableTimeline;
@@ -1789,7 +1792,7 @@ export class ActionExecutor {
           value: unknown;
         };
         const newKeyframe = {
-          id: `keyframe-${Date.now()}`,
+          id: `keyframe-${action.id}`,
           time: params.time,
           property: params.property,
           value: params.value,
@@ -1872,8 +1875,8 @@ export class ActionExecutor {
 
   private applyTransitionAction(
     action:
-      | TransitionAction
-      | { type: string; params: Record<string, unknown> },
+      | (TransitionAction & Pick<Action, "id">)
+      | { type: string; id: string; params: Record<string, unknown> },
     project: Project,
   ): void {
     const timeline = project.timeline as MutableTimeline;
@@ -1893,7 +1896,7 @@ export class ActionExecutor {
           );
           if (track) {
             const newTransition: Transition = {
-              id: `transition-${Date.now()}`,
+              id: `transition-${action.id}`,
               clipAId: params.clipAId,
               clipBId: params.clipBId,
               type: params.transitionType,
@@ -2175,7 +2178,7 @@ export class ActionExecutor {
   }
 
   private applySubtitleAction(
-    action: SubtitleAction | { type: string; params: Record<string, unknown> },
+    action: (SubtitleAction | { type: string; params: Record<string, unknown> }) & Pick<Action, "id">,
     project: Project,
   ): void {
     const timeline = project.timeline as MutableTimeline;
@@ -2188,7 +2191,7 @@ export class ActionExecutor {
           endTime: number;
         };
         const newSubtitle = {
-          id: `subtitle-${Date.now()}`,
+          id: `subtitle-${action.id}`,
           text: params.text,
           startTime: params.startTime,
           endTime: params.endTime,
@@ -2264,7 +2267,7 @@ export class ActionExecutor {
           const text = match[4].trim();
 
           newSubtitles.push({
-            id: `subtitle-${Date.now()}-${match[1]}`,
+            id: `subtitle-${action.id}-${newSubtitles.length + 1}`,
             text,
             startTime,
             endTime,

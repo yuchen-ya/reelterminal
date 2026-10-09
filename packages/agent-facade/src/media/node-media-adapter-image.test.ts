@@ -148,6 +148,18 @@ describe("probeLocalMediaFile image branch", () => {
     expect(probed.fileSize).toBe(tinyPngBytes().byteLength);
   }, 30000);
 
+  it("sniffs supported image content behind the controlled `.bin` suffix", async () => {
+    const controlledPath = path.join(fixtureDir, "controlled-image.bin");
+    await writeFile(controlledPath, tinyPngBytes());
+
+    const probed = await probeLocalMediaFile(controlledPath);
+
+    expect(probed.type).toBe("image");
+    expect(probed.mimeType).toBe("image/png");
+    expect(probed.width).toBe(TINY_IMAGE_EXPECTED.png.width);
+    expect(probed.height).toBe(TINY_IMAGE_EXPECTED.png.height);
+  }, 30000);
+
   it("probes a JPEG via the SOF scan past its APP segments", async () => {
     const probed = await probeLocalMediaFile(jpegPath);
 

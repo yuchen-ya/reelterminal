@@ -1,5 +1,7 @@
 import { validateMediaProduction } from "../types/media-production";
 import { validReviewRange } from "../types/review-range";
+import { SpeedEngine } from "../video/speed-engine";
+import { calculateProjectDuration } from "../timeline/project-duration";
 import type {
   Project,
   MediaItem,
@@ -458,6 +460,29 @@ export function normalizeProjectChromaFields(project: Project): Project {
     : project;
 }
 
+/** Repair stored derived durations from the canonical speed configuration.
+ * Ordinary clips retain their explicit duration; legacy ramp/freeze edits did
+ * not recalculate it. This never moves neighboring clips or linked entities.
+ */
+export function normalizeProjectSpeedDurations(project: Project): Project {
+  const engine = new SpeedEngine();
+  engine.loadClips(project.timeline.tracks.flatMap((track) => track.clips));
+  let changed = false;
+  const tracks = project.timeline.tracks.map((track) => ({
+    ...track,
+    clips: track.clips.map((clip) => {
+      if ((clip.speed ?? 1) === 1 && !clip.speedKeyframes?.length && !clip.freezeFrames?.length) return clip;
+      const duration = engine.getEffectiveDuration(clip.id);
+      if (duration === clip.duration) return clip;
+      changed = true;
+      return { ...clip, duration };
+    }),
+  }));
+  if (!changed) return project;
+  const normalized = { ...project, timeline: { ...project.timeline, tracks } };
+  return { ...normalized, timeline: { ...normalized.timeline, duration: calculateProjectDuration(normalized) } };
+}
+
 export function normalizeProjectStoredFields(project: Project): Project {
   for (const requirement of project.requirements?.items ?? []) {
     if (requirement.reviewRange !== undefined && !validReviewRange(requirement.reviewRange)) {
@@ -470,7 +495,7 @@ export function normalizeProjectStoredFields(project: Project): Project {
         normalizeProjectCreationFields(
           normalizeProjectWorkAssetFields(
             normalizeProjectMotionFields(
-              normalizeProjectChromaFields(project),
+              normalizeProjectChromaFields(normalizeProjectSpeedDurations(project)),
             ),
           ),
         ),
@@ -681,8 +706,11 @@ export class ProjectSerializer {
         const mediaRecord: MediaRecord = {
           id: item.id,
           projectId: project.id,
+          projectIds: [project.id],
           blob: item.blob,
           metadata: item.metadata,
+          ...(item.contentHash ? { contentHash: item.contentHash } : {}),
+          ...(item.contentUrl ? { contentUrl: item.contentUrl } : {}),
         };
         await this.storage.saveMedia(mediaRecord);
       }

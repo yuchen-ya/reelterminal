@@ -2,6 +2,9 @@ import { describe, it, expect } from "vitest";
 import { ActionExecutor } from "../action-executor";
 import type { Project } from "../../types/project";
 import type { Action } from "../../types/actions";
+import { SpeedEngine } from "../../video/speed-engine";
+import { ProjectSerializer } from "../../storage/project-serializer";
+import type { IStorageEngine } from "../../storage/types";
 import type {
   ChromaKeySettings,
   SpeedKeyframe,
@@ -73,6 +76,83 @@ function clipOf(project: Project) {
 }
 
 describe("clip fx handlers", () => {
+  it("persists one complete speed configuration with derived duration across undo, redo and JSON reload", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProjectWithClip({ inPoint: 4, outPoint: 9 });
+    const prior = structuredClone(clipOf(project));
+    const result = await executor.execute(act("speed/setRampData", {
+      clipId: "c1", speed: 2, reversed: true, pitchCorrection: false,
+      keyframes: [
+        { id: "k1", time: 0, speed: 2, easing: "linear" },
+        { id: "k2", time: 5, speed: 2, easing: "linear" },
+      ],
+      freezeFrames: [{ id: "f1", clipId: "c1", sourceTime: 3, startTime: 1, duration: 2 }],
+    }), project);
+    expect(result.success).toBe(true);
+    const committed = structuredClone(clipOf(project));
+    expect(committed).toMatchObject({ speed: 2, reversed: true, pitchCorrection: false });
+    expect(committed.duration).toBeCloseTo(4.5);
+    expect(project.timeline.duration).toBeCloseTo(4.5);
+    await executor.undo(project);
+    expect(clipOf(project)).toEqual(prior);
+    expect(project.timeline.duration).toBe(5);
+    await executor.redo(project);
+    expect(clipOf(project)).toEqual(committed);
+    const serializer = new ProjectSerializer({} as IStorageEngine);
+    const reloaded = serializer.importFromJson(serializer.exportToJson(project));
+    const engine = new SpeedEngine();
+    engine.loadClips(reloaded.timeline.tracks.flatMap((track) => track.clips));
+    expect(engine.getEffectiveDuration("c1")).toBeCloseTo(committed.duration);
+    expect(engine.getSourceTimeAtPlaybackTime("c1", 0)).toBe(5);
+    expect(engine.getSourceTimeAtPlaybackTime("c1", 2)).toBe(3);
+    expect(engine.getSourceTimeAtPlaybackTime("c1", committed.duration)).toBe(0);
+  });
+
+  it("recalculates ramps/freezes for every writer without moving the following clip", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProjectWithClip();
+    const next = { ...clipOf(project), id: "c2", startTime: 5 };
+    (project.timeline.tracks[0].clips as typeof next[]).push(next);
+    await executor.execute(act("speed/setKeyframes", { clipId: "c1", keyframes: [{ id: "k1", time: 0, speed: 0.5, easing: "linear" }] }), project);
+    expect(clipOf(project).duration).toBeCloseTo(10);
+    await executor.execute(act("speed/setFreezeFrames", { clipId: "c1", freezeFrames: [{ id: "f", clipId: "c1", sourceTime: 1, startTime: 1, duration: 2 }] }), project);
+    expect(clipOf(project).duration).toBeCloseTo(12);
+    await executor.execute(act("clip/setSpeed", { clipId: "c1", speed: 4 }), project);
+    expect(clipOf(project).duration).toBeCloseTo(12); // Curve takes precedence over base speed.
+    expect(project.timeline.tracks[0].clips[1].startTime).toBe(5);
+    expect(project.timeline.duration).toBeCloseTo(12);
+  });
+
+  it.each([
+    ["clip/trim", { inPoint: 1 }],
+    ["clip/split", { time: 2 }],
+    ["clip/slip", { delta: 1 }],
+    ["clip/trimToPlayhead", { playheadTime: 2, trimStart: true }],
+    ["clip/roll", { leftClipId: "c1", rightClipId: "c2", delta: 1 }],
+    ["clip/slide", { clipId: "c2", prevClipId: "c1", delta: 1 }],
+  ])("keeps unsupported nonlinear source edits from corrupting canonical state: %s", async (type, params) => {
+    const project = makeProjectWithClip({
+      freezeFrames: [{ id: "f", clipId: "c1", sourceTime: 1, startTime: 1, duration: 1 }],
+      duration: 6,
+    });
+    const before = structuredClone(project);
+    const result = await new ActionExecutor().execute(act(type, { clipId: "c1", ...params }), project);
+    expect(result.success).toBe(false);
+    expect(project).toEqual(before);
+  });
+
+  it.each([
+    [{ id: "f", clipId: "c1", sourceTime: 6, startTime: 0, duration: 1 }],
+    [{ id: "f", clipId: "c1", sourceTime: 1, startTime: 6, duration: 1 }],
+    [{ id: "f", clipId: "c1", sourceTime: 1, startTime: 0, duration: 0 }],
+    [{ id: "f", clipId: "c1", sourceTime: 1, startTime: 0, duration: 2 }, { id: "g", clipId: "c1", sourceTime: 2, startTime: 1, duration: 1 }],
+  ].map((freezeFrames) => ({ freezeFrames })))("rejects invalid freezes without committing state: %j", async ({ freezeFrames }) => {
+    const project = makeProjectWithClip();
+    const before = structuredClone(project);
+    const result = await new ActionExecutor().execute(act("speed/setRampData", { clipId: "c1", freezeFrames }), project);
+    expect(result.success).toBe(false);
+    expect(project).toEqual(before);
+  });
   it("clip/setSpeed sets speed and is undoable", async () => {
     const executor = new ActionExecutor();
     const project = makeProjectWithClip({ speed: 1 });

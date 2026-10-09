@@ -1,4 +1,4 @@
-import { StorageEngine } from "@reelterminal/core";
+import { StorageEngine, hashMediaBlob } from "@reelterminal/core";
 import type { MediaRecord, MediaMetadata } from "@reelterminal/core";
 import {
   LEGACY_AUTO_SAVE_DB_NAME,
@@ -8,54 +8,343 @@ import {
 
 const storage = new StorageEngine();
 
+export interface SavedMediaVersion {
+  readonly contentHash: string;
+  readonly contentUrl?: string;
+  /** True only when no identical version existed in either durable store. */
+  readonly created: boolean;
+}
+
+export interface StoredMediaEntry {
+  readonly id: string;
+  readonly projectId: string;
+  readonly projectIds?: readonly string[];
+  readonly blob?: Blob;
+  readonly metadata: MediaMetadata;
+  readonly contentHash?: string;
+  readonly contentUrl?: string;
+  readonly sizeBytes: number;
+  readonly controlledFiles?: readonly { readonly path: string; readonly sizeBytes: number }[];
+}
+
+let mutationQueue: Promise<void> = Promise.resolve();
+
+/** Serialize reference commits with media cleanup's final scan and deletion. */
+export async function withMediaReferenceWrite<T>(
+  operation: () => Promise<T> | T,
+): Promise<T> {
+  const previous = mutationQueue;
+  let release!: () => void;
+  mutationQueue = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
+
+function desktopMediaStore(): NonNullable<
+  NonNullable<Window["reelterminal"]>["mediaStore"]
+> | undefined {
+  return typeof window === "undefined" ? undefined : window.reelterminal?.mediaStore;
+}
+
+async function writeControlledMediaVersion(
+  projectId: string,
+  mediaId: string,
+  blob: Blob,
+  contentHash: string,
+  nameHint?: string,
+): Promise<{ path: string; created: boolean } | undefined> {
+  const mediaStore = desktopMediaStore();
+  if (!mediaStore) {
+    if (typeof window !== "undefined" && window.reelterminal?.platform === "desktop") {
+      throw new Error("Controlled media storage is unavailable in this desktop session");
+    }
+    return undefined;
+  }
+
+  const extension = await mediaExtension(nameHint, blob.type, blob);
+  const sessionId = await mediaStore.beginWrite({ projectId, mediaId, expectedHash: contentHash, extension });
+  try {
+    const reader = blob.stream().getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        // Keep each structured-clone IPC payload bounded even when a Blob
+        // implementation yields a large stream chunk.
+        for (let offset = 0; offset < value.byteLength; offset += 4 * 1024 * 1024) {
+          const chunk = value.subarray(offset, Math.min(offset + 4 * 1024 * 1024, value.byteLength));
+          await mediaStore.writeChunk(sessionId, chunk);
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const result = await mediaStore.commitWrite(sessionId);
+    if (result.contentHash !== contentHash) {
+      throw new Error("Controlled media storage returned a different content hash");
+    }
+    return { path: result.path, created: result.created };
+  } catch (error) {
+    await mediaStore.abortWrite(sessionId).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function mediaExtension(
+  nameHint: string | undefined,
+  mimeType: string,
+  blob: Blob,
+): Promise<string> {
+  const filename = nameHint?.replaceAll("\\", "/").split("/").pop();
+  const dot = filename?.lastIndexOf(".") ?? -1;
+  const hinted = dot > 0 ? filename?.slice(dot + 1).toLowerCase() : undefined;
+  if (
+    hinted && hinted !== "bin" && /^[a-z0-9]{1,10}$/.test(hinted)
+  ) return hinted;
+  const byMime: Record<string, string> = {
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "video/webm": "webm",
+    "video/x-matroska": "mkv",
+    "video/x-msvideo": "avi",
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/mp4": "m4a",
+    "audio/aac": "aac",
+    "audio/flac": "flac",
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+  };
+  if (byMime[mimeType]) return byMime[mimeType];
+
+  // Generic `.bin` files often arrive from Agent imports or from browsers
+  // that do not assign a MIME type. Preserve a browser-decodable suffix for
+  // the supported raster formats by inspecting only the small file header.
+  const header = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+  if (
+    header.length >= 8 && header[0] === 0x89 && header[1] === 0x50 &&
+    header[2] === 0x4e && header[3] === 0x47 && header[4] === 0x0d &&
+    header[5] === 0x0a && header[6] === 0x1a && header[7] === 0x0a
+  ) return "png";
+  if (header.length >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) {
+    return "jpg";
+  }
+  if (header.length >= 6) {
+    const signature = String.fromCharCode(...header.subarray(0, 6));
+    if (signature === "GIF87a" || signature === "GIF89a") return "gif";
+  }
+  if (
+    header.length >= 12 && String.fromCharCode(...header.subarray(0, 4)) === "RIFF" &&
+    String.fromCharCode(...header.subarray(8, 12)) === "WEBP"
+  ) return "webp";
+  return hinted && /^[a-z0-9]{1,10}$/.test(hinted) ? hinted : "bin";
+}
+
 export async function saveMediaBlob(
   projectId: string,
   mediaId: string,
   blob: Blob,
   metadata: MediaMetadata,
-): Promise<void> {
-  const record: MediaRecord = {
-    id: mediaId,
-    projectId,
-    blob,
-    metadata,
-  };
+  nameHint?: string,
+): Promise<SavedMediaVersion> {
+  const contentHash = await hashMediaBlob(blob);
+  return withMediaReferenceWrite(async () => {
+    const existing = await storage.loadMedia(mediaId);
+    if (existing) {
+      const existingHash = existing.contentHash ?? await hashMediaBlob(existing.blob);
+      if (existingHash !== contentHash) {
+        throw new Error(`Media version ${mediaId} is immutable and already contains different bytes`);
+      }
+    }
 
-  await storage.saveMedia(record);
+    let controlled: { path: string; created: boolean } | undefined;
+    const existingControlled = await desktopMediaStore()?.getVersion(mediaId);
+    if (existingControlled) {
+      if (existingControlled.contentHash !== contentHash) {
+        throw new Error(`Media version ${mediaId} is immutable and already contains different controlled bytes`);
+      }
+      controlled = { path: existingControlled.path, created: false };
+    } else {
+      controlled = await writeControlledMediaVersion(projectId, mediaId, blob, contentHash, nameHint);
+    }
+    const record: MediaRecord = {
+      id: mediaId,
+      projectId,
+      projectIds: [...new Set([...(existing?.projectIds ?? (existing ? [existing.projectId] : [])), projectId])],
+      blob,
+      metadata,
+      contentHash,
+      ...(controlled ? { contentUrl: controlled.path } : {}),
+    };
+    await storage.saveMedia(record);
+    return {
+      contentHash,
+      ...(controlled ? { contentUrl: controlled.path } : {}),
+      created: existing === null && (controlled?.created ?? true),
+    };
+  });
 }
 
-export async function loadMediaBlob(mediaId: string): Promise<Blob | null> {
+export async function loadMediaBlob(mediaId: string, projectId?: string): Promise<Blob | null> {
   const record = await storage.loadMedia(mediaId);
-  return record?.blob || null;
+  if (record?.blob) return record.blob;
+  const mediaStore = desktopMediaStore();
+  if (!mediaStore) return null;
+  if (projectId) {
+    const bytes = await mediaStore.readAny(mediaId);
+    return bytes ? new Blob([bytes]) : null;
+  }
+  const bytes = await mediaStore.readAny(mediaId);
+  return bytes ? new Blob([bytes]) : null;
 }
 
-export async function loadMediaRecord(
-  mediaId: string,
-): Promise<MediaRecord | null> {
+export async function loadMediaRecord(mediaId: string): Promise<MediaRecord | null> {
   return storage.loadMedia(mediaId);
 }
 
 export async function loadProjectMedia(
   projectId: string,
+  mediaIds?: readonly string[],
 ): Promise<MediaRecord[]> {
-  return storage.getMediaByProject(projectId);
+  const records = mediaIds
+    ? (await Promise.all(mediaIds.map((mediaId) => storage.loadMedia(mediaId))))
+      .filter((record): record is MediaRecord => record !== null)
+    : await storage.getMediaByProject(projectId);
+  const present = new Set(records.map((record) => record.id));
+  const mediaStore = desktopMediaStore();
+  if (!mediaStore) return records;
+  const controlled = mediaIds
+    ? (await mediaStore.listAll()).filter((entry) => mediaIds.includes(entry.mediaId))
+    : await mediaStore.listProject(projectId);
+  for (const entry of controlled) {
+    if (present.has(entry.mediaId)) continue;
+    const bytes = await mediaStore.readAny(entry.mediaId);
+    if (!bytes) continue;
+    records.push({
+      id: entry.mediaId,
+      projectId,
+      blob: new Blob([bytes]),
+      // The project description remains authoritative for metadata; restore
+      // uses the item metadata and only consumes this record's bytes.
+      metadata: {
+        duration: 0,
+        width: 0,
+        height: 0,
+        frameRate: 0,
+        codec: "",
+        sampleRate: 0,
+        channels: 0,
+        fileSize: entry.sizeBytes,
+      },
+    });
+  }
+  return records;
 }
 
-export async function getMediaIdsByProject(
-  projectId: string,
-): Promise<string[]> {
-  return storage.getMediaIdsByProject(projectId);
+export async function getMediaIdsByProject(projectId: string): Promise<string[]> {
+  const ids = new Set(await storage.getMediaIdsByProject(projectId));
+  const mediaStore = desktopMediaStore();
+  if (mediaStore) {
+    for (const entry of await mediaStore.listProject(projectId)) ids.add(entry.mediaId);
+  }
+  return [...ids];
 }
 
-export async function deleteMediaBlob(mediaId: string): Promise<void> {
+export async function getAllStoredMedia(): Promise<StoredMediaEntry[]> {
+  const records = await storage.getAllMedia();
+  const entries = new Map<string, StoredMediaEntry>(records.map((record) => [record.id, {
+    ...record,
+    sizeBytes: record.blob.size,
+    controlledFiles: [] as { path: string; sizeBytes: number }[],
+  }]));
+  const mediaStore = desktopMediaStore();
+  if (mediaStore) {
+    const filesById = new Map<string, { path: string; sizeBytes: number }[]>();
+    const projectsById = new Map<string, Set<string>>();
+    for (const entry of await mediaStore.listAll()) {
+      filesById.set(entry.mediaId, [...(filesById.get(entry.mediaId) ?? []), {
+        path: entry.path,
+        sizeBytes: entry.sizeBytes,
+      }]);
+      const projects = projectsById.get(entry.mediaId) ?? new Set<string>();
+      projects.add(entry.projectId);
+      projectsById.set(entry.mediaId, projects);
+    }
+    for (const [mediaId, files] of filesById) {
+      const existing = entries.get(mediaId);
+      const contentUrl = existing?.contentUrl ?? files[0]?.path;
+      const projectIds = [...new Set([
+        ...(existing?.projectIds ?? (existing ? [existing.projectId] : [])),
+        ...(projectsById.get(mediaId) ?? []),
+      ])];
+      if (existing) {
+        entries.set(mediaId, {
+          ...existing,
+          projectIds,
+          ...(contentUrl ? { contentUrl } : {}),
+          controlledFiles: files,
+        });
+      } else {
+        const first = files[0];
+        if (!first) continue;
+        entries.set(mediaId, {
+          id: mediaId,
+          projectId: projectIds[0] ?? "",
+          projectIds,
+          contentUrl: first.path,
+          controlledFiles: files,
+          sizeBytes: first.sizeBytes,
+          metadata: {
+            duration: 0,
+            width: 0,
+            height: 0,
+            frameRate: 0,
+            codec: "",
+            sampleRate: 0,
+            channels: 0,
+            fileSize: first.sizeBytes,
+          },
+        });
+      }
+    }
+  }
+  return [...entries.values()];
+}
+
+async function deleteMediaBlobUnlocked(mediaId: string, projectId?: string): Promise<void> {
+  const record = await storage.loadMedia(mediaId);
+  if (projectId && record) {
+    const owners = record.projectIds ?? [record.projectId];
+    if (owners.some((owner) => owner !== projectId)) return;
+  }
   await storage.deleteMedia(mediaId);
+  const mediaStore = desktopMediaStore();
+  if (mediaStore) await mediaStore.delete(mediaId);
+}
+
+/** Internal GC primitive. Call only while holding withMediaReferenceWrite. */
+export async function deleteMediaBlobUnderReferenceWrite(
+  mediaId: string,
+  projectId?: string,
+): Promise<void> {
+  await deleteMediaBlobUnlocked(mediaId, projectId);
+}
+
+export async function deleteMediaBlob(mediaId: string, projectId?: string): Promise<void> {
+  await withMediaReferenceWrite(() => deleteMediaBlobUnlocked(mediaId, projectId));
 }
 
 export async function deleteProjectMedia(projectId: string): Promise<void> {
-  const records = await storage.getMediaByProject(projectId);
-  for (const record of records) {
-    await storage.deleteMedia(record.id);
-  }
+  await withMediaReferenceWrite(async () => {
+    const ids = new Set(await getMediaIdsByProject(projectId));
+    for (const mediaId of ids) await deleteMediaBlobUnlocked(mediaId, projectId);
+  });
 }
 
 export async function saveFileHandle(name: string, size: number, handle: FileSystemFileHandle): Promise<void> {
@@ -88,11 +377,11 @@ export async function getStorageStats(): Promise<{
 }
 
 export async function clearAllStorage(): Promise<void> {
-  await storage.clearAllData();
+  await withMediaReferenceWrite(async () => {
+    await storage.clearAllData();
+    await desktopMediaStore()?.clearAll();
+  });
 
-  // Legacy database names — must match the frozen registry
-  // (packages/core/src/legacy/physical-identifiers.ts) or old data survives
-  // the "clear all" action.
   const databasesToDelete = [
     LEGACY_AUTO_SAVE_DB_NAME,
     LEGACY_PROJECT_DB_NAME,

@@ -13,7 +13,7 @@
  *  - analysis.list/get are read-only (no revision bump, no project edits).
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { appendFile, mkdtemp, rm, stat, utimes } from "node:fs/promises";
+import { appendFile, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentFacadeSession, createAgentFacade, type AgentFacade } from "./index";
@@ -90,6 +90,8 @@ describe("analysis records (P2)", () => {
     if (!got.ok) return;
     const record = got.value as {
       projectId: string;
+      sourceRevision: number;
+      coordinateSpace: string;
       subject: { mediaId: string; sourceFingerprint: { size: number } };
       provenance: Array<{ kind: string; provider: string }>;
       observations: unknown[];
@@ -100,6 +102,8 @@ describe("analysis records (P2)", () => {
       config: { analysisTypes: string[] };
     };
     expect(record.projectId).toBe(before.value.project.id);
+    expect(record.sourceRevision).toBe(revisionBefore);
+    expect(record.coordinateSpace).toBe("source");
     expect(record.subject.mediaId).toBe(mediaId);
     expect(record.provenance).toEqual([
       { kind: "local-measurement", provider: "built-in-mediabunny-stat+ffprobe-color", analysisType: "technicalQuality" },
@@ -117,6 +121,10 @@ describe("analysis records (P2)", () => {
     if (list.ok) {
       expect(list.value).toHaveLength(1);
       expect(list.value[0]!.id).toBe(recordRef.id);
+      expect(list.value[0]).toMatchObject({
+        sourceRevision: revisionBefore,
+        coordinateSpace: "source",
+      });
     }
 
     // Read-only: no revision bump, no project mutation.
@@ -225,6 +233,8 @@ describe("analysis records (P2)", () => {
     const fileStat = await stat(mediaPath);
     const saved = await saveAnalysisRecord(artifactRoot, {
       projectId: "p1",
+      sourceRevision: 1,
+      coordinateSpace: "source",
       subject: {
         mediaId,
         name: "tiny.mp4",
@@ -251,5 +261,25 @@ describe("analysis records (P2)", () => {
     expect(saved.cloudOpinion?.serverSamplingFps).toBeNull(); // unknown, not fabricated
     const records = await listAnalysisRecords(artifactRoot, { mediaId });
     expect(records.some((record) => record.id === saved.id)).toBe(true);
+
+    const { loadAnalysisRecord } = await import("./analysis-records");
+    const legacyJson = JSON.parse(await readFile(saved.recordPath, "utf8")) as Record<string, unknown>;
+    legacyJson.schemaVersion = 1;
+    delete legacyJson.sourceRevision;
+    delete legacyJson.coordinateSpace;
+    await writeFile(saved.recordPath, `${JSON.stringify(legacyJson)}\n`, "utf8");
+    const legacy = await loadAnalysisRecord(artifactRoot, saved.id);
+    expect(legacy.schemaVersion).toBe(2);
+    expect(legacy.sourceRevision).toBeNull();
+    expect(legacy.coordinateSpace).toBe("source");
+    const legacyList = await facade["analysis.list"]({ mediaId });
+    expect(legacyList).toMatchObject({
+      ok: true,
+      value: [{ sourceRevision: null, coordinateSpace: "source" }],
+    });
+    expect(await facade["analysis.get"]({ recordId: saved.id })).toMatchObject({
+      ok: true,
+      value: { schemaVersion: 2, sourceRevision: null, coordinateSpace: "source" },
+    });
   });
 });

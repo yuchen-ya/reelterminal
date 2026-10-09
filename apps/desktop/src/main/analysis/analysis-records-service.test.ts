@@ -19,6 +19,8 @@ async function fixture(cloudUpload = false) {
   const sourceStat = await stat(sourcePath);
   const record = await saveAnalysisRecord(root, {
     projectId: "project-a",
+    sourceRevision: 1,
+    coordinateSpace: "source",
     subject: {
       mediaId: "media-a",
       name: "Source A",

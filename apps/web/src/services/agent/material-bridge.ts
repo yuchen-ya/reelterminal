@@ -27,7 +27,7 @@ import type {
   MaterialUpdatePatch,
 } from "@reelterminal/core";
 import { runExclusiveLiveWrite } from "./live-write-lock";
-import { useProjectStore } from "../../stores/project-store";
+import { workspaceManager } from "../workspace-manager";
 
 export type MaterialBridgeError = {
   readonly code: string;
@@ -236,12 +236,20 @@ async function handleAttach(
     addClip: rawParams.addClip ?? null,
   });
 
+  if (!guard.targetProjectId || !guard.targetWorkspaceId) {
+    return bridgeError({ code: "INVALID_PARAMS", message: "material.attach requires explicit projectId and workspaceId" });
+  }
+  const target = { projectId: guard.targetProjectId, workspaceId: guard.targetWorkspaceId };
+
   return runExclusiveLiveWrite(async () => {
     const conflict = projectGuardError(guard);
     if (conflict) return conflict;
-    // Same per-project bucketing as the live-bridge ledgers: a key committed
-    // in one project must never replay into another after a project switch.
-    const projectId = projectLedgerScope();
+    const runtime = await workspaceManager.getWorkspaceContext(target);
+    if (guard.targetWorkspaceInstanceId !== undefined && guard.targetWorkspaceInstanceId !== runtime.instanceId) {
+      return bridgeError({ code: "CONFLICT", message: "Workspace runtime changed since the targeted read" });
+    }
+    const scope = projectLedgerScope(target);
+    const projectId = scope;
     const projectLedger = idempotencyKey
       ? attachLedger.get(projectId)
       : undefined;
@@ -256,14 +264,33 @@ async function handleAttach(
       return { ok: true, result: { ...prior.result, replayed: true } };
     }
 
-    const result = await attachMaterialToProject({
-      materialId,
-      ...(typeof rawParams.startSec === "number" ? { startSec: rawParams.startSec } : {}),
-      ...(typeof rawParams.endSec === "number" ? { endSec: rawParams.endSec } : {}),
-      ...(typeof rawParams.addClip === "boolean" ? { addClip: rawParams.addClip } : {}),
-      expectedRevision: typeof rawParams.expectedRevision === "number" ? rawParams.expectedRevision : useProjectStore.getState().projectRevision,
-      actor: "agent",
-    });
+    const expected = typeof rawParams.expectedRevision === "number" ? rawParams.expectedRevision : undefined;
+    if (expected === undefined || expected !== runtime.revision) {
+      return bridgeError({ code: "CONFLICT", message: `Workspace revision mismatch: expected ${String(expected)}, current ${runtime.revision}`, details: { currentRevision: runtime.revision } });
+    }
+    let result: Awaited<ReturnType<typeof attachMaterialToProject>>;
+    try {
+      result = await workspaceManager.withWorkspaceWrite(target, expected, (context) => {
+        if (context.instanceId !== runtime.instanceId) throw new Error("Workspace runtime changed before material attach");
+        return attachMaterialToProject({
+          materialId,
+          projectId: target.projectId,
+          workspaceId: target.workspaceId,
+          store: context.store,
+          ...(typeof rawParams.startSec === "number" ? { startSec: rawParams.startSec } : {}),
+          ...(typeof rawParams.endSec === "number" ? { endSec: rawParams.endSec } : {}),
+          ...(typeof rawParams.addClip === "boolean" ? { addClip: rawParams.addClip } : {}),
+          expectedRevision: expected,
+          actor: "agent",
+        });
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("revision conflict") || message.includes("runtime changed")) {
+        return bridgeError({ code: "CONFLICT", message: `Workspace material attach conflict: ${message}` });
+      }
+      throw error;
+    }
     if (!result.ok) {
       return bridgeError({
         code: result.code,
@@ -283,9 +310,9 @@ async function handleAttach(
         if (oldest !== undefined) ledger.delete(oldest);
       }
     }
-    window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
+    if (runtime.store.getState().isForeground) window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
     return { ok: true, result: result.value };
-  });
+  }, target);
 }
 
 function isString(value: unknown): value is string {

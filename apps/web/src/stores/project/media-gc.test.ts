@@ -1,26 +1,41 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Project } from "@reelterminal/core";
+import type { MediaItem, Project } from "@reelterminal/core";
+import type { ProjectNodeRecord } from "../../services/workspace-manager";
+import type { MediaReference } from "../../services/project-media-gc";
 import { useProjectStore } from "../project-store";
 import { createEmptyProject } from "./index";
 import { loadMediaBlob } from "../../services/media-storage";
 import {
+  compareNodes,
+  createMediaCleanupPlan,
+  executeMediaCleanupPlan,
   releaseUncommittedMediaBlob,
-  sweepOrphanProjectMedia,
   trackUncommittedMediaBlob,
 } from "../../services/project-media-gc";
 
-const { importFile, saveMediaBlob, deleteMediaBlob, storedMedia } = vi.hoisted(
+const { importFile, saveMediaBlob, deleteMediaBlob, deleteUnderLock, storedMedia, storedMaterials, storedJournal, storedTasks, workspace } = vi.hoisted(
   () => ({
     importFile: vi.fn(),
     saveMediaBlob: vi.fn(),
     deleteMediaBlob: vi.fn(),
+    deleteUnderLock: vi.fn(),
     storedMedia: new Map<string, { projectId: string; blob: Blob }>(),
+    storedMaterials: [] as unknown[],
+    storedJournal: [] as unknown[],
+    storedTasks: [] as unknown[],
+    workspace: {
+      initialize: vi.fn(async () => undefined),
+      getMediaReferences: vi.fn(async () => [] as MediaReference[]),
+      getRuntimeMediaReferences: vi.fn(async () => []),
+      getNode: vi.fn(async (_projectId: string, _nodeId: string): Promise<ProjectNodeRecord | null> => null),
+    },
   }),
 );
 
 saveMediaBlob.mockImplementation(
   async (projectId: string, mediaId: string, blob: Blob) => {
     storedMedia.set(mediaId, { projectId, blob });
+    return { contentHash: `hash-${mediaId}`, created: true };
   },
 );
 deleteMediaBlob.mockImplementation(async (mediaId: string) => {
@@ -30,17 +45,41 @@ deleteMediaBlob.mockImplementation(async (mediaId: string) => {
 vi.mock("../../services/media-storage", () => ({
   saveMediaBlob,
   deleteMediaBlob,
+  deleteMediaBlobUnderReferenceWrite: deleteUnderLock,
+  withMediaReferenceWrite: async <T>(operation: () => Promise<T> | T) => operation(),
   loadMediaBlob: vi.fn(async (mediaId: string) =>
     storedMedia.get(mediaId)?.blob ?? null,
   ),
+  loadMediaRecord: vi.fn(async (mediaId: string) => {
+    const record = storedMedia.get(mediaId);
+    return record ? { ...record, id: mediaId, metadata: { fileSize: record.blob.size } } : null;
+  }),
   getMediaIdsByProject: vi.fn(async (projectId: string) =>
     [...storedMedia.entries()]
       .filter(([, record]) => record.projectId === projectId)
       .map(([mediaId]) => mediaId),
   ),
+  getAllStoredMedia: vi.fn(async () => [...storedMedia.entries()].map(([id, record]) => ({
+    id,
+    ...record,
+    metadata: { fileSize: record.blob.size },
+    sizeBytes: record.blob.size,
+    controlledFiles: [],
+  }))),
   loadProjectMedia: vi.fn(async () => []),
   loadFileHandle: vi.fn(async () => null),
   loadDirectoryHandle: vi.fn(async () => null),
+}));
+
+vi.mock("../../services/workspace-manager", () => ({ workspaceManager: workspace }));
+vi.mock("../../services/material-library/storage", () => ({
+  createIdbMaterialStorage: () => ({
+    loadAllMaterials: async () => storedMaterials,
+    loadJournal: async () => storedJournal,
+  }),
+}));
+vi.mock("../../services/agent-media-tasks/storage", () => ({
+  createIdbAgentTaskStorage: () => ({ loadAll: async () => storedTasks }),
 }));
 
 vi.mock("../../bridges/media-bridge", () => ({
@@ -67,6 +106,10 @@ describe("project media byte reclamation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     storedMedia.clear();
+    storedMaterials.length = 0;
+    storedJournal.length = 0;
+    storedTasks.length = 0;
+    deleteUnderLock.mockImplementation(async (mediaId: string) => { storedMedia.delete(mediaId); });
     importFile.mockImplementation(async (file: File) => ({
       success: true,
       media: {
@@ -110,6 +153,74 @@ describe("project media byte reclamation", () => {
       .getState()
       .project.mediaLibrary.items.some((item) => item.id === mediaId);
 
+  const comparisonNode = (
+    id: string,
+    items: MediaItem[],
+    clips: Array<{ id: string; mediaId: string }>,
+  ): ProjectNodeRecord => {
+    const empty = createEmptyProject("Comparison");
+    const project: Project = {
+      ...empty,
+      id: "comparison-project",
+      mediaLibrary: { ...empty.mediaLibrary, items },
+      timeline: { ...empty.timeline, tracks: [{ id: "track", clips } as Project["timeline"]["tracks"][number]] },
+    };
+    return {
+      id, projectId: project.id, project, parentNodeId: null, name: id, summary: "",
+      createdAt: 0, formatVersion: 1, mediaIds: items.map((item) => item.id), missingDependencies: [],
+    };
+  };
+  const compare = async (from: ProjectNodeRecord, to: ProjectNodeRecord) => {
+    workspace.getNode.mockImplementation(async (_projectId, nodeId) => nodeId === from.id ? from : to);
+    return compareNodes({ projectId: from.projectId, fromNodeId: from.id, toNodeId: to.id });
+  };
+  const mediaVersion = (id: string, sourceId?: string): MediaItem => ({
+    id,
+    ...(sourceId ? { versionSource: { supersedesMediaIdInProject: sourceId } } : {}),
+  } as MediaItem);
+
+  it("reports no differences when comparing a node containing replacement lineage with itself", async () => {
+    const node = comparisonNode("same", [mediaVersion("old"), mediaVersion("new", "old")], [{ id: "clip", mediaId: "new" }]);
+    expect(await compare(node, node)).toMatchObject({
+      added: [], removed: [], replaced: [], used: { added: [], removed: [], replaced: [] },
+    });
+  });
+
+  it("recognizes candidate swaps by clip identity while retaining partially used original media", async () => {
+    const items = [mediaVersion("old"), mediaVersion("candidate")];
+    const from = comparisonNode("before", items, [
+      { id: "changed-1", mediaId: "old" }, { id: "changed-2", mediaId: "old" }, { id: "unchanged", mediaId: "old" },
+    ]);
+    const to = comparisonNode("after", items, [
+      { id: "changed-1", mediaId: "candidate" }, { id: "changed-2", mediaId: "candidate" }, { id: "unchanged", mediaId: "old" },
+    ]);
+    expect(await compare(from, to)).toMatchObject({
+      added: [], removed: [], replaced: [],
+      used: { added: [], removed: [], replaced: [{ fromMediaId: "old", toMediaId: "candidate" }] },
+    });
+  });
+
+  it("does not infer a clip swap when a separately added clip uses an existing descendant version", async () => {
+    const items = [mediaVersion("old"), mediaVersion("new", "old")];
+    const original = { id: "original", mediaId: "old" };
+    expect(await compare(
+      comparisonNode("before", items, [original]),
+      comparisonNode("after", items, [original, { id: "added", mediaId: "new" }]),
+    )).toMatchObject({
+      added: [], removed: [], replaced: [], used: { added: ["new"], removed: [], replaced: [] },
+    });
+  });
+
+  it("separates newly introduced library lineage from timeline swaps and actual removals", async () => {
+    expect(await compare(
+      comparisonNode("before", [mediaVersion("old"), mediaVersion("unused")], [{ id: "clip", mediaId: "old" }]),
+      comparisonNode("after", [mediaVersion("old"), mediaVersion("new", "old")], [{ id: "clip", mediaId: "new" }]),
+    )).toMatchObject({
+      added: [], removed: ["unused"], replaced: [{ fromMediaId: "old", toMediaId: "new" }],
+      used: { added: [], removed: [], replaced: [{ fromMediaId: "old", toMediaId: "new" }] },
+    });
+  });
+
   it("keeps bytes readable when a delete is undone", async () => {
     const mediaId = await importAsset("kept-bytes", "clip.mp4");
 
@@ -141,7 +252,7 @@ describe("project media byte reclamation", () => {
     expect(storedMedia.has(mediaId)).toBe(true);
   });
 
-  it("reclaims bytes once the delete entry leaves the history for good", async () => {
+  it("keeps unreferenced bytes after history eviction until reviewed cleanup", async () => {
     const mediaId = await importAsset("doomed", "clip.mp4");
     await useProjectStore.getState().deleteMedia(mediaId);
     await drain();
@@ -149,6 +260,11 @@ describe("project media byte reclamation", () => {
 
     useProjectStore.getState().actionExecutor.getHistory().clear();
     await drain();
+    expect(storedMedia.has(mediaId)).toBe(true);
+
+    const plan = await createMediaCleanupPlan(useProjectStore.getState().project.id);
+    expect(plan.candidates.map((entry) => entry.mediaId)).toContain(mediaId);
+    await executeMediaCleanupPlan(plan);
     expect(storedMedia.has(mediaId)).toBe(false);
     expect(await loadMediaBlob(mediaId)).toBeNull();
   });
@@ -207,7 +323,7 @@ describe("project media byte reclamation", () => {
     expect(await readBlobText(bytes as Blob)).toBe("agent-import");
   });
 
-  it("reclaims bytes of an undone import once it can no longer be redone", async () => {
+  it("keeps an evicted undone import until reviewed cleanup", async () => {
     const mediaId = await importAsset("orphan-to-be", "clip.mp4", {
       historyOwner: "agent",
       historyGroupLabel: "agent: import",
@@ -217,13 +333,17 @@ describe("project media byte reclamation", () => {
     expect(storedMedia.has(mediaId)).toBe(true);
 
     // Any new history push drops the redo stack, taking the import entry with
-    // it. The item is gone and nothing can restore it, so the bytes go too.
+    // it. Physical cleanup remains a separately reviewed operation.
     await useProjectStore.getState().renameProject("Another name");
     await drain();
+    expect(storedMedia.has(mediaId)).toBe(true);
+
+    const plan = await createMediaCleanupPlan(useProjectStore.getState().project.id);
+    await executeMediaCleanupPlan(plan);
     expect(storedMedia.has(mediaId)).toBe(false);
   });
 
-  it("reclaims a deleted project's unclaimed bytes when the project is switched", async () => {
+  it("keeps a deleted project's bytes after switching until a reviewed cleanup runs", async () => {
     const mediaId = await importAsset("switched-away", "clip.mp4");
     await useProjectStore.getState().deleteMedia(mediaId);
     await drain();
@@ -233,11 +353,17 @@ describe("project media byte reclamation", () => {
 
     useProjectStore.getState().createNewProject("Next project");
     await drain();
-    // The switch destroyed that history: nothing restores the item anymore.
+    // Switching drops runtime history roots but does not make a deletion
+    // decision. A reviewed cleanup plan owns that decision.
+    expect(storedMedia.has(mediaId)).toBe(true);
+
+    const plan = await createMediaCleanupPlan();
+    expect(plan.candidates.map((entry) => entry.mediaId)).toContain(mediaId);
+    await executeMediaCleanupPlan(plan);
     expect(storedMedia.has(mediaId)).toBe(false);
   });
 
-  it("sweeps load-time orphans without touching the loaded media", async () => {
+  it("keeps load-time orphans until a reviewed cleanup leaves loaded media intact", async () => {
     const mediaId = await importAsset("loaded-and-kept", "clip.mp4");
     const current = useProjectStore.getState().project;
     storedMedia.set("orphan-1", { projectId: current.id, blob: new Blob(["orphan"]) });
@@ -253,12 +379,100 @@ describe("project media byte reclamation", () => {
     useProjectStore.getState().loadProject(incoming);
     await drain();
 
-    expect(storedMedia.has("orphan-1")).toBe(false);
+    expect(storedMedia.has("orphan-1")).toBe(true);
     expect(storedMedia.has(mediaId)).toBe(true);
     expect(hasItem(mediaId)).toBe(true);
+
+    const plan = await createMediaCleanupPlan(current.id);
+    expect(plan.candidates.map((entry) => entry.mediaId)).toContain("orphan-1");
+    expect(plan.retained.map((entry) => entry.mediaId)).toContain(mediaId);
+    await executeMediaCleanupPlan(plan);
+    expect(storedMedia.has("orphan-1")).toBe(false);
+    expect(storedMedia.has(mediaId)).toBe(true);
   });
 
-  it("treats an in-flight import's bytes as live during sweeps", async () => {
+  it("retains shared bytes referenced from another project and rechecks before deletion", async () => {
+    const projectId = useProjectStore.getState().project.id;
+    storedMedia.set("shared-version", { projectId, blob: new Blob(["shared"]) });
+    let references: Array<{
+      mediaId: string;
+      projectId: string;
+      kind: "node";
+      referenceId: string;
+    }> = [];
+    workspace.getMediaReferences.mockImplementation(async () => references);
+
+    const plan = await createMediaCleanupPlan(projectId);
+    expect(plan.candidates.map((entry) => entry.mediaId)).toContain("shared-version");
+
+    // Another project may adopt the same immutable media id after the plan
+    // is shown. The execution scan must protect it globally.
+    references = [{
+      mediaId: "shared-version",
+      projectId: "another-project",
+      kind: "node",
+      referenceId: "saved-node",
+    }];
+    const result = await executeMediaCleanupPlan(plan);
+
+    expect(result.deleted).toEqual([]);
+    expect(result.skipped).toEqual([
+      expect.objectContaining({
+        entry: expect.objectContaining({ mediaId: "shared-version" }),
+        reason: expect.stringContaining("node: saved-node"),
+      }),
+    ]);
+    expect(storedMedia.has("shared-version")).toBe(true);
+  });
+
+  it("retains every material usage version and task result while their records remain", async () => {
+    const projectId = useProjectStore.getState().project.id;
+    for (const mediaId of ["material-historical", "material-replaced", "material-replaces", "journal-usage", "task-result"]) {
+      storedMedia.set(mediaId, { projectId, blob: new Blob([mediaId]) });
+    }
+    storedMaterials.push({
+      id: "material-1",
+      title: "Versioned source",
+      usages: [{
+        projectId: "another-project",
+        status: "historical",
+        mediaIdInProject: "material-historical",
+        replacedByMediaIdInProject: "material-replaced",
+        replacesMediaIdInProject: "material-replaces",
+      }],
+    });
+    storedJournal.push({
+      id: "journal-1",
+      changes: [{
+        materialId: "material-removed-but-undoable",
+        before: {
+          id: "material-removed-but-undoable",
+          title: "Undoable material",
+          usages: [{ projectId: "another-project", mediaIdInProject: "journal-usage", status: "historical" }],
+        },
+        after: null,
+      }],
+    });
+    storedTasks.push({
+      id: "amt_old_output",
+      targetProjectId: "removed-project",
+      resultMediaId: "task-result",
+    });
+
+    const plan = await createMediaCleanupPlan(projectId);
+
+    for (const mediaId of ["material-historical", "material-replaced", "material-replaces", "journal-usage", "task-result"]) {
+      expect(plan.retained.map((entry) => entry.mediaId)).toContain(mediaId);
+    }
+    expect(plan.retained.find((entry) => entry.mediaId === "material-historical")?.reasons)
+      .toEqual(expect.arrayContaining([expect.stringContaining("material: Versioned source")]));
+    expect(plan.retained.find((entry) => entry.mediaId === "task-result")?.reasons)
+      .toEqual(expect.arrayContaining([expect.stringContaining("task: Imported task result")]));
+    expect(plan.retained.find((entry) => entry.mediaId === "journal-usage")?.reasons)
+      .toEqual(expect.arrayContaining([expect.stringContaining("material: Undo/redo: Undoable material")]));
+  });
+
+  it("treats in-flight import bytes as live during reviewed cleanup", async () => {
     const mediaId = await importAsset("committed", "clip.mp4");
     const current = useProjectStore.getState().project;
 
@@ -269,27 +483,38 @@ describe("project media byte reclamation", () => {
     // ...and a plain orphan with no protection for contrast.
     storedMedia.set("plain-orphan", { projectId: current.id, blob: new Blob(["orphan"]) });
 
-    await sweepOrphanProjectMedia(useProjectStore.getState().project);
+    const firstPlan = await createMediaCleanupPlan(current.id);
+    expect(firstPlan.retained.map((entry) => entry.mediaId)).toContain(pendingId);
+    await executeMediaCleanupPlan(firstPlan);
     expect(storedMedia.has("plain-orphan")).toBe(false);
     expect(storedMedia.has(pendingId)).toBe(true);
     expect(storedMedia.has(mediaId)).toBe(true);
 
     releaseUncommittedMediaBlob(pendingId);
-    await sweepOrphanProjectMedia(useProjectStore.getState().project);
+    const secondPlan = await createMediaCleanupPlan(current.id);
+    await executeMediaCleanupPlan(secondPlan);
     expect(storedMedia.has(pendingId)).toBe(false);
   });
 
-  it("resolves even when reclaiming an already-gone blob fails", async () => {
-    const mediaId = await importAsset("vanishing", "clip.mp4");
-    await useProjectStore.getState().deleteMedia(mediaId);
-    storedMedia.clear();
-    deleteMediaBlob.mockRejectedValueOnce(new Error("record already gone"));
+  it("reports an individual deletion failure without rejecting the cleanup", async () => {
+    const projectId = useProjectStore.getState().project.id;
+    storedMedia.set("orphan-with-delete-error", {
+      projectId,
+      blob: new Blob(["orphan"]),
+    });
+    deleteUnderLock.mockRejectedValueOnce(new Error("filesystem is busy"));
 
-    useProjectStore.getState().actionExecutor.getHistory().clear();
-    await drain();
-    // The reclaim attempt for the already-missing blob failed and was
-    // swallowed; the scan resolves instead of leaking a rejection.
-    expect(deleteMediaBlob).toHaveBeenCalledWith(mediaId);
-    expect(storedMedia.has(mediaId)).toBe(false);
+    const plan = await createMediaCleanupPlan(projectId);
+    expect(plan.candidates.map((entry) => entry.mediaId)).toContain("orphan-with-delete-error");
+    const result = await executeMediaCleanupPlan(plan);
+
+    expect(deleteUnderLock).toHaveBeenCalledWith("orphan-with-delete-error");
+    expect(result.skipped).toEqual([
+      expect.objectContaining({
+        entry: expect.objectContaining({ mediaId: "orphan-with-delete-error" }),
+        reason: "filesystem is busy",
+      }),
+    ]);
+    expect(storedMedia.has("orphan-with-delete-error")).toBe(true);
   });
 });

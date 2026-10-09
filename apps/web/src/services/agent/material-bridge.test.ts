@@ -4,18 +4,22 @@
  * MaterialStorage fake; the canonical service logic itself is covered by
  * library-service.test.ts.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { IDBFactory } from "fake-indexeddb";
 import type { MaterialStorage, MaterialStorageCommit } from "../material-library/storage";
 import {
   MaterialLibraryService,
   setMaterialLibraryServiceForTests,
 } from "../material-library/library-service";
 import { handleMaterialLibraryRequest } from "./material-bridge";
-import { useProjectStore } from "../../stores/project-store";
+import { createEmptyProject } from "../../stores/project/project-helpers";
+import { workspaceManager, type WorkspaceTarget } from "../workspace-manager";
+import { currentProjectEpoch, type ProjectGuard } from "./project-guard";
 
-const { mockSaveMediaBlob, mockImportFile } = vi.hoisted(() => ({
-  mockSaveMediaBlob: vi.fn(async () => undefined),
+const { mockSaveMediaBlob, mockImportFile, mockWithMediaReferenceWrite } = vi.hoisted(() => ({
+  mockSaveMediaBlob: vi.fn(async () => ({ contentHash: "test-content-hash" })),
   mockImportFile: vi.fn(),
+  mockWithMediaReferenceWrite: vi.fn(async (operation: () => unknown) => operation()),
 }));
 
 vi.mock("../../services/media-storage", () => ({
@@ -24,6 +28,7 @@ vi.mock("../../services/media-storage", () => ({
   loadProjectMedia: vi.fn(async () => []),
   loadFileHandle: vi.fn(async () => null),
   loadDirectoryHandle: vi.fn(async () => null),
+  withMediaReferenceWrite: mockWithMediaReferenceWrite,
 }));
 
 vi.mock("../../bridges/media-bridge", () => ({
@@ -63,6 +68,43 @@ class MemoryStorage implements MaterialStorage {
 }
 
 const NOW = "2026-09-08T10:00:00.000Z";
+
+let activeTarget: WorkspaceTarget;
+
+async function openManagedProject(name: string): Promise<WorkspaceTarget> {
+  const created = await workspaceManager.createProject(createEmptyProject(name));
+  const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+  await workspaceManager.switchView(target);
+  activeTarget = target;
+  return target;
+}
+
+async function targetRequest(target = activeTarget, expectForeground = false): Promise<{
+  guard: ProjectGuard;
+  expectedRevision: number;
+}> {
+  const context = await workspaceManager.getWorkspaceContext(target);
+  return {
+    guard: {
+      targetProjectId: target.projectId,
+      targetWorkspaceId: target.workspaceId,
+      targetWorkspaceInstanceId: context.instanceId,
+      ...(expectForeground ? {
+        expectedProjectId: target.projectId,
+        expectedProjectEpoch: currentProjectEpoch(),
+      } : {}),
+    },
+    expectedRevision: context.revision,
+  };
+}
+
+beforeAll(() => {
+  globalThis.indexedDB = new IDBFactory();
+});
+
+beforeEach(async () => {
+  await openManagedProject("Material bridge test");
+});
 
 describe("handleMaterialLibraryRequest", () => {
   let service: MaterialLibraryService;
@@ -192,7 +234,7 @@ describe("handleMaterialLibraryRequest", () => {
       verb: "undo",
       params: {},
     });
-    expect(reply.ok).toBe(true);
+    expect(reply).toMatchObject({ ok: true });
     const record = await service.get(created.value.material.id);
     if (record.ok) expect(record.value.aiSummary).toBe("");
   });
@@ -205,9 +247,11 @@ describe("handleMaterialLibraryRequest", () => {
     expect(reply.ok).toBe(false);
     if (!reply.ok) expect(reply.error.code).toBe("INVALID_PARAMS");
 
+    const target = await targetRequest();
     const notFound = await handleMaterialLibraryRequest({
+      guard: target.guard,
       verb: "attach",
-      params: { materialId: "mat_none" },
+      params: { materialId: "mat_none", expectedRevision: target.expectedRevision },
     });
     expect(notFound.ok).toBe(false);
     if (!notFound.ok) expect(notFound.error.code).toBe("NOT_FOUND");
@@ -262,11 +306,13 @@ describe("handleMaterialLibraryRequest", () => {
     const materialId = created.value.material.id;
 
     // Project A: the first attach commits, and an in-project retry replays.
-    useProjectStore.getState().createNewProject("Ledger A");
-    const projectAId = useProjectStore.getState().project.id;
+    const projectA = await openManagedProject("Ledger A");
+    const projectAId = projectA.projectId;
+    const projectARequest = await targetRequest(projectA);
     const first = await handleMaterialLibraryRequest({
+      guard: projectARequest.guard,
       verb: "attach",
-      params: { materialId, idempotencyKey: "attach-k1" },
+      params: { materialId, idempotencyKey: "attach-k1", expectedRevision: projectARequest.expectedRevision },
     });
     expect(first.ok).toBe(true);
     if (!first.ok) throw new Error(first.error.message);
@@ -275,8 +321,9 @@ describe("handleMaterialLibraryRequest", () => {
     ).toBe(projectAId);
 
     const replay = await handleMaterialLibraryRequest({
+      guard: projectARequest.guard,
       verb: "attach",
-      params: { materialId, idempotencyKey: "attach-k1" },
+      params: { materialId, idempotencyKey: "attach-k1", expectedRevision: projectARequest.expectedRevision },
     });
     expect(replay.ok).toBe(true);
     if (!replay.ok) throw new Error(replay.error.message);
@@ -285,11 +332,13 @@ describe("handleMaterialLibraryRequest", () => {
     // Switch to project B: the same key must NOT replay project A's commit —
     // the agent would otherwise read a successful answer about the wrong
     // project.
-    useProjectStore.getState().createNewProject("Ledger B");
-    const projectBId = useProjectStore.getState().project.id;
+    const projectB = await openManagedProject("Ledger B");
+    const projectBId = projectB.projectId;
+    const projectBRequest = await targetRequest(projectB);
     const other = await handleMaterialLibraryRequest({
+      guard: projectBRequest.guard,
       verb: "attach",
-      params: { materialId, idempotencyKey: "attach-k1" },
+      params: { materialId, idempotencyKey: "attach-k1", expectedRevision: projectBRequest.expectedRevision },
     });
     expect(other.ok).toBe(true);
     if (!other.ok) throw new Error(other.error.message);

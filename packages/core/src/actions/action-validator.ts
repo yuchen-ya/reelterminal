@@ -346,6 +346,7 @@ export class ActionValidator {
     const errors: ValidationError[] = [];
     const timeline = project.timeline;
 
+
     switch (action.type) {
       case "track/add":
         if (
@@ -1435,6 +1436,35 @@ export class ActionValidator {
   ): ValidationError[] {
     const errors: ValidationError[] = [];
     const timeline = project.timeline;
+
+    // These existing edit algorithms use linear timeline/source offsets.
+    // Reject nonlinear clips before either GUI or Agent can corrupt their
+    // curve/freeze coordinates; nonlinear slicing remains a product decision.
+    let sourceEditClipIds: (string | undefined)[] = [];
+    switch (action.type) {
+      case "clip/trim":
+      case "clip/split":
+      case "clip/slip":
+      case "clip/trimToPlayhead":
+        sourceEditClipIds = [action.params.clipId];
+        break;
+      case "clip/slide":
+        sourceEditClipIds = [action.params.prevClipId, action.params.nextClipId];
+        break;
+      case "clip/roll":
+        sourceEditClipIds = [action.params.leftClipId, action.params.rightClipId];
+        break;
+    }
+    for (const clipId of sourceEditClipIds) {
+      const clip = clipId ? this.findClip(timeline, clipId) : undefined;
+      if (clip && (clip.speedKeyframes?.length || clip.freezeFrames?.length)) {
+        return [{
+          code: "INVALID_PARAMS",
+          message: `${action.type} does not support speed curves or freeze frames`,
+          path: "params",
+        }];
+      }
+    }
 
     switch (action.type) {
       case "clip/add":

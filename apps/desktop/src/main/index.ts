@@ -44,6 +44,7 @@ import { registerAgentTaskIpc } from "./live/agent-task-channels";
 import { registerProductionIpc } from "./ipc/production";
 import { liveMediaRoots } from "./live/host-instance";
 import { registerAnalysisRecordsIpc } from "./ipc/analysis-records";
+import { registerControlledMediaIpc } from "./ipc/controlled-media";
 import {
   disposeLiveSessionHost,
   getLiveSessionHost,
@@ -236,6 +237,7 @@ app.whenReady().then(async () => {
   handle(CHANNELS.mediaExtractAudioWav, extractAudioArgsSchema, extractAudioWav);
   handle(CHANNELS.mediaProbeAudioStreams, probeAudioArgsSchema, probeAudioStreams);
   handle(CHANNELS.mediaFetchUrl, fetchUrlArgsSchema, fetchUrl);
+  registerControlledMediaIpc();
   handle(CHANNELS.auroraRenderPreview, auroraRenderPreviewArgsSchema, async (args) =>
     auroraRenderPreviewResultSchema.parse(
       await renderAuroraPreview(args as AuroraRenderPreviewArgs),

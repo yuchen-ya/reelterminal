@@ -48,6 +48,7 @@ import {
 } from "@reelterminal/core";
 import type { MaterialStorage } from "./storage";
 import { createIdbMaterialStorage } from "./storage";
+import { withMediaReferenceWrite } from "../media-storage";
 
 export type MaterialLibraryErrorCode =
   | "INVALID_PARAMS"
@@ -456,7 +457,7 @@ export class MaterialLibraryService {
     actor: MaterialActor,
     verb?: string,
   ): Promise<MaterialServiceResult<{ id: string; removedIds: readonly string[]; journalEntryId: string }>> {
-    return this.enqueue(async () => {
+    return withMediaReferenceWrite(() => this.enqueue(async () => {
       await this.ensureLoaded();
       const record = this.records.get(id);
       if (!record) return fail("NOT_FOUND", `material "${id}" was not found`, { id });
@@ -529,7 +530,7 @@ export class MaterialLibraryService {
           journalEntryId: entry.id,
         },
       };
-    });
+    }));
   }
 
   /**
@@ -548,7 +549,7 @@ export class MaterialLibraryService {
     entryId?: string,
     actor: MaterialActor = "user",
   ): Promise<MaterialServiceResult<MaterialUndoResult>> {
-    return this.enqueue(async () => {
+    return withMediaReferenceWrite(() => this.enqueue(async () => {
       await this.ensureLoaded();
       const undoable = [...this.journalEntries].reverse().filter((entry) => !entry.undone);
       const target = entryId
@@ -646,7 +647,7 @@ export class MaterialLibraryService {
           blobMissingIds,
         },
       };
-    });
+    }));
   }
 
   /**
@@ -658,7 +659,7 @@ export class MaterialLibraryService {
     materialId: string,
     usage: MaterialUsage,
   ): Promise<MaterialServiceResult<MaterialRecord>> {
-    return this.enqueue(async () => {
+    return withMediaReferenceWrite(() => this.enqueue(async () => {
       await this.ensureLoaded();
       const record = this.records.get(materialId);
       if (!record) return fail("NOT_FOUND", `material "${materialId}" was not found`);
@@ -678,7 +679,7 @@ export class MaterialLibraryService {
       }
       this.records.set(materialId, next);
       return { ok: true, value: next };
-    });
+    }));
   }
 
   /**
@@ -697,7 +698,7 @@ export class MaterialLibraryService {
   async reconcileProjectUsages(
     project: Pick<Project, "id" | "name" | "mediaLibrary" | "timeline">,
   ): Promise<MaterialServiceResult<MaterialUsageReconcileResult>> {
-    return this.enqueue(async () => {
+    return withMediaReferenceWrite(() => this.enqueue(async () => {
       await this.ensureLoaded();
       const nowIso = new Date().toISOString();
       const mediaById = new Map(
@@ -885,7 +886,7 @@ export class MaterialLibraryService {
           ).length,
         },
       };
-    });
+    }));
   }
 
   /**

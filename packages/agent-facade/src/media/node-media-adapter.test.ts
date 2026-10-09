@@ -74,6 +74,18 @@ describe("probeLocalMediaFile", () => {
     expect(probed.mimeType.startsWith("video/")).toBe(true);
   }, 30000);
 
+  it("recognizes a media container stored with the controlled `.bin` suffix", async () => {
+    const controlledPath = path.join(fixtureDir, "controlled-media.bin");
+    await writeFile(controlledPath, tinyMp4Bytes());
+
+    const probed = await probeLocalMediaFile(controlledPath);
+
+    expect(probed.type).toBe("video");
+    expect(probed.mimeType).toMatch(/^video\//);
+    expect(probed.width).toBe(TINY_MP4_EXPECTED.width);
+    expect(probed.height).toBe(TINY_MP4_EXPECTED.height);
+  }, 30000);
+
   it("recovers a best-effort nonzero frame rate", async () => {
     const probed = await probeLocalMediaFile(fixturePath);
     // The fixture is 10 fps; computePacketStats demuxes ~100 packets, so the

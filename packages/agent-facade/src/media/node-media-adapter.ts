@@ -19,12 +19,14 @@
  * a byte buffer. The image branch performs one bounded header read.
  */
 import { stat } from "node:fs/promises";
+import path from "node:path";
 import { Input, ALL_FORMATS, FilePathSource } from "mediabunny";
 import type { InputAudioTrack, InputVideoTrack } from "mediabunny";
 import type { ImportedMediaMetadata } from "../types";
 import {
   classifyImageExtension,
   readImageHeaderFacts,
+  tryReadImageHeaderFacts,
 } from "./image-probe";
 
 export interface ProbedMedia extends ImportedMediaMetadata {
@@ -32,6 +34,24 @@ export interface ProbedMedia extends ImportedMediaMetadata {
   readonly mimeType: string;
   readonly hasVideo: boolean;
   readonly hasAudio: boolean;
+}
+
+function imageProbeResult(
+  facts: Awaited<ReturnType<typeof readImageHeaderFacts>>,
+  fileSize: number,
+): ProbedMedia {
+  return {
+    type: "image",
+    durationSec: 0,
+    width: facts.width,
+    height: facts.height,
+    frameRate: 0,
+    codec: "",
+    fileSize,
+    mimeType: facts.mimeType,
+    hasVideo: false,
+    hasAudio: false,
+  };
 }
 
 /** Wraps any low-level failure into an Error naming the offending file. */
@@ -92,18 +112,11 @@ export async function probeLocalMediaFile(
   }
   if (imageVerdict.kind === "supported") {
     const facts = await readImageHeaderFacts(absPath, fileSize);
-    return {
-      type: "image",
-      durationSec: 0,
-      width: facts.width,
-      height: facts.height,
-      frameRate: 0,
-      codec: "",
-      fileSize,
-      mimeType: facts.mimeType,
-      hasVideo: false,
-      hasAudio: false,
-    };
+    return imageProbeResult(facts, fileSize);
+  }
+  if (path.extname(absPath).toLowerCase() === ".bin") {
+    const facts = await tryReadImageHeaderFacts(absPath, fileSize);
+    if (facts) return imageProbeResult(facts, fileSize);
   }
 
   const input = new Input({

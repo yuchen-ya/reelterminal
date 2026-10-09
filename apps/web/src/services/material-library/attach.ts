@@ -22,7 +22,9 @@ import {
   type MediaMaterialRecord,
 } from "@reelterminal/core";
 import { v4 as uuidv4 } from "uuid";
-import { getProjectRevision, useProjectStore } from "../../stores/project-store";
+import type { StoreApi } from "zustand";
+import { useProjectStore } from "../../stores/project-store";
+import type { ProjectState } from "../../stores/project-store";
 import { getMaterialLibraryService } from "./library-service";
 
 /** Same whole-file bound as the live import path (Electron IPC ArrayBuffer). */
@@ -30,6 +32,10 @@ export const MAX_MATERIAL_ATTACH_BYTES = 256 * 1024 * 1024;
 
 export interface AttachMaterialOptions {
   readonly materialId: string;
+  /** Explicit workspace target; omitted only for GUI calls on the open project. */
+  readonly projectId?: string;
+  readonly workspaceId?: string;
+  readonly store?: StoreApi<ProjectState>;
   /** Optional range override for MEDIA materials (segments use their own). */
   readonly startSec?: number;
   readonly endSec?: number;
@@ -259,12 +265,30 @@ export async function attachMaterialToProject(
     };
   }
 
-  const store = useProjectStore.getState();
-  if (!store.hasOpenProject) {
+  const projectStore = options.store ?? useProjectStore;
+  const initialState = projectStore.getState();
+  if (!initialState.hasOpenProject) {
     return {
       ok: false,
       code: "INVALID_PARAMS",
       message: "no project is open in the editor",
+    };
+  }
+  if (options.projectId && options.projectId !== initialState.project.id) {
+    return { ok: false, code: "CONFLICT", message: "The requested project is not the target workspace project" };
+  }
+  if (options.workspaceId && options.workspaceId !== initialState.workspaceId) {
+    return { ok: false, code: "CONFLICT", message: "The requested workspace is not the target store instance" };
+  }
+  const projectId = options.projectId ?? initialState.project.id;
+  const workspaceId = options.workspaceId ?? initialState.workspaceId ?? undefined;
+  const targetRevision = workspaceId ? initialState.workspaceRevision : initialState.projectRevision;
+  if (options.expectedRevision !== undefined && options.expectedRevision !== targetRevision) {
+    return {
+      ok: false,
+      code: "CONFLICT",
+      message: `Revision mismatch: expected ${options.expectedRevision}, current ${targetRevision}`,
+      details: { currentRevision: targetRevision },
     };
   }
 
@@ -278,7 +302,9 @@ export async function attachMaterialToProject(
   const wantClip = options.addClip ?? range !== null;
   let clipId: string | null = null;
   const attachedAt = new Date().toISOString();
-  const importResult = await useProjectStore.getState().importMedia(resolved.file, {
+  const importResult = await projectStore.getState().importMedia(resolved.file, {
+    projectId,
+    ...(workspaceId ? { workspaceId } : {}),
     ...(resolved.sourcePath ? { sourcePath: resolved.sourcePath } : {}),
     ...(options.expectedRevision !== undefined
       ? { expectedRevision: options.expectedRevision }
@@ -305,7 +331,7 @@ export async function attachMaterialToProject(
     ...(wantClip
       ? {
           atomicFollowUpActions: (mediaIdInProject: string): readonly Action[] => {
-            const current = useProjectStore.getState();
+            const current = projectStore.getState();
             const startTime =
               options.startTimeSec !== undefined
                 ? Math.max(0, options.startTimeSec)
@@ -354,7 +380,7 @@ export async function attachMaterialToProject(
   const mediaIdInProject = importResult.actionId;
   if (wantClip) window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
 
-  const finalState = useProjectStore.getState();
+  const finalState = projectStore.getState();
   const usage: MaterialUsage = {
     projectId: finalState.project.id,
     projectName: finalState.project.name,
@@ -375,7 +401,7 @@ export async function attachMaterialToProject(
       projectName: finalState.project.name,
       clipId,
       rangeSec: range,
-      revision: getProjectRevision(),
+      revision: workspaceId ? finalState.workspaceRevision : finalState.projectRevision,
     },
   };
 }

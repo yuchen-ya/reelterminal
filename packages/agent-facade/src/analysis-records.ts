@@ -24,7 +24,7 @@ import { randomUUID } from "node:crypto";
 
 import { FacadeError } from "./errors";
 
-export const ANALYSIS_RECORDS_SCHEMA_VERSION = 1;
+export const ANALYSIS_RECORDS_SCHEMA_VERSION = 2;
 
 /** Where a finding/record came from — the anti-fabrication axis. */
 export type AnalysisProvenance =
@@ -44,10 +44,15 @@ export interface AnalysisRecord {
   readonly schemaVersion: typeof ANALYSIS_RECORDS_SCHEMA_VERSION;
   readonly id: string;
   readonly projectId: string;
+  /** Project revision captured when the analysis job was created. */
+  readonly sourceRevision: number | null;
+  /** Analysis ranges and time-coded findings use original media seconds. */
+  readonly coordinateSpace: "source";
   readonly createdAt: string;
   readonly finishedAt: string;
   readonly subject: AnalysisSubjectFacts;
   readonly analysisTypes: readonly string[];
+  /** Original-media source seconds, matching coordinateSpace. */
   readonly rangeSec: { readonly startSec: number; readonly endSec: number };
   /** Exact request configuration — the "same config" needed for a recheck. */
   readonly config: {
@@ -119,7 +124,8 @@ async function assertStaleness(record: AnalysisRecord): Promise<AnalysisStalenes
 /** Persist one record; returns the record enriched with staleness + path. */
 export async function saveAnalysisRecord(
   artifactRoot: string,
-  record: Omit<AnalysisRecord, "schemaVersion" | "id" | "createdAt" | "finishedAt"> & {
+  record: Omit<AnalysisRecord, "schemaVersion" | "id" | "createdAt" | "finishedAt" | "sourceRevision"> & {
+    readonly sourceRevision: number;
     readonly createdAt?: string;
   },
 ): Promise<AnalysisRecordView> {
@@ -152,11 +158,23 @@ export async function loadAnalysisRecord(
   } catch {
     throw new FacadeError("NOT_FOUND", `analysis record "${recordId}" not found`, { recordId });
   }
-  const parsed = JSON.parse(raw) as AnalysisRecord;
-  if (parsed.schemaVersion !== ANALYSIS_RECORDS_SCHEMA_VERSION) {
+  const parsed = JSON.parse(raw) as { readonly schemaVersion: number; readonly [key: string]: unknown };
+  let record: AnalysisRecord;
+  if (parsed.schemaVersion === 1) {
+    // Historical records predate project-revision metadata. Their analyses
+    // used source-media seconds, but the revision cannot be reconstructed.
+    record = {
+      ...parsed,
+      schemaVersion: ANALYSIS_RECORDS_SCHEMA_VERSION,
+      sourceRevision: null,
+      coordinateSpace: "source",
+    } as unknown as AnalysisRecord;
+  } else if (parsed.schemaVersion === ANALYSIS_RECORDS_SCHEMA_VERSION) {
+    record = parsed as unknown as AnalysisRecord;
+  } else {
     throw new FacadeError("JOB_FAILED", `analysis record "${recordId}" has unsupported schema version ${parsed.schemaVersion}`);
   }
-  return { ...parsed, stale: await assertStaleness(parsed), recordPath };
+  return { ...record, stale: await assertStaleness(record), recordPath };
 }
 
 /** List records (newest first), optionally filtered by media id. */

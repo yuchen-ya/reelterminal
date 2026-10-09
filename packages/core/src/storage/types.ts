@@ -1,7 +1,7 @@
 import type { Project, MediaMetadata } from "../types";
 import { LEGACY_IDB_STORAGE_ENGINE } from "../legacy/physical-identifiers";
 
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 // Persisted database name for projects and media.
 export const DB_NAME = LEGACY_IDB_STORAGE_ENGINE;
@@ -33,8 +33,14 @@ export interface ProjectSummary {
 export interface MediaRecord {
   readonly id: string;
   readonly projectId: string;
+  /** Projects whose saved descriptions reuse this immutable version. */
+  readonly projectIds?: readonly string[];
   readonly blob: Blob;
   readonly metadata: MediaMetadata;
+  /** SHA-256 of blob bytes; absent only on records created before versioned media. */
+  readonly contentHash?: string;
+  /** Desktop app-managed immutable path shared across project references. */
+  readonly contentUrl?: string;
 }
 
 export interface CacheRecord {
@@ -102,6 +108,7 @@ export interface IStorageEngine {
   loadMedia(id: string): Promise<MediaRecord | null>;
   deleteMedia(id: string): Promise<void>;
   getMediaByProject(projectId: string): Promise<MediaRecord[]>;
+  getAllMedia(): Promise<MediaRecord[]>;
   /** Media ids for a project via the projectId index; blobs are not read. */
   getMediaIdsByProject(projectId: string): Promise<string[]>;
 

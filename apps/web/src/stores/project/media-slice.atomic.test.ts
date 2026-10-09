@@ -5,16 +5,26 @@ import { useProjectStore } from "../project-store";
 const { deleteMediaBlob, importFile, saveMediaBlob } = vi.hoisted(() => ({
   deleteMediaBlob: vi.fn(async () => undefined),
   importFile: vi.fn(),
-  saveMediaBlob: vi.fn(async () => undefined),
+  saveMediaBlob: vi.fn(async () => ({ contentHash: "a".repeat(64), created: true })),
 }));
 
 vi.mock("../../services/media-storage", () => ({
   saveMediaBlob,
   deleteMediaBlob,
+  withMediaReferenceWrite: async <T>(operation: () => Promise<T> | T) => operation(),
   getMediaIdsByProject: vi.fn(async () => []),
   loadProjectMedia: vi.fn(async () => []),
   loadFileHandle: vi.fn(async () => null),
   loadDirectoryHandle: vi.fn(async () => null),
+}));
+
+vi.mock("../../services/project-media-gc", () => ({
+  attachProjectMediaGc: vi.fn(),
+  detachProjectMediaGc: vi.fn(),
+  ensureProjectMediaGc: vi.fn(),
+  reconcileProjectMediaBytes: vi.fn(async () => undefined),
+  releaseUncommittedMediaBlob: vi.fn(),
+  trackUncommittedMediaBlob: vi.fn(),
 }));
 
 vi.mock("../../bridges/media-bridge", () => ({
@@ -130,6 +140,6 @@ describe("compound media import transaction", () => {
       useProjectStore.getState().actionExecutor.getHistory().getUndoStackSize(),
     ).toBe(0);
     expect(saveMediaBlob).toHaveBeenCalledTimes(1);
-    expect(deleteMediaBlob).toHaveBeenCalledTimes(1);
+    expect(deleteMediaBlob).not.toHaveBeenCalled();
   });
 });

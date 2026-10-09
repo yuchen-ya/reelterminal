@@ -27,6 +27,15 @@ export interface ProjectSettings {
   readonly channels: number;
 }
 
+/** Immutable font bytes needed by an isolated renderer to reproduce a project. */
+export interface ProjectRenderFont {
+  readonly family: string;
+  readonly style: string;
+  readonly weight: string;
+  readonly unicodeRange?: string;
+  readonly dataUrl: string;
+}
+
 export interface Project {
   readonly id: string;
   readonly name: string;
@@ -63,6 +72,11 @@ export interface Project {
    * projects never gain the field unless they are edited.
    */
   readonly workAssets?: WorkAsset[];
+  /**
+   * Frozen render-time font faces captured for the referenced families.
+   * This is a cache of immutable bytes, not editable project content.
+   */
+  readonly renderFonts?: readonly ProjectRenderFont[];
 }
 
 export interface MediaLibrary {
@@ -123,6 +137,10 @@ export interface MediaItem {
   readonly filmstripThumbnails?: FilmstripThumbnail[];
   readonly isPlaceholder?: boolean;
   readonly originalUrl?: string;
+  /** App-managed immutable bytes used by preview, analysis, and export. */
+  readonly contentUrl?: string;
+  /** SHA-256 identity of the immutable media bytes. */
+  readonly contentHash?: string;
   /** File hint stored in JSON for cross-session/cross-machine asset matching */
   readonly sourceFile?: { name: string; size: number; lastModified: number; folder?: string };
   /**

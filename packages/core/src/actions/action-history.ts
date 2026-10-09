@@ -252,6 +252,36 @@ export class ActionHistory {
     }
   }
 
+  /** Publish history observers after a caller has committed related state. */
+  withBatchedNotifications<T>(operation: () => T): T {
+    const undoStack = [...this.undoStack];
+    const redoStack = [...this.redoStack];
+    const snapshots = [...this.snapshots];
+    const openGroups = [...this.openGroups];
+    const groupCounter = this.groupCounter;
+    const lastActionTime = this.lastActionTime;
+    const notificationPending = this.notificationPending;
+    this.notificationBatchDepth += 1;
+    try {
+      return operation();
+    } catch (error) {
+      this.undoStack = undoStack;
+      this.redoStack = redoStack;
+      this.snapshots = snapshots;
+      this.openGroups = openGroups;
+      this.groupCounter = groupCounter;
+      this.lastActionTime = lastActionTime;
+      this.notificationPending = notificationPending;
+      throw error;
+    } finally {
+      this.notificationBatchDepth -= 1;
+      if (this.notificationBatchDepth === 0 && this.notificationPending) {
+        this.notificationPending = false;
+        this.notify();
+      }
+    }
+  }
+
   /** Drops overflow from the oldest end and returns the removed entries. */
   private trimToHistoryLimit(): HistoryEntry[] {
     const evicted: HistoryEntry[] = [];

@@ -246,10 +246,10 @@ export function parseImageDimensions(
  * Throws an `Error` with a path-bearing message when the content is not a
  * recognizable supported image or its dimensions cannot be determined.
  */
-export async function readImageHeaderFacts(
+export async function tryReadImageHeaderFacts(
   absPath: string,
   fileSize: number,
-): Promise<ImageHeaderFacts> {
+): Promise<ImageHeaderFacts | null> {
   const handle = await open(absPath, "r");
   try {
     const headerBytes = new Uint8Array(Math.min(fileSize, HEADER_READ_LIMIT));
@@ -260,11 +260,7 @@ export async function readImageHeaderFacts(
       0,
     ).then((result) => result.bytesRead);
     const format = sniffImageFormat(headerBytes.subarray(0, read));
-    if (!format) {
-      throw new Error(
-        `Failed to probe image file "${absPath}": content is not a recognizable PNG, JPEG, GIF, or WebP image`,
-      );
-    }
+    if (!format) return null;
     const dimensions = parseImageDimensions(format, headerBytes.subarray(0, read));
     if (!dimensions) {
       throw new Error(
@@ -275,4 +271,17 @@ export async function readImageHeaderFacts(
   } finally {
     await handle.close();
   }
+}
+
+export async function readImageHeaderFacts(
+  absPath: string,
+  fileSize: number,
+): Promise<ImageHeaderFacts> {
+  const facts = await tryReadImageHeaderFacts(absPath, fileSize);
+  if (!facts) {
+    throw new Error(
+      `Failed to probe image file "${absPath}": content is not a recognizable PNG, JPEG, GIF, or WebP image`,
+    );
+  }
+  return facts;
 }

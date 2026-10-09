@@ -1,5 +1,6 @@
 import type { Project } from "../types";
 import { serializeProject, deserializeProject } from "../utils/serialization";
+import { hashMediaBlob } from "./media-hash";
 import {
   DB_NAME,
   DB_VERSION,
@@ -71,6 +72,25 @@ export class StorageEngine implements IStorageEngine {
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
         this.createStores(db);
+        const transaction = (event.target as IDBOpenDBRequest).transaction;
+        if (transaction) {
+          const mediaStore = transaction.objectStore(STORES.MEDIA);
+          if (!mediaStore.indexNames.contains("projectIds")) {
+            mediaStore.createIndex("projectIds", "projectIds", { unique: false, multiEntry: true });
+          }
+          if (event.oldVersion < 4) {
+            const cursorRequest = mediaStore.openCursor();
+            cursorRequest.onsuccess = () => {
+              const cursor = cursorRequest.result;
+              if (!cursor) return;
+              const record = cursor.value as MediaRecord;
+              if (!record.projectIds || record.projectIds.length === 0) {
+                cursor.update({ ...record, projectIds: [record.projectId] });
+              }
+              cursor.continue();
+            };
+          }
+        }
       };
     });
   }
@@ -87,6 +107,7 @@ export class StorageEngine implements IStorageEngine {
     if (!db.objectStoreNames.contains(STORES.MEDIA)) {
       const mediaStore = db.createObjectStore(STORES.MEDIA, { keyPath: "id" });
       mediaStore.createIndex("projectId", "projectId", { unique: false });
+      mediaStore.createIndex("projectIds", "projectIds", { unique: false, multiEntry: true });
     }
 
     if (!db.objectStoreNames.contains(STORES.CACHE)) {
@@ -238,7 +259,21 @@ export class StorageEngine implements IStorageEngine {
 
     const mediaRecords = await this.getMediaByProject(id);
     for (const media of mediaRecords) {
-      await this.deleteMedia(media.id);
+      const remainingProjectIds = (media.projectIds ?? [media.projectId]).filter((projectId) => projectId !== id);
+      if (remainingProjectIds.length === 0) {
+        await this.deleteMedia(media.id);
+      } else {
+        const primaryProjectId = remainingProjectIds.includes(media.projectId)
+          ? media.projectId
+          : remainingProjectIds[0];
+        await this.transaction(STORES.MEDIA, "readwrite", (stores) =>
+          stores[STORES.MEDIA].put({
+            ...media,
+            projectId: primaryProjectId,
+            projectIds: remainingProjectIds,
+          }),
+        );
+      }
     }
 
     return new Promise((resolve, reject) => {
@@ -258,9 +293,39 @@ export class StorageEngine implements IStorageEngine {
   }
 
   async saveMedia(media: MediaRecord): Promise<void> {
-    await this.transaction(STORES.MEDIA, "readwrite", (stores) =>
-      stores[STORES.MEDIA].put(media),
-    );
+    const contentHash = media.contentHash ?? await hashMediaBlob(media.blob);
+    const record: MediaRecord = {
+      ...media,
+      contentHash,
+      projectIds: [...new Set(media.projectIds ?? [media.projectId])],
+    };
+    const mergeExisting = async (existing: MediaRecord): Promise<void> => {
+      const existingHash = existing.contentHash ?? await hashMediaBlob(existing.blob);
+      if (existingHash !== contentHash) {
+        throw new Error(`Media version ${media.id} is immutable and already contains different bytes`);
+      }
+      const projectIds = [...new Set([...(existing.projectIds ?? [existing.projectId]), media.projectId])];
+      await this.transaction(STORES.MEDIA, "readwrite", (stores) =>
+        stores[STORES.MEDIA].put({
+          ...existing,
+          projectIds,
+          contentHash,
+          ...(existing.contentUrl || !media.contentUrl ? {} : { contentUrl: media.contentUrl }),
+        }),
+      );
+    };
+    try {
+      await this.transaction(STORES.MEDIA, "readwrite", (stores) =>
+        stores[STORES.MEDIA].add(record),
+      );
+      return;
+    } catch (error) {
+      // Another tab may have committed the same new version in parallel, or
+      // this may be an idempotent replay. Accept only byte-identical content.
+      const existing = await this.loadMedia(media.id);
+      if (!existing) throw error;
+      await mergeExisting(existing);
+    }
   }
 
   async loadMedia(id: string): Promise<MediaRecord | null> {
@@ -283,9 +348,13 @@ export class StorageEngine implements IStorageEngine {
   async getMediaByProject(projectId: string): Promise<MediaRecord[]> {
     return this.transactionGetAll<MediaRecord>(
       STORES.MEDIA,
-      "projectId",
+      "projectIds",
       projectId,
     );
+  }
+
+  async getAllMedia(): Promise<MediaRecord[]> {
+    return this.transactionGetAll<MediaRecord>(STORES.MEDIA);
   }
 
   /**
@@ -296,7 +365,7 @@ export class StorageEngine implements IStorageEngine {
     const db = await this.getDb();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORES.MEDIA, "readonly");
-      const request = tx.objectStore(STORES.MEDIA).index("projectId").getAllKeys(projectId);
+      const request = tx.objectStore(STORES.MEDIA).index("projectIds").getAllKeys(projectId);
       request.onsuccess = () =>
         resolve(request.result.map((key) => String(key)));
       request.onerror = () =>
