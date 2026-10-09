@@ -1,19 +1,25 @@
 import { currentProjectEpoch, projectGuardError, projectLedgerScope } from "./project-guard";
+import type { Action } from "@reelterminal/core";
 import type {
   DesktopLiveBridgeError as LiveBridgeError,
   DesktopLiveBridgeReply as LiveBridgeReply,
   DesktopLiveBridgeRequest as LiveBridgeRequest,
 } from "@reelterminal/agent-facade/desktop-protocol";
 import type {
+  LiveEditorContext,
   LiveEditorControlParams,
   LiveEditorControlResult,
   LiveEditorControlTarget,
 } from "@reelterminal/agent-facade/live-store";
 import {
   useProjectStore,
-  getProjectChanges,
-  getProjectRevision,
+  getActiveProjectRuntimeStore,
+  getProjectChangesForStore,
+  createProjectStore,
+  type ProjectState,
 } from "../../stores/project-store";
+import type { StoreApi } from "zustand";
+import { workspaceManager, type WorkspaceTarget } from "../workspace-manager";
 import type {
   HistoryEntrySummary,
   HistoryGetResult,
@@ -28,6 +34,12 @@ import { handleMaterialLibraryRequest } from "./material-bridge";
 import { handleFontLibraryRequest } from "./font-bridge";
 import { handlePresetLibraryRequest } from "./preset-bridge";
 import { prepareLiveMedia } from "./prepare-live-media";
+import { handleWorkspaceLibraryRequest } from "./workspace-bridge";
+import {
+  detachProjectMediaGc,
+  releaseUncommittedMediaBlob,
+  trackUncommittedMediaBlob,
+} from "../project-media-gc";
 
 /**
  * Renderer side of the desktop main-process live facade. The session reaches
@@ -39,27 +51,6 @@ import { prepareLiveMedia } from "./prepare-live-media";
 export const AGENT_HISTORY_OWNER = "agent";
 
 export type { LiveBridgeError, LiveBridgeReply, LiveBridgeRequest };
-
-interface MediaImportLedgerEntry {
-  readonly payload: string;
-  readonly result: {
-    readonly revision: number;
-    readonly mediaId: string;
-    readonly name: string;
-    readonly type: "video" | "audio" | "image";
-    readonly metadata: {
-      readonly durationSec: number;
-      readonly width: number;
-      readonly height: number;
-      readonly frameRate: number;
-      readonly codec: string;
-      readonly fileSize: number;
-    };
-  };
-}
-
-/** Renderer-side commit ledger closes the timeout/retry duplicate window. */
-const mediaImportLedger = new Map<string, Map<string, MediaImportLedgerEntry>>();
 
 interface HistoryControlLedgerEntry {
   readonly payload: string;
@@ -76,29 +67,80 @@ const historyControlLedger = new Map<
   Map<string, HistoryControlLedgerEntry>
 >();
 
-interface ApplyActionsLedgerEntry {
-  readonly payload: string;
-  readonly result: {
-    readonly revision: number;
-    readonly createdIds: unknown;
-  };
-}
-
-/** Per-project ledger closing the applyActions timeout/retry window. */
-const applyActionsLedger = new Map<
-  string,
-  Map<string, ApplyActionsLedgerEntry>
->();
-
 const noProject = (): { ok: false; error: LiveBridgeError } => ({
   ok: false,
   error: { code: "NO_PROJECT", message: "No project is open" },
 });
 
-function historySummary(limit: number): HistoryGetResult {
-  const store = useProjectStore.getState();
+function isActionBatchConflict(message: string): boolean {
+  return message.includes("revision conflict") ||
+    message === "Workspace runtime changed before action replay or commit" ||
+    message === "Workspace changed while preparing the action batch" ||
+    message === "Workspace changed before the action batch was persisted" ||
+    message === "Workspace changed while persisting the action batch; the newer edit was preserved" ||
+    message === "Editor context revision conflict" ||
+    /idempotency key.+different request/i.test(message);
+}
+
+interface TargetRuntime {
+  readonly store: StoreApi<ProjectState>;
+  readonly state: ProjectState;
+  readonly projectId: string;
+  readonly workspaceId: string | null;
+  readonly instanceId: string;
+  readonly revision: number;
+  readonly foreground: boolean;
+}
+
+async function targetRuntime(req: LiveBridgeRequest, checkExpectedInstance = true): Promise<TargetRuntime | null> {
+  const projectId = req.projectId;
+  const workspaceId = req.workspaceId;
+  if (projectId !== undefined || workspaceId !== undefined) {
+    if (!projectId || !workspaceId) {
+      throw Object.assign(new Error("projectId and workspaceId must be supplied together"), { code: "INVALID_PARAMS" });
+    }
+    const target: WorkspaceTarget = { projectId, workspaceId };
+    const context = await workspaceManager.getWorkspaceContext(target);
+    const snapshot = workspaceManager.getSnapshot();
+    const state = context.store.getState();
+    if (checkExpectedInstance && req.expectedWorkspaceInstanceId !== undefined &&
+        req.expectedWorkspaceInstanceId !== context.instanceId) {
+      const conflict = new Error("Workspace runtime changed since the targeted read") as Error & { code: string };
+      conflict.code = "CONFLICT";
+      throw conflict;
+    }
+    return {
+      store: context.store,
+      state,
+      projectId,
+      workspaceId,
+      instanceId: context.instanceId,
+      // Pair revision with the exact synchronous store snapshot returned in
+      // this handle; `context.revision` was captured before this final read.
+      revision: state.workspaceRevision,
+      foreground: snapshot.activeProjectId === projectId && snapshot.activeWorkspaceId === workspaceId,
+    };
+  }
+  const store = getActiveProjectRuntimeStore();
+  const state = store.getState();
+  return state.hasOpenProject
+    ? { store, state, projectId: state.project.id, workspaceId: state.workspaceId, instanceId: currentProjectEpoch(), revision: state.workspaceRevision, foreground: true }
+    : null;
+}
+
+function routeGuard(req: LiveBridgeRequest) {
+  return {
+    expectedProjectId: req.expectedProjectId,
+    expectedProjectEpoch: req.expectedProjectEpoch,
+    targetProjectId: req.projectId,
+    targetWorkspaceId: req.workspaceId,
+    targetWorkspaceInstanceId: req.expectedWorkspaceInstanceId,
+  };
+}
+
+function historySummary(state: ProjectState, revision: number, limit: number): HistoryGetResult {
   const actionEntries = [
-    ...store.actionHistory.getHistoryEntries().map((entry) => ({
+    ...state.actionHistory.getHistoryEntries().map((entry) => ({
       direction: "undo" as const,
       description: entry.description,
       actionType: entry.action.type,
@@ -106,7 +148,7 @@ function historySummary(limit: number): HistoryGetResult {
       timestamp: entry.timestamp,
       groupId: entry.groupId ?? null,
     })),
-    ...store.actionHistory.getRedoEntries().map((entry) => ({
+    ...state.actionHistory.getRedoEntries().map((entry) => ({
       direction: "redo" as const,
       description: entry.description,
       actionType: entry.action.type,
@@ -116,7 +158,7 @@ function historySummary(limit: number): HistoryGetResult {
     })),
   ];
   const auxiliary: HistoryEntrySummary[] = [
-    ...store.clipUndoStack.map((entry) => ({
+    ...state.clipUndoStack.map((entry) => ({
       direction: "undo" as const,
       description: `${entry.op === "update" ? "Update" : "Create"} ${entry.type} overlay`,
       actionType: `overlay/${entry.op}`,
@@ -124,7 +166,7 @@ function historySummary(limit: number): HistoryGetResult {
       timestamp: entry.timestamp,
       groupId: null,
     })),
-    ...store.clipRedoStack.map((entry) => ({
+    ...state.clipRedoStack.map((entry) => ({
       direction: "redo" as const,
       description: `${entry.op === "update" ? "Update" : "Create"} ${entry.type} overlay`,
       actionType: `overlay/${entry.op}`,
@@ -132,7 +174,7 @@ function historySummary(limit: number): HistoryGetResult {
       timestamp: entry.timestamp,
       groupId: null,
     })),
-    ...store.templateUndoStack.map((entry) => ({
+    ...state.templateUndoStack.map((entry) => ({
       direction: "undo" as const,
       description: "Apply editing template",
       actionType: "template/apply",
@@ -140,7 +182,7 @@ function historySummary(limit: number): HistoryGetResult {
       timestamp: entry.timestamp,
       groupId: null,
     })),
-    ...store.templateRedoStack.map((entry) => ({
+    ...state.templateRedoStack.map((entry) => ({
       direction: "redo" as const,
       description: "Apply editing template",
       actionType: "template/apply",
@@ -150,18 +192,18 @@ function historySummary(limit: number): HistoryGetResult {
     })),
   ];
   return {
-    revision: getProjectRevision(),
+    revision,
     available: true,
-    canUndo: store.canUndo(),
-    canRedo: store.canRedo(),
+    canUndo: state.canUndo(),
+    canRedo: state.canRedo(),
     undoCount:
-      store.actionHistory.getUndoStackSize() +
-      store.clipUndoStack.length +
-      store.templateUndoStack.length,
+      state.actionHistory.getUndoStackSize() +
+      state.clipUndoStack.length +
+      state.templateUndoStack.length,
     redoCount:
-      store.actionHistory.getRedoStackSize() +
-      store.clipRedoStack.length +
-      store.templateRedoStack.length,
+      state.actionHistory.getRedoStackSize() +
+      state.clipRedoStack.length +
+      state.templateRedoStack.length,
     entries: [...actionEntries, ...auxiliary]
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, limit),
@@ -172,10 +214,10 @@ async function handleHistoryControl(
   req: LiveBridgeRequest,
 ): Promise<Omit<LiveBridgeReply, "callId">> {
   return runExclusiveLiveWrite(async () => {
-    const conflict = projectGuardError(req);
+    const conflict = projectGuardError(routeGuard(req));
     if (conflict) return conflict;
-    const store = useProjectStore.getState();
-    if (!store.hasOpenProject) return noProject();
+    const runtime = await targetRuntime(req);
+    if (!runtime) return noProject();
     if (req.historyAction !== "undo" && req.historyAction !== "redo") {
       return {
         ok: false,
@@ -185,7 +227,8 @@ async function handleHistoryControl(
     const expectedRevision = req.expectedRevision;
     const key = req.idempotencyKey;
     const payload = JSON.stringify({ action: req.historyAction });
-    const projectLedger = key ? historyControlLedger.get(projectLedgerScope()) : undefined;
+    const scope = projectLedgerScope({ projectId: runtime.projectId, workspaceId: runtime.workspaceId ?? undefined });
+    const projectLedger = key ? historyControlLedger.get(scope) : undefined;
     const prior = key ? projectLedger?.get(key) : undefined;
     if (prior) {
       if (prior.payload !== payload) {
@@ -199,17 +242,33 @@ async function handleHistoryControl(
       }
       return { ok: true, result: { ...prior.result, replayed: true } };
     }
-    if (expectedRevision === undefined || expectedRevision !== getProjectRevision()) {
+    if (expectedRevision === undefined || expectedRevision !== runtime.revision) {
       return {
         ok: false,
         error: {
           code: "CONFLICT",
-          message: `Project revision mismatch: expected ${String(expectedRevision)}, current ${getProjectRevision()}`,
-          details: { currentRevision: getProjectRevision() },
+          message: `Workspace revision mismatch: expected ${String(expectedRevision)}, current ${runtime.revision}`,
+          details: { currentRevision: runtime.revision },
         },
       };
     }
-    const result = await store[req.historyAction]();
+    let result: Awaited<ReturnType<ProjectState["undo"]>>;
+    try {
+      result = await workspaceManager.withWorkspaceWrite(
+        { projectId: runtime.projectId, workspaceId: runtime.workspaceId! },
+        expectedRevision,
+        async (context) => {
+          if (context.instanceId !== runtime.instanceId) throw new Error("Workspace runtime changed before history commit");
+          return context.store.getState()[req.historyAction!]({ alreadySerialized: true });
+        },
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("revision conflict") || message.includes("runtime changed")) {
+        return { ok: false, error: { code: "CONFLICT", message: `Workspace history conflict: ${message}` } };
+      }
+      throw error;
+    }
     if (!result.success) {
       return {
         ok: false,
@@ -220,18 +279,18 @@ async function handleHistoryControl(
       };
     }
     const value = {
-      revision: getProjectRevision(),
-      canUndo: useProjectStore.getState().canUndo(),
-      canRedo: useProjectStore.getState().canRedo(),
+      revision: runtime.store.getState().workspaceRevision,
+      canUndo: runtime.store.getState().canUndo(),
+      canRedo: runtime.store.getState().canRedo(),
       replayed: false,
     };
     if (key) {
       const ledger = projectLedger ?? new Map<string, HistoryControlLedgerEntry>();
       ledger.set(key, { payload, result: value });
-      historyControlLedger.set(projectLedgerScope(), ledger);
+      historyControlLedger.set(scope, ledger);
     }
     return { ok: true, result: value };
-  });
+  }, req);
 }
 
 async function handleApplyActions(
@@ -253,10 +312,11 @@ async function handleApplyActions(
       : "Agent edit";
 
   return runExclusiveLiveWrite(async () => {
-    const conflict = projectGuardError(req);
+    const conflict = projectGuardError(routeGuard(req));
     if (conflict) return conflict;
-    const store = useProjectStore.getState();
-    if (!store.hasOpenProject) return noProject();
+    const runtime = await targetRuntime(req);
+    if (!runtime) return noProject();
+    const store = runtime.state;
 
     // Commit-ledger replay first (same shape as handleHistoryControl): once
     // this project has committed the batch under this idempotencyKey, a
@@ -266,42 +326,61 @@ async function handleApplyActions(
       typeof req.idempotencyKey === "string" && req.idempotencyKey.length > 0
         ? req.idempotencyKey
         : undefined;
-    const payload = JSON.stringify({ actions: req.actions ?? null, groupLabel });
-    const projectLedger = idempotencyKey
-      ? applyActionsLedger.get(projectLedgerScope())
+    const idempotency = idempotencyKey
+      ? {
+          operation: "edit.apply",
+          key: idempotencyKey,
+          request: req.idempotencyPayload !== undefined
+            ? { semantic: req.idempotencyPayload, groupLabel }
+            : { actions: req.actions, groupLabel },
+          ...(req.idempotencyMetadata !== undefined
+            ? { metadata: req.idempotencyMetadata }
+            : {}),
+        }
       : undefined;
-    const prior = idempotencyKey ? projectLedger?.get(idempotencyKey) : undefined;
-    if (prior) {
-      if (prior.payload !== payload) {
-        return {
-          ok: false,
-          error: {
-            code: "CONFLICT",
-            message: `idempotency key "${idempotencyKey}" was already committed with a different payload`,
-            details: { idempotencyKey },
-          },
-        };
+    const target = { projectId: runtime.projectId, workspaceId: runtime.workspaceId! };
+    if (idempotency) {
+      try {
+        const prior = await workspaceManager.getActionBatchReplay(target, idempotency, runtime.instanceId);
+        if (prior) {
+          return {
+            ok: true,
+            result: {
+              revision: prior.revision,
+              createdIds: prior.batch.createdIds,
+              ...(prior.idempotencyMetadata !== undefined
+                ? { idempotencyMetadata: prior.idempotencyMetadata }
+                : {}),
+              replayed: true,
+            },
+          };
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (isActionBatchConflict(message)) {
+          return { ok: false, error: { code: "CONFLICT", message, details: { idempotencyKey } } };
+        }
+        throw error;
       }
-      return { ok: true, result: { ...prior.result, replayed: true } };
     }
 
     // Check the revision before applying anything; a stale expectation rejects the
     // whole batch before anything is applied.
-    if (req.expectedRevision !== undefined) {
-      const currentRevision = getProjectRevision();
+    if (req.expectedRevision === undefined || req.expectedRevision !== runtime.revision) {
+      const currentRevision = runtime.revision;
       if (currentRevision !== req.expectedRevision) {
         return {
           ok: false,
           error: {
             code: "CONFLICT",
-            message: `Project revision mismatch: expected ${req.expectedRevision}, current ${currentRevision}. Re-read state and retry.`,
+            message: `Workspace revision mismatch: expected ${String(req.expectedRevision)}, current ${currentRevision}. Re-read state and retry.`,
             details: { currentRevision },
           },
         };
       }
     }
     if (req.expectedContextRevision !== undefined) {
-      const currentContextRevision = getLiveEditorContext().contextRevision;
+      const currentContextRevision = runtime.foreground ? getLiveEditorContext().contextRevision : 0;
       if (currentContextRevision !== req.expectedContextRevision) {
         return {
           ok: false,
@@ -314,19 +393,61 @@ async function handleApplyActions(
       }
     }
 
-    const prepared = await prepareLiveMedia(actions, store.project);
+    const prepared = await prepareLiveMedia(actions, store.project, {
+      projectId: runtime.projectId,
+      workspaceId: runtime.workspaceId ?? "",
+      expectedRevision: req.expectedRevision!,
+    });
     // Reading/persisting replacement bytes is asynchronous. Re-check the
     // canonical context before committing the entire prepared batch once.
-    if (projectGuardError(req) || useProjectStore.getState().project.id !== store.project.id ||
-        (req.expectedRevision !== undefined && getProjectRevision() !== req.expectedRevision) ||
-        (req.expectedContextRevision !== undefined && getLiveEditorContext().contextRevision !== req.expectedContextRevision)) {
+    const currentContext = await targetRuntime(req, false);
+    if (projectGuardError(routeGuard(req)) || !currentContext ||
+        currentContext.instanceId !== runtime.instanceId || currentContext.projectId !== runtime.projectId ||
+        currentContext.workspaceId !== runtime.workspaceId ||
+        (req.expectedContextRevision !== undefined && currentContext.foreground && getLiveEditorContext().contextRevision !== req.expectedContextRevision)) {
       await prepared.discard();
-      return { ok: false, error: { code: "CONFLICT", message: "Project or editor context changed while preparing media" } };
+      return { ok: false, error: { code: "CONFLICT", message: "Workspace or editor context changed while preparing media" } };
     }
-    const batch = store.executeActionBatch(prepared.actions, {
-      groupLabel,
-      historyOwner: AGENT_HISTORY_OWNER,
-    });
+    let committed: Awaited<ReturnType<typeof workspaceManager.commitActionBatch>>;
+    try {
+      committed = await workspaceManager.commitActionBatch({
+        target,
+        expectedRevision: req.expectedRevision!,
+        expectedInstanceId: runtime.instanceId,
+        actions: prepared.actions,
+        options: { groupLabel, historyOwner: AGENT_HISTORY_OWNER },
+        ...(idempotency ? { idempotency } : {}),
+        beforePersist: () => {
+          if (req.expectedContextRevision !== undefined && runtime.store.getState().isForeground &&
+              getLiveEditorContext().contextRevision !== req.expectedContextRevision) {
+            throw new Error("Editor context revision conflict");
+          }
+          prepared.commit();
+        },
+      });
+    } catch (error) {
+      await prepared.discard();
+      const message = error instanceof Error ? error.message : String(error);
+      if (isActionBatchConflict(message)) {
+        return { ok: false, error: { code: "CONFLICT", message: `Workspace commit conflict: ${message}` } };
+      }
+      throw error;
+    }
+    if (committed.replayed) {
+      await prepared.discard();
+      return {
+        ok: true,
+        result: {
+          revision: committed.revision,
+          createdIds: committed.batch.createdIds,
+          ...(committed.idempotencyMetadata !== undefined
+            ? { idempotencyMetadata: committed.idempotencyMetadata }
+            : {}),
+          replayed: true,
+        },
+      };
+    }
+    const batch = committed.batch;
     if (!batch.result.success) {
       await prepared.discard();
       return {
@@ -339,50 +460,132 @@ async function handleApplyActions(
       };
     }
 
+    await prepared.commit();
+
     // Agent edits land outside the GUI gesture paths, so nudge the preview
     // explicitly: clears processed-audio caches and forces a paused re-render
     // with the new project state.
-    window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
-
-    // Record only after the commit landed (a failed batch retries freely).
-    if (idempotencyKey) {
-      let ledger = applyActionsLedger.get(projectLedgerScope());
-      if (!ledger) {
-        ledger = new Map();
-        applyActionsLedger.set(projectLedgerScope(), ledger);
-      }
-      ledger.set(idempotencyKey, {
-        payload,
-        result: { revision: getProjectRevision(), createdIds: batch.createdIds },
-      });
-    }
+    if (runtime.foreground) window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
 
     return {
       ok: true,
       result: {
-        revision: getProjectRevision(),
+        revision: committed.revision,
         createdIds: batch.createdIds,
-        replayed: false,
+        ...(committed.idempotencyMetadata !== undefined
+          ? { idempotencyMetadata: committed.idempotencyMetadata }
+          : {}),
+        replayed: committed.replayed,
       },
     };
-  });
+  }, req);
+}
+
+async function handleReplayActions(
+  req: LiveBridgeRequest,
+): Promise<Omit<LiveBridgeReply, "callId">> {
+  const conflict = projectGuardError(routeGuard(req));
+  if (conflict) return conflict;
+  const runtime = await targetRuntime(req);
+  if (!runtime) return noProject();
+  if (typeof req.idempotencyKey !== "string" || req.idempotencyKey.length === 0 ||
+      req.idempotencyPayload === undefined) {
+    return { ok: false, error: { code: "INVALID_PARAMS", message: "replayActions requires idempotencyKey and idempotencyPayload" } };
+  }
+  const idempotency = {
+    operation: "edit.apply",
+    key: req.idempotencyKey,
+    request: {
+      semantic: req.idempotencyPayload,
+      groupLabel: typeof req.groupLabel === "string" && req.groupLabel.trim()
+        ? req.groupLabel
+        : "Agent edit",
+    },
+  };
+  try {
+    const prior = await workspaceManager.getActionBatchReplay(
+      { projectId: runtime.projectId, workspaceId: runtime.workspaceId! },
+      idempotency,
+      runtime.instanceId,
+    );
+    if (!prior) return { ok: true, result: null };
+    return {
+      ok: true,
+      result: {
+        revision: prior.revision,
+        createdIds: prior.batch.createdIds,
+        ...(prior.idempotencyMetadata !== undefined
+          ? { idempotencyMetadata: prior.idempotencyMetadata }
+          : {}),
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isActionBatchConflict(message)) {
+      return { ok: false, error: { code: "CONFLICT", message, details: { idempotencyKey: req.idempotencyKey } } };
+    }
+    throw error;
+  }
+}
+
+async function handleReplayMediaImport(
+  req: LiveBridgeRequest,
+): Promise<Omit<LiveBridgeReply, "callId">> {
+  const conflict = projectGuardError(routeGuard(req));
+  if (conflict) return conflict;
+  const runtime = await targetRuntime(req);
+  if (!runtime) return noProject();
+  if (typeof req.idempotencyKey !== "string" || req.idempotencyKey.length === 0 ||
+      req.idempotencyPayload === undefined) {
+    return { ok: false, error: { code: "INVALID_PARAMS", message: "replayMediaImport requires idempotencyKey and idempotencyPayload" } };
+  }
+  try {
+    const prior = await workspaceManager.getActionBatchReplay(
+      { projectId: runtime.projectId, workspaceId: runtime.workspaceId! },
+      {
+        operation: "media.import",
+        key: req.idempotencyKey,
+        request: req.idempotencyPayload,
+      },
+      runtime.instanceId,
+    );
+    if (!prior) return { ok: true, result: null };
+    const metadata = prior.idempotencyMetadata as {
+      mediaId: string;
+      name: string;
+      type: "video" | "audio" | "image";
+      metadata: NonNullable<LiveBridgeRequest["metadata"]>;
+    } | undefined;
+    if (!metadata) {
+      return { ok: false, error: { code: "BRIDGE_ERROR", message: "Media import receipt is incomplete" } };
+    }
+    return {
+      ok: true,
+      result: { ...metadata, revision: prior.revision, replayed: true },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isActionBatchConflict(message)) {
+      return { ok: false, error: { code: "CONFLICT", message, details: { idempotencyKey: req.idempotencyKey } } };
+    }
+    throw error;
+  }
 }
 
 /**
- * Import a path that was validated/probed by the main-process facade. The
- * renderer reads the bytes through the existing fs preload and then delegates
- * to the exact same project-store import path as a picker/drop import. This is
- * intentionally one store call: media metadata, persistence, and the project
- * revision stay together and the GUI observes the new library item normally.
+ * Decode and persist a path through the same project-store importer used by
+ * picker/drop imports, but stage it in a private runtime. The workspace gets
+ * one canonical media/import action only after decoding succeeds, so failures
+ * cannot partially mutate the visible or durable project.
  */
 async function handleImportMedia(
   req: LiveBridgeRequest,
 ): Promise<Omit<LiveBridgeReply, "callId">> {
   return runExclusiveLiveWrite(async () => {
-    const conflict = projectGuardError(req);
+    const conflict = projectGuardError(routeGuard(req));
     if (conflict) return conflict;
-    const store = useProjectStore.getState();
-    if (!store.hasOpenProject) return noProject();
+    const runtime = await targetRuntime(req);
+    if (!runtime) return noProject();
     if (typeof req.path !== "string" || req.path.trim().length === 0) {
       return {
         ok: false,
@@ -394,97 +597,193 @@ async function handleImportMedia(
       typeof req.idempotencyKey === "string" && req.idempotencyKey.length > 0
         ? req.idempotencyKey
         : undefined;
-    const payload = JSON.stringify({ path: req.path, name: req.name ?? null });
-    const projectLedger = idempotencyKey
-      ? mediaImportLedger.get(projectLedgerScope())
+    const name = typeof req.name === "string" && req.name.trim()
+      ? req.name.trim()
+      : req.sourceFile?.name ?? req.path.split(/[\\/]/).pop() ?? "media";
+    const payload = req.idempotencyPayload !== undefined
+      ? req.idempotencyPayload
+      : { path: req.path, name: req.name ?? null };
+    const target = { projectId: runtime.projectId, workspaceId: runtime.workspaceId! };
+    const idempotency = idempotencyKey
+      ? { operation: "media.import", key: idempotencyKey, request: payload }
       : undefined;
-    const prior = idempotencyKey ? projectLedger?.get(idempotencyKey) : undefined;
-    if (prior) {
-      if (prior.payload !== payload) {
+
+    if (idempotency) {
+      try {
+        const prior = await workspaceManager.getActionBatchReplay(
+          target,
+          idempotency,
+          runtime.instanceId,
+        );
+        if (prior) {
+          const metadata = prior.idempotencyMetadata as {
+            mediaId: string;
+            name: string;
+            type: "video" | "audio" | "image";
+            metadata: NonNullable<LiveBridgeRequest["metadata"]>;
+          } | undefined;
+          if (!metadata) {
+            return { ok: false, error: { code: "BRIDGE_ERROR", message: "Media import receipt is incomplete" } };
+          }
+          return { ok: true, result: { ...metadata, revision: prior.revision, replayed: true } };
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (isActionBatchConflict(message)) {
+          return { ok: false, error: { code: "CONFLICT", message, details: { idempotencyKey } } };
+        }
+        throw error;
+      }
+    }
+
+    if (req.expectedRevision === undefined || req.expectedRevision !== runtime.revision) {
+      return {
+        ok: false,
+        error: {
+          code: "CONFLICT",
+          message: `Workspace revision mismatch: expected ${String(req.expectedRevision)}, current ${runtime.revision}`,
+          details: { currentRevision: runtime.revision },
+        },
+      };
+    }
+    const importedType = req.type;
+    const metadata = req.metadata;
+    if (
+      (importedType !== "video" && importedType !== "audio" && importedType !== "image") ||
+      !metadata ||
+      !Number.isSafeInteger(metadata.fileSize) || metadata.fileSize < 0 ||
+      !Number.isFinite(metadata.durationSec) ||
+      !Number.isFinite(metadata.width) ||
+      !Number.isFinite(metadata.height) ||
+      !Number.isFinite(metadata.frameRate) ||
+      typeof metadata.codec !== "string"
+    ) {
+      return { ok: false, error: { code: "INVALID_PARAMS", message: "Media import metadata is invalid" } };
+    }
+
+    const sourceFile = req.sourceFile ?? {
+      name,
+      size: metadata.fileSize,
+      lastModified: 0,
+    };
+    if (sourceFile.size !== metadata.fileSize) {
+      return { ok: false, error: { code: "INVALID_PARAMS", message: "Media import file facts do not match the probed size" } };
+    }
+
+    const stagingStore = createProjectStore({
+      initialProject: structuredClone(runtime.state.getFullProject()),
+      workspaceId: runtime.workspaceId,
+      workspaceRevision: runtime.revision,
+      isForeground: false,
+      isStaging: true,
+    });
+    let stagedMediaId: string | undefined;
+    let stagedAction: Action | undefined;
+    try {
+      const staged = await stagingStore.getState().importMediaFromPath(req.path, name, {
+        projectId: runtime.projectId,
+        workspaceId: runtime.workspaceId ?? undefined,
+        expectedRevision: runtime.revision,
+        type: importedType,
+        metadata,
+        sourceFile,
+        historyOwner: AGENT_HISTORY_OWNER,
+        historyGroupLabel: req.groupLabel || "agent: media.import",
+      });
+      if (!staged.success || !staged.actionId) {
         return {
           ok: false,
           error: {
-            code: "CONFLICT",
-            message: `idempotency key "${idempotencyKey}" was already committed with a different payload`,
-            details: { idempotencyKey },
+            code: staged.error?.code === "INVALID_PARAMS" ? "INVALID_PARAMS" : "DECODE_ERROR",
+            message: staged.error?.message ?? "Media import failed",
           },
         };
       }
-      return { ok: true, result: { ...prior.result, replayed: true } };
-    }
-
-    const result = await store.importMediaFromPath(req.path, req.name, {
-      expectedRevision: req.expectedRevision ?? getProjectRevision(),
-      type: req.type,
-      metadata: req.metadata,
-      sourceFile: req.sourceFile,
-      historyOwner: "agent",
-      historyGroupLabel: req.groupLabel || "agent: media.import",
-    });
-    if (!result.success) {
-      const reason = result.error?.details?.reason;
-      return {
-        ok: false,
-        error: {
-          code: reason === "CONFLICT" ? "CONFLICT" : result.error?.code ?? "DECODE_ERROR",
-          message: result.error?.message ?? "Failed to import media",
-          ...(result.error?.details ? { details: result.error.details } : {}),
-        },
-      };
-    }
-
-    const mediaId = result.actionId;
-    const item = mediaId ? useProjectStore.getState().getMediaItem(mediaId) : undefined;
-    if (!mediaId || !item) {
-      return {
-        ok: false,
-        error: {
-          code: "BRIDGE_ERROR",
-          message: "Media import completed without a canonical media item",
-        },
-      };
-    }
-    if (item.type !== "video" && item.type !== "audio" && item.type !== "image") {
-      return {
-        ok: false,
-        error: {
-          code: "BRIDGE_ERROR",
-          message: `Live media import produced unsupported type "${item.type}"`,
-        },
-      };
-    }
-
-    const committed = {
-      revision: getProjectRevision(),
-      mediaId,
-      name: item.name,
-      type: item.type,
-      metadata: {
-        durationSec: item.metadata.duration,
-        width: item.metadata.width,
-        height: item.metadata.height,
-        frameRate: item.metadata.frameRate,
-        codec: item.metadata.codec,
-        fileSize: item.metadata.fileSize,
-      },
-    } as const;
-    if (idempotencyKey) {
-      let ledger = mediaImportLedger.get(projectLedgerScope());
-      if (!ledger) {
-        ledger = new Map();
-        mediaImportLedger.set(projectLedgerScope(), ledger);
+      stagedMediaId = staged.actionId;
+      const mediaItem = stagingStore.getState().getMediaItem(stagedMediaId);
+      const historyEntry = stagingStore.getState().actionHistory.getHistoryEntries().at(-1);
+      if (!mediaItem?.blob || !historyEntry || historyEntry.action.type !== "media/import") {
+        return { ok: false, error: { code: "DECODE_ERROR", message: "Media importer did not produce a complete import action" } };
       }
-      ledger.set(idempotencyKey, { payload, result: committed });
+      stagedAction = historyEntry.action;
+      // Keep imported bytes live for an explicitly requested cleanup while the
+      // durable workspace transaction is being prepared.
+      trackUncommittedMediaBlob(mediaItem.id, runtime.projectId);
+    } finally {
+      detachProjectMediaGc(stagingStore.getState().actionHistory);
     }
 
-    return {
-      ok: true,
-      result: {
-        ...committed,
-        replayed: false,
-      },
-    };
-  });
+    try {
+      const currentContext = await targetRuntime(req, false);
+      if (
+        projectGuardError(routeGuard(req)) ||
+        !currentContext ||
+        currentContext.instanceId !== runtime.instanceId ||
+        currentContext.projectId !== runtime.projectId ||
+        currentContext.workspaceId !== runtime.workspaceId ||
+        currentContext.revision !== req.expectedRevision
+      ) {
+        return { ok: false, error: { code: "CONFLICT", message: "Workspace changed while preparing media import" } };
+      }
+
+      const mediaItem = stagedMediaId
+        ? stagingStore.getState().getMediaItem(stagedMediaId)
+        : undefined;
+      if (!mediaItem || !stagedAction) {
+        return { ok: false, error: { code: "DECODE_ERROR", message: "Staged media import is incomplete" } };
+      }
+      const resultMetadata = {
+        mediaId: mediaItem.id,
+        name: mediaItem.name,
+        type: mediaItem.type,
+        metadata: {
+          durationSec: mediaItem.metadata.duration,
+          width: mediaItem.metadata.width,
+          height: mediaItem.metadata.height,
+          frameRate: mediaItem.metadata.frameRate,
+          codec: mediaItem.metadata.codec,
+          fileSize: mediaItem.metadata.fileSize,
+        },
+      };
+      let committed: Awaited<ReturnType<typeof workspaceManager.commitActionBatch>>;
+      try {
+        committed = await workspaceManager.commitActionBatch({
+          target,
+          expectedRevision: req.expectedRevision,
+          expectedInstanceId: runtime.instanceId,
+          actions: [stagedAction],
+          options: { groupLabel: req.groupLabel || "agent: media.import", historyOwner: AGENT_HISTORY_OWNER },
+          ...(idempotency
+            ? { idempotency: { ...idempotency, metadata: resultMetadata } }
+            : {}),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (isActionBatchConflict(message)) {
+          return { ok: false, error: { code: "CONFLICT", message: `Workspace import conflict: ${message}` } };
+        }
+        throw error;
+      }
+      if (committed.replayed) {
+        const prior = committed.idempotencyMetadata as typeof resultMetadata | undefined;
+        if (!prior) return { ok: false, error: { code: "BRIDGE_ERROR", message: "Media import receipt is incomplete" } };
+        return { ok: true, result: { ...prior, revision: committed.revision, replayed: true } };
+      }
+      if (!committed.batch.result.success) {
+        return {
+          ok: false,
+          error: {
+            code: "APPLY_FAILED",
+            message: committed.batch.result.error?.message ?? "Media import failed",
+          },
+        };
+      }
+      if (runtime.foreground) window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
+      return { ok: true, result: { ...resultMetadata, revision: committed.revision, replayed: false } };
+    } finally {
+      if (stagedMediaId) releaseUncommittedMediaBlob(stagedMediaId);
+    }
+  }, req);
 }
 
 /**
@@ -611,8 +910,12 @@ function controlResult(
 async function handleEditorControl(
   req: LiveBridgeRequest,
 ): Promise<Omit<LiveBridgeReply, "callId">> {
-  const store = useProjectStore.getState();
-  if (!store.hasOpenProject) return noProject();
+  const runtime = await targetRuntime(req);
+  if (!runtime) return noProject();
+  if (!runtime.foreground) {
+    return { ok: false, error: { code: "CONFLICT", message: "editor.control can only act on the workspace currently shown in the GUI" } };
+  }
+  const store = runtime.state;
   const context = getLiveEditorContext();
   if (
     req.expectedContextRevision !== undefined &&
@@ -698,43 +1001,59 @@ export async function handleLiveBridgeRequest(
   req: LiveBridgeRequest,
 ): Promise<Omit<LiveBridgeReply, "callId">> {
   try {
-    const conflict = projectGuardError(req);
+    const conflict = projectGuardError(routeGuard(req));
     if (conflict) return conflict;
     switch (req.kind) {
       case "getIdentity": {
-        const store = useProjectStore.getState();
-        if (!store.hasOpenProject) return noProject();
+        const runtime = await targetRuntime(req);
+        if (!runtime) return noProject();
         return {
           ok: true,
           result: {
-            projectId: store.project.id,
-            projectName: store.project.name,
+            projectId: runtime.projectId,
+            projectName: runtime.state.project.name,
+            workspaceId: runtime.workspaceId ?? undefined,
+            workspaceInstanceId: runtime.instanceId,
             windowId: "main",
             projectEpoch: currentProjectEpoch(),
           },
         };
       }
       case "getState": {
-        const store = useProjectStore.getState();
-        if (!store.hasOpenProject) return noProject();
+        const runtime = await targetRuntime(req);
+        if (!runtime) return noProject();
+        const snapshot = runtime.store.getState();
         return {
           ok: true,
           result: {
-            project: detach(store.getFullProject()),
-            revision: getProjectRevision(),
+            project: detach(snapshot.getFullProject()),
+            revision: snapshot.workspaceRevision,
+            instanceId: runtime.instanceId,
           },
         };
       }
       case "getContext": {
-        return { ok: true, result: detach(getLiveEditorContext()) };
+        const runtime = await targetRuntime(req);
+        if (!runtime) return noProject();
+        const empty: LiveEditorContext = {
+          contextRevision: 0,
+          playheadSeconds: null,
+          selectedClipIds: [],
+          selectedTextIds: [],
+          selectedMediaIds: [],
+          timeRange: null,
+          canvasPoint: null,
+          references: {},
+        };
+        return { ok: true, result: detach(runtime.foreground ? getLiveEditorContext() : empty) };
       }
       case "getProjectChanges": {
-        const store = useProjectStore.getState();
-        if (!store.hasOpenProject) return noProject();
+        const runtime = await targetRuntime(req);
+        if (!runtime) return noProject();
         return {
           ok: true,
           result: detach(
-            getProjectChanges({
+            getProjectChangesForStore(runtime.store, {
               sinceRevision: req.sinceRevision as number,
               ...(req.limit !== undefined ? { limit: req.limit } : {}),
               ...(req.cursor !== undefined ? { cursor: req.cursor } : {}),
@@ -743,9 +1062,9 @@ export async function handleLiveBridgeRequest(
         };
       }
       case "getHistory": {
-        const store = useProjectStore.getState();
-        if (!store.hasOpenProject) return noProject();
-        return { ok: true, result: detach(historySummary(req.limit ?? 20)) };
+        const runtime = await targetRuntime(req);
+        if (!runtime) return noProject();
+        return { ok: true, result: detach(historySummary(runtime.state, runtime.revision, req.limit ?? 20)) };
       }
       case "historyControl": {
         return await handleHistoryControl(req);
@@ -756,6 +1075,12 @@ export async function handleLiveBridgeRequest(
       case "applyActions": {
         return await handleApplyActions(req);
       }
+      case "replayActions": {
+        return await handleReplayActions(req);
+      }
+      case "replayMediaImport": {
+        return await handleReplayMediaImport(req);
+      }
       case "importMedia": {
         return await handleImportMedia(req);
       }
@@ -763,7 +1088,7 @@ export async function handleLiveBridgeRequest(
         // The canonical user-level material library lives renderer-side;
         // the facade only validated/guarded the verb before forwarding.
         const reply = await handleMaterialLibraryRequest({
-          guard: req,
+          guard: routeGuard(req),
           verb: req.materialVerb,
           params: req.materialParams,
         });
@@ -783,18 +1108,30 @@ export async function handleLiveBridgeRequest(
         // shared with the preset panels); apply expands into core actions
         // against the canonical project store right here.
         const reply = await handlePresetLibraryRequest({
-          guard: req,
+          guard: routeGuard(req),
           verb: req.presetVerb,
           params: req.presetParams,
         });
         return reply as Omit<LiveBridgeReply, "callId">;
+      }
+      case "workspaceLibrary": {
+        if (req.projectId && req.workspaceId) {
+          // Verify the request-local runtime generation before the manager's
+          // own workspace-queued persistent operation begins.
+          const runtime = await targetRuntime(req);
+          if (!runtime) return noProject();
+        }
+        return await handleWorkspaceLibraryRequest(
+          req.workspaceVerb as Parameters<typeof handleWorkspaceLibraryRequest>[0],
+          req.workspaceParams,
+        ) as Omit<LiveBridgeReply, "callId">;
       }
       case "requestSave": {
         const store = useProjectStore.getState();
         if (!store.hasOpenProject) return noProject();
         // The same save path the GUI's lifecycle flush uses.
         await store.forceSave();
-        return { ok: true, result: { revision: getProjectRevision() } };
+        return { ok: true, result: { revision: store.workspaceRevision } };
       }
       default: {
         return {
@@ -807,10 +1144,13 @@ export async function handleLiveBridgeRequest(
       }
     }
   } catch (error) {
+    const code = typeof error === "object" && error !== null && typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code: string }).code
+      : "BRIDGE_ERROR";
     return {
       ok: false,
       error: {
-        code: "BRIDGE_ERROR",
+        code,
         message: error instanceof Error ? error.message : String(error),
       },
     };

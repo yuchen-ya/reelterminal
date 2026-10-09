@@ -1,12 +1,16 @@
 import { useProjectStore } from "../../stores/project-store";
-export interface ProjectGuard { readonly expectedProjectId?: string; readonly expectedProjectEpoch?: string; }
-// A new ActionHistory is installed for every create/load, including the same project ID.
-const projectEpochs = new WeakMap<object, string>();
+export interface ProjectGuard {
+  readonly expectedProjectId?: string;
+  readonly expectedProjectEpoch?: string;
+  readonly targetProjectId?: string;
+  readonly targetWorkspaceId?: string;
+  readonly targetWorkspaceInstanceId?: string;
+}
+// One renderer-runtime generation: foreground switches do not change it, but
+// reloading the renderer creates a new value and rejects stale requests.
+const rendererEpoch = crypto.randomUUID();
 export function currentProjectEpoch(): string {
-  const history = useProjectStore.getState().actionHistory;
-  let epoch = projectEpochs.get(history);
-  if (!epoch) { epoch = crypto.randomUUID(); projectEpochs.set(history, epoch); }
-  return epoch;
+  return rendererEpoch;
 }
 export function projectGuardError(req: ProjectGuard): { ok: false; error: {code: "CONFLICT"; message: string} } | null {
   const store = useProjectStore.getState();
@@ -18,6 +22,9 @@ export function projectGuardError(req: ProjectGuard): { ok: false; error: {code:
 }
 
 
-export function projectLedgerScope(): string {
-  return `${useProjectStore.getState().project.id}:${currentProjectEpoch()}`;
+export function projectLedgerScope(target?: { readonly projectId?: string; readonly workspaceId?: string }): string {
+  const store = useProjectStore.getState();
+  const projectId = target?.projectId ?? (store.hasOpenProject ? store.project.id : "unresolved");
+  const workspaceId = target?.workspaceId ?? store.workspaceId ?? "default";
+  return `${projectId}:${workspaceId}:${currentProjectEpoch()}`;
 }

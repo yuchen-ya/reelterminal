@@ -42,6 +42,10 @@ import {
   markersForSelection,
 } from "../../stores/project/project-marker-selectors";
 import { toast } from "../../stores/notification-store";
+import {
+  installProjectRenderFonts,
+  releaseProjectRenderFonts,
+} from "../../services/project-render-dependencies";
 import { useThemeStore } from "../../stores/theme-store";
 import { getRenderBridge } from "../../bridges/render-bridge";
 import { getPlaybackBridge } from "../../bridges/playback-bridge";
@@ -527,23 +531,32 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   // Project store - subscribe to the entire project to ensure re-renders
   // when any part of the project changes (including clips)
   const project = useProjectStore((state) => state.project);
+  const workspaceId = useProjectStore((state) => state.workspaceId);
+  const previewViewIdentityRef = useRef({ projectId: project.id, workspaceId });
   const getMediaItem = useProjectStore((state) => state.getMediaItem);
 
-  // Get text clips from TitleEngine
-  const getTitleEngine = useEngineStore((state) => state.getTitleEngine);
-  const allTextClips = useMemo(() => {
-    const titleEngine = getTitleEngine();
-    return titleEngine?.getAllTextClips() || [];
-  }, [getTitleEngine, project.modifiedAt]);
+  useEffect(() => {
+    const ownerId = `preview:${workspaceId ?? project.id}`;
+    void installProjectRenderFonts(project, ownerId).catch((error: unknown) => {
+      console.warn("Could not load a project render font; preview will use its fallback.", error);
+    });
+    return () => releaseProjectRenderFonts(ownerId);
+  }, [project.id, project.renderFonts, workspaceId]);
 
-  const getGraphicsEngine = useEngineStore((state) => state.getGraphicsEngine);
+  // Preview from the active workspace's canonical project snapshot. The
+  // EngineStore overlay engines are session-wide derived caches and can lag a
+  // workspace activation; project arrays are the authoritative view state.
+  const allTextClips = useMemo(() => {
+    return project.textClips ?? [];
+  }, [project.textClips]);
+
   const allShapeClips = useMemo(() => {
-    const graphicsEngine = getGraphicsEngine();
-    const shapes = graphicsEngine?.getAllShapeClips() || [];
-    const svgs = graphicsEngine?.getAllSVGClips() || [];
-    const stickers = graphicsEngine?.getAllStickerClips() || [];
-    return [...shapes, ...svgs, ...stickers];
-  }, [getGraphicsEngine, project.modifiedAt]);
+    return [
+      ...(project.shapeClips ?? []),
+      ...(project.svgClips ?? []),
+      ...(project.stickerClips ?? []),
+    ];
+  }, [project.shapeClips, project.svgClips, project.stickerClips]);
 
   const getMaskEngine = useEngineStore((state) => state.getMaskEngine);
   const clipMasksById = useMemo(() => {
@@ -2590,7 +2603,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   }, [playheadPosition]);
 
   const renderFallbackFrame = useCallback(
-    async (time: number, _token?: FrameRequestToken) => {
+    async (time: number, token?: FrameRequestToken) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
@@ -2599,8 +2612,12 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         canvas.height = previewRes.height;
       }
 
-      const ctx = canvas.getContext("2d");
+      const fallbackCanvas = new OffscreenCanvas(canvas.width, canvas.height);
+      const ctx = fallbackCanvas.getContext("2d") as unknown as CanvasRenderingContext2D | null;
       if (!ctx) return;
+      const scheduler = frameSchedulerRef.current;
+      const isCurrent = () => !token || !scheduler || scheduler.isCurrent(token);
+      if (!isCurrent()) return;
 
       const emptyText = isDark ? "#52525b" : "#a1a1aa";
       const textPrimary = isDark ? "#ffffff" : "#18181b";
@@ -2614,12 +2631,12 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       // screen and only real overlays are redrawn over it.
       const lastGood = lastGoodFrameRef.current;
       if (lastGood) {
-        ctx.drawImage(lastGood, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(lastGood, 0, 0, fallbackCanvas.width, fallbackCanvas.height);
       } else {
         // Nothing confirmed yet — or the timeline genuinely has no visible
         // content here. Show the project background (canvas fill mode), not
         // a flat theme slab.
-        fillPreviewBackground(ctx, time, canvas.width, canvas.height);
+        fillPreviewBackground(ctx, time, fallbackCanvas.width, fallbackCanvas.height);
       }
 
       const allRenderableTracks = timelineTracks
@@ -2646,36 +2663,38 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
             if (time >= clipStart && time < clipEnd) {
               const mediaItem = getMediaItem(clip.mediaId);
               if (mediaItem) {
+                if (!isCurrent()) return;
                 ctx.fillStyle = textPrimary;
                 ctx.font = "bold 24px Inter, sans-serif";
                 ctx.textAlign = "center";
                 ctx.fillText(
                   mediaItem.name,
-                  canvas.width / 2,
-                  canvas.height / 2,
+                  fallbackCanvas.width / 2,
+                  fallbackCanvas.height / 2,
                 );
                 ctx.font = "16px Inter, sans-serif";
                 ctx.fillStyle = textSecondary;
                 ctx.fillText(
                   `${formatTime(time)} / ${formatTime(clip.duration)}`,
-                  canvas.width / 2,
-                  canvas.height / 2 + 30,
+                  fallbackCanvas.width / 2,
+                  fallbackCanvas.height / 2 + 30,
                 );
               } else if ((clip as ClipWithPlaceholder).isPlaceholder) {
+                if (!isCurrent()) return;
                 ctx.fillStyle = textSecondary;
                 ctx.font = "bold 20px Inter, sans-serif";
                 ctx.textAlign = "center";
                 ctx.fillText(
                   "Drop media here",
-                  canvas.width / 2,
-                  canvas.height / 2,
+                  fallbackCanvas.width / 2,
+                  fallbackCanvas.height / 2,
                 );
                 ctx.font = "14px Inter, sans-serif";
                 ctx.fillStyle = emptyText;
                 ctx.fillText(
                   "Replace this placeholder with your content",
-                  canvas.width / 2,
-                  canvas.height / 2 + 28,
+                  fallbackCanvas.width / 2,
+                  fallbackCanvas.height / 2 + 28,
                 );
               }
             }
@@ -2688,10 +2707,11 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
             await renderShapeClipWithEffects(
               ctx,
               shapeClip,
-              canvas.width,
-              canvas.height,
+              fallbackCanvas.width,
+              fallbackCanvas.height,
               time,
             );
+            if (!isCurrent()) return;
           }
         } else if (track.type === "text") {
           const trackTextClips = activeTextClips.filter(
@@ -2701,24 +2721,26 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
             await renderTextClipWithSubjectMask(
               ctx,
               textClip,
-              canvas.width,
-              canvas.height,
+              fallbackCanvas.width,
+              fallbackCanvas.height,
               time,
               null,
               isPlaying,
               getBehindSubjectStreamId(timelineTracks, time),
             );
+            if (!isCurrent()) return;
           }
         }
       }
 
       const activeSubtitles = getActiveSubtitles(allSubtitles, time);
       for (const subtitle of activeSubtitles) {
+        if (!isCurrent()) return;
         renderSubtitleToCanvas(
           ctx,
           subtitle,
-          canvas.width,
-          canvas.height,
+          fallbackCanvas.width,
+          fallbackCanvas.height,
           time,
         );
       }
@@ -2733,15 +2755,30 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       );
 
       if (timelineHasNoClips && !hasActiveMotionInstances(time)) {
+        if (!isCurrent()) return;
         ctx.fillStyle = emptyText;
         ctx.font = "24px Inter, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(
-          tr("Import media to get started"),
-          canvas.width / 2,
-          canvas.height / 2,
-        );
+        ctx.fillText(tr("Import media to get started"), fallbackCanvas.width / 2, fallbackCanvas.height / 2);
       }
+
+      const targetCanvas = canvasRef.current;
+      const targetContext = targetCanvas?.getContext("2d");
+      if (!targetCanvas || !targetContext || !isCurrent()) return;
+      await commitRenderedFrame(
+        {
+          isCurrent,
+          claimCommit: () => !token || !scheduler || scheduler.markCommitted(token),
+          lastGood: lastGoodFrameRef,
+        },
+        {
+          produce: () => createImageBitmap(fallbackCanvas),
+          paint: (frame) => {
+            targetContext.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+            targetContext.drawImage(frame, 0, 0, targetCanvas.width, targetCanvas.height);
+          },
+        },
+      );
     },
     [
       timelineTracks,
@@ -2752,6 +2789,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       allShapeClips,
       allSubtitles,
       hasActiveMotionInstances,
+      fillPreviewBackground,
       isDark,
       isPlaying,
       tr,
@@ -5749,6 +5787,67 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     isDark,
   ]);
 
+  // Keep the canvas/decoder registration alive across workspace activation,
+  // but discard every view-specific frame and source cache before requesting
+  // the newly active project's first frame. Paused renders are gated by the
+  // scheduler epoch; playback effects stop their old loop on workspace pause.
+  useEffect(() => {
+    const previous = previewViewIdentityRef.current;
+    if (previous.projectId === project.id && previous.workspaceId === workspaceId) return;
+    previewViewIdentityRef.current = { projectId: project.id, workspaceId };
+
+    releaseScrubVideoElements();
+    frameSchedulerRef.current?.invalidate();
+    lastGoodFrameRef.current?.close();
+    lastGoodFrameRef.current = null;
+
+    cleanupPlaybackResources();
+    for (const entry of nativeVideoCacheRef.current.values()) {
+      releaseVideoElement(entry);
+    }
+    nativeVideoCacheRef.current.clear();
+    for (const bitmap of nativeImageBitmapCacheRef.current.values()) bitmap.close();
+    nativeImageBitmapCacheRef.current.clear();
+    failedImageDecodesRef.current.clear();
+
+    processedAudioBufferCacheRef.current.clear();
+    audioBufferCacheRef.current.clear();
+    noAudioBufferRef.current.clear();
+    motionRendererRef.current?.dispose();
+    motionRendererRef.current = null;
+
+    if (modifiedRenderTimerRef.current) {
+      clearTimeout(modifiedRenderTimerRef.current);
+      modifiedRenderTimerRef.current = null;
+    }
+    lastModifiedAtRef.current = project.modifiedAt;
+    lastRevisionForRenderRef.current = projectRevision;
+    lastPlayheadForRenderRef.current = playheadPosition;
+    lastPreviewRenderTimeRef.current = playheadPosition;
+    initialPausedFrameRequestedRef.current = true;
+
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (canvas && context) {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      fillPreviewBackground(context, playheadPosition, canvas.width, canvas.height);
+    }
+
+    if (!isPlaying) requestFrameRender(playheadPosition);
+  }, [
+    project.id,
+    project.modifiedAt,
+    workspaceId,
+    playheadPosition,
+    projectRevision,
+    isPlaying,
+    releaseScrubVideoElements,
+    cleanupPlaybackResources,
+    releaseVideoElement,
+    fillPreviewBackground,
+    requestFrameRender,
+  ]);
+
   const [previewInvalidateCounter, setPreviewInvalidateCounter] = useState(0);
   useEffect(() => {
     const handler = () => {
@@ -7082,8 +7181,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       }
       src = URL.createObjectURL(mediaItem.blob);
       cropMediaUrlRef.current = src;
-    } else if (mediaItem.originalUrl) {
-      src = mediaItem.originalUrl;
+    } else if (mediaItem.contentUrl ?? mediaItem.originalUrl) {
+      src = mediaItem.contentUrl ?? mediaItem.originalUrl ?? null;
     }
 
     if (!src) return null;

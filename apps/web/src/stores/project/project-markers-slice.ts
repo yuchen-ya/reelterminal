@@ -19,10 +19,11 @@ export type ProjectMarkersSlice = Pick<
  * dispatches the core `projectMarker/*` actions so add/remove are undoable
  * through the standard history path.
  */
-export function createProjectMarkersSlice(set: Set, get: Get): ProjectMarkersSlice {
+export function createProjectMarkersSlice(_set: Set, get: Get): ProjectMarkersSlice {
   return {
     addProjectMarker: async (target, label) => {
-      const { project, actionExecutor } = get();
+      const add = () => {
+      const project = get().project;
       const marker: ProjectMarker = {
         id: `marker-${crypto.randomUUID()}`,
         number: project.markers?.nextNumber ?? 1,
@@ -37,15 +38,18 @@ export function createProjectMarkersSlice(set: Set, get: Get): ProjectMarkersSli
         timestamp: Date.now(),
         params: { marker },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project, modifiedAt: Date.now() } });
-      }
-      return result;
+      return get().executeActionBatch([action], {
+        groupLabel: "Add project marker",
+        historyOwner: "human",
+      }).result;
+      };
+      const submit = get().submitWorkspaceMutation;
+      return submit ? submit(add) : add();
     },
 
     removeProjectMarker: async (number) => {
-      const { project, actionExecutor } = get();
+      const remove = () => {
+      const project = get().project;
       const items = project.markers?.items ?? [];
       const marker = items.find((candidate) => candidate.number === number);
       if (!marker) {
@@ -69,11 +73,13 @@ export function createProjectMarkersSlice(set: Set, get: Get): ProjectMarkersSli
         timestamp: Date.now(),
         params: { markerId: marker.id },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project, modifiedAt: Date.now() } });
-      }
-      return result;
+      return get().executeActionBatch([action], {
+        groupLabel: "Remove project marker",
+        historyOwner: "human",
+      }).result;
+      };
+      const submit = get().submitWorkspaceMutation;
+      return submit ? submit(remove) : remove();
     },
   };
 }

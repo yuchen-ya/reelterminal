@@ -54,10 +54,13 @@ export type DesktopLiveBridgeKind =
   | "historyControl"
   | "editorControl"
   | "applyActions"
+  | "replayActions"
+  | "replayMediaImport"
   | "importMedia"
   | "materialLibrary"
   | "fontLibrary"
   | "presetLibrary"
+  | "workspaceLibrary"
   | "requestSave";
 
 /** Main-to-renderer request on `reelterminal:live:request`. */
@@ -65,6 +68,11 @@ export interface DesktopLiveBridgeRequest {
   readonly callId: string;
   readonly expectedProjectId?: string;
   readonly expectedProjectEpoch?: string;
+  /** Data target; GUI selection never supplies or changes these implicitly. */
+  readonly projectId?: string;
+  readonly workspaceId?: string;
+  /** Runtime generation captured by the preceding targeted read in this command. */
+  readonly expectedWorkspaceInstanceId?: string;
   readonly kind: DesktopLiveBridgeKind;
   readonly actions?: readonly Action[];
   readonly groupLabel?: string;
@@ -84,6 +92,10 @@ export interface DesktopLiveBridgeRequest {
   readonly metadata?: LiveMediaImportRequest["metadata"];
   readonly sourceFile?: LiveMediaImportRequest["sourceFile"];
   readonly idempotencyKey?: LiveMediaImportRequest["idempotencyKey"];
+  /** Facade-level semantic request for durable edit.apply replay. */
+  readonly idempotencyPayload?: unknown;
+  /** Per-op result projection retained with the action-batch receipt. */
+  readonly idempotencyMetadata?: unknown;
   /** materialLibrary: the material-library verb to execute in the renderer. */
   readonly materialVerb?: string;
   /** materialLibrary: JSON-safe parameters for that verb. */
@@ -96,6 +108,9 @@ export interface DesktopLiveBridgeRequest {
   readonly presetVerb?: string;
   /** presetLibrary: JSON-safe parameters for that verb. */
   readonly presetParams?: Record<string, unknown>;
+  /** Project/workspace/node library command. */
+  readonly workspaceVerb?: string;
+  readonly workspaceParams?: Record<string, unknown>;
 }
 
 export interface DesktopLiveBridgeError {
@@ -124,6 +139,17 @@ export interface DesktopInspection {
 export type DesktopLiveEvent =
   | ({ readonly type: "inspection" } & DesktopInspection)
   | ({ readonly type: "status" } & DesktopCollabStatus)
+  | {
+      readonly type: "task";
+      readonly jobId: string;
+      readonly kind: "export" | "analysis";
+      readonly projectId: string;
+      readonly workspaceId: string;
+      readonly state: "queued" | "running" | "done" | "error" | "cancelled";
+      readonly sourceRevision: number;
+      readonly progress: { readonly phase: string; readonly percent: number } | null;
+      readonly error?: string;
+    }
   | { readonly type: "action"; readonly phase: "start"; readonly verb: string }
   | {
       readonly type: "action";

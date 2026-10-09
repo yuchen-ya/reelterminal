@@ -15,7 +15,9 @@ export interface ActionBatchCreatedIds {
 
 export interface ActionBatchOptions {
   readonly groupLabel: string;
-  readonly historyOwner: string;
+  readonly historyOwner?: string;
+  /** Optional pre-gesture state used to construct the first action's inverse. */
+  readonly historyBeforeProject?: Project;
 }
 
 export interface ActionBatchResult {

@@ -142,8 +142,15 @@ export function parseFlags(tokens: readonly string[]): RawArgs {
         timeoutMs = value;
         break;
       case "project-id":
-      case "expected-project-id":
         if (typeof value !== "string") fail(`--${rawName} needs a string`);
+        flags.projectId = value;
+        break;
+      case "workspace-id":
+        if (typeof value !== "string") fail("--workspace-id needs a string");
+        flags.workspaceId = value;
+        break;
+      case "expected-project-id":
+        if (typeof value !== "string") fail("--expected-project-id needs a string");
         flags.expectedProjectId = value;
         break;
       case "project-epoch":
@@ -305,18 +312,22 @@ export function applyRequestEnvelope(
 export function requireExplicitSafetyGuards(
   commandName: string,
   args: Record<string, unknown>,
-  expectedProjectId: string | undefined,
-  expectedProjectEpoch: string | undefined,
+  _expectedProjectId: string | undefined,
+  _expectedProjectEpoch: string | undefined,
+  entry?: CommandCatalogEntry,
 ): void {
-  if ((commandName === "edit.apply" || commandName === "history.control") && (!Number.isInteger(args.expectedRevision) || (args.expectedRevision as number) < 0)) {
-    throw new LiveCliError(`${commandName} requires expectedRevision in the request or --expected-revision`, "args", 2);
+  const required = new Set(Array.isArray(entry?.inputSchema.required)
+    ? entry.inputSchema.required.filter((field): field is string => typeof field === "string")
+    : []);
+  if (required.has("projectId") && typeof args.projectId !== "string") {
+    throw new LiveCliError(`${commandName} requires an explicit projectId; pass --project-id`, "args", 2);
   }
-  if ((commandName === "edit.apply" || commandName === "history.control") && (expectedProjectId === undefined || expectedProjectEpoch === undefined)) {
-    throw new LiveCliError(
-      `${commandName} requires expectedProjectId and expectedProjectEpoch from reelctl context; pass --project-id and --project-epoch or include both in the request file envelope`,
-      "args",
-      2,
-    );
+  if (required.has("workspaceId") && typeof args.workspaceId !== "string") {
+    throw new LiveCliError(`${commandName} requires an explicit workspaceId; pass --workspace-id`, "args", 2);
+  }
+  if ((required.has("expectedRevision") || commandName === "edit.apply" || commandName === "history.control") &&
+      (!Number.isInteger(args.expectedRevision) || (args.expectedRevision as number) < 0)) {
+    throw new LiveCliError(`${commandName} requires expectedRevision in the request or --expected-revision`, "args", 2);
   }
 }
 
@@ -331,7 +342,7 @@ export function commandHelp(entry: CommandCatalogEntry): string {
   ].join("\n");
 }
 
-export const REELCTL_HELP = `reelctl — operate the project already open in ReelTerminal
+export const REELCTL_HELP = `reelctl — operate projects and workspaces in ReelTerminal
 
 Usage:
   reelctl status
@@ -362,9 +373,10 @@ Usage:
   reelctl call <command> [--file request.json | --stdin] [--name value ...]
   reelctl mcp serve
 
-Complex requests use JSON files or stdin. For edits, include expectedRevision and
-copy identity.projectId and identity.projectEpoch from reelctl context into the
-request envelope or pass --project-id / --project-epoch. reelctl call keeps
+Complex requests use JSON files or stdin. For edits, include projectId,
+workspaceId, expectedRevision, and expectedProjectEpoch, or pass --project-id,
+--workspace-id, and --project-epoch. project-id/workspace-id locate the target;
+expected-project-id is a separate view identity guard. reelctl call keeps
 all catalog commands available even before a dedicated shortcut exists.
 Use reelctl schema <command> or reelctl help <command> for exact arguments.
 

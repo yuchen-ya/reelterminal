@@ -182,10 +182,12 @@ const DEFAULT_TEMPLATES: ProjectTemplate[] = [
 type ProjectManagerEvent = "recentUpdated" | "projectSaved" | "projectOpened";
 type EventCallback = (data?: unknown) => void;
 
-class ProjectManager {
+export class ProjectManager {
   private db: IDBDatabase | null = null;
+  private initializePromise: Promise<void> | null = null;
   private listeners: Map<ProjectManagerEvent, Set<EventCallback>> = new Map();
-  private currentFileHandle: ProjectFileRef | null = null;
+  private readonly fileHandlesByProject = new Map<string, ProjectFileRef>();
+  private activeProjectId: string | null = null;
 
   private parseProjectContent(content: string): Project {
     const trimmed = content.trim();
@@ -221,7 +223,21 @@ class ProjectManager {
   }
 
   async initialize(): Promise<void> {
-    this.db = await this.openDatabase();
+    if (this.db) return;
+    if (!this.initializePromise) {
+      this.initializePromise = this.openDatabase().then(async (db) => {
+        this.db = db;
+        const recent = await this.getRecentProjects();
+        for (const project of recent) {
+          if (project.fileHandle) {
+            this.fileHandlesByProject.set(project.id, project.fileHandle);
+          }
+        }
+      }).finally(() => {
+        this.initializePromise = null;
+      });
+    }
+    await this.initializePromise;
   }
 
   private openDatabase(): Promise<IDBDatabase> {
@@ -306,19 +322,23 @@ class ProjectManager {
       },
     };
 
-    this.currentFileHandle = null;
+    this.clearCurrentFileHandle(project.id);
+    this.activeProjectId = project.id;
     this.emit("projectOpened", { project });
     return project;
   }
 
-  /** Detach the next project from the file selected for the previous one. */
-  clearCurrentFileHandle(): void {
-    this.currentFileHandle = null;
+  clearCurrentFileHandle(projectId?: string): void {
+    const targetProjectId = projectId ?? this.activeProjectId;
+    if (!targetProjectId) return;
+    this.fileHandlesByProject.delete(targetProjectId);
+    if (this.activeProjectId === targetProjectId) this.activeProjectId = null;
   }
 
   async saveProject(project: Project): Promise<boolean> {
-    if (this.currentFileHandle) {
-      return this.saveToFileHandle(project, this.currentFileHandle);
+    const handle = this.fileHandlesByProject.get(project.id);
+    if (handle) {
+      return this.saveToFileHandle(project, handle);
     }
     return this.saveProjectAs(project);
   }
@@ -341,8 +361,8 @@ class ProjectManager {
         filePath,
         JSON.stringify(project, null, 2),
       );
-      this.currentFileHandle = { kind: "native", path: filePath };
-      await this.addToRecent(project, this.currentFileHandle);
+      this.rememberFileHandle(project.id, { kind: "native", path: filePath });
+      await this.addToRecent(project, this.fileHandlesByProject.get(project.id));
       this.emit("projectSaved", { project });
       return true;
     }
@@ -365,7 +385,7 @@ class ProjectManager {
 
       const success = await this.saveToFileHandle(project, handle);
       if (success) {
-        this.currentFileHandle = handle;
+        this.rememberFileHandle(project.id, handle);
         await this.addToRecent(project, handle);
       }
       return success;
@@ -430,7 +450,7 @@ class ProjectManager {
     }
   }
 
-  async openProject(): Promise<Project | null> {
+  async openProject(options: { existingProjectIds?: readonly string[] } = {}): Promise<Project | null> {
     if (isDesktopFs()) {
       const dataRootInfo = await window.reelterminal!.dataRoot?.getInfo();
       const filePath = await window.reelterminal!.fs.showOpenDialog({
@@ -441,13 +461,13 @@ class ProjectManager {
       const content = await window.reelterminal!.fs.readFile(filePath);
       let project: Project;
       try {
-        project = this.parseProjectContent(content);
+        project = this.separateOpenedIdentity(this.parseProjectContent(content), options.existingProjectIds);
       } catch (error) {
         console.error("[ProjectManager] Open (native) failed:", error);
         return null;
       }
-      this.currentFileHandle = { kind: "native", path: filePath };
-      await this.addToRecent(project, this.currentFileHandle);
+      this.rememberFileHandle(project.id, { kind: "native", path: filePath });
+      await this.addToRecent(project, this.fileHandlesByProject.get(project.id));
       this.emit("projectOpened", { project });
       return project;
     }
@@ -467,9 +487,9 @@ class ProjectManager {
 
         const file = await handle.getFile();
         const content = await file.text();
-        const project = this.parseProjectContent(content);
+        const project = this.separateOpenedIdentity(this.parseProjectContent(content), options.existingProjectIds);
 
-        this.currentFileHandle = handle;
+        this.rememberFileHandle(project.id, handle);
         await this.addToRecent(project, handle);
         this.emit("projectOpened", { project });
 
@@ -483,10 +503,15 @@ class ProjectManager {
       }
     }
 
-    return this.openProjectViaInput();
+    return this.openProjectViaInput(options.existingProjectIds);
   }
 
-  private openProjectViaInput(): Promise<Project | null> {
+  private separateOpenedIdentity(project: Project, existingProjectIds: readonly string[] = []): Project {
+    if (!existingProjectIds.includes(project.id)) return project;
+    return { ...project, id: uuidv4(), name: `${project.name} (${ti("versioning.importedCopy")})` };
+  }
+
+  private openProjectViaInput(existingProjectIds: readonly string[] = []): Promise<Project | null> {
     return new Promise((resolve) => {
       const input = document.createElement("input");
       input.type = "file";
@@ -501,8 +526,9 @@ class ProjectManager {
 
         try {
           const content = await file.text();
-          const project = this.parseProjectContent(content);
-          this.currentFileHandle = null;
+          const project = this.separateOpenedIdentity(this.parseProjectContent(content), existingProjectIds);
+          this.clearCurrentFileHandle(project.id);
+          this.activeProjectId = project.id;
           await this.addToRecent(project);
           this.emit("projectOpened", { project });
           resolve(project);
@@ -526,7 +552,7 @@ class ProjectManager {
             recentProject.fileHandle.path,
           );
           const project = this.parseProjectContent(content);
-          this.currentFileHandle = recentProject.fileHandle;
+          this.rememberFileHandle(project.id, recentProject.fileHandle);
           await this.updateRecentTimestamp(recentProject.id);
           this.emit("projectOpened", { project });
           return project;
@@ -551,7 +577,7 @@ class ProjectManager {
         const content = await file.text();
         const project = this.parseProjectContent(content);
 
-        this.currentFileHandle = handle;
+        this.rememberFileHandle(project.id, handle);
         await this.updateRecentTimestamp(recentProject.id);
         this.emit("projectOpened", { project });
 
@@ -565,7 +591,8 @@ class ProjectManager {
 
     const project = await this.loadProjectFromDb(recentProject.id);
     if (project) {
-      this.currentFileHandle = null;
+      this.clearCurrentFileHandle(project.id);
+      this.activeProjectId = project.id;
       await this.updateRecentTimestamp(recentProject.id);
     }
     return project;
@@ -628,6 +655,8 @@ class ProjectManager {
     const existing = await this.loadRecentRecord(project.id);
     // Recovery explicitly detaches a stale file; metadata updates preserve it.
     const resolvedFileHandle = fileHandle === null ? undefined : fileHandle ?? existing?.fileHandle;
+    if (resolvedFileHandle) this.rememberFileHandle(project.id, resolvedFileHandle);
+    else if (fileHandle === null) this.clearCurrentFileHandle(project.id);
     if (!resolvedFileHandle) {
       await this.saveProjectSnapshot(project);
     }
@@ -738,6 +767,8 @@ class ProjectManager {
       store.delete(id);
 
       tx.oncomplete = () => {
+        this.fileHandlesByProject.delete(id);
+        if (this.activeProjectId === id) this.activeProjectId = null;
         this.emit("recentUpdated");
         resolve();
       };
@@ -765,6 +796,8 @@ class ProjectManager {
       store.clear();
 
       tx.oncomplete = () => {
+        this.fileHandlesByProject.clear();
+        this.activeProjectId = null;
         this.emit("recentUpdated");
         resolve();
       };
@@ -787,16 +820,22 @@ class ProjectManager {
     return map;
   }
 
-  getCurrentFileHandle(): ProjectFileRef | null {
-    return this.currentFileHandle;
+  getCurrentFileHandle(projectId?: string): ProjectFileRef | null {
+    const id = projectId ?? this.activeProjectId;
+    return id ? this.fileHandlesByProject.get(id) ?? null : null;
   }
 
   hasUnsavedChanges(project: Project): boolean {
     const projectWithSavedAt = project as Project & { lastSavedAt?: number };
     return (
-      !this.currentFileHandle ||
+      !this.getCurrentFileHandle(project.id) ||
       project.modifiedAt > (projectWithSavedAt.lastSavedAt ?? 0)
     );
+  }
+
+  private rememberFileHandle(projectId: string, handle: ProjectFileRef): void {
+    this.fileHandlesByProject.set(projectId, handle);
+    this.activeProjectId = projectId;
   }
 
   on(event: ProjectManagerEvent, callback: EventCallback): () => void {

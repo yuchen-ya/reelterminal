@@ -21,6 +21,9 @@ import type {
   ProjectMarker,
   ProjectMarkersState,
 } from "@reelterminal/core/types/project";
+import { EASING_TYPES } from "@reelterminal/core/types/timeline";
+import type { Clip } from "@reelterminal/core/types/timeline";
+import { validateClipSpeedConfiguration } from "@reelterminal/core/actions/handlers/clip-fx";
 import { LEGACY_CHECKPOINT_FORMAT } from "@reelterminal/core/legacy/physical-identifiers";
 
 import { FACADE_CONTRACT_VERSION, TRACK_TYPES } from "./types";
@@ -175,9 +178,10 @@ export function buildCheckpointDocument(
  * closed edit.apply op set can produce. Browser/desktop-only fields
  * (adjustmentLayers, masks, multicamGroups, creation, provider-specific
  * markers, …) are outside the headless surface and outside this schema — an
- * unknown field fails the STRUCTURE step. Because the schema is closed, ANY change
- * to the document shape — even purely additive — requires a formatVersion
- * bump (10.2 evolution rule).
+ * unknown field fails the STRUCTURE step. The optional speed/reverse/ramp/freeze
+ * fields below are part of the existing canonical Clip model and have already
+ * been emitted by the v2 writer; listing them here makes the strict reader
+ * accept that existing writer output without changing the checkpoint format.
  *
  * v2 (2026-09): added the OPTIONAL `markers` project field — the persisted
  * project-marker state the marker.add/marker.remove ops produce
@@ -210,6 +214,9 @@ const isFontWeight = (v: unknown): boolean =>
 
 const isSha256Hex = (v: unknown): boolean =>
   typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
+
+const isCheckpointSpeed = (v: unknown): boolean =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0.1 && v <= 20;
 
 /** `0 … Number.MAX_SAFE_INTEGER` (10.4 step 4). */
 export const isCheckpointRevision = (v: unknown): boolean =>
@@ -267,7 +274,22 @@ export const CLIP_TRANSFORM_SCHEMA: ObjectSchema = {
   fitMode: { check: oneOf(["contain", "cover", "stretch", "none"]), describe: 'one of "contain", "cover", "stretch", "none"', required: true },
 };
 
-/** Clips exactly as clip.add creates them and clip.trim mutates them. */
+const SPEED_KEYFRAME_SCHEMA: ObjectSchema = {
+  id: { check: isNonEmptyString, describe: "a non-empty keyframe id", required: true },
+  time: { check: isNonNegativeNumber, describe: "a non-negative source offset", required: true },
+  speed: { check: isCheckpointSpeed, describe: "a speed in [0.1, 20]", required: true },
+  easing: { check: oneOf(EASING_TYPES), describe: "a supported easing", required: true },
+};
+
+const FREEZE_FRAME_SCHEMA: ObjectSchema = {
+  id: { check: isNonEmptyString, describe: "a non-empty freeze id", required: true },
+  clipId: { check: isNonEmptyString, describe: "a non-empty clip id", required: true },
+  sourceTime: { check: isNonNegativeNumber, describe: "a non-negative source offset", required: true },
+  startTime: { check: isNonNegativeNumber, describe: "a non-negative clip-local playback time", required: true },
+  duration: { check: (v) => typeof v === "number" && Number.isFinite(v) && v > 0, describe: "a positive finite duration", required: true },
+};
+
+/** Clips exactly as clip.add creates them and closed edit ops mutate them. */
 export const CLIP_SCHEMA: ObjectSchema = {
   id: { check: isNonEmptyString, describe: "a non-empty string", required: true },
   mediaId: { check: isNonEmptyString, describe: "a non-empty string", required: true },
@@ -281,6 +303,19 @@ export const CLIP_SCHEMA: ObjectSchema = {
   transform: { check: isPlainObject, describe: "an object", required: true },
   volume: { check: isFiniteNumber, describe: "a finite number", required: true },
   keyframes: { check: isEmptyArray, describe: "an empty array (no headless keyframe op exists)", required: true },
+  speed: { check: isCheckpointSpeed, describe: "a speed in [0.1, 20]", emits: { kind: "leaf", schema: { type: "number", minimum: 0.1, maximum: 20 } } },
+  reversed: { check: isBoolean, describe: "a boolean", emits: { kind: "leaf", schema: { type: "boolean" } } },
+  pitchCorrection: { check: isBoolean, describe: "a boolean", emits: { kind: "leaf", schema: { type: "boolean" } } },
+  speedKeyframes: {
+    check: (v) => Array.isArray(v) && v.length <= 128,
+    describe: "an array of at most 128 speed keyframes",
+    emits: { kind: "array", maxItems: 128, items: { kind: "object", schema: SPEED_KEYFRAME_SCHEMA } },
+  },
+  freezeFrames: {
+    check: (v) => Array.isArray(v) && v.length <= 128,
+    describe: "an array of at most 128 freeze frames",
+    emits: { kind: "array", maxItems: 128, items: { kind: "object", schema: FREEZE_FRAME_SCHEMA } },
+  },
 };
 
 /** Tracks exactly as track.add creates them. */
@@ -597,7 +632,38 @@ function validateProjectDocument(raw: unknown): Project {
         `${clipLabel}.transform`,
       );
       validateTransformVectors(transform, clipLabel);
-      return { ...c, transform };
+      const speedKeyframes = Array.isArray(c.speedKeyframes)
+        ? c.speedKeyframes.map((keyframe, keyframeIndex) =>
+            validateObject<Record<string, unknown>>(
+              keyframe,
+              SPEED_KEYFRAME_SCHEMA,
+              `${clipLabel}.speedKeyframes[${keyframeIndex}]`,
+            ),
+          )
+        : undefined;
+      const freezeFrames = Array.isArray(c.freezeFrames)
+        ? c.freezeFrames.map((freezeFrame, freezeIndex) =>
+            validateObject<Record<string, unknown>>(
+              freezeFrame,
+              FREEZE_FRAME_SCHEMA,
+              `${clipLabel}.freezeFrames[${freezeIndex}]`,
+            ),
+          )
+        : undefined;
+      const canonicalClip = {
+        ...c,
+        transform,
+        ...(speedKeyframes !== undefined ? { speedKeyframes } : {}),
+        ...(freezeFrames !== undefined ? { freezeFrames } : {}),
+      } as unknown as Clip;
+      const speedConfigurationProblem = validateClipSpeedConfiguration(canonicalClip);
+      if (speedConfigurationProblem) {
+        throw new FacadeError(
+          "INVALID_PARAMS",
+          `${clipLabel}: ${speedConfigurationProblem}`,
+        );
+      }
+      return canonicalClip;
     });
     return { ...t, clips };
   });

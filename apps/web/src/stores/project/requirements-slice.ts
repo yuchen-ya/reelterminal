@@ -2,7 +2,6 @@ import { v4 as uuidv4 } from "uuid";
 import type { StoreApi } from "zustand";
 import type {
   Action,
-  ActionResult,
   ProjectRequirement,
   ProjectRequirementPatch,
 } from "@reelterminal/core";
@@ -29,18 +28,13 @@ export type ProjectRequirementsSlice = Pick<
 >;
 
 export function createProjectRequirementsSlice(
-  set: Set,
+  _set: Set,
   get: Get,
 ): ProjectRequirementsSlice {
-  const execute = async (action: Action): Promise<ActionResult> => {
-    const { project, actionExecutor } = get();
-    const result = await actionExecutor.execute(action, project);
-    if (result.success) set({ project: { ...project, modifiedAt: Date.now() } });
-    return result;
-  };
   return {
     addProjectRequirement: async (input) => {
-      const { project } = get();
+      const add = () => {
+      const project = get().project;
       const number = project.requirements?.nextNumber ?? 1;
       const now = Date.now();
       const requirement: ProjectRequirement = {
@@ -60,22 +54,29 @@ export function createProjectRequirementsSlice(
         createdAt: now,
         updatedAt: now,
       };
-      return execute({
+      const action: Action = {
         type: "requirement/add",
         id: uuidv4(),
         timestamp: now,
         params: { requirement },
-      });
+      };
+      return get().executeActionBatch([action], {
+        groupLabel: "Add project requirement",
+        historyOwner: "human",
+      }).result;
+      };
+      const submit = get().submitWorkspaceMutation;
+      return submit ? submit(add) : add();
     },
     updateProjectRequirement: (requirementId, patch: ProjectRequirementPatch) =>
-      execute({
+      get().executeAction({
         type: "requirement/update",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { requirementId, patch },
       }),
     removeProjectRequirement: (requirementId) =>
-      execute({
+      get().executeAction({
         type: "requirement/remove",
         id: uuidv4(),
         timestamp: Date.now(),

@@ -15,12 +15,10 @@ import {
 import { loadProjectMedia } from "../../services/media-storage";
 import {
   attachProjectMediaGc,
-  flushProjectMediaBytes,
-  sweepOrphanProjectMedia,
+  detachProjectMediaGc,
 } from "../../services/project-media-gc";
 import { projectManager } from "../../services/project-manager";
 import { restoreMediaItem } from "../../utils/media-recovery";
-import { useEngineStore } from "../engine-store";
 
 type Get = StoreApi<ProjectState>["getState"];
 type Set = StoreApi<ProjectState>["setState"];
@@ -49,6 +47,10 @@ export function createProjectPersistenceSlice(
 ): ProjectPersistenceSlice {
   return {
     initializeAutoSave: async () => {
+      // Workspace drafts are committed by WorkspaceManager per workspace.
+      // The legacy autosave database is project-keyed and would collapse trial
+      // and default workspaces into the same recovery slots.
+      if (get().workspaceId) return;
       if (autoSaveInitialized) return;
       if (!autoSaveInitializationPromise) {
         autoSaveInitializationPromise = (async () => {
@@ -102,7 +104,10 @@ export function createProjectPersistenceSlice(
         const normalizedProject = normalizeProjectWorkAssetFields(
           recoveredProject,
         );
-        const storedMedia = await loadProjectMedia(normalizedProject.id);
+        const storedMedia = await loadProjectMedia(
+          normalizedProject.id,
+          normalizedProject.mediaLibrary.items.map((item) => item.id),
+        );
         const blobMap = new Map(storedMedia.map((m) => [m.id, m.blob]));
 
         const restoredItems = await Promise.all(
@@ -138,32 +143,12 @@ export function createProjectPersistenceSlice(
           },
         };
 
-        const titleEngine = useEngineStore.getState().getTitleEngine();
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
-
-        if (titleEngine && recoveredProject.textClips) {
-          titleEngine.loadTextClips(recoveredProject.textClips);
-        }
-        if (graphicsEngine) {
-          if (recoveredProject.shapeClips) {
-            graphicsEngine.loadShapeClips(recoveredProject.shapeClips);
-          }
-          if (recoveredProject.svgClips) {
-            graphicsEngine.loadSVGClips(recoveredProject.svgClips);
-          }
-          if (recoveredProject.stickerClips) {
-            graphicsEngine.loadStickerClips(recoveredProject.stickerClips);
-          }
-        }
-
-        // Leaving the previous project state destroys its undo history, so
-        // bytes that only that history could restore are reclaimed now.
-        void flushProjectMediaBytes(get().project);
         const newHistory = new ActionHistory();
+        detachProjectMediaGc(get().actionHistory);
         attachProjectMediaGc(newHistory, () => get().project);
         const newExecutor = new ActionExecutor(newHistory);
 
-        registerProjectGeneratedShaders(projectWithMedia);
+        if (get().isForeground) registerProjectGeneratedShaders(projectWithMedia);
 
         set({
           project: projectWithMedia,
@@ -174,15 +159,11 @@ export function createProjectPersistenceSlice(
           clipRedoStack: [],
           templateUndoStack: [],
           templateRedoStack: [],
+          redoJournal: [],
           error: null,
         });
 
-        // A fresh session history is empty, so nothing from before the
-        // recovery can be undone: bytes outside the restored items are
-        // leftovers and are reclaimed.
-        void sweepOrphanProjectMedia(projectWithMedia);
-
-        projectManager.clearCurrentFileHandle();
+        projectManager.clearCurrentFileHandle(projectWithMedia.id);
         await projectManager.addToRecent(projectWithMedia, null);
         return true;
       }
@@ -190,6 +171,11 @@ export function createProjectPersistenceSlice(
     },
 
     forceSave: async () => {
+      const workspaceDraftSave = get().saveWorkspaceDraft;
+      if (get().workspaceId && workspaceDraftSave) {
+        await workspaceDraftSave();
+        return;
+      }
       // Manual save is also the recovery path for a failed first-time setup.
       await get().initializeAutoSave();
       const project = get().getFullProject();
@@ -200,19 +186,12 @@ export function createProjectPersistenceSlice(
 
     getFullProject: (): Project => {
       const { project } = get();
-      const titleEngine = useEngineStore.getState().getTitleEngine();
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
-
       return {
         ...project,
-        // Same engine-null fallback as forceSave: never silently drop
-        // overlays from a snapshot.
-        textClips: titleEngine?.getAllTextClips() ?? project.textClips ?? [],
-        shapeClips:
-          graphicsEngine?.getAllShapeClips() ?? project.shapeClips ?? [],
-        svgClips: graphicsEngine?.getAllSVGClips() ?? project.svgClips ?? [],
-        stickerClips:
-          graphicsEngine?.getAllStickerClips() ?? project.stickerClips ?? [],
+        textClips: project.textClips ?? [],
+        shapeClips: project.shapeClips ?? [],
+        svgClips: project.svgClips ?? [],
+        stickerClips: project.stickerClips ?? [],
       };
     },
   };

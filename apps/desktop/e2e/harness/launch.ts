@@ -66,6 +66,7 @@ function makeRunDirs(runDir?: string): {
   const requestedDir = runDir ?? mkdtempSync(path.join(tmpdir(), "reelterminal-e2e-"));
   mkdirSync(requestedDir, { recursive: true });
   const dir = realpathSync(requestedDir);
+  mkdirSync(path.join(dir, "agent-workspace"), { recursive: true });
   return {
     runDir: dir,
     userDataDir: path.join(dir, "user-data"),
@@ -97,7 +98,7 @@ async function launch(
       REELTERMINAL_LIVE_ENDPOINT_FILE: paths.endpointFile,
       // The per-run directory is the only media root needed by import E2E;
       // every other spec simply observes the additional honest capability.
-      REELTERMINAL_LIVE_MEDIA_ROOTS: paths.runDir,
+      REELTERMINAL_LIVE_MEDIA_ROOTS: [path.join(paths.runDir, "agent-workspace"), paths.runDir].join(path.delimiter),
       REELTERMINAL_AGENT_WORKSPACE_ROOT: path.join(paths.runDir, "agent-workspace"),
     },
     timeout: 120_000,

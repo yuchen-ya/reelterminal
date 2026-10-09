@@ -1,7 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { Action } from "@reelterminal/core";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
+import { IDBFactory } from "fake-indexeddb";
+import { hashMediaBytes, type Action, type MediaItem } from "@reelterminal/core";
 import type { TextClip } from "@reelterminal/core";
 import { useProjectStore, getProjectRevision } from "../../stores/project-store";
+import { createEmptyProject } from "../../stores/project/project-helpers";
+import { workspaceManager } from "../workspace-manager";
 import {
   getLiveEditorContext,
   markAgentReferences,
@@ -14,17 +17,22 @@ import {
 import { getTransitionBridge } from "../../bridges/transition-bridge";
 import { MAX_ACTIONS_PER_BATCH } from "../../stores/project/action-batch";
 
-const { mockSaveMediaBlob, mockImportFile } = vi.hoisted(() => ({
-  mockSaveMediaBlob: vi.fn(async () => undefined),
+const { mockSaveMediaBlob, mockLoadMediaBlob, mockLoadMediaRecord, mockImportFile } = vi.hoisted(() => ({
+  mockSaveMediaBlob: vi.fn(async () => ({ contentHash: "a".repeat(64), created: true })),
+  mockLoadMediaBlob: vi.fn(async () => null),
+  mockLoadMediaRecord: vi.fn(async () => null),
   mockImportFile: vi.fn(),
 }));
 
 vi.mock("../../services/media-storage", () => ({
   saveMediaBlob: mockSaveMediaBlob,
+  loadMediaBlob: mockLoadMediaBlob,
+  loadMediaRecord: mockLoadMediaRecord,
   deleteMediaBlob: vi.fn(async () => undefined),
   loadProjectMedia: vi.fn(async () => []),
   loadFileHandle: vi.fn(async () => null),
   loadDirectoryHandle: vi.fn(async () => null),
+  withMediaReferenceWrite: async <T>(operation: () => Promise<T> | T) => operation(),
 }));
 
 vi.mock("../../bridges/media-bridge", () => ({
@@ -57,15 +65,32 @@ const textClip = (id: string, text: string, trackId = "track-text"): TextClip =>
 const req = (
   kind: LiveBridgeRequest["kind"],
   extra: Partial<LiveBridgeRequest> = {},
-): LiveBridgeRequest => ({ callId: "c1", kind, ...extra });
+): LiveBridgeRequest => {
+  const request: LiveBridgeRequest = {
+    callId: "c1",
+    kind,
+    ...(workspaceManager.getActiveTarget() ?? {}),
+    ...extra,
+  };
+  if (["applyActions", "historyControl", "importMedia"].includes(kind) && request.expectedRevision === undefined) {
+    return { ...request, expectedRevision: getProjectRevision() };
+  }
+  return request;
+};
 
 const undoSize = (): number =>
   useProjectStore.getState().actionExecutor.getHistory().getUndoStackSize();
 
 describe("live-bridge", () => {
+  beforeAll(() => {
+    globalThis.indexedDB = new IDBFactory();
+  });
+
   beforeEach(() => {
     mockImportFile.mockReset();
     mockSaveMediaBlob.mockClear();
+    mockLoadMediaBlob.mockResolvedValue(null);
+    mockLoadMediaRecord.mockResolvedValue(null);
     mockImportFile.mockImplementation(async (file: File) => ({
       success: true,
       media: {
@@ -85,7 +110,14 @@ describe("live-bridge", () => {
         },
       },
     }));
-    useProjectStore.getState().createNewProject();
+    return (async () => {
+      await workspaceManager.initialize();
+      const created = await workspaceManager.createProject(createEmptyProject("Live bridge test"));
+      await workspaceManager.switchView({
+        projectId: created.project.id,
+        workspaceId: created.defaultWorkspaceId,
+      });
+    })();
   });
 
   afterEach(() => {
@@ -100,27 +132,33 @@ describe("live-bridge", () => {
     expect(res.result).toEqual({
       projectId: project.id,
       projectName: project.name,
+      workspaceId: workspaceManager.getActiveTarget()?.workspaceId,
+      workspaceInstanceId: expect.any(String),
       windowId: "main",
       projectEpoch: expect.any(String),
     });
   });
 
-  it("rejects a plan after reopening the same project, before edits or replay", async () => {
+  it("rejects a write from a closed and reloaded workspace generation", async () => {
+    const defaultTarget = workspaceManager.getActiveTarget()!;
+    const trial = await workspaceManager.createWorkspace(defaultTarget.projectId, {
+      sourceWorkspaceId: defaultTarget.workspaceId,
+    });
+    const trialTarget = { projectId: defaultTarget.projectId, workspaceId: trial.id };
+    await workspaceManager.switchView(trialTarget);
     const first = await handleLiveBridgeRequest(req("getIdentity"));
-    const identity = first.result as { projectId: string; projectEpoch: string };
-    const snapshot = useProjectStore.getState().getFullProject();
-    useProjectStore.getState().loadProject(snapshot);
+    const identity = first.result as { workspaceInstanceId: string };
+    const revision = (await workspaceManager.getWorkspaceContext(trialTarget)).revision;
+    await workspaceManager.closeWorkspace(trialTarget);
     const result = await handleLiveBridgeRequest(req("applyActions", {
-      expectedProjectId: identity.projectId,
-      expectedProjectEpoch: identity.projectEpoch,
-      expectedRevision: getProjectRevision(),
-      idempotencyKey: "old-project-plan",
+      ...trialTarget,
+      expectedWorkspaceInstanceId: identity.workspaceInstanceId,
+      expectedRevision: revision,
+      idempotencyKey: "old-workspace-plan",
       actions: [act("track/add", { trackType: "video" })],
     }));
     expect(result).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
-    expect(undoSize()).toBe(0);
-    const next = await handleLiveBridgeRequest(req("getIdentity"));
-    expect((next.result as typeof identity).projectEpoch).not.toBe(identity.projectEpoch);
+    expect((await workspaceManager.getWorkspaceContext(trialTarget)).store.getState().project.timeline.tracks).toHaveLength(0);
   });
 
   it("rejects a request for another project even when its revision matches", async () => {
@@ -134,7 +172,7 @@ describe("live-bridge", () => {
 
   it("getIdentity errors honestly when no project is open", async () => {
     useProjectStore.setState({ hasOpenProject: false });
-    const res = await handleLiveBridgeRequest(req("getIdentity"));
+    const res = await handleLiveBridgeRequest(req("getIdentity", { projectId: undefined, workspaceId: undefined }));
     expect(res.ok).toBe(false);
     expect(res.error?.code).toBe("NO_PROJECT");
   });
@@ -151,6 +189,62 @@ describe("live-bridge", () => {
     };
     expect(project.id).toBe(useProjectStore.getState().project.id);
     expect(revision).toBe(getProjectRevision());
+  });
+
+  it("reports NOT_FOUND for a workspace owned by a different project without editing either", async () => {
+    const original = useProjectStore.getState().getFullProject();
+    const other = await workspaceManager.createProject(createEmptyProject("Other target"));
+    const target = { projectId: original.id, workspaceId: other.defaultWorkspaceId };
+    for (const kind of ["getState", "applyActions"] as const) {
+      const reply = await handleLiveBridgeRequest(req(kind, {
+        ...target, actions: [act("track/add", { trackType: "video" })],
+      }));
+      expect(reply).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+    }
+    expect(useProjectStore.getState().getFullProject()).toEqual(original);
+    expect((await workspaceManager.getWorkspaceContext({ projectId: other.project.id, workspaceId: other.defaultWorkspaceId })).store.getState().project.timeline.tracks).toHaveLength(0);
+  });
+
+  it("rejects a relink action when its explicitly supplied path has different bytes", async () => {
+    const savedBytes = new Uint8Array([1, 2, 3]);
+    const overwrittenBytes = new Uint8Array([9, 8, 7]);
+    const item = {
+      id: "media-version-with-controlled-copy",
+      name: "shot.png",
+      type: "image",
+      originalUrl: "/source/shot.png",
+      contentUrl: "/controlled/media-version-with-controlled-copy.png",
+      contentHash: await hashMediaBytes(savedBytes),
+      metadata: { fileSize: savedBytes.byteLength },
+    } as MediaItem;
+    const current = useProjectStore.getState().project;
+    useProjectStore.setState({
+      project: {
+        ...current,
+        mediaLibrary: { ...current.mediaLibrary, items: [...current.mediaLibrary.items, item] },
+      },
+    });
+    const readFileBytes = vi.fn().mockResolvedValue(overwrittenBytes.buffer);
+    Object.assign(window, { reelterminal: { fs: { readFileBytes } } });
+    const revision = getProjectRevision();
+
+    const result = await handleLiveBridgeRequest(req("applyActions", {
+      expectedRevision: revision,
+      actions: [act("media/relinkSource", {
+        mediaId: item.id,
+        originalUrl: "/source/shot.png",
+      })],
+    }));
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_PARAMS", message: "Selected file bytes do not match this media version" },
+    });
+    expect(readFileBytes).toHaveBeenCalledWith("/source/shot.png", 256 * 1024 * 1024);
+    expect(getProjectRevision()).toBe(revision);
+    expect(useProjectStore.getState().project.mediaLibrary.items.find((entry) => entry.id === item.id))
+      .toMatchObject({ originalUrl: "/source/shot.png", contentHash: item.contentHash });
+    expect(mockSaveMediaBlob).not.toHaveBeenCalled();
   });
 
   it("commits a ranged clip/add with source-span timeline duration", async () => {
@@ -353,6 +447,7 @@ describe("live-bridge", () => {
       imported.mediaId,
       expect.any(File),
       expect.objectContaining({ fileSize: 4 }),
+      "Agent shot",
     );
 
     const lastEntry = useProjectStore
@@ -526,8 +621,9 @@ describe("live-bridge", () => {
     };
     const beforeRevision = getProjectRevision();
     const request = req("importMedia", {
-      path: "/media-root/idempotent.mp4",
+      path: "/resolved/media-root/idempotent.mp4",
       name: "Idempotent shot",
+      idempotencyPayload: { path: "/media-root/idempotent.mp4", name: "Idempotent shot" },
       type: "video",
       metadata: {
         durationSec: 7,
@@ -547,6 +643,10 @@ describe("live-bridge", () => {
     });
 
     const first = await handleLiveBridgeRequest(request);
+    const receiptLookup = await handleLiveBridgeRequest(req("replayMediaImport", {
+      idempotencyKey: "renderer-import-1",
+      idempotencyPayload: { path: "/media-root/idempotent.mp4", name: "Idempotent shot" },
+    }));
     const replay = await handleLiveBridgeRequest({
       ...request,
       callId: "c2",
@@ -555,6 +655,13 @@ describe("live-bridge", () => {
     });
 
     expect(first.ok).toBe(true);
+    expect(receiptLookup.ok).toBe(true);
+    expect(receiptLookup.result).toMatchObject({
+      mediaId: (first.result as { mediaId: string }).mediaId,
+      name: "Idempotent shot",
+      revision: (first.result as { revision: number }).revision,
+      replayed: true,
+    });
     expect(replay.ok).toBe(true);
     expect(replay.result).toMatchObject({
       mediaId: (first.result as { mediaId: string }).mediaId,
@@ -568,6 +675,7 @@ describe("live-bridge", () => {
       ...request,
       callId: "c3",
       path: "/media-root/different.mp4",
+      idempotencyPayload: { path: "/media-root/different.mp4", name: "Idempotent shot" },
     });
     expect(conflict.ok).toBe(false);
     expect(conflict.error?.code).toBe("CONFLICT");
@@ -620,6 +728,42 @@ describe("live-bridge", () => {
     });
     expect(conflict.ok).toBe(false);
     expect(conflict.error?.code).toBe("CONFLICT");
+    expect(getProjectRevision()).toBe(beforeRevision + 1);
+  });
+
+  it("replays edit.apply from its stable semantic request after Action ids are re-minted", async () => {
+    const beforeRevision = getProjectRevision();
+    const semanticPayload = { ops: [{ op: "track.add", trackType: "video" }] };
+    const first = await handleLiveBridgeRequest(req("applyActions", {
+      groupLabel: "agent: edit.apply",
+      actions: [act("track/add", { trackType: "video" })],
+      idempotencyKey: "apply-semantic-replay",
+      idempotencyPayload: semanticPayload,
+    }));
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const original = first.result as { revision: number; createdIds: unknown };
+
+    const replay = await handleLiveBridgeRequest(req("applyActions", {
+      groupLabel: "agent: edit.apply",
+      actions: [act("track/add", { trackType: "video" })],
+      idempotencyKey: "apply-semantic-replay",
+      idempotencyPayload: semanticPayload,
+      expectedRevision: beforeRevision + 999,
+    }));
+    expect(replay).toMatchObject({
+      ok: true,
+      result: { revision: original.revision, createdIds: original.createdIds, replayed: true },
+    });
+    expect(getProjectRevision()).toBe(beforeRevision + 1);
+
+    const conflict = await handleLiveBridgeRequest(req("applyActions", {
+      groupLabel: "agent: edit.apply",
+      actions: [act("track/add", { trackType: "audio" })],
+      idempotencyKey: "apply-semantic-replay",
+      idempotencyPayload: { ops: [{ op: "track.add", trackType: "audio" }] },
+    }));
+    expect(conflict).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
     expect(getProjectRevision()).toBe(beforeRevision + 1);
   });
 
@@ -1113,7 +1257,7 @@ describe("live-bridge", () => {
       .getState()
       .actionExecutor.getHistory()
       .getHistoryEntries();
-    expect(entries.at(-1)?.owner).toBeUndefined();
+    expect(entries.at(-1)?.owner).not.toBe("agent");
   });
 
   it("requestSave routes through the GUI save path and returns the revision", async () => {

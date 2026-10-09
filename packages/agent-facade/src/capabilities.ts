@@ -98,9 +98,9 @@ export interface CapabilityContext {
   /**
    * Live-session marker. When present the
    * reported runtime is "live" and the live-unavailable verbs are listed
-   * honestly — never implied by omission. Media import is available only
-   * when the host supplies both configured roots and the explicit store
-   * import bridge.
+   * honestly — never implied by omission. Project creation and all data
+   * operations route to explicit project/workspace IDs; project creation
+   * does not change the foreground view.
    */
   readonly live?: {
     readonly access: AgentAccessMode;
@@ -111,6 +111,7 @@ export interface CapabilityContext {
     readonly materialLibraryAvailable?: boolean;
     readonly fontLibraryAvailable?: boolean;
     readonly presetLibraryAvailable?: boolean;
+    readonly workspaceLibraryAvailable?: boolean;
     readonly unavailableVerbs: readonly FacadeVerb[];
   };
 }
@@ -674,6 +675,24 @@ export async function buildCapabilities(
         available: true,
         details: { op: "clip.setKeyframes", properties: ["opacity", "position.x", "position.y", "scale.x", "scale.y", "rotation"], maxKeyframes: 100 },
       },
+      speedRamping: {
+        available: true,
+        details: {
+          writeOp: "clip.setSpeedConfig",
+          mappingQuery: "timeline.mapSourceTimes",
+          speedRange: [0.1, 20],
+          maxKeyframes: 128,
+          maxFreezeFrames: 128,
+          keyframeTime: "source seconds relative to clip.inPoint",
+          freezeSourceTime: "source seconds relative to clip.inPoint",
+          freezeStartTime: "clip-local playback seconds, including preceding freeze durations",
+          curveSemantics: "when keyframes are present they replace base speed; the curve integrates in ascending source-relative time, then reverse reflects the resulting offset across the source span; freeze.sourceTime is used literally and is not reflected; easing overshoot is clamped to [0.1, 20]",
+          splitTrimReviewRange: "clip.split and clip.trim reject speed-ramped or frozen clips; ReviewRange also rejects reversed clips and currently requires forward constant-speed clips",
+          mappingQueryLimit: 64,
+            mappingQueryDirection: "timeline point to source point; no source-to-timeline inverse or endpoint-only nonlinear interval mapping",
+            audioLimitations: "The current realtime/export audio schedulers use constant clip speed; they do not evaluate the speed curve or freeze holds. Pitch correction is persisted but is not consumed by these schedulers. Audio during freezes and nonlinear audio retiming require a separate product decision.",
+        },
+      },
       volumeKeyframes: {
         available: false,
         reason: "The current preview/export audio path does not evaluate per-clip volume keyframes; constant clip.setVolume remains available.",
@@ -897,7 +916,9 @@ export async function buildSessionDescription(
       facadeToRuntime: "P",
       // Live mode owns no project lifecycle; media import is reported from
       // the host bridge/root preflight above.
-      createProject: ctx.live ? "X" : "P",
+      createProject: ctx.live
+        ? ctx.live.workspaceLibraryAvailable === true ? "D" : "X"
+        : "P",
       importLocalMedia: caps.mediaImport.available ? "A" : "X",
       trimClip: "P",
       addTextOverlayModel: "P",
@@ -947,16 +968,16 @@ function liveNotes(
   const live = ctx.live!;
   return [
     "The renderer's project store is the canonical state; this session holds NO project copy and reaches it only through the CAS-guarded LiveProjectStore seam — every read is an on-demand snapshot, every mutation one action batch applied as one undo unit.",
-    `Session access "${live.access}" is enforced independently at this boundary: read-only access rejects write verbs with FORBIDDEN; at most one AI session holds the writer lease (write verbs without it fail CONFLICT with the holder). The human never takes the lease and can always edit.`,
+    `Session access "${live.access}" is enforced independently at this boundary: read-only access rejects write verbs with FORBIDDEN. CLI and MCP clients share the desktop host's external writer identity; workspace revisions and per-target queues serialize their commits. The human never takes the lease and can always edit.`,
     caps.preview.available
       ? "Text overlays render to real pixels via the configured render provider; pixel claims are E2E-verified only through preview.render_frame + verify.artifact."
       : "Text overlays are model-state only in this session: no render provider passed preflight, so pixel rendering is NOT claimed.",
     caps.visualInspection.available
       ? "visual.inspect samples 1–12 real provider-rendered PNG frames from the canonical project snapshot; the default runtime provider is Chromium, contact-sheet composition is runtime-dependent, and individual frame artifacts remain available."
       : "visual.inspect is unavailable in this session: it needs the same artifactRoot and passing RenderProvider preflight as preview.render_frame.",
-    `project.create / project.open are unavailable in live mode (the GUI owns the project lifecycle); ${caps.mediaImport.available ? "media.import validates and imports an absolute local file through the live store bridge" : "media.import is unavailable until the live host provides media roots and its store bridge"}; project.save routes to the GUI's own save path. preview/visual inspection/export/verify run on a fresh snapshot of the canonical project and require its media to be file-backed and readable from this process.`,
+    `${live.workspaceLibraryAvailable ? "project.create creates a durable project and default workspace without switching the GUI; project.save creates an immutable node in the requested workspace." : "Project, workspace, and node commands are unavailable because no workspace manager bridge was supplied."} project.open remains unavailable because the GUI owns project-file opening. Workspace-scoped commands require explicit projectId/workspaceId, and writes require expectedRevision. ${caps.mediaImport.available ? "media.import validates and imports an absolute local file through the live store bridge" : "media.import is unavailable until the live host provides media roots and its store bridge"}. Preview, visual inspection, analysis, and export use fixed snapshots of the requested project/workspace.`,
     `editor.get_context reports the real ephemeral editor context (selection, playhead, time range, canvas point) with a monotonic contextRevision; edit.apply's expectedContextRevision CAS-guards ops derived from it. ${caps.editorControl.available ? "editor.control can play, pause, seek and select/reveal without changing project revision or undo history." : "editor.control is unavailable because this is a headless session."}`,
     "export.start snapshots the project synchronously (sourceRevision) and returns a jobId immediately; the same idempotencyKey+payload replays the same jobId. job.cancel is cooperative and always settles to a terminal state; failed/cancelled jobs never carry an artifact.",
-    "Idempotency ledger is per session and does not survive process restarts.",
+    "CLI and MCP clients share the desktop host's external writer identity; workspace queues, revisions, and idempotency ledgers isolate commits by explicit project/workspace target.",
   ];
 }

@@ -28,26 +28,23 @@ export type ClipSlice = Pick<
   | "getClip"
 >;
 
-export function createClipSlice(set: Set, get: Get): ClipSlice {
+export function createClipSlice(_set: Set, get: Get): ClipSlice {
   return {
     addClip: async (trackId: string, mediaId: string, startTime: number) => {
-      const { project, actionExecutor } = get();
-      const projectCopy = structuredClone(project);
       const action: Action = {
         type: "clip/add",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { trackId, mediaId, startTime },
       };
-      const result = await actionExecutor.execute(action, projectCopy);
-      if (result.success) {
-        set({ project: { ...projectCopy, modifiedAt: Date.now() } });
-      }
-      return result;
+      return (await get().submitActionBatch([action], {
+        groupLabel: "Add clip",
+        historyOwner: "human",
+      })).result;
     },
 
     addClipToNewTrack: async (mediaId: string, startTime?: number) => {
-      const { project, addTrack, getMediaItem } = get();
+      const { getMediaItem } = get();
       const mediaItem = getMediaItem(mediaId);
       if (!mediaItem) {
         return {
@@ -65,42 +62,36 @@ export function createClipSlice(set: Set, get: Get): ClipSlice {
       else if (mediaItem.type === "image") trackType = "image";
       else trackType = "video";
 
-      const clipStartTime =
-        startTime !== undefined ? startTime : calculateTimelineDuration(project);
-
-      const trackResult = await addTrack(trackType);
-      if (!trackResult.success) return trackResult;
-
-      const { project: updatedProject, actionExecutor: exec } = get();
-      const newTrack = updatedProject.timeline.tracks.find(
-        (t) => t.clips.length === 0 && t.type === trackType,
-      );
-      if (!newTrack) {
-        return {
-          success: false,
-          error: {
-            code: "TRACK_NOT_FOUND" as const,
-            message: "Could not find newly created track",
+      const addToTrack = (): ActionResult => {
+        const trackId = uuidv4();
+        const project = get().project;
+        const trackAction: Action = {
+          type: "track/add",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { trackType, trackId },
+        };
+        const clipAction: Action = {
+          type: "clip/add",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: {
+            trackId,
+            mediaId,
+            startTime: startTime ?? calculateTimelineDuration(project),
           },
         };
-      }
-
-      const projectCopy = structuredClone(updatedProject);
-      const action: Action = {
-        type: "clip/add",
-        id: uuidv4(),
-        timestamp: Date.now(),
-        params: { trackId: newTrack.id, mediaId, startTime: clipStartTime },
+        return get().executeActionBatch([trackAction, clipAction], {
+          groupLabel: "Add clip to new track",
+          historyOwner: "human",
+        }).result;
       };
-      const result = await exec.execute(action, projectCopy);
-      if (result.success) {
-        set({ project: { ...projectCopy, modifiedAt: Date.now() } });
-      }
-      return result;
+      const submit = get().submitWorkspaceMutation;
+      return submit ? submit(addToTrack) : addToTrack();
     },
 
     separateAudio: async (clipId: string) => {
-      const { project, actionExecutor } = get();
+      const { project } = get();
       const videoClip = project.timeline.tracks
         .flatMap((t) => t.clips)
         .find((c) => c.id === clipId);
@@ -158,40 +149,46 @@ export function createClipSlice(set: Set, get: Get): ClipSlice {
         }
       }
 
-      const projectCopy = structuredClone(project);
-      const existingAudioCount = projectCopy.timeline.tracks.filter(
+      const audioCountAfterProbe = audioTrackCount;
+      const applySeparation = (): ActionResult => {
+      const liveProject = get().project;
+      const liveClip = liveProject.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((clip) => clip.id === clipId);
+      const liveMedia = liveProject.mediaLibrary.items.find(
+        (item) => item.id === liveClip?.mediaId,
+      );
+      if (!liveClip || liveClip.mediaId !== videoClip.mediaId || !liveMedia) {
+        return {
+          success: false,
+          error: {
+            code: "INVALID_PARAMS",
+            message: "The source clip changed while audio streams were being checked",
+          },
+        };
+      }
+      const existingAudioTracks = liveProject.timeline.tracks.filter(
         (t) => t.type === "audio",
-      ).length;
+      );
 
+      const actions: Action[] = [];
       const newTrackIds: string[] = [];
-      for (let i = existingAudioCount; i < audioTrackCount; i++) {
+      for (let i = existingAudioTracks.length; i < audioCountAfterProbe; i++) {
         const newTrackId = uuidv4();
         newTrackIds.push(newTrackId);
-        const trackAction: Action = {
+        actions.push({
           type: "track/add",
           id: uuidv4(),
           timestamp: Date.now(),
           params: { trackType: "audio", trackId: newTrackId },
-        };
-        const trackResult = await actionExecutor.execute(
-          trackAction,
-          projectCopy,
-        );
-        if (!trackResult.success) {
-          return {
-            success: false,
-            error: {
-              code: "TRACK_NOT_FOUND" as const,
-              message: "Failed to create audio track",
-            },
-          };
-        }
+        });
       }
 
-      const audioTimelineTracks = projectCopy.timeline.tracks.filter(
-        (t) => t.type === "audio",
-      );
-      if (audioTimelineTracks.length === 0) {
+      const audioTrackIds = [
+        ...existingAudioTracks.map((track) => track.id),
+        ...newTrackIds,
+      ];
+      if (audioTrackIds.length < audioCountAfterProbe) {
         return {
           success: false,
           error: {
@@ -201,75 +198,64 @@ export function createClipSlice(set: Set, get: Get): ClipSlice {
         };
       }
 
-      let lastResult: ActionResult = { success: true };
-      for (let trackIdx = 0; trackIdx < audioTrackCount; trackIdx++) {
-        const targetTrack = audioTimelineTracks[trackIdx];
-        if (!targetTrack) break;
-        const action: Action = {
+      for (let trackIdx = 0; trackIdx < audioCountAfterProbe; trackIdx++) {
+        const targetTrackId = audioTrackIds[trackIdx];
+        if (!targetTrackId) break;
+        actions.push({
           type: "clip/add",
           id: uuidv4(),
           timestamp: Date.now(),
           params: {
-            trackId: targetTrack.id,
-            mediaId: videoClip.mediaId,
-            startTime: videoClip.startTime,
+            trackId: targetTrackId,
+            mediaId: liveClip.mediaId,
+            startTime: liveClip.startTime,
             audioTrackIndex: trackIdx,
           },
-        };
-        lastResult = await actionExecutor.execute(action, projectCopy);
-        if (!lastResult.success) break;
+        });
       }
-
-      if (lastResult.success) {
-        for (const track of projectCopy.timeline.tracks) {
-          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
-          if (clipIndex !== -1) {
-            (track.clips[clipIndex] as unknown as { volume: number }).volume = 0;
-            break;
-          }
-        }
-        set({ project: { ...projectCopy, modifiedAt: Date.now() } });
-      }
-      return lastResult;
+      actions.push({
+        type: "audio/setVolume",
+        id: uuidv4(),
+        timestamp: Date.now(),
+        params: { clipId, volume: 0 },
+      });
+      return get().executeActionBatch(actions, {
+        groupLabel: "Separate audio",
+        historyOwner: "human",
+      }).result;
+      };
+      const submit = get().submitWorkspaceMutation;
+      return submit ? submit(applySeparation) : applySeparation();
     },
 
     removeClip: async (clipId: string) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "clip/remove",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { clipId },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) set({ project: { ...project } });
-      return result;
+      return get().executeAction(action);
     },
 
     moveClip: async (clipId: string, startTime: number, trackId?: string) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "clip/move",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { clipId, startTime, trackId },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) set({ project: { ...project } });
-      return result;
+      return get().executeAction(action);
     },
 
     closeGapBeforeClip: async (clipId: string) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "clip/closeGapBefore",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { clipId },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) set({ project: { ...project } });
-      return result;
+      return get().executeAction(action);
     },
 
     moveClips: async (moves) => {
@@ -281,14 +267,7 @@ export function createClipSlice(set: Set, get: Get): ClipSlice {
           moves[0].trackId,
         );
       }
-      const { actionExecutor } = get();
-      const history = actionExecutor.getHistory();
-      history.beginGroup("Move clips");
-      try {
-        let lastResult: ActionResult = { success: true };
-        for (const move of moves) {
-          const { project } = get();
-          const action: Action = {
+      const actions = moves.map((move): Action => ({
             type: "clip/move",
             id: uuidv4(),
             timestamp: Date.now(),
@@ -297,71 +276,55 @@ export function createClipSlice(set: Set, get: Get): ClipSlice {
               startTime: move.startTime,
               trackId: move.trackId,
             },
-          };
-          lastResult = await actionExecutor.execute(action, project);
-          if (!lastResult.success) break;
-          set({ project: { ...project } });
-        }
-        return lastResult;
-      } finally {
-        history.endGroup();
-      }
+          }));
+      return (await get().submitActionBatch(actions, {
+        groupLabel: "Move clips",
+        historyOwner: "human",
+      })).result;
     },
 
     trimClip: async (clipId: string, inPoint?: number, outPoint?: number) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "clip/trim",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { clipId, inPoint, outPoint },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) set({ project: { ...project } });
-      return result;
+      return get().executeAction(action);
     },
 
     splitClip: async (clipId: string, time: number) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "clip/split",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { clipId, time },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) set({ project: { ...project } });
-      return result;
+      return get().executeAction(action);
     },
 
     rippleDeleteClip: async (clipId: string) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "clip/rippleDelete",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { clipId },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) set({ project: { ...project } });
-      return result;
+      return get().executeAction(action);
     },
 
     slipClip: async (clipId: string, delta: number) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "clip/slip",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { clipId, delta },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) set({ project: { ...project } });
-      return result;
+      return get().executeAction(action);
     },
 
     slideClip: async (clipId: string, delta: number) => {
-      const { project, actionExecutor, getClip } = get();
+      const { project, getClip } = get();
       const clip = getClip(clipId);
       if (!clip) {
         return {
@@ -399,22 +362,17 @@ export function createClipSlice(set: Set, get: Get): ClipSlice {
           nextClipId: nextClip?.id,
         },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) set({ project: { ...project } });
-      return result;
+      return get().executeAction(action);
     },
 
     rollEdit: async (leftClipId: string, rightClipId: string, delta: number) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "clip/roll",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { leftClipId, rightClipId, delta },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) set({ project: { ...project } });
-      return result;
+      return get().executeAction(action);
     },
 
     trimToPlayhead: async (
@@ -422,16 +380,13 @@ export function createClipSlice(set: Set, get: Get): ClipSlice {
       playheadTime: number,
       trimStart: boolean,
     ) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "clip/trimToPlayhead",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { clipId, playheadTime, trimStart },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) set({ project: { ...project } });
-      return result;
+      return get().executeAction(action);
     },
 
     getClip: (clipId: string) => {

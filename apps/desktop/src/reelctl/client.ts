@@ -31,6 +31,7 @@ export interface LiveStatus {
   readonly apiVersion: 1;
   readonly instanceId: string;
   readonly projectId: string | null;
+  readonly workspaceId?: string | null;
   readonly projectEpoch: string | null;
   readonly access?: string | { readonly mode?: string };
   readonly currentAction?: string | null;
@@ -344,7 +345,7 @@ export class LiveCommandClient {
       arguments: input,
       ...(options.expectedProjectId !== undefined
         ? { expectedProjectId: options.expectedProjectId }
-        : typeof status.projectId === "string" ? { expectedProjectId: status.projectId } : {}),
+        : {}),
       ...(options.expectedProjectEpoch !== undefined
         ? { expectedProjectEpoch: options.expectedProjectEpoch }
         : typeof status.projectEpoch === "string" ? { expectedProjectEpoch: status.projectEpoch } : {}),

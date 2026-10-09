@@ -1,6 +1,7 @@
 import { commandProjectContext } from "./command-context";
 import { describe, it, expect, vi } from "vitest";
 import {
+  FacadeError,
   isLiveStoreConflict,
   LiveStoreConflictError,
 } from "@reelterminal/agent-facade";
@@ -32,6 +33,29 @@ const fakeAction = {
 } as unknown as Action;
 
 describe("createLiveStoreBridge", () => {
+  it("routes workspace-manager requests to the explicit target and guards the runtime generation", async () => {
+    const { bridge, sent, validSender } = makeBridge();
+    const context = {
+      targetProjectId: "project-a",
+      targetWorkspaceId: "workspace-a",
+      targetWorkspaceInstanceId: "runtime-a",
+    };
+    const pending = commandProjectContext.run(context, () => bridge.workspaceLibrary!({
+      verb: "node.save",
+      params: { projectId: "project-a", workspaceId: "workspace-a", expectedRevision: 4, idempotencyKey: "save-1" },
+    }));
+    expect(sent[0]).toMatchObject({
+      kind: "workspaceLibrary",
+      workspaceVerb: "node.save",
+      workspaceParams: { projectId: "project-a", workspaceId: "workspace-a", expectedRevision: 4 },
+      projectId: "project-a",
+      workspaceId: "workspace-a",
+      expectedWorkspaceInstanceId: "runtime-a",
+    });
+    bridge.handleResponse(validSender, { callId: "call-1", ok: true, result: { node: { id: "node-1" } } });
+    await expect(pending).resolves.toMatchObject({ ok: true, result: { node: { id: "node-1" } } });
+  });
+
   it("forwards request-local project guards without leaking across concurrent commands", async () => {
     const { bridge, sent, validSender } = makeBridge();
     const guarded = commandProjectContext.run(
@@ -249,6 +273,8 @@ describe("createLiveStoreBridge", () => {
       groupLabel: "agent: media.import",
       expectedRevision: 5,
       expectedContextRevision: 2,
+      idempotencyKey: "import-1",
+      idempotencyPayload: { path: request.path, name: request.name },
     });
     expect(sent[0]).toEqual({
       callId: "call-1",
@@ -257,6 +283,8 @@ describe("createLiveStoreBridge", () => {
       groupLabel: "agent: media.import",
       expectedRevision: 5,
       expectedContextRevision: 2,
+      idempotencyKey: "import-1",
+      idempotencyPayload: { path: request.path, name: request.name },
     });
 
     bridge.handleResponse(validSender, {
@@ -267,6 +295,41 @@ describe("createLiveStoreBridge", () => {
     await expect(pending).resolves.toEqual({
       revision: 6,
       mediaId: "media-1",
+    });
+  });
+
+  it("looks up a media import receipt against the explicit workspace before probing the path", async () => {
+    const { bridge, sent, validSender } = makeBridge();
+    const payload = { path: "E:/workspace/source.mp4", name: "Opening shot" };
+    const pending = commandProjectContext.run({
+      targetProjectId: "project-a",
+      targetWorkspaceId: "workspace-a",
+      targetWorkspaceInstanceId: "runtime-a",
+    }, () => bridge.store.getMediaImportReplay!("import-1", payload));
+    expect(sent[0]).toMatchObject({
+      kind: "replayMediaImport",
+      idempotencyKey: "import-1",
+      idempotencyPayload: payload,
+      projectId: "project-a",
+      workspaceId: "workspace-a",
+      expectedWorkspaceInstanceId: "runtime-a",
+    });
+    bridge.handleResponse(validSender, {
+      callId: "call-1",
+      ok: true,
+      result: {
+        revision: 4,
+        mediaId: "media-original",
+        name: "Opening shot",
+        type: "video",
+        metadata: { durationSec: 2, width: 1920, height: 1080, frameRate: 30, codec: "h264", fileSize: 42 },
+        replayed: true,
+      },
+    });
+    await expect(pending).resolves.toMatchObject({
+      revision: 4,
+      mediaId: "media-original",
+      replayed: true,
     });
   });
 
@@ -290,6 +353,20 @@ describe("createLiveStoreBridge", () => {
     expect(isLiveStoreConflict(failure)).toBe(true);
     expect((failure as LiveStoreConflictError).details).toEqual({
       currentRevision: 7,
+    });
+  });
+
+  it.each(["INVALID_PARAMS", "NOT_FOUND"] as const)("preserves renderer %s through facade failure normalization", async (code) => {
+    const { bridge, validSender } = makeBridge();
+    const pending = bridge.store.getState();
+    bridge.handleResponse(validSender, {
+      callId: "call-1", ok: false,
+      error: { code, message: "Requested input is invalid", details: { workspaceId: "other-workspace" } },
+    });
+    const failure = await pending.catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(FacadeError);
+    expect((failure as FacadeError).toBody()).toEqual({
+      code, message: "Requested input is invalid", details: { workspaceId: "other-workspace" },
     });
   });
 

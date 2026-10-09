@@ -28,6 +28,7 @@ import {
 } from "./renderer-store-adapter";
 import { getAgentAccessPreferenceStore } from "./access-instance";
 import { agentWorkspaceDefault } from "../data-root";
+import { controlledMediaRoot } from "../ipc/controlled-media";
 
 let host: LiveSessionHost | null = null;
 
@@ -55,12 +56,15 @@ export function agentWorkspaceRoot(): string {
  * MCP contract.
  */
 export function liveMediaRoots(): readonly string[] {
+  const controlledRoot = controlledMediaRoot();
+  mkdirSync(controlledRoot, { recursive: true });
   const configured = process.env.REELTERMINAL_LIVE_MEDIA_ROOTS;
   if (configured?.trim()) {
-    return configured
+    const roots = configured
       .split(path.delimiter)
       .map((entry) => entry.trim())
       .filter((entry) => path.isAbsolute(entry) && isDirectory(entry));
+    return [...new Set([...roots, controlledRoot])];
   }
 
   const workspace = agentWorkspaceRoot();
@@ -85,7 +89,7 @@ export function liveMediaRoots(): readonly string[] {
     app.getPath("pictures"),
     app.getPath("videos"),
   ];
-  return [...new Set(candidates.filter(isDirectory))];
+  return [...new Set([...candidates.filter(isDirectory), controlledRoot])];
 }
 
 function isDirectory(candidate: string): boolean {

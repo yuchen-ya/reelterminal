@@ -14,10 +14,11 @@ import type {
   StickerClip,
   TextClip,
   Text3DSettings,
+  TitleEngine,
+  GraphicsEngine,
 } from "@reelterminal/core";
 import type { ProjectState } from "../project-store";
 import type { ProjectStoreHelpers } from "./store-helpers";
-import { useEngineStore } from "../engine-store";
 
 type Get = StoreApi<ProjectState>["getState"];
 type Set = StoreApi<ProjectState>["setState"];
@@ -69,6 +70,7 @@ export function createTextGraphicsSlice(
   set: Set,
   get: Get,
   helpers: ProjectStoreHelpers,
+  engines: { titleEngine: TitleEngine; graphicsEngine: GraphicsEngine },
 ): TextGraphicsSlice {
   const {
     recordOverlayCreate,
@@ -85,8 +87,7 @@ export function createTextGraphicsSlice(
   ): T => {
     const duplicateId = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     const duplicate = structuredClone(source);
-    const titleEngine = useEngineStore.getState().getTitleEngine();
-    const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+    const { titleEngine, graphicsEngine } = engines;
     const projectTrack = get().project.timeline.tracks.find(
       (track) => track.id === source.trackId,
     );
@@ -123,11 +124,11 @@ export function createTextGraphicsSlice(
   const resolveOverlayClip = (
     clipId: string,
   ): { kind: OverlayKind; field: OverlayField; clip: OverlayClip } | null => {
-    const titleEngine = useEngineStore.getState().getTitleEngine();
+    const { titleEngine } = engines;
     const textClip = titleEngine?.getTextClip(clipId);
     if (textClip) return { kind: "text", field: "textClips", clip: textClip };
 
-    const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+    const { graphicsEngine } = engines;
     const shapeClip = graphicsEngine?.getShapeClip(clipId);
     if (shapeClip) return { kind: "shape", field: "shapeClips", clip: shapeClip };
     const svgClip = graphicsEngine?.getSVGClip(clipId);
@@ -168,8 +169,7 @@ export function createTextGraphicsSlice(
         : resolved.clip.keyframes);
     const normalizedUpdates = { startTime, duration, keyframes };
     const before = cloneClipSnapshot(resolved.clip);
-    const titleEngine = useEngineStore.getState().getTitleEngine();
-    const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+    const { titleEngine, graphicsEngine } = engines;
     let updated: OverlayClip | undefined;
 
     if (resolved.kind === "text") {
@@ -203,7 +203,7 @@ export function createTextGraphicsSlice(
       metadata,
       options,
     ) => {
-      const titleEngine = useEngineStore.getState().titleEngine;
+      const titleEngine = engines.titleEngine;
       if (!titleEngine) {
         console.error("TitleEngine not available yet");
         return null;
@@ -231,7 +231,7 @@ export function createTextGraphicsSlice(
     },
 
     updateTextContent: (clipId: string, text: string) => {
-      const titleEngine = useEngineStore.getState().getTitleEngine();
+      const titleEngine = engines.titleEngine;
       if (!titleEngine) return null;
       const before = titleEngine.getTextClip(clipId);
       const beforeSnapshot = before ? cloneClipSnapshot(before) : undefined;
@@ -243,7 +243,7 @@ export function createTextGraphicsSlice(
     },
 
     updateTextStyle: (clipId: string, style: Partial<TextStyle>) => {
-      const titleEngine = useEngineStore.getState().getTitleEngine();
+      const titleEngine = engines.titleEngine;
       if (!titleEngine) return null;
       const before = titleEngine.getTextClip(clipId);
       const beforeSnapshot = before ? cloneClipSnapshot(before) : undefined;
@@ -255,7 +255,7 @@ export function createTextGraphicsSlice(
     },
 
     updateTextAnimation: (clipId: string, animation: TextAnimation) => {
-      const titleEngine = useEngineStore.getState().getTitleEngine();
+      const titleEngine = engines.titleEngine;
       if (!titleEngine) return null;
       const before = titleEngine.getTextClip(clipId);
       const beforeSnapshot = before ? cloneClipSnapshot(before) : undefined;
@@ -267,7 +267,7 @@ export function createTextGraphicsSlice(
     },
 
     updateTextTransform: (clipId: string, transform: Partial<Transform>) => {
-      const titleEngine = useEngineStore.getState().getTitleEngine();
+      const titleEngine = engines.titleEngine;
       if (!titleEngine) return null;
       const before = titleEngine.getTextClip(clipId);
       const beforeSnapshot = before ? cloneClipSnapshot(before) : undefined;
@@ -279,7 +279,7 @@ export function createTextGraphicsSlice(
     },
 
     updateTextBehindSubject: (clipId: string, behindSubject: boolean) => {
-      const titleEngine = useEngineStore.getState().getTitleEngine();
+      const titleEngine = engines.titleEngine;
       if (!titleEngine) return null;
       const before = titleEngine.getTextClip(clipId);
       const beforeSnapshot = before ? cloneClipSnapshot(before) : undefined;
@@ -291,7 +291,7 @@ export function createTextGraphicsSlice(
     },
 
     updateText3D: (clipId: string, text3d: Text3DSettings | undefined) => {
-      const titleEngine = useEngineStore.getState().getTitleEngine();
+      const titleEngine = engines.titleEngine;
       if (!titleEngine) return null;
       const before = titleEngine.getTextClip(clipId);
       const beforeSnapshot = before ? cloneClipSnapshot(before) : undefined;
@@ -303,13 +303,13 @@ export function createTextGraphicsSlice(
     },
 
     getTextClip: (clipId: string) =>
-      useEngineStore.getState().getTitleEngine()?.getTextClip(clipId),
+      engines.titleEngine?.getTextClip(clipId),
 
     getAllTextClips: () =>
-      useEngineStore.getState().getTitleEngine()?.getAllTextClips() ?? [],
+      engines.titleEngine?.getAllTextClips() ?? [],
 
     updateTextClipKeyframes: (clipId: string, keyframes: Keyframe[]) => {
-      const titleEngine = useEngineStore.getState().getTitleEngine();
+      const titleEngine = engines.titleEngine;
       if (!titleEngine) return null;
       const before = titleEngine.getTextClip(clipId);
       const beforeSnapshot = before ? cloneClipSnapshot(before) : undefined;
@@ -327,7 +327,7 @@ export function createTextGraphicsSlice(
       outDuration = 0.5,
       params?: Partial<TextAnimationParams>,
     ) => {
-      const titleEngine = useEngineStore.getState().getTitleEngine();
+      const titleEngine = engines.titleEngine;
       if (!titleEngine) return null;
       const animation = textAnimationEngine.createAnimationPreset(
         preset,
@@ -348,7 +348,7 @@ export function createTextGraphicsSlice(
       textAnimationEngine.getAvailablePresets(),
 
     createShapeClip: (trackId, startTime, shapeType: ShapeType, duration = 5, style) => {
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const graphicsEngine = engines.graphicsEngine;
       if (!graphicsEngine) {
         console.error("GraphicsEngine not initialized");
         return null;
@@ -370,7 +370,7 @@ export function createTextGraphicsSlice(
     },
 
     updateShapeStyle: (clipId: string, style: Partial<ShapeStyle>) => {
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const graphicsEngine = engines.graphicsEngine;
       if (!graphicsEngine) return null;
       const shapeClip = graphicsEngine.getShapeClip(clipId);
       if (!shapeClip) {
@@ -386,7 +386,7 @@ export function createTextGraphicsSlice(
     },
 
     updateShapeTransform: (clipId: string, transform: Partial<Transform>) => {
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const graphicsEngine = engines.graphicsEngine;
       if (!graphicsEngine) return null;
       const shapeClip = graphicsEngine.getShapeClip(clipId);
       if (shapeClip) {
@@ -420,7 +420,7 @@ export function createTextGraphicsSlice(
     },
 
     importSVG: (svgContent: string, trackId, startTime, duration = 5) => {
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const graphicsEngine = engines.graphicsEngine;
       if (!graphicsEngine) {
         console.error("GraphicsEngine not initialized");
         return null;
@@ -447,15 +447,15 @@ export function createTextGraphicsSlice(
     },
 
     getShapeClip: (clipId: string) =>
-      useEngineStore.getState().getGraphicsEngine()?.getShapeClip(clipId),
+      engines.graphicsEngine?.getShapeClip(clipId),
 
     getSVGClip: (clipId: string) =>
-      useEngineStore.getState().getGraphicsEngine()?.getSVGClip(clipId),
+      engines.graphicsEngine?.getSVGClip(clipId),
 
     getSVGClipById: (clipId: string) => get().getSVGClip(clipId),
 
     updateSVGClip: (clipId: string, updates) => {
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const graphicsEngine = engines.graphicsEngine;
       if (!graphicsEngine) {
         console.error("[ProjectStore] GraphicsEngine not initialized");
         return null;
@@ -472,7 +472,7 @@ export function createTextGraphicsSlice(
     },
 
     createStickerClip: (clip: StickerClip) => {
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const graphicsEngine = engines.graphicsEngine;
       if (!graphicsEngine) {
         console.error("GraphicsEngine not initialized");
         return null;
@@ -489,8 +489,8 @@ export function createTextGraphicsSlice(
     },
 
     duplicateOverlayClip: (clipId: string) => {
-      const titleEngine = useEngineStore.getState().getTitleEngine();
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const titleEngine = engines.titleEngine;
+      const graphicsEngine = engines.graphicsEngine;
 
       const textClip = titleEngine?.getTextClip(clipId);
       if (titleEngine && textClip) {
@@ -560,8 +560,8 @@ export function createTextGraphicsSlice(
         ...duplicateOverlay(clip, kind, { startTime }),
         trackId: destinationTrackId,
       } as OverlayClip;
-      const titleEngine = useEngineStore.getState().getTitleEngine();
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const titleEngine = engines.titleEngine;
+      const graphicsEngine = engines.graphicsEngine;
 
       if (kind === "text" && titleEngine) {
         titleEngine.loadTextClips([
@@ -625,8 +625,8 @@ export function createTextGraphicsSlice(
           startTime: time,
           duration: rightDuration,
         });
-        const titleEngine = useEngineStore.getState().getTitleEngine();
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        const titleEngine = engines.titleEngine;
+        const graphicsEngine = engines.graphicsEngine;
 
         if (resolved.kind === "text" && titleEngine) {
           titleEngine.loadTextClips([...titleEngine.getAllTextClips(), right as TextClip]);
@@ -678,10 +678,10 @@ export function createTextGraphicsSlice(
     },
 
     getStickerClip: (clipId: string) =>
-      useEngineStore.getState().getGraphicsEngine()?.getStickerClip(clipId),
+      engines.graphicsEngine?.getStickerClip(clipId),
 
     deleteShapeClip: (clipId: string) => {
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const graphicsEngine = engines.graphicsEngine;
       if (!graphicsEngine) return false;
       const before = graphicsEngine.getShapeClip(clipId);
       const deleted = graphicsEngine.deleteShapeClip(clipId);
@@ -690,7 +690,7 @@ export function createTextGraphicsSlice(
     },
 
     deleteSVGClip: (clipId: string) => {
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const graphicsEngine = engines.graphicsEngine;
       if (!graphicsEngine) return false;
       const before = graphicsEngine.getSVGClip(clipId);
       const deleted = graphicsEngine.deleteSVGClip(clipId);
@@ -699,7 +699,7 @@ export function createTextGraphicsSlice(
     },
 
     deleteStickerClip: (clipId: string) => {
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const graphicsEngine = engines.graphicsEngine;
       if (!graphicsEngine) return false;
       const before = graphicsEngine.getStickerClip(clipId);
       const deleted = graphicsEngine.deleteStickerClip(clipId);
@@ -708,7 +708,7 @@ export function createTextGraphicsSlice(
     },
 
     deleteTextClip: (clipId: string) => {
-      const titleEngine = useEngineStore.getState().getTitleEngine();
+      const titleEngine = engines.titleEngine;
       if (!titleEngine) return false;
       const before = titleEngine.getTextClip(clipId);
       const deleted = titleEngine.deleteTextClip(clipId);

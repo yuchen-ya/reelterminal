@@ -27,6 +27,8 @@ export function jobStatusView(job: JobRecord): JobStatusView {
   return {
     jobId: job.jobId,
     kind: job.kind,
+    ...(job.projectId !== undefined ? { projectId: job.projectId } : {}),
+    ...(job.workspaceId !== undefined ? { workspaceId: job.workspaceId } : {}),
     state: job.state,
     progress: job.progress ? { ...job.progress } : null,
     artifact: job.artifact ? { ...job.artifact } : null,
@@ -57,6 +59,8 @@ export interface JobProgressView {
 export interface JobRecord {
   readonly jobId: string;
   readonly kind: "export" | "analysis";
+  readonly projectId?: string;
+  readonly workspaceId?: string;
   readonly state: JobState;
   readonly progress: JobProgressView | null;
   readonly artifact: ArtifactRef | null;
@@ -82,6 +86,11 @@ export interface JobRecord {
 }
 
 export type JobTerminalState = "done" | "error" | "cancelled";
+
+export interface JobDeliveryOutcome {
+  readonly deliveredTo?: string;
+  readonly deliveryError?: string;
+}
 
 const TERMINAL: ReadonlySet<JobState> = new Set(["done", "error", "cancelled"]);
 
@@ -137,11 +146,13 @@ export class JobRegistry {
     jobId: string,
     sourceRevision: number,
     kind: JobRecord["kind"] = "export",
+    target?: { readonly projectId: string; readonly workspaceId: string },
   ): JobRecord {
     const now = new Date().toISOString();
     const record: JobRecord = {
       jobId,
       kind,
+      ...(target ? { projectId: target.projectId, workspaceId: target.workspaceId } : {}),
       state: "queued",
       progress: null,
       artifact: null,
@@ -158,6 +169,18 @@ export class JobRegistry {
     };
     this.jobs.set(jobId, record);
     return record;
+  }
+
+  /** Restore one durable record after a desktop restart. */
+  restore(status: JobStatusView, target?: { readonly projectId: string; readonly workspaceId: string }): void {
+    if (this.jobs.has(status.jobId)) return;
+    this.jobs.set(status.jobId, {
+      ...structuredClone(status),
+      progress: status.progress
+        ? { ...status.progress, phase: status.progress.phase as JobProgressView["phase"] }
+        : null,
+      ...(target ? { projectId: target.projectId, workspaceId: target.workspaceId } : {}),
+    });
   }
 
   get(jobId: string): JobRecord | null {
@@ -213,6 +236,7 @@ export class JobRegistry {
     artifact: ArtifactRef,
     route: string,
     upscalingRequestedButInactive = false,
+    delivery?: JobDeliveryOutcome,
   ): void {
     this.transition(jobId, (job) => {
       if (TERMINAL.has(job.state)) return job;
@@ -222,6 +246,12 @@ export class JobRegistry {
         artifact,
         route,
         upscalingRequestedButInactive,
+        ...(delivery?.deliveredTo !== undefined
+          ? { deliveredTo: delivery.deliveredTo }
+          : {}),
+        ...(delivery?.deliveryError !== undefined
+          ? { deliveryError: delivery.deliveryError }
+          : {}),
         error: null,
       };
     });

@@ -23,6 +23,7 @@
  *    the runtime validators remain the only authority.
  */
 import { FACADE_VERBS, type FacadeVerb } from "./types";
+import { PLUGIN_TOOLS } from "./plugins";
 import { VERB_PARAM_SCHEMAS } from "./verb-schemas";
 import type {
   FieldEmits,
@@ -116,14 +117,51 @@ export const EMITTED_VERB_JSON_SCHEMAS: Readonly<
   FACADE_VERBS.map((verb) => [verb, emitVerbSchema(verb)]),
 ) as Readonly<Record<FacadeVerb, JsonSchemaObject>>;
 
+const PROJECT_WORKSPACE_VERBS = new Set<FacadeVerb>([
+  "project.save", "project.rename", "project.get_state", "project.changes",
+  "media.import", "media.analyze_start", "timeline.get", "timeline.query",
+  "timeline.mapSourceTimes", "editor.control",
+  "edit.validate", "edit.apply", "history.get", "history.control",
+  "preview.render_frame", "preview.render_comparison", "visual.inspect",
+  "export.start", "analysis.list", "analysis.get", "material.attach",
+  "preset.apply", ...PLUGIN_TOOLS.map((tool) => tool.name),
+]);
+
+const REVISION_GUARDED_VERBS = new Set<FacadeVerb>([
+  "project.save", "project.rename", "media.import", "media.analyze_start",
+  "edit.apply", "history.control", "preview.render_frame",
+  "preview.render_comparison", "visual.inspect", "export.start",
+  "material.attach", "preset.apply",
+  ...PLUGIN_TOOLS.filter((tool) => tool.effect !== "read").map((tool) => tool.name),
+]);
+
+function liveTargetSchema(verb: FacadeVerb, schema: JsonSchemaObject): JsonSchemaObject {
+  const properties: Record<string, JsonSchemaNode> = { ...schema.properties };
+  const required = [...(schema.required ?? [])];
+  const stringTarget: JsonSchemaNode = { type: "string", minLength: 1 };
+  if (PROJECT_WORKSPACE_VERBS.has(verb)) {
+    properties.projectId = stringTarget;
+    properties.workspaceId = stringTarget;
+    for (const field of ["projectId", "workspaceId"]) if (!required.includes(field)) required.push(field);
+  }
+  if (REVISION_GUARDED_VERBS.has(verb)) {
+    properties.expectedRevision ??= { type: "integer", minimum: 0 };
+    if (!required.includes("expectedRevision")) required.push("expectedRevision");
+  }
+  return {
+    type: "object",
+    additionalProperties: false,
+    properties,
+    ...(required.length > 0 ? { required } : {}),
+  };
+}
+
 /**
  * Live-mode input-schema overrides. The live facade implements the
- * same bundled verbs, but live `project.save` is NOT a checkpoint write: it takes
- * no params (the GUI owns the save target) and flushes the GUI's autosave
- * snapshot, reporting only the revision. Advertising the headless checkpoint
- * schema (`path` required) on the live `tools/list` would instruct
- * integrators to pass a param the live runtime must reject — a contract
- * self-contradiction. Live endpoints assign
+ * same bundled verbs, but live `project.save` creates an immutable node in an
+ * explicit workspace. Advertising the headless checkpoint schema (`path`
+ * required) on the live `tools/list` would instruct integrators to pass a
+ * param the live runtime must reject — a contract self-contradiction. Live endpoints assign
  * `LIVE_VERB_INPUT_SCHEMA_OVERRIDES[verb] ?? EMITTED_VERB_JSON_SCHEMAS[verb]`.
  * Live edit schemas also omit clip.add.clipId because the canonical GUI store
  * mints ids. Top-level validate/apply parameter differences remain intact.
@@ -140,14 +178,25 @@ function liveEditSchema(verb: "edit.apply" | "edit.validate"): JsonSchemaObject 
   return schema;
 }
 
+const routedLiveSchemas = Object.fromEntries(FACADE_VERBS.filter((verb) => PROJECT_WORKSPACE_VERBS.has(verb) || REVISION_GUARDED_VERBS.has(verb)).map((verb) => {
+  const schema = verb === "edit.apply" || verb === "edit.validate"
+    ? liveEditSchema(verb)
+    : EMITTED_VERB_JSON_SCHEMAS[verb];
+  return [verb, liveTargetSchema(verb, schema)];
+})) as Partial<Record<FacadeVerb, JsonSchemaObject>>;
+
+const liveProjectSaveSchema = liveTargetSchema("project.save", {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    expectedRevision: { type: "integer", minimum: 0 },
+    idempotencyKey: { type: "string", minLength: 1 },
+    name: { type: "string", minLength: 1 },
+    summary: { type: "string", minLength: 1 },
+  },
+  required: ["expectedRevision", "idempotencyKey"],
+});
+
 export const LIVE_VERB_INPUT_SCHEMA_OVERRIDES: Readonly<
   Partial<Record<FacadeVerb, JsonSchemaObject>>
-> = {
-  "edit.apply": liveEditSchema("edit.apply"),
-  "edit.validate": liveEditSchema("edit.validate"),
-  "project.save": {
-    type: "object",
-    additionalProperties: false,
-    properties: {},
-  },
-};
+> = { ...routedLiveSchemas, "project.save": liveProjectSaveSchema };

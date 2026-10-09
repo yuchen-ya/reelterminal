@@ -11,51 +11,36 @@ export type MarkerSlice = Pick<
   "addMarker" | "removeMarker" | "updateMarker" | "getMarker" | "getMarkers"
 >;
 
-export function createMarkerSlice(set: Set, get: Get): MarkerSlice {
+export function createMarkerSlice(_set: Set, get: Get): MarkerSlice {
   return {
     addMarker: async (time, label = "Marker", color = "#3b82f6") => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "marker/add",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { time, label, color },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project, modifiedAt: Date.now() } });
-      }
-      return result;
+      return get().executeAction(action);
     },
 
     removeMarker: async (markerId) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "marker/remove",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { markerId },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project, modifiedAt: Date.now() } });
-      }
-      return result;
+      return get().executeAction(action);
     },
 
     updateMarker: async (markerId, updates) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "marker/update",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { markerId, updates },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project, modifiedAt: Date.now() } });
-      }
-      return result;
+      return get().executeAction(action);
     },
 
     getMarker: (markerId) =>

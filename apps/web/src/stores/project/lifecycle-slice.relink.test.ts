@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "@reelterminal/core";
 import { createEmptyProject } from "./project-helpers";
 
-const { loadFileHandle, loadDirectoryHandle, getFile, replaceMediaAsset } =
+const { loadFileHandle, loadDirectoryHandle, getFile, relinkMediaAsset } =
   vi.hoisted(() => ({
     loadFileHandle: vi.fn(),
     loadDirectoryHandle: vi.fn(),
     getFile: vi.fn(),
-    replaceMediaAsset: vi.fn(),
+    relinkMediaAsset: vi.fn(),
   }));
 
 vi.mock("../../services/media-storage", () => ({
@@ -17,8 +17,8 @@ vi.mock("../../services/media-storage", () => ({
 
 vi.mock("../../services/project-media-gc", () => ({
   attachProjectMediaGc: vi.fn(),
-  flushProjectMediaBytes: vi.fn(),
-  sweepOrphanProjectMedia: vi.fn(),
+  detachProjectMediaGc: vi.fn(),
+  reconcileDetachedProjectMediaBytes: vi.fn(),
 }));
 
 vi.mock("../../services/project-manager", () => ({
@@ -62,7 +62,7 @@ describe("project lifecycle media relinking", () => {
     });
     getFile.mockReturnValueOnce(getFileGate);
     loadFileHandle.mockResolvedValueOnce({ getFile });
-    replaceMediaAsset.mockResolvedValue({ success: true, actionId: "replacement" });
+    relinkMediaAsset.mockResolvedValue({ success: true, actionId: "relinked" });
 
     const mediaId = "shared-media-id";
     const placeholder = {
@@ -104,11 +104,11 @@ describe("project lifecycle media relinking", () => {
     let state: {
       project: Project;
       actionExecutor: unknown;
-      replaceMediaAsset: typeof replaceMediaAsset;
+      relinkMediaAsset: typeof relinkMediaAsset;
     } = {
       project: incoming,
       actionExecutor: {},
-      replaceMediaAsset,
+      relinkMediaAsset,
     };
     const get = () => state;
     const set = (update: Partial<typeof state>) => {
@@ -132,6 +132,6 @@ describe("project lifecycle media relinking", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(state.project.id).toBe(nextProject.id);
-    expect(replaceMediaAsset).not.toHaveBeenCalled();
+    expect(relinkMediaAsset).not.toHaveBeenCalled();
   });
 });

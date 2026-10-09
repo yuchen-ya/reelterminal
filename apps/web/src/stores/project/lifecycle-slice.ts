@@ -1,10 +1,12 @@
-import type { Action, Project, ProjectSettings } from "@reelterminal/core";
+import type { Action, Project, ProjectSettings, GraphicsEngine, TitleEngine } from "@reelterminal/core";
+import { GraphicsEngine as GraphicsEngineClass, TitleEngine as TitleEngineClass } from "@reelterminal/core";
 import {
   ActionExecutor,
   ActionHistory,
   normalizeGeneratedShaders,
   normalizeProjectMotionFields,
   normalizeProjectWorkAssetFields,
+  normalizeProjectSpeedDurations,
   registerProjectGeneratedShaders,
 } from "@reelterminal/core";
 import type { StoreApi } from "zustand";
@@ -13,10 +15,8 @@ import type { ProjectState } from "../project-store";
 import { loadDirectoryHandle, loadFileHandle } from "../../services/media-storage";
 import {
   attachProjectMediaGc,
-  flushProjectMediaBytes,
-  sweepOrphanProjectMedia,
+  detachProjectMediaGc,
 } from "../../services/project-media-gc";
-import { useEngineStore } from "../engine-store";
 import { projectManager } from "../../services/project-manager";
 import {
   calculateTimelineDuration,
@@ -38,6 +38,8 @@ export type ProjectLifecycleSlice = Pick<
 export interface ProjectLifecycleDeps {
   syncProjectEffectsBridge: (nextProject: Project, previousProject?: Project) => void;
   syncProjectTransitionsBridge: (nextProject: Project, previousProject?: Project) => void;
+  isForeground?: () => boolean;
+  overlayEngines?: { titleEngine: TitleEngine; graphicsEngine: GraphicsEngine };
 }
 
 export function createProjectLifecycleSlice(
@@ -46,32 +48,36 @@ export function createProjectLifecycleSlice(
   deps: ProjectLifecycleDeps,
 ): ProjectLifecycleSlice {
   const { syncProjectEffectsBridge, syncProjectTransitionsBridge } = deps;
+  const isForeground = deps.isForeground ?? (() => true);
+  const { titleEngine, graphicsEngine } = deps.overlayEngines ?? {
+    titleEngine: new TitleEngineClass(),
+    graphicsEngine: new GraphicsEngineClass(),
+  };
 
   return {
     createNewProject: (
       name?: string,
       settings?: Partial<ProjectSettings>,
     ) => {
-      projectManager.clearCurrentFileHandle();
-      // Leaving the previous project destroys its undo history, so bytes that
-      // only that history could restore are reclaimed now.
-      void flushProjectMediaBytes(get().project);
       const newHistory = new ActionHistory();
       attachProjectMediaGc(newHistory, () => get().project);
       const newExecutor = new ActionExecutor(newHistory);
       const previousProject = get().project;
+      detachProjectMediaGc(get().actionHistory);
       const nextProject = createEmptyProject(name, settings);
+      projectManager.clearCurrentFileHandle(nextProject.id);
 
-      syncProjectEffectsBridge(nextProject, previousProject);
-      syncProjectTransitionsBridge(nextProject, previousProject);
+      if (isForeground()) {
+        syncProjectEffectsBridge(nextProject, previousProject);
+        syncProjectTransitionsBridge(nextProject, previousProject);
+      }
 
-      registerProjectGeneratedShaders(nextProject);
+      if (isForeground()) registerProjectGeneratedShaders(nextProject);
 
-      useEngineStore.getState().getTitleEngine()?.loadTextClips([]);
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
-      graphicsEngine?.loadShapeClips([]);
-      graphicsEngine?.loadSVGClips([]);
-      graphicsEngine?.loadStickerClips([]);
+      titleEngine.loadTextClips([]);
+      graphicsEngine.loadShapeClips([]);
+      graphicsEngine.loadSVGClips([]);
+      graphicsEngine.loadStickerClips([]);
 
       set({
         project: nextProject,
@@ -82,6 +88,7 @@ export function createProjectLifecycleSlice(
         clipRedoStack: [],
         templateUndoStack: [],
         templateRedoStack: [],
+        redoJournal: [],
         clipboard: [],
         lastPastedClipIds: [],
         error: null,
@@ -93,7 +100,7 @@ export function createProjectLifecycleSlice(
       // normalizeProjectStoredFields, so stored-field repair for fields
       // without engine loaders (work assets) runs at this store boundary.
       const motionNormalized = normalizeProjectWorkAssetFields(
-        normalizeProjectMotionFields(incomingProject),
+        normalizeProjectMotionFields(normalizeProjectSpeedDurations(incomingProject)),
       );
       const project: Project = {
         ...motionNormalized,
@@ -102,20 +109,15 @@ export function createProjectLifecycleSlice(
         ),
       };
       const previousProject = get().project;
-      const titleEngine = useEngineStore.getState().getTitleEngine();
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      titleEngine.loadTextClips(project.textClips ?? []);
+      graphicsEngine.loadShapeClips(project.shapeClips ?? []);
+      graphicsEngine.loadSVGClips(project.svgClips ?? []);
+      graphicsEngine.loadStickerClips(project.stickerClips ?? []);
 
-      titleEngine?.loadTextClips(project.textClips ?? []);
-      if (graphicsEngine) {
-        graphicsEngine.loadShapeClips(project.shapeClips ?? []);
-        graphicsEngine.loadSVGClips(project.svgClips ?? []);
-        graphicsEngine.loadStickerClips(project.stickerClips ?? []);
-      }
-
-      // Leaving the previous project destroys its undo history, so bytes that
-      // only that history could restore are reclaimed now.
-      void flushProjectMediaBytes(previousProject);
+      // A loaded project starts with an empty undo chain; detach the old
+      // history's media roots before replacing it.
       const newHistory = new ActionHistory();
+      detachProjectMediaGc(get().actionHistory);
       attachProjectMediaGc(newHistory, () => get().project);
       const newExecutor = new ActionExecutor(newHistory);
 
@@ -125,10 +127,12 @@ export function createProjectLifecycleSlice(
         ? { ...project, timeline: { ...project.timeline, duration: computedDuration } }
         : project;
 
-      syncProjectEffectsBridge(fixedProject, previousProject);
-      syncProjectTransitionsBridge(fixedProject, previousProject);
+      if (isForeground()) {
+        syncProjectEffectsBridge(fixedProject, previousProject);
+        syncProjectTransitionsBridge(fixedProject, previousProject);
+      }
 
-      registerProjectGeneratedShaders(fixedProject);
+      if (isForeground()) registerProjectGeneratedShaders(fixedProject);
 
       set({
         project: fixedProject,
@@ -139,15 +143,14 @@ export function createProjectLifecycleSlice(
         clipRedoStack: [],
         templateUndoStack: [],
         templateRedoStack: [],
+        redoJournal: [],
         clipboard: [],
         lastPastedClipIds: [],
         error: null,
       });
 
-      // A fresh session history is empty, so nothing from before the load can
-      // be undone: bytes outside the loaded items are leftovers (crashed
-      // imports included) and are reclaimed.
-      void sweepOrphanProjectMedia(fixedProject);
+      // A loaded project starts a fresh undo history. Retained bytes remain
+      // available for the explicit media cleanup plan.
 
       // Auto-restore placeholder assets from saved FileSystemFileHandles (same machine)
       const placeholders = fixedProject.mediaLibrary.items.filter(
@@ -190,7 +193,7 @@ export function createProjectLifecycleSlice(
               if (!handle) { stillMissing.push(item); continue; }
               const file = await handle.getFile();
               if (!isCurrentPlaceholder(item)) continue;
-              await get().replaceMediaAsset(item.id, file, item.sourceFile.folder);
+              await get().relinkMediaAsset(item.id, file, item.sourceFile.folder);
             } catch {
               if (isCurrentPlaceholder(item)) stillMissing.push(item);
             }
@@ -218,7 +221,7 @@ export function createProjectLifecycleSlice(
                   const entry = fileMap.get(`${item.sourceFile.name.toLowerCase()}:${item.sourceFile.size}`);
                   if (entry) {
                     try {
-                      await get().replaceMediaAsset(item.id, entry.file, entry.folder);
+                      await get().relinkMediaAsset(item.id, entry.file, entry.folder);
                     } catch { /* skip */ }
                   }
                 }
@@ -232,17 +235,19 @@ export function createProjectLifecycleSlice(
 
     // Rename project
     renameProject: async (name: string) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "project/rename",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { name },
       };
-      const result = await actionExecutor.execute(action, project);
+      const result = (await get().submitActionBatch([action], {
+        groupLabel: "Rename project",
+        historyOwner: "human",
+      })).result;
       if (result.success) {
-        set({ project: { ...project } });
-        void projectManager.updateRecentMetadata({ ...project }).catch((error) => {
+        const updatedProject = get().project;
+        void projectManager.updateRecentMetadata({ ...updatedProject }).catch((error) => {
           console.warn("[ProjectStore] Failed to update recent project name:", error);
         });
       }
@@ -251,22 +256,19 @@ export function createProjectLifecycleSlice(
 
     // Update project settings
     updateSettings: async (settings: Partial<ProjectSettings>) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "project/updateSettings",
         id: uuidv4(),
         timestamp: Date.now(),
         params: settings,
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project } });
-      }
-      return result;
+      return (await get().submitActionBatch([action], {
+        groupLabel: "Update project settings",
+        historyOwner: "human",
+      })).result;
     },
 
     setCanvasBackground: async (mode, color) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "project/setCanvasBackground",
         id: uuidv4(),
@@ -276,11 +278,10 @@ export function createProjectLifecycleSlice(
           layoutBackgroundColor: color,
         },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project } });
-      }
-      return result;
+      return (await get().submitActionBatch([action], {
+        groupLabel: "Set canvas background",
+        historyOwner: "human",
+      })).result;
     },
   };
 }

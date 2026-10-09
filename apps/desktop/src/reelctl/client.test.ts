@@ -2,6 +2,7 @@ import { createServer, type RequestListener, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { LiveCliError, LiveCommandClient, type LiveEndpoint } from "./client";
 
+const target = { projectId: "project-1", workspaceId: "workspace-1" };
 const servers: Server[] = [];
 async function endpointFor(handler: RequestListener): Promise<LiveEndpoint> {
   const server = createServer(handler);
@@ -60,7 +61,7 @@ describe("live Command API client", () => {
         sendJson(res, 200, { ok: true, value: { revision: 5 } });
       });
     });
-    const result = await new LiveCommandClient(endpoint).command("edit.apply", { expectedRevision: 4 }, {
+    const result = await new LiveCommandClient(endpoint).command("edit.apply", { ...target, expectedRevision: 4 }, {
       retry: "idempotent", addIdempotencyKey: true,
     });
     expect(result).toEqual({ ok: true, value: { revision: 5 } });
@@ -71,10 +72,10 @@ describe("live Command API client", () => {
     const body = JSON.parse(requests[1]!.body!) as Record<string, unknown>;
     expect(body).toMatchObject({
       command: "edit.apply",
-      expectedProjectId: "project-1",
       expectedProjectEpoch: "epoch-1",
-      arguments: { expectedRevision: 4, idempotencyKey: expect.any(String) },
+      arguments: { ...target, expectedRevision: 4, idempotencyKey: expect.any(String) },
     });
+    expect(body).not.toHaveProperty("expectedProjectId");
   });
 
   it("returns a 409 project guard failure as a business result", async () => {
@@ -82,7 +83,7 @@ describe("live Command API client", () => {
       if (req.url === "/v1/status") sendJson(res, 200, { ok: true, apiVersion: 1, instanceId: "i", projectId: "p", projectEpoch: "e" });
       else sendJson(res, 409, { ok: false, error: { code: "CONFLICT", message: "project identity changed" } });
     });
-    await expect(new LiveCommandClient(endpoint).command("edit.apply", { expectedRevision: 1 }, { retry: "idempotent" }))
+    await expect(new LiveCommandClient(endpoint).command("edit.apply", { ...target, expectedRevision: 1 }, { retry: "idempotent" }))
       .resolves.toEqual({ ok: false, error: { code: "CONFLICT", message: "project identity changed" } });
   });
 
@@ -104,7 +105,7 @@ describe("live Command API client", () => {
         else sendJson(res, 200, { ok: true, value: { revision: 6 } });
       });
     });
-    const result = await new LiveCommandClient(endpoint).command("edit.apply", { expectedRevision: 5 }, {
+    const result = await new LiveCommandClient(endpoint).command("edit.apply", { ...target, expectedRevision: 5 }, {
       retry: "idempotent", addIdempotencyKey: true,
     });
     expect(result).toEqual({ ok: true, value: { revision: 6 } });
@@ -122,7 +123,7 @@ describe("live Command API client", () => {
         sendJson(res, 401, { ok: false, error: { message: "private upstream detail" } });
       }
     });
-    await expect(new LiveCommandClient(endpoint).command("edit.apply", { expectedRevision: 1 }, {
+    await expect(new LiveCommandClient(endpoint).command("edit.apply", { ...target, expectedRevision: 1 }, {
       retry: "idempotent", addIdempotencyKey: true,
     })).rejects.toMatchObject({ kind: "connection", retryable: false });
     expect(posts).toBe(1);
@@ -139,7 +140,7 @@ describe("live Command API client", () => {
       req.resume();
       req.on("end", () => res.socket?.destroy());
     });
-    await expect(new LiveCommandClient(endpoint).command("edit.apply", { expectedRevision: 1 }, {
+    await expect(new LiveCommandClient(endpoint).command("edit.apply", { ...target, expectedRevision: 1 }, {
       retry: "idempotent", addIdempotencyKey: false,
     })).rejects.toMatchObject({ kind: "connection" });
     expect(posts).toBe(1);

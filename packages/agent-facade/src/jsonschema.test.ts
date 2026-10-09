@@ -215,18 +215,26 @@ describe("emitted schema per-verb structure", () => {
       minimum: 0.1,
       maximum: 20,
     });
-    const clipSetReverse = anyOf[11];
+    const clipSetSpeedConfig = anyOf[11];
+    expect(clipSetSpeedConfig.required).toEqual([
+      "op", "clipId", "speed", "reversed", "pitchCorrection", "keyframes", "freezeFrames",
+    ]);
+    expect((clipSetSpeedConfig.properties as Schema).freezeFrames).toMatchObject({
+      type: "array",
+      maxItems: 128,
+    });
+    const clipSetReverse = anyOf[12];
     expect(clipSetReverse.required).toEqual(["op", "clipId", "reversed"]);
     expect((clipSetReverse.properties as Schema).reversed).toEqual({
       type: "boolean",
     });
-    const clipSetTransform = anyOf[12];
+    const clipSetTransform = anyOf[13];
     expect(clipSetTransform.required).toEqual(["op", "clipId", "transform"]);
     expect((clipSetTransform.properties as Schema).transform).toMatchObject({
       type: "object",
       additionalProperties: false,
     });
-    const clipSetVolume = anyOf[13];
+    const clipSetVolume = anyOf[14];
     expect(clipSetVolume.required).toEqual(["op", "clipId", "volume"]);
     expect((clipSetVolume.properties as Schema).op).toEqual({ const: "clip.setVolume" });
     expect((clipSetVolume.properties as Schema).volume).toEqual({
@@ -234,13 +242,13 @@ describe("emitted schema per-verb structure", () => {
       minimum: 0,
       maximum: 4,
     });
-    const clipSetFade = anyOf[14];
+    const clipSetFade = anyOf[15];
     expect(clipSetFade.required).toEqual(["op", "clipId"]);
     expect((clipSetFade.properties as Schema).fadeIn).toEqual({
       type: "number",
       minimum: 0,
     });
-    const clipRemove = anyOf[15];
+    const clipRemove = anyOf[16];
     expect(clipRemove.additionalProperties).toBe(false);
     expect(clipRemove.required).toEqual(["op", "clipId"]);
     expect((clipRemove.properties as Schema).op).toEqual({ const: "clip.remove" });
@@ -248,7 +256,7 @@ describe("emitted schema per-verb structure", () => {
       type: "string",
       minLength: 1,
     });
-    const transitionAdd = anyOf[16];
+    const transitionAdd = anyOf[17];
     expect(transitionAdd.required).toEqual([
       "op",
       "clipAId",
@@ -259,21 +267,21 @@ describe("emitted schema per-verb structure", () => {
     expect((transitionAdd.properties as Schema).op).toEqual({
       const: "transition.add",
     });
-    const transitionUpdate = anyOf[17];
+    const transitionUpdate = anyOf[18];
     expect(transitionUpdate.required).toEqual(["op", "transitionId"]);
-    const transitionRemove = anyOf[18];
+    const transitionRemove = anyOf[19];
     expect(transitionRemove.required).toEqual(["op", "transitionId"]);
-    const trackRemove = anyOf[19];
+    const trackRemove = anyOf[20];
     expect(trackRemove.required).toEqual(["op", "trackId"]);
     expect((trackRemove.properties as Schema).op).toEqual({
       const: "track.remove",
     });
-    const mediaRemove = anyOf[20];
+    const mediaRemove = anyOf[21];
     expect(mediaRemove.required).toEqual(["op", "mediaId"]);
     expect((mediaRemove.properties as Schema).op).toEqual({
       const: "media.remove",
     });
-    const markerAdd = anyOf[21];
+    const markerAdd = anyOf[22];
     expect(markerAdd.required).toEqual(["op", "target"]);
     expect((markerAdd.properties as Schema).op).toEqual({
       const: "marker.add",
@@ -289,7 +297,7 @@ describe("emitted schema per-verb structure", () => {
     }
     expect((targetVariants[0].properties as Schema).kind).toEqual({ const: "asset" });
     expect((targetVariants[3].properties as Schema).kind).toEqual({ const: "timeRange" });
-    const markerRemove = anyOf[22];
+    const markerRemove = anyOf[23];
     expect(markerRemove.required).toEqual(["op", "number"]);
     expect((markerRemove.properties as Schema).op).toEqual({
       const: "marker.remove",
@@ -385,11 +393,11 @@ describe("emitted schema per-verb structure", () => {
   });
 
   it("live schema overrides cover save and canonical store-minted clip ids", () => {
-    // Live project.save takes no params (the GUI owns the save target), so
-    // the live tools/list must not advertise the headless checkpoint schema
-    // with required `path`. Live edit ops additionally omit explicit clip ids.
-    expect(Object.keys(LIVE_VERB_INPUT_SCHEMA_OVERRIDES).sort()).toEqual([
-      "edit.apply", "edit.validate", "project.save",
+    // Live project.save is an immutable-node save, with an explicit target,
+    // expected revision and persistent idempotency key. Live edit ops omit
+    // explicit clip IDs because the canonical store mints them.
+    expect(LIVE_VERB_INPUT_SCHEMA_OVERRIDES["project.save"]?.required).toEqual([
+      "expectedRevision", "idempotencyKey", "projectId", "workspaceId",
     ]);
     for (const verb of ["edit.apply", "edit.validate"] as const) {
       const schema = LIVE_VERB_INPUT_SCHEMA_OVERRIDES[verb] as any;
@@ -398,11 +406,7 @@ describe("emitted schema per-verb structure", () => {
       expect(clipAdd.additionalProperties).toBe(false);
     }
     expect((LIVE_VERB_INPUT_SCHEMA_OVERRIDES["edit.validate"] as any).properties.idempotencyKey).toBeUndefined();
-    expect(LIVE_VERB_INPUT_SCHEMA_OVERRIDES["project.save"]).toEqual({
-      type: "object",
-      additionalProperties: false,
-      properties: {},
-    });
+    expect((LIVE_VERB_INPUT_SCHEMA_OVERRIDES["project.save"] as any).properties.path).toBeUndefined();
   });
 });
 

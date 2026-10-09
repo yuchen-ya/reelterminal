@@ -26,6 +26,7 @@ import type { Project, ProjectSettings } from "@reelterminal/core/types/project"
 import type { MediaItem } from "@reelterminal/core/types/project";
 import type { MaterialListResult } from "@reelterminal/core/material/types";
 import type { FacadeVerb } from "./types";
+import type { WorkspaceVerb } from "./workspace-library";
 import { basename, isAbsolute, resolve as resolvePath } from "node:path";
 import { readFile, rm, stat } from "node:fs/promises";
 
@@ -65,6 +66,7 @@ import {
 import { cancelExportWithin, JobRegistry, jobStatusView } from "./jobs";
 import { ProjectChangeJournal } from "./project-changes";
 import { queryTimeline } from "./timeline-query";
+import { mapTimelineSourceTimes } from "./timeline-source-map";
 import { validateEditPlan } from "./edit-validation";
 import {
   applyClipIdOverride,
@@ -150,6 +152,7 @@ import {
   EDITOR_CONTROL_TARGET_SCHEMA,
   PROJECT_CHANGES_SCHEMA,
   TIMELINE_QUERY_SCHEMA,
+  TIMELINE_MAP_SOURCE_TIMES_SCHEMA,
   TIMELINE_QUERY_RANGE_SCHEMA,
   EDIT_VALIDATE_SCHEMA,
   HISTORY_GET_SCHEMA,
@@ -235,6 +238,8 @@ import type {
   ProjectChangesResult,
   TimelineQueryParams,
   TimelineQueryResult,
+  TimelineMapSourceTimesParams,
+  TimelineMapSourceTimesResult,
   EditValidateParams,
   EditValidateResult,
   HistoryGetParams,
@@ -364,6 +369,18 @@ export class AgentFacadeSession {
     }
   }
 
+  /** Workspace persistence is owned by the desktop renderer, not headless sessions. */
+  async workspaceCommand(
+    verb: WorkspaceVerb,
+    _params: Record<string, unknown> = {},
+  ): Promise<FacadeResult<unknown>> {
+    return toFailure(new FacadeError(
+      "UNSUPPORTED",
+      `${verb}: project/workspace storage is available only in the live desktop session`,
+      { runtime: "node-headless" },
+    ));
+  }
+
   async capabilitiesGet(): Promise<FacadeResult<Capabilities>> {
     try {
       return ok(await buildCapabilities(this.capabilityContext()));
@@ -427,6 +444,27 @@ export class AgentFacadeSession {
       }
       if (!this.project) return this.noProject();
       return ok(queryTimeline(this.project, this.revision, valid));
+    });
+  }
+
+  async timelineMapSourceTimes(
+    params: TimelineMapSourceTimesParams,
+  ): Promise<FacadeResult<TimelineMapSourceTimesResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<TimelineMapSourceTimesParams>(
+        params,
+        TIMELINE_MAP_SOURCE_TIMES_SCHEMA,
+        "timeline.mapSourceTimes params",
+      );
+      if (!this.project) return this.noProject();
+      if (valid.expectedRevision !== undefined && valid.expectedRevision !== this.revision) {
+        throw new FacadeError(
+          "CONFLICT",
+          `revision conflict: expected ${valid.expectedRevision}, current is ${this.revision}`,
+          { currentRevision: this.revision },
+        );
+      }
+      return ok(mapTimelineSourceTimes(this.project, this.revision, valid));
     });
   }
 
@@ -1338,6 +1376,7 @@ export class AgentFacadeSession {
         controller,
         { startSec, endSec },
         projectId,
+        sourceRevision,
         valid.reviewQuestion,
         valid.recheckOfRecordId,
         valid.silenceParams,
@@ -1947,6 +1986,11 @@ export class AgentFacadeSession {
         frames.push({
           index,
           timeSec: sample.timeSec,
+          coordinateSpace: "timeline",
+          requestedTimelineTimeSec: sample.timeSec,
+          renderedTimelineTimeSec: null,
+          sourceFrameNumber: null,
+          sourcePtsSec: null,
           label: sample.label,
           sourceRevision,
           artifact,
@@ -1958,6 +2002,9 @@ export class AgentFacadeSession {
           `${reencoded} of ${frames.length} frame artifact(s) exceeded the ${frameBudgetBytes}-byte lossless budget and were re-encoded as lossy JPEG${overBudget > 0 ? `; ${overBudget} still did not fit and were delivered oversized` : ""}. See frames[].fidelity for the delivered raster and quality; re-request with roi, a smaller width, or a larger maxFrameBytes for finer detail.`,
         );
       }
+      limitations.push(
+        "Frame artifacts were requested at the reported timeline times; the render provider does not return an actual rendered timeline time, decoded source frame number or media PTS, so those values are unknown.",
+      );
 
       let contactSheet: VisualInspectResult["contactSheet"] = null;
       if (provider.renderContactSheetPng) {
@@ -2032,6 +2079,12 @@ export class AgentFacadeSession {
         sourceRevision,
         selection: plan.selection,
         sampleCount,
+        mediaSources: mediaFingerprints.map(({ mediaId, sizeBytes, mtimeMs, sha256 }) => ({
+          mediaId,
+          sizeBytes,
+          mtimeMs,
+          sha256,
+        })),
         width,
         height,
         frameBudgetBytes,
@@ -2297,6 +2350,8 @@ export class AgentFacadeSession {
       return ok(records.map((record) => ({
         id: record.id,
         finishedAt: record.finishedAt,
+        sourceRevision: record.sourceRevision,
+        coordinateSpace: record.coordinateSpace,
         subject: { mediaId: record.subject.mediaId, name: record.subject.name },
         analysisTypes: record.analysisTypes,
         stale: { kind: record.stale.kind },
@@ -2821,6 +2876,7 @@ export class AgentFacadeSession {
     controller: AbortController,
     range: { startSec: number; endSec: number },
     projectId: string,
+    sourceRevision: number,
     reviewQuestion?: string,
     recheckOfRecordId?: string,
     silenceParams?: import("./types").MediaSilenceAnalysisParams,
@@ -2933,6 +2989,8 @@ export class AgentFacadeSession {
       }
       const saved = await saveAnalysisRecord(this.config.artifactRoot, {
         projectId,
+        sourceRevision,
+        coordinateSpace: "source",
         subject: {
           mediaId,
           name,
@@ -2992,6 +3050,11 @@ export class AgentFacadeSession {
         recommendations: [],
         unknowns: [
           ...(video ? [{ field: "videoReview.serverSamplingFps", note: "The cloud provider does not disclose its sampling rate; short events may be missed" }] : []),
+          ...(video ? [
+            { field: "videoReview.sourceFrameNumber", note: "The provider returns prose opinions without a verifiable source frame number or source PTS." },
+            { field: "videoReview.eventLocalizationUncertaintySec", note: "The provider does not disclose frame-level event localization uncertainty." },
+            { field: "videoReview.audioDetectionUncertaintySec", note: "The provider does not disclose frame-level audio event localization uncertainty." },
+          ] : []),
           ...(analysisTypes.includes("beatGrid")
             ? [{ field: "beatGrid.downbeats", note: "No downbeat detector is installed; beatGrid results intentionally omit downbeats" }]
             : []),

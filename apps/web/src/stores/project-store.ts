@@ -1,4 +1,5 @@
-import { create } from "zustand";
+import { create, useStore, type StoreApi } from "zustand";
+import { useSyncExternalStore } from "react";
 import { subscribeWithSelector } from "zustand/middleware";
 import type {
   Project,
@@ -39,6 +40,10 @@ import type {
 import {
   ActionExecutor,
   ActionHistory,
+  TitleEngine,
+  GraphicsEngine,
+  registerProjectGeneratedShaders,
+  getSpeedEngine,
   getBuiltInEditingTemplate,
   getBuiltInEditingTemplates,
   getMotionPreset,
@@ -124,13 +129,21 @@ export interface ProjectState {
   // Project data
   project: Project;
   hasOpenProject: boolean;
-  /**
-   * one monotonic, in-memory revision for the canonical
-   * project. Bumped by a single store subscription whenever the `project`
-   * reference changes (manual edits, agent edits, undo, redo, project switch).
-   * Never persisted into project files, autosave records, or checkpoints.
-   */
+  /** Runtime compatibility alias for the owning workspace's monotonic revision. */
   projectRevision: number;
+  /** Stable workspace identity for this independent runtime store. */
+  workspaceId: string | null;
+  /** Persisted monotonic edit revision for the owning workspace. */
+  workspaceRevision: number;
+  workspaceBaseNodeId: string | null;
+  workspaceDirty: boolean;
+  saveWorkspaceDraft?: () => Promise<void>;
+  /** Whether this store currently backs the single foreground preview engines. */
+  isForeground: boolean;
+  /** Detached read-only preview stores reject every editing action. */
+  readOnlyPreview?: boolean;
+  /** Per-workspace queue injected by WorkspaceManager for GUI mutations. */
+  submitWorkspaceMutation?: <T>(operation: () => T) => Promise<T>;
 
   // Photo projects
   photoProjects: Map<string, PhotoProject>;
@@ -178,6 +191,17 @@ export interface ProjectState {
   ) => Promise<ActionResult>;
   deleteMedia: (mediaId: string) => Promise<ActionResult>;
   replaceMediaAsset: (mediaId: string, file: File, sourceFolder?: string) => Promise<ActionResult>;
+  relinkMediaAsset: (
+    mediaId: string,
+    file: File,
+    sourceFolder?: string,
+    context?: import("./project/media-slice").MediaOperationContext,
+  ) => Promise<ActionResult>;
+  adoptMediaCandidate: (
+    sourceMediaId: string,
+    replacementMediaId: string,
+    context?: import("./project/media-slice").MediaOperationContext,
+  ) => Promise<ActionResult>;
   renameMedia: (mediaId: string, name: string) => Promise<ActionResult>;
   getMediaItem: (mediaId: string) => MediaItem | undefined;
   // Track actions
@@ -192,7 +216,7 @@ export interface ProjectState {
   hideTrack: (trackId: string, hidden: boolean) => Promise<ActionResult>;
   muteTrack: (trackId: string, muted: boolean) => Promise<ActionResult>;
   soloTrack: (trackId: string, solo: boolean) => Promise<ActionResult>;
-  groupTracks: (trackId: string, partnerTrackId?: string) => boolean;
+  groupTracks: (trackId: string, partnerTrackId?: string) => Promise<boolean>;
   renameTrack: (trackId: string, name: string) => Promise<ActionResult>;
   getTrack: (trackId: string) => Track | undefined;
 
@@ -357,6 +381,12 @@ export interface ProjectState {
       transform?: Partial<Transform>;
     },
   ) => TextClip | null;
+  createTextClipOnNewTrack: (
+    startTime: number,
+    text: string,
+    duration?: number,
+    style?: Partial<TextStyle>,
+  ) => Promise<TextClip | null>;
   updateTextContent: (clipId: string, text: string) => TextClip | null;
   updateTextStyle: (
     clipId: string,
@@ -454,6 +484,13 @@ export interface ProjectState {
     duration?: number,
     style?: Partial<ShapeStyle>,
   ) => ShapeClip | null;
+  createShapeClipOnNewTrack: (
+    startTime: number,
+    shapeType: ShapeType,
+    duration?: number,
+    style?: Partial<ShapeStyle>,
+    rotate3d?: { x: number; y: number; z: number },
+  ) => Promise<ShapeClip | null>;
   updateShapeStyle: (
     clipId: string,
     style: Partial<ShapeStyle>,
@@ -468,6 +505,11 @@ export interface ProjectState {
     startTime: number,
     duration?: number,
   ) => SVGClip | null;
+  importSVGOnNewTrack: (
+    svgContent: string,
+    startTime: number,
+    duration?: number,
+  ) => Promise<SVGClip | null>;
   getShapeClip: (clipId: string) => ShapeClip | undefined;
   deleteShapeClip: (clipId: string) => boolean;
   getSVGClip: (clipId: string) => SVGClip | undefined;
@@ -622,13 +664,18 @@ export interface ProjectState {
   updateClipKeyframes: (clipId: string, keyframes: Keyframe[]) => boolean;
 
   // Undo/Redo
-  undo: () => Promise<ActionResult>;
-  redo: () => Promise<ActionResult>;
+  undo: (options?: { alreadySerialized?: boolean }) => Promise<ActionResult>;
+  redo: (options?: { alreadySerialized?: boolean }) => Promise<ActionResult>;
   canUndo: () => boolean;
   canRedo: () => boolean;
 
   // Execute arbitrary action
   executeActionBatch: ExecuteActionBatch;
+  /** Submit an atomic edit through the workspace command queue when managed. */
+  submitActionBatch: (
+    actions: readonly Action[],
+    options: import("./project/action-batch").ActionBatchOptions,
+  ) => Promise<import("./project/action-batch").ActionBatchResult>;
   executeAction: (action: Action) => Promise<ActionResult>;
 
   // Computed values
@@ -673,10 +720,49 @@ function motionCompositionsEqual(
   return JSON.stringify(strip(a)) === JSON.stringify(strip(b));
 }
 
-/**
- * Create the project store
- */
-export const useProjectStore = create<ProjectState>()(
+export interface ProjectStoreOptions {
+  workspaceId?: string | null;
+  workspaceRevision?: number;
+  isForeground?: boolean;
+  /** Reject all executeAction mutations for a detached read-only preview. */
+  readOnlyPreview?: boolean;
+  /** Canonical initial document for an isolated runtime prepared off-screen. */
+  initialProject?: Project;
+  /** Suppress cross-project library bookkeeping for an isolated importer preflight. */
+  isStaging?: boolean;
+  onProjectChanged?: (project: Project, revision: number) => void;
+  submitWorkspaceWrite?: <T>(operation: () => T) => Promise<T>;
+  overlayEngines?: { titleEngine: TitleEngine; graphicsEngine: GraphicsEngine };
+}
+
+interface ProjectStoreRuntime {
+  journal: ProjectChangeJournal;
+  syncForegroundRuntime: () => void;
+}
+
+const projectStoreRuntimes = new WeakMap<StoreApi<ProjectState>, ProjectStoreRuntime>();
+
+/** Create a fully independent project runtime, including its undo history. */
+export function createProjectStore(options: ProjectStoreOptions = {}) {
+  const journal = new ProjectChangeJournal();
+  const overlayEngines = options.overlayEngines ?? {
+    titleEngine: new TitleEngine(),
+    graphicsEngine: new GraphicsEngine(),
+  };
+  const runtimeInitialProject = options.initialProject ?? createEmptyProject();
+  overlayEngines.titleEngine.loadTextClips(runtimeInitialProject.textClips ?? []);
+  overlayEngines.graphicsEngine.loadShapeClips(runtimeInitialProject.shapeClips ?? []);
+  overlayEngines.graphicsEngine.loadSVGClips(runtimeInitialProject.svgClips ?? []);
+  overlayEngines.graphicsEngine.loadStickerClips(runtimeInitialProject.stickerClips ?? []);
+  const projectWithOverlayState = (project: Project): Project => ({
+    ...project,
+    textClips: overlayEngines.titleEngine.getAllTextClips(),
+    shapeClips: overlayEngines.graphicsEngine.getAllShapeClips(),
+    svgClips: overlayEngines.graphicsEngine.getAllSVGClips(),
+    stickerClips: overlayEngines.graphicsEngine.getAllStickerClips(),
+  });
+  let syncForegroundRuntime = (): void => undefined;
+  const store = create<ProjectState>()(
   subscribeWithSelector((set, get, api) => {
     const actionHistory = new ActionHistory();
     const actionExecutor = new ActionExecutor(actionHistory);
@@ -735,6 +821,12 @@ export const useProjectStore = create<ProjectState>()(
     };
 
     const buildSerializedColorGrading = (clipId: string): ClipColorGrading => {
+      if (!get().isForeground) {
+        const clip = get().project.timeline.tracks
+          .flatMap((track) => track.clips)
+          .find((candidate) => candidate.id === clipId);
+        return clip?.colorGrading ?? {};
+      }
       const effectsBridge = getEffectsBridge();
       if (!effectsBridge.isInitialized()) {
         return {};
@@ -765,6 +857,7 @@ export const useProjectStore = create<ProjectState>()(
     };
 
     const syncClipEffectsBridge = (project: Project, clipId: string): void => {
+      if (!get().isForeground) return;
       const effectsBridge = getEffectsBridge();
       // No isInitialized() gate here: this is a pure data mirror of the
       // canonical clip.effects. initialize() never clears the maps and a
@@ -818,6 +911,7 @@ export const useProjectStore = create<ProjectState>()(
       nextProject: Project,
       previousProject?: Project,
     ): void => {
+      if (!get().isForeground) return;
       const effectsBridge = getEffectsBridge();
       // Mirrors syncClipEffectsBridge: runs before initialization too, so a
       // load/undo landing in the uninitialized window still populates the map
@@ -848,6 +942,7 @@ export const useProjectStore = create<ProjectState>()(
       project: Project,
       trackId: string,
     ): void => {
+      if (!get().isForeground) return;
       const transitionBridge = getTransitionBridge();
       if (!transitionBridge.isInitialized()) {
         return;
@@ -869,6 +964,7 @@ export const useProjectStore = create<ProjectState>()(
       nextProject: Project,
       previousProject?: Project,
     ): void => {
+      if (!get().isForeground) return;
       const transitionBridge = getTransitionBridge();
       if (!transitionBridge.isInitialized()) {
         return;
@@ -900,6 +996,21 @@ export const useProjectStore = create<ProjectState>()(
     // of the store no matter which path mutated the project.
     api.subscribe((state, previousState) => {
       if (state.project === previousState.project) return;
+      // Preview's speed engine is a projection of canonical state, including
+      // ordinary GUI actions, atomic Agent edits, undo/redo and project load.
+      overlayEngines.titleEngine.loadTextClips(state.project.textClips ?? []);
+      overlayEngines.graphicsEngine.loadShapeClips(state.project.shapeClips ?? []);
+      overlayEngines.graphicsEngine.loadSVGClips(state.project.svgClips ?? []);
+      overlayEngines.graphicsEngine.loadStickerClips(state.project.stickerClips ?? []);
+      if (state.isForeground) {
+        const engines = useEngineStore.getState();
+        engines.getTitleEngine()?.loadTextClips(state.project.textClips ?? []);
+        engines.getGraphicsEngine()?.loadShapeClips(state.project.shapeClips ?? []);
+        engines.getGraphicsEngine()?.loadSVGClips(state.project.svgClips ?? []);
+        engines.getGraphicsEngine()?.loadStickerClips(state.project.stickerClips ?? []);
+        getSpeedEngine().loadClips(state.project.timeline.tracks.flatMap((track) => track.clips));
+      }
+      if (!state.isForeground) return;
       try {
         syncProjectEffectsBridge(state.project, previousState.project);
       } catch (error) {
@@ -911,11 +1022,34 @@ export const useProjectStore = create<ProjectState>()(
         );
       }
     });
+    syncForegroundRuntime = (): void => {
+      const project = get().project;
+      const titleEngine = overlayEngines.titleEngine;
+      const graphicsEngine = overlayEngines.graphicsEngine;
+      titleEngine?.loadTextClips(project.textClips ?? []);
+      graphicsEngine?.loadShapeClips(project.shapeClips ?? []);
+      graphicsEngine?.loadSVGClips(project.svgClips ?? []);
+      graphicsEngine?.loadStickerClips(project.stickerClips ?? []);
+      getSpeedEngine().loadClips(project.timeline.tracks.flatMap((track) => track.clips));
+      registerProjectGeneratedShaders(project);
+      syncProjectEffectsBridge(project);
+      syncProjectTransitionsBridge(project);
+      // The GUI timeline derives clip lists from the shared engine-store
+      // instances. Becoming foreground does not change the project reference,
+      // so the subscription's foreground branch never fired for this store —
+      // refresh the shared engines here or a store swap leaves the timeline
+      // rendering the previously active store's clips.
+      const sharedEngines = useEngineStore.getState();
+      sharedEngines.getTitleEngine()?.loadTextClips(project.textClips ?? []);
+      sharedEngines.getGraphicsEngine()?.loadShapeClips(project.shapeClips ?? []);
+      sharedEngines.getGraphicsEngine()?.loadSVGClips(project.svgClips ?? []);
+      sharedEngines.getGraphicsEngine()?.loadStickerClips(project.stickerClips ?? []);
+    };
 
     // Restore a full clip snapshot into the owning engine (used by undo/redo
     // of text/shape property edits). Never creates or deletes the clip — it
     // merges the saved fields back onto the existing engine clip.
-    const helpers = createProjectStoreHelpers(set, get);
+    const helpers = createProjectStoreHelpers(set, get, overlayEngines);
     const { applyClipDataSnapshot, syncOverlayEnginesFromProject } = helpers;
 
     type OverlayEffectOwner = TextClip | ShapeClip | SVGClip | StickerClip;
@@ -963,8 +1097,8 @@ export const useProjectStore = create<ProjectState>()(
         ...location.clip,
         effects: updater([...(location.clip.effects ?? [])]),
       } as OverlayEffectOwner;
-      const titleEngine = useEngineStore.getState().getTitleEngine();
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const titleEngine = overlayEngines.titleEngine;
+      const graphicsEngine = overlayEngines.graphicsEngine;
       if (location.prefix === "text") {
         titleEngine?.updateTextClip(clipId, updated as TextClip);
       } else if (location.prefix === "shape") {
@@ -1046,12 +1180,12 @@ export const useProjectStore = create<ProjectState>()(
       }
 
       if (track.type === "text") {
-        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const titleEngine = overlayEngines.titleEngine;
         return titleEngine?.getAllTextClips().some((clip) => clip.trackId === trackId) ?? false;
       }
 
       if (track.type === "graphics") {
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        const graphicsEngine = overlayEngines.graphicsEngine;
         if (!graphicsEngine) {
           return false;
         }
@@ -1198,8 +1332,8 @@ export const useProjectStore = create<ProjectState>()(
         return null;
       }
 
-      const titleEngine = useEngineStore.getState().getTitleEngine();
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const titleEngine = overlayEngines.titleEngine;
+      const graphicsEngine = overlayEngines.graphicsEngine;
       const needsTextTrack = template.recipe.overlays.some(
         (overlay) => overlay.trackType === "text",
       );
@@ -1219,7 +1353,7 @@ export const useProjectStore = create<ProjectState>()(
       );
       const assetUrls = project.mediaLibrary.items.reduce<Record<string, string>>(
         (urls, item) => {
-          const url = item.originalUrl ?? item.thumbnailUrl ?? undefined;
+          const url = item.contentUrl ?? item.originalUrl ?? item.thumbnailUrl ?? undefined;
           if (url) {
             urls[item.id] = url;
           }
@@ -1380,7 +1514,7 @@ export const useProjectStore = create<ProjectState>()(
 
       return {
         project: {
-          ...updatedProject,
+          ...projectWithOverlayState(updatedProject),
           modifiedAt: Date.now(),
         },
         applicationState: {
@@ -1400,8 +1534,8 @@ export const useProjectStore = create<ProjectState>()(
     const canRestoreEditingTemplateOverlays = (
       overlays: EditingTemplateHistoryEntry["overlays"],
     ): boolean => {
-      const titleEngine = useEngineStore.getState().getTitleEngine();
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const titleEngine = overlayEngines.titleEngine;
+      const graphicsEngine = overlayEngines.graphicsEngine;
 
       for (const placement of overlays) {
         if (placement.overlay.type === "text" && !titleEngine) {
@@ -1431,7 +1565,7 @@ export const useProjectStore = create<ProjectState>()(
       };
 
       if (placement.overlay.type === "text") {
-        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const titleEngine = overlayEngines.titleEngine;
         if (!titleEngine) {
           return false;
         }
@@ -1475,7 +1609,7 @@ export const useProjectStore = create<ProjectState>()(
         );
       }
 
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const graphicsEngine = overlayEngines.graphicsEngine;
       if (!graphicsEngine) {
         return false;
       }
@@ -1578,14 +1712,14 @@ export const useProjectStore = create<ProjectState>()(
         }
       }
 
-      const titleEngine = useEngineStore.getState().getTitleEngine();
+      const titleEngine = overlayEngines.titleEngine;
       if (titleEngine?.getAllTextClips().some(
         (clip) => clip.metadata?.templateSource?.applicationId === applicationId,
       )) {
         return true;
       }
 
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const graphicsEngine = overlayEngines.graphicsEngine;
       if (!graphicsEngine) {
         return false;
       }
@@ -1643,14 +1777,14 @@ export const useProjectStore = create<ProjectState>()(
         }
       }
 
-      const titleEngine = useEngineStore.getState().getTitleEngine();
+      const titleEngine = overlayEngines.titleEngine;
       for (const textClip of titleEngine?.getAllTextClips() || []) {
         if (textClip.metadata?.templateSource?.applicationId === applicationId) {
           titleEngine?.deleteTextClip(textClip.id);
         }
       }
 
-      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const graphicsEngine = overlayEngines.graphicsEngine;
       if (graphicsEngine) {
         for (const shapeClip of graphicsEngine.getAllShapeClips()) {
           if (shapeClip.metadata?.templateSource?.applicationId === applicationId) {
@@ -1680,7 +1814,7 @@ export const useProjectStore = create<ProjectState>()(
       syncClipEffectsBridge(updatedProject, ownerClipId);
 
       return {
-        ...updatedProject,
+        ...projectWithOverlayState(updatedProject),
         modifiedAt: Date.now(),
       };
     };
@@ -1785,16 +1919,23 @@ export const useProjectStore = create<ProjectState>()(
       syncClipEffectsBridge(updatedProject, applicationState.ownerClipId);
 
       return {
-        ...updatedProject,
+        ...projectWithOverlayState(updatedProject),
         modifiedAt: Date.now(),
       };
     };
 
     return {
       // Initial state - create empty project (Requirement 1.1)
-      project: createEmptyProject(),
-      hasOpenProject: false,
-      projectRevision: 0,
+      project: runtimeInitialProject,
+      hasOpenProject: options.initialProject !== undefined,
+      projectRevision: options.workspaceRevision ?? 0,
+      workspaceId: options.workspaceId ?? null,
+      workspaceRevision: options.workspaceRevision ?? 0,
+      workspaceBaseNodeId: null,
+      workspaceDirty: false,
+      isForeground: options.isForeground ?? false,
+      readOnlyPreview: options.readOnlyPreview,
+      submitWorkspaceMutation: options.submitWorkspaceWrite,
       photoProjects: new Map(),
       actionExecutor,
       actionHistory,
@@ -1812,6 +1953,8 @@ export const useProjectStore = create<ProjectState>()(
       ...createProjectLifecycleSlice(set, get, {
         syncProjectEffectsBridge,
         syncProjectTransitionsBridge,
+        isForeground: () => get().isForeground,
+        overlayEngines,
       }),
 
       // Media library actions
@@ -1824,7 +1967,7 @@ export const useProjectStore = create<ProjectState>()(
       ...createClipSlice(set, get),
 
       addClipTransition: async (transition: Transition) => {
-        const { project, actionExecutor } = get();
+        const { project } = get();
         const clip = project.timeline.tracks
           .flatMap((track) => track.clips)
           .find((candidate) => candidate.id === transition.clipAId);
@@ -1839,14 +1982,16 @@ export const useProjectStore = create<ProjectState>()(
           timestamp: Date.now(),
           params: { transition },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) {
           console.error("Failed to add transition:", result.error?.message);
           return null;
         }
 
-        set({ project: { ...project, modifiedAt: Date.now() } });
-        syncTrackTransitionsBridge(get().project, clip.trackId);
+        const currentClip = get().project.timeline.tracks
+          .flatMap((track) => track.clips)
+          .find((candidate) => candidate.id === transition.clipAId);
+        if (currentClip) syncTrackTransitionsBridge(get().project, currentClip.trackId);
         return transition;
       },
 
@@ -1854,7 +1999,7 @@ export const useProjectStore = create<ProjectState>()(
         transitionId: string,
         updates: Partial<Pick<Transition, "type" | "duration" | "params">>,
       ) => {
-        const { project, actionExecutor } = get();
+        const { project } = get();
         const ownerTrack = project.timeline.tracks.find((track) =>
           track.transitions.some((t) => t.id === transitionId),
         );
@@ -1875,14 +2020,16 @@ export const useProjectStore = create<ProjectState>()(
             ...(updates.params !== undefined ? { params: updates.params } : {}),
           },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) {
           console.error("Failed to update transition:", result.error?.message);
           return null;
         }
 
-        set({ project: { ...project, modifiedAt: Date.now() } });
-        syncTrackTransitionsBridge(get().project, ownerTrack.id);
+        const currentOwner = get().project.timeline.tracks.find((track) =>
+          track.transitions.some((candidate) => candidate.id === transitionId),
+        );
+        if (currentOwner) syncTrackTransitionsBridge(get().project, currentOwner.id);
         return (
           get()
             .project.timeline.tracks.flatMap((track) => track.transitions)
@@ -1891,7 +2038,7 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       removeClipTransition: async (transitionId: string) => {
-        const { project, actionExecutor } = get();
+        const { project } = get();
         const ownerTrack = project.timeline.tracks.find((track) =>
           track.transitions.some((t) => t.id === transitionId),
         );
@@ -1905,13 +2052,12 @@ export const useProjectStore = create<ProjectState>()(
           timestamp: Date.now(),
           params: { transitionId },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) {
           console.error("Failed to remove transition:", result.error?.message);
           return false;
         }
 
-        set({ project: { ...project, modifiedAt: Date.now() } });
         syncTrackTransitionsBridge(get().project, ownerTrack.id);
         return true;
       },
@@ -1974,6 +2120,7 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       pasteClips: async (trackId: string, startTime: number) => {
+        const paste = async () => {
         const { clipboard, actionExecutor } = get();
         const results: ActionResult[] = [];
         const pastedIds: string[] = [];
@@ -2058,6 +2205,7 @@ export const useProjectStore = create<ProjectState>()(
             const beforeIds = new Set(
               destinationTrack.clips.map((clip) => clip.id),
             );
+            const pastedClipId = uuidv4();
             const action: Action = {
               type: "clip/add",
               id: uuidv4(),
@@ -2067,30 +2215,30 @@ export const useProjectStore = create<ProjectState>()(
                 mediaId: item.clip.mediaId,
                 startTime: newStartTime,
                 sourceClip: item.clip,
+                clipId: pastedClipId,
               },
             };
-            const result = await actionExecutor.execute(action, currentProject);
+            const result = get().executeActionBatch([action], {
+              groupLabel: "Paste timeline clips",
+              historyOwner: actionExecutor.getHistory().getActiveOwner(),
+            }).result;
             results.push(result);
-            if (result.success) {
-              const pasted = destinationTrack.clips.find(
-                (clip) => !beforeIds.has(clip.id),
-              );
-              if (pasted) pastedIds.push(pasted.id);
-            }
+            if (result.success && !beforeIds.has(pastedClipId)) pastedIds.push(pastedClipId);
           }
         } finally {
           actionExecutor.getHistory().endGroup();
         }
 
-        set({
-          project: { ...get().project, modifiedAt: Date.now() },
-          lastPastedClipIds: pastedIds,
-        });
+        set({ lastPastedClipIds: pastedIds });
         return results;
+        };
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(paste) : paste();
       },
 
       duplicateClip: async (clipId: string) => {
-        const { getClip, project, actionExecutor } = get();
+        const duplicate = (): ActionResult => {
+        const { getClip, project } = get();
         const clip = getClip(clipId);
         if (!clip) {
           return {
@@ -2131,13 +2279,14 @@ export const useProjectStore = create<ProjectState>()(
           candidate = other.startTime + other.duration;
         }
 
-        const projectCopy = structuredClone(project);
+        const duplicateId = uuidv4();
         const action: Action = {
           type: "clip/add",
           id: uuidv4(),
           timestamp: Date.now(),
           params: {
             trackId: track.id,
+            clipId: duplicateId,
             mediaId: clip.mediaId,
             startTime: candidate,
             duration: clip.duration,
@@ -2159,15 +2308,13 @@ export const useProjectStore = create<ProjectState>()(
           },
         };
 
-        const result = await actionExecutor.execute(action, projectCopy);
-        if (result.success) {
-          const finalProject: Project = {
-            ...projectCopy,
-            modifiedAt: Date.now(),
-          };
-          set({ project: finalProject });
-        }
-        return result;
+        return get().executeActionBatch([action], {
+          groupLabel: "Duplicate clip",
+          historyOwner: "human",
+        }).result;
+        };
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(duplicate) : duplicate();
       },
 
       copyEffects: (clipId: string) => {
@@ -2180,7 +2327,7 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       pasteEffects: async (clipId: string) => {
-        const { copiedEffects, project, actionExecutor } = get();
+        const { copiedEffects } = get();
         if (copiedEffects.length === 0) {
           return {
             success: false,
@@ -2191,9 +2338,7 @@ export const useProjectStore = create<ProjectState>()(
           };
         }
 
-        const results: ActionResult[] = [];
-        for (const effect of copiedEffects) {
-          const action: Action = {
+        const actions: Action[] = copiedEffects.map((effect) => ({
             type: "effect/add",
             id: uuidv4(),
             timestamp: Date.now(),
@@ -2202,25 +2347,18 @@ export const useProjectStore = create<ProjectState>()(
               effectType: effect.type,
               params: effect.params,
             },
-          };
-          const result = await actionExecutor.execute(action, project);
-          results.push(result);
-        }
-
-        set({ project: { ...project } });
-        return (
-          results[0] || {
-            success: false,
-            error: { code: "UNKNOWN" as const, message: "No results" },
-          }
-        );
+          }));
+        return (await get().submitActionBatch(actions, {
+          groupLabel: "Paste effects",
+          historyOwner: "human",
+        })).result;
       },
 
       updateClipTransform: async (
         clipId: string,
         transformUpdate: Partial<Transform>,
       ): Promise<ActionResult> => {
-        const { project, actionExecutor } = get();
+        const { project } = get();
 
         const mergeTransform = (base: Transform): Transform => ({
           ...base,
@@ -2242,16 +2380,12 @@ export const useProjectStore = create<ProjectState>()(
             timestamp: Date.now(),
             params: { clipId, transform: transformUpdate },
           };
-          const result = await actionExecutor.execute(action, project);
-          if (result.success) {
-            set({ project: { ...project } });
-          }
-          return result;
+          return get().executeAction(action);
         }
 
         // Text clips live in the title engine (not project.timeline); they use
         // the separate clip-history mechanism, so keep the direct engine update.
-        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const titleEngine = overlayEngines.titleEngine;
         if (titleEngine) {
           const textClip = titleEngine.getTextClip(clipId);
           if (textClip) {
@@ -2264,7 +2398,7 @@ export const useProjectStore = create<ProjectState>()(
         }
 
         // Shape / SVG clips live in the graphics engine.
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        const graphicsEngine = overlayEngines.graphicsEngine;
         if (graphicsEngine) {
           const shapeClip = graphicsEngine.getShapeClip(clipId);
           if (shapeClip) {
@@ -2295,7 +2429,7 @@ export const useProjectStore = create<ProjectState>()(
         clipId: string,
         blendMode,
       ): Promise<ActionResult> => {
-        const { project, actionExecutor } = get();
+        const { project } = get();
 
         // Timeline clips are undoable via the action system.
         const inTimeline = project.timeline.tracks.some((track) =>
@@ -2308,15 +2442,11 @@ export const useProjectStore = create<ProjectState>()(
             timestamp: Date.now(),
             params: { clipId, blendMode },
           };
-          const result = await actionExecutor.execute(action, project);
-          if (result.success) {
-            set({ project: { ...project } });
-          }
-          return result;
+          return get().executeAction(action);
         }
 
         // Text clips live in the title engine.
-        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const titleEngine = overlayEngines.titleEngine;
         if (titleEngine) {
           const textClip = titleEngine.getTextClip(clipId);
           if (textClip) {
@@ -2327,7 +2457,7 @@ export const useProjectStore = create<ProjectState>()(
         }
 
         // Shape / SVG clips live in the graphics engine.
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        const graphicsEngine = overlayEngines.graphicsEngine;
         if (graphicsEngine) {
           const shapeClip = graphicsEngine.getShapeClip(clipId);
           if (shapeClip) {
@@ -2353,7 +2483,7 @@ export const useProjectStore = create<ProjectState>()(
         clipId: string,
         opacity: number,
       ): Promise<ActionResult> => {
-        const { project, actionExecutor } = get();
+        const { project } = get();
 
         if (opacity < 0 || opacity > 100) {
           return {
@@ -2375,14 +2505,10 @@ export const useProjectStore = create<ProjectState>()(
             timestamp: Date.now(),
             params: { clipId, opacity },
           };
-          const result = await actionExecutor.execute(action, project);
-          if (result.success) {
-            set({ project: { ...project } });
-          }
-          return result;
+          return get().executeAction(action);
         }
 
-        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const titleEngine = overlayEngines.titleEngine;
         if (titleEngine) {
           const textClip = titleEngine.getTextClip(clipId);
           if (textClip) {
@@ -2392,7 +2518,7 @@ export const useProjectStore = create<ProjectState>()(
           }
         }
 
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        const graphicsEngine = overlayEngines.graphicsEngine;
         if (graphicsEngine) {
           const shapeClip = graphicsEngine.getShapeClip(clipId);
           if (shapeClip) {
@@ -2419,7 +2545,7 @@ export const useProjectStore = create<ProjectState>()(
         clipId: string,
         emphasisAnimation,
       ): Promise<ActionResult> => {
-        const { project, actionExecutor } = get();
+        const { project } = get();
 
         const inTimeline = project.timeline.tracks.some((track) =>
           track.clips.some((c) => c.id === clipId),
@@ -2431,14 +2557,10 @@ export const useProjectStore = create<ProjectState>()(
             timestamp: Date.now(),
             params: { clipId, emphasisAnimation },
           };
-          const result = await actionExecutor.execute(action, project);
-          if (result.success) {
-            set({ project: { ...project } });
-          }
-          return result;
+          return get().executeAction(action);
         }
 
-        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const titleEngine = overlayEngines.titleEngine;
         if (titleEngine) {
           const textClip = titleEngine.getTextClip(clipId);
           if (textClip) {
@@ -2448,7 +2570,7 @@ export const useProjectStore = create<ProjectState>()(
           }
         }
 
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        const graphicsEngine = overlayEngines.graphicsEngine;
         if (graphicsEngine) {
           const shapeClip = graphicsEngine.getShapeClip(clipId);
           if (shapeClip) {
@@ -2511,7 +2633,7 @@ export const useProjectStore = create<ProjectState>()(
           return true;
         }
 
-        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const titleEngine = overlayEngines.titleEngine;
         if (titleEngine) {
           const textClip = titleEngine.getTextClip(clipId);
           if (textClip) {
@@ -2523,7 +2645,7 @@ export const useProjectStore = create<ProjectState>()(
           }
         }
 
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        const graphicsEngine = overlayEngines.graphicsEngine;
         if (graphicsEngine) {
           const shapeClip = graphicsEngine.getShapeClip(clipId);
           if (shapeClip) {
@@ -2582,7 +2704,7 @@ export const useProjectStore = create<ProjectState>()(
           return true;
         }
 
-        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const titleEngine = overlayEngines.titleEngine;
         if (titleEngine) {
           const textClip = titleEngine.getTextClip(clipId);
           if (textClip) {
@@ -2594,7 +2716,7 @@ export const useProjectStore = create<ProjectState>()(
           }
         }
 
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        const graphicsEngine = overlayEngines.graphicsEngine;
         if (graphicsEngine) {
           const shapeClip = graphicsEngine.getShapeClip(clipId);
           if (shapeClip) {
@@ -2651,7 +2773,7 @@ export const useProjectStore = create<ProjectState>()(
           return true;
         }
 
-        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const titleEngine = overlayEngines.titleEngine;
         if (titleEngine) {
           const textClip = titleEngine.getTextClip(clipId);
           if (textClip) {
@@ -2663,7 +2785,7 @@ export const useProjectStore = create<ProjectState>()(
           }
         }
 
-        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        const graphicsEngine = overlayEngines.graphicsEngine;
         if (graphicsEngine) {
           const shapeClip = graphicsEngine.getShapeClip(clipId);
           if (shapeClip) {
@@ -2690,6 +2812,7 @@ export const useProjectStore = create<ProjectState>()(
       // Undo/Redo
       ...createHistorySlice(set, get, {
         applyClipDataSnapshot,
+        overlayEngines,
         syncOverlayEnginesFromProject,
         syncProjectEffectsBridge,
         syncProjectTransitionsBridge,
@@ -2796,6 +2919,9 @@ export const useProjectStore = create<ProjectState>()(
             action,
             draft,
             options.historyOwner,
+            applied === 0 && options.historyBeforeProject
+              ? options.historyBeforeProject
+              : draft,
           );
           if (!result.success) {
             restoreDerivedState();
@@ -2813,41 +2939,49 @@ export const useProjectStore = create<ProjectState>()(
         // draft in one JS turn. Publish project + history only after every
         // action succeeds, giving live edit.apply a real atomic commit.
         const committedProject = { ...draft, modifiedAt: Date.now() };
+        let commitFailure: unknown;
         try {
-          set({
-            project: committedProject,
-            clipRedoStack: [],
-            templateRedoStack: [],
+          sourceState.actionHistory.withBatchedNotifications(() => {
+            sourceState.actionExecutor.getHistory().pushGroup(
+              draftHistory.getHistoryEntries(),
+              options.groupLabel,
+              options.historyOwner,
+            );
+            try {
+              set({
+                project: committedProject,
+                clipRedoStack: [],
+                templateRedoStack: [],
+              });
+            } catch (error) {
+              // Zustand assigns state before notifying subscribers. Treat a
+              // subscriber exception as an observer failure when the canonical
+              // project reference proves the commit landed.
+              if (get().project !== committedProject) {
+                commitFailure = error;
+                throw error;
+              }
+              console.warn("A project observer failed after the action batch committed", error);
+            }
           });
         } catch (error) {
-          // Zustand assigns state before notifying subscribers. Treat a
-          // subscriber exception as an observer failure when the canonical
-          // project reference proves the commit landed; otherwise report a
-          // genuine non-commit and leave history untouched.
-          if (get().project !== committedProject) {
-            return {
-              result: {
-                success: false,
-                error: {
-                  code: "INVALID_PARAMS",
-                  message:
-                    error instanceof Error
-                      ? error.message
-                      : "Could not commit action batch",
-                },
-              },
-              applied: 0,
-              createdIds: emptyActionBatchCreatedIds(),
-            };
-          }
-          console.warn("A project observer failed after the action batch committed", error);
+          commitFailure ??= error;
         }
-
-        sourceState.actionExecutor.getHistory().pushGroup(
-          draftHistory.getHistoryEntries(),
-          options.groupLabel,
-          options.historyOwner,
-        );
+        if (commitFailure !== undefined) {
+          return {
+            result: {
+              success: false,
+              error: {
+                code: "INVALID_PARAMS",
+                message: commitFailure instanceof Error
+                  ? commitFailure.message
+                  : "Could not commit action batch",
+              },
+            },
+            applied: 0,
+            createdIds: emptyActionBatchCreatedIds(),
+          };
+        }
         syncDerivedState(committedProject, sourceProject);
         return {
           result: { success: true, actionId: actions[0]?.id },
@@ -2857,7 +2991,10 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       executeAction: async (action: Action) => {
-        const { project, actionExecutor, hasOpenProject } = get();
+        const { hasOpenProject } = get();
+        if (get().readOnlyPreview) {
+          throw new Error("Preview is read-only");
+        }
         if (!hasOpenProject) {
           return {
             success: false,
@@ -2867,13 +3004,16 @@ export const useProjectStore = create<ProjectState>()(
             },
           };
         }
-        const result = await actionExecutor.execute(action, project);
-        if (result.success) {
-          // The executor only stamps modifiedAt for project/* actions, but
-          // Preview's paused re-render and several memos key off it.
-          set({ project: { ...project, modifiedAt: Date.now() } });
-        }
-        return result;
+        return (await get().submitActionBatch([action], {
+          groupLabel: action.type,
+          historyOwner: "human",
+        })).result;
+      },
+
+      submitActionBatch: (actions, options) => {
+        const submit = get().submitWorkspaceMutation;
+        const execute = () => get().executeActionBatch(actions, options);
+        return submit ? submit(execute) : Promise.resolve(execute());
       },
 
       // Computed values
@@ -3029,49 +3169,53 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       createMotionComposition: async (name?: string, presetId?: string) => {
-        const { project, actionExecutor } = get();
-        const preset = presetId ? getMotionPreset(presetId) : undefined;
-        const composition = preset
-          ? { ...preset.create(), name: name ?? preset.name }
-          : motionEngine.createStarterComposition({
-              name,
-              width: project.settings.width,
-              height: project.settings.height,
-              frameRate: project.settings.frameRate,
-            });
-
-        const projectCopy = structuredClone(project);
-        const action: Action = {
-          type: "motion/createComposition",
-          id: uuidv4(),
-          timestamp: Date.now(),
-          params: { composition },
+        const create = () => {
+          const project = get().project;
+          const preset = presetId ? getMotionPreset(presetId) : undefined;
+          const composition = preset
+            ? { ...preset.create(), name: name ?? preset.name }
+            : motionEngine.createStarterComposition({
+                name,
+                width: project.settings.width,
+                height: project.settings.height,
+                frameRate: project.settings.frameRate,
+              });
+          const action: Action = {
+            type: "motion/createComposition",
+            id: uuidv4(),
+            timestamp: Date.now(),
+            params: { composition },
+          };
+          const result = get().executeActionBatch([action], {
+            groupLabel: "Create motion composition",
+            historyOwner: "human",
+          }).result;
+          if (!result.success) {
+            console.error("Failed to create motion composition:", result.error?.message);
+            return null;
+          }
+          return composition;
         };
-        const result = await actionExecutor.execute(action, projectCopy);
-        if (!result.success) {
-          console.error("Failed to create motion composition:", result.error?.message);
-          return null;
-        }
-
-        set({ project: { ...projectCopy, modifiedAt: Date.now() } });
-        return composition;
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(create) : create();
       },
 
       upsertMotionComposition: async (composition: MotionComposition) => {
-        const { project, actionExecutor } = get();
-        const projectCopy = structuredClone(project);
-        const reflowed = reflowMotionAutoLayoutGroups(composition);
-        const action: Action = {
-          type: "motion/upsertComposition",
-          id: uuidv4(),
-          timestamp: Date.now(),
-          params: { composition: { ...reflowed, modifiedAt: Date.now() } },
+        const upsert = () => {
+          const reflowed = reflowMotionAutoLayoutGroups(composition);
+          const action: Action = {
+            type: "motion/upsertComposition",
+            id: uuidv4(),
+            timestamp: Date.now(),
+            params: { composition: { ...reflowed, modifiedAt: Date.now() } },
+          };
+          return get().executeActionBatch([action], {
+            groupLabel: "Update motion composition",
+            historyOwner: "human",
+          }).result;
         };
-        const result = await actionExecutor.execute(action, projectCopy);
-        if (result.success) {
-          set({ project: { ...projectCopy, modifiedAt: Date.now() } });
-        }
-        return result;
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(upsert) : upsert();
       },
 
       updateMotionCompositionPreview: (composition: MotionComposition) => {
@@ -3115,151 +3259,135 @@ export const useProjectStore = create<ProjectState>()(
         if (motionCompositionsEqual(reflowedBefore, reflowedAfter)) {
           return null;
         }
-        const { project, actionExecutor } = get();
-        const cloned = structuredClone(project);
-        const existing = cloned.motionCompositions ?? [];
-        const projectBefore: Project = {
-          ...cloned,
-          motionCompositions: existing.some(
-            (candidate) => candidate.id === reflowedBefore.id,
-          )
-            ? existing.map((candidate) =>
-                candidate.id === reflowedBefore.id ? reflowedBefore : candidate,
-              )
-            : [...existing, reflowedBefore],
+        const commit = () => {
+          const currentProject = get().project;
+          const existing = currentProject.motionCompositions ?? [];
+          const historyBeforeProject: Project = {
+            ...currentProject,
+            motionCompositions: existing.some(
+              (candidate) => candidate.id === reflowedBefore.id,
+            )
+              ? existing.map((candidate) =>
+                  candidate.id === reflowedBefore.id ? reflowedBefore : candidate,
+                )
+              : [...existing, reflowedBefore],
+          };
+          const action: Action = {
+            type: "motion/upsertComposition",
+            id: uuidv4(),
+            timestamp: Date.now(),
+            params: { composition: { ...reflowedAfter, modifiedAt: Date.now() } },
+          };
+          return get().executeActionBatch([action], {
+            groupLabel: "Edit motion composition",
+            historyOwner: "human",
+            historyBeforeProject,
+          }).result;
         };
-        const action: Action = {
-          type: "motion/upsertComposition",
-          id: uuidv4(),
-          timestamp: Date.now(),
-          params: { composition: { ...reflowedAfter, modifiedAt: Date.now() } },
-        };
-        const result = await actionExecutor.execute(action, projectBefore);
-        if (result.success) {
-          set({ project: { ...projectBefore, modifiedAt: Date.now() } });
-        }
-        return result;
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(commit) : commit();
       },
 
       updateCreationObject: async (sceneId, objectId, patch) => {
-        const { project, actionExecutor } = get();
-        const now = Date.now();
-        const plan = planCreationObjectEdit(project, sceneId, objectId, patch, now);
-        if ("error" in plan) {
-          return {
-            success: false,
-            error: {
-              code: "INVALID_PARAMS",
-              message: plan.error,
-            },
-          };
-        }
-
-        const projectCopy = structuredClone(project);
-        for (const operation of plan.operations) {
-          const action: Action = {
+        const update = () => {
+          const now = Date.now();
+          const plan = planCreationObjectEdit(get().project, sceneId, objectId, patch, now);
+          if ("error" in plan) {
+            return {
+              success: false,
+              error: { code: "INVALID_PARAMS" as const, message: plan.error },
+            };
+          }
+          const actions: Action[] = plan.operations.map((operation) => ({
             type: "creation/applyOperation",
             id: uuidv4(),
             timestamp: now,
             params: { operation },
-          };
-          const result = await actionExecutor.execute(action, projectCopy);
-          if (!result.success) return result;
-        }
-
-        if (plan.composition) {
-          const action: Action = {
-            type: "motion/upsertComposition",
-            id: uuidv4(),
-            timestamp: now,
-            params: { composition: plan.composition },
-          };
-          const result = await actionExecutor.execute(action, projectCopy);
-          if (!result.success) return result;
-        }
-
-        set({ project: { ...projectCopy, modifiedAt: now } });
-        return { success: true, actionId: `creation-object-edit-${now}` };
+          }));
+          if (plan.composition) {
+            actions.push({
+              type: "motion/upsertComposition",
+              id: uuidv4(),
+              timestamp: now,
+              params: { composition: plan.composition },
+            });
+          }
+          if (actions.length === 0) return { success: true, actionId: `creation-object-edit-${now}` };
+          const result = get().executeActionBatch(actions, {
+            groupLabel: "Edit creation object",
+            historyOwner: "human",
+          }).result;
+          return result.success ? { ...result, actionId: `creation-object-edit-${now}` } : result;
+        };
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(update) : update();
       },
 
       updateCreationCamera: async (sceneId, cameraId, patch) => {
-        const { project, actionExecutor } = get();
-        const now = Date.now();
-        const plan = planCreationCameraEdit(project, sceneId, cameraId, patch, now);
-        if ("error" in plan) {
-          return {
-            success: false,
-            error: {
-              code: "INVALID_PARAMS",
-              message: plan.error,
-            },
-          };
-        }
-
-        const projectCopy = structuredClone(project);
-        for (const operation of plan.operations) {
-          const action: Action = {
+        const update = () => {
+          const now = Date.now();
+          const plan = planCreationCameraEdit(get().project, sceneId, cameraId, patch, now);
+          if ("error" in plan) {
+            return {
+              success: false,
+              error: { code: "INVALID_PARAMS" as const, message: plan.error },
+            };
+          }
+          const actions: Action[] = plan.operations.map((operation) => ({
             type: "creation/applyOperation",
             id: uuidv4(),
             timestamp: now,
             params: { operation },
-          };
-          const result = await actionExecutor.execute(action, projectCopy);
-          if (!result.success) return result;
-        }
-
-        if (plan.composition) {
-          const action: Action = {
-            type: "motion/upsertComposition",
-            id: uuidv4(),
-            timestamp: now,
-            params: { composition: plan.composition },
-          };
-          const result = await actionExecutor.execute(action, projectCopy);
-          if (!result.success) return result;
-        }
-
-        set({ project: { ...projectCopy, modifiedAt: now } });
-        return { success: true, actionId: `creation-camera-edit-${now}` };
+          }));
+          if (plan.composition) {
+            actions.push({
+              type: "motion/upsertComposition",
+              id: uuidv4(),
+              timestamp: now,
+              params: { composition: plan.composition },
+            });
+          }
+          if (actions.length === 0) return { success: true, actionId: `creation-camera-edit-${now}` };
+          const result = get().executeActionBatch(actions, {
+            groupLabel: "Edit creation camera",
+            historyOwner: "human",
+          }).result;
+          return result.success ? { ...result, actionId: `creation-camera-edit-${now}` } : result;
+        };
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(update) : update();
       },
 
       recoverMotionScene3DLayer: async (compositionId, layerId) => {
-        const { project, actionExecutor } = get();
-        const now = Date.now();
-        const plan = planRecoverMotionScene3DLayer(
-          project,
-          compositionId,
-          layerId,
-          now,
-        );
-        if ("error" in plan) {
-          return {
-            success: false,
-            error: {
-              code: "INVALID_PARAMS",
-              message: plan.error,
-            },
-          };
-        }
-
-        const projectCopy = structuredClone(project);
-        for (const operation of plan.operations) {
-          const action: Action = {
+        const recover = () => {
+          const now = Date.now();
+          const plan = planRecoverMotionScene3DLayer(get().project, compositionId, layerId, now);
+          if ("error" in plan) {
+            return {
+              success: false,
+              error: { code: "INVALID_PARAMS" as const, message: plan.error },
+            };
+          }
+          const actions: Action[] = plan.operations.map((operation) => ({
             type: "creation/applyOperation",
             id: uuidv4(),
             timestamp: now,
             params: { operation },
-          };
-          const result = await actionExecutor.execute(action, projectCopy);
-          if (!result.success) return result;
-        }
-
-        set({ project: { ...projectCopy, modifiedAt: now } });
-        return { success: true, actionId: `creation-recover-scene3d-${now}` };
+          }));
+          if (actions.length === 0) return { success: true, actionId: `creation-recover-scene3d-${now}` };
+          const result = get().executeActionBatch(actions, {
+            groupLabel: "Recover creation scene",
+            historyOwner: "human",
+          }).result;
+          return result.success ? { ...result, actionId: `creation-recover-scene3d-${now}` } : result;
+        };
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(recover) : recover();
       },
 
       insertMotionInstance: async (compositionId, placement = {}) => {
-        const { project, actionExecutor } = get();
+        const insert = () => {
+        const project = get().project;
         const composition = (project.motionCompositions ?? []).find(
           (candidate) => candidate.id === compositionId,
         );
@@ -3276,40 +3404,38 @@ export const useProjectStore = create<ProjectState>()(
           name: placement.name,
         });
 
-        const projectCopy = structuredClone(project);
         const action: Action = {
           type: "motion/insertInstance",
           id: uuidv4(),
           timestamp: Date.now(),
           params: { instance },
         };
-        const result = await actionExecutor.execute(action, projectCopy);
+        const result = get().executeActionBatch([action], {
+          groupLabel: "Insert motion composition",
+          historyOwner: "human",
+        }).result;
         if (!result.success) {
           console.error("Failed to insert motion instance:", result.error?.message);
           return null;
         }
 
-        const inserted = (projectCopy.motionInstances ?? []).find(
+        const inserted = (get().project.motionInstances ?? []).find(
           (candidate) => candidate.id === instance.id,
         );
-        set({ project: { ...projectCopy, modifiedAt: Date.now() } });
         return inserted ?? instance;
+        };
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(insert) : insert();
       },
 
       removeMotionInstance: async (instanceId: string) => {
-        const { project, actionExecutor } = get();
-        const projectCopy = structuredClone(project);
         const action: Action = {
           type: "motion/removeInstance",
           id: uuidv4(),
           timestamp: Date.now(),
           params: { instanceId },
         };
-        const result = await actionExecutor.execute(action, projectCopy);
-        if (result.success) {
-          set({ project: { ...projectCopy, modifiedAt: Date.now() } });
-        }
-        return result;
+        return get().executeAction(action);
       },
 
       getMotionComposition: (compositionId: string) =>
@@ -3324,11 +3450,130 @@ export const useProjectStore = create<ProjectState>()(
 
       // Text clip actions
 
+      createTextClipOnNewTrack: async (startTime, text, duration = 5, style) => {
+        const create = (): TextClip | null => {
+          const trackId = `track-${uuidv4()}`;
+          const textClip = new TitleEngine().createTextClip({
+            trackId,
+            startTime,
+            text,
+            duration,
+            style,
+          });
+          const result = get().executeActionBatch([
+            {
+              type: "track/add",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              params: { trackType: "text", position: 0, trackId },
+            },
+            {
+              type: "text/create",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              params: { clip: textClip },
+            },
+          ], {
+            groupLabel: "Add title",
+            historyOwner: get().actionHistory.getActiveOwner(),
+          });
+          if (!result.result.success) return null;
+          return get().getTextClip(textClip.id) ?? textClip;
+        };
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(create) : create();
+      },
+
+      createShapeClipOnNewTrack: async (
+        startTime,
+        shapeType,
+        duration = 5,
+        style,
+        rotate3d,
+      ) => {
+        const create = (): ShapeClip | null => {
+          if (!get().hasOpenProject) return null;
+          const trackId = `track-${uuidv4()}`;
+          const shape = new GraphicsEngine().createShape(
+            { shapeType, width: 200, height: 200, style },
+            trackId,
+            startTime,
+            duration,
+          );
+          const clip: ShapeClip = rotate3d
+            ? {
+                ...shape,
+                transform: { ...shape.transform, rotate3d },
+              }
+            : shape;
+          const result = get().executeActionBatch([
+            {
+              type: "track/add",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              params: { trackType: "graphics", position: 0, trackId },
+            },
+            {
+              type: "shape/create",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              params: { clip },
+            },
+          ], {
+            groupLabel: "Add shape",
+            historyOwner: get().actionHistory.getActiveOwner(),
+          });
+          if (!result.result.success) return null;
+          return get().getShapeClip(clip.id) ?? clip;
+        };
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(create) : create();
+      },
+
+      importSVGOnNewTrack: async (svgContent, startTime, duration = 5) => {
+        const create = (): SVGClip | null => {
+          if (!get().hasOpenProject) return null;
+          const trackId = `track-${uuidv4()}`;
+          let clip: SVGClip;
+          try {
+            clip = new GraphicsEngine().importSVG(
+              svgContent,
+              trackId,
+              startTime,
+              duration,
+            );
+          } catch {
+            return null;
+          }
+          const result = get().executeActionBatch([
+            {
+              type: "track/add",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              params: { trackType: "graphics", position: 0, trackId },
+            },
+            {
+              type: "svg/create",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              params: { clip },
+            },
+          ], {
+            groupLabel: "Import SVG",
+            historyOwner: get().actionHistory.getActiveOwner(),
+          });
+          if (!result.result.success) return null;
+          return get().getSVGClip(clip.id) ?? clip;
+        };
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(create) : create();
+      },
+
       /**
        * Create a new text clip with default styling
        * Create text clips using TitleEngine with default styling
        */
-      ...createTextGraphicsSlice(set, get, helpers),
+      ...createTextGraphicsSlice(set, get, helpers, overlayEngines),
 
       // Subtitle actions - subtitles are now created as text clips on a "Captions" track
 
@@ -3616,7 +3861,7 @@ export const useProjectStore = create<ProjectState>()(
         effectType: VideoEffectType,
         params?: Record<string, unknown>,
       ) => {
-        const { project, actionExecutor } = get();
+        const { project } = get();
         const effectId = `effect-${uuidv4()}`;
         if (findOverlayEffectOwner(project, clipId)) {
           updateOverlayEffectOwner(clipId, (effects) => [
@@ -3636,19 +3881,18 @@ export const useProjectStore = create<ProjectState>()(
           timestamp: Date.now(),
           params: { clipId, effectType, params, effectId },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) {
           console.error("Failed to add video effect:", result.error?.message);
           return null;
         }
 
-        set({ project: { ...project } });
         syncClipEffectsBridge(get().project, clipId);
         return get().getVideoEffect(clipId, effectId) ?? null;
       },
 
       duplicateVideoEffect: async (clipId: string, sourceEffectId: string) => {
-        const { project, actionExecutor, getVideoEffects } = get();
+        const { project, getVideoEffects } = get();
         const effects = getVideoEffects(clipId);
         const sourceIndex = effects.findIndex(
           (effect) => effect.id === sourceEffectId,
@@ -3684,10 +3928,9 @@ export const useProjectStore = create<ProjectState>()(
             enabled: source.enabled,
           },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) return null;
 
-        set({ project: { ...project } });
         syncClipEffectsBridge(get().project, clipId);
         return get().getVideoEffect(clipId, effectId) ?? null;
       },
@@ -3696,7 +3939,7 @@ export const useProjectStore = create<ProjectState>()(
         clipId: string,
         effects: VideoEffect[],
       ) => {
-        const { project, actionExecutor } = get();
+        const { project } = get();
         const nextEffects = structuredClone(effects);
         if (findOverlayEffectOwner(project, clipId)) {
           return Boolean(
@@ -3710,10 +3953,9 @@ export const useProjectStore = create<ProjectState>()(
           timestamp: Date.now(),
           params: { clipId, effects: nextEffects },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) return false;
 
-        set({ project: { ...project } });
         syncClipEffectsBridge(get().project, clipId);
         return true;
       },
@@ -3727,7 +3969,7 @@ export const useProjectStore = create<ProjectState>()(
         effectId: string,
         params: Record<string, unknown>,
       ) => {
-        const { project, actionExecutor } = get();
+        const { project } = get();
         if (findOverlayEffectOwner(project, clipId)) {
           const updated = updateOverlayEffectOwner(clipId, (effects) =>
             effects.map((effect) =>
@@ -3744,7 +3986,7 @@ export const useProjectStore = create<ProjectState>()(
           timestamp: Date.now(),
           params: { clipId, effectId, params },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) {
           console.error(
             "Failed to update video effect:",
@@ -3753,7 +3995,6 @@ export const useProjectStore = create<ProjectState>()(
           return null;
         }
 
-        set({ project: { ...project } });
         syncClipEffectsBridge(get().project, clipId);
         return get().getVideoEffect(clipId, effectId) ?? null;
       },
@@ -3763,7 +4004,7 @@ export const useProjectStore = create<ProjectState>()(
        * Restore clip to previous state when effect removed
        */
       removeVideoEffect: async (clipId: string, effectId: string) => {
-        const { project, actionExecutor } = get();
+        const { project } = get();
         if (findOverlayEffectOwner(project, clipId)) {
           return Boolean(
             updateOverlayEffectOwner(clipId, (effects) =>
@@ -3777,7 +4018,7 @@ export const useProjectStore = create<ProjectState>()(
           timestamp: Date.now(),
           params: { clipId, effectId },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) {
           console.error(
             "Failed to remove video effect:",
@@ -3786,7 +4027,6 @@ export const useProjectStore = create<ProjectState>()(
           return false;
         }
 
-        set({ project: { ...project } });
         syncClipEffectsBridge(get().project, clipId);
         return true;
       },
@@ -3865,7 +4105,7 @@ export const useProjectStore = create<ProjectState>()(
         effectId: string,
         enabled: boolean,
       ) => {
-        const { project, actionExecutor } = get();
+        const { project } = get();
         if (findOverlayEffectOwner(project, clipId)) {
           const updated = updateOverlayEffectOwner(clipId, (effects) =>
             effects.map((effect) =>
@@ -3880,7 +4120,7 @@ export const useProjectStore = create<ProjectState>()(
           timestamp: Date.now(),
           params: { clipId, effectId, enabled },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) {
           console.error(
             "Failed to toggle video effect:",
@@ -3889,7 +4129,6 @@ export const useProjectStore = create<ProjectState>()(
           return null;
         }
 
-        set({ project: { ...project } });
         syncClipEffectsBridge(get().project, clipId);
         return get().getVideoEffect(clipId, effectId) ?? null;
       },
@@ -3940,7 +4179,27 @@ export const useProjectStore = create<ProjectState>()(
         clipId: string,
         settings: Partial<ColorGradingSettings>,
       ): Promise<boolean> => {
-        const { project, actionExecutor } = get();
+        const update = (): boolean => {
+        const state = get();
+        const project = state.project;
+        if (!state.isForeground) {
+          const clip = project.timeline.tracks
+            .flatMap((track) => track.clips)
+            .find((candidate) => candidate.id === clipId);
+          if (!clip) return false;
+          return get().executeActionBatch([{
+            type: "clip/setColorGrading",
+            id: uuidv4(),
+            timestamp: Date.now(),
+            params: {
+              clipId,
+              colorGrading: { ...(clip.colorGrading ?? {}), ...settings },
+            },
+          }], {
+            groupLabel: "Update color grading",
+            historyOwner: "human",
+          }).result.success;
+        }
         const effectsBridge = getEffectsBridge();
         if (!effectsBridge.isInitialized()) {
           console.error("EffectsBridge not initialized");
@@ -4004,7 +4263,10 @@ export const useProjectStore = create<ProjectState>()(
           timestamp: Date.now(),
           params: { clipId, colorGrading: buildSerializedColorGrading(clipId) },
         };
-        const actionResult = await actionExecutor.execute(action, project);
+        const actionResult = get().executeActionBatch([action], {
+          groupLabel: "Update color grading",
+          historyOwner: "human",
+        }).result;
         if (!actionResult.success) {
           console.error(
             "Failed to persist color grading:",
@@ -4012,8 +4274,10 @@ export const useProjectStore = create<ProjectState>()(
           );
           return false;
         }
-        set({ project: { ...project, modifiedAt: Date.now() } });
         return true;
+        };
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(update) : update();
       },
 
       /**
@@ -4031,7 +4295,19 @@ export const useProjectStore = create<ProjectState>()(
        * Reset color grading to defaults for a clip
        */
       resetColorGrading: async (clipId: string): Promise<boolean> => {
-        const { project, actionExecutor } = get();
+        const reset = (): boolean => {
+        const { isForeground } = get();
+        if (!isForeground) {
+          return get().executeActionBatch([{
+            type: "clip/setColorGrading",
+            id: uuidv4(),
+            timestamp: Date.now(),
+            params: { clipId, colorGrading: undefined },
+          }], {
+            groupLabel: "Reset color grading",
+            historyOwner: "human",
+          }).result.success;
+        }
         const effectsBridge = getEffectsBridge();
         if (!effectsBridge.isInitialized()) {
           console.error("EffectsBridge not initialized");
@@ -4050,7 +4326,10 @@ export const useProjectStore = create<ProjectState>()(
           timestamp: Date.now(),
           params: { clipId, colorGrading: undefined },
         };
-        const actionResult = await actionExecutor.execute(action, project);
+        const actionResult = get().executeActionBatch([action], {
+          groupLabel: "Reset color grading",
+          historyOwner: "human",
+        }).result;
         if (!actionResult.success) {
           console.error(
             "Failed to persist color grading reset:",
@@ -4058,8 +4337,10 @@ export const useProjectStore = create<ProjectState>()(
           );
           return false;
         }
-        set({ project: { ...project, modifiedAt: Date.now() } });
         return true;
+        };
+        const submit = get().submitWorkspaceMutation;
+        return submit ? submit(reset) : reset();
       },
 
       // Audio effects actions
@@ -4069,19 +4350,17 @@ export const useProjectStore = create<ProjectState>()(
        * Apply audio effects
        */
       addAudioEffect: async (clipId: string, effect: Effect) => {
-        const { project, actionExecutor } = get();
         const action: Action = {
           type: "audio/addEffect",
           id: uuidv4(),
           timestamp: Date.now(),
           params: { clipId, effect },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) {
           console.error("Failed to add audio effect:", result.error?.message);
           return false;
         }
-        set({ project: { ...project, modifiedAt: Date.now() } });
         return true;
       },
 
@@ -4094,14 +4373,13 @@ export const useProjectStore = create<ProjectState>()(
         effectId: string,
         params: Record<string, unknown>,
       ) => {
-        const { project, actionExecutor } = get();
         const action: Action = {
           type: "audio/updateEffect",
           id: uuidv4(),
           timestamp: Date.now(),
           params: { clipId, effectId, params },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) {
           console.error(
             "Failed to update audio effect:",
@@ -4109,7 +4387,6 @@ export const useProjectStore = create<ProjectState>()(
           );
           return false;
         }
-        set({ project: { ...project, modifiedAt: Date.now() } });
         return true;
       },
 
@@ -4117,14 +4394,13 @@ export const useProjectStore = create<ProjectState>()(
        * Remove an audio effect from a clip
        */
       removeAudioEffect: async (clipId: string, effectId: string) => {
-        const { project, actionExecutor } = get();
         const action: Action = {
           type: "audio/removeEffect",
           id: uuidv4(),
           timestamp: Date.now(),
           params: { clipId, effectId },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) {
           console.error(
             "Failed to remove audio effect:",
@@ -4132,7 +4408,6 @@ export const useProjectStore = create<ProjectState>()(
           );
           return false;
         }
-        set({ project: { ...project, modifiedAt: Date.now() } });
         return true;
       },
 
@@ -4144,14 +4419,13 @@ export const useProjectStore = create<ProjectState>()(
         effectId: string,
         enabled: boolean,
       ) => {
-        const { project, actionExecutor } = get();
         const action: Action = {
           type: "audio/toggleEffect",
           id: uuidv4(),
           timestamp: Date.now(),
           params: { clipId, effectId, enabled },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) {
           console.error(
             "Failed to toggle audio effect:",
@@ -4159,7 +4433,6 @@ export const useProjectStore = create<ProjectState>()(
           );
           return false;
         }
-        set({ project: { ...project, modifiedAt: Date.now() } });
         return true;
       },
 
@@ -4254,7 +4527,6 @@ export const useProjectStore = create<ProjectState>()(
         settings: AudioDuckingSettings,
         points: AutomationPoint[],
       ) => {
-        const { project, actionExecutor } = get();
         const action: Action = {
           type: "audio/setDucking",
           id: uuidv4(),
@@ -4265,29 +4537,26 @@ export const useProjectStore = create<ProjectState>()(
             points: points.map((point) => ({ ...point })),
           },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) {
           console.error("Failed to set audio ducking:", result.error?.message);
           return false;
         }
-        set({ project: { ...project, modifiedAt: Date.now() } });
         return true;
       },
 
       clearClipAudioDucking: async (clipId: string) => {
-        const { project, actionExecutor } = get();
         const action: Action = {
           type: "audio/clearDucking",
           id: uuidv4(),
           timestamp: Date.now(),
           params: { clipId },
         };
-        const result = await actionExecutor.execute(action, project);
+        const result = await get().executeAction(action);
         if (!result.success) {
           console.error("Failed to clear audio ducking:", result.error?.message);
           return false;
         }
-        set({ project: { ...project, modifiedAt: Date.now() } });
         return true;
       },
 
@@ -4342,13 +4611,186 @@ export const useProjectStore = create<ProjectState>()(
       },
     };
   }),
+  );
+  const initialProject = store.getState().project;
+  let projectChangeSnapshot = snapshotProjectForChanges(initialProject);
+  store.subscribe((state, previousState) => {
+    if (state.project === previousState.project) {
+      return;
+    }
+    const previousSnapshot = projectChangeSnapshot;
+    const nextWorkspaceRevision = previousState.workspaceRevision + 1;
+    if (state.project.id === previousState.project.id) {
+      journal.record(
+        projectChangeSnapshot,
+        state.project,
+        previousState.workspaceRevision,
+        nextWorkspaceRevision,
+      );
+    } else {
+      journal.reset();
+    }
+    projectChangeSnapshot = snapshotProjectForChanges(state.project);
+    store.setState({
+      projectRevision: nextWorkspaceRevision,
+      workspaceRevision: nextWorkspaceRevision,
+    });
+    options.onProjectChanged?.(state.project, nextWorkspaceRevision);
+    const hasMaterialLinks = (project: Project): boolean =>
+      project.mediaLibrary.items.some(
+        (item) => item.materialSource !== undefined || item.versionSource !== undefined,
+      );
+    if (!options.isStaging && (hasMaterialLinks(state.project) || hasMaterialLinks(previousSnapshot))) {
+      void getMaterialLibraryService()
+        .reconcileProjectUsages(state.project)
+        .catch((error) =>
+          console.warn("Failed to reconcile material usage provenance", error),
+        );
+    }
+  });
+  projectStoreRuntimes.set(store, { journal, syncForegroundRuntime });
+  return store;
+}
+
+const primaryProjectStore = createProjectStore({ isForeground: true });
+let activeProjectStore = primaryProjectStore;
+const activeStoreListeners = new Set<() => void>();
+
+function subscribeToActiveStore(listener: () => void): () => void {
+  activeStoreListeners.add(listener);
+  return () => activeStoreListeners.delete(listener);
+}
+
+function getActiveStoreSnapshot(): typeof primaryProjectStore {
+  return activeProjectStore;
+}
+
+function notifyActiveStoreChanged(): void {
+  // React's useSyncExternalStore handles sit in this set alongside imperative
+  // subscribers. One misbehaving listener must not starve the rest, or a
+  // throwing subscriber during a preview-store swap freezes the whole UI.
+  for (const listener of [...activeStoreListeners]) {
+    try {
+      listener();
+    } catch (error) {
+      console.warn("[project-store] Active store listener failed", error);
+    }
+  }
+}
+
+function getActiveProjectStore() {
+  return activeProjectStore;
+}
+
+export function getActiveProjectRuntimeStore(): typeof primaryProjectStore {
+  return activeProjectStore;
+}
+
+/** Make a preserved workspace runtime the store observed by existing GUI code. */
+export function activateProjectStore(
+  store: typeof primaryProjectStore,
+): void {
+  if (activeProjectStore === store) {
+    try {
+      projectStoreRuntimes.get(store)?.syncForegroundRuntime();
+    } catch (error) {
+      console.warn("[project-store] Foreground runtime sync failed", error);
+    }
+    return;
+  }
+  const previous = activeProjectStore;
+  // Install the new store reference first: every step below notifies
+  // arbitrary subscribers, and one throwing subscriber must never leave the
+  // GUI observing a half-swapped (or stale) active store.
+  activeProjectStore = store;
+  try {
+    previous.setState({ isForeground: false });
+  } catch (error) {
+    console.warn("[project-store] Deactivating previous store failed", error);
+  }
+  try {
+    activeProjectStore.setState({ isForeground: true });
+  } catch (error) {
+    console.warn("[project-store] Activating store failed", error);
+  }
+  try {
+    projectStoreRuntimes.get(store)?.syncForegroundRuntime();
+  } catch (error) {
+    console.warn("[project-store] Foreground runtime sync failed", error);
+  }
+  notifyActiveStoreChanged();
+}
+
+type ProjectStoreHook = typeof primaryProjectStore;
+export const useProjectStore: ProjectStoreHook = Object.assign(
+  (<T = ProjectState>(selector?: (state: ProjectState) => T): T => {
+    const store = useSyncExternalStore(
+      subscribeToActiveStore,
+      getActiveStoreSnapshot,
+      getActiveStoreSnapshot,
+    );
+    return selector ? useStore(store, selector) : useStore(store) as T;
+  }) as ProjectStoreHook,
+  {
+    getState: () => getActiveProjectStore().getState(),
+    getInitialState: () => getActiveProjectStore().getInitialState(),
+    setState: (...args: Parameters<StoreApi<ProjectState>["setState"]>) =>
+      getActiveProjectStore().setState(...args),
+    subscribe: (...args: any[]) => {
+      const selector = args.length > 1 && typeof args[1] === "function"
+        ? args[0] as (state: ProjectState) => unknown
+        : null;
+      const callback = (selector ? args[1] : args[0]) as (...values: any[]) => void;
+      const options = selector ? args[2] : undefined;
+      let store = getActiveProjectStore();
+      let previousState = store.getState();
+      let previousSlice = selector?.(previousState);
+      const equality = options?.equalityFn ?? Object.is;
+      const wrappedListener = (...values: any[]) => {
+        if (selector) {
+          previousSlice = values[0];
+        } else {
+          previousState = values[0] as ProjectState;
+        }
+        callback(...values);
+      };
+      const attach = (): (() => void) =>
+        selector
+          ? (store.subscribe as any)(selector, wrappedListener, options)
+          : store.subscribe(wrappedListener as any);
+      let unsubscribeStore = attach();
+      const onActiveStoreChange = (): void => {
+        unsubscribeStore();
+        const previousStoreState = previousState;
+        store = getActiveProjectStore();
+        const nextState = store.getState();
+        try {
+          if (selector) {
+            const nextSlice = selector(nextState);
+            if (!equality(previousSlice, nextSlice)) callback(nextSlice, previousSlice);
+            previousSlice = nextSlice;
+          } else {
+            callback(nextState, previousStoreState);
+          }
+        } catch (error) {
+          console.warn("[project-store] Subscriber failed during active-store swap", error);
+        }
+        previousState = nextState;
+        unsubscribeStore = attach();
+      };
+      activeStoreListeners.add(onActiveStoreChange);
+      return () => {
+        unsubscribeStore();
+        activeStoreListeners.delete(onActiveStoreChange);
+      };
+    },
+  },
 );
 
 // the single choke point for the shared project revision.
 // Every committed mutation path (manual edits, agent edits, engine-aware
 // overlay edits, undo, redo, project load) replaces the `project` reference,
 // so one reference comparison here covers them all. In-memory only.
-const projectChangeJournal = new ProjectChangeJournal();
 // Core ActionExecutor mutates the current Project before the store publishes
 // a replacement reference, so Zustand's prevState may share already-mutated
 // nested arrays. Keep one detached observer snapshot to diff the actual
@@ -4359,56 +4801,41 @@ function snapshotProjectForChanges(project: Project): Project {
   return JSON.parse(JSON.stringify(project)) as Project;
 }
 
-let projectChangeSnapshot = snapshotProjectForChanges(
-  useProjectStore.getState().project,
-);
-
-useProjectStore.subscribe((state, prevState) => {
-  if (state.project !== prevState.project) {
-    const previousSnapshot = projectChangeSnapshot;
-    const nextRevision = prevState.projectRevision + 1;
-    if (state.project.id !== prevState.project.id) {
-      // A project switch is a new fact world, not a giant cross-project diff.
-      // Any caller holding the old revision receives requiresFullRefresh.
-      projectChangeJournal.reset();
-    } else {
-      projectChangeJournal.record(
-        projectChangeSnapshot,
-        state.project,
-        prevState.projectRevision,
-        nextRevision,
-      );
-    }
-    projectChangeSnapshot = snapshotProjectForChanges(state.project);
-    useProjectStore.setState({
-      projectRevision: nextRevision,
-    });
-    // Material usage is derived provenance in a separate user-level DB. Only
-    // reconcile projects that currently (or previously, for undo/removal)
-    // carry a stable material/version link. This write is retryable and is
-    // intentionally not described as part of the project transaction.
-    const hasMaterialLinks = (project: Project): boolean =>
-      project.mediaLibrary.items.some(
-        (item) => item.materialSource !== undefined || item.versionSource !== undefined,
-      );
-    if (hasMaterialLinks(state.project) || hasMaterialLinks(previousSnapshot)) {
-      void getMaterialLibraryService()
-        .reconcileProjectUsages(state.project)
-        .catch((error) =>
-          console.warn("Failed to reconcile material usage provenance", error),
-        );
-    }
-  }
-});
-
-/** Current shared project revision. */
+/** Current foreground workspace revision. */
 export function getProjectRevision(): number {
   return useProjectStore.getState().projectRevision;
+}
+
+export function getProjectRevisionForStore(
+  store: StoreApi<ProjectState>,
+): number {
+  return store.getState().workspaceRevision;
+}
+
+export function resetProjectChangeJournalForStore(
+  store: StoreApi<ProjectState>,
+): void {
+  projectStoreRuntimes.get(store)?.journal.reset();
 }
 
 /** Renderer-owned bounded delta journal; covers both GUI and Agent commits. */
 export function getProjectChanges(
   params: ProjectChangesParams,
 ): ProjectChangesResult {
-  return projectChangeJournal.query(params, getProjectRevision());
+  return getProjectChangesForStore(getActiveProjectStore(), params);
+}
+
+export function getProjectChangesForStore(
+  store: StoreApi<ProjectState>,
+  params: ProjectChangesParams,
+): ProjectChangesResult {
+  const revision = store.getState().workspaceRevision;
+  const runtime = projectStoreRuntimes.get(store);
+  return runtime?.journal.query(params, revision) ?? {
+    fromRevision: params.sinceRevision,
+    toRevision: revision,
+    changes: [],
+    nextCursor: null,
+    requiresFullRefresh: true,
+  };
 }

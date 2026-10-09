@@ -1,4 +1,5 @@
 import { FACADE_VERBS } from "./types";
+import { WORKSPACE_VERBS } from "./workspace-library";
 /**
  * Live facade session tests: createLiveFacade over an
  * in-memory FakeLiveStore that owns a real Project, keeps revision and
@@ -25,7 +26,9 @@ import {
   LiveWriterLease,
   type LiveAgentFacade,
 } from "./index";
+import type { LiveTaskInputReferences } from "./live-session";
 import { LiveStoreConflictError } from "./live-store";
+import { stableStringify } from "./idempotency";
 import type {
   LiveApplyActionsOptions,
   LiveEditorContext,
@@ -43,6 +46,7 @@ import type {
   RenderProvider,
 } from "./providers";
 import { READ_ONLY_VERBS } from "./types";
+import type { MediaImportResult } from "./types";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 
 /* --------------------------- FakeLiveStore --------------------------- */
@@ -77,6 +81,10 @@ class FakeLiveStore implements LiveProjectStore {
     readonly request: LiveMediaImportRequest;
     readonly opts: LiveApplyActionsOptions;
   }> = [];
+  private readonly mediaImportReceipts = new Map<
+    string,
+    { payloadHash: string; result: MediaImportResult }
+  >();
   editorControlError: Error | null = null;
   saveCount = 0;
   /** Test hook: fires inside applyActions BEFORE the CAS check (a human
@@ -91,6 +99,8 @@ class FakeLiveStore implements LiveProjectStore {
     return {
       projectId: this.project.id,
       projectName: this.project.name,
+      workspaceId: "workspace-live-1",
+      workspaceInstanceId: "runtime-live-1",
       windowId: "win-1",
     };
   }
@@ -247,7 +257,42 @@ class FakeLiveStore implements LiveProjectStore {
     this.project = draft;
     this.revision += 1;
     this.mediaImports.push({ request, opts });
+    if (opts.idempotencyKey !== undefined) {
+      const result: MediaImportResult = {
+        revision: this.revision,
+        mediaId,
+        name: request.name,
+        type: request.type,
+        metadata: {
+          durationSec: request.metadata.durationSec,
+          width: request.metadata.width,
+          height: request.metadata.height,
+          frameRate: request.metadata.frameRate,
+          codec: request.metadata.codec,
+          fileSize: request.metadata.fileSize,
+        },
+        replayed: false,
+      };
+      this.mediaImportReceipts.set(opts.idempotencyKey, {
+        payloadHash: stableStringify(opts.idempotencyPayload),
+        result,
+      });
+    }
     return { revision: this.revision, mediaId };
+  }
+
+  async getMediaImportReplay(
+    idempotencyKey: string,
+    idempotencyPayload: unknown,
+  ): Promise<MediaImportResult | null> {
+    const receipt = this.mediaImportReceipts.get(idempotencyKey);
+    if (!receipt) return null;
+    if (stableStringify(idempotencyPayload) !== receipt.payloadHash) {
+      throw new LiveStoreConflictError(
+        `idempotency key "${idempotencyKey}" was already committed with a different request`,
+      );
+    }
+    return { ...receipt.result, replayed: true };
   }
 
   async requestSave() {
@@ -447,7 +492,10 @@ function liveFacade(
     renderProvider: RenderProvider;
     exportProvider: ExportProvider;
     artifactVerifier: ArtifactVerifier;
+    workspaceLibrary: import("./workspace-library").WorkspaceLibraryBridge;
     store: LiveProjectStore;
+    prepareRenderProject: (project: Project) => Promise<Project>;
+    taskInputReferences: LiveTaskInputReferences;
   }>,
 ): LiveAgentFacade {
   return createLiveFacade({
@@ -461,6 +509,9 @@ function liveFacade(
     ...(opts?.renderProvider ? { renderProvider: opts.renderProvider } : {}),
     ...(opts?.exportProvider ? { exportProvider: opts.exportProvider } : {}),
     ...(opts?.artifactVerifier ? { artifactVerifier: opts.artifactVerifier } : {}),
+    ...(opts?.workspaceLibrary ? { workspaceLibrary: opts.workspaceLibrary } : {}),
+    ...(opts?.prepareRenderProject ? { prepareRenderProject: opts.prepareRenderProject } : {}),
+    ...(opts?.taskInputReferences ? { taskInputReferences: opts.taskInputReferences } : {}),
   });
 }
 
@@ -513,6 +564,8 @@ describe("editor.get_context and visual.inspect read verbs", () => {
       identity: {
         projectId: store.project.id,
         projectName: "Live Demo",
+        workspaceId: "workspace-live-1",
+        workspaceInstanceId: "runtime-live-1",
         windowId: "win-1",
       },
     });
@@ -930,6 +983,100 @@ describe("live edit.apply", () => {
     });
     expect(unsupported.ok).toBe(false);
     if (!unsupported.ok) expect(unsupported.error.code).toBe("UNSUPPORTED");
+  });
+
+  it("writes full speed configuration atomically and maps live timeline points without changing context", async () => {
+    store.project.mediaLibrary.items.push({
+      id: "m-speed",
+      name: "speed.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      metadata: {
+        duration: 6,
+        width: 320,
+        height: 180,
+        frameRate: 10,
+        codec: "h264",
+        sampleRate: 0,
+        channels: 0,
+        fileSize: 1024,
+      },
+      thumbnailUrl: null,
+      waveformData: null,
+    });
+    const facade = liveFacade();
+    const seeded = await facade["edit.apply"]({
+      ops: [
+        { op: "track.add", trackType: "video", trackId: "v-speed" },
+        { op: "clip.add", trackId: "v-speed", mediaId: "m-speed", startTime: 4, inPoint: 1, outPoint: 5 },
+      ],
+    });
+    expect(seeded.ok).toBe(true);
+    if (!seeded.ok) return;
+    const clipId = seeded.value.applied[1]!.createdIds[0]!;
+
+    const speedConfig = {
+      op: "clip.setSpeedConfig" as const,
+      clipId,
+      speed: 2,
+      reversed: false,
+      pitchCorrection: true,
+      keyframes: [],
+      freezeFrames: [{ sourceTime: 1.5, startTime: 0.5, duration: 0.5 }],
+    };
+    const stale = await facade["edit.apply"]({
+      ops: [speedConfig],
+      expectedRevision: store.revision - 1,
+    });
+    expect(stale.ok).toBe(false);
+    if (!stale.ok) expect(stale.error.code).toBe("CONFLICT");
+
+    const params = { ops: [speedConfig], idempotencyKey: "live-speed-config" };
+    const written = await facade["edit.apply"](params);
+    expect(written.ok).toBe(true);
+    if (!written.ok) return;
+    expect(store.batches.at(-1)?.actions.map((action) => action.type)).toEqual([
+      "speed/setRampData",
+    ]);
+    expect(store.project.timeline.tracks[0]!.clips[0]!.duration).toBeCloseTo(2.5, 8);
+
+    const replay = await facade["edit.apply"](params);
+    expect(replay.ok).toBe(true);
+    if (!replay.ok) return;
+    expect(replay.value.replayed).toBe(true);
+    expect(replay.value.revision).toBe(written.value.revision);
+
+    const contextBefore = await store.getContext();
+    const mapped = await facade["timeline.mapSourceTimes"]({
+      clipId,
+      timelineTimes: [4.25, 4.5, 4.75, 5],
+      expectedRevision: store.revision,
+    });
+    expect(mapped.ok).toBe(true);
+    if (!mapped.ok) return;
+    expect(mapped.value.mappings[1]).toMatchObject({
+      mediaId: "m-speed",
+      clipLocalTime: 0.5,
+      sourceTimeFromInPoint: 1.5,
+      sourceTime: 2.5,
+      frozen: true,
+      freezeFrameId: expect.any(String),
+    });
+    expect(mapped.value.mappings[2]?.frozen).toBe(true);
+    expect(mapped.value.mappings[3]?.frozen).toBe(false);
+    expect(mapped.value.revision).toBe(store.revision);
+    expect(await store.getContext()).toEqual(contextBefore);
+
+    const batchCount = store.batches.length;
+    const revision = store.revision;
+    const atomicFailure = await facade["edit.apply"]({
+      ops: [speedConfig, { op: "clip.trim", clipId, outPoint: 4.5 }],
+    });
+    expect(atomicFailure.ok).toBe(false);
+    if (!atomicFailure.ok) expect(atomicFailure.error.code).toBe("UNSUPPORTED");
+    expect(store.batches).toHaveLength(batchCount);
+    expect(store.revision).toBe(revision);
   });
 
   it("reports multiple split ids in op order rather than project traversal order", async () => {
@@ -1457,7 +1604,6 @@ describe("work mode + access gate + writer lease", () => {
     if (!res.ok) return;
     expect(res.value.runtime).toBe("live");
     expect(res.value.unavailableVerbs).toEqual([
-      "project.create",
       "project.open",
       "media.import",
       "material.list",
@@ -1468,6 +1614,9 @@ describe("work mode + access gate + writer lease", () => {
       "material.remove",
       "material.attach",
       "material.undo",
+      "project.create",
+      "project.save",
+      ...WORKSPACE_VERBS,
     ]);
     expect(res.value.mediaImport.available).toBe(false);
     expect(res.value.mediaImport.reason).toContain("media roots");
@@ -1478,13 +1627,13 @@ describe("work mode + access gate + writer lease", () => {
 /* --------------------- live-unavailable lifecycle -------------------- */
 
 describe("live-unavailable verbs (Decision 11)", () => {
-  it("project.create / project.open / media.import fail UNSUPPORTED in live mode", async () => {
+  it("project.create fails without a workspace manager; project.open / media.import are unavailable", async () => {
     const facade = liveFacade();
     const create = await facade["project.create"]({ name: "Nope" });
     expect(create.ok).toBe(false);
     if (!create.ok) {
       expect(create.error.code).toBe("UNSUPPORTED");
-      expect(create.error.message).toContain("live mode");
+      expect(create.error.message).toContain("workspace manager bridge");
     }
     const open = await facade["project.open"]({ path: "/tmp/x.openreel.json" });
     expect(open.ok).toBe(false);
@@ -1494,15 +1643,27 @@ describe("live-unavailable verbs (Decision 11)", () => {
     if (!imp.ok) expect(imp.error.code).toBe("UNSUPPORTED");
   });
 
-  it("project.save routes to the GUI save path and reports the revision", async () => {
-    const facade = liveFacade();
+  it("project.save creates a node through the explicit workspace bridge", async () => {
+    const workspaceLibrary = vi.fn(async () => ({
+      ok: true as const,
+      result: { node: { id: "node-1" }, revision: 1, replayed: false },
+    }));
+    const facade = liveFacade({ workspaceLibrary });
     await facade["edit.apply"]({ ops: [...TEXT_BATCH] });
-    const res = await facade["project.save"]();
+    const res = await facade["project.save"]({
+      projectId: store.project.id,
+      workspaceId: "workspace-1",
+      expectedRevision: 1,
+      idempotencyKey: "save-node-1",
+    });
     expect(res.ok).toBe(true);
     if (!res.ok) return;
-    expect(res.value).toEqual({ revision: 1 });
-    expect(store.saveCount).toBe(1);
-    // Saving is a snapshot, not a mutation: no revision bump.
+    expect(res.value).toEqual({ revision: 1, nodeId: "node-1", replayed: false });
+    expect(workspaceLibrary).toHaveBeenCalledWith(expect.objectContaining({
+      verb: "node.save",
+      params: expect.objectContaining({ projectId: store.project.id, workspaceId: "workspace-1", expectedRevision: 1 }),
+    }));
+    expect(store.saveCount).toBe(0);
     expect(store.revision).toBe(1);
   });
 
@@ -1551,7 +1712,6 @@ describe("live media.import through the canonical store bridge", () => {
     const caps = await facade["capabilities.get"]();
     expect(caps.ok && caps.value.mediaImport.available).toBe(true);
     expect(caps.ok && caps.value.unavailableVerbs).toEqual([
-      "project.create",
       "project.open",
       "material.list",
       "material.get",
@@ -1561,6 +1721,9 @@ describe("live media.import through the canonical store bridge", () => {
       "material.remove",
       "material.attach",
       "material.undo",
+      "project.create",
+      "project.save",
+      ...WORKSPACE_VERBS,
     ]);
 
     const res = await facade["media.import"]({
@@ -1587,6 +1750,8 @@ describe("live media.import through the canonical store bridge", () => {
     expect(store.mediaImports[0]?.opts).toEqual({
       groupLabel: "agent: media.import",
       expectedRevision: 0,
+      idempotencyKey: "import-1",
+      idempotencyPayload: { path: inputPath, name: "Opening shot" },
     });
     expect(store.mediaImports[0]?.request.path).toMatch(/[\\/]tiny-6s\.mp4$/);
     expect(store.project.mediaLibrary.items[0]).toMatchObject({
@@ -1599,7 +1764,8 @@ describe("live media.import through the canonical store bridge", () => {
     // second canonical media item; this remains true after the source goes
     // away, matching the headless idempotency contract.
     await rm(inputPath, { force: true });
-    const replay = await facade["media.import"]({
+    const restartedFacade = liveFacade({ mediaRoots: [mediaRoot] });
+    const replay = await restartedFacade["media.import"]({
       path: inputPath,
       name: "Opening shot",
       expectedRevision: 999,
@@ -1612,6 +1778,15 @@ describe("live media.import through the canonical store bridge", () => {
       expect(replay.value.revision).toBe(1);
     }
     expect(store.mediaImports).toHaveLength(1);
+
+    const conflictingReplay = await liveFacade({ mediaRoots: [mediaRoot] })["media.import"]({
+      path: `${inputPath}.different`,
+      name: "Opening shot",
+      expectedRevision: 999,
+      idempotencyKey: "import-1",
+    });
+    expect(conflictingReplay.ok).toBe(false);
+    if (!conflictingReplay.ok) expect(conflictingReplay.error.code).toBe("CONFLICT");
   });
 
   it("enforces absolute root containment and revision precedence", async () => {
@@ -1738,6 +1913,37 @@ describe("live preview/export on a store snapshot (Decision 10)", () => {
     expect(res.value.artifact.sha256).toMatch(/^[0-9a-f]{64}$/);
     // The store is read, never mutated, by a preview.
     expect(store.batches).toHaveLength(0);
+  });
+
+  it("passes an immutable font-prepared snapshot to live preview", async () => {
+    await seedTextProject();
+    const font = {
+      family: "Fixture Font",
+      style: "normal",
+      weight: "400",
+      dataUrl: "data:font/woff2;base64,AA==",
+    };
+    let renderedProject: Project | undefined;
+    const baseProvider = stubRenderProvider();
+    const provider: RenderProvider = {
+      ...baseProvider,
+      renderFramePng: async (request) => {
+        renderedProject = request.project;
+        return baseProvider.renderFramePng(request);
+      },
+    };
+    const prepareRenderProject = vi.fn(async (project: Project) => ({
+      ...structuredClone(project),
+      renderFonts: [font],
+    }));
+    const facade = liveFacade({ renderProvider: provider, prepareRenderProject });
+
+    const result = await facade["preview.render_frame"]({ timeSec: 1 });
+
+    expect(result.ok).toBe(true);
+    expect(prepareRenderProject).toHaveBeenCalledOnce();
+    expect(renderedProject?.renderFonts).toEqual([font]);
+    expect(store.project.renderFonts).toBeUndefined();
   });
 
   it("preview replay mirrors headless: current top-level revision, truthful artifact.sourceRevision", async () => {
@@ -2113,6 +2319,32 @@ describe("live preview/export on a store snapshot (Decision 10)", () => {
     const after = await facade["job.status"]({ jobId: started.value.jobId });
     expect(after.ok && after.value.state).toBe("cancelled");
     expect(lease.holder()).toBeNull();
+  });
+
+  it("uses the retained prepared project for the live export provider", async () => {
+    await seedTextProject();
+    const font = {
+      family: "Fixture Font",
+      style: "normal",
+      weight: "400",
+      dataUrl: "data:font/woff2;base64,AA==",
+    };
+    const retainedProject = { ...structuredClone(store.project), renderFonts: [font] };
+    const refs: LiveTaskInputReferences = {
+      retain: async () => retainedProject,
+      release: async () => undefined,
+    };
+    const stub = stubExportProvider();
+    const facade = liveFacade({ exportProvider: stub.provider, taskInputReferences: refs });
+
+    const started = await facade["export.start"]({});
+
+    expect(started.ok).toBe(true);
+    if (!started.ok) return;
+    await stub.awaitStart(started.value.jobId);
+    expect(stub.requests[0]?.project.renderFonts).toEqual([font]);
+    expect(store.project.renderFonts).toBeUndefined();
+    await facade["job.cancel"]({ jobId: started.value.jobId });
   });
 
   it("disposal prevents an in-flight export start from launching", async () => {

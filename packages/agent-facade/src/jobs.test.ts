@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { JobRegistry, jobStatusView } from "./jobs";
 import type { ArtifactRef } from "./providers";
+import type { JobStatusView } from "./types";
 
 const ARTIFACT: ArtifactRef = {
   kind: "video",
@@ -129,5 +130,39 @@ describe("JobRegistry", () => {
     const view = jobStatusView(failed!);
     expect(view.deliveredTo).toBeNull();
     expect(view.deliveryError).toBe("EEXIST: file already exists");
+  });
+
+  it("publishes delivery outcome in the same persisted terminal status", () => {
+    const reg = new JobRegistry();
+    const persisted: JobStatusView[] = [];
+    reg.create("delivered", 2);
+    reg.observe("delivered", (status) => persisted.push(status));
+    reg.markRunning("delivered");
+    reg.markDone("delivered", ARTIFACT, "chromium-webcodecs", false, {
+      deliveredTo: "/workspace/jobs/demo/output/final.mp4",
+    });
+
+    expect(persisted.filter((status) => status.state === "done")).toHaveLength(1);
+    expect(persisted.at(-1)).toMatchObject({
+      state: "done",
+      artifact: ARTIFACT,
+      deliveredTo: "/workspace/jobs/demo/output/final.mp4",
+      deliveryError: null,
+    });
+
+    const failed = new JobRegistry();
+    const failureStatuses: JobStatusView[] = [];
+    failed.create("delivery-failed", 2);
+    failed.observe("delivery-failed", (status) => failureStatuses.push(status));
+    failed.markRunning("delivery-failed");
+    failed.markDone("delivery-failed", ARTIFACT, "chromium-webcodecs", false, {
+      deliveryError: "EEXIST: file already exists",
+    });
+    expect(failureStatuses.at(-1)).toMatchObject({
+      state: "done",
+      artifact: ARTIFACT,
+      deliveredTo: null,
+      deliveryError: "EEXIST: file already exists",
+    });
   });
 });

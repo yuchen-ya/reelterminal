@@ -2,7 +2,8 @@ import { v4 as uuidv4 } from "uuid";
 import type { StoreApi } from "zustand";
 import type { ProjectState } from "../project-store";
 import { useEngineStore } from "../engine-store";
-import { splitCaptionIntoSingleLineCues } from "@reelterminal/core";
+import { splitCaptionIntoSingleLineCues, TitleEngine } from "@reelterminal/core";
+import type { Action } from "@reelterminal/core";
 
 type Get = StoreApi<ProjectState>["getState"];
 type Set = StoreApi<ProjectState>["setState"];
@@ -19,68 +20,76 @@ export type SubtitleSlice = Pick<
   | "getSubtitleStylePresets"
 >;
 
-export function createSubtitleSlice(set: Set, get: Get): SubtitleSlice {
+export function createSubtitleSlice(_set: Set, get: Get): SubtitleSlice {
   return {
     addSubtitle: async (subtitle, metadata) => {
-      const { project, addTrack, createTextClip } = get();
-
-      let captionsTrack = project.timeline.tracks.find(
-        (t) => t.type === "text" && t.name === "Captions",
-      );
-
-      if (!captionsTrack) {
-        const result = await addTrack("text");
-        if (!result?.success) return;
-
-        const updatedProject = get().project;
-        const newTracks = updatedProject.timeline.tracks.filter(
-          (t) =>
-            t.type === "text" &&
-            !project.timeline.tracks.some((old) => old.id === t.id),
+      const add = (): { success: boolean; trackId?: string } => {
+        const state = get();
+        if (!state.hasOpenProject) return { success: false };
+        const project = state.project;
+        const captionsTrack = project.timeline.tracks.find(
+          (track) => track.type === "text" && track.name === "Captions",
         );
-        captionsTrack = newTracks[0];
+        const trackId = captionsTrack?.id ?? `track-${uuidv4()}`;
+        const actions: Action[] = [];
 
-        if (captionsTrack) {
-          set((state) => ({
-            project: {
-              ...state.project,
-              timeline: {
-                ...state.project.timeline,
-                tracks: state.project.timeline.tracks.map((t) =>
-                  t.id === captionsTrack!.id ? { ...t, name: "Captions" } : t,
-                ),
-              },
+        if (!captionsTrack) {
+          actions.push(
+            {
+              type: "track/add",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              params: { trackType: "text", position: 0, trackId },
             },
-          }));
-          captionsTrack = { ...captionsTrack, name: "Captions" };
+            {
+              type: "track/rename",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              params: { trackId, name: "Captions" },
+            },
+          );
         }
-      }
 
-      if (!captionsTrack) return;
+        const style = subtitle.style;
+        const clip = new TitleEngine().createTextClip({
+          trackId,
+          startTime: subtitle.startTime,
+          duration: subtitle.endTime - subtitle.startTime,
+          text: subtitle.text,
+          ...(style
+            ? {
+                style: {
+                  fontFamily: style.fontFamily,
+                  fontSize: style.fontSize,
+                  color: style.color,
+                  backgroundColor: style.backgroundColor || undefined,
+                },
+              }
+            : {}),
+          metadata,
+        });
+        actions.push({
+          type: "text/create",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { clip },
+        });
 
-      const duration = subtitle.endTime - subtitle.startTime;
-      const style = subtitle.style;
+        const result = state.executeActionBatch(actions, {
+          groupLabel: "Add subtitle",
+          historyOwner: state.actionHistory.getActiveOwner(),
+        });
+        return { success: result.result.success, trackId };
+      };
 
-      createTextClip(
-        captionsTrack.id,
-        subtitle.startTime,
-        subtitle.text,
-        duration,
-        style
-          ? {
-              fontFamily: style.fontFamily,
-              fontSize: style.fontSize,
-              color: style.color,
-              backgroundColor: style.backgroundColor || undefined,
-            }
-          : undefined,
-        metadata,
-      );
+      const submit = get().submitWorkspaceMutation;
+      const outcome = submit ? await submit(add) : add();
+      if (!outcome.success || !outcome.trackId) return;
       if (typeof metadata?.captionSourceClipId === "string") {
         const sourceTrack = get().project.timeline.tracks.find((track) =>
           track.clips.some((clip) => clip.id === metadata.captionSourceClipId),
         );
-        if (sourceTrack) get().groupTracks(sourceTrack.id, captionsTrack.id);
+        if (sourceTrack) await get().groupTracks(sourceTrack.id, outcome.trackId);
       }
     },
 

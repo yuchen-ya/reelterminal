@@ -7,6 +7,8 @@ import type {
   TextClip,
   SVGClip,
   StickerClip,
+  GraphicsEngine,
+  TitleEngine,
 } from "@reelterminal/core";
 import {
   calculateProjectDuration,
@@ -25,6 +27,7 @@ type Set = StoreApi<ProjectState>["setState"];
 type OverlayField = "textClips" | "shapeClips" | "svgClips" | "stickerClips";
 
 export interface ProjectStoreHelpers {
+  overlayEngines: { titleEngine: TitleEngine; graphicsEngine: GraphicsEngine };
   applyClipDataSnapshot(
     type: ClipHistoryEntryType,
     clipId: string,
@@ -55,6 +58,7 @@ export interface ProjectStoreHelpers {
 export function createProjectStoreHelpers(
   set: Set,
   get: Get,
+  overlayEngines: { titleEngine: TitleEngine; graphicsEngine: GraphicsEngine },
 ): ProjectStoreHelpers {
   const cloneClipSnapshot = <T,>(clip: T): T =>
     JSON.parse(JSON.stringify(clip)) as T;
@@ -72,25 +76,22 @@ export function createProjectStoreHelpers(
     data: ShapeClip | TextClip | SVGClip | StickerClip,
   ): boolean => {
     if (type === "text") {
-      const engine = useEngineStore.getState().getTitleEngine();
-      return engine
-        ? Boolean(engine.updateTextClip(clipId, data as Partial<TextClip>))
-        : false;
+      return Boolean(
+        overlayEngines.titleEngine.updateTextClip(clipId, data as Partial<TextClip>),
+      );
     }
-    const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
-    if (!graphicsEngine) return false;
     if (type === "shape") {
       return Boolean(
-        graphicsEngine.updateShapeClip(clipId, data as Partial<ShapeClip>),
+        overlayEngines.graphicsEngine.updateShapeClip(clipId, data as Partial<ShapeClip>),
       );
     }
     if (type === "svg") {
       return Boolean(
-        graphicsEngine.updateSVGClip(clipId, data as Partial<SVGClip>),
+        overlayEngines.graphicsEngine.updateSVGClip(clipId, data as Partial<SVGClip>),
       );
     }
     return Boolean(
-      graphicsEngine.updateStickerClip(clipId, data as Partial<StickerClip>),
+      overlayEngines.graphicsEngine.updateStickerClip(clipId, data as Partial<StickerClip>),
     );
   };
 
@@ -218,16 +219,11 @@ export function createProjectStoreHelpers(
 
   const syncOverlayEnginesFromProject = (): void => {
     const { project } = get();
-    useEngineStore
-      .getState()
-      .getTitleEngine()
-      ?.loadTextClips(project.textClips ?? []);
-    const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
-    if (graphicsEngine) {
-      graphicsEngine.loadShapeClips(project.shapeClips ?? []);
-      graphicsEngine.loadSVGClips(project.svgClips ?? []);
-      graphicsEngine.loadStickerClips(project.stickerClips ?? []);
-    }
+    overlayEngines.titleEngine.loadTextClips(project.textClips ?? []);
+    overlayEngines.graphicsEngine.loadShapeClips(project.shapeClips ?? []);
+    overlayEngines.graphicsEngine.loadSVGClips(project.svgClips ?? []);
+    overlayEngines.graphicsEngine.loadStickerClips(project.stickerClips ?? []);
+    if (!get().isForeground) return;
     const speedEngine = getSpeedEngine();
     speedEngine.loadClips(project.timeline.tracks.flatMap((track) => track.clips));
     const chromaClips = project.timeline.tracks
@@ -263,6 +259,7 @@ export function createProjectStoreHelpers(
 
   return {
     applyClipDataSnapshot,
+    overlayEngines,
     cloneClipSnapshot,
     recordOverlayCreate,
     recordOverlayUpdate,

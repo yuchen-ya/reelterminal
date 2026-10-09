@@ -11,15 +11,18 @@ import { commandProjectContext } from "./command-context";
  *
  * Error mapping: a renderer `{ ok:false, error:{ code:"CONFLICT" } }` reply
  * becomes a `LiveStoreConflictError` (the live facade maps it to a CONFLICT
- * FacadeResult); any other error code becomes a generic Error. Timeouts
+ * FacadeResult); INVALID_PARAMS and NOT_FOUND become FacadeError so the
+ * facade retains their public codes. Other codes become bridge errors. Timeouts
  * reject honestly and clean the pending map; teardown (renderer gone /
  * collab disabled) rejects every pending call.
  */
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
 import { randomUUID } from "node:crypto";
 import {
+  FacadeError,
   LiveStoreConflictError,
   type LiveApplyActionsResult,
+  type MediaImportResult,
   type LiveEditorContext,
   type LiveEditorControlParams,
   type LiveEditorControlResult,
@@ -30,6 +33,9 @@ import {
   type MaterialLibraryBridge,
   type FontLibraryBridge,
   type PresetLibraryBridge,
+  type WorkspaceLibraryBridge,
+  type WorkspaceLibraryBridgeRequest,
+  type WorkspaceLibraryBridgeReply,
 } from "@reelterminal/agent-facade";
 import type { Action } from "@reelterminal/core/types/actions";
 import type { Project } from "@reelterminal/core/types/project";
@@ -65,11 +71,31 @@ function installReadyListener(): void {
 const READ_TIMEOUT_MS = 10_000;
 /** applyActions runs a whole action batch inside one history group. */
 const APPLY_TIMEOUT_MS = 30_000;
+const WORKSPACE_COMMIT_KINDS = new Set<LiveBridgeRequest["kind"]>([
+  "applyActions",
+  "replayActions",
+  "replayMediaImport",
+  "historyControl",
+  "importMedia",
+  "materialLibrary",
+  "presetLibrary",
+  "workspaceLibrary",
+]);
 
 interface PendingCall {
   readonly resolve: (value: unknown) => void;
   readonly reject: (reason: Error) => void;
   readonly timer: ReturnType<typeof setTimeout>;
+}
+
+function captureWorkspaceInstanceId(value: unknown): void {
+  const context = commandProjectContext.getStore();
+  if (!context?.targetProjectId || !context.targetWorkspaceId || typeof value !== "object" || value === null) return;
+  const instanceId = (value as { workspaceInstanceId?: unknown; instanceId?: unknown }).workspaceInstanceId ??
+    (value as { instanceId?: unknown }).instanceId;
+  if (typeof instanceId === "string" && instanceId.length > 0) {
+    context.targetWorkspaceInstanceId = instanceId;
+  }
 }
 
 /** Preserve renderer error codes across the typed LiveProjectStore seam. */
@@ -100,6 +126,8 @@ export interface LiveStoreBridge {
   readonly fontLibrary?: FontLibraryBridge;
   /** Optional preset-library seam (preset.* verbs → renderer preset store). */
   readonly presetLibrary?: PresetLibraryBridge;
+  /** Project/workspace/node persistence owned by the renderer manager. */
+  readonly workspaceLibrary?: WorkspaceLibraryBridge;
   /** Feed one "reelterminal:live:response" message; unknown/foreign replies drop. */
   handleResponse(sender: unknown, response: LiveBridgeReply): void;
   /** Reject every pending call (bridge teardown / renderer gone). */
@@ -130,7 +158,19 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
       }, timeoutMs);
       pending.set(callId, { resolve, reject, timer });
       try {
-        deps.send({ callId, kind, ...payload, ...commandProjectContext.getStore() });
+        const context = commandProjectContext.getStore();
+        deps.send({
+          callId,
+          kind,
+          ...payload,
+          ...(context?.expectedProjectId !== undefined ? { expectedProjectId: context.expectedProjectId } : {}),
+          ...(context?.expectedProjectEpoch !== undefined ? { expectedProjectEpoch: context.expectedProjectEpoch } : {}),
+          ...(context?.targetProjectId !== undefined ? { projectId: context.targetProjectId } : {}),
+          ...(context?.targetWorkspaceId !== undefined ? { workspaceId: context.targetWorkspaceId } : {}),
+          ...(WORKSPACE_COMMIT_KINDS.has(kind) && context?.targetWorkspaceInstanceId !== undefined
+            ? { expectedWorkspaceInstanceId: context.targetWorkspaceInstanceId }
+            : {}),
+        });
       } catch (error) {
         clearTimeout(timer);
         pending.delete(callId);
@@ -154,6 +194,10 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
       return;
     }
     const error = response.error;
+    if (error?.code === "INVALID_PARAMS" || error?.code === "NOT_FOUND") {
+      call.reject(new FacadeError(error.code, error.message, error.details));
+      return;
+    }
     if (error?.code === "CONFLICT") {
       // The facade maps LiveStoreConflictError to a CONFLICT FacadeResult.
       call.reject(
@@ -184,13 +228,20 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
   // The renderer contract (apps/web live-bridge.ts) owns the result shapes;
   // the facade's LiveProjectStore signatures are the compile-time target.
   const store: LiveProjectStore = {
-    getIdentity: () =>
-      request("getIdentity", {}, READ_TIMEOUT_MS) as Promise<LiveProjectIdentity>,
-    getState: () =>
-      request("getState", {}, READ_TIMEOUT_MS) as Promise<{
+    getIdentity: async () => {
+      const identity = await request("getIdentity", {}, READ_TIMEOUT_MS) as LiveProjectIdentity;
+      captureWorkspaceInstanceId(identity);
+      return identity;
+    },
+    getState: async () => {
+      const state = await request("getState", {}, READ_TIMEOUT_MS) as {
         project: Project;
         revision: number;
-      }>,
+        instanceId?: string;
+      };
+      captureWorkspaceInstanceId(state);
+      return { project: state.project, revision: state.revision };
+    },
     getContext: () =>
       request("getContext", {}, READ_TIMEOUT_MS) as Promise<LiveEditorContext>,
     getProjectChanges: (params) =>
@@ -254,9 +305,27 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
           ...(opts.idempotencyKey !== undefined
             ? { idempotencyKey: opts.idempotencyKey }
             : {}),
+          ...(opts.idempotencyPayload !== undefined
+            ? { idempotencyPayload: opts.idempotencyPayload }
+            : {}),
+          ...(opts.idempotencyMetadata !== undefined
+            ? { idempotencyMetadata: opts.idempotencyMetadata }
+            : {}),
         },
         APPLY_TIMEOUT_MS,
       ) as Promise<LiveApplyActionsResult>,
+    getActionBatchReplay: (idempotencyKey, idempotencyPayload, groupLabel) =>
+      request(
+        "replayActions",
+        { idempotencyKey, idempotencyPayload, groupLabel },
+        READ_TIMEOUT_MS,
+      ) as Promise<LiveApplyActionsResult | null>,
+    getMediaImportReplay: (idempotencyKey, idempotencyPayload) =>
+      request(
+        "replayMediaImport",
+        { idempotencyKey, idempotencyPayload },
+        READ_TIMEOUT_MS,
+      ) as Promise<MediaImportResult | null>,
     requestSave: () =>
       request("requestSave", {}, READ_TIMEOUT_MS) as Promise<{ revision: number }>,
     importMedia: (params: LiveMediaImportRequest, opts) =>
@@ -270,6 +339,12 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
             : {}),
           ...(opts.expectedContextRevision !== undefined
             ? { expectedContextRevision: opts.expectedContextRevision }
+            : {}),
+          ...(opts.idempotencyKey !== undefined
+            ? { idempotencyKey: opts.idempotencyKey }
+            : {}),
+          ...(opts.idempotencyPayload !== undefined
+            ? { idempotencyPayload: opts.idempotencyPayload }
             : {}),
         },
         APPLY_TIMEOUT_MS,
@@ -362,11 +437,36 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
     }
   };
 
+  const workspaceLibrary: WorkspaceLibraryBridge = async (workspaceRequest: WorkspaceLibraryBridgeRequest): Promise<WorkspaceLibraryBridgeReply> => {
+    try {
+      const result = await request(
+        "workspaceLibrary",
+        {
+          workspaceVerb: workspaceRequest.verb,
+          workspaceParams: workspaceRequest.params,
+        },
+        APPLY_TIMEOUT_MS,
+      );
+      return { ok: true, result };
+    } catch (error) {
+      const typed = error as { code?: string; details?: Record<string, unknown> };
+      return {
+        ok: false,
+        error: {
+          code: typed?.code ?? "BRIDGE_ERROR",
+          message: error instanceof Error ? error.message : String(error),
+          ...(typed?.details ? { details: typed.details } : {}),
+        },
+      };
+    }
+  };
+
   return {
     store,
     materialLibrary,
     fontLibrary,
     presetLibrary,
+    workspaceLibrary,
     handleResponse,
     teardown,
     get pendingCount() {
@@ -414,6 +514,7 @@ export function installLiveStoreBridge(): LiveStoreBridge {
     materialLibrary: bridge.materialLibrary,
     fontLibrary: bridge.fontLibrary,
     presetLibrary: bridge.presetLibrary,
+    workspaceLibrary: bridge.workspaceLibrary,
     handleResponse: bridge.handleResponse,
     get pendingCount() {
       return bridge.pendingCount;

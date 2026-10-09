@@ -5,12 +5,14 @@
  * a mutating call carrying an idempotencyKey records its committed result;
  * a retry with the same key replays the stored result without re-executing.
  *
- * Keys are scoped per session + project + VERB — a key used by media.import
- * can never leak a wrong-shaped replay into edit.apply. Each entry also pins
+ * Keys are scoped by the session-provided identity + VERB — live sessions
+ * provide project/workspace identity while headless sessions provide their
+ * project identity. A key used by media.import can never leak a wrong-shaped
+ * replay into edit.apply. Each entry also pins
  * a hash of the mutation-defining payload: reusing a key with a DIFFERENT
  * payload is a CONFLICT, not a blind replay.
  *
- * Scope: per session + project. The ledger survives transport retries but
+ * Scope is at least per session + project. The ledger survives transport retries but
  * NOT process restarts (documented v0 limitation).
  */
 export interface LedgerEntry<T> {

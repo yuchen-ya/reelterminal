@@ -55,6 +55,8 @@ import type {
   TimelineState,
   TimelineQueryParams,
   TimelineQueryResult,
+  TimelineMapSourceTimesParams,
+  TimelineMapSourceTimesResult,
   EditValidateParams,
   EditValidateResult,
   HistoryGetParams,
@@ -64,6 +66,7 @@ import type {
   VerifyArtifactParams,
   VerifyArtifactResult,
 } from "./types";
+import { WORKSPACE_VERBS, type WorkspaceVerb } from "./workspace-library";
 
 export interface AgentFacade extends BundledToolBindings {
   readonly "session.describe": () => Promise<FacadeResult<SessionDescription>>;
@@ -97,6 +100,9 @@ export interface AgentFacade extends BundledToolBindings {
   readonly "timeline.query": (
     params?: TimelineQueryParams,
   ) => Promise<FacadeResult<TimelineQueryResult>>;
+  readonly "timeline.mapSourceTimes": (
+    params: TimelineMapSourceTimesParams,
+  ) => Promise<FacadeResult<TimelineMapSourceTimesResult>>;
   readonly "editor.get_context": (
     params?: Record<string, never>,
   ) => Promise<FacadeResult<EditorGetContextResult>>;
@@ -142,6 +148,24 @@ export interface AgentFacade extends BundledToolBindings {
   readonly "verify.artifact": (
     params: VerifyArtifactParams,
   ) => Promise<FacadeResult<VerifyArtifactResult>>;
+  readonly "project.list": (params?: Record<string, never>) => Promise<FacadeResult<unknown>>;
+  readonly "workspace.list": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "workspace.create": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "workspace.delete": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "workspace.close": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "workspace.switch_view": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "workspace.list_drafts": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "workspace.recover_draft": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "node.list": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "node.get": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "node.save": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "node.restore": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "node.rename": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "node.media": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "node.compare": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "media.references": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "media.cleanup.plan": (params?: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
+  readonly "media.cleanup.execute": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
   readonly "material.list": (
     params?: import("./types").MaterialListParams,
   ) => Promise<FacadeResult<import("@reelterminal/core").MaterialListResult>>;
@@ -217,11 +241,13 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "project.rename": (params) => session.projectRename(params),
     "project.get_state": () => session.projectGetState(),
     "project.changes": (params) => session.projectChanges(params),
+    ...Object.fromEntries(WORKSPACE_VERBS.map((verb) => [verb, (params: Record<string, unknown> = {}) => session.workspaceCommand(verb, params)])) as Record<WorkspaceVerb, (params?: Record<string, unknown>) => Promise<FacadeResult<unknown>>>,
     "media.import": (params) => session.mediaImport(params),
     "media.render_html": (params) => session.mediaRenderHtml(params),
     "media.analyze_start": (params) => session.mediaAnalyzeStart(params),
     "timeline.get": () => session.timelineGet(),
     "timeline.query": (params) => session.timelineQuery(params),
+    "timeline.mapSourceTimes": (params) => session.timelineMapSourceTimes(params),
     "editor.get_context": (params) => session.editorGetContext(params),
     "editor.control": (params) => session.editorControl(params),
     "edit.apply": (params) => session.editApply(params),
@@ -262,7 +288,24 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
 export { AgentFacadeSession, createAgentFacadeSession } from "./session";
 export type { AgentFacadeConfig } from "./session";
 export { createLiveFacade, LiveFacadeSession, LIVE_UNAVAILABLE_VERBS } from "./live-session";
-export type { LiveAgentFacade, LiveFacadeConfig } from "./live-session";
+export type {
+  LiveAgentFacade,
+  LiveFacadeConfig,
+  LiveTaskInput,
+  LivePersistedTaskRecord,
+  LiveTaskLifecycle,
+  LiveTaskInputReferences,
+} from "./live-session";
+export { WORKSPACE_VERBS } from "./workspace-library";
+export type {
+  WorkspaceVerb,
+  WorkspaceLibraryBridge,
+  WorkspaceLibraryBridgeRequest,
+  WorkspaceLibraryBridgeReply,
+  WorkspaceLibraryBridgeError,
+  WorkspaceTargetParams,
+  RetainTaskInputsParams,
+} from "./workspace-library";
 export { DEFAULT_AGENT_ACCESS_MODE, isAgentAccessMode, normalizeAgentAccessPreference } from "./access";
 export type { AgentAccessMode, AgentAccessPreference } from "./access";
 export {

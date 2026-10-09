@@ -21,14 +21,19 @@ afterEach(() => {
 function entry(name: string, toolName: string, retry: CommandCatalogEntry["retry"] = "safe"): CommandCatalogEntry {
   return {
     name, toolName, description: `${name} description`,
-    inputSchema: { type: "object", properties: { idempotencyKey: { type: "string" }, expectedRevision: { type: "integer" }, ops: { type: "array" } } },
+    inputSchema: {
+      type: "object",
+      properties: { idempotencyKey: { type: "string" }, expectedRevision: { type: "integer" }, ops: { type: "array" }, projectId: { type: "string" }, workspaceId: { type: "string" } },
+      ...(name === "edit.apply" ? { required: ["projectId", "workspaceId", "expectedRevision"] } :
+        name === "project.get_state" ? { required: ["projectId", "workspaceId"] } : {}),
+    },
     outputSchema: { type: "object" }, effects: [retry === "safe" ? "read" : "write"], retry,
   };
 }
 
 function makeClient(commands: CommandCatalogEntry[], result: unknown = { ok: true, value: { revision: 9 } }): LiveCommandClient {
   return {
-    status: vi.fn().mockResolvedValue({ ok: true, apiVersion: 1, instanceId: "i", projectId: "p", projectEpoch: "e", access: "write" }),
+    status: vi.fn().mockResolvedValue({ ok: true, apiVersion: 1, instanceId: "i", projectId: "p", workspaceId: "w", projectEpoch: "e", access: "write" }),
     catalog: vi.fn().mockResolvedValue({ ok: true, apiVersion: 1, commands } satisfies CommandCatalog),
     catalogEntry: vi.fn().mockImplementation(async (name: string) => {
       const found = commands.find((candidate) => candidate.name === name || candidate.toolName === name);
@@ -53,10 +58,10 @@ describe("reelctl command parsing and safety", () => {
     expect(parseInvocation(["patch", "propagate"]).commandName).toBe("patch.propagate");
   });
 
-  it("keeps identity flags out of the closed history argument schema", () => {
-    const invocation = parseInvocation(["history", "undo", "--expected-revision", "12", "--project-id", "p", "--project-epoch", "epoch"]);
-    expect(invocation).toMatchObject({ expectedProjectId: "p", expectedProjectEpoch: "epoch" });
-    expect(invocation.arguments).toEqual({ action: "undo", expectedRevision: 12 });
+  it("keeps data targets separate from open-view guards", () => {
+    const invocation = parseInvocation(["history", "undo", "--expected-revision", "12", "--project-id", "p", "--workspace-id", "w", "--expected-project-id", "view-p", "--project-epoch", "epoch"]);
+    expect(invocation).toMatchObject({ expectedProjectId: "view-p", expectedProjectEpoch: "epoch" });
+    expect(invocation.arguments).toEqual({ action: "undo", expectedRevision: 12, projectId: "p", workspaceId: "w" });
   });
 
   it("supports --fields output projection without sending it to a closed command", async () => {
@@ -70,11 +75,12 @@ describe("reelctl command parsing and safety", () => {
   });
 
   it("requires revisions and explicit project identity for editor mutations", () => {
-    expect(() => requireExplicitSafetyGuards("edit.apply", { ops: [] }, "p", "e"))
+    const editEntry = entry("edit.apply", "edit_apply", "idempotent");
+    expect(() => requireExplicitSafetyGuards("edit.apply", { ops: [], projectId: "p", workspaceId: "w" }, "p", "e", editEntry))
       .toThrow(/expectedRevision/);
-    expect(() => requireExplicitSafetyGuards("history.control", { action: "undo", expectedRevision: 4 }, undefined, undefined))
-      .toThrow(/expectedProjectId/);
-    expect(() => requireExplicitSafetyGuards("edit.apply", { ops: [], expectedRevision: 4 }, "p", "e"))
+    expect(() => requireExplicitSafetyGuards("edit.apply", { ops: [], expectedRevision: 4 }, "p", "e", editEntry))
+      .toThrow(/projectId/);
+    expect(() => requireExplicitSafetyGuards("edit.apply", { ops: [], projectId: "p", workspaceId: "w", expectedRevision: 4 }, "p", "e", editEntry))
       .not.toThrow();
   });
 
@@ -103,17 +109,16 @@ describe("reelctl command parsing and safety", () => {
   it("loads file envelopes, requires safety guards, and sends a guarded atomic edit", async () => {
     const file = path.join(tempDir(), "changes.json");
     writeFileSync(file, JSON.stringify({
-      expectedProjectId: "project-old",
       expectedProjectEpoch: "epoch-old",
-      arguments: { expectedRevision: 12, ops: [{ op: "clip.trim", clipId: "clip-1", outPoint: 4 }] },
+      arguments: { projectId: "project-old", workspaceId: "workspace-old", expectedRevision: 12, ops: [{ op: "clip.trim", clipId: "clip-1", outPoint: 4 }] },
     }));
     const api = makeClient([entry("edit.apply", "edit_apply", "idempotent")]);
     const stdout: string[] = [];
     await expect(runReelctl(["edit", "apply", "--file", file], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
     expect(api.command).toHaveBeenCalledWith(
       "edit.apply",
-      { expectedRevision: 12, ops: [{ op: "clip.trim", clipId: "clip-1", outPoint: 4 }] },
-      expect.objectContaining({ expectedProjectId: "project-old", expectedProjectEpoch: "epoch-old", retry: "idempotent" }),
+      { projectId: "project-old", workspaceId: "workspace-old", expectedRevision: 12, ops: [{ op: "clip.trim", clipId: "clip-1", outPoint: 4 }] },
+      expect.objectContaining({ expectedProjectEpoch: "epoch-old", retry: "idempotent" }),
     );
     expect(JSON.parse(stdout[0]!)).toEqual({ ok: true, value: { revision: 9 } });
   });
@@ -121,13 +126,13 @@ describe("reelctl command parsing and safety", () => {
   it("makes generic call obey the same edit guards and output formatting", async () => {
     const file = path.join(tempDir(), "request.json");
     writeFileSync(file, JSON.stringify({
-      expectedProjectId: "p", expectedProjectEpoch: "e",
-      arguments: { expectedRevision: 3, ops: [] },
+      expectedProjectEpoch: "e",
+      arguments: { projectId: "p", workspaceId: "w", expectedRevision: 3, ops: [] },
     }));
     const api = makeClient([entry("edit.apply", "edit_apply", "idempotent")]);
     const stdout: string[] = [];
     await expect(runReelctl(["call", "edit.apply", "--file", file, "--human"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
-    expect(api.command).toHaveBeenCalledWith("edit.apply", { expectedRevision: 3, ops: [] }, expect.objectContaining({ expectedProjectId: "p", expectedProjectEpoch: "e" }));
+    expect(api.command).toHaveBeenCalledWith("edit.apply", { projectId: "p", workspaceId: "w", expectedRevision: 3, ops: [] }, expect.objectContaining({ expectedProjectEpoch: "e" }));
     expect(stdout[0]).toContain("\n");
   });
 
@@ -175,8 +180,8 @@ describe("reelctl command parsing and safety", () => {
     await expect(runReelctl(["requirements", "update", "Q3", "--status", "in_progress", "--agent-note", "Started"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
     expect(api.command).toHaveBeenLastCalledWith(
       "edit.apply",
-      { ops: [{ op: "requirement.update", requirementId: "Q3", status: "in_progress", agentNote: "Started" }], expectedRevision: 7 },
-      expect.objectContaining({ expectedProjectId: "p", expectedProjectEpoch: "e", retry: "idempotent" }),
+      { projectId: "p", workspaceId: "w", ops: [{ op: "requirement.update", requirementId: "Q3", status: "in_progress", agentNote: "Started" }], expectedRevision: 7 },
+      expect.objectContaining({ expectedProjectEpoch: "e", retry: "idempotent" }),
     );
   });
 });
@@ -210,7 +215,7 @@ describe("reelctl output contracts", () => {
     const compact = compactContextResult({
       ok: true,
       value: {
-        projectRevision: 11, contextRevision: 7, identity: { projectId: "p", projectEpoch: "e" },
+        projectRevision: 11, contextRevision: 7, identity: { projectId: "p", projectEpoch: "e", workspaceId: "w", workspaceInstanceId: "runtime-1" },
         canvasPoint: { x: 4, y: 8 }, playheadSeconds: 2, fullProject: { huge: true },
         requirements: { ready: 1, inProgress: 0, ids: ["Q1"] },
       },
@@ -218,7 +223,7 @@ describe("reelctl output contracts", () => {
     expect(compact).toEqual({
       ok: true,
       value: {
-        projectRevision: 11, contextRevision: 7, identity: { projectId: "p", projectEpoch: "e" },
+        projectRevision: 11, contextRevision: 7, identity: { projectId: "p", projectEpoch: "e", workspaceId: "w", workspaceInstanceId: "runtime-1" },
         canvasPoint: { x: 4, y: 8 }, playheadSeconds: 2,
         requirements: { ready: 1, inProgress: 0, ids: ["Q1"] },
       },

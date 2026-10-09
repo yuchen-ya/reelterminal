@@ -6,7 +6,8 @@
  * PresetStorage fake; the canonical service and expansion logic are covered
  * by preset-service.test.ts and apply.test.ts.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { IDBFactory } from "fake-indexeddb";
 import type { Action } from "@reelterminal/core";
 import {
   CustomPresetService,
@@ -17,10 +18,14 @@ import type { PresetStorage } from "../custom-presets/storage";
 import type { CustomPresetRecord } from "@reelterminal/core/presets/types";
 import { handlePresetLibraryRequest } from "./preset-bridge";
 import { useProjectStore } from "../../stores/project-store";
+import { createEmptyProject } from "../../stores/project/project-helpers";
+import { workspaceManager, type WorkspaceTarget } from "../workspace-manager";
+import { currentProjectEpoch, type ProjectGuard } from "./project-guard";
 
-const { mockSaveMediaBlob, mockImportFile } = vi.hoisted(() => ({
-  mockSaveMediaBlob: vi.fn(async () => undefined),
+const { mockSaveMediaBlob, mockImportFile, mockWithMediaReferenceWrite } = vi.hoisted(() => ({
+  mockSaveMediaBlob: vi.fn(async () => ({ contentHash: "test-content-hash" })),
   mockImportFile: vi.fn(),
+  mockWithMediaReferenceWrite: vi.fn(async (operation: () => unknown) => operation()),
 }));
 
 vi.mock("../../services/media-storage", () => ({
@@ -29,6 +34,7 @@ vi.mock("../../services/media-storage", () => ({
   loadProjectMedia: vi.fn(async () => []),
   loadFileHandle: vi.fn(async () => null),
   loadDirectoryHandle: vi.fn(async () => null),
+  withMediaReferenceWrite: mockWithMediaReferenceWrite,
 }));
 
 vi.mock("../../bridges/media-bridge", () => ({
@@ -78,8 +84,54 @@ const TRANSITION_FAR_PAYLOAD = {
   params: {},
 };
 
+let activeTarget: WorkspaceTarget;
+
+async function openManagedProject(name: string): Promise<WorkspaceTarget> {
+  const created = await workspaceManager.createProject(createEmptyProject(name));
+  const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+  await workspaceManager.switchView(target);
+  activeTarget = target;
+  return target;
+}
+
+async function targetRequest(
+  target = activeTarget,
+  expectForeground = false,
+): Promise<{ guard: ProjectGuard; expectedRevision: number }> {
+  const context = await workspaceManager.getWorkspaceContext(target);
+  return {
+    guard: {
+      targetProjectId: target.projectId,
+      targetWorkspaceId: target.workspaceId,
+      targetWorkspaceInstanceId: context.instanceId,
+      ...(expectForeground ? {
+        expectedProjectId: target.projectId,
+        expectedProjectEpoch: currentProjectEpoch(),
+      } : {}),
+    },
+    expectedRevision: context.revision,
+  };
+}
+
+async function applyPreset(
+  params: Record<string, unknown>,
+  target = activeTarget,
+  expectForeground = false,
+) {
+  const context = await targetRequest(target, expectForeground);
+  return handlePresetLibraryRequest({
+    guard: context.guard,
+    verb: "apply",
+    params: { ...params, expectedRevision: context.expectedRevision },
+  });
+}
+
 describe("handlePresetLibraryRequest", () => {
   let service: CustomPresetService;
+
+  beforeAll(() => {
+    globalThis.indexedDB = new IDBFactory();
+  });
 
   beforeEach(async () => {
     service = new CustomPresetService(new MemoryPresetStorage());
@@ -103,7 +155,7 @@ describe("handlePresetLibraryRequest", () => {
         },
       },
     }));
-    useProjectStore.getState().createNewProject("Preset Apply");
+    await openManagedProject("Preset Apply");
   });
 
   async function seedVideoClip(
@@ -290,15 +342,22 @@ describe("handlePresetLibraryRequest", () => {
     const created = await service.create({ kind: "text", name: "Race", payload: TEXT_PAYLOAD });
     if (!created.ok) throw new Error(created.message);
     const originalGet = service.get.bind(service);
+    const originalTarget = activeTarget;
+    const originalGuard = await targetRequest(originalTarget, true);
     vi.spyOn(service, "get").mockImplementationOnce(async (id) => {
       const found = await originalGet(id);
-      useProjectStore.getState().createNewProject("Switched during preset load");
+      await openManagedProject("Switched during preset load");
       return found;
     });
-    const result = await handlePresetLibraryRequest({ verb: "apply", params: {
-      presetId: created.value.id,
-      target: { kind: "text", mode: "updateStyle", clipId: "old-clip" },
-    } });
+    const result = await handlePresetLibraryRequest({
+      guard: originalGuard.guard,
+      verb: "apply",
+      params: {
+        presetId: created.value.id,
+        target: { kind: "text", mode: "updateStyle", clipId: "old-clip" },
+        expectedRevision: originalGuard.expectedRevision,
+      },
+    });
     expect(result).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
     expect(useProjectStore.getState().actionHistory.getUndoStackSize()).toBe(0);
   });
@@ -321,13 +380,10 @@ describe("handlePresetLibraryRequest", () => {
     const clip = useProjectStore.getState().project.textClips?.[0];
     if (!clip) throw new Error("text clip missing");
 
-    const reply = await handlePresetLibraryRequest({
-      verb: "apply",
-      params: {
+    const reply = await applyPreset({
         presetId: created.value.id,
         target: { kind: "text", mode: "updateStyle", clipId: clip.id },
         idempotencyKey: "apply-text-1",
-      },
     });
     expect(reply.ok).toBe(true);
     if (reply.ok) {
@@ -342,13 +398,10 @@ describe("handlePresetLibraryRequest", () => {
     expect(styled?.style.fontSize).toBe(48);
 
     // A retried apply (lost reply) replays the ledger instead of restyling.
-    const replay = await handlePresetLibraryRequest({
-      verb: "apply",
-      params: {
+    const replay = await applyPreset({
         presetId: created.value.id,
         target: { kind: "text", mode: "updateStyle", clipId: clip.id },
         idempotencyKey: "apply-text-1",
-      },
     });
     expect(replay.ok).toBe(true);
     if (replay.ok) {
@@ -364,12 +417,9 @@ describe("handlePresetLibraryRequest", () => {
     });
     if (!created.ok) throw new Error(created.message);
     const clipId = await seedVideoClip();
-    const reply = await handlePresetLibraryRequest({
-      verb: "apply",
-      params: {
+    const reply = await applyPreset({
         presetId: created.value.id,
         target: { kind: "effect", clipIds: [clipId] },
-      },
     });
     expect(reply.ok).toBe(true);
     const clip = useProjectStore
@@ -388,12 +438,9 @@ describe("handlePresetLibraryRequest", () => {
     });
     if (!created.ok) throw new Error(created.message);
     const clipId = await seedVideoClip();
-    const reply = await handlePresetLibraryRequest({
-      verb: "apply",
-      params: {
+    const reply = await applyPreset({
         presetId: created.value.id,
         target: { kind: "transition", clipAId: clipId },
-      },
     });
     expect(reply.ok).toBe(false);
     if (!reply.ok) {
@@ -422,10 +469,10 @@ describe("handlePresetLibraryRequest", () => {
       },
     });
     expect(none.ok).toBe(false);
-    if (!none.ok) expect(none.error.code).toBe("NO_PROJECT");
+    if (!none.ok) expect(none.error.code).toBe("INVALID_PARAMS");
 
     // Project A commits a key; project B must NOT replay A's commit.
-    useProjectStore.getState().createNewProject("Ledger A");
+    const projectA = await openManagedProject("Ledger A");
     await useProjectStore.getState().addTrack("text", 0);
     const trackA = useProjectStore
       .getState()
@@ -434,25 +481,19 @@ describe("handlePresetLibraryRequest", () => {
     useProjectStore.getState().createTextClip(trackA.id, 0, "Hello", 2, {});
     const clipA = useProjectStore.getState().project.textClips?.[0];
     if (!clipA) throw new Error("text clip missing");
-    const first = await handlePresetLibraryRequest({
-      verb: "apply",
-      params: {
+    const first = await applyPreset({
         presetId: created.value.id,
         target: { kind: "text", mode: "updateStyle", clipId: clipA.id },
         idempotencyKey: "apply-k1",
-      },
     });
     expect(first.ok).toBe(true);
-    const firstProjectId = useProjectStore.getState().project.id;
+    const firstProjectId = projectA.projectId;
 
-    useProjectStore.getState().createNewProject("Ledger B");
-    const other = await handlePresetLibraryRequest({
-      verb: "apply",
-      params: {
+    const projectB = await openManagedProject("Ledger B");
+    const other = await applyPreset({
         presetId: created.value.id,
         target: { kind: "text", mode: "updateStyle", clipId: clipA.id },
         idempotencyKey: "apply-k1",
-      },
     });
     // The key executed fresh against project B (no clips there), instead of
     // replaying project A's committed result.
@@ -461,7 +502,7 @@ describe("handlePresetLibraryRequest", () => {
       expect(other.error.code).toBe("TARGET_NOT_FOUND");
       expect(useProjectStore.getState().project.name).toBe("Ledger B");
     }
-    expect(firstProjectId).not.toBe(useProjectStore.getState().project.id);
+    expect(firstProjectId).not.toBe(projectB.projectId);
   });
 
   it("applies graphics presets as a new SVG clip and rejects unknown verbs", async () => {
@@ -475,12 +516,9 @@ describe("handlePresetLibraryRequest", () => {
       },
     });
     if (!created.ok) throw new Error(created.message);
-    const reply = await handlePresetLibraryRequest({
-      verb: "apply",
-      params: {
+    const reply = await applyPreset({
         presetId: created.value.id,
         target: { kind: "graphics" },
-      },
     });
     expect(reply.ok).toBe(true);
     if (reply.ok) {

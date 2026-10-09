@@ -126,6 +126,23 @@ describe("visual.inspect", () => {
     if (!result.ok) return;
     expect(result.value.frames).toHaveLength(3);
     expect(result.value.frames.map((frame) => frame.sourceRevision)).toEqual([3, 3, 3]);
+    expect(result.value.mediaSources).toMatchObject([
+      { mediaId: expect.any(String), sizeBytes: expect.any(Number), mtimeMs: expect.any(Number), sha256: expect.any(String) },
+    ]);
+    expect(result.value.frames.map((frame) => ({
+      coordinateSpace: frame.coordinateSpace,
+      requestedTimelineTimeSec: frame.requestedTimelineTimeSec,
+      renderedTimelineTimeSec: frame.renderedTimelineTimeSec,
+      sourceFrameNumber: frame.sourceFrameNumber,
+      sourcePtsSec: frame.sourcePtsSec,
+    }))).toEqual(result.value.frames.map((frame) => ({
+      coordinateSpace: "timeline",
+      requestedTimelineTimeSec: frame.timeSec,
+      renderedTimelineTimeSec: null,
+      sourceFrameNumber: null,
+      sourcePtsSec: null,
+    })));
+    expect(result.value.limitations.join(" ")).toContain("media PTS");
     expect(result.value.frames.map((frame) => frame.label)).toEqual([
       "clip:clip-1 1/3",
       "clip:clip-1 2/3",

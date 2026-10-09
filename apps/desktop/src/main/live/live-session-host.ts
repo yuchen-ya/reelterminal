@@ -22,6 +22,7 @@ import { readVisualImageSet } from "./artifact-images";
  * never enters this module's state, events, or logs.
  */
 import { mkdirSync } from "node:fs";
+import path from "node:path";
 import {
   toolPresentation,
   LiveWriterLease,
@@ -29,6 +30,9 @@ import {
   type FacadeVerb,
   type LiveAgentFacade,
   type LiveFacadeConfig,
+  type LiveTaskInput,
+  type JobStatusView,
+  getCommandCatalogEntry,
   type AgentAccessMode,
   DEFAULT_AGENT_ACCESS_MODE,
 } from "@reelterminal/agent-facade";
@@ -43,6 +47,7 @@ import type {
 } from "../../shared/live";
 import { LIVE_ACTIVITY_TIMEOUT_MS } from "../../shared/live";
 import type { LiveStoreBridge } from "./renderer-store-adapter";
+import { DurableTaskLedger } from "./task-ledger";
 import {
   startLiveEndpointServer,
   type RunningLiveEndpoint,
@@ -150,6 +155,7 @@ export function createLiveSessionHost(
   let lease: LiveWriterLease | null = null;
   let providers: LiveProviders | null = null;
   let endpoint: RunningLiveEndpoint | null = null;
+  let taskLedger: DurableTaskLedger | null = null;
   let externalSession: LiveAgentFacade | null = null;
   let externalConnected = false;
   const shownReviews = new Set<string>();
@@ -224,6 +230,7 @@ export function createLiveSessionHost(
     return {
       ...(await status()), instanceId,
       projectId: editor?.projectId ?? null,
+      workspaceId: editor?.workspaceId ?? null,
       projectEpoch: editor?.projectEpoch ?? (editor ? `${instanceId}:${editor.projectId}` : null),
     };
   };
@@ -281,6 +288,21 @@ export function createLiveSessionHost(
     if (!bridge || !lease || !providers) {
       throw new Error("live collaboration is not enabled");
     }
+    taskLedger ??= new DurableTaskLedger(path.join(deps.artifactRoot, "task-records"));
+    const requireWorkspaceReply = async (
+      verb: "retainTaskInputs" | "releaseTaskInputs" | "prepareRenderFonts",
+      params: Record<string, unknown>,
+    ): Promise<unknown> => {
+      if (!bridge?.workspaceLibrary) throw new Error("workspace manager bridge is unavailable");
+      const reply = await bridge.workspaceLibrary({ verb, params });
+      if (!reply.ok) {
+        const error = new Error(reply.error.message) as Error & { code?: string; details?: Record<string, unknown> };
+        error.code = reply.error.code;
+        error.details = reply.error.details;
+        throw error;
+      }
+      return reply.result;
+    };
     const config: LiveFacadeConfig = {
       store: bridge.store,
       ...(bridge.materialLibrary
@@ -291,6 +313,9 @@ export function createLiveSessionHost(
         : {}),
       ...(bridge.presetLibrary
         ? { presetLibrary: bridge.presetLibrary }
+        : {}),
+      ...(bridge.workspaceLibrary
+        ? { workspaceLibrary: bridge.workspaceLibrary }
         : {}),
       ...(deps.mediaRoots ? { mediaRoots: deps.mediaRoots } : {}),
       ...(deps.deliveryRoots ? { deliveryRoots: deps.deliveryRoots } : {}),
@@ -308,6 +333,65 @@ export function createLiveSessionHost(
       // Access remains an independent authorization boundary.
       access: () => accessPreferenceStore.get().access,
       artifactRoot: deps.artifactRoot,
+      taskLifecycle: {
+        list: () => taskLedger!.list().map((record) => ({
+          projectId: record.projectId,
+          workspaceId: record.workspaceId,
+          status: record.status,
+          parameters: record.parameters,
+        })),
+        begin: (input: LiveTaskInput) => taskLedger!.begin(input),
+        update: (status: JobStatusView) => {
+          taskLedger!.update(status);
+          const record = taskLedger!.get(status.jobId);
+          if (!record) throw new Error(`Durable task missing after update: ${status.jobId}`);
+          try {
+            deps.emitEvent({
+              type: "task",
+              jobId: status.jobId,
+              kind: status.kind,
+              projectId: record.projectId,
+              workspaceId: record.workspaceId,
+              state: status.state,
+              sourceRevision: status.sourceRevision,
+              progress: status.progress
+                ? { phase: status.progress.phase, percent: status.progress.percent }
+                : null,
+              ...(status.error ? { error: status.error.message } : {}),
+            });
+          } catch {
+            // A disconnected event consumer must not fail a durable task transition.
+          }
+        },
+      },
+      taskInputReferences: {
+        retain: async (input: LiveTaskInput) => {
+          const result = await requireWorkspaceReply("retainTaskInputs", input as unknown as Record<string, unknown>);
+          return typeof result === "object" && result !== null && "inputProject" in result
+            ? (result as { inputProject: import("@reelterminal/core/types/project").Project }).inputProject
+            : undefined;
+        },
+        release: async (jobId: string) => {
+          await requireWorkspaceReply("releaseTaskInputs", { jobId });
+        },
+      },
+      ...(bridge.workspaceLibrary
+        ? {
+          prepareRenderProject: async (project) => {
+            const result = await requireWorkspaceReply("prepareRenderFonts", { project });
+            if (typeof result !== "object" || result === null || !("project" in result)) {
+              throw new Error("workspace manager returned no prepared project snapshot");
+            }
+            return (result as { project: typeof project }).project;
+          },
+        }
+        : {}),
+      executionScope: () => {
+        const target = commandProjectContext.getStore();
+        return target?.targetProjectId && target.targetWorkspaceId
+          ? `${target.targetProjectId}:${target.targetWorkspaceId}`
+          : "session";
+      },
     };
     return deps.createFacade(config);
   };
@@ -504,13 +588,46 @@ export function createLiveSessionHost(
     },
 
     callExternal: async (verb, params, guard) => {
-      if (!guard) return callVerb(verb, params);
-      const current = await getCommandStatus();
-      if ((guard.expectedProjectId !== undefined && guard.expectedProjectId !== current.projectId) ||
-          (guard.expectedProjectEpoch !== undefined && guard.expectedProjectEpoch !== current.projectEpoch)) {
+      const record = typeof params === "object" && params !== null && !Array.isArray(params)
+        ? params as Record<string, unknown>
+        : null;
+      const entry = getCommandCatalogEntry(verb, "live");
+      const required = Array.isArray(entry?.inputSchema.required)
+        ? entry.inputSchema.required.filter((field): field is string => typeof field === "string")
+        : [];
+      const missing = required.find((field) => record?.[field] === undefined &&
+        !(verb === "editor.get_context" && (field === "projectId" || field === "workspaceId")));
+      if (missing) {
+        return { ok: false, error: { code: "INVALID_PARAMS", message: `${verb} requires ${missing}` } };
+      }
+      const current = guard ? await getCommandStatus() : null;
+      if (guard && ((guard.expectedProjectId !== undefined && guard.expectedProjectId !== current?.projectId) ||
+          (guard.expectedProjectEpoch !== undefined && guard.expectedProjectEpoch !== current?.projectEpoch))) {
         return { ok: false, error: { code: "CONFLICT", message: "The open project changed; read context and rebuild the request." } };
       }
-      return commandProjectContext.run(guard, () => callVerb(verb, params));
+      const targetProjectId = typeof record?.projectId === "string" ? record.projectId : undefined;
+      const targetWorkspaceId = typeof record?.workspaceId === "string" ? record.workspaceId : undefined;
+      const context: CommandProjectGuard = {
+        ...(guard?.expectedProjectId !== undefined ? { expectedProjectId: guard.expectedProjectId } : {}),
+        ...(guard?.expectedProjectEpoch !== undefined ? { expectedProjectEpoch: guard.expectedProjectEpoch } : {}),
+        ...(targetProjectId !== undefined ? { targetProjectId } : {}),
+        ...(targetWorkspaceId !== undefined ? { targetWorkspaceId } : {}),
+      };
+      // Existing project verbs keep their established closed parameter schemas;
+      // target IDs travel in request-local context to the canonical renderer.
+      const workspaceVerbs = new Set([
+        "project.save",
+        "project.list", "workspace.list", "workspace.create", "workspace.delete",
+        "workspace.close", "workspace.switch_view", "workspace.list_drafts", "workspace.recover_draft",
+        "node.list", "node.save", "node.restore", "node.rename", "node.media", "node.compare",
+        "media.references", "media.cleanup.plan", "media.cleanup.execute",
+      ]);
+      let routedParams = params;
+      if (!workspaceVerbs.has(verb) && record && ("projectId" in record || "workspaceId" in record)) {
+        const { projectId: _projectId, workspaceId: _workspaceId, ...rest } = record;
+        routedParams = rest;
+      }
+      return commandProjectContext.run(context, () => callVerb(verb, routedParams));
     },
   };
 

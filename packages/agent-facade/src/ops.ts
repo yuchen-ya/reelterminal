@@ -12,6 +12,7 @@ import type { Action } from "@reelterminal/core/types/actions";
 import type { Project, ProjectMarker } from "@reelterminal/core/types/project";
 import { DEFAULT_PROJECT_MARKER_COLOR } from "@reelterminal/core/types/project";
 import type { Clip, Transform, Transition } from "@reelterminal/core/types/timeline";
+import { EASING_TYPES } from "@reelterminal/core/types/timeline";
 import { TransitionEngine } from "@reelterminal/core/video/transition-engine";
 import type { TextClip } from "@reelterminal/core/text/types";
 import { parseSRT } from "@reelterminal/core/text/subtitle-engine";
@@ -55,6 +56,7 @@ import {
   type ClipSetFadeOp,
   type ClipSetReverseOp,
   type ClipSetSpeedOp,
+  type ClipSetSpeedConfigOp,
   type ClipSetTransformOp,
   type ClipTransformInput,
   type ClipSetVolumeOp,
@@ -836,6 +838,93 @@ export const CLIP_SET_SPEED_SCHEMA: ObjectSchema = {
   },
 };
 
+const CLIP_SPEED_KEYFRAME_SCHEMA: ObjectSchema = {
+  time: {
+    check: isNonNegativeNumber,
+    describe: "source seconds relative to clip.inPoint",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  speed: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0.1 && v <= 20,
+    describe: "a finite speed in [0.1, 20]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0.1, maximum: 20 } },
+  },
+  easing: {
+    check: oneOf(EASING_TYPES),
+    describe: "a supported speed-curve easing",
+    required: true,
+    emits: { kind: "leaf", schema: { enum: [...EASING_TYPES] } },
+  },
+};
+
+const CLIP_FREEZE_FRAME_SCHEMA: ObjectSchema = {
+  sourceTime: {
+    check: isNonNegativeNumber,
+    describe: "source seconds relative to clip.inPoint",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  startTime: {
+    check: isNonNegativeNumber,
+    describe: "clip-local playback seconds including preceding freeze durations",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  duration: {
+    check: isPositiveNumber,
+    describe: "a finite pause duration greater than zero",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", exclusiveMinimum: 0 } },
+  },
+};
+
+export const CLIP_SET_SPEED_CONFIG_SCHEMA: ObjectSchema = {
+  op: {
+    check: (v) => v === "clip.setSpeedConfig",
+    describe: '"clip.setSpeedConfig"',
+    required: true,
+    emits: { kind: "leaf", schema: { const: "clip.setSpeedConfig" } },
+  },
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty string",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  speed: {
+    check: (v) => typeof v === "number" && Number.isFinite(v) && v >= 0.1 && v <= 20,
+    describe: "a finite constant speed in [0.1, 20]",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0.1, maximum: 20 } },
+  },
+  reversed: {
+    check: isBoolean,
+    describe: "a boolean",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  pitchCorrection: {
+    check: isBoolean,
+    describe: "a boolean",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "boolean" } },
+  },
+  keyframes: {
+    check: (v) => Array.isArray(v) && v.length <= 128,
+    describe: "an array of at most 128 explicit speed curve keyframes",
+    required: true,
+    emits: { kind: "array", maxItems: 128, items: { kind: "object", schema: CLIP_SPEED_KEYFRAME_SCHEMA } },
+  },
+  freezeFrames: {
+    check: (v) => Array.isArray(v) && v.length <= 128,
+    describe: "an array of at most 128 explicit freeze intervals",
+    required: true,
+    emits: { kind: "array", maxItems: 128, items: { kind: "object", schema: CLIP_FREEZE_FRAME_SCHEMA } },
+  },
+};
+
 export const CLIP_SET_REVERSE_SCHEMA: ObjectSchema = {
   op: {
     check: (v) => v === "clip.setReverse",
@@ -1425,7 +1514,11 @@ export const MEDIA_REPLACE_SCHEMA: ObjectSchema = {
   filePath: {
     check: isNonEmptyString,
     describe: "absolute path of the new production version, inside a configured media root",
-    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  replacementMediaId: {
+    check: isNonEmptyString,
+    describe: "the id of an already imported candidate media version",
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
   },
   scope: {
@@ -2564,6 +2657,16 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
       return validateObject<SvgRemoveOp>(raw, SVG_REMOVE_SCHEMA, label);
     case "clip.setSpeed":
       return validateObject<ClipSetSpeedOp>(raw, CLIP_SET_SPEED_SCHEMA, label);
+    case "clip.setSpeedConfig": {
+      const op = validateObject<ClipSetSpeedConfigOp>(raw, CLIP_SET_SPEED_CONFIG_SCHEMA, label);
+      op.keyframes.forEach((keyframe, index) =>
+        validateObject(keyframe, CLIP_SPEED_KEYFRAME_SCHEMA, `${label}.keyframes[${index}]`),
+      );
+      op.freezeFrames.forEach((freezeFrame, index) =>
+        validateObject(freezeFrame, CLIP_FREEZE_FRAME_SCHEMA, `${label}.freezeFrames[${index}]`),
+      );
+      return op;
+    }
     case "clip.setReverse":
       return validateObject<ClipSetReverseOp>(raw, CLIP_SET_REVERSE_SCHEMA, label);
     case "clip.setTransform": {
@@ -2873,6 +2976,9 @@ export function validateEditOp(raw: unknown, index: number): EditOp {
     }
     case "media.replace": {
       const op = validateObject<MediaReplaceOp>(raw, MEDIA_REPLACE_SCHEMA, label);
+      if ((op.filePath === undefined) === (op.replacementMediaId === undefined)) {
+        throw invalidParams(`${label}: provide exactly one of filePath or replacementMediaId`);
+      }
       if (op.scope === "clip" && !op.clipId) {
         throw invalidParams(`${label}: clipId is required when scope is "clip"`);
       }
@@ -2913,7 +3019,32 @@ export async function enrichMediaFileOps(
   for (const op of ops) {
     if (op.op === "media.replace") {
       const replace = op as MediaReplaceOp;
-      const resolution = resolveContainedPathDetailed(replace.filePath, mediaRoots);
+      const project = await getProject?.();
+      if (replace.replacementMediaId !== undefined) {
+        const candidate = project?.mediaLibrary.items.find((item) => item.id === replace.replacementMediaId);
+        if (!candidate) {
+          throw new FacadeError("NOT_FOUND", `media.replace: candidate media "${replace.replacementMediaId}" was not found in this project`, { replacementMediaId: replace.replacementMediaId });
+        }
+        if (candidate.id === replace.mediaId) {
+          throw new FacadeError("INVALID_PARAMS", "media.replace: replacementMediaId must name a different media version");
+        }
+        const original = project?.mediaLibrary.items.find((item) => item.id === replace.mediaId);
+        let verifiedDuration: number | undefined;
+        if (replace.preserveFrames) {
+          const originalPath = typeof original?.contentUrl === "string" ? original.contentUrl : original?.originalUrl;
+          const candidatePath = typeof candidate.contentUrl === "string" ? candidate.contentUrl : candidate.originalUrl;
+          if (!originalPath || !candidatePath) throw new FacadeError("INVALID_PARAMS", "Strict replacement requires file-backed source and candidate media");
+          const originalResolution = resolveContainedPathDetailed(originalPath, mediaRoots);
+          const candidateResolution = resolveContainedPathDetailed(candidatePath, mediaRoots);
+          if (originalResolution.kind !== "ok" || candidateResolution.kind !== "ok") throw new FacadeError("INVALID_PARAMS", "Strict replacement media must be readable from configured media roots");
+          const verified = await verifyReplacementFrames(originalResolution.path, candidateResolution.path, mediaRoots);
+          verifiedDuration = verified.durationSec;
+        }
+        out.push({ ...replace, verifiedDuration, probedMediaItem: structuredClone(candidate) } as EditOp);
+        continue;
+      }
+      const filePath = replace.filePath!;
+      const resolution = resolveContainedPathDetailed(filePath, mediaRoots);
       if (resolution.kind !== "ok") {
         throw new FacadeError(
           "INVALID_PARAMS",
@@ -2923,10 +3054,10 @@ export async function enrichMediaFileOps(
       }
       let verifiedDuration: number | undefined;
       if (replace.preserveFrames) {
-        const project = await getProject?.();
         const original = project?.mediaLibrary.items.find((item) => item.id === replace.mediaId);
-        if (!original?.originalUrl) throw new FacadeError("INVALID_PARAMS", "Strict replacement requires file-backed source media");
-        const verified = await verifyReplacementFrames(original.originalUrl, resolution.path, mediaRoots);
+        const originalPath = typeof original?.contentUrl === "string" ? original.contentUrl : original?.originalUrl;
+        if (!originalPath) throw new FacadeError("INVALID_PARAMS", "Strict replacement requires file-backed source media");
+        const verified = await verifyReplacementFrames(originalPath, resolution.path, mediaRoots);
         verifiedDuration = verified.durationSec;
       }
       const probed = await probeFile(resolution.path);
@@ -3385,6 +3516,13 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           { clipId: op.clipId },
         );
       }
+      if ((clip.speedKeyframes?.length ?? 0) > 0 || (clip.freezeFrames?.length ?? 0) > 0) {
+        throw new FacadeError(
+          "UNSUPPORTED",
+          "clip.trim: variable-speed and freeze-frame clips require a time-remapping-aware trim, which is not available yet",
+          { clipId: op.clipId },
+        );
+      }
       const newIn = op.inPoint ?? clip.inPoint;
       const newOut = op.outPoint ?? clip.outPoint;
       if (newOut <= newIn) {
@@ -3793,6 +3931,42 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       return [makeAction("clip/setSpeed", { clipId: op.clipId, speed: op.speed })];
     }
 
+    case "clip.setSpeedConfig": {
+      const clip = draft.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((candidate) => candidate.id === op.clipId);
+      if (!clip) {
+        throw new FacadeError(
+          "NOT_FOUND",
+          `clip.setSpeedConfig: clip "${op.clipId}" not found`,
+          { clipId: op.clipId },
+        );
+      }
+
+      const sortedKeyframes = [...op.keyframes].sort((a, b) => a.time - b.time);
+      const sortedFreezes = [...op.freezeFrames].sort((a, b) => a.startTime - b.startTime);
+      const keyframes = sortedKeyframes.map((keyframe, index) => ({
+        id: `speed-kf-${clip.id}-${index + 1}`,
+        ...keyframe,
+      }));
+      const freezeFrames = sortedFreezes.map((freezeFrame, index) => ({
+        id: `freeze-${clip.id}-${index + 1}`,
+        clipId: clip.id,
+        ...freezeFrame,
+      }));
+
+      return [
+        makeAction("speed/setRampData", {
+          clipId: clip.id,
+          speed: op.speed,
+          reversed: op.reversed,
+          pitchCorrection: op.pitchCorrection,
+          keyframes,
+          freezeFrames,
+        }),
+      ];
+    }
+
     case "clip.setReverse": {
       const clip = draft.timeline.tracks
         .flatMap((t) => t.clips)
@@ -4152,6 +4326,10 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
           { mediaId: op.mediaId },
         );
       }
+      if (op.replacementMediaId !== undefined &&
+          (!draft.mediaLibrary.items.some((item) => item.id === op.replacementMediaId) || probed.id !== op.replacementMediaId)) {
+        throw new FacadeError("CONFLICT", "media.replace: the imported candidate changed before commit", { replacementMediaId: op.replacementMediaId });
+      }
       const targets = collectRepointTargets(op, draft);
       if (targets.length === 0) {
         throw new FacadeError(
@@ -4163,7 +4341,7 @@ export function opToCoreActions(op: EditOp, draft: Project): Action[] {
       if (op.preserveFrames && op.verifiedDuration === undefined) throw new FacadeError("INVALID_PARAMS", "Strict replacement must pass the file verification pre-pass");
       const newDuration = op.verifiedDuration ?? probed.metadata.duration ?? 0;
       if (op.preserveFrames && targets.some((clip) => clip.outPoint > newDuration + 1e-6)) throw new FacadeError("INVALID_PARAMS", "Clip range exceeds the verified source frame count");
-      const actions: Action[] = [
+      const actions: Action[] = op.replacementMediaId !== undefined ? [] : [
         // The new version imports as its OWN item: the old file is never
         // overwritten, both versions coexist and remain distinguishable.
         makeAction("media/import", { file: null as never, mediaItem: {

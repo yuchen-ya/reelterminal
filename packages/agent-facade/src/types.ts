@@ -15,7 +15,7 @@ import { HELP_VERBS } from "./gui-manual";
  * preview, export, verification, live editor context, and bundled tools.
  * Mutations are serialized, revision-checked, and idempotent.
  *
- * The current registry exposes 53 tools (28 base verbs + 8 material verbs +
+ * The current registry exposes 54 tools (29 base verbs + 8 material verbs +
  *   2 font verbs + 6 preset verbs + 3 help verbs + 6 bundled plugin tools);
  *   FACADE_VERBS, MATERIAL_VERBS, FONT_VERBS, PRESET_VERBS, HELP_VERBS, and
  *   PLUGIN_TOOLS below are the mechanical source of truth for the live
@@ -40,9 +40,12 @@ import type {
   ArtifactRef,
   VerifyReport,
 } from "./providers";
+import { WORKSPACE_VERBS } from "./workspace-library";
+export { WORKSPACE_VERBS } from "./workspace-library";
+export type { WorkspaceVerb } from "./workspace-library";
 
-export const FACADE_VERSION = "0.7.0" as const;
-export const FACADE_CONTRACT_VERSION = "facade-slice-8" as const;
+export const FACADE_VERSION = "0.8.0" as const;
+export const FACADE_CONTRACT_VERSION = "facade-slice-9" as const;
 export const FACADE_RUNTIME = "node-headless" as const;
 
 /* ------------------------------------------------------------------ */
@@ -58,6 +61,7 @@ export const FACADE_VERBS = [
   "project.rename",
   "project.get_state",
   "project.changes",
+  ...WORKSPACE_VERBS,
   "media.import",
   "media.render_html",
   "media.analyze_start",
@@ -65,6 +69,7 @@ export const FACADE_VERBS = [
   "analysis.get",
   "timeline.get",
   "timeline.query",
+  "timeline.mapSourceTimes",
   "editor.get_context",
   "editor.control",
   "edit.validate",
@@ -142,13 +147,23 @@ import type {
 export const READ_ONLY_VERBS = [
   "session.describe",
   "capabilities.get",
+  "project.list",
   "project.get_state",
   "project.changes",
+  "workspace.list",
+  "workspace.list_drafts",
+  "node.list",
+  "node.get",
+  "node.media",
+  "node.compare",
+  "media.references",
+  "media.cleanup.plan",
   "media.analyze_start",
   "analysis.list",
   "analysis.get",
   "timeline.get",
   "timeline.query",
+  "timeline.mapSourceTimes",
   "editor.get_context",
   "editor.control",
   "edit.validate",
@@ -186,8 +201,8 @@ export function isReadOnlyVerb(verb: FacadeVerb): verb is ReadOnlyVerb {
  */
 export interface StepLetters {
   readonly facadeToRuntime: "P";
-  /** "X" in live sessions: project.create is unavailable (the GUI owns the project lifecycle). */
-  readonly createProject: "P" | "X";
+  /** "D" when the live desktop workspace manager can create projects, otherwise "X". */
+  readonly createProject: "P" | "D" | "X";
   /** "A" when live roots + bridge are available; "X" otherwise. */
   readonly importLocalMedia: "A" | "X";
   readonly trimClip: "P";
@@ -243,10 +258,10 @@ export interface Capabilities {
   /**
    * Verbs that exist in the contract but are honestly unavailable in THIS
    * session's mode (live sessions report their
-   * GUI-owned/unavailable verbs here). Absent in headless
+   * unavailable verbs here). Absent in headless
    * sessions, where availability is reported per-capability below. In live
-   * sessions only project.create/open are always GUI-owned; media.import is
-   * available through the host bridge when configured.
+   * sessions project.open remains GUI-owned; project.create and workspace
+   * operations route through the desktop workspace manager.
    */
   readonly unavailableVerbs?: readonly FacadeVerb[];
   readonly stateModel: {
@@ -339,6 +354,7 @@ export interface Capabilities {
     mediaRename: CapabilityStatus;
     mediaProduction: CapabilityStatus;
     transformKeyframes: CapabilityStatus;
+    speedRamping: CapabilityStatus;
     volumeKeyframes: CapabilityStatus;
     basicColorGrade: CapabilityStatus;
     /** Additive clip video-effect stack op (Auto-Color preset documented as a fixed three-effect combo). */
@@ -435,6 +451,9 @@ export interface ProjectState {
  */
 export interface ProjectCreateResult extends ProjectState {
   readonly replayed: boolean;
+  /** Present for live multi-project creation. */
+  readonly projectId?: string;
+  readonly defaultWorkspaceId?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -500,6 +519,8 @@ export interface ProjectSaveResult {
  */
 export interface LiveProjectSaveResult {
   readonly revision: number;
+  readonly nodeId?: string;
+  readonly replayed?: boolean;
 }
 
 /** Rename the open project without changing its backing checkpoint path. */
@@ -911,6 +932,32 @@ export interface TimelineQueryResult {
   readonly nextCursor: string | null;
 }
 
+export interface TimelineMapSourceTimesParams {
+  readonly clipId: string;
+  /** Absolute project timeline seconds; each point must lie within this clip. */
+  readonly timelineTimes: readonly number[];
+  /** Optional snapshot revision guard. */
+  readonly expectedRevision?: number;
+}
+
+export interface TimelineSourceTimeMapping {
+  readonly clipId: string;
+  readonly mediaId: string;
+  readonly timelineTime: number;
+  readonly clipLocalTime: number;
+  /** Absolute source-media seconds, including the clip's inPoint. */
+  readonly sourceTime: number;
+  /** Source seconds relative to the clip's inPoint, matching speed keyframes/freezes. */
+  readonly sourceTimeFromInPoint: number;
+  readonly frozen: boolean;
+  readonly freezeFrameId: string | null;
+}
+
+export interface TimelineMapSourceTimesResult {
+  readonly revision: number;
+  readonly mappings: readonly TimelineSourceTimeMapping[];
+}
+
 /* ------------------------------------------------------------------ */
 /* editor.get_context                                                 */
 /* ------------------------------------------------------------------ */
@@ -956,6 +1003,10 @@ export interface EditorGetContextResult {
     readonly projectId: string | null;
     readonly projectName: string | null;
     readonly projectEpoch?: string;
+    /** The selected foreground workspace; omitted in headless sessions. */
+    readonly workspaceId?: string;
+    /** Runtime generation for rejecting commands prepared before a reload. */
+    readonly workspaceInstanceId?: string;
     /** Null in headless sessions (no window exists). */
     readonly windowId: string | null;
   };
@@ -991,7 +1042,9 @@ export interface MediaReplaceOp {
   /** Media item whose source the references switch away from. */
   readonly mediaId: string;
   /** Absolute path of the new version, inside a configured media root. */
-  readonly filePath: string;
+  readonly filePath?: string;
+  /** Already imported candidate media version in the same project/workspace. */
+  readonly replacementMediaId?: string;
   /** "project" repoints every clip referencing mediaId; "clip" only clipId. */
   readonly scope: "project" | "clip";
   /** Required when scope is "clip". */
@@ -1032,6 +1085,7 @@ export const EDIT_OP_TYPES = [
   "text.update",
   "text.delete",
   "clip.setSpeed",
+  "clip.setSpeedConfig",
   "clip.setReverse",
   "clip.setTransform",
   "clip.setVolume",
@@ -1313,6 +1367,35 @@ export interface ClipSetSpeedOp {
   readonly clipId: string;
   /** Constant playback speed in [0.1, 20]. */
   readonly speed: number;
+}
+
+export interface ClipSpeedKeyframeInput {
+  /** Source seconds relative to clip.inPoint. */
+  readonly time: number;
+  readonly speed: number;
+  readonly easing: import("@reelterminal/core/types/timeline").EasingType;
+}
+
+export interface ClipFreezeFrameInput {
+  /** Frozen source seconds relative to clip.inPoint. */
+  readonly sourceTime: number;
+  /** Clip-local playback seconds, including all preceding freeze durations. */
+  readonly startTime: number;
+  readonly duration: number;
+}
+
+/** Replace a clip's complete canonical playback configuration in one action. */
+export interface ClipSetSpeedConfigOp {
+  readonly op: "clip.setSpeedConfig";
+  readonly clipId: string;
+  /** Constant playback speed in [0.1, 20], used outside the speed curve. */
+  readonly speed: number;
+  readonly reversed: boolean;
+  readonly pitchCorrection: boolean;
+  /** Source seconds relative to inPoint; each point supplies the curve. */
+  readonly keyframes: readonly ClipSpeedKeyframeInput[];
+  /** sourceTime is in source-relative seconds; startTime includes prior freezes. */
+  readonly freezeFrames: readonly ClipFreezeFrameInput[];
 }
 
 export interface ClipSetReverseOp {
@@ -1810,6 +1893,7 @@ export type EditOp =
   | SvgUpdateOp
   | SvgRemoveOp
   | ClipSetSpeedOp
+  | ClipSetSpeedConfigOp
   | ClipSetReverseOp
   | ClipSetTransformOp
   | ClipSetVolumeOp
@@ -2011,8 +2095,16 @@ export interface VisualInspectParams {
 
 export interface VisualInspectFrame {
   readonly index: number;
-  /** Timeline position used for this rendered frame. */
+  /** Legacy alias of requestedTimelineTimeSec; it is not a decoded source timestamp. */
   readonly timeSec: number;
+  readonly coordinateSpace: "timeline";
+  /** Timeline time requested from the renderer (timeSec is the accepted legacy alias). */
+  readonly requestedTimelineTimeSec: number;
+  /** Unknown: the provider does not return the actual rendered timeline time. */
+  readonly renderedTimelineTimeSec: null;
+  /** Unknown: the render provider exposes pixels, not a decoded source PTS/frame index. */
+  readonly sourceFrameNumber: null;
+  readonly sourcePtsSec: null;
   /** Stable human/machine-readable label printed in the contact sheet when available. */
   readonly label: string;
   /** Revision of the canonical snapshot that produced this frame. */
@@ -2028,6 +2120,12 @@ export interface VisualInspectResult {
   readonly revision: number;
   /** Revision whose canonical snapshot produced every frame/artifact. */
   readonly sourceRevision: number;
+  readonly mediaSources: readonly {
+    readonly mediaId: string;
+    readonly sizeBytes: number;
+    readonly mtimeMs: number;
+    readonly sha256: string | null;
+  }[];
   readonly selection:
     | { readonly kind: "clip"; readonly clipId: string; readonly startSec: number; readonly endSec: number }
     | { readonly kind: "timeRange"; readonly startSec: number; readonly endSec: number };
@@ -2114,6 +2212,8 @@ export interface AnalysisGetParams {
 export type AnalysisListResult = readonly {
   readonly id: string;
   readonly finishedAt: string;
+  readonly sourceRevision: number | null;
+  readonly coordinateSpace: "source";
   readonly subject: { readonly mediaId: string; readonly name: string };
   readonly analysisTypes: readonly string[];
   readonly stale: { readonly kind: string };
@@ -2177,6 +2277,9 @@ export interface JobParams {
 export interface JobStatusView {
   readonly jobId: string;
   readonly kind: "export" | "analysis";
+  /** Explicit project/workspace whose fixed input this background task uses. */
+  readonly projectId?: string;
+  readonly workspaceId?: string;
   readonly state: "queued" | "running" | "done" | "error" | "cancelled";
   readonly progress: {
     readonly phase: string;

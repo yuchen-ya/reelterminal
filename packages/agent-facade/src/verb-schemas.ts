@@ -48,6 +48,7 @@ import {
   TIMELINE_QUERY_ENTITY_TYPES,
   TIMELINE_QUERY_FIELDS,
 } from "./timeline-query";
+import { MAX_TIMELINE_SOURCE_MAP_POINTS } from "./timeline-source-map";
 import { FRAME_BUDGET_EMITS, isFrameBudget } from "./frame-budget";
 import {
   CLIP_ADD_SCHEMA,
@@ -58,6 +59,7 @@ import {
   CLIP_SET_FADE_SCHEMA,
   CLIP_SET_REVERSE_SCHEMA,
   CLIP_SET_SPEED_SCHEMA,
+  CLIP_SET_SPEED_CONFIG_SCHEMA,
   CLIP_SET_TRANSFORM_SCHEMA,
   CLIP_SET_VOLUME_SCHEMA,
   CLIP_SPLIT_SCHEMA,
@@ -111,6 +113,7 @@ import {
   validateObject,
   type ObjectSchema,
 } from "./validate";
+import { WORKSPACE_VERB_SCHEMAS } from "./workspace-schemas";
 
 /* ------------------------------------------------------------------ */
 /* project.create / project.open / project.save                        */
@@ -487,6 +490,35 @@ export const TIMELINE_QUERY_SCHEMA: ObjectSchema = {
   },
 };
 
+export const TIMELINE_MAP_SOURCE_TIMES_SCHEMA: ObjectSchema = {
+  clipId: {
+    check: isNonEmptyString,
+    describe: "a non-empty timeline clip id",
+    required: true,
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  timelineTimes: {
+    check: (value) =>
+      Array.isArray(value) &&
+      value.length >= 1 &&
+      value.length <= MAX_TIMELINE_SOURCE_MAP_POINTS &&
+      value.every((time) => isNonNegativeNumber(time)),
+    describe: `an array of 1 to ${MAX_TIMELINE_SOURCE_MAP_POINTS} finite non-negative absolute timeline times, each within the clip`,
+    required: true,
+    emits: {
+      kind: "array",
+      minItems: 1,
+      maxItems: MAX_TIMELINE_SOURCE_MAP_POINTS,
+      items: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+    },
+  },
+  expectedRevision: {
+    check: isNonNegativeInteger,
+    describe: "an optional non-negative snapshot revision guard",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 0 } },
+  },
+};
+
 /* ------------------------------------------------------------------ */
 /* editor.control (ephemeral live-editor context)                     */
 
@@ -568,6 +600,7 @@ export const EDIT_OP_SCHEMAS: Readonly<
   "svg.update": SVG_UPDATE_SCHEMA,
   "svg.remove": SVG_REMOVE_SCHEMA,
   "clip.setSpeed": CLIP_SET_SPEED_SCHEMA,
+  "clip.setSpeedConfig": CLIP_SET_SPEED_CONFIG_SCHEMA,
   "clip.setReverse": CLIP_SET_REVERSE_SCHEMA,
   "clip.setTransform": CLIP_SET_TRANSFORM_SCHEMA,
   "clip.setVolume": CLIP_SET_VOLUME_SCHEMA,
@@ -1900,6 +1933,7 @@ export const VERB_PARAM_SCHEMAS: {
   "media.analyze_start": MEDIA_ANALYZE_START_SCHEMA,
   "timeline.get": EMPTY_PARAMS_SCHEMA,
   "timeline.query": TIMELINE_QUERY_SCHEMA,
+  "timeline.mapSourceTimes": TIMELINE_MAP_SOURCE_TIMES_SCHEMA,
   "editor.get_context": EMPTY_PARAMS_SCHEMA,
   "editor.control": EDITOR_CONTROL_SCHEMA,
   "edit.validate": EDIT_VALIDATE_SCHEMA,
@@ -1935,4 +1969,5 @@ export const VERB_PARAM_SCHEMAS: {
   "help.list_screens": HELP_LIST_SCREENS_SCHEMA,
   "help.describe": HELP_DESCRIBE_SCHEMA,
   "help.search": HELP_SEARCH_SCHEMA,
+  ...WORKSPACE_VERB_SCHEMAS,
 };

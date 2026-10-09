@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import type { StoreApi } from "zustand";
-import type { Action, Project } from "@reelterminal/core";
+import type { Action } from "@reelterminal/core";
 import type { ProjectState } from "../project-store";
 
 type Get = StoreApi<ProjectState>["getState"];
@@ -25,27 +25,20 @@ export type TrackSlice = Pick<
 export function createTrackSlice(set: Set, get: Get): TrackSlice {
   return {
     addTrack: async (trackType, position) => {
-      const { project, actionExecutor } = get();
-      const projectCopy = structuredClone(project);
       const action: Action = {
         type: "track/add",
         id: uuidv4(),
         timestamp: Date.now(),
-        params: { trackType, position },
+        params: { trackType, position, trackId: uuidv4() },
       };
-      const result = await actionExecutor.execute(action, projectCopy);
-      if (result.success) {
-        const finalProject: Project = {
-          ...projectCopy,
-          modifiedAt: Date.now(),
-        };
-        set({ project: finalProject });
-      }
-      return result;
+      return (await get().submitActionBatch([action], {
+        groupLabel: "Add track",
+        historyOwner: "human",
+      })).result;
     },
 
     duplicateTrack: async (trackId) => {
-      const { project, actionExecutor } = get();
+      const { project } = get();
       const sourceIndex = project.timeline.tracks.findIndex(
         (track) => track.id === trackId,
       );
@@ -55,43 +48,32 @@ export function createTrackSlice(set: Set, get: Get): TrackSlice {
           error: { code: "TRACK_NOT_FOUND", message: "Track not found" },
         };
       }
-      const projectCopy = structuredClone(project);
       const action: Action = {
         type: "track/duplicate",
         id: uuidv4(),
         timestamp: Date.now(),
-        params: { sourceTrackId: trackId, position: sourceIndex + 1 },
+        params: { sourceTrackId: trackId, position: sourceIndex + 1, trackId: uuidv4() },
       };
-      const result = await actionExecutor.execute(action, projectCopy);
-      if (result.success) {
-        set({ project: { ...projectCopy, modifiedAt: Date.now() } });
-      }
-      return result;
+      return (await get().submitActionBatch([action], {
+        groupLabel: "Duplicate track",
+        historyOwner: "human",
+      })).result;
     },
 
     removeTrack: async (trackId) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "track/remove",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { trackId },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({
-          project: {
-            ...project,
-            timeline: { ...project.timeline },
-            modifiedAt: Date.now(),
-          },
-        });
-      }
-      return result;
+      return (await get().submitActionBatch([action], {
+        groupLabel: "Remove track",
+        historyOwner: "human",
+      })).result;
     },
 
     renameTrack: async (trackId, name) => {
-      const { project, actionExecutor } = get();
       const trimmed = name.trim();
       if (!trimmed) {
         return {
@@ -108,89 +90,79 @@ export function createTrackSlice(set: Set, get: Get): TrackSlice {
         timestamp: Date.now(),
         params: { trackId, name: trimmed },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project, modifiedAt: Date.now() } });
-      }
-      return result;
+      return (await get().submitActionBatch([action], {
+        groupLabel: "Rename track",
+        historyOwner: "human",
+      })).result;
     },
 
     reorderTrack: async (trackId, newPosition) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "track/reorder",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { trackId, newPosition },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project, modifiedAt: Date.now() } });
-      }
-      return result;
+      return (await get().submitActionBatch([action], {
+        groupLabel: "Reorder track",
+        historyOwner: "human",
+      })).result;
     },
 
     lockTrack: async (trackId, locked) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "track/lock",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { trackId, locked },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project } });
-      }
-      return result;
+      return (await get().submitActionBatch([action], {
+        groupLabel: "Lock track",
+        historyOwner: "human",
+      })).result;
     },
 
     hideTrack: async (trackId, hidden) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "track/hide",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { trackId, hidden },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project } });
-      }
-      return result;
+      return (await get().submitActionBatch([action], {
+        groupLabel: "Hide track",
+        historyOwner: "human",
+      })).result;
     },
 
     muteTrack: async (trackId, muted) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "track/mute",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { trackId, muted },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project } });
-      }
-      return result;
+      return (await get().submitActionBatch([action], {
+        groupLabel: "Mute track",
+        historyOwner: "human",
+      })).result;
     },
 
     soloTrack: async (trackId, solo) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "track/solo",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { trackId, solo },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project } });
-      }
-      return result;
+      return (await get().submitActionBatch([action], {
+        groupLabel: "Solo track",
+        historyOwner: "human",
+      })).result;
     },
 
-    groupTracks: (trackId, partnerTrackId) => {
+    groupTracks: async (trackId, partnerTrackId) => {
+      const mutate = (): boolean => {
       const { project } = get();
       const source = project.timeline.tracks.find((track) => track.id === trackId);
       if (!source) return false;
@@ -243,24 +215,25 @@ export function createTrackSlice(set: Set, get: Get): TrackSlice {
         },
       });
       return true;
+      };
+      const submit = get().submitWorkspaceMutation;
+      return submit ? submit(mutate) : mutate();
     },
 
     getTrack: (trackId) =>
       get().project.timeline.tracks.find((track) => track.id === trackId),
 
     consolidateTrack: async (trackId) => {
-      const { project, actionExecutor } = get();
       const action: Action = {
         type: "track/consolidate",
         id: uuidv4(),
         timestamp: Date.now(),
         params: { trackId },
       };
-      const result = await actionExecutor.execute(action, project);
-      if (result.success) {
-        set({ project: { ...project } });
-      }
-      return result;
+      return (await get().submitActionBatch([action], {
+        groupLabel: "Consolidate track",
+        historyOwner: "human",
+      })).result;
     },
   };
 }

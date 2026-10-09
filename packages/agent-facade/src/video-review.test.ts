@@ -63,6 +63,24 @@ describe("Alibaba video review", () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
       expect(status).toMatchObject({ ok: true, value: { state: "done", sourceRevision: 1, result: { summary: { videoReview: { status: "opinion", coordinateSpace: "source", startSec: 1, endSec: 3, timeMapping: { offsetSec: 1 }, usage: { total_tokens: 120 } } } } } });
+      if (status?.ok) {
+        const recordId = (status.value.result?.summary?.analysisRecord as { id?: string } | undefined)?.id;
+        expect(recordId).toBeTruthy();
+        const record = await facade["analysis.get"]({ recordId: recordId! });
+        expect(record).toMatchObject({
+          ok: true,
+          value: {
+            sourceRevision: 1,
+            coordinateSpace: "source",
+            unknowns: expect.arrayContaining([
+              { field: "videoReview.serverSamplingFps", note: expect.any(String) },
+              { field: "videoReview.sourceFrameNumber", note: expect.any(String) },
+              { field: "videoReview.eventLocalizationUncertaintySec", note: expect.any(String) },
+              { field: "videoReview.audioDetectionUncertaintySec", note: expect.any(String) },
+            ]),
+          },
+        });
+      }
       vi.stubEnv("DASHSCOPE_API_KEY", ""); // Replays do not require a new credential or network access.
       expect(await facade["media.analyze_start"](args)).toMatchObject({ ok: true, value: { jobId: started.value.jobId, replayed: true } });
       expect(await facade["media.analyze_start"]({ ...args, reviewQuestion: "different" })).toMatchObject({ ok: false, error: { code: "CONFLICT" } });

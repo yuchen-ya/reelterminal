@@ -164,6 +164,8 @@ export interface LiveEndpointOptions {
 export interface CommandProjectGuard {
   readonly expectedProjectId?: string;
   readonly expectedProjectEpoch?: string;
+  readonly targetProjectId?: string;
+  readonly targetWorkspaceId?: string;
 }
 
 export interface CommandStatusSnapshot {
@@ -409,6 +411,8 @@ async function handleCommandApiRequest(
   const guard: CommandProjectGuard = {
     ...(expectedProjectId !== undefined ? { expectedProjectId } : {}),
     ...(expectedProjectEpoch !== undefined ? { expectedProjectEpoch } : {}),
+    ...(typeof args.projectId === "string" ? { targetProjectId: args.projectId } : {}),
+    ...(typeof args.workspaceId === "string" ? { targetWorkspaceId: args.workspaceId } : {}),
   };
   if (options.getStatus && Object.keys(guard).length > 0) {
     const status = await options.getStatus();

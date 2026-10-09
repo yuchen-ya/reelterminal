@@ -14,25 +14,26 @@ import { bindBundledTools } from "./plugin-runtime";
  *    headless, then
  *    committed through `store.applyActions` as ONE undo unit with CAS
  *    preconditions (Decisions 3/4).
- *  - One AI writer at a time: construction acquires the
- *    `LiveWriterLease` for write-enabled sessions; a session without it runs
+ *  - CLI and MCP clients share the desktop host's external writer identity;
+ *    construction acquires the `LiveWriterLease` for write-enabled sessions;
+ *    a session without it runs
  *    read-only and its write verbs fail CONFLICT naming the holder. The
  *    human never takes the lease and can always edit.
  *  - Read/write access is an independent facade boundary: read-only access
  *    rejects write verbs with FORBIDDEN.
- *  - Honesty: project.create/project.open remain GUI-owned; media.import
- *    validates and delegates through the explicit live store bridge; preview/export run on a snapshot
+ *  - Honesty: project.create creates a distinct project without switching the GUI; project.open
+ *    remains unavailable in live mode; preview/export run on a snapshot
  *    and require its media to be file-backed and readable from THIS process
  *    — blob/GUI-only media fails loudly instead of silently rendering
  *    wrong pixels. Text-only projects render fine.
  *
- * Serialization mirrors headless: every verb body runs inside one
- * promise-chained lane, so verb calls never interleave.
+ * Calls serialize per explicit project/workspace target so unrelated workspaces
+ * can progress independently.
  */
 import { ActionExecutor } from "@reelterminal/core/actions/action-executor";
 import { ActionHistory } from "@reelterminal/core/actions/action-history";
 import type { Action } from "@reelterminal/core/types/actions";
-import type { Project } from "@reelterminal/core/types/project";
+import type { Project, ProjectSettings } from "@reelterminal/core/types/project";
 import { stat } from "node:fs/promises";
 import { readFile as readFileFontBytes } from "node:fs/promises";
 import { basename, isAbsolute, resolve as resolvePath } from "node:path";
@@ -69,8 +70,9 @@ import {
   pendingArtifactPath,
   publishArtifact,
 } from "./inspection-artifacts";
-import { cancelExportWithin, JobRegistry, jobStatusView } from "./jobs";
+import { cancelExportWithin, JobRegistry, jobStatusView, type JobDeliveryOutcome } from "./jobs";
 import { queryTimeline } from "./timeline-query";
+import { mapTimelineSourceTimes } from "./timeline-source-map";
 import { validateEditPlan } from "./edit-validation";
 import type { LiveWriterLease } from "./live-lease";
 import {
@@ -134,6 +136,8 @@ import {
   PREVIEW_RENDER_COMPARISON_SCHEMA,
   PREVIEW_RENDER_FRAME_SCHEMA,
   PROJECT_RENAME_SCHEMA,
+  PROJECT_CREATE_SCHEMA,
+  PROJECT_SETTINGS_SCHEMA,
   VISUAL_INSPECT_RANGE_SCHEMA,
   VISUAL_INSPECT_SCHEMA,
   VERIFY_ARTIFACT_SCHEMA,
@@ -144,6 +148,7 @@ import {
   EDITOR_CONTROL_TARGET_SCHEMA,
   PROJECT_CHANGES_SCHEMA,
   TIMELINE_QUERY_SCHEMA,
+  TIMELINE_MAP_SOURCE_TIMES_SCHEMA,
   TIMELINE_QUERY_RANGE_SCHEMA,
   EDIT_VALIDATE_SCHEMA,
   HISTORY_GET_SCHEMA,
@@ -264,6 +269,8 @@ import {
   type ProjectChangesResult,
   type TimelineQueryParams,
   type TimelineQueryResult,
+  type TimelineMapSourceTimesParams,
+  type TimelineMapSourceTimesResult,
   type EditValidateParams,
   type EditValidateResult,
   type HistoryGetParams,
@@ -290,6 +297,16 @@ import {
   visualRasterSize,
 } from "./visual-inspect";
 import { DEFAULT_FRAME_BUDGET_BYTES, fitFrameToBudget } from "./frame-budget";
+import { createEmptyProject } from "./project-factory";
+import { WORKSPACE_VERB_SCHEMAS } from "./workspace-schemas";
+import type {
+  WorkspaceLibraryBridge,
+  WorkspaceLibraryBridgeRequest,
+  WorkspaceLibraryBridgeReply,
+  WorkspaceVerb,
+  RetainTaskInputsParams,
+} from "./workspace-library";
+import { WORKSPACE_VERBS } from "./workspace-library";
 
 /** Max media file size accepted for Chromium reads (2 GiB safety valve). */
 const MAX_MEDIA_FILE_BYTES = 2 * 1024 * 1024 * 1024;
@@ -299,17 +316,41 @@ const MAX_MEDIA_FILE_BYTES = 2 * 1024 * 1024 * 1024;
  * exhaust the renderer before its own identical guard runs.
  */
 const MAX_LIVE_IMPORT_FILE_BYTES = 256 * 1024 * 1024;
+/** Shared live export/analysis lane stays bounded while edits commit immediately. */
+const MAX_ACTIVE_LIVE_TASKS = 2;
 
 /**
  * Verbs that exist in the contract but are honestly unavailable in live
- * mode (Decision 11): the GUI owns the project lifecycle. Media import is
- * available when the host supplies media roots and the explicit live-store
- * import bridge.
+ * mode (Decision 11). The GUI still owns opening project files; project
+ * creation and workspace selection are explicit manager operations.
  */
 export const LIVE_UNAVAILABLE_VERBS = [
-  "project.create",
   "project.open",
 ] as const satisfies readonly FacadeVerb[];
+
+export interface LiveTaskInput extends RetainTaskInputsParams {
+  readonly kind: "export" | "analysis";
+  readonly inputProject: Project;
+  readonly parameters: unknown;
+}
+
+export interface LivePersistedTaskRecord {
+  readonly projectId: string;
+  readonly workspaceId: string;
+  readonly status: JobStatusView;
+  readonly parameters?: unknown;
+}
+
+export interface LiveTaskLifecycle {
+  list(): readonly LivePersistedTaskRecord[];
+  begin(input: LiveTaskInput): void;
+  update(status: JobStatusView): void;
+}
+
+export interface LiveTaskInputReferences {
+  retain(input: LiveTaskInput): Promise<Project | void>;
+  release(jobId: string): Promise<void>;
+}
 
 export interface LiveFacadeConfig {
   /** The canonical-store seam (Decision 1). */
@@ -366,17 +407,28 @@ export interface LiveFacadeConfig {
    * customPresets.available.
    */
   readonly presetLibrary?: PresetLibraryBridge;
+  /** Persistent project/workspace/node APIs owned by the renderer manager. */
+  readonly workspaceLibrary?: WorkspaceLibraryBridge;
+  /** Durable records for fixed export/analysis snapshots. */
+  readonly taskLifecycle?: LiveTaskLifecycle;
+  /** Retains media versions while a task is pending or running. */
+  readonly taskInputReferences?: LiveTaskInputReferences;
+  /** Captures immutable renderer fonts for a frozen live rendering snapshot. */
+  readonly prepareRenderProject?: (project: Project) => Promise<Project>;
+  /** Request-local queue key; the desktop scopes it by project/workspace target. */
+  readonly executionScope?: () => string;
 }
 
 /**
  * The live facade contract: the same verbs as AgentFacade, with
- * project.save honestly re-shaped for live mode (the GUI's save path
- * reports a revision, not a checkpoint file — see LiveProjectSaveResult)
+ * project.save honestly re-shaped for live mode (it saves an immutable node
+ * through the workspace manager — see LiveProjectSaveResult)
  * plus dispose() (release the lease, cancel jobs).
  */
 export interface LiveAgentFacade extends Omit<AgentFacade, "project.save"> {
+  readonly "node.get": (params: Record<string, unknown>) => Promise<FacadeResult<unknown>>;
   readonly "project.save": (
-    params?: Record<string, never>,
+    params?: Record<string, unknown>,
   ) => Promise<FacadeResult<LiveProjectSaveResult>>;
   /** Release write ownership without losing jobs or idempotency state. */
   releaseWriterLease(): void;
@@ -449,17 +501,18 @@ export class LiveFacadeSession {
   private readonly jobs: JobRegistry;
   private readonly ledger: IdempotencyLedger;
   /**
-   * Lazily resolved id of the OPEN project, folded into the ledger scope
-   * (headless scopes its ledger per project id; the live project id is only
-   * known asynchronously). Refreshed on every ledger access so a project
-   * switch never serves the previous project's committed results.
+   * Lazily resolved project/workspace identity, folded into the ledger scope.
+   * Refreshed on every ledger access so a request routed to another target
+   * cannot replay the previous workspace's committed result.
    */
   private ledgerProjectId: string | null = null;
   /** True while this session holds the writer lease. */
   private writer: boolean;
   private disposed = false;
   private readonly analysisControllers = new Map<string, AbortController>();
-  private chain: Promise<unknown> = Promise.resolve();
+  private readonly releasedTaskIds = new Set<string>();
+  private readonly chains = new Map<string, Promise<void>>();
+  private taskStartChain: Promise<void> = Promise.resolve();
 
   constructor(config: LiveFacadeConfig) {
     this.config = config;
@@ -467,6 +520,37 @@ export class LiveFacadeSession {
     this.ledger = new IdempotencyLedger(
       () => `live:${config.sessionId}#${this.ledgerProjectId ?? "unresolved"}`,
     );
+    for (const record of config.taskLifecycle?.list() ?? []) {
+      this.jobs.restore(record.status, {
+        projectId: record.projectId,
+        workspaceId: record.workspaceId,
+      });
+      const parameters = record.parameters;
+      if (typeof parameters === "object" && parameters !== null) {
+        const item = parameters as Record<string, unknown>;
+        if (typeof item.idempotencyKey === "string" && typeof item.payloadHash === "string") {
+          this.ledgerProjectId = `${record.projectId}:${record.workspaceId}`;
+          if (record.status.kind === "export") {
+            this.ledger.set("export.start", item.idempotencyKey, {
+              revision: record.status.sourceRevision,
+              value: { jobId: record.status.jobId, sourceRevision: record.status.sourceRevision },
+              payloadHash: item.payloadHash,
+            });
+          } else if (Array.isArray(item.analysisTypes) && item.analysisTypes.every((value) => typeof value === "string")) {
+            this.ledger.set("media.analyze_start", item.idempotencyKey, {
+              revision: record.status.sourceRevision,
+              value: {
+                jobId: record.status.jobId,
+                sourceRevision: record.status.sourceRevision,
+                analysisTypes: item.analysisTypes,
+              },
+              payloadHash: item.payloadHash,
+            });
+          }
+        }
+      }
+      this.observeTask(record.status.jobId);
+    }
     // Write-enabled sessions take the writer lease at construction. Failure
     // is not fatal — the session runs read-only and its write verbs fail
     // CONFLICT naming the current holder.
@@ -491,9 +575,12 @@ export class LiveFacadeSession {
       typeof this.config.fontLibrary === "function";
     const presetLibraryAvailable =
       typeof this.config.presetLibrary === "function";
+    const workspaceLibraryAvailable =
+      typeof this.config.workspaceLibrary === "function";
     const unavailableVerbs: FacadeVerb[] = [...LIVE_UNAVAILABLE_VERBS];
     if (!mediaImportAvailable) unavailableVerbs.push("media.import");
     if (!materialLibraryAvailable) unavailableVerbs.push(...MATERIAL_VERBS);
+    if (!workspaceLibraryAvailable) unavailableVerbs.push("project.create", "project.save", ...WORKSPACE_VERBS);
     return {
 
       mediaRoots: this.config.mediaRoots ?? [],
@@ -516,10 +603,67 @@ export class LiveFacadeSession {
       mediaImportAvailable,
       materialLibraryAvailable,
       fontLibraryAvailable,
-      presetLibraryAvailable,
+        presetLibraryAvailable,
+        workspaceLibraryAvailable,
       unavailableVerbs,
       },
     };
+  }
+
+  private observeTask(jobId: string): void {
+    if (!this.config.taskLifecycle) return;
+    this.jobs.observe(jobId, (status) => {
+      this.config.taskLifecycle!.update(status);
+      if (status.state === "done" || status.state === "error" || status.state === "cancelled") {
+        if (!this.releasedTaskIds.has(jobId)) {
+          this.releasedTaskIds.add(jobId);
+          void this.config.taskInputReferences?.release(jobId).catch(() => {
+            // A failed release leaves the durable input pin in place, which is safe for later cleanup.
+            this.releasedTaskIds.delete(jobId);
+          });
+        }
+      }
+    });
+  }
+
+  private async createTrackedTask(input: LiveTaskInput): Promise<Project> {
+    const prior = this.taskStartChain;
+    let release!: () => void;
+    this.taskStartChain = new Promise<void>((resolve) => { release = resolve; });
+    await prior;
+    let retained = false;
+    try {
+      this.assertTaskCapacity(input.kind === "export" ? "export.start" : "media.analyze_start");
+      let taskInput = input;
+      if (this.config.taskInputReferences) {
+        const preparedProject = await this.config.taskInputReferences.retain(input);
+        if (preparedProject) taskInput = { ...input, inputProject: preparedProject };
+        retained = true;
+      }
+      this.config.taskLifecycle?.begin(taskInput);
+      this.jobs.create(taskInput.jobId, taskInput.sourceRevision, taskInput.kind, {
+        projectId: taskInput.projectId,
+        workspaceId: taskInput.workspaceId,
+      });
+      this.observeTask(taskInput.jobId);
+      return taskInput.inputProject;
+    } catch (error) {
+      if (retained) await this.config.taskInputReferences?.release(input.jobId);
+      throw error;
+    } finally {
+      release();
+    }
+  }
+
+  private assertTaskCapacity(verb: string): void {
+    const active = this.jobs.list().filter((job) => job.state === "queued" || job.state === "running").length;
+    if (active >= MAX_ACTIVE_LIVE_TASKS) {
+      throw new FacadeError(
+        "UNSUPPORTED",
+        `${verb}: the shared live task queue is full; wait for an active export or analysis job to finish`,
+        { activeTasks: active, maximumActiveTasks: MAX_ACTIVE_LIVE_TASKS },
+      );
+    }
   }
 
   /**
@@ -646,6 +790,27 @@ export class LiveFacadeSession {
         this.config.store.getContext(),
       ]);
       return ok(queryTimeline(state.project, state.revision, valid, context.references ?? {}));
+    });
+  }
+
+  async timelineMapSourceTimes(
+    params: TimelineMapSourceTimesParams,
+  ): Promise<FacadeResult<TimelineMapSourceTimesResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<TimelineMapSourceTimesParams>(
+        params,
+        TIMELINE_MAP_SOURCE_TIMES_SCHEMA,
+        "timeline.mapSourceTimes params",
+      );
+      const { project, revision } = await this.config.store.getState();
+      if (valid.expectedRevision !== undefined && valid.expectedRevision !== revision) {
+        throw new FacadeError(
+          "CONFLICT",
+          `revision conflict: expected ${valid.expectedRevision}, current is ${revision}`,
+          { currentRevision: revision },
+        );
+      }
+      return ok(mapTimelineSourceTimes(project, revision, valid));
     });
   }
 
@@ -819,6 +984,8 @@ export class LiveFacadeSession {
           projectName: identity.projectName,
           windowId: identity.windowId,
           ...(identity.projectEpoch ? { projectEpoch: identity.projectEpoch } : {}),
+          ...(identity.workspaceId ? { workspaceId: identity.workspaceId } : {}),
+          ...(identity.workspaceInstanceId ? { workspaceInstanceId: identity.workspaceInstanceId } : {}),
         },
       });
     });
@@ -891,14 +1058,37 @@ export class LiveFacadeSession {
   /* --------------------- live lifecycle ------------------------------ */
 
   async projectCreate(
-    _params?: ProjectCreateParams,
+    params?: ProjectCreateParams,
   ): Promise<FacadeResult<ProjectCreateResult>> {
     return this.enqueue(async () => {
       this.gate("project.create");
-      throw this.liveUnavailable(
-        "project.create",
-        "the GUI owns the project lifecycle — a live session attaches to the project already open in the editor",
-      );
+      const valid = validateObject<ProjectCreateParams>(params ?? {}, PROJECT_CREATE_SCHEMA, "project.create params");
+      const settings = valid.settings !== undefined
+        ? validateObject<Partial<ProjectSettings>>(valid.settings, PROJECT_SETTINGS_SCHEMA, "project.create params.settings")
+        : undefined;
+      const project = createEmptyProject(valid.name, settings);
+      const requestPayload = { name: valid.name ?? project.name, settings: settings ?? project.settings };
+      const result = await this.callWorkspaceLibrary({
+        verb: "project.create",
+        params: {
+          project,
+          requestPayload,
+          ...(valid.idempotencyKey !== undefined ? { idempotencyKey: valid.idempotencyKey } : {}),
+        },
+      });
+      const created = result as { revision?: unknown; defaultWorkspaceId?: unknown; project?: unknown; replayed?: unknown };
+      const revision = typeof created.revision === "number" ? created.revision : 0;
+      const canonicalProject = typeof created.project === "object" && created.project !== null &&
+        typeof (created.project as { id?: unknown }).id === "string"
+        ? created.project as Project
+        : project;
+      const state = projectStateView(canonicalProject, revision);
+      return ok<ProjectCreateResult>({
+        ...state,
+        projectId: canonicalProject.id,
+        ...(typeof created.defaultWorkspaceId === "string" ? { defaultWorkspaceId: created.defaultWorkspaceId } : {}),
+        replayed: created.replayed === true,
+      });
     });
   }
 
@@ -1009,6 +1199,46 @@ export class LiveFacadeSession {
           revision: prior.revision,
           replayed: true,
         });
+      }
+
+      if (
+        valid.idempotencyKey !== undefined &&
+        this.config.store.getMediaImportReplay
+      ) {
+        let durablePrior: MediaImportResult | null;
+        try {
+          durablePrior = await this.config.store.getMediaImportReplay(
+            valid.idempotencyKey,
+            payload,
+          );
+        } catch (error) {
+          if (isLiveStoreConflict(error)) {
+            throw new FacadeError(
+              "CONFLICT",
+              `media.import: ${error instanceof Error ? error.message : String(error)}`,
+              error instanceof LiveStoreConflictError ? error.details : undefined,
+            );
+          }
+          throw error;
+        }
+        if (durablePrior) {
+          const value: Omit<MediaImportResult, "revision" | "replayed"> = {
+            mediaId: durablePrior.mediaId,
+            name: durablePrior.name,
+            type: durablePrior.type,
+            metadata: durablePrior.metadata,
+          };
+          this.ledger.set("media.import", valid.idempotencyKey, {
+            revision: durablePrior.revision,
+            value,
+            payloadHash: stableStringify(payload),
+          });
+          return ok<MediaImportResult>({
+            ...value,
+            revision: durablePrior.revision,
+            replayed: true,
+          });
+        }
       }
 
       // Read the revision before touching the filesystem. This preserves the
@@ -1138,6 +1368,9 @@ export class LiveFacadeSession {
           // As with live edit.apply, omitted expectedRevision is still an
           // unconditional CAS against the snapshot we validated/probed.
           expectedRevision: valid.expectedRevision ?? revision,
+          ...(valid.idempotencyKey !== undefined
+            ? { idempotencyKey: valid.idempotencyKey, idempotencyPayload: payload }
+            : {}),
         });
       } catch (error) {
         if (isLiveStoreConflict(error)) {
@@ -1294,18 +1527,68 @@ export class LiveFacadeSession {
    * takes no path and honestly reports only the revision at flush time.
    */
   async projectSave(
-    params: Record<string, never> = {},
+    params: Record<string, unknown> = {},
   ): Promise<FacadeResult<LiveProjectSaveResult>> {
     return this.enqueue(async () => {
       this.gate("project.save");
-      validateObject(
+      const valid = validateObject<Record<string, unknown>>(
         params,
-        EMPTY_PARAMS_SCHEMA,
-        "project.save params (live mode takes no path — the GUI owns the save target)",
+        WORKSPACE_VERB_SCHEMAS["node.save"],
+        "project.save params",
       );
-      const { revision } = await this.config.store.requestSave();
-      return ok<LiveProjectSaveResult>({ revision });
+      // Bind the request to the current runtime generation before the manager
+      // performs its persistent workspace write.
+      await this.config.store.getState();
+      const saved = await this.callWorkspaceLibrary({ verb: "node.save", params: valid }) as {
+        node?: { id?: unknown };
+        revision?: unknown;
+        replayed?: unknown;
+      };
+      return ok<LiveProjectSaveResult>({
+        revision: typeof saved.revision === "number" ? saved.revision : valid.expectedRevision as number,
+        ...(typeof saved.node?.id === "string" ? { nodeId: saved.node.id } : {}),
+        ...(typeof saved.replayed === "boolean" ? { replayed: saved.replayed } : {}),
+      });
     });
+  }
+
+  async workspaceCommand(
+    verb: WorkspaceVerb,
+    params: Record<string, unknown> = {},
+  ): Promise<FacadeResult<unknown>> {
+    return this.enqueue(async () => {
+      if (!isReadOnlyVerb(verb)) this.gate(verb);
+      const valid = validateObject<Record<string, unknown>>(
+        params,
+        WORKSPACE_VERB_SCHEMAS[verb],
+        `${verb} params`,
+      );
+      if (verb === "workspace.delete" || verb === "workspace.recover_draft" ||
+          verb === "node.save" || verb === "node.restore") {
+        await this.config.store.getState();
+      }
+      return ok(await this.callWorkspaceLibrary({ verb, params: valid }));
+    });
+  }
+
+  private async callWorkspaceLibrary(request: WorkspaceLibraryBridgeRequest): Promise<unknown> {
+    if (!this.config.workspaceLibrary) {
+      throw this.liveUnavailable(request.verb, "the desktop workspace manager bridge is unavailable");
+    }
+    const reply: WorkspaceLibraryBridgeReply = await this.config.workspaceLibrary(request);
+    if (!reply.ok) {
+      const code = (FACADE_ERROR_CODES as readonly string[]).includes(reply.error.code)
+        ? reply.error.code as FacadeErrorCode
+        : "INTERNAL";
+      throw new FacadeError(code, `${request.verb}: ${reply.error.message}`, reply.error.details);
+    }
+    return reply.result;
+  }
+
+  private async prepareRenderProject(project: Project): Promise<Project> {
+    return this.config.prepareRenderProject
+      ? this.config.prepareRenderProject(project)
+      : project;
   }
 
   async mediaAnalyzeStart(
@@ -1392,7 +1675,8 @@ export class LiveFacadeSession {
           { currentRevision: state.revision },
         );
       }
-      const originalUrl = typeof media.originalUrl === "string" ? media.originalUrl : "";
+      const originalUrl = typeof media.contentUrl === "string" ? media.contentUrl
+        : typeof media.originalUrl === "string" ? media.originalUrl : "";
       const resolution = resolveContainedPathDetailed(
         originalUrl,
         this.config.mediaRoots ?? [],
@@ -1414,11 +1698,29 @@ export class LiveFacadeSession {
         const ready = await videoReviewPreflight();
         if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
       }
-      if (this.analysisControllers.size >= 2) throw new FacadeError("UNSUPPORTED", "At most two analysis jobs per session; wait or cancel an existing job.");
+      this.assertTaskCapacity("media.analyze_start");
       const sourcePath = resolution.path;
       const jobId = `job-${crypto.randomUUID()}`;
       const analysisTypes = [...valid.analysisTypes];
-      this.jobs.create(jobId, state.revision, "analysis");
+      const identity = await this.config.store.getIdentity();
+      if (identity.projectId !== state.project.id) {
+        throw new FacadeError("CONFLICT", "media.analyze_start: target workspace changed while the input was being prepared");
+      }
+      const workspaceId = identity.workspaceId ?? "default";
+      const payloadHash = stableStringify(payload);
+      await this.createTrackedTask({
+        jobId,
+        kind: "analysis",
+        projectId: state.project.id,
+        workspaceId,
+        sourceRevision: state.revision,
+        inputProject: structuredClone(state.project),
+        parameters: {
+          ...payload,
+          ...(valid.idempotencyKey ? { idempotencyKey: valid.idempotencyKey } : {}),
+          payloadHash,
+        },
+      });
       const controller = new AbortController();
       this.analysisControllers.set(jobId, controller);
       const ledgerValue = {
@@ -1430,7 +1732,7 @@ export class LiveFacadeSession {
         this.ledger.set("media.analyze_start", valid.idempotencyKey, {
           revision: state.revision,
           value: ledgerValue,
-          payloadHash: stableStringify(payload),
+          payloadHash,
         });
       }
       void this.runTechnicalQualityAnalysis(
@@ -1442,6 +1744,7 @@ export class LiveFacadeSession {
         controller,
         { startSec, endSec },
         state.project.id,
+        state.revision,
         valid.reviewQuestion,
         valid.recheckOfRecordId,
       );
@@ -1491,6 +1794,52 @@ export class LiveFacadeSession {
           revision: prior.revision,
           replayed: true,
         });
+      }
+
+      if (valid.idempotencyKey !== undefined && this.config.store.getActionBatchReplay) {
+        let durablePrior: LiveApplyActionsResult | null;
+        try {
+          durablePrior = await this.config.store.getActionBatchReplay(
+            valid.idempotencyKey,
+            payload,
+            "agent: edit.apply",
+          );
+        } catch (error) {
+          if (isLiveStoreConflict(error)) {
+            throw new FacadeError(
+              "CONFLICT",
+              `edit.apply: ${error instanceof Error ? error.message : String(error)}`,
+              error instanceof LiveStoreConflictError ? error.details : undefined,
+            );
+          }
+          throw error;
+        }
+        if (durablePrior) {
+          const projection = durablePrior.idempotencyMetadata;
+          if (!projection) {
+            throw new FacadeError(
+              "UNSUPPORTED",
+              "edit.apply: the durable replay receipt is missing its per-operation result projection",
+            );
+          }
+          const applied = partitionCreatedIds(
+            ops,
+            durablePrior.createdIds,
+            projection.autoTrackIds,
+            projection.opClipCounts,
+          );
+          const value: EditApplyPayload = { applied };
+          this.ledger.set("edit.apply", valid.idempotencyKey, {
+            revision: durablePrior.revision,
+            value,
+            payloadHash: stableStringify(payload),
+          });
+          return ok<EditApplyResult>({
+            revision: durablePrior.revision,
+            applied,
+            replayed: true,
+          });
+        }
       }
 
       // On-demand snapshot read: translation and the facade-level semantic
@@ -1631,6 +1980,12 @@ export class LiveFacadeSession {
           ...(valid.idempotencyKey !== undefined
             ? { idempotencyKey: valid.idempotencyKey }
             : {}),
+          ...(valid.idempotencyKey !== undefined
+            ? { idempotencyPayload: payload }
+            : {}),
+          ...(valid.idempotencyKey !== undefined
+            ? { idempotencyMetadata: { autoTrackIds, opClipCounts } }
+            : {}),
         });
       } catch (error) {
         // Store CONFLICTs become facade CONFLICT results — domain errors
@@ -1767,6 +2122,7 @@ export class LiveFacadeSession {
         );
       }
 
+      const renderProject = await this.prepareRenderProject(project);
       const mediaFiles = await this.buildLiveMediaFiles(
         project,
         "preview.render_frame",
@@ -1793,7 +2149,7 @@ export class LiveFacadeSession {
 
       this.gate("preview.render_frame");
       const rendered = await provider.renderFramePng({
-        project: structuredClone(project),
+        project: structuredClone(renderProject),
         sourceRevision,
         timeSec,
         width,
@@ -1929,6 +2285,7 @@ export class LiveFacadeSession {
         );
       }
 
+      const renderProject = await this.prepareRenderProject(project);
       const sourceRevision = revision;
       const mediaFiles = await withComparisonReference(
         project,
@@ -1943,7 +2300,7 @@ export class LiveFacadeSession {
       const timelineTemp = pendingArtifactPath(rendersDir, `cmp-src-${project.id}-r${sourceRevision}-t${Math.round(timeSec * 1000)}`, "png");
       try {
         await provider.renderFramePng({
-          project: structuredClone(project),
+          project: structuredClone(renderProject),
           sourceRevision,
           timeSec,
           width,
@@ -2084,6 +2441,7 @@ export class LiveFacadeSession {
         );
       }
 
+      const renderProject = await this.prepareRenderProject(project);
       const sourceRevision = revision;
       const mediaFiles = await this.buildLiveMediaFiles(project, "visual.inspect");
       const frameBudgetBytes = valid.maxFrameBytes ?? DEFAULT_FRAME_BUDGET_BYTES;
@@ -2120,7 +2478,7 @@ export class LiveFacadeSession {
         const stem = `frame-${project.id}-r${sourceRevision}-${requestKey}-${index}-${Math.round(sample.timeSec * 1000)}-${width}x${height}`;
         const tempPath = pendingArtifactPath(framesDir, stem, "png");
         const rendered = await provider.renderFramePng({
-          project: structuredClone(project),
+          project: structuredClone(renderProject),
           sourceRevision,
           timeSec: sample.timeSec,
           width,
@@ -2191,6 +2549,11 @@ export class LiveFacadeSession {
         frames.push({
           index,
           timeSec: sample.timeSec,
+          coordinateSpace: "timeline",
+          requestedTimelineTimeSec: sample.timeSec,
+          renderedTimelineTimeSec: null,
+          sourceFrameNumber: null,
+          sourcePtsSec: null,
           label: sample.label,
           sourceRevision,
           artifact,
@@ -2202,6 +2565,9 @@ export class LiveFacadeSession {
           `${reencoded} of ${frames.length} frame artifact(s) exceeded the ${frameBudgetBytes}-byte lossless budget and were re-encoded as lossy JPEG${overBudget > 0 ? `; ${overBudget} still did not fit and were delivered oversized` : ""}. See frames[].fidelity for the delivered raster and quality; re-request with roi, a smaller width, or a larger maxFrameBytes for finer detail.`,
         );
       }
+      limitations.push(
+        "Frame artifacts were requested at the reported timeline times; the render provider does not return an actual rendered timeline time, decoded source frame number or media PTS, so those values are unknown.",
+      );
 
       let contactSheet: VisualInspectResult["contactSheet"] = null;
       if (provider.renderContactSheetPng) {
@@ -2212,7 +2578,7 @@ export class LiveFacadeSession {
         const finalPath = resolvePath(contactDir, `${stem}.png`);
         try {
           const rendered = await provider.renderContactSheetPng({
-            project: structuredClone(project),
+            project: structuredClone(renderProject),
             sourceRevision,
             samples: plan.samples,
             width,
@@ -2274,6 +2640,12 @@ export class LiveFacadeSession {
         sourceRevision,
         selection: plan.selection,
         sampleCount,
+        mediaSources: mediaFingerprints.map(({ mediaId, sizeBytes, mtimeMs, sha256 }) => ({
+          mediaId,
+          sizeBytes,
+          mtimeMs,
+          sha256,
+        })),
         width,
         height,
         frameBudgetBytes,
@@ -2321,6 +2693,7 @@ export class LiveFacadeSession {
         "export.start",
       );
       await requireProviderPreflight(provider, "export.start");
+      this.assertTaskCapacity("export.start");
 
       const settingsInput =
         valid.settings !== undefined
@@ -2408,7 +2781,7 @@ export class LiveFacadeSession {
 
       // The snapshot is the export's entire world: deep-cloned here,
       // synchronously, inside the serialized lane.
-      const snapshot = structuredClone(project);
+      let snapshot = await this.prepareRenderProject(structuredClone(project));
       const sourceRevision = revision;
       const mediaFiles = await this.buildLiveMediaFiles(project, "export.start");
       if (comparisonConfig) {
@@ -2428,12 +2801,32 @@ export class LiveFacadeSession {
       this.gate("export.start");
       await prepareArtifactDir(jobDir, artifactRoot, "export.start");
       this.gate("export.start");
-      this.jobs.create(jobId, sourceRevision);
+      const identity = await this.config.store.getIdentity();
+      if (identity.projectId !== project.id) {
+        throw new FacadeError("CONFLICT", "export.start: target workspace changed while the input was being prepared");
+      }
+      const workspaceId = identity.workspaceId ?? "default";
+      const payloadHash = stableStringify(payload);
+      snapshot = await this.createTrackedTask({
+        jobId,
+        kind: "export",
+        projectId: project.id,
+        workspaceId,
+        sourceRevision,
+        inputProject: snapshot,
+        parameters: {
+          settings: settingsInput ?? null,
+          destinationPath: valid.destinationPath ?? null,
+          comparison: valid.comparison ?? null,
+          ...(valid.idempotencyKey ? { idempotencyKey: valid.idempotencyKey } : {}),
+          payloadHash,
+        },
+      });
       if (valid.idempotencyKey !== undefined) {
         this.ledger.set("export.start", valid.idempotencyKey, {
           revision: sourceRevision,
           value: { jobId, sourceRevision },
-          payloadHash: stableStringify(payload),
+          payloadHash,
         });
       }
 
@@ -2545,6 +2938,8 @@ export class LiveFacadeSession {
       return ok(records.map((record) => ({
         id: record.id,
         finishedAt: record.finishedAt,
+        sourceRevision: record.sourceRevision,
+        coordinateSpace: record.coordinateSpace,
         subject: { mediaId: record.subject.mediaId, name: record.subject.name },
         analysisTypes: record.analysisTypes,
         stale: { kind: record.stale.kind },
@@ -3868,7 +4263,7 @@ export class LiveFacadeSession {
     if (this.disposed) return;
     this.disposed = true;
     this.releaseWriterLease();
-    await this.chain.catch(() => undefined);
+    await Promise.all([...this.chains.values()].map((chain) => chain.catch(() => undefined)));
 
     const provider = this.config.exportProvider;
     const cancellations = this.jobs.list().map(async (job) => {
@@ -3900,9 +4295,9 @@ export class LiveFacadeSession {
    * here). Returns the stored committed outcome on a replay hit; the same
    * key with a DIFFERENT payload is a CONFLICT, never a blind replay.
    *
-   * The ledger scope tracks the open project: refreshed here, before every
-   * lookup, so a key replayed after a project switch misses the OLD
-   * project's entry and executes fresh (headless parity: per-project scope).
+   * The ledger scope tracks the explicit project/workspace target: refreshed
+   * here, before every lookup, so a key cannot replay another workspace's
+   * committed result.
    */
   private async replayLookup<T>(
     verb: string,
@@ -3912,8 +4307,9 @@ export class LiveFacadeSession {
     if (idempotencyKey === undefined) return null;
     // Never replay a result from the last project if the current identity is
     // unavailable or its request guard has failed during a project switch.
-    const { projectId, projectEpoch } = await this.config.store.getIdentity();
-    this.ledgerProjectId = `${projectId}:${projectEpoch ?? "legacy"}`;
+    const identity = await this.config.store.getIdentity();
+    const { projectId } = identity;
+    this.ledgerProjectId = `${projectId}:${identity.workspaceId ?? "default"}`;
     const stored = this.ledger.get<T>(verb, idempotencyKey);
     if (!stored) return null;
     if (stableStringify(payload) !== stored.payloadHash) {
@@ -3942,6 +4338,7 @@ export class LiveFacadeSession {
     controller: AbortController,
     range: { startSec: number; endSec: number },
     projectId: string,
+    sourceRevision: number,
     reviewQuestion?: string,
     recheckOfRecordId?: string,
   ): Promise<void> {
@@ -4038,6 +4435,8 @@ export class LiveFacadeSession {
       }
       const saved = await saveAnalysisRecord(this.config.artifactRoot, {
         projectId,
+        sourceRevision,
+        coordinateSpace: "source",
         subject: {
           mediaId,
           name,
@@ -4084,6 +4483,11 @@ export class LiveFacadeSession {
         recommendations: [],
         unknowns: [
           ...(video ? [{ field: "videoReview.serverSamplingFps", note: "The cloud provider does not disclose its sampling rate; short events may be missed" }] : []),
+          ...(video ? [
+            { field: "videoReview.sourceFrameNumber", note: "The provider returns prose opinions without a verifiable source frame number or source PTS." },
+            { field: "videoReview.eventLocalizationUncertaintySec", note: "The provider does not disclose frame-level event localization uncertainty." },
+            { field: "videoReview.audioDetectionUncertaintySec", note: "The provider does not disclose frame-level audio event localization uncertainty." },
+          ] : []),
         ],
         recheckOf: recheckTarget ? recheckTarget.id : null,
         cloudOpinion: video
@@ -4118,9 +4522,9 @@ export class LiveFacadeSession {
 
   /** Resolve ONE media item's file with the live builder's checks. */
   private async resolveLiveMediaItemFile(itemInput: unknown): Promise<string | null> {
-    const item = itemInput as (typeof this.config.store extends never ? never : { id: string; originalUrl?: unknown });
-    const originalUrl =
-      typeof item.originalUrl === "string" ? (item.originalUrl as string) : null;
+    const item = itemInput as { id: string; contentUrl?: unknown; originalUrl?: unknown };
+    const originalUrl = typeof item.contentUrl === "string" ? item.contentUrl
+      : typeof item.originalUrl === "string" ? item.originalUrl : null;
     if (!originalUrl || !isAbsolute(originalUrl)) return null;
     const fileStat = await stat(originalUrl).catch(() => null);
     if (!fileStat || !fileStat.isFile() || fileStat.size > MAX_MEDIA_FILE_BYTES) return null;
@@ -4141,10 +4545,9 @@ export class LiveFacadeSession {
     const unavailable: string[] = [];
     for (const item of project.mediaLibrary.items) {
       if (!referenced.has(item.id)) continue;
-      const originalUrl =
-        typeof (item as { originalUrl?: unknown }).originalUrl === "string"
-          ? ((item as { originalUrl?: string }).originalUrl as string)
-          : null;
+      const mediaItem = item as { contentUrl?: unknown; originalUrl?: unknown };
+      const originalUrl = typeof mediaItem.contentUrl === "string" ? mediaItem.contentUrl
+        : typeof mediaItem.originalUrl === "string" ? mediaItem.originalUrl : null;
       if (!originalUrl || !isAbsolute(originalUrl)) {
         unavailable.push(item.id);
         continue;
@@ -4205,28 +4608,26 @@ export class LiveFacadeSession {
         sourceRevision,
         completion.sizeBytes,
       );
+      let deliveryOutcome: JobDeliveryOutcome | undefined;
+      if (delivery !== null) {
+        try {
+          await deliverExportArtifact(resolution.path, delivery);
+          deliveryOutcome = { deliveredTo: delivery.path };
+        } catch (deliveryError) {
+          deliveryOutcome = {
+            deliveryError: deliveryError instanceof Error
+              ? deliveryError.message
+              : String(deliveryError),
+          };
+        }
+      }
       this.jobs.markDone(
         jobId,
         artifact,
         completion.route,
         completion.upscalingRequestedButInactive === true,
+        deliveryOutcome,
       );
-      if (delivery !== null) {
-        // Post-publish copy into the Agent workspace deliverables directory.
-        // A delivery failure never downgrades the done job or hides the
-        // artifact — it surfaces as deliveryError on job.status.
-        try {
-          await deliverExportArtifact(resolution.path, delivery);
-          this.jobs.markDelivered(jobId, delivery.path);
-        } catch (deliveryError) {
-          this.jobs.markDeliveryFailed(
-            jobId,
-            deliveryError instanceof Error
-              ? deliveryError.message
-              : String(deliveryError),
-          );
-        }
-      }
     } catch (error) {
       this.jobs.markError(jobId, {
         code: error instanceof FacadeError ? error.code : "JOB_FAILED",
@@ -4235,19 +4636,25 @@ export class LiveFacadeSession {
     }
   }
 
-  /** Serialized execution: every verb body runs inside this single lane. */
+  /** Serialize each explicit target independently; unrelated workspaces may proceed concurrently. */
   private enqueue<T>(task: () => Promise<FacadeResult<T>>): Promise<FacadeResult<T>> {
-    const result = this.chain.then(() => task()).catch((error: unknown) => {
+    const scope = this.config.executionScope?.() ?? "session";
+    const prior = this.chains.get(scope) ?? Promise.resolve();
+    const result = prior.then(() => task()).catch((error: unknown) => {
       if (isLiveStoreConflict(error)) {
         const conflict = error as { message?: string; details?: Record<string, unknown> };
         return toFailure<T>(new FacadeError("CONFLICT", conflict.message ?? "Project changed", conflict.details));
       }
       return toFailure<T>(error);
     });
-    this.chain = result.then(
+    const settled = result.then(
       () => undefined,
       () => undefined,
     );
+    this.chains.set(scope, settled);
+    void settled.then(() => {
+      if (this.chains.get(scope) === settled) this.chains.delete(scope);
+    });
     return result;
   }
 }
@@ -4370,6 +4777,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
   const session = new LiveFacadeSession(config);
   return {
     ...bindBundledTools(session, config, "live"),
+    ...Object.fromEntries(WORKSPACE_VERBS.map((verb) => [verb, (params: Record<string, unknown> = {}) => session.workspaceCommand(verb, params)])) as Pick<LiveAgentFacade, WorkspaceVerb>,
     "session.describe": () => session.sessionDescribe(),
     "capabilities.get": () => session.capabilitiesGet(),
     "project.create": (params) => session.projectCreate(params),
@@ -4383,6 +4791,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "media.analyze_start": (params) => session.mediaAnalyzeStart(params),
     "timeline.get": () => session.timelineGet(),
     "timeline.query": (params) => session.timelineQuery(params),
+    "timeline.mapSourceTimes": (params) => session.timelineMapSourceTimes(params),
     "editor.get_context": (params) => session.editorGetContext(params),
     "editor.control": (params) => session.editorControl(params),
     "edit.apply": (params) => session.editApply(params),

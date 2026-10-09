@@ -29,7 +29,7 @@ import {
   expandPresetActions,
   type PresetApplyTarget,
 } from "../custom-presets/apply";
-import { getProjectRevision, useProjectStore } from "../../stores/project-store";
+import { workspaceManager } from "../workspace-manager";
 import { runExclusiveLiveWrite } from "./live-write-lock";
 
 /** Same owner tag the live action channel uses for agent-made history. */
@@ -258,19 +258,24 @@ async function handleApply(
   const payload = JSON.stringify({
     presetId,
     target,
-    expectedRevision: expectedRevision ?? null,
   });
+
+  if (!guard.targetProjectId || !guard.targetWorkspaceId) {
+    return bridgeError({ code: "INVALID_PARAMS", message: "preset.apply requires explicit projectId and workspaceId" });
+  }
+  const workspaceTarget = { projectId: guard.targetProjectId, workspaceId: guard.targetWorkspaceId };
 
   return runExclusiveLiveWrite(async () => {
     const conflict = projectGuardError(guard);
     if (conflict) return conflict;
-    const store = useProjectStore.getState();
-    if (!store.hasOpenProject) {
-      return bridgeError({ code: "NO_PROJECT", message: "No project is open" });
+    const runtime = await workspaceManager.getWorkspaceContext(workspaceTarget);
+    if (guard.targetWorkspaceInstanceId !== undefined && guard.targetWorkspaceInstanceId !== runtime.instanceId) {
+      return bridgeError({ code: "CONFLICT", message: "Workspace runtime changed since the targeted read" });
     }
+    const store = runtime.store.getState();
     // Same per-project bucketing as the other live ledgers: a key committed
     // in one project must never replay into another after a project switch.
-    const projectId = projectLedgerScope();
+    const projectId = projectLedgerScope(workspaceTarget);
     const projectLedger = idempotencyKey ? applyLedger.get(projectId) : undefined;
     const prior = idempotencyKey ? projectLedger?.get(idempotencyKey) : undefined;
     if (prior) {
@@ -285,18 +290,20 @@ async function handleApply(
 
     // CAS at commit time (the facade already checked the revision it read):
     // a concurrent human or agent edit wins and the stale apply retries.
-    if (expectedRevision !== undefined && getProjectRevision() !== expectedRevision) {
+    if (expectedRevision !== undefined && runtime.revision !== expectedRevision) {
       return bridgeError({
         code: "CONFLICT",
-        message: `Project revision mismatch: expected ${expectedRevision}, current ${getProjectRevision()}. Re-read state and retry.`,
-        details: { currentRevision: getProjectRevision() },
+        message: `Workspace revision mismatch: expected ${expectedRevision}, current ${runtime.revision}. Re-read state and retry.`,
+        details: { currentRevision: runtime.revision },
       });
     }
 
-    const plannedRevision = getProjectRevision();
+    const plannedRevision = runtime.revision;
     const preset = await getCustomPresetService().get(presetId);
-    if (projectGuardError(guard) || projectLedgerScope() !== projectId || getProjectRevision() !== plannedRevision) {
-      return bridgeError({ code: "CONFLICT", message: "Project changed while loading the preset" });
+    const latestRuntime = await workspaceManager.getWorkspaceContext(workspaceTarget);
+    if (projectGuardError(guard) || projectLedgerScope(workspaceTarget) !== projectId ||
+        latestRuntime.instanceId !== runtime.instanceId || latestRuntime.revision !== plannedRevision) {
+      return bridgeError({ code: "CONFLICT", message: "Workspace changed while loading the preset" });
     }
     if (!preset.ok) return serviceError(preset);
 
@@ -313,10 +320,22 @@ async function handleApply(
       });
     }
 
-    const batch = useProjectStore.getState().executeActionBatch(expanded.actions, {
-      groupLabel: expanded.groupLabel,
-      historyOwner: AGENT_HISTORY_OWNER,
-    });
+    let batch: ReturnType<typeof store.executeActionBatch>;
+    try {
+      batch = await workspaceManager.withWorkspaceWrite(workspaceTarget, expectedRevision ?? plannedRevision, async (context) => {
+        if (context.instanceId !== runtime.instanceId) throw new Error("Workspace runtime changed before preset commit");
+        return context.store.getState().executeActionBatch(expanded.actions, {
+          groupLabel: expanded.groupLabel,
+          historyOwner: AGENT_HISTORY_OWNER,
+        });
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("revision conflict") || message.includes("runtime changed")) {
+        return bridgeError({ code: "CONFLICT", message: `Workspace preset conflict: ${message}` });
+      }
+      throw error;
+    }
     if (!batch.result.success) {
       return bridgeError({
         code: "APPLY_FAILED",
@@ -326,7 +345,7 @@ async function handleApply(
     }
 
     // Agent edits land outside the GUI gesture paths; nudge the preview.
-    window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
+    if (store.isForeground) window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
 
     let transitionId: string | undefined;
     const first = expanded.actions[0]?.params as
@@ -365,7 +384,7 @@ async function handleApply(
       presetId,
       projectId: store.project.id,
       projectName: store.project.name,
-      revision: getProjectRevision(),
+      revision: runtime.store.getState().workspaceRevision,
       applied: {
         kind: target.kind,
         clipIds: appliedClipIds,
@@ -387,7 +406,7 @@ async function handleApply(
       }
     }
     return { ok: true, result };
-  });
+  }, workspaceTarget);
 }
 
 /** Handles one main→renderer preset-library request (exported for tests). */

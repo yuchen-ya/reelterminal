@@ -109,6 +109,8 @@ const projectState = (): OutputSchemaObject =>
   objectSchema(
     {
       revision: integerSchema(0),
+      nodeId: stringSchema(),
+      replayed: booleanSchema(),
       // Project is deliberately open: the canonical core model is versioned
       // independently from this facade contract.
       project: openObject(),
@@ -449,7 +451,14 @@ const editorContext = (): OutputSchemaNode =>
         ["ready", "inProgress", "ids"],
       ),
       identity: objectSchema(
-        { projectId: nullable(stringSchema()), projectName: nullable(stringSchema()), projectEpoch: stringSchema(), windowId: nullable(stringSchema()) },
+        {
+          projectId: nullable(stringSchema()),
+          projectName: nullable(stringSchema()),
+          projectEpoch: stringSchema(),
+          workspaceId: stringSchema(),
+          workspaceInstanceId: stringSchema(),
+          windowId: nullable(stringSchema()),
+        },
         ["projectId", "projectName", "windowId"],
       ),
     },
@@ -637,6 +646,30 @@ const timelineQueryResult = (): OutputSchemaNode =>
     ["revision", "items", "nextCursor"],
   );
 
+const timelineMapSourceTimesResult = (): OutputSchemaNode =>
+  objectSchema(
+    {
+      revision: integerSchema(0),
+      mappings: arraySchema(
+        objectSchema(
+          {
+            clipId: stringSchema(),
+            mediaId: stringSchema(),
+            timelineTime: numberSchema(0),
+            clipLocalTime: numberSchema(0),
+            sourceTime: numberSchema(0),
+            sourceTimeFromInPoint: numberSchema(0),
+            frozen: booleanSchema(),
+            freezeFrameId: nullable(stringSchema()),
+          },
+          ["clipId", "mediaId", "timelineTime", "clipLocalTime", "sourceTime", "sourceTimeFromInPoint", "frozen", "freezeFrameId"],
+        ),
+        { minItems: 1, maxItems: 64 },
+      ),
+    },
+    ["revision", "mappings"],
+  );
+
 const editValidateResult = (): OutputSchemaNode =>
   objectSchema(
     {
@@ -683,9 +716,27 @@ const historyControlResult = (): OutputSchemaNode =>
 const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "session.describe": sessionDescription(),
   "capabilities.get": capabilities(),
-  "project.create": objectSchema({ ...projectState()["properties"], replayed: booleanSchema() }, ["revision", "project", "counts", "replayed"]),
+  "project.create": objectSchema({ ...projectState()["properties"], replayed: booleanSchema(), projectId: stringSchema(), defaultWorkspaceId: stringSchema() }, ["revision", "project", "counts", "replayed"]),
   "project.open": objectSchema({ ...projectState()["properties"], replayed: booleanSchema() }, ["revision", "project", "counts", "replayed"]),
   "project.save": projectSaveResult(),
+  "project.list": objectSchema({ projects: arraySchema(openObject()) }, ["projects"], true),
+  "workspace.list": objectSchema({ projectId: stringSchema(), workspaces: arraySchema(openObject()) }, ["projectId", "workspaces"], true),
+  "workspace.create": objectSchema({ workspace: openObject() }, ["workspace"], true),
+  "workspace.delete": objectSchema({ projectId: stringSchema(), workspaceId: stringSchema(), deleted: booleanSchema() }, ["projectId", "workspaceId", "deleted"], true),
+  "workspace.close": objectSchema({ projectId: stringSchema(), workspaceId: stringSchema(), closed: booleanSchema() }, ["projectId", "workspaceId", "closed"], true),
+  "workspace.switch_view": objectSchema({ projectId: stringSchema(), workspaceId: stringSchema(), switched: booleanSchema() }, ["projectId", "workspaceId", "switched"], true),
+  "workspace.list_drafts": objectSchema({ projectId: stringSchema(), workspaceId: stringSchema(), drafts: arraySchema(openObject()) }, ["projectId", "workspaceId", "drafts"], true),
+  "workspace.recover_draft": objectSchema({ projectId: stringSchema(), workspaceId: stringSchema(), draftId: stringSchema(), revision: integerSchema(0), replayed: booleanSchema() }, ["projectId", "workspaceId", "draftId", "revision", "replayed"], true),
+  "node.list": objectSchema({ projectId: stringSchema(), nodes: arraySchema(openObject()) }, ["projectId", "nodes"], true),
+  "node.get": objectSchema({ projectId: stringSchema(), node: openObject() }, ["projectId", "node"], true),
+  "node.save": objectSchema({ node: openObject(), revision: integerSchema(0), replayed: booleanSchema() }, ["node", "revision", "replayed"], true),
+  "node.restore": objectSchema({ projectId: stringSchema(), workspaceId: stringSchema(), nodeId: stringSchema(), revision: integerSchema(0), replayed: booleanSchema(), restored: booleanSchema() }, ["projectId", "workspaceId", "nodeId", "revision", "replayed", "restored"], true),
+  "node.rename": objectSchema({ projectId: stringSchema(), nodeId: stringSchema(), node: openObject() }, ["projectId", "nodeId", "node"], true),
+  "node.media": objectSchema({ projectId: stringSchema(), nodeId: stringSchema(), media: arraySchema(openObject()), missingDependencyIds: arraySchema(stringSchema()) }, ["projectId", "nodeId", "media", "missingDependencyIds"], true),
+  "node.compare": objectSchema({ projectId: stringSchema(), fromNodeId: stringSchema(), toNodeId: stringSchema(), added: arraySchema(stringSchema()), replaced: arraySchema(openObject()), removed: arraySchema(stringSchema()) }, ["projectId", "fromNodeId", "toNodeId", "added", "replaced", "removed"], true),
+  "media.references": objectSchema({ projectId: stringSchema(), mediaId: stringSchema(), references: arraySchema(openObject()) }, ["projectId", "mediaId", "references"], true),
+  "media.cleanup.plan": openObject(),
+  "media.cleanup.execute": openObject(),
   "project.rename": objectSchema(
     {
       revision: integerSchema(0),
@@ -724,6 +775,7 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   ),
   "timeline.get": timelineResult(),
   "timeline.query": timelineQueryResult(),
+  "timeline.mapSourceTimes": timelineMapSourceTimesResult(),
   "editor.get_context": editorContext(),
   "editor.control": editorControlResult(),
   "edit.validate": editValidateResult(),
@@ -731,13 +783,64 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
   "history.get": historyGetResult(),
   "history.control": historyControlResult(),
   "preview.render_frame": objectSchema({ revision: integerSchema(0), timeSec: numberSchema(0), width: integerSchema(0), height: integerSchema(0), artifact: artifactRef(), replayed: booleanSchema() }, ["revision", "timeSec", "width", "height", "artifact", "replayed"]),
-  "visual.inspect": objectSchema({ revision: integerSchema(0), sourceRevision: integerSchema(0), selection: openObject(), sampleCount: integerSchema(1, 12), width: integerSchema(2), height: integerSchema(2), frameBudgetBytes: integerSchema(1), frames: arraySchema(openObject(), { minItems: 1, maxItems: 12 }), contactSheet: nullable(artifactRef()), limitations: arraySchema(stringSchema()), replayed: booleanSchema() }, ["revision", "sourceRevision", "selection", "sampleCount", "width", "height", "frameBudgetBytes", "frames", "contactSheet", "limitations", "replayed"]),
+  "visual.inspect": objectSchema({
+    revision: integerSchema(0),
+    sourceRevision: integerSchema(0),
+    selection: openObject(),
+    sampleCount: integerSchema(1, 12),
+    mediaSources: arraySchema(objectSchema({
+      mediaId: stringSchema(),
+      sizeBytes: integerSchema(0),
+      mtimeMs: numberSchema(0),
+      sha256: nullable(stringSchema()),
+    }, ["mediaId", "sizeBytes", "mtimeMs", "sha256"])),
+    width: integerSchema(2),
+    height: integerSchema(2),
+    frameBudgetBytes: integerSchema(1),
+    frames: arraySchema(objectSchema({
+      index: integerSchema(0),
+      timeSec: numberSchema(0),
+      coordinateSpace: constSchema("timeline"),
+      requestedTimelineTimeSec: numberSchema(0),
+      renderedTimelineTimeSec: constSchema(null),
+      sourceFrameNumber: constSchema(null),
+      sourcePtsSec: constSchema(null),
+      label: stringSchema(),
+      sourceRevision: integerSchema(0),
+      artifact: artifactRef(),
+      fidelity: openObject(),
+    }, ["index", "timeSec", "coordinateSpace", "requestedTimelineTimeSec", "renderedTimelineTimeSec", "sourceFrameNumber", "sourcePtsSec", "label", "sourceRevision", "artifact", "fidelity"]), { minItems: 1, maxItems: 12 }),
+    contactSheet: nullable(artifactRef()),
+    limitations: arraySchema(stringSchema()),
+    replayed: booleanSchema(),
+  }, ["revision", "sourceRevision", "selection", "sampleCount", "mediaSources", "width", "height", "frameBudgetBytes", "frames", "contactSheet", "limitations", "replayed"]),
   "preview.render_comparison": objectSchema({ revision: integerSchema(0), sourceRevision: integerSchema(0), timeSec: numberSchema(0), referenceSec: numberSchema(0), clamped: stringSchema(), layout: stringSchema(), width: integerSchema(2), height: integerSchema(2), frameBudgetBytes: integerSchema(1), artifact: artifactRef(), limitations: arraySchema(stringSchema()), replayed: booleanSchema() }, ["revision", "sourceRevision", "timeSec", "referenceSec", "clamped", "layout", "width", "height", "frameBudgetBytes", "artifact", "limitations", "replayed"]),
   "analysis.list": arraySchema(
-    objectSchema({ id: stringSchema(), finishedAt: stringSchema(), subject: openObject(), analysisTypes: arraySchema(stringSchema()), stale: openObject(), recheckOf: nullable(stringSchema()) }, ["id", "finishedAt", "subject", "analysisTypes", "stale", "recheckOf"]),
+    objectSchema({ id: stringSchema(), finishedAt: stringSchema(), sourceRevision: nullable(integerSchema(0)), coordinateSpace: constSchema("source"), subject: openObject(), analysisTypes: arraySchema(stringSchema()), stale: openObject(), recheckOf: nullable(stringSchema()) }, ["id", "finishedAt", "sourceRevision", "coordinateSpace", "subject", "analysisTypes", "stale", "recheckOf"]),
     { maxItems: 200 },
   ),
-  "analysis.get": openObject(),
+  "analysis.get": objectSchema({
+    schemaVersion: integerSchema(2),
+    id: stringSchema(),
+    projectId: stringSchema(),
+    sourceRevision: nullable(integerSchema(0)),
+    coordinateSpace: constSchema("source"),
+    createdAt: stringSchema(),
+    finishedAt: stringSchema(),
+    subject: openObject(),
+    analysisTypes: arraySchema(stringSchema()),
+    rangeSec: openObject(),
+    config: openObject(),
+    provenance: arraySchema(openObject()),
+    observations: arraySchema(openObject()),
+    inferences: arraySchema(openObject()),
+    recommendations: arraySchema(openObject()),
+    unknowns: arraySchema(openObject()),
+    recheckOf: nullable(stringSchema()),
+    cloudOpinion: nullable(openObject()),
+    stale: openObject(),
+    recordPath: stringSchema(),
+  }, ["schemaVersion", "id", "projectId", "sourceRevision", "coordinateSpace", "createdAt", "finishedAt", "subject", "analysisTypes", "rangeSec", "config", "provenance", "observations", "inferences", "recommendations", "unknowns", "recheckOf", "cloudOpinion", "stale", "recordPath"]),
   "export.start": exportStartResult(),
   "job.status": jobStatus(),
   "job.cancel": jobStatus(),

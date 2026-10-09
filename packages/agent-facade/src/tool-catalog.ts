@@ -12,6 +12,24 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Open a checkpoint file into this session's empty project slot (single-initialization lifecycle verb).",
   project_save:
     "Save the active project to a checkpoint file (a snapshot, not a mutation).",
+  project_list: "List persisted project identities and their default workspaces.",
+  workspace_list: "List workspaces belonging to one explicit project.",
+  workspace_create: "Create a workspace from an explicit project, node, or workspace source.",
+  workspace_delete: "Delete one non-default workspace after an expected-revision check.",
+  workspace_close: "Release one workspace runtime while retaining its saved draft and nodes.",
+  workspace_switch_view: "Show an existing project workspace in the GUI without changing its data revision.",
+  workspace_list_drafts: "List recoverable drafts retained for one explicit workspace.",
+  workspace_recover_draft: "Recover one protected draft into its explicit workspace with revision and idempotency guards.",
+  node_list: "List immutable saved nodes for one project.",
+  node_get: "Read the complete immutable snapshot for one saved node.",
+  node_save: "Save the explicit workspace as an immutable node; a matching retry returns the same node.",
+  node_restore: "Restore an immutable node into an explicit workspace after protecting its dirty draft.",
+  node_rename: "Rename one immutable node's display metadata in place; snapshots, ids and parentage never change.",
+  node_media: "List the saved media dependencies of one immutable node and report missing dependencies.",
+  node_compare: "Compare two immutable nodes by added, replaced, and removed media IDs.",
+  media_references: "Show which saved nodes, workspace drafts, and tasks retain a media version.",
+  media_cleanup_plan: "Plan safe removal of unreferenced controlled media and report file sizes and reasons.",
+  media_cleanup_execute: "Recheck and execute one previously returned media cleanup plan.",
   project_rename:
     "Rename the active project with revision and idempotency guards; never renames an existing checkpoint path.",
   project_get_state:
@@ -27,6 +45,8 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   timeline_get: "Return the compact timeline view (tracks, clips, text overlays).",
   timeline_query:
     "Query a bounded timeline slice by namespaced refs, ids, time range, track/entity types, and allowlisted fields.",
+  timeline_mapSourceTimes:
+    "Map 1–64 explicit absolute timeline times for one clip through Core's playback-speed and freeze evaluator. Returns the snapshot revision, clip-local seconds, source-relative seconds, absolute source-media seconds (inPoint + relative), and freeze status. Points must lie within the clip; no source-to-timeline inverse is provided.",
   editor_get_context:
     "Return editor context (selection, playhead, time range, canvas point); headless sessions answer honestly with contextAvailable:false.",
   editor_control:
@@ -34,7 +54,7 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   edit_validate:
     "Dry-run edit.apply ops (top-level input omits idempotencyKey) without side effects and report conflicts, warnings, and estimated impact.",
   edit_apply:
-    "Apply an atomic batch of closed edit ops to the project, including safe removal of empty tracks and unreferenced media.",
+    "Apply an atomic batch of closed edit ops to the project. clip.setSpeedConfig replaces speed, reverse, pitch correction, source-relative keyframes and freeze frames together; speed is [0.1, 20], keyframe.time/freeze.sourceTime are source seconds from inPoint, and freeze.startTime includes earlier freeze durations. When keyframes exist they replace base speed; the curve integrates in ascending source-relative time, then reverse reflects the resulting offset across the source span. freeze.sourceTime stays literal under reverse, and easing overshoot clamps to [0.1, 20]. clip.split and clip.trim reject speed-ramped or frozen clips; ReviewRange requires forward constant speed.",
   history_get:
     "Return bounded undo/redo availability and summaries from the canonical editor history.",
   history_control:
@@ -96,24 +116,42 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
 };
 
 const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  "project.list": "List persisted project identities and their default workspace IDs without changing the current GUI view.",
+  "workspace.list": "List the workspaces belonging to an explicit projectId.",
+  "workspace.create": "Create a workspace from an explicit project and optional node/workspace source; this does not change the GUI view.",
+  "workspace.delete": "Delete an explicit non-default workspace with expectedRevision and optional idempotencyKey.",
+  "workspace.close": "Release the runtime for an explicit workspace; its persisted draft and nodes remain available.",
+  "workspace.switch_view": "Explicitly show an existing workspace in the GUI. This is a view operation and does not change its data revision.",
+  "workspace.list_drafts": "List recoverable drafts for one explicit project/workspace.",
+  "workspace.recover_draft": "Recover a protected draft into its explicit project/workspace with expectedRevision and idempotencyKey.",
+  "node.list": "List immutable saved nodes for one explicit project.",
+  "node.get": "Read the complete immutable snapshot for one saved node.",
+  "node.save": "Save one explicit workspace as an immutable node with expectedRevision and persistent idempotencyKey.",
+  "node.restore": "Restore one immutable node into an explicit workspace after protecting its dirty draft.",
+  "node.rename": "Rename one immutable node's display name (and optional summary) in place; the snapshot, ids and parentage never change and no new version is created.",
+  "node.media": "List media saved by one immutable node and disclose missing dependencies.",
+  "node.compare": "Compare two immutable nodes and return added, replaced, and removed media IDs.",
+  "media.references": "Query the retained-reference roots for one media version.",
+  "media.cleanup.plan": "Build a bounded cleanup plan for unreferenced controlled media; execution rechecks references.",
+  "media.cleanup.execute": "Recheck and execute a prior cleanup plan by planId.",
   "session.describe":
     "Describe this live collaboration session: runtime, independent access/writer state, available commands, and error codes.",
   "capabilities.get":
     "Report live provider capabilities (preview, visual inspection, export, verify) with honest reasons when unavailable.",
   "project.create":
-    "Unavailable in live mode — the GUI owns the project lifecycle; a live session attaches to the open project.",
+    "Create a durable project with its default workspace without switching the GUI view. Use the returned projectId/defaultWorkspaceId for subsequent explicit target commands.",
   "project.open":
     "Unavailable in live mode — the GUI owns the project lifecycle; a live session attaches to the open project.",
   "project.save":
-    "Flush the GUI's autosave/recovery snapshot for the open project and report the current revision; does not write a .openreel project file.",
+    "Save the explicit target workspace as a new immutable project node. Supply projectId, workspaceId, expectedRevision, and a persistent idempotencyKey; this does not change the GUI view.",
   "project.rename":
-    "Rename the open GUI project through the canonical undoable project action. This changes the display name and future suggested export/save names, but never renames an existing project file path.",
+    "Rename the explicitly targeted project through its canonical undoable action. Supply projectId, workspaceId, and expectedRevision; this changes the display name, never an existing file path.",
   "project.get_state":
-    "Return the full canonical project state at the current revision.",
+    "Return the full canonical project state for the explicit project/workspace target.",
   "project.changes":
-    "Return bounded structural changes since a project revision, including both GUI and Agent edits, or require a full refresh when retained history is unavailable.",
+    "Return bounded structural changes for the explicit project/workspace target since a revision, or require a full refresh when retained history is unavailable.",
   "media.import":
-    "Import a local video, audio, or image file (PNG, JPEG, GIF, WebP) into the open GUI project. Use an absolute path under one of capabilities_get.mediaImport.mediaRoots; the returned mediaId can be passed to clip.add, the Media panel updates immediately, and the import is undoable in the GUI.",
+    "Import a local video, audio, or image file into the explicit project/workspace. Supply projectId, workspaceId, expectedRevision, and an absolute path under capabilities_get.mediaImport.mediaRoots; the import is undoable in the GUI when that workspace is foreground.",
   "media.render_html":
     "Render constrained local HTML/CSS markup to a PNG file under the media roots (default <mediaRoots[0]>/jobs/html-render/<requestKey>/), then media.import that path to put it on the timeline. source is {kind:'path',path} (an .html file inside a media root) or {kind:'inline',html} (raw markup ≤512 KiB). width/height are even integers in [2,4096]; transparent defaults to true; timeoutMs defaults to 30000 (≤120000). Scripts, iframe/object/embed, event handlers, javascript:/non-image data: URIs and network references (http(s), file, protocol-relative, srcset, CSS url(http)/@import/@font-face url(http)) are rejected; local subresources resolve only inside assetsRoot and remote/missing ones are aborted and returned in missingAssets — the render still succeeds. Requires this machine's playwright Chromium (same supply as preview) and a configured media root; transparent PNGs composite cleanly over the timeline. Changes no project state — import the returned path afterwards.",
   "media.analyze_start":
@@ -122,6 +160,8 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Return the compact timeline view (tracks, clips, text overlays) at the current revision. Persisted review markers use namespaced ids R1, R2, and so on.",
   "timeline.query":
     "Query a bounded local timeline slice by @A/R refs, ids, time, track/entity type, and allowlisted fields without dumping the full project.",
+  "timeline.mapSourceTimes":
+    "Map 1–64 explicit absolute timeline times for one clip through Core's playback-speed and freeze evaluator. Returns the snapshot revision, clip-local seconds, source-relative seconds, absolute source-media seconds (inPoint + relative), and freeze status. Points must lie within the clip; this does not infer an interval or map source time back to timeline time.",
   "editor.get_context":
     "Return live editor context: selection, playhead, time range, canvas point, namespaced Agent references A1/A2, and project/context revisions.",
   "editor.control":
@@ -129,7 +169,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "edit.validate":
     "Dry-run edit.apply ops (top-level input omits idempotencyKey) against the current canonical snapshot and report conflicts, warnings, and estimated impact without side effects.",
   "edit.apply":
-    "Apply an atomic batch of closed edit ops as ONE undo unit. Live clip.add forbids explicit clipId; use the returned createdIds for dependent transactions, including safe track.remove (empty tracks only) and media.remove (unreferenced media only). The revision CAS is unconditional in live mode: an omitted expectedRevision is guarded with the revision of the snapshot the ops were translated against; expectedContextRevision remains optional. Layering semantics: track index 0 is the TOP z-order layer (tracks draw in descending index order), so put cross-shot foreground elements on a LOWER track index than the backgrounds they span; track.add accepts a zero-based position for exactly that. Clip transform position is a project-pixel offset from frame center (not normalized), scale multiplies the canvas-fit draw size, and clip keyframes animate on the clip's own [0, duration) local clock — one foreground clip spanning a background cut keeps a single continuous animation across the cut.",
+    "Apply an atomic batch of closed edit ops as ONE undo unit. clip.setSpeedConfig replaces speed, reverse, pitch correction, source-relative speed keyframes and freeze frames together; speed is [0.1, 20], keyframe.time and freeze.sourceTime are source seconds from inPoint, and freeze.startTime is clip-local playback time including earlier freezes. When keyframes exist they replace base speed; the curve integrates in ascending source-relative time, then reverse reflects the resulting offset across the source span. freeze.sourceTime stays literal under reverse, and easing overshoot clamps to [0.1, 20]. clip.split and clip.trim reject speed-ramped or frozen clips; ReviewRange requires forward constant speed. Live clip.add forbids explicit clipId; use returned createdIds for dependent transactions. The revision CAS is unconditional in live mode: an omitted expectedRevision is guarded with the revision of the snapshot the ops were translated against; expectedContextRevision remains optional. Layering semantics: track index 0 is the TOP z-order layer. Clip transform position is a project-pixel offset from frame center, scale multiplies the canvas-fit draw size, and clip keyframes animate on the clip's own [0, duration) local clock.",
   "history.get":
     "Return bounded undo/redo availability and summaries from the canonical GUI/Core history.",
   "history.control":
@@ -139,7 +179,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "preview.render_comparison":
     'Render one reference-comparison still at a timeline time from the SHARED referenceComparison config (left reference / right timeline, letterboxed, or overlay). The mapping is constant-rate 1.0 with a start offset; beyond refEndSec the reference side holds its last frame and the response says so.',
   "media.replace":
-    "Replace the source of timeline references with a NEW production version: the new file imports as its own media item (the old file is never overwritten; both versions coexist and clips record supersedesMediaId lineage), clips keep all edits, and timing clamps to the new source duration — the timeline never extends. scope project repoints every clip on that media; scope clip repoints one.",
+    "Replace timeline references with a new immutable media version, supplied by filePath or an already imported replacementMediaId candidate. The old version remains available to saved nodes. Clips keep their edits and timing clamps to the new source duration; scope project repoints all references and scope clip repoints one clip. Preserve the existing speed-ramp/freeze restrictions.",
   "media.relink":
     "Relink ONE media item to its same content at a new file location (missing/moved file fix). Only the file reference changes — never content, never clip timing. Use media.replace to swap in a new production version.",
   "visual.inspect":

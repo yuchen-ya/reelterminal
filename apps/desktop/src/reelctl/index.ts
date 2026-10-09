@@ -119,7 +119,12 @@ async function runRequirements(
     throw new LiveCliError("Usage: reelctl requirements list|get|update [Q1]", "args", 2);
   }
   const parsed = parseFlags(argv.slice(2));
-  const state = await client.command("project.get_state", {}, { retry: "safe", addIdempotencyKey: false });
+  const endpointStatus = await client.status();
+  if (typeof endpointStatus.projectId !== "string" || typeof endpointStatus.workspaceId !== "string") {
+    throw new LiveCliError("requirements needs an open project workspace", "business", 3);
+  }
+  const target = { projectId: endpointStatus.projectId, workspaceId: endpointStatus.workspaceId };
+  const state = await client.command("project.get_state", target, { retry: "safe", addIdempotencyKey: false });
   if (!state.ok) return { result: state, human: parsed.human, compact: parsed.compact };
   const items = requirementItems(state);
   const revision = isRecord(state.value) && typeof state.value.revision === "number" ? state.value.revision : 0;
@@ -149,9 +154,9 @@ async function runRequirements(
   if (status === undefined && agentNote === undefined && resultMediaIds === undefined) {
     throw new LiveCliError("requirements update needs --status, --agent-note, or --result-media-id", "args", 2);
   }
-  const endpointStatus = await client.status();
   const entry = await client.catalogEntry("edit.apply");
   const result = await client.command("edit.apply", {
+    ...target,
     ops: [{
       op: "requirement.update",
       requirementId: requirementRef(item),
@@ -241,7 +246,7 @@ async function runGenericCall(client: LiveCommandClient, argv: readonly string[]
     expectedProjectEpoch = input.expectedProjectEpoch;
   }
   const outputFields = outputProjection(entry, args, parsed.outputFields);
-  requireExplicitSafetyGuards(entry.name, args, expectedProjectId, expectedProjectEpoch);
+  requireExplicitSafetyGuards(entry.name, args, expectedProjectId, expectedProjectEpoch, entry);
   let result = await client.command(entry.name, args, {
     retry: entry.retry ?? "never",
     addIdempotencyKey: entryCanBeIdempotent(entry),
@@ -337,8 +342,8 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
   }
 
   const invocation = withInput(parseInvocation(argv));
-  requireExplicitSafetyGuards(invocation.commandName, invocation.arguments, invocation.expectedProjectId, invocation.expectedProjectEpoch);
   const entry = await readCommandEntry(client, invocation.commandName);
+  requireExplicitSafetyGuards(invocation.commandName, invocation.arguments, invocation.expectedProjectId, invocation.expectedProjectEpoch, entry);
   const outputFields = outputProjection(entry, invocation.arguments, invocation.outputFields);
   let result: FacadeResult<unknown>;
   if (invocation.wait) result = await waitForJob(client, invocation, entry);

@@ -186,6 +186,39 @@ describe("ProjectStore", () => {
     useProjectStore.getState().createNewProject();
   });
 
+  it("publishes a batched project edit and its undo entry as one observable commit", () => {
+    const state = useProjectStore.getState();
+    const action: Action = {
+      type: "track/add",
+      id: "atomic-track-add",
+      timestamp: Date.now(),
+      params: { trackType: "video", trackId: "atomic-track" },
+    };
+    let storeObserverSawCommittedHistory = false;
+    let historyObserverSawCommittedProject = false;
+    const unsubscribeStore = useProjectStore.subscribe((next, previous) => {
+      if (next.project !== previous.project) {
+        storeObserverSawCommittedHistory = next.actionHistory.canUndo();
+      }
+    });
+    const unsubscribeHistory = state.actionHistory.subscribe(() => {
+      historyObserverSawCommittedProject = useProjectStore
+        .getState()
+        .project.timeline.tracks.some((track) => track.id === "atomic-track");
+    });
+
+    const result = state.executeActionBatch([action], {
+      groupLabel: "Add a track",
+      historyOwner: "human",
+    });
+
+    unsubscribeStore();
+    unsubscribeHistory();
+    expect(result.result.success).toBe(true);
+    expect(storeObserverSawCommittedHistory).toBe(true);
+    expect(historyObserverSawCommittedProject).toBe(true);
+  });
+
   describe("project creation", () => {
     it("should create a new project with default settings", () => {
       const { project } = useProjectStore.getState();

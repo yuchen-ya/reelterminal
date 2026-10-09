@@ -126,6 +126,84 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "limit above ceiling", params: { sinceRevision: 0, limit: 201 }, expectValid: false },
     { name: "unknown field", params: { sinceRevision: 0, verbose: true }, expectValid: false },
   ],
+  "project.list": [
+    { name: "empty params valid", params: {}, expectValid: true },
+    { name: "unknown field", params: { projectId: "p" }, expectValid: false },
+  ],
+  "workspace.list": [
+    { name: "valid project target", params: { projectId: "p1" }, expectValid: true },
+    { name: "missing projectId", params: {}, expectValid: false },
+  ],
+  "workspace.create": [
+    { name: "valid trial workspace", params: { projectId: "p1", kind: "trial", sourceNodeId: "n1" }, expectValid: true },
+    { name: "missing projectId", params: { kind: "trial" }, expectValid: false },
+    { name: "unsupported workspace kind", params: { projectId: "p1", kind: "branch" }, expectValid: false },
+  ],
+  "workspace.delete": [
+    { name: "valid target and revision", params: { projectId: "p1", workspaceId: "w1", expectedRevision: 2 }, expectValid: true },
+    { name: "missing expectedRevision", params: { projectId: "p1", workspaceId: "w1" }, expectValid: false },
+  ],
+  "workspace.close": [
+    { name: "valid target", params: { projectId: "p1", workspaceId: "w1" }, expectValid: true },
+    { name: "missing workspaceId", params: { projectId: "p1" }, expectValid: false },
+  ],
+  "workspace.switch_view": [
+    { name: "valid target", params: { projectId: "p1", workspaceId: "w1" }, expectValid: true },
+    { name: "missing projectId", params: { workspaceId: "w1" }, expectValid: false },
+  ],
+  "workspace.list_drafts": [
+    { name: "valid target", params: { projectId: "p1", workspaceId: "w1" }, expectValid: true },
+    { name: "missing workspaceId", params: { projectId: "p1" }, expectValid: false },
+  ],
+  "workspace.recover_draft": [
+    { name: "valid explicit recovery", params: { projectId: "p1", workspaceId: "w1", draftId: "d1", expectedRevision: 4, idempotencyKey: "recover-1" }, expectValid: true },
+    { name: "missing idempotencyKey", params: { projectId: "p1", workspaceId: "w1", draftId: "d1", expectedRevision: 4 }, expectValid: false },
+  ],
+  "node.list": [
+    { name: "valid project target", params: { projectId: "p1" }, expectValid: true },
+    { name: "missing projectId", params: {}, expectValid: false },
+  ],
+  "node.get": [
+    { name: "valid node target", params: { projectId: "p1", nodeId: "n1" }, expectValid: true },
+    { name: "missing nodeId", params: { projectId: "p1" }, expectValid: false },
+  ],
+  "node.save": [
+    { name: "valid persistent node save", params: { projectId: "p1", workspaceId: "w1", expectedRevision: 2, idempotencyKey: "save-1" }, expectValid: true },
+    { name: "missing expectedRevision", params: { projectId: "p1", workspaceId: "w1", idempotencyKey: "save-1" }, expectValid: false },
+  ],
+  "node.restore": [
+    { name: "valid restore", params: { projectId: "p1", workspaceId: "w1", nodeId: "n1", expectedRevision: 2, idempotencyKey: "restore-1" }, expectValid: true },
+    { name: "missing nodeId", params: { projectId: "p1", workspaceId: "w1", expectedRevision: 2, idempotencyKey: "restore-1" }, expectValid: false },
+  ],
+  "node.rename": [
+    { name: "valid rename", params: { projectId: "p1", nodeId: "n1", name: "初剪" }, expectValid: true },
+    { name: "valid rename with summary", params: { projectId: "p1", nodeId: "n1", name: "初剪", summary: "first rough cut" }, expectValid: true },
+    { name: "missing name", params: { projectId: "p1", nodeId: "n1" }, expectValid: false },
+    { name: "empty name", params: { projectId: "p1", nodeId: "n1", name: "" }, expectValid: false },
+    { name: "wrong type name", params: { projectId: "p1", nodeId: "n1", name: 7 }, expectValid: false },
+    { name: "unknown field", params: { projectId: "p1", nodeId: "n1", name: "初剪", workspaceId: "w1" }, expectValid: false },
+  ],
+  "node.media": [
+    { name: "valid node media query", params: { projectId: "p1", nodeId: "n1" }, expectValid: true },
+    { name: "missing nodeId", params: { projectId: "p1" }, expectValid: false },
+  ],
+  "node.compare": [
+    { name: "valid node comparison", params: { projectId: "p1", fromNodeId: "n1", toNodeId: "n2" }, expectValid: true },
+    { name: "missing destination node", params: { projectId: "p1", fromNodeId: "n1" }, expectValid: false },
+  ],
+  "media.references": [
+    { name: "valid media reference query", params: { projectId: "p1", mediaId: "m1", workspaceId: "w1" }, expectValid: true },
+    { name: "missing mediaId", params: { projectId: "p1" }, expectValid: false },
+  ],
+  "media.cleanup.plan": [
+    { name: "unscoped bounded plan valid", params: {}, expectValid: true },
+    { name: "project-scoped plan valid", params: { projectId: "p1" }, expectValid: true },
+    { name: "unknown field", params: { recursive: true }, expectValid: false },
+  ],
+  "media.cleanup.execute": [
+    { name: "valid plan execution", params: { planId: "plan-1" }, expectValid: true },
+    { name: "missing planId", params: {}, expectValid: false },
+  ],
   "media.import": [
     { name: "valid", params: { path: "/media/input.mp4" }, expectValid: true },
     {
@@ -198,6 +276,13 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "bare hash ref forbidden", params: { refs: ["#1"] }, schemaValid: true, expectValid: false },
     { name: "unknown field projection", params: { fields: ["rawProject"] }, expectValid: false },
     { name: "unknown envelope field", params: { query: "clip" }, expectValid: false },
+  ],
+  "timeline.mapSourceTimes": [
+    { name: "valid bounded point mapping", params: { clipId: "c1", timelineTimes: [0, 1.25] }, expectValid: true },
+    { name: "empty point list", params: { clipId: "c1", timelineTimes: [] }, expectValid: false },
+    { name: "more than maximum points", params: { clipId: "c1", timelineTimes: Array(65).fill(0) }, expectValid: false },
+    { name: "non-finite point", params: { clipId: "c1", timelineTimes: [Number.NaN] }, expectValid: false },
+    { name: "unknown field", params: { clipId: "c1", timelineTimes: [0], inverse: true }, expectValid: false },
   ],
   "editor.get_context": [
     { name: "no params is valid", params: {}, expectValid: true },
@@ -749,6 +834,21 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       expectValid: true,
     },
     {
+      name: "valid full speed configuration replacement",
+      params: {
+        ops: [{
+          op: "clip.setSpeedConfig",
+          clipId: "c1",
+          speed: 1.5,
+          reversed: false,
+          pitchCorrection: true,
+          keyframes: [{ time: 0, speed: 1.5, easing: "linear" }],
+          freezeFrames: [],
+        }],
+      },
+      expectValid: true,
+    },
+    {
       name: "valid clip.setReverse",
       params: { ops: [{ op: "clip.setReverse", clipId: "c1", reversed: true }] },
       expectValid: true,
@@ -1112,6 +1212,21 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     {
       name: "clip.setSpeed rejects values the core would clamp",
       params: { ops: [{ op: "clip.setSpeed", clipId: "c1", speed: 20.1 }] },
+      expectValid: false,
+    },
+    {
+      name: "clip.setSpeedConfig rejects speed beyond Core's range",
+      params: {
+        ops: [{
+          op: "clip.setSpeedConfig",
+          clipId: "c1",
+          speed: 20.1,
+          reversed: false,
+          pitchCorrection: true,
+          keyframes: [],
+          freezeFrames: [],
+        }],
+      },
       expectValid: false,
     },
     {

@@ -95,11 +95,10 @@ export function createWorkAssetsSlice(_set: Set, get: Get): WorkAssetsSlice {
     action: Action,
     groupLabel: string,
   ): Promise<ActionResult> => {
-    const { executeActionBatch } = get();
-    return executeActionBatch([action], {
+    return (await get().submitActionBatch([action], {
       groupLabel,
       historyOwner: "human",
-    }).result;
+    })).result;
   };
 
   return {
@@ -218,6 +217,7 @@ export function createWorkAssetsSlice(_set: Set, get: Get): WorkAssetsSlice {
     },
 
     instantiateWorkAsset: async (workAssetId, options) => {
+      const instantiate = (): InstantiateWorkAssetResult => {
       const { project, executeActionBatch } = get();
       const built = buildWorkAssetInstantiateActions(project, workAssetId, {
         ...(options?.trackId !== undefined ? { trackId: options.trackId } : {}),
@@ -271,6 +271,9 @@ export function createWorkAssetsSlice(_set: Set, get: Get): WorkAssetsSlice {
         trackIds: built.trackIds,
         createdTrackCount: built.createdTrackCount,
       };
+      };
+      const submit = get().submitWorkspaceMutation;
+      return submit ? submit(instantiate) : instantiate();
     },
   };
 }

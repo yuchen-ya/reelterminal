@@ -36,6 +36,7 @@ import type {
   ImportedMediaMetadata,
   ProjectChangesParams,
   ProjectChangesResult,
+  MediaImportResult,
 } from "./types";
 
 /**
@@ -132,6 +133,8 @@ export interface LiveProjectIdentity {
   readonly projectEpoch?: string;
   readonly projectId: string;
   readonly projectName: string;
+  readonly workspaceId?: string;
+  readonly workspaceInstanceId?: string;
   readonly windowId: string;
 }
 
@@ -143,12 +146,14 @@ export interface LiveApplyActionsOptions {
   /** CAS precondition on the editor-context revision (Decision 4). */
   readonly expectedContextRevision?: number;
   /**
-   * Optional replay key carried across the store seam: the desktop adapter
-   * puts it on the bridge request so the renderer's applyActions ledger can
-   * replay a committed batch whose reply was lost in transit (facade-level
-   * edit.apply replay is decided by EditApplyParams.idempotencyKey).
+   * Optional replay key carried across the store seam so the renderer can
+   * atomically persist the successful batch result with the workspace draft.
    */
   readonly idempotencyKey?: string;
+  /** Stable semantic request used by the renderer's durable action receipt. */
+  readonly idempotencyPayload?: unknown;
+  /** Original facade result projection retained with the durable receipt. */
+  readonly idempotencyMetadata?: LiveEditApplyReplayMetadata;
 }
 
 /**
@@ -181,6 +186,13 @@ export interface LiveApplyActionsResult {
   readonly revision: number;
   /** Created entity ids by category — see LiveCreatedIds. */
   readonly createdIds: LiveCreatedIds;
+  /** Translation details needed to replay the original per-op result. */
+  readonly idempotencyMetadata?: LiveEditApplyReplayMetadata;
+}
+
+export interface LiveEditApplyReplayMetadata {
+  readonly autoTrackIds: readonly (string | readonly string[] | undefined)[];
+  readonly opClipCounts: readonly (number | undefined)[];
 }
 
 /**
@@ -243,6 +255,17 @@ export interface LiveProjectStore {
     actions: readonly Action[],
     opts: LiveApplyActionsOptions,
   ): Promise<LiveApplyActionsResult>;
+  /** Durable receipt lookup before a retry revalidates or translates against current state. */
+  getActionBatchReplay?(
+    idempotencyKey: string,
+    idempotencyPayload: unknown,
+    groupLabel: string,
+  ): Promise<LiveApplyActionsResult | null>;
+  /** Look up a durable import receipt before probing the caller's source path. */
+  getMediaImportReplay?(
+    idempotencyKey: string,
+    idempotencyPayload: unknown,
+  ): Promise<MediaImportResult | null>;
   /**
    * Import one host-validated local file into the canonical GUI project.
    * Implementations MUST CAS `expectedRevision` before committing and MUST

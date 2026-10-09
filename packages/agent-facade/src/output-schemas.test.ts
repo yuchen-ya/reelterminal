@@ -48,6 +48,39 @@ describe("emitted MCP output schemas", () => {
       .toEqual(["asset", "clip", "text", "timeRange"]);
   });
 
+  it("makes evidence coordinates and identity explicit in visual and analysis results", () => {
+    const visual = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["visual.inspect"] as unknown as Schema;
+    const visualValue = (visual.properties as Schema).value as Schema;
+    expect(visualValue.required).toContain("mediaSources");
+    const mediaSources = (visualValue.properties as Schema).mediaSources as Schema;
+    expect(((mediaSources.items as Schema).required as string[])).toEqual([
+      "mediaId", "sizeBytes", "mtimeMs", "sha256",
+    ]);
+    const frames = (visualValue.properties as Schema).frames as Schema;
+    const frame = frames.items as Schema;
+    expect(frame.required).toContain("requestedTimelineTimeSec");
+    expect(frame.required).toContain("renderedTimelineTimeSec");
+    expect((frame.properties as Schema).coordinateSpace).toEqual({ const: "timeline" });
+    expect((frame.properties as Schema).renderedTimelineTimeSec).toEqual({ const: null });
+    expect((frame.properties as Schema).sourceFrameNumber).toEqual({ const: null });
+    expect((frame.properties as Schema).sourcePtsSec).toEqual({ const: null });
+
+    const analysis = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["analysis.get"] as unknown as Schema;
+    const analysisValue = (analysis.properties as Schema).value as Schema;
+    expect(analysisValue.required).toContain("sourceRevision");
+    expect((analysisValue.properties as Schema).coordinateSpace).toEqual({ const: "source" });
+  });
+
+  it("exposes workspace routing identity from editor.get_context without requiring it headlessly", () => {
+    const schema = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["editor.get_context"] as unknown as Schema;
+    const value = (schema.properties as Schema).value as Schema;
+    const identity = ((value.properties as Schema).identity as Schema);
+    expect(identity.properties).toHaveProperty("workspaceId", { type: "string" });
+    expect(identity.properties).toHaveProperty("workspaceInstanceId", { type: "string" });
+    expect(identity.required).not.toContain("workspaceId");
+    expect(identity.required).not.toContain("workspaceInstanceId");
+  });
+
   it("does not prescribe agent collaboration behavior", () => {
     for (const verb of ["session.describe", "editor.get_context"] as const) {
       const schema = EMITTED_VERB_OUTPUT_JSON_SCHEMAS[verb] as unknown as Schema;

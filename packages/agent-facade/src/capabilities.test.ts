@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAgentFacade, type AgentFacade } from "./index";
 import type { ProjectRenderAdapter } from "./render/adapter";
-import { EDIT_OP_TYPES } from "./types";
+import { EDIT_OP_TYPES, FACADE_VERBS } from "./types";
 import { makeTempDir, removeTempDir } from "./test-helpers";
 
 describe("capabilities.get / session.describe", () => {
@@ -95,6 +95,7 @@ describe("capabilities.get / session.describe", () => {
       "text.update",
       "text.delete",
       "clip.setSpeed",
+      "clip.setSpeedConfig",
       "clip.setReverse",
       "clip.setTransform",
       "clip.setVolume",
@@ -140,6 +141,14 @@ describe("capabilities.get / session.describe", () => {
       idempotencyKeys: true,
       serializedExecution: true,
     });
+    expect(res.value.professionalEditing.speedRamping.details).toMatchObject({
+      writeOp: "clip.setSpeedConfig",
+      mappingQuery: "timeline.mapSourceTimes",
+      speedRange: [0.1, 20],
+      maxKeyframes: 128,
+      maxFreezeFrames: 128,
+      mappingQueryLimit: 64,
+    });
   });
 
   it("session.describe labels pixel/export steps as unavailable (X)", async () => {
@@ -150,69 +159,7 @@ describe("capabilities.get / session.describe", () => {
 
 
     expect(res.value.access).toBeUndefined();
-    expect(res.value.verbs).toEqual([
-      "session.describe",
-      "capabilities.get",
-      "project.create",
-      "project.open",
-      "project.save",
-      "project.rename",
-      "project.get_state",
-      "project.changes",
-      "media.import",
-      "media.render_html",
-      "media.analyze_start",
-      "analysis.list",
-      "analysis.get",
-      "timeline.get",
-      "timeline.query",
-      "editor.get_context",
-      "editor.control",
-      "edit.validate",
-      "edit.apply",
-      "history.get",
-      "history.control",
-      "preview.render_frame",
-      "preview.render_comparison",
-      "visual.inspect",
-      "export.start",
-      "job.status",
-      "job.cancel",
-      "verify.artifact",
-      "material.list",
-      "material.get",
-      "material.create",
-      "material.update",
-      "material.batch_update",
-      "material.remove",
-      "material.attach",
-      "material.undo",
-      "font.upload",
-      "font.list",
-      "preset.list",
-      "preset.get",
-      "preset.create",
-      "preset.update",
-      "preset.remove",
-      "preset.apply",
-      "help.list_screens",
-      "help.describe",
-      "help.search",
-      "media.production_list",
-      "batch.start",
-      "batch.get",
-      "batch.resume",
-      "media.inspect",
-      "media.import_preflight",
-      "frames.extract",
-      "frames.contact_sheet",
-      "video.compare",
-      "patch.apply",
-      "image.align",
-      "motion.track",
-      "mask.refine",
-      "patch.propagate",
-    ]);
+    expect(res.value.verbs).toEqual(FACADE_VERBS);
     expect(res.value.stepLetters.facadeToRuntime).toBe("P");
     expect(res.value.stepLetters.createProject).toBe("P");
     expect(res.value.stepLetters.trimClip).toBe("P");

@@ -12,8 +12,10 @@ import {
   type LiveMediaImportRequest,
   type LiveMediaImportResult,
   type LiveProjectStore,
+  type JobStatusView,
   type AgentAccessMode,
 } from "@reelterminal/agent-facade";
+import type { Project } from "@reelterminal/core";
 import {
   createLiveSessionHost,
   type LiveProviders,
@@ -227,6 +229,9 @@ const actionEvents = (events: LiveEvent[]) =>
   events.filter((e) => e.type === "action");
 const statusEvents = (events: LiveEvent[]) =>
   events.filter((e) => e.type === "status");
+const workspaceTarget = { projectId: "project-test", workspaceId: "workspace-test" };
+const workspaceReadArgs = workspaceTarget;
+const workspaceWriteArgs = { ...workspaceTarget, expectedRevision: 0 };
 
 /** Status pushes are fire-and-forget; let pending ones land before asserting. */
 const flushPushes = () => new Promise<void>((resolve) => setImmediate(resolve));
@@ -299,7 +304,7 @@ describe("live session host enable/status/disable", () => {
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
     const host = createLiveSessionHost(fixture.deps);
     await host.enable();
-    await host.callExternal("project.get_state", undefined);
+    await host.callExternal("project.get_state", workspaceReadArgs);
     expect(fixture.sessions).toHaveLength(1);
 
     const status = await host.disable();
@@ -381,7 +386,7 @@ describe("live session host enable/status/disable", () => {
     });
 
     await host.enable();
-    await host.callExternal("timeline.get", undefined);
+    await host.callExternal("timeline.get", workspaceReadArgs);
     const disabled = await host.disable();
     expect(disabled).toMatchObject({ enabled: false, writer: null });
 
@@ -396,7 +401,7 @@ describe("live session host enable/status/disable", () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
     const host = createLiveSessionHost(fixture.deps);
-    const result = await host.callExternal("timeline.get", undefined);
+    const result = await host.callExternal("timeline.get", workspaceReadArgs);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("UNSUPPORTED");
     expect(fixture.factoryCalls).toEqual([]);
@@ -404,6 +409,69 @@ describe("live session host enable/status/disable", () => {
 });
 
 describe("live session host verb dispatch + events", () => {
+  it("emits fixed task progress only after the durable task record is updated", async () => {
+    const fixture = makeFixture();
+    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
+    let persistedStateAtEvent: string | undefined;
+    const host = createLiveSessionHost({
+      ...fixture.deps,
+      emitEvent: (event) => {
+        if (event.type === "task") {
+          const record = JSON.parse(readFileSync(path.join(fixture.deps.artifactRoot, "task-records", `${event.jobId}.json`), "utf8")) as { status?: { state?: string } };
+          persistedStateAtEvent = record.status?.state;
+        }
+        fixture.events.push(event);
+      },
+    });
+    await host.enable();
+    cleanups.push(() => void host.disable());
+    await host.callExternal("capabilities.get", {});
+    const lifecycle = fixture.sessions[0]!.config.taskLifecycle!;
+    const inputProject = { id: "project-test" } as Project;
+    lifecycle.begin({
+      jobId: "job-progress-test",
+      kind: "analysis",
+      projectId: "project-test",
+      workspaceId: "workspace-test",
+      sourceRevision: 7,
+      inputProject,
+      parameters: { mediaId: "m1" },
+    });
+    const now = new Date().toISOString();
+    const status: JobStatusView = {
+      jobId: "job-progress-test",
+      kind: "analysis",
+      projectId: "project-test",
+      workspaceId: "workspace-test",
+      state: "running",
+      progress: { phase: "analyzing", percent: 0.4 },
+      artifact: null,
+      result: null,
+      error: null,
+      deliveredTo: null,
+      deliveryError: null,
+      sourceRevision: 7,
+      route: null,
+      upscalingRequestedButInactive: false,
+      cancelRequested: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    lifecycle.update(status);
+    const taskEvent = fixture.events.find((event) => event.type === "task");
+    expect(persistedStateAtEvent).toBe("running");
+    expect(taskEvent).toMatchObject({
+      type: "task",
+      jobId: "job-progress-test",
+      kind: "analysis",
+      projectId: "project-test",
+      workspaceId: "workspace-test",
+      state: "running",
+      sourceRevision: 7,
+      progress: { phase: "analyzing", percent: 0.4 },
+    });
+  });
+
   it("lazy-creates a read-only external session by default", async () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
@@ -411,7 +479,7 @@ describe("live session host verb dispatch + events", () => {
     await host.enable();
     cleanups.push(() => void host.disable());
 
-    const result = await host.callExternal("timeline.get", undefined);
+    const result = await host.callExternal("timeline.get", workspaceReadArgs);
     expect(result.ok).toBe(true);
     expect(fixture.factoryCalls).toEqual([
       { sessionId: "external", access: "read-only" },
@@ -444,8 +512,8 @@ describe("live session host verb dispatch + events", () => {
     await host.enable();
     cleanups.push(() => void host.disable());
 
-    await host.callExternal("timeline.get", undefined);
-    await host.callExternal("project.get_state", undefined);
+    await host.callExternal("timeline.get", workspaceReadArgs);
+    await host.callExternal("project.get_state", workspaceReadArgs);
     expect(fixture.factoryCalls).toEqual([
       { sessionId: "external", access: "read-only" },
     ]);
@@ -510,7 +578,7 @@ describe("live session host verb dispatch + events", () => {
       });
 
     await statusRead();
-    await host.callExternal("timeline.get", undefined);
+    await host.callExternal("timeline.get", workspaceReadArgs);
     expect((await host.getStatus()).externalConnected).toBe(true);
     expect((await host.getStatus()).writer).toBe("external");
     expect(fixture.sessions).toHaveLength(1);
@@ -531,7 +599,7 @@ describe("live session host verb dispatch + events", () => {
     expect(fixture.sessions[0]!.disposed).toBe(false);
 
     await statusRead();
-    await host.callExternal("edit.apply", { ops: [] });
+    await host.callExternal("edit.apply", { ...workspaceWriteArgs, ops: [] });
     expect((await host.getStatus()).externalConnected).toBe(true);
     expect((await host.getStatus()).writer).toBe("external");
     expect(fixture.sessions).toHaveLength(1);
@@ -587,7 +655,7 @@ describe("live session host verb dispatch + events", () => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${file.token}`,
       },
-      body: JSON.stringify({ command: "timeline.get", arguments: {} }),
+      body: JSON.stringify({ command: "timeline.get", arguments: workspaceReadArgs }),
     });
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await flushPushes();
@@ -624,7 +692,7 @@ describe("live session host verb dispatch + events", () => {
     cleanups.push(() => void host.disable());
 
     await host.setAccess("write");
-    const result = await host.callExternal("edit.apply", { ops: [] });
+    const result = await host.callExternal("edit.apply", { ...workspaceWriteArgs, ops: [] });
     expect(result.ok).toBe(false);
     await flushPushes();
     const end = actionEvents(fixture.events).at(-1);
@@ -649,8 +717,8 @@ describe("live session host access", () => {
     await host.enable();
     cleanups.push(() => void host.disable());
 
-    await host.callExternal("timeline.get", undefined);
-    const deniedBeforeGrant = await host.callExternal("edit.apply", { ops: [] });
+    await host.callExternal("timeline.get", workspaceReadArgs);
+    const deniedBeforeGrant = await host.callExternal("edit.apply", { ...workspaceWriteArgs, ops: [] });
     expect(deniedBeforeGrant).toMatchObject({
       ok: false,
       error: { code: "FORBIDDEN" },
@@ -666,7 +734,7 @@ describe("live session host access", () => {
         : fixture.sessions[0]!.config.access,
     ).toBe("write");
 
-    const allowedAfterGrant = await host.callExternal("edit.apply", { ops: [] });
+    const allowedAfterGrant = await host.callExternal("edit.apply", { ...workspaceWriteArgs, ops: [] });
     expect(allowedAfterGrant.ok).toBe(true);
     expect((await host.getStatus()).writer).toBe("external");
   });
@@ -679,7 +747,7 @@ describe("live session host access", () => {
     cleanups.push(() => void host.disable());
 
     await host.setAccess("write");
-    await host.callExternal("timeline.get", undefined);
+    await host.callExternal("timeline.get", workspaceReadArgs);
     expect((await host.getStatus()).writer).toBe("external");
 
     const revoked = await host.setAccess("read-only");

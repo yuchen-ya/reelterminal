@@ -1,5 +1,6 @@
 import type { StoreApi } from "zustand";
 import type {
+  ActionResult,
   Project,
   ShapeClip,
   TextClip,
@@ -12,12 +13,12 @@ import type {
   EditingTemplateHistoryEntry,
   EditingTemplateApplicationState,
 } from "./index";
-import { useEngineStore } from "../engine-store";
 
 type Get = StoreApi<ProjectState>["getState"];
 type Set = StoreApi<ProjectState>["setState"];
 
 export interface HistoryDeps {
+  overlayEngines: ProjectStoreHelpers["overlayEngines"];
   applyClipDataSnapshot: ProjectStoreHelpers["applyClipDataSnapshot"];
   syncOverlayEnginesFromProject: ProjectStoreHelpers["syncOverlayEnginesFromProject"];
   syncProjectEffectsBridge: (next: Project, prev?: Project) => void;
@@ -52,6 +53,7 @@ export function createHistorySlice(
   deps: HistoryDeps,
 ): HistorySlice {
   const {
+    overlayEngines,
     applyClipDataSnapshot,
     syncOverlayEnginesFromProject,
     syncProjectEffectsBridge,
@@ -70,7 +72,8 @@ export function createHistorySlice(
       get().actionExecutor.getHistory().endGroup(groupId);
     },
 
-    undo: async () => {
+    undo: async (options) => {
+      const operation = async (): Promise<ActionResult> => {
       const {
         project,
         actionExecutor,
@@ -160,22 +163,22 @@ export function createHistorySlice(
 
         if (entry.type === "shape") {
           deleted =
-            useEngineStore.getState().getGraphicsEngine()?.deleteShapeClip(
+            overlayEngines.graphicsEngine?.deleteShapeClip(
               entry.clipId,
             ) ?? false;
         } else if (entry.type === "text") {
           deleted =
-            useEngineStore.getState().getTitleEngine()?.deleteTextClip(
+            overlayEngines.titleEngine?.deleteTextClip(
               entry.clipId,
             ) ?? false;
         } else if (entry.type === "svg") {
           deleted =
-            useEngineStore.getState().getGraphicsEngine()?.deleteSVGClip(
+            overlayEngines.graphicsEngine?.deleteSVGClip(
               entry.clipId,
             ) ?? false;
         } else if (entry.type === "sticker") {
           deleted =
-            useEngineStore.getState().getGraphicsEngine()?.deleteStickerClip(
+            overlayEngines.graphicsEngine?.deleteStickerClip(
               entry.clipId,
             ) ?? false;
         }
@@ -200,11 +203,11 @@ export function createHistorySlice(
             let trackHasClips = false;
             if (track.type === "text") {
               const textClips =
-                useEngineStore.getState().getTitleEngine()?.getAllTextClips() ||
+                overlayEngines.titleEngine?.getAllTextClips() ||
                 [];
               trackHasClips = textClips.some((c) => c.trackId === trackId);
             } else if (track.type === "graphics") {
-              const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+              const graphicsEngine = overlayEngines.graphicsEngine;
               const shapeClips = graphicsEngine?.getAllShapeClips() || [];
               const svgClips = graphicsEngine?.getAllSVGClips() || [];
               const stickerClips = graphicsEngine?.getAllStickerClips() || [];
@@ -269,14 +272,20 @@ export function createHistorySlice(
           project: { ...project, modifiedAt: Date.now() },
           redoJournal: [...get().redoJournal, "action"],
         });
-        syncProjectEffectsBridge(get().project, get().project);
-        syncProjectTransitionsBridge(get().project, get().project);
+        if (get().isForeground) {
+          syncProjectEffectsBridge(get().project, get().project);
+          syncProjectTransitionsBridge(get().project, get().project);
+        }
         syncOverlayEnginesFromProject();
       }
       return result;
+      };
+      const submit = get().submitWorkspaceMutation;
+      return submit && !options?.alreadySerialized ? submit(operation) : operation();
     },
 
-    redo: async () => {
+    redo: async (options) => {
+      const operation = async (): Promise<ActionResult> => {
       const {
         project,
         actionExecutor,
@@ -401,7 +410,7 @@ export function createHistorySlice(
         const targetTrackId = newTrackId || entry.trackId;
 
         if (entry.type === "shape") {
-          const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+          const graphicsEngine = overlayEngines.graphicsEngine;
           if (graphicsEngine) {
             const shapeData = entry.clipData as ShapeClip;
             graphicsEngine.createShape(
@@ -418,7 +427,7 @@ export function createHistorySlice(
             restored = true;
           }
         } else if (entry.type === "text") {
-          const titleEngine = useEngineStore.getState().getTitleEngine();
+          const titleEngine = overlayEngines.titleEngine;
           if (titleEngine) {
             const textData = entry.clipData as TextClip;
             titleEngine.createTextClip({
@@ -431,7 +440,7 @@ export function createHistorySlice(
             restored = true;
           }
         } else if (entry.type === "svg") {
-          const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+          const graphicsEngine = overlayEngines.graphicsEngine;
           if (graphicsEngine) {
             const svgData = entry.clipData as SVGClip;
             graphicsEngine.importSVG(
@@ -443,7 +452,7 @@ export function createHistorySlice(
             restored = true;
           }
         } else if (entry.type === "sticker") {
-          const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+          const graphicsEngine = overlayEngines.graphicsEngine;
           if (graphicsEngine) {
             const stickerData = entry.clipData as StickerClip;
             graphicsEngine.addStickerClip({
@@ -481,11 +490,16 @@ export function createHistorySlice(
           project: { ...project, modifiedAt: Date.now() },
           redoJournal: nextJournal,
         });
-        syncProjectEffectsBridge(get().project, get().project);
-        syncProjectTransitionsBridge(get().project, get().project);
+        if (get().isForeground) {
+          syncProjectEffectsBridge(get().project, get().project);
+          syncProjectTransitionsBridge(get().project, get().project);
+        }
         syncOverlayEnginesFromProject();
       }
       return result;
+      };
+      const submit = get().submitWorkspaceMutation;
+      return submit && !options?.alreadySerialized ? submit(operation) : operation();
     },
 
     canUndo: () => {

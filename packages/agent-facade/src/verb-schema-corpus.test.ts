@@ -16,6 +16,8 @@ import { describe, expect, it } from "vitest";
 import { FacadeError } from "./errors";
 import { validateEditOp } from "./ops";
 import { validateObject } from "./validate";
+import { WORKSPACE_VERB_SCHEMAS } from "./workspace-schemas";
+import { WORKSPACE_VERBS } from "./workspace-library";
 import {
   EDIT_APPLY_SCHEMA,
   EMPTY_PARAMS_SCHEMA,
@@ -44,6 +46,7 @@ import {
   EDITOR_CONTROL_TARGET_SCHEMA,
   PROJECT_CHANGES_SCHEMA,
   TIMELINE_QUERY_SCHEMA,
+  TIMELINE_MAP_SOURCE_TIMES_SCHEMA,
   TIMELINE_QUERY_RANGE_SCHEMA,
   EDIT_VALIDATE_SCHEMA,
   HISTORY_GET_SCHEMA,
@@ -168,6 +171,9 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
       }
       return;
     }
+    case "timeline.mapSourceTimes":
+      validateObject(params, TIMELINE_MAP_SOURCE_TIMES_SCHEMA, "timeline.mapSourceTimes params");
+      return;
     case "edit.validate":
     case "edit.apply": {
       const valid = validateObject<{ ops: unknown[] }>(
@@ -447,6 +453,10 @@ function facadeBoundaryValidate(verb: string, params: unknown): void {
       validateObject(params, HELP_SEARCH_SCHEMA, "help.search params");
       return;
     default:
+      if ((WORKSPACE_VERBS as readonly string[]).includes(verb)) {
+        validateObject(params, WORKSPACE_VERB_SCHEMAS[verb as typeof WORKSPACE_VERBS[number]], `${verb} params`);
+        return;
+      }
       { const tool = PLUGIN_TOOLS.find((tool) => tool.name === verb);
         if (tool) { validateObject(params, tool.input, `${verb} params`); return; } }
       throw new Error(`corpus driver: no boundary layers for verb "${verb}"`);

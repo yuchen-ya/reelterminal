@@ -120,9 +120,9 @@ export function DesktopStartScreen({
     try {
       await saveCurrentProject();
       if (projectMode === "motion") {
-        startNewMotionProject(format);
+        await startNewMotionProject(format);
       } else {
-        startNewProject(format);
+        await startNewProject(format);
       }
       setDesktopPage(projectMode);
       onProjectOpened?.();
