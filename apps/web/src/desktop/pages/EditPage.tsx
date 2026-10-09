@@ -10,7 +10,8 @@ import { InspectorPanel } from "../../components/editor/InspectorPanel";
 import { AgentMediaTaskDialog } from "../../components/editor/dialogs/AgentMediaTaskDialog";
 import { PanelErrorBoundary } from "../../components/ErrorBoundary";
 import { CollabStatusBar } from "../editor/CollabStatusBar";
-import { AgentInspectionPanel } from "../editor/AgentInspectionPanel";
+import { VersionPreviewBanner } from "../editor/VersionPreviewBanner";
+import { VersionNodeTrack } from "../editor/VersionNodeTrack";
 import { RequirementBoardDialog } from "../editor/RequirementBoardDialog";
 import { DesktopKeyboardShortcuts } from "../editor/DesktopKeyboardShortcuts";
 import { Icon } from "@/icons/Icon";
@@ -131,7 +132,7 @@ export function EditPage(): JSX.Element {
     storageKey: LEGACY_LS_DESKTOP_TIMELINE_HEIGHT,
   });
 
-  const lowerPanelHeight = timelineH.value + 36;
+  const lowerPanelHeight = timelineH.value + 124;
   const gridStyle: React.CSSProperties = {
     gridTemplateColumns: `${mediaW.value}px 1fr ${inspectorW.value}px`,
     gridTemplateRows: `1fr ${lowerPanelHeight}px`,
@@ -161,8 +162,9 @@ export function EditPage(): JSX.Element {
         <RowHandle onPointerDown={timelineH.onHandlePointerDown} />
         <div className="h-9 shrink-0">
           <CollabStatusBar />
-          <AgentInspectionPanel />
         </div>
+        <VersionPreviewBanner />
+        <VersionNodeTrack />
         <div className="min-h-0 flex-1">
           <DockRegion label={t("desktop.editor.timeline")} name={t("desktop.editor.timeline")} area="auto" icon="rectangle.split.3x1" className="bg-tl-bg">
             <Suspense fallback={<PanelLoading />}>

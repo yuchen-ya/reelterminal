@@ -60,6 +60,7 @@ import { useUIStore } from "../../stores/ui-store";
 import { toast } from "../../stores/notification-store";
 import { useEngineStore } from "../../stores/engine-store";
 import { getPlaybackBridge } from "../../bridges/playback-bridge";
+import { blockPreviewEditInteraction } from "../../services/preview-session";
 import {
   deleteTimelineItem,
   duplicateTimelineItem,
@@ -464,6 +465,8 @@ export const Timeline: React.FC = () => {
       const sourceTrackId = e.dataTransfer.getData("trackId");
       stopTrackDrag();
 
+      // Read-only version preview: track reordering must not modify anything.
+      if (blockPreviewEditInteraction()) return;
       if (sourceTrackId && sourceTrackId !== targetTrackId) {
         const targetIndex = tracks.findIndex((t) => t.id === targetTrackId);
         if (targetIndex !== -1) {
@@ -613,6 +616,7 @@ export const Timeline: React.FC = () => {
 
   const handleKeyframeMove = useCallback(
     (keyframeId: string, newTime: number) => {
+      if (blockPreviewEditInteraction()) return;
       for (const track of tracks) {
         for (const clip of track.clips) {
           const keyframe = clip.keyframes?.find((kf) => kf.id === keyframeId);
@@ -633,6 +637,7 @@ export const Timeline: React.FC = () => {
 
   const handleKeyframeDelete = useCallback(
     (keyframeId: string) => {
+      if (blockPreviewEditInteraction()) return;
       for (const track of tracks) {
         for (const clip of track.clips) {
           const keyframe = clip.keyframes?.find((kf) => kf.id === keyframeId);
@@ -655,6 +660,7 @@ export const Timeline: React.FC = () => {
   );
 
   const handleSplit = useCallback(async () => {
+    if (blockPreviewEditInteraction()) return;
     const store = useProjectStore.getState();
     for (const clipId of splittableSelectedClipIds) {
       await splitTimelineItem(
@@ -666,6 +672,7 @@ export const Timeline: React.FC = () => {
   }, [playheadPosition, splittableSelectedClipIds]);
 
   const handleDelete = useCallback(async () => {
+    if (blockPreviewEditInteraction()) return;
     if (selectedClipIds.length === 0) return;
 
     const store = useProjectStore.getState();
@@ -676,6 +683,7 @@ export const Timeline: React.FC = () => {
   }, [selectedClipIds, clearSelection]);
 
   const handleDuplicate = useCallback(async () => {
+    if (blockPreviewEditInteraction()) return;
     if (selectedClipIds.length === 0) return;
 
     const store = useProjectStore.getState();
@@ -685,6 +693,7 @@ export const Timeline: React.FC = () => {
   }, [selectedClipIds]);
 
   const handleRippleDelete = useCallback(async () => {
+    if (blockPreviewEditInteraction()) return;
     if (!canRippleDelete) return;
     for (const id of selectedMediaClipIds) {
       await rippleDeleteClip(id);
@@ -694,6 +703,7 @@ export const Timeline: React.FC = () => {
 
   const handleTrimToPlayhead = useCallback(
     async (trimStart: boolean) => {
+      if (blockPreviewEditInteraction()) return;
       const store = useProjectStore.getState();
       for (const id of splittableSelectedClipIds) {
         await trimTimelineItemToPlayhead(
@@ -825,6 +835,8 @@ export const Timeline: React.FC = () => {
 
   const handleDropMedia = useCallback(
     async (trackId: string, mediaId: string, startTime: number) => {
+      // Read-only version preview: dropping media must not modify anything.
+      if (blockPreviewEditInteraction()) return;
       const { addClip, addClipToNewTrack } = useProjectStore.getState();
       if (trackId) {
         await addClip(trackId, mediaId, startTime);
@@ -837,6 +849,7 @@ export const Timeline: React.FC = () => {
 
   const handleDropWorkAsset = useCallback(
     async (trackId: string, workAssetId: string, startTime: number) => {
+      if (blockPreviewEditInteraction()) return;
       const { instantiateWorkAsset } = useProjectStore.getState();
       const result = await instantiateWorkAsset(workAssetId, {
         trackId,
@@ -864,6 +877,7 @@ export const Timeline: React.FC = () => {
 
   const handleDropWorkAssetOnNewTrack = useCallback(
     async (workAssetId: string, startTime: number) => {
+      if (blockPreviewEditInteraction()) return;
       const { instantiateWorkAsset } = useProjectStore.getState();
       const result = await instantiateWorkAsset(workAssetId, { startTime });
       if (!result.ok) {
@@ -888,6 +902,8 @@ export const Timeline: React.FC = () => {
   const { moveClip } = useProjectStore();
   const handleMoveClip = useCallback(
     async (clipId: string, newStartTime: number, targetTrackId?: string) => {
+      // Read-only version preview: dragging clips must not modify anything.
+      if (blockPreviewEditInteraction()) return;
       const store = useProjectStore.getState();
       const isGraphic = Boolean(
         store.getShapeClip(clipId) ||
@@ -923,6 +939,7 @@ export const Timeline: React.FC = () => {
 
   const handleTrimTextClip = useCallback(
     (clipId: string, edge: "left" | "right", newTime: number) => {
+      if (blockPreviewEditInteraction()) return;
       const store = useProjectStore.getState();
       const textClip = store.getTextClip(clipId);
       if (!textClip) return;
@@ -940,6 +957,7 @@ export const Timeline: React.FC = () => {
 
   const handleMoveTextClip = useCallback(
     (clipId: string, newStartTime: number) => {
+      if (blockPreviewEditInteraction()) return;
       useProjectStore.getState().updateOverlayClipTiming(clipId, {
         startTime: Math.max(0, newStartTime),
       });
@@ -949,6 +967,7 @@ export const Timeline: React.FC = () => {
 
   const handleTrimShapeClip = useCallback(
     (clipId: string, edge: "left" | "right", newTime: number) => {
+      if (blockPreviewEditInteraction()) return;
       const store = useProjectStore.getState();
       const graphicClip =
         store.getShapeClip(clipId) ||
@@ -973,6 +992,7 @@ export const Timeline: React.FC = () => {
 
   const handleTrimClip = useCallback(
     (clipId: string, edge: "left" | "right", newTime: number) => {
+      if (blockPreviewEditInteraction()) return;
       const clip = tracks.flatMap((t) => t.clips).find((c) => c.id === clipId);
       if (!clip) return;
 
@@ -1068,14 +1088,18 @@ export const Timeline: React.FC = () => {
       {/* ── Timeline toolbar (mock: 48px line-icon tools + emerald zoom slider) ── */}
       <div className="flex items-center h-12 px-4 gap-4 bg-bg-1 border-b border-border shrink-0 relative z-50">
         <TLTool
-          onClick={undo}
+          onClick={() => {
+            if (!blockPreviewEditInteraction()) undo();
+          }}
           disabled={!canUndo()}
           title={tr(`Undo (${formatKeyComboDisplay("cmd+z")})`)}
         >
           <Undo2 size={16} aria-hidden />
         </TLTool>
         <TLTool
-          onClick={redo}
+          onClick={() => {
+            if (!blockPreviewEditInteraction()) redo();
+          }}
           disabled={!canRedo()}
           title={tr(`Redo (${formatKeyComboDisplay("cmd+shift+z")})`)}
         >
@@ -1532,6 +1556,14 @@ export const Timeline: React.FC = () => {
         ref={containerRef}
         className="flex-1 flex flex-col overflow-hidden relative"
         onClick={handleBackgroundClick}
+        onContextMenuCapture={(e) => {
+          // Read-only version preview: suppress the clip edit context menu
+          // entirely (capture phase beats the clip's own handler).
+          if (blockPreviewEditInteraction()) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
       >
         <div className="flex shrink-0">
           <div className="w-[170px] h-[34px] bg-bg-1 border-b border-r border-border shrink-0" />
@@ -1605,7 +1637,9 @@ export const Timeline: React.FC = () => {
               })}
               <button
                 type="button"
-                onClick={() => addTrack("video")}
+                onClick={() => {
+                  if (!blockPreviewEditInteraction()) addTrack("video");
+                }}
                 className="mx-3 my-1 h-7 flex items-center justify-center gap-1.5 rounded-[7px] border border-dashed border-border-strong text-fg-muted hover:text-fg-2 hover:border-fg-3 transition-colors"
                 aria-label={tr("Add track")}
               >
