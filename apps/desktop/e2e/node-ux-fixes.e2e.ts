@@ -35,7 +35,7 @@ test("visible isolated desktop: title close waits, rename is shared, local fonts
     await createProjectViaUI(launched.page);
     await enableAgentSessionViaUI(launched.page, launched.endpointFile);
     const capabilities = call("capabilities.get");
-    expect(capabilities.manual.contentVersion).toBe("1.5.0");
+    expect(capabilities.manual.contentVersion).toBe("1.6.0");
     const workspace = path.join(capabilities.mediaImport.recommendedRoot, "jobs", "2026-10-09-node-ux-fixes");
     evidence = job ? path.join(job, "evidence") : path.join(workspace, "evidence");
     const sources = path.join(workspace, "source");

@@ -212,6 +212,7 @@ export async function createHistoryFrameRenderer(
     video.muted = true;
     video.preload = "auto";
     video.addEventListener("loadeddata", bumpRevision);
+    video.src = media.url;
     const entry: VideoCacheEntry = {
       mediaId,
       video,

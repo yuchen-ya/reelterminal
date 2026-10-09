@@ -227,6 +227,7 @@ export const ProjectSwitcher: React.FC<{ onNewProject?: () => void }> = ({ onNew
         createPortal(
           <Card
             ref={dropdownRef}
+            data-testid="project-switch-menu"
             variant="default"
             padding={0}
             style={dropdownStyle}
@@ -292,7 +293,7 @@ export const ProjectSwitcher: React.FC<{ onNewProject?: () => void }> = ({ onNew
                     <span className="rounded-md bg-background-tertiary p-1.5 text-text-muted group-hover:text-text-secondary">
                       <FileVideo className="h-4 w-4" aria-hidden />
                     </span>
-                    <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <Text
                         type="supporting"
                         color="primary"
@@ -398,7 +399,7 @@ export const ProjectSwitcher: React.FC<{ onNewProject?: () => void }> = ({ onNew
                 <span className="rounded-md bg-background-tertiary p-1.5 text-text-muted group-hover:text-text-secondary">
                   <FlaskConical className="h-4 w-4" aria-hidden />
                 </span>
-                <span className="min-w-0 flex-1">
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                   <Text type="supporting" color="primary" className="truncate text-sm font-medium">
                     {t("versioning.trialMenu")}
                   </Text>
@@ -438,7 +439,7 @@ export const ProjectSwitcher: React.FC<{ onNewProject?: () => void }> = ({ onNew
                       <span className="rounded-md bg-background-tertiary p-1.5 text-text-muted group-hover:text-text-secondary">
                         <Layers className="h-4 w-4" aria-hidden />
                       </span>
-                      <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <Text
                           type="supporting"
                           color="primary"

@@ -79,3 +79,15 @@
 .reelterminal-desktop .archive-menu > button:hover {
   background: var(--hover);
 }
+
+.archive-browser {
+  container-type: inline-size;
+}
+.archive-date {
+  display: none;
+}
+@container (min-width: 320px) {
+  .archive-date {
+    display: block;
+  }
+}

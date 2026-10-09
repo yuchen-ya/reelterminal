@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DesktopTitleBar } from "./shell/DesktopTitleBar";
 import { Workspace } from "./shell/Workspace";
 import { DesktopProjectNameControl } from "./shell/DesktopProjectNameControl";
@@ -48,6 +48,13 @@ export function DesktopApp(): JSX.Element {
   const [choosingProject, setChoosingProject] = useState(false);
   const openingProject = useRef(false);
   const showEditor = hasProject && !choosingProject;
+
+  // Body-level portals need the same tokens as the desktop shell. Keep the
+  // existing theme scope at their common ancestor without changing web prefs.
+  useLayoutEffect(() => {
+    document.body.classList.add("reelterminal-desktop");
+    return () => document.body.classList.remove("reelterminal-desktop");
+  }, []);
 
   const handleNewProject = useCallback(() => {
     stopTour();

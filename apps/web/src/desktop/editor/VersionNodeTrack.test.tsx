@@ -115,6 +115,7 @@ describe("inspector archive browser", () => {
   });
   it("shows names and actual parent edges; one click only selects details", () => {
     const { container } = render(<VersionNodeTrack />);
+    expect(screen.queryByTestId("archive-details")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Root A" })).toBeInTheDocument();
     expect(container.querySelector('[data-child-id="branch"][data-parent-id="root"]')).not.toBeNull();
     fireEvent.click(screen.getByTestId("version-node-root"));
@@ -184,6 +185,18 @@ describe("inspector archive browser", () => {
     fireEvent.change(input, { target: { value: "User name" } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => expect(fixture.renameNode).toHaveBeenCalledWith({ projectId: "project-a", nodeId: "root", name: "User name" }));
+  });
+  it("ends a rename when another save point is selected and previewed", async () => {
+    render(<VersionNodeTrack />);
+    fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 20, clientY: 20 });
+    fireEvent.click(screen.getByTestId("version-menu-rename"));
+    expect(screen.getByTestId("version-rename-input")).toHaveValue("Root A");
+    fireEvent.contextMenu(screen.getByTestId("version-node-branch"), { clientX: 20, clientY: 20 });
+    expect(screen.queryByTestId("version-rename-input")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("version-menu-preview"));
+    await waitFor(() => expect(fixture.enter).toHaveBeenCalledWith({ kind: "node", nodeId: "branch" }));
+    expect(screen.getByTestId("archive-details")).toHaveTextContent("Alternate A");
+    expect(fixture.renameNode).not.toHaveBeenCalled();
   });
   it("recycles the previewed point only after returning to editing and offers undo", async () => {
     fixture.preview = { active: true, info: { nodeId: "root" } };

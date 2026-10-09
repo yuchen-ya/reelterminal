@@ -42,18 +42,13 @@ export function DesktopInspector() {
     };
   }, [projectId, workspaceId, t]);
   return <div className="flex h-full min-h-0 flex-col" data-testid="desktop-inspector">
-    <div className="flex h-9 shrink-0 items-stretch border-b border-border px-2" role="tablist" aria-label={t("desktop.editor.inspector")}>
-      {(["properties", "archives", "board"] as const).map(item => <button key={item} type="button" role="tab" data-testid={`inspector-tab-${item}`} aria-selected={tab === item} aria-controls={`inspector-panel-${item}`} onClick={() => useUIStore.getState().setDesktopInspectorTab(item)} className={`relative flex-1 rounded-sm px-2 text-xs transition-colors duration-150 hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent motion-reduce:transition-none ${tab === item ? "text-fg after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-accent" : "text-fg-3"}`}>
-        {t(`desktopInspector.${item}`)}
-      </button>)}
-    </div>
-    <div role="tabpanel" id="inspector-panel-properties" hidden={tab !== "properties"} className="min-h-0 flex-1 overflow-hidden"><InspectorPanel /></div>
+    <div data-testid="inspector-properties" hidden={tab !== "properties"} className="min-h-0 flex-1 overflow-hidden"><InspectorPanel /></div>
     {Object.entries(contexts).map(([id, context]) => <div key={id} hidden={id !== projectId || context.workspaceId !== workspaceId || tab === "properties"} className="min-h-0 flex-1 overflow-hidden">
-      <div role="tabpanel" id={id === projectId ? "inspector-panel-archives" : undefined} hidden={tab !== "archives"} className="h-full min-h-0">
-        <VersionNodeTrack projectId={id} workspaceId={context.workspaceId} active={id === projectId && tab === "archives"} />
+      <div hidden={tab !== "archives"} className="h-full min-h-0">
+        <VersionNodeTrack projectId={id} workspaceId={context.workspaceId} active={id === projectId && tab === "archives"} onClose={() => useUIStore.getState().setDesktopInspectorTab("properties")} />
       </div>
-      <div role="tabpanel" id={id === projectId ? "inspector-panel-board" : undefined} hidden={tab !== "board"} className="h-full min-h-0">
-        <RequirementBoardDialog store={context.store} active={id === projectId && context.workspaceId === workspaceId && tab === "board"} />
+      <div hidden={tab !== "board"} className="h-full min-h-0">
+        <RequirementBoardDialog store={context.store} active={id === projectId && context.workspaceId === workspaceId && tab === "board"} onClose={() => useUIStore.getState().setDesktopInspectorTab("properties")} />
       </div>
     </div>)}
   </div>;

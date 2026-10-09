@@ -1,5 +1,6 @@
 import { openBoardForEntities } from "../../../services/requirement-board";
 import React from "react";
+import { previewCopyMenu } from "./preview-copy-menu";
 import { useTranslation } from "react-i18next";
 import type { ToolcraftContextMenuOption as ContextMenuOption } from "@reelterminal/ui";
 import {
@@ -84,6 +85,7 @@ export function useClipContextMenuItems({
     pasteEffects,
     copiedEffects,
     closeGapBeforeClip,
+    readOnlyPreview,
   } = useProjectStore();
   const { playheadPosition } = useTimelineStore();
   const selectMultiple = useUIStore((state) => state.selectMultiple);
@@ -436,7 +438,7 @@ export function useClipContextMenuItems({
     },
   );
 
-  return items;
+  return readOnlyPreview ? previewCopyMenu(clip.id)! : items;
 }
 
 export const ClipContextMenu: React.FC<ClipContextMenuProps> = (props) => {

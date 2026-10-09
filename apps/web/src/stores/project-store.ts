@@ -1,3 +1,4 @@
+import i18n from "../i18n";
 import { create, useStore, type StoreApi } from "zustand";
 import { useSyncExternalStore } from "react";
 import { subscribeWithSelector } from "zustand/middleware";
@@ -104,6 +105,9 @@ import {
 import { planRecoverMotionScene3DLayer } from "../motion/creation-recovery";
 import { ProjectChangeJournal } from "@reelterminal/agent-facade/project-changes";
 import { getMaterialLibraryService } from "../services/material-library/library-service";
+import { saveMediaBlob } from "../services/media-storage";
+import { getMissingProjectImageDependencyIds } from "../services/project-render-dependencies";
+import { captureTimelineClipboard, getTimelineClipboard, planTimelinePaste, ClipboardPasteError } from "./project/timeline-clipboard";
 import type {
   ProjectChangesParams,
   ProjectChangesResult,
@@ -305,7 +309,7 @@ export interface ProjectState {
   clipboard: TimelineClipboardItem[];
   lastPastedClipIds: string[];
   copyClips: (clipIds: string[]) => void;
-  pasteClips: (trackId: string, startTime: number) => Promise<ActionResult[]>;
+  pasteClips: (trackId: string, startTime: number, options?: { expectedRevision: number }) => Promise<ActionResult[]>;
   duplicateClip: (clipId: string) => Promise<ActionResult>;
   copyEffects: (clipId: string) => void;
   pasteEffects: (clipId: string) => Promise<ActionResult>;
@@ -2117,120 +2121,43 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
           })
           .filter((item): item is TimelineClipboardItem => item !== null);
         set({ clipboard: items, lastPastedClipIds: [] });
+        captureTimelineClipboard(state.getFullProject(), items, Boolean(state.readOnlyPreview));
       },
 
-      pasteClips: async (trackId: string, startTime: number) => {
-        const paste = async () => {
-        const { clipboard, actionExecutor } = get();
-        const results: ActionResult[] = [];
-        const pastedIds: string[] = [];
-
-        if (clipboard.length === 0) {
-          return [
-            {
-              success: false,
-              error: {
-                code: "INVALID_PARAMS" as const,
-                message: "Clipboard is empty",
-              },
-            },
-          ];
-        }
-
-        const minStartTime = Math.min(
-          ...clipboard.map((item) => item.clip.startTime),
-        );
-        actionExecutor.getHistory().beginGroup("Paste timeline clips");
-        try {
-          for (const item of clipboard) {
-            const currentProject = get().project;
-            const newStartTime = Math.max(
-              0,
-              startTime + item.clip.startTime - minStartTime,
-            );
-            const sourceTrack = currentProject.timeline.tracks.find(
-              (track) => track.id === item.clip.trackId,
-            );
-            const expectedTrackType =
-              item.kind === "text"
-                ? "text"
-                : item.kind === "media"
-                  ? sourceTrack?.type
-                  : "graphics";
-            const isCompatible = (track: Track) =>
-              !track.locked &&
-              (!expectedTrackType || track.type === expectedTrackType);
-            const destinationTrack =
-              (sourceTrack && isCompatible(sourceTrack)
-                ? sourceTrack
-                : undefined) ??
-              currentProject.timeline.tracks.find(
-                (track) => track.id === trackId && isCompatible(track),
-              ) ??
-              currentProject.timeline.tracks.find(isCompatible);
-
-            if (!destinationTrack) {
-              results.push({
-                success: false,
-                error: {
-                  code: "TRACK_NOT_FOUND",
-                  message: `No compatible unlocked track for ${item.kind} clip`,
-                },
-              });
-              continue;
-            }
-
-            if (item.kind !== "media") {
-              const pasted = get().pasteOverlayClip(
-                item.kind,
-                item.clip,
-                newStartTime,
-                destinationTrack.id,
-              );
-              if (pasted) {
-                results.push({ success: true });
-                pastedIds.push(pasted.id);
-              } else {
-                results.push({
-                  success: false,
-                  error: {
-                    code: "INVALID_PARAMS",
-                    message: `Failed to paste ${item.kind} clip`,
-                  },
-                });
-              }
-              continue;
-            }
-
-            const beforeIds = new Set(
-              destinationTrack.clips.map((clip) => clip.id),
-            );
-            const pastedClipId = uuidv4();
-            const action: Action = {
-              type: "clip/add",
-              id: uuidv4(),
-              timestamp: Date.now(),
-              params: {
-                trackId: destinationTrack.id,
-                mediaId: item.clip.mediaId,
-                startTime: newStartTime,
-                sourceClip: item.clip,
-                clipId: pastedClipId,
-              },
-            };
-            const result = get().executeActionBatch([action], {
-              groupLabel: "Paste timeline clips",
-              historyOwner: actionExecutor.getHistory().getActiveOwner(),
-            }).result;
-            results.push(result);
-            if (result.success && !beforeIds.has(pastedClipId)) pastedIds.push(pastedClipId);
+      pasteClips: async (trackId, startTime, options) => {
+        const clipboard = getTimelineClipboard();
+        const failed = (message: string): ActionResult[] => [{ success: false, error: { code: "INVALID_PARAMS", message } }];
+        if (!clipboard || clipboard.items.length === 0) return failed(i18n.t("previewClipboard.empty"));
+        const paste = async (): Promise<ActionResult[]> => {
+          const state = get();
+          if (state.readOnlyPreview) return failed(i18n.t("previewClipboard.readOnly"));
+          if (options && (!state.isForeground || state.projectRevision !== options.expectedRevision)) {
+            return failed(i18n.t("previewClipboard.changed"));
           }
-        } finally {
-          actionExecutor.getHistory().endGroup();
-        }
-
-        set({ lastPastedClipIds: pastedIds });
-        return results;
+          let plan: ReturnType<typeof planTimelinePaste>;
+          try {
+            plan = planTimelinePaste(state.project, clipboard, trackId, startTime);
+          } catch (error) {
+            if (error instanceof ClipboardPasteError) return failed(error.message);
+            throw error;
+          }
+          if (clipboard.fromPreview) {
+            const missing = getMissingProjectImageDependencyIds(clipboard.dependencies);
+            if (missing.length > 0) return failed(i18n.t("previewClipboard.missingDependencies", { names: missing.join(", ") }));
+          }
+          for (const media of plan.mediaToSave) {
+            await saveMediaBlob(state.project.id, media.id, media.blob!, media.metadata, media.name);
+          }
+          if (options && (!get().isForeground || get().projectRevision !== options.expectedRevision)) {
+            return failed(i18n.t("previewClipboard.changed"));
+          }
+          const batch = get().executeActionBatch(plan.actions, {
+            groupLabel: "Paste timeline clips",
+            historyOwner: state.actionExecutor.getHistory().getActiveOwner(),
+          });
+          if (!batch.result.success) return [batch.result];
+          set({ lastPastedClipIds: plan.clipIds });
+          return clipboard.items.map(() => ({ success: true }));
         };
         const submit = get().submitWorkspaceMutation;
         return submit ? submit(paste) : paste();
@@ -2823,6 +2750,9 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
 
       // Execute arbitrary action
       executeActionBatch: (actions, options) => {
+        if (get().readOnlyPreview) {
+          return { result: { success: false, error: { code: "INVALID_PARAMS", message: "Preview is read-only" } }, applied: 0, createdIds: emptyActionBatchCreatedIds() };
+        }
         if (actions.length === 0 || actions.length > MAX_ACTIONS_PER_BATCH) {
           return {
             result: {
@@ -4690,6 +4620,8 @@ export function getActiveProjectRuntimeStore(): typeof primaryProjectStore {
 export function activateProjectStore(
   store: typeof primaryProjectStore,
 ): void {
+  const clipboard = getTimelineClipboard();
+  if (clipboard) store.setState({ clipboard: clipboard.items, lastPastedClipIds: [] });
   if (activeProjectStore === store) {
     try {
       projectStoreRuntimes.get(store)?.syncForegroundRuntime();

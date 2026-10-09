@@ -145,6 +145,11 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
 
   const handleClick = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
+    if (useProjectStore.getState().readOnlyPreview) {
+      e.stopPropagation();
+      onSelect(clip.id, e.shiftKey || e.metaKey || e.ctrlKey);
+      return;
+    }
     if (isDragging || isPendingDrag) return;
     e.stopPropagation();
     onSelect(clip.id, e.shiftKey || e.metaKey);
@@ -152,6 +157,10 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
+    if (useProjectStore.getState().readOnlyPreview) {
+      e.stopPropagation();
+      return;
+    }
     if (track.locked || isTrimming) return;
     e.stopPropagation();
 
@@ -389,9 +398,10 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   );
 
   const handleTrimMouseDown =
-    (edge: "left" | "right") => (e: React.MouseEvent) => {
-      if (e.button !== 0) return;
-      if (track.locked || !onTrimClip) return;
+      (edge: "left" | "right") => (e: React.MouseEvent) => {
+        if (e.button !== 0) return;
+        if (useProjectStore.getState().readOnlyPreview) return;
+        if (track.locked || !onTrimClip) return;
       e.stopPropagation();
       setIsTrimming(true);
       setTrimEdge(edge);

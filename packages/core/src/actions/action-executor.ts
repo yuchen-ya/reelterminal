@@ -433,6 +433,12 @@ export class ActionExecutor {
         (project as any).modifiedAt = Date.now();
         break;
 
+      case "project/setRenderFonts":
+        if (action.params.fonts) (project as any).renderFonts = structuredClone(action.params.fonts);
+        else delete (project as any).renderFonts;
+        (project as any).modifiedAt = Date.now();
+        break;
+
       case "project/setCanvasBackground":
         (project as any).timeline = {
           ...project.timeline,

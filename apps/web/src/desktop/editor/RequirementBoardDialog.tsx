@@ -17,10 +17,12 @@ const INSTRUCTIONS = ["planFirst", "execute", "inspectOnly"] as const;
 const fieldClass = "w-full rounded-md border border-border bg-bg-2 px-3 py-2 text-xs text-fg outline-none focus:border-accent";
 export function RequirementBoardDialog({
   store,
-  active = true
+  active = true,
+  onClose
 }: {
   store?: StoreApi<ProjectState>;
   active?: boolean;
+  onClose?: () => void;
 } = {}): JSX.Element {
   const {
     t
@@ -54,8 +56,6 @@ export function RequirementBoardDialog({
     if (Array.isArray(modalData?.referenceIds)) {
       setReferenceIds(modalData.referenceIds.filter((id): id is string => typeof id === "string"));
       setView("new");
-    } else {
-      setView("list");
     }
   }, [active, openRequest, modalData, project.id]);
   const requirements = useMemo(() => [...(project.requirements?.items ?? [])].sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status) || b.updatedAt - a.updatedAt), [project.requirements]);
@@ -114,10 +114,12 @@ export function RequirementBoardDialog({
   return <section aria-label={t("requirementBoard.title")} data-testid="inspector-board" className="flex h-full min-h-0 flex-col text-fg">
       <header className="flex shrink-0 items-center justify-between border-b border-border p-3">
         <h2 className="text-xs font-medium">{t("requirementBoard.title")}</h2>
+        <div className="flex items-center gap-1">
         {view === "list" ? <button type="button" className="rounded border border-border px-2 py-1 text-xs text-fg-2 hover:bg-hover" onClick={() => {
         setSelectedId(null);
         setView("new");
       }}>{t("requirementBoard.new")}</button> : <button type="button" className="rounded px-2 py-1 text-xs text-fg-2 hover:bg-hover" onClick={() => setView("list")}>{t("requirementBoard.backToList")}</button>}
+        {onClose ? <button type="button" aria-label={t("desktopInspector.close")} data-testid="close-board" onClick={onClose} className="h-6 w-6 rounded text-fg-3 hover:bg-hover hover:text-fg">×</button> : null}</div>
       </header>
       {preview.active ? <p className="shrink-0 border-b border-border px-3 py-2 text-[11px] leading-relaxed text-fg-2">{t("requirementBoard.editingTargetHint")}</p> : null}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar">

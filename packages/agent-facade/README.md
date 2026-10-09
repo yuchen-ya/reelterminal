@@ -628,3 +628,10 @@ analysis covers `technicalQuality`, `audioSummary`, `silence`, and
 `beatGrid` locally, plus the opt-in cloud `videoReview` when the user's own
 provider credential is configured — the remaining declared types report
 unavailable.
+
+Historical GUI preview permits mixed clip selection and Ctrl+C/context Copy.
+After returning, Ctrl+V pastes the group at the current playhead. Copy to current
+edit returns to the source editing workspace and inserts at its saved playhead.
+The operation preserves fixed media versions and font bytes, uses fresh clip IDs
+and one undoable batch, and rejects missing dependencies or concurrent changes
+without partial insertion. It never adopts the whole save point or calls node.save.

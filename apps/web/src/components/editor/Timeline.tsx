@@ -60,7 +60,7 @@ import { useUIStore } from "../../stores/ui-store";
 import { toast } from "../../stores/notification-store";
 import { useEngineStore } from "../../stores/engine-store";
 import { getPlaybackBridge } from "../../bridges/playback-bridge";
-import { blockPreviewEditInteraction } from "../../services/preview-session";
+import { blockPreviewEditInteraction, isPreviewActive } from "../../services/preview-session";
 import {
   deleteTimelineItem,
   duplicateTimelineItem,
@@ -719,7 +719,9 @@ export const Timeline: React.FC = () => {
     [playheadPosition, splittableSelectedClipIds],
   );
 
-  const handleBackgroundClick = useCallback(() => {
+  const handleBackgroundClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    // Portal menu clicks bubble through React's tree but are not timeline clicks.
+    if (!event.currentTarget.contains(event.target as Node)) return;
     if (suppressNextBackgroundClickRef.current) {
       suppressNextBackgroundClickRef.current = false;
       return;
@@ -730,6 +732,7 @@ export const Timeline: React.FC = () => {
   const handleBoxSelectionStart = useCallback(
     (e: React.MouseEvent) => {
       if (e.button !== 0) return;
+      if (!e.currentTarget.contains(e.target as Node)) return;
       if ((e.target as HTMLElement).closest(".clip-component")) return;
 
       const rect = tracksRef.current?.getBoundingClientRect();
@@ -1559,9 +1562,9 @@ export const Timeline: React.FC = () => {
         className="min-h-0 flex-1 flex flex-col overflow-hidden relative"
         onClick={handleBackgroundClick}
         onContextMenuCapture={(e) => {
-          // Read-only version preview: suppress the clip edit context menu
-          // entirely (capture phase beats the clip's own handler).
-          if (blockPreviewEditInteraction()) {
+          // Preview clips use the existing context menu with copy-only items.
+          // Blank/track editing menus remain unavailable.
+          if (isPreviewActive() && !(e.target as HTMLElement).closest("[data-live-editor-target-id]")) {
             e.preventDefault();
             e.stopPropagation();
           }

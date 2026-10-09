@@ -54,7 +54,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.5.0" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.6.0" as const;
 export const GUI_MANUAL_APP_VERSION = "1.0.1" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
@@ -231,18 +231,18 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     },
     entry: [
       {
-        zh: "点击时间线上方状态行的“● 当前”，或右侧检查器的“存档”页签。此入口只查看记录，不创建存档、不跳播放头。",
-        en: "Click Current in the timeline status strip or Archives in the right inspector. Opening records never creates a save point or moves the playhead.",
+        zh: "点击时间线上方状态行的“● 当前”打开存档记录；关闭面板返回原检查器。此入口只查看记录，不创建存档、不跳播放头。",
+        en: "Click Current in the timeline status strip to open save points; close the panel to return to the inspector. Opening records never creates a save point or moves the playhead.",
       },
     ],
     steps: [
       {
-        zh: "纵向记录较新在上，连线表示真实父子关系。小圆点有稳定辨识色，未选中时变暗；“当前”及细环表示编辑基准，“预览中”及虚线环表示只读预览。单击只显示详情。",
-        en: "Newer records appear above their ancestors with real parent links. Small points keep stable colors and dim when unselected. Current and a thin ring mark the editing base; Previewing and a dashed ring mark read-only preview. One click only shows details.",
+        zh: "紧凑单行记录较新在上，细彩色连线表示真实父子关系；窄栏收起日期。小圆点有稳定辨识色，未选中仍可辨；“当前”及细环表示编辑基准，“预览中”及虚线环表示只读预览。单击具体节点才显示详情。",
+        en: "Newer records appear in compact single rows above their ancestors, joined by fine colored parent lines. Small points keep stable colors and remain readable when unselected. Current and a thin ring mark the editing base; Previewing and a dashed ring mark read-only preview. One click only shows details.",
       },
       {
-        zh: "双击、Enter 或“预览存档”进入只读预览。全局横幅在切换检查器页签后仍保留；Esc 返回当前编辑，内容、撤销和播放位置恢复。与当前编辑对比会返回实际编辑画面并打开只读对比。",
-        en: "Double-click, Enter, or Preview save point opens read-only preview. Its global banner remains across inspector tabs. Esc returns to current edits with content, undo and playback position restored. Compare with current edit returns to the actual edit and opens a read-only comparison.",
+        zh: "双击、Enter 或“预览存档”进入只读预览。全局横幅在切换检查器内容后仍保留；Esc 返回当前编辑，内容、撤销和播放位置恢复。与当前编辑对比会返回实际编辑画面并打开只读对比。",
+        en: "Double-click, Enter, or Preview save point opens read-only preview. Its global banner remains when inspector content changes. Esc returns to current edits with content, undo and playback position restored. Compare with current edit returns to the actual edit and opens a read-only comparison.",
       },
       {
         zh: "只有“从这个存档继续编辑”才应用历史内容。之前的编辑自动保护，可从项目菜单“找回之前的编辑”取回；后续存档不会消失。",
@@ -252,6 +252,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
         zh: "更多或右键提供重命名、从存档继续和移入回收站。重命名时 Enter 提交、Esc 取消；回收可撤销，不删除素材。缺少素材或字体时会明确提示无法完整恢复。",
         en: "More or right-click offers rename, continue and recycle. Enter commits a rename and Esc cancels. Recycling is undoable and never deletes media. Missing media or fonts are disclosed as incomplete restoration.",
       },
+      { zh: "只读预览可多选片段并 Ctrl+C 或右键复制；返回当前编辑后在播放头处 Ctrl+V。右键“复制到当前编辑”会复制、返回并放到实际编辑原播放头处，不采用整份存档、不自动创建存档点。粘贴一次可撤销；缺依赖或冲突时不部分写入，剪贴板保留。", en: "Read-only preview allows selecting multiple clips and copying with Ctrl+C or the context menu. Return to current edits and paste at the playhead with Ctrl+V. Copy to current edit copies, returns and inserts at the editing target’s original playhead, without adopting the whole save point or creating one. Paste is one undoable operation; missing dependencies or conflicts leave no partial clips and keep the clipboard." },
     ],
     limitations: [
       {
@@ -263,8 +264,8 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
         en: "A recycled base is shown as Current edit · base save point is in the recycle bin, without a fabricated previewable point.",
       },
       {
-        zh: "Agent 试剪方案默认不改变当前编辑；未留存方案在项目菜单选择，留存后才显示版本节点。预览后由用户决定是否采用。",
-        en: "Agent trial cuts never change the current edit by themselves. Unretained plans are selected in the project menu; only retained versions appear as nodes. Preview and decide whether to adopt.",
+        zh: "Agent 试剪方案默认不改变当前编辑；未留存方案在项目菜单选择，创建存档点后才显示记录。预览后可复制部分片段，或由用户明确采用整份存档。",
+        en: "Agent trial cuts never change the current edit by themselves. Unretained plans stay in the project menu; saved points appear in the records. Preview and copy selected clips, or explicitly continue from the whole save point.",
       },
     ],
     keywords: ["version", "node", "track", "preview", "adopt", "rename", "delete", "recycle", "版本", "轨迹", "节点", "预览", "采用", "重命名", "删除", "回收站", "试剪", "找回"],
@@ -318,12 +319,12 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
   {
     id: "inspector-board",
     title: { zh: "检查器与看板", en: "Inspector and Board" },
-    summary: { zh: "右侧属性、存档、看板三页签共用一块空间，不遮住播放器或时间线。", en: "Properties, Archives and Board share the right inspector without covering the player or timeline." },
-    entry: [{ zh: "状态行点击看板，或右侧检查器切到看板页签。引用对象的“添加到看板”也打开此页。", en: "Click Board in the status strip or inspector. Add to board on a referenced object opens the same panel." }],
+    summary: { zh: "默认检查器显示片段属性。存档与看板只从底部入口按需打开，关闭后回到属性，不设常驻导航页签。", en: "The inspector normally shows clip properties. Save points and Board open on demand from the status strip and close back to properties, with no permanent navigation tabs." },
+    entry: [{ zh: "状态行点击看板；引用对象的“添加到看板”也打开同一面板。关闭按钮返回原检查器。", en: "Click Board in the status strip. Add to board on a referenced object opens the same panel. The close button returns to the inspector." }],
     steps: [
       { zh: "列表按需处理的条目优先显示，已完成默认折叠。添加需求先填标题、说明，验收标准、执行约定和引用在详情中展开。发布不会启动 Agent。", en: "The list prioritizes items needing attention and collapses completed items. Add a title and description first; expand criteria, execution instructions and references as needed. Publishing never launches an Agent." },
       { zh: "单击进入同一面板的详情，返回列表继续查看。定位、查看、对比与应用候选保持不同动作；应用仍做来源和版本验证。", en: "One click opens details in the same panel; Back to list returns. Locate, view, compare and apply remain separate, and application still validates sources and revision." },
-      { zh: "直接点击时间线或画布对象回到属性；看板定位和 Agent 更新不抢页签。切页签与切回项目会保留本次会话尚未提交的表单。", en: "Direct timeline or canvas selection returns to Properties. Board location and Agent updates keep the tab. Tab switches and returning to a project preserve this session's unsubmitted form." },
+      { zh: "直接点击时间线或画布对象回到属性；看板定位和 Agent 更新不抢面板。再次打开看板或切回项目会保留本次会话尚未提交的表单。", en: "Direct timeline or canvas selection returns to properties. Board location and Agent updates keep the panel. Reopening Board or returning to a project preserves this session's unsubmitted form." },
       { zh: "历史预览时看板仍对应实际编辑方案，并显示目标提示。先返回当前编辑再定位或应用候选。", en: "During historical preview the board still belongs to the actual editing plan and shows that target. Return to current edits before locating or applying candidates." },
     ],
     limitations: [{ zh: "未提交表单仅在当前会话保留；发布后需求随工程保存。", en: "Unsubmitted forms are kept for the current session; published requirements are saved with the project." }],

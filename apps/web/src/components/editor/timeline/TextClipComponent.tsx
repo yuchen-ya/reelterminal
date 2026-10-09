@@ -66,6 +66,11 @@ export const TextClipComponent: React.FC<TextClipComponentProps> = ({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
+    if (useProjectStore.getState().readOnlyPreview) {
+      e.stopPropagation();
+      onSelect(textClip.id, e.shiftKey || e.metaKey || e.ctrlKey);
+      return;
+    }
     if (isTrimming) return;
     e.stopPropagation();
 
@@ -126,6 +131,7 @@ export const TextClipComponent: React.FC<TextClipComponentProps> = ({
 
   const handleTrimStart = (e: React.MouseEvent, edge: "left" | "right") => {
     if (e.button !== 0) return;
+    if (useProjectStore.getState().readOnlyPreview) return;
     e.stopPropagation();
     e.preventDefault();
     setIsTrimming(edge);

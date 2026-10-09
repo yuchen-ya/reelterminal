@@ -1,4 +1,4 @@
-import type { MediaItem, ProjectMarker, ProjectSettings } from "./project";
+import type { MediaItem, ProjectMarker, ProjectSettings, ProjectRenderFont } from "./project";
 import type { WorkAsset } from "./work-asset";
 import type {
   Transform,
@@ -96,6 +96,7 @@ export type ProjectAction =
       params: { name: string; settings: ProjectSettings };
     }
   | { type: "project/updateSettings"; params: Partial<ProjectSettings> }
+  | { type: "project/setRenderFonts"; params: { fonts?: ProjectRenderFont[] } }
   | {
       type: "project/setCanvasBackground";
       params: {

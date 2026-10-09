@@ -1,4 +1,5 @@
 import React from "react";
+import { previewCopyMenu } from "./preview-copy-menu";
 import { useTranslation } from "react-i18next";
 import type { ToolcraftContextMenuOption as ContextMenuOption } from "@reelterminal/ui";
 import {
@@ -40,6 +41,7 @@ export function useGraphicsClipContextMenuItems({
     deleteSVGClip,
     deleteStickerClip,
     deleteTextClip,
+    readOnlyPreview,
   } = useProjectStore();
   const selectMultiple = useUIStore((state) => state.selectMultiple);
   const project = useProjectStore((state) => state.project);
@@ -178,7 +180,7 @@ export function useGraphicsClipContextMenuItems({
     onClick: handleDelete,
   });
 
-  return items;
+  return readOnlyPreview ? previewCopyMenu(clip.id)! : items;
 }
 
 export const GraphicsClipContextMenu: React.FC<GraphicsClipContextMenuProps> = (props) => {

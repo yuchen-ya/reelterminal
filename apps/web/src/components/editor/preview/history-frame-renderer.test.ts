@@ -205,6 +205,7 @@ describe("history frame renderer", () => {
     const canvas = recordingCanvas(ctx);
 
     await expect(renderer.renderAt(2.5, canvas)).resolves.toBe("frame");
+    expect(video.src).toBe(urls.created[0]);
     expect(canvas.width).toBe(320);
     expect(canvas.height).toBe(240);
     expect(video.currentTime).toBe(2.5);

@@ -8,7 +8,7 @@ import { toast, useNotificationStore } from "../../stores/notification-store";
 import { createHistoryFrameRenderer } from "../../components/editor/preview/history-frame-renderer";
 import { activateHistoryComparison } from "../../components/editor/preview/ReferenceComparisonPanel";
 const PALETTE = ["#69aaa0", "#b493bc", "#c59b67", "#779ac5", "#a7ad73", "#c7838c", "#8fa3af", "#aa987b"];
-const ROW_HEIGHT = 44;
+const ROW_HEIGHT = 30;
 const feedback = "transition-[color,background-color,opacity] duration-150 motion-reduce:transition-none";
 
 /** Identity colors survive rename, reordering and reopening; parent and child differ. */
@@ -30,11 +30,13 @@ function nodeColors(nodes: readonly ProjectNodeSummary[]): Map<string, string> {
 export function VersionNodeTrack({
   projectId,
   workspaceId,
-  active = true
+  active = true,
+  onClose
 }: {
   projectId?: string;
   workspaceId?: string;
   active?: boolean;
+  onClose?: () => void;
 } = {}) {
   const {
     t
@@ -59,6 +61,7 @@ export function VersionNodeTrack({
   const [busy, setBusy] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef(focusRequest);
+  const wasActive = useRef(false);
   const selected = selectedId ? byId.get(selectedId) : undefined;
   const base = workspace?.baseNodeId ?? null;
   const currentLine = useMemo(() => {
@@ -89,18 +92,14 @@ export function VersionNodeTrack({
   const visible = nodes.filter(node => !hiddenIds.has(node.id));
   const rowIndex = new Map(visible.map((node, index) => [node.id, index]));
   useEffect(() => {
-    if (!active) {
-      previousFocus.current = focusRequest;
-      return;
-    }
-    if (previousFocus.current === focusRequest && selectedId !== null) return;
+    const locateCurrent = active && (!wasActive.current || previousFocus.current !== focusRequest);
+    wasActive.current = active;
     previousFocus.current = focusRequest;
-    setSelectedId(base && byId.has(base) ? base : nodes[0]?.id ?? null);
-    setFolded(new Set());
+    if (!locateCurrent) return;
     requestAnimationFrame(() => listRef.current?.querySelector('[data-base="true"]')?.scrollIntoView({
       block: "nearest"
     }));
-  }, [active, focusRequest, base, byId, nodes, selectedId]);
+  }, [active, focusRequest, base]);
   useEffect(() => {
     if (!active) {
       setMenu(null);
@@ -135,6 +134,7 @@ export function VersionNodeTrack({
   };
   const previewNode = (nodeId: string) => {
     setSelectedId(nodeId);
+    setRename(null);
     setMenu(null);
     void perform(() => previewSession.enter({
       kind: "node",
@@ -230,10 +230,11 @@ export function VersionNodeTrack({
     <button role="menuitem" data-testid={contextMenu ? "version-menu-delete" : undefined} className="text-destructive" onClick={() => removeNode(nodeId)}>{t("versioning.menuDelete")}</button>
   </>;
   if (!id || !editId) return null;
-  return <section aria-label={t("versioning.trackLabel")} data-testid="version-track" className="flex h-full min-h-0 flex-col text-xs text-fg">
+  return <section aria-label={t("versioning.trackLabel")} data-testid="version-track" className="archive-browser flex h-full min-h-0 flex-col text-xs text-fg">
     <header className="shrink-0 space-y-2 border-b border-border p-3">
       <div className="flex items-center justify-between gap-2"><h2 className="font-medium">{t("versioning.trackLabel")}</h2>
-        <button type="button" data-testid="create-save-point" disabled={busy} onClick={save} className={`rounded border border-border px-2 py-1 text-fg-2 hover:bg-hover ${feedback}`}>{t("versioning.retainMenu")}</button></div>
+        <div className="flex items-center gap-1"><button type="button" data-testid="create-save-point" disabled={busy} onClick={save} className={`rounded border border-border px-2 py-1 text-fg-2 hover:bg-hover ${feedback}`}>{t("versioning.retainMenu")}</button>
+        {onClose ? <button type="button" aria-label={t("desktopInspector.close")} data-testid="close-archives" onClick={onClose} className="h-6 w-6 rounded text-fg-3 hover:bg-hover hover:text-fg">×</button> : null}</div></div>
       {preview.active ? <p className="leading-relaxed text-fg-2">{t("versioning.previewSaveTarget")}</p> : null}
       {base && !byId.has(base) ? <p data-testid="current-edit-endpoint" className="text-fg-2">{t("versioning.recycledBase")}</p> : workspace?.dirty && nodes.length > 0 ? <p className="text-fg-2">{t("versioning.newEdits")}</p> : null}
     </header>
@@ -247,7 +248,7 @@ export function VersionNodeTrack({
               px = 12 + laneFor(parent) * 14;
             const y = rowIndex.get(node.id)! * ROW_HEIGHT + ROW_HEIGHT / 2,
               py = rowIndex.get(parent.id)! * ROW_HEIGHT + ROW_HEIGHT / 2;
-            return <path key={node.id} data-parent-id={parent.id} data-child-id={node.id} d={`M ${x} ${y} V ${py - 12} Q ${x} ${py} ${px} ${py}`} fill="none" stroke="currentColor" strokeWidth="1" />;
+            return <path key={node.id} data-parent-id={parent.id} data-child-id={node.id} d={`M ${x} ${y} V ${py - 8} Q ${x} ${py} ${px} ${py}`} fill="none" stroke={colors.get(node.id)} strokeWidth="1.25" opacity="0.7" />;
           })}
         </svg>
         {visible.map(node => {
@@ -256,8 +257,8 @@ export function VersionNodeTrack({
             previewing = preview.active && preview.info?.nodeId === node.id;
           const trial = node.sourceWorkspaceKind === "trial";
           const children = currentLine.has(node.id) ? [] : descendantIds(node.id);
-          return <div key={node.id} className="relative flex h-11 items-center">
-            <button type="button" data-testid={`version-node-${node.id}`} data-base={current ? "true" : undefined} aria-pressed={selectedRow} aria-label={node.name} disabled={busy} className={`flex h-full min-w-0 flex-1 items-center text-left outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent hover:bg-hover ${selectedRow ? "bg-bg-2" : ""} ${feedback}`} onClick={() => {
+          return <div key={node.id} className="relative flex h-[30px] items-center">
+            <button type="button" data-testid={`version-node-${node.id}`} data-base={current ? "true" : undefined} aria-pressed={selectedRow} aria-label={node.name} disabled={busy} className={`flex h-full min-w-0 flex-1 items-center text-left outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-fg-3 hover:bg-hover ${selectedRow ? "bg-bg-2" : ""} ${feedback}`} onClick={() => {
               setSelectedId(node.id);
               setRename(null);
             }} onDoubleClick={() => previewNode(node.id)} onKeyDown={event => {
@@ -277,6 +278,7 @@ export function VersionNodeTrack({
             }} onContextMenu={event => {
               event.preventDefault();
               setSelectedId(node.id);
+              setRename(null);
               setMenu({
                 nodeId: node.id,
                 x: event.clientX,
@@ -285,12 +287,13 @@ export function VersionNodeTrack({
             }}>
               <span className="relative h-full w-[68px] shrink-0" aria-hidden><span style={{
                   left: 8 + laneFor(node) * 14,
-                  top: 18,
+                top: 11,
                   backgroundColor: trial ? "var(--bg-1)" : colors.get(node.id),
                   borderColor: colors.get(node.id),
-                  opacity: selectedRow || current || previewing ? 1 : 0.5
+                  opacity: selectedRow || current || previewing ? 1 : 0.7
                 }} className={`absolute h-2 w-2 transition-opacity duration-200 motion-reduce:transition-none ${trial ? "rotate-45 rounded-[1px] border" : "rounded-full"} ${current ? "outline outline-1 outline-offset-2 outline-fg-2" : ""} ${previewing ? "outline outline-1 outline-offset-2 outline-dashed outline-fg" : ""}`} /></span>
-              <span className="min-w-0 flex-1 py-1"><span className="block truncate font-medium">{node.name}</span><span className="block truncate text-[10px] text-fg-3">{new Date(node.createdAt).toLocaleString()}</span></span>
+              <span className="min-w-0 flex-1 truncate font-medium">{node.name}</span>
+              <span className="archive-date ml-2 mr-2 shrink-0 text-[10px] text-fg-3">{new Date(node.createdAt).toLocaleDateString(undefined, { month: "numeric", day: "numeric" })}</span>
               {current || previewing ? <span className="ml-1 mr-2 shrink-0 text-[10px] text-fg-2">{t(previewing ? "versioning.previewingShort" : "versioning.current")}</span> : null}
               {trial ? <span className="mr-2 shrink-0 text-[10px] text-fg-3">{t("versioning.trialDefault")}</span> : null}
             </button>
@@ -304,7 +307,7 @@ export function VersionNodeTrack({
           </div>;
         })}
       </div>}
-      {selected ? <div className="space-y-3 border-t border-border p-3" data-testid="archive-details">
+      {selected ? <div className="space-y-2 border-t border-border p-2" data-testid="archive-details">
         {rename !== null ? <div className="flex gap-1"><input data-testid="version-rename-input" aria-label={t("versioning.renameLabel")} autoFocus className="min-w-0 flex-1 rounded border border-border bg-bg-2 px-2 py-1" value={rename} onChange={event => setRename(event.target.value)} onKeyDown={event => {
             if (event.key === "Enter") commitRename();
           }} />

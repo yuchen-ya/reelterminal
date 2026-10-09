@@ -266,8 +266,8 @@
     "playerTipLive": "Open reference comparison from Compare when you need it",
     "playerTipFullscreen": "Fullscreen and fit tools are in the player controls",
     "inspectorTitle": "Inspector",
-    "inspectorDescription": "Use Properties for selected clips, Archives for save points, and Board for tasks. These panels share the same space.",
-    "inspectorTipTabs": "Properties, Archives and Board share this inspector",
+    "inspectorDescription": "Select a clip to inspect its properties. Current opens save points and Board opens tasks; close either panel to return.",
+    "inspectorTipTabs": "Current and Board open this inspector on demand",
     "inspectorTipClipSpecific": "Color grading and effects are clip-specific",
     "inspectorTipKeyframes": "Keyframe-capable controls show animation options when a clip is selected",
     "completeTitle": "You're Ready",
@@ -831,6 +831,7 @@
     "evidenceFrame": "Evidence frame"
   },
   "desktopInspector": {
+    "close": "Close and return to properties",
     "properties": "Properties",
     "archives": "Archives",
     "board": "Board"
@@ -843,7 +844,7 @@
     "trialDefault": "Trial",
     "project": "Project",
     "noDrafts": "No protected recovery drafts",
-    "protectedEdit": "Edits before switching versions",
+    "protectedEdit": "Edits before returning to a save point",
     "manualDraft": "Manually saved draft",
     "dirty": "Unsaved changes",
     "failed": "Save point operation failed",
@@ -854,7 +855,7 @@
     "create": "Create",
     "save": "Create save point",
     "workspace": "Current edit",
-    "restored": "Version restored; prior changes are in recovery drafts",
+    "restored": "Previous edits recovered",
     "deleteWorkspace": "Delete trial workspace",
     "deleteWorkspaceDescription": "Delete this trial draft and its runtime history? Saved versions remain available in the project tree.",
     "versionId": "Content version",
@@ -954,5 +955,23 @@
     "promptBody": "Work on project \"{{projectName}}\" (projectId: {{projectId}}) with editing target workspaceId: {{workspaceId}} ({{workspaceName}}). Read the latest state, workspace instance, and revision for that target before submitting edits; never infer the write target from what the GUI currently shows. Already-submitted tasks keep their original target. Regular saves only persist the workspace; create a save point explicitly with node.save; Ctrl+S does not create save points. Connect with: {{cliCommand}}; external workspace root: {{workspaceRoot}}.",
     "promptBodyLocal": "Work on project \"{{projectName}}\" (projectId: {{projectId}}) with editing target workspaceId: {{workspaceId}} ({{workspaceName}}). Read the latest state, workspace instance, and revision for that target before submitting edits; never infer the write target from what the GUI currently shows. Already-submitted tasks keep their original target. Regular saves only persist the workspace; create a save point explicitly with node.save; Ctrl+S does not create save points.",
     "actionsSection": "Project actions"
+  },
+  "previewClipboard": {
+    "failed": "Could not paste clips",
+    "copyToCurrent": "Copy to current edit",
+    "destination": "Insert at the current edit’s original playhead",
+    "targetChanged": "The editing target changed. Nothing was pasted; copied clips are kept.",
+    "noTrack": "The current edit has no destination track.",
+    "inserted": "Copied clips inserted into current edit at {{time}}s",
+    "sameProject": "Paste into the project the copied clips belong to.",
+    "validTime": "Choose a valid insertion time.",
+    "missingMedia": "Missing source media: {{name}}",
+    "missingFont": "Missing saved font bytes: {{family}}",
+    "fontConflict": "The current edit uses a different saved font face: {{family}}",
+    "compatibleTrack": "No compatible unlocked {{type}} track.",
+    "changed": "Current edit changed. Nothing was pasted; the clipboard is kept for retry.",
+    "empty": "Clipboard is empty.",
+    "readOnly": "Preview is read-only.",
+    "missingDependencies": "Missing saved dependencies: {{names}}"
   }
 }

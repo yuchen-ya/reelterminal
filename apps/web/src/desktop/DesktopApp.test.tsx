@@ -148,8 +148,11 @@ describe("DesktopApp", () => {
   });
   it("applies the desktop theme class to its root", () => {
     mockHasProject(false);
-    const { container } = render(<DesktopApp />);
+    const { container, unmount } = render(<DesktopApp />);
     expect(container.querySelector(".reelterminal-desktop")).not.toBeNull();
+    expect(document.body).toHaveClass("reelterminal-desktop");
+    unmount();
+    expect(document.body).not.toHaveClass("reelterminal-desktop");
   });
 
   it("shows the start screen and hides the workspace when no project is open", () => {

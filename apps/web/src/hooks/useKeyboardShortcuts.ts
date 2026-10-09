@@ -31,7 +31,6 @@ export function useKeyboardShortcuts() {
     redo,
     rippleDeleteClip,
     copyClips,
-    pasteClips,
     project,
     addMarker,
   } = useProjectStore();
@@ -143,7 +142,7 @@ export function useKeyboardShortcuts() {
   const handleCopy = useCallback(() => {
     const selectedIds = getSelectedClipIds();
     if (selectedIds.length > 0) {
-      copyClips(selectedIds);
+      useProjectStore.getState().copyClips(selectedIds);
     }
   }, [getSelectedClipIds, copyClips]);
 
@@ -161,18 +160,25 @@ export function useKeyboardShortcuts() {
 
   const handlePaste = useCallback(() => {
     if (blockPreviewEditInteraction()) return;
-    const currentTime = playheadPosition;
-    const firstTrack = project.timeline.tracks[0];
+    const target = useProjectStore.getState();
+    const currentTime = useTimelineStore.getState().playheadPosition;
+    const firstTrack = target.project.timeline.tracks[0];
     if (firstTrack) {
-      void pasteClips(firstTrack.id, currentTime).then(() => {
+      void target.pasteClips(firstTrack.id, currentTime, { expectedRevision: target.projectRevision }).then((results) => {
+        const failure = results.find(result => !result.success);
+        if (failure) {
+          toast.error(t("previewClipboard.failed"), failure.error?.message);
+          return;
+        }
         const store = useProjectStore.getState();
+        if (store.project.id !== target.project.id || store.workspaceId !== target.workspaceId) return;
         const pastedSelection = store.lastPastedClipIds
           .map((id) => getTimelineSelectionItem(store, id))
           .filter((item): item is NonNullable<typeof item> => item !== null);
         if (pastedSelection.length > 0) selectMultiple(pastedSelection);
       });
     }
-  }, [pasteClips, playheadPosition, project.timeline.tracks, selectMultiple]);
+  }, [selectMultiple]);
 
   const handleDuplicate = useCallback(() => {
     if (blockPreviewEditInteraction()) return;

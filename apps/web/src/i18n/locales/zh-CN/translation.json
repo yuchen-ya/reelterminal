@@ -266,8 +266,8 @@
     "playerTipLive": "参考对比收在“对比”按钮里，按需打开",
     "playerTipFullscreen": "全屏和适应工具位于播放器控件中",
     "inspectorTitle": "检查器",
-    "inspectorDescription": "属性查看所选对象，存档回看和继续剪辑，看板记录目标。三个页签共用这一块空间。",
-    "inspectorTipTabs": "属性、存档、看板共用检查器",
+    "inspectorDescription": "选择片段查看属性；底部当前打开存档，看板打开需求，关闭后回到属性。",
+    "inspectorTipTabs": "当前与看板按需打开检查器内容",
     "inspectorTipClipSpecific": "调色和特效仅作用于单个片段",
     "inspectorTipKeyframes": "选中片段后，支持关键帧的控件会显示动画选项",
     "completeTitle": "一切就绪",
@@ -831,6 +831,7 @@
     "evidenceFrame": "证据帧"
   },
   "desktopInspector": {
+    "close": "关闭并返回属性",
     "properties": "属性",
     "archives": "存档",
     "board": "看板"
@@ -843,7 +844,7 @@
     "trialDefault": "试剪",
     "project": "项目",
     "noDrafts": "暂无受保护的恢复草稿",
-    "protectedEdit": "切换版本前的编辑",
+    "protectedEdit": "回到存档前的编辑",
     "manualDraft": "手动保存的草稿",
     "dirty": "未保存修改",
     "failed": "存档操作失败",
@@ -854,7 +855,7 @@
     "create": "创建",
     "save": "创建存档点",
     "workspace": "当前编辑",
-    "restored": "版本已恢复，之前的修改可从恢复草稿找回",
+    "restored": "已找回之前的编辑",
     "deleteWorkspace": "删除试剪工作区",
     "deleteWorkspaceDescription": "删除这个试剪草稿及其撤销记录？已保存的版本仍保留在项目版本树中。",
     "versionId": "内容版本",
@@ -954,5 +955,23 @@
     "promptBody": "接下来处理项目「{{projectName}}」（projectId: {{projectId}}），编辑目标为 workspaceId: {{workspaceId}}（{{workspaceName}}）。先读取该目标最新状态、实例代次和 revision，再提交编辑；不要根据 GUI 当前画面猜测写入目标。已提交任务继续使用原目标。正常保存只保存工作区，需要创建存档点时再明确执行 node.save；Ctrl+S 不创建存档点。连接方式：{{cliCommand}}；外部工作目录：{{workspaceRoot}}。",
     "promptBodyLocal": "接下来处理项目「{{projectName}}」（projectId: {{projectId}}），编辑目标为 workspaceId: {{workspaceId}}（{{workspaceName}}）。先读取该目标最新状态、实例代次和 revision，再提交编辑；不要根据 GUI 当前画面猜测写入目标。已提交任务继续使用原目标。正常保存只保存工作区，需要创建存档点时再明确执行 node.save；Ctrl+S 不创建存档点。",
     "actionsSection": "项目操作"
+  },
+  "previewClipboard": {
+    "failed": "无法粘贴片段",
+    "copyToCurrent": "复制到当前编辑",
+    "destination": "放到当前编辑原播放头处",
+    "targetChanged": "编辑目标已改变，未粘贴；复制内容仍保留。",
+    "noTrack": "当前编辑没有可用目标轨道。",
+    "inserted": "已复制到当前编辑的 {{time}} 秒处",
+    "sameProject": "请粘贴到这些片段所属项目的当前编辑。",
+    "validTime": "请选择有效的插入时间。",
+    "missingMedia": "缺少历史素材：{{name}}",
+    "missingFont": "缺少已留存的字体字节：{{family}}",
+    "fontConflict": "当前编辑的同名字体字节不同：{{family}}",
+    "compatibleTrack": "没有兼容且未锁定的 {{type}} 轨道。",
+    "changed": "当前编辑已改变，未粘贴；复制内容仍保留，可以重试。",
+    "empty": "没有已复制的片段。",
+    "readOnly": "历史预览为只读。",
+    "missingDependencies": "缺少已留存的依赖：{{names}}"
   }
 }

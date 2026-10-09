@@ -113,10 +113,10 @@ Each reference persists its entity kind and ID plus an A-label/name/time snapsho
 resolve by kind and ID, since A numbers belong to the original editor session.
 `workAsset` references identify saved clips or combinations in `project.workAssets`.
 
-The desktop Board is a tab in the right inspector alongside Properties and
-Archives. The Current entry only opens save point records; a save point maps
+The right inspector defaults to Properties. Bottom Current and Board entries
+open their panels on demand; closing returns to Properties. A save point maps
 to `node`, and normal saves never call `node.save`. Direct human timeline
-selection opens Properties; Agent selections and updates leave the tab alone.
+selection opens Properties; Agent selections and updates leave the panel alone.
 During historical preview, Board still targets the actual editing workspace.
 
 Report work with `requirement.update`, using `in_progress`, `blocked` (with an
@@ -129,3 +129,10 @@ Import external files, or save a named timeline selection from the same panel.
 Saved clips reference their source media and retain supported edit parameters;
 removing a saved clip does not delete the source. The separate **Personal library**
 continues to hold cross-project materials.
+
+Historical GUI preview permits mixed clip selection and Ctrl+C/context Copy.
+After returning, Ctrl+V pastes the group at the current playhead. Copy to current
+edit returns to the source editing workspace and inserts at its saved playhead.
+The operation preserves fixed media versions and font bytes, uses fresh clip IDs
+and one undoable batch, and rejects missing dependencies or concurrent changes
+without partial insertion. It never adopts the whole save point or calls node.save.

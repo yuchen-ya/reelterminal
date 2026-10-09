@@ -90,7 +90,9 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
   ({ notification, onRemove }, ref) => {
   const { t } = useTranslation();
   const [progress, setProgress] = useState(100);
+  const isDesktop = typeof document !== "undefined" && document.body.classList.contains("reelterminal-desktop");
   const isDark =
+    isDesktop ||
     typeof document !== "undefined" &&
     document.documentElement.classList.contains("dark");
   const theme = isDark ? "dark" : "light";
@@ -117,6 +119,7 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
   return (
     <motion.div
       ref={ref}
+      data-testid="notification-toast"
       layout
       initial={{ opacity: 0, x: 100, scale: 0.9 }}
       animate={{ opacity: 1, x: 0, scale: 1 }}
@@ -142,7 +145,7 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
         relative overflow-hidden
         min-w-[320px] max-w-[420px]
         rounded-xl border shadow-lg
-        ${config.bg} ${config.border}
+        ${isDesktop ? "bg-bg-1 border-border" : `${config.bg} ${config.border}`}
         backdrop-blur-xl
         ${notification.onClick ? "cursor-pointer" : ""}
       `}
@@ -167,7 +170,7 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
             initial={{ opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 }}
-            className={`text-sm font-semibold ${isDark ? "text-zinc-100" : "text-zinc-900"}`}
+            className={`text-sm font-semibold ${isDesktop ? "text-fg" : isDark ? "text-zinc-100" : "text-zinc-900"}`}
           >
             {t(notification.title)}
           </motion.p>
@@ -176,7 +179,7 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
               initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className={`text-xs mt-1 leading-relaxed ${isDark ? "text-zinc-400" : "text-zinc-600"}`}
+              className={`text-xs mt-1 leading-relaxed ${isDesktop ? "text-fg-2" : isDark ? "text-zinc-400" : "text-zinc-600"}`}
             >
               {notification.message}
             </motion.p>
@@ -199,7 +202,9 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
               flex-shrink-0 p-1.5 rounded-lg
               transition-colors duration-150
               ${
-                isDark
+                isDesktop
+                  ? "hover:bg-hover text-fg-3 hover:text-fg-2"
+                  : isDark
                   ? "hover:bg-white/10 text-zinc-500 hover:text-zinc-300"
                   : "hover:bg-black/5 text-zinc-400 hover:text-zinc-600"
               }
@@ -212,7 +217,7 @@ const ToastItem = React.forwardRef<HTMLDivElement, ToastItemProps>(
       </div>
 
       {duration > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/5 dark:bg-white/5">
+        <div className={`absolute bottom-0 left-0 right-0 h-1 ${isDesktop ? "bg-bg-3" : "bg-black/5 dark:bg-white/5"}`}>
           <motion.div
             initial={{ width: "100%" }}
             animate={{ width: `${progress}%` }}

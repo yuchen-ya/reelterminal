@@ -536,10 +536,16 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
   useEffect(() => {
     const ownerId = `preview:${workspaceId ?? project.id}`;
-    void installProjectRenderFonts(project, ownerId).catch((error: unknown) => {
+    let active = true;
+    void installProjectRenderFonts(project, ownerId).then(() => {
+      if (active && !isPlayingRef.current) frameSchedulerRef.current?.request(playheadPositionRef.current, useProjectStore.getState().projectRevision);
+    }).catch((error: unknown) => {
       console.warn("Could not load a project render font; preview will use its fallback.", error);
     });
-    return () => releaseProjectRenderFonts(ownerId);
+    return () => {
+      active = false;
+      releaseProjectRenderFonts(ownerId);
+    };
   }, [project.id, project.renderFonts, workspaceId]);
 
   // Preview from the active workspace's canonical project snapshot. The
@@ -1654,6 +1660,16 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           video.playsInline = true;
           video.preload = "metadata";
           video.crossOrigin = "anonymous";
+          const onFrameReady = () => {
+            // A paused decode can outlive its bounded wait. Once this actual
+            // decoder becomes ready, redraw the current view instead of
+            // leaving a fallback until the next user seek/play action.
+            if (videoElementCacheRef.current.get(cacheKey)?.video === video && !isPlayingRef.current) {
+              frameSchedulerRef.current?.request(playheadPositionRef.current, useProjectStore.getState().projectRevision);
+            }
+          };
+          video.addEventListener("loadeddata", onFrameReady);
+          video.addEventListener("seeked", onFrameReady);
 
           await new Promise<void>((res, rej) => {
             const timeoutId = setTimeout(

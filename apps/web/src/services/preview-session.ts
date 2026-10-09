@@ -20,6 +20,7 @@ import {
   type WorkspaceTarget,
   type WorkspaceViewState,
 } from "./workspace-manager";
+import { getTimelineSelectionItem } from "../utils/timeline-item-actions";
 
 /**
  * Read-only preview of a historical version node (or an Agent trial
@@ -64,6 +65,8 @@ export interface PreviewSessionApi {
   enter(source: PreviewSource): Promise<void>;
   /** Return to current editing, restoring the saved view state. */
   exit(): Promise<void>;
+  /** Copy selected historical clips and insert them at the editing view's original playhead. */
+  copyToCurrent(clipIds: string[]): Promise<void>;
   /**
    * "Continue editing from here": protect the current dirty edit as a
    * recovery draft, adopt the previewed content into the editing
@@ -276,6 +279,33 @@ export const previewSession: PreviewSessionApi = {
     } finally {
       // teardown already published the inactive state (busy: false included).
     }
+  },
+
+  async copyToCurrent(clipIds) {
+    if (!handle || !savedViewState || !editingWorkspaceIdAtEnter || clipIds.length === 0) return;
+    const source = handle;
+    const target = { projectId: source.projectId, workspaceId: editingWorkspaceIdAtEnter };
+    const view = savedViewState;
+    const expectedRevision = workspaceManager.getSnapshot().workspaces.find(workspace => workspace.id === target.workspaceId)!.revision;
+    source.store.getState().copyClips(clipIds);
+    const context = await workspaceManager.getWorkspaceContext(target);
+    if (handle !== source) throw new Error(i18next.t("previewClipboard.targetChanged"));
+    await previewSession.exit();
+    const active = workspaceManager.getActiveTarget();
+    if (active?.projectId !== target.projectId || active.workspaceId !== target.workspaceId) throw new Error(i18next.t("previewClipboard.targetChanged"));
+    const track = context.store.getState().project.timeline.tracks[0];
+    if (!track) throw new Error(i18next.t("previewClipboard.noTrack"));
+    const results = await context.store.getState().pasteClips(track.id, view.playheadPosition, { expectedRevision });
+    const failure = results.find(result => !result.success);
+    if (failure) throw new Error(failure.error?.message ?? i18next.t("previewClipboard.failed"));
+    const current = workspaceManager.getActiveTarget();
+    if (current?.projectId !== target.projectId || current.workspaceId !== target.workspaceId) return;
+    const state = context.store.getState();
+    const selection = state.lastPastedClipIds
+      .map(id => getTimelineSelectionItem(state, id))
+      .filter((item): item is SelectionItem => item !== null);
+    useUIStore.getState().selectMultiple(selection);
+    toast.success(i18next.t("previewClipboard.inserted", { time: view.playheadPosition.toFixed(2) }));
   },
 
   async adopt() {

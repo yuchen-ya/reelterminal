@@ -271,6 +271,12 @@ export function releaseProjectRenderFonts(ownerId: string): void {
 }
 
 /** Return project dependencies that cannot be rendered from this snapshot. */
+export function getMissingProjectImageDependencyIds(project: Project): string[] {
+  const missing = new Set<string>();
+  collectImageReferences(project, missing);
+  return [...missing].sort();
+}
+
 export async function getMissingProjectRenderDependencyIds(project: Project): Promise<string[]> {
   const prepared = await prepareProjectRenderFonts(project);
   const persistedFonts = new Set(

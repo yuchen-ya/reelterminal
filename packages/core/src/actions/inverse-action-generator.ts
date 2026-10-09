@@ -271,6 +271,11 @@ export class InverseActionGenerator {
           ...projectBefore.settings,
         });
 
+      case "project/setRenderFonts":
+        return this.createInverseAction(action, "project/setRenderFonts", {
+          fonts: projectBefore.renderFonts,
+        });
+
       case "project/setCanvasBackground":
         return this.createInverseAction(action, "project/setCanvasBackground", {
           backgroundFillMode: projectBefore.timeline.backgroundFillMode,

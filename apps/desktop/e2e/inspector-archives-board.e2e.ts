@@ -73,13 +73,13 @@ test("inspector archives and board preserve preview, target, forms and main layo
     await launched.page.keyboard.press("Escape");
     await launched.page.getByTestId(`version-node-${first.id}`).dblclick();
     await launched.page.getByTestId("version-preview-banner").waitFor();
-    await launched.page.getByTestId("inspector-tab-board").click();
+    await launched.page.getByTestId("requirement-board-entry").click();
     await launched.page.getByRole("button", { name: "New requirement", exact: true }).click();
     const formTitle = launched.page.getByRole("textbox", { name: "New requirement", exact: true });
     await formTitle.fill("Board writes to actual edit");
     await launched.page.getByRole("button", { name: "Select text clip New Title", exact: true }).click();
-    expect(await launched.page.getByTestId("inspector-tab-properties").getAttribute("aria-selected")).toBe("true");
-    await launched.page.getByTestId("inspector-tab-board").click();
+    expect(await launched.page.getByTestId("inspector-properties").isVisible()).toBe(true);
+    await launched.page.getByTestId("requirement-board-entry").click();
     expect(await formTitle.inputValue()).toBe("Board writes to actual edit");
     expect(await launched.page.getByTestId("version-preview-banner").isVisible()).toBe(true);
     await launched.page.getByRole("button", { name: "Publish to board", exact: true }).click();
@@ -99,7 +99,7 @@ test("inspector archives and board preserve preview, target, forms and main layo
     await launched.page.getByRole("button", { name: "Vertical", exact: true }).click();
     await launched.page.getByRole("button", { name: "Open Horizontal", exact: true }).click();
     await vi.waitFor(async () => expect((await call("editor.get_context")).identity.projectId).toBe(target.projectId));
-    await launched.page.getByTestId("inspector-tab-board").click();
+    await launched.page.getByTestId("requirement-board-entry").click();
     expect(await formTitle.inputValue()).toBe("Unsubmitted project A form");
     observations.projectFormsIsolated = true;
     await launched.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setContentSize(1024, 720));

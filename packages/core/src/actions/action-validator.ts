@@ -226,6 +226,15 @@ export class ActionValidator {
         }
         break;
 
+      case "project/setRenderFonts":
+        if (action.params.fonts !== undefined && (!Array.isArray(action.params.fonts) || action.params.fonts.some(font =>
+          !font || typeof font.family !== "string" || typeof font.style !== "string" || typeof font.weight !== "string" ||
+          typeof font.dataUrl !== "string" || !/^data:font\/(?:woff2?|ttf|otf);base64,[A-Za-z0-9+/]+=*$/i.test(font.dataUrl)
+        ))) {
+          errors.push({ code: "INVALID_PARAMS", message: "Render fonts must contain valid embedded font faces", path: "params.fonts" });
+        }
+        break;
+
       case "project/registerGeneratedShader":
         if (
           !action.params.def ||
