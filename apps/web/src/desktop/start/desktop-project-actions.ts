@@ -4,6 +4,12 @@ import { loadProjectMedia } from "../../services/media-storage";
 import { projectManager } from "../../services/project-manager";
 import { restoreMediaItem } from "../../utils/media-recovery";
 import { autoSaveManager } from "../../services/auto-save";
+import { workspaceManager } from "../../services/workspace-manager";
+import { createEmptyProject } from "../../stores/project";
+import { v4 as uuid } from "uuid";
+import { toast } from "../../stores/notification-store";
+import { t } from "../../i18n";
+import { switchProjectView } from "../../services/project-switch-notify";
 
 export interface NewProjectFormat {
   id: string;
@@ -19,20 +25,23 @@ export const DESKTOP_FORMATS: NewProjectFormat[] = [
   { id: "square", label: "Square", width: 1080, height: 1080, frameRate: 30 },
 ];
 
-export function startNewProject(format: NewProjectFormat): void {
-  useProjectStore.getState().createNewProject(format.label, {
+async function createAndShowProject(format: NewProjectFormat, name: string): Promise<void> {
+  const project = createEmptyProject(name, {
     width: format.width,
     height: format.height,
     frameRate: format.frameRate,
   });
+  const created = await workspaceManager.createProject(project);
+  await workspaceManager.switchView({ projectId: project.id, workspaceId: created.defaultWorkspaceId });
+  await projectManager.addToRecent(project);
 }
 
-export function startNewMotionProject(format: NewProjectFormat): void {
-  useProjectStore.getState().createNewProject(`${format.label} Motion Creator`, {
-    width: format.width,
-    height: format.height,
-    frameRate: format.frameRate,
-  });
+export function startNewProject(format: NewProjectFormat): Promise<void> {
+  return createAndShowProject(format, format.label);
+}
+
+export function startNewMotionProject(format: NewProjectFormat): Promise<void> {
+  return createAndShowProject(format, `${format.label} Motion Creator`);
 }
 
 export interface RecentEntry {
@@ -68,8 +77,8 @@ export async function listRecentProjects(): Promise<RecentEntry[]> {
   return [...entries.values()].sort((a, b) => b.lastOpened - a.lastOpened).slice(0, 10);
 }
 
-async function loadProjectIntoStore(project: Project): Promise<void> {
-  const storedMedia = await loadProjectMedia(project.id);
+async function importProjectIntoWorkspace(project: Project): Promise<void> {
+  const storedMedia = await loadProjectMedia(project.id, project.mediaLibrary.items.map((item) => item.id));
   const blobsById = new Map(storedMedia.map((record) => [record.id, record.blob]));
   const items = await Promise.all(
     project.mediaLibrary.items.map((item) =>
@@ -77,10 +86,16 @@ async function loadProjectIntoStore(project: Project): Promise<void> {
     ),
   );
 
-  useProjectStore.getState().loadProject({
+  const existing = (await workspaceManager.listProjects()).some((entry) => entry.id === project.id);
+  const imported = {
     ...project,
+    ...(existing ? { id: uuid(), name: `${project.name} (${t("versioning.importedCopy")})` } : {}),
     mediaLibrary: { ...project.mediaLibrary, items },
-  });
+  };
+  const created = await workspaceManager.createProject(imported);
+  await switchProjectView({ projectId: imported.id, workspaceId: created.defaultWorkspaceId });
+  await projectManager.addToRecent(imported);
+  toast.info(t("versioning.projectFileScope"));
 }
 
 export async function saveCurrentProject(): Promise<void> {
@@ -90,17 +105,26 @@ export async function saveCurrentProject(): Promise<void> {
 
 export async function openProject(): Promise<boolean> {
   await saveCurrentProject();
-  const project = await projectManager.openProject();
+  const existingProjects = await workspaceManager.listProjects();
+  const project = await projectManager.openProject({ existingProjectIds: existingProjects.map((entry) => entry.id) });
   if (!project) return false;
-  await loadProjectIntoStore(project);
+  await importProjectIntoWorkspace(project);
   return true;
 }
 
 export async function openRecentProject(projectId: string): Promise<boolean> {
   await saveCurrentProject();
+  const existing = (await workspaceManager.listProjects()).find((project) => project.id === projectId);
+  if (existing) {
+    await switchProjectView({ projectId, workspaceId: existing.defaultWorkspaceId });
+    return true;
+  }
   const entry = (await listRecentProjects()).find((item) => item.id === projectId);
   if (entry?.recoverySaveId) {
-    return useProjectStore.getState().recoverFromAutoSave(entry.recoverySaveId);
+    const recovered = await autoSaveManager.recover(entry.recoverySaveId);
+    if (!recovered) return false;
+    await importProjectIntoWorkspace(recovered);
+    return true;
   }
   const recentProjects = await projectManager.getRecentProjects();
   const recent = recentProjects.find((entry) => entry.id === projectId);
@@ -108,6 +132,6 @@ export async function openRecentProject(projectId: string): Promise<boolean> {
 
   const project = await projectManager.openRecentProject(recent);
   if (!project) return false;
-  await loadProjectIntoStore(project);
+  await importProjectIntoWorkspace(project);
   return true;
 }

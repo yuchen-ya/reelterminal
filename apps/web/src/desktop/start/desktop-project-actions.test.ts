@@ -5,12 +5,30 @@ const stubs = vi.hoisted(() => ({
   loadProject: vi.fn(),
   recoverFromAutoSave: vi.fn(),
   checkForRecovery: vi.fn(),
+  recover: vi.fn(),
   forceSave: vi.fn(),
   hasOpenProject: false,
   manager: {
     getRecentProjects: vi.fn(),
     openProject: vi.fn(),
     openRecentProject: vi.fn(),
+    addToRecent: vi.fn(),
+  },
+  workspace: {
+    listProjects: vi.fn(),
+    createProject: vi.fn(),
+    switchView: vi.fn(),
+    // Consumed by the project-switch notification path (no active project in
+    // these stubs, so no switch notification fires).
+    subscribe: vi.fn(() => () => {}),
+    getSnapshot: vi.fn(() => ({
+      version: 0,
+      activeProjectId: null,
+      activeWorkspaceId: null,
+      projects: [],
+      workspaces: [],
+      nodes: [],
+    })),
   },
   loadProjectMedia: vi.fn(),
   restoreMediaItem: vi.fn(),
@@ -32,8 +50,9 @@ vi.mock("../../services/project-manager", () => ({
   projectManager: stubs.manager,
 }));
 vi.mock("../../services/auto-save", () => ({
-  autoSaveManager: { checkForRecovery: stubs.checkForRecovery },
+  autoSaveManager: { checkForRecovery: stubs.checkForRecovery, recover: stubs.recover },
 }));
+vi.mock("../../services/workspace-manager", () => ({ workspaceManager: stubs.workspace }));
 
 vi.mock("../../services/media-storage", () => ({
   loadProjectMedia: stubs.loadProjectMedia,
@@ -57,6 +76,10 @@ beforeEach(() => {
   stubs.manager.getRecentProjects.mockResolvedValue([]);
   stubs.manager.openProject.mockResolvedValue(null);
   stubs.manager.openRecentProject.mockResolvedValue(null);
+  stubs.manager.addToRecent.mockResolvedValue(undefined);
+  stubs.workspace.listProjects.mockResolvedValue([]);
+  stubs.workspace.createProject.mockResolvedValue({ defaultWorkspaceId: "default-workspace" });
+  stubs.workspace.switchView.mockResolvedValue(undefined);
   stubs.loadProjectMedia.mockResolvedValue([]);
   stubs.checkForRecovery.mockResolvedValue([]);
   stubs.hasOpenProject = false;
@@ -88,25 +111,27 @@ describe("DESKTOP_FORMATS", () => {
 });
 
 describe("startNewProject", () => {
-  it("calls createNewProject with the format label and dimensions", () => {
+  it("persists a default workspace with the format label and dimensions before showing it", async () => {
     const format = DESKTOP_FORMATS[1];
-    startNewProject(format);
-    expect(stubs.createNewProject).toHaveBeenCalledWith("Horizontal", {
+    await startNewProject(format);
+    expect(stubs.workspace.createProject).toHaveBeenCalledWith(expect.objectContaining({ name: "Horizontal", settings: expect.objectContaining({
       width: 1920,
       height: 1080,
       frameRate: 30,
-    });
+    }) }));
+    expect(stubs.workspace.switchView).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "default-workspace" }));
+    expect(stubs.workspace.createProject.mock.invocationCallOrder[0]).toBeLessThan(stubs.workspace.switchView.mock.invocationCallOrder[0]);
   });
 });
 
 describe("startNewMotionProject", () => {
-  it("creates a Motion Creator project with the selected format dimensions", () => {
-    startNewMotionProject(DESKTOP_FORMATS[0]);
-    expect(stubs.createNewProject).toHaveBeenCalledWith("Vertical Motion Creator", {
+  it("creates a Motion Creator project with the selected format dimensions", async () => {
+    await startNewMotionProject(DESKTOP_FORMATS[0]);
+    expect(stubs.workspace.createProject).toHaveBeenCalledWith(expect.objectContaining({ name: "Vertical Motion Creator", settings: expect.objectContaining({
       width: 1080,
       height: 1920,
       frameRate: 30,
-    });
+    }) }));
   });
 });
 
@@ -133,13 +158,13 @@ describe("recent projects", () => {
       { id: "old", projectId: "project-a", projectName: "Old name", timestamp: 1000 },
       { id: "latest", projectId: "project-a", projectName: "Recovered", timestamp: 3000 },
     ]);
-    stubs.recoverFromAutoSave.mockResolvedValue(true);
+    stubs.recover.mockResolvedValue({ id: "project-a", name: "Recovered", mediaLibrary: { items: [] } });
 
     await expect(listRecentProjects()).resolves.toEqual([
       { id: "project-a", name: "Recovered", lastOpened: 3000, recoverySaveId: "latest" },
     ]);
     await expect(openRecentProject("project-a")).resolves.toBe(true);
-    expect(stubs.recoverFromAutoSave).toHaveBeenCalledWith("latest");
+    expect(stubs.recover).toHaveBeenCalledWith("latest");
     expect(stubs.manager.openRecentProject).not.toHaveBeenCalled();
   });
 
@@ -195,7 +220,7 @@ describe("recent projects", () => {
       expect.objectContaining({ id: "project-a", name: "Alpha" }),
     );
     expect(stubs.restoreMediaItem).toHaveBeenCalledWith(item, blob);
-    expect(stubs.loadProject).toHaveBeenCalledWith({
+    expect(stubs.workspace.createProject).toHaveBeenCalledWith({
       ...project,
       mediaLibrary: { items: [restoredItem] },
     });
@@ -221,6 +246,23 @@ describe("recent projects", () => {
     stubs.manager.openProject.mockResolvedValue(project);
 
     await expect(openProject()).resolves.toBe(true);
-    expect(stubs.loadProject).toHaveBeenCalledWith(project);
+    expect(stubs.workspace.createProject).toHaveBeenCalledWith(project);
+  });
+
+  it("resumes an existing workspace instead of overwriting it with a recent file", async () => {
+    stubs.workspace.listProjects.mockResolvedValue([{ id: "project-a", defaultWorkspaceId: "workspace-a" }]);
+    await expect(openRecentProject("project-a")).resolves.toBe(true);
+    expect(stubs.workspace.switchView).toHaveBeenCalledWith({ projectId: "project-a", workspaceId: "workspace-a" });
+    expect(stubs.manager.openRecentProject).not.toHaveBeenCalled();
+    expect(stubs.workspace.createProject).not.toHaveBeenCalled();
+  });
+
+  it("imports a same-identity project file as a distinct project without replacing the existing workspace", async () => {
+    stubs.workspace.listProjects.mockResolvedValue([{ id: "same-id", defaultWorkspaceId: "old-workspace" }]);
+    stubs.manager.openProject.mockResolvedValue({ id: "same-id", name: "Saved file", mediaLibrary: { items: [] } });
+    await expect(openProject()).resolves.toBe(true);
+    const imported = stubs.workspace.createProject.mock.calls[0][0];
+    expect(imported.id).not.toBe("same-id");
+    expect(imported.name).toContain("Imported copy");
   });
 });

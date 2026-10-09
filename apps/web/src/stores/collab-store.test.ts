@@ -53,8 +53,21 @@ describe("collab-store access status", () => {
       writer: null,
       access: "write",
       currentAction: null,
-      inspection: null,
+      taskProgress: {},
     });
+  });
+
+  it("keeps background task progress and completion separate from the current command", () => {
+    const desktop = mockDesktop();
+    const unsubscribe = installCollabEventListener();
+    desktop.emit({ type: "action", phase: "start", verb: "node.save" });
+    desktop.emit({ type: "task", jobId: "export-b", kind: "export", projectId: "project-b", workspaceId: "trial-b", sourceRevision: 4, state: "running", progress: { phase: "rendering", percent: 35 } });
+    expect(useCollabStore.getState().taskProgress["export-b"]).toMatchObject({ projectId: "project-b", workspaceId: "trial-b", sourceRevision: 4, progress: { percent: 35 } });
+    expect(useCollabStore.getState().currentAction).toBe("node.save");
+    desktop.emit({ type: "task", jobId: "export-b", kind: "export", projectId: "project-b", workspaceId: "trial-b", sourceRevision: 4, state: "done", progress: { phase: "complete", percent: 100 } });
+    expect(useCollabStore.getState().taskProgress["export-b"].state).toBe("done");
+    expect(useCollabStore.getState().currentAction).toBe("node.save");
+    unsubscribe();
   });
 
   afterEach(() => {
@@ -87,19 +100,23 @@ describe("collab-store access status", () => {
     expect(useCollabStore.getState().access).toBe("read-only");
   });
 
-  it("keeps inspection evidence available independently of access status", () => {
+  it("ignores inspection pushes so agent evidence never notifies the UI", () => {
     const { emit } = mockDesktop();
     const off = installCollabEventListener();
-    emit({
-      type: "inspection",
-      title: "Source",
-      range: "3–8 s",
-      images: ["data:image/png;base64,AA=="],
-      limitations: ["Frames only"],
-    });
-    expect(useCollabStore.getState().inspection?.range).toBe("3–8 s");
-    useCollabStore.getState().dismissInspection();
-    expect(useCollabStore.getState().inspection).toBeNull();
+    expect(() =>
+      emit({
+        type: "inspection",
+        title: "Source",
+        range: "3–8 s",
+        images: ["data:image/png;base64,AA=="],
+        limitations: ["Frames only"],
+      }),
+    ).not.toThrow();
+    const state = useCollabStore.getState();
+    expect(state).not.toHaveProperty("inspection");
+    // The unknown push must not leak into access status either.
+    expect(state.enabled).toBe(false);
+    expect(state.sequence).toBe(0);
     off();
   });
 

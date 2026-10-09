@@ -13,11 +13,14 @@ import { toast, useNotificationStore } from "../../stores/notification-store";
 
 /** Compact status for local CLI access to the open desktop project. */
 export function CollabStatusBar(): JSX.Element {
+
   const { t } = useTranslation();
   const [changingAccess, setChangingAccess] = useState(false);
   const enabled = useCollabStore((state) => state.enabled);
   const access = useCollabStore((state) => state.access);
   const currentAction = useCollabStore((state) => state.currentAction);
+  const taskProgress = useCollabStore((state) => state.taskProgress);
+  const runningTasks = Object.values(taskProgress).filter((task) => task.state === "queued" || task.state === "running");
   const setAccess = useCollabStore((state) => state.setAccess);
   const openModal = useUIStore((state) => state.openModal);
   const readyRequirements = useProjectStore(
@@ -106,6 +109,9 @@ export function CollabStatusBar(): JSX.Element {
           {t("desktop.collaboration.agentAction", { action: currentAction })}
         </span>
       ) : null}
+      {runningTasks.length > 0 && <span data-testid="background-task-progress" className="max-w-64 truncate text-fg-2" title={runningTasks.map((task) => `${task.jobId} · ${task.projectId} / ${task.workspaceId} · r${task.sourceRevision}`).join("\n")}>
+        {runningTasks.map((task) => `${t(task.kind === "export" ? "versioning.exportTask" : "versioning.analysisTask")} ${Math.round(task.progress?.percent ?? 0)}%`).join(" · ")}
+      </span>}
 
       <div className="ml-auto flex items-center">
         <button

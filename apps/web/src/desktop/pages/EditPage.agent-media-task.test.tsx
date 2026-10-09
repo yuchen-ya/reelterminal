@@ -30,9 +30,6 @@ vi.mock("../../components/editor/Timeline", () => ({
 vi.mock("../../components/editor/agent/ExternalAgentFloatingWindow", () => ({
   ExternalAgentFloatingWindow: (): React.ReactElement | null => null,
 }));
-vi.mock("../editor/AgentInspectionPanel", () => ({
-  AgentInspectionPanel: (): React.ReactElement | null => null,
-}));
 vi.mock("../../components/editor/dialogs/AgentMediaTaskDialog", () => ({
   AgentMediaTaskDialog: (): React.ReactElement | null => null,
 }));
