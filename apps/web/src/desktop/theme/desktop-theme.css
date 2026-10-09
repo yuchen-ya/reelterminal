@@ -66,13 +66,16 @@
   --ring: 158 64% 52%;
 }
 
+.reelterminal-desktop.archive-menu > button,
 .reelterminal-desktop .archive-menu > button {
   display: block;
   width: 100%;
-  padding: 6px 8px;
+  min-height: 32px;
+  padding: 8px;
   text-align: left;
   border-radius: 4px;
 }
+.reelterminal-desktop.archive-menu > button:hover,
 .reelterminal-desktop .archive-menu > button:hover {
   background: var(--hover);
 }

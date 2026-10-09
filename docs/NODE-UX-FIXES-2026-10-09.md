@@ -34,9 +34,19 @@
 
 同一个 1280×720、12 条混合轨道复现：修复前轨道 clientHeight=scrollHeight=780，底边约 1372.67，普通滚轮后 scrollTop=0；修复后 clientHeight=75、scrollHeight=780，底边约 720，普通滚轮到 scrollTop≈704.67。空白、轨道头和片段上的滚轮均到达首尾，头部同步，标尺固定；Ctrl+滚轮缩放、Shift+滚轮横移及播放/暂停仍工作。未穷举所有拖拽/触摸板手势。
 
-## 验证与测试包
+## 独立复验补充 R01–R04
 
-独立复验补充 R01：普通存档被未修改的试剪/导出工作区作为基准引用后，错误显示为“试剪”菱形。原因是界面把 `trial.baseNodeId` 引用当作存档来源。已移除该推断，只按存档记录的 `sourceWorkspaceKind` 分类。新增回归先在旧实现复现失败，修正后存档面板 8 项测试通过：普通当前存档及普通祖先即使被副本引用也不标试剪，真正留存的试剪即使没有工作区引用仍保持标签。本补充目前仅修改源码；按主会话要求等待其余复验汇总，尚未重建下面的测试包，也没有操作 GUI。
+R01：普通存档被未修改的试剪/导出工作区作为基准引用后，错误显示为“试剪”菱形。原因是界面把 `trial.baseNodeId` 引用当作存档来源。提交 `d15da13` 移除该推断，只按存档记录的 `sourceWorkspaceKind` 分类。新增回归先在旧实现复现失败，修正后验证普通当前存档及普通祖先即使被副本引用也不标试剪，真正留存的试剪即使没有工作区引用仍保持标签。
+
+R02：右键菜单的主题类和菜单类都在 portal 根元素，原 CSS 只匹配主题元素的后代，漏用菜单按钮样式。补充根元素匹配，四个动作各占整行，宽度 100%、最小高度 32px、8px 内边距。加载实际 CSS 的组件回归与独立桌面 E2E 通过；实际四行边界不重叠，原生 Electron 截图已查看（`evidence/inspector-layout/archive-context-menu.png`）。
+
+R03：原始 HEVC 播放→暂停约 7.9 秒→切空项目→切回，恢复播放头但画面持续黑。新增独立真实 GUI 回归在修复前重复失败：原片区域均值约 112.5，切回后为 0。定位到 ResizeObserver 按 CSS 尺寸替换正在异步合成的离屏缓冲区，最终提交空缓冲区。移除该写入，尺寸观察只更新选框；合成器继续管理内部预览分辨率的缓冲区。修复后切换前后均值均为 112.694270，播放头均为 8.1 秒且保持暂停，不强制播放、不修改源或播放头。证据在 `evidence/paused-switch-before/` 与 `paused-switch-after/`，包含实际截图、状态及失败/通过帧。
+
+R04：只修“保存当前编辑与创建存档点”帮助中的两个普通用户说明，改为“不代表已创建存档点”及“当前编辑仍会正常保存，只是不创建存档点”，同步对应英文并重新生成中英离线 HTML。没有全局替换软件版本或 Agent 技术术语；手册完整性 18 项测试通过。
+
+包含这些补充的新包已构建于外部 `output/windows-test-r01-r04/`，其中存档/看板（含 R01 分类与 R02 菜单行边界）及 R03 暂停切换两个真实 GUI E2E 通过；包内中英 HTML 的 R04 新措辞已检查。组件 9 项、手册 18 项回归及 Web/desktop 类型检查通过。使用同一个 `work/independent-acceptance` profile/endpoint 的启动脚本供主会话复验。原 `windows-test-build/` 未覆盖，主会话使用的独立验收窗口未被关闭、切换或写入。开发 GUI 回归使用额外独立 profile；交付不会自动启动共享验收窗口。
+
+## 验证与测试包
 
 - 相关 Web 回归 17 文件 / 133 测试通过；面板格式化后又验证相关 6 文件 / 54 测试。
 - 桌面生命周期/CLI 2 文件 / 21 测试、Agent schema/manual 2 文件 / 25 测试、核心导出效果 4 测试、runtime 视觉缩放/字体/看门狗 6 测试及真实 HEVC 专项通过。以上是相关集，不代表仓库全部测试。
@@ -47,4 +57,4 @@ Windows 测试包为外部 `output/windows-test-build/win-unpacked/ReelTerminal.
 
 证据均在上述外部 job：`evidence/hevc-real-source.json`、`visible-desktop-regression.json`、`archive-sidebar.png`、`packaged-help.png`、`inspector-layout/archive-tree.png`、`inspector-layout/board-preview.png`、`inspector-layout/narrow-archives.png`，以及 `scroll-before/scroll.json`、`scroll-after/scroll.json` 和包构建日志。原独立报告与主会话设计提案保持为原拥有者的未提交文件。
 
-仍待主会话复测原 F01–F09 的失败链路及新布局；大型性能、全量动态图形/Aurora、完整音频听感、完整亮主题和拖拽手势尚未独立验收。原报告中的偶发换源暂停黑屏/空缩略图仅完成本次原片→显式测试副本→缩小窗口的暂停帧检查，未把未定位观察宣称为全面修复。
+仍待主会话复测原 F01–F09 的失败链路及新布局；大型性能、全量动态图形/Aurora、完整音频听感、完整亮主题和拖拽手势尚未独立验收。暂停黑屏已修复本次明确定位的跨项目切回链路，并测试原片→显式测试副本→缩小窗口；未把原报告所有偶发观察（尤其空缩略图）宣称为全面修复。

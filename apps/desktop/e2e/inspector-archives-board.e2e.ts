@@ -43,16 +43,34 @@ test("inspector archives and board preserve preview, target, forms and main layo
       await call("node.save", { ...target, expectedRevision: (await getState()).revision, name: index === 8 ? "A deliberately long save point name that must remain readable in a narrow inspector" : `Cut ${index}`, idempotencyKey: `layout-point-${index}` });
     }
     expect((await launched.page.getByTestId("timeline-tracks-scroll").boundingBox())!.height).toBeCloseTo(timelineHeight, 0);
+    await call("workspace.create", { projectId: target.projectId, sourceNodeId: first.id, name: "Untouched export copy", idempotencyKey: "layout-export-copy" });
     const trial = await call("workspace.create", { projectId: target.projectId, sourceNodeId: first.id, name: "A separate trial", idempotencyKey: "layout-trial" });
     const trialTarget = { projectId: target.projectId, workspaceId: trial.workspace.id };
     await call("edit.apply", { ...trialTarget, expectedRevision: 0, idempotencyKey: "trial-edit", ops: [{ op: "text.update", overlayId: titleId, text: "Independent trial" }] });
     const trialPoint = await call("node.save", { ...trialTarget, expectedRevision: 1, name: "Trial branch", idempotencyKey: "trial-point" });
+    expect(await launched.page.getByTestId(`version-node-${first.id}`).getByText("Trial", { exact: true }).count()).toBe(0);
+    expect(await launched.page.getByTestId(`version-node-${trialPoint.node.id}`).getByText("Trial", { exact: true }).isVisible()).toBe(true);
     expect(await launched.page.locator(`path[data-child-id="${trialPoint.node.id}"][data-parent-id="${first.id}"]`).count()).toBe(1);
     expect((await getState()).project.textClips[0].text).toBe("Cut 8");
     await launched.page.getByTestId(`version-node-${first.id}`).click();
     expect(await launched.page.getByTestId("version-preview-banner").count()).toBe(0);
     expect((await getState()).project.textClips[0].text).toBe("Cut 8");
     await launched.page.screenshot({ path: path.join(evidence, "archive-tree.png") });
+    await launched.page.getByTestId(`version-node-${first.id}`).click({ button: "right" });
+    const menu = launched.page.getByTestId("version-node-menu");
+    const actions = await menu.getByRole("menuitem").all();
+    expect(actions).toHaveLength(4);
+    const rows = await Promise.all(actions.map(action => action.boundingBox()));
+    for (let index = 0; index < rows.length; index++) {
+      const row = rows[index]!;
+      expect(row.height).toBeGreaterThanOrEqual(32);
+      expect(row.width).toBeGreaterThan(180);
+      expect(row.x).toBeCloseTo(rows[0]!.x, 1);
+      if (index > 0) expect(row.y).toBeGreaterThanOrEqual(rows[index - 1]!.y + rows[index - 1]!.height - 1);
+    }
+    observations.contextMenuRows = rows;
+    await launched.page.screenshot({ path: path.join(evidence, "archive-context-menu.png") });
+    await launched.page.keyboard.press("Escape");
     await launched.page.getByTestId(`version-node-${first.id}`).dblclick();
     await launched.page.getByTestId("version-preview-banner").waitFor();
     await launched.page.getByTestId("inspector-tab-board").click();

@@ -287,7 +287,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     ],
     steps: [
       {
-        zh: "保存：Ctrl+S 与自动保存把当前编辑写入本机项目存储。“已保存”只表示编辑已落盘，不代表存在版本节点。",
+        zh: "保存：Ctrl+S 与自动保存把当前编辑写入本机项目存储。“已保存”只表示编辑已落盘，不代表已创建存档点。",
         en: "Save: Ctrl+S and autosave write the current edit to local project storage. \"Saved\" only means the edit is on disk — it never implies a save point exists.",
       },
       {
@@ -299,8 +299,8 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
         en: "On close: open editing plans are saved first. Content edited in this session and not yet retained, including titles alone, follows your retention preference. Untouched old projects and export copies are excluded. The dialog waits for your decision; save failures keep the window open.",
       },
       {
-        zh: "偏好选项：每次询问（默认）、自动创建存档点、不创建存档点直接关闭。“不创建存档点”仍然保存工作区，只是不创建版本；偏好随时可改，不影响已有历史。",
-        en: "Preference options: Ask every time (default), Create save points automatically, Close without creating a save point. The skip option still saves the workspace — it only skips creating a version; the preference is changeable anytime and never deletes history.",
+        zh: "偏好选项：每次询问（默认）、自动创建存档点、不创建存档点直接关闭。“不创建存档点”表示当前编辑仍会正常保存，只是不创建存档点；偏好随时可改，不影响已有历史。",
+        en: "Preference options: Ask every time (default), Create save points automatically, Close without creating a save point. The skip option still saves current edits normally; it only skips creating a save point. The preference is changeable anytime and never deletes history.",
       },
     ],
     limitations: [

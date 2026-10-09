@@ -1,6 +1,10 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useNotificationStore } from "../../stores/notification-store";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const desktopThemeCss = readFileSync(fileURLToPath(new URL("./../theme/desktop-theme.css", import.meta.url)), "utf8");
 
 const fixture = vi.hoisted(() => ({
   snapshot: {} as Record<string, unknown>,
@@ -148,6 +152,26 @@ describe("inspector archive browser", () => {
     fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 20, clientY: 20 });
     fireEvent.click(screen.getByTestId("version-menu-adopt"));
     await waitFor(() => expect(fixture.adopt).toHaveBeenCalledOnce());
+  });
+  it("lays out portal context actions as four full-width rows", () => {
+    const style = document.createElement("style");
+    style.textContent = desktopThemeCss;
+    document.head.append(style);
+    try {
+      render(<VersionNodeTrack />);
+      fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 20, clientY: 20 });
+      const actions = within(screen.getByTestId("version-node-menu")).getAllByRole("menuitem");
+      expect(actions).toHaveLength(4);
+      for (const action of actions) {
+        const computed = getComputedStyle(action);
+        expect(computed.display).toBe("block");
+        expect(computed.width).toBe("100%");
+        expect(Number.parseFloat(computed.minHeight)).toBeGreaterThanOrEqual(32);
+        expect(computed.textAlign).toBe("left");
+      }
+    } finally {
+      style.remove();
+    }
   });
   it("renames through the same metadata command and rejects blank names", async () => {
     render(<VersionNodeTrack />);

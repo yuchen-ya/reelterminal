@@ -502,10 +502,9 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
         setCanvasSize({ width, height });
-        if (width > 0 && height > 0) {
-          offscreenCanvasRef.current = new OffscreenCanvas(width, height);
-          offscreenCtxRef.current = offscreenCanvasRef.current.getContext("2d");
-        }
+        // CSS size belongs to the selection handles. The frame compositor
+        // owns its buffer at the canvas's internal preview resolution; a
+        // resize during async decode must not replace it with an empty one.
       }
     });
 
