@@ -8,6 +8,8 @@ import { useProjectStore } from "../stores/project-store";
 import type { ProjectState } from "../stores/project-store";
 import { useUIStore } from "../stores/ui-store";
 import { useSettingsStore } from "../stores/settings-store";
+import { useNotificationStore } from "../stores/notification-store";
+import { workspaceManager } from "../services/workspace-manager";
 
 vi.mock("../stores/project-store", () => ({
   getProjectRevision: vi.fn(() => 0),
@@ -16,6 +18,35 @@ vi.mock("../stores/project-store", () => ({
     subscribe: vi.fn(() => () => {}),
   }),
 }));
+
+vi.mock("../services/workspace-manager", () => {
+  // Stable snapshot reference: useSyncExternalStore loops on fresh objects.
+  const snapshot = {
+    version: 0,
+    activeProjectId: null,
+    activeWorkspaceId: null,
+    projects: [],
+    workspaces: [],
+    nodes: [],
+  };
+  return {
+    workspaceManager: {
+      initialize: vi.fn(async () => {}),
+      listProjects: vi.fn(async () => []),
+      listWorkspaces: vi.fn(async () => []),
+      flushWorkspace: vi.fn(async () => {}),
+      listRetentionCandidates: vi.fn(async () => []),
+      // Read by the top-left project switcher's versioning actions.
+      subscribe: vi.fn(() => () => {}),
+      getSnapshot: vi.fn(() => snapshot),
+      // Prepare-close must only retain through explicit user decisions; the
+      // tests that exercise retention override this mock per test.
+      saveNode: vi.fn(async () => {
+        throw new Error("saveNode must not be called in this test");
+      }),
+    },
+  };
+});
 
 vi.mock("./editor/EditorBootstrapGate", () => ({
   EditorBootstrapGate: ({ children }: { children: React.ReactNode }) => (
@@ -161,13 +192,8 @@ describe("DesktopApp", () => {
     expect(view.getByTestId("desktop-settings-dialog")).toBeTruthy();
   });
 
-  it("lets a lifecycle flush observe a durable-save rejection", async () => {
-    mockHasProject(false);
-    const failure = new Error("IndexedDB transaction aborted");
-    const forceSave = vi.fn().mockRejectedValue(failure);
-    let flush: (() => Promise<void>) | undefined;
-    (mockedUseProjectStore as unknown as { getState: () => unknown }).getState =
-      () => ({ forceSave });
+  function mockPrepareClose(): { handler: () => (() => Promise<boolean>) | undefined } {
+    let prepare: (() => Promise<boolean>) | undefined;
     (window as unknown as { reelterminal: unknown }).reelterminal = {
       platform: "desktop",
       win: {
@@ -177,18 +203,114 @@ describe("DesktopApp", () => {
         isMaximized: async () => false,
       },
       lifecycle: {
-        onQueryUnsaved: () => () => {},
-        onFlush: (handler: () => Promise<void>) => {
-          flush = handler;
+        onPrepareClose: (handler: () => Promise<boolean>) => {
+          prepare = handler;
           return () => {};
         },
       },
     };
-    render(<DesktopApp />);
+    return { handler: () => prepare };
+  }
 
-    expect(flush).toBeTypeOf("function");
-    await expect(flush?.()).rejects.toBe(failure);
-    expect(forceSave).toHaveBeenCalledOnce();
+  it("prepare-close flushes every workspace and closes when nothing needs retention", async () => {
+    mockHasProject(false);
+    const { handler } = mockPrepareClose();
+    vi.mocked(workspaceManager.listProjects).mockResolvedValue([
+      { id: "p1", name: "宣传片", defaultWorkspaceId: "w1", createdAt: 0, modifiedAt: 0 },
+    ]);
+    vi.mocked(workspaceManager.listWorkspaces).mockResolvedValue([
+      {
+        id: "w1",
+        projectId: "p1",
+        name: "主剪辑",
+        kind: "default",
+        baseNodeId: null,
+        revision: 3,
+        updatedAt: 0,
+        dirty: true,
+      },
+    ]);
+    vi.mocked(workspaceManager.listRetentionCandidates).mockResolvedValue([]);
+
+    render(<DesktopApp />);
+    const prepare = handler();
+    expect(prepare).toBeTypeOf("function");
+
+    await expect(prepare!()).resolves.toBe(true);
+    expect(workspaceManager.initialize).toHaveBeenCalled();
+    expect(workspaceManager.flushWorkspace).toHaveBeenCalledWith({
+      projectId: "p1",
+      workspaceId: "w1",
+    });
+    expect(workspaceManager.saveNode).not.toHaveBeenCalled();
+  });
+
+  it("prepare-close keeps the window open and reports the failure when a flush fails", async () => {
+    mockHasProject(false);
+    useNotificationStore.getState().clearAll();
+    const { handler } = mockPrepareClose();
+    vi.mocked(workspaceManager.flushWorkspace).mockRejectedValueOnce(
+      new Error("IndexedDB transaction aborted"),
+    );
+
+    render(<DesktopApp />);
+    await act(async () => {
+      await expect(handler()!()).resolves.toBe(false);
+    });
+    expect(
+      useNotificationStore
+        .getState()
+        .notifications.some((notification) => notification.type === "error"),
+    ).toBe(true);
+    useNotificationStore.getState().clearAll();
+  });
+
+  it("prepare-close opens the retention dialog for the ask preference and closes on a direct close", async () => {
+    mockHasProject(false);
+    useSettingsStore.getState().setCloseRetention("ask");
+    const { handler } = mockPrepareClose();
+    vi.mocked(workspaceManager.listRetentionCandidates).mockResolvedValue([
+      {
+        projectId: "p1",
+        projectName: "宣传片",
+        workspaceId: "w1",
+        workspaceName: "主剪辑",
+      },
+    ]);
+
+    const view = render(<DesktopApp />);
+    const decision = handler()!();
+
+    expect(await view.findByTestId("close-retention-dialog")).toBeTruthy();
+    fireEvent.click(await view.findByTestId("close-directly-button"));
+    await expect(decision).resolves.toBe(true);
+    expect(useSettingsStore.getState().closeRetention).toBe("ask");
+    expect(workspaceManager.saveNode).not.toHaveBeenCalled();
+    useSettingsStore.getState().setCloseRetention("ask");
+  });
+
+  it("prepare-close retains automatically for the retain preference", async () => {
+    mockHasProject(false);
+    useSettingsStore.getState().setCloseRetention("retain");
+    const { handler } = mockPrepareClose();
+    vi.mocked(workspaceManager.listRetentionCandidates).mockResolvedValue([
+      {
+        projectId: "p1",
+        projectName: "宣传片",
+        workspaceId: "w1",
+        workspaceName: "主剪辑",
+      },
+    ]);
+    const saveNode = vi
+      .spyOn(workspaceManager, "saveNode")
+      .mockResolvedValue({} as Awaited<ReturnType<typeof workspaceManager.saveNode>>);
+
+    render(<DesktopApp />);
+    await expect(handler()!()).resolves.toBe(true);
+    expect(saveNode).toHaveBeenCalledWith({
+      target: { projectId: "p1", workspaceId: "w1" },
+    });
+    useSettingsStore.getState().setCloseRetention("ask");
   });
 
   describe("DOM-level undo/redo keyboard handler (G-01)", () => {

@@ -28,7 +28,7 @@ const electron = vi.hoisted(() => {
 
 vi.mock("electron", () => electron);
 
-import { attachUnsavedGuard } from "./lifecycle";
+import { attachUnsavedGuard, markQuitting } from "./lifecycle";
 import { CHANNELS } from "../shared/ipc-contract";
 
 type CloseEvent = { preventDefault: ReturnType<typeof vi.fn> };
@@ -52,56 +52,82 @@ const makeWindow = () => {
   };
 };
 
-describe("desktop unsaved changes guard", () => {
+function replyAllow(
+  win: ReturnType<typeof makeWindow>["win"],
+  payload: unknown,
+): void {
+  win.webContents.send.mockImplementation((channel: string) => {
+    if (channel === CHANNELS.lifecyclePrepareCloseQuery) {
+      electron.ipcMain.emit(
+        CHANNELS.lifecyclePrepareCloseReply,
+        { sender: win.webContents },
+        payload,
+      );
+    }
+  });
+}
+
+describe("desktop prepare-close guard", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     electron.ipcMain.reset();
   });
 
-  it("treats an unsaved-query timeout as possibly dirty", async () => {
-    electron.dialog.showMessageBox.mockResolvedValue({ response: 2 });
+  it("closes the window when the renderer allows the close", async () => {
     const { win, close } = makeWindow();
+    replyAllow(win, { allow: true });
 
     close();
-    await vi.advanceTimersByTimeAsync(1500);
-    await vi.waitFor(() => expect(electron.dialog.showMessageBox).toHaveBeenCalled());
+    await vi.waitFor(() => expect(win.close).toHaveBeenCalledOnce());
 
-    expect(win.close).not.toHaveBeenCalled();
-    expect(electron.dialog.showMessageBox).toHaveBeenCalledWith(
-      win,
-      expect.objectContaining({ title: "Unsaved changes" }),
-    );
+    expect(electron.app.quit).not.toHaveBeenCalled();
+    expect(electron.dialog.showMessageBox).not.toHaveBeenCalled();
   });
 
-  it("keeps the window open when a requested flush times out", async () => {
-    electron.dialog.showMessageBox
-      .mockResolvedValueOnce({ response: 0 })
-      .mockResolvedValueOnce({ response: 0 });
+  it("finishes a quit through app.quit once the renderer allows it", async () => {
+    // markQuitting mutates module state with no reset export; the deny test
+    // right after this one resets quitting=false, keeping later assertions
+    // (window close instead of app.quit) valid.
+    markQuitting();
     const { win, close } = makeWindow();
-    win.webContents.send.mockImplementation((channel: string) => {
-      if (channel === CHANNELS.lifecycleUnsavedQuery) {
-        electron.ipcMain.emit(
-          CHANNELS.lifecycleUnsavedReply,
-          { sender: win.webContents },
-          true,
-        );
-      }
-    });
+    replyAllow(win, { allow: true });
 
     close();
-    await vi.waitFor(() =>
-      expect(win.webContents.send).toHaveBeenCalledWith(CHANNELS.lifecycleFlush),
-    );
-    await vi.advanceTimersByTimeAsync(8000);
-    await vi.waitFor(() =>
-      expect(electron.dialog.showMessageBox).toHaveBeenCalledTimes(2),
-    );
+    await vi.waitFor(() => expect(electron.app.quit).toHaveBeenCalledOnce());
+    expect(win.close).not.toHaveBeenCalled();
+  });
+
+  it("keeps the window open when the renderer denies the close", async () => {
+    const { win, close } = makeWindow();
+    replyAllow(win, { allow: false });
+
+    close();
+    await vi.advanceTimersByTimeAsync(20_000);
 
     expect(win.close).not.toHaveBeenCalled();
-    expect(electron.dialog.showMessageBox).toHaveBeenLastCalledWith(
-      win,
-      expect.objectContaining({ title: "Could not save" }),
-    );
+    expect(electron.app.quit).not.toHaveBeenCalled();
+  });
+
+  it("proceeds with the close when the renderer never replies (20s timeout)", async () => {
+    // Silence means persistence is continuous (drafts are written during
+    // editing); a wedged renderer must not trap the user in an uncloseable
+    // window.
+    const { win, close } = makeWindow();
+
+    close();
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(win.close).toHaveBeenCalledOnce();
+  });
+
+  it("treats a malformed reply as a denial rather than a silent close", async () => {
+    const { win, close } = makeWindow();
+    replyAllow(win, "garbage");
+
+    close();
+    await vi.advanceTimersByTimeAsync(20_000);
+
+    expect(win.close).not.toHaveBeenCalled();
   });
 });

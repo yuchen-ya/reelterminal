@@ -104,6 +104,49 @@ const api = {
     probeAudioStreams: (args: unknown) => ipcRenderer.invoke(CHANNELS.mediaProbeAudioStreams, args),
     fetchUrl: (args: unknown) => ipcRenderer.invoke(CHANNELS.mediaFetchUrl, args),
   },
+  mediaStore: {
+    beginWrite: (args: { projectId: string; mediaId: string; expectedHash: string; extension: string }) =>
+      ipcRenderer.invoke(CHANNELS.mediaStoreBeginWrite, args) as Promise<string>,
+    writeChunk: (sessionId: string, data: ArrayBuffer | Uint8Array) =>
+      ipcRenderer.invoke(CHANNELS.mediaStoreWriteChunk, { sessionId, data }) as Promise<void>,
+    commitWrite: (sessionId: string) =>
+      ipcRenderer.invoke(CHANNELS.mediaStoreCommitWrite, { sessionId }) as Promise<{
+        path: string;
+        contentHash: string;
+        created: boolean;
+      }>,
+    abortWrite: (sessionId: string) =>
+      ipcRenderer.invoke(CHANNELS.mediaStoreAbortWrite, { sessionId }) as Promise<void>,
+    read: (args: { projectId: string; mediaId: string }) =>
+      ipcRenderer.invoke(CHANNELS.mediaStoreRead, args) as Promise<ArrayBuffer | null>,
+    readAny: (mediaId: string) =>
+      ipcRenderer.invoke(CHANNELS.mediaStoreReadAny, { mediaId }) as Promise<ArrayBuffer | null>,
+    getVersion: (mediaId: string) =>
+      ipcRenderer.invoke(CHANNELS.mediaStoreGetVersion, { mediaId }) as Promise<{
+        projectId: string;
+        mediaId: string;
+        path: string;
+        sizeBytes: number;
+        contentHash: string;
+      } | null>,
+    delete: (mediaId: string) =>
+      ipcRenderer.invoke(CHANNELS.mediaStoreDelete, { mediaId }) as Promise<void>,
+    listProject: (projectId: string) =>
+      ipcRenderer.invoke(CHANNELS.mediaStoreListProject, { projectId }) as Promise<{
+        projectId: string;
+        mediaId: string;
+        path: string;
+        sizeBytes: number;
+      }[]>,
+    listAll: () =>
+      ipcRenderer.invoke(CHANNELS.mediaStoreListAll) as Promise<{
+        projectId: string;
+        mediaId: string;
+        path: string;
+        sizeBytes: number;
+      }[]>,
+    clearAll: () => ipcRenderer.invoke(CHANNELS.mediaStoreClearAll) as Promise<void>,
+  },
   rigging: {
     probeBackend: () => ipcRenderer.invoke(CHANNELS.riggingProbeBackend, undefined),
     rigHumanoidModel: (args: unknown) =>
@@ -192,39 +235,31 @@ const api = {
       ipcRenderer.invoke(CHANNELS.agentTaskImport, args),
   },
   lifecycle: {
-    // The main process asks (on window close / quit) whether there are unsaved
-    // changes; the renderer answers synchronously from its dirty state.
-    onQueryUnsaved: (handler: () => boolean) => {
-      const listener = () => {
-        // Fail safe if renderer state inspection itself throws. Main will show
-        // the save/discard/cancel prompt instead of treating uncertainty as a
-        // clean project and closing silently.
-        let dirty = true;
-        try {
-          dirty = handler();
-        } catch (error) {
-          console.error("[lifecycle] unsaved query failed:", error);
-        }
-        ipcRenderer.send(CHANNELS.lifecycleUnsavedReply, dirty);
-      };
-      ipcRenderer.on(CHANNELS.lifecycleUnsavedQuery, listener);
-      return () => ipcRenderer.removeListener(CHANNELS.lifecycleUnsavedQuery, listener);
-    },
-    // The main process asks the renderer to persist pending changes before the
-    // window closes; the renderer flushes and reports whether it succeeded so
-    // main can keep the window open on failure rather than dropping the edits.
-    onFlush: (handler: () => Promise<void>) => {
+    // The main process asks the renderer to prepare for close (window close
+    // or quit): flush every open workspace, optionally retain versions per
+    // the user's preference, then resolve with true to allow the close or
+    // false to keep the window. A handler error reports allow=false so a
+    // broken flush can never be mistaken for a safe close; main handles a
+    // total silence (timeout) by closing, relying on continuous persistence.
+    onPrepareClose: (handler: () => Promise<boolean>) => {
       const listener = () => {
         void Promise.resolve()
           .then(handler)
-          .then(() => ipcRenderer.send(CHANNELS.lifecycleFlushed, true))
+          .then((allow) =>
+            ipcRenderer.send(CHANNELS.lifecyclePrepareCloseReply, {
+              allow: allow === true,
+            }),
+          )
           .catch((error) => {
-            console.error("[lifecycle] flush failed:", error);
-            ipcRenderer.send(CHANNELS.lifecycleFlushed, false);
+            console.error("[lifecycle] prepare-close failed:", error);
+            ipcRenderer.send(CHANNELS.lifecyclePrepareCloseReply, {
+              allow: false,
+            });
           });
       };
-      ipcRenderer.on(CHANNELS.lifecycleFlush, listener);
-      return () => ipcRenderer.removeListener(CHANNELS.lifecycleFlush, listener);
+      ipcRenderer.on(CHANNELS.lifecyclePrepareCloseQuery, listener);
+      return () =>
+        ipcRenderer.removeListener(CHANNELS.lifecyclePrepareCloseQuery, listener);
     },
   },
 };

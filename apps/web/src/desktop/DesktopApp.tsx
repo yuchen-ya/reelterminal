@@ -10,12 +10,18 @@ import { EditorBootstrapGate } from "./editor/EditorBootstrapGate";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { useProjectStore } from "../stores/project-store";
 import { autoSaveManager } from "../services/auto-save";
+import { workspaceManager } from "../services/workspace-manager";
 import { UpdateBanner } from "./UpdateBanner";
 import { installRendererCrashHandlers, reportRendererCrash } from "./crash-reporting";
 import { installLiveBridge } from "../services/agent/live-bridge";
 import { useUIStore } from "../stores/ui-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { SettingsDialog } from "../components/editor/settings/SettingsDialog";
+import {
+  CloseRetentionDialog,
+  requestCloseRetention,
+  type CloseRetentionCandidate,
+} from "./CloseRetentionDialog";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { ToolcraftTooltip } from "@reelterminal/ui";
 import { Settings, CircleHelp, Github } from "@/icons/lucide-compat";
@@ -158,21 +164,97 @@ export function DesktopApp(): JSX.Element {
     return () => autoSaveManager.off("error", onAutoSaveError);
   }, [t]);
 
-  // Answer the native unsaved-changes guard on window close / quit: report
-  // dirty state and flush pending changes on request.
+  // Renderer half of the prepare-close flow (docs/VERSION-NODES-UX.md
+  // 关闭应用时留存版本): flush every open workspace (mandatory), then either
+  // retain versions per the stored preference or ask once. The window stays
+  // open on any failure or cancel.
+  const flushAllWorkspaces = useCallback(async (): Promise<void> => {
+    await workspaceManager.initialize();
+    const projects = await workspaceManager.listProjects();
+    for (const project of projects) {
+      const workspaces = await workspaceManager.listWorkspaces(project.id);
+      for (const workspace of workspaces) {
+        await workspaceManager.flushWorkspace({
+          projectId: project.id,
+          workspaceId: workspace.id,
+        });
+      }
+    }
+  }, []);
+
+  const retainAll = useCallback(
+    async (candidates: readonly CloseRetentionCandidate[]): Promise<void> => {
+      for (const candidate of candidates) {
+        // saveNode auto-names the node and dedupes unchanged content.
+        await workspaceManager.saveNode({
+          target: {
+            projectId: candidate.projectId,
+            workspaceId: candidate.workspaceId,
+          },
+        });
+      }
+    },
+    [],
+  );
+
+  const handlePrepareClose = useCallback(async (): Promise<boolean> => {
+    try {
+      await flushAllWorkspaces();
+    } catch (error) {
+      console.error("[lifecycle] workspace flush failed:", error);
+      toast.error(
+        t("closeRetention.flushFailed"),
+        error instanceof Error ? error.message : undefined,
+      );
+      return false;
+    }
+
+    let candidates: readonly CloseRetentionCandidate[];
+    try {
+      candidates = await workspaceManager.listRetentionCandidates();
+    } catch (error) {
+      // Retention discovery must not block a close whose mandatory flush
+      // already succeeded; treat it as "nothing worth retaining".
+      console.error("[lifecycle] retention candidate lookup failed:", error);
+      return true;
+    }
+    if (candidates.length === 0) return true;
+
+    const preference = useSettingsStore.getState().closeRetention;
+    if (preference === "skip") return true;
+
+    if (preference === "retain") {
+      try {
+        await retainAll(candidates);
+        return true;
+      } catch {
+        // Surface the failure state so the user can retry, close without the
+        // version (flush already succeeded), or cancel.
+        const decision = await requestCloseRetention(candidates, {
+          runRetention: () => retainAll(candidates),
+          startInFailure: true,
+        });
+        return decision !== "cancel";
+      }
+    }
+
+    const decision = await requestCloseRetention(candidates, {
+      runRetention: () => retainAll(candidates),
+    });
+    return decision !== "cancel";
+  }, [flushAllWorkspaces, retainAll, t]);
+
+  // Subscribe once; the ref keeps the handler fresh without resubscribing
+  // (main expects a stable listener for the lifetime of the window).
+  const prepareCloseRef = useRef(handlePrepareClose);
+  useEffect(() => {
+    prepareCloseRef.current = handlePrepareClose;
+  }, [handlePrepareClose]);
+
   useEffect(() => {
     const lifecycle = window.reelterminal?.lifecycle;
-    if (!lifecycle) return;
-    const offQuery = lifecycle.onQueryUnsaved(() =>
-      autoSaveManager.hasUnsavedChanges(useProjectStore.getState().getFullProject()),
-    );
-    const offFlush = lifecycle.onFlush(() =>
-      useProjectStore.getState().forceSave(),
-    );
-    return () => {
-      offQuery();
-      offFlush();
-    };
+    if (!lifecycle?.onPrepareClose) return;
+    return lifecycle.onPrepareClose(() => prepareCloseRef.current());
   }, []);
 
   return (
@@ -242,6 +324,7 @@ export function DesktopApp(): JSX.Element {
       </div>
       <UpdateBanner />
       <SettingsDialog />
+      <CloseRetentionDialog />
       <DesktopHelpDialog open={helpOpen} onOpenChange={setHelpOpen} canTour={showEditor && isVideoEditing} />
       <ToastContainer />
     </div>

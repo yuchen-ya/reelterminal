@@ -9,6 +9,8 @@ import { t } from "../i18n";
 import { useUIStore } from "../stores/ui-store";
 import { useTimelineStore } from "../stores/timeline-store";
 import { getPlaybackBridge } from "../bridges/playback-bridge";
+import { workspaceManager } from "../services/workspace-manager";
+import { isPreviewActive, blockPreviewEditInteraction, previewSession } from "../services/preview-session";
 import {
   deleteTimelineItem,
   duplicateTimelineItem,
@@ -123,11 +125,18 @@ export function useKeyboardShortcuts() {
     }
   }, [project, playheadPosition]);
 
+  // Editing shortcuts below are gated on the read-only version preview
+  // (docs/VERSION-NODES-UX.md 预览不会打断编辑): the timeline gates its own
+  // pointer/toolbar interactions, but these global handlers would otherwise
+  // mutate the previewed historical store. The first blocked attempt per
+  // session shows the "read-only" hint.
   const handleUndo = useCallback(() => {
+    if (blockPreviewEditInteraction()) return;
     undo();
   }, [undo]);
 
   const handleRedo = useCallback(() => {
+    if (blockPreviewEditInteraction()) return;
     redo();
   }, [redo]);
 
@@ -139,6 +148,7 @@ export function useKeyboardShortcuts() {
   }, [getSelectedClipIds, copyClips]);
 
   const handleCut = useCallback(() => {
+    if (blockPreviewEditInteraction()) return;
     const selectedIds = getSelectedClipIds();
     if (selectedIds.length > 0) {
       copyClips(selectedIds);
@@ -150,6 +160,7 @@ export function useKeyboardShortcuts() {
   }, [getSelectedClipIds, copyClips, clearSelection]);
 
   const handlePaste = useCallback(() => {
+    if (blockPreviewEditInteraction()) return;
     const currentTime = playheadPosition;
     const firstTrack = project.timeline.tracks[0];
     if (firstTrack) {
@@ -164,12 +175,14 @@ export function useKeyboardShortcuts() {
   }, [pasteClips, playheadPosition, project.timeline.tracks, selectMultiple]);
 
   const handleDuplicate = useCallback(() => {
+    if (blockPreviewEditInteraction()) return;
     const selectedIds = getSelectedClipIds();
     const store = useProjectStore.getState();
     selectedIds.forEach((id) => void duplicateTimelineItem(store, id));
   }, [getSelectedClipIds]);
 
   const handleDelete = useCallback(() => {
+    if (blockPreviewEditInteraction()) return;
     const transitionItems = useUIStore
       .getState()
       .selectedItems.filter((item) => item.type === "transition");
@@ -186,6 +199,7 @@ export function useKeyboardShortcuts() {
   }, [getSelectedClipIds, clearSelection]);
 
   const handleRippleDelete = useCallback(() => {
+    if (blockPreviewEditInteraction()) return;
     const selectedIds = getSelectedClipIds();
     const store = useProjectStore.getState();
     selectedIds
@@ -195,6 +209,7 @@ export function useKeyboardShortcuts() {
   }, [getSelectedClipIds, rippleDeleteClip, clearSelection]);
 
   const handleSplit = useCallback(() => {
+    if (blockPreviewEditInteraction()) return;
     const selectedIds = getSelectedClipIds();
     const splittableIds = getSplittableTimelineItemIds(
       project,
@@ -208,6 +223,7 @@ export function useKeyboardShortcuts() {
   }, [getSelectedClipIds, playheadPosition, project]);
 
   const handleTrimStart = useCallback(() => {
+    if (blockPreviewEditInteraction()) return;
     const selectedIds = getSelectedClipIds();
     const trimmableIds = getSplittableTimelineItemIds(
       project,
@@ -223,6 +239,7 @@ export function useKeyboardShortcuts() {
   }, [getSelectedClipIds, playheadPosition, project]);
 
   const handleTrimEnd = useCallback(() => {
+    if (blockPreviewEditInteraction()) return;
     const selectedIds = getSelectedClipIds();
     const trimmableIds = getSplittableTimelineItemIds(
       project,
@@ -269,14 +286,52 @@ export function useKeyboardShortcuts() {
     setShowShortcutsOverlay(true);
   }, []);
 
-  // The shortcut panel promises "Save project", so the handler must
-  // actually persist. This is the same durable store path the desktop
-  // lifecycle flush and the agent requestSave verb use (auto-save manager
-  // force flush, incl. recovery from a failed first-time init).
+  // Esc while a read-only version preview is active returns to current
+  // editing (docs/VERSION-NODES-UX.md 节点操作约定: Esc 先关闭菜单，正在
+  // 预览时返回当前编辑). Menus close themselves first via their own capture
+  // listeners, so this window-level listener only sees unmatched Esc presses.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (event.defaultPrevented) return;
+      if (!previewSession.getSnapshot().active) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      void previewSession.exit();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Ctrl+S only completes pending workspace writes (same persistence as
+  // auto-save). It never creates version nodes; versions are retained from
+  // the project menu or on close (docs/VERSION-NODES-UX.md 保存保持顺手).
+  // While a read-only preview is active, saving would risk committing preview
+  // content into the editing workspace, so it only acknowledges — the
+  // previewed version is already immutable.
   const handleSave = useCallback(() => {
-    void useProjectStore
-      .getState()
-      .forceSave()
+    if (isPreviewActive()) {
+      toast.info(t("versioning.previewSavedToast"));
+      return;
+    }
+    void (async () => {
+      await workspaceManager.initialize();
+      const state = useProjectStore.getState();
+      const target = state.workspaceId
+        ? { projectId: state.project.id, workspaceId: state.workspaceId }
+        : workspaceManager.getActiveTarget();
+      if (!target || target.projectId !== state.project.id) throw new Error("The save target is no longer open");
+      await workspaceManager.flushWorkspace(target);
+    })()
       .then(() => {
         toast.success(t("settings.autoSaveSaved"));
       })

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import type { IpcMainEvent } from "electron";
 import { CHANNELS } from "../shared/ipc-contract";
 
@@ -16,9 +16,16 @@ export function markQuitting(): void {
 }
 
 // Sentinel returned when the renderer does not reply within the timeout, so
-// callers can distinguish "no answer" from a genuine reply and fail safe — a
-// non-answer must never be read as "clean" or "saved".
+// callers can distinguish "no answer" from a genuine reply.
 const NO_REPLY = Symbol("no-reply");
+
+// The renderer needs time to flush every open workspace and (optionally)
+// retain versions behind the close dialog, so this is far more generous than
+// the old dirty-state poll. Persistence is continuous — draft writes complete
+// during editing — which is also what an OS force-kill relies on, so a
+// renderer that goes silent is treated as safe to close rather than trapping
+// the user in a window that can never close.
+const PREPARE_CLOSE_TIMEOUT_MS = 20_000;
 
 function requestFromRenderer(
   win: BrowserWindow,
@@ -48,6 +55,14 @@ function requestFromRenderer(
   });
 }
 
+function isAllowReply(payload: unknown): boolean {
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    (payload as { allow?: unknown }).allow === true
+  );
+}
+
 function finalizeClose(win: BrowserWindow): void {
   forceClose.add(win);
   if (quitting) {
@@ -58,69 +73,25 @@ function finalizeClose(win: BrowserWindow): void {
 }
 
 async function handleGuardedClose(win: BrowserWindow): Promise<void> {
-  const dirtyReply = await requestFromRenderer(
+  // Renderer-driven prepare-close: the renderer flushes every open workspace
+  // (mandatory), optionally retains versions per the user's close preference,
+  // and answers { allow }. allow=true → close; allow=false → keep the window
+  // (flush failed or the user cancelled the retention dialog).
+  const reply = await requestFromRenderer(
     win,
-    CHANNELS.lifecycleUnsavedQuery,
-    CHANNELS.lifecycleUnsavedReply,
-    1500,
+    CHANNELS.lifecyclePrepareCloseQuery,
+    CHANNELS.lifecyclePrepareCloseReply,
+    PREPARE_CLOSE_TIMEOUT_MS,
   );
-  // Fail safe: a hung/crashed/slow renderer (NO_REPLY) is treated as possibly
-  // dirty so the user is prompted rather than silently losing work.
-  const dirty = dirtyReply === NO_REPLY ? true : Boolean(dirtyReply);
 
-  if (!dirty) {
+  if (reply === NO_REPLY || isAllowReply(reply)) {
     finalizeClose(win);
     return;
   }
 
-  const { response } = await dialog.showMessageBox(win, {
-    type: "warning",
-    buttons: ["Save", "Don't Save", "Cancel"],
-    defaultId: 0,
-    cancelId: 2,
-    noLink: true,
-    title: "Unsaved changes",
-    message: "Do you want to save the changes to your project?",
-    detail: "Your changes will be lost if you don't save them.",
-  });
-
-  if (response === 2) {
-    // Cancelled — abort any in-progress quit so a later close re-prompts.
-    quitting = false;
-    return;
-  }
-
-  // Don't Save — discard and close.
-  if (response === 1) {
-    finalizeClose(win);
-    return;
-  }
-
-  // Save — flush and only close if the renderer confirms success. On timeout
-  // or failure, keep the window open so the unsaved work is preserved.
-  const flushReply = await requestFromRenderer(
-    win,
-    CHANNELS.lifecycleFlush,
-    CHANNELS.lifecycleFlushed,
-    8000,
-  );
-  if (flushReply === true) {
-    finalizeClose(win);
-    return;
-  }
-
+  // Denied or malformed reply — abort any in-progress quit so a later close
+  // re-prompts instead of silently closing behind the user's back.
   quitting = false;
-  if (!win.isDestroyed()) {
-    await dialog.showMessageBox(win, {
-      type: "error",
-      buttons: ["OK"],
-      defaultId: 0,
-      title: "Could not save",
-      message: "Your changes could not be saved.",
-      detail:
-        "Your project is still open so you can try again or save it manually.",
-    });
-  }
 }
 
 export function attachUnsavedGuard(win: BrowserWindow): void {

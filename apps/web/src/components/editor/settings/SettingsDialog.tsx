@@ -6,10 +6,11 @@ import { ToolcraftSegmentedControl } from "@reelterminal/ui";
 import { ToolcraftLayout as Layout, ToolcraftLayoutContent as LayoutContent } from "@reelterminal/ui";
 import { useSettingsStore } from "../../../stores/settings-store";
 import { GeneralPanel } from "./GeneralPanel";
+import { SavingPanel } from "./SavingPanel";
 import { StoragePanel } from "./StoragePanel";
 import { KeyboardShortcutsPanel } from "./KeyboardShortcutsPanel";
 
-type SettingsPanelId = "general" | "storage" | "shortcuts";
+type SettingsPanelId = "general" | "saving" | "storage" | "shortcuts";
 
 export const SettingsDialog: React.FC = () => {
   const { t } = useTranslation();
@@ -50,12 +51,15 @@ export const SettingsDialog: React.FC = () => {
                 onChange={setActivePanel}
                 options={[
                   { value: "general", label: t("settingsDialog.general") },
+                  { value: "saving", label: t("settingsDialog.savingTab") },
                   { value: "storage", label: t("settingsDialog.storage") },
                   { value: "shortcuts", label: t("settingsDialog.shortcuts") },
                 ]}
               />
               {activePanel === "general" ? (
                 <GeneralPanel />
+              ) : activePanel === "saving" ? (
+                <SavingPanel />
               ) : activePanel === "storage" ? (
                 <StoragePanel />
               ) : (

@@ -388,8 +388,12 @@ interface ReelTerminalDesktopBridge {
         isMaximized(): Promise<boolean>;
       };
       lifecycle: {
-        onQueryUnsaved(handler: () => boolean): () => void;
-        onFlush(handler: () => Promise<void>): () => void;
+        /**
+         * Main asks the renderer to prepare for close: flush all open
+         * workspaces and optionally retain versions. Resolve with true to
+         * allow the close, false to keep the window open.
+         */
+        onPrepareClose(handler: () => Promise<boolean>): () => void;
       };
       updater: {
         onStatus(cb: (status: OpenReelUpdaterStatus) => void): () => void;
@@ -419,6 +423,35 @@ interface ReelTerminalDesktopBridge {
           body: ArrayBuffer;
           error?: string;
         }>;
+      };
+      mediaStore?: {
+        beginWrite(args: { projectId: string; mediaId: string; expectedHash: string; extension: string }): Promise<string>;
+        writeChunk(sessionId: string, data: ArrayBuffer | Uint8Array): Promise<void>;
+        commitWrite(sessionId: string): Promise<{ path: string; contentHash: string; created: boolean }>;
+        abortWrite(sessionId: string): Promise<void>;
+        read(args: { projectId: string; mediaId: string }): Promise<ArrayBuffer | null>;
+        readAny(mediaId: string): Promise<ArrayBuffer | null>;
+        getVersion(mediaId: string): Promise<{
+          projectId: string;
+          mediaId: string;
+          path: string;
+          sizeBytes: number;
+          contentHash: string;
+        } | null>;
+        delete(mediaId: string): Promise<void>;
+        listProject(projectId: string): Promise<{
+          projectId: string;
+          mediaId: string;
+          path: string;
+          sizeBytes: number;
+        }[]>;
+        listAll(): Promise<{
+          projectId: string;
+          mediaId: string;
+          path: string;
+          sizeBytes: number;
+        }[]>;
+        clearAll(): Promise<void>;
       };
       rigging?: {
         probeBackend(): Promise<OpenReelRiggingBackendProbe>;
