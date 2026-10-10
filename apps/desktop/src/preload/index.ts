@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from "ele
 import { DESKTOP_EXPORT_PORT_MARKER } from "@reelterminal/agent-facade/desktop-protocol";
 import { CHANNELS } from "../shared/channels";
 import type {
+  LifecyclePrepareCloseQuery,
+  LifecyclePrepareCloseReply,
+} from "../shared/channels";
+import type {
   AgentAccessMode,
   LiveBridgeReply,
   LiveBridgeRequest,
@@ -246,26 +250,36 @@ const api = {
       ipcRenderer.invoke(CHANNELS.agentTaskImport, args),
   },
   lifecycle: {
-    // The main process asks the renderer to prepare for close (window close
-    // or quit): flush every open workspace, optionally retain versions per
-    // the user's preference, then resolve with true to allow the close or
-    // false to keep the window. A handler error reports allow=false so a
-    // broken flush can never be mistaken for a safe close; main handles a
-    // total silence (timeout) by closing, relying on continuous persistence.
+    // Prepare-close protocol (window close or quit): main sends a query
+    // carrying a requestId; this bridge flushes nothing itself — it just calls
+    // the handler (flush every open workspace, optionally retain versions per
+    // the user's preference) and answers { requestId, allow } on the reply
+    // channel. The requestId echo is the transport's job: main drops replies
+    // whose id does not match its CURRENT handshake, so a late answer from an
+    // earlier (cancelled or superseded) handshake can never close the window.
+    // If the handler never settles, main offers a recovery dialog after 30s
+    // (continue waiting / cancel close / force close); only an explicit force
+    // skips this renderer's save handshake. A handler error reports
+    // allow=false so a broken flush can never be mistaken for a safe close.
     onPrepareClose: (handler: () => Promise<boolean>) => {
-      const listener = () => {
+      const listener = (
+        _event: unknown,
+        query: LifecyclePrepareCloseQuery | undefined,
+      ) => {
+        // Defensive read: a query without an id can only produce a reply that
+        // main will drop, which is the safe outcome for a malformed query.
+        const requestId =
+          typeof query?.requestId === "string" ? query.requestId : "";
+        const answer = (allow: boolean): void => {
+          const reply: LifecyclePrepareCloseReply = { requestId, allow };
+          ipcRenderer.send(CHANNELS.lifecyclePrepareCloseReply, reply);
+        };
         void Promise.resolve()
           .then(handler)
-          .then((allow) =>
-            ipcRenderer.send(CHANNELS.lifecyclePrepareCloseReply, {
-              allow: allow === true,
-            }),
-          )
+          .then((allow) => answer(allow === true))
           .catch((error) => {
             console.error("[lifecycle] prepare-close failed:", error);
-            ipcRenderer.send(CHANNELS.lifecyclePrepareCloseReply, {
-              allow: false,
-            });
+            answer(false);
           });
       };
       ipcRenderer.on(CHANNELS.lifecyclePrepareCloseQuery, listener);

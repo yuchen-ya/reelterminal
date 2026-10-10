@@ -174,7 +174,10 @@ export function DesktopApp(): JSX.Element {
   // Renderer half of the prepare-close flow (docs/VERSION-NODES-UX.md
   // 关闭应用时留存版本): flush every open workspace (mandatory), then either
   // retain versions per the stored preference or ask once. The window stays
-  // open on any failure or cancel.
+  // open on any failure or cancel. The handler only makes the allow/deny
+  // decision: the preload bridge owns the transport, echoing the query's
+  // requestId in the reply so main can ignore stale answers from an earlier
+  // handshake (e.g. one superseded by the unresponsive-close recovery dialog).
   const flushAllWorkspaces = useCallback(async (): Promise<void> => {
     await workspaceManager.flushOpenWorkspaces();
   }, []);

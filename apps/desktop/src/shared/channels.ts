@@ -51,7 +51,8 @@ export const CHANNELS = {
   windowIsMaximized: "reelterminal:window:isMaximized",
   // Prepare-close: main asks the renderer to flush every open workspace and
   // optionally retain versions per the user's preference; the renderer
-  // answers { allow } on the reply channel.
+  // answers { requestId, allow } on the reply channel, echoing the query's
+  // requestId so main can drop stale replies from an earlier handshake.
   lifecyclePrepareCloseQuery: "reelterminal:lifecycle:prepareCloseQuery",
   lifecyclePrepareCloseReply: "reelterminal:lifecycle:prepareCloseReply",
   updaterStatus: "reelterminal:updater:status",
@@ -80,3 +81,21 @@ export const CHANNELS = {
   dataRootGetInfo: "reelterminal:dataRoot:getInfo",
   dataRootChange: "reelterminal:dataRoot:change",
 } as const;
+
+/** Main → renderer: ask the renderer to prepare for close (window close or quit). */
+export interface LifecyclePrepareCloseQuery {
+  /**
+   * Unique id for this close handshake. The reply must echo it verbatim;
+   * main ignores replies carrying any other id so a late answer from an
+   * earlier (cancelled or superseded) handshake can never close the window.
+   */
+  requestId: string;
+}
+
+/** Renderer → main: answer to a LifecyclePrepareCloseQuery. */
+export interface LifecyclePrepareCloseReply {
+  /** Must equal the query's requestId, or the reply is ignored as stale. */
+  requestId: string;
+  /** true → close (flush succeeded, no veto); false → keep the window open. */
+  allow: boolean;
+}
