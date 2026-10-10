@@ -13,6 +13,7 @@ import { FONT_LIBRARY_LIMITS, type FontUploadParams } from "./font-library";
 import { presetApplyTargetProblem } from "./preset-verbs";
 import { validatePresetPayload } from "@reelterminal/core/presets/validate";
 import { hasUrlScheme, resolveContainedPathDetailed } from "./media/path-roots";
+import { validateFontUploadSource } from "./verb-param-rules";
 import { readFile as readFileFontBytes, stat } from "node:fs/promises";
 import { basename, isAbsolute } from "node:path";
 import type { FacadeVerb } from "./types";
@@ -83,23 +84,19 @@ export async function resolveLibraryMediaPath(
 }
 
 /**
- * Decode + validate the font bytes for one upload request: exactly one of
- * filePath/dataBase64, media-root containment for paths, 10 MiB decoded
- * budget. Returns the bytes plus the base name the family derives from
- * (matching the renderer's own name derivation).
+ * Decode + validate the font bytes for one upload request: the shared
+ * exactly-one-of filePath/dataBase64 rule (validateFontUploadSource),
+ * media-root containment for paths, 10 MiB decoded budget. Returns the bytes
+ * plus the base name the family derives from (matching the renderer's own
+ * name derivation).
  */
 export async function resolveFontUploadBytes(
   valid: FontUploadParams,
   roots: readonly string[],
 ): Promise<{ data: ArrayBuffer; baseName: string }> {
+  validateFontUploadSource(valid);
+
   const hasPath = valid.filePath !== undefined;
-  const hasBase64 = valid.dataBase64 !== undefined;
-  if (hasPath === hasBase64) {
-    throw new FacadeError(
-      "INVALID_PARAMS",
-      "font.upload: exactly one of filePath or dataBase64 is required",
-    );
-  }
 
   let data: ArrayBuffer;
   let baseName: string;

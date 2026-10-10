@@ -27,7 +27,8 @@ import type { Project } from "@reelterminal/core/types/project";
 import { createAgentFacade, createLiveFacade, LiveWriterLease } from "./index";
 import { AgentFacadeSession } from "./session";
 import { LiveFacadeSession } from "./live-session";
-import type { FacadeResult } from "./errors";
+import { FacadeError, type FacadeResult } from "./errors";
+import { validateFontUploadSource } from "./verb-param-rules";
 import {
   collectEntityIds,
   diffCreatedIdsByCategory,
@@ -863,5 +864,41 @@ describe("verify.artifact path/compare rules (shared)", () => {
       });
       expect(got.ok, `${key}: legal verify succeeds`).toBe(true);
     }
+  });
+});
+
+/* ------------------------ font.upload source rule ----------------------- */
+
+describe("font.upload exactly-one-source rule (shared validateFontUploadSource)", () => {
+  const EXPECTED_MESSAGE =
+    "font.upload: exactly one of filePath or dataBase64 is required";
+
+  function catchFacadeError(run: () => void): FacadeError {
+    try {
+      run();
+    } catch (error) {
+      expect(error, "the rule must throw FacadeError").toBeInstanceOf(FacadeError);
+      return error as FacadeError;
+    }
+    throw new Error("expected validateFontUploadSource to throw, but it returned");
+  }
+
+  it("throws the exact shared INVALID_PARAMS message when both sources are missing", () => {
+    const error = catchFacadeError(() => validateFontUploadSource({}));
+    expect(error.code).toBe("INVALID_PARAMS");
+    expect(error.message).toBe(EXPECTED_MESSAGE);
+  });
+
+  it("throws the exact shared INVALID_PARAMS message when both sources are given", () => {
+    const error = catchFacadeError(() =>
+      validateFontUploadSource({ filePath: "/media/fonts/a.ttf", dataBase64: "AAAA" }),
+    );
+    expect(error.code).toBe("INVALID_PARAMS");
+    expect(error.message).toBe(EXPECTED_MESSAGE);
+  });
+
+  it("returns without throwing when exactly one source is given (each side)", () => {
+    expect(() => validateFontUploadSource({ filePath: "/media/fonts/a.ttf" })).not.toThrow();
+    expect(() => validateFontUploadSource({ dataBase64: "AAAA" })).not.toThrow();
   });
 });

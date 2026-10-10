@@ -1,5 +1,4 @@
 import { FacadeError, toFailure, type FacadeResult } from "./errors";
-import { validateEditOp } from "./ops";
 import { validateObject } from "./validate";
 import { WORKSPACE_VERB_SCHEMAS } from "./workspace-schemas";
 import {
@@ -13,8 +12,10 @@ import {
 import {
   parseVerifyCompare,
   parseVerifyExpect,
+  validateEditOpList,
   validateEditorControlAction,
   validateEditorControlTargets,
+  validateFontUploadSource,
   validateTimelineQueryTimeRange,
   validateVisualInspectTimeRange,
 } from "./verb-param-rules";
@@ -52,7 +53,7 @@ function validateFacadeFields(verb: string, params: unknown, mode: "headless" | 
       return;
     case "edit.validate":
     case "edit.apply": {
-      const ops = (valid.ops as unknown[]).map((raw, index) => validateEditOp(raw, index));
+      const ops = validateEditOpList(valid.ops as unknown[]);
       if (ops.length === 0) {
         throw new FacadeError("INVALID_PARAMS", `${verb}: ops must contain at least one op`);
       }
@@ -94,9 +95,7 @@ function validateFacadeFields(verb: string, params: unknown, mode: "headless" | 
       }
       return;
     case "font.upload":
-      if ((valid.filePath === undefined) === (valid.dataBase64 === undefined)) {
-        throw new FacadeError("INVALID_PARAMS", "font.upload: exactly one of filePath or dataBase64 is required");
-      }
+      validateFontUploadSource(valid);
       return;
     case "preset.create": {
       const payload = validatePresetPayload(valid.payload);

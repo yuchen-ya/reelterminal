@@ -13,7 +13,10 @@
  * an explicit parameter, not as a second copy of the rule:
  *  - verify.artifact reference resolution: headless falls back to mediaRoots,
  *    live does not (a live session has no mediaRoots — see LiveFacadeConfig).
- * Everything else was (and stays) byte-identical between the two entries.
+ * Everything else — including the font.upload exactly-one-of
+ * filePath/dataBase64 source rule (also carried by the live byte plumbing in
+ * live-library-params.ts) — was (and stays) byte-identical between the
+ * entries and lives only here.
  */
 import type { Project } from "@reelterminal/core/types/project";
 import { stat } from "node:fs/promises";
@@ -203,6 +206,26 @@ export function parseEditOps(
   const parsed = validateEditOpList(ops);
   assertValidEditBatch(verb, parsed);
   return parsed;
+}
+
+/* ---------------------------- font.upload ----------------------------- */
+
+/**
+ * Source xor rule: exactly one of filePath or dataBase64 — byte-identical
+ * (code and message) at the factory boundary (request-validation.ts) and in
+ * the live byte plumbing (live-library-params.ts resolveFontUploadBytes)
+ * before this extraction; this is the ONE copy.
+ */
+export function validateFontUploadSource(valid: {
+  readonly filePath?: unknown;
+  readonly dataBase64?: unknown;
+}): void {
+  if ((valid.filePath === undefined) === (valid.dataBase64 === undefined)) {
+    throw new FacadeError(
+      "INVALID_PARAMS",
+      "font.upload: exactly one of filePath or dataBase64 is required",
+    );
+  }
 }
 
 /* ---------------------------- verify.artifact ------------------------- */
