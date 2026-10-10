@@ -1,4 +1,5 @@
 import { ReviewRangeControl } from "./preview/ReviewRangeControl";
+import { collectNativePlaybackImageClips } from "./preview/native-playback-image-clips";
 import React, {
   useRef,
   useEffect,
@@ -3037,18 +3038,14 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       // Note: Text/graphics overlays are now supported in native video playback
       // They are rendered using CPU canvas2D after the video frame
 
-      // Collect image clips for background compositing (don't disable native playback)
-      const imageTracks = tracks.filter((t) => t.type === "image" && !t.hidden);
-      const imageClips: Array<{
-        clip: (typeof tracks)[0]["clips"][0];
-        trackIndex: number;
-      }> = [];
-      imageTracks.forEach((track) => {
-        const trackIndex = tracks.indexOf(track);
-        for (const clip of track.clips) {
-          imageClips.push({ clip, trackIndex });
-        }
-      });
+      // Collect image clips for background compositing (don't disable native
+      // playback). Image clips may also sit on video tracks (e.g. a JPG still
+      // next to MP4 clips) — collecting only image tracks made those stills
+      // invisible during playback while the paused preview showed them.
+      const imageClips = collectNativePlaybackImageClips(
+        tracks,
+        (clip) => getMediaItem(clip.mediaId)?.type,
+      );
 
       if (imageClips.some(({ clip }) => clipMasksById.has(clip.id))) {
         return { canUse: false, clips: [] };
