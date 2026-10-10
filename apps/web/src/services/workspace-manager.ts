@@ -1,4 +1,4 @@
-import { hashMediaBlob, type Action, type Project } from "@reelterminal/core";
+import { type Action, type Project } from "@reelterminal/core";
 import { v4 as uuidv4 } from "uuid";
 import i18next from "i18next";
 import { useUIStore, type SelectionItem } from "../stores/ui-store";
@@ -15,14 +15,13 @@ import type {
   ActionBatchResult,
 } from "../stores/project/action-batch";
 import { withMediaReferenceWrite } from "./media-storage";
-import { loadProjectMedia, loadProjectMediaMetadata } from "./media-storage";
+import { loadProjectMedia } from "./media-storage";
 import { restoreMediaItem } from "../utils/media-recovery";
 import { getUniqueProjectName } from "../utils/project-names";
 import { autoSaveManager } from "./auto-save";
 import { blockProjectExports, getExportingProjectIds, unblockProjectExports } from "./project-export-activity";
 import {
   collectFontFamilies,
-  getMissingProjectRenderDependencyIds,
   installProjectRenderFonts,
   prepareProjectRenderFonts,
   releaseProjectRenderFonts,
@@ -39,9 +38,23 @@ import {
   stableStringify,
   transactionDone,
 } from "./workspace-record-transforms";
+import {
+  enrichNodeRenderDependencies,
+  missingProjectDependencies,
+} from "./workspace-dependency-audit";
+import { WorkspaceManagerError, type MediaReferencePurpose } from "./workspace-manager-errors";
 
 // Kept on the original import path for existing consumers (tests).
 export { isSubstantiveProject };
+
+// Error identity lives in ./workspace-manager-errors; the re-exports keep the
+// original "./workspace-manager" import path working for existing consumers
+// (tests, agent bridges, media GC).
+export { WorkspaceManagerError } from "./workspace-manager-errors";
+export type {
+  MediaReferencePurpose,
+  WorkspaceManagerErrorCode,
+} from "./workspace-manager-errors";
 
 const DB_NAME = "reelterminal-workspaces";
 const DB_VERSION = 3;
@@ -53,26 +66,6 @@ const DRAFTS = "drafts";
 const IDEMPOTENCY = "idempotency";
 const TASK_INPUTS = "taskInputs";
 const FOLDERS = "folders";
-
-export type WorkspaceManagerErrorCode = "CONFLICT" | "NOT_FOUND" | "INVALID_PARAMS";
-
-/**
- * Failure identity for workspace-manager operations. The human message stays
- * stable; agent bridges classify through `code` via `instanceof` or the
- * duck-typed `(error as { code?: string }).code` shape instead of matching on
- * message substrings.
- */
-export class WorkspaceManagerError extends Error {
-  readonly code: WorkspaceManagerErrorCode;
-  readonly details?: unknown;
-
-  constructor(code: WorkspaceManagerErrorCode, message: string, details?: unknown) {
-    super(message);
-    this.name = "WorkspaceManagerError";
-    this.code = code;
-    if (details !== undefined) this.details = details;
-  }
-}
 
 export interface WorkspaceTarget {
   projectId: string;
@@ -191,14 +184,6 @@ export interface PreviewHandle {
   missingDependencies: string[];
   dispose(): Promise<void>;
 }
-
-/**
- * Machine-readable retention purpose of a media reference. GC decisions
- * (`estimateProjectPurge`) key on this field; `label` is display-only.
- * Absent purpose on a task-kind reference is conservatively retained
- * (treated like a task result, never as a purgeable task input).
- */
-export type MediaReferencePurpose = "task-input" | "task-result" | "export";
 
 export interface MediaReference {
   mediaId: string;
@@ -356,56 +341,6 @@ export function applyViewState(state: WorkspaceViewState | null): void {
     playheadInteractionRevision: useTimelineStore.getState().playheadInteractionRevision + 1,
     playbackState: "paused",
   });
-}
-
-async function missingProjectDependencies(project: Project): Promise<string[]> {
-  const available = new Set(project.mediaLibrary.items.map((item) => item.id));
-  const missing = new Set<string>();
-  // The archive check compares hashes only; byte reads happen solely for
-  // records that predate versioned media (no trusted stored hash).
-  const storedMedia = new Map((await loadProjectMediaMetadata(
-    project.id,
-    project.mediaLibrary.items.map((item) => item.id),
-  )).map((item) => [item.id, item]));
-  for (const item of project.mediaLibrary.items) {
-    const stored = storedMedia.get(item.id);
-    if (item.isPlaceholder || !stored) {
-      missing.add(item.id);
-    } else if (item.contentHash) {
-      // A hash computed from legacy bytes is deliberately not persisted back:
-      // the only write path re-puts the whole inline-blob record, re-reading
-      // the bytes this check just avoided, and runs outside the media
-      // reference-write lock on the preview caller path.
-      const storedHash = stored.contentHash
-        ?? (stored.blob ? await hashMediaBlob(stored.blob) : undefined);
-      if (storedHash !== item.contentHash) missing.add(item.id);
-    }
-  }
-  for (const mediaId of projectMediaIds(project)) {
-    if (!available.has(mediaId)) missing.add(mediaId);
-  }
-  for (const dependencyId of await getMissingProjectRenderDependencyIds(project)) {
-    missing.add(dependencyId);
-  }
-  return [...missing].sort();
-}
-
-async function enrichNodeRenderDependencies(node: ProjectNodeRecord): Promise<ProjectNodeRecord> {
-  const project = cloneProject(await prepareProjectRenderFonts(node.project));
-  const renderDependencies = await getMissingProjectRenderDependencyIds(project);
-  const nonRenderDependencies = node.missingDependencies.filter((dependency) =>
-    !dependency.startsWith("font:") &&
-    !dependency.startsWith("font-render:") &&
-    !dependency.startsWith("image:"),
-  );
-  // `node` is a fresh private record from readOne; the fields kept from it are
-  // never mutated below, so a deep clone of the whole record (including the
-  // heavy `project` that is replaced wholesale) would be pure waste.
-  return {
-    ...node,
-    project,
-    missingDependencies: [...new Set([...nonRenderDependencies, ...renderDependencies])].sort(),
-  };
 }
 
 export class WorkspaceManager {
