@@ -20,8 +20,35 @@ function createStorageError(
   code: StorageErrorCode,
   message: string,
   quotaInfo?: StorageError["quotaInfo"],
+  cause?: unknown,
 ): StorageError {
-  return { code, message, quotaInfo };
+  if (cause === undefined) {
+    return { code, message, quotaInfo };
+  }
+  const name = (cause as { name?: unknown } | null | undefined)?.name;
+  return {
+    code,
+    message,
+    quotaInfo,
+    ...(typeof name === "string" && name.length > 0 ? { name } : {}),
+    cause,
+  };
+}
+
+/**
+ * Wrap an underlying IndexedDB/DOM error into a StorageError while preserving
+ * its identity: the original `name` (e.g. "QuotaExceededError", "AbortError",
+ * "ConstraintError") and the error itself as `cause`. Quota failures classify
+ * as QUOTA_EXCEEDED; everything else stays DATABASE_ERROR.
+ */
+function wrapStorageError(cause: unknown, message: string): StorageError {
+  const name = (cause as { name?: unknown } | null | undefined)?.name;
+  return createStorageError(
+    name === "QuotaExceededError" ? "QUOTA_EXCEEDED" : "DATABASE_ERROR",
+    message,
+    undefined,
+    cause,
+  );
 }
 
 export class StorageEngine implements IStorageEngine {
@@ -58,8 +85,8 @@ export class StorageEngine implements IStorageEngine {
 
       request.onerror = () => {
         reject(
-          createStorageError(
-            "DATABASE_ERROR",
+          wrapStorageError(
+            request.error,
             `Failed to open database: ${request.error?.message}`,
           ),
         );
@@ -133,6 +160,13 @@ export class StorageEngine implements IStorageEngine {
    * Wraps callback-based IDB API in Promise for easier async/await handling.
    * Automatically creates transaction with specified mode and stores.
    *
+   * The promise settles only when the transaction reaches a final outcome:
+   * it resolves on `tx.oncomplete` (the point where writes are durable) and
+   * rejects on `tx.onabort`. A request error that is not preventDefault'ed
+   * aborts the transaction, and the request's `error` event fires before the
+   * transaction's `abort` event, so `onabort` is the single failure
+   * settlement point and keeps the triggering request error's identity.
+   *
    * Note: IDB transactions are short-lived. If the promise doesn't resolve quickly,
    * the transaction may abort. Large operations should batch requests.
    */
@@ -155,15 +189,21 @@ export class StorageEngine implements IStorageEngine {
       // Execute the operation callback to get the request
       const request = operation(stores);
 
-      // Promise resolution based on IDB request lifecycle
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () =>
-        reject(
-          createStorageError(
-            "DATABASE_ERROR",
-            `Transaction failed: ${request.error?.message}`,
-          ),
-        );
+      // Record the request error for identity; do not preventDefault so the
+      // transaction aborts and settles the promise below.
+      let requestError: unknown = null;
+      request.onerror = () => {
+        requestError = request.error;
+      };
+
+      // Success of the individual request is not enough — the value is only
+      // durable once the transaction commits.
+      tx.oncomplete = () => resolve(request.result);
+
+      tx.onabort = () => {
+        const cause = requestError ?? tx.error ?? new DOMException("The transaction was aborted", "AbortError");
+        reject(wrapStorageError(cause, `Transaction failed: ${(cause as Error).message}`));
+      };
     });
   }
 
@@ -179,14 +219,15 @@ export class StorageEngine implements IStorageEngine {
       const target = indexName ? store.index(indexName) : store;
       const request = query ? target.getAll(query) : target.getAll();
 
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () =>
-        reject(
-          createStorageError(
-            "DATABASE_ERROR",
-            `Failed to get all: ${request.error?.message}`,
-          ),
-        );
+      let requestError: unknown = null;
+      request.onerror = () => {
+        requestError = request.error;
+      };
+      tx.oncomplete = () => resolve(request.result);
+      tx.onabort = () => {
+        const cause = requestError ?? tx.error ?? new DOMException("The transaction was aborted", "AbortError");
+        reject(wrapStorageError(cause, `Failed to get all: ${(cause as Error).message}`));
+      };
     });
   }
 
@@ -211,6 +252,8 @@ export class StorageEngine implements IStorageEngine {
       throw createStorageError(
         "SERIALIZATION_FAILED",
         `Failed to serialize project: ${(error as Error).message}`,
+        undefined,
+        error,
       );
     }
   }
@@ -235,6 +278,8 @@ export class StorageEngine implements IStorageEngine {
       throw createStorageError(
         "DESERIALIZATION_FAILED",
         `Failed to deserialize project: ${(error as Error).message}`,
+        undefined,
+        error,
       );
     }
   }
@@ -281,14 +326,15 @@ export class StorageEngine implements IStorageEngine {
       const store = tx.objectStore(STORES.PROJECTS);
       const request = store.delete(id);
 
-      request.onsuccess = () => resolve();
-      request.onerror = () =>
-        reject(
-          createStorageError(
-            "DATABASE_ERROR",
-            `Failed to delete project: ${request.error?.message}`,
-          ),
-        );
+      let requestError: unknown = null;
+      request.onerror = () => {
+        requestError = request.error;
+      };
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => {
+        const cause = requestError ?? tx.error ?? new DOMException("The transaction was aborted", "AbortError");
+        reject(wrapStorageError(cause, `Failed to delete project: ${(cause as Error).message}`));
+      };
     });
   }
 
@@ -321,7 +367,14 @@ export class StorageEngine implements IStorageEngine {
       return;
     } catch (error) {
       // Another tab may have committed the same new version in parallel, or
-      // this may be an idempotent replay. Accept only byte-identical content.
+      // this may be an idempotent replay. `add` signals a duplicate key with
+      // ConstraintError — only that case may run the merge below, and it
+      // accepts only byte-identical content. Every other failure (quota,
+      // abort, anything else) must propagate untouched: converting it into a
+      // lookup/merge would mask the failure as success.
+      if ((error as { name?: string } | null | undefined)?.name !== "ConstraintError") {
+        throw error;
+      }
       const existing = await this.loadMedia(media.id);
       if (!existing) throw error;
       await mergeExisting(existing);
@@ -366,15 +419,15 @@ export class StorageEngine implements IStorageEngine {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(STORES.MEDIA, "readonly");
       const request = tx.objectStore(STORES.MEDIA).index("projectIds").getAllKeys(projectId);
-      request.onsuccess = () =>
-        resolve(request.result.map((key) => String(key)));
-      request.onerror = () =>
-        reject(
-          createStorageError(
-            "DATABASE_ERROR",
-            `Failed to list media ids: ${request.error?.message}`,
-          ),
-        );
+      let requestError: unknown = null;
+      request.onerror = () => {
+        requestError = request.error;
+      };
+      tx.oncomplete = () => resolve(request.result.map((key) => String(key)));
+      tx.onabort = () => {
+        const cause = requestError ?? tx.error ?? new DOMException("The transaction was aborted", "AbortError");
+        reject(wrapStorageError(cause, `Failed to list media ids: ${(cause as Error).message}`));
+      };
     });
   }
 
@@ -416,14 +469,15 @@ export class StorageEngine implements IStorageEngine {
       const store = tx.objectStore(STORES.CACHE);
       const request = store.clear();
 
-      request.onsuccess = () => resolve();
-      request.onerror = () =>
-        reject(
-          createStorageError(
-            "DATABASE_ERROR",
-            `Failed to clear cache: ${request.error?.message}`,
-          ),
-        );
+      let requestError: unknown = null;
+      request.onerror = () => {
+        requestError = request.error;
+      };
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => {
+        const cause = requestError ?? tx.error ?? new DOMException("The transaction was aborted", "AbortError");
+        reject(wrapStorageError(cause, `Failed to clear cache: ${(cause as Error).message}`));
+      };
     });
   }
 
@@ -455,16 +509,30 @@ export class StorageEngine implements IStorageEngine {
       const tx = db.transaction(STORES.PROJECTS, "readonly");
       const store = tx.objectStore(STORES.PROJECTS);
       const request = store.count();
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      let requestError: unknown = null;
+      request.onerror = () => {
+        requestError = request.error;
+      };
+      tx.oncomplete = () => resolve(request.result);
+      tx.onabort = () => {
+        const cause = requestError ?? tx.error ?? new DOMException("The transaction was aborted", "AbortError");
+        reject(wrapStorageError(cause, `Failed to count projects: ${(cause as Error).message}`));
+      };
     });
 
     const mediaCount = await new Promise<number>((resolve, reject) => {
       const tx = db.transaction(STORES.MEDIA, "readonly");
       const store = tx.objectStore(STORES.MEDIA);
       const request = store.count();
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      let requestError: unknown = null;
+      request.onerror = () => {
+        requestError = request.error;
+      };
+      tx.oncomplete = () => resolve(request.result);
+      tx.onabort = () => {
+        const cause = requestError ?? tx.error ?? new DOMException("The transaction was aborted", "AbortError");
+        reject(wrapStorageError(cause, `Failed to count media: ${(cause as Error).message}`));
+      };
     });
 
     let used = 0;
@@ -492,8 +560,15 @@ export class StorageEngine implements IStorageEngine {
       const tx = db.transaction(STORES.FILE_HANDLES, "readwrite");
       const store = tx.objectStore(STORES.FILE_HANDLES);
       const request = store.put({ key: `${name}:${size}`, handle });
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+      let requestError: unknown = null;
+      request.onerror = () => {
+        requestError = request.error;
+      };
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => {
+        const cause = requestError ?? tx.error ?? new DOMException("The transaction was aborted", "AbortError");
+        reject(wrapStorageError(cause, `Failed to save file handle: ${(cause as Error).message}`));
+      };
     });
   }
 
@@ -503,8 +578,16 @@ export class StorageEngine implements IStorageEngine {
       const tx = db.transaction(STORES.FILE_HANDLES, "readonly");
       const store = tx.objectStore(STORES.FILE_HANDLES);
       const request = store.get(`${name}:${size}`);
-      request.onsuccess = () => resolve((request.result as { handle: FileSystemFileHandle } | undefined)?.handle ?? null);
-      request.onerror = () => reject(request.error);
+      let requestError: unknown = null;
+      request.onerror = () => {
+        requestError = request.error;
+      };
+      tx.oncomplete = () =>
+        resolve((request.result as { handle: FileSystemFileHandle } | undefined)?.handle ?? null);
+      tx.onabort = () => {
+        const cause = requestError ?? tx.error ?? new DOMException("The transaction was aborted", "AbortError");
+        reject(wrapStorageError(cause, `Failed to load file handle: ${(cause as Error).message}`));
+      };
     });
   }
 
@@ -514,8 +597,15 @@ export class StorageEngine implements IStorageEngine {
       const tx = db.transaction(STORES.DIR_HANDLES, "readwrite");
       const store = tx.objectStore(STORES.DIR_HANDLES);
       const request = store.put({ key: projectId, handle, folderName: handle.name });
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+      let requestError: unknown = null;
+      request.onerror = () => {
+        requestError = request.error;
+      };
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => {
+        const cause = requestError ?? tx.error ?? new DOMException("The transaction was aborted", "AbortError");
+        reject(wrapStorageError(cause, `Failed to save directory handle: ${(cause as Error).message}`));
+      };
     });
   }
 
@@ -525,11 +615,18 @@ export class StorageEngine implements IStorageEngine {
       const tx = db.transaction(STORES.DIR_HANDLES, "readonly");
       const store = tx.objectStore(STORES.DIR_HANDLES);
       const request = store.get(projectId);
-      request.onsuccess = () => {
+      let requestError: unknown = null;
+      request.onerror = () => {
+        requestError = request.error;
+      };
+      tx.oncomplete = () => {
         const rec = request.result as { handle: FileSystemDirectoryHandle; folderName: string } | undefined;
         resolve(rec ? { handle: rec.handle, folderName: rec.folderName } : null);
       };
-      request.onerror = () => reject(request.error);
+      tx.onabort = () => {
+        const cause = requestError ?? tx.error ?? new DOMException("The transaction was aborted", "AbortError");
+        reject(wrapStorageError(cause, `Failed to load directory handle: ${(cause as Error).message}`));
+      };
     });
   }
 

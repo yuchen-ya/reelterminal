@@ -33,6 +33,7 @@
     "@types/node": "^20.14.0",
     "@types/three": "^0.182.0",
     "assemblyscript": "^0.27.37",
+    "fake-indexeddb": "6.2.5",
     "fast-check": "^3.23.2",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"

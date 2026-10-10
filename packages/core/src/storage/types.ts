@@ -94,6 +94,14 @@ export interface StorageError {
     readonly available: number;
     readonly requested: number;
   };
+  /**
+   * `name` of the underlying IndexedDB/DOM error ("QuotaExceededError",
+   * "AbortError", "ConstraintError", ...) when this StorageError wraps one.
+   * Present only for wrapped errors.
+   */
+  readonly name?: string;
+  /** The original error, kept for root-cause reporting and `cause` chaining. */
+  readonly cause?: unknown;
 }
 
 export interface IStorageEngine {
