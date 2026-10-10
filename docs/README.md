@@ -26,11 +26,14 @@
   replacement workflows.
 - [`PRODUCTION-MANAGEMENT.md`](PRODUCTION-MANAGEMENT.md) — source history, candidates, review tasks, and persistent analysis batches.
 - [`MASK-PROPAGATION.md`](MASK-PROPAGATION.md) — local mask refinement and short patch propagation.
+- [`../apps/desktop/RIGGING.md`](../apps/desktop/RIGGING.md) — optional Blender
+  rigging backend: probing, invocation, and resource layout.
 - [`build-chunking.md`](build-chunking.md) — production bundle boundaries.
 
 ## Versions and multi-project
 
 - [`VERSION-NODES-UX.md`](VERSION-NODES-UX.md) — implemented interaction spec: compact node track, read-only version preview, explicit retention (save vs retain), adoption/deletion, and Agent-managed complexity; includes the acceptance checklist.
+- [`INSPECTOR-VERSIONS-BOARD-UX.md`](INSPECTOR-VERSIONS-BOARD-UX.md) — current inspector implementation: on-demand archive tree and board panels, compact lineage, and read-only historical copy.
 - [`MULTI-PROJECT-VERSIONING.md`](MULTI-PROJECT-VERSIONING.md) — multi-project workspaces, immutable version nodes, media retention, and real-use acceptance checklist; interaction defers to VERSION-NODES-UX.
 - [`MULTI-PROJECT-USAGE.md`](MULTI-PROJECT-USAGE.md) — desktop version-track operations, save-versus-retain semantics, explicit CLI targets (`node.save`/`node.rename`/`node.restore`), and the external-evidence acceptance workflow.
 
@@ -43,3 +46,17 @@
   packaging and release requirements.
 - [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — setup, checks, and pull requests.
 - [`../SECURITY.md`](../SECURITY.md) — private security report instructions.
+
+## Historical acceptance records
+
+Dated records are kept as evidence and are not overwritten by newer rounds.
+Treat them as history, not current specs; the current specs are the documents
+above.
+
+- [`NODE-UX-ACCEPTANCE-2026-10-09.md`](NODE-UX-ACCEPTANCE-2026-10-09.md) —
+  independent user acceptance of the node UX round (overall: not passed at the
+  time; preserved findings).
+- [`NODE-UX-FIXES-2026-10-09.md`](NODE-UX-FIXES-2026-10-09.md) — fix and
+  inspector implementation log responding to that acceptance round.
+- [`NODE-UX-RECHECK-2026-10-09.md`](NODE-UX-RECHECK-2026-10-09.md) — follow-up
+  independent recheck of the fixed package; latest conclusions at the end.

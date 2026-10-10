@@ -33,6 +33,11 @@ The desktop build/start workflow is described in the root README. OpenCV tools
 optionally need a local Python with `cv2` and `numpy`; Blender is a separate
 optional rigging dependency. Missing optional tools are reported as unavailable.
 
+UI work in `apps/web` uses the Astryx design system (`@astryxdesign/core`).
+[`ASTRYX.md`](ASTRYX.md) at the repository root is that system's guide for
+coding agents; it is managed by the `astryx` CLI, so regenerate it with the CLI
+rather than editing the marked block by hand.
+
 ## Checks
 
 ```bash
