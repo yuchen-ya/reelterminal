@@ -430,10 +430,28 @@
       "reason": "规则文档自身：命名与兼容权威文本，条目/示例/对照表必然提及旧名（本注册表的规则层来源）。"
     },
     {
-      "files": "scripts/slice2-e2e/lib/scenario2.mjs",
+      "files": "scripts/agent-transport-e2e/lib/scenario2.mjs",
       "pattern": "\\.openreel\\.json",
       "category": 4,
       "reason": "legacy 持久化标识：e2e 场景产出的 *.openreel.json 项目/探针文件名（格式后缀）。"
+    },
+    {
+      "files": "apps/desktop/e2e/multi-project-versioning.e2e.ts",
+      "pattern": "openreel-settings",
+      "category": 4,
+      "reason": "legacy 持久化标识：e2e 直接读取的 openreel-settings localStorage 键（兼容旧持久化键名）。"
+    },
+    {
+      "files": "packages/agent-facade/src/speed-config-agent.test.ts",
+      "pattern": "\\.openreel\\.json",
+      "category": 4,
+      "reason": "legacy 持久化标识：测试构造的历史 *.openreel.json checkpoint 文件名（格式后缀）。"
+    },
+    {
+      "files": "packages/agent-facade/src/verb-schema-corpus.test.ts",
+      "pattern": "\\.openreel\\.json",
+      "category": 4,
+      "reason": "legacy 持久化标识：schema 语料测试引用的 *.openreel.json 项目路径（格式后缀）。"
     },
     {
       "files": "scripts/naming-lint.mjs",

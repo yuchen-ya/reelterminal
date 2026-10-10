@@ -3,7 +3,7 @@
   "version": "1.0.1",
   "private": true,
   "type": "module",
-  "description": "ADR 0003 slice 2b/2c: the reelterminal-agent CLI — MCP stdio server (serve), executable workflow runner (run), and environment doctor. One process == one AgentFacadeSession.",
+  "description": "The reelterminal-agent CLI — MCP stdio server (serve), executable workflow runner (run), and environment doctor. One process == one AgentFacadeSession. See docs/COMMAND-API.md; end-to-end checks live in scripts/agent-transport-e2e.",
   "bin": {
     "reelterminal-agent": "dist/cli.js"
   },

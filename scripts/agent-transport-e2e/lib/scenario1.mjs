@@ -41,7 +41,7 @@ const EDIT_OPS = (mediaId) => [
 ];
 
 const CREATE_PARAMS = {
-  name: "slice2-e2e",
+  name: "agent-transport-e2e",
   settings: {
     width: PROJECT_SETTINGS.width,
     height: PROJECT_SETTINGS.height,

@@ -5,7 +5,7 @@ import path from "node:path";
 
 const optionIndex = process.argv.indexOf("--evidence-dir");
 if (optionIndex < 0 || !process.argv[optionIndex + 1]) {
-  throw new Error("usage: node scripts/slice2-e2e/report.mjs --evidence-dir <path>");
+  throw new Error("usage: node scripts/agent-transport-e2e/report.mjs --evidence-dir <path>");
 }
 const evidenceDir = path.resolve(process.argv[optionIndex + 1]);
 

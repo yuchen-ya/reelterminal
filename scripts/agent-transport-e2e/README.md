@@ -10,9 +10,9 @@ Build the transport package, then run the desired scenarios:
 
 ```sh
 corepack pnpm --filter @reelterminal/agent-transport build
-node scripts/slice2-e2e/run.mjs
-node scripts/slice2-e2e/run.mjs --scenario 1 --path mcp
-node scripts/slice2-e2e/run.mjs --scenario 2 --path run
+node scripts/agent-transport-e2e/run.mjs
+node scripts/agent-transport-e2e/run.mjs --scenario 1 --path mcp
+node scripts/agent-transport-e2e/run.mjs --scenario 2 --path run
 ```
 
 The runner needs Node.js, `ffmpeg`, `ffprobe`, and the browser installed for
@@ -35,5 +35,5 @@ whether supported third-party client binaries are available on the machine.
 Render a summary next to an evidence directory:
 
 ```sh
-node scripts/slice2-e2e/report.mjs --evidence-dir <path>
+node scripts/agent-transport-e2e/report.mjs --evidence-dir <path>
 ```
