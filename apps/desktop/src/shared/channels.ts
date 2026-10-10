@@ -1,5 +1,6 @@
 export const CHANNELS = {
   probeHardware: "reelterminal:probeHardware",
+  projectTaskStates: "reelterminal:projectLibrary:taskStates",
   // Menu action relay (main → renderer).
   menuAction: "reelterminal:menu:action",
   // MessagePort handoff for native export (main → renderer).

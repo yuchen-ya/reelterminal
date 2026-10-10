@@ -5,6 +5,8 @@ import type { MediaReference } from "../../services/project-media-gc";
 import { useProjectStore } from "../project-store";
 import { createEmptyProject } from "./index";
 import { loadMediaBlob } from "../../services/media-storage";
+import { projectManager } from "../../services/project-manager";
+import { autoSaveManager } from "../../services/auto-save";
 import {
   compareNodes,
   createMediaCleanupPlan,
@@ -25,6 +27,7 @@ const { importFile, saveMediaBlob, deleteMediaBlob, deleteUnderLock, storedMedia
     storedTasks: [] as unknown[],
     workspace: {
       initialize: vi.fn(async () => undefined),
+      listProjects: vi.fn(async () => []),
       getMediaReferences: vi.fn(async () => [] as MediaReference[]),
       getRuntimeMediaReferences: vi.fn(async () => []),
       getNode: vi.fn(async (_projectId: string, _nodeId: string): Promise<ProjectNodeRecord | null> => null),
@@ -72,6 +75,8 @@ vi.mock("../../services/media-storage", () => ({
 }));
 
 vi.mock("../../services/workspace-manager", () => ({ workspaceManager: workspace }));
+vi.spyOn(projectManager, "listStoredProjects").mockResolvedValue([]);
+vi.spyOn(autoSaveManager, "listRecoveryProjects").mockResolvedValue([]);
 vi.mock("../../services/material-library/storage", () => ({
   createIdbMaterialStorage: () => ({
     loadAllMaterials: async () => storedMaterials,

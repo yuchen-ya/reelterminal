@@ -28,6 +28,17 @@ vi.mock("./desktop-project-actions", async () => {
   };
 });
 
+vi.mock("./project-library-service", () => ({
+  loadProjectLibrary: async () => ({
+    projects: (await actionMocks.listRecentProjects()).map((project: { id: string; name: string; lastOpened: number }) => ({
+      ...project, modifiedAt: project.lastOpened, createdAt: project.lastOpened,
+      duration: 0, width: 1920, height: 1080, engineeringBytes: 100,
+    })),
+    folders: [],
+  }),
+  projectLibraryActions: {},
+}));
+
 import { DESKTOP_FORMATS } from "./desktop-project-actions";
 import { DesktopStartScreen } from "./DesktopStartScreen";
 
@@ -51,7 +62,7 @@ describe("DesktopStartScreen", () => {
 
   it("starts a Video Editor project from the default mode", async () => {
     render(<DesktopStartScreen />);
-    await screen.findByText("No recent projects yet. Start a new project above.");
+    await screen.findByText("No local projects here. Start a new project above.");
 
     fireEvent.click(screen.getByRole("button", { name: /Horizontal/ }));
 
@@ -62,7 +73,7 @@ describe("DesktopStartScreen", () => {
 
   it("starts a Motion Creator project after selecting the motion mode", async () => {
     render(<DesktopStartScreen />);
-    await screen.findByText("No recent projects yet. Start a new project above.");
+    await screen.findByText("No local projects here. Start a new project above.");
 
     fireEvent.click(screen.getByRole("checkbox", { name: /Motion Creator/ }));
     fireEvent.click(screen.getByRole("button", { name: /Square/ }));

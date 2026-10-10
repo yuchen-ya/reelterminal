@@ -116,7 +116,7 @@ export function CollabStatusBar(): JSX.Element {
         <button type="button" data-testid="current-archive-entry" title={t("versioning.viewRecords")}
           onClick={() => useUIStore.getState().showCurrentArchive()}
           className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] text-fg-2 transition-colors duration-150 hover:bg-hover hover:text-fg motion-reduce:transition-none">
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />{t("versioning.current")}
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />{t("desktopInspector.archives")}
         </button>
         <button
           type="button"

@@ -34,6 +34,25 @@ describe("AutoSaveManager", () => {
     vi.restoreAllMocks();
   });
 
+  it("cancels a recycled project's delayed save while allowing another project to save", async () => {
+    vi.useFakeTimers();
+    const manager = new AutoSaveManager({ debounceTime: 10, interval: 30_000 });
+    const save = vi.fn().mockResolvedValue(undefined);
+    internals(manager).save = save;
+    const removed = project("Removed");
+    manager.start(() => removed);
+    manager.markDirty(removed);
+    await manager.suspendProject(removed.id);
+    await vi.advanceTimersByTimeAsync(20);
+    expect(save).not.toHaveBeenCalled();
+    expect(manager.hasUnsavedChanges(removed)).toBe(false);
+    const next = { ...project("Next"), id: "project-2" };
+    manager.markDirty(next);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(save).toHaveBeenCalledWith(next, expect.any(String));
+    manager.stop();
+  });
+
   it("saves the snapshot supplied with the dirty notification", async () => {
     vi.useFakeTimers();
     const manager = new AutoSaveManager({ debounceTime: 10, interval: 30_000 });

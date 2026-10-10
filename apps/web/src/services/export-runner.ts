@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   getExportEngine,
   type VideoExportSettings,
@@ -6,6 +6,7 @@ import {
   type Project,
 } from "@reelterminal/core";
 import { t } from "../i18n";
+import { beginProjectExport, endProjectExport } from "./project-export-activity";
 
 export interface ExportRunnerState {
   isExporting: boolean;
@@ -369,8 +370,10 @@ export interface UseExportRunner {
 export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
   const { project, onExported } = options;
   const [state, setState] = useState<ExportRunnerState>(INITIAL_STATE);
+  const exportOwner = useRef(Symbol("project-export"));
 
   const beginExport = useCallback(() => {
+    beginProjectExport(exportOwner.current, project);
     setState({
       isExporting: true,
       progress: 0,
@@ -378,7 +381,7 @@ export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
       error: null,
       complete: false,
     });
-  }, []);
+  }, [project]);
 
   const reportProgress = useCallback((progress01: number, phase: string) => {
     setState((prev) => ({
@@ -389,16 +392,19 @@ export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
   }, []);
 
   const markComplete = useCallback(() => {
+    endProjectExport(exportOwner.current);
     setState((prev) => ({ ...prev, complete: true, phase: "Saved!" }));
   }, []);
 
   const finishExportSoon = useCallback(() => {
+    endProjectExport(exportOwner.current);
     setTimeout(() => {
       setState(INITIAL_STATE);
     }, 2000);
   }, []);
 
   const failExport = useCallback((error: unknown) => {
+    endProjectExport(exportOwner.current);
     if (error instanceof Error && error.name === "AbortError") {
       setState(INITIAL_STATE);
       return;
@@ -441,6 +447,7 @@ export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
         }
 
         if (finalResult?.success) {
+          endProjectExport(exportOwner.current);
           setState((prev) => ({ ...prev, complete: true, phase: "Saved!" }));
           onExported?.(videoSettings);
         } else {

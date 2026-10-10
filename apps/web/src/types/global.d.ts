@@ -465,6 +465,10 @@ interface ReelTerminalDesktopBridge {
       liveEvents?: DesktopLiveEventsApi;
       /** Live collaboration session control (desktop main session host). */
       collabControl?: DesktopCollabControlApi;
+      /** Read-only task states used by local project deletion. */
+      projectLibrary?: {
+        getTaskStates(jobIds: readonly string[]): Promise<Record<string, "queued" | "running" | "done" | "error" | "cancelled" | null>>;
+      };
       /** Durable analysis records and explicit user-triggered rechecks. */
       production?: {
         verifyReplacement(args: { projectId: string; expectedRevision: number; sourceMediaId: string; candidateMediaId: string }): Promise<{ frameCount: number; frameRate: number; durationSec: number }>;

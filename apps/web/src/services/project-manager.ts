@@ -645,6 +645,32 @@ export class ProjectManager {
     });
   }
 
+  /** All local snapshots, including projects evicted from the bounded recent list. */
+  async listStoredProjects(): Promise<Project[]> {
+    await this.initialize();
+    return new Promise((resolve, reject) => {
+      const tx = this.db!.transaction(PROJECTS_STORE, "readonly");
+      const request = tx.objectStore(PROJECTS_STORE).getAll();
+      request.onsuccess = () => resolve(request.result.map((project: Project) => normalizeProjectStoredFields(project)));
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  /** Delete application records only; the separately saved project file remains. */
+  async deleteStoredProject(id: string): Promise<void> {
+    await this.initialize();
+    await new Promise<void>((resolve, reject) => {
+      const tx = this.db!.transaction([PROJECTS_STORE, RECENT_STORE], "readwrite");
+      tx.objectStore(PROJECTS_STORE).delete(id);
+      tx.objectStore(RECENT_STORE).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error ?? new Error("Could not delete stored project"));
+      tx.onerror = () => reject(tx.error);
+    });
+    this.clearCurrentFileHandle(id);
+    this.emit("recentUpdated");
+  }
+
   async addToRecent(
     project: Project,
     fileHandle?: ProjectFileRef | null,

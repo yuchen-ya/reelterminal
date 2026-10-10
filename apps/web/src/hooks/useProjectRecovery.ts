@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { autoSaveManager, type AutoSaveMetadata } from "../services/auto-save";
+import { autoSaveManager, checkForRecovery as availableRecoverySaves, type AutoSaveMetadata } from "../services/auto-save";
 import { clearAllStorage } from "../services/media-storage";
 import { useProjectStore } from "../stores/project-store";
 
@@ -22,7 +22,7 @@ export function useProjectRecovery() {
     const checkForRecovery = async () => {
       try {
         await autoSaveManager.initialize();
-        const saves = await autoSaveManager.checkForRecovery();
+        const saves = await availableRecoverySaves();
 
         if (saves.length > 0) {
           setState({

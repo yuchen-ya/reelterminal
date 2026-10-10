@@ -21,6 +21,11 @@ const setAccessArgsSchema = z.object({
 });
 
 export function registerLiveIpc(host: LiveSessionHost): void {
+  ipcMain.handle(CHANNELS.projectTaskStates, (event, raw) => {
+    assertEditorIpcSender(event);
+    const { jobIds } = z.object({ jobIds: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).max(1000) }).strict().parse(raw);
+    return host.getTaskStates(jobIds);
+  });
   ipcMain.handle(CHANNELS.collabGetStartupInfo, (event) => {
     assertEditorIpcSender(event);
     return agentStartupInfo({

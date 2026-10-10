@@ -4,6 +4,35 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { launchApp } from "./harness/launch";
 import { DESKTOP_DIR } from "./harness/paths";
+import { createProjectViaUI } from "./harness/ui";
+import { DESKTOP_TOUR_STEPS } from "../../web/src/desktop/editor/desktop-tour-steps";
+
+test("the archive tour highlights the renamed entry and explains milestone save points", async () => {
+  const launched = await launchApp();
+  const { page } = launched;
+  try {
+    await createProjectViaUI(page);
+    await page.getByRole("button", { name: "Help", exact: true }).click();
+    await page.getByRole("button", { name: "Interface tour", exact: true }).click();
+    await page.getByRole("dialog", { name: "Welcome to ReelTerminal" }).waitFor();
+    for (let index = 0; index < 5; index++) {
+      await page.getByRole("button", { name: "Next", exact: true }).click();
+    }
+    const tour = page.getByRole("dialog", { name: "Save your milestones", exact: true });
+    await tour.waitFor();
+    expect(await tour.getByText(/Click Archives to open the save-point tree/).isVisible()).toBe(true);
+    expect(await tour.getByText(/autosave and Ctrl\+S only save current edits/).isVisible()).toBe(true);
+    await page.getByRole("button", { name: "Archives", exact: true }).click();
+    await page.getByTestId("create-save-point").waitFor();
+    // Opening the highlighted entry only shows the tree; it does not save a point.
+    expect(await page.getByText("No save points yet. Current edits are still saved normally.").isVisible()).toBe(true);
+    await tour.getByRole("button", { name: "Skip tour", exact: true }).last().click();
+    await page.getByTestId("close-archives").click();
+    expect(await page.getByTestId("inspector-properties").isVisible()).toBe(true);
+  } finally {
+    await launched.close();
+  }
+});
 
 test("first-time user can find help, finish the tour, import, edit, save and export", async () => {
   const launched = await launchApp();
@@ -17,7 +46,7 @@ test("first-time user can find help, finish the tour, import, edit, save and exp
     await page.getByLabel(/^Horizontal /).click();
     await page.getByRole("dialog", { name: "Welcome to ReelTerminal" }).waitFor();
     await page.screenshot({ path: path.join(runDir, "first-tour.png") });
-    for (let index = 0; index < 7; index += 1) {
+    for (let index = 0; index < DESKTOP_TOUR_STEPS.length - 1; index += 1) {
       await page.getByRole("button", { name: "Next", exact: true }).click();
     }
     await page.getByRole("button", { name: "Get Started", exact: true }).click();

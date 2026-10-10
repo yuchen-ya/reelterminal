@@ -24,6 +24,7 @@ import {
 import { createAgentAccessPreferenceStore } from "./access-preference";
 import type { LiveStoreBridge } from "./renderer-store-adapter";
 import type { LiveEvent } from "../../shared/live";
+import { DurableTaskLedger } from "./task-ledger";
 
 /* ------------------------------- stubs ---------------------------------- */
 
@@ -249,6 +250,16 @@ afterEach(() => {
 /* -------------------------------- tests --------------------------------- */
 
 describe("live session host enable/status/disable", () => {
+  it("reports interrupted task states for project deletion without enabling Agent Access", () => {
+    const fixture = makeFixture();
+    cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));
+    const ledger = new DurableTaskLedger(path.join(fixture.deps.artifactRoot, "task-records"));
+    ledger.begin({ jobId: "job-interrupted", kind: "export", projectId: "old-project", workspaceId: "old-workspace", sourceRevision: 0, inputProject: { id: "old-project", name: "Old" } as Project, parameters: {} });
+    const host = createLiveSessionHost(fixture.deps);
+    expect(host.getTaskStates(["job-interrupted", "missing-job"])).toEqual({ "job-interrupted": "error", "missing-job": null });
+    expect(host.isEnabled).toBe(false);
+    expect(fixture.factoryCalls).toEqual([]);
+  });
   it("enable starts the endpoint (0600 file), creates the artifact root, and reports status", async () => {
     const fixture = makeFixture();
     cleanups.push(() => rmSync(fixture.tempDir, { recursive: true, force: true }));

@@ -215,6 +215,9 @@ const api = {
       ipcRenderer.invoke(CHANNELS.collabSetAccess, { access }) as Promise<LiveCollabStatus>,
     openWorkspace: () => ipcRenderer.invoke(CHANNELS.collabOpenWorkspace, undefined),
   },
+  projectLibrary: {
+    getTaskStates: (jobIds: readonly string[]) => ipcRenderer.invoke(CHANNELS.projectTaskStates, { jobIds }),
+  },
   production: {
     verifyReplacement: (args: unknown) => ipcRenderer.invoke(CHANNELS.productionVerifyReplacement, args),
     captureReview: (args: unknown) => ipcRenderer.invoke(CHANNELS.productionCaptureReview, args),

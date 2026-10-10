@@ -99,13 +99,34 @@ local CLI and compatibility connectors and is left alone.
 
 ## Related data
 
-The desktop start screen and project switcher combine saved-file recent entries
-with local autosave records. They show at most ten distinct recent projects;
-projects that were only autosaved can be reopened through the same list. A newer
-autosave timestamp than the recent entry's last-opened timestamp takes
-precedence and restores stored media and
-overlays through the recovery path. Files exported elsewhere and old, separate
-Chromium profiles are not automatically scanned or merged into this list.
+The desktop start screen's **Local projects** library indexes all stored
+workspaces, including older local snapshots and recovery-only projects. The
+title-bar project switcher retains a bounded list of ten recent projects.
+Existing workspaces are authoritative; the newest recovery snapshot fills in
+projects that have not yet entered the workspace index. Files elsewhere and
+separate Chromium profiles are not automatically scanned.
+
+Local projects support search, list/grid views, sorting, virtual folders,
+renaming, independent copies, and bulk management. “Project size” measures the
+current edit JSON, excluding source media and version history. Folders only
+change grouping; deleting a folder moves its projects to Ungrouped.
+
+New projects (including Agent-created projects) and independent copies avoid
+existing names by adding ` 2`, ` 3`, and so on. Matching ignores surrounding
+whitespace and letter case across folders, including the recycle bin but
+excluding permanently deleted projects. Imports and legacy migrations preserve
+their names. Manual renaming permits duplicate names; project and workspace IDs
+remain the identities used by Agent commands, and users are responsible for
+selecting the intended project when using duplicate names.
+
+Delete moves a project, its workspaces, versions and recovery records to the
+application recycle bin. Restore preserves them. Permanent deletion removes
+the local snapshots and then cleans application-owned media only after checking
+every retained project, recovery, history, material and task reference. External
+originals, separately saved `.oreel` files and exported videos are not deleted.
+Active playback is stopped before the current project is detached. Running
+exports and Agent jobs block deletion; interrupted or completed task inputs do
+not. Durable deletion markers prevent stale legacy saves from reappearing.
 
 - The live endpoint descriptor is stored under `~/.reelterminal/`, outside the
   data root; see [`AGENT-GUIDE.md`](AGENT-GUIDE.md).

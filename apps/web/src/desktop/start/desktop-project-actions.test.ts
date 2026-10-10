@@ -78,7 +78,7 @@ beforeEach(() => {
   stubs.manager.openRecentProject.mockResolvedValue(null);
   stubs.manager.addToRecent.mockResolvedValue(undefined);
   stubs.workspace.listProjects.mockResolvedValue([]);
-  stubs.workspace.createProject.mockResolvedValue({ defaultWorkspaceId: "default-workspace" });
+  stubs.workspace.createProject.mockImplementation(async (project) => ({ project, defaultWorkspaceId: "default-workspace" }));
   stubs.workspace.switchView.mockResolvedValue(undefined);
   stubs.loadProjectMedia.mockResolvedValue([]);
   stubs.checkForRecovery.mockResolvedValue([]);
@@ -111,6 +111,13 @@ describe("DESKTOP_FORMATS", () => {
 });
 
 describe("startNewProject", () => {
+  it("stores the allocated name in recent projects instead of the requested name", async () => {
+    stubs.workspace.createProject.mockImplementation(async (project) => ({
+      project: { ...project, name: "Horizontal 2" }, defaultWorkspaceId: "default-workspace",
+    }));
+    await startNewProject(DESKTOP_FORMATS[1]);
+    expect(stubs.manager.addToRecent).toHaveBeenCalledWith(expect.objectContaining({ name: "Horizontal 2" }));
+  });
   it("persists a default workspace with the format label and dimensions before showing it", async () => {
     const format = DESKTOP_FORMATS[1];
     await startNewProject(format);
@@ -136,6 +143,22 @@ describe("startNewMotionProject", () => {
 });
 
 describe("recent projects", () => {
+  it("excludes recycled and purged ids from legacy recents and refuses their recovery", async () => {
+    stubs.workspace.listProjects.mockResolvedValue([
+      { id: "recycled", recycledAt: 1 }, { id: "purged", deletedAt: 2 },
+    ]);
+    stubs.manager.getRecentProjects.mockResolvedValue([
+      { id: "recycled", name: "Recycled", lastOpened: 3 },
+      { id: "purged", name: "Purged", lastOpened: 3 },
+    ]);
+    stubs.checkForRecovery.mockResolvedValue([{ id: "old-save", projectId: "recycled", projectName: "Old recovery", timestamp: 4 }]);
+    expect(await listRecentProjects()).toEqual([]);
+    expect(await openRecentProject("recycled")).toBe(false);
+    expect(await openRecentProject("purged")).toBe(false);
+    expect(stubs.recover).not.toHaveBeenCalled();
+    expect(stubs.manager.openRecentProject).not.toHaveBeenCalled();
+    expect(stubs.workspace.switchView).not.toHaveBeenCalled();
+  });
   it("saves the current project before opening the picker, and preserves it on cancellation", async () => {
     stubs.hasOpenProject = true;
     await expect(openProject()).resolves.toBe(false);
@@ -223,7 +246,7 @@ describe("recent projects", () => {
     expect(stubs.workspace.createProject).toHaveBeenCalledWith({
       ...project,
       mediaLibrary: { items: [restoredItem] },
-    });
+    }, { deduplicateName: false });
   });
 
   it("returns false when the project-manager cannot open the selected item", async () => {
@@ -246,7 +269,7 @@ describe("recent projects", () => {
     stubs.manager.openProject.mockResolvedValue(project);
 
     await expect(openProject()).resolves.toBe(true);
-    expect(stubs.workspace.createProject).toHaveBeenCalledWith(project);
+    expect(stubs.workspace.createProject).toHaveBeenCalledWith(project, { deduplicateName: false });
   });
 
   it("resumes an existing workspace instead of overwriting it with a recent file", async () => {

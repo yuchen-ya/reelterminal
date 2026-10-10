@@ -6,6 +6,9 @@ import {
 import { createIdbMaterialStorage } from "./material-library/storage";
 import { createIdbAgentTaskStorage } from "./agent-media-tasks/storage";
 import { workspaceManager } from "./workspace-manager";
+import { getExportMediaReferences } from "./project-export-activity";
+import { projectManager } from "./project-manager";
+import { autoSaveManager } from "./auto-save";
 import {
   deleteMediaBlobUnderReferenceWrite,
   getAllStoredMedia,
@@ -179,7 +182,24 @@ function sizeOf(entries: readonly MediaCleanupEntry[]): number {
   return entries.reduce((total, entry) => total + entry.sizeBytes, 0);
 }
 
-export async function createMediaCleanupPlan(projectId?: string): Promise<MediaCleanupPlan> {
+/** Preview cleanup after these projects' workspaces/history have been removed. */
+export async function estimateProjectPurge(projectIds: readonly string[]): Promise<{ bytes: number; mediaIds: string[] }> {
+  const [records, references] = await Promise.all([getAllStoredMedia(), collectReferences()]);
+  const ownReferences = references.filter((reference) => projectIds.includes(reference.projectId));
+  const mediaIds = new Set(ownReferences.map((reference) => reference.mediaId));
+  for (const record of records) {
+    if ((record.projectIds ?? [record.projectId]).some((id) => projectIds.includes(id))) mediaIds.add(record.id);
+  }
+  const retained = references.filter((reference) =>
+    !projectIds.includes(reference.projectId) || reference.kind === "material" ||
+    reference.kind === "pending" || (reference.kind === "task" && reference.label !== "Task input"),
+  );
+  const candidates = records.filter((record) => mediaIds.has(record.id) && !uncommittedMedia.has(record.id) &&
+    !retained.some((reference) => reference.mediaId === record.id));
+  return { bytes: sizeOf(candidates.map((record) => cleanupEntry(record, []))), mediaIds: [...mediaIds] };
+}
+
+export async function createMediaCleanupPlan(projectId?: string, mediaIds: readonly string[] = []): Promise<MediaCleanupPlan> {
   await workspaceManager.initialize();
   const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   let records: StoredMediaEntry[] = [];
@@ -201,7 +221,7 @@ export async function createMediaCleanupPlan(projectId?: string): Promise<MediaC
     const projectReferences = references.filter((reference) =>
       reference.mediaId === record.id && reference.projectId === projectId,
     );
-    if (projectId && !recordProjectIds.includes(projectId) && projectReferences.length === 0) continue;
+    if (projectId && !recordProjectIds.includes(projectId) && projectReferences.length === 0 && !mediaIds.includes(record.id)) continue;
     const reasons = references
       .filter((reference) => reference.mediaId === record.id)
       .map((reference) => reference.label
@@ -506,9 +526,26 @@ export function ensureProjectMediaGc(
 }
 
 registerMediaReferenceProvider(async (scope) => [
+  ...getExportMediaReferences().filter((reference) =>
+    (!scope?.projectId || scope.projectId === reference.projectId) && (!scope?.mediaId || scope.mediaId === reference.mediaId)),
   ...await workspaceManager.getMediaReferences(scope),
   ...await workspaceManager.getRuntimeMediaReferences(scope),
 ]);
+
+registerMediaReferenceProvider(async (scope) => {
+  const [snapshots, recoveries, projects] = await Promise.all([
+    projectManager.listStoredProjects(), autoSaveManager.listRecoveryProjects(), workspaceManager.listProjects(true),
+  ]);
+  const deleted = new Set(projects.filter((project) => project.deletedAt !== undefined).map((project) => project.id));
+  const retained = [
+    ...snapshots.map((project) => ({ id: `legacy:${project.id}`, project })),
+    ...recoveries.map((record) => ({ ...record, id: `autosave:${record.id}` })),
+  ];
+  return retained.filter(({ project }) => !deleted.has(project.id) && (!scope?.projectId || scope.projectId === project.id))
+    .flatMap(({ id, project }) => project.mediaLibrary.items
+      .filter((item) => !scope?.mediaId || scope.mediaId === item.id)
+      .map((item): MediaReference => ({ mediaId: item.id, projectId: project.id, kind: "recovery-draft", referenceId: id, label: "Retained local recovery" })));
+});
 
 registerMediaReferenceProvider(async (scope) => {
   const query = scope ?? {};

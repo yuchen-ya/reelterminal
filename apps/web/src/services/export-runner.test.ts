@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { Project, VideoExportSettings, ExportResult } from "@reelterminal/core";
+import { getExportingProjectIds } from "./project-export-activity";
 import {
   useExportRunner,
   mimeForExt,
@@ -30,6 +31,7 @@ vi.mock("@reelterminal/core", () => ({
 
 function fakeProject(): Project {
   return {
+    id: "export-project",
     name: "My Movie",
     settings: { width: 1920, height: 1080, frameRate: 30 },
     timeline: { duration: 10 },
@@ -140,6 +142,16 @@ describe("useExportRunner", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockEngine.initialize.mockResolvedValue(undefined);
+  });
+
+  it("tracks export lifetime after the view unmounts and releases it on completion", () => {
+    const { result, unmount } = renderHook(() => useExportRunner({ project: fakeProject() }));
+    act(() => result.current.beginExport());
+    const complete = result.current.markComplete;
+    unmount();
+    expect(getExportingProjectIds().has("export-project")).toBe(true);
+    complete();
+    expect(getExportingProjectIds().has("export-project")).toBe(false);
   });
 
   it("advances progress and completes on success", async () => {

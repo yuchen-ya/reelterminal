@@ -55,6 +55,10 @@ vi.mock("./editor/EditorBootstrapGate", () => ({
   ),
 }));
 
+vi.mock("./start/ProjectLibrary", () => ({
+  ProjectLibrary: () => <section data-testid="project-library" />,
+}));
+
 vi.mock("./pages/EditPage", () => ({
   EditPage: () => null,
 }));

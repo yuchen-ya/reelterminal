@@ -9,6 +9,20 @@ describe("workspace node query bridge", () => {
     globalThis.indexedDB = new IDBFactory();
   });
 
+  it("returns the allocated name and full target IDs when an Agent creates a same-name project", async () => {
+    await workspaceManager.createProject(createEmptyProject("Agent cut"));
+    const project = createEmptyProject("Agent cut");
+    const reply = await handleWorkspaceLibraryRequest("project.create", { project });
+    expect(reply).toMatchObject({
+      ok: true,
+      result: {
+        projectId: project.id,
+        defaultWorkspaceId: expect.any(String),
+        project: { id: project.id, name: "Agent cut 2" },
+      },
+    });
+  });
+
   it("keeps node listings lightweight and reads full snapshots on demand", async () => {
     const created = await workspaceManager.createProject(createEmptyProject("Node query"));
     const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };

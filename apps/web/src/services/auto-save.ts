@@ -568,8 +568,16 @@ export class AutoSaveManager {
     return saves.length > 0 ? saves[0] : null;
   }
 
+  /** Raw retained snapshots for media-reference scanning; never activates recovery. */
+  async listRecoveryProjects(): Promise<{ id: string; project: Project }[]> {
+    await this.initialize();
+    const records = await this.getAllSaves();
+    return records.map((record) => ({ id: record.id, project: JSON.parse(record.data) as Project }));
+  }
+
   async clearProjectSaves(projectId: string): Promise<void> {
-    if (!this.db) return;
+    await this.suspendProject(projectId);
+    await this.initialize();
 
     const allSaves = await this.getAllSaves();
     const projectSaves = allSaves.filter((s) => s.projectId === projectId);
@@ -577,6 +585,21 @@ export class AutoSaveManager {
     for (const save of projectSaves) {
       await this.deleteRecord(save.id);
     }
+  }
+
+  /** Drain in-flight saves before a project leaves the editor; retain recovery slots. */
+  async suspendProject(projectId: string): Promise<void> {
+    if (this.pendingProject?.id === projectId) {
+      this.clearScheduledSave();
+      this.pendingProject = null;
+    }
+    await this.saveTail;
+    this.savedSnapshotByProject.delete(projectId);
+    this.savedRevisionByProject.delete(projectId);
+    this.dirtyRevisionByProject.delete(projectId);
+    this.firstDirtyAtByProject.delete(projectId);
+    this.latestDirtyAtByProject.delete(projectId);
+    this.retryNotBeforeByProject.delete(projectId);
   }
 
   async clearAllSaves(): Promise<void> {
@@ -728,5 +751,8 @@ export async function initializeAutoSave(): Promise<void> {
 export async function checkForRecovery(
   projectId?: string,
 ): Promise<AutoSaveMetadata[]> {
-  return autoSaveManager.checkForRecovery(projectId);
+  const { workspaceManager } = await import("./workspace-manager");
+  const [records, saves] = await Promise.all([workspaceManager.listProjects(true), autoSaveManager.checkForRecovery(projectId)]);
+  const unavailable = new Set(records.filter((record) => record.recycledAt !== undefined || record.deletedAt !== undefined).map((record) => record.id));
+  return saves.filter((save) => !unavailable.has(save.projectId));
 }

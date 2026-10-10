@@ -29,10 +29,13 @@ it("starts on first entry, remembers skip, and can be reopened", () => {
   expect(returning.result.current.isActive).toBe(true);
 });
 
-it("completes the desktop export and collaboration steps and remembers completion", () => {
+it("introduces archives before the desktop collaboration and export steps and remembers completion", () => {
   const view = renderHook(() => useTour(DESKTOP_TOUR_STEPS));
   act(() => { vi.advanceTimersByTime(500); });
   act(() => view.result.current.goToStep(5));
+  expect(view.result.current.step.id).toBe("archives");
+  expect(view.result.current.step.target).toBe("[data-testid='current-archive-entry']");
+  act(() => view.result.current.next());
   expect(view.result.current.step.id).toBe("agent-access");
   act(() => view.result.current.next());
   expect(view.result.current.step.id).toBe("export");

@@ -19,7 +19,9 @@ import type {
 import { withMediaReferenceWrite } from "./media-storage";
 import { loadProjectMedia } from "./media-storage";
 import { restoreMediaItem } from "../utils/media-recovery";
+import { getUniqueProjectName } from "../utils/project-names";
 import { autoSaveManager } from "./auto-save";
+import { blockProjectExports, getExportingProjectIds, unblockProjectExports } from "./project-export-activity";
 import {
   getMissingProjectRenderDependencyIds,
   installProjectRenderFonts,
@@ -28,7 +30,7 @@ import {
 } from "./project-render-dependencies";
 
 const DB_NAME = "reelterminal-workspaces";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const PROJECTS = "projects";
 const WORKSPACES = "workspaces";
 const NODES = "nodes";
@@ -36,6 +38,7 @@ const NODE_SUMMARIES = "nodeSummaries";
 const DRAFTS = "drafts";
 const IDEMPOTENCY = "idempotency";
 const TASK_INPUTS = "taskInputs";
+const FOLDERS = "folders";
 
 export interface WorkspaceTarget {
   projectId: string;
@@ -48,6 +51,22 @@ export interface ProjectRecord {
   defaultWorkspaceId: string;
   createdAt: number;
   modifiedAt: number;
+  folderId?: string;
+  recycledAt?: number;
+  /** Retained to prevent legacy snapshots from resurrecting a purged project. */
+  deletedAt?: number;
+  /** Former media ids let a failed cache cleanup retry after references are gone. */
+  purgedMediaIds?: string[];
+}
+
+export interface ProjectFolder { id: string; name: string }
+
+export interface ProjectLibraryEntry extends ProjectRecord {
+  duration: number;
+  width: number;
+  height: number;
+  engineeringBytes: number;
+  thumbnail?: string;
 }
 
 export interface WorkspaceSummary {
@@ -168,8 +187,11 @@ export interface WorkspaceManagerSnapshot {
 
 export interface CreateProjectOptions {
   name?: string;
+  /** Imports and legacy migrations preserve their existing names. */
+  deduplicateName?: boolean;
   idempotencyKey?: string;
   requestPayload?: unknown;
+  loadRuntime?: boolean;
 }
 
 export interface CreateWorkspaceOptions {
@@ -467,6 +489,7 @@ export class WorkspaceManager {
   private initializePromise: Promise<void> | null = null;
   private readonly listeners = new Set<WorkspaceListener>();
   private readonly projects = new Map<string, ProjectRecord>();
+  private readonly closingProjects = new Set<string>();
   private readonly workspaces = new Map<string, WorkspaceRecord>();
   private readonly nodes = new Map<string, ProjectNodeSummary>();
   private readonly workspaceBaseProjectKeys = new Map<string, string | null>();
@@ -532,13 +555,331 @@ export class WorkspaceManager {
     await this.initializePromise;
   }
 
-  async listProjects(): Promise<ProjectRecord[]> {
+  async listProjects(includeUnavailable = false): Promise<ProjectRecord[]> {
     await this.initialize();
-    return [...this.projects.values()].sort((a, b) => a.createdAt - b.createdAt);
+    return [...this.projects.values()]
+      .filter(
+        (project) => includeUnavailable || this.isProjectAvailable(project),
+      )
+      .map((project) => ({ ...project }))
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  async listLibraryEntries(): Promise<ProjectLibraryEntry[]> {
+    await this.initialize();
+    await this.flushOpenWorkspaces();
+    return [...this.projects.values()]
+      .filter((record) => record.deletedAt === undefined)
+      .map((record) => {
+        const workspace = this.workspaces.get(record.defaultWorkspaceId)!;
+        const project = workspace.project;
+        const thumbnail =
+          project.mediaLibrary.items.find((item) =>
+            item.thumbnailUrl?.startsWith("data:image/"),
+          )?.thumbnailUrl ?? undefined;
+        return {
+          ...record,
+          modifiedAt: Math.max(record.modifiedAt, project.modifiedAt),
+          duration: project.timeline.duration,
+          width: project.settings.width,
+          height: project.settings.height,
+          engineeringBytes: new TextEncoder().encode(JSON.stringify(project))
+            .byteLength,
+          thumbnail,
+        };
+      });
+  }
+
+  async listFolders(): Promise<ProjectFolder[]> {
+    await this.initialize();
+    return this.readAll<ProjectFolder>(FOLDERS);
+  }
+
+  async saveFolder(name: string, id = uuidv4()): Promise<void> {
+    await this.initialize();
+    const folder = { id, name: this.validLibraryName(name) };
+    const tx = this.requireDb().transaction(FOLDERS, "readwrite");
+    const done = transactionDone(tx);
+    tx.objectStore(FOLDERS).put(folder);
+    await done;
+    this.publish();
+  }
+
+  async deleteFolder(id: string): Promise<void> {
+    await this.initialize();
+    const records = [...this.projects.values()]
+      .filter((project) => project.folderId === id)
+      .map(({ folderId: _folderId, ...project }) => project);
+    const tx = this.requireDb().transaction([FOLDERS, PROJECTS], "readwrite");
+    const done = transactionDone(tx);
+    tx.objectStore(FOLDERS).delete(id);
+    records.forEach((project) => tx.objectStore(PROJECTS).put(project));
+    await done;
+    records.forEach((project) => this.projects.set(project.id, project));
+    this.publish();
+  }
+
+  async moveProjects(ids: readonly string[], folderId?: string): Promise<void> {
+    await this.initialize();
+    if (folderId && !(await this.readOne(FOLDERS, folderId)))
+      throw new Error("Folder not found");
+    const records = ids.map((id) => {
+      const project = this.requireAvailableProject(id);
+      return { ...project, folderId };
+    });
+    const tx = this.requireDb().transaction(PROJECTS, "readwrite");
+    const done = transactionDone(tx);
+    records.forEach((project) => tx.objectStore(PROJECTS).put(project));
+    await done;
+    records.forEach((project) => this.projects.set(project.id, project));
+    this.publish();
+  }
+
+  async renameLibraryProject(id: string, name: string): Promise<void> {
+    await this.initialize();
+    this.requireAvailableProject(id);
+    const validated = this.validLibraryName(name);
+    for (const workspace of [...this.workspaces.values()].filter(
+      (record) => record.projectId === id,
+    )) {
+      const context = await this.getWorkspaceContext({
+        projectId: id,
+        workspaceId: workspace.id,
+      });
+      const result = await context.store.getState().renameProject(validated);
+      if (!result.success) throw new Error("Project rename failed");
+      await this.flushWorkspaceWrites(workspace.id);
+    }
+  }
+
+  async copyLibraryProject(id: string): Promise<string> {
+    await this.initialize();
+    const record = this.requireAvailableProject(id);
+    await this.flushWorkspaceWrites(record.defaultWorkspaceId);
+    const source = this.workspaces.get(record.defaultWorkspaceId)!.project;
+    const now = Date.now();
+    const copy = {
+      ...cloneProject(source),
+      id: uuidv4(),
+      name: `${record.name} (${i18next.t("projectLibrary.copySuffix")})`,
+      createdAt: now,
+      modifiedAt: now,
+    };
+    await this.createProject(copy, { loadRuntime: false });
+    if (record.folderId) await this.moveProjects([copy.id], record.folderId);
+    return copy.id;
+  }
+
+  async recycleProjects(ids: readonly string[]): Promise<void> {
+    await this.initialize();
+    const records = ids.map((id) => this.requireAvailableProject(id));
+    ids.forEach((id) => this.closingProjects.add(id));
+    blockProjectExports(ids);
+    try {
+      // Finish reference transactions that began before the closing guard (for
+      // example, Agent-created trials), then include their durable workspaces.
+      const durableWorkspaces = await withMediaReferenceWrite(() =>
+        this.readAll<WorkspaceRecord>(WORKSPACES),
+      );
+      durableWorkspaces.forEach((record) => {
+        if (ids.includes(record.projectId) && !this.workspaces.has(record.id))
+          this.workspaces.set(record.id, record);
+      });
+      const workspaces = [...this.workspaces.values()].filter((record) =>
+        ids.includes(record.projectId),
+      );
+      await Promise.all(
+        workspaces.map((record) => this.workspaceCommandTails.get(record.id)),
+      );
+      await Promise.all(
+        workspaces.map((record) => this.runtimeInitializations.get(record.id)),
+      );
+      await Promise.all(
+        workspaces.map((record) => this.flushWorkspaceWrites(record.id)),
+      );
+      await this.assertProjectDeletionAllowed(ids);
+      await Promise.all(ids.map((id) => autoSaveManager.suspendProject(id)));
+      const recycled = records.map((record) => ({
+        ...this.projects.get(record.id)!,
+        recycledAt: Date.now(),
+      }));
+      const tx = this.requireDb().transaction(PROJECTS, "readwrite");
+      const done = transactionDone(tx);
+      recycled.forEach((record) => tx.objectStore(PROJECTS).put(record));
+      await done;
+      recycled.forEach((record) => this.projects.set(record.id, record));
+      if (this.activeTarget && ids.includes(this.activeTarget.projectId)) {
+        useEngineStore.getState().getPlaybackController()?.pause();
+        useTimelineStore.getState().pause();
+        this.activeTarget = null;
+        activateProjectStore(createProjectStore());
+        applyViewState(null);
+      }
+      for (const workspace of workspaces)
+        await this.detachWorkspaceRuntime(workspace.id);
+    } finally {
+      ids.forEach((id) => this.closingProjects.delete(id));
+      unblockProjectExports(ids);
+      this.publish();
+    }
+  }
+
+  async restoreProjects(ids: readonly string[]): Promise<void> {
+    await this.initialize();
+    const folders = await this.listFolders();
+    const records = ids.map((id) => {
+      const record = this.projects.get(id);
+      if (
+        !record ||
+        record.recycledAt === undefined ||
+        record.deletedAt !== undefined
+      )
+        throw new Error("Project is not in the recycle bin");
+      const { recycledAt: _recycledAt, ...restored } = record;
+      return {
+        ...restored,
+        folderId: folders.some((folder) => folder.id === restored.folderId)
+          ? restored.folderId
+          : undefined,
+      };
+    });
+    const tx = this.requireDb().transaction(PROJECTS, "readwrite");
+    const done = transactionDone(tx);
+    records.forEach((record) => tx.objectStore(PROJECTS).put(record));
+    await done;
+    records.forEach((record) => this.projects.set(record.id, record));
+    this.publish();
+  }
+
+  async purgeProjects(
+    ids: readonly string[],
+    mediaIds: readonly string[] = [],
+  ): Promise<void> {
+    await this.initialize();
+    await this.assertProjectDeletionAllowed(ids);
+    const records = ids.map((id) => {
+      const record = this.projects.get(id);
+      if (!record || record.recycledAt === undefined)
+        throw new Error("Only recycled projects can be permanently deleted");
+      return {
+        ...record,
+        deletedAt: Date.now(),
+        purgedMediaIds: [
+          ...new Set([...(record.purgedMediaIds ?? []), ...mediaIds]),
+        ],
+      };
+    });
+    const stores = [WORKSPACES, NODES, NODE_SUMMARIES, DRAFTS, TASK_INPUTS];
+    const rows = await Promise.all(
+      stores.map((store) =>
+        this.readAll<{ id?: string; jobId?: string; projectId: string }>(store),
+      ),
+    );
+    const workspaceIds = rows[0]
+      .filter((row) => ids.includes(row.projectId))
+      .map((row) => row.id!);
+    const receipts =
+      await this.readAll<PersistedIdempotencyRecord>(IDEMPOTENCY);
+    const deletedReceipts = receipts.filter((receipt) => {
+      const owner = receipt.key.split(":")[1];
+      const result = receipt.result as { projectId?: string };
+      return (
+        ids.includes(owner) ||
+        workspaceIds.includes(owner) ||
+        (result.projectId !== undefined && ids.includes(result.projectId))
+      );
+    });
+    await withMediaReferenceWrite(async () => {
+      const tx = this.requireDb().transaction(
+        [PROJECTS, IDEMPOTENCY, ...stores],
+        "readwrite",
+      );
+      const done = transactionDone(tx);
+      records.forEach((record) => tx.objectStore(PROJECTS).put(record));
+      stores.forEach((store, index) =>
+        rows[index]
+          .filter((row) => ids.includes(row.projectId))
+          .forEach((row) =>
+            tx.objectStore(store).delete((row.id ?? row.jobId)!),
+          ),
+      );
+      deletedReceipts.forEach((receipt) =>
+        tx.objectStore(IDEMPOTENCY).delete(receipt.key),
+      );
+      await done;
+    });
+    records.forEach((record) => this.projects.set(record.id, record));
+    for (const [id, record] of this.workspaces)
+      if (ids.includes(record.projectId)) {
+        this.workspaces.delete(id);
+        this.editedWorkspaces.delete(id);
+      }
+    for (const [id, record] of this.nodes)
+      if (ids.includes(record.projectId)) this.nodes.delete(id);
+    this.publish();
+  }
+
+  private validLibraryName(name: string): string {
+    const value = name.trim();
+    if (!value || value.length > 120)
+      throw new Error("Name must contain 1–120 characters");
+    return value;
+  }
+
+  async assertProjectDeletionAllowed(ids: readonly string[]): Promise<void> {
+    await this.initialize();
+    const exporting = getExportingProjectIds();
+    if (ids.some((id) => exporting.has(id)))
+      throw new Error(i18next.t("projectLibrary.exportBusy"));
+    const tasks = (await this.readAll<PersistedTaskInput>(TASK_INPUTS)).filter(
+      (task) => ids.includes(task.projectId),
+    );
+    if (!tasks.length) return;
+    const states = await window.reelterminal?.projectLibrary?.getTaskStates(
+      tasks.map((task) => task.jobId),
+    );
+    // Retained snapshots also survive interrupted/completed jobs. Block only
+    // active jobs, or inputs whose job has not yet been registered/verified.
+    if (
+      !states ||
+      tasks.some(
+        (task) =>
+          !["done", "error", "cancelled"].includes(states[task.jobId] ?? ""),
+      )
+    ) {
+      throw new Error(i18next.t("projectLibrary.taskBusy"));
+    }
+  }
+
+  private isProjectAvailable(project: ProjectRecord | undefined): boolean {
+    // Older node-only databases can contain snapshots before a project index row exists.
+    return (
+      project === undefined ||
+      (project.recycledAt === undefined &&
+        project.deletedAt === undefined &&
+        !this.closingProjects.has(project.id))
+    );
+  }
+
+  private assertProjectNotDeleted(id: string): void {
+    if (!this.isProjectAvailable(this.projects.get(id)))
+      throw Object.assign(new Error("Project is deleted or unavailable"), {
+        code: "NOT_FOUND",
+      });
+  }
+
+  private requireAvailableProject(id: string): ProjectRecord {
+    const project = this.projects.get(id);
+    if (!project || !this.isProjectAvailable(project))
+      throw Object.assign(new Error("Project is deleted or unavailable"), {
+        code: "NOT_FOUND",
+      });
+    return project;
   }
 
   async listWorkspaces(projectId: string): Promise<WorkspaceSummary[]> {
     await this.initialize();
+    this.requireAvailableProject(projectId);
     return [...this.workspaces.values()]
       .filter((workspace) => workspace.projectId === projectId)
       .map(({ project: _project, ...summary }) => summary)
@@ -547,6 +888,7 @@ export class WorkspaceManager {
 
   async listNodes(projectId: string): Promise<ProjectNodeSummary[]> {
     await this.initialize();
+    this.assertProjectNotDeleted(projectId);
     return [...this.nodes.values()]
       .filter((node) => node.projectId === projectId && node.recycledAt === undefined)
       .sort((a, b) => a.createdAt - b.createdAt);
@@ -554,6 +896,7 @@ export class WorkspaceManager {
 
   async listDeletedNodes(projectId: string): Promise<ProjectNodeSummary[]> {
     await this.initialize();
+    this.assertProjectNotDeleted(projectId);
     return [...this.nodes.values()]
       .filter((node) => node.projectId === projectId && node.recycledAt !== undefined)
       .sort((a, b) => a.createdAt - b.createdAt);
@@ -566,7 +909,7 @@ export class WorkspaceManager {
     for (const record of this.workspaces.values()) {
       if (!this.editedWorkspaces.has(record.id)) continue;
       const project = this.projects.get(record.projectId);
-      if (!project) continue;
+      if (!project || !this.isProjectAvailable(project)) continue;
       const runtime = this.runtimes.get(record.id);
       let currentProject: Project;
       if (runtime) {
@@ -603,6 +946,7 @@ export class WorkspaceManager {
       ? nodeId!
       : projectIdOrTarget.nodeId;
     const summary = this.nodes.get(requestedNodeId);
+    this.assertProjectNotDeleted(projectId);
     if (summary && summary.projectId !== projectId) return null;
     const node = await this.readOne<ProjectNodeRecord>(NODES, requestedNodeId);
     if (!node || node.projectId !== projectId) return null;
@@ -664,6 +1008,16 @@ export class WorkspaceManager {
         : [PROJECTS, WORKSPACES];
       const tx = this.requireDb().transaction(stores, "readwrite");
       const completed = transactionDone(tx);
+      if (options.deduplicateName !== false) {
+        // Read and reserve the name in the same transaction as the new project.
+        const existing = await requestResult<ProjectRecord[]>(tx.objectStore(PROJECTS).getAll());
+        const name = getUniqueProjectName(snapshot.name, existing
+          .filter((record) => record.deletedAt === undefined)
+          .map((record) => record.name));
+        projectRecord.name = name;
+        workspace.project = { ...snapshot, name };
+        result.project = workspace.project;
+      }
       tx.objectStore(PROJECTS).add(projectRecord);
       tx.objectStore(WORKSPACES).add(workspace);
       if (idemKey) tx.objectStore(IDEMPOTENCY).put({ key: idemKey, request, result });
@@ -672,7 +1026,7 @@ export class WorkspaceManager {
     this.projects.set(projectRecord.id, projectRecord);
     this.workspaces.set(workspace.id, workspace);
     this.publish();
-    await this.ensureRuntime(workspace, false);
+    if (options.loadRuntime !== false) await this.ensureRuntime(workspace, false);
     return this.createdProjectResult(projectRecord.id, workspace.id, 0, workspace.project, false);
   }
 
@@ -681,8 +1035,7 @@ export class WorkspaceManager {
     options: CreateWorkspaceOptions = {},
   ): Promise<WorkspaceSummary> {
     await this.initialize();
-    const projectRecord = this.projects.get(projectId);
-    if (!projectRecord) throw new Error(`Unknown project ${projectId}`);
+    const projectRecord = this.requireAvailableProject(projectId);
     const request = stableStringify({ projectId, name: options.name, sourceNodeId: options.sourceNodeId, sourceWorkspaceId: options.sourceWorkspaceId, kind: options.kind });
     const idemKey = options.idempotencyKey
       ? this.idempotencyKey("workspace.create", options.idempotencyKey, projectId)
@@ -720,6 +1073,7 @@ export class WorkspaceManager {
         dirty: node ? false : sourceWorkspace?.dirty ?? false,
         project: cloneProject(await prepareProjectRenderFonts(source)),
       };
+      this.requireAvailableProject(projectId);
       const tx = this.requireDb().transaction(idemKey ? [WORKSPACES, IDEMPOTENCY] : [WORKSPACES], "readwrite");
       const completed = transactionDone(tx);
       tx.objectStore(WORKSPACES).add(record);
@@ -733,6 +1087,7 @@ export class WorkspaceManager {
     this.workspaces.set(record.id, record);
     this.workspaceBaseProjectKeys.set(record.id, baseProjectKey);
     this.publish();
+    this.requireAvailableProject(projectId);
     await this.ensureRuntime(record, false);
     return this.toSummary(record);
   }
@@ -746,6 +1101,7 @@ export class WorkspaceManager {
     const record = await this.requireWorkspace(target);
     let store = this.runtimes.get(target.workspaceId);
     if (!store) store = await this.ensureRuntime(record, false);
+    this.requireAvailableProject(target.projectId);
     return {
       projectId: target.projectId,
       workspaceId: target.workspaceId,
@@ -820,6 +1176,7 @@ export class WorkspaceManager {
       label = { name: record.name, summary: "", createdAt: record.updatedAt, agentTrial: record.kind === "trial" };
       missingDependencies = await missingProjectDependencies(project);
     }
+    this.assertProjectNotDeleted(projectId);
     const projectWithMedia = await withMediaReferenceWrite(() => this.hydrateProject(project));
     const store = createProjectStore({ isForeground: false });
     store.getState().loadProject(projectWithMedia);
@@ -1065,26 +1422,35 @@ export class WorkspaceManager {
     if (this.activeTarget?.workspaceId === target.workspaceId) {
       const project = this.projects.get(target.projectId);
       if (project && project.defaultWorkspaceId !== target.workspaceId) {
-        await this.switchView({ projectId: target.projectId, workspaceId: project.defaultWorkspaceId });
+        await this.switchView({
+          projectId: target.projectId,
+          workspaceId: project.defaultWorkspaceId,
+        });
       } else {
         return;
       }
     }
     await this.flushWorkspaceWrites(target.workspaceId);
-    const closingRuntime = this.runtimes.get(target.workspaceId);
+    await this.detachWorkspaceRuntime(target.workspaceId);
+  }
+
+  private async detachWorkspaceRuntime(workspaceId: string): Promise<void> {
+    const closingRuntime = this.runtimes.get(workspaceId);
     if (closingRuntime) {
       const { detachProjectMediaGc } = await import("./project-media-gc");
       detachProjectMediaGc(closingRuntime.getState().actionHistory);
     }
-    releaseProjectRenderFonts(target.workspaceId);
-    this.runtimeUnsubscribers.get(target.workspaceId)?.();
-    this.runtimeUnsubscribers.delete(target.workspaceId);
-    this.viewStates.delete(target.workspaceId);
-    this.runtimes.delete(target.workspaceId);
-    this.runtimeIds.delete(target.workspaceId);
-    this.workspaceBaseProjectKeys.delete(target.workspaceId);
-    this.workspaceWriteDrains.delete(target.workspaceId);
-    this.queuedWorkspaceWrites.delete(target.workspaceId);
+    releaseProjectRenderFonts(workspaceId);
+    this.runtimeUnsubscribers.get(workspaceId)?.();
+    this.runtimeUnsubscribers.delete(workspaceId);
+    this.viewStates.delete(workspaceId);
+    this.runtimes.delete(workspaceId);
+    this.runtimeIds.delete(workspaceId);
+    this.workspaceBaseProjectKeys.delete(workspaceId);
+    this.workspaceWriteDrains.delete(workspaceId);
+    this.queuedWorkspaceWrites.delete(workspaceId);
+    this.failedWorkspaceWrites.delete(workspaceId);
+    this.editedWorkspaces.delete(workspaceId);
   }
 
   async saveNode(input: NodeCommandOptions & { name?: string; summary?: string }): Promise<{ node: ProjectNodeRecord; revision: number; replayed: boolean }> {
@@ -1839,6 +2205,7 @@ export class WorkspaceManager {
     if (!current.hasOpenProject) return;
     autoSaveManager.stop();
     let projectRecord = this.projects.get(current.project.id);
+    if (projectRecord && !this.isProjectAvailable(projectRecord)) return;
     if (!projectRecord) {
       const now = Date.now();
       const workspaceId = uuidv4();
@@ -2122,6 +2489,7 @@ export class WorkspaceManager {
   }
 
   private async requireWorkspace(target: WorkspaceTarget): Promise<WorkspaceRecord> {
+    this.requireAvailableProject(target.projectId);
     const workspace = this.workspaces.get(target.workspaceId) ?? await this.readOne<WorkspaceRecord>(WORKSPACES, target.workspaceId);
     if (!workspace || workspace.projectId !== target.projectId) {
       throw Object.assign(new Error(`Unknown workspace ${target.workspaceId} in project ${target.projectId}`), { code: "NOT_FOUND" });
@@ -2147,6 +2515,7 @@ export class WorkspaceManager {
     const project = this.projects.get(projectId) ?? await this.readOne<ProjectRecord>(PROJECTS, projectId);
     const workspace = this.workspaces.get(workspaceId) ?? await this.readOne<WorkspaceRecord>(WORKSPACES, workspaceId);
     if (!project || !workspace) throw new Error("Created project records are incomplete");
+    this.requireAvailableProject(projectId);
     return {
       project: structuredClone(projectSnapshot ?? workspace.project),
       projectRecord: structuredClone(project),
@@ -2239,6 +2608,7 @@ export class WorkspaceManager {
       request.onupgradeneeded = (event) => {
         const db = request.result;
         if (!db.objectStoreNames.contains(PROJECTS)) db.createObjectStore(PROJECTS, { keyPath: "id" });
+        if (!db.objectStoreNames.contains(FOLDERS)) db.createObjectStore(FOLDERS, { keyPath: "id" });
         if (!db.objectStoreNames.contains(WORKSPACES)) {
           const store = db.createObjectStore(WORKSPACES, { keyPath: "id" });
           store.createIndex("projectId", "projectId", { unique: false });
@@ -2301,11 +2671,11 @@ export class WorkspaceManager {
       version: this.version,
       activeProjectId: this.activeTarget?.projectId ?? null,
       activeWorkspaceId: this.activeTarget?.workspaceId ?? null,
-      projects: Object.freeze([...this.projects.values()].map((item) => structuredClone(item))),
-      workspaces: Object.freeze([...this.workspaces.values()].map((item) => this.toSummary(item))),
+      projects: Object.freeze([...this.projects.values()].filter((item) => this.isProjectAvailable(item)).map((item) => structuredClone(item))),
+      workspaces: Object.freeze([...this.workspaces.values()].filter((item) => this.isProjectAvailable(this.projects.get(item.projectId)!)).map((item) => this.toSummary(item))),
       nodes: Object.freeze(
         [...this.nodes.values()]
-          .filter((node) => node.recycledAt === undefined)
+          .filter((node) => node.recycledAt === undefined && this.isProjectAvailable(this.projects.get(node.projectId)!))
           .map((item) => structuredClone(item)),
       ),
     });

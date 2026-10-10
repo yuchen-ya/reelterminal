@@ -31,6 +31,9 @@ vi.mock("../../services/auto-save", () => ({
 }));
 
 vi.mock("../../services/media-storage", () => ({ loadProjectMedia }));
+vi.mock("../../services/workspace-manager", () => ({
+  workspaceManager: { listProjects: vi.fn(async () => []) },
+}));
 vi.mock("../../services/project-media-gc", () => ({
   attachProjectMediaGc: vi.fn(),
   flushProjectMediaBytes: vi.fn(),
@@ -91,6 +94,16 @@ describe("project persistence initialization", () => {
     loadProjectMedia.mockResolvedValue([]);
     restoreMediaItem.mockImplementation(async (item: unknown) => item);
     addToRecent.mockResolvedValue(undefined);
+  });
+
+  it("refuses recovery for a project already in the recycle bin", async () => {
+    const { project, slice } = await createHarness();
+    const { workspaceManager } = await import("../../services/workspace-manager");
+    vi.mocked(workspaceManager.listProjects).mockResolvedValueOnce([{ id: project.id, name: project.name, recycledAt: 1, defaultWorkspaceId: "old-workspace", createdAt: 1, modifiedAt: 1 }]);
+    autoSaveMocks.recover.mockResolvedValueOnce(project);
+    expect(await slice.recoverFromAutoSave("old-save")).toBe(false);
+    expect(loadProjectMedia).not.toHaveBeenCalled();
+    expect(addToRecent).not.toHaveBeenCalled();
   });
 
   it("can retry after the first initialization rejects", async () => {

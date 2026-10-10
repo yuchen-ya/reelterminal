@@ -27,3 +27,14 @@ export function generateProjectName(): string {
 export function generateSimpleProjectName(): string {
   return CITY_NAMES[Math.floor(Math.random() * CITY_NAMES.length)];
 }
+
+export function getUniqueProjectName(name: string, existingNames: readonly string[]): string {
+  const base = name.trim();
+  const used = new Set(existingNames.map((existing) => existing.trim().toLowerCase()));
+  let candidate = base;
+  let suffix = 2;
+  while (used.has(candidate.toLowerCase())) {
+    candidate = `${base} ${suffix++}`;
+  }
+  return candidate;
+}

@@ -33,7 +33,7 @@ async function createAndShowProject(format: NewProjectFormat, name: string): Pro
   });
   const created = await workspaceManager.createProject(project);
   await workspaceManager.switchView({ projectId: project.id, workspaceId: created.defaultWorkspaceId });
-  await projectManager.addToRecent(project);
+  await projectManager.addToRecent(created.project);
 }
 
 export function startNewProject(format: NewProjectFormat): Promise<void> {
@@ -52,10 +52,12 @@ export interface RecentEntry {
 }
 
 export async function listRecentProjects(): Promise<RecentEntry[]> {
-  const [recentProjects, saves] = await Promise.all([
+  const [recentProjects, saves, projects] = await Promise.all([
     projectManager.getRecentProjects(),
     autoSaveManager.checkForRecovery(),
+    workspaceManager.listProjects(true),
   ]);
+  const unavailable = new Set(projects.filter((project) => project.recycledAt !== undefined || project.deletedAt !== undefined).map((project) => project.id));
   const entries = new Map<string, RecentEntry>(
     recentProjects.map((recent) => [recent.id, {
       id: recent.id,
@@ -74,7 +76,7 @@ export async function listRecentProjects(): Promise<RecentEntry[]> {
       });
     }
   }
-  return [...entries.values()].sort((a, b) => b.lastOpened - a.lastOpened).slice(0, 10);
+  return [...entries.values()].filter((entry) => !unavailable.has(entry.id)).sort((a, b) => b.lastOpened - a.lastOpened).slice(0, 10);
 }
 
 async function importProjectIntoWorkspace(project: Project): Promise<void> {
@@ -86,13 +88,13 @@ async function importProjectIntoWorkspace(project: Project): Promise<void> {
     ),
   );
 
-  const existing = (await workspaceManager.listProjects()).some((entry) => entry.id === project.id);
+  const existing = (await workspaceManager.listProjects(true)).some((entry) => entry.id === project.id);
   const imported = {
     ...project,
     ...(existing ? { id: uuid(), name: `${project.name} (${t("versioning.importedCopy")})` } : {}),
     mediaLibrary: { ...project.mediaLibrary, items },
   };
-  const created = await workspaceManager.createProject(imported);
+  const created = await workspaceManager.createProject(imported, { deduplicateName: false });
   await switchProjectView({ projectId: imported.id, workspaceId: created.defaultWorkspaceId });
   await projectManager.addToRecent(imported);
   toast.info(t("versioning.projectFileScope"));
@@ -114,7 +116,8 @@ export async function openProject(): Promise<boolean> {
 
 export async function openRecentProject(projectId: string): Promise<boolean> {
   await saveCurrentProject();
-  const existing = (await workspaceManager.listProjects()).find((project) => project.id === projectId);
+  const existing = (await workspaceManager.listProjects(true)).find((project) => project.id === projectId);
+  if (existing?.recycledAt !== undefined || existing?.deletedAt !== undefined) return false;
   if (existing) {
     await switchProjectView({ projectId, workspaceId: existing.defaultWorkspaceId });
     return true;

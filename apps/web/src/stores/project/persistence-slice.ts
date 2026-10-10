@@ -98,6 +98,9 @@ export function createProjectPersistenceSlice(
         get().projectRevision === startingRevision;
       const recoveredProject = await autoSaveManager.recover(saveId);
       if (recoveredProject) {
+        const { workspaceManager } = await import("../../services/workspace-manager");
+        const record = (await workspaceManager.listProjects(true)).find((entry) => entry.id === recoveredProject.id);
+        if (record?.recycledAt !== undefined || record?.deletedAt !== undefined) return false;
         // Auto-save recovery parses raw JSON and never passes through
         // normalizeProjectStoredFields, so stored-field repair for fields
         // without engine loaders (work assets) must run here explicitly.

@@ -54,7 +54,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.6.0" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.7.1" as const;
 export const GUI_MANUAL_APP_VERSION = "1.0.1" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
@@ -128,7 +128,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       { zh: "导入：点击左侧素材面板的“导入”，选择本地视频、音频或图片。素材出现在列表后，拖到下方时间线。导入素材不会自动放到轨道上。", en: "Import: use Import in the left media panel to choose local video, audio, or images. Drag an imported item onto the timeline; importing alone does not place it on a track." },
       { zh: "剪辑：拖动片段调整位置，拖动两端修剪长度。把播放头移到切点，选中片段后按 S 分割；选中不要的部分后按 Delete。", en: "Edit: drag a clip to move it and drag its edges to trim. Move the playhead to a cut, select the clip, and press S to split; select unwanted parts and press Delete." },
       { zh: "检查：点击播放器下方的播放按钮，或按空格播放/暂停。选中片段后，在右侧检查器调整变换、音量或效果；先确认片段已选中。", en: "Review: use the player Play button or Space to play/pause. Select a clip before adjusting its transform, volume, or effects in the right inspector." },
-      { zh: "保存：默认快捷键 Ctrl+S（Mac 为 Cmd+S）立即保存到本机项目存储，之后从首页“最近项目”继续编辑。导出视频用于播放或分享；本机存储和自动保存不能替代文件备份。", en: "Save: the default Ctrl+S (Cmd+S on Mac) immediately saves to local project storage; reopen it from Recent on the start screen. Exported video is for playback or sharing; local storage and autosave do not replace a file backup." },
+      { zh: "保存：默认快捷键 Ctrl+S（Mac 为 Cmd+S）立即保存到本机项目存储，之后从首页“本地项目”继续编辑。导出视频用于播放或分享；本机存储和自动保存不能替代文件备份。", en: "Save: the default Ctrl+S (Cmd+S on Mac) immediately saves to local project storage; reopen it from Local projects on the start screen. Exported video is for playback or sharing; local storage and autosave do not replace a file backup." },
       { zh: "导出：点击顶栏“导出”，先选择一个预设，或切到“自定义”保留 MP4 和项目画面参数，再点“开始导出”选择保存位置。未选预设时按钮会禁用。完成后打开输出文件，检查画面、声音和结尾。", en: "Export: click Export, choose a preset or switch to Custom to keep MP4 and the project's frame settings, then Start Export and choose a destination. Start Export is disabled until a preset is selected in Presets mode. Check the finished picture, sound, and ending." },
       { zh: "可选：需要智能体协助时，先打开项目，再在状态栏点击“允许编辑”；右键素材或片段可添加引用，再次右键可移除。参考对比在播放器工具栏的“对比”里，默认不遮挡画面。", en: "Optional: open a project, then use Allow editing in the status strip for Agent edits. Right-click media or clips to add a reference and right-click again to remove it. Reference comparison lives under Compare in the player toolbar." },
     ],
@@ -138,6 +138,24 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       { zh: "素材丢失：优先检查原文件是否被移动、外接盘是否断开。导出失败：先检查时间线里有片段、保存目录可写，再查看错误提示。不要通过清空整个数据目录处理启动问题。", en: "Missing media: check whether source files moved or an external drive disconnected. Export failure: check that the timeline has clips and the destination is writable, then read the error message. Do not erase the entire data folder to troubleshoot startup." },
     ],
     keywords: ["start", "beginner", "install", "portable", "save", "quickstart", "新手", "安装", "便携", "上手", "保存"],
+  },
+  {
+    id: "project-library",
+    title: { zh: "本地项目管理", en: "Local Project Library" },
+    // @source apps/web/src/desktop/start/ProjectLibrary.tsx
+    summary: { zh: "在本机整理项目、创建副本，以及删除或恢复项目。", en: "Organize local projects, make independent copies, and delete or restore projects." },
+    entry: [{ zh: "首页下方的“本地项目”；编辑中可从顶栏项目名菜单选择“新建项目”进入首页，并用“返回当前项目”返回。", en: "Use Local projects below the start-screen creation cards. From the editor, choose New Project in the project-name menu; Back to current project returns to the editor." }],
+    steps: [
+      { zh: "搜索名称，按修改时间、创建时间、项目名称或工程大小排序，切换升降序与列表/网格。工程大小只统计当前编辑数据。", en: "Search by name; sort by modification, creation, name or project size; switch direction and list/grid. Project size counts current edit data only." },
+      { zh: "每个条目的更多菜单提供重命名、创建副本、移动到文件夹和删除。副本共享素材，编辑、版本和撤销历史独立。", en: "Each project menu offers Rename, Duplicate, Move to folder and Delete. Copies share media safely and start with independent edits, version history and undo history." },
+      { zh: "文件夹仅用于本地分组，不移动素材。删除文件夹后，项目进入“未分组”。点击“管理”进行批量移动或删除；全选只选择当前筛选结果。", en: "Folders group projects without moving source files. Deleting a folder ungroups its projects. Manage enables bulk move/delete; Select all results selects only the current filtered results." },
+      { zh: "删除先移入回收站，可单项或批量恢复。永久删除前会显示预计可回收的无引用应用素材缓存大小。原片、单独保存的工程文件和导出成片会保留。", en: "Delete moves projects into the recycle bin for individual or bulk restore. Permanent deletion previews unreferenced application cache bytes. External originals, separately saved project files and exports remain." },
+    ],
+    limitations: [
+      { zh: "管理只作用于当前本机存储，不扫描其他目录，也不包含云端功能。运行中的导出或 Agent 任务会阻止删除。", en: "Management covers this local storage only, without scanning other folders or using cloud services. Running exports or Agent jobs block deletion." },
+      { zh: "网格优先显示已有的素材缩略图，没有缓存缩略图时显示项目图标，不会为了浏览项目逐个解码视频。", en: "Grid cards use existing cached media thumbnails or a project icon; browsing does not decode every project's videos." },
+    ],
+    keywords: ["project", "delete", "rename", "folder", "recycle", "restore", "duplicate", "项目", "删除", "重命名", "文件夹", "回收站", "恢复"],
   },
   {
     id: "motion-quick-start",
@@ -231,8 +249,8 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     },
     entry: [
       {
-        zh: "点击时间线上方状态行的“● 当前”打开存档记录；关闭面板返回原检查器。此入口只查看记录，不创建存档、不跳播放头。",
-        en: "Click Current in the timeline status strip to open save points; close the panel to return to the inspector. Opening records never creates a save point or moves the playhead.",
+        zh: "点击时间线上方状态行的“● 存档”进入存档树，再点击“创建存档点”为阶段性成果存档；关闭面板返回原检查器。打开存档树本身不创建存档、不跳播放头。界面导览会专门介绍这个入口。",
+        en: "Click Archives in the timeline status strip to open the save-point tree, then use Create save point to save a milestone. Close the panel to return to the inspector. Opening the tree does not create a save point or move the playhead. The interface tour explains this entry.",
       },
     ],
     steps: [

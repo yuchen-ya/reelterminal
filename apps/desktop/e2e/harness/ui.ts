@@ -63,7 +63,7 @@ export async function waitForEditorReady(page: Page): Promise<void> {
 }
 
 export async function openRecentProjectViaUI(page: Page, projectName: string): Promise<void> {
-  await page.getByText("Recent", { exact: true }).waitFor({ timeout: 60_000 });
+  await page.getByTestId("project-library").waitFor({ timeout: 60_000 });
   const card = page.getByLabel(`Open ${projectName}`);
   await card.waitFor({ timeout: 60_000 });
   await card.click();

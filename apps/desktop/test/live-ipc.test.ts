@@ -38,6 +38,7 @@ const stubHost = {
   enable: vi.fn(),
   disable: vi.fn(),
   getStatus: vi.fn(),
+  getTaskStates: vi.fn(() => ({ "job-1": "done" })),
   setAccess: vi.fn(),
 } as unknown as LiveSessionHost;
 
@@ -61,6 +62,18 @@ describe("collabOpenWorkspace IPC", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     rmSync(videosDir, { recursive: true, force: true });
+  });
+
+  it("reads only job states for the editor's local project deletion", () => {
+    const handler = handlers.get(CHANNELS.projectTaskStates)!;
+    expect(handler({ sender: fakeSender, senderFrame: fakeSender.mainFrame }, { jobIds: ["job-1"] })).toEqual({ "job-1": "done" });
+    expect(stubHost.getTaskStates).toHaveBeenCalledWith(["job-1"]);
+  });
+
+  it("rejects foreign frames and malformed job ids before checking deletion safety", () => {
+    const handler = handlers.get(CHANNELS.projectTaskStates)!;
+    expect(() => handler({ sender: { id: "other" } }, { jobIds: ["job-1"] })).toThrow(/main editor frame/);
+    expect(() => handler({ sender: fakeSender, senderFrame: fakeSender.mainFrame }, { jobIds: ["../job"] })).toThrow();
   });
 
   it("creates jobs/shared under the workspace root and reveals it", async () => {

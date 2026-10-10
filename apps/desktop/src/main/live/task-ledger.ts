@@ -96,6 +96,10 @@ export class DurableTaskLedger {
     return record ? structuredClone(record) : null;
   }
 
+  getState(jobId: string): JobStatusView["state"] | null {
+    return this.records.get(jobId)?.status.state ?? null;
+  }
+
   list(): DurableTaskRecord[] {
     return [...this.records.values()].map((record) => structuredClone(record));
   }

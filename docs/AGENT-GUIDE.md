@@ -113,7 +113,7 @@ Each reference persists its entity kind and ID plus an A-label/name/time snapsho
 resolve by kind and ID, since A numbers belong to the original editor session.
 `workAsset` references identify saved clips or combinations in `project.workAssets`.
 
-The right inspector defaults to Properties. Bottom Current and Board entries
+The right inspector defaults to Properties. Bottom Archives and Board entries
 open their panels on demand; closing returns to Properties. A save point maps
 to `node`, and normal saves never call `node.save`. Direct human timeline
 selection opens Properties; Agent selections and updates leave the panel alone.

@@ -112,6 +112,7 @@ export interface LiveSessionHost {
   enable(): Promise<LiveCollabStatus>;
   disable(): Promise<LiveCollabStatus>;
   getStatus(): Promise<LiveCollabStatus>;
+  getTaskStates(jobIds: readonly string[]): Record<string, JobStatusView["state"] | null>;
   /** Explicit authorization change. */
   setAccess(access: AgentAccessMode): Promise<LiveCollabStatus>;
   /** External endpoint → facade (lazy-creates the external session). */
@@ -496,6 +497,10 @@ export function createLiveSessionHost(
   };
 
   const host: LiveSessionHost = {
+    getTaskStates(jobIds) {
+      taskLedger ??= new DurableTaskLedger(path.join(deps.artifactRoot, "task-records"));
+      return Object.fromEntries(jobIds.map((id) => [id, taskLedger!.getState(id)]));
+    },
     get isEnabled() {
       return enabled;
     },

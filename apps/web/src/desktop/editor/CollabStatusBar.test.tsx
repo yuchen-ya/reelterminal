@@ -160,6 +160,13 @@ describe("CollabStatusBar Agent Access status", () => {
 describe("CollabStatusBar requirements access", () => {
   afterEach(() => act(() => useUIStore.setState({ activeModal: null })));
 
+  it("labels the save-point entry Archives and opens the archive inspector", async () => {
+    useUIStore.setState({ desktopInspectorTab: "properties" });
+    await renderBar();
+    fireEvent.click(screen.getByRole("button", { name: "Archives" }));
+    expect(useUIStore.getState().desktopInspectorTab).toBe("archives");
+  });
+
   it("opens the project requirement board", async () => {
     await renderBar();
     fireEvent.click(screen.getByTestId("requirement-board-entry"));
