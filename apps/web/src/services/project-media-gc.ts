@@ -5,7 +5,7 @@ import {
 } from "@reelterminal/core";
 import { createIdbMaterialStorage } from "./material-library/storage";
 import { createIdbAgentTaskStorage } from "./agent-media-tasks/storage";
-import { workspaceManager } from "./workspace-manager";
+import { workspaceManager, type MediaReferencePurpose } from "./workspace-manager";
 import { getExportMediaReferences } from "./project-export-activity";
 import { projectManager } from "./project-manager";
 import { autoSaveManager } from "./auto-save";
@@ -32,6 +32,13 @@ export interface MediaReference {
   readonly kind: MediaReferenceKind;
   readonly referenceId: string;
   readonly label?: string;
+  /**
+   * Machine-readable retention purpose; `label` is display-only. Retention
+   * decisions key on this field. A task-kind reference without an explicit
+   * purpose is conservatively retained (treated like a task result, never
+   * as a purgeable task input).
+   */
+  readonly purpose?: MediaReferencePurpose;
 }
 
 export interface MediaReferenceScope {
@@ -190,9 +197,14 @@ export async function estimateProjectPurge(projectIds: readonly string[]): Promi
   for (const record of records) {
     if ((record.projectIds ?? [record.projectId]).some((id) => projectIds.includes(id))) mediaIds.add(record.id);
   }
+  // Retention keys on the explicit reference purpose, never the display
+  // label: only retained task INPUTS are purge candidates with their project.
+  // A task reference without a purpose (legacy or third-party producer) is
+  // conservatively kept.
   const retained = references.filter((reference) =>
     !projectIds.includes(reference.projectId) || reference.kind === "material" ||
-    reference.kind === "pending" || (reference.kind === "task" && reference.label !== "Task input"),
+    reference.kind === "pending" ||
+    (reference.kind === "task" && reference.purpose !== "task-input"),
   );
   const candidates = records.filter((record) => mediaIds.has(record.id) && !uncommittedMedia.has(record.id) &&
     !retained.some((reference) => reference.mediaId === record.id));
@@ -640,6 +652,7 @@ registerMediaReferenceProvider(async (scope) => {
       kind: "task",
       referenceId: typeof task.id === "string" ? task.id : task.resultMediaId,
       label: "Imported task result",
+      purpose: "task-result",
     }];
   });
 });

@@ -10,6 +10,7 @@ import { autoSaveManager } from "../../services/auto-save";
 import {
   compareNodes,
   createMediaCleanupPlan,
+  estimateProjectPurge,
   executeMediaCleanupPlan,
   releaseUncommittedMediaBlob,
   trackUncommittedMediaBlob,
@@ -499,6 +500,46 @@ describe("project media byte reclamation", () => {
     const secondPlan = await createMediaCleanupPlan(current.id);
     await executeMediaCleanupPlan(secondPlan);
     expect(storedMedia.has(pendingId)).toBe(false);
+  });
+
+  it("purges task-input bytes by purpose even when their display label was edited", async () => {
+    const projectId = useProjectStore.getState().project.id;
+    storedMedia.set("ti-labeled", { projectId, blob: new Blob(["1"]) });
+    storedMedia.set("ti-relabeled", { projectId, blob: new Blob(["1"]) });
+    workspace.getMediaReferences.mockImplementation(async () => [
+      { mediaId: "ti-labeled", projectId, kind: "task", referenceId: "job-1", label: "Task input", purpose: "task-input" },
+      // Editing the display label must not change the retention decision.
+      { mediaId: "ti-relabeled", projectId, kind: "task", referenceId: "job-2", label: "Display label was edited", purpose: "task-input" },
+    ]);
+
+    const estimate = await estimateProjectPurge([projectId]);
+
+    expect(estimate.mediaIds.sort()).toEqual(["ti-labeled", "ti-relabeled"]);
+    // Both task inputs are purge candidates; every 1-byte record is counted.
+    expect(estimate.bytes).toBe(2);
+  });
+
+  it("keeps task results and purpose-less task references retained regardless of label", async () => {
+    const projectId = useProjectStore.getState().project.id;
+    storedMedia.set("result-crafted-label", { projectId, blob: new Blob(["1"]) });
+    storedMedia.set("legacy-task-ref", { projectId, blob: new Blob(["1"]) });
+    storedMedia.set("unreferenced-bytes", { projectId, blob: new Blob(["1"]) });
+    workspace.getMediaReferences.mockImplementation(async () => [
+      // A task RESULT whose display label was crafted to mimic a task input.
+      { mediaId: "result-crafted-label", projectId, kind: "task", referenceId: "amt_result", label: "Task input", purpose: "task-result" },
+      // Legacy or foreign producers may omit the purpose entirely: kept.
+      { mediaId: "legacy-task-ref", projectId, kind: "task", referenceId: "active-export", label: "Running export" },
+    ]);
+
+    const estimate = await estimateProjectPurge([projectId]);
+
+    expect(estimate.mediaIds.sort()).toEqual([
+      "legacy-task-ref",
+      "result-crafted-label",
+      "unreferenced-bytes",
+    ]);
+    // Only the unreferenced bytes are candidates; both task references held.
+    expect(estimate.bytes).toBe(1);
   });
 
   it("reports an individual deletion failure without rejecting the cleanup", async () => {

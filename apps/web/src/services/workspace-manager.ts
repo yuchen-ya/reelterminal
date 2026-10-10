@@ -1,7 +1,6 @@
 import { hashMediaBlob, type Action, type Project } from "@reelterminal/core";
 import { v4 as uuidv4 } from "uuid";
 import i18next from "i18next";
-import type { StoreApi } from "zustand";
 import { useUIStore, type SelectionItem } from "../stores/ui-store";
 import { useTimelineStore } from "../stores/timeline-store";
 import { useEngineStore } from "../stores/engine-store";
@@ -10,7 +9,6 @@ import {
   createProjectStore,
   getActiveProjectRuntimeStore,
   resetProjectChangeJournalForStore,
-  type ProjectState,
 } from "../stores/project-store";
 import type {
   ActionBatchOptions,
@@ -139,7 +137,7 @@ export interface RecoveryDraftRecord {
 export interface WorkspaceContextHandle {
   projectId: string;
   workspaceId: string;
-  store: StoreApi<ProjectState>;
+  store: ProjectStore;
   revision: number;
   instanceId: string;
 }
@@ -179,12 +177,22 @@ export interface PreviewHandle {
   dispose(): Promise<void>;
 }
 
+/**
+ * Machine-readable retention purpose of a media reference. GC decisions
+ * (`estimateProjectPurge`) key on this field; `label` is display-only.
+ * Absent purpose on a task-kind reference is conservatively retained
+ * (treated like a task result, never as a purgeable task input).
+ */
+export type MediaReferencePurpose = "task-input" | "task-result" | "export";
+
 export interface MediaReference {
   mediaId: string;
   projectId: string;
   kind: "node" | "workspace-draft" | "recovery-draft" | "history" | "task" | "work-asset";
   referenceId: string;
   label?: string;
+  /** Why this reference exists; drives retention. See MediaReferencePurpose. */
+  purpose?: MediaReferencePurpose;
 }
 
 export interface DependencyProjectSnapshot {
@@ -1194,7 +1202,7 @@ export class WorkspaceManager {
   }
 
   async getStore(target: WorkspaceTarget): Promise<ProjectStore> {
-    return (await this.getWorkspaceContext(target)).store as ProjectStore;
+    return (await this.getWorkspaceContext(target)).store;
   }
 
   async getWorkspaceContext(target: WorkspaceTarget): Promise<WorkspaceContextHandle> {
@@ -1244,7 +1252,7 @@ export class WorkspaceManager {
     const record = await this.requireWorkspace(target);
     const store = this.runtimes.get(target.workspaceId) ?? await this.ensureRuntime(record, false);
     const alreadyActive = this.activeTarget?.workspaceId === target.workspaceId;
-    activateProjectStore(store as ProjectStore);
+    activateProjectStore(store);
     this.activeTarget = { ...target };
     if (!alreadyActive) this.publish();
   }
@@ -1516,7 +1524,7 @@ export class WorkspaceManager {
     }
     if (previousTarget) releaseProjectRenderFonts(previousTarget.workspaceId);
     this.activeTarget = { ...target };
-    activateProjectStore(context.store as ProjectStore);
+    activateProjectStore(context.store);
     applyViewState(this.viewStates.get(target.workspaceId) ?? null);
     this.publish();
   }
@@ -1573,7 +1581,7 @@ export class WorkspaceManager {
     await this.flushWorkspaceWrites(input.target.workspaceId);
     const record = await this.requireWorkspace(input.target);
     const context = await this.getWorkspaceContext(input.target);
-    const store = context.store as ProjectStore;
+    const store = context.store;
     const state = store.getState();
     const revision = state.workspaceRevision;
     const request = stableStringify({
@@ -1693,7 +1701,7 @@ export class WorkspaceManager {
     await this.flushWorkspaceWrites(input.target.workspaceId);
     const targetRecord = await this.requireWorkspace(input.target);
     const context = await this.getWorkspaceContext(input.target);
-    const store = context.store as ProjectStore;
+    const store = context.store;
     const revision = store.getState().workspaceRevision;
     const request = stableStringify({ target: input.target, nodeId: input.nodeId, expectedRevision: input.expectedRevision ?? null });
     const idemKey = input.idempotencyKey
@@ -1748,33 +1756,17 @@ export class WorkspaceManager {
       await completed;
     });
     if (store.getState().workspaceRevision !== revision) {
-      const liveState = store.getState();
-      const liveProject = cloneProject(liveState.getFullProject());
-      const baseNodeId = liveState.workspaceBaseNodeId;
-      const baseProjectKey = await this.getWorkspaceBaseProjectKey(input.target.workspaceId, baseNodeId);
-      const dirty = !baseProjectKey || baseProjectKey !== editableProjectKey(liveProject);
-      const preserved: WorkspaceRecord = {
-        ...(this.workspaces.get(targetRecord.id) ?? targetRecord),
-        baseNodeId,
-        revision: liveState.workspaceRevision,
-        updatedAt: Date.now(),
-        dirty,
-        project: liveProject,
-      };
-      await withMediaReferenceWrite(async () => {
-        const stores = idemKey ? [WORKSPACES, IDEMPOTENCY] : [WORKSPACES];
-        const tx = this.requireDb().transaction(stores, "readwrite");
-        const completed = transactionDone(tx);
-        tx.objectStore(WORKSPACES).put(preserved);
-        if (idemKey) tx.objectStore(IDEMPOTENCY).delete(idemKey);
-        await completed;
-      });
-      this.workspaces.set(targetRecord.id, preserved);
+      // Same compensation as every other interleaved-edit loser
+      // (persistCurrentWorkspaceAndRemoveActionReceipt): it preserves the
+      // newer live edit (with render fonts captured, like all durable writes)
+      // and drops the un-published restore receipt. Publish and the
+      // restore-specific conflict stay here.
+      await this.persistCurrentWorkspaceAndRemoveActionReceipt(targetRecord, store, idemKey);
       this.publish();
       throw new WorkspaceManagerError(
         "CONFLICT",
         "Workspace changed while restoring the node; the newer edit was preserved",
-        { expectedRevision: revision, preservedRevision: liveState.workspaceRevision },
+        { expectedRevision: revision, preservedRevision: store.getState().workspaceRevision },
       );
     }
     this.runtimeSuspension.set(input.target.workspaceId, (this.runtimeSuspension.get(input.target.workspaceId) ?? 0) + 1);
@@ -1816,7 +1808,7 @@ export class WorkspaceManager {
       await this.flushWorkspaceWrites(input.target.workspaceId);
       const targetRecord = await this.requireWorkspace(input.target);
       const context = await this.getWorkspaceContext(input.target);
-      const store = context.store as ProjectStore;
+      const store = context.store;
       const revision = store.getState().workspaceRevision;
       this.assertRevision(input.expectedRevision, revision);
       const sourceRecord = this.workspaces.get(input.sourceWorkspaceId)
@@ -2010,7 +2002,7 @@ export class WorkspaceManager {
     await this.flushWorkspaceWrites(target.workspaceId);
     const workspace = await this.requireWorkspace(target);
     const context = await this.getWorkspaceContext(target);
-    const store = context.store as ProjectStore;
+    const store = context.store;
     const currentRevision = store.getState().workspaceRevision;
     const request = stableStringify({ target, draftId, expectedRevision: expectedRevision ?? null });
     const idemKey = idempotencyKey ? this.idempotencyKey("draft.recover", idempotencyKey, target.workspaceId) : undefined;
@@ -2058,33 +2050,14 @@ export class WorkspaceManager {
       await completed;
     });
     if (store.getState().workspaceRevision !== currentRevision) {
-      const liveState = store.getState();
-      const liveProject = cloneProject(liveState.getFullProject());
-      const baseNodeId = liveState.workspaceBaseNodeId;
-      const baseProjectKey = await this.getWorkspaceBaseProjectKey(target.workspaceId, baseNodeId);
-      const dirty = !baseProjectKey || baseProjectKey !== editableProjectKey(liveProject);
-      const preserved: WorkspaceRecord = {
-        ...(this.workspaces.get(target.workspaceId) ?? workspace),
-        baseNodeId,
-        revision: liveState.workspaceRevision,
-        updatedAt: Date.now(),
-        dirty,
-        project: liveProject,
-      };
-      await withMediaReferenceWrite(async () => {
-        const stores = idemKey ? [WORKSPACES, IDEMPOTENCY] : [WORKSPACES];
-        const tx = this.requireDb().transaction(stores, "readwrite");
-        const completed = transactionDone(tx);
-        tx.objectStore(WORKSPACES).put(preserved);
-        if (idemKey) tx.objectStore(IDEMPOTENCY).delete(idemKey);
-        await completed;
-      });
-      this.workspaces.set(target.workspaceId, preserved);
+      // Shared interleaved-edit compensation; publish and the draft-specific
+      // conflict stay at the call site.
+      await this.persistCurrentWorkspaceAndRemoveActionReceipt(workspace, store, idemKey);
       this.publish();
       throw new WorkspaceManagerError(
         "CONFLICT",
         "Workspace changed while recovering the draft; the newer edit was preserved",
-        { expectedRevision: currentRevision, preservedRevision: liveState.workspaceRevision },
+        { expectedRevision: currentRevision, preservedRevision: store.getState().workspaceRevision },
       );
     }
     this.runtimeSuspension.set(target.workspaceId, (this.runtimeSuspension.get(target.workspaceId) ?? 0) + 1);
@@ -2213,15 +2186,29 @@ export class WorkspaceManager {
       this.readAll<PersistedTaskInput>(TASK_INPUTS),
     ]);
     const references: MediaReference[] = [];
-    const add = (project: Project, projectId: string, kind: MediaReference["kind"], referenceId: string, label?: string): void => {
+    const add = (
+      project: Project,
+      projectId: string,
+      kind: MediaReference["kind"],
+      referenceId: string,
+      label?: string,
+      purpose?: MediaReferencePurpose,
+    ): void => {
       for (const mediaId of projectMediaIds(project)) {
-        references.push({ mediaId, projectId, kind, referenceId, ...(label ? { label } : {}) });
+        references.push({
+          mediaId,
+          projectId,
+          kind,
+          referenceId,
+          ...(label ? { label } : {}),
+          ...(purpose ? { purpose } : {}),
+        });
       }
     };
     for (const node of nodes) add(node.project, node.projectId, "node", node.id, node.name);
     for (const workspace of workspaces) add(workspace.project, workspace.projectId, "workspace-draft", workspace.id, workspace.name);
     for (const draft of drafts) add(draft.project, draft.projectId, "recovery-draft", draft.id, draft.source);
-    for (const task of tasks) add(task.project, task.projectId, "task", task.jobId, "Task input");
+    for (const task of tasks) add(task.project, task.projectId, "task", task.jobId, "Task input", "task-input");
     for (const workspace of this.workspaces.values()) {
       const runtime = this.runtimes.get(workspace.id);
       if (runtime) add(runtime.getState().getFullProject(), workspace.projectId, "workspace-draft", workspace.id, workspace.name);
@@ -2622,9 +2609,15 @@ export class WorkspaceManager {
     });
   }
 
+  /**
+   * Compensation shared by every interleaved-edit loser: persist the NEWER
+   * live GUI state (retrying if yet another synchronous edit lands during the
+   * commit) over the durable record and delete an un-published idempotency
+   * receipt. Callers keep their specific CONFLICT message and publish.
+   */
   private async persistCurrentWorkspaceAndRemoveActionReceipt(
     record: WorkspaceRecord,
-    store: StoreApi<ProjectState>,
+    store: ProjectStore,
     idempotencyKey?: string,
   ): Promise<void> {
     await withMediaReferenceWrite(async () => {

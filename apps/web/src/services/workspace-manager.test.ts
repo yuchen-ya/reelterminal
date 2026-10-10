@@ -4,8 +4,14 @@ import i18next from "i18next";
 import type { Action, Project } from "@reelterminal/core";
 import { createEmptyProject } from "../stores/project/project-helpers";
 import { createProjectStore, getActiveProjectRuntimeStore } from "../stores/project-store";
-import { WorkspaceManager, WorkspaceManagerError, isSubstantiveProject } from "./workspace-manager";
+import { WorkspaceManager, WorkspaceManagerError, isSubstantiveProject, type WorkspaceContextHandle, type WorkspaceRecord } from "./workspace-manager";
 import * as renderDependencies from "./project-render-dependencies";
+import * as mediaRecovery from "../utils/media-recovery";
+
+// Captured before any test spies on the module: re-capturing inside a test
+// would grab the previous test's spy (vi.spyOn re-arms the same spy), which
+// recurses into itself instead of the real implementation.
+const realRestoreMediaItem = mediaRecovery.restoreMediaItem;
 
 /** Rejection helper: returns the thrown error instead of failing the test. */
 async function caught(run: () => Promise<unknown>): Promise<unknown> {
@@ -15,6 +21,131 @@ async function caught(run: () => Promise<unknown>): Promise<unknown> {
     return error;
   }
   throw new Error("Expected the operation to reject");
+}
+
+function readIdempotencyRecord(database: IDBDatabase, key: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction("idempotency", "readonly");
+    const request = tx.objectStore("idempotency").get(key);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * Project fixture for interleaved-edit compensation tests: one video track
+ * with a clip (so `updateClipRotate3D` can land a synchronous overlay edit)
+ * and one placeholder media item (so hydration calls restoreMediaItem, the
+ * hook that arms the IndexedDB blocker).
+ */
+function interleavedFixtureProject(name: string, mediaId: string, clipId: string): Project {
+  const emptyProject = createEmptyProject(name);
+  const clip = {
+    id: clipId,
+    mediaId,
+    trackId: "gui-track",
+    startTime: 0,
+    duration: 5,
+    inPoint: 0,
+    outPoint: 5,
+    effects: [],
+    audioEffects: [],
+    transform: {
+      position: { x: 0, y: 0 },
+      scale: { x: 1, y: 1 },
+      rotation: 0,
+      anchor: { x: 0.5, y: 0.5 },
+      opacity: 1,
+    },
+    volume: 1,
+    keyframes: [],
+  } satisfies Project["timeline"]["tracks"][number]["clips"][number];
+  return {
+    ...emptyProject,
+    mediaLibrary: {
+      ...emptyProject.mediaLibrary,
+      items: [{
+        id: mediaId,
+        name: `${mediaId}.mp4`,
+        type: "video" as const,
+        fileHandle: null,
+        blob: null,
+        metadata: {
+          duration: 5,
+          width: 1920,
+          height: 1080,
+          frameRate: 30,
+          codec: "h264",
+          sampleRate: 0,
+          channels: 0,
+          fileSize: 1,
+        },
+        thumbnailUrl: null,
+        waveformData: null,
+        isPlaceholder: true,
+      }],
+    },
+    timeline: {
+      ...emptyProject.timeline,
+      tracks: [{
+        id: "gui-track",
+        type: "video",
+        name: "GUI track",
+        clips: [clip],
+        transitions: [],
+        locked: false,
+        hidden: false,
+        muted: false,
+        solo: false,
+      }],
+    },
+  };
+}
+
+interface WorkspaceManagerInternals {
+  db: IDBDatabase | null;
+  persistCurrentWorkspaceAndRemoveActionReceipt: (
+    record: WorkspaceRecord,
+    store: unknown,
+    idempotencyKey?: string,
+  ) => Promise<void>;
+}
+
+/**
+ * Arms the two hooks the interleaved-edit tests need: a readwrite blocker
+ * transaction on the workspaces store (so the command's snapshot transaction
+ * queues and stays pending) and a synchronous overlay edit scheduled by
+ * setTimeout, which fires while the command awaits its IndexedDB commit. The
+ * blocker is created inside the restoreMediaItem hook because hydration is
+ * the last await before the command's write transaction, and an IndexedDB
+ * transaction without requests in its creating task would auto-commit.
+ */
+function armInterleavedEdit(
+  manager: WorkspaceManager,
+  target: { workspaceId: string },
+  context: WorkspaceContextHandle,
+  clipId: string,
+  rotate3d: { x: number; y: number; z: number },
+): ReturnType<typeof vi.spyOn> {
+  const database = (manager as unknown as WorkspaceManagerInternals).db;
+  if (!database) throw new Error("Workspace database was not initialized");
+  return vi.spyOn(mediaRecovery, "restoreMediaItem").mockImplementation(async (item, storedBlob) => {
+    let keepBlockerAlive = true;
+    const blocker = database.transaction("workspaces", "readwrite");
+    const blockerStore = blocker.objectStore("workspaces");
+    const keepAlive = (): void => {
+      if (!keepBlockerAlive) return;
+      const request = blockerStore.get(target.workspaceId);
+      request.onsuccess = keepAlive;
+      request.onerror = () => { keepBlockerAlive = false; };
+    };
+    keepAlive();
+    setTimeout(() => {
+      expect(context.store.getState().updateClipRotate3D(clipId, rotate3d)).toBe(true);
+      keepBlockerAlive = false;
+    }, 0);
+    return realRestoreMediaItem(item, storedBlob);
+  });
 }
 
 function expectedFirstNodeName(): string {
@@ -611,6 +742,185 @@ describe("WorkspaceManager", () => {
     expect(restarted.store.getState().project.timeline.tracks[0].clips[0].transform.rotate3d).toEqual({
       x: 12,
       y: 24,
+      z: 0,
+    });
+  });
+
+  it("tags retained task-input media references with an explicit purpose for GC", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(
+      interleavedFixtureProject("Task input purpose", "purpose-media-1", "purpose-clip"),
+    );
+    const target = {
+      projectId: created.project.id,
+      workspaceId: created.defaultWorkspaceId,
+    };
+    const context = await manager.getWorkspaceContext(target);
+    await manager.retainTaskInputs({
+      jobId: "job-purpose",
+      projectId: target.projectId,
+      workspaceId: target.workspaceId,
+      sourceRevision: context.revision,
+      inputProject: context.store.getState().getFullProject(),
+    });
+
+    const references = await manager.getMediaReferences({ projectId: created.project.id });
+    const taskReferences = references.filter((reference) => reference.kind === "task");
+    expect(taskReferences).toHaveLength(1);
+    // GC keys on the purpose field; the label stays display-only.
+    expect(taskReferences[0]).toMatchObject({
+      referenceId: "job-purpose",
+      label: "Task input",
+      purpose: "task-input",
+    });
+    expect(
+      references
+        .filter((reference) => reference.kind !== "task")
+        .every((reference) => reference.purpose === undefined),
+    ).toBe(true);
+  });
+
+  it("compensates a durable restore receipt when a synchronous GUI edit lands during the restore commit", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(
+      interleavedFixtureProject("Interleaved restore", "restore-media-1", "restore-clip"),
+    );
+    const target = {
+      projectId: created.project.id,
+      workspaceId: created.defaultWorkspaceId,
+    };
+    const context = await manager.getWorkspaceContext(target);
+    const anchor = await manager.saveNode({ target, name: "Anchor", expectedRevision: 0 });
+    expect(context.store.getState().updateClipRotate3D("restore-clip", { x: 1, y: 2, z: 3 })).toBe(true);
+    const second = await manager.saveNode({ target, name: "Second" });
+    const restoreRevision = context.store.getState().workspaceRevision;
+
+    const internals = manager as unknown as WorkspaceManagerInternals;
+    const database = internals.db;
+    if (!database) throw new Error("Workspace database was not initialized");
+    const compensate = internals.persistCurrentWorkspaceAndRemoveActionReceipt;
+    const receiptKey = `node.restore:${target.workspaceId}:restore-interleaved`;
+    const receiptsDuringCompensation: unknown[] = [];
+    const compensationSpy = vi.spyOn(internals, "persistCurrentWorkspaceAndRemoveActionReceipt")
+      .mockImplementation(async (record, store, idempotencyKey) => {
+        receiptsDuringCompensation.push(await readIdempotencyRecord(database, receiptKey));
+        await compensate.call(manager, record, store, idempotencyKey);
+      });
+    const mediaSpy = armInterleavedEdit(manager, target, context, "restore-clip", { x: 34, y: 56, z: 0 });
+
+    let failure: unknown;
+    try {
+      failure = await caught(() => manager.restoreNode({
+        target,
+        nodeId: anchor.node.id,
+        expectedRevision: restoreRevision,
+        idempotencyKey: "restore-interleaved",
+      }));
+    } finally {
+      mediaSpy.mockRestore();
+      compensationSpy.mockRestore();
+    }
+    expect(failure).toBeInstanceOf(WorkspaceManagerError);
+    expect((failure as WorkspaceManagerError).code).toBe("CONFLICT");
+    expect((failure as Error).message).toBe(
+      "Workspace changed while restoring the node; the newer edit was preserved",
+    );
+    expect((failure as WorkspaceManagerError).details).toEqual({
+      expectedRevision: restoreRevision,
+      preservedRevision: restoreRevision + 1,
+    });
+
+    // The newer live edit won: the restore's snapshot did not clobber it.
+    expect(context.store.getState().workspaceRevision).toBe(restoreRevision + 1);
+    expect(context.store.getState().workspaceBaseNodeId).toBe(second.node.id);
+    expect(context.store.getState().project.timeline.tracks[0].clips[0].transform.rotate3d).toEqual({
+      x: 34,
+      y: 56,
+      z: 0,
+    });
+
+    // The restore receipt was durable when compensation started and is gone
+    // after it: the un-published restore cannot be replayed.
+    expect(receiptsDuringCompensation).toHaveLength(1);
+    expect(receiptsDuringCompensation[0]).toBeDefined();
+    await expect(readIdempotencyRecord(database, receiptKey)).resolves.toBeUndefined();
+
+    await manager.flushOpenWorkspaces();
+    const restarted = await new WorkspaceManager().getWorkspaceContext(target);
+    expect(restarted.revision).toBe(restoreRevision + 1);
+    expect(restarted.store.getState().workspaceBaseNodeId).toBe(second.node.id);
+    expect(restarted.store.getState().project.timeline.tracks[0].clips[0].transform.rotate3d).toEqual({
+      x: 34,
+      y: 56,
+      z: 0,
+    });
+  });
+
+  it("compensates a durable draft-recovery receipt when a synchronous GUI edit lands during the recovery commit", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(
+      interleavedFixtureProject("Interleaved recovery", "recover-media-1", "recover-clip"),
+    );
+    const target = {
+      projectId: created.project.id,
+      workspaceId: created.defaultWorkspaceId,
+    };
+    const context = await manager.getWorkspaceContext(target);
+    const draft = await manager.saveDraft(target);
+    expect(context.store.getState().updateClipRotate3D("recover-clip", { x: 1, y: 2, z: 3 })).toBe(true);
+    const dirtyRevision = context.store.getState().workspaceRevision;
+
+    const internals = manager as unknown as WorkspaceManagerInternals;
+    const database = internals.db;
+    if (!database) throw new Error("Workspace database was not initialized");
+    const compensate = internals.persistCurrentWorkspaceAndRemoveActionReceipt;
+    const receiptKey = `draft.recover:${target.workspaceId}:recover-interleaved`;
+    const receiptsDuringCompensation: unknown[] = [];
+    const compensationSpy = vi.spyOn(internals, "persistCurrentWorkspaceAndRemoveActionReceipt")
+      .mockImplementation(async (record, store, idempotencyKey) => {
+        receiptsDuringCompensation.push(await readIdempotencyRecord(database, receiptKey));
+        await compensate.call(manager, record, store, idempotencyKey);
+      });
+    const mediaSpy = armInterleavedEdit(manager, target, context, "recover-clip", { x: 34, y: 56, z: 0 });
+
+    let failure: unknown;
+    try {
+      failure = await caught(() =>
+        manager.recoverDraft(target, draft.id, dirtyRevision, "recover-interleaved"),
+      );
+    } finally {
+      mediaSpy.mockRestore();
+      compensationSpy.mockRestore();
+    }
+    expect(failure).toBeInstanceOf(WorkspaceManagerError);
+    expect((failure as WorkspaceManagerError).code).toBe("CONFLICT");
+    expect((failure as Error).message).toBe(
+      "Workspace changed while recovering the draft; the newer edit was preserved",
+    );
+    expect((failure as WorkspaceManagerError).details).toEqual({
+      expectedRevision: dirtyRevision,
+      preservedRevision: dirtyRevision + 1,
+    });
+
+    // The newer live edit won: the draft's older snapshot did not clobber it.
+    expect(context.store.getState().workspaceRevision).toBe(dirtyRevision + 1);
+    expect(context.store.getState().workspaceBaseNodeId).toBeNull();
+    expect(context.store.getState().project.timeline.tracks[0].clips[0].transform.rotate3d).toEqual({
+      x: 34,
+      y: 56,
+      z: 0,
+    });
+
+    expect(receiptsDuringCompensation).toHaveLength(1);
+    expect(receiptsDuringCompensation[0]).toBeDefined();
+    await expect(readIdempotencyRecord(database, receiptKey)).resolves.toBeUndefined();
+
+    await manager.flushOpenWorkspaces();
+    const restarted = await new WorkspaceManager().getWorkspaceContext(target);
+    expect(restarted.revision).toBe(dirtyRevision + 1);
+    expect(restarted.store.getState().project.timeline.tracks[0].clips[0].transform.rotate3d).toEqual({
+      x: 34,
+      y: 56,
       z: 0,
     });
   });
