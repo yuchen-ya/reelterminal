@@ -62,7 +62,11 @@ import {
   resolveDeliveryDestination,
   type DeliveryDestination,
 } from "./delivery";
-import { IdempotencyLedger, stableStringify } from "./idempotency";
+import {
+  IdempotencyLedger,
+  stableStringify,
+  type LedgerReceipt,
+} from "./idempotency";
 import {
   assertMediaFingerprintsUnchanged,
   discardArtifact,
@@ -506,12 +510,6 @@ export class LiveFacadeSession {
   private readonly config: LiveFacadeConfig;
   private readonly jobs: JobRegistry;
   private readonly ledger: IdempotencyLedger;
-  /**
-   * Lazily resolved project/workspace identity, folded into the ledger scope.
-   * Refreshed on every ledger access so a request routed to another target
-   * cannot replay the previous workspace's committed result.
-   */
-  private ledgerProjectId: string | null = null;
   /** True while this session holds the writer lease. */
   private writer: boolean;
   private disposed = false;
@@ -523,9 +521,7 @@ export class LiveFacadeSession {
   constructor(config: LiveFacadeConfig) {
     this.config = config;
     this.jobs = config.jobTracker ?? new JobRegistry();
-    this.ledger = new IdempotencyLedger(
-      () => `live:${config.sessionId}#${this.ledgerProjectId ?? "unresolved"}`,
-    );
+    this.ledger = new IdempotencyLedger();
     for (const record of config.taskLifecycle?.list() ?? []) {
       this.jobs.restore(record.status, {
         projectId: record.projectId,
@@ -535,15 +531,17 @@ export class LiveFacadeSession {
       if (typeof parameters === "object" && parameters !== null) {
         const item = parameters as Record<string, unknown>;
         if (typeof item.idempotencyKey === "string" && typeof item.payloadHash === "string") {
-          this.ledgerProjectId = `${record.projectId}:${record.workspaceId}`;
+          // Each restored receipt is pinned to ITS OWN record's scope, so
+          // restore order can never cross-write project/workspace receipts.
+          const scope = this.ledgerScope(record.projectId, record.workspaceId);
           if (record.status.kind === "export") {
-            this.ledger.set("export.start", item.idempotencyKey, {
+            this.ledger.record(scope, "export.start", item.idempotencyKey, {
               revision: record.status.sourceRevision,
               value: { jobId: record.status.jobId, sourceRevision: record.status.sourceRevision },
               payloadHash: item.payloadHash,
             });
           } else if (Array.isArray(item.analysisTypes) && item.analysisTypes.every((value) => typeof value === "string")) {
-            this.ledger.set("media.analyze_start", item.idempotencyKey, {
+            this.ledger.record(scope, "media.analyze_start", item.idempotencyKey, {
               revision: record.status.sourceRevision,
               value: {
                 jobId: record.status.jobId,
@@ -914,10 +912,16 @@ export class LiveFacadeSession {
         "history.control params",
       );
       const payload = { action: valid.action };
-      const prior = await this.replayLookup<
+      const receipt = await this.replayLookup<
         Omit<HistoryControlResult, "replayed">
       >("history.control", valid.idempotencyKey, payload);
-      if (prior) return ok({ ...prior.value, revision: prior.revision, replayed: true });
+      if (receipt?.prior) {
+        return ok({
+          ...receipt.prior.value,
+          revision: receipt.prior.revision,
+          replayed: true,
+        });
+      }
 
       const state = await this.config.store.getState();
       if (
@@ -945,13 +949,7 @@ export class LiveFacadeSession {
           canUndo: controlled.canUndo,
           canRedo: controlled.canRedo,
         };
-        if (valid.idempotencyKey !== undefined) {
-          this.ledger.set("history.control", valid.idempotencyKey, {
-            revision: controlled.revision,
-            value,
-            payloadHash: stableStringify(payload),
-          });
-        }
+        receipt?.commit(value, controlled.revision);
         return ok({ ...value, replayed: controlled.replayed });
       } catch (error) {
         if (isLiveStoreConflict(error)) {
@@ -1150,13 +1148,13 @@ export class LiveFacadeSession {
       );
       const name = normalizeProjectName(valid.name);
       const payload = { name };
-      const prior = await this.replayLookup<
+      const receipt = await this.replayLookup<
         Omit<ProjectRenameResult, "revision" | "replayed">
       >("project.rename", valid.idempotencyKey, payload);
-      if (prior) {
+      if (receipt?.prior) {
         return ok<ProjectRenameResult>({
-          ...prior.value,
-          revision: prior.revision,
+          ...receipt.prior.value,
+          revision: receipt.prior.revision,
           replayed: true,
         });
       }
@@ -1195,13 +1193,7 @@ export class LiveFacadeSession {
         }
         throw error;
       }
-      if (valid.idempotencyKey !== undefined) {
-        this.ledger.set("project.rename", valid.idempotencyKey, {
-          revision: committed.revision,
-          value,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(value, committed.revision);
       return ok<ProjectRenameResult>({
         ...value,
         revision: committed.revision,
@@ -1224,13 +1216,13 @@ export class LiveFacadeSession {
       );
 
       const payload = { path: valid.path, name: valid.name };
-      const prior = await this.replayLookup<
+      const receipt = await this.replayLookup<
         Omit<MediaImportResult, "revision" | "replayed">
       >("media.import", valid.idempotencyKey, payload);
-      if (prior) {
+      if (receipt?.prior) {
         return ok<MediaImportResult>({
-          ...prior.value,
-          revision: prior.revision,
+          ...receipt.prior.value,
+          revision: receipt.prior.revision,
           replayed: true,
         });
       }
@@ -1262,11 +1254,7 @@ export class LiveFacadeSession {
             type: durablePrior.type,
             metadata: durablePrior.metadata,
           };
-          this.ledger.set("media.import", valid.idempotencyKey, {
-            revision: durablePrior.revision,
-            value,
-            payloadHash: stableStringify(payload),
-          });
+          receipt?.commit(value, durablePrior.revision);
           return ok<MediaImportResult>({
             ...value,
             revision: durablePrior.revision,
@@ -1451,13 +1439,7 @@ export class LiveFacadeSession {
         type: probed.type,
         metadata: request.metadata,
       };
-      if (valid.idempotencyKey !== undefined) {
-        this.ledger.set("media.import", valid.idempotencyKey, {
-          revision: committed.revision,
-          value,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(value, committed.revision);
       return ok<MediaImportResult>({
         ...value,
         revision: committed.revision,
@@ -1493,18 +1475,21 @@ export class LiveFacadeSession {
         timeoutMs: valid.timeoutMs,
         outputDir: valid.outputDir,
       };
-      const prior = await this.replayLookup<MediaRenderHtmlResult>(
+      const receipt = await this.replayLookup<MediaRenderHtmlResult>(
         "media.render_html",
         valid.idempotencyKey,
         payload,
       );
-      if (prior) {
-        const stillThere = await stat(prior.value.path).then(
+      if (receipt?.prior) {
+        const stillThere = await stat(receipt.prior.value.path).then(
           (s) => s.isFile(),
           () => false,
         );
         if (stillThere) {
-          return ok<MediaRenderHtmlResult>({ ...prior.value, replayed: true });
+          return ok<MediaRenderHtmlResult>({
+            ...receipt.prior.value,
+            replayed: true,
+          });
         }
       }
 
@@ -1543,13 +1528,8 @@ export class LiveFacadeSession {
         },
       });
       const value: MediaRenderHtmlResult = { ...artifact, replayed: false };
-      if (valid.idempotencyKey !== undefined) {
-        this.ledger.set("media.render_html", valid.idempotencyKey, {
-          revision: 0, // file-producing verb: no project revision to pin
-          value,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      // file-producing verb: no project revision to pin.
+      receipt?.commit(value, 0);
       return ok(value);
     });
   }
@@ -1695,16 +1675,16 @@ export class LiveFacadeSession {
         analysisTypes: [...valid.analysisTypes].sort(),
         startSec: valid.startSec, endSec: valid.endSec, cloudUpload: valid.cloudUpload, reviewQuestion: valid.reviewQuestion,
       };
-      const prior = await this.replayLookup<{
+      const receipt = await this.replayLookup<{
         jobId: string;
         sourceRevision: number;
         analysisTypes: readonly import("./types").MediaAnalysisType[];
       }>("media.analyze_start", valid.idempotencyKey, payload);
-      if (prior && this.jobs.has(prior.value.jobId)) {
+      if (receipt?.prior && this.jobs.has(receipt.prior.value.jobId)) {
         return ok<MediaAnalyzeStartResult>({
-          ...prior.value,
+          ...receipt.prior.value,
           kind: "analysis",
-          state: this.jobs.get(prior.value.jobId)?.state ?? "queued",
+          state: this.jobs.get(receipt.prior.value.jobId)?.state ?? "queued",
           replayed: true,
         });
       }
@@ -1771,13 +1751,7 @@ export class LiveFacadeSession {
         sourceRevision: state.revision,
         analysisTypes,
       };
-      if (valid.idempotencyKey !== undefined) {
-        this.ledger.set("media.analyze_start", valid.idempotencyKey, {
-          revision: state.revision,
-          value: ledgerValue,
-          payloadHash,
-        });
-      }
+      receipt?.commit(ledgerValue, state.revision);
       void this.runTechnicalQualityAnalysis(
         jobId,
         sourcePath,
@@ -1826,15 +1800,15 @@ export class LiveFacadeSession {
       // Idempotent replay first (headless semantics): a transport retry
       // replays the committed result without touching the store.
       const payload = { ops };
-      const prior = await this.replayLookup<EditApplyPayload>(
+      const receipt = await this.replayLookup<EditApplyPayload>(
         "edit.apply",
         valid.idempotencyKey,
         payload,
       );
-      if (prior) {
+      if (receipt?.prior) {
         return ok<EditApplyResult>({
-          ...prior.value,
-          revision: prior.revision,
+          ...receipt.prior.value,
+          revision: receipt.prior.revision,
           replayed: true,
         });
       }
@@ -1872,11 +1846,7 @@ export class LiveFacadeSession {
             projection.opClipCounts,
           );
           const value: EditApplyPayload = { applied };
-          this.ledger.set("edit.apply", valid.idempotencyKey, {
-            revision: durablePrior.revision,
-            value,
-            payloadHash: stableStringify(payload),
-          });
+          receipt?.commit(value, durablePrior.revision);
           return ok<EditApplyResult>({
             revision: durablePrior.revision,
             applied,
@@ -2053,13 +2023,7 @@ export class LiveFacadeSession {
         opClipCounts,
       );
       const value: EditApplyPayload = { applied };
-      if (valid.idempotencyKey !== undefined) {
-        this.ledger.set("edit.apply", valid.idempotencyKey, {
-          revision: committed.revision,
-          value,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(value, committed.revision);
       return ok<EditApplyResult>({
         revision: committed.revision,
         applied,
@@ -2127,15 +2091,15 @@ export class LiveFacadeSession {
           : valid.timeSec;
 
       const payload = { timeSec: valid.timeSec, width, height };
-      const prior = await this.replayLookup<PreviewRenderFrameResult>(
+      const receipt = await this.replayLookup<PreviewRenderFrameResult>(
         "preview.render_frame",
         valid.idempotencyKey,
         payload,
       );
-      if (prior) {
+      if (receipt?.prior) {
         // Replay only while the artifact file still exists; a deleted file
         // falls through to an honest re-render of the same deterministic path.
-        const stillThere = await stat(prior.value.artifact.path).then(
+        const stillThere = await stat(receipt.prior.value.artifact.path).then(
           (s) => s.isFile(),
           () => false,
         );
@@ -2145,7 +2109,7 @@ export class LiveFacadeSession {
           // while artifact.sourceRevision (inside prior.value, untouched)
           // keeps the truth about which snapshot the PNG was rendered from.
           return ok<PreviewRenderFrameResult>({
-            ...prior.value,
+            ...receipt.prior.value,
             revision,
             replayed: true,
           });
@@ -2236,13 +2200,7 @@ export class LiveFacadeSession {
         artifact,
         replayed: false,
       };
-      if (valid.idempotencyKey !== undefined) {
-        this.ledger.set("preview.render_frame", valid.idempotencyKey, {
-          revision: sourceRevision,
-          value,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(value, sourceRevision);
       return ok(value);
     });
   }
@@ -2302,16 +2260,16 @@ export class LiveFacadeSession {
         layout: valid.layout ?? config.layout,
         maxFrameBytes: frameBudgetBytes,
       };
-      const prior = await this.replayLookup<PreviewRenderComparisonResult>(
+      const receipt = await this.replayLookup<PreviewRenderComparisonResult>(
         "preview.render_comparison",
         valid.idempotencyKey,
         payload,
       );
-      if (prior) {
-        const stillThere = await stat(prior.value.artifact.path).then((s) => s.isFile(), () => false);
+      if (receipt?.prior) {
+        const stillThere = await stat(receipt.prior.value.artifact.path).then((s) => s.isFile(), () => false);
         if (stillThere) {
           return ok<PreviewRenderComparisonResult>({
-            ...prior.value,
+            ...receipt.prior.value,
             revision,
             replayed: true,
           });
@@ -2374,13 +2332,7 @@ export class LiveFacadeSession {
           limitations: value.limitations,
           replayed: false,
         };
-        if (valid.idempotencyKey !== undefined) {
-          this.ledger.set("preview.render_comparison", valid.idempotencyKey, {
-            revision: sourceRevision,
-            value: result,
-            payloadHash: stableStringify(payload),
-          });
-        }
+        receipt?.commit(result, sourceRevision);
         return ok(result);
       } finally {
         await discardArtifact(timelineTemp);
@@ -2450,22 +2402,24 @@ export class LiveFacadeSession {
         height,
         maxFrameBytes: valid.maxFrameBytes ?? DEFAULT_FRAME_BUDGET_BYTES,
       };
-      const prior = await this.replayLookup<VisualInspectResult>(
+      const receipt = await this.replayLookup<VisualInspectResult>(
         "visual.inspect",
         valid.idempotencyKey,
         payload,
       );
-      if (prior) {
+      if (receipt?.prior) {
         const artifacts = [
-          ...prior.value.frames.map((frame) => frame.artifact.path),
-          ...(prior.value.contactSheet ? [prior.value.contactSheet.path] : []),
+          ...receipt.prior.value.frames.map((frame) => frame.artifact.path),
+          ...(receipt.prior.value.contactSheet
+            ? [receipt.prior.value.contactSheet.path]
+            : []),
         ];
         const allThere = await Promise.all(
           artifacts.map((path) => stat(path).then((s) => s.isFile(), () => false)),
         );
         if (allThere.every(Boolean)) {
           return ok<VisualInspectResult>({
-            ...prior.value,
+            ...receipt.prior.value,
             revision,
             replayed: true,
           });
@@ -2697,13 +2651,7 @@ export class LiveFacadeSession {
         limitations,
         replayed: false,
       };
-      if (valid.idempotencyKey !== undefined) {
-        this.ledger.set("visual.inspect", valid.idempotencyKey, {
-          revision: sourceRevision,
-          value,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(value, sourceRevision);
       return ok(value);
     });
   }
@@ -2754,17 +2702,17 @@ export class LiveFacadeSession {
         destinationPath: valid.destinationPath ?? null,
         comparison: valid.comparison ?? null,
       };
-      const prior = await this.replayLookup<{ jobId: string; sourceRevision: number }>(
+      const receipt = await this.replayLookup<{ jobId: string; sourceRevision: number }>(
         "export.start",
         valid.idempotencyKey,
         payload,
       );
-      if (prior && this.jobs.has(prior.value.jobId)) {
-        const job = this.jobs.get(prior.value.jobId);
+      if (receipt?.prior && this.jobs.has(receipt.prior.value.jobId)) {
+        const job = this.jobs.get(receipt.prior.value.jobId);
         return ok<ExportStartResult>({
-          jobId: prior.value.jobId,
+          jobId: receipt.prior.value.jobId,
           state: job?.state ?? "queued",
-          sourceRevision: prior.value.sourceRevision,
+          sourceRevision: receipt.prior.value.sourceRevision,
           replayed: true,
         });
       }
@@ -2865,13 +2813,7 @@ export class LiveFacadeSession {
           payloadHash,
         },
       });
-      if (valid.idempotencyKey !== undefined) {
-        this.ledger.set("export.start", valid.idempotencyKey, {
-          revision: sourceRevision,
-          value: { jobId, sourceRevision },
-          payloadHash,
-        });
-      }
+      receipt?.commit({ jobId, sourceRevision }, sourceRevision);
 
       const comparisonRange = valid.comparison ?? null;
       const callbacks: ExportCallbacks = {
@@ -3388,13 +3330,13 @@ export class LiveFacadeSession {
         "material.create params",
       );
       const { idempotencyKey, ...payload } = valid;
-      const prior = await this.replayLookup<MaterialCreateResult>(
+      const receipt = await this.replayLookup<MaterialCreateResult>(
         "material.create",
         idempotencyKey,
         payload,
       );
-      if (prior) {
-        return ok<MaterialCreateResult>({ ...prior.value, replayed: true });
+      if (receipt?.prior) {
+        return ok<MaterialCreateResult>({ ...receipt.prior.value, replayed: true });
       }
 
       const bridgeParams: Record<string, unknown> = {
@@ -3481,13 +3423,7 @@ export class LiveFacadeSession {
         "create",
         bridgeParams,
       );
-      if (idempotencyKey !== undefined) {
-        this.ledger.set("material.create", idempotencyKey, {
-          revision: 0,
-          value: result,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(result, 0);
       return ok(result);
     });
   }
@@ -3503,26 +3439,20 @@ export class LiveFacadeSession {
         "material.update params",
       );
       const { idempotencyKey, ...payload } = valid;
-      const prior = await this.replayLookup<MaterialUpdateResult>(
+      const receipt = await this.replayLookup<MaterialUpdateResult>(
         "material.update",
         idempotencyKey,
         payload,
       );
-      if (prior) {
-        return ok<MaterialUpdateResult>({ ...prior.value, replayed: true });
+      if (receipt?.prior) {
+        return ok<MaterialUpdateResult>({ ...receipt.prior.value, replayed: true });
       }
       const result = await this.callMaterialBridge<MaterialUpdateResult>(
         "material.update",
         "update",
         payload as unknown as Record<string, unknown>,
       );
-      if (idempotencyKey !== undefined) {
-        this.ledger.set("material.update", idempotencyKey, {
-          revision: 0,
-          value: result,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(result, 0);
       return ok(result);
     });
   }
@@ -3538,14 +3468,14 @@ export class LiveFacadeSession {
         "material.batch_update params",
       );
       const { idempotencyKey, ...payload } = valid;
-      const prior = await this.replayLookup<MaterialBatchUpdateResult>(
+      const receipt = await this.replayLookup<MaterialBatchUpdateResult>(
         "material.batch_update",
         idempotencyKey,
         payload,
       );
-      if (prior) {
+      if (receipt?.prior) {
         return ok<MaterialBatchUpdateResult>({
-          ...prior.value,
+          ...receipt.prior.value,
           replayed: true,
         });
       }
@@ -3559,13 +3489,7 @@ export class LiveFacadeSession {
           })),
         },
       );
-      if (idempotencyKey !== undefined) {
-        this.ledger.set("material.batch_update", idempotencyKey, {
-          revision: 0,
-          value: result,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(result, 0);
       return ok(result);
     });
   }
@@ -3581,26 +3505,20 @@ export class LiveFacadeSession {
         "material.remove params",
       );
       const { idempotencyKey, ...payload } = valid;
-      const prior = await this.replayLookup<MaterialRemoveResult>(
+      const receipt = await this.replayLookup<MaterialRemoveResult>(
         "material.remove",
         idempotencyKey,
         payload,
       );
-      if (prior) {
-        return ok<MaterialRemoveResult>({ ...prior.value, replayed: true });
+      if (receipt?.prior) {
+        return ok<MaterialRemoveResult>({ ...receipt.prior.value, replayed: true });
       }
       const result = await this.callMaterialBridge<MaterialRemoveResult>(
         "material.remove",
         "remove",
         { id: valid.id, ...(valid.force !== undefined ? { force: valid.force } : {}) },
       );
-      if (idempotencyKey !== undefined) {
-        this.ledger.set("material.remove", idempotencyKey, {
-          revision: 0,
-          value: result,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(result, 0);
       return ok(result);
     });
   }
@@ -3616,13 +3534,13 @@ export class LiveFacadeSession {
         "material.attach params",
       );
       const { idempotencyKey, expectedRevision, ...payload } = valid;
-      const prior = await this.replayLookup<MaterialAttachResult>(
+      const receipt = await this.replayLookup<MaterialAttachResult>(
         "material.attach",
         idempotencyKey,
         payload,
       );
-      if (prior) {
-        return ok<MaterialAttachResult>({ ...prior.value, replayed: true });
+      if (receipt?.prior) {
+        return ok<MaterialAttachResult>({ ...receipt.prior.value, replayed: true });
       }
       // Precedence contract mirrors media.import: a stale caller revision is
       // CONFLICT even before the renderer is involved; the renderer repeats
@@ -3652,13 +3570,7 @@ export class LiveFacadeSession {
           ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         },
       );
-      if (idempotencyKey !== undefined) {
-        this.ledger.set("material.attach", idempotencyKey, {
-          revision: result.revision,
-          value: result,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(result, result.revision);
       return ok(result);
     });
   }
@@ -3676,13 +3588,13 @@ export class LiveFacadeSession {
       const { idempotencyKey, ...payload } = valid;
       // Undo without a key is dangerous to retry (a retry would undo the
       // NEXT entry), so replay protection matters most here.
-      const prior = await this.replayLookup<MaterialUndoResult>(
+      const receipt = await this.replayLookup<MaterialUndoResult>(
         "material.undo",
         idempotencyKey,
         payload,
       );
-      if (prior) {
-        return ok<MaterialUndoResult>({ ...prior.value, replayed: true });
+      if (receipt?.prior) {
+        return ok<MaterialUndoResult>({ ...receipt.prior.value, replayed: true });
       }
       const result = await this.callMaterialBridge<MaterialUndoResult>(
         "material.undo",
@@ -3692,13 +3604,7 @@ export class LiveFacadeSession {
           actor: "agent",
         },
       );
-      if (idempotencyKey !== undefined) {
-        this.ledger.set("material.undo", idempotencyKey, {
-          revision: 0,
-          value: result,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(result, 0);
       return ok(result);
     });
   }
@@ -3986,13 +3892,13 @@ export class LiveFacadeSession {
         "preset.create params",
       );
       const { idempotencyKey, ...payload } = valid;
-      const prior = await this.replayLookup<PresetCreateResult>(
+      const receipt = await this.replayLookup<PresetCreateResult>(
         "preset.create",
         idempotencyKey,
         payload,
       );
-      if (prior) {
-        return ok<PresetCreateResult>({ ...prior.value, replayed: true });
+      if (receipt?.prior) {
+        return ok<PresetCreateResult>({ ...receipt.prior.value, replayed: true });
       }
       const name = validatePresetName(valid.name);
       if (!name.ok) {
@@ -4030,13 +3936,7 @@ export class LiveFacadeSession {
             : {}),
         },
       );
-      if (idempotencyKey !== undefined) {
-        this.ledger.set("preset.create", idempotencyKey, {
-          revision: 0,
-          value: result,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(result, 0);
       return ok(result);
     });
   }
@@ -4052,13 +3952,13 @@ export class LiveFacadeSession {
         "preset.update params",
       );
       const { idempotencyKey, ...payload } = valid;
-      const prior = await this.replayLookup<PresetUpdateResult>(
+      const receipt = await this.replayLookup<PresetUpdateResult>(
         "preset.update",
         idempotencyKey,
         payload,
       );
-      if (prior) {
-        return ok<PresetUpdateResult>({ ...prior.value, replayed: true });
+      if (receipt?.prior) {
+        return ok<PresetUpdateResult>({ ...receipt.prior.value, replayed: true });
       }
       let normalizedPayload: Record<string, unknown> | undefined;
       if (valid.payload !== undefined) {
@@ -4101,13 +4001,7 @@ export class LiveFacadeSession {
             : {}),
         },
       );
-      if (idempotencyKey !== undefined) {
-        this.ledger.set("preset.update", idempotencyKey, {
-          revision: 0,
-          value: result,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(result, 0);
       return ok(result);
     });
   }
@@ -4123,26 +4017,20 @@ export class LiveFacadeSession {
         "preset.remove params",
       );
       const { idempotencyKey, ...payload } = valid;
-      const prior = await this.replayLookup<PresetRemoveResult>(
+      const receipt = await this.replayLookup<PresetRemoveResult>(
         "preset.remove",
         idempotencyKey,
         payload,
       );
-      if (prior) {
-        return ok<PresetRemoveResult>({ ...prior.value, replayed: true });
+      if (receipt?.prior) {
+        return ok<PresetRemoveResult>({ ...receipt.prior.value, replayed: true });
       }
       const result = await this.callPresetBridge<PresetRemoveResult>(
         "preset.remove",
         "remove",
         { id: valid.id },
       );
-      if (idempotencyKey !== undefined) {
-        this.ledger.set("preset.remove", idempotencyKey, {
-          revision: 0,
-          value: result,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(result, 0);
       return ok(result);
     });
   }
@@ -4193,13 +4081,13 @@ export class LiveFacadeSession {
         "preset.apply params",
       );
       const { idempotencyKey, expectedRevision, ...payload } = valid;
-      const prior = await this.replayLookup<PresetApplyResult>(
+      const receipt = await this.replayLookup<PresetApplyResult>(
         "preset.apply",
         idempotencyKey,
         payload,
       );
-      if (prior) {
-        return ok<PresetApplyResult>({ ...prior.value, replayed: true });
+      if (receipt?.prior) {
+        return ok<PresetApplyResult>({ ...receipt.prior.value, replayed: true });
       }
       // Precedence contract mirrors material.attach: a stale caller revision
       // is CONFLICT even before the renderer is involved; the renderer
@@ -4227,13 +4115,7 @@ export class LiveFacadeSession {
           ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
         },
       );
-      if (idempotencyKey !== undefined) {
-        this.ledger.set("preset.apply", idempotencyKey, {
-          revision: result.revision,
-          value: result,
-          payloadHash: stableStringify(payload),
-        });
-      }
+      receipt?.commit(result, result.revision);
       return ok(result);
     });
   }
@@ -4335,34 +4217,38 @@ export class LiveFacadeSession {
   /**
    * Idempotency-ledger replay lookup (the live half of headless
    * beginMutation's ledger phase — the revision CAS lives in the store, not
-   * here). Returns the stored committed outcome on a replay hit; the same
-   * key with a DIFFERENT payload is a CONFLICT, never a blind replay.
+   * here). Returns a receipt carrying the stored committed outcome on a
+   * replay hit; the same key with a DIFFERENT payload is a CONFLICT, never a
+   * blind replay.
    *
-   * The ledger scope tracks the explicit project/workspace target: refreshed
-   * here, before every lookup, so a key cannot replay another workspace's
-   * committed result.
+   * The project/workspace identity is CAPTURED here and the receipt's
+   * `commit` stays permanently bound to it: two concurrent requests may
+   * resolve different targets, so a write must never re-derive its scope
+   * from shared mutable state after its async work completes.
    */
   private async replayLookup<T>(
     verb: string,
     idempotencyKey: string | undefined,
     payload: unknown,
-  ): Promise<{ revision: number; value: T } | null> {
+  ): Promise<LedgerReceipt<T> | null> {
     if (idempotencyKey === undefined) return null;
     // Never replay a result from the last project if the current identity is
     // unavailable or its request guard has failed during a project switch.
     const identity = await this.config.store.getIdentity();
-    const { projectId } = identity;
-    this.ledgerProjectId = `${projectId}:${identity.workspaceId ?? "default"}`;
-    const stored = this.ledger.get<T>(verb, idempotencyKey);
-    if (!stored) return null;
-    if (stableStringify(payload) !== stored.payloadHash) {
-      throw new FacadeError(
-        "CONFLICT",
-        `idempotency key "${idempotencyKey}" was already committed with a different payload`,
-        { idempotencyKey, verb },
-      );
-    }
-    return { revision: stored.revision, value: stored.value };
+    return this.ledger.lookup(
+      this.ledgerScope(identity.projectId, identity.workspaceId),
+      verb,
+      idempotencyKey,
+      payload,
+    );
+  }
+
+  /** The ledger scope for one explicit project/workspace target. */
+  private ledgerScope(
+    projectId: string,
+    workspaceId: string | undefined,
+  ): string {
+    return `live:${this.config.sessionId}#${projectId}:${workspaceId ?? "default"}`;
   }
 
   /**

@@ -26,7 +26,7 @@ import {
   LiveWriterLease,
   type LiveAgentFacade,
 } from "./index";
-import type { LiveTaskInputReferences } from "./live-session";
+import type { LivePersistedTaskRecord, LiveTaskInputReferences } from "./live-session";
 import { LiveStoreConflictError } from "./live-store";
 import { stableStringify } from "./idempotency";
 import type {
@@ -504,6 +504,7 @@ function liveFacade(
     store: LiveProjectStore;
     prepareRenderProject: (project: Project) => Promise<Project>;
     taskInputReferences: LiveTaskInputReferences;
+    executionScope: () => string;
   }>,
 ): LiveAgentFacade {
   return createLiveFacade({
@@ -520,6 +521,7 @@ function liveFacade(
     ...(opts?.workspaceLibrary ? { workspaceLibrary: opts.workspaceLibrary } : {}),
     ...(opts?.prepareRenderProject ? { prepareRenderProject: opts.prepareRenderProject } : {}),
     ...(opts?.taskInputReferences ? { taskInputReferences: opts.taskInputReferences } : {}),
+    ...(opts?.executionScope ? { executionScope: opts.executionScope } : {}),
   });
 }
 
@@ -2631,5 +2633,353 @@ describe("live verbs forward idempotencyKey to the store seam", () => {
     });
     expect(res.ok).toBe(true);
     expect(store.batches.at(-1)?.opts.idempotencyKey).toBe("rename-opts-1");
+  });
+});
+
+/* --------------- idempotency ledger: per-request scope capture --------------- */
+
+/**
+ * A FakeLiveStore reporting an EXPLICIT workspace id — the shared harness
+ * store always answers "workspace-live-1", which would make two targets
+ * indistinguishable to the ledger scope.
+ */
+class WorkspaceStore extends FakeLiveStore {
+  constructor(
+    readonly workspaceName: string,
+    project?: Project,
+  ) {
+    super(project);
+  }
+  override async getIdentity() {
+    return { ...(await super.getIdentity()), workspaceId: this.workspaceName };
+  }
+}
+
+/**
+ * One store seam serving several project/workspace targets: the identity,
+ * snapshot and CAS all delegate to the CURRENT target, the way the desktop
+ * serves concurrent requests routed to different open workspaces.
+ */
+class RoutingStore extends FakeLiveStore {
+  current: FakeLiveStore;
+  constructor(targets: readonly [FakeLiveStore, FakeLiveStore]) {
+    super();
+    this.current = targets[0];
+  }
+  override async getIdentity() {
+    return this.current.getIdentity();
+  }
+  override async getState() {
+    return this.current.getState();
+  }
+  override async applyActions(
+    actions: readonly Action[],
+    opts: LiveApplyActionsOptions,
+  ) {
+    return this.current.applyActions(actions, opts);
+  }
+}
+
+describe("idempotency ledger scope is captured per request", () => {
+  it("interleaved requests to two workspaces commit into their OWN scopes: A's retry replays under P1/w1 and conflicts under P2/w2", async () => {
+    const p1 = new WorkspaceStore("ws-1");
+    const p2 = new WorkspaceStore("ws-2", createEmptyProject("Second"));
+    const routing = new RoutingStore([p1, p2]);
+    let lane = 0;
+    const facade = liveFacade({
+      store: routing,
+      // A distinct serialized lane per request: the two requests below run
+      // concurrently (the desktop scopes lanes by project/workspace target).
+      executionScope: () => `lane-${++lane}`,
+    });
+
+    // Deterministic race: A's lookup (P1/w1) → B's lookup (P2/w2) → A's
+    // commit → B's commit. Each request parks inside its target's
+    // applyActions until the test releases it, so B's lookup always lands
+    // after A's lookup but BEFORE A's commit.
+    let releaseA!: () => void;
+    const arrivedA = new Promise<void>((resolveArrival) => {
+      p1.beforeApply = () => {
+        p1.beforeApply = null;
+        resolveArrival();
+        return new Promise<void>((resolvePark) => {
+          releaseA = resolvePark;
+        });
+      };
+    });
+    let releaseB!: () => void;
+    const arrivedB = new Promise<void>((resolveArrival) => {
+      p2.beforeApply = () => {
+        p2.beforeApply = null;
+        resolveArrival();
+        return new Promise<void>((resolvePark) => {
+          releaseB = resolvePark;
+        });
+      };
+    });
+
+    const opsA = [...TEXT_BATCH] as const;
+    const opsB = [
+      { op: "track.add", trackType: "text", trackId: "t1" },
+      { op: "text.create", text: "Second live", startTime: 0, duration: 2 },
+    ] as const;
+
+    routing.current = p1;
+    const requestA = facade["edit.apply"]({ ops: [...opsA], idempotencyKey: "race-key" });
+    await arrivedA; // A captured the P1/w1 scope and is parked pre-commit.
+
+    routing.current = p2;
+    const requestB = facade["edit.apply"]({ ops: [...opsB], idempotencyKey: "race-key" });
+    await arrivedB; // B captured P2/w2 — under the old shared-field ledger this clobbered A's scope.
+
+    releaseA();
+    const resA = await requestA;
+    releaseB();
+    const resB = await requestB;
+    expect(resA.ok).toBe(true);
+    expect(resB.ok).toBe(true);
+    if (!resA.ok || !resB.ok) return;
+    expect(resA.value.replayed).toBe(false);
+    expect(resB.value.replayed).toBe(false);
+    expect(p1.batches).toHaveLength(1);
+    expect(p2.batches).toHaveLength(1);
+
+    // Retrying A's key + payload against P1/w1 replays A's committed
+    // receipt without re-executing — the receipt did NOT land in P2's scope
+    // even though B's lookup ran between A's lookup and A's commit.
+    routing.current = p1;
+    const retryA = await facade["edit.apply"]({ ops: [...opsA], idempotencyKey: "race-key" });
+    expect(retryA.ok).toBe(true);
+    if (!retryA.ok) return;
+    expect(retryA.value.replayed).toBe(true);
+    expect(retryA.value.applied).toEqual(resA.value.applied);
+    expect(p1.batches).toHaveLength(1);
+
+    // The same key against P2/w2 must not serve A's result: the stored
+    // receipt there is B's (different payload) ⇒ CONFLICT, never a replay.
+    routing.current = p2;
+    const crossA = await facade["edit.apply"]({ ops: [...opsA], idempotencyKey: "race-key" });
+    expect(crossA.ok).toBe(false);
+    if (!crossA.ok) {
+      expect(crossA.error.code).toBe("CONFLICT");
+      expect(crossA.error.details).toMatchObject({
+        idempotencyKey: "race-key",
+        verb: "edit.apply",
+      });
+    }
+    expect(p2.batches).toHaveLength(1);
+
+    // B's own retry still replays honestly under P2/w2.
+    const retryB = await facade["edit.apply"]({ ops: [...opsB], idempotencyKey: "race-key" });
+    expect(retryB.ok).toBe(true);
+    if (!retryB.ok) return;
+    expect(retryB.value.replayed).toBe(true);
+    expect(p2.batches).toHaveLength(1);
+    expect(p1.batches).toHaveLength(1);
+  });
+
+  it("the same key in two different scopes is fully independent — no cross-replay, no conflict", async () => {
+    const p1 = new WorkspaceStore("ws-1");
+    const p2 = new WorkspaceStore("ws-2", createEmptyProject("Second"));
+    const routing = new RoutingStore([p1, p2]);
+    const facade = liveFacade({ store: routing });
+
+    // Identical key + IDENTICAL payload in both scopes: each executes fresh
+    // (a scope miss never replays another scope's receipt).
+    routing.current = p1;
+    const first = await facade["edit.apply"]({ ops: [...TEXT_BATCH], idempotencyKey: "shared-key" });
+    expect(first.ok).toBe(true);
+    routing.current = p2;
+    const second = await facade["edit.apply"]({ ops: [...TEXT_BATCH], idempotencyKey: "shared-key" });
+    expect(second.ok).toBe(true);
+    if (!second.ok || !first.ok) return;
+    expect(second.value.replayed).toBe(false);
+    expect(p1.batches).toHaveLength(1);
+    expect(p2.batches).toHaveLength(1);
+
+    // Each scope then replays exactly its OWN committed outcome.
+    routing.current = p1;
+    const replay1 = await facade["edit.apply"]({ ops: [...TEXT_BATCH], idempotencyKey: "shared-key" });
+    routing.current = p2;
+    const replay2 = await facade["edit.apply"]({ ops: [...TEXT_BATCH], idempotencyKey: "shared-key" });
+    expect(replay1.ok && replay2.ok).toBe(true);
+    if (replay1.ok && replay2.ok) {
+      expect(replay1.value.replayed).toBe(true);
+      expect(replay2.value.replayed).toBe(true);
+      expect(replay1.value.revision).toBe(first.value.revision);
+      expect(replay2.value.revision).toBe(second.value.revision);
+      expect(replay1.value.applied).toEqual(first.value.applied);
+      expect(replay2.value.applied).toEqual(second.value.applied);
+    }
+    expect(p1.batches).toHaveLength(1);
+    expect(p2.batches).toHaveLength(1);
+  });
+
+  it("same scope + same key + different payload is a CONFLICT carrying the key and verb", async () => {
+    const facade = liveFacade();
+    const first = await facade["edit.apply"]({ ops: [...TEXT_BATCH], idempotencyKey: "clash" });
+    expect(first.ok).toBe(true);
+    const clash = await facade["edit.apply"]({
+      ops: [{ op: "track.add", trackType: "video" }],
+      idempotencyKey: "clash",
+    });
+    expect(clash.ok).toBe(false);
+    if (!clash.ok) {
+      expect(clash.error.code).toBe("CONFLICT");
+      expect(clash.error.details).toMatchObject({
+        idempotencyKey: "clash",
+        verb: "edit.apply",
+      });
+    }
+    expect(store.batches).toHaveLength(1);
+  });
+
+  it("a request without an idempotencyKey bypasses the ledger and executes normally", async () => {
+    const facade = liveFacade();
+    const first = await facade["edit.apply"]({ ops: [...TEXT_BATCH] });
+    const second = await facade["edit.apply"]({
+      ops: [{ op: "track.add", trackType: "video", trackId: "v2" }],
+    });
+    expect(first.ok && second.ok).toBe(true);
+    if (first.ok && second.ok) {
+      expect(first.value.replayed).toBe(false);
+      expect(second.value.replayed).toBe(false);
+      expect(second.value.revision).toBe(first.value.revision + 1);
+    }
+    // Two independent executions, no replay between them.
+    expect(store.batches).toHaveLength(2);
+  });
+
+  it("restored task receipts replay under their OWN project:workspace scope, whatever the restore order", async () => {
+    // The export.start payload this receipt was minted for (no settings,
+    // no destination, no comparison).
+    const exportPayloadHash = stableStringify({
+      settings: null,
+      destinationPath: null,
+      comparison: null,
+    });
+    const recordFor = (
+      projectId: string,
+      workspaceId: string,
+      jobId: string,
+      key: string,
+    ): LivePersistedTaskRecord => ({
+      projectId,
+      workspaceId,
+      status: {
+        jobId,
+        kind: "export",
+        projectId,
+        workspaceId,
+        state: "done",
+        progress: null,
+        artifact: null,
+        result: null,
+        error: null,
+        deliveredTo: null,
+        deliveryError: null,
+        sourceRevision: 3,
+        route: "stub",
+        upscalingRequestedButInactive: false,
+        cancelRequested: false,
+        createdAt: new Date(0).toISOString(),
+        updatedAt: new Date(0).toISOString(),
+      },
+      parameters: { idempotencyKey: key, payloadHash: exportPayloadHash },
+    });
+
+    async function seedExportableTimeline(target: FakeLiveStore): Promise<void> {
+      await target.humanEdit({
+        type: "track/add",
+        id: "seed-1",
+        timestamp: Date.now(),
+        params: { trackType: "text", trackId: "t1" },
+      });
+      await target.humanEdit({
+        type: "text/create",
+        id: "seed-2",
+        timestamp: Date.now(),
+        params: {
+          clip: {
+            id: "text-seed",
+            trackId: "t1",
+            startTime: 0,
+            duration: 2,
+            text: "seed",
+            style: {},
+            transform: {
+              position: { x: 0.5, y: 0.5 },
+              scale: { x: 1, y: 1 },
+              rotation: 0,
+              anchor: { x: 0.5, y: 0.5 },
+              opacity: 1,
+            },
+            keyframes: [],
+          },
+        },
+      });
+    }
+
+    // Both restore orders: each receipt must land under ITS OWN record's
+    // scope, independent of the order list() returns them in.
+    for (const order of [[0, 1], [1, 0]] as const) {
+      const targetA = new WorkspaceStore("ws-a");
+      const targetB = new WorkspaceStore("ws-b", createEmptyProject("B"));
+      await seedExportableTimeline(targetA);
+      await seedExportableTimeline(targetB);
+      // Bind the durable records to the targets' REAL project ids — the
+      // ledger scope is the project/workspace identity the store reports.
+      const records = [
+        recordFor(targetA.project.id, "ws-a", "job-a", "restore-a"),
+        recordFor(targetB.project.id, "ws-b", "job-b", "restore-b"),
+      ];
+      const routing = new RoutingStore([targetA, targetB]);
+      const stub = stubExportProvider();
+      const facade = createLiveFacade({
+        store: routing,
+        lease: new LiveWriterLease(),
+        sessionId: "agent-restore",
+        access: "write",
+        artifactRoot,
+        exportProvider: stub.provider,
+        taskLifecycle: {
+          list: () => order.map((index) => records[index]!),
+          begin: () => undefined,
+          update: () => undefined,
+        },
+      });
+
+      // key restore-a under proj-a/ws-a replays the RESTORED receipt —
+      // no new export starts — even when the OTHER record was restored last.
+      routing.current = targetA;
+      const replayA = await facade["export.start"]({ idempotencyKey: "restore-a" });
+      expect(replayA.ok).toBe(true);
+      if (!replayA.ok) return;
+      expect(replayA.value).toMatchObject({
+        jobId: "job-a",
+        sourceRevision: 3,
+        replayed: true,
+      });
+
+      // …and restore-b under proj-b/ws-b replays its own receipt too.
+      routing.current = targetB;
+      const replayB = await facade["export.start"]({ idempotencyKey: "restore-b" });
+      expect(replayB.ok).toBe(true);
+      if (!replayB.ok) return;
+      expect(replayB.value.jobId).toBe("job-b");
+      expect(replayB.value.replayed).toBe(true);
+      expect(stub.requests).toHaveLength(0);
+
+      // Cross-scope: restore-a against proj-b is NOT a hit — the key
+      // executes a fresh export under proj-b's own scope.
+      const miss = await facade["export.start"]({ idempotencyKey: "restore-a" });
+      expect(miss.ok).toBe(true);
+      if (!miss.ok) return;
+      expect(miss.value.replayed).toBe(false);
+      expect(miss.value.jobId).not.toBe("job-a");
+      expect(stub.requests).toHaveLength(1);
+
+      await facade.dispose();
+    }
   });
 });
