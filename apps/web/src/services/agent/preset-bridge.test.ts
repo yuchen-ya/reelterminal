@@ -6,7 +6,7 @@
  * PresetStorage fake; the canonical service and expansion logic are covered
  * by preset-service.test.ts and apply.test.ts.
  */
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import type { Action } from "@reelterminal/core";
 import {
@@ -19,7 +19,7 @@ import type { CustomPresetRecord } from "@reelterminal/core/presets/types";
 import { handlePresetLibraryRequest } from "./preset-bridge";
 import { useProjectStore } from "../../stores/project-store";
 import { createEmptyProject } from "../../stores/project/project-helpers";
-import { workspaceManager, type WorkspaceTarget } from "../workspace-manager";
+import { workspaceManager, WorkspaceManagerError, type WorkspaceTarget } from "../workspace-manager";
 import { currentProjectEpoch, type ProjectGuard } from "./project-guard";
 
 const { mockSaveMediaBlob, mockImportFile, mockWithMediaReferenceWrite } = vi.hoisted(() => ({
@@ -156,6 +156,12 @@ describe("handlePresetLibraryRequest", () => {
       },
     }));
     await openManagedProject("Preset Apply");
+  });
+
+  afterEach(() => {
+    // Manager spies must never leak a queued once-implementation into the
+    // next test's real write path.
+    vi.restoreAllMocks();
   });
 
   async function seedVideoClip(
@@ -503,6 +509,112 @@ describe("handlePresetLibraryRequest", () => {
       expect(useProjectStore.getState().project.name).toBe("Ledger B");
     }
     expect(firstProjectId).not.toBe(projectB.projectId);
+  });
+
+  it("classifies apply conflicts by code even when the message text is mutated", async () => {
+    const created = await service.create({
+      kind: "effect",
+      name: "Coded",
+      payload: EFFECT_PAYLOAD,
+    });
+    if (!created.ok) throw new Error(created.message);
+    const clipId = await seedVideoClip();
+    const context = await targetRequest();
+    vi.spyOn(workspaceManager, "withWorkspaceWrite").mockRejectedValueOnce(
+      new WorkspaceManagerError(
+        "CONFLICT",
+        "the apply ledge collapsed for an unrelated reason",
+        { expected: 3, current: 4 },
+      ),
+    );
+    const conflict = await handlePresetLibraryRequest({
+      guard: context.guard,
+      verb: "apply",
+      params: {
+        presetId: created.value.id,
+        target: { kind: "effect", clipIds: [clipId] },
+        expectedRevision: context.expectedRevision,
+        idempotencyKey: "apply-coded-1",
+      },
+    });
+    expect(conflict).toMatchObject({
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        message: "Workspace preset conflict: the apply ledge collapsed for an unrelated reason",
+      },
+    });
+    // This reply never carried a details field; none is forced on it.
+    if (!conflict.ok) expect(conflict.error.details).toBeUndefined();
+  });
+
+  it("maps its own runtime-changed apply guard to CONFLICT without message matching", async () => {
+    const created = await service.create({
+      kind: "effect",
+      name: "Guarded",
+      payload: EFFECT_PAYLOAD,
+    });
+    if (!created.ok) throw new Error(created.message);
+    const clipId = await seedVideoClip();
+    const context = await targetRequest();
+    vi.spyOn(workspaceManager, "withWorkspaceWrite").mockImplementationOnce(
+      async (_target, _revision, operation) =>
+        operation({ instanceId: "changed" } as Parameters<typeof operation>[0]),
+    );
+    const reply = await handlePresetLibraryRequest({
+      guard: context.guard,
+      verb: "apply",
+      params: {
+        presetId: created.value.id,
+        target: { kind: "effect", clipIds: [clipId] },
+        expectedRevision: context.expectedRevision,
+      },
+    });
+    expect(reply).toMatchObject({
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        message: "Workspace preset conflict: Workspace runtime changed before preset commit",
+      },
+    });
+  });
+
+  it("reports a stale apply revision as CONFLICT and ordinary failures as INTERNAL", async () => {
+    const created = await service.create({
+      kind: "effect",
+      name: "Stale",
+      payload: EFFECT_PAYLOAD,
+    });
+    if (!created.ok) throw new Error(created.message);
+    const clipId = await seedVideoClip();
+    const context = await targetRequest();
+    const stale = await handlePresetLibraryRequest({
+      guard: context.guard,
+      verb: "apply",
+      params: {
+        presetId: created.value.id,
+        target: { kind: "effect", clipIds: [clipId] },
+        expectedRevision: context.expectedRevision + 99,
+      },
+    });
+    expect(stale).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
+
+    vi.spyOn(workspaceManager, "withWorkspaceWrite").mockRejectedValueOnce(
+      new Error("disk write failed"),
+    );
+    const ordinary = await handlePresetLibraryRequest({
+      guard: context.guard,
+      verb: "apply",
+      params: {
+        presetId: created.value.id,
+        target: { kind: "effect", clipIds: [clipId] },
+        expectedRevision: context.expectedRevision,
+      },
+    });
+    expect(ordinary).toMatchObject({
+      ok: false,
+      error: { code: "INTERNAL", message: "disk write failed" },
+    });
   });
 
   it("applies graphics presets as a new SVG clip and rejects unknown verbs", async () => {

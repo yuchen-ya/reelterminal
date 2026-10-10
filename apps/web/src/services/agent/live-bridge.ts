@@ -36,6 +36,8 @@ import { useUIStore, type SelectionItem } from "../../stores/ui-store";
 import { useTimelineStore } from "../../stores/timeline-store";
 import { getPlaybackBridge } from "../../bridges/playback-bridge";
 import { runExclusiveLiveWrite } from "./live-write-lock";
+import { codedError, managerErrorCode, managerErrorDetails } from "./bridge-error";
+import { createReplyLedger } from "./reply-ledger";
 import { handleMaterialLibraryRequest } from "./material-bridge";
 import { handleFontLibraryRequest } from "./font-bridge";
 import { handlePresetLibraryRequest } from "./preset-bridge";
@@ -58,35 +60,19 @@ export const AGENT_HISTORY_OWNER = "agent";
 
 export type { LiveBridgeError, LiveBridgeReply, LiveBridgeRequest };
 
-interface HistoryControlLedgerEntry {
-  readonly payload: string;
-  readonly result: {
-    readonly revision: number;
-    readonly canUndo: boolean;
-    readonly canRedo: boolean;
-    readonly replayed: boolean;
-  };
+interface HistoryControlResult {
+  readonly revision: number;
+  readonly canUndo: boolean;
+  readonly canRedo: boolean;
+  readonly replayed: boolean;
 }
 
-const historyControlLedger = new Map<
-  string,
-  Map<string, HistoryControlLedgerEntry>
->();
+const historyControlLedger = createReplyLedger<HistoryControlResult>();
 
 const noProject = (): { ok: false; error: LiveBridgeError } => ({
   ok: false,
   error: { code: "NO_PROJECT", message: "No project is open" },
 });
-
-function isActionBatchConflict(message: string): boolean {
-  return message.includes("revision conflict") ||
-    message === "Workspace runtime changed before action replay or commit" ||
-    message === "Workspace changed while preparing the action batch" ||
-    message === "Workspace changed before the action batch was persisted" ||
-    message === "Workspace changed while persisting the action batch; the newer edit was preserved" ||
-    message === "Editor context revision conflict" ||
-    /idempotency key.+different request/i.test(message);
-}
 
 interface TargetRuntime {
   readonly store: StoreApi<ProjectState>;
@@ -234,8 +220,7 @@ async function handleHistoryControl(
     const key = req.idempotencyKey;
     const payload = JSON.stringify({ action: req.historyAction });
     const scope = projectLedgerScope({ projectId: runtime.projectId, workspaceId: runtime.workspaceId ?? undefined });
-    const projectLedger = key ? historyControlLedger.get(scope) : undefined;
-    const prior = key ? projectLedger?.get(key) : undefined;
+    const prior = key ? historyControlLedger.lookup(scope, key) : undefined;
     if (prior) {
       if (prior.payload !== payload) {
         return {
@@ -264,13 +249,13 @@ async function handleHistoryControl(
         { projectId: runtime.projectId, workspaceId: runtime.workspaceId! },
         expectedRevision,
         async (context) => {
-          if (context.instanceId !== runtime.instanceId) throw new Error("Workspace runtime changed before history commit");
+          if (context.instanceId !== runtime.instanceId) throw codedError("CONFLICT", "Workspace runtime changed before history commit");
           return context.store.getState()[req.historyAction!]({ alreadySerialized: true });
         },
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes("revision conflict") || message.includes("runtime changed")) {
+      if (managerErrorCode(error) === "CONFLICT") {
+        const message = error instanceof Error ? error.message : String(error);
         return { ok: false, error: { code: "CONFLICT", message: `Workspace history conflict: ${message}` } };
       }
       throw error;
@@ -291,13 +276,7 @@ async function handleHistoryControl(
       replayed: false,
     };
     if (key) {
-      const ledger = projectLedger ?? new Map<string, HistoryControlLedgerEntry>();
-      ledger.set(key, { payload, result: value });
-      if (ledger.size > 500) {
-        const oldest = ledger.keys().next().value;
-        if (oldest !== undefined) ledger.delete(oldest);
-      }
-      historyControlLedger.set(scope, ledger);
+      historyControlLedger.commit(scope, key, { payload, result: value });
     }
     return { ok: true, result: value };
   }, req);
@@ -366,9 +345,16 @@ async function handleApplyActions(
           };
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (isActionBatchConflict(message)) {
-          return { ok: false, error: { code: "CONFLICT", message, details: { idempotencyKey } } };
+        if (managerErrorCode(error) === "CONFLICT") {
+          const message = error instanceof Error ? error.message : String(error);
+          return {
+            ok: false,
+            error: {
+              code: "CONFLICT",
+              message,
+              details: { idempotencyKey, ...managerErrorDetails(error) },
+            },
+          };
         }
         throw error;
       }
@@ -428,15 +414,15 @@ async function handleApplyActions(
         beforePersist: () => {
           if (req.expectedContextRevision !== undefined && runtime.store.getState().isForeground &&
               getLiveEditorContext().contextRevision !== req.expectedContextRevision) {
-            throw new Error("Editor context revision conflict");
+            throw codedError("CONFLICT", "Editor context revision conflict");
           }
           prepared.commit();
         },
       });
     } catch (error) {
       await prepared.discard();
-      const message = error instanceof Error ? error.message : String(error);
-      if (isActionBatchConflict(message)) {
+      if (managerErrorCode(error) === "CONFLICT") {
+        const message = error instanceof Error ? error.message : String(error);
         return { ok: false, error: { code: "CONFLICT", message: `Workspace commit conflict: ${message}` } };
       }
       throw error;
@@ -528,9 +514,16 @@ async function handleReplayActions(
       },
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (isActionBatchConflict(message)) {
-      return { ok: false, error: { code: "CONFLICT", message, details: { idempotencyKey: req.idempotencyKey } } };
+    if (managerErrorCode(error) === "CONFLICT") {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        ok: false,
+        error: {
+          code: "CONFLICT",
+          message,
+          details: { idempotencyKey: req.idempotencyKey, ...managerErrorDetails(error) },
+        },
+      };
     }
     throw error;
   }
@@ -572,9 +565,16 @@ async function handleReplayMediaImport(
       result: { ...metadata, revision: prior.revision, replayed: true },
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (isActionBatchConflict(message)) {
-      return { ok: false, error: { code: "CONFLICT", message, details: { idempotencyKey: req.idempotencyKey } } };
+    if (managerErrorCode(error) === "CONFLICT") {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        ok: false,
+        error: {
+          code: "CONFLICT",
+          message,
+          details: { idempotencyKey: req.idempotencyKey, ...managerErrorDetails(error) },
+        },
+      };
     }
     throw error;
   }
@@ -636,9 +636,16 @@ async function handleImportMedia(
           return { ok: true, result: { ...metadata, revision: prior.revision, replayed: true } };
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (isActionBatchConflict(message)) {
-          return { ok: false, error: { code: "CONFLICT", message, details: { idempotencyKey } } };
+        if (managerErrorCode(error) === "CONFLICT") {
+          const message = error instanceof Error ? error.message : String(error);
+          return {
+            ok: false,
+            error: {
+              code: "CONFLICT",
+              message,
+              details: { idempotencyKey, ...managerErrorDetails(error) },
+            },
+          };
         }
         throw error;
       }
@@ -768,8 +775,8 @@ async function handleImportMedia(
             : {}),
         });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (isActionBatchConflict(message)) {
+        if (managerErrorCode(error) === "CONFLICT") {
+          const message = error instanceof Error ? error.message : String(error);
           return { ok: false, error: { code: "CONFLICT", message: `Workspace import conflict: ${message}` } };
         }
         throw error;

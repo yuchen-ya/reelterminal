@@ -27,6 +27,8 @@ import type {
   MaterialUpdatePatch,
 } from "@reelterminal/core";
 import { runExclusiveLiveWrite } from "./live-write-lock";
+import { codedError, managerErrorCode } from "./bridge-error";
+import { createReplyLedger } from "./reply-ledger";
 import { workspaceManager } from "../workspace-manager";
 
 export type MaterialBridgeError = {
@@ -39,13 +41,8 @@ export type MaterialBridgeReply =
   | { readonly ok: true; readonly result: unknown }
   | { readonly ok: false; readonly error: MaterialBridgeError };
 
-interface AttachLedgerEntry {
-  readonly payload: string;
-  readonly result: AttachMaterialSuccess;
-}
-
 /** Per-project ledger closing the attach timeout/retry window. */
-const attachLedger = new Map<string, Map<string, AttachLedgerEntry>>();
+const attachLedger = createReplyLedger<AttachMaterialSuccess>();
 
 function toBridgeReply<T>(
   result: MaterialServiceResult<T>,
@@ -249,10 +246,7 @@ async function handleAttach(
       return bridgeError({ code: "CONFLICT", message: "Workspace runtime changed since the targeted read" });
     }
     const scope = projectLedgerScope(target);
-    const projectLedger = idempotencyKey
-      ? attachLedger.get(scope)
-      : undefined;
-    const prior = idempotencyKey ? projectLedger?.get(idempotencyKey) : undefined;
+    const prior = idempotencyKey ? attachLedger.lookup(scope, idempotencyKey) : undefined;
     if (prior) {
       if (prior.payload !== payload) {
         return bridgeError({
@@ -270,7 +264,7 @@ async function handleAttach(
     let result: Awaited<ReturnType<typeof attachMaterialToProject>>;
     try {
       result = await workspaceManager.withWorkspaceWrite(target, expected, (context) => {
-        if (context.instanceId !== runtime.instanceId) throw new Error("Workspace runtime changed before material attach");
+        if (context.instanceId !== runtime.instanceId) throw codedError("CONFLICT", "Workspace runtime changed before material attach");
         return attachMaterialToProject({
           materialId,
           projectId: target.projectId,
@@ -284,8 +278,8 @@ async function handleAttach(
         });
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes("revision conflict") || message.includes("runtime changed")) {
+      if (managerErrorCode(error) === "CONFLICT") {
+        const message = error instanceof Error ? error.message : String(error);
         return bridgeError({ code: "CONFLICT", message: `Workspace material attach conflict: ${message}` });
       }
       throw error;
@@ -298,16 +292,7 @@ async function handleAttach(
       });
     }
     if (idempotencyKey) {
-      let ledger = attachLedger.get(scope);
-      if (!ledger) {
-        ledger = new Map();
-        attachLedger.set(scope, ledger);
-      }
-      ledger.set(idempotencyKey, { payload, result: result.value });
-      if (ledger.size > 500) {
-        const oldest = ledger.keys().next().value;
-        if (oldest !== undefined) ledger.delete(oldest);
-      }
+      attachLedger.commit(scope, idempotencyKey, { payload, result: result.value });
     }
     if (runtime.store.getState().isForeground) window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
     return { ok: true, result: result.value };

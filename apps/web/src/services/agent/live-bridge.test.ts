@@ -4,7 +4,7 @@ import { hashMediaBytes, type Action, type MediaItem } from "@reelterminal/core"
 import type { TextClip } from "@reelterminal/core";
 import { useProjectStore, getProjectRevision } from "../../stores/project-store";
 import { createEmptyProject } from "../../stores/project/project-helpers";
-import { workspaceManager } from "../workspace-manager";
+import { workspaceManager, WorkspaceManagerError } from "../workspace-manager";
 import {
   getLiveEditorContext,
   markAgentReferences,
@@ -798,6 +798,106 @@ describe("live-bridge", () => {
     }));
     expect(conflict).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
     expect(getProjectRevision()).toBe(beforeRevision + 1);
+  });
+
+  it("classifies manager conflicts by code even when the message text is mutated", async () => {
+    vi.spyOn(workspaceManager, "getActionBatchReplay").mockRejectedValueOnce(
+      new WorkspaceManagerError(
+        "CONFLICT",
+        "the coordinator quietly shuffled the deck",
+        { expectedInstanceId: "stale", actualInstanceId: "fresh" },
+      ),
+    );
+    const res = await handleLiveBridgeRequest(req("applyActions", {
+      actions: [act("track/add", { trackType: "video" })],
+      idempotencyKey: "coded-conflict-1",
+    }));
+    expect(res).toMatchObject({
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        message: "the coordinator quietly shuffled the deck",
+      },
+    });
+    // Manager `details` flow into the reply's existing details field
+    // alongside the bridge's own idempotency key.
+    expect(res.error?.details).toMatchObject({
+      idempotencyKey: "coded-conflict-1",
+      expectedInstanceId: "stale",
+      actualInstanceId: "fresh",
+    });
+  });
+
+  it("surfaces commit-path conflicts with the commit prefix and invents no details", async () => {
+    vi.spyOn(workspaceManager, "commitActionBatch").mockRejectedValueOnce(
+      new WorkspaceManagerError(
+        "CONFLICT",
+        "Workspace changed before the action batch was persisted",
+        { expectedRevision: 7 },
+      ),
+    );
+    const res = await handleLiveBridgeRequest(req("applyActions", {
+      actions: [act("track/add", { trackType: "video" })],
+    }));
+    expect(res).toMatchObject({
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        message: "Workspace commit conflict: Workspace changed before the action batch was persisted",
+      },
+    });
+    // This reply never carried a details field; none is forced on it.
+    expect(res.error?.details).toBeUndefined();
+  });
+
+  it("surfaces history-control conflicts by code with the history prefix", async () => {
+    vi.spyOn(workspaceManager, "withWorkspaceWrite").mockRejectedValueOnce(
+      new WorkspaceManagerError(
+        "CONFLICT",
+        "Workspace revision conflict: expected 1, current 2",
+        { expected: 1, current: 2 },
+      ),
+    );
+    const res = await handleLiveBridgeRequest(req("historyControl", {
+      historyAction: "undo",
+    }));
+    expect(res).toMatchObject({
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        message: "Workspace history conflict: Workspace revision conflict: expected 1, current 2",
+      },
+    });
+  });
+
+  it("maps its own runtime-changed guard to CONFLICT without message matching", async () => {
+    vi.spyOn(workspaceManager, "withWorkspaceWrite").mockImplementationOnce(
+      async (_target, _revision, operation) =>
+        operation({ instanceId: "changed" } as Parameters<typeof operation>[0]),
+    );
+    const res = await handleLiveBridgeRequest(req("historyControl", {
+      historyAction: "undo",
+    }));
+    expect(res).toMatchObject({
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        message: "Workspace history conflict: Workspace runtime changed before history commit",
+      },
+    });
+  });
+
+  it("does not misclassify ordinary failures as conflicts", async () => {
+    vi.spyOn(workspaceManager, "commitActionBatch").mockRejectedValueOnce(
+      new Error("disk write failed"),
+    );
+    const res = await handleLiveBridgeRequest(req("applyActions", {
+      actions: [act("track/add", { trackType: "video" })],
+    }));
+    expect(res).toMatchObject({
+      ok: false,
+      error: { code: "BRIDGE_ERROR", message: "disk write failed" },
+    });
   });
 
   it("applyActions routes plain actions through executeAction as one undo unit", async () => {

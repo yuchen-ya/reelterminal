@@ -31,6 +31,8 @@ import {
 } from "../custom-presets/apply";
 import { workspaceManager } from "../workspace-manager";
 import { runExclusiveLiveWrite } from "./live-write-lock";
+import { codedError, managerErrorCode } from "./bridge-error";
+import { createReplyLedger } from "./reply-ledger";
 
 /** Same owner tag the live action channel uses for agent-made history. */
 const AGENT_HISTORY_OWNER = "agent";
@@ -45,13 +47,8 @@ export type PresetBridgeReply =
   | { readonly ok: true; result: unknown }
   | { readonly ok: false; error: PresetBridgeError };
 
-interface ApplyLedgerEntry {
-  readonly payload: string;
-  readonly result: Record<string, unknown>;
-}
-
 /** Per-project ledger closing the apply timeout/retry window. */
-const applyLedger = new Map<string, Map<string, ApplyLedgerEntry>>();
+const applyLedger = createReplyLedger<Record<string, unknown>>();
 
 function bridgeError(error: PresetBridgeError): PresetBridgeReply {
   return { ok: false, error };
@@ -187,8 +184,7 @@ async function handleApply(
     // Same per-project bucketing as the other live ledgers: a key committed
     // in one project must never replay into another after a project switch.
     const projectId = projectLedgerScope(workspaceTarget);
-    const projectLedger = idempotencyKey ? applyLedger.get(projectId) : undefined;
-    const prior = idempotencyKey ? projectLedger?.get(idempotencyKey) : undefined;
+    const prior = idempotencyKey ? applyLedger.lookup(projectId, idempotencyKey) : undefined;
     if (prior) {
       if (prior.payload !== payload) {
         return bridgeError({
@@ -234,15 +230,15 @@ async function handleApply(
     let batch: ReturnType<typeof store.executeActionBatch>;
     try {
       batch = await workspaceManager.withWorkspaceWrite(workspaceTarget, expectedRevision ?? plannedRevision, async (context) => {
-        if (context.instanceId !== runtime.instanceId) throw new Error("Workspace runtime changed before preset commit");
+        if (context.instanceId !== runtime.instanceId) throw codedError("CONFLICT", "Workspace runtime changed before preset commit");
         return context.store.getState().executeActionBatch(expanded.actions, {
           groupLabel: expanded.groupLabel,
           historyOwner: AGENT_HISTORY_OWNER,
         });
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes("revision conflict") || message.includes("runtime changed")) {
+      if (managerErrorCode(error) === "CONFLICT") {
+        const message = error instanceof Error ? error.message : String(error);
         return bridgeError({ code: "CONFLICT", message: `Workspace preset conflict: ${message}` });
       }
       throw error;
@@ -305,16 +301,7 @@ async function handleApply(
     };
 
     if (idempotencyKey) {
-      let ledger = applyLedger.get(projectId);
-      if (!ledger) {
-        ledger = new Map();
-        applyLedger.set(projectId, ledger);
-      }
-      ledger.set(idempotencyKey, { payload, result });
-      if (ledger.size > 500) {
-        const oldest = ledger.keys().next().value;
-        if (oldest !== undefined) ledger.delete(oldest);
-      }
+      applyLedger.commit(projectId, idempotencyKey, { payload, result });
     }
     return { ok: true, result };
   }, workspaceTarget);
