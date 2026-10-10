@@ -12,17 +12,18 @@ import {
 } from "../project-media-gc";
 import { prepareProjectRenderFonts } from "../project-render-dependencies";
 import { workspaceManager, type WorkspaceTarget } from "../workspace-manager";
+import { codedError, managerErrorCode } from "./bridge-error";
 
 function requiredString(params: Record<string, unknown>, name: string): string {
   const value = params[name];
-  if (typeof value !== "string" || value.length === 0) throw new Error(`${name} is required`);
+  if (typeof value !== "string" || value.length === 0) throw codedError("INVALID_PARAMS", `${name} is required`);
   return value;
 }
 
 function expectedRevision(params: Record<string, unknown>): number {
   const value = params.expectedRevision;
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
-    throw new Error("expectedRevision must be a non-negative integer");
+    throw codedError("INVALID_PARAMS", "expectedRevision must be a non-negative integer");
   }
   return value;
 }
@@ -39,13 +40,30 @@ function targetFrom(params: Record<string, unknown>): WorkspaceTarget {
   };
 }
 
+/**
+ * project-media-gc failures are plain errors from a module the bridges do
+ * not own. Until that module grows codes (follow-up), these three messages
+ * keep the classification their callers already got — exact-match, so no
+ * other message text is ever classified by shape again.
+ */
+function legacyMediaCleanupCode(message: string): string | undefined {
+  switch (message) {
+    case "Version node was not found in this project":
+      return "NOT_FOUND";
+    case "Cleanup project does not match the reviewed plan":
+    case "Both version nodes must belong to the requested project":
+      return "INVALID_PARAMS";
+    default:
+      return undefined;
+  }
+}
+
 /** Map a thrown error to the facade's coarse failure codes (exported for tests). */
 export function failureCode(error: unknown): string {
+  const code = managerErrorCode(error);
+  if (code) return code;
   const message = error instanceof Error ? error.message : String(error);
-  if (/revision conflict|revision mismatch|changed while|runtime changed|idempotency key.+different|already retained with different/i.test(message)) return "CONFLICT";
-  if (/unknown (project|workspace|node|recovery draft)|not found|does not belong/i.test(message)) return "NOT_FOUND";
-  if (/required|must be|cannot be deleted|does not match/i.test(message)) return "INVALID_PARAMS";
-  return "BRIDGE_ERROR";
+  return legacyMediaCleanupCode(message) ?? "BRIDGE_ERROR";
 }
 
 /** Execute the public workspace command set against the renderer's durable manager. */
@@ -62,14 +80,14 @@ export async function handleWorkspaceLibraryRequest(
       case "prepareRenderFonts": {
         const project = params.project as Project | undefined;
         if (!project || typeof project.id !== "string" || !project.settings || !project.timeline || !project.mediaLibrary) {
-          throw new Error("project must be a complete project document");
+          throw codedError("INVALID_PARAMS", "project must be a complete project document");
         }
         return { ok: true, result: { project: await prepareProjectRenderFonts(project) } };
       }
       case "project.create": {
         const project = params.project as Project | undefined;
         if (!project || typeof project.id !== "string" || !project.settings || !project.timeline || !project.mediaLibrary) {
-          throw new Error("project must be a complete project document");
+          throw codedError("INVALID_PARAMS", "project must be a complete project document");
         }
         const created = await workspaceManager.createProject(project, {
           ...(typeof params.name === "string" ? { name: params.name } : {}),
@@ -149,7 +167,7 @@ export async function handleWorkspaceLibraryRequest(
         const projectId = requiredString(params, "projectId");
         const nodeId = requiredString(params, "nodeId");
         const node = await workspaceManager.getNode(projectId, nodeId);
-        if (!node) throw new Error(`Unknown node ${nodeId}`);
+        if (!node) throw codedError("NOT_FOUND", `Unknown node ${nodeId}`);
         return { ok: true, result: { projectId, node } };
       }
       case "node.save": {

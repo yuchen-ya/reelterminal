@@ -40,6 +40,26 @@ const IDEMPOTENCY = "idempotency";
 const TASK_INPUTS = "taskInputs";
 const FOLDERS = "folders";
 
+export type WorkspaceManagerErrorCode = "CONFLICT" | "NOT_FOUND" | "INVALID_PARAMS";
+
+/**
+ * Failure identity for workspace-manager operations. The human message stays
+ * stable; agent bridges classify through `code` via `instanceof` or the
+ * duck-typed `(error as { code?: string }).code` shape instead of matching on
+ * message substrings.
+ */
+export class WorkspaceManagerError extends Error {
+  readonly code: WorkspaceManagerErrorCode;
+  readonly details?: unknown;
+
+  constructor(code: WorkspaceManagerErrorCode, message: string, details?: unknown) {
+    super(message);
+    this.name = "WorkspaceManagerError";
+    this.code = code;
+    if (details !== undefined) this.details = details;
+  }
+}
+
 export interface WorkspaceTarget {
   projectId: string;
   workspaceId: string;
@@ -623,7 +643,7 @@ export class WorkspaceManager {
   async moveProjects(ids: readonly string[], folderId?: string): Promise<void> {
     await this.initialize();
     if (folderId && !(await this.readOne(FOLDERS, folderId)))
-      throw new Error("Folder not found");
+      throw new WorkspaceManagerError("NOT_FOUND", "Folder not found");
     const records = ids.map((id) => {
       const project = this.requireAvailableProject(id);
       return { ...project, folderId };
@@ -864,17 +884,13 @@ export class WorkspaceManager {
 
   private assertProjectNotDeleted(id: string): void {
     if (!this.isProjectAvailable(this.projects.get(id)))
-      throw Object.assign(new Error("Project is deleted or unavailable"), {
-        code: "NOT_FOUND",
-      });
+      throw new WorkspaceManagerError("NOT_FOUND", "Project is deleted or unavailable");
   }
 
   private requireAvailableProject(id: string): ProjectRecord {
     const project = this.projects.get(id);
     if (!project || !this.isProjectAvailable(project))
-      throw Object.assign(new Error("Project is deleted or unavailable"), {
-        code: "NOT_FOUND",
-      });
+      throw new WorkspaceManagerError("NOT_FOUND", "Project is deleted or unavailable");
     return project;
   }
 
@@ -954,7 +970,7 @@ export class WorkspaceManager {
     options: CreateProjectOptions = {},
   ): Promise<{ project: Project; projectRecord: ProjectRecord; workspace: WorkspaceSummary; revision: number; defaultWorkspaceId: string; replayed: boolean }> {
     await this.initialize();
-    if (!project.id) throw new Error("Project id is required");
+    if (!project.id) throw new WorkspaceManagerError("INVALID_PARAMS", "Project id is required");
     const request = stableStringify(options.requestPayload ?? {
       name: options.name ?? project.name,
       settings: project.settings,
@@ -1041,7 +1057,7 @@ export class WorkspaceManager {
       throw new Error("Choose either sourceNodeId or sourceWorkspaceId");
     }
     const node = options.sourceNodeId ? await this.getNode(projectId, options.sourceNodeId) : null;
-    if (options.sourceNodeId && !node) throw new Error(`Unknown node ${options.sourceNodeId}`);
+    if (options.sourceNodeId && !node) throw new WorkspaceManagerError("NOT_FOUND", `Unknown node ${options.sourceNodeId}`);
     const sourceWorkspace = options.sourceWorkspaceId
       ? await this.requireWorkspace({ projectId, workspaceId: options.sourceWorkspaceId })
       : this.workspaces.get(projectRecord.defaultWorkspaceId);
@@ -1152,7 +1168,7 @@ export class WorkspaceManager {
     if (source.kind === "node") {
       const node = await this.readOne<ProjectNodeRecord>(NODES, source.nodeId);
       if (!node) {
-        throw Object.assign(new Error(`Unknown node ${source.nodeId}`), { code: "NOT_FOUND" });
+        throw new WorkspaceManagerError("NOT_FOUND", `Unknown node ${source.nodeId}`);
       }
       projectId = node.projectId;
       project = node.project;
@@ -1162,7 +1178,7 @@ export class WorkspaceManager {
       const record = this.workspaces.get(source.workspaceId)
         ?? await this.readOne<WorkspaceRecord>(WORKSPACES, source.workspaceId);
       if (!record) {
-        throw Object.assign(new Error(`Unknown workspace ${source.workspaceId}`), { code: "NOT_FOUND" });
+        throw new WorkspaceManagerError("NOT_FOUND", `Unknown workspace ${source.workspaceId}`);
       }
       projectId = record.projectId;
       project = record.project;
@@ -1251,7 +1267,11 @@ export class WorkspaceManager {
 
       this.assertRevision(input.expectedRevision, context.revision);
       if (record.revision !== context.revision) {
-        throw new Error(`Workspace revision conflict: expected ${context.revision}, persistent record is ${record.revision}`);
+        throw new WorkspaceManagerError(
+          "CONFLICT",
+          `Workspace revision conflict: expected ${context.revision}, persistent record is ${record.revision}`,
+          { expected: context.revision, current: record.revision },
+        );
       }
       const sourceState = liveStore.getState();
       const stagedStore = createProjectStore({
@@ -1293,7 +1313,11 @@ export class WorkspaceManager {
       let interleavedEdit = false;
       await withMediaReferenceWrite(async () => {
         if (liveStore.getState().workspaceRevision !== context.revision) {
-          throw new Error("Workspace changed while preparing the action batch");
+          throw new WorkspaceManagerError(
+            "CONFLICT",
+            "Workspace changed while preparing the action batch",
+            { expectedRevision: context.revision },
+          );
         }
         const project = cloneProject(await prepareProjectRenderFonts(stagedProject));
         const nextWorkspace: WorkspaceRecord = {
@@ -1305,7 +1329,11 @@ export class WorkspaceManager {
         };
         await input.beforePersist?.();
         if (liveStore.getState().workspaceRevision !== context.revision) {
-          throw new Error("Workspace changed before the action batch was persisted");
+          throw new WorkspaceManagerError(
+            "CONFLICT",
+            "Workspace changed before the action batch was persisted",
+            { expectedRevision: context.revision },
+          );
         }
         const stores = idempotencyKey
           ? [WORKSPACES, IDEMPOTENCY]
@@ -1334,7 +1362,11 @@ export class WorkspaceManager {
           liveStore,
           idempotencyKey,
         );
-        throw new Error("Workspace changed while persisting the action batch; the newer edit was preserved");
+        throw new WorkspaceManagerError(
+          "CONFLICT",
+          "Workspace changed while persisting the action batch; the newer edit was preserved",
+          { expectedRevision: context.revision, preservedRevision: liveStore.getState().workspaceRevision },
+        );
       }
       const committedBatch = liveStore.getState().executeActionBatch(
         input.actions,
@@ -1471,7 +1503,11 @@ export class WorkspaceManager {
     }
     this.assertRevision(input.expectedRevision, revision);
     if (input.expectedRevision !== undefined && input.expectedRevision !== record.revision) {
-      throw new Error(`Workspace revision conflict: expected ${input.expectedRevision}, current ${record.revision}`);
+      throw new WorkspaceManagerError(
+        "CONFLICT",
+        `Workspace revision conflict: expected ${input.expectedRevision}, current ${record.revision}`,
+        { expected: input.expectedRevision, current: record.revision },
+      );
     }
     let project = cloneProject(state.getFullProject());
     let node: ProjectNodeRecord | null = null;
@@ -1512,7 +1548,11 @@ export class WorkspaceManager {
       if (store.getState().workspaceRevision !== revision) {
         tx.abort();
         await completed.catch(() => undefined);
-        throw new Error("Workspace changed while saving the node");
+        throw new WorkspaceManagerError(
+          "CONFLICT",
+          "Workspace changed while saving the node",
+          { expectedRevision: revision },
+        );
       }
       if (node !== baseNode) {
         tx.objectStore(NODES).add(node!);
@@ -1573,14 +1613,18 @@ export class WorkspaceManager {
     }
     this.assertRevision(input.expectedRevision, revision);
     const node = await this.getNode(input.target.projectId, input.nodeId);
-    if (!node) throw new Error(`Node ${input.nodeId} does not belong to project ${input.target.projectId}`);
+    if (!node) throw new WorkspaceManagerError("NOT_FOUND", `Node ${input.nodeId} does not belong to project ${input.target.projectId}`);
     let protectionDraftId: string | undefined;
     if (targetRecord.dirty || store.getState().workspaceDirty) {
       protectionDraftId = (await this.createRecoveryDraft(input.target, "restore-protection")).id;
     }
     const projectWithMedia = await this.hydrateProject(node.project);
     if (store.getState().workspaceRevision !== revision) {
-      throw new Error("Workspace changed while preparing node restoration");
+      throw new WorkspaceManagerError(
+        "CONFLICT",
+        "Workspace changed while preparing node restoration",
+        { expectedRevision: revision },
+      );
     }
     const nextRevision = revision + 1;
     const result: { revision: number; protectionDraftId?: string } = {
@@ -1594,7 +1638,11 @@ export class WorkspaceManager {
       if (store.getState().workspaceRevision !== revision) {
         tx.abort();
         await completed.catch(() => undefined);
-        throw new Error("Workspace changed while restoring the node");
+        throw new WorkspaceManagerError(
+          "CONFLICT",
+          "Workspace changed while restoring the node",
+          { expectedRevision: revision },
+        );
       }
       tx.objectStore(WORKSPACES).put({
         ...targetRecord,
@@ -1631,7 +1679,11 @@ export class WorkspaceManager {
       });
       this.workspaces.set(targetRecord.id, preserved);
       this.publish();
-      throw new Error("Workspace changed while restoring the node; the newer edit was preserved");
+      throw new WorkspaceManagerError(
+        "CONFLICT",
+        "Workspace changed while restoring the node; the newer edit was preserved",
+        { expectedRevision: revision, preservedRevision: liveState.workspaceRevision },
+      );
     }
     this.runtimeSuspension.set(input.target.workspaceId, (this.runtimeSuspension.get(input.target.workspaceId) ?? 0) + 1);
     try {
@@ -1678,9 +1730,9 @@ export class WorkspaceManager {
       const sourceRecord = this.workspaces.get(input.sourceWorkspaceId)
         ?? await this.readOne<WorkspaceRecord>(WORKSPACES, input.sourceWorkspaceId);
       if (!sourceRecord || sourceRecord.projectId !== input.target.projectId) {
-        throw Object.assign(
-          new Error(`Unknown workspace ${input.sourceWorkspaceId} in project ${input.target.projectId}`),
-          { code: "NOT_FOUND" },
+        throw new WorkspaceManagerError(
+          "NOT_FOUND",
+          `Unknown workspace ${input.sourceWorkspaceId} in project ${input.target.projectId}`,
         );
       }
       let sourceProject = sourceRecord.project;
@@ -1698,7 +1750,11 @@ export class WorkspaceManager {
       );
       const projectWithMedia = await this.hydrateProject(preparedProject);
       if (store.getState().workspaceRevision !== revision) {
-        throw new Error("Workspace changed while preparing workspace content adoption");
+        throw new WorkspaceManagerError(
+          "CONFLICT",
+          "Workspace changed while preparing workspace content adoption",
+          { expectedRevision: revision },
+        );
       }
       const nextRevision = revision + 1;
       const baseProjectKey = await this.getWorkspaceBaseProjectKey(
@@ -1712,7 +1768,11 @@ export class WorkspaceManager {
         if (store.getState().workspaceRevision !== revision) {
           tx.abort();
           await completed.catch(() => undefined);
-          throw new Error("Workspace changed while adopting workspace content");
+          throw new WorkspaceManagerError(
+            "CONFLICT",
+            "Workspace changed while adopting workspace content",
+            { expectedRevision: revision },
+          );
         }
         tx.objectStore(WORKSPACES).put({
           ...targetRecord,
@@ -1725,7 +1785,11 @@ export class WorkspaceManager {
       });
       if (store.getState().workspaceRevision !== revision) {
         await this.persistCurrentWorkspaceAndRemoveActionReceipt(targetRecord, store);
-        throw new Error("Workspace changed while adopting workspace content; the newer edit was preserved");
+        throw new WorkspaceManagerError(
+          "CONFLICT",
+          "Workspace changed while adopting workspace content; the newer edit was preserved",
+          { expectedRevision: revision, preservedRevision: store.getState().workspaceRevision },
+        );
       }
       this.runtimeSuspension.set(input.target.workspaceId, (this.runtimeSuspension.get(input.target.workspaceId) ?? 0) + 1);
       try {
@@ -1767,11 +1831,11 @@ export class WorkspaceManager {
     await this.initialize();
     const name = input.name.trim();
     if (!name) {
-      throw Object.assign(new Error("Node name must be a non-empty string"), { code: "INVALID_PARAMS" });
+      throw new WorkspaceManagerError("INVALID_PARAMS", "Node name must be a non-empty string");
     }
     const node = await this.readOne<ProjectNodeRecord>(NODES, input.nodeId);
     if (!node || node.projectId !== input.projectId) {
-      throw Object.assign(new Error(`Unknown node ${input.nodeId} in project ${input.projectId}`), { code: "NOT_FOUND" });
+      throw new WorkspaceManagerError("NOT_FOUND", `Unknown node ${input.nodeId} in project ${input.projectId}`);
     }
     const updated: ProjectNodeRecord = {
       ...node,
@@ -1795,7 +1859,7 @@ export class WorkspaceManager {
     await this.initialize();
     const node = await this.readOne<ProjectNodeRecord>(NODES, input.nodeId);
     if (!node || node.projectId !== input.projectId) {
-      throw Object.assign(new Error(`Unknown node ${input.nodeId} in project ${input.projectId}`), { code: "NOT_FOUND" });
+      throw new WorkspaceManagerError("NOT_FOUND", `Unknown node ${input.nodeId} in project ${input.projectId}`);
     }
     if (node.recycledAt !== undefined) return;
     const updated: ProjectNodeRecord = { ...node, recycledAt: Date.now() };
@@ -1814,7 +1878,7 @@ export class WorkspaceManager {
     await this.initialize();
     const node = await this.readOne<ProjectNodeRecord>(NODES, input.nodeId);
     if (!node || node.projectId !== input.projectId) {
-      throw Object.assign(new Error(`Unknown node ${input.nodeId} in project ${input.projectId}`), { code: "NOT_FOUND" });
+      throw new WorkspaceManagerError("NOT_FOUND", `Unknown node ${input.nodeId} in project ${input.projectId}`);
     }
     if (node.recycledAt === undefined) return;
     const { recycledAt: _recycledAt, ...restored } = node;
@@ -1864,7 +1928,7 @@ export class WorkspaceManager {
     }
     this.assertRevision(expectedRevision, currentRevision);
     const draft = await this.readOne<RecoveryDraftRecord>(DRAFTS, draftId);
-    if (!draft || draft.projectId !== target.projectId) throw new Error(`Unknown recovery draft ${draftId}`);
+    if (!draft || draft.projectId !== target.projectId) throw new WorkspaceManagerError("NOT_FOUND", `Unknown recovery draft ${draftId}`);
     const draftBaseNode = draft.baseNodeId
       ? await this.readOne<ProjectNodeRecord>(NODES, draft.baseNodeId)
       : null;
@@ -1877,7 +1941,11 @@ export class WorkspaceManager {
     );
     const projectWithMedia = await this.hydrateProject(preparedDraft);
     if (store.getState().workspaceRevision !== currentRevision) {
-      throw new Error("Workspace changed while preparing draft recovery");
+      throw new WorkspaceManagerError(
+        "CONFLICT",
+        "Workspace changed while preparing draft recovery",
+        { expectedRevision: currentRevision },
+      );
     }
     const revision = currentRevision + 1;
     await withMediaReferenceWrite(async () => {
@@ -1887,7 +1955,11 @@ export class WorkspaceManager {
       if (store.getState().workspaceRevision !== currentRevision) {
         tx.abort();
         await completed.catch(() => undefined);
-        throw new Error("Workspace changed while recovering the draft");
+        throw new WorkspaceManagerError(
+          "CONFLICT",
+          "Workspace changed while recovering the draft",
+          { expectedRevision: currentRevision },
+        );
       }
       tx.objectStore(WORKSPACES).put({ ...workspace, baseNodeId: draft.baseNodeId, revision, updatedAt: Date.now(), dirty: true, project: cloneProject(preparedDraft) });
       if (idemKey) tx.objectStore(IDEMPOTENCY).put({ key: idemKey, request, result: { revision } });
@@ -1917,7 +1989,11 @@ export class WorkspaceManager {
       });
       this.workspaces.set(target.workspaceId, preserved);
       this.publish();
-      throw new Error("Workspace changed while recovering the draft; the newer edit was preserved");
+      throw new WorkspaceManagerError(
+        "CONFLICT",
+        "Workspace changed while recovering the draft; the newer edit was preserved",
+        { expectedRevision: currentRevision, preservedRevision: liveState.workspaceRevision },
+      );
     }
     this.runtimeSuspension.set(target.workspaceId, (this.runtimeSuspension.get(target.workspaceId) ?? 0) + 1);
     try {
@@ -1953,7 +2029,7 @@ export class WorkspaceManager {
       const workspace = await this.requireWorkspace(target);
       const project = this.projects.get(target.projectId);
       if (project?.defaultWorkspaceId === target.workspaceId) {
-        throw new Error("The default workspace cannot be deleted");
+        throw new WorkspaceManagerError("INVALID_PARAMS", "The default workspace cannot be deleted");
       }
       this.assertRevision(options.expectedRevision, workspace.revision);
       if (workspace.dirty) await this.createRecoveryDraft(target, "restore-protection");
@@ -1982,10 +2058,16 @@ export class WorkspaceManager {
     return this.withWorkspaceCommand(input.workspaceId, async () => {
       await this.flushWorkspaceWrites(input.workspaceId);
       const context = await this.getWorkspaceContext({ projectId: input.projectId, workspaceId: input.workspaceId });
-      if (context.revision !== input.sourceRevision) throw new Error("Task input revision conflict");
+      if (context.revision !== input.sourceRevision) {
+        throw new WorkspaceManagerError(
+          "CONFLICT",
+          "Task input revision conflict",
+          { expected: input.sourceRevision, current: context.revision },
+        );
+      }
       if (input.inputProject.id !== input.projectId) throw new Error("Task input project id mismatch");
       if (editableProjectKey(input.inputProject) !== editableProjectKey(context.store.getState().getFullProject())) {
-        throw new Error("Task input does not match the target workspace snapshot");
+        throw new WorkspaceManagerError("INVALID_PARAMS", "Task input does not match the target workspace snapshot");
       }
       return withMediaReferenceWrite(async () => {
         const project = cloneProject(await prepareProjectRenderFonts(input.inputProject));
@@ -1998,7 +2080,11 @@ export class WorkspaceManager {
             prior.sourceRevision !== record.sourceRevision ||
             editableProjectKey(prior.project) !== editableProjectKey(record.project)
           ) {
-            throw new Error(`Task input ${input.jobId} is already retained with different content`);
+            throw new WorkspaceManagerError(
+              "CONFLICT",
+              `Task input ${input.jobId} is already retained with different content`,
+              { jobId: input.jobId },
+            );
           }
           const preparedExisting = cloneProject(await prepareProjectRenderFonts(prior.project));
           const tx = this.requireDb().transaction(TASK_INPUTS, "readwrite");
@@ -2477,7 +2563,7 @@ export class WorkspaceManager {
     this.requireAvailableProject(target.projectId);
     const workspace = this.workspaces.get(target.workspaceId) ?? await this.readOne<WorkspaceRecord>(WORKSPACES, target.workspaceId);
     if (!workspace || workspace.projectId !== target.projectId) {
-      throw Object.assign(new Error(`Unknown workspace ${target.workspaceId} in project ${target.projectId}`), { code: "NOT_FOUND" });
+      throw new WorkspaceManagerError("NOT_FOUND", `Unknown workspace ${target.workspaceId} in project ${target.projectId}`);
     }
     this.workspaces.set(workspace.id, workspace);
     return workspace;
@@ -2513,13 +2599,21 @@ export class WorkspaceManager {
 
   private assertRevision(expectedRevision: number | undefined, actualRevision: number): void {
     if (expectedRevision !== undefined && expectedRevision !== actualRevision) {
-      throw new Error(`Workspace revision conflict: expected ${expectedRevision}, current ${actualRevision}`);
+      throw new WorkspaceManagerError(
+        "CONFLICT",
+        `Workspace revision conflict: expected ${expectedRevision}, current ${actualRevision}`,
+        { expected: expectedRevision, current: actualRevision },
+      );
     }
   }
 
   private assertRuntimeInstance(context: WorkspaceContextHandle, expectedInstanceId: string): void {
     if (context.instanceId !== expectedInstanceId) {
-      throw new Error("Workspace runtime changed before action replay or commit");
+      throw new WorkspaceManagerError(
+        "CONFLICT",
+        "Workspace runtime changed before action replay or commit",
+        { expectedInstanceId, actualInstanceId: context.instanceId },
+      );
     }
   }
 
@@ -2577,7 +2671,13 @@ export class WorkspaceManager {
   private async readIdempotency<T>(key: string, request: string): Promise<T | null> {
     const record = await this.readOne<PersistedIdempotencyRecord>(IDEMPOTENCY, key);
     if (!record) return null;
-    if (record.request !== request) throw new Error(`Idempotency key ${key} was reused for a different request`);
+    if (record.request !== request) {
+      throw new WorkspaceManagerError(
+        "CONFLICT",
+        `Idempotency key ${key} was reused for a different request`,
+        { idempotencyKey: key },
+      );
+    }
     return structuredClone(record.result) as T;
   }
 

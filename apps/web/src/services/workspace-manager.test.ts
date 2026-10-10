@@ -4,8 +4,18 @@ import i18next from "i18next";
 import type { Action, Project } from "@reelterminal/core";
 import { createEmptyProject } from "../stores/project/project-helpers";
 import { createProjectStore, getActiveProjectRuntimeStore } from "../stores/project-store";
-import { WorkspaceManager, isSubstantiveProject } from "./workspace-manager";
+import { WorkspaceManager, WorkspaceManagerError, isSubstantiveProject } from "./workspace-manager";
 import * as renderDependencies from "./project-render-dependencies";
+
+/** Rejection helper: returns the thrown error instead of failing the test. */
+async function caught(run: () => Promise<unknown>): Promise<unknown> {
+  try {
+    await run();
+  } catch (error) {
+    return error;
+  }
+  throw new Error("Expected the operation to reject");
+}
 
 function expectedFirstNodeName(): string {
   const translated = i18next.t("versioning.autoNameFirst", { defaultValue: "初版" });
@@ -1028,5 +1038,176 @@ describe("WorkspaceManager", () => {
     await manager.flushOpenWorkspaces();
     const reopened = await new WorkspaceManager().getStore(target);
     expect(reopened.getState().project.name).toBe("Pending edit");
+  });
+
+  it("codes revision CAS failures as CONFLICT with details and an unchanged message", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(createEmptyProject("Revision codes"));
+    const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+    const context = await manager.getWorkspaceContext(target);
+    await context.store.getState().addTrack("video");
+
+    const failure = await caught(() => manager.withWorkspaceWrite(target, 0, () => undefined));
+    expect(failure).toBeInstanceOf(WorkspaceManagerError);
+    expect((failure as WorkspaceManagerError).code).toBe("CONFLICT");
+    // Bridges may duck-type the code until they adopt instanceof checks.
+    expect((failure as { code?: string }).code).toBe("CONFLICT");
+    expect((failure as Error).message).toBe("Workspace revision conflict: expected 0, current 1");
+    expect((failure as WorkspaceManagerError).details).toEqual({ expected: 0, current: 1 });
+  });
+
+  it("codes task-input revision, snapshot and retention conflicts without changing messages", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(createEmptyProject("Task input codes"));
+    const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+    const context = await manager.getWorkspaceContext(target);
+    const inputProject = context.store.getState().getFullProject();
+    const retain = (jobId: string, sourceRevision: number, project: Project): Promise<unknown> =>
+      manager.retainTaskInputs({
+        jobId,
+        projectId: target.projectId,
+        workspaceId: target.workspaceId,
+        sourceRevision,
+        inputProject: project,
+      });
+
+    const staleRevision = await caught(() => retain("job-codes", context.revision + 3, inputProject));
+    expect(staleRevision).toBeInstanceOf(WorkspaceManagerError);
+    expect((staleRevision as Error).message).toBe("Task input revision conflict");
+    expect((staleRevision as WorkspaceManagerError).code).toBe("CONFLICT");
+    expect((staleRevision as WorkspaceManagerError).details).toEqual({
+      expected: context.revision + 3,
+      current: context.revision,
+    });
+
+    await retain("job-codes", context.revision, inputProject);
+    await context.store.getState().addTrack("video");
+    const nextRevision = context.store.getState().workspaceRevision;
+
+    const staleSnapshot = await caught(() => retain("job-stale", nextRevision, inputProject));
+    expect(staleSnapshot).toBeInstanceOf(WorkspaceManagerError);
+    expect((staleSnapshot as Error).message).toBe("Task input does not match the target workspace snapshot");
+    expect((staleSnapshot as WorkspaceManagerError).code).toBe("INVALID_PARAMS");
+
+    const retained = await caught(() =>
+      retain("job-codes", nextRevision, context.store.getState().getFullProject()),
+    );
+    expect(retained).toBeInstanceOf(WorkspaceManagerError);
+    expect((retained as Error).message).toBe("Task input job-codes is already retained with different content");
+    expect((retained as WorkspaceManagerError).code).toBe("CONFLICT");
+    expect((retained as WorkspaceManagerError).details).toEqual({ jobId: "job-codes" });
+  });
+
+  it("codes runtime-changed and idempotency-reuse failures as CONFLICT with unchanged messages", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(createEmptyProject("Runtime conflict codes"));
+    const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+    const before = await manager.getWorkspaceContext(target);
+    const actions: Action[] = [{
+      type: "track/add",
+      id: "code-test-track",
+      timestamp: 1,
+      params: { trackType: "video", position: 0 },
+    }];
+
+    await manager.closeWorkspace(target);
+    const reopened = await manager.getWorkspaceContext(target);
+    const runtimeFailure = await caught(() => manager.commitActionBatch({
+      target,
+      expectedRevision: reopened.revision,
+      expectedInstanceId: before.instanceId,
+      actions,
+      options: { groupLabel: "Code test" },
+    }));
+    expect(runtimeFailure).toBeInstanceOf(WorkspaceManagerError);
+    expect((runtimeFailure as Error).message).toBe("Workspace runtime changed before action replay or commit");
+    expect((runtimeFailure as WorkspaceManagerError).code).toBe("CONFLICT");
+    expect((runtimeFailure as WorkspaceManagerError).details).toEqual({
+      expectedInstanceId: before.instanceId,
+      actualInstanceId: reopened.instanceId,
+    });
+
+    const idempotency = {
+      operation: "live.applyActions",
+      key: "code-test-key",
+      request: { actions },
+    };
+    await manager.commitActionBatch({
+      target,
+      expectedRevision: reopened.revision,
+      expectedInstanceId: reopened.instanceId,
+      actions,
+      options: { groupLabel: "Code test" },
+      idempotency,
+    });
+    const idempotencyKey = `live.applyActions:${target.workspaceId}:code-test-key`;
+    const reuseFailure = await caught(() =>
+      manager.getActionBatchReplay(target, { ...idempotency, request: { actions: [] } }),
+    );
+    expect(reuseFailure).toBeInstanceOf(WorkspaceManagerError);
+    expect((reuseFailure as Error).message).toBe(
+      `Idempotency key ${idempotencyKey} was reused for a different request`,
+    );
+    expect((reuseFailure as WorkspaceManagerError).code).toBe("CONFLICT");
+    expect((reuseFailure as WorkspaceManagerError).details).toEqual({ idempotencyKey });
+  });
+
+  it("codes unambiguous not-found and invalid-param failures", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(createEmptyProject("Coded failures"));
+    const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+
+    const workspaceFailure = await caught(() =>
+      manager.getWorkspaceContext({ projectId: created.project.id, workspaceId: "missing-workspace" }),
+    );
+    expect(workspaceFailure).toBeInstanceOf(WorkspaceManagerError);
+    expect((workspaceFailure as WorkspaceManagerError).code).toBe("NOT_FOUND");
+    expect((workspaceFailure as Error).message).toBe(
+      `Unknown workspace missing-workspace in project ${created.project.id}`,
+    );
+
+    const nodeFailure = await caught(() =>
+      manager.createWorkspace(created.project.id, { sourceNodeId: "missing-node" }),
+    );
+    expect(nodeFailure).toBeInstanceOf(WorkspaceManagerError);
+    expect((nodeFailure as WorkspaceManagerError).code).toBe("NOT_FOUND");
+    expect((nodeFailure as Error).message).toBe("Unknown node missing-node");
+
+    const nameFailure = await caught(() =>
+      manager.renameNode({ projectId: created.project.id, nodeId: "any-node", name: "   " }),
+    );
+    expect(nameFailure).toBeInstanceOf(WorkspaceManagerError);
+    expect((nameFailure as WorkspaceManagerError).code).toBe("INVALID_PARAMS");
+    expect((nameFailure as Error).message).toBe("Node name must be a non-empty string");
+
+    const idFailure = await caught(() =>
+      manager.createProject({ ...createEmptyProject("No id"), id: "" }),
+    );
+    expect(idFailure).toBeInstanceOf(WorkspaceManagerError);
+    expect((idFailure as WorkspaceManagerError).code).toBe("INVALID_PARAMS");
+    expect((idFailure as Error).message).toBe("Project id is required");
+
+    const defaultDeleteFailure = await caught(() => manager.deleteWorkspace(target, { expectedRevision: 0 }));
+    expect(defaultDeleteFailure).toBeInstanceOf(WorkspaceManagerError);
+    expect((defaultDeleteFailure as WorkspaceManagerError).code).toBe("INVALID_PARAMS");
+    expect((defaultDeleteFailure as Error).message).toBe("The default workspace cannot be deleted");
+  });
+
+  it("leaves non-conflict failures uncoded so conflicts stay distinguishable", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(createEmptyProject("Disk failure coding"));
+    const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+    const persist = vi.spyOn(
+      manager as unknown as { persistWorkspaceSnapshot: (workspace: unknown) => Promise<void> },
+      "persistWorkspaceSnapshot",
+    ).mockRejectedValue(new Error("disk write failed"));
+    const store = await manager.getStore(target);
+    store.setState({ project: { ...store.getState().project, name: "Pending edit" } });
+
+    const failure = await caught(() => manager.flushOpenWorkspaces());
+    persist.mockRestore();
+    expect(failure).not.toBeInstanceOf(WorkspaceManagerError);
+    expect((failure as { code?: string }).code).toBeUndefined();
+    expect((failure as Error).message).toBe("disk write failed");
   });
 });
