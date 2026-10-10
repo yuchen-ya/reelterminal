@@ -36,7 +36,6 @@ import { ActionHistory } from "@reelterminal/core/actions/action-history";
 import type { Action } from "@reelterminal/core/types/actions";
 import type { Project, ProjectSettings } from "@reelterminal/core/types/project";
 import { stat } from "node:fs/promises";
-import { readFile as readFileFontBytes } from "node:fs/promises";
 import { basename, isAbsolute, resolve as resolvePath } from "node:path";
 
 import {
@@ -95,6 +94,12 @@ import {
   materialBridgeFailure,
   presetBridgeFailure,
 } from "./live-bridge-errors";
+import {
+  assertPresetApplyTarget,
+  assertPresetPayloadValid,
+  resolveFontUploadBytes,
+  resolveLibraryMediaPath,
+} from "./live-library-params";
 import {
   partitionCreatedIds,
   type EditApplyPayload,
@@ -210,7 +215,6 @@ import {
   type MaterialUndoResult,
 } from "./material-library";
 import {
-  FONT_LIBRARY_LIMITS,
   type FontLibraryBridge,
   type FontLibraryBridgeReply,
   type FontLibraryBridgeVerb,
@@ -220,7 +224,6 @@ import {
   type FontUploadResult,
 } from "./font-library";
 import {
-  presetApplyTargetProblem,
   type PresetApplyParams,
   type PresetApplyResult,
   type PresetCreateParams,
@@ -239,7 +242,6 @@ import {
 } from "./preset-verbs";
 import {
   validatePresetName,
-  validatePresetPayload,
   validatePresetThumbnail,
 } from "@reelterminal/core/presets/validate";
 import type { MaterialListResult } from "@reelterminal/core/material/types";
@@ -2965,68 +2967,6 @@ export class LiveFacadeSession {
     return reply.result as T;
   }
 
-  /**
-   * Validate that an agent-supplied media path stays inside the configured
-   * media roots and exists — the same containment rule as media.import, so
-   * the library can never become a side channel for reading arbitrary files
-   * (a later material.attach reads the path through the trusted renderer).
-   */
-  private async resolveMaterialMediaPath(verb: FacadeVerb, filePath: string): Promise<{
-    path: string;
-    sizeBytes: number;
-    lastModifiedMs: number;
-  }> {
-    const roots = this.config.mediaRoots ?? [];
-    if (roots.length === 0) {
-      throw new FacadeError(
-        "UNSUPPORTED",
-        `${verb}: no media roots configured for this live session`,
-      );
-    }
-    if (hasUrlScheme(filePath)) {
-      throw new FacadeError(
-        "INVALID_PARAMS",
-        `${verb}: URLs are not accepted — pass an absolute local file path inside a configured media root`,
-        { path: filePath },
-      );
-    }
-    if (!isAbsolute(filePath)) {
-      throw new FacadeError(
-        "INVALID_PARAMS",
-        `${verb}: paths must be absolute — nothing is resolved against the host process cwd`,
-        { path: filePath },
-      );
-    }
-    const resolution = resolveContainedPathDetailed(filePath, roots);
-    if (resolution.kind === "outside") {
-      throw new FacadeError(
-        "INVALID_PARAMS",
-        `${verb}: path escapes the configured media roots`,
-        { path: filePath, mediaRoots: [...roots] },
-      );
-    }
-    if (resolution.kind === "unresolvable") {
-      throw new FacadeError(
-        "INVALID_PARAMS",
-        `${verb}: source file is missing or unreadable`,
-        { path: filePath, reason: "missing_file" },
-      );
-    }
-    const fileStat = await stat(resolution.path).catch(() => null);
-    if (!fileStat || !fileStat.isFile()) {
-      throw new FacadeError(
-        "INVALID_PARAMS",
-        `${verb}: source file is missing or not a regular file`,
-        { path: filePath, reason: "missing_file" },
-      );
-    }
-    return {
-      path: resolution.path,
-      sizeBytes: fileStat.size,
-      lastModifiedMs: Math.round(fileStat.mtimeMs),
-    };
-  }
-
   async materialList(
     params?: MaterialListParams,
   ): Promise<FacadeResult<MaterialListResult>> {
@@ -3120,9 +3060,10 @@ export class LiveFacadeSession {
             { kind: "media" },
           );
         }
-        const resolved = await this.resolveMaterialMediaPath(
+        const resolved = await resolveLibraryMediaPath(
           "material.create",
           valid.filePath,
+          this.config.mediaRoots ?? [],
         );
         // Best-effort technical metadata from the SAME Node probe media.import
         // uses. A probe failure is fatal only for audio/video claims; images
@@ -3385,77 +3326,6 @@ export class LiveFacadeSession {
     return reply.result as T;
   }
 
-  /**
-   * Decode + validate the font bytes for one upload request: exactly one of
-   * filePath/dataBase64, media-root containment for paths, 10 MiB decoded
-   * budget. Returns the bytes plus the base name the family derives from
-   * (matching the renderer's own name derivation).
-   */
-  private async resolveFontUploadBytes(
-    valid: FontUploadParams,
-  ): Promise<{ data: ArrayBuffer; baseName: string }> {
-    const hasPath = valid.filePath !== undefined;
-    const hasBase64 = valid.dataBase64 !== undefined;
-    if (hasPath === hasBase64) {
-      throw new FacadeError(
-        "INVALID_PARAMS",
-        "font.upload: exactly one of filePath or dataBase64 is required",
-      );
-    }
-
-    let data: ArrayBuffer;
-    let baseName: string;
-    if (hasPath) {
-      // Same containment rule as media.import/material.create: the path can
-      // never become a side channel for reading arbitrary files.
-      const resolved = await this.resolveMaterialMediaPath(
-        "font.upload",
-        valid.filePath as string,
-      );
-      if (resolved.sizeBytes > FONT_LIBRARY_LIMITS.maxFontBytes) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          `font.upload: font file is ${resolved.sizeBytes} bytes; the limit is ${FONT_LIBRARY_LIMITS.maxFontBytes} bytes`,
-          {
-            sizeBytes: resolved.sizeBytes,
-            maxFontBytes: FONT_LIBRARY_LIMITS.maxFontBytes,
-          },
-        );
-      }
-      data = await readFileFontBytes(resolved.path).then(bufferToArrayBuffer);
-      baseName = basename(resolved.path);
-    } else {
-      const decoded = decodeBase64ToBuffer(valid.dataBase64 as string);
-      if (decoded === null) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "font.upload: dataBase64 is not valid base64",
-        );
-      }
-      if (
-        decoded.byteLength > FONT_LIBRARY_LIMITS.maxFontBytes
-      ) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          `font.upload: decoded font is ${decoded.byteLength} bytes; the limit is ${FONT_LIBRARY_LIMITS.maxFontBytes} bytes`,
-          {
-            sizeBytes: decoded.byteLength,
-            maxFontBytes: FONT_LIBRARY_LIMITS.maxFontBytes,
-          },
-        );
-      }
-      data = decoded;
-      baseName = "";
-    }
-
-    // Pass the renderer the exact base name the family derives from, so the
-    // deduped flag in the response compares against the same string.
-    return {
-      data,
-      baseName: (valid.name ?? baseName).replace(/\.(ttf|otf|woff2?)$/i, ""),
-    };
-  }
-
   async fontUpload(
     params: FontUploadParams,
   ): Promise<FacadeResult<FontUploadResult>> {
@@ -3466,7 +3336,10 @@ export class LiveFacadeSession {
         FONT_UPLOAD_SCHEMA,
         "font.upload params",
       );
-      const { data, baseName } = await this.resolveFontUploadBytes(valid);
+      const { data, baseName } = await resolveFontUploadBytes(
+        valid,
+        this.config.mediaRoots ?? [],
+      );
       const result = await this.callFontBridge<FontUploadResult>(
         "font.upload",
         "upload",
@@ -3525,25 +3398,6 @@ export class LiveFacadeSession {
       throw presetBridgeFailure(verb, reply.error);
     }
     return reply.result as T;
-  }
-
-  /**
-   * Deep payload check with the core validator (Node-safe). Name and
-   * thumbnail run through their own core validators at the verb layer.
-   */
-  private assertPresetPayloadValid(
-    verb: FacadeVerb,
-    payload: unknown,
-  ): Record<string, unknown> {
-    const checked = validatePresetPayload(payload);
-    if (!checked.ok) {
-      throw new FacadeError(
-        "INVALID_PARAMS",
-        `${verb}: ${checked.message}`,
-        { validationCode: checked.code, ...(checked.details ?? {}) },
-      );
-    }
-    return checked.value as unknown as Record<string, unknown>;
   }
 
   async presetList(
@@ -3613,7 +3467,7 @@ export class LiveFacadeSession {
           validationCode: name.code,
         });
       }
-      const normalizedPayload = this.assertPresetPayloadValid(
+      const normalizedPayload = assertPresetPayloadValid(
         "preset.create",
         valid.payload,
       );
@@ -3669,7 +3523,7 @@ export class LiveFacadeSession {
       }
       let normalizedPayload: Record<string, unknown> | undefined;
       if (valid.payload !== undefined) {
-        normalizedPayload = this.assertPresetPayloadValid(
+        normalizedPayload = assertPresetPayloadValid(
           "preset.update",
           valid.payload,
         );
@@ -3742,41 +3596,6 @@ export class LiveFacadeSession {
     });
   }
 
-  /**
-   * Structural target validation before any renderer round-trip: the
-   * kind-specific target shape is closed here (shared predicate, also used
-   * by the transports' runtime mirrors); payload/target kind pairing and
-   * clip existence stay renderer-side where the project lives.
-   */
-  private assertPresetApplyTarget(
-    target: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const problem = presetApplyTargetProblem(target);
-    if (problem !== null) {
-      throw new FacadeError("INVALID_PARAMS", `preset.apply: ${problem}`);
-    }
-    const kind = target.kind as string;
-    if (kind === "text") {
-      return { kind, mode: target.mode, clipId: target.clipId };
-    }
-    if (kind === "effect") {
-      return { kind, clipIds: [...(target.clipIds as readonly string[])] };
-    }
-    if (kind === "graphics") {
-      return {
-        kind,
-        ...(target.trackId !== undefined ? { trackId: target.trackId } : {}),
-        ...(target.startTime !== undefined ? { startTime: target.startTime } : {}),
-        ...(target.durationSec !== undefined ? { durationSec: target.durationSec } : {}),
-      };
-    }
-    return {
-      kind,
-      clipAId: target.clipAId,
-      ...(target.clipBId !== undefined ? { clipBId: target.clipBId } : {}),
-    };
-  }
-
   async presetApply(
     params: PresetApplyParams,
   ): Promise<FacadeResult<PresetApplyResult>> {
@@ -3807,7 +3626,7 @@ export class LiveFacadeSession {
           { currentRevision: revision },
         );
       }
-      const target = this.assertPresetApplyTarget(
+      const target = assertPresetApplyTarget(
         valid.target as unknown as Record<string, unknown>,
       );
       const result = await this.callPresetBridge<PresetApplyResult>(
@@ -4357,22 +4176,3 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
   }, "live", (verb) => session.assertVerbAccess(verb as FacadeVerb)) as LiveAgentFacade;
 }
 
-/**
- * font.upload byte plumbing (module-local): strict-ish base64 decoding and
- * a Node Buffer → ArrayBuffer transfer so the bytes can cross the bridge
- * as a structured-cloneable ArrayBuffer.
- */
-function bufferToArrayBuffer(buffer: Buffer): ArrayBuffer {
-  const out = new ArrayBuffer(buffer.byteLength);
-  new Uint8Array(out).set(buffer);
-  return out;
-}
-
-function decodeBase64ToBuffer(text: string): ArrayBuffer | null {
-  const normalized = text.replace(/\s+/g, "");
-  if (normalized.length === 0 || normalized.length % 4 !== 0) return null;
-  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)) return null;
-  const buffer = Buffer.from(normalized, "base64");
-  if (buffer.length === 0) return null;
-  return bufferToArrayBuffer(buffer);
-}
