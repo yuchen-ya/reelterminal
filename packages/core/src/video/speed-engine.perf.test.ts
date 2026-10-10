@@ -3,13 +3,19 @@ import type { Clip } from "../types/timeline";
 import { SpeedEngine } from "./speed-engine";
 
 /**
- * Phase-4 performance baseline for the speed-integral hot path
+ * Phase-4 performance regression for the speed-integral hot path
  * (changeset 10). Fixed clips cover constant speed, a variable-speed ramp,
- * reverse playback, and freeze frames. The tests only assert mapping
- * invariants that hold before AND after the optimization, so the suite
- * stays green throughout; integratePlaybackTime call counts and timings
- * logged here are the recorded baseline, and changeset 10's own regression
- * test hard-asserts the reduced counts.
+ * reverse playback, and freeze frames.
+ *
+ * Recorded pre-optimization baseline (1000-step midpoint Riemann sum per
+ * query, re-integrated inside the binary search): the 200-point sweep spent
+ * 3784 integratePlaybackTime calls (~55ms), 100 repeated identical queries
+ * spent 1920 (~26ms), and 100 duration queries recomputed 100 integrals.
+ *
+ * The engine now builds one cumulative integral table per curve revision and
+ * answers queries by O(log n) table inversion, so `buildIntegralTable` is the
+ * only remaining full-integral work; the assertions below hard-pin its count.
+ * Timings are logged for comparison only — never asserted.
  */
 describe("SpeedEngine perf baselines", () => {
   const RAMP_CLIP = {
@@ -43,10 +49,10 @@ describe("SpeedEngine perf baselines", () => {
   } as Clip;
   const CONSTANT_CLIP = { id: "perf-constant", inPoint: 0, outPoint: 10, speed: 2 } as Clip;
 
-  function integralCounter(engine: SpeedEngine): () => number {
+  function tableBuildCounter(engine: SpeedEngine): () => number {
     const spy = vi.spyOn(
-      engine as unknown as { integratePlaybackTime: () => number },
-      "integratePlaybackTime",
+      engine as unknown as { buildIntegralTable: () => unknown },
+      "buildIntegralTable",
     );
     return () => spy.mock.calls.length;
   }
@@ -69,11 +75,13 @@ describe("SpeedEngine perf baselines", () => {
     expect(engine.getSourceTimeAtPlaybackTime(CONSTANT_CLIP.id, 2.5)).toBeCloseTo(5, 6);
   });
 
-  it("measures a playback sweep of the variable-speed ramp", () => {
+  it("builds one integral table per curve and serves a playback sweep from it", () => {
     const engine = new SpeedEngine();
     engine.loadClips([RAMP_CLIP]);
-    const countIntegrals = integralCounter(engine);
+    const countBuilds = tableBuildCounter(engine);
     const duration = engine.getEffectiveDuration(RAMP_CLIP.id);
+    // The duration query is the single full-integral work item.
+    expect(countBuilds()).toBe(1);
 
     const steps = 200;
     const start = performance.now();
@@ -84,36 +92,48 @@ describe("SpeedEngine perf baselines", () => {
       previous = source;
     }
     const elapsed = performance.now() - start;
+    // Baseline spent 3784 integrals here; the sweep must not rebuild at all.
+    expect(countBuilds()).toBe(1);
+    // Memoized duration stays consistent with the table.
+    expect(engine.getEffectiveDuration(RAMP_CLIP.id)).toBe(duration);
+    expect(countBuilds()).toBe(1);
     console.log(
-      `[perf-baseline][speed-sweep] queries=${steps} integrateCalls=${countIntegrals()} elapsedMs=${elapsed.toFixed(1)}`,
+      `[perf-after][speed-sweep] queries=${steps} tableBuilds=${countBuilds()} elapsedMs=${elapsed.toFixed(1)}`,
     );
   });
 
-  it("measures repeated identical queries", () => {
+  it("serves repeated identical queries and durations without rebuilding", () => {
     const engine = new SpeedEngine();
     engine.loadClips([RAMP_CLIP]);
-    const countIntegrals = integralCounter(engine);
+    const countBuilds = tableBuildCounter(engine);
     const duration = engine.getEffectiveDuration(RAMP_CLIP.id);
     const playbackTime = duration * 0.37;
+    expect(countBuilds()).toBe(1);
 
     const repeats = 100;
     const first = engine.getSourceTimeAtPlaybackTime(RAMP_CLIP.id, playbackTime);
     const start = performance.now();
     for (let i = 0; i < repeats; i++) {
-      expect(engine.getSourceTimeAtPlaybackTime(RAMP_CLIP.id, playbackTime)).toBeCloseTo(first, 10);
+      expect(engine.getSourceTimeAtPlaybackTime(RAMP_CLIP.id, playbackTime)).toBeCloseTo(first, 12);
     }
     const elapsed = performance.now() - start;
+    // Baseline spent 1920 integrals on the repeats; identical queries must
+    // not trigger any additional integral after the first.
+    expect(countBuilds()).toBe(1);
     console.log(
-      `[perf-baseline][speed-repeat] queries=${repeats} integrateCalls=${countIntegrals()} elapsedMs=${elapsed.toFixed(1)}`,
+      `[perf-after][speed-repeat] queries=${repeats} tableBuilds=${countBuilds()} elapsedMs=${elapsed.toFixed(1)}`,
     );
 
-    // Repeated duration queries are pure recomputation today.
+    // Baseline recomputed the duration integral on every query; memoized
+    // duration must serve all repeats with zero additional builds.
     const durationStart = performance.now();
-    for (let i = 0; i < repeats; i++) engine.getEffectiveDuration(RAMP_CLIP.id);
+    for (let i = 0; i < repeats; i++) {
+      expect(engine.getEffectiveDuration(RAMP_CLIP.id)).toBe(duration);
+    }
     const durationElapsed = performance.now() - durationStart;
+    expect(countBuilds()).toBe(1);
     console.log(
-      `[perf-baseline][speed-duration] queries=${repeats} integrateCalls=${countIntegrals()} elapsedMs=${durationElapsed.toFixed(1)}`,
+      `[perf-after][speed-duration] queries=${repeats} tableBuilds=${countBuilds()} elapsedMs=${durationElapsed.toFixed(1)}`,
     );
-    expect(engine.getEffectiveDuration(RAMP_CLIP.id)).toBe(duration);
   });
 });

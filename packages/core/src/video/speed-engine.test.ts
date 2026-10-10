@@ -246,3 +246,231 @@ describe("SpeedEngine - Playback Time vs Media Time", () => {
     }
   });
 });
+
+describe("SpeedEngine - integral cache invalidation", () => {
+  /** Ramp used to warm the integral cache before every mutation below. */
+  const RAMP = {
+    id: "cached",
+    inPoint: 0,
+    outPoint: 10,
+    speedKeyframes: [
+      { id: "a", time: 0, speed: 0.5, easing: "linear" },
+      { id: "b", time: 10, speed: 2, easing: "linear" },
+    ],
+  } as Clip;
+
+  let engine: SpeedEngine;
+
+  /**
+   * Both engines run the same deterministic table build, so a cached engine
+   * whose invalidation fired matches a fresh engine bit for bit; 12 decimals
+   * leaves room only for float noise, never for a stale curve.
+   */
+  function expectMatchesFreshEngine(finalClip: Clip, playbackTimes: number[]): void {
+    const fresh = new SpeedEngine();
+    fresh.loadClips([finalClip]);
+    expect(engine.getEffectiveDuration(finalClip.id)).toBeCloseTo(
+      fresh.getEffectiveDuration(finalClip.id),
+      12,
+    );
+    for (const t of playbackTimes) {
+      expect(engine.getSourceTimeAtPlaybackTime(finalClip.id, t)).toBeCloseTo(
+        fresh.getSourceTimeAtPlaybackTime(finalClip.id, t),
+        12,
+      );
+    }
+  }
+
+  beforeEach(() => {
+    engine = new SpeedEngine();
+  });
+
+  it("reflects setClipSpeed immediately after a cached constant-speed query", () => {
+    engine.setClipSpeed("c", 1, 10);
+    expect(engine.getEffectiveDuration("c")).toBe(10); // warms the memo path
+    engine.setClipSpeed("c", 2, 10);
+    expect(engine.getEffectiveDuration("c")).toBe(5);
+    expect(engine.getSourceTimeAtPlaybackTime("c", 2.5)).toBe(5);
+    expectMatchesFreshEngine(
+      { id: "c", inPoint: 0, outPoint: 10, speed: 2 } as Clip,
+      [0, 1, 4.9, 5],
+    );
+  });
+
+  it("reflects addSpeedKeyframe immediately after caching the constant curve", () => {
+    engine.setClipSpeed("c", 2, 10);
+    expect(engine.getEffectiveDuration("c")).toBe(5); // warms non-keyframed path
+    engine.addSpeedKeyframe("c", 0, 0.5, "linear");
+    engine.addSpeedKeyframe("c", 10, 2, "linear");
+    expect(engine.getEffectiveDuration("c")).not.toBe(5); // cache invalidated
+    expectMatchesFreshEngine(
+      {
+        id: "c",
+        inPoint: 0,
+        outPoint: 10,
+        speedKeyframes: [
+          { id: "a", time: 0, speed: 0.5, easing: "linear" },
+          { id: "b", time: 10, speed: 2, easing: "linear" },
+        ],
+      } as Clip,
+      [0, 1, 3, 6.9],
+    );
+  });
+
+  it("reflects updateSpeedKeyframe during curve editing without serving the stale table", () => {
+    engine.loadClips([RAMP]);
+    const before = engine.getEffectiveDuration(RAMP.id);
+    engine.getSourceTimeAtPlaybackTime(RAMP.id, before / 2); // builds the table
+    engine.updateSpeedKeyframe(RAMP.id, "b", { speed: 4 });
+    const after = engine.getEffectiveDuration(RAMP.id);
+    expect(after).not.toBeCloseTo(before, 6); // the new curve took effect
+    expectMatchesFreshEngine(
+      {
+        ...RAMP,
+        speedKeyframes: [
+          { id: "a", time: 0, speed: 0.5, easing: "linear" },
+          { id: "b", time: 10, speed: 4, easing: "linear" },
+        ],
+      } as Clip,
+      [0, 0.5, 2, 4, 6],
+    );
+  });
+
+  it("reflects updateSpeedKeyframe time moves and removeSpeedKeyframe", () => {
+    engine.loadClips([RAMP]);
+    engine.getSourceTimeAtPlaybackTime(RAMP.id, 3); // builds the table
+    engine.updateSpeedKeyframe(RAMP.id, "b", { time: 5 });
+    expectMatchesFreshEngine(
+      {
+        ...RAMP,
+        speedKeyframes: [
+          { id: "a", time: 0, speed: 0.5, easing: "linear" },
+          { id: "b", time: 5, speed: 2, easing: "linear" },
+        ],
+      } as Clip,
+      [0, 1, 5, 8],
+    );
+    engine.removeSpeedKeyframe(RAMP.id, "a");
+    expectMatchesFreshEngine(
+      {
+        ...RAMP,
+        speedKeyframes: [{ id: "b", time: 5, speed: 2, easing: "linear" }],
+      } as Clip,
+      [0, 1, 5, 8],
+    );
+  });
+
+  it("re-hydrates loadClips over a cached previous configuration", () => {
+    engine.loadClips([RAMP]);
+    const staleDuration = engine.getEffectiveDuration(RAMP.id);
+    engine.getSourceTimeAtPlaybackTime(RAMP.id, staleDuration / 2);
+    const replaced = {
+      ...RAMP,
+      inPoint: 2,
+      outPoint: 6,
+      speedKeyframes: [{ id: "z", time: 0, speed: 4, easing: "linear" }],
+    } as Clip;
+    engine.loadClips([replaced]);
+    expect(engine.getEffectiveDuration(replaced.id)).toBe(1);
+    expect(engine.getSourceTimeAtPlaybackTime(replaced.id, 0.5)).toBe(2);
+    expectMatchesFreshEngine(replaced, [0, 0.25, 0.75, 1]);
+    expect(engine.getEffectiveDuration(replaced.id)).not.toBe(staleDuration);
+  });
+
+  it("extends and shrinks the duration for createFreezeFrame and removeFreezeFrame", () => {
+    engine.loadClips([RAMP]);
+    const movingDuration = engine.getEffectiveDuration(RAMP.id);
+    engine.getSourceTimeAtPlaybackTime(RAMP.id, 1); // builds the table
+    const freeze = engine.createFreezeFrame(RAMP.id, 4, 1, 2.5);
+    expect(engine.getEffectiveDuration(RAMP.id)).toBeCloseTo(movingDuration + 2.5, 12);
+    // Between 1s and 3.5s playback the clip holds source second 4.
+    expect(engine.getSourceTimeAtPlaybackTime(RAMP.id, 1)).toBe(4);
+    expect(engine.getSourceTimeAtPlaybackTime(RAMP.id, 3.4)).toBe(4);
+    expectMatchesFreshEngine(
+      {
+        ...RAMP,
+        freezeFrames: [{ id: freeze.id, clipId: RAMP.id, sourceTime: 4, startTime: 1, duration: 2.5 }],
+      } as Clip,
+      [0, 0.5, 4, 7],
+    );
+    engine.removeFreezeFrame(RAMP.id, freeze.id);
+    expect(engine.getEffectiveDuration(RAMP.id)).toBeCloseTo(movingDuration, 12);
+    expectMatchesFreshEngine(RAMP, [0, 0.5, 1, 3.4]);
+  });
+
+  it("reflects initializeClip duration changes after the integral was cached", () => {
+    engine.setClipSpeed("c", 2, 10);
+    engine.addSpeedKeyframe("c", 0, 1, "linear");
+    engine.addSpeedKeyframe("c", 10, 2, "linear");
+    engine.getEffectiveDuration("c"); // builds the table over [0, 10]
+    engine.initializeClip("c", 20);
+    // The keyframe at 10 is now interior: curve integral over [0, 10] plus
+    // the constant last-keyframe speed (2x) across [10, 20].
+    expect(engine.getEffectiveDuration("c")).toBeCloseTo(10 * Math.log(2) + 5, 5);
+    expectMatchesFreshEngine(
+      {
+        id: "c",
+        inPoint: 0,
+        outPoint: 20,
+        speedKeyframes: [
+          { id: "a", time: 0, speed: 1, easing: "linear" },
+          { id: "b", time: 10, speed: 2, easing: "linear" },
+        ],
+      } as Clip,
+      [0, 1, 5, 9],
+    );
+  });
+
+  it("applies setReverse and setPitchCorrection to queries immediately", () => {
+    engine.loadClips([RAMP]);
+    engine.getSourceTimeAtPlaybackTime(RAMP.id, 3); // builds the table
+    engine.setReverse(RAMP.id, true, 10);
+    expect(engine.getSourceTimeAtPlaybackTime(RAMP.id, 0)).toBe(10);
+    expectMatchesFreshEngine({ ...RAMP, reversed: true } as Clip, [0, 1, 3, 7]);
+    engine.setReverse(RAMP.id, false);
+    expectMatchesFreshEngine(RAMP, [0, 1, 3, 7]);
+    engine.setPitchCorrection(RAMP.id, false);
+    // Pitch correction never affects the mapping or duration.
+    expectMatchesFreshEngine(RAMP, [0, 1, 3, 7]);
+  });
+
+  it("matches a fresh engine sweep after a full mutation sequence", () => {
+    engine.loadClips([RAMP]);
+    engine.getEffectiveDuration(RAMP.id);
+    engine.addSpeedKeyframe(RAMP.id, 5, 4, "linear");
+    engine.updateSpeedKeyframe(RAMP.id, "b", { time: 8, speed: 1 });
+    const freeze = engine.createFreezeFrame(RAMP.id, 2, 0.5, 1);
+    engine.removeSpeedKeyframe(RAMP.id, "a");
+    engine.removeFreezeFrame(RAMP.id, freeze.id);
+    const finalClip = {
+      ...RAMP,
+      speedKeyframes: [
+        { id: "kf5", time: 5, speed: 4, easing: "linear" },
+        { id: "b", time: 8, speed: 1, easing: "linear" },
+      ],
+    } as Clip;
+    expectMatchesFreshEngine(finalClip, [0, 0.5, 1, 2, 4, 6, 8.5, 11]);
+
+    // And the resulting curve still sweeps monotonically end to end.
+    const duration = engine.getEffectiveDuration(finalClip.id);
+    let previous = 0;
+    for (let i = 0; i <= 100; i++) {
+      const source = engine.getSourceTimeAtPlaybackTime(finalClip.id, (i * duration) / 100);
+      expect(source).toBeGreaterThanOrEqual(previous - 1e-9);
+      previous = source;
+    }
+    expect(previous).toBeCloseTo(10, 3);
+  });
+
+  it("forgets removed clips and rebuilds on re-initialization", () => {
+    engine.loadClips([RAMP]);
+    engine.getEffectiveDuration(RAMP.id);
+    engine.removeClip(RAMP.id);
+    expect(engine.getEffectiveDuration(RAMP.id)).toBe(0);
+    expect(engine.getSourceTimeAtPlaybackTime(RAMP.id, 3)).toBe(3);
+    engine.loadClips([RAMP]);
+    expectMatchesFreshEngine(RAMP, [0, 3, 7]);
+    engine.clear();
+    expect(engine.getEffectiveDuration(RAMP.id)).toBe(0);
+  });
+});
