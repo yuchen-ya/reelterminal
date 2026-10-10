@@ -7,15 +7,19 @@ import {
   EXPORT_SETTINGS_SCHEMA,
   MEDIA_RENDER_HTML_SCHEMA,
   PRESET_APPLY_SCHEMA,
-  VISUAL_INSPECT_RANGE_SCHEMA,
   PROJECT_SETTINGS_SCHEMA,
-  VERIFY_COMPARE_SCHEMA,
-  VERIFY_EXPECT_SCHEMA,
-  VERIFY_REGION_SCHEMA,
-  EDITOR_CONTROL_TARGET_SCHEMA,
-  TIMELINE_QUERY_RANGE_SCHEMA,
   VERB_PARAM_SCHEMAS,
 } from "./verb-schemas";
+import {
+  parseVerifyCompare,
+  parseVerifyExpect,
+  validateEditorControlAction,
+  validateEditorControlTargets,
+  validateTimelineQueryTimeRange,
+  validateVisualInspectTimeRange,
+} from "./verb-param-rules";
+import type { LiveEditorControlParams } from "./live-store";
+import type { TimelineQueryParams, VerifyArtifactParams } from "./types";
 import { describeManualScreen } from "./gui-manual";
 import { validatePresetPayload } from "@reelterminal/core/presets/validate";
 import { presetApplyTargetProblem } from "./preset-verbs";
@@ -29,24 +33,13 @@ function validateFacadeFields(verb: string, params: unknown, mode: "headless" | 
   const valid = validateObject<Record<string, unknown>>(params, schema, `${verb} params`);
   switch (verb) {
     case "editor.control": {
-      const action = valid.action;
-      if (action === "seek" && valid.timeSeconds === undefined) {
-        throw new FacadeError("INVALID_PARAMS", "editor.control: seek requires timeSeconds");
-      }
-      if (action !== "seek" && valid.timeSeconds !== undefined) {
-        throw new FacadeError("INVALID_PARAMS", `editor.control: timeSeconds is only valid for seek, not ${String(action)}`);
-      }
-      if (action === "select" && (!Array.isArray(valid.targets) || valid.targets.length === 0)) {
-        throw new FacadeError("INVALID_PARAMS", "editor.control: select requires at least one target");
-      }
-      if (action !== "select" && (valid.targets !== undefined || valid.selectionMode !== undefined)) {
-        throw new FacadeError("INVALID_PARAMS", `editor.control: targets and selectionMode are only valid for select, not ${String(action)}`);
-      }
-      if (Array.isArray(valid.targets)) {
-        valid.targets.forEach((target, index) =>
-          validateObject(target, EDITOR_CONTROL_TARGET_SCHEMA, `editor.control params.targets[${index}]`),
-        );
-      }
+      // Same shared cross-field rules as both session implementations; at
+      // this boundary the action rules deliberately run BEFORE the per-target
+      // schema validation (the sessions check targets first — order preserved
+      // from the original boundary copy).
+      const params = valid as unknown as LiveEditorControlParams;
+      validateEditorControlAction(params);
+      validateEditorControlTargets(params.targets);
       return;
     }
     case "project.create":
@@ -54,18 +47,9 @@ function validateFacadeFields(verb: string, params: unknown, mode: "headless" | 
         validateObject(valid.settings, PROJECT_SETTINGS_SCHEMA, "project.create params.settings");
       }
       return;
-    case "timeline.query": {
-      if (valid.timeRange === undefined) return;
-      const range = validateObject<{ startSec: number; endSec: number }>(
-        valid.timeRange,
-        TIMELINE_QUERY_RANGE_SCHEMA,
-        "timeline.query params.timeRange",
-      );
-      if (range.endSec <= range.startSec) {
-        throw new FacadeError("INVALID_PARAMS", "timeline.query: timeRange.endSec must be greater than startSec");
-      }
+    case "timeline.query":
+      validateTimelineQueryTimeRange(valid as unknown as TimelineQueryParams);
       return;
-    }
     case "edit.validate":
     case "edit.apply": {
       const ops = (valid.ops as unknown[]).map((raw, index) => validateEditOp(raw, index));
@@ -82,9 +66,7 @@ function validateFacadeFields(verb: string, params: unknown, mode: "headless" | 
       return;
     }
     case "visual.inspect": {
-      if (valid.timeRange !== undefined) {
-        validateObject(valid.timeRange, VISUAL_INSPECT_RANGE_SCHEMA, "visual.inspect params.timeRange");
-      }
+      validateVisualInspectTimeRange(valid);
       if ((valid.clipId === undefined) === (valid.timeRange === undefined)) {
         throw new FacadeError("INVALID_PARAMS", "visual.inspect: pass exactly one of clipId or timeRange");
       }
@@ -99,29 +81,11 @@ function validateFacadeFields(verb: string, params: unknown, mode: "headless" | 
       }
       return;
     case "verify.artifact": {
-      if (valid.expect !== undefined) {
-        validateObject(valid.expect, VERIFY_EXPECT_SCHEMA, "verify.artifact params.expect");
-      }
+      parseVerifyExpect(valid as unknown as VerifyArtifactParams);
       if (valid.compare === undefined) return;
-      const compare = validateObject<{ region?: unknown }>(
-        valid.compare,
-        VERIFY_COMPARE_SCHEMA,
-        "verify.artifact params.compare",
+      parseVerifyCompare(
+        valid.compare as NonNullable<VerifyArtifactParams["compare"]>,
       );
-      if (compare.region !== undefined) {
-        const region = validateObject<{ x: number; y: number; width: number; height: number }>(
-          compare.region,
-          VERIFY_REGION_SCHEMA,
-          "verify.artifact params.compare.region",
-        );
-        if (region.x + region.width > 1 || region.y + region.height > 1) {
-          throw new FacadeError(
-            "INVALID_PARAMS",
-            "verify.artifact: compare.region must satisfy x+width ≤ 1 and y+height ≤ 1",
-            { region },
-          );
-        }
-      }
       return;
     }
     case "material.create":

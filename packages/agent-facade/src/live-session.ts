@@ -58,7 +58,6 @@ import {
 import type { AgentFacade } from "./index";
 import {
   deliverExportArtifact,
-  resolveDeliveredArtifactPath,
   resolveDeliveryDestination,
   type DeliveryDestination,
 } from "./delivery";
@@ -89,7 +88,6 @@ import {
   type LiveMediaImportResult,
   type LiveEditorControlParams,
   type LiveEditorControlResult,
-  type LiveEditorControlTarget,
   type LiveProjectStore,
 } from "./live-store";
 import { hasUrlScheme, resolveContainedPathDetailed } from "./media/path-roots";
@@ -110,7 +108,7 @@ import {
   validateComparisonRange,
   withComparisonReference,
 } from "./reference-comparison";
-import { enrichMediaFileOps, opToCoreActions, validateEditBatch, validateEditOp } from "./ops";
+import { enrichMediaFileOps, opToCoreActions } from "./ops";
 import {
   projectStateView,
   timelineDurationSec,
@@ -148,18 +146,12 @@ import {
   PROJECT_RENAME_SCHEMA,
   PROJECT_CREATE_SCHEMA,
   PROJECT_SETTINGS_SCHEMA,
-  VISUAL_INSPECT_RANGE_SCHEMA,
   VISUAL_INSPECT_SCHEMA,
   VERIFY_ARTIFACT_SCHEMA,
-  VERIFY_COMPARE_SCHEMA,
-  VERIFY_EXPECT_SCHEMA,
-  VERIFY_REGION_SCHEMA,
   EDITOR_CONTROL_SCHEMA,
-  EDITOR_CONTROL_TARGET_SCHEMA,
   PROJECT_CHANGES_SCHEMA,
   TIMELINE_QUERY_SCHEMA,
   TIMELINE_MAP_SOURCE_TIMES_SCHEMA,
-  TIMELINE_QUERY_RANGE_SCHEMA,
   EDIT_VALIDATE_SCHEMA,
   HISTORY_GET_SCHEMA,
   HISTORY_CONTROL_SCHEMA,
@@ -300,12 +292,23 @@ import {
   type AgentAccessMode,
 } from "./access";
 import {
-  buildVisualSamplePlan,
-  MAX_VISUAL_CONTACT_SHEET_PIXELS,
-  MAX_VISUAL_FRAME_PIXELS,
   MAX_VISUAL_PNG_BYTES,
-  visualRasterSize,
 } from "./visual-inspect";
+import {
+  assertValidEditBatch,
+  parseEditOps,
+  parseVerifyCompare,
+  parseVerifyExpect,
+  prepareVisualInspectRenderPlan,
+  resolveVerifyArtifactTarget,
+  resolveVerifyReferencePath,
+  buildVerifyCompareRequest,
+  validateEditOpList,
+  validateEditorControlAction,
+  validateEditorControlTargets,
+  validateTimelineQueryTimeRange,
+  validateVisualInspectTimeRange,
+} from "./verb-param-rules";
 import { DEFAULT_FRAME_BUDGET_BYTES, fitFrameToBudget } from "./frame-budget";
 import { createEmptyProject } from "./project-factory";
 import { WORKSPACE_VERB_SCHEMAS } from "./workspace-schemas";
@@ -795,19 +798,7 @@ export class LiveFacadeSession {
         TIMELINE_QUERY_SCHEMA,
         "timeline.query params",
       );
-      if (valid.timeRange !== undefined) {
-        const range = validateObject<{ startSec: number; endSec: number }>(
-          valid.timeRange,
-          TIMELINE_QUERY_RANGE_SCHEMA,
-          "timeline.query params.timeRange",
-        );
-        if (range.endSec <= range.startSec) {
-          throw new FacadeError(
-            "INVALID_PARAMS",
-            "timeline.query: timeRange.endSec must be greater than startSec",
-          );
-        }
-      }
+      validateTimelineQueryTimeRange(valid);
       const [state, context] = await Promise.all([
         this.config.store.getState(),
         this.config.store.getContext(),
@@ -847,7 +838,7 @@ export class LiveFacadeSession {
         "edit.validate params",
       );
       const ops = await enrichMediaFileOps(
-        valid.ops.map((raw, index) => validateEditOp(raw, index)),
+        validateEditOpList(valid.ops),
         this.config.mediaRoots ?? [],
         async (absPath: string) => {
           const probed = await probeLocalMediaFile(absPath);
@@ -864,10 +855,7 @@ export class LiveFacadeSession {
         },
         async () => (await this.config.store.getState()).project,
       );
-      validateEditBatch(ops);
-      if (ops.length === 0) {
-        throw new FacadeError("INVALID_PARAMS", "edit.validate: ops must contain at least one op");
-      }
+      assertValidEditBatch("edit.validate", ops);
       const [state, context] = await Promise.all([
         this.config.store.getState(),
         this.config.store.getContext(),
@@ -1027,40 +1015,8 @@ export class LiveFacadeSession {
         EDITOR_CONTROL_SCHEMA,
         "editor.control params",
       );
-      const normalizedTargets = valid.targets?.map((target, index) =>
-        validateObject<LiveEditorControlTarget>(
-          target,
-          EDITOR_CONTROL_TARGET_SCHEMA,
-          `editor.control params.targets[${index}]`,
-        ),
-      );
-      if (valid.action === "seek" && valid.timeSeconds === undefined) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "editor.control: seek requires timeSeconds",
-        );
-      }
-      if (valid.action !== "seek" && valid.timeSeconds !== undefined) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          `editor.control: timeSeconds is only valid for seek, not ${valid.action}`,
-        );
-      }
-      if (valid.action === "select" && (!valid.targets || valid.targets.length === 0)) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "editor.control: select requires at least one target",
-        );
-      }
-      if (
-        valid.action !== "select" &&
-        (valid.targets !== undefined || valid.selectionMode !== undefined)
-      ) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          `editor.control: targets and selectionMode are only valid for select, not ${valid.action}`,
-        );
-      }
+      const normalizedTargets = validateEditorControlTargets(valid.targets);
+      validateEditorControlAction(valid);
       try {
         return ok(
           await this.config.store.editorControl({
@@ -1788,14 +1744,7 @@ export class LiveFacadeSession {
       );
       // Pre-validate EVERY op's closed schema before any state access —
       // same zero-side-effect ordering as headless.
-      const ops = valid.ops.map((raw, index) => validateEditOp(raw, index));
-      validateEditBatch(ops);
-      if (ops.length === 0) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "edit.apply: ops must contain at least one op",
-        );
-      }
+      const ops = parseEditOps("edit.apply", valid.ops);
 
       // Idempotent replay first (headless semantics): a transport retry
       // replays the committed result without touching the store.
@@ -2353,13 +2302,7 @@ export class LiveFacadeSession {
         VISUAL_INSPECT_SCHEMA,
         "visual.inspect params",
       );
-      if (valid.timeRange !== undefined) {
-        validateObject(
-          valid.timeRange,
-          VISUAL_INSPECT_RANGE_SCHEMA,
-          "visual.inspect params.timeRange",
-        );
-      }
+      validateVisualInspectTimeRange(valid);
       const provider = this.config.renderProvider;
       if (!provider) {
         throw new FacadeError(
@@ -2372,27 +2315,7 @@ export class LiveFacadeSession {
       await requireProviderPreflight(provider, "visual.inspect");
 
       const { project, revision } = await this.config.store.getState();
-      const plan = buildVisualSamplePlan(project, valid);
-      const sampleCount = plan.samples.length;
-      const { width, height } = visualRasterSize(project, valid.width, valid.height);
-      const framePixels = width * height;
-      const columns = Math.min(4, sampleCount);
-      const rows = Math.ceil(sampleCount / columns);
-      const sheetPixels =
-        (columns * (width + 8) + 8) * (rows * (height + 28) + 8);
-      if (framePixels > MAX_VISUAL_FRAME_PIXELS) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          `visual.inspect: raster size ${width}x${height} exceeds the ${MAX_VISUAL_FRAME_PIXELS}-pixel frame limit`,
-        );
-      }
-      if (sampleCount * framePixels > MAX_VISUAL_CONTACT_SHEET_PIXELS || sheetPixels > MAX_VISUAL_CONTACT_SHEET_PIXELS) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "visual.inspect: requested samples exceed the contact-sheet pixel budget",
-          { sampleCount, width, height },
-        );
-      }
+      const { plan, width, height, sampleCount } = prepareVisualInspectRenderPlan(project, valid);
 
       const payload = {
         ...(valid.clipId !== undefined ? { clipId: valid.clipId } : {}),
@@ -3038,112 +2961,29 @@ export class LiveFacadeSession {
         this.config.artifactRoot,
         "verify.artifact",
       );
-      if (hasUrlScheme(valid.path)) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "verify.artifact: URLs are not accepted — pass a local artifact path inside artifactRoot",
-          { path: valid.path },
-        );
-      }
-      let target = resolveContainedPathDetailed(valid.path, [artifactRoot]);
-      if (target.kind === "outside") {
-        // The delivered copy of a verified artifact lives outside
-        // artifactRoot BY CONTRACT: accept it at its exact deliveredTo
-        // location when the path sits in a delivery root's job output
-        // directory (the export.start destinationPath containment rule).
-        const delivered = await resolveDeliveredArtifactPath(
-          valid.path,
-          this.config.deliveryRoots ?? [],
-        );
-        if (delivered === null) {
-          throw new FacadeError(
-            "INVALID_PARAMS",
-            "verify.artifact: path escapes the configured artifactRoot and every delivery root's job deliverables directory (<deliveryRoot>/jobs/<slug>/output/)",
-            { path: valid.path },
-          );
-        }
-        target = { kind: "ok", path: delivered };
-      }
-      if (target.kind === "unresolvable") {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "verify.artifact: path cannot be read (not found or unreadable)",
-          { path: valid.path },
-        );
-      }
-      const targetStat = await stat(target.path).catch(() => null);
-      if (!targetStat || !targetStat.isFile()) {
-        throw new FacadeError(
-          "INVALID_PARAMS",
-          "verify.artifact: path is not a regular file",
-          { path: valid.path },
-        );
-      }
+      const targetPath = await resolveVerifyArtifactTarget(
+        valid.path,
+        artifactRoot,
+        this.config.deliveryRoots,
+      );
 
-      let request: VerifyArtifactRequest = { path: target.path };
-      if (valid.expect !== undefined) {
-        const expect = validateObject<NonNullable<VerifyArtifactParams["expect"]>>(
-          valid.expect,
-          VERIFY_EXPECT_SCHEMA,
-          "verify.artifact params.expect",
-        );
+      let request: VerifyArtifactRequest = { path: targetPath };
+      const expect = parseVerifyExpect(valid);
+      if (expect !== undefined) {
         request = { ...request, expect };
       }
       if (valid.compare !== undefined) {
-        const compare = validateObject<NonNullable<VerifyArtifactParams["compare"]>>(
-          valid.compare,
-          VERIFY_COMPARE_SCHEMA,
-          "verify.artifact params.compare",
+        const parsed = parseVerifyCompare(valid.compare);
+        // Live contract: no mediaRoots to fall back to — references must
+        // live inside artifactRoot (documented live/headless difference).
+        const referencePath = resolveVerifyReferencePath(
+          parsed.compare.referencePath,
+          artifactRoot,
+          undefined,
         );
-        if (hasUrlScheme(compare.referencePath)) {
-          throw new FacadeError(
-            "INVALID_PARAMS",
-            "verify.artifact: reference URLs are not accepted — pass a local path inside artifactRoot",
-          );
-        }
-        const reference = resolveContainedPathDetailed(compare.referencePath, [artifactRoot]);
-        if (reference.kind !== "ok") {
-          throw new FacadeError(
-            "INVALID_PARAMS",
-            "verify.artifact: referencePath escapes the configured artifactRoot (a live session has no mediaRoots to fall back to)",
-            { referencePath: compare.referencePath },
-          );
-        }
-        let region;
-        if (compare.region !== undefined) {
-          region = validateObject<NonNullable<typeof compare.region>>(
-            compare.region,
-            VERIFY_REGION_SCHEMA,
-            "verify.artifact params.compare.region",
-          );
-          if (region.x + region.width > 1 || region.y + region.height > 1) {
-            throw new FacadeError(
-              "INVALID_PARAMS",
-              "verify.artifact: compare.region must satisfy x+width ≤ 1 and y+height ≤ 1",
-              { region },
-            );
-          }
-        }
         request = {
           ...request,
-          compare: {
-            referencePath: reference.path,
-            timeSec: compare.timeSec,
-            ...(compare.referenceTimeSec !== undefined
-              ? { referenceTimeSec: compare.referenceTimeSec }
-              : {}),
-            ...(region !== undefined ? { region } : {}),
-            mode: compare.mode,
-            ...(compare.maxMeanAbsDiff !== undefined
-              ? { maxMeanAbsDiff: compare.maxMeanAbsDiff }
-              : {}),
-            ...(compare.minMeanAbsDiff !== undefined
-              ? { minMeanAbsDiff: compare.minMeanAbsDiff }
-              : {}),
-            ...(compare.minChangedPixelsRatio !== undefined
-              ? { minChangedPixelsRatio: compare.minChangedPixelsRatio }
-              : {}),
-          },
+          compare: buildVerifyCompareRequest(parsed, referencePath),
         };
       }
 
