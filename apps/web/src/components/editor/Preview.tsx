@@ -1,5 +1,13 @@
 import { ReviewRangeControl } from "./preview/ReviewRangeControl";
 import { collectNativePlaybackImageClips } from "./preview/native-playback-image-clips";
+import { computeLetterboxGeometry } from "./preview/overlay-geometry";
+import {
+  findNextAudioClipStartTime as findNextAudioClipStartTimeIn,
+  findNextClipStartTime as findNextClipStartTimeIn,
+  findNextMotionInstanceStartTime as findNextMotionInstanceStartTimeIn,
+  findNextShapeClipStartTime as findNextShapeClipStartTimeIn,
+  findNextTextClipStartTime as findNextTextClipStartTimeIn,
+} from "./preview/next-content-start";
 import React, {
   useRef,
   useEffect,
@@ -5613,85 +5621,27 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       scheduleMultiTrackFrameAt(performance.now());
     };
 
-    const findNextClipStartTime = (afterTime: number): number | null => {
-      const tracks = timelineTracksRef.current;
-      const videoTracks = tracks.filter(
-        (t) => (t.type === "video" || t.type === "image") && !t.hidden,
+    // Next-content-start finders live verbatim in
+    // preview/next-content-start.ts; these adapters keep the effect-local
+    // signatures and read the live refs/project exactly when invoked, as the
+    // previous inline bodies did.
+    const findNextClipStartTime = (afterTime: number): number | null =>
+      findNextClipStartTimeIn(timelineTracksRef.current, afterTime);
+
+    const findNextTextClipStartTime = (afterTime: number): number | null =>
+      findNextTextClipStartTimeIn(allTextClipsRef.current, afterTime);
+
+    const findNextShapeClipStartTime = (afterTime: number): number | null =>
+      findNextShapeClipStartTimeIn(allShapeClipsRef.current, afterTime);
+
+    const findNextMotionInstanceStartTime = (afterTime: number): number | null =>
+      findNextMotionInstanceStartTimeIn(
+        project.motionInstances ?? [],
+        afterTime,
       );
-      let nextStart: number | null = null;
 
-      for (const track of videoTracks) {
-        for (const clip of track.clips) {
-          if (clip.startTime > afterTime) {
-            if (nextStart === null || clip.startTime < nextStart) {
-              nextStart = clip.startTime;
-            }
-          }
-        }
-      }
-
-      return nextStart;
-    };
-
-    const findNextTextClipStartTime = (afterTime: number): number | null => {
-      const textClips = allTextClipsRef.current;
-      let nextStart: number | null = null;
-
-      for (const clip of textClips) {
-        if (clip.startTime > afterTime) {
-          if (nextStart === null || clip.startTime < nextStart) {
-            nextStart = clip.startTime;
-          }
-        }
-      }
-
-      return nextStart;
-    };
-
-    const findNextShapeClipStartTime = (afterTime: number): number | null => {
-      const shapeClips = allShapeClipsRef.current;
-      let nextStart: number | null = null;
-
-      for (const clip of shapeClips) {
-        if (clip.startTime > afterTime) {
-          if (nextStart === null || clip.startTime < nextStart) {
-            nextStart = clip.startTime;
-          }
-        }
-      }
-
-      return nextStart;
-    };
-
-    const findNextMotionInstanceStartTime = (afterTime: number): number | null => {
-      let nextStart: number | null = null;
-      for (const instance of project.motionInstances ?? []) {
-        if (instance.startTime > afterTime) {
-          if (nextStart === null || instance.startTime < nextStart) {
-            nextStart = instance.startTime;
-          }
-        }
-      }
-      return nextStart;
-    };
-
-    const findNextAudioClipStartTime = (afterTime: number): number | null => {
-      const tracks = timelineTracksRef.current;
-      const audioTracks = tracks.filter((t) => t.type === "audio" && !t.hidden);
-      let nextStart: number | null = null;
-
-      for (const track of audioTracks) {
-        for (const clip of track.clips) {
-          if (clip.startTime > afterTime) {
-            if (nextStart === null || clip.startTime < nextStart) {
-              nextStart = clip.startTime;
-            }
-          }
-        }
-      }
-
-      return nextStart;
-    };
+    const findNextAudioClipStartTime = (afterTime: number): number | null =>
+      findNextAudioClipStartTimeIn(timelineTracksRef.current, afterTime);
 
     const startPlayback = async () => {
       const nativeCheck = canUseNativeVideoPlayback(playbackStartPosition);
@@ -6003,25 +5953,15 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     const canvasWidth = settings.width;
     const canvasHeight = settings.height;
 
+    const geo = computeLetterboxGeometry(
+      canvasWidth,
+      canvasHeight,
+      canvasRect.width,
+      canvasRect.height,
+    );
+    // Same canvas aspect the letterbox helper uses internally; reused by the
+    // fit-mode math below.
     const canvasAspect = canvasWidth / canvasHeight;
-    const elementAspect = canvasRect.width / canvasRect.height;
-
-    let actualWidth: number;
-    let actualHeight: number;
-    let letterboxOffsetX = 0;
-    let letterboxOffsetY = 0;
-
-    if (elementAspect > canvasAspect) {
-      actualHeight = canvasRect.height;
-      actualWidth = actualHeight * canvasAspect;
-      letterboxOffsetX = (canvasRect.width - actualWidth) / 2;
-    } else {
-      actualWidth = canvasRect.width;
-      actualHeight = actualWidth / canvasAspect;
-      letterboxOffsetY = (canvasRect.height - actualHeight) / 2;
-    }
-
-    const displayScale = actualWidth / canvasWidth;
 
     const fitMode =
       !clipTransform.fitMode || clipTransform.fitMode === "none"
@@ -6057,17 +5997,17 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       }
     }
 
-    const clipWidth = baseWidth * transform.scale.x * displayScale;
-    const clipHeight = baseHeight * transform.scale.y * displayScale;
+    const clipWidth = baseWidth * transform.scale.x * geo.displayScale;
+    const clipHeight = baseHeight * transform.scale.y * geo.displayScale;
 
-    const offsetX = transform.position.x * displayScale;
-    const offsetY = transform.position.y * displayScale;
+    const offsetX = transform.position.x * geo.displayScale;
+    const offsetY = transform.position.y * geo.displayScale;
 
-    const canvasOffsetX = canvasRect.left - overlayRect.left + letterboxOffsetX;
-    const canvasOffsetY = canvasRect.top - overlayRect.top + letterboxOffsetY;
+    const canvasOffsetX = canvasRect.left - overlayRect.left + geo.letterboxOffsetX;
+    const canvasOffsetY = canvasRect.top - overlayRect.top + geo.letterboxOffsetY;
 
-    const centerX = canvasOffsetX + actualWidth / 2 + offsetX;
-    const centerY = canvasOffsetY + actualHeight / 2 + offsetY;
+    const centerX = canvasOffsetX + geo.actualWidth / 2 + offsetX;
+    const centerY = canvasOffsetY + geo.actualHeight / 2 + offsetY;
 
     return {
       x: centerX - clipWidth / 2,
@@ -6076,7 +6016,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       height: clipHeight,
       centerX,
       centerY,
-      displayScale,
+      displayScale: geo.displayScale,
     };
   }, [
     selectedClip,
@@ -6102,25 +6042,12 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     const canvasWidth = settings.width;
     const canvasHeight = settings.height;
 
-    const canvasAspect = canvasWidth / canvasHeight;
-    const elementAspect = canvasRect.width / canvasRect.height;
-
-    let actualWidth: number;
-    let actualHeight: number;
-    let letterboxOffsetX = 0;
-    let letterboxOffsetY = 0;
-
-    if (elementAspect > canvasAspect) {
-      actualHeight = canvasRect.height;
-      actualWidth = actualHeight * canvasAspect;
-      letterboxOffsetX = (canvasRect.width - actualWidth) / 2;
-    } else {
-      actualWidth = canvasRect.width;
-      actualHeight = actualWidth / canvasAspect;
-      letterboxOffsetY = (canvasRect.height - actualHeight) / 2;
-    }
-
-    const displayScale = actualWidth / canvasWidth;
+    const geo = computeLetterboxGeometry(
+      canvasWidth,
+      canvasHeight,
+      canvasRect.width,
+      canvasRect.height,
+    );
 
     const lines = text.split("\n");
     const lineHeight = style.fontSize * style.lineHeight;
@@ -6128,14 +6055,14 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     const estimatedWidth =
       style.fontSize * Math.max(...lines.map((l) => l.length)) * 0.6;
 
-    const textWidth = estimatedWidth * transform.scale.x * displayScale;
-    const textHeight = estimatedHeight * transform.scale.y * displayScale;
+    const textWidth = estimatedWidth * transform.scale.x * geo.displayScale;
+    const textHeight = estimatedHeight * transform.scale.y * geo.displayScale;
 
-    const posX = transform.position.x * canvasWidth * displayScale;
-    const posY = transform.position.y * canvasHeight * displayScale;
+    const posX = transform.position.x * canvasWidth * geo.displayScale;
+    const posY = transform.position.y * canvasHeight * geo.displayScale;
 
-    const canvasOffsetX = canvasRect.left - overlayRect.left + letterboxOffsetX;
-    const canvasOffsetY = canvasRect.top - overlayRect.top + letterboxOffsetY;
+    const canvasOffsetX = canvasRect.left - overlayRect.left + geo.letterboxOffsetX;
+    const canvasOffsetY = canvasRect.top - overlayRect.top + geo.letterboxOffsetY;
 
     const centerX = canvasOffsetX + posX;
     const centerY = canvasOffsetY + posY;
@@ -6147,7 +6074,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       height: textHeight,
       centerX,
       centerY,
-      displayScale,
+      displayScale: geo.displayScale,
       isTextClip: true,
     };
   }, [selectedTextClip, settings.width, settings.height, canvasSize]);
@@ -6412,25 +6339,12 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       const canvasWidth = settings.width;
       const canvasHeight = settings.height;
 
-      const canvasAspect = canvasWidth / canvasHeight;
-      const elementAspect = canvasRect.width / canvasRect.height;
-
-      let actualWidth: number;
-      let actualHeight: number;
-      let letterboxOffsetX = 0;
-      let letterboxOffsetY = 0;
-
-      if (elementAspect > canvasAspect) {
-        actualHeight = canvasRect.height;
-        actualWidth = actualHeight * canvasAspect;
-        letterboxOffsetX = (canvasRect.width - actualWidth) / 2;
-      } else {
-        actualWidth = canvasRect.width;
-        actualHeight = actualWidth / canvasAspect;
-        letterboxOffsetY = (canvasRect.height - actualHeight) / 2;
-      }
-
-      const displayScale = actualWidth / canvasWidth;
+      const geo = computeLetterboxGeometry(
+        canvasWidth,
+        canvasHeight,
+        canvasRect.width,
+        canvasRect.height,
+      );
 
       let baseWidth: number;
       let baseHeight: number;
@@ -6452,14 +6366,14 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         baseHeight = 200;
       }
 
-      const shapeWidth = baseWidth * transform.scale.x * displayScale;
-      const shapeHeight = baseHeight * transform.scale.y * displayScale;
+      const shapeWidth = baseWidth * transform.scale.x * geo.displayScale;
+      const shapeHeight = baseHeight * transform.scale.y * geo.displayScale;
 
-      const posX = transform.position.x * canvasWidth * displayScale;
-      const posY = transform.position.y * canvasHeight * displayScale;
+      const posX = transform.position.x * canvasWidth * geo.displayScale;
+      const posY = transform.position.y * canvasHeight * geo.displayScale;
 
-      const canvasOffsetX = canvasRect.left - overlayRect.left + letterboxOffsetX;
-      const canvasOffsetY = canvasRect.top - overlayRect.top + letterboxOffsetY;
+      const canvasOffsetX = canvasRect.left - overlayRect.left + geo.letterboxOffsetX;
+      const canvasOffsetY = canvasRect.top - overlayRect.top + geo.letterboxOffsetY;
 
       const centerX = canvasOffsetX + posX;
       const centerY = canvasOffsetY + posY;
@@ -6471,7 +6385,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         height: shapeHeight,
         centerX,
         centerY,
-        displayScale,
+        displayScale: geo.displayScale,
       };
     },
     [settings.width, settings.height],
@@ -6548,25 +6462,12 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     const canvasWidth = settings.width;
     const canvasHeight = settings.height;
 
-    const canvasAspect = canvasWidth / canvasHeight;
-    const elementAspect = canvasRect.width / canvasRect.height;
-
-    let actualWidth: number;
-    let actualHeight: number;
-    let letterboxOffsetX = 0;
-    let letterboxOffsetY = 0;
-
-    if (elementAspect > canvasAspect) {
-      actualHeight = canvasRect.height;
-      actualWidth = actualHeight * canvasAspect;
-      letterboxOffsetX = (canvasRect.width - actualWidth) / 2;
-    } else {
-      actualWidth = canvasRect.width;
-      actualHeight = actualWidth / canvasAspect;
-      letterboxOffsetY = (canvasRect.height - actualHeight) / 2;
-    }
-
-    const displayScale = actualWidth / canvasWidth;
+    const geo = computeLetterboxGeometry(
+      canvasWidth,
+      canvasHeight,
+      canvasRect.width,
+      canvasRect.height,
+    );
 
     let baseY: number;
     if (position === "top") {
@@ -6577,14 +6478,14 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       baseY = canvasHeight - fontSize * 2 - totalHeight;
     }
 
-    const subtitleWidth = canvasWidth * 0.8 * displayScale;
-    const subtitleHeight = totalHeight * displayScale;
+    const subtitleWidth = canvasWidth * 0.8 * geo.displayScale;
+    const subtitleHeight = totalHeight * geo.displayScale;
 
-    const canvasOffsetX = canvasRect.left - overlayRect.left + letterboxOffsetX;
-    const canvasOffsetY = canvasRect.top - overlayRect.top + letterboxOffsetY;
+    const canvasOffsetX = canvasRect.left - overlayRect.left + geo.letterboxOffsetX;
+    const canvasOffsetY = canvasRect.top - overlayRect.top + geo.letterboxOffsetY;
 
-    const centerX = canvasOffsetX + actualWidth / 2;
-    const topY = canvasOffsetY + baseY * displayScale;
+    const centerX = canvasOffsetX + geo.actualWidth / 2;
+    const topY = canvasOffsetY + baseY * geo.displayScale;
 
     return {
       x: centerX - subtitleWidth / 2,
@@ -6593,7 +6494,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       height: subtitleHeight,
       centerX,
       centerY: topY + subtitleHeight / 2,
-      displayScale,
+      displayScale: geo.displayScale,
     };
   }, [
     selectedSubtitleObj,
