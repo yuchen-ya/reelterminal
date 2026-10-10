@@ -112,6 +112,19 @@ function abortTransactionAfterNextAddCompletes(): void {
   };
 }
 
+/** Abort the transaction from inside the next `clear` request's success event. */
+function abortTransactionAfterNextClearCompletes(): void {
+  const originalClear = IDBObjectStore.prototype.clear;
+  IDBObjectStore.prototype.clear = function (...args: Parameters<typeof originalClear>) {
+    IDBObjectStore.prototype.clear = originalClear;
+    const realRequest = originalClear.apply(this, args);
+    realRequest.addEventListener("success", () => {
+      this.transaction.abort();
+    });
+    return realRequest;
+  };
+}
+
 describe("StorageEngine media immutability and transaction semantics", () => {
   let engine: StorageEngine;
 
@@ -195,5 +208,23 @@ describe("StorageEngine media immutability and transaction semantics", () => {
 
     // Rolled back: the request-level success must not surface as data.
     expect(await engine.loadMedia("media-1")).toBeNull();
+  });
+
+  it("rejects clearAllData when the transaction aborts without an error event", async () => {
+    await engine.saveMedia(mediaRecord("media-1", "project-a", [1, 2, 3], "hash-a"));
+    abortTransactionAfterNextClearCompletes();
+
+    const failure = (await rejectionOf(engine.clearAllData())) as {
+      code?: string;
+      name?: string;
+    };
+
+    // An explicit abort (no request error) must settle with AbortError
+    // identity instead of leaving the promise pending forever.
+    expect(failure.code).toBe("DATABASE_ERROR");
+    expect(failure.name).toBe("AbortError");
+
+    // Nothing was cleared — the abort rolled the transaction back.
+    expect(await engine.loadMedia("media-1")).not.toBeNull();
   });
 });

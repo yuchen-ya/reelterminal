@@ -643,17 +643,22 @@ export class StorageEngine implements IStorageEngine {
 
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storeNames, "readwrite");
+      let requestError: unknown = null;
       for (const storeName of storeNames) {
-        tx.objectStore(storeName).clear();
+        const request = tx.objectStore(storeName).clear();
+        // Record the triggering request error (do not preventDefault — the
+        // default abort settles the promise below with identity intact).
+        request.onerror = () => {
+          requestError = request.error;
+        };
       }
       tx.oncomplete = () => resolve();
-      tx.onerror = () =>
-        reject(
-          createStorageError(
-            "DATABASE_ERROR",
-            `Failed to clear all data: ${tx.error?.message}`,
-          ),
-        );
+      // An abort without an error event (explicit tx.abort(), forced
+      // connection close) must settle too — otherwise the promise hangs.
+      tx.onabort = () => {
+        const cause = requestError ?? tx.error ?? new DOMException("The transaction was aborted", "AbortError");
+        reject(wrapStorageError(cause, `Failed to clear all data: ${(cause as Error).message}`));
+      };
     });
   }
 
