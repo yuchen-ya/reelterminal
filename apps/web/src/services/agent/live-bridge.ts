@@ -150,22 +150,6 @@ function historySummary(state: ProjectState, revision: number, limit: number): H
     })),
   ];
   const auxiliary: HistoryEntrySummary[] = [
-    ...state.clipUndoStack.map((entry) => ({
-      direction: "undo" as const,
-      description: `${entry.op === "update" ? "Update" : "Create"} ${entry.type} overlay`,
-      actionType: `overlay/${entry.op}`,
-      owner: "human" as const,
-      timestamp: entry.timestamp,
-      groupId: null,
-    })),
-    ...state.clipRedoStack.map((entry) => ({
-      direction: "redo" as const,
-      description: `${entry.op === "update" ? "Update" : "Create"} ${entry.type} overlay`,
-      actionType: `overlay/${entry.op}`,
-      owner: "human" as const,
-      timestamp: entry.timestamp,
-      groupId: null,
-    })),
     ...state.templateUndoStack.map((entry) => ({
       direction: "undo" as const,
       description: "Apply editing template",
@@ -190,11 +174,9 @@ function historySummary(state: ProjectState, revision: number, limit: number): H
     canRedo: state.canRedo(),
     undoCount:
       state.actionHistory.getUndoStackSize() +
-      state.clipUndoStack.length +
       state.templateUndoStack.length,
     redoCount:
       state.actionHistory.getRedoStackSize() +
-      state.clipRedoStack.length +
       state.templateRedoStack.length,
     entries: [...actionEntries, ...auxiliary]
       .sort((a, b) => b.timestamp - a.timestamp)

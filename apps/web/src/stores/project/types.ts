@@ -47,33 +47,12 @@ import type {
   SaveClipWorkAssetResult,
 } from "./work-assets-slice";
 
-export type ClipHistoryEntryType = "shape" | "text" | "svg" | "sticker";
-
 export type TimelineClipboardItem =
   | { kind: "media"; clip: Clip }
   | { kind: "text"; clip: TextClip }
   | { kind: "shape"; clip: ShapeClip }
   | { kind: "svg"; clip: SVGClip }
   | { kind: "sticker"; clip: StickerClip };
-
-export interface ClipHistoryEntry {
-  type: ClipHistoryEntryType;
-  /**
-   * "create" (default when omitted) — undo deletes the clip from its engine,
-   * redo recreates it. "update" — a property edit; undo restores `clipData`
-   * (the before snapshot) and redo restores `afterData`, without ever
-   * deleting the clip.
-   */
-  op?: "create" | "update";
-  timestamp: number;
-  clipId: string;
-  trackId: string;
-  clipData: ShapeClip | TextClip | SVGClip | StickerClip;
-  /** After-edit snapshot, present only for op === "update" (used by redo). */
-  afterData?: ShapeClip | TextClip | SVGClip | StickerClip;
-  hadEmptyTrackUndo?: boolean;
-  trackType?: "video" | "audio" | "image" | "text" | "graphics";
-}
 
 export interface EditingTemplateTrackSnapshot {
   track: Track;
@@ -121,13 +100,11 @@ export interface ProjectState {
   photoProjects: Map<string, PhotoProject>;
   actionExecutor: ActionExecutor;
   actionHistory: ActionHistory;
-  clipUndoStack: ClipHistoryEntry[];
-  clipRedoStack: ClipHistoryEntry[];
   templateUndoStack: EditingTemplateHistoryEntry[];
   templateRedoStack: EditingTemplateHistoryEntry[];
   /** Order in which stacks were undone, so redo replays in the exact reverse
-   * order across the action/clip/template stacks (fixes redo asymmetry). */
-  redoJournal: Array<"action" | "clip" | "template">;
+   * order across the action/template stacks (fixes redo asymmetry). */
+  redoJournal: Array<"action" | "template">;
   isLoading: boolean;
   error: string | null;
   clipboard: TimelineClipboardItem[];

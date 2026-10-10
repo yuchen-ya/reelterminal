@@ -2255,8 +2255,6 @@ export class WorkspaceManager {
       const historyIds = new Set<string>();
       collectMediaIdsFromHistory(state.actionHistory.getHistoryEntries(), historyIds);
       collectMediaIdsFromHistory(state.actionHistory.getRedoEntries(), historyIds);
-      collectMediaIdsFromHistory(state.clipUndoStack, historyIds);
-      collectMediaIdsFromHistory(state.clipRedoStack, historyIds);
       collectMediaIdsFromHistory(state.templateUndoStack, historyIds);
       collectMediaIdsFromHistory(state.templateRedoStack, historyIds);
       for (const mediaId of historyIds) {
@@ -2316,8 +2314,6 @@ export class WorkspaceManager {
       const historyEntries: unknown[] = [
         ...state.actionHistory.getHistoryEntries(),
         ...state.actionHistory.getRedoEntries(),
-        ...state.clipUndoStack,
-        ...state.clipRedoStack,
         ...state.templateUndoStack,
         ...state.templateRedoStack,
       ];
@@ -2386,8 +2382,6 @@ export class WorkspaceManager {
         [
           ...state.actionHistory.getHistoryEntries(),
           ...state.actionHistory.getRedoEntries(),
-          ...state.clipUndoStack,
-          ...state.clipRedoStack,
           ...state.templateUndoStack,
           ...state.templateRedoStack,
         ],

@@ -1,12 +1,5 @@
 import type { StoreApi } from "zustand";
-import type {
-  ActionResult,
-  Project,
-  ShapeClip,
-  TextClip,
-  SVGClip,
-  StickerClip,
-} from "@reelterminal/core";
+import type { ActionResult, Project } from "@reelterminal/core";
 import type { ProjectState } from "../project-store";
 import type { ProjectStoreHelpers } from "./store-helpers";
 import { useUIStore } from "../ui-store";
@@ -20,8 +13,6 @@ type Get = StoreApi<ProjectState>["getState"];
 type Set = StoreApi<ProjectState>["setState"];
 
 export interface HistoryDeps {
-  overlayEngines: ProjectStoreHelpers["overlayEngines"];
-  applyClipDataSnapshot: ProjectStoreHelpers["applyClipDataSnapshot"];
   syncOverlayEnginesFromProject: ProjectStoreHelpers["syncOverlayEnginesFromProject"];
   syncProjectEffectsBridge: (next: Project, prev?: Project) => void;
   syncProjectTransitionsBridge: (next: Project, prev?: Project) => void;
@@ -55,8 +46,6 @@ export function createHistorySlice(
   deps: HistoryDeps,
 ): HistorySlice {
   const {
-    overlayEngines,
-    applyClipDataSnapshot,
     syncOverlayEnginesFromProject,
     syncProjectEffectsBridge,
     syncProjectTransitionsBridge,
@@ -95,17 +84,11 @@ export function createHistorySlice(
         project,
         actionExecutor,
         actionHistory,
-        clipUndoStack,
-        clipRedoStack,
         templateUndoStack,
         templateRedoStack,
       } = get();
 
       const latestActionTimestamp = actionHistory.peekUndo()?.timestamp ?? -1;
-      const latestClipTimestamp =
-        clipUndoStack.length > 0
-          ? clipUndoStack[clipUndoStack.length - 1].timestamp
-          : -1;
       const latestTemplateTimestamp =
         templateUndoStack.length > 0
           ? templateUndoStack[templateUndoStack.length - 1].timestamp
@@ -113,7 +96,6 @@ export function createHistorySlice(
 
       if (
         latestTemplateTimestamp >= 0 &&
-        latestTemplateTimestamp >= latestClipTimestamp &&
         latestTemplateTimestamp > latestActionTimestamp
       ) {
         const entry = templateUndoStack[templateUndoStack.length - 1];
@@ -151,140 +133,6 @@ export function createHistorySlice(
         return { success: true };
       }
 
-      if (
-        latestClipTimestamp >= 0 &&
-        latestClipTimestamp > latestActionTimestamp
-      ) {
-        const entry = clipUndoStack[clipUndoStack.length - 1];
-
-        if (entry.op === "update") {
-          const restored = applyClipDataSnapshot(
-            entry.type,
-            entry.clipId,
-            entry.clipData,
-          );
-          if (restored) {
-            set({
-              project: { ...project, modifiedAt: Date.now() },
-              clipUndoStack: clipUndoStack.slice(0, -1),
-              clipRedoStack: [
-                ...clipRedoStack,
-                { ...entry, timestamp: Date.now() },
-              ],
-              redoJournal: [...get().redoJournal, "clip"],
-            });
-            return { success: true };
-          }
-        }
-
-        let deleted = false;
-
-        if (entry.type === "shape") {
-          deleted =
-            overlayEngines.graphicsEngine?.deleteShapeClip(
-              entry.clipId,
-            ) ?? false;
-        } else if (entry.type === "text") {
-          deleted =
-            overlayEngines.titleEngine?.deleteTextClip(
-              entry.clipId,
-            ) ?? false;
-        } else if (entry.type === "svg") {
-          deleted =
-            overlayEngines.graphicsEngine?.deleteSVGClip(
-              entry.clipId,
-            ) ?? false;
-        } else if (entry.type === "sticker") {
-          deleted =
-            overlayEngines.graphicsEngine?.deleteStickerClip(
-              entry.clipId,
-            ) ?? false;
-        }
-
-        if (deleted) {
-          set({
-            project: { ...project, modifiedAt: Date.now() },
-            clipUndoStack: clipUndoStack.slice(0, -1),
-            clipRedoStack: [
-              ...clipRedoStack,
-              { ...entry, timestamp: Date.now(), hadEmptyTrackUndo: false },
-            ],
-            redoJournal: [...get().redoJournal, "clip"],
-          });
-
-          const trackId = entry.trackId;
-          const updatedProject = get().project;
-          const track = updatedProject.timeline.tracks.find(
-            (t) => t.id === trackId,
-          );
-
-          if (track) {
-            let trackHasClips = false;
-            if (track.type === "text") {
-              const textClips =
-                overlayEngines.titleEngine?.getAllTextClips() ||
-                [];
-              trackHasClips = textClips.some((c) => c.trackId === trackId);
-            } else if (track.type === "graphics") {
-              const graphicsEngine = overlayEngines.graphicsEngine;
-              const shapeClips = graphicsEngine?.getAllShapeClips() || [];
-              const svgClips = graphicsEngine?.getAllSVGClips() || [];
-              const stickerClips = graphicsEngine?.getAllStickerClips() || [];
-              trackHasClips = [...shapeClips, ...svgClips, ...stickerClips].some(
-                (c) => c.trackId === trackId,
-              );
-            } else {
-              trackHasClips = track.clips.length > 0;
-            }
-
-            if (!trackHasClips) {
-              const lastEntry = get().actionHistory.peekUndo();
-              const lastAction = lastEntry?.action;
-              type TrackType = "video" | "audio" | "image" | "text" | "graphics";
-              const clipTypeToTrackType: Record<string, TrackType> = {
-                text: "text",
-                shape: "graphics",
-                svg: "graphics",
-                sticker: "graphics",
-              };
-              const expectedTrackType: TrackType =
-                clipTypeToTrackType[entry.type] || (track.type as TrackType);
-              const actionTrackType = lastAction?.params?.trackType as
-                | string
-                | undefined;
-
-              if (
-                lastAction &&
-                lastAction.type === "track/add" &&
-                actionTrackType === expectedTrackType
-              ) {
-                const trackUndoResult = await actionExecutor.undo(get().project);
-                if (trackUndoResult.success) {
-                  const updatedRedoStack = get().clipRedoStack;
-                  if (updatedRedoStack.length > 0) {
-                    const lastRedoEntry =
-                      updatedRedoStack[updatedRedoStack.length - 1];
-                    set({
-                      project: { ...get().project },
-                      clipRedoStack: [
-                        ...updatedRedoStack.slice(0, -1),
-                        {
-                          ...lastRedoEntry,
-                          hadEmptyTrackUndo: true,
-                          trackType: expectedTrackType,
-                        },
-                      ],
-                    });
-                  }
-                }
-              }
-            }
-          }
-
-          return { success: true };
-        }
-      }
-
       const result = await actionExecutor.undo(project);
       if (result.success) {
         set({
@@ -309,22 +157,16 @@ export function createHistorySlice(
       const {
         project,
         actionExecutor,
-        clipUndoStack,
-        clipRedoStack,
         templateUndoStack,
         templateRedoStack,
       } = get();
 
       const journal = [...get().redoJournal];
-      let target: "action" | "clip" | "template" | null = null;
+      let target: "action" | "template" | null = null;
       while (journal.length > 0) {
         const stack = journal.pop();
         if (stack === "template" && templateRedoStack.length > 0) {
           target = "template";
-          break;
-        }
-        if (stack === "clip" && clipRedoStack.length > 0) {
-          target = "clip";
           break;
         }
         if (stack === "action" && actionExecutor.getHistory().canRedo()) {
@@ -337,11 +179,9 @@ export function createHistorySlice(
         target =
           templateRedoStack.length > 0
             ? "template"
-            : clipRedoStack.length > 0
-              ? "clip"
-              : actionExecutor.getHistory().canRedo()
-                ? "action"
-                : null;
+            : actionExecutor.getHistory().canRedo()
+              ? "action"
+              : null;
       }
       if (!target) {
         return {
@@ -387,123 +227,6 @@ export function createHistorySlice(
         return { success: true };
       }
 
-      if (target === "clip" && clipRedoStack.length > 0) {
-        const entry = clipRedoStack[clipRedoStack.length - 1];
-
-        if (entry.op === "update" && entry.afterData) {
-          const reapplied = applyClipDataSnapshot(
-            entry.type,
-            entry.clipId,
-            entry.afterData,
-          );
-          if (reapplied) {
-            set({
-              project: { ...get().project, modifiedAt: Date.now() },
-              clipUndoStack: [
-                ...clipUndoStack,
-                { ...entry, timestamp: Date.now() },
-              ],
-              clipRedoStack: clipRedoStack.slice(0, -1),
-            });
-            return { success: true };
-          }
-        }
-
-        let restored = false;
-        let newTrackId: string | undefined;
-
-        if (entry.hadEmptyTrackUndo && entry.trackType) {
-          const trackRedoResult = await actionExecutor.redo(get().project);
-          if (!trackRedoResult.success) {
-            return trackRedoResult;
-          }
-          const updatedProject = get().project;
-          const tracksOfType = updatedProject.timeline.tracks.filter(
-            (t) => t.type === entry.trackType,
-          );
-          if (tracksOfType.length > 0) {
-            newTrackId = tracksOfType[tracksOfType.length - 1].id;
-          }
-          set({ project: { ...updatedProject } });
-        }
-
-        const targetTrackId = newTrackId || entry.trackId;
-
-        if (entry.type === "shape") {
-          const graphicsEngine = overlayEngines.graphicsEngine;
-          if (graphicsEngine) {
-            const shapeData = entry.clipData as ShapeClip;
-            graphicsEngine.createShape(
-              {
-                shapeType: shapeData.shapeType,
-                width: 200,
-                height: 200,
-                style: shapeData.style,
-              },
-              targetTrackId,
-              shapeData.startTime,
-              shapeData.duration,
-            );
-            restored = true;
-          }
-        } else if (entry.type === "text") {
-          const titleEngine = overlayEngines.titleEngine;
-          if (titleEngine) {
-            const textData = entry.clipData as TextClip;
-            titleEngine.createTextClip({
-              trackId: targetTrackId,
-              startTime: textData.startTime,
-              text: textData.text,
-              duration: textData.duration,
-              style: textData.style,
-            });
-            restored = true;
-          }
-        } else if (entry.type === "svg") {
-          const graphicsEngine = overlayEngines.graphicsEngine;
-          if (graphicsEngine) {
-            const svgData = entry.clipData as SVGClip;
-            graphicsEngine.importSVG(
-              svgData.svgContent,
-              targetTrackId,
-              svgData.startTime,
-              svgData.duration,
-            );
-            restored = true;
-          }
-        } else if (entry.type === "sticker") {
-          const graphicsEngine = overlayEngines.graphicsEngine;
-          if (graphicsEngine) {
-            const stickerData = entry.clipData as StickerClip;
-            graphicsEngine.addStickerClip({
-              ...stickerData,
-              trackId: targetTrackId,
-            });
-            restored = true;
-          }
-        }
-
-        if (restored) {
-          const updatedEntry = newTrackId
-            ? {
-                ...entry,
-                trackId: newTrackId,
-                clipData: { ...entry.clipData, trackId: newTrackId },
-              }
-            : entry;
-
-          set({
-            project: { ...get().project, modifiedAt: Date.now() },
-            clipUndoStack: [
-              ...clipUndoStack,
-              { ...updatedEntry, timestamp: Date.now() },
-            ],
-            clipRedoStack: clipRedoStack.slice(0, -1),
-          });
-          return { success: true };
-        }
-      }
-
       const result = await actionExecutor.redo(project);
       if (result.success) {
         set({
@@ -524,21 +247,13 @@ export function createHistorySlice(
     },
 
     canUndo: () => {
-      const { actionHistory, clipUndoStack, templateUndoStack } = get();
-      return (
-        templateUndoStack.length > 0 ||
-        clipUndoStack.length > 0 ||
-        actionHistory.canUndo()
-      );
+      const { actionHistory, templateUndoStack } = get();
+      return templateUndoStack.length > 0 || actionHistory.canUndo();
     },
 
     canRedo: () => {
-      const { actionHistory, clipRedoStack, templateRedoStack } = get();
-      return (
-        templateRedoStack.length > 0 ||
-        clipRedoStack.length > 0 ||
-        actionHistory.canRedo()
-      );
+      const { actionHistory, templateRedoStack } = get();
+      return templateRedoStack.length > 0 || actionHistory.canRedo();
     },
   };
 }

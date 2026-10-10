@@ -158,8 +158,6 @@ export function createProjectPersistenceSlice(
           hasOpenProject: true,
           actionHistory: newHistory,
           actionExecutor: newExecutor,
-          clipUndoStack: [],
-          clipRedoStack: [],
           templateUndoStack: [],
           templateRedoStack: [],
           redoJournal: [],

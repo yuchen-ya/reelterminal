@@ -90,7 +90,6 @@ import {
   calculateTimelineDuration,
   type AudioDuckingSettings,
   type EditingTemplateApplicationState,
-  type ClipHistoryEntry,
   type EditingTemplateHistoryEntry,
   type TimelineClipboardItem,
 } from "./project/index";
@@ -160,12 +159,9 @@ export interface ProjectState {
   actionExecutor: ActionExecutor;
   actionHistory: ActionHistory;
 
-  // Clip history for graphics/text clips (outside main timeline)
-  clipUndoStack: ClipHistoryEntry[];
-  clipRedoStack: ClipHistoryEntry[];
   templateUndoStack: EditingTemplateHistoryEntry[];
   templateRedoStack: EditingTemplateHistoryEntry[];
-  redoJournal: Array<"action" | "clip" | "template">;
+  redoJournal: Array<"action" | "template">;
 
   // Loading state
   isLoading: boolean;
@@ -1050,11 +1046,8 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
       sharedEngines.getGraphicsEngine()?.loadStickerClips(project.stickerClips ?? []);
     };
 
-    // Restore a full clip snapshot into the owning engine (used by undo/redo
-    // of text/shape property edits). Never creates or deletes the clip — it
-    // merges the saved fields back onto the existing engine clip.
     const helpers = createProjectStoreHelpers(set, get, overlayEngines);
-    const { applyClipDataSnapshot, syncOverlayEnginesFromProject } = helpers;
+    const { syncOverlayEnginesFromProject } = helpers;
 
     type OverlayEffectOwner = TextClip | ShapeClip | SVGClip | StickerClip;
     type OverlayEffectLocation = {
@@ -1943,11 +1936,9 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
       photoProjects: new Map(),
       actionExecutor,
       actionHistory,
-      clipUndoStack: [] as ClipHistoryEntry[],
-      clipRedoStack: [] as ClipHistoryEntry[],
       templateUndoStack: [] as EditingTemplateHistoryEntry[],
       templateRedoStack: [] as EditingTemplateHistoryEntry[],
-      redoJournal: [] as Array<"action" | "clip" | "template">,
+      redoJournal: [] as Array<"action" | "template">,
       isLoading: false,
       error: null,
       clipboard: [] as TimelineClipboardItem[],
@@ -2749,8 +2740,6 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
 
       // Undo/Redo
       ...createHistorySlice(set, get, {
-        applyClipDataSnapshot,
-        overlayEngines,
         syncOverlayEnginesFromProject,
         syncProjectEffectsBridge,
         syncProjectTransitionsBridge,
@@ -2891,7 +2880,6 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             try {
               set({
                 project: committedProject,
-                clipRedoStack: [],
                 templateRedoStack: [],
               });
             } catch (error) {
@@ -4018,7 +4006,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
         }
 
         syncClipEffectsBridge(updatedProject, clipId);
-        set({ project: updatedProject, clipRedoStack: [], templateRedoStack: [] });
+        set({ project: updatedProject, templateRedoStack: [] });
         const actionId = uuidv4();
         get().actionExecutor.getHistory().push(
           {
@@ -4527,7 +4515,6 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             };
             set({
               project: updatedProject,
-              clipRedoStack: [],
               templateRedoStack: [],
             });
             const actionId = uuidv4();

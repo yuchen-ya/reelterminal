@@ -3,10 +3,6 @@ import type { StoreApi } from "zustand";
 import type {
   Action,
   Project,
-  ShapeClip,
-  TextClip,
-  SVGClip,
-  StickerClip,
   GraphicsEngine,
   TitleEngine,
 } from "@reelterminal/core";
@@ -18,7 +14,6 @@ import {
   getNestedSequenceEngine,
 } from "@reelterminal/core";
 import type { ProjectState } from "../project-store";
-import type { ClipHistoryEntryType } from "./index";
 import { useEngineStore } from "../engine-store";
 
 type Get = StoreApi<ProjectState>["getState"];
@@ -28,11 +23,6 @@ type OverlayField = "textClips" | "shapeClips" | "svgClips" | "stickerClips";
 
 export interface ProjectStoreHelpers {
   overlayEngines: { titleEngine: TitleEngine; graphicsEngine: GraphicsEngine };
-  applyClipDataSnapshot(
-    type: ClipHistoryEntryType,
-    clipId: string,
-    data: ShapeClip | TextClip | SVGClip | StickerClip,
-  ): boolean;
   cloneClipSnapshot<T>(clip: T): T;
   recordOverlayCreate(
     prefix: string,
@@ -70,31 +60,6 @@ export function createProjectStoreHelpers(
     ((project as unknown as Record<string, Array<{ id: string }>>)[field] ??
       []) as Array<{ id: string }>;
 
-  const applyClipDataSnapshot = (
-    type: ClipHistoryEntryType,
-    clipId: string,
-    data: ShapeClip | TextClip | SVGClip | StickerClip,
-  ): boolean => {
-    if (type === "text") {
-      return Boolean(
-        overlayEngines.titleEngine.updateTextClip(clipId, data as Partial<TextClip>),
-      );
-    }
-    if (type === "shape") {
-      return Boolean(
-        overlayEngines.graphicsEngine.updateShapeClip(clipId, data as Partial<ShapeClip>),
-      );
-    }
-    if (type === "svg") {
-      return Boolean(
-        overlayEngines.graphicsEngine.updateSVGClip(clipId, data as Partial<SVGClip>),
-      );
-    }
-    return Boolean(
-      overlayEngines.graphicsEngine.updateStickerClip(clipId, data as Partial<StickerClip>),
-    );
-  };
-
   const recordOverlayCreate = (
     prefix: string,
     field: OverlayField,
@@ -128,7 +93,6 @@ export function createProjectStoreHelpers(
           duration: calculateProjectDuration(nextProject),
         },
       },
-      clipRedoStack: [],
     });
     actionExecutor.getHistory().push(action, inverse);
   };
@@ -172,7 +136,6 @@ export function createProjectStoreHelpers(
           duration: calculateProjectDuration(nextProject),
         },
       },
-      clipRedoStack: [],
     });
     actionExecutor.getHistory().push(action, inverse);
   };
@@ -212,7 +175,6 @@ export function createProjectStoreHelpers(
           duration: calculateProjectDuration(nextProject),
         },
       },
-      clipRedoStack: [],
     });
     actionExecutor.getHistory().push(action, inverse);
   };
@@ -258,7 +220,6 @@ export function createProjectStoreHelpers(
   };
 
   return {
-    applyClipDataSnapshot,
     overlayEngines,
     cloneClipSnapshot,
     recordOverlayCreate,

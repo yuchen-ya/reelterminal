@@ -1445,6 +1445,38 @@ describe("ProjectStore", () => {
       ).toHaveLength(0);
     });
 
+    it("redoes the most recently undone stack first across action and template edits", async () => {
+      useProjectStore.getState().loadProject(createProjectWithEditableClip());
+
+      // Template edit first, action edit second: the action's timestamp is
+      // never older, so undo always drains the action first and the redo
+      // journal must replay the template (the later undo) before the action.
+      const applicationId = useProjectStore.getState().applyEditingTemplate(
+        "branding-lower-third",
+        "video-clip-1",
+      );
+      expect(applicationId).toBeTruthy();
+      await useProjectStore.getState().addTrack("audio");
+      const trackTypes = () =>
+        useProjectStore
+          .getState()
+          .project.timeline.tracks.map((track) => track.type);
+      expect(trackTypes()).toContain("audio");
+      const recipeCount = getRecipeTextValues(applicationId!).length;
+      expect(recipeCount).toBeGreaterThan(0);
+
+      await useProjectStore.getState().undo();
+      expect(trackTypes()).not.toContain("audio");
+      await useProjectStore.getState().undo();
+      expect(getRecipeTextValues(applicationId!)).toHaveLength(0);
+
+      await useProjectStore.getState().redo();
+      expect(getRecipeTextValues(applicationId!)).toHaveLength(recipeCount);
+      expect(trackTypes()).not.toContain("audio");
+      await useProjectStore.getState().redo();
+      expect(trackTypes()).toContain("audio");
+    });
+
     it("updates an applied recipe in place and keeps its application id", () => {
       useProjectStore.getState().loadProject(createProjectWithEditableClip());
 
@@ -1842,7 +1874,7 @@ describe("ProjectStore", () => {
       expect(useProjectStore.getState().canUndo()).toBe(true);
     });
 
-    it("redoes a clip-level undo before an earlier undone action", async () => {
+    it("redoes the most recent undo first across interleaved action edits", async () => {
       await useProjectStore.getState().addTrack("text");
       const textTrack = useProjectStore
         .getState()
@@ -1852,21 +1884,14 @@ describe("ProjectStore", () => {
         .createTextClip(textTrack.id, 0, "Hello", 5)!;
       expect(clip).toBeTruthy();
 
-      // Simulate a clip-level update recorded after the create action, as a
-      // persisted overlay history entry would be restored.
-      useProjectStore.setState({
-        clipUndoStack: [
-          {
-            type: "text",
-            op: "update",
-            timestamp: Date.now() + 5,
-            clipId: clip.id,
-            trackId: textTrack.id,
-            clipData: { ...clip, text: "Seeded before" },
-            afterData: { ...clip, text: "Seeded after" },
-          },
-        ],
-      });
+      // A clip-level property edit recorded through action history (the same
+      // journal the track add uses), then a newer timeline action on top.
+      expect(
+        useProjectStore.getState().updateTextContent(clip.id, "Edited"),
+      ).toBeTruthy();
+      expect(useProjectStore.getState().getTextClip(clip.id)?.text).toBe(
+        "Edited",
+      );
 
       await new Promise((resolve) => setTimeout(resolve, 10));
       await useProjectStore.getState().addTrack("audio");
@@ -1875,19 +1900,23 @@ describe("ProjectStore", () => {
       // The action is the newest change, so the first undo takes it.
       await useProjectStore.getState().undo();
       expect(useProjectStore.getState().project.timeline.tracks).toHaveLength(1);
-      expect(useProjectStore.getState().clipUndoStack).toHaveLength(1);
+      expect(useProjectStore.getState().getTextClip(clip.id)?.text).toBe(
+        "Edited",
+      );
 
-      // The clip-level change is the most recent undo.
+      // The text edit is the most recent undo.
       await useProjectStore.getState().undo();
-      expect(useProjectStore.getState().clipUndoStack).toHaveLength(0);
-      expect(useProjectStore.getState().clipRedoStack).toHaveLength(1);
+      expect(useProjectStore.getState().getTextClip(clip.id)?.text).toBe(
+        "Hello",
+      );
 
-      // Redo must replay the most recent undo first: the clip change — the
+      // Redo must replay the most recent undo first: the text edit — the
       // audio track must NOT come back yet.
       await useProjectStore.getState().redo();
+      expect(useProjectStore.getState().getTextClip(clip.id)?.text).toBe(
+        "Edited",
+      );
       expect(useProjectStore.getState().project.timeline.tracks).toHaveLength(1);
-      expect(useProjectStore.getState().clipRedoStack).toHaveLength(0);
-      expect(useProjectStore.getState().clipUndoStack).toHaveLength(1);
 
       // ...and only then the earlier action.
       await useProjectStore.getState().redo();

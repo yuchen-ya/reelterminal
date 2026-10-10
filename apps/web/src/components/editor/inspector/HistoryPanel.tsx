@@ -8,10 +8,6 @@ import {
   Trash2,
   ChevronDown,
   ChevronRight,
-  Type,
-  Shapes,
-  FileCode,
-  Smile,
 } from "@/icons/lucide-compat";
 import { ToolcraftButton as Button } from "@reelterminal/ui";
 import { ToolcraftCard as Card } from "@reelterminal/ui";
@@ -28,29 +24,17 @@ interface DisplayEntry {
   description: string;
   timestamp: number;
   isCurrent: boolean;
-  isClipEntry: boolean;
-  clipType?: "shape" | "text" | "svg" | "sticker";
   groupId?: string;
 }
 
 export const HistoryPanel: React.FC = () => {
   const { t } = useTranslation();
-  const { actionHistory, undo, redo, canUndo, canRedo, clipUndoStack, clipRedoStack } = useProjectStore();
+  const { actionHistory, undo, redo, canUndo, canRedo } = useProjectStore();
   const [combinedHistory, setCombinedHistory] = useState<DisplayEntry[]>([]);
   const [snapshots, setSnapshots] = useState<HistorySnapshot[]>([]);
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [newSnapshotName, setNewSnapshotName] = useState("");
   const [isCreatingSnapshot, setIsCreatingSnapshot] = useState(false);
-
-  const getClipDescription = (type: "shape" | "text" | "svg" | "sticker"): string => {
-    switch (type) {
-      case "text": return "Create text clip";
-      case "shape": return "Create shape";
-      case "svg": return "Import SVG";
-      case "sticker": return "Add sticker";
-      default: return "Create clip";
-    }
-  };
 
   useEffect(() => {
     const updateHistory = () => {
@@ -62,29 +46,16 @@ export const HistoryPanel: React.FC = () => {
         description: item.entry.description,
         timestamp: item.entry.timestamp,
         isCurrent: item.isCurrent,
-        isClipEntry: false,
         groupId: item.entry.groupId,
       }));
 
-      clipUndoStack.forEach((entry, idx) => {
-        displayEntries.push({
-          id: `clip-${entry.clipId}-${idx}`,
-          description: getClipDescription(entry.type),
-          timestamp: Date.now() - (clipUndoStack.length - idx) * 1000,
-          isCurrent: idx === clipUndoStack.length - 1 && clipRedoStack.length === 0,
-          isClipEntry: true,
-          clipType: entry.type,
-        });
-      });
-
-      displayEntries.sort((a, b) => a.timestamp - b.timestamp);
       setCombinedHistory(displayEntries);
     };
 
     updateHistory();
     const unsubscribe = actionHistory.subscribe(updateHistory);
     return () => unsubscribe();
-  }, [actionHistory, clipUndoStack, clipRedoStack]);
+  }, [actionHistory]);
 
   const handleUndo = useCallback(async () => {
     if (canUndo()) {
@@ -118,18 +89,8 @@ export const HistoryPanel: React.FC = () => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
-  const undoCount = actionHistory.getUndoStackSize() + clipUndoStack.length;
-  const redoCount = actionHistory.getRedoStackSize() + clipRedoStack.length;
-
-  const getClipIcon = (type?: "shape" | "text" | "svg" | "sticker") => {
-    switch (type) {
-      case "text": return Type;
-      case "shape": return Shapes;
-      case "svg": return FileCode;
-      case "sticker": return Smile;
-      default: return History;
-    }
-  };
+  const undoCount = actionHistory.getUndoStackSize();
+  const redoCount = actionHistory.getRedoStackSize();
 
   return (
     <div className="flex flex-col h-full">
@@ -263,7 +224,6 @@ export const HistoryPanel: React.FC = () => {
         ) : (
           <div className="p-2 space-y-0.5">
             {combinedHistory.map((item) => {
-              const ClipIcon = item.isClipEntry ? getClipIcon(item.clipType) : null;
               return (
                 <Card
                   key={item.id}
@@ -275,19 +235,11 @@ export const HistoryPanel: React.FC = () => {
                       : "hover:bg-bg-2"
                   }`}
                 >
-                  {item.isClipEntry && ClipIcon ? (
-                    <ClipIcon
-                      size={12}
-                      className={item.isCurrent ? "text-primary" : "text-fg-3"}
-                      aria-hidden
-                    />
-                  ) : (
-                    <div
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        item.isCurrent ? "bg-primary" : "bg-text-muted"
-                      }`}
-                    />
-                  )}
+                  <div
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      item.isCurrent ? "bg-primary" : "bg-text-muted"
+                    }`}
+                  />
                   <div className="flex flex-col gap-0.5 flex-1 min-w-0">
                     <Text
                       type="supporting"
@@ -308,10 +260,6 @@ export const HistoryPanel: React.FC = () => {
                   {item.groupId && (
                     <Text type="supporting" color="secondary" className="px-1 py-0.5 bg-bg-2 rounded text-[8px]">
                       {t("grouped")}</Text>
-                  )}
-                  {item.isClipEntry && (
-                    <Text type="supporting" className="px-1 py-0.5 bg-amber-500/20 rounded text-[8px] text-amber-400">
-                      {t("clip")}</Text>
                   )}
                 </Card>
               );
