@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import i18next from "i18next";
-import { WorkspaceManager } from "./workspace-manager";
+import { WorkspaceManager, type WorkspaceRecord } from "./workspace-manager";
 import {
   activateProjectStore,
   createProjectStore,
@@ -265,6 +265,154 @@ describe("local project lifecycle", () => {
     expect(
       (await manager.getWorkspaceContext(target)).store.getState().project.name,
     ).toBe("Original");
+  });
+
+  it("renames a loaded and an unloaded workspace without hydrating the unloaded one", async () => {
+    const manager = new WorkspaceManager();
+    const source = await manager.createProject(createEmptyProject("Mixed project"));
+    const loadedTarget = {
+      projectId: source.project.id,
+      workspaceId: source.defaultWorkspaceId,
+    };
+    const node = await manager.saveNode({ target: loadedTarget, name: "Mixed base" });
+    const trial = await manager.createWorkspace(source.project.id, {
+      sourceNodeId: node.node.id,
+    });
+    // Unload only the trial runtime; the default workspace stays loaded.
+    await manager.closeWorkspace({
+      projectId: source.project.id,
+      workspaceId: trial.id,
+    });
+    const inner = manager as unknown as { runtimes: Map<string, unknown> };
+    expect(inner.runtimes.has(trial.id)).toBe(false);
+    expect(inner.runtimes.has(loadedTarget.workspaceId)).toBe(true);
+
+    await manager.renameLibraryProject(source.project.id, "Mixed renamed");
+
+    // The unloaded workspace stayed unloaded through the rename.
+    expect(inner.runtimes.has(trial.id)).toBe(false);
+    expect(
+      (await manager.listProjects()).find(
+        (project) => project.id === source.project.id,
+      )?.name,
+    ).toBe("Mixed renamed");
+    // The already-loaded runtime shows the new name.
+    expect(
+      (await manager.getWorkspaceContext(loadedTarget)).store.getState().project.name,
+    ).toBe("Mixed renamed");
+    // A freshly loaded runtime of the previously unloaded workspace agrees.
+    expect(
+      (
+        await manager.getWorkspaceContext({
+          projectId: source.project.id,
+          workspaceId: trial.id,
+        })
+      ).store.getState().project.name,
+    ).toBe("Mixed renamed");
+    // Immutable versions keep their snapshot name.
+    expect(
+      (await manager.getNode(source.project.id, node.node.id))?.project.name,
+    ).toBe("Mixed project");
+    // A reopened manager persists the same name on both workspaces.
+    const reopened = new WorkspaceManager();
+    expect(
+      (await reopened.listProjects()).find(
+        (project) => project.id === source.project.id,
+      )?.name,
+    ).toBe("Mixed renamed");
+    expect(
+      (await reopened.getWorkspaceContext(loadedTarget)).store.getState().project.name,
+    ).toBe("Mixed renamed");
+    expect(
+      (
+        await reopened.getWorkspaceContext({
+          projectId: source.project.id,
+          workspaceId: trial.id,
+        })
+      ).store.getState().project.name,
+    ).toBe("Mixed renamed");
+  });
+
+  it("keeps a retryable failed write when an unloaded rename coalesces with its retry", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(createEmptyProject("Queue race"));
+    const target = {
+      projectId: created.project.id,
+      workspaceId: created.defaultWorkspaceId,
+    };
+    const context = await manager.getWorkspaceContext(target);
+    const inner = manager as unknown as {
+      persistWorkspaceSnapshot: (workspace: WorkspaceRecord) => Promise<void>;
+      runtimes: Map<string, unknown>;
+      runtimeUnsubscribers: Map<string, () => void>;
+    };
+    // Same setup as the failed background write test in
+    // workspace-manager.test.ts: every snapshot write fails until the spy is
+    // restored, leaving the newest edit retryable in failedWorkspaceWrites.
+    const persistSpy = vi
+      .spyOn(inner, "persistWorkspaceSnapshot")
+      .mockRejectedValue(new Error("disk write failed"));
+    // The edit marker must live somewhere the rename never writes (unlike
+    // modifiedAt, which the rename re-stamps on both paths).
+    const state = context.store.getState();
+    context.store.setState({
+      project: {
+        ...state.project,
+        settings: { ...state.project.settings, width: 1234 },
+      },
+    });
+    await expect(manager.flushOpenWorkspaces()).rejects.toThrow("disk write failed");
+    persistSpy.mockRestore();
+
+    // The workspace becomes unloaded while its newest edit (revision 1) is
+    // still only a retryable failed write.
+    inner.runtimeUnsubscribers.get(target.workspaceId)?.();
+    inner.runtimeUnsubscribers.delete(target.workspaceId);
+    inner.runtimes.delete(target.workspaceId);
+
+    await manager.renameLibraryProject(created.project.id, "Queue race renamed");
+    expect(inner.runtimes.get(target.workspaceId)).toBeUndefined();
+
+    const reopened = new WorkspaceManager();
+    const reopenedState = (await reopened.getWorkspaceContext(target)).store.getState();
+    // The retry carried both the failed edit and the rename: no clobber.
+    expect(reopenedState.project.name).toBe("Queue race renamed");
+    expect(reopenedState.workspaceRevision).toBe(1);
+    expect(reopenedState.project.settings.width).toBe(1234);
+  });
+
+  it("an unloaded rename yields to a newer revision persisted by another manager", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(createEmptyProject("External edit"), {
+      loadRuntime: false,
+    });
+    const target = {
+      projectId: created.project.id,
+      workspaceId: created.defaultWorkspaceId,
+    };
+    // A second manager (as from another window) persists revision 1 without
+    // the first manager's in-memory record ever seeing it.
+    const other = new WorkspaceManager();
+    const otherContext = await other.getWorkspaceContext(target);
+    expect((await otherContext.store.getState().addTrack("video")).success).toBe(true);
+    await other.flushWorkspace(target);
+
+    await manager.renameLibraryProject(created.project.id, "Stale rename");
+
+    // The revision guard aborted the stale snapshot transaction, so the
+    // newer edit wins untouched — exactly what persistWorkspaceSnapshot
+    // dictates for every background write.
+    const reopened = new WorkspaceManager();
+    const state = (await reopened.getWorkspaceContext(target)).store.getState();
+    expect(state.workspaceRevision).toBe(1);
+    expect(state.project.name).toBe("External edit");
+    expect(state.project.timeline.tracks).toHaveLength(1);
+    // The aborted transaction also leaves the PROJECTS row untouched.
+    expect(
+      (await reopened.listProjects()).find(
+        (project) => project.id === created.project.id,
+      )?.name,
+    ).toBe("External edit");
   });
 
   it("moves projects into virtual folders, then ungroups both active and recycled projects when the folder is deleted", async () => {

@@ -226,10 +226,16 @@ describe("WorkspaceManager perf baselines", () => {
     await manager.renameLibraryProject(project.projectId, "Perf Project 0 renamed");
     const elapsed = performance.now() - start;
     console.log(
-      `[perf-baseline][rename] runtimesCreated=${runtimesOf(manager)}` +
+      `[perf-08][rename] runtimesCreated=${runtimesOf(manager)}` +
       ` loadProjectMedia=${loadSpy.mock.calls.length} hashMediaBlob=${hashSpy.mock.calls.length}` +
       ` elapsedMs=${elapsed.toFixed(1)}`,
     );
+    // Changeset 08: renaming a project with zero loaded workspaces must not
+    // hydrate a single runtime or read a single media byte — the persisted
+    // snapshots are renamed directly through the write queue.
+    expect(runtimesOf(manager)).toBe(0);
+    expect(loadSpy.mock.calls.length).toBe(0);
+    expect(hashSpy.mock.calls.length).toBe(0);
     loadSpy.mockRestore();
     hashSpy.mockRestore();
 

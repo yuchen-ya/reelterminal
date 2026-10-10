@@ -692,18 +692,63 @@ export class WorkspaceManager {
 
   async renameLibraryProject(id: string, name: string): Promise<void> {
     await this.initialize();
-    this.requireAvailableProject(id);
+    const projectRecord = this.requireAvailableProject(id);
     const validated = this.validLibraryName(name);
-    for (const workspace of [...this.workspaces.values()].filter(
-      (record) => record.projectId === id,
-    )) {
-      const context = await this.getWorkspaceContext({
-        projectId: id,
-        workspaceId: workspace.id,
-      });
-      const result = await context.store.getState().renameProject(validated);
+    // The runtime subscriber normally syncs the PROJECTS record from the
+    // renamed runtime state; the unloaded path below persists `this.projects`
+    // alongside every workspace row (persistWorkspaceSnapshot), so the
+    // in-memory record carries the new name before any write is scheduled.
+    // Subscribers are notified once at the end, like the other
+    // display-metadata flows (renameNode).
+    this.projects.set(id, { ...projectRecord, name: validated, modifiedAt: Date.now() });
+    const renameThroughRuntime = async (runtime: ProjectStore): Promise<void> => {
+      const result = await runtime.getState().renameProject(validated);
       if (!result.success) throw new Error("Project rename failed");
-      await this.flushWorkspaceWrites(workspace.id);
+    };
+    try {
+      for (const workspace of [...this.workspaces.values()].filter(
+        (record) => record.projectId === id,
+      )) {
+        // A runtime may still be initializing; wait for it before choosing
+        // the path (mirrors recycleProjects) so a hydrating runtime is never
+        // left holding the stale name by a persisted-only rename.
+        const initializing = this.runtimeInitializations.get(workspace.id);
+        if (initializing) await initializing;
+        const runtime = this.runtimes.get(workspace.id);
+        if (runtime) {
+          await renameThroughRuntime(runtime);
+        } else {
+          // Unloaded workspace: rename the persisted snapshot directly
+          // through the write queue instead of hydrating a runtime. Building
+          // from the newest in-memory record and scheduling through
+          // scheduleWorkspaceWrite keeps newest-wins coalescing, the
+          // persistWorkspaceSnapshot revision guard and failed-write retry
+          // intact, and the PROJECTS row rides the same transaction.
+          const now = Date.now();
+          const project = { ...workspace.project, name: validated, modifiedAt: now };
+          const baseProjectKey = await this.getWorkspaceBaseProjectKey(workspace.id, workspace.baseNodeId);
+          // getWorkspaceBaseProjectKey performs a real IDB read; a runtime
+          // can hydrate from the not-yet-renamed record inside that window
+          // and would re-persist the stale name on its next edit, so fall
+          // back to the loaded path if one appeared.
+          const lateRuntime = this.runtimes.get(workspace.id);
+          if (lateRuntime) {
+            await renameThroughRuntime(lateRuntime);
+          } else {
+            const renamed: WorkspaceRecord = {
+              ...workspace,
+              updatedAt: now,
+              dirty: !baseProjectKey || baseProjectKey !== editableProjectKey(project),
+              project,
+            };
+            this.workspaces.set(workspace.id, renamed);
+            this.scheduleWorkspaceWrite(renamed);
+          }
+        }
+        await this.flushWorkspaceWrites(workspace.id);
+      }
+    } finally {
+      this.publish();
     }
   }
 
