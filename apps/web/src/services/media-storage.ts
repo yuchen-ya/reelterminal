@@ -197,8 +197,8 @@ export async function loadMediaBlob(mediaId: string, projectId?: string): Promis
   const mediaStore = desktopMediaStore();
   if (!mediaStore) return null;
   if (projectId) {
-    const bytes = await mediaStore.readAny(mediaId);
-    return bytes ? new Blob([bytes]) : null;
+    const scoped = await mediaStore.read({ projectId, mediaId });
+    if (scoped) return new Blob([scoped]);
   }
   const bytes = await mediaStore.readAny(mediaId);
   return bytes ? new Blob([bytes]) : null;
@@ -325,7 +325,17 @@ async function deleteMediaBlobUnlocked(mediaId: string, projectId?: string): Pro
   }
   await storage.deleteMedia(mediaId);
   const mediaStore = desktopMediaStore();
-  if (mediaStore) await mediaStore.delete(mediaId);
+  if (!mediaStore) return;
+  if (projectId) {
+    // The controlled store keeps one file per owning project directory and
+    // its global delete unlinks every copy, so only run it when no other
+    // project still owns this media id.
+    const foreignOwner = (await mediaStore.listAll()).some(
+      (entry) => entry.mediaId === mediaId && entry.projectId !== projectId,
+    );
+    if (foreignOwner) return;
+  }
+  await mediaStore.delete(mediaId);
 }
 
 /** Internal GC primitive. Call only while holding withMediaReferenceWrite. */

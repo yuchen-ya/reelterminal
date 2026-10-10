@@ -61,6 +61,7 @@ apps/desktop/resources/rigging/blender/
 
 # Desktop electron-builder output
 apps/desktop/release/
+apps/desktop/release-v*/
 apps/desktop/resources/help/
 apps/desktop/resources/licenses/
 

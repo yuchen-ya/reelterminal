@@ -17,6 +17,26 @@ const makeController = () => ({
   play: vi.fn(async () => {}),
 });
 
+/**
+ * Observe requestSeek's store commit. The store's endScrubbing() already
+ * writes the release position synchronously, so the playhead value alone is
+ * a vacuous check; seekTo is the only writer that finalizes a user seek.
+ */
+function observeSeekTo(): { calls: number[]; restore: () => void } {
+  const realSeekTo = useTimelineStore.getState().seekTo;
+  const calls: number[] = [];
+  useTimelineStore.setState({
+    seekTo: (position: number) => {
+      calls.push(position);
+      realSeekTo(position);
+    },
+  });
+  return {
+    calls,
+    restore: () => useTimelineStore.setState({ seekTo: realSeekTo }),
+  };
+}
+
 describe("PlaybackBridge scrubbing", () => {
   beforeEach(() => {
     useTimelineStore.setState({
@@ -41,20 +61,24 @@ describe("PlaybackBridge scrubbing", () => {
     expect(controller.scrubTo).not.toHaveBeenCalled();
     expect(controller.seek).not.toHaveBeenCalled();
 
+    const seek = observeSeekTo();
     bridge.endScrubbing();
 
     // Drag state is released synchronously…
     expect(controller.endScrubbing).toHaveBeenCalledTimes(1);
     expect(useTimelineStore.getState().isScrubbing).toBe(false);
 
-    // …and the exact release position reaches the master clock and audio.
+    // …the exact release position reaches the master clock and audio…
     await vi.waitFor(() =>
       expect(controller.syncClockTo).toHaveBeenCalledTimes(1),
     );
     expect(controller.syncClockTo).toHaveBeenCalledWith(4.25);
-    await vi.waitFor(() =>
-      expect(useTimelineStore.getState().playheadPosition).toBe(4.25),
-    );
+
+    // …and requestSeek's store commit ran (seekTo is the only writer that
+    // finalizes a user seek; the playhead value alone would pass either way).
+    await vi.waitFor(() => expect(seek.calls).toContain(4.25));
+    expect(useTimelineStore.getState().playheadPosition).toBe(4.25);
+    seek.restore();
   });
 
   it("cleans up drag state and still lands the final position when the clock sync fails", async () => {
@@ -65,15 +89,18 @@ describe("PlaybackBridge scrubbing", () => {
     const bridge = new PlaybackBridge();
     Object.assign(bridge, { playbackController: controller });
 
+    const seek = observeSeekTo();
     bridge.startScrubbing();
     bridge.scrubTo(2.5);
     bridge.endScrubbing();
 
     expect(useTimelineStore.getState().isScrubbing).toBe(false);
     expect(controller.endScrubbing).toHaveBeenCalledTimes(1);
-    await vi.waitFor(() =>
-      expect(useTimelineStore.getState().playheadPosition).toBe(2.5),
-    );
+    // The requestSeek store commit still runs even though the clock sync
+    // failed (the playhead value alone would pass either way).
+    await vi.waitFor(() => expect(seek.calls).toContain(2.5));
+    expect(useTimelineStore.getState().playheadPosition).toBe(2.5);
+    seek.restore();
   });
 
   it("pauses playback when a drag starts mid-play and keeps it paused after release", async () => {
@@ -105,5 +132,40 @@ describe("PlaybackBridge scrubbing", () => {
     // A user seek never triggers the controller's own frame render.
     expect(controller.scrubTo).not.toHaveBeenCalled();
     expect(controller.seek).not.toHaveBeenCalled();
+  });
+
+  it("commits only the newest of two overlapping seeks", async () => {
+    const controller = makeController();
+    let releaseSlowSync!: () => void;
+    const slowSync = new Promise<void>((resolve) => {
+      releaseSlowSync = resolve;
+    });
+    controller.syncClockTo.mockImplementation(async (time: number) => {
+      if (time === 5) await slowSync;
+      return time;
+    });
+    const bridge = new PlaybackBridge();
+    Object.assign(bridge, { playbackController: controller });
+
+    const revisionBefore =
+      useTimelineStore.getState().playheadInteractionRevision;
+    const staleSeek = bridge.requestSeek(5);
+    const latestSeek = bridge.requestSeek(8);
+    await latestSeek;
+
+    // The fast seek committed while the slow one was still clock-syncing.
+    expect(useTimelineStore.getState().playheadPosition).toBe(8);
+    expect(useTimelineStore.getState().playheadInteractionRevision).toBe(
+      revisionBefore + 1,
+    );
+
+    releaseSlowSync();
+    await staleSeek;
+
+    // The stale seek's late commit must not pull the playhead back to 5.
+    expect(useTimelineStore.getState().playheadPosition).toBe(8);
+    expect(useTimelineStore.getState().playheadInteractionRevision).toBe(
+      revisionBefore + 1,
+    );
   });
 });

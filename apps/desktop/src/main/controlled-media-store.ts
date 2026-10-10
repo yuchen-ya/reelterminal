@@ -8,6 +8,9 @@ const MAX_CHUNK_BYTES = 4 * 1024 * 1024;
 const ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
 const EXTENSION_PATTERN = /^[a-z0-9]{1,10}$/;
+// Exact prefix of in-flight write temporaries; the startup sweep below must
+// never match anything else.
+const PENDING_PREFIX = ".pending-";
 
 export interface ControlledMediaEntry {
   readonly projectId: string;
@@ -52,8 +55,33 @@ async function hashFile(filePath: string): Promise<string> {
 export class ControlledMediaStore {
   private readonly writes = new Map<string, PendingWrite>();
   private readonly commitQueues = new Map<string, Promise<void>>();
+  // Sweep of `.pending-` temporaries abandoned by a crashed process; begun at
+  // construction, before any write session of this instance can exist.
+  private readonly pendingSweep: Promise<void>;
 
-  constructor(private readonly root: string) {}
+  constructor(private readonly root: string) {
+    this.pendingSweep = this.sweepAbandonedPendingWrites();
+  }
+
+  /**
+   * Remove `.pending-` temporaries left by a crashed process: they are only
+   * meaningful to the process that opened them. Because beginWrite awaits
+   * this sweep before creating its own temporary, anything found here predates
+   * this instance. Sweeps the store's project directories only and ignores
+   * failures on individual files.
+   */
+  private async sweepAbandonedPendingWrites(): Promise<void> {
+    const projects = await readdir(this.root, { withFileTypes: true }).catch(() => []);
+    for (const project of projects) {
+      if (!project.isDirectory() || !ID_PATTERN.test(project.name)) continue;
+      const directory = path.join(this.root, project.name);
+      const names = await readdir(directory).catch(() => []);
+      for (const name of names) {
+        if (!name.startsWith(PENDING_PREFIX)) continue;
+        await unlink(path.join(directory, name)).catch(() => undefined);
+      }
+    }
+  }
 
   private projectDirectory(projectId: string): string {
     assertId(projectId, "project id");
@@ -105,10 +133,13 @@ export class ControlledMediaStore {
   }): Promise<string> {
     if (!HASH_PATTERN.test(args.expectedHash)) throw new Error("Invalid SHA-256 hash");
     if (!EXTENSION_PATTERN.test(args.extension)) throw new Error("Invalid media extension");
+    // No live temporary of this instance exists while the sweep runs, so the
+    // sweep can never unlink a session created after it.
+    await this.pendingSweep;
     const directory = this.projectDirectory(args.projectId);
     await mkdir(directory, { recursive: true });
     const sessionId = randomUUID();
-    const temporaryPath = path.join(directory, `.pending-${sessionId}`);
+    const temporaryPath = path.join(directory, `${PENDING_PREFIX}${sessionId}`);
     const destinationPath = this.mediaPath(args.projectId, args.mediaId, args.extension);
     const file = await open(temporaryPath, "wx");
     this.writes.set(sessionId, {
@@ -160,7 +191,9 @@ export class ControlledMediaStore {
           if (existingHash !== contentHash) {
             throw new Error(`Media version ${pending.mediaId} is immutable and already contains different bytes`);
           }
-          await unlink(pending.temporaryPath);
+          // Logical success already happened; a transient unlink failure must
+          // not surface as an error for this dedupe.
+          await unlink(pending.temporaryPath).catch(() => undefined);
           return { path: existingPath, contentHash, created: false };
         }
         try {
@@ -172,7 +205,11 @@ export class ControlledMediaStore {
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
           const racedPath = await this.findMediaPathAny(pending.mediaId);
-          if (!racedPath || await hashFile(racedPath) !== contentHash) throw error;
+          if (!racedPath || await hashFile(racedPath) !== contentHash) {
+            // Lost the race to different bytes (or the winner vanished):
+            // surface the same typed immutability error as the pre-link check.
+            throw new Error(`Media version ${pending.mediaId} is immutable and already contains different bytes`);
+          }
           await unlink(pending.temporaryPath).catch(() => undefined);
           return { path: racedPath, contentHash, created: false };
         }

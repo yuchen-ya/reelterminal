@@ -139,6 +139,7 @@ export async function handleRpc(
   try {
     switch (message.method) {
       case "initialize":
+        if (notification) return null;
         await client.status();
         return {
           jsonrpc: "2.0",
@@ -158,6 +159,7 @@ export async function handleRpc(
         await client.status();
         return notification ? null : { jsonrpc: "2.0", id, result: {} };
       case "tools/list": {
+        if (notification) return null;
         const catalog = await client.catalog();
         return {
           jsonrpc: "2.0",
@@ -173,6 +175,7 @@ export async function handleRpc(
         };
       }
       case "tools/call": {
+        if (notification) return null;
         const name = message.params?.name;
         if (typeof name !== "string") return rpcError(id, -32602, "Invalid params: missing tool name");
         const catalog = await client.catalog();

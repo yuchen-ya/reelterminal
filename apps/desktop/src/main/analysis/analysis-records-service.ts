@@ -93,16 +93,8 @@ export function createAnalysisRecordsService(
     async recheck({ projectId, recordId, allowCloudUpload = false }) {
       const record = await loadForProject(projectId, recordId);
       const usesCloud = record.config.analysisTypes.includes("videoReview");
-      if (usesCloud && !allowCloudUpload) {
-        return {
-          ok: false,
-          error: {
-            code: "CONFIRMATION_REQUIRED",
-            message:
-              "This recheck includes cloud video review. Authorize this upload for this run before retrying.",
-          },
-        };
-      }
+      // Agent Access first: with it disabled the recheck can never run, so the
+      // user must not be asked to authorize an upload that would be rejected.
       if (!host.isEnabled) {
         return {
           ok: false,
@@ -110,6 +102,16 @@ export function createAnalysisRecordsService(
             code: "UNSUPPORTED",
             message:
               "Enable Agent Access to run a recheck. Browsing saved analysis remains available while it is disabled.",
+          },
+        };
+      }
+      if (usesCloud && !allowCloudUpload) {
+        return {
+          ok: false,
+          error: {
+            code: "CONFIRMATION_REQUIRED",
+            message:
+              "This recheck includes cloud video review. Authorize this upload for this run before retrying.",
           },
         };
       }

@@ -25,6 +25,7 @@ import {
   normalizeProjectMarkers,
   normalizeProjectMediaFields,
   normalizeProjectMotionFields,
+  normalizeProjectSpeedDurations,
   normalizeProjectStoredFields,
   normalizeProjectWorkAssetFields,
 } from "./project-serializer";
@@ -987,6 +988,162 @@ it("round-trips production history and review evidence and rejects malformed new
   expect(() => serializer.importFromJson(corrupted)).toThrow(
     /production record/,
   );
+});
+
+describe("ProjectSerializer originalUrl provenance", () => {
+  it("preserves source provenance through a blob-stripped export/import round trip", () => {
+    const serializer = new ProjectSerializer(new MemoryStorageEngine());
+    const project = makeProject({
+      mediaLibrary: {
+        items: [
+          makeMediaItem({
+            originalUrl: "file:///C:/footage/take-01.mp4",
+            thumbnailUrl: "data:image/jpeg;base64,AAAA",
+          }),
+          makeMediaItem({
+            id: "media-2",
+            thumbnailUrl: "data:image/jpeg;base64,BBBB",
+          }),
+          makeMediaItem({ id: "media-3" }),
+        ],
+      } as unknown as Project["mediaLibrary"],
+    });
+
+    // exportToJson strips every blob, so all items take the blob-less import
+    // branch — the branch that used to overwrite originalUrl with the
+    // thumbnail URI and corrupt media.remove undo provenance.
+    const imported = serializer.importFromJson(
+      serializer.exportToJson(project),
+    );
+
+    expect(imported.mediaLibrary.items[0]?.blob).toBeNull();
+    expect(imported.mediaLibrary.items[0]?.isPlaceholder).toBe(true);
+    expect(imported.mediaLibrary.items[0]?.originalUrl).toBe(
+      "file:///C:/footage/take-01.mp4",
+    );
+    // Fallback chain for items without provenance stays intact.
+    expect(imported.mediaLibrary.items[1]?.originalUrl).toBe(
+      "data:image/jpeg;base64,BBBB",
+    );
+    expect(imported.mediaLibrary.items[2]?.originalUrl).toBeUndefined();
+  });
+});
+
+describe("normalizeProjectSpeedDurations", () => {
+  const trackId = "track-video";
+  const makeSpeedClip = (overrides: Record<string, unknown> = {}) =>
+    ({
+      id: "clip-1",
+      mediaId: "media-1",
+      trackId,
+      startTime: 0,
+      duration: 10,
+      inPoint: 0,
+      outPoint: 10,
+      effects: [],
+      audioEffects: [],
+      transform: {
+        position: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 },
+        rotation: 0,
+        anchor: { x: 0.5, y: 0.5 },
+        opacity: 1,
+      },
+      volume: 1,
+      keyframes: [],
+      ...overrides,
+    }) as Project["timeline"]["tracks"][number]["clips"][number];
+
+  const makeTrack = (clips: ReturnType<typeof makeSpeedClip>[]) => ({
+    id: trackId,
+    type: "video" as const,
+    name: "Primary",
+    clips,
+    transitions: [],
+    locked: false,
+    hidden: false,
+    muted: false,
+    solo: false,
+  });
+
+  it("recomputes a ramped clip's duration from the canonical integral and updates the timeline", () => {
+    const neighbor = makeSpeedClip({
+      id: "neighbor",
+      startTime: 0,
+      duration: 4,
+      outPoint: 4,
+    });
+    const ramped = makeSpeedClip({
+      id: "ramp",
+      startTime: 10,
+      duration: 10, // stale: authored before the ramp existed
+      speedKeyframes: [
+        { id: "kf-a", time: 0, speed: 1, easing: "linear" },
+        { id: "kf-b", time: 10, speed: 2, easing: "linear" },
+      ],
+    });
+    const project = makeProject({
+      timeline: {
+        ...makeProject().timeline,
+        duration: 20,
+        tracks: [makeTrack([neighbor, ramped])],
+      },
+    });
+
+    const normalized = normalizeProjectSpeedDurations(project);
+    const clips = normalized.timeline.tracks[0]!.clips;
+
+    // Integral of 1/speed over source 0..10 with a 1→2 linear ramp ≈ 10·ln 2
+    // (the 1000-step midpoint sum matches the analytic value to ~3e-7).
+    expect(clips[1]!.duration).toBeCloseTo(10 * Math.log(2), 5);
+    // Neighboring speed-1 clip keeps its explicit duration, untouched.
+    expect(clips[0]).toBe(neighbor);
+    expect(clips[0]!.duration).toBe(4);
+    // The timeline duration follows the recomputed clip durations.
+    expect(normalized.timeline.duration).toBeCloseTo(10 + 10 * Math.log(2), 5);
+    // Already-normalized durations are left alone (same project object back).
+    expect(normalizeProjectSpeedDurations(normalized)).toBe(normalized);
+  });
+
+  it("adds freeze-frame holds into the clip duration", () => {
+    const neighbor = makeSpeedClip({
+      id: "neighbor",
+      startTime: 0,
+      duration: 4,
+      outPoint: 4,
+    });
+    const frozen = makeSpeedClip({
+      id: "frozen",
+      startTime: 4,
+      duration: 10, // stale: hold not included
+      freezeFrames: [
+        {
+          id: "ff-1",
+          clipId: "frozen",
+          sourceTime: 4,
+          startTime: 2,
+          duration: 3,
+        },
+      ],
+    });
+    const project = makeProject({
+      timeline: {
+        ...makeProject().timeline,
+        duration: 14,
+        tracks: [makeTrack([neighbor, frozen])],
+      },
+    });
+
+    const normalized = normalizeProjectSpeedDurations(project);
+    const clips = normalized.timeline.tracks[0]!.clips;
+
+    // Moving duration (10 / 1) plus the 3 s hold.
+    expect(clips[1]!.duration).toBe(13);
+    expect(clips[0]).toBe(neighbor);
+    expect(clips[0]!.duration).toBe(4);
+    // Max clip end: 4 + 13 = 17.
+    expect(normalized.timeline.duration).toBe(17);
+  });
 });
 
 describe("imported motion expression preservation", () => {

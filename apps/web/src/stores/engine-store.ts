@@ -25,7 +25,6 @@ import {
   titleEngine as coreTitleEngine,
   graphicsEngine as coreGraphicsEngine,
 } from "@reelterminal/core";
-import type { RenderedFrame } from "@reelterminal/core";
 
 const lazyEngineCache = new Map<string, unknown>();
 
@@ -89,7 +88,6 @@ export interface EngineState {
   maskEngine: MaskEngine | null;
   nestedSequenceEngine: NestedSequenceEngine | null;
   adjustmentLayerEngine: AdjustmentLayerEngine | null;
-  currentFrame: RenderedFrame | null;
   playbackStats: PlaybackStats | null;
   initialize: () => Promise<void>;
   dispose: () => void;
@@ -148,7 +146,6 @@ export const useEngineStore = create<EngineState>()(
     nestedSequenceEngine: null,
     adjustmentLayerEngine: null,
 
-    currentFrame: null,
     playbackStats: DEFAULT_PLAYBACK_STATS,
 
     initialize: async () => {
@@ -226,10 +223,6 @@ export const useEngineStore = create<EngineState>()(
       state.exportEngine?.dispose();
       state.graphicsEngine?.clearCache();
 
-      if (state.currentFrame) {
-        state.currentFrame.image.close();
-      }
-
       lazyEngineCache.clear();
 
       set({
@@ -252,7 +245,6 @@ export const useEngineStore = create<EngineState>()(
         maskEngine: null,
         nestedSequenceEngine: null,
         adjustmentLayerEngine: null,
-        currentFrame: null,
         playbackStats: DEFAULT_PLAYBACK_STATS,
       });
     },

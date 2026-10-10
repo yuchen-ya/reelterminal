@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { useProjectStore } from "./project-store";
 import { useEngineStore } from "./engine-store";
 import { useNotificationStore } from "./notification-store";
+import { useUIStore } from "./ui-store";
 import type {
   Action,
   Project,
@@ -1839,6 +1840,178 @@ describe("ProjectStore", () => {
     it("should be able to undo after an action", async () => {
       await useProjectStore.getState().addTrack("video");
       expect(useProjectStore.getState().canUndo()).toBe(true);
+    });
+
+    it("redoes a clip-level undo before an earlier undone action", async () => {
+      await useProjectStore.getState().addTrack("text");
+      const textTrack = useProjectStore
+        .getState()
+        .project.timeline.tracks.find((track) => track.type === "text")!;
+      const clip = useProjectStore
+        .getState()
+        .createTextClip(textTrack.id, 0, "Hello", 5)!;
+      expect(clip).toBeTruthy();
+
+      // Simulate a clip-level update recorded after the create action, as a
+      // persisted overlay history entry would be restored.
+      useProjectStore.setState({
+        clipUndoStack: [
+          {
+            type: "text",
+            op: "update",
+            timestamp: Date.now() + 5,
+            clipId: clip.id,
+            trackId: textTrack.id,
+            clipData: { ...clip, text: "Seeded before" },
+            afterData: { ...clip, text: "Seeded after" },
+          },
+        ],
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await useProjectStore.getState().addTrack("audio");
+      expect(useProjectStore.getState().project.timeline.tracks).toHaveLength(2);
+
+      // The action is the newest change, so the first undo takes it.
+      await useProjectStore.getState().undo();
+      expect(useProjectStore.getState().project.timeline.tracks).toHaveLength(1);
+      expect(useProjectStore.getState().clipUndoStack).toHaveLength(1);
+
+      // The clip-level change is the most recent undo.
+      await useProjectStore.getState().undo();
+      expect(useProjectStore.getState().clipUndoStack).toHaveLength(0);
+      expect(useProjectStore.getState().clipRedoStack).toHaveLength(1);
+
+      // Redo must replay the most recent undo first: the clip change — the
+      // audio track must NOT come back yet.
+      await useProjectStore.getState().redo();
+      expect(useProjectStore.getState().project.timeline.tracks).toHaveLength(1);
+      expect(useProjectStore.getState().clipRedoStack).toHaveLength(0);
+      expect(useProjectStore.getState().clipUndoStack).toHaveLength(1);
+
+      // ...and only then the earlier action.
+      await useProjectStore.getState().redo();
+      expect(useProjectStore.getState().project.timeline.tracks).toHaveLength(2);
+    });
+
+    it("prunes ghost selections when an undo fails midway", async () => {
+      const base = useProjectStore.getState().project;
+      const existingClip: Clip = {
+        id: "clip-existing",
+        mediaId: "media-x",
+        trackId: "ghost-track",
+        startTime: 0,
+        duration: 4,
+        inPoint: 0,
+        outPoint: 4,
+        effects: [],
+        audioEffects: [],
+        transform: {
+          position: { x: 0.5, y: 0.5 },
+          scale: { x: 1, y: 1 },
+          rotation: 0,
+          anchor: { x: 0.5, y: 0.5 },
+          opacity: 1,
+        },
+        volume: 1,
+        keyframes: [],
+      };
+      useProjectStore.getState().loadProject({
+        ...base,
+        mediaLibrary: {
+          items: [
+            {
+              id: "media-x",
+              name: "ghost.mp4",
+              type: "video",
+              fileHandle: null,
+              blob: null,
+              metadata: {
+                duration: 4,
+                width: 1920,
+                height: 1080,
+                frameRate: 30,
+                codec: "h264",
+                sampleRate: 48000,
+                channels: 2,
+              },
+            } as MediaItem,
+          ],
+        },
+        timeline: {
+          ...base.timeline,
+          tracks: [
+            {
+              id: "ghost-track",
+              type: "video",
+              name: "Video",
+              clips: [existingClip],
+              transitions: [],
+              locked: false,
+              hidden: false,
+              muted: false,
+              solo: false,
+            },
+          ],
+        },
+      });
+
+      // One grouped undo entry whose inverses apply one-by-one: removing the
+      // added clip, then restoring the pre-existing one.
+      const batch = useProjectStore.getState().executeActionBatch(
+        [
+          {
+            type: "clip/remove",
+            id: "ghost-remove",
+            timestamp: Date.now(),
+            params: { clipId: "clip-existing" },
+          },
+          {
+            type: "clip/add",
+            id: "ghost-add",
+            timestamp: Date.now(),
+            params: {
+              trackId: "ghost-track",
+              mediaId: "media-x",
+              clipId: "clip-added",
+              startTime: 4,
+              duration: 2,
+            },
+          },
+        ],
+        { groupLabel: "ghost undo", historyOwner: "human" },
+      );
+      expect(batch.result.success).toBe(true);
+      expect(useProjectStore.getState().getClip("clip-added")).toBeTruthy();
+
+      useUIStore.getState().selectMultiple([
+        { type: "clip", id: "clip-added", trackId: "ghost-track" },
+      ]);
+      expect(useUIStore.getState().getSelectedClipIds()).toEqual(["clip-added"]);
+
+      const executor = useProjectStore.getState().actionExecutor as unknown as {
+        applyAction: (action: Action, project: Project) => Promise<void>;
+      };
+      const realApplyAction = executor.applyAction.bind(executor);
+      let inverseCalls = 0;
+      const spy = vi
+        .spyOn(executor, "applyAction")
+        .mockImplementation(async (action, project) => {
+          inverseCalls += 1;
+          if (inverseCalls > 1) throw new Error("simulated mid-undo failure");
+          await realApplyAction(action, project);
+        });
+
+      try {
+        const result = await useProjectStore.getState().undo();
+        expect(result.success).toBe(false);
+        // The first inverse still applied, so the selected clip is gone...
+        expect(useProjectStore.getState().getClip("clip-added")).toBeUndefined();
+        // ...and its ghost selection must be pruned despite the failure.
+        expect(useUIStore.getState().getSelectedClipIds()).toEqual([]);
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 

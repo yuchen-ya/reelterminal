@@ -178,6 +178,7 @@ export class PlaybackController {
   }
 
   getCurrentFrame(): RenderedFrame | null {
+    // The controller owns this frame and closes it when replaced or disposed.
     return this.currentFrame;
   }
 

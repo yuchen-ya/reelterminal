@@ -52,6 +52,10 @@ export function createProductionService(
     async captureReview(args: ProductionGuard & { timelineFrame: number }) {
       const project = await snapshot(args);
       const fps = project.settings.frameRate;
+      // Without this guard a zero/non-finite frame rate yields NaN/Infinity
+      // that slips past the duration check into preview.render_frame.
+      if (!Number.isFinite(fps) || fps <= 0)
+        throw new Error("Project frame rate must be positive and finite");
       const timeSec = args.timelineFrame / fps;
       if (
         !Number.isSafeInteger(args.timelineFrame) ||

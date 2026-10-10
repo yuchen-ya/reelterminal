@@ -1,182 +1,52 @@
-import { FACADE_VERBS } from "@reelterminal/agent-facade";
-/**
- * Schema parity tests:
- *
- * (a) CI deep-equal — the served tools/list inputSchemas deep-equal the
- *     facade emission EMITTED_VERB_JSON_SCHEMAS (the transport assigns
- *     them by reference; copy drift dies here);
- * (b) ajv differential corpus — for EVERY verb, EVERY case of
- *     VERB_SCHEMA_CORPUS classifies identically under ajv (emitted schema,
- *     ajv is the transport's devDependency only) and the facade's runtime
- *     validators (mirroring session.ts's validation sequence, including
- *     the cross-field validation-only predicates);
- * (c) ordering pins — schemaValid:true / expectValid:false cases (clip.trim
- *     at-least-one-of, odd width, verify region x+width ≤ 1) must pass
- *     ajv and still fail INVALID_PARAMS at the facade: the schema is a
- *     boundary superset filter, the runtime validators are the only
- *     authority (Decision 4 item 5 passthrough).
- */
 import { describe, expect, it } from "vitest";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020";
 import { TOOLS } from "../src/tools";
-import { EMITTED_VERB_JSON_SCHEMAS } from "@reelterminal/agent-facade";
-import { VERB_SCHEMA_CORPUS } from "@reelterminal/agent-facade";
-import { validateObject } from "@reelterminal/agent-facade/validate";
-import { validateEditOp } from "@reelterminal/agent-facade/ops";
 import {
-  EXPORT_SETTINGS_SCHEMA,
-  VISUAL_INSPECT_RANGE_SCHEMA,
-  VERIFY_COMPARE_SCHEMA,
-  VERIFY_EXPECT_SCHEMA,
-  VERIFY_REGION_SCHEMA,
-  VERB_PARAM_SCHEMAS,
-  PROJECT_SETTINGS_SCHEMA,
-  EDITOR_CONTROL_TARGET_SCHEMA,
-  TIMELINE_QUERY_RANGE_SCHEMA,
-} from "@reelterminal/agent-facade/verb-schemas";
-import {
-  isValidPresetPayload,
-  presetApplyTargetProblem,
-} from "@reelterminal/agent-facade/preset-verbs";
-import { isKnownManualScreenId } from "@reelterminal/agent-facade/gui-manual";
+  createAgentFacade,
+  EMITTED_VERB_JSON_SCHEMAS,
+  FACADE_VERBS,
+  VERB_SCHEMA_CORPUS,
+  type FacadeResult,
+} from "@reelterminal/agent-facade";
 
 const ajv = new Ajv2020({ strict: false, allErrors: true });
-const compiled = new Map<string, any>();
-function compile(verb: string, schema: unknown): any {
-  let c = compiled.get(verb);
-  if (!c) {
-    c = ajv.compile(schema as object);
-    compiled.set(verb, c);
+const compiled = new Map<string, ReturnType<typeof ajv.compile>>();
+const MEDIA_ROOT = fileURLToPath(new URL("../../agent-facade/src/media/fixtures/", import.meta.url));
+const MEDIA_PREFLIGHT_PATH = join(MEDIA_ROOT, "tiny-mp4.ts");
+const FONT_ROOT = fileURLToPath(new URL("../../../apps/web/public/fonts/", import.meta.url));
+const FONT_PATH = join(FONT_ROOT, "1Ptug8zYS_SKggPNyCMIT4ttDfCmxA.woff2");
+
+function compile(verb: string, schema: unknown) {
+  let validator = compiled.get(verb);
+  if (!validator) {
+    validator = ajv.compile(schema as object);
+    compiled.set(verb, validator);
   }
-  return c;
+  return validator;
 }
 
-/**
- * Mirror of the facade's runtime boundary validation sequence per verb
- * (session.ts): the closed envelope schema, plus the nested schemas and
- * validation-only cross-field predicates for the verbs that have them.
- */
-function facadeRuntimeValidation(verb: string, params: unknown): boolean {
-  try {
-    const envelope = (VERB_PARAM_SCHEMAS as Record<string, typeof VERB_PARAM_SCHEMAS[keyof typeof VERB_PARAM_SCHEMAS]>)[verb];
-    if (!envelope) throw new Error(`no declaration for verb ${verb}`);
-    const valid = validateObject<Record<string, unknown>>(params, envelope, `${verb} params`);
-    switch (verb) {
-      case "project.create": {
-        // session.projectCreate also schema-checks the settings subset.
-        if (valid.settings !== undefined) {
-          validateObject(valid.settings, PROJECT_SETTINGS_SCHEMA, "project.create params.settings");
-        }
-        return true;
-      }
-      case "edit.apply":
-      case "edit.validate": {
-        const ops = valid.ops as unknown[];
-        if (ops.length === 0) return false; // minItems 1 is enforced at runtime
-        ops.forEach((op, index) => validateEditOp(op, index)); // cross-field: trim in/out
-        return true;
-      }
-      case "timeline.query": {
-        if (valid.timeRange !== undefined) {
-          const range = validateObject<Record<string, number>>(
-            valid.timeRange,
-            TIMELINE_QUERY_RANGE_SCHEMA,
-            "timeline.query params.timeRange",
-          );
-          if (range.endSec <= range.startSec) return false;
-        }
-        return true;
-      }
-      case "export.start": {
-        if (valid.settings !== undefined) {
-          validateObject(valid.settings, EXPORT_SETTINGS_SCHEMA, "export.start params.settings");
-        }
-        return true;
-      }
-      case "visual.inspect": {
-        if (valid.timeRange !== undefined) {
-          validateObject(valid.timeRange, VISUAL_INSPECT_RANGE_SCHEMA, "visual.inspect params.timeRange");
-        }
-        if ((valid.clipId === undefined) === (valid.timeRange === undefined)) return false;
-        return true;
-      }
-      case "verify.artifact": {
-        if (valid.expect !== undefined) {
-          validateObject(valid.expect, VERIFY_EXPECT_SCHEMA, "verify.artifact params.expect");
-        }
-        if (valid.compare !== undefined) {
-          const compare = validateObject<Record<string, any>>(valid.compare, VERIFY_COMPARE_SCHEMA, "verify.artifact params.compare");
-          if (compare.region !== undefined) {
-            const region = validateObject<Record<string, number>>(compare.region, VERIFY_REGION_SCHEMA, "verify.artifact params.compare.region");
-            // validation-only predicate (not expressible in JSON Schema)
-            if (region.x + region.width > 1 || region.y + region.height > 1) return false;
-          }
-        }
-        return true;
-      }
-      case "editor.control": {
-        const action = valid.action;
-        if (action === "seek" && valid.timeSeconds === undefined) return false;
-        if (action !== "seek" && valid.timeSeconds !== undefined) return false;
-        if (action === "select" && (!Array.isArray(valid.targets) || valid.targets.length === 0)) return false;
-        if (action !== "select" && (valid.targets !== undefined || valid.selectionMode !== undefined)) return false;
-        if (Array.isArray(valid.targets)) {
-          valid.targets.forEach((target, index) =>
-            validateObject(target, EDITOR_CONTROL_TARGET_SCHEMA, `${verb} params.targets[${index}]`),
-          );
-        }
-        return true;
-      }
-      case "material.create": {
-        // Cross-field predicate mirrored from the live facade boundary.
-        if (valid.kind === "media" && (valid.filePath === undefined || valid.mediaType === undefined)) {
-          return false;
-        }
-        return true;
-      }
-      case "font.upload": {
-        // Cross-field predicate mirrored from the live facade boundary:
-        // exactly one byte input (size/containment are live-store checks).
-        if ((valid.filePath === undefined) === (valid.dataBase64 === undefined)) {
-          return false;
-        }
-        return true;
-      }
-      case "preset.create": {
-        // Deep per-kind payload validation mirrors the live session body
-        // (the shared core validator the GUI save path also uses).
-        return isValidPresetPayload(valid.payload);
-      }
-      case "preset.update": {
-        if (valid.payload !== undefined && !isValidPresetPayload(valid.payload)) {
-          return false;
-        }
-        return true;
-      }
-      case "preset.apply": {
-        return presetApplyTargetProblem(valid.target) === null;
-      }
-      case "help.describe": {
-        // Session-body predicate mirrored from gui-manual.ts: the id lookup
-        // runs after the closed envelope schema (shared predicate).
-        return isKnownManualScreenId(valid.screenId as string);
-      }
-      default:
-        return true;
-    }
-  } catch {
-    return false; // FacadeError INVALID_PARAMS: boundary rejection
+async function productionFacadeErrorCode(
+  verb: string,
+  params: unknown,
+): Promise<string | undefined> {
+  const facade = createAgentFacade({ mediaRoots: [MEDIA_ROOT, FONT_ROOT] }) as unknown as Record<string, unknown>;
+  const call = facade[verb];
+  if (typeof call !== "function") {
+    throw new Error(`production facade has no method for "${verb}"`);
   }
+  const result = await (call as (params: unknown) => Promise<FacadeResult<unknown>>)(params);
+  return result.ok ? undefined : result.error.code;
 }
 
 describe("Decision 4 item 2: transport assigns facade schemas verbatim", () => {
   it("TOOLS inputSchemas are the EMITTED_VERB_JSON_SCHEMAS objects (deep-equal, by reference)", () => {
-    const verbOrder = FACADE_VERBS;
     const emitted = EMITTED_VERB_JSON_SCHEMAS as Record<string, unknown>;
     expect(TOOLS).toHaveLength(FACADE_VERBS.length);
-    TOOLS.forEach((tool, i) => {
-      expect(tool.inputSchema).toBe(emitted[verbOrder[i]]);
-      expect(tool.inputSchema).toEqual(emitted[verbOrder[i]]);
+    TOOLS.forEach((tool, index) => {
+      expect(tool.inputSchema).toBe(emitted[FACADE_VERBS[index]]);
+      expect(tool.inputSchema).toEqual(emitted[FACADE_VERBS[index]]);
     });
   });
 
@@ -187,34 +57,49 @@ describe("Decision 4 item 2: transport assigns facade schemas verbatim", () => {
   });
 });
 
-describe("Decision 4 item 3: ajv differential corpus", () => {
+describe("Decision 4 item 3: ajv differential corpus against the production facade", () => {
+  it("covers every registered verb", () => {
+    expect(Object.keys(VERB_SCHEMA_CORPUS).sort()).toEqual([...FACADE_VERBS].sort());
+  });
+
   for (const [verb, cases] of Object.entries(VERB_SCHEMA_CORPUS)) {
     describe(verb, () => {
       for (const testCase of cases) {
-        it(`"${testCase.name}" classifies identically`, () => {
-          const validate = compile(verb, EMITTED_VERB_JSON_SCHEMAS[verb as keyof typeof EMITTED_VERB_JSON_SCHEMAS]);
-          const schemaValid = validate(testCase.params) as boolean;
+        it(`"${testCase.name}" classifies identically`, async () => {
+          const validator = compile(
+            verb,
+            EMITTED_VERB_JSON_SCHEMAS[verb as keyof typeof EMITTED_VERB_JSON_SCHEMAS],
+          );
+          const schemaValid = validator(testCase.params) as boolean;
           const expectedSchemaValid = testCase.schemaValid ?? testCase.expectValid;
           expect(schemaValid).toBe(expectedSchemaValid);
 
-          const runtimeValid = facadeRuntimeValidation(verb, testCase.params);
-          expect(runtimeValid).toBe(testCase.expectValid);
+          const params = verb === "media.import_preflight" &&
+            typeof (testCase.params as { path?: unknown }).path === "string"
+            ? { ...(testCase.params as Record<string, unknown>), path: MEDIA_PREFLIGHT_PATH }
+            : verb === "font.upload" &&
+                typeof (testCase.params as { filePath?: unknown }).filePath === "string" &&
+                (testCase.params as { filePath: string }).filePath.length > 0
+              ? { ...(testCase.params as Record<string, unknown>), filePath: FONT_PATH }
+              : testCase.params;
+          const errorCode = await productionFacadeErrorCode(verb, params);
+          if (testCase.expectValid) {
+            expect(errorCode).not.toBe("INVALID_PARAMS");
+          } else {
+            expect(errorCode).toBe("INVALID_PARAMS");
+          }
         });
       }
     });
   }
 
-  it("ordering pins: schema-valid but facade-rejected cases exist and are asserted", () => {
-    const pins: { verb: string; name: string }[] = [];
-    for (const [verb, cases] of Object.entries(VERB_SCHEMA_CORPUS)) {
-      for (const c of cases) {
-        if (c.schemaValid === true && c.expectValid === false) pins.push({ verb, name: c.name });
-      }
-    }
-    // clip.trim at-least-one-of, odd width, region x+width ≤ 1
+  it("ordering pins retain schema-valid but production-rejected cases", () => {
+    const pins = Object.values(VERB_SCHEMA_CORPUS)
+      .flat()
+      .filter((testCase) => testCase.schemaValid === true && !testCase.expectValid);
     expect(pins.length).toBeGreaterThanOrEqual(3);
-    expect(pins.some((p) => p.verb === "edit.apply")).toBe(true);
-    expect(pins.some((p) => p.verb === "preview.render_frame")).toBe(true);
-    expect(pins.some((p) => p.verb === "verify.artifact")).toBe(true);
+    expect(pins.some((testCase) => testCase.name.includes("clip.trim"))).toBe(true);
+    expect(pins.some((testCase) => testCase.name.includes("width"))).toBe(true);
+    expect(pins.some((testCase) => testCase.name.includes("region"))).toBe(true);
   });
 });

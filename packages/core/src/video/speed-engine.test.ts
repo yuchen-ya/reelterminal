@@ -158,6 +158,33 @@ describe("SpeedEngine", () => {
       expect(speedEngine.getFrameIndexAtTime("clip-1", 1, 30)).toBe(60);
       expect(speedEngine.getFrameIndexAtTime("clip-1", 2, 30)).toBe(120);
     });
+
+    it("covers long ranges at awkward frame rates without duplicate or skipped indices", () => {
+      const clip = { id: "long", inPoint: 0, outPoint: 1000, speed: 1 } as Clip;
+      speedEngine.loadClips([clip]);
+
+      // 10 fps over 1000 s: 10,000 samples. Accumulating `t += 1/10` drifts
+      // off frame centers over long ranges and duplicates/skips indices;
+      // deriving each time from the integer counter must not.
+      const frames10 = speedEngine.getFrameIndicesInRange("long", 0, 1000, 10);
+      expect(frames10).toHaveLength(10000);
+      expect(new Set(frames10).size).toBe(frames10.length);
+      expect(frames10[0]).toBe(0);
+      expect(frames10[frames10.length - 1]).toBe(9999);
+
+      // 29.97 fps over the same range: 29,970 samples (endTime exclusive).
+      const frames2997 = speedEngine.getFrameIndicesInRange(
+        "long",
+        0,
+        1000,
+        29.97,
+      );
+      expect(frames2997).toHaveLength(29970);
+      expect(new Set(frames2997).size).toBe(frames2997.length);
+      for (let i = 1; i < frames2997.length; i++) {
+        expect(frames2997[i]).toBe(frames2997[i - 1]! + 1);
+      }
+    });
   });
 
   describe("Playback Timing Invariants", () => {

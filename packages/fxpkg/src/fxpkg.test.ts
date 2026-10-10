@@ -86,6 +86,36 @@ describe("validator", () => {
     expect(r.ok).toBe(false);
     expect(r.errors.some((e) => e.code === "cycle")).toBe(true);
   });
+  it("reports unknown_abi instead of crashing on a malformed ABI", () => {
+    const g: Graph = { ...warmVignette, abi: "9.9" as Graph["abi"] };
+    expect(() => validateGraph(g)).not.toThrow();
+    expect(validateGraph(g).errors.some((e) => e.code === "unknown_abi")).toBe(true);
+  });
+  it("validates a 50k-node chain without overflowing the stack", () => {
+    const count = 50_000;
+    const nodes = [
+      { id: "src", type: "Source" },
+      ...Array.from({ length: count - 2 }, (_, i) => ({ id: `n${i}`, type: "Multiply" })),
+      { id: "out", type: "Output" },
+    ];
+    const ids = ["src", ...Array.from({ length: count - 2 }, (_, i) => `n${i}`), "out"];
+    const edges = ids.slice(0, -1).map((id, i) => {
+      const toNode = ids[i + 1]!;
+      return { fromNode: id, fromPort: "out", toNode, toPort: toNode === "out" ? "in" : "a" };
+    });
+    const deep: Graph = { ...warmVignette, nodes, edges };
+    const r = validateGraph(deep);
+    expect(r.ok).toBe(true);
+  });
+  it("rejects two edges driving the same input port", () => {
+    const g: Graph = {
+      ...warmVignette,
+      edges: [...warmVignette.edges, { fromNode: "src", fromPort: "out", toNode: "sat", toPort: "in" }],
+    };
+    const r = validateGraph(g);
+    expect(r.ok).toBe(false);
+    expect(r.errors.some((e) => e.code === "duplicate_input_edge")).toBe(true);
+  });
   it("rejects unknown nodes", () => {
     const g: Graph = { ...warmVignette, nodes: [...warmVignette.nodes, { id: "x", type: "Nope" }] };
     expect(validateGraph(g).errors.some((e) => e.code === "unknown_node")).toBe(true);

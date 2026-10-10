@@ -705,6 +705,7 @@ export const frameToolsPlugin = definePlugin({
         selection: {
           check: (v: unknown) => {
             if (!isPlainObject(v)) return false;
+            if (Object.keys(v).some((k) => !["frames", "startFrame", "endFrame"].includes(k))) return false;
             const hasList = v.frames !== undefined;
             const hasRange = v.startFrame !== undefined || v.endFrame !== undefined;
             if (hasList === hasRange) return false;
@@ -862,6 +863,7 @@ export const frameToolsPlugin = definePlugin({
         range: {
           check: (v: unknown) => {
             if (!isPlainObject(v)) return false;
+            if (Object.keys(v).some((k) => !["startFrame", "endFrame", "frames"].includes(k))) return false;
             const { startFrame, endFrame, frames } = v;
             if (!isNonNegativeInteger(startFrame) || !Number.isInteger(endFrame) || (endFrame as number) <= (startFrame as number)) return false;
             if (frames === undefined) return true;

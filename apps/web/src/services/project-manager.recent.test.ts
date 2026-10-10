@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import type { Project } from "@reelterminal/core";
 import { ProjectManager, projectManager } from "./project-manager";
+import { LEGACY_PROJECT_DB_NAME } from "./legacy-storage-keys";
 
 const indexedDb = new IDBFactory();
 vi.stubGlobal("indexedDB", indexedDb);
@@ -23,6 +24,25 @@ function makeProject(id: string, name: string): Project {
     timeline: { duration: 2, tracks: [], markers: [], subtitles: [] },
     mediaLibrary: { items: [] },
   } as Project;
+}
+
+/** Raw recent-store row count; getRecentProjects() only returns a bounded view. */
+async function storedRecentRecordCount(): Promise<number> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(LEGACY_PROJECT_DB_NAME);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  try {
+    return await new Promise<number>((resolve, reject) => {
+      const tx = db.transaction("recent", "readonly");
+      const request = tx.objectStore("recent").count();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    db.close();
+  }
 }
 
 beforeEach(async () => {
@@ -106,5 +126,18 @@ describe("ProjectManager recent projects", () => {
       id: project.id,
       name: project.name,
     });
+  });
+
+  it("bounds the stored recent list, not just the returned view", async () => {
+    for (let index = 0; index < 12; index += 1) {
+      await projectManager.addToRecent(makeProject(`recent-cap-${index}`, `Cap ${index}`));
+    }
+
+    // Trimming runs after each save's transaction resolves; wait for it to drain.
+    await vi.waitFor(async () => {
+      expect(await storedRecentRecordCount()).toBeLessThanOrEqual(10);
+    });
+    expect(await storedRecentRecordCount()).toBeLessThan(12);
+    expect(await projectManager.getRecentProjects()).toHaveLength(10);
   });
 });

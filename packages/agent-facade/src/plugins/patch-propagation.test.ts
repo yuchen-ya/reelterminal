@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { ToolContext } from "../plugin-api";
+import { bindTools, type ToolContext } from "../plugin-api";
 import { resolveToolFfmpeg, runToolProcess } from "../media/ffmpeg-bin";
 import { opencvToolPreflight } from "../media/opencv-runner";
 import { patchPropagationPlugin, type PatchPropagationInput, type PatchPropagationResult } from "./patch-propagation";
@@ -113,6 +113,17 @@ async function propagate(
 }
 
 describe("patch.propagate", () => {
+  it("rejects unknown keys inside the range object at the boundary", async () => {
+    const tools = bindTools(patchPropagationPlugin.tools, makeContext());
+    const result = await tools["patch.propagate"]({
+      source: { path: "C:/w/source.mkv" },
+      range: { startFrame: 0, endFrame: 8, junk: true },
+      patch: { path: "C:/w/patch.png" },
+      mask: { path: "C:/w/mask.png" },
+    } as never);
+    expect(result).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS" } });
+  });
+
   it.skipIf(!ready)("tracks known translation, preserves pixels outside the moving mask and reports exact PTS", async () => {
     const result = await propagate(normalVideo, 8);
     expect(result.status).toBe("propagated");

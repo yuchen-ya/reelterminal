@@ -75,7 +75,12 @@ export function createIdbAgentTaskStorage(): AgentTaskStorage {
 
   const db = (): Promise<IDBDatabase | null> => {
     if (!dbPromise) dbPromise = openDatabase();
-    return dbPromise;
+    // A null open (transient failure or onblocked) must not stay cached:
+    // reset it so the next operation retries the open.
+    return dbPromise.then((database) => {
+      if (!database) dbPromise = null;
+      return database;
+    });
   };
 
   const requireDb = async (): Promise<IDBDatabase> => {

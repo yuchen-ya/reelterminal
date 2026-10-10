@@ -106,6 +106,10 @@ import { planRecoverMotionScene3DLayer } from "../motion/creation-recovery";
 import { ProjectChangeJournal } from "@reelterminal/agent-facade/project-changes";
 import { getMaterialLibraryService } from "../services/material-library/library-service";
 import { saveMediaBlob } from "../services/media-storage";
+import {
+  releaseUncommittedMediaBlob,
+  trackUncommittedMediaBlob,
+} from "../services/project-media-gc";
 import { getMissingProjectImageDependencyIds } from "../services/project-render-dependencies";
 import { captureTimelineClipboard, getTimelineClipboard, planTimelinePaste, ClipboardPasteError } from "./project/timeline-clipboard";
 import type {
@@ -2145,19 +2149,30 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             const missing = getMissingProjectImageDependencyIds(clipboard.dependencies);
             if (missing.length > 0) return failed(i18n.t("previewClipboard.missingDependencies", { names: missing.join(", ") }));
           }
-          for (const media of plan.mediaToSave) {
-            await saveMediaBlob(state.project.id, media.id, media.blob!, media.metadata, media.name);
+          // Persisted bytes have no project reference until the batch commits.
+          // Track them so a reviewed GC treats them as live during this window,
+          // mirroring the importMedia tracking lifecycle.
+          const savedMediaIds = plan.mediaToSave.map((media) => media.id);
+          try {
+            for (const media of plan.mediaToSave) {
+              trackUncommittedMediaBlob(media.id, state.project.id);
+              await saveMediaBlob(state.project.id, media.id, media.blob!, media.metadata, media.name);
+            }
+            if (options && (!get().isForeground || get().projectRevision !== options.expectedRevision)) {
+              return failed(i18n.t("previewClipboard.changed"));
+            }
+            const batch = get().executeActionBatch(plan.actions, {
+              groupLabel: "Paste timeline clips",
+              historyOwner: state.actionExecutor.getHistory().getActiveOwner(),
+            });
+            if (!batch.result.success) return [batch.result];
+            set({ lastPastedClipIds: plan.clipIds });
+            return clipboard.items.map(() => ({ success: true }));
+          } finally {
+            // Committed bytes are owned by the published project entries;
+            // bytes from a lost race stay on disk as GC-visible orphans.
+            for (const id of savedMediaIds) releaseUncommittedMediaBlob(id);
           }
-          if (options && (!get().isForeground || get().projectRevision !== options.expectedRevision)) {
-            return failed(i18n.t("previewClipboard.changed"));
-          }
-          const batch = get().executeActionBatch(plan.actions, {
-            groupLabel: "Paste timeline clips",
-            historyOwner: state.actionExecutor.getHistory().getActiveOwner(),
-          });
-          if (!batch.result.success) return [batch.result];
-          set({ lastPastedClipIds: plan.clipIds });
-          return clipboard.items.map(() => ({ success: true }));
         };
         const submit = get().submitWorkspaceMutation;
         return submit ? submit(paste) : paste();

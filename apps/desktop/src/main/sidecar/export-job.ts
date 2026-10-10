@@ -37,6 +37,7 @@ export function buildFfmpegArgs(a: ExportArgs): string[] {
       encoder: a.encoder,
       mode: a.mode,
       quality: a.quality,
+      bitrateKbps: a.bitrateKbps,
       width: a.width,
       height: a.height,
       frameRate: a.frameRate,

@@ -3,7 +3,7 @@
  */
 import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { saveMediaBlob, loadMediaRecord, getMediaIdsByProject } from "./media-storage";
+import { saveMediaBlob, loadMediaRecord, getMediaIdsByProject, deleteMediaBlob } from "./media-storage";
 
 beforeAll(() => {
   vi.stubGlobal("indexedDB", new IDBFactory());
@@ -98,5 +98,39 @@ describe("immutable media storage", () => {
 
     expect(beginWrite).toHaveBeenCalledWith(expect.objectContaining({ extension: "png" }));
     expect(result.contentUrl).toBe("C:/app/controlled-media/project/media.png");
+  });
+
+  it("keeps other projects' controlled files when deleting a shared media id for one project", async () => {
+    const mediaId = `shared-${crypto.randomUUID()}`;
+    const projectA = `project-a-${crypto.randomUUID()}`;
+    const projectB = `project-b-${crypto.randomUUID()}`;
+    // Controlled-store copies under both projects; the IDB record is absent.
+    const controlledPaths = new Set([
+      `${projectA}/${mediaId}.mp4`,
+      `${projectB}/${mediaId}.mp4`,
+    ]);
+    const mediaStore = {
+      listAll: vi.fn(async () =>
+        [...controlledPaths].map((path) => ({
+          projectId: path.split("/")[0],
+          mediaId,
+          path,
+          sizeBytes: 12,
+        })),
+      ),
+      // Mirrors the desktop store: unlink the media id under EVERY project.
+      delete: vi.fn(async (id: string) => {
+        for (const path of [...controlledPaths]) {
+          if (path.split("/")[1]?.startsWith(`${id}.`)) controlledPaths.delete(path);
+        }
+      }),
+    };
+    vi.stubGlobal("window", {
+      reelterminal: { platform: "desktop", mediaStore },
+    } as unknown as Window);
+
+    await deleteMediaBlob(mediaId, projectA);
+
+    expect(controlledPaths.has(`${projectB}/${mediaId}.mp4`)).toBe(true);
   });
 });

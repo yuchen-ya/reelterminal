@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { parseEncoders, selectEncoder } from "../src/main/sidecar/encoder-probe";
+import {
+  parseEncoders,
+  probeEncoderAvailability,
+  selectEncoder,
+} from "../src/main/sidecar/encoder-probe";
 
 const SAMPLE = `
  V....D h264_videotoolbox    VideoToolbox H.264 Encoder
@@ -8,11 +12,35 @@ const SAMPLE = `
  V....D prores_videotoolbox  Apple ProRes
 `;
 
+const SAMPLE_WITH_LEGEND = `
+Encoders:
+ V..... = Video
+ A..... = Audio
+ S..... = Subtitle
+ .F.... = Frame-level multithreading
+ ....D. = Codec supports direct rendering method 1
+-------
+ V....D libx264              libx264 H.264
+ V....D libvpx-vp9           libvpx VP9
+`;
+
 describe("encoder probe", () => {
   it("parses encoder names from ffmpeg -encoders output", () => {
     const names = parseEncoders(SAMPLE);
     expect(names).toContain("h264_videotoolbox");
     expect(names).toContain("libx264");
+  });
+
+  it("ignores the legend block without bogus '=' entries", () => {
+    const names = parseEncoders(SAMPLE_WITH_LEGEND);
+    expect(names).not.toContain("=");
+    expect(names).toEqual(["libx264", "libvpx-vp9"]);
+  });
+
+  it("selects libvpx-vp9 for vp9 when present", () => {
+    const names = parseEncoders(SAMPLE_WITH_LEGEND);
+    expect(selectEncoder("vp9", "win32", names, "balanced")).toBe("libvpx-vp9");
+    expect(selectEncoder("vp9", "win32", ["libvpx-vp9"], "balanced")).toBe("libvpx-vp9");
   });
 
   it("selects videotoolbox h264 on darwin when present", () => {
@@ -46,5 +74,49 @@ describe("selectEncoder mode-awareness", () => {
   it("falls back to software when hardware is missing", () => {
     const swOnly = ["libx264", "libx265", "libsvtav1"];
     expect(selectEncoder("h265", "darwin", swOnly, "balanced")).toBe("libx265");
+  });
+});
+
+describe("runtime encoder availability", () => {
+  it("filters hardware that exits unsuccessfully or times out, then selects software", async () => {
+    const execute = async (args: string[]) => {
+      if (args.includes("-encoders")) {
+        return {
+          stdout: `
+ V....D h264_nvenc         NVIDIA NVENC H.264
+ V....D h264_qsv           Intel Quick Sync H.264
+ V....D libx264            libx264 H.264
+`,
+        };
+      }
+
+      const encoder = args[args.indexOf("-c:v") + 1];
+      if (encoder === "h264_nvenc") {
+        throw Object.assign(new Error("encoder initialization failed"), {
+          code: 1,
+        });
+      }
+      if (encoder === "h264_qsv") {
+        throw Object.assign(new Error("encoder probe timed out"), {
+          code: "ETIMEDOUT",
+        });
+      }
+      return { stdout: "" };
+    };
+
+    const available = await probeEncoderAvailability(execute);
+
+    expect(available).toEqual(["libx264"]);
+    expect(selectEncoder("h264", "win32", available)).toBe("libx264");
+  });
+
+  it("propagates FFmpeg encoder-list failures instead of reporting an empty list", async () => {
+    const execute = async () => {
+      throw new Error("FFmpeg executable failed");
+    };
+
+    await expect(probeEncoderAvailability(execute)).rejects.toThrow(
+      "FFmpeg executable failed",
+    );
   });
 });

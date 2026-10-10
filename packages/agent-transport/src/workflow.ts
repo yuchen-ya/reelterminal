@@ -436,7 +436,9 @@ export function resolvePointer(
   let cursor: unknown = value;
   for (const part of parts) {
     if (Array.isArray(cursor)) {
-      const idx = /^\d+$/.test(part) ? Number(part) : -1;
+      // RFC 6901: array indices must not carry a leading zero ("01" is a
+      // miss, not index 1).
+      const idx = /^(0|[1-9]\d*)$/.test(part) ? Number(part) : -1;
       if (idx < 0 || idx >= cursor.length) {
         return { ok: false, miss: part };
       }

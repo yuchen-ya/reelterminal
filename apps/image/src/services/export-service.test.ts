@@ -167,6 +167,16 @@ describe('export-service', () => {
       expect(blob).toBeInstanceOf(Blob);
     });
 
+    it('rejects unsupported formats instead of emitting PNG bytes', async () => {
+      const project = makeProject();
+      await expect(
+        exportArtboard(project, project.artboards[0], makeOptions({ format: 'svg' })),
+      ).rejects.toThrow(/unsupported export format/i);
+      await expect(
+        exportArtboard(project, project.artboards[0], makeOptions({ format: 'pdf' })),
+      ).rejects.toThrow(/unsupported export format/i);
+    });
+
     it('creates a canvas with the artboard dimensions × scale', async () => {
       const project = makeProject();
       await exportArtboard(project, project.artboards[0], makeOptions({ scale: 2 }));

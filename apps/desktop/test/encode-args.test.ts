@@ -81,6 +81,21 @@ describe("videoEncodeArgs", () => {
     expect(args).not.toContain("-crf");
   });
 
+  it("hardware honors an explicit bitrateKbps when provided", () => {
+    const plan: EncodePlan = { codec: "h264", encoder: "h264_nvenc", mode: "balanced", bitrateKbps: 8000, ...base };
+    const args = videoEncodeArgs(plan);
+    expect(args[args.indexOf("-b:v") + 1]).toBe("8000k");
+    expect(args[args.indexOf("-maxrate") + 1]).toBe(`${Math.round(8000 * 1.5)}k`);
+    expect(args[args.indexOf("-bufsize") + 1]).toBe("16000k");
+  });
+
+  it("hardware encoder plan emits neither -x264-params nor -x265-params", () => {
+    const plan: EncodePlan = { codec: "h264", encoder: "h264_nvenc", mode: "balanced", ...base };
+    const args = videoEncodeArgs(plan);
+    expect(args).not.toContain("-x264-params");
+    expect(args).not.toContain("-x265-params");
+  });
+
   it("hevc target is smaller than h264 target at the same settings", () => {
     const h264 = hardwareTargetKbps({ codec: "h264", mode: "balanced", ...base });
     const hevc = hardwareTargetKbps({ codec: "hevc", mode: "balanced", ...base });

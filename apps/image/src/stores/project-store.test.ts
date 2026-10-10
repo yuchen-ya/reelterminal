@@ -97,6 +97,26 @@ describe('project-store', () => {
         .loadProject({ id: 'bad', name: 'broken' } as never);
       expect(useProjectStore.getState().project).toBeNull();
     });
+
+    it('clears the previous document history so undo cannot leak across projects', () => {
+      // Create project B first and keep a serialisable snapshot of it.
+      createProject('B');
+      const projectB = JSON.parse(
+        JSON.stringify(useProjectStore.getState().project),
+      );
+
+      // Create project A and make an undoable edit.
+      createProject('A');
+      useProjectStore.getState().addTextLayer('A-only layer');
+      expect(useProjectStore.getState().canUndo()).toBe(true);
+
+      // Load B: A's command must no longer be undoable on B.
+      useProjectStore.getState().loadProject(projectB);
+      expect(useProjectStore.getState().project?.name).toBe('B');
+      expect(useProjectStore.getState().canUndo()).toBe(false);
+      useProjectStore.getState().undo();
+      expect(useProjectStore.getState().project?.artboards[0].layerIds).toHaveLength(0);
+    });
   });
 
   describe('closeProject', () => {

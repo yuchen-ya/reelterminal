@@ -93,14 +93,21 @@ function triggerAnchorDownload(data: Blob, filename: string, onRelease?: () => v
   document.body.appendChild(anchor);
   anchor.click();
   document.body.removeChild(anchor);
-  window.addEventListener(
-    "pagehide",
-    () => {
-      URL.revokeObjectURL(url);
-      onRelease?.();
-    },
-    { once: true },
-  );
+  // A long-lived editor window may never fire pagehide, so the fallback
+  // export would otherwise pin the whole video in memory until close. Also
+  // revoke after a bounded delay; revoking twice is a no-op.
+  let released = false;
+  const release = (): void => {
+    if (released) return;
+    released = true;
+    URL.revokeObjectURL(url);
+    onRelease?.();
+  };
+  window.addEventListener("pagehide", release, { once: true });
+  setTimeout(() => {
+    window.removeEventListener("pagehide", release);
+    release();
+  }, 5 * 60 * 1000);
 }
 
 const OPFS_TMP_PREFIX = ".reelterminal-export-";
@@ -413,30 +420,43 @@ export function useExportRunner(options: ExportRunnerOptions): UseExportRunner {
       _ext: string,
       writableStream: FileSystemWritableFileStream,
     ): Promise<void> => {
-      const engine = getExportEngine();
-      await engine.initialize();
+      try {
+        const engine = getExportEngine();
+        await engine.initialize();
 
-      const generator = engine.exportVideo(project, videoSettings, writableStream);
-      let finalResult: ExportResult | undefined;
+        const generator = engine.exportVideo(project, videoSettings, writableStream);
+        let finalResult: ExportResult | undefined;
 
-      while (true) {
-        const { value, done } = await generator.next();
-        if (done) {
-          finalResult = value;
-          break;
+        while (true) {
+          const { value, done } = await generator.next();
+          if (done) {
+            finalResult = value;
+            break;
+          }
+          setState((prev) => ({
+            ...prev,
+            progress: value.progress * 100,
+            phase: progressPhaseLabel(value.phase),
+          }));
         }
-        setState((prev) => ({
-          ...prev,
-          progress: value.progress * 100,
-          phase: progressPhaseLabel(value.phase),
-        }));
-      }
 
-      if (finalResult?.success) {
-        setState((prev) => ({ ...prev, complete: true, phase: "Saved!" }));
-        onExported?.(videoSettings);
-      } else {
-        throw new Error(finalResult?.error?.message || "Export failed");
+        if (finalResult?.success) {
+          setState((prev) => ({ ...prev, complete: true, phase: "Saved!" }));
+          onExported?.(videoSettings);
+        } else {
+          throw new Error(finalResult?.error?.message || "Export failed");
+        }
+      } catch (error) {
+        // The backend may never have taken ownership of the caller-provided
+        // writable; release it so the desktop write handle / OPFS temporary
+        // does not leak until the TTL sweep. Aborting an already-closed
+        // stream throws and is swallowed.
+        try {
+          await writableStream.abort?.();
+        } catch {
+          void 0;
+        }
+        throw error;
       }
     },
     [project, onExported],

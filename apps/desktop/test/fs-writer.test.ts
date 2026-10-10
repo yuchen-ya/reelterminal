@@ -27,11 +27,14 @@ describe("FileWriterRegistry", () => {
     expect(await readFile(target, "utf8")).toBe("typed-array");
   });
 
-  it("abort discards the partial file", async () => {
+  it("abort discards partial data and leaves the pre-existing file intact", async () => {
     const reg = new FileWriterRegistry();
     const id = await reg.open(target);
     await reg.writeChunk(id, new TextEncoder().encode("partial").buffer, 0);
     await reg.abort(id);
-    await expect(readFile(target)).rejects.toBeDefined();
+    // The temp holds only partial data and is cleaned up; the target keeps the
+    // content written by the earlier successful close ("typed-array").
+    await expect(readFile(`${target}.reeltmp`)).rejects.toBeDefined();
+    expect(await readFile(target, "utf8")).toBe("typed-array");
   });
 });

@@ -23,22 +23,34 @@ import { buildMotionPathData } from "../motion-shape-path";
 import type { MotionShapePathPoint } from "../motion-shape-path";
 
 const BEZIER_FLATTEN_SAMPLES = 16;
+const BEZIER_CIRCLE_FACTOR = 0.5522847498307936;
+const GROUP_TRANSFORM_EPSILON = 1e-9;
+
+const FALLBACK_LOTTIE_FRAME_RATE = 30;
+
+function effectiveFrameRate(lottie: LottieAnimation): number {
+  return lottie.fr > 0 ? lottie.fr : FALLBACK_LOTTIE_FRAME_RATE;
+}
 
 export function importLottieAsMotionComposition(
   lottie: LottieAnimation,
 ): MotionComposition {
-  const duration = Math.max(0.1, (lottie.op - lottie.ip) / lottie.fr);
+  const fr = effectiveFrameRate(lottie);
+  const duration = Math.max(0.1, (lottie.op - lottie.ip) / fr);
   const composition = motionEngine.createComposition({
     name: lottie.nm || "Imported Lottie Motion",
     width: lottie.w,
     height: lottie.h,
-    frameRate: lottie.fr,
+    frameRate: fr,
     duration,
     backgroundColor: "transparent",
   });
-  const layers = lottie.layers.flatMap((layer) =>
-    convertLottieLayer(lottie, composition, layer),
-  );
+  // Lottie lists layers front-to-back (layers[0] is topmost and painted last
+  // by lottie-web), while motion compositions render array order (index 0
+  // drawn first, i.e. bottom). Reverse so z-order is preserved.
+  const layers = lottie.layers
+    .flatMap((layer) => convertLottieLayer(lottie, composition, layer))
+    .reverse();
 
   return {
     ...composition,
@@ -56,7 +68,7 @@ export function importLottieAsMotionComposition(
     layers,
     markers: (lottie.markers ?? []).map((marker) => ({
       id: uid("lottie-marker"),
-      time: (marker.tm - lottie.ip) / lottie.fr,
+      time: (marker.tm - lottie.ip) / fr,
       label: marker.cm,
       color: "#14b8a6",
     })),
@@ -130,8 +142,18 @@ function convertShapeLayer(
   const transform = baseTransform(layer.ks);
   const paint = findPaint(layer.shapes);
   const shapes = flattenShapes(layer.shapes);
-  return shapes.flatMap((shape, index) =>
-    convertLottieShape(lottie, composition, layer, shape, transform, paint, timing, index),
+  return shapes.flatMap(({ shape, groupTransform }, index) =>
+    convertLottieShape(
+      lottie,
+      composition,
+      layer,
+      shape,
+      transform,
+      paint,
+      timing,
+      index,
+      groupTransform,
+    ),
   );
 }
 
@@ -144,6 +166,7 @@ function convertLottieShape(
   paint: ShapePaint,
   timing: { startTime: number; duration: number },
   index: number,
+  groupTransform: LottieGroupTransform = IDENTITY_GROUP_TRANSFORM,
 ): MotionShapeLayer[] {
   const base = (): Omit<
     MotionShapeLayer,
@@ -151,7 +174,7 @@ function convertLottieShape(
   > => ({
     ...baseShapeLayer(composition, layer, timing),
     id: uid("lottie-shape"),
-    keyframes: transformKeyframes(layer.ks, lottie.fr, layer.ip),
+    keyframes: transformKeyframes(layer.ks, effectiveFrameRate(lottie), layer.ip),
   });
   const positionedTransform = (offset: number[]): MotionLayer["transform"] => ({
     ...transform,
@@ -166,53 +189,63 @@ function convertLottieShape(
   });
   const shapeName = (suffix: string): string =>
     shape.nm || layer.nm || `Lottie ${suffix} ${index + 1}`;
+  const pathLayer = (path: ConvertedPath, suffix: string): MotionShapeLayer => ({
+    ...base(),
+    name: shapeName(suffix),
+    transform: positionedTransform([path.centerX, path.centerY]),
+    shapeType: "path",
+    width: path.width,
+    height: path.height,
+    pathData: path.pathData,
+    pathClosed: path.closed,
+    style: style(),
+  });
 
   if (shape.ty === "rc" || shape.ty === "el") {
+    if (groupTransformNeedsPath(groupTransform)) {
+      const path = convertLottiePrimitivePathShape(shape, groupTransform);
+      return path ? [pathLayer(path, "Shape")] : [];
+    }
     const size = readVector(shape.s, [240, 120]);
     const position = readVector(shape.p, [0, 0]);
+    // Layer scale stays on the layer transform (applied once by the
+    // renderer); only the flattened group's scale is baked into the size.
+    const transformedPosition = applyGroupTransform(groupTransform, position);
     return [
       {
         ...base(),
         name: shapeName("Shape"),
-        transform: positionedTransform(position),
+        transform: positionedTransform(transformedPosition),
         shapeType: shape.ty === "el" ? "ellipse" : "rectangle",
-        width: Math.max(1, size[0] * transform.scale.x),
-        height: Math.max(1, size[1] * transform.scale.y),
+        width: Math.max(1, size[0] * groupTransform.a),
+        height: Math.max(1, size[1] * groupTransform.d),
         style: style(shape.ty === "rc" ? readNumber(shape.r, 0) : 0),
       },
     ];
   }
 
   if (shape.ty === "sh") {
-    const path = convertLottiePathShape(shape);
-    if (!path) return [];
-    return [
-      {
-        ...base(),
-        name: shapeName("Path"),
-        transform: positionedTransform([path.centerX, path.centerY]),
-        shapeType: "path",
-        width: path.width,
-        height: path.height,
-        pathData: path.pathData,
-        pathClosed: path.closed,
-        style: style(),
-      },
-    ];
+    const path = convertLottiePathShape(shape, groupTransform);
+    return path ? [pathLayer(path, "Path")] : [];
   }
 
   if (shape.ty === "sr") {
     const star = convertLottieStarShape(shape);
     if (!star) return [];
+    if (groupTransformNeedsPath(groupTransform)) {
+      const path = convertLottiePrimitivePathShape(shape, groupTransform);
+      return path ? [pathLayer(path, star.shapeType === "star" ? "Star" : "Polygon")] : [];
+    }
     const position = readVector(shape.p, [0, 0]);
+    const transformedPosition = applyGroupTransform(groupTransform, position);
     return [
       {
         ...base(),
         name: shapeName(star.shapeType === "star" ? "Star" : "Polygon"),
-        transform: positionedTransform(position),
+        transform: positionedTransform(transformedPosition),
         shapeType: star.shapeType,
-        width: star.width,
-        height: star.height,
+        width: Math.max(1, star.width * groupTransform.a),
+        height: Math.max(1, star.height * groupTransform.d),
         style: {
           ...style(),
           points: star.points,
@@ -381,15 +414,158 @@ function layerTiming(
   lottie: LottieAnimation,
   layer: LottieLayer,
 ): { startTime: number; duration: number } {
-  const startTime = Math.max(0, (layer.ip - lottie.ip) / lottie.fr);
-  const duration = Math.max(0.1, (layer.op - layer.ip) / lottie.fr);
+  const frameRate = effectiveFrameRate(lottie);
+  const startTime = Math.max(0, (layer.ip - lottie.ip) / frameRate);
+  const duration = Math.max(0.1, (layer.op - layer.ip) / frameRate);
   return { startTime, duration };
 }
 
-function flattenShapes(shapes: readonly LottieShape[]): LottieShape[] {
-  return shapes.flatMap((shape) =>
-    shape.ty === "gr" ? flattenShapes(shape.it) : [shape],
+interface LottieGroupTransform {
+  readonly a: number;
+  readonly b: number;
+  readonly c: number;
+  readonly d: number;
+  readonly e: number;
+  readonly f: number;
+}
+
+const IDENTITY_GROUP_TRANSFORM: LottieGroupTransform = {
+  a: 1,
+  b: 0,
+  c: 0,
+  d: 1,
+  e: 0,
+  f: 0,
+};
+
+interface FlattenedShape {
+  readonly shape: LottieShape;
+  readonly groupTransform: LottieGroupTransform;
+}
+
+function readGroupTransform(shape: LottieShape | undefined): LottieGroupTransform {
+  if (!shape || shape.ty !== "tr") return IDENTITY_GROUP_TRANSFORM;
+  const position = readVector(shape.p, [0, 0]);
+  const scale = readVector(shape.s, [100, 100]);
+  const anchor = readVector(shape.a, [0, 0]);
+  const rotation = readNumber(shape.r, 0);
+  const skew = readNumber(shape.sk, 0);
+  const skewAxis = readNumber(shape.sa, 0);
+  return multiplyGroupTransforms(
+    translationMatrix(position[0], position[1]),
+    rotationMatrix(rotation),
+    skewFromAxisMatrix(skew, skewAxis),
+    scalingMatrix(scale[0] / 100, scale[1] / 100),
+    translationMatrix(-anchor[0], -anchor[1]),
   );
+}
+
+function translationMatrix(x: number, y: number): LottieGroupTransform {
+  return {
+    ...IDENTITY_GROUP_TRANSFORM,
+    e: x,
+    f: y,
+  };
+}
+
+function scalingMatrix(x: number, y: number): LottieGroupTransform {
+  return { ...IDENTITY_GROUP_TRANSFORM, a: x, d: y };
+}
+
+/** Positive Lottie rotation maps to a positive CSS rotation in screen space. */
+function rotationMatrix(degrees: number): LottieGroupTransform {
+  const radians = (degrees * Math.PI) / 180;
+  const cosine = Math.cos(radians);
+  const sine = Math.sin(radians);
+  return { a: cosine, b: sine, c: -sine, d: cosine, e: 0, f: 0 };
+}
+
+function skewFromAxisMatrix(skewDegrees: number, axisDegrees: number): LottieGroupTransform {
+  const shear = Math.tan((-skewDegrees * Math.PI) / 180);
+  const shearX: LottieGroupTransform = {
+    ...IDENTITY_GROUP_TRANSFORM,
+    c: shear,
+  };
+  // Lottie applies rotate(axis), skewX(-skew), rotate(-axis) by left
+  // multiplication; with these column vectors that is R(-axis) * S * R(axis).
+  return multiplyGroupTransforms(
+    rotationMatrix(-axisDegrees),
+    shearX,
+    rotationMatrix(axisDegrees),
+  );
+}
+
+function multiplyGroupTransforms(
+  ...matrices: readonly LottieGroupTransform[]
+): LottieGroupTransform {
+  return matrices.reduce(
+    (first, second) => ({
+      a: first.a * second.a + first.c * second.b,
+      b: first.b * second.a + first.d * second.b,
+      c: first.a * second.c + first.c * second.d,
+      d: first.b * second.c + first.d * second.d,
+      e: first.a * second.e + first.c * second.f + first.e,
+      f: first.b * second.e + first.d * second.f + first.f,
+    }),
+    IDENTITY_GROUP_TRANSFORM,
+  );
+}
+
+function composeGroupTransforms(
+  parent: LottieGroupTransform,
+  child: LottieGroupTransform,
+): LottieGroupTransform {
+  return multiplyGroupTransforms(parent, child);
+}
+
+function applyGroupTransform(
+  transform: LottieGroupTransform,
+  point: readonly number[],
+): [number, number] {
+  return [
+    point[0] * transform.a + point[1] * transform.c + transform.e,
+    point[0] * transform.b + point[1] * transform.d + transform.f,
+  ];
+}
+
+function transformGroupVector(
+  transform: LottieGroupTransform,
+  vector: readonly number[],
+): [number, number] {
+  return [
+    vector[0] * transform.a + vector[1] * transform.c,
+    vector[0] * transform.b + vector[1] * transform.d,
+  ];
+}
+
+function groupTransformNeedsPath(transform: LottieGroupTransform): boolean {
+  return (
+    Math.abs(transform.b) > GROUP_TRANSFORM_EPSILON ||
+    Math.abs(transform.c) > GROUP_TRANSFORM_EPSILON ||
+    transform.a <= 0 ||
+    transform.d <= 0
+  );
+}
+
+function flattenShapes(
+  shapes: readonly LottieShape[],
+  parentTransform: LottieGroupTransform = IDENTITY_GROUP_TRANSFORM,
+): FlattenedShape[] {
+  return shapes.flatMap((shape) => {
+    if (shape.ty === "gr") {
+      const groupTransform = composeGroupTransforms(
+        parentTransform,
+        readGroupTransform(
+          shape.it.find((item) => item.ty === "tr"),
+        ),
+      );
+      return flattenShapes(
+        shape.it.filter((item) => item.ty !== "tr"),
+        groupTransform,
+      );
+    }
+    return [{ shape, groupTransform: parentTransform }];
+  });
 }
 
 interface ShapePaint {
@@ -409,7 +585,7 @@ function findPaint(shapes: readonly LottieShape[]): ShapePaint {
   let stroke = "#14b8a6";
   let strokeWidth = 0;
   let gradient: GradientFillData | null = null;
-  for (const shape of flattenShapes(shapes)) {
+  for (const { shape } of flattenShapes(shapes)) {
     if (shape.ty === "fl") fill = colorArrayToHex(readVector(shape.c, [0.08, 0.72, 0.65]));
     if (shape.ty === "st") {
       stroke = colorArrayToHex(readVector(shape.c, [0.08, 0.72, 0.65]));
@@ -568,10 +744,43 @@ interface LottieBezierData {
   readonly closed: boolean;
 }
 
-function convertLottiePathShape(shape: LottieShape): ConvertedPath | null {
+function convertLottiePathShape(
+  shape: LottieShape,
+  groupTransform: LottieGroupTransform = IDENTITY_GROUP_TRANSFORM,
+): ConvertedPath | null {
   const bezier = readBezierData(readShapeProperty(shape, "ks"));
   if (!bezier || bezier.vertices.length < 2) return null;
-  const flat = flattenLottieBezier(bezier);
+  return convertLottieBezier(bezier, groupTransform);
+}
+
+function convertLottiePrimitivePathShape(
+  shape: LottieShape,
+  groupTransform: LottieGroupTransform,
+): ConvertedPath | null {
+  const bezier = primitiveLottieBezier(shape);
+  if (!bezier) return null;
+  return convertLottieBezier(bezier, groupTransform);
+}
+
+function convertLottieBezier(
+  bezier: LottieBezierData,
+  groupTransform: LottieGroupTransform,
+): ConvertedPath | null {
+  // Transform vertices and relative handles with the same affine matrix so
+  // curves remain cubic and keep their original control points.
+  const transformedBezier: LottieBezierData = {
+    vertices: bezier.vertices.map((vertex) =>
+      applyGroupTransform(groupTransform, vertex),
+    ),
+    inTangents: bezier.inTangents.map((tangent) =>
+      transformGroupVector(groupTransform, tangent),
+    ),
+    outTangents: bezier.outTangents.map((tangent) =>
+      transformGroupVector(groupTransform, tangent),
+    ),
+    closed: bezier.closed,
+  };
+  const flat = flattenLottieBezier(transformedBezier);
   if (flat.length < 2) return null;
 
   let minX = Number.POSITIVE_INFINITY;
@@ -586,7 +795,7 @@ function convertLottiePathShape(shape: LottieShape): ConvertedPath | null {
   }
   const centerX = (minX + maxX) / 2;
   const centerY = (minY + maxY) / 2;
-  const centered = lottieBezierToHandledPoints(bezier).map((point) =>
+  const centered = lottieBezierToHandledPoints(transformedBezier).map((point) =>
     centerLottieHandledPoint(point, centerX, centerY),
   );
   return {
@@ -597,6 +806,131 @@ function convertLottiePathShape(shape: LottieShape): ConvertedPath | null {
     centerY,
     closed: bezier.closed,
   };
+}
+
+function primitiveLottieBezier(shape: LottieShape): LottieBezierData | null {
+  if (shape.ty === "rc" || shape.ty === "el") {
+    const size = readVector(shape.s, [240, 120]);
+    const position = readVector(shape.p, [0, 0]);
+    const halfWidth = Math.abs(size[0] ?? 0) / 2;
+    const halfHeight = Math.abs(size[1] ?? 0) / 2;
+    if (halfWidth === 0 || halfHeight === 0) return null;
+
+    if (shape.ty === "el") {
+      const controlX = halfWidth * BEZIER_CIRCLE_FACTOR;
+      const controlY = halfHeight * BEZIER_CIRCLE_FACTOR;
+      return {
+        vertices: [
+          [position[0], position[1] - halfHeight],
+          [position[0] + halfWidth, position[1]],
+          [position[0], position[1] + halfHeight],
+          [position[0] - halfWidth, position[1]],
+        ],
+        inTangents: [
+          [-controlX, 0],
+          [0, -controlY],
+          [controlX, 0],
+          [0, controlY],
+        ],
+        outTangents: [
+          [controlX, 0],
+          [0, controlY],
+          [-controlX, 0],
+          [0, -controlY],
+        ],
+        closed: true,
+      };
+    }
+
+    const radius = Math.min(
+      halfWidth,
+      halfHeight,
+      Math.max(0, readNumber(shape.r, 0)),
+    );
+    const left = position[0] - halfWidth;
+    const right = position[0] + halfWidth;
+    const top = position[1] - halfHeight;
+    const bottom = position[1] + halfHeight;
+    if (radius === 0) {
+      return {
+        vertices: [
+          [left, top],
+          [right, top],
+          [right, bottom],
+          [left, bottom],
+        ],
+        inTangents: [[0, 0], [0, 0], [0, 0], [0, 0]],
+        outTangents: [[0, 0], [0, 0], [0, 0], [0, 0]],
+        closed: true,
+      };
+    }
+
+    const control = radius * BEZIER_CIRCLE_FACTOR;
+    return {
+      vertices: [
+        [right - radius, top],
+        [right, top + radius],
+        [right, bottom - radius],
+        [right - radius, bottom],
+        [left + radius, bottom],
+        [left, bottom - radius],
+        [left, top + radius],
+        [left + radius, top],
+      ],
+      inTangents: [
+        [0, 0],
+        [0, -control],
+        [0, 0],
+        [control, 0],
+        [0, 0],
+        [0, control],
+        [0, 0],
+        [-control, 0],
+      ],
+      outTangents: [
+        [control, 0],
+        [0, 0],
+        [0, control],
+        [0, 0],
+        [-control, 0],
+        [0, 0],
+        [0, -control],
+        [0, 0],
+      ],
+      closed: true,
+    };
+  }
+
+  if (shape.ty === "sr") {
+    const star = convertLottieStarShape(shape);
+    if (!star) return null;
+    const position = readVector(shape.p, [0, 0]);
+    const isStar = star.shapeType === "star";
+    const vertexCount = isStar ? star.points * 2 : star.points;
+    const startAngle =
+      (readUnknownScalar(readShapeProperty(shape, "r"), 0) * Math.PI) / 180 -
+      Math.PI / 2;
+    const outerRadius = star.width / 2;
+    const vertices = Array.from({ length: vertexCount }, (_, index) => {
+      const radius =
+        isStar && index % 2 === 1
+          ? outerRadius * star.innerRadius
+          : outerRadius;
+      const angle = startAngle + (index * Math.PI * 2) / vertexCount;
+      return [
+        position[0] + Math.cos(angle) * radius,
+        position[1] + Math.sin(angle) * radius,
+      ];
+    });
+    return {
+      vertices,
+      inTangents: vertices.map(() => [0, 0]),
+      outTangents: vertices.map(() => [0, 0]),
+      closed: true,
+    };
+  }
+
+  return null;
 }
 
 function lottieBezierToHandledPoints(

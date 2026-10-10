@@ -266,6 +266,7 @@ export async function doctorCommand(argv: readonly string[]): Promise<number> {
     parsed.roots.mediaRoots.length > 0 ||
     parsed.roots.projectRoots.length > 0 ||
     parsed.roots.artifactRoot !== undefined ||
+    parsed.roots.deliveryRoots.length > 0 ||
     parsed.workflowPath !== undefined ||
     parsed.keepGoing
   ) {

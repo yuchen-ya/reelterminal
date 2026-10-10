@@ -555,7 +555,10 @@ export class ProjectSerializer {
           return {
             ...item,
             isPlaceholder: true,
-            originalUrl: item.thumbnailUrl || undefined,
+            // stripMediaBlobs nulls every blob on export, so this branch runs
+            // for every export→import round trip: keep the real source
+            // provenance instead of replacing it with the thumbnail URI.
+            originalUrl: item.originalUrl ?? item.thumbnailUrl ?? undefined,
           };
         }
         return item;

@@ -316,6 +316,8 @@
     "manualFail": "Mark as failed",
     "doneNote": "Artifact received into the project (media {{mediaId}}).",
     "emptyTasks": "No tasks yet.",
+    "listFailedTitle": "The task list could not be loaded.",
+    "retry": "Retry",
     "unreadableNote": "{{count}} task record(s) written by a newer app version are hidden.",
     "generationPausedNotice": "Voiceover and music submission and retry are temporarily paused. Existing task records and artifacts are preserved and remain available to review, import, and insert.",
     "retryPausedNote": "Retry is paused until generation moves to an independent task mechanism."
@@ -966,6 +968,7 @@
     "sameProject": "Paste into the project the copied clips belong to.",
     "validTime": "Choose a valid insertion time.",
     "missingMedia": "Missing source media: {{name}}",
+    "missingTrack": "Missing captured track: {{name}}",
     "missingFont": "Missing saved font bytes: {{family}}",
     "fontConflict": "The current edit uses a different saved font face: {{family}}",
     "compatibleTrack": "No compatible unlocked {{type}} track.",

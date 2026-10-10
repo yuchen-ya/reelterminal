@@ -68,7 +68,10 @@ export function createHistorySlice(
   const applyHistoryChange = async (operation: () => Promise<ActionResult>): Promise<ActionResult> => {
     const result = await operation();
     const state = get();
-    if (result.success && state.isForeground) {
+    // Prune based on post-operation state even when the operation failed: a
+    // partially applied undo (e.g. an inverse action throwing midway) can
+    // still have removed clips, leaving selections pointing at ghosts.
+    if (state.isForeground) {
       const ui = useUIStore.getState();
       for (const id of ui.getSelectedClipIds()) {
         if (!getTimelineSelectionItem(state, id)) ui.deselect(id);
@@ -168,6 +171,7 @@ export function createHistorySlice(
                 ...clipRedoStack,
                 { ...entry, timestamp: Date.now() },
               ],
+              redoJournal: [...get().redoJournal, "clip"],
             });
             return { success: true };
           }
@@ -205,6 +209,7 @@ export function createHistorySlice(
               ...clipRedoStack,
               { ...entry, timestamp: Date.now(), hadEmptyTrackUndo: false },
             ],
+            redoJournal: [...get().redoJournal, "clip"],
           });
 
           const trackId = entry.trackId;

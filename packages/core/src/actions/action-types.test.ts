@@ -73,7 +73,8 @@ describe("ClipAction union completeness", () => {
     expect(clip?.inPoint).toBe(1);
   });
 
-  it("accepts every executor-handled clip op as a typed ClipAction", () => {
+  it("accepts every executor-handled clip op as a typed ClipAction", async () => {
+    const executor = new ActionExecutor();
     const fixtureClip = {
       ...makeProjectWithTwoClips().timeline.tracks[0].clips[0],
     } as Clip;
@@ -98,5 +99,27 @@ describe("ClipAction union completeness", () => {
     ];
 
     expect(actions).toHaveLength(7);
+
+    // Compile-time coverage alone says nothing: every op must also apply
+    // against a seeded project like the clip/slip test above.
+    for (const clipAction of actions) {
+      const project = makeProjectWithTwoClips();
+      if (
+        clipAction.type === "clip/restore" ||
+        clipAction.type === "clip/rippleRestore"
+      ) {
+        // Restore ops append the clip back onto its track; take the seeded
+        // copy out first so the fixture is not duplicated.
+        await executor.execute(
+          dispatch({
+            type: "clip/remove",
+            params: { clipId: fixtureClip.id },
+          } as ClipAction),
+          project,
+        );
+      }
+      const result = await executor.execute(dispatch(clipAction), project);
+      expect(result.success, `${clipAction.type} should apply`).toBe(true);
+    }
   });
 });

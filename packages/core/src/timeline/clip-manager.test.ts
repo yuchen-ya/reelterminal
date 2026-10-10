@@ -534,7 +534,7 @@ describe("ClipManager - Edge Cases", () => {
     expect(result.success).toBe(false);
   });
 
-  it("should handle zero duration clip", async () => {
+  it("rejects a zero-duration clip without changing the timeline", async () => {
     const timeline = createMockTimeline();
 
     const result = await clipManager.addClip(timeline, {
@@ -544,7 +544,9 @@ describe("ClipManager - Edge Cases", () => {
       duration: 0,
     });
 
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("finite positive number");
+    expect(timeline.tracks[0].clips).toEqual([]);
   });
 
   it("should handle very long duration clip", async () => {

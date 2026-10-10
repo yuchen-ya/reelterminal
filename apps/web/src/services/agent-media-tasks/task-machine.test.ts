@@ -25,6 +25,7 @@ function makeRecord(status: AgentMediaTaskStatus): AgentMediaTaskRecord {
     kind: "tts",
     promptText: "hello",
     status,
+    sanitizedInfo: "GPT Voice Agent 1.2.0",
     targetProjectId: "proj-1",
     insertIntent: "timeline",
     autoConfirm: "receipt",
@@ -141,7 +142,7 @@ describe("applyTaskStatusTransition", () => {
     expect(result.record.failureReason).toBe("provider failed");
     expect(result.record.completedAt).toBeTruthy();
     // Non-artifact metadata survives for audit.
-    expect(result.record.sanitizedInfo).toBeUndefined(); // was never set
+    expect(result.record.sanitizedInfo).toBe("GPT Voice Agent 1.2.0");
     expect(result.record.targetProjectId).toBe("proj-1");
     expect(result.record.promptText).toBe("hello");
   });

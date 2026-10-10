@@ -16,10 +16,6 @@ describe("large preview performance scenario", () => {
 
     expect(measurement.clipCount).toBe(6_000);
     expect(measurement.serializedBytes).toBeGreaterThan(1_000_000);
-    expect(measurement.indexBuildMs).toBeGreaterThanOrEqual(0);
-    expect(measurement.lookupP95Ms).toBeGreaterThanOrEqual(0);
-    expect(measurement.interactionP95Ms).toBeGreaterThanOrEqual(0);
-    expect(measurement.frameBudgetMisses).toBeGreaterThanOrEqual(0);
   });
 
   it("keeps indexed lookup equivalent to the authoritative track snapshot", () => {

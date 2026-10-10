@@ -80,6 +80,18 @@ export class SvgValidationError extends Error {
 // <link>, and any other element using href/xlink:href/src).
 const URL_ATTR_RE = /\b(?:xlink:href|href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 
+// SMIL animation elements (<set>, <animate>, <animateTransform>) can retarget
+// a URL-bearing attribute after validation has seen the literal markup — e.g.
+// <set attributeName="href" to="https://..."/> inside an <image> — rewriting
+// the reference without tripping URL_ATTR_RE. The retarget itself is rejected,
+// whatever value the animation would write. The lookahead keeps lookalike
+// elements (<settings>, <animateMotion>) out of the match.
+const SMIL_ELEMENT_RE =
+  /<(?:[a-zA-Z][\w.-]*:)?(?:set|animate|animatetransform)(?![\w.:-])[^>]*>/gi;
+const SMIL_ATTRIBUTE_NAME_RE =
+  /\battributeName\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
+const URL_ATTR_NAMES = new Set(["href", "xlink:href", "src"]);
+
 // Event handler attributes: whitespace-preceded on* names. The whitespace
 // anchor keeps innocuous names like `data-online` out of the match.
 const EVENT_HANDLER_ATTR_RE = /\s(on[a-zA-Z]+)\s*=/;
@@ -240,6 +252,19 @@ export function validateSvgContent(
         eventHandler[1],
       )}", which is not allowed`,
     );
+  }
+
+  for (const element of content.matchAll(SMIL_ELEMENT_RE)) {
+    const attributeName = SMIL_ATTRIBUTE_NAME_RE.exec(element[0]);
+    const name = (attributeName?.[1] ?? attributeName?.[2] ?? "").trim();
+    if (URL_ATTR_NAMES.has(name.toLowerCase())) {
+      return fail(
+        "externalResource",
+        `SVG animates the URL attribute "${truncateForMessage(
+          name,
+        )}" via a SMIL <set>/<animate> element, which is not allowed`,
+      );
+    }
   }
 
   let external: ReferenceFinding | null = null;

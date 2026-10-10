@@ -4,6 +4,7 @@ import { runVideoCandidateAnalyses, videoCandidatesPreflight, type VideoCandidat
 import { resolveToolFfmpeg } from "./media/ffmpeg-bin";
 import { probeVideoFacts } from "./media/frame-exact";
 import { bindBundledTools } from "./plugin-runtime";
+import { withValidatedFacadeCalls } from "./request-validation";
 /**
  * LiveFacadeSession — the live agent facade. It implements the same
  * registered contract as AgentFacadeSession:
@@ -707,6 +708,11 @@ export class LiveFacadeSession {
         },
       );
     }
+  }
+
+  /** Run the live access/lease gate at the facade factory boundary. */
+  assertVerbAccess(verb: FacadeVerb): void {
+    this.gate(verb);
   }
 
   /* ------------------------------ reads ------------------------------ */
@@ -4775,7 +4781,7 @@ function partitionCreatedIds(
  */
 export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
   const session = new LiveFacadeSession(config);
-  return {
+  return withValidatedFacadeCalls({
     ...bindBundledTools(session, config, "live"),
     ...Object.fromEntries(WORKSPACE_VERBS.map((verb) => [verb, (params: Record<string, unknown> = {}) => session.workspaceCommand(verb, params)])) as Pick<LiveAgentFacade, WorkspaceVerb>,
     "session.describe": () => session.sessionDescribe(),
@@ -4831,7 +4837,7 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
       session.helpSearch(params as import("./gui-manual").ManualSearchParams),
     releaseWriterLease: () => session.releaseWriterLease(),
     dispose: () => session.dispose(),
-  };
+  }, "live", (verb) => session.assertVerbAccess(verb as FacadeVerb)) as LiveAgentFacade;
 }
 
 /**

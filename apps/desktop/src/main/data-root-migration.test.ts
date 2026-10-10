@@ -1,10 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  cp,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   migrateIntoDataRoot,
+  type MigrationOptions,
   type MigrationSource,
 } from "./data-root-migration";
 
@@ -138,6 +149,176 @@ describe("migrateIntoDataRoot", () => {
     expect(existsSync(`${to}.migrating`)).toBe(false);
   });
 
+  it("does not treat a same-sized pre-existing target as a verified copy", async () => {
+    const appFrom = await makeDir("legacy-app");
+    await seedStore(appFrom, { "IndexedDB/data.db": "profile" });
+    const workspaceFrom = await makeDir("legacy-workspace");
+    await seedStore(workspaceFrom, { "jobs/1/brief.md": "task" });
+    const appTo = path.join(sandbox, "root", "app-data");
+    const workspaceTo = path.join(sandbox, "root", "agent-workspace");
+    const sources: MigrationSource[] = [
+      { kind: "appData", from: appFrom, to: appTo },
+      { kind: "workspace", from: workspaceFrom, to: workspaceTo },
+    ];
+
+    const first = await migrateIntoDataRoot(sources, { preserveSources: true });
+
+    expect(first.ok).toBe(true);
+    expect(first.items.map((item) => item.status)).toEqual([
+      "copied-backup-left",
+      "copied-backup-left",
+    ]);
+    expect(existsSync(path.join(appFrom, "IndexedDB", "data.db"))).toBe(true);
+    expect(existsSync(path.join(workspaceFrom, "jobs", "1", "brief.md"))).toBe(true);
+
+    // Matching file counts and byte totals cannot prove that a target is the
+    // current source copy. Keep this same-sized, different target untouched.
+    await writeFile(path.join(appTo, "IndexedDB", "data.db"), "changed", "utf8");
+
+    const retry = await migrateIntoDataRoot(sources, {
+      preserveSources: true,
+      copy: async () => {
+        throw new Error("a populated destination should be reused without recopying");
+      },
+    });
+
+    expect(retry.ok).toBe(false);
+    expect(retry.items.map((item) => item.status)).toEqual([
+      "skipped-target-exists",
+    ]);
+    expect(await readFile(path.join(appTo, "IndexedDB", "data.db"), "utf8")).toBe(
+      "changed",
+    );
+    expect(existsSync(path.join(workspaceTo, "jobs", "1", "brief.md"))).toBe(true);
+    expect(existsSync(path.join(appFrom, "IndexedDB", "data.db"))).toBe(true);
+    expect(existsSync(path.join(workspaceFrom, "jobs", "1", "brief.md"))).toBe(true);
+  });
+
+  it("stops the batch after a failed appData copy, before copying workspace", async () => {
+    const appFrom = await makeDir("legacy-app");
+    await seedStore(appFrom, { "IndexedDB/data.db": "profile" });
+    const workspaceFrom = await makeDir("legacy-workspace");
+    await seedStore(workspaceFrom, { "jobs/1/brief.md": "task" });
+    const appTo = path.join(sandbox, "root", "app-data");
+    const workspaceTo = path.join(sandbox, "root", "agent-workspace");
+    const sources: MigrationSource[] = [
+      { kind: "appData", from: appFrom, to: appTo },
+      { kind: "workspace", from: workspaceFrom, to: workspaceTo },
+    ];
+
+    const report = await migrateIntoDataRoot(sources, {
+      preserveSources: true,
+      copy: async (from, to, options) => {
+        if (from === appFrom) {
+          throw Object.assign(new Error("profile is locked"), { code: "EIO" });
+        }
+        await cp(from, to, options);
+      },
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.items).toHaveLength(1);
+    expect(report.items[0]).toMatchObject({ kind: "appData", status: "failed" });
+    expect(existsSync(path.join(appFrom, "IndexedDB", "data.db"))).toBe(true);
+    expect(existsSync(path.join(workspaceFrom, "jobs", "1", "brief.md"))).toBe(true);
+    expect(existsSync(workspaceTo)).toBe(false);
+  });
+
+  it.each(["mkdir", "lstat", "readdir", "stat"] as const)(
+    "rolls back an earlier appData copy when workspace %s fails, then retries",
+    async (operation) => {
+      const appFrom = await makeDir("legacy-app");
+      await seedStore(appFrom, { "IndexedDB/data.db": "profile" });
+      const workspaceFrom = await makeDir("legacy-workspace");
+      await seedStore(workspaceFrom, { "jobs/1/brief.md": "task" });
+      const root = await makeDir("root");
+      const appTo = path.join(root, "app-data");
+      const workspaceTo = path.join(root, "agent-workspace");
+      const sources: MigrationSource[] = [
+        { kind: "appData", from: appFrom, to: appTo },
+        { kind: "workspace", from: workspaceFrom, to: workspaceTo },
+      ];
+      if (operation === "readdir") await mkdir(workspaceTo);
+
+      let appDataCopied = false;
+      const denied = Object.assign(new Error(`${operation} denied`), {
+        code: "EACCES",
+      });
+      const fileSystem: NonNullable<MigrationOptions["fileSystem"]> = {
+        mkdir: (async (directory: string, options: { recursive: true }) => {
+          if (
+            operation === "mkdir" &&
+            appDataCopied &&
+            directory === root
+          ) {
+            throw denied;
+          }
+          return mkdir(directory, options);
+        }) as unknown as typeof mkdir,
+        lstat: (async (target: string) => {
+          if (operation === "lstat" && target === workspaceTo) throw denied;
+          return lstat(target);
+        }) as unknown as typeof lstat,
+        // Both target inspection and tree verification only need the entry
+        // count or Dirent methods, so always return Dirents in this test shim.
+        readdir: (async (directory: string) => {
+          if (operation === "readdir" && directory === workspaceTo) throw denied;
+          return readdir(directory, { withFileTypes: true });
+        }) as unknown as typeof readdir,
+        stat: (async (target: string) => {
+          if (operation === "stat" && target === workspaceFrom) throw denied;
+          return stat(target);
+        }) as unknown as typeof stat,
+      };
+
+      const failed = await migrateIntoDataRoot(sources, {
+        preserveSources: true,
+        fileSystem,
+        copy: async (from, to, options) => {
+          await cp(from, to, options);
+          if (from === appFrom) appDataCopied = true;
+        },
+      });
+
+      expect(failed.ok).toBe(false);
+      expect(failed.items.at(-1)).toMatchObject({
+        kind: "workspace",
+        status: "failed",
+      });
+      expect(existsSync(appTo)).toBe(false);
+      expect(existsSync(path.join(appFrom, "IndexedDB", "data.db"))).toBe(true);
+      expect(existsSync(path.join(workspaceFrom, "jobs", "1", "brief.md"))).toBe(true);
+
+      const retried = await migrateIntoDataRoot(sources, { preserveSources: true });
+
+      expect(retried.ok).toBe(true);
+      expect(await readFile(path.join(appTo, "IndexedDB", "data.db"), "utf8")).toBe(
+        "profile",
+      );
+      expect(await readFile(path.join(workspaceTo, "jobs", "1", "brief.md"), "utf8")).toBe(
+        "task",
+      );
+    },
+  );
+
+  it("removes copied targets when committing the completion marker fails", async () => {
+    const from = await makeDir("legacy");
+    await seedStore(from, { "profile.db": "profile" });
+    const to = path.join(sandbox, "root", "app-data");
+
+    const report = await migrateIntoDataRoot([source(from, to)], {
+      preserveSources: true,
+      onBatchComplete: () => {
+        throw new Error("marker is not writable");
+      },
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.error).toContain("marker is not writable");
+    expect(existsSync(to)).toBe(false);
+    expect(existsSync(path.join(from, "profile.db"))).toBe(true);
+  });
+
   it("reports a failure without touching either side on hard move errors", async () => {
     const from = await makeDir("legacy");
     await seedStore(from, { "data.db": "x" });
@@ -168,7 +349,7 @@ describe("migrateIntoDataRoot", () => {
     expect(second.items[0].status).toBe("skipped-missing");
   });
 
-  it("migrates several stores independently", async () => {
+  it("copies several stores while retaining both sources for batch adoption", async () => {
     const appFrom = await makeDir("legacy-app");
     await seedStore(appFrom, { "db": "a" });
     const wsFrom = await makeDir("legacy-ws");
@@ -179,11 +360,16 @@ describe("migrateIntoDataRoot", () => {
     const report = await migrateIntoDataRoot([
       source(appFrom, appTo),
       { kind: "workspace", from: wsFrom, to: wsTo },
-    ]);
+    ], { preserveSources: true });
 
     expect(report.ok).toBe(true);
-    expect(report.items.map((item) => item.status)).toEqual(["moved", "moved"]);
+    expect(report.items.map((item) => item.status)).toEqual([
+      "copied-backup-left",
+      "copied-backup-left",
+    ]);
     expect(existsSync(path.join(appTo, "db"))).toBe(true);
     expect(existsSync(path.join(wsTo, "jobs", "1", "brief.md"))).toBe(true);
+    expect(existsSync(path.join(appFrom, "db"))).toBe(true);
+    expect(existsSync(path.join(wsFrom, "jobs", "1", "brief.md"))).toBe(true);
   });
 });

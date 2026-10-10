@@ -17,6 +17,7 @@ import type {
   ProjectRequirementAction,
   WorkAssetAction,
   ReferenceComparisonAction,
+  ClipTimingSnapshot,
 } from "../types/actions";
 import type {
   Project,
@@ -124,6 +125,7 @@ export class ActionExecutor {
       const resolvedInverseAction = inverseAction
         ? this.resolveSpecialMarkers(inverseAction)
         : null;
+      this.pinLiveDeletedMedia(action, resolvedInverseAction);
       this.history.push(action, resolvedInverseAction, historyOwner);
 
       return {
@@ -172,6 +174,7 @@ export class ActionExecutor {
       const resolvedInverseAction = inverseAction
         ? this.resolveSpecialMarkers(inverseAction)
         : null;
+      this.pinLiveDeletedMedia(action, resolvedInverseAction);
       this.history.push(action, resolvedInverseAction, historyOwner);
       return { success: true, actionId: action.id };
     } catch (error) {
@@ -213,6 +216,31 @@ export class ActionExecutor {
           message: "Nothing to undo",
         },
       };
+    }
+
+    // Peek the top group's inverse actions before popping: undoGroup() moves
+    // entries to the redo stack, and popping a group that has no undoable
+    // inverse would consume the history entry and arm redo for an action that
+    // was never undone.
+    const entries = this.history.getHistoryEntries();
+    const topEntry = entries[entries.length - 1];
+    if (topEntry) {
+      const groupHasInverse = topEntry.groupId
+        ? entries.some(
+            (entry) =>
+              entry.groupId === topEntry.groupId &&
+              entry.inverseAction !== null,
+          )
+        : topEntry.inverseAction !== null;
+      if (!groupHasInverse) {
+        return {
+          success: false,
+          error: {
+            code: "INVALID_PARAMS",
+            message: "No inverse action available",
+          },
+        };
+      }
     }
 
     const inverseActions = this.history.undoGroup();
@@ -297,6 +325,30 @@ export class ActionExecutor {
 
   getPushOwner(): string | undefined {
     return this.history.getActiveOwner();
+  }
+
+  /**
+   * The inverse generator reads a JSON-roundtripped snapshot, so a media/delete
+   * inverse carries an inert copy of the item: the File blob serializes to {}
+   * and waveformData loses its typed array. The delete handler pins the live
+   * pre-delete item onto the action params (mirroring how media/import pins
+   * its item for redo); hand the real reference to the inverse so undo
+   * restores a renderable item.
+   */
+  private pinLiveDeletedMedia(
+    action: Action,
+    inverseAction: Action | null,
+  ): void {
+    if (
+      action.type !== "media/delete" ||
+      inverseAction?.type !== "media/restore"
+    ) {
+      return;
+    }
+    const pinned = (action.params as { mediaItem?: MediaItem }).mediaItem;
+    if (pinned) {
+      (inverseAction.params as { mediaItem?: MediaItem }).mediaItem = pinned;
+    }
   }
 
   private resolveSpecialMarkers(action: Action): Action {
@@ -522,7 +574,19 @@ export class ActionExecutor {
       }
 
       case "media/delete": {
-        const params = action.params as { mediaId: string };
+        const params = action.params as {
+          mediaId: string;
+          mediaItem?: MediaItem;
+        };
+        const deletedItem = mediaLibrary.items.find(
+          (item: MediaItem) => item.id === params.mediaId,
+        );
+        // Pin the live pre-delete item onto the history action, the way
+        // media/import pins its generated item. The inverse generator only
+        // sees a JSON-roundtripped snapshot, where the File blob serializes
+        // to {} and waveformData loses its typed array — undo of that copy
+        // would restore an item that can never render.
+        if (deletedItem) params.mediaItem ??= deletedItem;
         mediaLibrary.items = mediaLibrary.items.filter(
           (item: MediaItem) => item.id !== params.mediaId,
         );
@@ -1000,8 +1064,15 @@ export class ActionExecutor {
               ? mediaItem.metadata.duration
               : 5;
           const sourceIn = params.inPoint ?? 0;
+          // duration is timeline time while in/out are source-media seconds,
+          // so a duration-only add derives its source range through the clip
+          // speed (matching clip/trim) instead of treating the duration as an
+          // absolute source position.
           const sourceOut =
-            params.outPoint ?? params.duration ?? defaultSourceOut;
+            params.outPoint ??
+            (params.duration !== undefined
+              ? sourceIn + params.duration * (params.speed ?? 1)
+              : defaultSourceOut);
           const clipDuration = params.duration ?? sourceOut - sourceIn;
           const defaultTransform = {
             position: { x: 0, y: 0 },
@@ -1069,6 +1140,31 @@ export class ActionExecutor {
             ? { ...track, clips: [...track.clips, params.clip] }
             : track,
         );
+        break;
+      }
+
+      case "clip/restoreTiming": {
+        const params = action.params as {
+          clips: readonly ClipTimingSnapshot[];
+        };
+        const snapshots = new Map(
+          params.clips.map((snapshot) => [snapshot.id, snapshot]),
+        );
+        timeline.tracks = timeline.tracks.map((track: MutableTrack) => ({
+          ...track,
+          clips: track.clips.map((clip: MutableClip) => {
+            const snapshot = snapshots.get(clip.id);
+            return snapshot
+              ? {
+                  ...clip,
+                  startTime: snapshot.startTime,
+                  duration: snapshot.duration,
+                  inPoint: snapshot.inPoint,
+                  outPoint: snapshot.outPoint,
+                }
+              : clip;
+          }),
+        }));
         break;
       }
 
@@ -1363,7 +1459,11 @@ export class ActionExecutor {
         const clip = this.findClip(timeline, params.clipId);
         if (clip) {
           const newInPoint = Math.max(0, clip.inPoint + params.delta);
-          const newOutPoint = newInPoint + clip.duration;
+          // inPoint/outPoint are source-media seconds while duration is
+          // expressed on the timeline (see clip/trim). Scale the timeline
+          // duration back into source time so the invariant
+          // outPoint - inPoint == duration * speed keeps holding.
+          const newOutPoint = newInPoint + clip.duration * (clip.speed ?? 1);
           timeline.tracks = timeline.tracks.map((track: MutableTrack) => ({
             ...track,
             clips: track.clips.map((c: MutableClip) =>
@@ -1393,13 +1493,19 @@ export class ActionExecutor {
               };
             }
             if (c.id === params.prevClipId && params.delta > 0) {
-              return { ...c, duration: c.duration + params.delta };
+              return {
+                ...c,
+                duration: c.duration + params.delta,
+                outPoint: c.outPoint + params.delta * (c.speed ?? 1),
+              };
             }
             if (c.id === params.nextClipId && params.delta < 0) {
               return {
                 ...c,
                 startTime: c.startTime + params.delta,
-                inPoint: c.inPoint - params.delta,
+                // Timeline delta written into source-media seconds: scale it
+                // for constant-speed clips (see clip/trim).
+                inPoint: c.inPoint - params.delta * (c.speed ?? 1),
                 duration: c.duration - params.delta,
               };
             }
@@ -1422,14 +1528,16 @@ export class ActionExecutor {
               return {
                 ...c,
                 duration: c.duration + params.delta,
-                outPoint: c.outPoint + params.delta,
+                // Timeline delta written into source-media seconds: scale it
+                // for constant-speed clips (see clip/trim).
+                outPoint: c.outPoint + params.delta * (c.speed ?? 1),
               };
             }
             if (c.id === params.rightClipId) {
               return {
                 ...c,
                 startTime: c.startTime + params.delta,
-                inPoint: c.inPoint + params.delta,
+                inPoint: c.inPoint + params.delta * (c.speed ?? 1),
                 duration: c.duration - params.delta,
               };
             }
@@ -1456,14 +1564,18 @@ export class ActionExecutor {
                 return {
                   ...c,
                   startTime: params.playheadTime,
-                  inPoint: c.inPoint + delta,
+                  // Timeline delta written into source-media seconds: scale
+                  // it for constant-speed clips (see clip/trim).
+                  inPoint: c.inPoint + delta * (c.speed ?? 1),
                   duration: c.duration - delta,
                 };
               } else {
                 return {
                   ...c,
                   duration: params.playheadTime - c.startTime,
-                  outPoint: c.inPoint + (params.playheadTime - c.startTime),
+                  outPoint:
+                    c.inPoint +
+                    (params.playheadTime - c.startTime) * (c.speed ?? 1),
                 };
               }
             }),

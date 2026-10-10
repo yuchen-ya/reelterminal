@@ -150,7 +150,8 @@ export class RenderBridge {
   }
 
   /**
-   * Render a frame at the specified time
+   * Render a frame at the specified time. The caller owns the returned frame
+   * and must close its ImageBitmap after use.
    *
    * - Renders composited frame within 100ms
    * - Composites tracks in correct layer order
@@ -171,11 +172,12 @@ export class RenderBridge {
 
     const startTime = performance.now();
 
+    let frame: RenderedFrame | null = null;
     try {
       const project = useProjectStore.getState().project;
 
       // Render the frame using VideoEngine
-      const frame = await this.videoEngine.renderFrame(
+      frame = await this.videoEngine.renderFrame(
         project,
         time,
         undefined,
@@ -192,15 +194,14 @@ export class RenderBridge {
       const renderTime = performance.now() - startTime;
       this.updateRenderStats(renderTime);
 
-      // Update engine store with current frame
-      useEngineStore.setState({ currentFrame: frame });
-
       this.lastRenderedTime = time;
 
       return frame;
     } catch (error) {
       this.renderStats.renderErrors++;
       console.error("RenderBridge: Frame render error:", error);
+      // Ownership transfers only on the successful return above.
+      frame?.image.close();
       return null;
     }
   }
@@ -225,14 +226,17 @@ export class RenderBridge {
 
     this.pendingRender = requestAnimationFrame(() => {
       this.pendingRender = null;
-      this.renderFrame(time).catch((error) => {
-        console.error("[RenderBridge] Frame render failed:", error);
-      });
+      this.renderFrame(time)
+        .then((frame) => frame?.image.close())
+        .catch((error) => {
+          console.error("[RenderBridge] Frame render failed:", error);
+        });
     });
   }
 
   /**
-   * Render the current frame at the playhead position
+   * Render the current frame at the playhead position. The caller owns the
+   * returned frame and must close its ImageBitmap after use.
    */
   async renderCurrentFrame(): Promise<RenderedFrame | null> {
     const playheadPosition = useTimelineStore.getState().playheadPosition;
@@ -602,7 +606,8 @@ export class RenderBridge {
   /**
    * Get a frame from the cache
    *
-   * Return cached frames without re-decoding
+   * Return a borrowed cached frame without re-decoding. The cache owns its
+   * ImageBitmap and keeps it valid until the entry is evicted.
    *
    * **Feature: core-ui-integration, Property 23: Cache Hit Returns Cached Frame**
    *
@@ -632,7 +637,7 @@ export class RenderBridge {
   }
 
   /**
-   * Add a frame to the cache
+   * Transfer a frame to the cache
    *
    * Store frames and evict LRU when needed
    *

@@ -124,7 +124,19 @@ export type MediaAction =
         mediaItem?: MediaItem;
       };
     }
-  | { type: "media/delete"; params: { mediaId: string } }
+  | {
+      type: "media/delete";
+      params: {
+        mediaId: string;
+        /**
+         * Pinned by the executor at delete time: the live pre-delete item.
+         * The inverse generator only sees a JSON-roundtripped snapshot, where
+         * the File blob degrades to {} and waveformData loses its typed
+         * array, so undo restores this real reference instead.
+         */
+        mediaItem?: MediaItem;
+      };
+    }
   /**
    * Rename a media item's user-facing DISPLAY name. `name` here is the new
    * display name; the item's source filename (`MediaItem.name`) and the real
@@ -175,6 +187,11 @@ export type TrackAction =
   | { type: "track/solo"; params: { trackId: string; solo: boolean } };
 
 // Clip actions
+export type ClipTimingSnapshot = Pick<
+  Clip,
+  "id" | "startTime" | "duration" | "inPoint" | "outPoint"
+>;
+
 export type ClipAction =
   | {
       type: "clip/add";
@@ -236,6 +253,11 @@ export type ClipAction =
       params: { clipId: string; colorGrading?: ClipColorGrading };
     }
   | { type: "clip/restore"; params: { clip: Clip } }
+  | {
+      /** Exact timing restoration used as the inverse of multi-clip edits. */
+      type: "clip/restoreTiming";
+      params: { clips: readonly ClipTimingSnapshot[] };
+    }
   | { type: "clip/merge"; params: { clipId: string; originalClip: Clip } }
   | {
       type: "clip/rippleRestore";

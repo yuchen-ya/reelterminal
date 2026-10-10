@@ -191,11 +191,12 @@ describe("persistence: save → fresh session open → continue", () => {
     if (!opened.ok) return;
 
     // The same key + payload that session A already committed applies as a
-    // FRESH mutation here (ledger is per session; never persisted).
-    const fresh = await sessionB["edit.apply"]({
-      ops: [{ op: "track.add", trackType: "graphics", trackId: "g1" }],
+    // FRESH mutation here (ledger is per session; never persisted): if the
+    // ledger were restored from the checkpoint, this would replay instead.
+    const fresh = await sessionB["media.import"]({
+      path: join(mediaRoot, "tiny-6s.mp4"),
       expectedRevision: saved.value.revision,
-      idempotencyKey: "fresh-key-per-session",
+      idempotencyKey: "imp-1",
     });
     expect(fresh.ok).toBe(true);
     if (!fresh.ok) return;

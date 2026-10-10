@@ -26,6 +26,10 @@ describe("Aurora preview renderer", () => {
     expect(result.height).toBe(96);
     if (findNativeAuroraRendererPath()) {
       expect(result.backend).toBe("native");
+    } else {
+      // No native renderer binary on this platform: the in-process backend
+      // must be reported, so backend drift is caught everywhere.
+      expect(result.backend).toBe("cpu");
     }
   });
 });

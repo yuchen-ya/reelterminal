@@ -22,17 +22,30 @@ const REGENERABLE_CACHE_DIRS = [
 
 const VERSION_MARKER_FILE = ".openreel-build";
 
-function readMarker(markerPath: string): string {
+type MarkerRead =
+  | { state: "ok"; version: string }
+  | { state: "absent" }
+  | { state: "unreadable" };
+
+function readMarker(markerPath: string): MarkerRead {
   try {
     if (statSync(markerPath).isFile()) {
-      return readFileSync(markerPath, "utf8").trim();
+      return { state: "ok", version: readFileSync(markerPath, "utf8").trim() };
     }
     // Corrupt marker (e.g. a directory) — remove it so a good one can be written.
-    rmSync(markerPath, { recursive: true, force: true });
-  } catch {
-    // Missing or unreadable → treat as first run.
+    try {
+      rmSync(markerPath, { recursive: true, force: true });
+      return { state: "absent" };
+    } catch {
+      return { state: "unreadable" };
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return { state: "absent" };
+    }
+    // Present but unreadable (e.g. EACCES) — the caller must not advance.
+    return { state: "unreadable" };
   }
-  return "";
 }
 
 function writeMarker(markerPath: string, version: string): void {
@@ -56,7 +69,15 @@ export function migrateGpuCacheOnUpgrade(): void {
     }
     const markerPath = path.join(userData, VERSION_MARKER_FILE);
 
-    const previousVersion = readMarker(markerPath);
+    const marker = readMarker(markerPath);
+    if (marker.state === "unreadable") {
+      // We cannot tell whether this marker already records the current version.
+      // Clearing now could drop a good cache, and advancing now could skip a
+      // needed clear — leave everything as-is so a later launch can retry.
+      console.warn("[gpu-cache] version marker unreadable; leaving caches and marker untouched");
+      return;
+    }
+    const previousVersion = marker.state === "ok" ? marker.version : "";
     if (previousVersion === currentVersion) return;
 
     let allCleared = true;

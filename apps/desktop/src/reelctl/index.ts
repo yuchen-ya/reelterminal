@@ -120,10 +120,16 @@ async function runRequirements(
   }
   const parsed = parseFlags(argv.slice(2));
   const endpointStatus = await client.status();
-  if (typeof endpointStatus.projectId !== "string" || typeof endpointStatus.workspaceId !== "string") {
-    throw new LiveCliError("requirements needs an open project workspace", "business", 3);
+  // Requirements live on the project itself and every verb below is
+  // project-scoped (the host strips workspace routing for them), so a
+  // workspace id is optional — a directly-opened project has none.
+  if (typeof endpointStatus.projectId !== "string") {
+    throw new LiveCliError("requirements needs an open project", "business", 3);
   }
-  const target = { projectId: endpointStatus.projectId, workspaceId: endpointStatus.workspaceId };
+  const target = {
+    projectId: endpointStatus.projectId,
+    ...(typeof endpointStatus.workspaceId === "string" ? { workspaceId: endpointStatus.workspaceId } : {}),
+  };
   const state = await client.command("project.get_state", target, { retry: "safe", addIdempotencyKey: false });
   if (!state.ok) return { result: state, human: parsed.human, compact: parsed.compact };
   const items = requirementItems(state);

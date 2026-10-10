@@ -246,6 +246,7 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "source kind unknown", params: { source: { kind: "url", url: "https://x" }, width: 64, height: 64 }, expectValid: false },
     { name: "path kind without path", params: { source: { kind: "path" }, width: 64, height: 64 }, expectValid: false },
     { name: "inline html must be non-empty", params: { source: { kind: "inline", html: "" }, width: 64, height: 64 }, expectValid: false },
+    { name: "unknown inline source field", params: { source: { kind: "inline", html: "<p>x</p>", extra: true }, width: 64, height: 64 }, expectValid: false },
     { name: "odd width is schema-valid but facade-rejected", params: { source: { kind: "inline", html: "<p>x</p>" }, width: 101, height: 64 }, schemaValid: true, expectValid: false },
     { name: "width above ceiling", params: { source: { kind: "inline", html: "<p>x</p>" }, width: 4098, height: 64 }, expectValid: false },
     { name: "timeoutMs above ceiling", params: { source: { kind: "inline", html: "<p>x</p>" }, width: 64, height: 64, timeoutMs: 121000 }, expectValid: false },
@@ -273,6 +274,12 @@ export const VERB_SCHEMA_CORPUS: Readonly<
   "timeline.query": [
     { name: "empty bounded query is valid", params: {}, expectValid: true },
     { name: "valid namespaced refs", params: { refs: ["@A1", "R2"], limit: 20 }, expectValid: true },
+    {
+      name: "schema-valid but facade-rejected: range end must exceed start",
+      params: { timeRange: { startSec: 2, endSec: 1 } },
+      schemaValid: true,
+      expectValid: false,
+    },
     { name: "bare hash ref forbidden", params: { refs: ["#1"] }, schemaValid: true, expectValid: false },
     { name: "unknown field projection", params: { fields: ["rawProject"] }, expectValid: false },
     { name: "unknown envelope field", params: { query: "clip" }, expectValid: false },
@@ -673,6 +680,11 @@ export const VERB_SCHEMA_CORPUS: Readonly<
         idempotencyKey: "e1",
       },
       expectValid: true,
+    },
+    {
+      name: "clip.add duration must be positive",
+      params: { ops: [{ op: "clip.add", trackId: "v1", mediaId: "m1", startTime: 0, duration: 0 }] },
+      expectValid: false,
     },
     {
       name: "valid clip.trim with both points",
@@ -1434,6 +1446,11 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       params: { settings: { audioBitrateKbps: 128 } },
       expectValid: false,
     },
+    {
+      name: "unknown comparison field",
+      params: { comparison: { startSec: 0, endSec: 1, extra: true } },
+      expectValid: false,
+    },
     { name: "settings wrong type", params: { settings: [1, 2] }, expectValid: false },
     {
       name: "videoBitrateKbps must be a positive integer",
@@ -1650,6 +1667,11 @@ export const VERB_SCHEMA_CORPUS: Readonly<
       name: "valid effect target",
       params: { presetId: "preset_1", target: { kind: "effect", clipIds: ["clip-1"] }, idempotencyKey: "pa1" },
       expectValid: true,
+    },
+    {
+      name: "unknown effect target field",
+      params: { presetId: "preset_1", target: { kind: "effect", clipIds: ["clip-1"], extra: true } },
+      expectValid: false,
     },
     {
       name: "valid transition cut",

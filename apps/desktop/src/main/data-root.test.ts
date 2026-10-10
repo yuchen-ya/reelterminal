@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -15,7 +16,13 @@ vi.mock("electron", () => ({
   dialog: { showErrorBox: electron.showErrorBox },
 }));
 
-import { agentWorkspaceDefault, changeDataRoot, getDataRootInfo, prepareDataRootSession } from "./data-root";
+import {
+  agentWorkspaceDefault,
+  changeDataRoot,
+  getDataRootInfo,
+  prepareDataRootSession,
+  reportMigrationProblem,
+} from "./data-root";
 import { agentStartupInfo } from "./live/agent-startup-info";
 
 let sandbox: string;
@@ -72,5 +79,66 @@ describe("storage location and Agent startup paths", () => {
     await prepareDataRootSession();
     expect(getDataRootInfo().root).toBe(configured);
     expect(agentWorkspaceDefault()).toBe(path.join(configured, "agent-workspace"));
+  });
+
+  it("keeps the previous root active after a workspace copy fails and retries without moving sources", async () => {
+    await prepareDataRootSession();
+    const previous = getDataRootInfo();
+    await writeFile(path.join(previous.appData, "profile.db"), "profile");
+    const taskBrief = path.join(
+      previous.agentWorkspace,
+      "jobs",
+      "existing-task",
+      "brief.md",
+    );
+    await mkdir(path.dirname(taskBrief), { recursive: true });
+    await writeFile(
+      taskBrief,
+      "Existing task",
+    );
+    const selectedRoot = path.join(sandbox, "selected-data");
+
+    expect(changeDataRoot(selectedRoot)).toEqual({ ok: true, requiresRestart: true });
+
+    const failed = await prepareDataRootSession({
+      copy: async (from, to, options) => {
+        if (from === previous.agentWorkspace) {
+          throw Object.assign(new Error("workspace is locked"), { code: "EIO" });
+        }
+        await cp(from, to, options);
+      },
+    });
+
+    expect(failed.migration.ok).toBe(false);
+    expect(failed.adopted).toBe(false);
+    expect(failed.activeLayout?.root).toBe(previous.root);
+    expect(electron.paths.userData).toBe(previous.appData);
+    expect(agentWorkspaceDefault()).toBe(previous.agentWorkspace);
+    expect(await readFile(path.join(previous.appData, "profile.db"), "utf8")).toBe("profile");
+    expect(await readFile(taskBrief, "utf8")).toBe("Existing task");
+    expect(existsSync(path.join(selectedRoot, "app-data"))).toBe(false);
+    expect(existsSync(path.join(selectedRoot, "agent-workspace"))).toBe(false);
+
+    reportMigrationProblem(failed);
+    expect(electron.showErrorBox.mock.calls.at(-1)?.[1]).toContain(
+      "destination copies created by this failed batch were removed",
+    );
+
+    // The old root remains active between attempts and may change. Equal-sized
+    // edits must be copied fresh rather than reusing an earlier target copy.
+    await writeFile(path.join(previous.appData, "profile.db"), "updated");
+
+    const retried = await prepareDataRootSession({
+      copy: (from, to, options) => cp(from, to, options),
+    });
+
+    expect(retried.migration.ok).toBe(true);
+    expect(retried.adopted).toBe(true);
+    expect(retried.activeLayout?.root).toBe(selectedRoot);
+    expect(electron.paths.userData).toBe(path.join(selectedRoot, "app-data"));
+    expect(await readFile(path.join(selectedRoot, "app-data", "profile.db"), "utf8")).toBe("updated");
+    expect(await readFile(path.join(selectedRoot, "agent-workspace", "jobs", "existing-task", "brief.md"), "utf8")).toBe("Existing task");
+    expect(await readFile(path.join(previous.appData, "profile.db"), "utf8")).toBe("updated");
+    expect(await readFile(taskBrief, "utf8")).toBe("Existing task");
   });
 });

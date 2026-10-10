@@ -39,7 +39,8 @@ function targetFrom(params: Record<string, unknown>): WorkspaceTarget {
   };
 }
 
-function failureCode(error: unknown): string {
+/** Map a thrown error to the facade's coarse failure codes (exported for tests). */
+export function failureCode(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/revision conflict|revision mismatch|changed while|runtime changed|idempotency key.+different|already retained with different/i.test(message)) return "CONFLICT";
   if (/unknown (project|workspace|node|recovery draft)|not found|does not belong/i.test(message)) return "NOT_FOUND";

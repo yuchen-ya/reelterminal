@@ -8,6 +8,14 @@ afterEach(() => {
 });
 
 describe("shareBaseOrigin", () => {
+  it("rejects sharing links when the desktop has no hosted editor", () => {
+    (window as unknown as { reelterminal: unknown }).reelterminal = {
+      platform: "desktop",
+      publicOrigin: "",
+    };
+    expect(() => generateShareableLink("share")).toThrow("not configured");
+    expect(() => getSharePageUrl("x")).toThrow("not configured");
+  });
   it("uses publicOrigin on desktop for share + deep links", () => {
     (window as unknown as { reelterminal: unknown }).reelterminal = {
       platform: "desktop",

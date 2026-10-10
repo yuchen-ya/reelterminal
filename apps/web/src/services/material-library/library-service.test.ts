@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   MaterialJournalEntry,
   MaterialRecord,
@@ -892,6 +892,28 @@ describe("MaterialLibraryService", () => {
     const after = await service.get(media.id);
     if (!after.ok) throw new Error(after.message);
     expect(after.value.tags).toEqual(["trip", "color"]);
+  });
+
+  it("addTags merges against in-lane state, not a stale pre-enqueue snapshot", async () => {
+    const media = await seedMedia();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const commit = storage.commit.bind(storage);
+    vi.spyOn(storage, "commit").mockImplementationOnce(async (change) => {
+      await gate;
+      await commit(change);
+    });
+
+    // The update enters the mutation lane first and blocks mid-commit;
+    // addTags must observe its result when its own turn arrives.
+    const update = service.update(media.id, { tags: ["trip", "edited"] }, "user");
+    const add = service.addTags([media.id], ["added"], "user");
+    release();
+    await Promise.all([update, add]);
+
+    const after = await service.get(media.id);
+    if (!after.ok) throw new Error(after.message);
+    expect(after.value.tags).toEqual(["trip", "edited", "added"]);
   });
 
   it("serializes concurrent mutations in arrival order", async () => {

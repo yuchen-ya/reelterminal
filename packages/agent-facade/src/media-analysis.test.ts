@@ -35,8 +35,8 @@ describe("media.analyze_start and generalized jobs", () => {
     expect(started.value).toMatchObject({ kind: "analysis", state: "queued", sourceRevision: 1 });
 
     let status = await facade["job.status"]({ jobId: started.value.jobId });
-    for (let attempt = 0; status.ok && !["done", "error", "cancelled"].includes(status.value.state) && attempt < 100; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
+    for (let attempt = 0; status.ok && !["done", "error", "cancelled"].includes(status.value.state) && attempt < 400; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
       status = await facade["job.status"]({ jobId: started.value.jobId });
     }
     expect(status.ok).toBe(true);

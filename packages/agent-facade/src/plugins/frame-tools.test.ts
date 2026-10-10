@@ -101,6 +101,11 @@ describe("frames.extract (plugin)", () => {
 
     const both = await facade!["frames.extract"]({ source: { mediaId }, selection: { frames: [1], startFrame: 0, endFrame: 2 } } as never);
     expect(both.ok).toBe(false);
+
+    const junkSelectionKey = await facade!["frames.extract"]({ source: { mediaId }, selection: { startFrame: 0, endFrame: 2, junk: true } } as never);
+    expect(junkSelectionKey.ok).toBe(false);
+    if (junkSelectionKey.ok) return;
+    expect(junkSelectionKey.error.code).toBe("INVALID_PARAMS");
   });
 
   it("reports missing ffmpeg honestly (fresh module, bogus binary path)", async () => {
@@ -238,11 +243,31 @@ describe("patch.apply (plugin)", () => {
     if (wrongSize.ok) return;
     expect(wrongSize.error.message).toMatch(/full-frame patch/);
 
+    // A full-frame layer, so the ONLY possible failure below is the
+    // out-of-range subset validation (not the raster check).
+    const fullPatch = path.join(root, "full-patch.png");
+    await runToolProcess(binaries!.ffmpeg, [
+      "-hide_banner", "-loglevel", "error", "-y",
+      "-f", "lavfi", "-i", "color=blue:size=320x180:duration=0.04",
+      "-frames:v", "1", fullPatch,
+    ]);
     const outside = await facade!["patch.apply"]({
       source: { mediaId },
       range: { startFrame: 0, endFrame: 2, frames: [5] },
-      patch: { path: smallPatch, x: 0, y: 0, width: 8, height: 8 },
+      patch: { path: fullPatch, x: 0, y: 0, width: 8, height: 8 },
     });
     expect(outside.ok).toBe(false);
+    if (outside.ok) return;
+    expect(outside.error.code).toBe("INVALID_PARAMS");
+    expect(outside.error.message).toMatch(/in-range subset/);
+
+    const junkRangeKey = await facade!["patch.apply"]({
+      source: { mediaId },
+      range: { startFrame: 0, endFrame: 2, junk: true },
+      patch: { path: fullPatch, x: 0, y: 0, width: 8, height: 8 },
+    } as never);
+    expect(junkRangeKey.ok).toBe(false);
+    if (junkRangeKey.ok) return;
+    expect(junkRangeKey.error.code).toBe("INVALID_PARAMS");
   });
 });

@@ -29,20 +29,27 @@ export class DurableTaskLedger {
     mkdirSync(root, { recursive: true });
     for (const file of readdirSync(root)) {
       if (!file.endsWith(".json")) continue;
-      const record = JSON.parse(readFileSync(path.join(root, file), "utf8")) as DurableTaskRecord;
-      if (record.formatVersion !== 1 || record.inputProject?.id !== record.projectId ||
-          record.status?.jobId !== record.jobId || record.status.kind !== record.kind ||
-          !taskStates.has(record.status.state) || !Number.isSafeInteger(record.sourceRevision) || record.sourceRevision < 0 || !record.workspaceId ||
-          file !== `${this.validId(record.jobId)}.json`) {
-        throw new Error(`Invalid durable task record: ${file}`);
-      }
-      if (terminalStates.has(record.status.state)) {
-        this.records.set(record.jobId, record);
-      } else {
-        this.commit({ ...record, status: { ...record.status, state: "error",
-          artifact: null, result: null, deliveredTo: null,
-          error: { code: "INTERRUPTED", message: "Desktop restarted before this task completed. Its fixed input is retained; start a new task to retry." },
-          updatedAt: new Date().toISOString() } });
+      try {
+        const record = JSON.parse(readFileSync(path.join(root, file), "utf8")) as DurableTaskRecord;
+        if (record.formatVersion !== 1 || record.inputProject?.id !== record.projectId ||
+            record.status?.jobId !== record.jobId || record.status.kind !== record.kind ||
+            !taskStates.has(record.status.state) || !Number.isSafeInteger(record.sourceRevision) || record.sourceRevision < 0 || !record.workspaceId ||
+            file !== `${this.validId(record.jobId)}.json`) {
+          throw new Error(`Invalid durable task record: ${file}`);
+        }
+        if (terminalStates.has(record.status.state)) {
+          this.records.set(record.jobId, record);
+        } else {
+          this.commit({ ...record, status: { ...record.status, state: "error",
+            artifact: null, result: null, deliveredTo: null,
+            error: { code: "INTERRUPTED", message: "Desktop restarted before this task completed. Its fixed input is retained; start a new task to retry." },
+            updatedAt: new Date().toISOString() } });
+        }
+      } catch (error) {
+        // One damaged record file must not wedge every later live task, so
+        // quarantine it beside the others and keep loading the rest.
+        renameSync(path.join(root, file), path.join(root, `${file}.corrupt-${Date.now()}`));
+        console.warn(`[task-ledger] quarantined damaged task record ${file}:`, error);
       }
     }
   }
@@ -77,7 +84,8 @@ export class DurableTaskLedger {
   update(status: JobStatusView): void {
     const record = this.records.get(status.jobId);
     if (!record) throw new Error(`Unknown durable task: ${status.jobId}`);
-    if (status.sourceRevision !== record.sourceRevision || status.kind !== record.kind) {
+    if (status.sourceRevision !== record.sourceRevision || status.kind !== record.kind ||
+        !taskStates.has(status.state)) {
       throw new Error("Task status does not match its fixed input");
     }
     this.commit({ ...record, status });

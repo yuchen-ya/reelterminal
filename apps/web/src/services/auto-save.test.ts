@@ -114,6 +114,33 @@ describe("AutoSaveManager", () => {
     manager.stop();
   });
 
+  it("does not delay another project's due save with a failed project's backoff", async () => {
+    vi.useFakeTimers();
+    const manager = new AutoSaveManager({ debounceTime: 10, interval: 30_000 });
+    const save = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("disk full"))
+      .mockResolvedValue(undefined);
+    internals(manager).save = save;
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const failing = { ...project("Failing"), id: "project-fail" };
+    const healthy = { ...project("Healthy"), id: "project-ok" };
+
+    manager.start(() => healthy);
+    manager.markDirty(failing);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(save).toHaveBeenCalledOnce();
+
+    manager.markDirty(healthy);
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({ id: "project-ok" }),
+    );
+    manager.stop();
+  });
+
   it("does not clear edits made while an older snapshot is saving", async () => {
     const manager = new AutoSaveManager();
     const firstWrite = deferred<void>();

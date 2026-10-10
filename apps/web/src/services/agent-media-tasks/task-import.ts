@@ -155,6 +155,19 @@ export async function importAwaitingTask(
   }
   importsInFlight.add(taskId);
   try {
+    // This trigger may have been parked at an await above while an earlier
+    // trigger completed (markDone + in-flight removal). Re-check so the
+    // replayed import does not fail on markDone done→done.
+    const raced = await service.get(taskId);
+    if (raced.ok && raced.value.resultMediaId) {
+      return {
+        ok: true,
+        taskId,
+        record: raced.value,
+        skipped: true,
+        mediaId: raced.value.resultMediaId,
+      };
+    }
     const reply = await importArtifact({
       path: record.resultPath,
       idempotencyKey: record.requestId,

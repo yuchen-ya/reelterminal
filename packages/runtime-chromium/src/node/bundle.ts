@@ -28,7 +28,13 @@ let cached: Promise<string> | null = null;
 
 export function buildBrowserEntry(): Promise<string> {
   cached ??= doBuild();
-  return cached;
+  const promise = cached;
+  // Never memoise a rejection: one transient esbuild failure must not make
+  // every future buildBrowserEntry() reject forever.
+  void promise.catch(() => {
+    if (cached === promise) cached = null;
+  });
+  return promise;
 }
 
 /** Injectable context for the resolution below (tests); all optional. */

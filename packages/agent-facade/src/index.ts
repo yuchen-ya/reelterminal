@@ -1,4 +1,5 @@
 import { bindBundledTools, type BundledToolBindings } from "./plugin-runtime";
+import { withValidatedFacadeCalls } from "./request-validation";
 /**
  * @reelterminal/agent-facade — the agent-facing facade.
  *
@@ -231,7 +232,7 @@ export interface AgentFacade extends BundledToolBindings {
  */
 export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
   const session = new AgentFacadeSession(config);
-  return {
+  return withValidatedFacadeCalls({
     ...bindBundledTools(session, config, "headless"),
     "session.describe": () => session.sessionDescribe(),
     "capabilities.get": () => session.capabilitiesGet(),
@@ -282,7 +283,7 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "help.list_screens": (params) => session.helpListScreens(params),
     "help.describe": (params) => session.helpDescribe(params),
     "help.search": (params) => session.helpSearch(params),
-  };
+  }, "headless") as AgentFacade;
 }
 
 export { AgentFacadeSession, createAgentFacadeSession } from "./session";

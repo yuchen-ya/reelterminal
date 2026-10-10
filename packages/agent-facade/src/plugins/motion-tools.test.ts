@@ -18,7 +18,7 @@
  *    small per-frame error; a hard cut must END the track at the cut frame
  *    with a termination reason and null matrices afterwards.
  */
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
@@ -287,6 +287,11 @@ describe("motion.track", () => {
       source: { mediaId }, range: { startFrame: 0, endFrame: 241 }, region: { x: 10, y: 10, width: 40, height: 40 },
     });
     expect(oversized.ok).toBe(false);
+    const junkRangeKey = await facade!["motion.track"]({
+      source: { mediaId }, range: { startFrame: 0, endFrame: 5, junk: true }, region: { x: 10, y: 10, width: 40, height: 40 },
+    } as never);
+    expect(junkRangeKey.ok).toBe(false);
+    if (!junkRangeKey.ok) expect(junkRangeKey.error.code).toBe("INVALID_PARAMS");
   });
 
   it("fails UNSUPPORTED when no OpenCV interpreter is available", async () => {
@@ -355,6 +360,11 @@ describe("motion.track", () => {
 
   it.skipIf(skipReal())("cleans up its artifact directory when the range is invalid", async () => {
     const before = await facade!["project.get_state"]();
+    // runMotionTrack materializes <artifactRoot>/motion-tools/<uuid>/ (and
+    // extracted frames inside it) before the region check fails; the rm
+    // cleanup in its catch path must leave no new entry behind.
+    const motionToolsDir = path.join(root, "artifacts", "motion-tools");
+    const entriesBefore = (await readdir(motionToolsDir).catch(() => [])).sort();
     const result = await facade!["motion.track"]({
       source: { path: boxVideoPath },
       range: { startFrame: 0, endFrame: 5 }, region: { x: 400, y: 10, width: 40, height: 40 },
@@ -362,5 +372,6 @@ describe("motion.track", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("INVALID_PARAMS");
     expect(await facade!["project.get_state"]()).toEqual(before);
+    expect((await readdir(motionToolsDir).catch(() => [])).sort()).toEqual(entriesBefore);
   });
 });

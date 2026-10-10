@@ -469,4 +469,30 @@ describe("TransitionEngine", () => {
       expect(engine.areClipsAdjacent(a, b)).toBe(false);
     });
   });
+
+  describe("dispose", () => {
+    it("releases the letterbox scratch canvases with the rest of the canvas state", () => {
+      const internals = engine as unknown as Record<string, unknown>;
+      // Simulate what fitToCanvas allocates at full resolution.
+      const fakeCanvas = {} as OffscreenCanvas;
+      const fakeCtx = {} as OffscreenCanvasRenderingContext2D;
+      internals["scratchA"] = fakeCanvas;
+      internals["scratchACtx"] = fakeCtx;
+      internals["scratchB"] = fakeCanvas;
+      internals["scratchBCtx"] = fakeCtx;
+      internals["pixelScratch"] = fakeCanvas;
+      internals["pixelScratchCtx"] = fakeCtx;
+
+      engine.dispose();
+
+      expect(internals["canvas"]).toBeNull();
+      expect(internals["ctx"]).toBeNull();
+      expect(internals["scratchA"]).toBeNull();
+      expect(internals["scratchACtx"]).toBeNull();
+      expect(internals["scratchB"]).toBeNull();
+      expect(internals["scratchBCtx"]).toBeNull();
+      expect(internals["pixelScratch"]).toBeNull();
+      expect(internals["pixelScratchCtx"]).toBeNull();
+    });
+  });
 });

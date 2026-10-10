@@ -90,7 +90,9 @@ describe("Decision 7: signal ownership", () => {
   // a fixed sleep races an otherwise-instant empty teardown. Drive a real
   // browser into the session (preview.render_frame), then send the second
   // signal the moment the bounded disposal begins.
-  it.skipIf(!runtimeHealthy)("a second signal exits immediately with no further disposal promises", async () => {
+  // Windows has no POSIX signals: kill("SIGTERM") is a hard terminate, so
+  // the 143/130/129 exit-code semantics these tests assert cannot exist.
+  it.skipIf(process.platform === "win32" || !runtimeHealthy)("a second signal exits immediately with no further disposal promises", async () => {
     const client: McpClient = startServe(serveArgs());
     await initialize(client);
     const call = async (id: number, name: string, args: Record<string, unknown>) => {
@@ -190,9 +192,11 @@ describe("Decision 6: stdout purity guard (CI)", () => {
     for (const message of ok) {
       expect((message as any).jsonrpc).toBe("2.0");
     }
-    // stderr carries single-line JSON logs
+    // stderr carries single-line JSON logs (transitive deps may console.log,
+    // which redirectConsoleToStderr emits as human-readable [console.*] lines)
     for (const line of client.handle.stderr.split("\n")) {
       if (line.trim().length === 0) continue;
+      if (/^\[console\.(info|warn|error|log)\]/.test(line)) continue;
       expect(() => JSON.parse(line)).not.toThrow();
     }
   }, 240_000);
@@ -227,6 +231,7 @@ describe("Decision 6: stdout purity guard (CI)", () => {
     }
     for (const line of handle.stderr.split("\n")) {
       if (line.trim().length === 0) continue;
+      if (/^\[console\.(info|warn|error|log)\]/.test(line)) continue;
       expect(() => JSON.parse(line)).not.toThrow();
     }
   }, 240_000);
@@ -244,6 +249,7 @@ describe("Decision 6: stdout purity guard (CI)", () => {
     // stderr logs remain single-line JSON
     for (const line of handle.stderr.split("\n")) {
       if (line.trim().length === 0) continue;
+      if (/^\[console\.(info|warn|error|log)\]/.test(line)) continue;
       expect(() => JSON.parse(line)).not.toThrow();
     }
   }, 300_000);

@@ -43,7 +43,7 @@ function fakeSession(overrides: {
     "project.save": () => { calls.push({ verb: "project.save", params: {} }); return Promise.resolve({ ok: true, value: { path: "/p/x", revision: 0 } as any }); },
     "project.get_state": () => { calls.push({ verb: "project.get_state", params: {} }); return Promise.resolve({ ok: true, value: {} as any }); },
     "media.import": () => { calls.push({ verb: "media.import", params: {} }); return Promise.resolve({ ok: true, value: {} as any }); },
-    "timeline.get": () => { calls.push({ verb: "timeline.get", params: {} }); return Promise.resolve({ ok: true, value: { revision: 1, duration: 0, tracks: [], textOverlays: [] } }); },
+    "timeline.get": (params: unknown) => { calls.push({ verb: "timeline.get", params }); return Promise.resolve(overrides.verbResults?.["timeline.get"] ?? { ok: true, value: { revision: 1, duration: 0, tracks: [], textOverlays: [] } }); },
     "edit.apply": () => { calls.push({ verb: "edit.apply", params: {} }); return Promise.resolve({ ok: true, value: { revision: 2, applied: [], replayed: false } }); },
     "preview.render_frame": () => Promise.resolve({ ok: true, value: { artifact: { path: "/a/f.png" } } as any }),
     "export.start": () => Promise.resolve({ ok: true, value: { jobId: overrides.statusQueue?.[0]?.jobId ?? "job-1", state: "queued", sourceRevision: 2, replayed: false } }),
@@ -177,25 +177,42 @@ describe("$ref resolution semantics", () => {
     expect(resolvePointer(value, "/mediaId")).toEqual({ ok: true, value: "m1" });
     expect(resolvePointer(value, "/nested/a~1b/1")).toEqual({ ok: true, value: 2 });
     expect(resolvePointer(value, "/missing")).toEqual({ ok: false, miss: "missing" });
+    // RFC 6901: leading-zero tokens never resolve as array indices
+    const arr = [{ a: 1 }, { b: 2 }];
+    expect(resolvePointer(arr, "/0")).toEqual({ ok: true, value: { a: 1 } });
+    expect(resolvePointer(arr, "/1")).toEqual({ ok: true, value: { b: 2 } });
+    expect(resolvePointer(arr, "/01")).toEqual({ ok: false, miss: "01" });
     expect(parseRefText("export")).toEqual({ stepId: "export", pointer: "" });
     expect(parseRefText("export#/jobId")).toEqual({ stepId: "export", pointer: "/jobId" });
   });
 
   it("substitution splices the referenced value as the ENTIRE value (single-pass, no re-scan)", async () => {
-    const session = fakeSession();
-    // A step whose result VALUE contains something that LOOKS like a $ref:
-    // single-pass substitution must never re-scan substituted content.
+    // Step 1's result VALUE contains a nested object that LOOKS like a $ref:
+    // single-pass substitution must splice it verbatim and never re-scan it.
+    const session = fakeSession({
+      verbResults: {
+        "timeline.get": {
+          ok: true,
+          value: { revision: 1, duration: 0, tracks: [], textOverlays: [], echo: { $ref: "first#/revision" } },
+        },
+      },
+    });
     const steps = parseOrThrow(
       [
         JSON.stringify({ id: "first", verb: "timeline.get" }),
-        JSON.stringify({ id: "second", verb: "timeline.get", params: { idempotencyKey: "ignored" } }),
+        JSON.stringify({ id: "second", verb: "timeline.get", params: { echo: { $ref: "first#/echo" } } }),
       ].join("\n"),
     );
     const lines = await run(session, steps);
     expect(lines).toHaveLength(2);
     expect(lines[0].result?.ok).toBe(true);
-    // params of the second step contained no refs — untouched passthrough
-    expect(session.calls[0]).toEqual({ verb: "timeline.get", params: {} });
+    expect(lines[1].result?.ok).toBe(true);
+    // step 2 reached the facade with step 1's echo object VERBATIM — the
+    // substituted content was not re-scanned into revision 1
+    expect(session.calls[1]).toEqual({
+      verb: "timeline.get",
+      params: { echo: { $ref: "first#/revision" } },
+    });
   });
 
   it("a pointer miss is a workflowError, distinct from a verb ok:false", async () => {

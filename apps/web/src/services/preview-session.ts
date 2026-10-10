@@ -71,8 +71,10 @@ export interface PreviewSessionApi {
    * "Continue editing from here": protect the current dirty edit as a
    * recovery draft, adopt the previewed content into the editing
    * workspace, start a fresh undo chain, then exit preview. On a
-   * concurrent-edit conflict nothing is overwritten and an error is
-   * thrown (both results remain preserved).
+   * concurrent-edit conflict nothing is overwritten: the conflict is
+   * surfaced as a toast and adopt() returns normally (it does not
+   * throw), keeping the preview open so the adoption can be retried from
+   * the latest state (both results remain preserved).
    */
   adopt(): Promise<void>;
   /** Node summary lookup helper for tooltips (lightweight, no snapshot load). */

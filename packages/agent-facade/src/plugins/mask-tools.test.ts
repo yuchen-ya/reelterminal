@@ -197,14 +197,16 @@ describe("mask.refine real OpenCV sample", () => {
     for (const input of [
       { initialization: { mask: { path: emptyMaskPath } } },
       { initialization: { source: { path: sourcePath }, mask: { path: mismatchedMaskPath } } },
-      { initialization: { mask: { path: sixteenBitMaskPath } } },
       { initialization: { source: { path: sourcePath }, rect: { x: 50, y: 50, width: 20, height: 20 } } },
     ]) {
       const result = await tools["mask.refine"](input as never);
       expect(result).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS" } });
-      if (!result.ok && result.error.message.includes("16-bit")) {
-        expect(result.error.message).toContain("8-bit PNG only");
-      }
+    }
+    const sixteenBit = await tools["mask.refine"]({ initialization: { mask: { path: sixteenBitMaskPath } } });
+    expect(sixteenBit).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS" } });
+    if (!sixteenBit.ok) {
+      expect(sixteenBit.error.message).toContain("16-bit");
+      expect(sixteenBit.error.message).toContain("8-bit PNG only");
     }
     expect(await readdir(outputDir)).toEqual(before);
   });

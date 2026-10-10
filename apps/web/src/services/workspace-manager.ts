@@ -1945,8 +1945,14 @@ export class WorkspaceManager {
       this.editedWorkspaces.add(record.id);
       const project = cloneProject(state.getFullProject());
       if (state.project.name !== previousState.project.name) {
-        const projectRecord = this.projects.get(record.projectId)!;
-        this.projects.set(record.projectId, { ...projectRecord, name: project.name, modifiedAt: project.modifiedAt });
+        const projectRecord = this.projects.get(record.projectId);
+        if (!projectRecord) {
+          // A missing project record must not kill this subscriber (and with
+          // it background persistence): skip the rename sync and keep going.
+          console.error("[WorkspaceManager] Project record missing for workspace runtime", record.projectId, record.id);
+        } else {
+          this.projects.set(record.projectId, { ...projectRecord, name: project.name, modifiedAt: project.modifiedAt });
+        }
       }
       const baseProjectKey = this.workspaceBaseProjectKeys.get(record.id) ?? null;
       const dirty = !baseProjectKey || baseProjectKey !== editableProjectKey(project);
@@ -2016,7 +2022,15 @@ export class WorkspaceManager {
         return;
       }
       store.put(preparedWorkspace);
-      tx.objectStore(PROJECTS).put(this.projects.get(workspace.projectId)!);
+      const projectRecord = this.projects.get(workspace.projectId);
+      if (!projectRecord) {
+        // Keep the workspace write durable even when the project row is
+        // absent; throwing here would kill background persistence on every
+        // retry of this snapshot.
+        console.error("[WorkspaceManager] Project record missing during workspace snapshot persistence", workspace.projectId, workspace.id);
+      } else {
+        tx.objectStore(PROJECTS).put(projectRecord);
+      }
       await completed;
     });
   }

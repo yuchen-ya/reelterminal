@@ -11,12 +11,16 @@ import type { AgentMediaTaskRecord } from "./types";
 
 export const AGENT_TASK_SANITIZED_INFO_MAX_LENGTH = 512;
 
-// Windows/POSIX absolute paths and file URIs.
+// Windows/POSIX/UNC absolute paths and file URIs. POSIX paths may follow any
+// punctuation (`output=/home/u/a.wav`), so the allowed prefix class is wider
+// than whitespace/quotes.
 const PATH_PATTERN =
-  /\b(?:file:\/\/\/?\S+|[A-Za-z]:[\\/][^\s"'，。；）、]+|(?:^|[\s(（"'])\/(?:[^\s"'，。；）、]*\/)*[^\s"'，。；）、]+)/g;
-// key=value / key: value shapes carrying secret-looking values.
+  /\\\\[^\s"'，。；）、]+|\b(?:file:\/\/\/?\S+|[A-Za-z]:[\\/][^\s"'，。；）、]+|(?:^|[\s(（"'=,;:)），。；：、])\/(?:[^\s"'，。；）、]*\/)*[^\s"'，。；）、]+)/g;
+// key=value / key: value shapes carrying secret-looking values; an
+// authorization header's scheme token ("Bearer ...") is consumed with its
+// value, not left behind for the next \S+ to miss.
 const CREDENTIAL_PATTERN =
-  /\b(?:api[_-]?key|apikey|access[_-]?token|token|bearer|authorization|password|secret|credential)s?\b\s*[:=]\s*\S+/gi;
+  /\b(?:api[_-]?key|apikey|access[_-]?token|token|bearer|authorization|password|secret|credential)s?\b\s*[:=]\s*(?:bearer\s+)?\S+/gi;
 // Long opaque token runs (hex/base64-ish), e.g. raw keys or session ids.
 const OPAQUE_TOKEN_PATTERN = /\b[A-Za-z0-9+/_-]{32,}\b/g;
 

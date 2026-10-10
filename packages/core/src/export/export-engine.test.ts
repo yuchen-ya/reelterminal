@@ -308,10 +308,12 @@ describe("ExportEngine", () => {
       const presets = exportEngine.getPresets();
       const tiktokPreset = presets.find((p) => p.id === "tiktok-1080p");
       expect(tiktokPreset).toBeDefined();
-      if ("width" in tiktokPreset!.settings) {
-        expect(tiktokPreset!.settings.width).toBe(1080);
-        expect(tiktokPreset!.settings.height).toBe(1920);
-      }
+      const settings = tiktokPreset!.settings;
+      // The dimensions must exist on the preset: shape drift fails loudly
+      // instead of being silently skipped.
+      expect("width" in settings).toBe(true);
+      expect((settings as { width: number }).width).toBe(1080);
+      expect((settings as { height: number }).height).toBe(1920);
     });
 
     it("should create custom preset", () => {

@@ -1585,6 +1585,10 @@ export class TransitionEngine {
     }
     this.canvas = null;
     this.ctx = null;
+    this.scratchA = null;
+    this.scratchACtx = null;
+    this.scratchB = null;
+    this.scratchBCtx = null;
     this.pixelScratch = null;
     this.pixelScratchCtx = null;
   }

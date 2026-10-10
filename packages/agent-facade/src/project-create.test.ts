@@ -60,7 +60,7 @@ describe("project.create lifecycle", () => {
     const projectId = first.value.project.id;
 
     // Advance the project well past creation: import-less edits land at
-    // revision 2 with two tracks.
+    // revision 1 with two tracks.
     const edited = await facade["edit.apply"]({
       ops: [
         { op: "track.add", trackType: "video", trackId: "v1" },

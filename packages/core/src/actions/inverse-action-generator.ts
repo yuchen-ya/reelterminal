@@ -15,6 +15,7 @@ import type {
   ProjectMarkerAction,
   ProjectRequirementAction,
   WorkAssetAction,
+  ClipTimingSnapshot,
 } from "../types/actions";
 import type { Project, MediaItem } from "../types/project";
 import type { WorkAsset } from "../types/work-asset";
@@ -522,6 +523,13 @@ export class InverseActionGenerator {
           clipId: action.params.clip.id,
         });
 
+      case "clip/restoreTiming":
+        return this.createClipTimingInverse(
+          action,
+          projectBefore,
+          action.params.clips.map((clip) => clip.id),
+        );
+
       case "clip/move": {
         const clip = this.findClip(timeline, action.params.clipId);
         if (!clip) return null;
@@ -557,6 +565,25 @@ export class InverseActionGenerator {
           outPoint: clip.outPoint,
         });
       }
+
+      case "clip/slip":
+      case "clip/trimToPlayhead":
+        return this.createClipTimingInverse(action, projectBefore, [
+          action.params.clipId,
+        ]);
+
+      case "clip/slide":
+        return this.createClipTimingInverse(action, projectBefore, [
+          action.params.clipId,
+          action.params.prevClipId,
+          action.params.nextClipId,
+        ]);
+
+      case "clip/roll":
+        return this.createClipTimingInverse(action, projectBefore, [
+          action.params.leftClipId,
+          action.params.rightClipId,
+        ]);
 
       case "clip/split": {
         // To undo split, we need to merge the two clips back
@@ -644,6 +671,26 @@ export class InverseActionGenerator {
       }
     }
     return null;
+  }
+
+  private createClipTimingInverse(
+    action: Action,
+    projectBefore: Project,
+    clipIds: readonly (string | undefined)[],
+  ): Action | null {
+    const wantedIds = new Set(clipIds.filter((clipId): clipId is string => !!clipId));
+    const clips: ClipTimingSnapshot[] = projectBefore.timeline.tracks
+      .flatMap((track) => track.clips)
+      .filter((clip) => wantedIds.has(clip.id))
+      .map((clip) => ({
+        id: clip.id,
+        startTime: clip.startTime,
+        duration: clip.duration,
+        inPoint: clip.inPoint,
+        outPoint: clip.outPoint,
+      }));
+    if (clips.length === 0) return null;
+    return this.createInverseAction(action, "clip/restoreTiming", { clips });
   }
 
   private generateEffectInverse(

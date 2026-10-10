@@ -5,7 +5,7 @@
  */
 import type { Graph, PortType } from "./types";
 import { getNode } from "./nodelib";
-import { abiAtLeast, capsFor } from "./abi";
+import { ABI_VERSIONS, abiAtLeast, capsFor } from "./abi";
 
 export type Severity = "error" | "warning";
 
@@ -37,6 +37,16 @@ export function validateGraph(graph: Graph): ValidationResult {
 
   const byId = new Map(graph.nodes.map((nd) => [nd.id, nd]));
 
+  // ABI membership first: caps/gating lookups crash on an unknown value.
+  const knownAbi = ABI_VERSIONS.includes(graph.abi);
+  if (!knownAbi) {
+    push({
+      code: "unknown_abi",
+      message: `Unknown ABI "${graph.abi}"; expected one of: ${ABI_VERSIONS.join(", ")}`,
+      severity: "error",
+    });
+  }
+
   // unique node ids
   const seen = new Set<string>();
   for (const node of graph.nodes) {
@@ -53,7 +63,7 @@ export function validateGraph(graph: Graph): ValidationResult {
       push({ code: "unknown_node", message: `Unknown node type "${node.type}"`, severity: "error", nodeId: node.id });
       continue;
     }
-    if (!abiAtLeast(graph.abi, spec.minAbi)) {
+    if (knownAbi && !abiAtLeast(graph.abi, spec.minAbi)) {
       push({
         code: "node_abi_too_new",
         message: `Node "${node.type}" requires ABI ${spec.minAbi}, graph declares ${graph.abi}`,
@@ -102,36 +112,55 @@ export function validateGraph(graph: Graph): ValidationResult {
     }
   }
 
+  // at most one edge may drive an input port — otherwise compilers pick an
+  // arbitrary source (filter codegen takes the first edge it finds)
+  const drivenInputs = new Set<string>();
+  for (const edge of graph.edges) {
+    const key = `${edge.toNode}\u0000${edge.toPort}`;
+    if (drivenInputs.has(key)) {
+      push({
+        code: "duplicate_input_edge",
+        message: `Input ${edge.toNode}.${edge.toPort} is driven by more than one edge`,
+        severity: "error",
+        edge,
+      });
+      continue;
+    }
+    drivenInputs.add(key);
+  }
+
   // acyclic (DAG) check
   if (hasCycle(graph)) {
     push({ code: "cycle", message: "Graph contains a cycle; it must be a DAG", severity: "error" });
   }
 
   // resource caps
-  const caps = capsFor(graph.abi);
-  const particleSystems = graph.nodes.filter((nd) => nd.type === "ParticleEmitter");
-  if (particleSystems.length > caps.maxParticleSystems) {
-    push({
-      code: "too_many_particle_systems",
-      message: `${particleSystems.length} particle systems exceeds cap of ${caps.maxParticleSystems}`,
-      severity: "error",
-    });
-  }
-  let totalParticles = 0;
-  for (const node of particleSystems) {
-    const max = typeof node.config?.max === "number" ? (node.config.max as number) : caps.maxParticles;
-    if (max > caps.maxParticles) {
-      push({ code: "particle_cap", message: `ParticleEmitter max ${max} exceeds per-system cap ${caps.maxParticles}`, severity: "error", nodeId: node.id });
+  if (knownAbi) {
+    const caps = capsFor(graph.abi);
+    const particleSystems = graph.nodes.filter((nd) => nd.type === "ParticleEmitter");
+    if (particleSystems.length > caps.maxParticleSystems) {
+      push({
+        code: "too_many_particle_systems",
+        message: `${particleSystems.length} particle systems exceeds cap of ${caps.maxParticleSystems}`,
+        severity: "error",
+      });
     }
-    totalParticles += Math.min(max, caps.maxParticles);
-  }
-  if (totalParticles > caps.maxTotalParticles) {
-    push({ code: "total_particle_cap", message: `Total particles ${totalParticles} exceeds cap ${caps.maxTotalParticles}`, severity: "error" });
-  }
+    let totalParticles = 0;
+    for (const node of particleSystems) {
+      const max = typeof node.config?.max === "number" ? (node.config.max as number) : caps.maxParticles;
+      if (max > caps.maxParticles) {
+        push({ code: "particle_cap", message: `ParticleEmitter max ${max} exceeds per-system cap ${caps.maxParticles}`, severity: "error", nodeId: node.id });
+      }
+      totalParticles += Math.min(max, caps.maxParticles);
+    }
+    if (totalParticles > caps.maxTotalParticles) {
+      push({ code: "total_particle_cap", message: `Total particles ${totalParticles} exceeds cap ${caps.maxTotalParticles}`, severity: "error" });
+    }
 
-  const meshes = graph.nodes.filter((nd) => nd.type === "Mesh3D");
-  if (meshes.length > caps.maxMeshes) {
-    push({ code: "mesh_cap", message: `${meshes.length} meshes exceeds cap ${caps.maxMeshes}`, severity: "error" });
+    const meshes = graph.nodes.filter((nd) => nd.type === "Mesh3D");
+    if (meshes.length > caps.maxMeshes) {
+      push({ code: "mesh_cap", message: `${meshes.length} meshes exceeds cap ${caps.maxMeshes}`, severity: "error" });
+    }
   }
 
   // disconnected Output input
@@ -186,19 +215,30 @@ function hasCycle(graph: Graph): boolean {
   for (const edge of graph.edges) {
     if (adj.has(edge.fromNode)) adj.get(edge.fromNode)!.push(edge.toNode);
   }
+  // Iterative three-colour DFS: recursion overflows the call stack on deep
+  // chains (tens of thousands of nodes).
   const state = new Map<string, 0 | 1 | 2>(); // 0=unseen,1=in-stack,2=done
-  const visit = (id: string): boolean => {
-    state.set(id, 1);
-    for (const next of adj.get(id) ?? []) {
-      const s = state.get(next) ?? 0;
-      if (s === 1) return true;
-      if (s === 0 && visit(next)) return true;
-    }
-    state.set(id, 2);
-    return false;
-  };
   for (const node of graph.nodes) {
-    if ((state.get(node.id) ?? 0) === 0 && visit(node.id)) return true;
+    if ((state.get(node.id) ?? 0) !== 0) continue;
+    state.set(node.id, 1);
+    const stack: Array<{ id: string; next: string[]; i: number }> = [
+      { id: node.id, next: adj.get(node.id) ?? [], i: 0 },
+    ];
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      if (frame.i < frame.next.length) {
+        const next = frame.next[frame.i++];
+        const s = state.get(next) ?? 0;
+        if (s === 1) return true;
+        if (s === 0) {
+          state.set(next, 1);
+          stack.push({ id: next, next: adj.get(next) ?? [], i: 0 });
+        }
+      } else {
+        state.set(frame.id, 2);
+        stack.pop();
+      }
+    }
   }
   return false;
 }

@@ -10,6 +10,9 @@ describe("user-provided FFmpeg", () => {
     mocks.app.isPackaged = true;
     mocks.exists.mockReturnValue(true);
     vi.unstubAllEnvs();
+    // A machine-level REELTERMINAL_FFMPEG_PATH must not leak into the
+    // assertions; "" is falsy in the resolver, i.e. treated as unset.
+    vi.stubEnv("REELTERMINAL_FFMPEG_PATH", "");
   });
 
   it("uses PATH in distributed apps even if local binaries are present", () => {
@@ -19,7 +22,7 @@ describe("user-provided FFmpeg", () => {
   it("uses an explicit path and supports a local development fetch", () => {
     vi.stubEnv("REELTERMINAL_FFMPEG_PATH", "C:/tools/ffmpeg.exe");
     expect(resolveFfmpegPath()).toBe("C:/tools/ffmpeg.exe");
-    vi.unstubAllEnvs();
+    vi.stubEnv("REELTERMINAL_FFMPEG_PATH", "");
     mocks.app.isPackaged = false;
     expect(resolveFfmpegPath()).not.toBe("ffmpeg");
     mocks.exists.mockReturnValue(false);

@@ -7,6 +7,7 @@ export interface EncodePlan {
   encoder: string;
   mode: EncodeMode;
   quality: number;
+  bitrateKbps?: number;
   width: number;
   height: number;
   frameRate: number;
@@ -104,7 +105,15 @@ export function videoEncodeArgs(plan: EncodePlan): string[] {
     args.push("-crf", String(qualityToCrf(family, plan.quality)));
     args.push("-preset", softwarePreset(family, plan.mode));
   } else {
-    const target = hardwareTargetKbps(plan);
+    // Hardware encoders take no CRF. Honor the user's explicit bitrate when
+    // the export plan carries one; otherwise derive a target from
+    // resolution/quality so silent exports still get a sane rate.
+    const target =
+      typeof plan.bitrateKbps === "number" &&
+      Number.isFinite(plan.bitrateKbps) &&
+      plan.bitrateKbps > 0
+        ? Math.round(plan.bitrateKbps)
+        : hardwareTargetKbps(plan);
     args.push(
       "-b:v", `${target}k`,
       "-maxrate", `${Math.round(target * 1.5)}k`,
@@ -128,11 +137,16 @@ export function videoEncodeArgs(plan: EncodePlan): string[] {
       "-color_primaries", "bt709",
       "-color_trc", "bt709",
     );
-    const family = familyForEncoder(plan.encoder);
-    if (family === "x264") {
-      args.push("-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709");
-    } else if (family === "x265") {
-      args.push("-x265-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709");
+    // x264/x265 params are private options of those software encoders only;
+    // familyForEncoder defaults unknown encoders to "x264", so gating on
+    // isSoftwareEncoder keeps hardware encoders (h264_nvenc, …) clean.
+    if (isSoftwareEncoder(plan.encoder)) {
+      const family = familyForEncoder(plan.encoder);
+      if (family === "x264") {
+        args.push("-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709");
+      } else if (family === "x265") {
+        args.push("-x265-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709");
+      }
     }
   }
 

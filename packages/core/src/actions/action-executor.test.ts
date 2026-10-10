@@ -77,6 +77,20 @@ function makeProjectWithClip(clipOverrides: Record<string, unknown> = {}): Proje
   } as unknown as Project;
 }
 
+function getClipTimings(project: Project, clipIds: readonly string[]) {
+  const clips = project.timeline.tracks.flatMap((track) => track.clips);
+  return clipIds.map((id) => {
+    const clip = clips.find((candidate) => candidate.id === id)!;
+    return {
+      id: clip.id,
+      startTime: clip.startTime,
+      duration: clip.duration,
+      inPoint: clip.inPoint,
+      outPoint: clip.outPoint,
+    };
+  });
+}
+
 function importAction(): Action {
   const file = {
     name: "clip.mp4",
@@ -357,12 +371,16 @@ describe("ActionExecutor removal undo fidelity", () => {
   it("restores media provenance and optional fields after media/delete undo/redo", async () => {
     const executor = new ActionExecutor();
     const project = makeProject();
+    const blob = new File([new Uint8Array([1, 2, 3, 4])], "shot.mp4", {
+      type: "video/mp4",
+    });
+    const waveformData = new Float32Array([0.25, 0.5, 0.75]);
     project.mediaLibrary.items.push({
       id: "media-1",
       name: "shot.mp4",
       type: "video",
       fileHandle: null,
-      blob: null,
+      blob,
       metadata: {
         duration: 6,
         width: 1920,
@@ -374,7 +392,7 @@ describe("ActionExecutor removal undo fidelity", () => {
         fileSize: 100,
       },
       thumbnailUrl: null,
-      waveformData: null,
+      waveformData,
       originalUrl: "/media/shot.mp4",
       sourceFile: { name: "shot.mp4", size: 100, lastModified: 123 },
       isPlaceholder: false,
@@ -394,7 +412,13 @@ describe("ActionExecutor removal undo fidelity", () => {
     expect(project.mediaLibrary.items).toHaveLength(0);
 
     expect((await executor.undo(project)).success).toBe(true);
-    expect(project.mediaLibrary.items[0]).toMatchObject({
+    const restored = project.mediaLibrary.items[0]!;
+    // The live objects must ride through undo: the inverse generator only
+    // sees a JSON snapshot, where the File degrades to {} and the waveform
+    // loses its typed array, so a restored copy could never render.
+    expect(restored.blob).toBe(blob);
+    expect(restored.waveformData).toBe(waveformData);
+    expect(restored).toMatchObject({
       id: "media-1",
       originalUrl: "/media/shot.mp4",
       sourceFile: { name: "shot.mp4", size: 100, lastModified: 123 },
@@ -637,6 +661,474 @@ describe("ActionExecutor clip/split source timing", () => {
       outPoint: 4,
       reversed: true,
     });
+  });
+});
+
+describe("ActionExecutor speed-scaled timing deltas", () => {
+  // outPoint - inPoint (5) == duration (2.5) * speed (2).
+  const speedClip = {
+    startTime: 10,
+    duration: 2.5,
+    inPoint: 1,
+    outPoint: 6,
+    speed: 2,
+  };
+
+  it("clip/slip scales the source window it plays", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProjectWithClip({
+      ...speedClip,
+      inPoint: 0.25,
+      outPoint: 5.25,
+    });
+    const before = getClipTimings(project, ["c1"]);
+
+    const result = await executor.execute({
+      id: "slip-fast",
+      type: "clip/slip",
+      timestamp: Date.now(),
+      params: { clipId: "c1", delta: -1 },
+    } as Action, project);
+    expect(result.success).toBe(true);
+    const clip = project.timeline.tracks[0].clips[0];
+    expect(clip).toMatchObject({ inPoint: 0, outPoint: 5, duration: 2.5 });
+    expect(clip.outPoint - clip.inPoint).toBe(clip.duration * (clip.speed ?? 1));
+    const after = getClipTimings(project, ["c1"]);
+
+    expect((await executor.undo(project)).success).toBe(true);
+    expect(getClipTimings(project, ["c1"])).toEqual(before);
+    expect((await executor.redo(project)).success).toBe(true);
+    expect(getClipTimings(project, ["c1"])).toEqual(after);
+  });
+
+  it("clip/roll scales the source-side cut on both clips", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProjectWithClip(speedClip);
+    (project.timeline.tracks[0].clips as unknown as unknown[]).push({
+      id: "c2",
+      mediaId: "m1",
+      trackId: "t1",
+      startTime: 12.5,
+      duration: 3,
+      inPoint: 10,
+      outPoint: 16,
+      speed: 2,
+      effects: [],
+      audioEffects: [],
+      transform: {
+        position: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 },
+        anchor: { x: 0.5, y: 0.5 },
+        rotation: 0,
+        opacity: 1,
+      },
+      volume: 1,
+      keyframes: [],
+    });
+    const before = getClipTimings(project, ["c1", "c2"]);
+
+    const result = await executor.execute({
+      id: "roll-fast",
+      type: "clip/roll",
+      timestamp: Date.now(),
+      params: { leftClipId: "c1", rightClipId: "c2", delta: 1 },
+    } as Action, project);
+    expect(result.success).toBe(true);
+    const [left, right] = project.timeline.tracks[0].clips;
+    expect(left).toMatchObject({
+      duration: 3.5,
+      inPoint: 1,
+      outPoint: 8,
+    });
+    expect(right).toMatchObject({
+      startTime: 13.5,
+      duration: 2,
+      inPoint: 12,
+      outPoint: 16,
+    });
+    // out - in == duration * speed holds on both sides of the cut.
+    expect(left.outPoint - left.inPoint).toBe(left.duration * (left.speed ?? 1));
+    expect(right.outPoint - right.inPoint).toBe(
+      right.duration * (right.speed ?? 1),
+    );
+    const after = getClipTimings(project, ["c1", "c2"]);
+
+    expect((await executor.undo(project)).success).toBe(true);
+    expect(getClipTimings(project, ["c1", "c2"])).toEqual(before);
+    expect((await executor.redo(project)).success).toBe(true);
+    expect(getClipTimings(project, ["c1", "c2"])).toEqual(after);
+  });
+
+  it("clip/slide scales the neighbor's source re-anchor", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProjectWithClip(speedClip);
+    (project.timeline.tracks[0].clips as unknown as unknown[]).push({
+      id: "c2",
+      mediaId: "m1",
+      trackId: "t1",
+      startTime: 12.5,
+      duration: 3,
+      inPoint: 10,
+      outPoint: 16,
+      speed: 2,
+      effects: [],
+      audioEffects: [],
+      transform: {
+        position: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 },
+        anchor: { x: 0.5, y: 0.5 },
+        rotation: 0,
+        opacity: 1,
+      },
+      volume: 1,
+      keyframes: [],
+    });
+    const before = getClipTimings(project, ["c1", "c2"]);
+
+    const result = await executor.execute({
+      id: "slide-fast",
+      type: "clip/slide",
+      timestamp: Date.now(),
+      params: { clipId: "c1", delta: -1, nextClipId: "c2" },
+    } as Action, project);
+    expect(result.success).toBe(true);
+    const [slid, next] = project.timeline.tracks[0].clips;
+    // The slid clip keeps its source window; its timeline span is unchanged.
+    expect(slid).toMatchObject({ startTime: 9, inPoint: 1, outPoint: 6 });
+    expect(slid.outPoint - slid.inPoint).toBe(
+      slid.duration * (slid.speed ?? 1),
+    );
+    // A -1 timeline delta re-anchors the neighbor's source inPoint by
+    // -1 * speed source seconds.
+    expect(next).toMatchObject({ startTime: 11.5, inPoint: 12, duration: 4 });
+    const after = getClipTimings(project, ["c1", "c2"]);
+
+    expect((await executor.undo(project)).success).toBe(true);
+    expect(getClipTimings(project, ["c1", "c2"])).toEqual(before);
+    expect((await executor.redo(project)).success).toBe(true);
+    expect(getClipTimings(project, ["c1", "c2"])).toEqual(after);
+  });
+
+  it("clip/slide extends the previous clip's source out-point on positive deltas", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProjectWithClip(speedClip);
+    (project.timeline.tracks[0].clips as unknown as unknown[]).push({
+      id: "c0",
+      mediaId: "m1",
+      trackId: "t1",
+      startTime: 4,
+      duration: 6,
+      inPoint: 0,
+      outPoint: 9,
+      speed: 1.5,
+      effects: [],
+      audioEffects: [],
+      transform: {
+        position: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 },
+        anchor: { x: 0.5, y: 0.5 },
+        rotation: 0,
+        opacity: 1,
+      },
+      volume: 1,
+      keyframes: [],
+    });
+    const before = getClipTimings(project, ["c0", "c1"]);
+
+    const result = await executor.execute({
+      id: "slide-forward-fast",
+      type: "clip/slide",
+      timestamp: Date.now(),
+      params: { clipId: "c1", delta: 0.5, prevClipId: "c0" },
+    } as Action, project);
+
+    expect(result.success).toBe(true);
+    const previous = project.timeline.tracks[0].clips.find((clip) => clip.id === "c0")!;
+    const slid = project.timeline.tracks[0].clips.find((clip) => clip.id === "c1")!;
+    expect(previous).toMatchObject({ duration: 6.5, outPoint: 9.75 });
+    expect(slid.startTime).toBe(10.5);
+    expect(previous.outPoint - previous.inPoint).toBe(
+      previous.duration * (previous.speed ?? 1),
+    );
+    const after = getClipTimings(project, ["c0", "c1"]);
+
+    expect((await executor.undo(project)).success).toBe(true);
+    expect(getClipTimings(project, ["c0", "c1"])).toEqual(before);
+    expect((await executor.redo(project)).success).toBe(true);
+    expect(getClipTimings(project, ["c0", "c1"])).toEqual(after);
+  });
+
+  it("clip/trimToPlayhead scales both trim directions", async () => {
+    const executor = new ActionExecutor();
+
+    const trimStartProject = makeProjectWithClip(speedClip);
+    const trimStartBefore = getClipTimings(trimStartProject, ["c1"]);
+    const trimStart = await executor.execute({
+      id: "ttp-start",
+      type: "clip/trimToPlayhead",
+      timestamp: Date.now(),
+      params: { clipId: "c1", playheadTime: 11, trimStart: true },
+    } as Action, trimStartProject);
+    expect(trimStart.success).toBe(true);
+    const head = trimStartProject.timeline.tracks[0].clips[0];
+    expect(head).toMatchObject({
+      startTime: 11,
+      inPoint: 3,
+      outPoint: 6,
+      duration: 1.5,
+    });
+    expect(head.outPoint - head.inPoint).toBe(
+      head.duration * (head.speed ?? 1),
+    );
+    const trimStartAfter = getClipTimings(trimStartProject, ["c1"]);
+    expect((await executor.undo(trimStartProject)).success).toBe(true);
+    expect(getClipTimings(trimStartProject, ["c1"])).toEqual(trimStartBefore);
+    expect((await executor.redo(trimStartProject)).success).toBe(true);
+    expect(getClipTimings(trimStartProject, ["c1"])).toEqual(trimStartAfter);
+
+    const trimEndProject = makeProjectWithClip(speedClip);
+    const trimEndBefore = getClipTimings(trimEndProject, ["c1"]);
+    const trimEnd = await executor.execute({
+      id: "ttp-end",
+      type: "clip/trimToPlayhead",
+      timestamp: Date.now(),
+      params: { clipId: "c1", playheadTime: 11, trimStart: false },
+    } as Action, trimEndProject);
+    expect(trimEnd.success).toBe(true);
+    const tail = trimEndProject.timeline.tracks[0].clips[0];
+    expect(tail).toMatchObject({
+      startTime: 10,
+      inPoint: 1,
+      outPoint: 3,
+      duration: 1,
+    });
+    expect(tail.outPoint - tail.inPoint).toBe(
+      tail.duration * (tail.speed ?? 1),
+    );
+    const trimEndAfter = getClipTimings(trimEndProject, ["c1"]);
+    expect((await executor.undo(trimEndProject)).success).toBe(true);
+    expect(getClipTimings(trimEndProject, ["c1"])).toEqual(trimEndBefore);
+    expect((await executor.redo(trimEndProject)).success).toBe(true);
+    expect(getClipTimings(trimEndProject, ["c1"])).toEqual(trimEndAfter);
+  });
+});
+
+describe("ActionValidator finite clip timing inputs", () => {
+  it("rejects non-finite clip action times without mutating the project", async () => {
+    const executor = new ActionExecutor();
+    const invalidActions: Action[] = [
+      {
+        id: "slip-nan",
+        type: "clip/slip",
+        timestamp: Date.now(),
+        params: { clipId: "c1", delta: Number.NaN },
+      },
+      {
+        id: "slide-infinity",
+        type: "clip/slide",
+        timestamp: Date.now(),
+        params: { clipId: "c1", delta: Number.POSITIVE_INFINITY },
+      },
+      {
+        id: "roll-negative-infinity",
+        type: "clip/roll",
+        timestamp: Date.now(),
+        params: { leftClipId: "c1", rightClipId: "c1", delta: Number.NEGATIVE_INFINITY },
+      },
+      {
+        id: "trim-to-playhead-nan",
+        type: "clip/trimToPlayhead",
+        timestamp: Date.now(),
+        params: { clipId: "c1", playheadTime: Number.NaN, trimStart: true },
+      },
+    ];
+
+    for (const action of invalidActions) {
+      const project = makeProjectWithClip();
+      const before = structuredClone(project);
+      const result = await executor.execute(action, project);
+
+      expect(result.success, action.type).toBe(false);
+      expect(result.error?.code, action.type).toBe("INVALID_PARAMS");
+      expect(project, action.type).toEqual(before);
+    }
+
+    const addProject = makeProjectWithClip();
+    (addProject.mediaLibrary.items as unknown as unknown[]).push({
+      id: "m1",
+      name: "clip.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      metadata: {
+        duration: 10,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+        codec: "h264",
+        sampleRate: 0,
+        channels: 0,
+        fileSize: 0,
+      },
+      thumbnailUrl: null,
+      waveformData: null,
+    });
+    const beforeAdd = structuredClone(addProject);
+    const invalidStart = await executor.execute({
+      id: "add-infinite-start",
+      type: "clip/add",
+      timestamp: Date.now(),
+      params: { trackId: "t1", mediaId: "m1", startTime: Number.POSITIVE_INFINITY, duration: 1 },
+    } as Action, addProject);
+    expect(invalidStart.success).toBe(false);
+    expect(invalidStart.error?.code).toBe("INVALID_PARAMS");
+    expect(addProject).toEqual(beforeAdd);
+  });
+});
+
+describe("ActionExecutor clip/add source range", () => {
+  const makeClipAddProject = () => {
+    const project = makeProject();
+    (project.timeline.tracks as unknown as unknown[]).push({
+      id: "t1",
+      type: "video",
+      name: "V1",
+      clips: [],
+      transitions: [],
+      locked: false,
+      hidden: false,
+      muted: false,
+      solo: false,
+    });
+    (project.mediaLibrary.items as unknown as unknown[]).push({
+      id: "m1",
+      name: "clip.mp4",
+      type: "video",
+      fileHandle: null,
+      blob: null,
+      metadata: {
+        duration: 30,
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+        codec: "h264",
+        sampleRate: 0,
+        channels: 0,
+        fileSize: 0,
+      },
+      thumbnailUrl: null,
+      waveformData: null,
+    });
+    return project;
+  };
+
+  const makeClipAddAction = (params: Record<string, unknown>): Action =>
+    ({
+      id: "add-clip",
+      type: "clip/add",
+      timestamp: Date.now(),
+      params: { trackId: "t1", mediaId: "m1", startTime: 0, ...params },
+    }) as unknown as Action;
+
+  it("derives outPoint from duration, inPoint and speed when outPoint is omitted", async () => {
+    const executor = new ActionExecutor();
+    const project = makeClipAddProject();
+
+    const result = await executor.execute({
+      id: "add-fast",
+      type: "clip/add",
+      timestamp: Date.now(),
+      params: {
+        trackId: "t1",
+        mediaId: "m1",
+        startTime: 0,
+        duration: 3,
+        inPoint: 1,
+        speed: 2,
+      },
+    } as Action, project);
+    expect(result.success).toBe(true);
+    const clip = project.timeline.tracks[0].clips[0];
+    // The old fallback committed outPoint 3 (treating the timeline duration as
+    // an absolute source position); the source range must instead span
+    // duration * speed from the in point.
+    expect(clip).toMatchObject({
+      duration: 3,
+      inPoint: 1,
+      outPoint: 7,
+      speed: 2,
+    });
+    expect(clip.outPoint - clip.inPoint).toBe(clip.duration * (clip.speed ?? 1));
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    "rejects an explicit clip duration of %s",
+    async (duration) => {
+      const executor = new ActionExecutor();
+      const project = makeClipAddProject();
+
+      const result = await executor.execute(
+        makeClipAddAction({ duration }),
+        project,
+      );
+
+      expect(result.success).toBe(false);
+      expect(project.timeline.tracks[0].clips).toHaveLength(0);
+    },
+  );
+
+  it("derives a positive duration when omitted and rejects an empty derived source range", async () => {
+    const validExecutor = new ActionExecutor();
+    const validProject = makeClipAddProject();
+    const validResult = await validExecutor.execute(
+      makeClipAddAction({ inPoint: 2 }),
+      validProject,
+    );
+
+    expect(validResult.success).toBe(true);
+    expect(validProject.timeline.tracks[0].clips[0]).toMatchObject({
+      duration: 28,
+      inPoint: 2,
+      outPoint: 30,
+    });
+
+    const invalidExecutor = new ActionExecutor();
+    const invalidProject = makeClipAddProject();
+    const invalidResult = await invalidExecutor.execute(
+      makeClipAddAction({ inPoint: 30 }),
+      invalidProject,
+    );
+
+    expect(invalidResult.success).toBe(false);
+    expect(invalidProject.timeline.tracks[0].clips).toHaveLength(0);
+  });
+});
+
+describe("ActionExecutor undo without an inverse", () => {
+  it("fails undo without consuming the history entry or arming redo", async () => {
+    const executor = new ActionExecutor();
+    const project = makeProjectWithClip();
+
+    const result = await executor.execute(
+      {
+        id: "clear-ducking-noop",
+        type: "audio/clearDucking",
+        timestamp: Date.now(),
+        params: { clipId: "c1" },
+      } as unknown as Action,
+      project,
+    );
+    expect(result.success).toBe(true);
+
+    const undone = await executor.undo(project);
+    expect(undone.success).toBe(false);
+    expect(undone.error?.message).toBe("No inverse action available");
+    // The failure must not pop the entry onto the redo stack: the action was
+    // never undone, so history stays exactly as it was.
+    expect(executor.getHistory().canUndo()).toBe(true);
+    expect(executor.getHistory().getUndoStackSize()).toBe(1);
+    expect(executor.getHistory().canRedo()).toBe(false);
+    expect(executor.getHistory().getRedoStackSize()).toBe(0);
   });
 });
 

@@ -1,5 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import path from "node:path";
+
+// Snapshot before the module under test (imported below) self-installs: a
+// machine-level ESBUILD_BINARY_PATH is not this module's doing, so the
+// side-effect test asserts the import left process.env unchanged rather than
+// that the variables are literally unset.
+const envBeforeImport = vi.hoisted(() => ({
+  esbuildBinaryPath: process.env.ESBUILD_BINARY_PATH,
+  browserEntryBundle: process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE,
+}));
+
 import {
   installPackagedEsbuildBinaryPath,
   packagedBrowserEntryBundlePath,
@@ -11,8 +21,8 @@ import {
 // no-op and must not have leaked into the real environment.
 describe("esbuild binary path install (module side effect)", () => {
   it("leaves process.env untouched when running under plain node", () => {
-    expect(process.env.ESBUILD_BINARY_PATH).toBeUndefined();
-    expect(process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE).toBeUndefined();
+    expect(process.env.ESBUILD_BINARY_PATH).toBe(envBeforeImport.esbuildBinaryPath);
+    expect(process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE).toBe(envBeforeImport.browserEntryBundle);
   });
 });
 

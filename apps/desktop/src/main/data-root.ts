@@ -6,14 +6,22 @@
  * the one relocatable folder together with `projects/`, `agent-workspace/`
  * and `logs/`.
  *
- * Failure semantics: nothing is ever deleted; if a migration item fails and
- * nothing was moved yet, the session abstains from adopting the new root and
- * keeps running on the previous location (the next launch retries). If a
- * later item fails after earlier items already moved, the session adopts the
- * root anyway (the data is already there) and reports the leftovers loudly.
+ * Failure semantics: the startup batch copies sources through staging and
+ * leaves them in place. Any failed item stops the batch and keeps the app on
+ * its previous root; the next launch retries. Only a batch with no failed
+ * items adopts the selected root.
  */
 import { app, dialog } from "electron";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import {
   DATA_ROOT_DIR_NAME,
@@ -32,6 +40,7 @@ import {
 import {
   migrateIntoDataRoot,
   type MigrationItemResult,
+  type MigrationOptions,
   type MigrationReport,
   type MigrationSource,
 } from "./data-root-migration";
@@ -41,6 +50,7 @@ import {
 // `<appData>/@reelterminal/desktop`. Always offered as a migration source.
 const LEGACY_USER_DATA_SEGMENTS = ["@reelterminal", "desktop"] as const;
 const LEGACY_WORKSPACE_NAME = "ReelTerminal Agent Workspace";
+const DATA_ROOT_MIGRATION_MARKER = "data-root-migration.json";
 
 export interface DataRootSession {
   readonly resolvedRoot: string;
@@ -75,6 +85,48 @@ function writeDataRootPointer(pointer: DataRootPointer): void {
   writeFileSync(file, serializeDataRootPointer(pointer), "utf8");
 }
 
+function normalizedPath(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function dataRootMigrationMarkerPath(): string {
+  return path.join(configDir(), DATA_ROOT_MIGRATION_MARKER);
+}
+
+function hasCompletedMigration(root: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(
+      readFileSync(dataRootMigrationMarkerPath(), "utf8"),
+    );
+    if (typeof parsed !== "object" || parsed === null) return false;
+    const completedRoot = (parsed as Record<string, unknown>).root;
+    return typeof completedRoot === "string" &&
+      normalizedPath(completedRoot) === normalizedPath(root);
+  } catch {
+    return false;
+  }
+}
+
+function markMigrationComplete(root: string): void {
+  const marker = dataRootMigrationMarkerPath();
+  const staging = `${marker}.tmp`;
+  mkdirSync(path.dirname(marker), { recursive: true });
+  try {
+    writeFileSync(staging, `${JSON.stringify({ root }, null, 2)}\n`, "utf8");
+    renameSync(staging, marker);
+  } catch (error) {
+    rmSync(staging, { force: true });
+    throw error;
+  }
+}
+
+function isNonEmptyDirectory(dir: string): boolean {
+  if (!existsSync(dir)) return false;
+  const stat = statSync(dir);
+  return stat.isDirectory() && readdirSync(dir).length > 0;
+}
+
 /** Sidecar the NSIS uninstaller reads (ReadINIStr) to offer layered cleanup. */
 function writeUninstallInfo(dataRoot: string): void {
   const file = dataRootUninstallInfoPath(process.platform, process.env, app.getPath("home"));
@@ -96,20 +148,21 @@ function legacyWorkspaceRoot(): string {
 
 function migrationSources(target: DataRootLayout, pointer: DataRootPointer | null): MigrationSource[] {
   const sources: MigrationSource[] = [];
-  // The previous root first: it is the freshest data when the user just
-  // changed the location. The legacy flat locations follow so pre-data-root
-  // installs are adopted unconditionally, with no extra bookkeeping.
+  // Migrate every profile source before either workspace source. The profile
+  // determines which root can safely be opened; workspace copies must not
+  // move ahead while that decision is still pending.
   if (pointer?.previousRoot) {
     const previous = dataRootLayout(pointer.previousRoot);
-    sources.push(
-      { kind: "appData", from: previous.appData, to: target.appData },
-      { kind: "workspace", from: previous.agentWorkspace, to: target.agentWorkspace },
-    );
+    sources.push({ kind: "appData", from: previous.appData, to: target.appData });
   }
   sources.push(
     { kind: "appData", from: legacyUserDataDir(), to: target.appData },
-    { kind: "workspace", from: legacyWorkspaceRoot(), to: target.agentWorkspace },
   );
+  if (pointer?.previousRoot) {
+    const previous = dataRootLayout(pointer.previousRoot);
+    sources.push({ kind: "workspace", from: previous.agentWorkspace, to: target.agentWorkspace });
+  }
+  sources.push({ kind: "workspace", from: legacyWorkspaceRoot(), to: target.agentWorkspace });
   return sources;
 }
 
@@ -117,7 +170,9 @@ function migrationSources(target: DataRootLayout, pointer: DataRootPointer | nul
  * Resolve → migrate → adopt. Call before anything opens the Chromium
  * profile; `app.setPath("userData", ...)` happens here and nowhere else.
  */
-export async function prepareDataRootSession(): Promise<DataRootSession> {
+export async function prepareDataRootSession(
+  migrationOptions: MigrationOptions = {},
+): Promise<DataRootSession> {
   const pointer = readDataRootPointer();
   const defaultRoot = path.join(app.getPath("videos"), DATA_ROOT_DIR_NAME);
   const resolved = resolveDataRoot({
@@ -126,14 +181,31 @@ export async function prepareDataRootSession(): Promise<DataRootSession> {
     defaultRoot,
   });
   const targetLayout = dataRootLayout(resolved.root);
-  const migration = await migrateIntoDataRoot(
-    migrationSources(targetLayout, pointer),
-  );
+  const pointerAlreadySelectsRoot =
+    pointer !== null &&
+    pointer.previousRoot === undefined &&
+    normalizedPath(pointer.dataRoot) === normalizedPath(resolved.root);
+  const existingDefaultOrEnvRoot =
+    pointer?.previousRoot === undefined &&
+    isNonEmptyDirectory(targetLayout.appData);
+  const migrationComplete =
+    hasCompletedMigration(resolved.root) ||
+    pointerAlreadySelectsRoot ||
+    existingDefaultOrEnvRoot;
+  const migration = migrationComplete
+    ? { ok: true, items: [] }
+    : await migrateIntoDataRoot(
+        migrationSources(targetLayout, pointer),
+        {
+          ...migrationOptions,
+          preserveSources: true,
+          onBatchComplete: () => markMigrationComplete(resolved.root),
+        },
+      );
 
-  const anythingMoved = migration.items.some(
-    (item) => item.status === "moved" || item.status === "copied-backup-left",
-  );
-  const adopted = migration.ok || anythingMoved;
+  // Batch migration preserves all sources, and any failed store keeps the
+  // previous root active. This avoids mixed roots when a later store fails.
+  const adopted = migration.ok;
 
   let activeLayout: DataRootLayout | null = targetLayout;
   if (!adopted) {
@@ -255,24 +327,47 @@ export function changeDataRoot(newRoot: string): {
 
 /** One-line, non-sensitive summary for the startup failure dialog. */
 export function summarizeMigrationFailures(report: MigrationReport): string {
-  return report.items
+  const itemFailures = report.items
     .filter((item) => item.status === "failed")
-    .map((item) => `• ${item.from}\n  ${item.error ?? "unknown error"}`)
+    .map((item) => `• ${item.from}\n  ${item.error ?? "unknown error"}`);
+  return [report.error ? `• ${report.error}` : "", ...itemFailures]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * Skipped items keep `ok` true, but when the source is still on disk the data
+ * was left behind; surface it alongside the failures instead of silently
+ * adopting a target that never received it.
+ */
+function summarizeMigrationLeftovers(report: MigrationReport): string {
+  return report.items
+    .filter(
+      (item) =>
+        (item.status === "skipped-target-exists" &&
+          normalizedPath(item.from) !== normalizedPath(item.to)) ||
+        (item.status === "skipped-missing" && existsSync(item.from)),
+    )
+    .map((item) =>
+      `• ${item.from} (destination already contains data; source was kept)`,
+    )
     .join("\n");
 }
 
 export function reportMigrationProblem(sessionToReport: DataRootSession): void {
-  if (sessionToReport.migration.ok) return;
+  const failures = summarizeMigrationFailures(sessionToReport.migration);
+  const leftovers = summarizeMigrationLeftovers(sessionToReport.migration);
+  if (!failures && !leftovers) return;
   dialog.showErrorBox(
     "ReelTerminal data move incomplete",
     [
       "Some data could not be moved into the data folder:",
       "",
-      summarizeMigrationFailures(sessionToReport.migration),
+      [failures, leftovers].filter(Boolean).join("\n"),
       "",
       sessionToReport.adopted
-        ? "The app continues from the new data folder. Anything not moved is still at its previous location (see Settings → Storage)."
-        : "Nothing was moved. The app keeps running from the previous location and will retry on the next start. Your data is untouched.",
+        ? "The app continues from the new data folder. Any source not copied remains at its previous location; existing destination data was kept without merging (see Settings → Storage)."
+        : "The app keeps running from the previous location and will retry on the next start. Source data remains there; destination copies created by this failed batch were removed where possible, and pre-existing destination data was preserved.",
     ].join("\n"),
   );
 }

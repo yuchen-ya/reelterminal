@@ -32,9 +32,25 @@ import { attachUnsavedGuard, markQuitting } from "./lifecycle";
 import { CHANNELS } from "../shared/ipc-contract";
 
 type CloseEvent = { preventDefault: ReturnType<typeof vi.fn> };
+type ContentsListener = (payload?: unknown) => void;
 
 const makeWindow = () => {
   let closeHandler: ((event: CloseEvent) => void) | undefined;
+  const contentsListeners = new Map<string, Set<ContentsListener>>();
+  const webContents = {
+    send: vi.fn(),
+    once: vi.fn((event: string, handler: ContentsListener) => {
+      const set = contentsListeners.get(event) ?? new Set<ContentsListener>();
+      set.add(handler);
+      contentsListeners.set(event, set);
+    }),
+    removeListener: vi.fn((event: string, handler: ContentsListener) => {
+      contentsListeners.get(event)?.delete(handler);
+    }),
+    emit: (event: string): void => {
+      for (const handler of [...(contentsListeners.get(event) ?? [])]) handler();
+    },
+  };
   const win = {
     on: vi.fn((event: string, handler: (event: CloseEvent) => void) => {
       if (event === "close") closeHandler = handler;
@@ -43,14 +59,13 @@ const makeWindow = () => {
     once: vi.fn(),
     removeListener: vi.fn(),
     isDestroyed: vi.fn(() => false),
-    webContents: {
-      send: vi.fn(),
-    },
+    webContents,
   };
   attachUnsavedGuard(win as never);
   return {
     win,
     close: () => closeHandler?.({ preventDefault: vi.fn() }),
+    contentsGone: (event: string) => webContents.emit(event),
   };
 };
 
@@ -69,6 +84,16 @@ function replyAllow(
   });
 }
 
+// markQuitting mutates module state with no reset export, so tests that assert
+// plain window-close semantics first force a denial on a throwaway window.
+// That resets quitting=false and makes them independent of test order.
+async function resetQuitState(): Promise<void> {
+  const warmup = makeWindow();
+  replyAllow(warmup.win, { allow: false });
+  warmup.close();
+  await vi.advanceTimersByTimeAsync(0);
+}
+
 describe("desktop prepare-close guard", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -77,6 +102,7 @@ describe("desktop prepare-close guard", () => {
   });
 
   it("closes the window when the renderer allows the close", async () => {
+    await resetQuitState();
     const { win, close } = makeWindow();
     replyAllow(win, { allow: true });
 
@@ -88,9 +114,8 @@ describe("desktop prepare-close guard", () => {
   });
 
   it("finishes a quit through app.quit once the renderer allows it", async () => {
-    // markQuitting mutates module state with no reset export; the deny test
-    // right after this one resets quitting=false, keeping later assertions
-    // (window close instead of app.quit) valid.
+    // The intent is captured at close-event time; later tests reset the
+    // module-global flag themselves via resetQuitState.
     markQuitting();
     const { win, close } = makeWindow();
     replyAllow(win, { allow: true });
@@ -112,6 +137,7 @@ describe("desktop prepare-close guard", () => {
   });
 
   it("keeps waiting past 20s and honors the eventual renderer decision", async () => {
+    await resetQuitState();
     const { win, close } = makeWindow();
 
     close();
@@ -132,5 +158,22 @@ describe("desktop prepare-close guard", () => {
     await vi.advanceTimersByTimeAsync(20_000);
 
     expect(win.close).not.toHaveBeenCalled();
+  });
+
+  it("settles the guard when the renderer dies mid-close and re-arms", async () => {
+    const { win, close, contentsGone } = makeWindow();
+
+    close();
+    expect(win.webContents.send).toHaveBeenCalledOnce();
+
+    contentsGone("render-process-gone");
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The stalled guard settled, so a later close queries the renderer again
+    // instead of hanging behind a permanently-busy handling flag.
+    close();
+    expect(win.webContents.send).toHaveBeenCalledTimes(2);
+    expect(win.close).not.toHaveBeenCalled();
+    expect(electron.app.quit).not.toHaveBeenCalled();
   });
 });

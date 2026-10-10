@@ -1441,7 +1441,15 @@ describe("work mode + access gate + writer lease", () => {
       > = [
         ["project.create", facade["project.create"]({ name: "X" })],
         ["project.open", facade["project.open"]({ path: "/x" })],
-        ["project.save", facade["project.save"]()],
+        [
+          "project.save",
+          facade["project.save"]({
+            projectId: "project-1",
+            workspaceId: "workspace-1",
+            expectedRevision: 0,
+            idempotencyKey: "save-1",
+          }),
+        ],
         ["project.rename", facade["project.rename"]({ name: "Nope" })],
         ["media.import", facade["media.import"]({ path: "/x.mp4" })],
         [
@@ -1484,7 +1492,12 @@ describe("work mode + access gate + writer lease", () => {
       expect(edit.error.code).toBe("CONFLICT");
       expect(edit.error.details?.leaseHolder).toBe("agent-other");
     }
-    const save = await facade["project.save"]();
+    const save = await facade["project.save"]({
+      projectId: "project-1",
+      workspaceId: "workspace-1",
+      expectedRevision: 0,
+      idempotencyKey: "save-1",
+    });
     expect(save.ok).toBe(false);
     if (!save.ok) expect(save.error.code).toBe("CONFLICT");
     expect((await facade["timeline.get"]()).ok).toBe(true);
@@ -1810,8 +1823,6 @@ describe("live media.import through the canonical store bridge", () => {
     const relative = await facade["media.import"]({
       path: path.isAbsolute(relativeString) ? "tiny-6s.mp4" : relativeString,
     });
-    expect(relative.ok).toBe(false);
-    if (!relative.ok) expect(relative.error.code).toBe("INVALID_PARAMS");
     expect(relative.ok).toBe(false);
     if (!relative.ok) expect(relative.error.code).toBe("INVALID_PARAMS");
 

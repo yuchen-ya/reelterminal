@@ -115,6 +115,48 @@ describe("svg motion importer", () => {
     });
   });
 
+  it("defaults text-anchor to start (left) when the attribute is absent", () => {
+    const composition = importSvgAsMotionComposition(
+      `<svg width="200" height="100">
+        <text id="default" x="10" y="40" font-size="20">Hi</text>
+        <text id="middle" x="10" y="80" font-size="20" text-anchor="middle">Yo</text>
+      </svg>`,
+    );
+
+    const defaultAnchor = composition.layers.find(
+      (layer) => layer.name === "default",
+    );
+    expect(defaultAnchor).toMatchObject({ type: "text", style: { align: "left" } });
+
+    const middleAnchor = composition.layers.find(
+      (layer) => layer.name === "middle",
+    );
+    expect(middleAnchor).toMatchObject({ type: "text", style: { align: "center" } });
+  });
+
+  it("bakes rotated group transforms into imported path layers", () => {
+    const composition = importSvgAsMotionComposition(
+      `<svg width="200" height="200" viewBox="0 0 200 200">
+        <g transform="rotate(90 100 100)">
+          <path id="rotated" d="M80 90 L120 90 L120 110 L80 110 Z" fill="#22c55e" />
+        </g>
+      </svg>`,
+    );
+
+    const rotated = composition.layers.find((layer) => layer.name === "rotated");
+    // The 40x20 box rotated 90 degrees about (100,100) becomes a 20x40 box
+    // centered on (100,100); its first corner (80,90) maps to (110,80), i.e.
+    // local (10,-20) after centering.
+    expect(rotated).toMatchObject({
+      type: "shape",
+      shapeType: "path",
+      transform: { position: { x: 100, y: 100 } },
+    });
+    expect((rotated as { width?: number }).width ?? 0).toBeCloseTo(20, 6);
+    expect((rotated as { height?: number }).height ?? 0).toBeCloseTo(40, 6);
+    expect((rotated as { pathData?: string }).pathData).toMatch(/^M 10 -20\b/);
+  });
+
   it("applies group transforms to child elements", () => {
     const composition = importSvgAsMotionComposition(
       `<svg width="200" height="200" viewBox="0 0 200 200">

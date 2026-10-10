@@ -182,6 +182,12 @@ export class BeatSyncBridge {
   }
 
   async applySync(): Promise<boolean> {
+    // A second apply while one is in flight would interleave its moveClip /
+    // trimClip calls inside two undo groups; reject it like other guards.
+    if (this.state.isProcessing) {
+      return false;
+    }
+
     const { previewTimings } = this.state;
     if (previewTimings.length === 0) {
       this.setState({ error: "No clips to sync" });

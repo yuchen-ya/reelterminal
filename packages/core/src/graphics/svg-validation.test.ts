@@ -222,6 +222,35 @@ describe("validateSvgContent", () => {
     );
   });
 
+  it("rejects SMIL retargeting of URL-bearing attributes", () => {
+    expectCode(
+      '<svg xmlns="http://www.w3.org/2000/svg"><image href="assets/pic.png"><set attributeName="href" to="https://evil.example/x"/></image></svg>',
+      "externalResource",
+    );
+    // Rejected whatever the animation would write, even a benign local value.
+    expectCode(
+      '<svg xmlns="http://www.w3.org/2000/svg"><use xlink:href="#shape"><set attributeName="xlink:href" to="#innocent"/></use></svg>',
+      "externalResource",
+    );
+    expectCode(
+      '<svg xmlns="http://www.w3.org/2000/svg"><image href="assets/pic.png"><animate attributeName="src" from="#a" to="#b"/></image></svg>',
+      "externalResource",
+    );
+    // Casing must not evade the check.
+    expectCode(
+      '<svg xmlns="http://www.w3.org/2000/svg"><SET ATTRIBUTENAME="HREF" to="https://evil.example/x"/></svg>',
+      "externalResource",
+    );
+  });
+
+  it("accepts a benign SMIL animation on a non-URL attribute", () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10">' +
+      '<animate attributeName="opacity" from="0" to="1" dur="1s" repeatCount="indefinite"/>' +
+      "</rect></svg>";
+    expect(validateSvgContent(svg)).toEqual({ ok: true });
+  });
+
   it("prefers the unsafeProtocol finding over externalResource", () => {
     const svg =
       '<svg xmlns="http://www.w3.org/2000/svg">' +

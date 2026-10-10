@@ -379,7 +379,19 @@ export class MaterialLibraryService {
     actor: MaterialActor,
     verb?: string,
   ): Promise<MaterialServiceResult<{ materials: readonly MaterialRecord[]; journalEntryId: string }>> {
-    return this.enqueue(async () => {
+    return this.enqueue(() => this.applyBatchUpdate(items, actor, verb));
+  }
+
+  /**
+   * batchUpdate's lane body, shared with addTags so both apply exactly one
+   * all-or-nothing batch. Call only while enqueued in the mutation lane.
+   */
+  private applyBatchUpdate(
+    items: readonly MaterialBatchUpdateItem[],
+    actor: MaterialActor,
+    verb?: string,
+  ): Promise<MaterialServiceResult<{ materials: readonly MaterialRecord[]; journalEntryId: string }>> {
+    return (async () => {
       await this.ensureLoaded();
       if (!Array.isArray(items) || items.length === 0) {
         return fail("INVALID_PARAMS", "batch update requires a non-empty items array");
@@ -448,7 +460,7 @@ export class MaterialLibraryService {
       for (const record of updated) this.records.set(record.id, record);
       this.pushJournal(entry);
       return { ok: true, value: { materials: updated, journalEntryId: entry.id } };
-    });
+    })();
   }
 
   async remove(
@@ -908,18 +920,24 @@ export class MaterialLibraryService {
     if (ids.length === 0) {
       return fail("INVALID_PARAMS", "addTags requires at least one material id");
     }
-    return this.batchUpdate(
-      ids.map((id) => {
-        const record = this.records.get(id);
-        return {
-          id,
-          patch: {
-            tags: sanitizeMaterialTags([...(record?.tags ?? []), ...additions]),
-          },
-        };
-      }),
-      actor,
-      verb,
+    return this.enqueue(async () =>
+      // Merge against the records INSIDE the lane (FIFO, so no writer can
+      // commit between this snapshot and the batch application): a snapshot
+      // taken before enqueueing would overwrite a concurrent create/update
+      // with a stale tag merge.
+      this.applyBatchUpdate(
+        ids.map((id) => {
+          const record = this.records.get(id);
+          return {
+            id,
+            patch: {
+              tags: sanitizeMaterialTags([...(record?.tags ?? []), ...additions]),
+            },
+          };
+        }),
+        actor,
+        verb,
+      ),
     );
   }
 

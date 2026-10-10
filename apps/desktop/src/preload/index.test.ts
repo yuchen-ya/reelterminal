@@ -53,7 +53,6 @@ describe("preload bridge naming", () => {
       ([channel]) => channel === CHANNELS.probeHardware,
     );
     expect(probeCalls).toHaveLength(1);
-    for (const [channel] of probeCalls) expect(channel).toBe(CHANNELS.probeHardware);
   });
 
   it("menu actions and the export port handoff come from the CHANNELS table", () => {

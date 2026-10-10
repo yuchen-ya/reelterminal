@@ -287,6 +287,10 @@ async function handleHistoryControl(
     if (key) {
       const ledger = projectLedger ?? new Map<string, HistoryControlLedgerEntry>();
       ledger.set(key, { payload, result: value });
+      if (ledger.size > 500) {
+        const oldest = ledger.keys().next().value;
+        if (oldest !== undefined) ledger.delete(oldest);
+      }
       historyControlLedger.set(scope, ledger);
     }
     return { ok: true, result: value };

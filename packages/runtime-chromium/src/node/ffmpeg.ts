@@ -431,7 +431,9 @@ export function startFramesEncoder(
 /** Container the acceptance contract demands — checked from ffprobe facts. */
 export function looksLikeMp4(formatName: string | undefined): boolean {
   if (!formatName) return false;
-  return formatName.split(",").some((token) => token.trim() === "mp4" || token.trim() === "mov");
+  // Exact match only: ffprobe reports a QuickTime MOV as "mov" (or
+  // "mov,mp4,m4a,..." for some muxers) — a pure MOV must not pass.
+  return formatName.split(",").some((token) => token.trim() === "mp4");
 }
 
 export function hasImageExtension(filePath: string): boolean {

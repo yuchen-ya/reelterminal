@@ -355,7 +355,6 @@ export class ActionValidator {
     const errors: ValidationError[] = [];
     const timeline = project.timeline;
 
-
     switch (action.type) {
       case "track/add":
         if (
@@ -1446,6 +1445,29 @@ export class ActionValidator {
     const errors: ValidationError[] = [];
     const timeline = project.timeline;
 
+    switch (action.type) {
+      case "clip/slip":
+      case "clip/slide":
+      case "clip/roll":
+        if (!Number.isFinite(action.params.delta)) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: `${action.type} delta must be a finite number`,
+            path: "params.delta",
+          });
+        }
+        break;
+      case "clip/trimToPlayhead":
+        if (!Number.isFinite(action.params.playheadTime)) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "clip/trimToPlayhead playheadTime must be a finite number",
+            path: "params.playheadTime",
+          });
+        }
+        break;
+    }
+
     // These existing edit algorithms use linear timeline/source offsets.
     // Reject nonlinear clips before either GUI or Agent can corrupt their
     // curve/freeze coordinates; nonlinear slicing remains a product decision.
@@ -1546,6 +1568,7 @@ export class ActionValidator {
         }
         if (
           typeof action.params.startTime !== "number" ||
+          !Number.isFinite(action.params.startTime) ||
           action.params.startTime < 0
         ) {
           errors.push({
@@ -1553,6 +1576,165 @@ export class ActionValidator {
             message: "Start time must be a non-negative number",
             path: "params.startTime",
           });
+        }
+
+        if (
+          action.params.duration !== undefined &&
+          (typeof action.params.duration !== "number" ||
+            !Number.isFinite(action.params.duration) ||
+            action.params.duration <= 0)
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Clip duration must be a finite positive number",
+            path: "params.duration",
+          });
+        }
+        if (
+          action.params.inPoint !== undefined &&
+          (typeof action.params.inPoint !== "number" ||
+            !Number.isFinite(action.params.inPoint) ||
+            action.params.inPoint < 0)
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "In-point must be a finite non-negative number",
+            path: "params.inPoint",
+          });
+        }
+        if (
+          action.params.outPoint !== undefined &&
+          (typeof action.params.outPoint !== "number" ||
+            !Number.isFinite(action.params.outPoint) ||
+            action.params.outPoint < 0)
+        ) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "Out-point must be a finite non-negative number",
+            path: "params.outPoint",
+          });
+        }
+
+        const sourceClip = action.params.sourceClip;
+        if (sourceClip) {
+          if (
+            !Number.isFinite(sourceClip.duration) ||
+            sourceClip.duration <= 0
+          ) {
+            errors.push({
+              code: "INVALID_PARAMS",
+              message: "Source clip duration must be a finite positive number",
+              path: "params.sourceClip.duration",
+            });
+          }
+          if (
+            !Number.isFinite(sourceClip.inPoint) ||
+            sourceClip.inPoint < 0 ||
+            !Number.isFinite(sourceClip.outPoint) ||
+            sourceClip.outPoint <= sourceClip.inPoint
+          ) {
+            errors.push({
+              code: "INVALID_TIME_RANGE",
+              message: "Source clip must have a positive finite source range",
+              path: "params.sourceClip",
+            });
+          }
+        } else {
+          const sourceIn = action.params.inPoint ?? 0;
+          const paramsWithSpeed = action.params as typeof action.params & {
+            speed?: unknown;
+          };
+          const speed = paramsWithSpeed.speed ?? 1;
+          if (
+            paramsWithSpeed.speed !== undefined &&
+            (typeof speed !== "number" || !Number.isFinite(speed) || speed <= 0)
+          ) {
+            errors.push({
+              code: "INVALID_PARAMS",
+              message: "Clip speed must be a finite positive number",
+              path: "params.speed",
+            });
+          }
+
+          let sourceOut = action.params.outPoint;
+          if (sourceOut === undefined && action.params.duration === undefined) {
+            const mediaItem = project.mediaLibrary.items.find(
+              (item) => item.id === action.params.mediaId,
+            );
+            sourceOut =
+              mediaItem?.metadata.duration && mediaItem.metadata.duration > 0
+                ? mediaItem.metadata.duration
+                : 5;
+          } else if (
+            sourceOut === undefined &&
+            typeof action.params.duration === "number" &&
+            Number.isFinite(action.params.duration) &&
+            action.params.duration > 0 &&
+            typeof speed === "number" &&
+            Number.isFinite(speed) &&
+            speed > 0
+          ) {
+            sourceOut = sourceIn + action.params.duration * speed;
+          }
+
+          if (
+            typeof sourceIn === "number" &&
+            Number.isFinite(sourceIn) &&
+            sourceOut !== undefined &&
+            (typeof sourceOut !== "number" ||
+              !Number.isFinite(sourceOut) ||
+              sourceOut <= sourceIn)
+          ) {
+            errors.push({
+              code: "INVALID_TIME_RANGE",
+              message: "Clip source range must have positive duration",
+              path: "params",
+            });
+          }
+        }
+        break;
+
+      case "clip/restoreTiming":
+        if (!Array.isArray(action.params.clips) || action.params.clips.length === 0) {
+          errors.push({
+            code: "INVALID_PARAMS",
+            message: "At least one clip timing snapshot is required",
+            path: "params.clips",
+          });
+          break;
+        }
+        for (const [index, snapshot] of action.params.clips.entries()) {
+          if (!snapshot || typeof snapshot.id !== "string" || !snapshot.id) {
+            errors.push({
+              code: "INVALID_PARAMS",
+              message: "Clip timing snapshot requires a clip id",
+              path: `params.clips[${index}].id`,
+            });
+            continue;
+          }
+          if (!this.findClip(timeline, snapshot.id)) {
+            errors.push({
+              code: "CLIP_NOT_FOUND",
+              message: `Clip with ID ${snapshot.id} not found`,
+              path: `params.clips[${index}].id`,
+            });
+          }
+          if (
+            !Number.isFinite(snapshot.startTime) ||
+            snapshot.startTime < 0 ||
+            !Number.isFinite(snapshot.duration) ||
+            snapshot.duration <= 0 ||
+            !Number.isFinite(snapshot.inPoint) ||
+            snapshot.inPoint < 0 ||
+            !Number.isFinite(snapshot.outPoint) ||
+            snapshot.outPoint <= snapshot.inPoint
+          ) {
+            errors.push({
+              code: "INVALID_TIME_RANGE",
+              message: "Clip timing snapshot must contain a positive finite time range",
+              path: `params.clips[${index}]`,
+            });
+          }
         }
         break;
 

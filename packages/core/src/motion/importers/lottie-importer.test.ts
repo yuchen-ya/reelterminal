@@ -127,12 +127,16 @@ describe("lottie motion importer", () => {
     ]);
 
     expect(composition.layers).toHaveLength(3);
+    // Lottie layers[0] is the TOPMOST layer (lottie-web paints last-to-first),
+    // so the importer reverses the converted list: the composition renders
+    // index 0 first (bottom). This fixture previously codified the inverted
+    // convention by expecting the background first — it is the fixture that
+    // was wrong, not the reversal.
     expect(composition.layers[0]).toMatchObject({
-      type: "shape",
-      name: "Background Solid",
-      width: 400,
-      height: 240,
-      style: { fill: { color: "#111827" } },
+      type: "text",
+      name: "Title Text",
+      text: "Hello Lottie",
+      style: { fontFamily: "Inter", fontSize: 42, color: "#ffffff" },
     });
     expect(composition.layers[1]).toMatchObject({
       type: "shape",
@@ -160,11 +164,277 @@ describe("lottie motion importer", () => {
       ]),
     );
     expect(composition.layers[2]).toMatchObject({
-      type: "text",
-      name: "Title Text",
-      text: "Hello Lottie",
-      style: { fontFamily: "Inter", fontSize: 42, color: "#ffffff" },
+      type: "shape",
+      name: "Background Solid",
+      width: 400,
+      height: 240,
+      style: { fill: { color: "#111827" } },
     });
+  });
+
+  it("does not bake layer scale into rect/ellipse sizes", () => {
+    const lottie = makeLottie([
+      {
+        ...baseLayer,
+        ind: 1,
+        ty: 4,
+        nm: "Scaled Shape",
+        ks: { ...baseTransform, s: { a: 0, k: [200, 200] } },
+        shapes: [
+          {
+            ty: "rc",
+            nm: "Scaled Rect",
+            d: 1,
+            s: { a: 0, k: [180, 70] },
+            p: { a: 0, k: [0, 0] },
+            r: { a: 0, k: 0 },
+          },
+        ],
+      },
+    ] as unknown as LottieLayer[]);
+
+    const composition = importLottieAsMotionComposition(lottie);
+    const rect = composition.layers.find((layer) => layer.type === "shape");
+    expect(rect).toMatchObject({
+      name: "Scaled Rect",
+      width: 180,
+      height: 70,
+      transform: { scale: { x: 2, y: 2 } },
+    });
+  });
+
+  it("imports lottie layers bottom-to-top so overlap z-order is preserved", () => {
+    // Lottie arrays list front-to-back: "Front Solid" (first entry) paints on
+    // top, "Back Solid" (last entry) paints underneath.
+    const lottie = makeLottie([
+      { ...baseLayer, ind: 1, ty: 1, nm: "Front Solid", sc: "#ff0000", sw: 100, sh: 100 },
+      { ...baseLayer, ind: 2, ty: 1, nm: "Back Solid", sc: "#0000ff", sw: 100, sh: 100 },
+    ] as LottieLayer[]);
+
+    const composition = importLottieAsMotionComposition(lottie);
+    expect(composition.layers[0]).toMatchObject({ name: "Back Solid" });
+    expect(composition.layers[composition.layers.length - 1]).toMatchObject({
+      name: "Front Solid",
+    });
+  });
+
+  it("falls back to a 30fps frame rate when fr is 0 so duration stays finite", () => {
+    const lottie = makeLottie([
+      { ...baseLayer, ind: 1, ty: 1, nm: "Solid", sc: "#111827", sw: 100, sh: 100 },
+    ] as LottieLayer[]);
+    lottie.fr = 0;
+
+    const composition = importLottieAsMotionComposition(lottie);
+    expect(Number.isFinite(composition.duration)).toBe(true);
+    expect(composition.duration).toBeGreaterThan(0);
+    expect(composition.markers[0]).toMatchObject({ time: 0.5 });
+  });
+
+  it("applies gr group transforms (position/scale) to shapes inside the group", () => {
+    const lottie = makeLottie([
+      {
+        ...baseLayer,
+        ind: 1,
+        ty: 4,
+        nm: "Grouped Shape",
+        shapes: [
+          {
+            ty: "gr",
+            nm: "Group",
+            it: [
+              {
+                ty: "rc",
+                nm: "Inner Rect",
+                d: 1,
+                s: { a: 0, k: [40, 20] },
+                p: { a: 0, k: [10, 5] },
+                r: { a: 0, k: 0 },
+              },
+              {
+                ty: "tr",
+                nm: "Group Transform",
+                p: { a: 0, k: [50, 30] },
+                a: { a: 0, k: [0, 0] },
+                s: { a: 0, k: [200, 100] },
+                r: { a: 0, k: 0 },
+                o: { a: 0, k: 100 },
+              },
+            ],
+            np: 2,
+            cix: 2,
+            bm: 0,
+            ix: 1,
+            mn: "",
+          },
+        ],
+      },
+    ] as unknown as LottieLayer[]);
+
+    const composition = importLottieAsMotionComposition(lottie);
+    const rect = composition.layers.find((layer) => layer.type === "shape");
+    // Layer position [100, 80] + group-transformed shape position
+    // ([10, 5] * scale [2, 1] + translate [50, 30] = [70, 35]).
+    expect(rect).toMatchObject({
+      name: "Inner Rect",
+      transform: { position: { x: 170, y: 115 } },
+    });
+    // Group scale (200%, 100%) is baked into the imported size.
+    expect(rect).toMatchObject({ width: 80, height: 20 });
+  });
+
+  it("composes nested group rotation into primitive geometry", () => {
+    const lottie = makeLottie([
+      {
+        ...baseLayer,
+        ind: 1,
+        ty: 4,
+        nm: "Rotated Group",
+        shapes: [
+          {
+            ty: "gr",
+            nm: "Outer Group",
+            it: [
+              {
+                ty: "gr",
+                nm: "Inner Group",
+                it: [
+                  {
+                    ty: "rc",
+                    nm: "Inner Rect",
+                    d: 1,
+                    s: { a: 0, k: [20, 10] },
+                    p: { a: 0, k: [0, 0] },
+                    r: { a: 0, k: 0 },
+                  },
+                  {
+                    ty: "tr",
+                    nm: "Inner Transform",
+                    p: { a: 0, k: [10, 0] },
+                    a: { a: 0, k: [0, 0] },
+                    s: { a: 0, k: [100, 100] },
+                    r: { a: 0, k: 0 },
+                    o: { a: 0, k: 100 },
+                  },
+                ],
+                np: 2,
+                cix: 2,
+                bm: 0,
+                ix: 1,
+                mn: "",
+              },
+              {
+                ty: "tr",
+                nm: "Outer Transform",
+                p: { a: 0, k: [50, 30] },
+                a: { a: 0, k: [0, 0] },
+                s: { a: 0, k: [100, 100] },
+                r: { a: 0, k: 90 },
+                o: { a: 0, k: 100 },
+              },
+            ],
+            np: 2,
+            cix: 2,
+            bm: 0,
+            ix: 1,
+            mn: "",
+          },
+        ],
+      },
+    ] as unknown as LottieLayer[]);
+
+    const composition = importLottieAsMotionComposition(lottie);
+    const rect = composition.layers.find((layer) => layer.type === "shape");
+
+    expect(rect).toMatchObject({
+      name: "Inner Rect",
+      shapeType: "path",
+      transform: { position: { x: 150, y: 120 } },
+      width: 10,
+      height: 20,
+      pathClosed: true,
+    });
+  });
+
+  it("bakes group skew into Bezier paths while retaining cubic handles", () => {
+    const makeGroupedPath = (skew: number, skewAxis = 0) =>
+      makeLottie([
+        {
+          ...baseLayer,
+          ind: 1,
+          ty: 4,
+          nm: "Skewed Path",
+          shapes: [
+            {
+              ty: "gr",
+              nm: "Skew Group",
+              it: [
+                {
+                  ty: "sh",
+                  nm: "Curve",
+                  ind: 0,
+                  ix: 1,
+                  ks: {
+                    a: 0,
+                    k: {
+                      c: false,
+                      v: [[0, 0], [10, 0]],
+                      i: [[0, 0], [0, 0]],
+                      o: [[0, 10], [0, 0]],
+                    },
+                  },
+                },
+                {
+                  ty: "tr",
+                  nm: "Skew Transform",
+                  p: { a: 0, k: [0, 0] },
+                  a: { a: 0, k: [0, 0] },
+                  s: { a: 0, k: [100, 100] },
+                  r: { a: 0, k: 0 },
+                  sk: { a: 0, k: skew },
+                  sa: { a: 0, k: skewAxis },
+                  o: { a: 0, k: 100 },
+                },
+              ],
+              np: 2,
+              cix: 2,
+              bm: 0,
+              ix: 1,
+              mn: "",
+            },
+          ],
+        },
+      ] as unknown as LottieLayer[]);
+
+    const plain = importLottieAsMotionComposition(makeGroupedPath(0)).layers.find(
+      (layer) => layer.type === "shape",
+    );
+    const skewed = importLottieAsMotionComposition(makeGroupedPath(45)).layers.find(
+      (layer) => layer.type === "shape",
+    );
+    const axisSkewed = importLottieAsMotionComposition(
+      makeGroupedPath(45, 45),
+    ).layers.find((layer) => layer.type === "shape");
+    const verticalAxisSkewed = importLottieAsMotionComposition(
+      makeGroupedPath(45, 90),
+    ).layers.find((layer) => layer.type === "shape");
+
+    expect(plain).toMatchObject({ shapeType: "path" });
+    expect(skewed).toMatchObject({ shapeType: "path" });
+    expect(axisSkewed).toMatchObject({ shapeType: "path" });
+    if (
+      plain?.type !== "shape" ||
+      skewed?.type !== "shape" ||
+      axisSkewed?.type !== "shape" ||
+      verticalAxisSkewed?.type !== "shape"
+    ) {
+      throw new Error("Expected imported curve layers");
+    }
+    expect(plain.pathData).toContain("C");
+    expect(skewed.pathData).toContain("C");
+    expect(skewed.pathData).not.toBe(plain.pathData);
+    expect(skewed.width).not.toBe(plain.width);
+    expect(axisSkewed.pathData).not.toBe(skewed.pathData);
+    expect(verticalAxisSkewed.pathData).toBe("M -5 -5 C -5 5 5 5 5 5");
   });
 
   it("converts bezier sh path shapes into shape layers with pathData", () => {
@@ -259,6 +529,58 @@ describe("lottie motion importer", () => {
     expect((star as { style: { innerRadius?: number } }).style.innerRadius).toBeCloseTo(0.5, 5);
   });
 
+  it("retains rotated-group star and polygon paths", () => {
+    for (const starType of [1, 2]) {
+      const lottie = makeLottie([
+        {
+          ...baseLayer,
+          ind: 1,
+          ty: 4,
+          nm: "Rotated Polystar Group",
+          shapes: [
+            {
+              ty: "gr",
+              nm: "Rotated Group",
+              it: [
+                {
+                  ty: "sr",
+                  nm: starType === 1 ? "Star" : "Polygon",
+                  sy: { a: 0, k: starType },
+                  pt: { a: 0, k: 5 },
+                  or: { a: 0, k: 20 },
+                  ir: { a: 0, k: 10 },
+                  p: { a: 0, k: [0, 0] },
+                  r: { a: 0, k: 0 },
+                },
+                {
+                  ty: "tr",
+                  p: { a: 0, k: [20, 30] },
+                  a: { a: 0, k: [0, 0] },
+                  s: { a: 0, k: [100, 100] },
+                  r: { a: 0, k: 45 },
+                  sk: { a: 0, k: 0 },
+                  sa: { a: 0, k: 0 },
+                  o: { a: 0, k: 100 },
+                },
+              ],
+            },
+          ],
+        },
+      ] as unknown as LottieLayer[]);
+
+      const shapes = importLottieAsMotionComposition(lottie).layers.filter(
+        (layer) => layer.type === "shape",
+      );
+      expect(shapes).toHaveLength(1);
+      expect(shapes[0]).toMatchObject({
+        name: starType === 1 ? "Star" : "Polygon",
+        shapeType: "path",
+        pathClosed: true,
+      });
+      expect((shapes[0] as { pathData?: string }).pathData?.length).toBeGreaterThan(0);
+    }
+  });
+
   it("imports gradient fills as gradient shape styles", () => {
     const lottie = makeLottie([
       {
@@ -328,12 +650,14 @@ describe("lottie motion importer", () => {
 
     const composition = importLottieAsMotionComposition(lottie);
     expect(composition.layers).toHaveLength(2);
-    expect(composition.layers[0]).toMatchObject({ type: "shape", name: "Photo" });
-    expect(composition.layers[1]).toMatchObject({
+    // Reversed for rendering order: the precomp (second lottie entry) is
+    // lower in the stack, so it comes first in the composition.
+    expect(composition.layers[0]).toMatchObject({
       type: "shape",
       name: "Nested Comp",
       width: 320,
       height: 200,
     });
+    expect(composition.layers[1]).toMatchObject({ type: "shape", name: "Photo" });
   });
 });

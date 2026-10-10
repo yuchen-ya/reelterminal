@@ -164,11 +164,19 @@ export const useHistoryStore = create<HistoryState & HistoryActions>()(
         } catch {
           newBase = null;
         }
+        if (!newBase) {
+          // The rebase failed: keeping the old base with the dropped command
+          // removed would desync every later goToEntry replay (they would
+          // silently omit it). Reset to an empty, consistent history — the
+          // same shape clear() produces.
+          set({ undoStack: [], redoStack: [], baseProject: null });
+          return newProject;
+        }
         newStack = newStack.slice(1);
         set({
           undoStack: newStack,
           redoStack: [],
-          baseProject: newBase ? JSON.stringify(newBase) : base,
+          baseProject: JSON.stringify(newBase),
         });
       } else {
         set({ undoStack: newStack, redoStack: [], baseProject: base });

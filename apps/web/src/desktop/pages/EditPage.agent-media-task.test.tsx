@@ -59,7 +59,7 @@ describe("EditPage lower collaboration panel", () => {
 
     expect(useUIStore.getState().desktopInspectorTab).toBe("board");
     expect(useUIStore.getState().activeModal).toBeNull();
-    expect(screen.getByTestId("inspector-tab-board")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("inspector-properties")).toHaveAttribute("hidden");
   });
 
   it("keeps write authorization separate from the requirement board", async () => {

@@ -239,11 +239,6 @@ export async function fetchUrl(
       const response = await dependencies.request(parsed, address, controller.signal);
       const status = response.statusCode ?? 0;
       const contentType = response.headers["content-type"] ?? "";
-      const declaredBytes = Number(response.headers["content-length"] ?? "0");
-      if (declaredBytes > maxBytes) {
-        response.destroy();
-        return err(`Resource too large (max ${maxBytes} bytes)`, status);
-      }
       if (status >= 300 && status < 400) {
         response.destroy();
         return err("Redirect responses are not followed", status);
@@ -251,6 +246,11 @@ export async function fetchUrl(
       if (status < 200 || status >= 300) {
         response.destroy();
         return err(response.statusMessage || `Request failed (${status})`, status);
+      }
+      const declaredBytes = Number(response.headers["content-length"] ?? "0");
+      if (declaredBytes > maxBytes) {
+        response.destroy();
+        return err(`Resource too large (max ${maxBytes} bytes)`, status);
       }
 
       const body = await readResponseBody(response, maxBytes);

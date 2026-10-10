@@ -8,7 +8,14 @@ import type {
   MotionTextLayer,
 } from "../types";
 import { DEFAULT_MOTION_TRANSFORM } from "../types";
-import { centerMotionPathData } from "../motion-shape-path";
+import {
+  buildMotionPathData,
+  getMotionPathBounds,
+  isClosedPath,
+  parseMotionPathData,
+  parseMotionPathSegments,
+} from "../motion-shape-path";
+import type { CenteredMotionPath, MotionShapePathPoint } from "../motion-shape-path";
 
 interface AffineMatrix {
   readonly a: number;
@@ -232,12 +239,7 @@ function convertSvgElement(
   if (element.tag === "path") {
     const pathData = attrs.d;
     if (!pathData) return null;
-    const centeredPath = centerMotionPathData(pathData, {
-      scaleX: matrix.a,
-      scaleY: matrix.d,
-      translateX: matrix.e,
-      translateY: matrix.f,
-    });
+    const centeredPath = centerSvgPathData(pathData, matrix);
     if (!centeredPath) return null;
     context.counter.value += 1;
     return shapeLayer(context.composition, attrs, index, context, {
@@ -312,6 +314,56 @@ function pathLayerFromPoints(
     pathData,
     pathClosed: closed,
   });
+}
+
+/**
+ * Centering variant that bakes the FULL 2x3 matrix (including rotation/skew
+ * via b/c) into the path points before centering — the same treatment
+ * rect/circle/line get through applyMatrix. Using only a/d/e/f would drop
+ * rotation, so paths under rotated groups imported with wrong extents.
+ */
+function centerSvgPathData(
+  pathData: string,
+  matrix: AffineMatrix,
+): CenteredMotionPath | null {
+  const toWorld = (x: number, y: number): MotionShapePathPoint => {
+    const point = applyMatrix(matrix, { x, y });
+    return { x: point.x, y: point.y };
+  };
+  const flattened = parseMotionPathData(pathData).map((point) =>
+    toWorld(point.x, point.y),
+  );
+  const bounds = getMotionPathBounds(flattened);
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
+
+  const centerX = bounds.x + bounds.width / 2;
+  const centerY = bounds.y + bounds.height / 2;
+  const centeredPoints = parseMotionPathSegments(pathData).map((point) => {
+    const base = toWorld(point.x, point.y);
+    const hasIn = point.inX !== undefined && point.inY !== undefined;
+    const hasOut = point.outX !== undefined && point.outY !== undefined;
+    const inPoint = hasIn ? toWorld(point.inX!, point.inY!) : null;
+    const outPoint = hasOut ? toWorld(point.outX!, point.outY!) : null;
+    return {
+      x: base.x - centerX,
+      y: base.y - centerY,
+      ...(inPoint
+        ? { inX: inPoint.x - centerX, inY: inPoint.y - centerY }
+        : {}),
+      ...(outPoint
+        ? { outX: outPoint.x - centerX, outY: outPoint.y - centerY }
+        : {}),
+    };
+  });
+
+  return {
+    pathData: buildMotionPathData(centeredPoints),
+    width: Math.max(1, bounds.width),
+    height: Math.max(1, bounds.height),
+    centerX,
+    centerY,
+    closed: isClosedPath(flattened),
+  };
 }
 
 function* iterateSvgElements(content: string): Generator<SvgElement> {
@@ -738,9 +790,10 @@ function positiveNumber(value: unknown): number | undefined {
 }
 
 function readTextAnchor(value: string | undefined): CanvasTextAlign {
-  if (value === "start") return "left";
+  if (value === "middle") return "center";
   if (value === "end") return "right";
-  return "center";
+  // SVG defaults text-anchor to "start" when the attribute is absent.
+  return "left";
 }
 
 function stripTags(value: string): string {

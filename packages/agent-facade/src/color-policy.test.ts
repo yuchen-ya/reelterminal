@@ -141,8 +141,6 @@ describe("media.analyze_start technicalQuality color disclosure", () => {
     "reports tagged bt601 as supported, untagged as assumption, HDR as unsupported",
     { timeout: 240_000 },
     async () => {
-      const cleanup = await (async () => undefined)();
-      void cleanup;
       const bt601 = await analyzeColor(await writeColorPatternVideo(mediaRoot, "bt601"));
       expect(bt601.color.facts.matrix).toMatch(/bt601|smpte170m/);
       expect(bt601.color.support).toBe("supported-sdr");

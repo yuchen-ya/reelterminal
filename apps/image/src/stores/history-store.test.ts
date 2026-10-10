@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useHistoryStore } from './history-store';
 import { useProjectStore } from './project-store';
+import type { Command } from '@reelterminal/image-core/commands';
 
 const DEFAULT_SIZE = { width: 1080, height: 1080 };
 
@@ -79,6 +80,51 @@ describe('history-store (command-based)', () => {
       useProjectStore.getState().addTextLayer('Hello');
       useProjectStore.getState().undo();
       expect(useHistoryStore.getState().canRedo()).toBe(true);
+    });
+  });
+
+  // ── Overflow rebase ──────────────────────────────────────────────────────
+
+  describe('overflow rebase', () => {
+    it('clears history when the rebase of the dropped command fails', () => {
+      createProject();
+      useProjectStore.getState().addTextLayer('First');
+
+      // Force the overflow on the next command and poison the command that is
+      // about to be dropped so its rebase apply throws.
+      useHistoryStore.setState({ maxSize: 1 });
+      const dropped = useHistoryStore.getState().undoStack[0];
+      const poisoned: Command = {
+        type: 'poisoned',
+        description: 'poisoned',
+        apply: () => {
+          throw new Error('rebase failure');
+        },
+        invert: () => poisoned,
+      };
+      useHistoryStore.setState({
+        undoStack: [{ ...dropped, command: poisoned }],
+      });
+
+      useProjectStore.getState().addTextLayer('Second');
+
+      // History must reset to a consistent empty state, not keep the old base
+      // with the dropped command silently missing from replays.
+      expect(useHistoryStore.getState().undoStack).toHaveLength(0);
+      expect(useHistoryStore.getState().redoStack).toHaveLength(0);
+      expect(useHistoryStore.getState().baseProject).toBeNull();
+      expect(useHistoryStore.getState().canUndo()).toBe(false);
+      expect(useHistoryStore.getState().goToEntry(0)).toBeNull();
+    });
+
+    it('keeps the rebased history when the rebase succeeds', () => {
+      createProject();
+      useProjectStore.getState().addTextLayer('First');
+      useHistoryStore.setState({ maxSize: 1 });
+      useProjectStore.getState().addTextLayer('Second');
+
+      expect(useHistoryStore.getState().undoStack).toHaveLength(1);
+      expect(useHistoryStore.getState().baseProject).not.toBeNull();
     });
   });
 

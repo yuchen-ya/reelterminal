@@ -40,6 +40,7 @@ export interface PlaybackEvent {
   readonly time: number;
   readonly state: PlaybackState;
   readonly error?: Error;
+  /** Borrowed from PlaybackController; consumers must not close the bitmap. */
   readonly frame?: RenderedFrame;
 }
 

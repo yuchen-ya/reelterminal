@@ -61,6 +61,11 @@ export async function exportArtboard(
   options: ExportOptions
 ): Promise<Blob> {
   const { scale, format, quality, background } = options;
+  // Only raster formats have a real mime mapping below; svg/pdf would
+  // otherwise silently emit PNG bytes under an .svg/.pdf filename.
+  if (format !== 'png' && format !== 'jpg' && format !== 'webp') {
+    throw new Error(`Unsupported export format: ${format} (expected png, jpg, or webp)`);
+  }
   const width = artboard.size.width * scale;
   const height = artboard.size.height * scale;
 

@@ -22,6 +22,15 @@ class MemoryAgentTaskStorage implements AgentTaskStorage {
   }
 }
 
+/** Storage whose ledger read fails until the test flips the flag back. */
+class FlakyLoadAgentTaskStorage extends MemoryAgentTaskStorage {
+  failLoadAll = false;
+  async loadAll(): Promise<unknown[]> {
+    if (this.failLoadAll) throw new Error("ledger unavailable");
+    return super.loadAll();
+  }
+}
+
 function useMemoryService(): AgentMediaTaskService {
   const service = new AgentMediaTaskService(new MemoryAgentTaskStorage());
   setAgentMediaTaskServiceForTests(service);
@@ -109,5 +118,27 @@ describe("AgentMediaTaskDialog state", () => {
     await screen.findByRole("dialog", { name: "Voiceover & music tasks" });
     fireEvent.keyDown(window, { key: "Escape" });
     expect(useUIStore.getState().activeModal).toBeNull();
+  });
+
+  it("renders a failed state (not the empty state) when the ledger read fails, and recovers on retry", async () => {
+    const storage = new FlakyLoadAgentTaskStorage();
+    const service = new AgentMediaTaskService(storage);
+    setAgentMediaTaskServiceForTests(service);
+    storage.failLoadAll = true;
+
+    openDialog();
+    render(<AgentMediaTaskDialog />);
+
+    expect(await screen.findByTestId("amt-list-failed")).toHaveTextContent(
+      "task list could not be loaded",
+    );
+    expect(screen.queryByText("No tasks yet.")).not.toBeInTheDocument();
+
+    storage.failLoadAll = false;
+    const saved = await seedTask(service, "amt_saved-after-retry");
+    fireEvent.click(screen.getByTestId("amt-list-retry"));
+
+    expect(await screen.findByTestId(`amt-row-${saved.id}`)).toBeInTheDocument();
+    expect(screen.queryByTestId("amt-list-failed")).not.toBeInTheDocument();
   });
 });

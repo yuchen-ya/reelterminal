@@ -54,7 +54,6 @@ export function resolvePlaywrightCore(): string | null {
 const CHILD_SCRIPT = `
 const req = require("module").createRequire(process.env.REAPER_RUNTIME_PKG + "/package.json");
 const { chromium } = req("playwright-core");
-const cp = require("child_process");
 (async () => {
   try {
     const browser = await chromium.launch({
@@ -63,19 +62,14 @@ const cp = require("child_process");
       handleSIGTERM: false,
       handleSIGHUP: false,
     });
-    let pids = [];
-    try {
-      const proc = browser.process();
-      if (proc && proc.pid) pids = [proc.pid];
-    } catch (e) { /* process() unavailable on this playwright build */ }
-    if (pids.length === 0) {
-      // Fallback: direct children of this probe process include the browser
-      // process (plus helpers); report them all.
-      try {
-        pids = cp.execSync("pgrep -P " + process.pid).toString().trim()
-          .split("\\n").map(Number).filter(Number.isFinite);
-      } catch (e) { pids = []; }
-    }
+    // Chromium's browser-level CDP session exposes its OS pid on Windows
+    // as well as POSIX hosts; Playwright Browser has no process() API.
+    const session = await browser.newBrowserCDPSession();
+    const { processInfo } = await session.send("SystemInfo.getProcessInfo");
+    const pids = processInfo.filter((entry) => entry.type === "browser")
+      .map((entry) => entry.id)
+      .filter((pid) => Number.isSafeInteger(pid) && pid > 0);
+    await session.detach();
     process.stdout.write(JSON.stringify({ pids }) + "\\n");
     // Hard-kill SELF (the browser's parent) — nothing in-process can run.
     setTimeout(() => process.kill(process.pid, "SIGKILL"), 100);
@@ -171,6 +165,7 @@ export async function verifyBrowserReaper(): Promise<ReaperFinding> {
         return;
       }
       // The parent is dead; watch the orphaned browser pid(s).
+      clearTimeout(timer);
       const deadline = Date.now() + REAPER_WAIT_MS;
       const alive = (): boolean => pids.some(pidAlive);
       while (Date.now() < deadline && alive()) {

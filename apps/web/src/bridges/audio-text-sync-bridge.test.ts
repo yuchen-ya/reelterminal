@@ -112,6 +112,29 @@ describe("BeatSyncBridge applySync undo grouping", () => {
     expect(endGroup).not.toHaveBeenCalled();
   });
 
+  it("rejects a second applySync while one is still in flight", async () => {
+    seedTimings(bridge, 2);
+    let releaseMove!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseMove = resolve;
+    });
+    storeMock.moveClip.mockImplementation(() =>
+      gate.then(() => ({ success: true })),
+    );
+
+    const inFlight = bridge.applySync();
+    await expect(bridge.applySync()).resolves.toBe(false);
+
+    // The rejected call never touched the store or opened its own group.
+    expect(storeMock.moveClip).toHaveBeenCalledTimes(1);
+    expect(beginGroup).toHaveBeenCalledTimes(1);
+
+    releaseMove();
+    await expect(inFlight).resolves.toBe(true);
+    expect(storeMock.moveClip).toHaveBeenCalledTimes(2);
+    expect(endGroup).toHaveBeenCalledTimes(1);
+  });
+
   it("the shared singleton exposes the same behavior", async () => {
     expect(getBeatSyncBridge()).toBeInstanceOf(BeatSyncBridge);
   });

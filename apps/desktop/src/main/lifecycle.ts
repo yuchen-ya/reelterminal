@@ -25,24 +25,34 @@ function requestFromRenderer(
 ): Promise<unknown> {
   return new Promise((resolve) => {
     let settled = false;
+    // Hold the webContents reference up front: the property getter throws on
+    // a destroyed window, so finish() must use the captured reference.
+    const webContents = win.isDestroyed() ? null : win.webContents;
     const finish = (value: unknown): void => {
       if (settled) return;
       settled = true;
       win.removeListener("closed", onClosed);
+      webContents?.removeListener("destroyed", onContentsGone);
+      webContents?.removeListener("render-process-gone", onContentsGone);
       ipcMain.removeListener(replyChannel, onReply);
       resolve(value);
     };
     const onReply = (event: IpcMainEvent, payload: unknown): void => {
-      if (event.sender === win.webContents) finish(payload);
+      if (webContents && event.sender === webContents) finish(payload);
     };
     const onClosed = (): void => finish(NO_REPLY);
+    // A renderer that never loaded or crashed never replies; settle instead
+    // of leaving the guard stuck and the ipcMain listener leaking.
+    const onContentsGone = (): void => finish(NO_REPLY);
     win.once("closed", onClosed);
+    webContents?.once("destroyed", onContentsGone);
+    webContents?.once("render-process-gone", onContentsGone);
     ipcMain.on(replyChannel, onReply);
-    if (win.isDestroyed()) {
+    if (!webContents) {
       finish(NO_REPLY);
       return;
     }
-    win.webContents.send(sendChannel);
+    webContents.send(sendChannel);
   });
 }
 
@@ -54,16 +64,19 @@ function isAllowReply(payload: unknown): boolean {
   );
 }
 
-function finalizeClose(win: BrowserWindow): void {
+function finalizeClose(win: BrowserWindow, quitIntent: boolean): void {
   forceClose.add(win);
-  if (quitting) {
+  if (quitIntent) {
     app.quit();
   } else if (!win.isDestroyed()) {
     win.close();
   }
 }
 
-async function handleGuardedClose(win: BrowserWindow): Promise<void> {
+async function handleGuardedClose(
+  win: BrowserWindow,
+  quitIntent: boolean,
+): Promise<void> {
   // Renderer-driven prepare-close: the renderer flushes every open workspace
   // (mandatory), optionally retains versions per the user's close preference,
   // and answers { allow }. allow=true → close; allow=false → keep the window
@@ -75,7 +88,7 @@ async function handleGuardedClose(win: BrowserWindow): Promise<void> {
   );
 
   if (isAllowReply(reply)) {
-    finalizeClose(win);
+    finalizeClose(win, quitIntent);
     return;
   }
 
@@ -90,6 +103,10 @@ export function attachUnsavedGuard(win: BrowserWindow): void {
     event.preventDefault();
     if (handling.has(win)) return;
     handling.add(win);
-    void handleGuardedClose(win).finally(() => handling.delete(win));
+    // Capture the quit intent now: another window's denial resets the global
+    // flag while this close is still in flight, and finalize must still
+    // re-trigger the quit that was in progress when THIS close started.
+    const quitIntent = quitting;
+    void handleGuardedClose(win, quitIntent).finally(() => handling.delete(win));
   });
 }

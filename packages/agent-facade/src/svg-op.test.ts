@@ -252,6 +252,7 @@ describe("svg.create/update/remove (edit.apply op)", () => {
     });
     expect(valid.ok).toBe(true);
     if (!valid.ok) return;
+    expect(valid.value.valid).toBe(true);
     if (valid.value.valid) {
       expect(valid.value.conflicts).toHaveLength(0);
       expect(valid.value.normalizedOps[0]!.op).toBe("svg.create");

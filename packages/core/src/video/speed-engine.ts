@@ -113,7 +113,14 @@ export class SpeedEngine {
     const frameDuration = 1 / frameRate;
     const frames: number[] = [];
 
-    for (let t = startTime; t < endTime; t += frameDuration) {
+    // Derive each sample time from an integer counter instead of accumulating
+    // `t += frameDuration`: float drift over long ranges shifts times off
+    // frame centers and duplicates/skips source frame indices. Endpoint
+    // semantics are unchanged — startTime inclusive, endTime exclusive (the
+    // negated form keeps the old loop's NaN-safe termination).
+    for (let i = 0; ; i++) {
+      const t = startTime + i * frameDuration;
+      if (!(t < endTime)) break;
       frames.push(this.getFrameIndexAtTime(clipId, t, frameRate));
     }
 

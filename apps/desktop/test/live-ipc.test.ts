@@ -44,6 +44,12 @@ const stubHost = {
 describe("collabOpenWorkspace IPC", () => {
   beforeEach(() => {
     videosDir = mkdtempSync(path.join(tmpdir(), "orel-videos-"));
+    // host-instance.ts honors REELTERMINAL_AGENT_WORKSPACE_ROOT; pin it to a
+    // temp workspace path so the expectation is deterministic on any machine.
+    vi.stubEnv(
+      "REELTERMINAL_AGENT_WORKSPACE_ROOT",
+      path.join(videosDir, "ReelTerminal Agent Workspace"),
+    );
     handlers.clear();
     openPath.mockClear();
     vi.mocked(stubHost.enable).mockClear();
@@ -53,6 +59,7 @@ describe("collabOpenWorkspace IPC", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     rmSync(videosDir, { recursive: true, force: true });
   });
 

@@ -24,7 +24,7 @@ export const TransitionHandle: React.FC<TransitionHandleProps> = ({
   onSelect,
 }) => {
   const { t: tr } = useTranslation();
-  const { centerX, transition, clipA, clipB, edge } = handle;
+  const { centerX, transition, clipA, clipB, edge, stale } = handle;
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<{
     left: number;
@@ -109,9 +109,15 @@ export const TransitionHandle: React.FC<TransitionHandleProps> = ({
       : edge === "out"
         ? "Add outro transition"
         : "Add transition";
-  const ariaLabel = edge
-    ? `Edit ${edge === "in" ? "intro" : "outro"} transition: ${label}`
-    : `Edit transition between clips: ${label}`;
+  // A stale handle guards a saved transition whose clips drifted apart: keep
+  // it selectable/removable but signal that it no longer sits on a cut.
+  const staleHint = "Clips have moved apart — remove or re-apply this transition";
+  const displayLabel = stale ? `${label} (${staleHint})` : label;
+  const ariaLabel = stale
+    ? `Stale transition between clips: ${displayLabel}`
+    : edge
+      ? `Edit ${edge === "in" ? "intro" : "outro"} transition: ${label}`
+      : `Edit transition between clips: ${label}`;
   const isActive = Boolean(transition) || isSelected || open;
 
   const menu =
@@ -184,14 +190,15 @@ export const TransitionHandle: React.FC<TransitionHandleProps> = ({
       <button
         ref={badgeRef}
         type="button"
-        title={label}
+        title={stale ? displayLabel : label}
         aria-label={ariaLabel}
         data-transition-id={transition?.id}
+        data-stale-transition={stale ? "true" : undefined}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={openMenu}
         className={`pointer-events-auto flex items-center justify-center rounded-[5px] shadow-sm transition-all ${
           isActive ? "ring-2 ring-accent" : ""
-        }`}
+        } ${stale ? "opacity-50" : ""}`}
         style={{
           width: BADGE_SIZE,
           height: BADGE_SIZE,

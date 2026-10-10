@@ -778,12 +778,21 @@ export class ProjectManager {
   }
 
   private async cleanupOldRecent(): Promise<void> {
-    const recent = await this.getRecentProjects();
-    if (recent.length > MAX_RECENT_PROJECTS) {
-      const toRemove = recent.slice(MAX_RECENT_PROJECTS);
-      for (const item of toRemove) {
-        await this.removeFromRecent(item.id);
-      }
+    // getRecentProjects() slices the stored records for display; trim against
+    // the unsliced list so the recent store itself stays bounded.
+    if (!this.db) return;
+
+    const stored = await new Promise<RecentProject[]>((resolve) => {
+      const tx = this.db!.transaction(RECENT_STORE, "readonly");
+      const request = tx.objectStore(RECENT_STORE).index("lastOpened").getAll();
+      request.onsuccess = () => {
+        resolve((request.result as RecentProject[]).sort((a, b) => b.lastOpened - a.lastOpened));
+      };
+      request.onerror = () => resolve([]);
+    });
+
+    for (const item of stored.slice(MAX_RECENT_PROJECTS)) {
+      await this.removeFromRecent(item.id);
     }
   }
 

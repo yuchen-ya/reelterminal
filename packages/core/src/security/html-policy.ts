@@ -97,21 +97,28 @@ const EMBEDDED_CONTENT_ELEMENT_RE =
 // the whole document outside the assets root; the render path never needs it.
 const BASE_HREF_RE = /<base\b[^>]*?\bhref\s*=/i;
 const META_REFRESH_RE = /<meta\b[^>]*?\bhttp-equiv\s*=\s*(?:"[^"]*refresh[^"]*"|'[^']*refresh[^']*'|refresh)/i;
-const SRCSET_ATTR_RE = /\bsrcset\s*=/i;
+// srcset AND imagesrcset (`<link rel=preload as=image ...>`): a plain \b
+// never matched imagesrcset (no word boundary between IMAGE and SRCSET), so
+// its remote candidates went unscanned. `/` anchors like whitespace (HTML5
+// treats it as an attribute separator) and `^` covers the first attribute.
+const SRCSET_ATTR_RE = /(?:^|[\s/])(?:image)?srcset\s*=/i;
 
-// Event handler attributes: whitespace-preceded on* names, matched
+// Event handler attributes: separator-preceded on* names, matched
 // case-insensitively (HTML attribute names are case-insensitive, so
-// ONLOAD === onload — unlike the XML-flavored SVG gate). The whitespace
-// anchor keeps innocuous names like `data-online` out of the match.
-const EVENT_HANDLER_ATTR_RE = /\s(on[a-zA-Z]+)\s*=/i;
+// ONLOAD === onload — unlike the XML-flavored SVG gate). HTML5 treats `/`
+// as an attribute separator exactly like whitespace (`<svg/onload=...>`),
+// so both anchor the name; either keeps innocuous names like `data-online`
+// out of the match.
+const EVENT_HANDLER_ATTR_RE = /(?:[\s/])(on[a-zA-Z]+)\s*=/i;
 
 // URL-bearing attributes (quoted AND unquoted HTML forms). `href`/`src` are
 // the workhorses; poster/cite/background/longdesc carry URLs on img/q/body;
 // action/formaction/ping are the navigation attributes left once <form>
-// submission targets; xlink:href covers inline SVG. data: on <object> is
-// moot (the element itself is rejected).
+// submission targets; xlink:href covers inline SVG; imagesrcset is the
+// preload candidate list (its element gate above rejects the document, this
+// is defense in depth). data: on <object> is moot (the element is rejected).
 const URL_ATTR_RE =
-  /\b(?:xlink:href|href|src|poster|background|cite|longdesc|formaction|action|ping)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+  /\b(?:xlink:href|imagesrcset|href|src|poster|background|cite|longdesc|formaction|action|ping)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
 
 // CSS url(...) token: quoted or bare, terminated by the closing paren.
 const CSS_URL_RE = /url\s*\(\s*(?:"([^"]*)"|'([^']*)'|([^)"'\s]*))\s*\)/gi;
@@ -179,6 +186,13 @@ export function classifyHtmlReferenceUrl(
     return /^data:image\/(?!svg)/i.test(value)
       ? { kind: "allowed", value }
       : { kind: "unsafeProtocol", value };
+  }
+  // CSS backslash escapes decode in the CSS parser (`\68 ttps` → `https`)
+  // but survive this scan as a literal token, hiding the real target from
+  // every scheme check below. They have no legitimate use in local asset
+  // paths here, so any backslash classifies the target as external.
+  if (value.includes("\\")) {
+    return { kind: "externalResource", value };
   }
   if (/^(?:https?:)?\/\//i.test(value) || /^file:/i.test(value)) {
     return { kind: "externalResource", value };

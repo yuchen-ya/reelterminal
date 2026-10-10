@@ -174,6 +174,9 @@ export const useProjectStore = create<ProjectState & ProjectActions>()(
           return;
         }
         const validated = parsed.data;
+        // Fresh document: drop the previous document's undo stack so undo can
+        // never replay a stale command against this project (same as createProject).
+        useHistoryStore.getState().clear(validated);
         set({
           project: validated,
           selectedLayerIds: [],

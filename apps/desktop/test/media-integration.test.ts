@@ -62,6 +62,14 @@ const ffmpegBin = path.resolve(
 );
 const HAS_FFMPEG = existsSync(ffmpegBin);
 
+// CI sets EXPECT_FFMPEG=1 after fetching the sidecar so the real-encode
+// coverage cannot silently vanish; a missing binary is then a setup error.
+if (process.env.EXPECT_FFMPEG === "1" && !HAS_FFMPEG) {
+  throw new Error(
+    `EXPECT_FFMPEG=1 but the vendored ffmpeg binary is missing: ${ffmpegBin}`,
+  );
+}
+
 describe.skipIf(!HAS_FFMPEG)("native media sidecar integration", () => {
   beforeAll(async () => {
     const ffmpeg = resolveFfmpegPath();

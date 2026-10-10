@@ -1,4 +1,4 @@
-import type { Scene } from "../effect/scene";
+import type { Scene, Subject } from "../effect/scene";
 import type { FilterDoc } from "../filter/types";
 import { getBehavior } from "../effect/behaviors/registry";
 
@@ -16,10 +16,28 @@ export function validatePublishable(input: PublishInput): ValidateResult {
 
   if (input.kind === "effect") {
     const scene = input.doc as Scene;
-    const totalBehaviors = scene.subjects.reduce((sum, s) => sum + s.behaviors.length, 0);
+    // Mirror sceneToGraph (effect/compile.ts) semantics: invisible subjects
+    // are skipped entirely, invisible behaviors contribute nothing, and
+    // duplicate subject kinds are rejected — otherwise a scene that compiles
+    // to a no-op graph would pass this gate.
+    const seenKinds = new Set<Subject["kind"]>();
+    const visibleSubjects = scene.subjects.filter((s) => {
+      if (!s.visible) return false;
+      if (seenKinds.has(s.kind)) {
+        errors.push(`Duplicate subject kind: ${s.kind}.`);
+        return false;
+      }
+      seenKinds.add(s.kind);
+      return true;
+    });
+    const totalBehaviors = visibleSubjects.reduce(
+      (sum, s) => sum + s.behaviors.filter((b) => b.visible).length,
+      0,
+    );
     if (totalBehaviors === 0) errors.push("Effect must have at least one behavior.");
-    for (const subject of scene.subjects) {
+    for (const subject of visibleSubjects) {
       for (const b of subject.behaviors) {
+        if (!b.visible) continue;
         const def = getBehavior(b.kind === "preset" ? b.presetId : `atomic.${b.atomicKind}`);
         if (!def) {
           errors.push(`Unknown behavior in ${subject.name}.`);

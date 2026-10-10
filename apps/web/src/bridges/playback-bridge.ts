@@ -16,6 +16,9 @@ export class PlaybackBridge {
   private unsubscribePlaybackEvents: (() => void) | null = null;
   private initialized = false;
   private isUpdatingProject = false;
+  // Bumped on every requestSeek so an older seek still awaiting its clock
+  // sync can detect that a newer one superseded it and must not commit.
+  private seekGeneration = 0;
 
   async initialize(): Promise<void> {
     if (this.initialized) {
@@ -73,12 +76,6 @@ export class PlaybackBridge {
           timelineStore.pause();
           break;
 
-        case "framerendered":
-          // Update current frame in engine store if needed
-          if (event.frame) {
-            useEngineStore.setState({ currentFrame: event.frame });
-          }
-          break;
       }
     };
 
@@ -89,10 +86,6 @@ export class PlaybackBridge {
       handlePlaybackEvent,
     );
     this.playbackController.addEventListener("ended", handlePlaybackEvent);
-    this.playbackController.addEventListener(
-      "framerendered",
-      handlePlaybackEvent,
-    );
 
     // Store cleanup function
     this.unsubscribePlaybackEvents = () => {
@@ -106,10 +99,6 @@ export class PlaybackBridge {
       );
       this.playbackController?.removeEventListener(
         "ended",
-        handlePlaybackEvent,
-      );
-      this.playbackController?.removeEventListener(
-        "framerendered",
         handlePlaybackEvent,
       );
     };
@@ -253,6 +242,7 @@ export class PlaybackBridge {
     time: number,
     options?: { pause?: boolean },
   ): Promise<void> {
+    const generation = ++this.seekGeneration;
     const shouldPause = options?.pause ?? true;
     if (shouldPause && useTimelineStore.getState().playbackState === "playing") {
       this.pause();
@@ -266,6 +256,9 @@ export class PlaybackBridge {
         console.warn("[PlaybackBridge] seek clock sync failed:", error);
       }
     }
+    // syncClockTo is genuinely async while playing, so seeks can settle out
+    // of order; only the most recently requested one may commit.
+    if (generation !== this.seekGeneration) return;
     useTimelineStore.getState().seekTo(time);
   }
 

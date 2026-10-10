@@ -1285,7 +1285,19 @@ let effectsBridgeInstance: EffectsBridge | null = null;
 let bridgeInitPromise: Promise<EffectsBridge> | null = null;
 let backgroundInitPromise: Promise<EffectsBridge> | null = null;
 let lastBackgroundInitFailureAt = 0;
-const BACKGROUND_INIT_RETRY_DELAY_MS = 1_000;
+const DEFAULT_BACKGROUND_INIT_RETRY_DELAY_MS = 1_000;
+let backgroundInitRetryDelayMs = DEFAULT_BACKGROUND_INIT_RETRY_DELAY_MS;
+// Bumped by disposeEffectsBridge so an initialization that was in flight
+// across a dispose can detect that its instance became an orphan.
+let bridgeGeneration = 0;
+
+/**
+ * Test hook: override the post-failure backoff window for best-effort sync
+ * initialization. Call without arguments to restore the production delay.
+ */
+export function setBackgroundInitRetryDelayForTests(ms?: number): void {
+  backgroundInitRetryDelayMs = ms ?? DEFAULT_BACKGROUND_INIT_RETRY_DELAY_MS;
+}
 
 // Track initialization dimensions for auto-initialization
 let lastInitWidth = 1920;
@@ -1303,7 +1315,7 @@ export function getEffectsBridge(): EffectsBridge {
 
   if (
     !effectsBridgeInstance.isInitialized() &&
-    Date.now() - lastBackgroundInitFailureAt >= BACKGROUND_INIT_RETRY_DELAY_MS
+    Date.now() - lastBackgroundInitFailureAt >= backgroundInitRetryDelayMs
   ) {
     // Share the same in-flight initialization as async consumers. Project
     // synchronization can call this getter several times in one commit; each
@@ -1350,8 +1362,17 @@ export async function getEffectsBridgeAsync(
     effectsBridgeInstance = new EffectsBridge();
   }
   const instance = effectsBridgeInstance;
+  const generation = bridgeGeneration;
   const initializing = (async () => {
     await instance.initialize(width, height);
+    if (generation !== bridgeGeneration) {
+      // disposeEffectsBridge() ran while this initialization was in flight:
+      // the instance is an orphan holding split state and possibly a live
+      // GPU engine. Tear it down and re-run against the current singleton
+      // instead of handing the orphan to awaiting callers.
+      instance.dispose();
+      return getEffectsBridgeAsync(width, height);
+    }
     lastBackgroundInitFailureAt = 0;
     lastInitWidth = width;
     lastInitHeight = height;
@@ -1388,4 +1409,6 @@ export function disposeEffectsBridge(): void {
   bridgeInitPromise = null;
   backgroundInitPromise = null;
   lastBackgroundInitFailureAt = 0;
+  // Any initialization still in flight now belongs to an orphaned instance.
+  bridgeGeneration++;
 }

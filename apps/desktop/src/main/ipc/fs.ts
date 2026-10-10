@@ -8,11 +8,17 @@ import os from "node:os";
 export class FileWriterRegistry {
   private handles = new Map<string, FileHandle>();
   private paths = new Map<string, string>();
+  private tempPaths = new Map<string, string>();
 
   async open(path: string): Promise<string> {
     const id = randomUUID();
-    this.handles.set(id, await fs.open(path, "w"));
+    // Write to a sibling temp file and rename over the target on close: opening
+    // the destination itself with "w" would truncate it immediately, so an
+    // abort or crash mid-stream would destroy the user's pre-existing file.
+    const temp = `${path}.reeltmp`;
+    this.handles.set(id, await fs.open(temp, "w"));
     this.paths.set(id, path);
+    this.tempPaths.set(id, temp);
     return id;
   }
 
@@ -26,18 +32,33 @@ export class FileWriterRegistry {
   async close(id: string): Promise<void> {
     const fh = this.handles.get(id);
     if (!fh) return;
-    await fh.close();
+    const temp = this.tempPaths.get(id);
+    const target = this.paths.get(id);
     this.handles.delete(id);
+    this.tempPaths.delete(id);
     this.paths.delete(id);
+    await fh.sync();
+    await fh.close();
+    // Node's fs.rename replaces an existing destination file on win32 too.
+    if (temp && target) await fs.rename(temp, target);
   }
 
   async abort(id: string): Promise<void> {
     const fh = this.handles.get(id);
-    const p = this.paths.get(id);
+    const temp = this.tempPaths.get(id);
     if (fh) await fh.close();
     this.handles.delete(id);
+    this.tempPaths.delete(id);
     this.paths.delete(id);
-    if (p) await fs.rm(p, { force: true });
+    // The target was never opened, so only the temp holds partial data.
+    // Best-effort cleanup; unlink errors are ignored.
+    if (temp) {
+      try {
+        await fs.rm(temp, { force: true });
+      } catch {
+        // ignore
+      }
+    }
   }
 }
 

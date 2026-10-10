@@ -208,7 +208,7 @@ describe("ADV: batch + concurrency + serialization", () => {
     const stopAt = Date.now() + 400;
     const mutator = (async () => {
       let n = 0;
-      while (Date.now() < stopAt || n > 200) {
+      while (Date.now() < stopAt) {
         await facade["edit.apply"]({
           ops: [
             { op: "track.add", trackType: "video", trackId: `race-${n}` },

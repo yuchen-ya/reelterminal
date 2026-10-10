@@ -61,20 +61,31 @@ installation location. `REELTERMINAL_AGENT_WORKSPACE_ROOT` can independently
 override the workspace. A `REELTERMINAL_DATA_ROOT` override continues to win
 over a location selected in Settings.
 
-Per item (`apps/desktop/src/main/data-root-migration.ts`):
+For the startup batch (`app-data/` and `agent-workspace/`):
 
 - identical source/target paths or a missing source → no-op;
-- non-empty target → never merged or overwritten; the item is skipped and
-  the source is left in place, reported in Settings → Storage;
-- fast path: directory rename;
-- rename impossible (cross-volume/locked) → verified copy through a
-  `<target>.migrating` staging directory, then one rename; the source remains
-  as a backup;
+- all `app-data/` sources are handled before either workspace source;
+- each store is copied through a `<target>.migrating` staging directory, then
+  verified for file count and aggregate byte size before it is revealed; the
+  original source remains in place;
+- if a later store fails, the batch removes only targets it created earlier in
+  that same attempt, then stops; the next attempt copies the then-current
+  source contents again;
+- a pre-existing non-empty target is never merged into, overwritten, or
+  accepted as a verified copy based on file counts and byte totals. It is kept,
+  the source is left in place, and the batch refuses to adopt the selected
+  root;
 - interrupted staging is removed and retried at the next launch.
 
-If an item fails before any data has moved, the app keeps the source root and
-retries next launch. If a later item fails, the app uses the selected root and
-reports the remaining source items.
+Any failed item stops the batch. The app keeps using its previous root and
+retries on the next launch; sources remain in place. The app adopts the
+selected root only when the batch has no failed items. A small machine-config
+marker records a completed source-preserving batch so retained backups are not
+mistaken for a conflicting pre-existing target on later launches. An already
+selected root with existing profile data remains an allowed no-migration case.
+The low-level migration helper retains its same-volume rename fast path for
+single-store use; the startup batch deliberately uses staged copies so one
+store cannot be removed from the active root before the other store is ready.
 
 ## Uninstall
 

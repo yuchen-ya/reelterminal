@@ -526,6 +526,7 @@ export const motionToolsPlugin = definePlugin({
         range: {
           check: (v: unknown) => {
             if (!isPlainObject(v)) return false;
+            if (Object.keys(v).some((k) => !["startFrame", "endFrame"].includes(k))) return false;
             const { startFrame, endFrame } = v;
             return Number.isInteger(startFrame) && (startFrame as number) >= 0 &&
               Number.isInteger(endFrame) && (endFrame as number) > (startFrame as number) + 1 &&

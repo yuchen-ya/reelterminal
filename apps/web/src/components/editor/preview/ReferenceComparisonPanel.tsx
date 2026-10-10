@@ -6,6 +6,7 @@ import React, {
   useState,
   useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   mapTimelineToReference,
   type ReferenceComparisonConfig,
@@ -16,10 +17,11 @@ import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
 import { toast } from "../../../stores/notification-store";
 import { useTranslation } from "react-i18next";
-import { Columns2 } from "@/icons/lucide-compat";
+import { Columns2, Layers, Settings2 } from "@/icons/lucide-compat";
 import { ToolcraftPopover } from "@reelterminal/ui";
 import { workspaceManager, type ProjectNodeSummary } from "../../../services/workspace-manager";
 import { previewSession } from "../../../services/preview-session";
+import { loadMediaBlob } from "../../../services/media-storage";
 import {
   createHistoryFrameRenderer,
   type HistoryFrameRenderer,
@@ -36,12 +38,18 @@ interface MediaItemLike {
   readonly metadata: { readonly duration: number };
 }
 
-export function resolveReferenceMediaUrl(
-  item: Pick<MediaItemLike, "blob" | "contentUrl" | "originalUrl"> | undefined,
+export async function resolveReferenceMediaUrl(
+  item: Pick<MediaItemLike, "id" | "blob" | "contentUrl" | "originalUrl"> | undefined,
   createObjectUrl: (blob: Blob) => string = (blob) => URL.createObjectURL(blob),
-): { readonly url: string | null; readonly revoke: boolean } {
-  if (item?.blob) return { url: createObjectUrl(item.blob), revoke: true };
-  const sourceUrl = item?.contentUrl ?? item?.originalUrl;
+): Promise<{ readonly url: string | null; readonly revoke: boolean }> {
+  if (!item) return { url: null, revoke: false };
+  const blob = item.blob instanceof Blob ? item.blob : await loadMediaBlob(item.id);
+  if (blob) return { url: createObjectUrl(blob), revoke: true };
+  // Controlled-media paths are OS paths, not renderer URLs. Their bytes must
+  // come through media storage rather than bypassing the desktop's read gate.
+  const sourceUrl = [item.contentUrl, item.originalUrl].find(
+    (url) => url && /^(https?:|blob:|data:)/i.test(url),
+  );
   if (sourceUrl) return { url: sourceUrl, revoke: false };
   return { url: null, revoke: false };
 }
@@ -57,14 +65,13 @@ function setComparisonAction(config: ReferenceComparisonConfig): Action {
 
 function selectComparisonAction(
   media: MediaItemLike,
-  playheadPosition: number,
   layout: ReferenceComparisonConfig["layout"] = "side-by-side",
 ): Action {
   return setComparisonAction({
     referenceMediaId: media.id,
     refStartSec: 0,
     refEndSec: media.metadata.duration,
-    timelineStartSec: playheadPosition,
+    timelineStartSec: 0,
     rate: 1,
     audioSide: "timeline",
     layout,
@@ -190,7 +197,6 @@ export function ComparisonSourcePicker({ onClose }: { onClose: () => void }) {
   const { t, i18n } = useTranslation();
   const project = useProjectStore((state) => state.project);
   const executeAction = useProjectStore((state) => state.executeAction);
-  const playheadPosition = useTimelineStore((state) => state.playheadPosition);
   const history = useHistoryComparison();
   const [nodes, setNodes] = useState<ProjectNodeSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -268,7 +274,7 @@ export function ComparisonSourcePicker({ onClose }: { onClose: () => void }) {
             if (media) {
               // Switching to a reference source leaves any history compare.
               closeHistoryComparison();
-              void apply(selectComparisonAction(media, playheadPosition, config?.layout));
+              void apply(selectComparisonAction(media, config?.layout));
             }
           }}
         >
@@ -402,12 +408,15 @@ function historyMappingConfig(
 export const ReferenceComparisonPanel: React.FC<{
   timelineCanvasRef: React.RefObject<HTMLCanvasElement | null>;
   userMuted?: boolean;
-}> = ({ timelineCanvasRef, userMuted = false }) => {
+  controlsContainer?: HTMLElement | null;
+  settingsContainer?: HTMLElement | null;
+}> = ({ timelineCanvasRef, userMuted = false, controlsContainer, settingsContainer }) => {
   const { t, i18n } = useTranslation();
   const project = useProjectStore((state) => state.project);
   const executeAction = useProjectStore((state) => state.executeAction);
   const playheadPosition = useTimelineStore((state) => state.playheadPosition);
   const playbackState = useTimelineStore((state) => state.playbackState);
+  const playbackRate = useTimelineStore((state) => state.playbackRate);
   const frameRate = project?.settings.frameRate ?? 30;
   const config = project?.referenceComparison ?? null;
   const history = useHistoryComparison();
@@ -435,9 +444,11 @@ export const ReferenceComparisonPanel: React.FC<{
   const [error, setError] = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [referenceTime, setReferenceTime] = useState(0);
+  const [referenceReady, setReferenceReady] = useState(false);
   const [historyFrameState, setHistoryFrameState] = useState<HistoryFrameResult>("frame");
   const mirrorRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const playPendingRef = useRef<HTMLVideoElement | null>(null);
   const historyCanvasRef = useRef<HTMLCanvasElement>(null);
   const mapping = config ? mapTimelineToReference(config, playheadPosition) : null;
   // History sides use the same linear mapping (rate 1) labelled "aligned by
@@ -447,14 +458,27 @@ export const ReferenceComparisonPanel: React.FC<{
     : null;
 
   useEffect(() => {
-    const resolved = resolveReferenceMediaUrl(referenceItem);
-    setReferenceUrl(resolved.url);
-    setReferenceTime(referenceItem ? config?.refStartSec ?? 0 : 0);
+    let cancelled = false;
+    let ownedUrl: string | null = null;
+    setReferenceUrl(null);
+    setReferenceReady(false);
+    setReferenceTime(0);
     setError(null);
+    void resolveReferenceMediaUrl(referenceItem).then((resolved) => {
+      if (cancelled) {
+        if (resolved.revoke && resolved.url) URL.revokeObjectURL(resolved.url);
+        return;
+      }
+      if (resolved.revoke) ownedUrl = resolved.url;
+      setReferenceUrl(resolved.url);
+    }).catch(() => {
+      if (!cancelled) setError(t("Reference media could not be loaded."));
+    });
     return () => {
-      if (resolved.revoke && resolved.url) URL.revokeObjectURL(resolved.url);
+      cancelled = true;
+      if (ownedUrl) URL.revokeObjectURL(ownedUrl);
     };
-  }, [config?.refStartSec, config?.referenceMediaId, referenceItem]);
+  }, [config?.referenceMediaId, referenceItem, t]);
 
   // Exit history compare when the active project changes so an old node is
   // never carried into another project's picture (doc: 项目切换退出原项目对比).
@@ -575,16 +599,34 @@ export const ReferenceComparisonPanel: React.FC<{
     if (Math.abs(video.currentTime - target) > tolerance) video.currentTime = target;
     setReferenceTime(video.currentTime);
     video.muted = userMuted || config.audioSide !== "reference" || !playing;
+    video.playbackRate = state.playbackRate;
     if (playing) {
-      if (video.paused) void video.play().catch(() => setError(t("Reference playback could not start.")));
+      if (video.paused && playPendingRef.current !== video) {
+        playPendingRef.current = video;
+        void video.play().catch(() => {
+          if (videoRef.current === video && useTimelineStore.getState().playbackState === "playing") {
+            setError(t("Reference playback could not start."));
+          }
+        }).finally(() => {
+          if (playPendingRef.current === video) playPendingRef.current = null;
+        });
+      }
     } else video.pause();
   }, [config, frameRate, userMuted, t]);
 
   useEffect(() => {
     syncReference();
-  }, [syncReference, playheadPosition, playbackState, referenceUrl]);
+  }, [syncReference, playheadPosition, playbackState, playbackRate, referenceUrl]);
 
-  useEffect(() => () => videoRef.current?.pause(), []);
+  const handleReferenceMetadata = () => {
+    setReferenceReady(true);
+    syncReference();
+  };
+
+  useEffect(() => {
+    const video = videoRef.current;
+    return () => video?.pause();
+  }, [referenceUrl, config?.layout, historyMode]);
 
   const updateConfig = useCallback((patch: Partial<ReferenceComparisonConfig>) => {
     if (!config) return;
@@ -598,10 +640,10 @@ export const ReferenceComparisonPanel: React.FC<{
     if (!media) return;
     // Picking a reference media leaves any active history comparison.
     closeHistoryComparison();
-    void executeAction(selectComparisonAction(media, playheadPosition, config?.layout)).then((result) => {
+    void executeAction(selectComparisonAction(media, config?.layout)).then((result) => {
       setError(result.success ? null : result.error?.message ?? t("Could not configure comparison."));
     });
-  }, [config?.layout, executeAction, playheadPosition, t, videoItems]);
+  }, [config?.layout, executeAction, t, videoItems]);
 
   const alignCurrentFrame = useCallback(() => {
     if (!config || !videoRef.current || !Number.isFinite(videoRef.current.currentTime)) return;
@@ -633,14 +675,9 @@ export const ReferenceComparisonPanel: React.FC<{
   }, [clearComparison, historyMode]);
 
   const handleReferenceError = useCallback(() => {
-    const sourceUrl = referenceItem?.contentUrl ?? referenceItem?.originalUrl;
-    if (sourceUrl && referenceUrl !== sourceUrl) {
-      setReferenceUrl(sourceUrl);
-      setError(null);
-      return;
-    }
+    setReferenceReady(false);
     setError(t("Reference media could not be loaded."));
-  }, [referenceItem?.contentUrl, referenceItem?.originalUrl, referenceUrl, t]);
+  }, [t]);
 
   const handleReferenceScrub = (value: number) => {
     const video = videoRef.current;
@@ -652,7 +689,7 @@ export const ReferenceComparisonPanel: React.FC<{
   if (!historyMode && !config) return null;
 
   const isOverlay = historyMode ? history!.layout === "overlay" : config!.layout === "overlay";
-  const canAlign = Boolean(referenceUrl && videoRef.current && Number.isFinite(videoRef.current.duration));
+  const canAlign = Boolean(referenceReady && referenceUrl && videoRef.current && Number.isFinite(videoRef.current.duration));
 
   const versionSideLabel = (name: string, createdAt: number | null): string =>
     createdAt !== null && createdAt > 0
@@ -697,155 +734,8 @@ export const ReferenceComparisonPanel: React.FC<{
       />
     );
 
-  return (
-    <div
-      data-testid="reference-comparison-viewport"
-      data-reference-comparison="active"
-      className="absolute inset-0 z-40 overflow-hidden rounded-[inherit] bg-black"
-      onClick={(event) => event.stopPropagation()}
-      onMouseMove={(event) => event.stopPropagation()}
-      onKeyDown={(event) => {
-        // Esc inside the comparison surface releases its resources.
-        if (event.key === "Escape" && historyMode) {
-          event.stopPropagation();
-          closeActiveComparison();
-        }
-      }}
-    >
-      {historyMode ? (
-        isOverlay ? (
-          <div className="absolute inset-0" data-testid="comparison-surfaces">
-            {renderComparisonSurface("current")}
-            {renderComparisonSurface("history")}
-            {historyNoFrame && (
-              <div role="status" data-testid="history-no-frame" className="absolute inset-0 grid place-content-center px-4 text-center text-sm text-white">
-                {t("versioning.compareNoFrame")}
-              </div>
-            )}
-            <span className="absolute bottom-2 left-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{historySideLabel}</span>
-            <span className="absolute bottom-2 right-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{currentSideLabel}</span>
-          </div>
-        ) : (
-          <div className="absolute inset-0 flex" data-testid="comparison-surfaces">
-            <div className="relative min-w-0 flex-1 bg-black">
-              {renderComparisonSurface("history")}
-              {historyNoFrame && (
-                <div role="status" data-testid="history-no-frame" className="absolute inset-0 grid place-content-center px-4 text-center text-sm text-white">
-                  {t("versioning.compareNoFrame")}
-                </div>
-              )}
-              <span className="absolute bottom-2 left-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{historySideLabel}</span>
-            </div>
-            <div className="relative min-w-0 flex-1 bg-black">
-              {renderComparisonSurface("current")}
-              <span className="absolute bottom-2 right-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{currentSideLabel}</span>
-            </div>
-          </div>
-        )
-      ) : !referenceUrl ? (
-        <div role="status" className="absolute inset-0 grid place-content-center gap-2 bg-[#39100d] text-center text-white">
-          <strong>{t("Reference media is unavailable")}</strong>
-          <span className="text-sm">{t("Restore the file or choose another reference video.")}</span>
-        </div>
-      ) : isOverlay ? (
-        <div className="absolute inset-0" data-testid="comparison-surfaces">
-          <canvas
-            ref={mirrorRef}
-            aria-label={t("Timeline video")}
-            className="absolute inset-0 h-full w-full object-contain"
-          />
-          <video
-            ref={videoRef}
-            src={referenceUrl}
-            muted={userMuted || config!.audioSide !== "reference"}
-            onLoadedMetadata={syncReference}
-            onTimeUpdate={(event) => setReferenceTime(event.currentTarget.currentTime)}
-            onError={handleReferenceError}
-            aria-label={t("Reference video")}
-            playsInline
-            preload="auto"
-            className="absolute inset-0 h-full w-full object-contain"
-            style={{ opacity: config!.overlayOpacity ?? 0.5, pointerEvents: "none" }}
-          />
-          <span className="absolute bottom-2 left-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{t("Timeline")}</span>
-        </div>
-      ) : (
-        <div className="absolute inset-0 flex" data-testid="comparison-surfaces">
-          <div className="relative min-w-0 flex-1 bg-black">
-            <video
-              ref={videoRef}
-              src={referenceUrl}
-              muted={userMuted || config!.audioSide !== "reference"}
-              onLoadedMetadata={syncReference}
-              onTimeUpdate={(event) => setReferenceTime(event.currentTarget.currentTime)}
-              onError={handleReferenceError}
-              aria-label={t("Reference video")}
-              playsInline
-              preload="auto"
-              className="h-full w-full object-contain"
-            />
-            <span className="absolute bottom-2 left-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{t("Reference")}</span>
-          </div>
-          <div className="relative min-w-0 flex-1 bg-black">
-            <canvas
-              ref={mirrorRef}
-              aria-label={t("Timeline video")}
-              className="h-full w-full object-contain"
-            />
-            <span className="absolute bottom-2 right-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{t("Timeline")}</span>
-          </div>
-        </div>
-      )}
-
-      <div className="absolute left-2 right-2 top-2 z-10 flex flex-wrap items-center gap-1.5 rounded-md border border-white/15 bg-black/75 p-1.5 text-[11px] text-white shadow-lg backdrop-blur-sm">
-        <label className="sr-only" htmlFor="reference-comparison-media">{t("Choose reference video")}</label>
-        <select
-          id="reference-comparison-media"
-          aria-label={historyMode ? t("versioning.compareHistory") : t("Choose reference video")}
-          value={historyMode ? history!.nodeId : config!.referenceMediaId}
-          className="max-w-48 min-w-24 bg-transparent text-white outline-none"
-          onChange={(event) => changeSource(event.target.value)}
-        >
-          {historyMode && history && (
-            <option value={history.nodeId} className="text-black">
-              {`${history.name} · ${formatVersionTimestamp(history.createdAt, i18n.language)}`}
-            </option>
-          )}
-          {videoItems.map((item) => (
-            <option key={item.id} value={item.id} className="text-black">{item.name ?? item.id}</option>
-          ))}
-        </select>
-        <span className="hidden text-white/70 sm:inline">{t("versioning.compareTimeAligned")}</span>
-        <div className="ml-auto flex items-center gap-1">
-          <button
-            type="button"
-            aria-pressed={!isOverlay}
-            onClick={() => (historyMode ? updateHistoryComparison({ layout: "side-by-side" }) : updateConfig({ layout: "side-by-side" }))}
-            className="rounded px-2 py-1 hover:bg-white/15 aria-pressed:bg-emerald-700"
-          >{t("Side by side")}</button>
-          <button
-            type="button"
-            aria-pressed={isOverlay}
-            onClick={() => (historyMode ? updateHistoryComparison({ layout: "overlay" }) : updateConfig({ layout: "overlay" }))}
-            className="rounded px-2 py-1 hover:bg-white/15 aria-pressed:bg-emerald-700"
-          >{t("Overlay comparison")}</button>
-          <button
-            type="button"
-            aria-expanded={advancedOpen}
-            onClick={() => setAdvancedOpen((open) => !open)}
-            className="rounded px-2 py-1 hover:bg-white/15"
-          >{t("Advanced")}</button>
-          <button
-            type="button"
-            aria-label={t("Close reference comparison")}
-            title={t("Close reference comparison")}
-            onClick={closeActiveComparison}
-            className="rounded px-2 py-1 text-white/75 hover:bg-white/15 hover:text-white"
-          >×</button>
-        </div>
-
-      {advancedOpen && (historyMode ? (
-        <div className="absolute right-0 top-full mt-2 z-20 w-72 max-w-[calc(100%-1rem)] rounded-md border border-white/15 bg-black/90 p-3 text-[11px] text-white shadow-xl backdrop-blur-sm">
+  const advancedContent = historyMode ? (
+        <div data-testid="comparison-settings" className="w-full rounded-md border border-border bg-bg-elev p-3 text-[11px] text-fg">
           <div className="mb-1 flex items-center justify-between gap-2">
             <span>{t("versioning.compareTimeAligned")}</span>
             <output>{timeLabel(historyMapping?.referenceSec ?? 0)}</output>
@@ -915,7 +805,7 @@ export const ReferenceComparisonPanel: React.FC<{
           )}
         </div>
       ) : (
-        <div className="absolute right-0 top-full mt-2 z-20 w-72 max-w-[calc(100%-1rem)] rounded-md border border-white/15 bg-black/90 p-3 text-[11px] text-white shadow-xl backdrop-blur-sm">
+        <div data-testid="comparison-settings" className="w-full rounded-md border border-border bg-bg-elev p-3 text-[11px] text-fg">
           <div className="mb-1 flex items-center justify-between gap-2">
             <label htmlFor="reference-position">{t("Reference position")}</label>
             <output>{timeLabel(referenceTime)}</output>
@@ -1008,9 +898,186 @@ export const ReferenceComparisonPanel: React.FC<{
             <p className="mt-2 text-amber-300">{t("Reference playback is outside the mapped range.")}</p>
           )}
         </div>
-      ))}
+      );
+
+  const alignmentLabel = historyMode
+    ? t("versioning.compareTimeAligned")
+    : t("Reference {{reference}} ↔ Timeline {{timeline}}", {
+        reference: timeLabel(config!.refStartSec),
+        timeline: timeLabel(config!.timelineStartSec),
+      });
+
+  const controls = (
+      <div data-testid="comparison-controls" className="border-b border-border bg-bg-2 px-2 py-1.5 text-[11px] text-fg">
+        <div className="flex min-w-0 items-center gap-1.5">
+        <label className="sr-only" htmlFor="reference-comparison-media">{t("Choose reference video")}</label>
+        <select
+          id="reference-comparison-media"
+          aria-label={historyMode ? t("versioning.compareHistory") : t("Choose reference video")}
+          value={historyMode ? history!.nodeId : config!.referenceMediaId}
+          className="w-28 min-w-0 shrink-0 bg-transparent text-fg outline-none"
+          onChange={(event) => changeSource(event.target.value)}
+        >
+          {historyMode && history && (
+            <option value={history.nodeId} className="text-black">
+              {`${history.name} · ${formatVersionTimestamp(history.createdAt, i18n.language)}`}
+            </option>
+          )}
+          {videoItems.map((item) => (
+            <option key={item.id} value={item.id} className="text-black">{item.name ?? item.id}</option>
+          ))}
+        </select>
+        <span title={alignmentLabel} className="min-w-0 flex-1 truncate text-fg-muted">{alignmentLabel}</span>
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            type="button"
+            aria-label={t("Side by side")}
+            title={t("Side by side")}
+            aria-pressed={!isOverlay}
+            onClick={() => (historyMode ? updateHistoryComparison({ layout: "side-by-side" }) : updateConfig({ layout: "side-by-side" }))}
+            className="flex h-7 w-7 items-center justify-center rounded hover:bg-hover aria-pressed:bg-emerald-700 aria-pressed:text-white"
+          ><Columns2 size={16} aria-hidden /></button>
+          <button
+            type="button"
+            aria-label={t("Overlay comparison")}
+            title={t("Overlay comparison")}
+            aria-pressed={isOverlay}
+            onClick={() => (historyMode ? updateHistoryComparison({ layout: "overlay" }) : updateConfig({ layout: "overlay" }))}
+            className="flex h-7 w-7 items-center justify-center rounded hover:bg-hover aria-pressed:bg-emerald-700 aria-pressed:text-white"
+          ><Layers size={16} aria-hidden /></button>
+          <button
+            type="button"
+            aria-label={t("Advanced")}
+            title={t("Advanced")}
+            aria-expanded={advancedOpen}
+            onClick={() => setAdvancedOpen((open) => !open)}
+            className="flex h-7 w-7 items-center justify-center rounded hover:bg-hover"
+          ><Settings2 size={16} aria-hidden /></button>
+          <button
+            type="button"
+            aria-label={t("Close reference comparison")}
+            title={t("Close reference comparison")}
+            onClick={closeActiveComparison}
+            className="flex h-7 w-7 items-center justify-center rounded text-fg-muted hover:bg-hover hover:text-fg"
+          >×</button>
+        </div>
+        </div>
+
+        {!historyMode && mapping?.clamped !== "none" && (
+          <p role="status" className="w-full text-amber-300">
+            {mapping?.clamped === "before"
+              ? t("Reference playback has not reached the aligned start.")
+              : t("Reference playback has reached the aligned end.")}
+          </p>
+        )}
+        {error && <p role="alert" className="w-full text-red-300">{error}</p>}
       </div>
-      {error && <p role="alert" className="absolute bottom-2 left-2 z-20 max-w-[80%] rounded bg-black/85 px-2 py-1 text-[11px] text-red-300">{error}</p>}
+  );
+
+  return (
+    <>
+      {controlsContainer === undefined ? controls : controlsContainer ? createPortal(controls, controlsContainer) : null}
+      {advancedOpen && (settingsContainer === undefined ? advancedContent : settingsContainer ? createPortal(advancedContent, settingsContainer) : null)}
+    <div
+      data-testid="reference-comparison-viewport"
+      data-reference-comparison="active"
+      className="absolute inset-0 z-40 overflow-hidden rounded-[inherit] bg-black"
+      onClick={(event) => event.stopPropagation()}
+      onMouseMove={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        // Esc inside the comparison surface releases its resources.
+        if (event.key === "Escape" && historyMode) {
+          event.stopPropagation();
+          closeActiveComparison();
+        }
+      }}
+    >
+      {historyMode ? (
+        isOverlay ? (
+          <div className="absolute inset-0" data-testid="comparison-surfaces">
+            {renderComparisonSurface("current")}
+            {renderComparisonSurface("history")}
+            {historyNoFrame && (
+              <div role="status" data-testid="history-no-frame" className="absolute inset-0 grid place-content-center px-4 text-center text-sm text-white">
+                {t("versioning.compareNoFrame")}
+              </div>
+            )}
+            <span className="absolute bottom-2 left-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{historySideLabel}</span>
+            <span className="absolute bottom-2 right-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{currentSideLabel}</span>
+          </div>
+        ) : (
+          <div className="absolute inset-0 flex" data-testid="comparison-surfaces">
+            <div className="relative min-w-0 flex-1 bg-black">
+              {renderComparisonSurface("history")}
+              {historyNoFrame && (
+                <div role="status" data-testid="history-no-frame" className="absolute inset-0 grid place-content-center px-4 text-center text-sm text-white">
+                  {t("versioning.compareNoFrame")}
+                </div>
+              )}
+              <span className="absolute bottom-2 left-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{historySideLabel}</span>
+            </div>
+            <div className="relative min-w-0 flex-1 bg-black">
+              {renderComparisonSurface("current")}
+              <span className="absolute bottom-2 right-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{currentSideLabel}</span>
+            </div>
+          </div>
+        )
+      ) : !referenceUrl ? (
+        <div role="status" className="absolute inset-0 grid place-content-center gap-2 bg-[#39100d] text-center text-white">
+          <strong>{t("Reference media is unavailable")}</strong>
+          <span className="text-sm">{t("Restore the file or choose another reference video.")}</span>
+        </div>
+      ) : isOverlay ? (
+        <div className="absolute inset-0" data-testid="comparison-surfaces">
+          <canvas
+            ref={mirrorRef}
+            aria-label={t("Timeline video")}
+            className="absolute inset-0 h-full w-full object-contain"
+          />
+          <video
+            ref={videoRef}
+            src={referenceUrl}
+            muted={userMuted || config!.audioSide !== "reference"}
+            onLoadedMetadata={handleReferenceMetadata}
+            onTimeUpdate={(event) => setReferenceTime(event.currentTarget.currentTime)}
+            onError={handleReferenceError}
+            aria-label={t("Reference video")}
+            playsInline
+            preload="auto"
+            className="absolute inset-0 h-full w-full object-contain"
+            style={{ opacity: config!.overlayOpacity ?? 0.5, pointerEvents: "none" }}
+          />
+          <span className="absolute bottom-2 left-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{t("Timeline")}</span>
+        </div>
+      ) : (
+        <div className="absolute inset-0 flex" data-testid="comparison-surfaces">
+          <div className="relative min-w-0 flex-1 bg-black">
+            <video
+              ref={videoRef}
+              src={referenceUrl}
+              muted={userMuted || config!.audioSide !== "reference"}
+              onLoadedMetadata={handleReferenceMetadata}
+              onTimeUpdate={(event) => setReferenceTime(event.currentTarget.currentTime)}
+              onError={handleReferenceError}
+              aria-label={t("Reference video")}
+              playsInline
+              preload="auto"
+              className="h-full w-full object-contain"
+            />
+            <span className="absolute bottom-2 left-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{t("Reference")}</span>
+          </div>
+          <div className="relative min-w-0 flex-1 bg-black">
+            <canvas
+              ref={mirrorRef}
+              aria-label={t("Timeline video")}
+              className="h-full w-full object-contain"
+            />
+            <span className="absolute bottom-2 right-2 rounded bg-black/65 px-2 py-1 text-[10px] text-white">{t("Timeline")}</span>
+          </div>
+        </div>
+      )}
+
     </div>
+    </>
   );
 };

@@ -129,11 +129,11 @@ describe("DeviceCapabilities", () => {
         .map((r, i) => (!r.recommended ? i : -1))
         .filter((i) => i >= 0);
 
-      if (recommendedIndices.length > 0 && notRecommendedIndices.length > 0) {
-        expect(Math.max(...recommendedIndices)).toBeLessThan(
-          Math.min(...notRecommendedIndices)
-        );
-      }
+      expect(recommendedIndices.length).toBeGreaterThan(0);
+      expect(notRecommendedIndices.length).toBeGreaterThan(0);
+      expect(Math.max(...recommendedIndices)).toBeLessThan(
+        Math.min(...notRecommendedIndices)
+      );
     });
   });
 

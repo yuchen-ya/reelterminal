@@ -9,7 +9,7 @@
  * here; one end-to-end test exercises the real fs path + cache via
  * buildBrowserEntry().
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -101,6 +101,36 @@ describe("resolveBrowserEntry", () => {
 });
 
 describe("buildBrowserEntry (real fs, cache semantics)", () => {
+  it("does not memoise a rejected build: the next call rebuilds", async () => {
+    // Runs against a FRESH module instance (the static import below must keep
+    // its cold cache for the caching test that follows). A directory passes
+    // existsSync but readFileSync throws on it, so doBuild() genuinely
+    // rejects through the real fs path; the failed promise must not stay
+    // cached — pointing the env at a real artifact makes the very next call
+    // succeed instead of replaying the rejection forever.
+    vi.resetModules();
+    const { buildBrowserEntry } = await import("./bundle");
+    const dir = mkdtempSync(path.join(tmpdir(), "reelterminal-prebundle-"));
+    const artifact = path.join(dir, "browser-entry.mjs");
+    writeFileSync(artifact, "RETRY-AFTER-REJECTION-MARKER");
+    const previous = process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE;
+    process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE = dir;
+    try {
+      await expect(buildBrowserEntry()).rejects.toThrow();
+      process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE = artifact;
+      await expect(buildBrowserEntry()).resolves.toBe(
+        "RETRY-AFTER-REJECTION-MARKER",
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE;
+      } else {
+        process.env.REELTERMINAL_BROWSER_ENTRY_BUNDLE = previous;
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("serves the advertised pre-bundle file as-is instead of invoking esbuild", async () => {
     // A real temp file proves the whole chain — default existsSync +
     // readFileSync utf8 — and, because this checkout HAS the TS sources, that

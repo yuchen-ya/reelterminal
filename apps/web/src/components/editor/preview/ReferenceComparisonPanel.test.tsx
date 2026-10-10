@@ -30,11 +30,13 @@ const fixture = vi.hoisted(() => ({
   timeline: {
     playheadPosition: 2.5,
     playbackState: "paused",
+    playbackRate: 1,
     togglePlayback: vi.fn(),
     seekRelative: vi.fn(),
     seekToStart: vi.fn(),
   },
   executeAction: vi.fn().mockResolvedValue({ success: true }),
+  loadMediaBlob: vi.fn(async (): Promise<Blob | null> => null),
   nodes: [] as Array<Record<string, unknown>>,
   nodeRecord: null as Record<string, unknown> | null,
   nodeLookupFails: false,
@@ -117,6 +119,9 @@ vi.mock("../../../services/preview-session", () => ({
   },
   isPreviewActive: () => fixture.previewState.active,
 }));
+vi.mock("../../../services/media-storage", () => ({
+  loadMediaBlob: fixture.loadMediaBlob,
+}));
 vi.mock("./history-frame-renderer", () => ({
   createHistoryFrameRenderer: vi.fn(async () => fixture.renderer),
 }));
@@ -146,6 +151,9 @@ describe("in-player reference comparison", () => {
     fixture.comparisonEnabled = true;
     fixture.timeline.playheadPosition = 2.5;
     fixture.timeline.playbackState = "paused";
+    fixture.timeline.playbackRate = 1;
+    fixture.loadMediaBlob.mockReset();
+    fixture.loadMediaBlob.mockResolvedValue(null);
     fixture.project.referenceComparison.layout = "overlay";
     fixture.project.referenceComparison.audioSide = "reference";
     fixture.project.mediaLibrary.items = [{
@@ -178,7 +186,7 @@ describe("in-player reference comparison", () => {
 
   it("places both frames inside the player and keeps timeline transport out of the comparison UI", async () => {
     render(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} />);
-    const surfaces = screen.getByTestId("comparison-surfaces");
+    const surfaces = await screen.findByTestId("comparison-surfaces");
     const video = screen.getByLabelText("Reference video");
     expect(surfaces.contains(screen.getByLabelText("Timeline video"))).toBe(true);
     expect(video.style.opacity).toBe("0.35");
@@ -196,7 +204,7 @@ describe("in-player reference comparison", () => {
 
   it("syncs the reference from the main playhead and aligns the chosen reference frame", async () => {
     const { rerender } = render(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} />);
-    const video = screen.getByLabelText<HTMLVideoElement>("Reference video");
+    const video = await screen.findByLabelText<HTMLVideoElement>("Reference video");
     Object.defineProperty(video, "duration", { configurable: true, value: 8 });
     fireEvent.loadedMetadata(video);
     expect(video.currentTime).toBe(1.5);
@@ -204,13 +212,11 @@ describe("in-player reference comparison", () => {
     fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
     fireEvent.change(screen.getByRole("slider", { name: "Reference position" }), { target: { value: "2.4" } });
     expect(video.currentTime).toBe(2.4);
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Align this reference frame to the timeline playhead" }));
-      await Promise.resolve();
-    });
-    expect(fixture.executeAction).toHaveBeenCalledWith(expect.objectContaining({
+    fireEvent.click(screen.getByRole("button", { name: "Align this reference frame to the timeline playhead" }));
+    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
+    await waitFor(() => expect(fixture.executeAction).toHaveBeenCalledWith(expect.objectContaining({
       params: { config: expect.objectContaining({ refStartSec: 2.4, timelineStartSec: 2.5 }) },
-    }));
+    })));
 
     fixture.timeline.playbackState = "playing";
     fixture.timeline.playheadPosition = 3.5;
@@ -222,7 +228,7 @@ describe("in-player reference comparison", () => {
 
   it("honors user mute and shows a recovery state when the source cannot be resolved", async () => {
     const { rerender } = render(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} userMuted />);
-    const video = screen.getByLabelText<HTMLVideoElement>("Reference video");
+    const video = await screen.findByLabelText<HTMLVideoElement>("Reference video");
     Object.defineProperty(video, "duration", { configurable: true, value: 8 });
     fireEvent.loadedMetadata(video);
     expect(video.muted).toBe(true);
@@ -232,24 +238,78 @@ describe("in-player reference comparison", () => {
     await waitFor(() => expect(screen.getByRole("status").textContent).toContain("Reference media is unavailable"));
   });
 
-  it("prefers a blob URL, then the controlled path, then originalUrl", () => {
+  it("loads controlled bytes and never treats a Windows file path as a video URL", async () => {
     const blob = new Blob(["video"]);
-    expect(resolveReferenceMediaUrl({ blob, originalUrl: "https://media.test/ref.mp4" }, () => "blob:local")).toEqual({
+    expect(await resolveReferenceMediaUrl({ id: "ref", blob, originalUrl: "https://media.test/ref.mp4" }, () => "blob:local")).toEqual({
       url: "blob:local",
       revoke: true,
     });
-    expect(resolveReferenceMediaUrl({ originalUrl: "https://media.test/ref.mp4" })).toEqual({
+    expect(await resolveReferenceMediaUrl({ id: "ref", originalUrl: "https://media.test/ref.mp4" })).toEqual({
       url: "https://media.test/ref.mp4",
       revoke: false,
     });
-    expect(resolveReferenceMediaUrl({
+    fixture.loadMediaBlob.mockResolvedValueOnce(blob);
+    expect(await resolveReferenceMediaUrl({
+      id: "controlled",
       contentUrl: "C:/controlled/reference.mp4",
       originalUrl: "https://media.test/ref.mp4",
-    })).toEqual({
-      url: "C:/controlled/reference.mp4",
-      revoke: false,
+    }, () => "blob:controlled")).toEqual({
+      url: "blob:controlled",
+      revoke: true,
     });
-    expect(resolveReferenceMediaUrl(undefined)).toEqual({ url: null, revoke: false });
+    expect(fixture.loadMediaBlob).toHaveBeenCalledWith("controlled");
+    expect(await resolveReferenceMediaUrl({ id: "missing", contentUrl: "C:/controlled/reference.mp4" })).toEqual({ url: null, revoke: false });
+    expect(await resolveReferenceMediaUrl(undefined)).toEqual({ url: null, revoke: false });
+  });
+
+  it("keeps controls and settings in separate hosts outside the picture", async () => {
+    const host = document.createElement("div");
+    const settingsHost = document.createElement("div");
+    document.body.append(host, settingsHost);
+    const { unmount } = render(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} controlsContainer={host} settingsContainer={settingsHost} />);
+    await screen.findByLabelText("Reference video");
+    const viewport = screen.getByTestId("reference-comparison-viewport");
+    expect(host.contains(screen.getByTestId("comparison-controls"))).toBe(true);
+    expect(viewport.querySelector("button, select, input")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Advanced" }));
+    expect(settingsHost.contains(screen.getByTestId("comparison-settings"))).toBe(true);
+    expect(viewport.contains(screen.getByTestId("comparison-settings"))).toBe(false);
+    expect(screen.getByRole("slider", { name: "Reference position" })).toBeTruthy();
+    unmount();
+    host.remove();
+    settingsHost.remove();
+  });
+
+  it("starts new references at zero and discloses existing alignment offsets", async () => {
+    fixture.project.mediaLibrary.items.push({
+      id: "ref-2", name: "Second reference", type: "video",
+      originalUrl: "blob:second-reference", metadata: { duration: 8 },
+    });
+    render(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} />);
+    await screen.findByLabelText("Reference video");
+    expect(screen.getByText("Reference 00:01.00 ↔ Timeline 00:02.00")).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "Choose reference video" }), { target: { value: "ref-2" } });
+    await waitFor(() => expect(fixture.executeAction).toHaveBeenCalledWith(expect.objectContaining({
+      params: { config: expect.objectContaining({ referenceMediaId: "ref-2", refStartSec: 0, timelineStartSec: 0 }) },
+    })));
+  });
+
+  it("pauses before the aligned range and plays inside it at the timeline transport rate", async () => {
+    fixture.timeline.playheadPosition = 1;
+    fixture.timeline.playbackState = "playing";
+    fixture.timeline.playbackRate = 2;
+    const { rerender } = render(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} />);
+    const video = await screen.findByLabelText<HTMLVideoElement>("Reference video");
+    Object.defineProperty(video, "duration", { configurable: true, value: 8 });
+    fireEvent.loadedMetadata(video);
+    expect(video.currentTime).toBe(1);
+    expect(video.play).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent("not reached the aligned start");
+    fixture.timeline.playheadPosition = 2.5;
+    rerender(<ReferenceComparisonPanel timelineCanvasRef={{ current: null }} />);
+    expect(video.playbackRate).toBe(2);
+    expect(video.play).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 });
 

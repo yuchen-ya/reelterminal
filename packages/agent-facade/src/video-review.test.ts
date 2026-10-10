@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
 import { analyzeLocalAudio } from "./audio-analysis";
@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAgentFacade } from "./index";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
-import { reviewVideo, readReviewStream, videoReviewConfig, videoReviewPreflight, videoReviewProvider, VIDEO_REVIEW_LIMITS } from "./video-review";
+import { reviewVideo, readReviewStream, videoReviewConfig, videoReviewPreflight, videoReviewProvider, VIDEO_REVIEW_CACHE_LIMITS, VIDEO_REVIEW_LIMITS } from "./video-review";
 
 function response(finish = "stop") {
   return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: "0–1s: static bars; no audible evidence. Inconclusive sync." }, finish_reason: finish }] })}\n\ndata: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":20,"total_tokens":120}}\n\ndata: [DONE]\n\n`);
@@ -182,6 +182,32 @@ describe("video review provider seam and preparation cache", () => {
       expect(network).toHaveBeenCalledTimes(3);
       const cacheFiles = await readdir(join(root, "video-review-cache"));
       expect(cacheFiles.filter((name) => name.endsWith(".mp4"))).toHaveLength(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      vi.unstubAllGlobals();
+    }
+  }, 15000);
+
+  it("sweeps crashed-transcode .part files older than partFileMaxAgeMs from the cache", async () => {
+    vi.stubEnv("DASHSCOPE_API_KEY", "unit-test-only");
+    const root = await mkdtemp(join(tmpdir(), "rt-review-sweep-"));
+    const source = join(root, "fixture.mp4");
+    const cacheDir = join(root, "video-review-cache");
+    const execute = promisify(execFile);
+    vi.stubGlobal("fetch", vi.fn(async () => response()));
+    try {
+      await execute("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=black:s=320x180:r=30:d=4", "-c:v", "libx264", "-y", source]);
+      await mkdir(cacheDir, { recursive: true });
+      const stale = join(cacheDir, ".deadbeef.crashed.part.mp4");
+      const fresh = join(cacheDir, ".deadbeef.live.part.mp4");
+      await writeFile(stale, "stale transcode left by a crash");
+      await writeFile(fresh, "in-progress transcode");
+      const aged = new Date(Date.now() - VIDEO_REVIEW_CACHE_LIMITS.partFileMaxAgeMs - 60_000);
+      await utimes(stale, aged, aged);
+      await reviewVideo(source, { startSec: 1, endSec: 3 }, root, new AbortController().signal);
+      const cacheFiles = await readdir(cacheDir);
+      expect(cacheFiles).not.toContain(".deadbeef.crashed.part.mp4");
+      expect(cacheFiles).toContain(".deadbeef.live.part.mp4");
     } finally {
       await rm(root, { recursive: true, force: true });
       vi.unstubAllGlobals();

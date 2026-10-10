@@ -4,10 +4,12 @@ import {
   disposeEffectsBridge,
   getEffectsBridge,
   getEffectsBridgeAsync,
+  setBackgroundInitRetryDelayForTests,
 } from "./effects-bridge";
 
 afterEach(() => {
   disposeEffectsBridge();
+  setBackgroundInitRetryDelayForTests();
   vi.restoreAllMocks();
 });
 
@@ -43,6 +45,10 @@ describe("EffectsBridge singleton initialization", () => {
   });
 
   it("backs off repeated best-effort sync initialization after a failure", async () => {
+    // A window far longer than any test run keeps the suppression assertion
+    // deterministic: with the production 1s window a slow runner could let
+    // the backoff expire mid-test and legitimately start a second init.
+    setBackgroundInitRetryDelayForTests(60_000);
     const initialize = vi
       .spyOn(EffectsBridge.prototype, "initialize")
       .mockRejectedValue(new Error("no renderer"));
@@ -54,5 +60,30 @@ describe("EffectsBridge singleton initialization", () => {
     getEffectsBridge();
 
     expect(initialize).toHaveBeenCalledOnce();
+  });
+
+  it("does not return an orphan initialized across a concurrent dispose", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const initialize = vi
+      .spyOn(EffectsBridge.prototype, "initialize")
+      .mockImplementation(async function (this: EffectsBridge) {
+        await gate;
+        (this as unknown as { initialized: boolean }).initialized = true;
+      });
+    const dispose = vi.spyOn(EffectsBridge.prototype, "dispose");
+
+    const inFlight = getEffectsBridgeAsync();
+    disposeEffectsBridge();
+    release();
+
+    // The orphan is torn down and a fresh, current bridge replaces it.
+    const bridge = await inFlight;
+    expect(dispose).toHaveBeenCalledTimes(2);
+    expect(initialize).toHaveBeenCalledTimes(2);
+    expect(bridge.isInitialized()).toBe(true);
+    expect(bridge).toBe(getEffectsBridge());
   });
 });

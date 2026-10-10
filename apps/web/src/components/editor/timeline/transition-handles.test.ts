@@ -69,11 +69,25 @@ describe("resolveTransitionHandles", () => {
   it("does not resolve a handle when clips are not adjacent", () => {
     const a = clip("a", 0, 2);
     const b = clip("b", 5, 3); // 3s gap
+    const result = resolveTransitionHandles(track([a, b], []), 50);
+    expect(result).toEqual([]);
+  });
+
+  it("resolves a stale handle for a drifted pair with a saved transition", () => {
+    const a = clip("a", 0, 2);
+    const b = clip("b", 5, 3); // 3s gap
     const result = resolveTransitionHandles(
       track([a, b], [transition("tr", "a", "b")]),
       50,
     );
-    expect(result).toEqual([]);
+    expect(result).toHaveLength(1);
+    const handle = result[0]!;
+    expect(handle.transition?.id).toBe("tr");
+    expect(handle.clipA.id).toBe("a");
+    expect(handle.clipB?.id).toBe("b");
+    expect(handle.stale).toBe(true);
+    // Centered in the gap: ((a.end 2 + b.start 5) / 2) * 50
+    expect(handle.centerX).toBe(175);
   });
 
   it("does not resolve a handle for a single clip", () => {

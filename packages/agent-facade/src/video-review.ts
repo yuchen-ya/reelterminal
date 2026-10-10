@@ -152,12 +152,24 @@ async function evictVideoReviewCache(cacheDir: string): Promise<void> {
   }
 }
 
+/** Best-effort removal of crashed transcode temp files older than partFileMaxAgeMs. */
+async function sweepStalePartFiles(cacheDir: string): Promise<void> {
+  const cutoffMs = Date.now() - VIDEO_REVIEW_CACHE_LIMITS.partFileMaxAgeMs;
+  const names = (await readdir(cacheDir).catch(() => [] as string[])).filter((name) => name.startsWith(".") && name.endsWith(".part.mp4"));
+  await Promise.all(names.map(async (name) => {
+    const file = resolve(cacheDir, name);
+    const info = await stat(file).catch(() => null);
+    if (info?.isFile() && info.mtimeMs < cutoffMs) await rm(file, { force: true }).catch(() => undefined);
+  }));
+}
+
 /**
  * Return the bounded inspection copy for this source range, transcoding it
  * once and caching it (sidecar JSON carries the ffprobe preparation facts so
  * cache hits skip both ffmpeg and ffprobe).
  */
 async function prepareInspectionCopy(source: string, range: { startSec: number; endSec: number }, cacheDir: string, before: { size: number; mtimeMs: number }, signal: AbortSignal): Promise<{ path: string; cached: boolean; sha256: string; probe: { visual: { width: number; height: number; fps: number }; audio: { channels: number; sampleRate: number } | null; durationSec: number } }> {
+  await sweepStalePartFiles(cacheDir);
   const key = createHash("sha256").update(JSON.stringify({ v: 2, size: before.size, mtimeMs: Math.round(before.mtimeMs), startSec: range.startSec, endSec: range.endSec, recipe: PREPARATION_RECIPE })).digest("hex");
   const cachedPath = resolve(cacheDir, `${key}.mp4`);
   const sidecarPath = resolve(cacheDir, `${key}.json`);

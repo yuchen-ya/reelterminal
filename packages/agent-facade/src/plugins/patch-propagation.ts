@@ -410,7 +410,8 @@ export const patchPropagationPlugin = definePlugin({
       input: {
         source: sourceField,
         range: {
-          check: (value: unknown) => isPlainObject(value) && Number.isInteger(value.startFrame) && Number.isInteger(value.endFrame) &&
+          check: (value: unknown) => isPlainObject(value) && Object.keys(value).every((key) => ["startFrame", "endFrame"].includes(key)) &&
+            Number.isInteger(value.startFrame) && Number.isInteger(value.endFrame) &&
             (value.startFrame as number) >= 0 && (value.endFrame as number) >= (value.startFrame as number) + 2 &&
             (value.endFrame as number) - (value.startFrame as number) <= MAX_PATCH_PROPAGATE_FRAMES,
           describe: `{startFrame,endFrame}: zero-based half-open decoded-frame range with 2–${MAX_PATCH_PROPAGATE_FRAMES} frames`,

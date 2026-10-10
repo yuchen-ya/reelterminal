@@ -12,6 +12,30 @@ function expectedFirstNodeName(): string {
   return typeof translated === "string" && translated.length > 0 ? translated : "初版";
 }
 
+/**
+ * Mirrors WorkspaceManager.generateAutoNodeName's Intl.DateTimeFormat
+ * construction (default locale, numeric month/day, 2-digit hour/minute) and
+ * turns its formatToParts output into an anchored pattern, so the assertion
+ * holds under any locale's separators.
+ */
+function autoNodeNamePattern(): RegExp {
+  const source = new Intl.DateTimeFormat(undefined, {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+    .formatToParts(new Date())
+    .map((part) => {
+      if (["month", "day", "hour", "minute"].includes(part.type)) return "\\d{1,2}";
+      if (part.type === "literal") return part.value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // dayPeriod may flip (AM/PM) between name generation and this check.
+      return "[^\\d]*";
+    })
+    .join("");
+  return new RegExp(`^${source}$`);
+}
+
 describe("WorkspaceManager", () => {
   beforeAll(() => {
     globalThis.indexedDB = new IDBFactory();
@@ -778,7 +802,10 @@ describe("WorkspaceManager", () => {
     const second = await manager.saveNode({ target });
     expect(second.node.id).not.toBe(first.node.id);
     expect(second.node.name).not.toBe(expectedFirstNodeName());
-    expect(second.node.name).toMatch(/^\d{1,2}\//);
+    // Locale-proof: build the expected shape from the SAME
+    // Intl.DateTimeFormat construction generateAutoNodeName uses instead of
+    // hard-coding one locale's separators.
+    expect(second.node.name).toMatch(autoNodeNamePattern());
 
     await context.store.getState().addTrack("audio");
     const explicit = await manager.saveNode({ target, name: "Custom" });

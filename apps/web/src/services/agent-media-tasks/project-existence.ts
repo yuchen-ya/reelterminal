@@ -10,8 +10,10 @@
  *
  * The query is read-only and opens the database without an explicit version,
  * so it attaches to whatever schema version currently exists and never
- * triggers an upgrade. Failures answer "unknown": the import gate then keeps
- * the task in `awaiting_import` instead of failing it on a guess.
+ * triggers an upgrade. Failures answer "unknown": the import gate proceeds on
+ * `unknown` (the task only reaches this oracle after the open-project gate
+ * established that the target is the currently open project, so its existence
+ * is already established) and only `missing` fails the task.
  */
 
 import { LEGACY_PROJECT_DB_NAME } from "../legacy-storage-keys";

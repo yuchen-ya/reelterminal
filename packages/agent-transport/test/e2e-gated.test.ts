@@ -245,7 +245,7 @@ describe.skipIf(!runtimeHealthy)("closed loop over run (real Chromium + ffmpeg)"
     expect(stepLine(result.stdoutLines, "verify").result.value.pass).toBe(true);
   }, 900_000);
 
-  it("job.cancel is reachable and idempotent on terminal jobs", async () => {
+  it("job.status on an unknown job is NOT_FOUND", async () => {
     const result = await runWorkflow([
       { id: "create", verb: "project.create", params: { name: "Cancel probe", idempotencyKey: "cancel-create" } },
       { id: "status", verb: "job.status", params: { jobId: "job-never-existed" } },

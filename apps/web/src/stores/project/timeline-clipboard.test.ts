@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Clip, Project, TextClip } from "@reelterminal/core";
 import { createProjectStore, activateProjectStore, getActiveProjectRuntimeStore } from "../project-store";
-import { captureTimelineClipboard, getTimelineClipboard, planTimelinePaste } from "./timeline-clipboard";
+import { captureTimelineClipboard, ClipboardPasteError, getTimelineClipboard, planTimelinePaste } from "./timeline-clipboard";
 import { useUIStore } from "../ui-store";
 
 function fixture() {
@@ -46,6 +46,9 @@ describe("timeline clipboard across historical preview", () => {
     expect(() => planTimelinePaste({ ...target, id: "other-project" }, clipboard, "track-0", 10)).toThrow("project");
     expect(() => planTimelinePaste({ ...target, timeline: { ...target.timeline, tracks: target.timeline.tracks.map(track => ({ ...track, locked: true })) } }, clipboard, "track-0", 10)).toThrow("unlocked");
     expect(() => planTimelinePaste({ ...target, renderFonts: [{ ...font, dataUrl: "data:font/ttf;base64,AQAAAA==" }] }, clipboard, "track-0", 10)).toThrow("different saved font");
+    clipboard.tracks = clipboard.tracks.filter(track => track.id !== "track-0");
+    expect(() => planTimelinePaste(target, clipboard, "track-0", 10)).toThrow(ClipboardPasteError);
+    expect(() => planTimelinePaste(target, clipboard, "track-0", 10)).toThrow("Missing captured track: track-0");
     expect(target).toEqual(before);
   });
 

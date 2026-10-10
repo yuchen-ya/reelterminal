@@ -503,6 +503,10 @@ export class ChromiumExportProvider implements ExportProvider {
       return;
     } finally {
       slot.state = "settled";
+      // The job is terminal (done, cancelled, error, or watchdog) via every
+      // path above: drop its slot so the jobs map cannot grow unboundedly
+      // across exports. cancel() on a missing/settled slot is already a no-op.
+      this.jobs.delete(request.jobId);
     }
   }
 

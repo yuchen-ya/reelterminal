@@ -8,6 +8,12 @@ export interface ResolvedTransitionHandle {
   edge?: TransitionEdge;
   centerX: number;
   transition?: Transition;
+  /**
+   * A saved pair transition whose clips drifted apart (beyond the adjacency
+   * tolerance). It still blends in the engine but sits on a gap, so the
+   * handle is emitted (dimmed in the UI) to keep it selectable/removable.
+   */
+  stale?: boolean;
 }
 
 export function resolveTransitionHandles(
@@ -23,11 +29,24 @@ export function resolveTransitionHandles(
     const clipA = sorted[i];
     const clipB = sorted[i + 1];
     const gap = Math.abs(clipB.startTime - (clipA.startTime + clipA.duration));
-    if (gap > TRANSITION_ADJACENCY_TOLERANCE) continue;
-
     const transition = track.transitions.find(
       (t) => t.clipAId === clipA.id && t.clipBId === clipB.id,
     );
+    if (gap > TRANSITION_ADJACENCY_TOLERANCE) {
+      // A saved transition on a drifted pair must stay reachable so the user
+      // can select or remove it. Pairs without a transition get no handle.
+      if (!transition) continue;
+      handles.push({
+        clipA,
+        clipB,
+        transition,
+        stale: true,
+        centerX:
+          ((clipA.startTime + clipA.duration + clipB.startTime) / 2) *
+          pixelsPerSecond,
+      });
+      continue;
+    }
 
     handles.push({
       clipA,

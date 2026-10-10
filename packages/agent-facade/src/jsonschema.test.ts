@@ -41,7 +41,6 @@ describe("emitted verb JSON Schemas — global client constraints", () => {
     expect(Object.keys(EMITTED_VERB_JSON_SCHEMAS).sort()).toEqual(
       [...FACADE_VERBS].sort(),
     );
-    expect(FACADE_VERBS).toHaveLength(FACADE_VERBS.length);
   });
 
   for (const [verb, typedSchema] of Object.entries(EMITTED_VERB_JSON_SCHEMAS)) {

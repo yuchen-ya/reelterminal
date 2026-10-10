@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from "electron";
 import { DESKTOP_EXPORT_PORT_MARKER } from "@reelterminal/agent-facade/desktop-protocol";
 import { CHANNELS } from "../shared/channels";
 import type {
@@ -12,6 +12,8 @@ import type {
 // The desktop bridge is exposed as window.reelterminal.
 const api = {
   platform: "desktop",
+  // Desktop has no hosted editor configured. URL builders reject this empty
+  // value instead of producing unusable fragment-only sharing links.
   publicOrigin: "",
   probeHardware: () => ipcRenderer.invoke(CHANNELS.probeHardware, undefined),
   onMenuAction: (cb: (id: string) => void) => {
@@ -51,8 +53,8 @@ const api = {
   },
   export: {
     start: (args: unknown) =>
-      new Promise((resolve) => {
-        ipcRenderer.once(CHANNELS.exportPortHandoff, (event, meta) => {
+      new Promise((resolve, reject) => {
+        const handler = (event: IpcRendererEvent, meta: unknown) => {
           const { jobId } = meta as { jobId: string };
           const [port] = event.ports;
           // A live MessagePort cannot survive contextBridge serialization into
@@ -60,8 +62,14 @@ const api = {
           // documented Electron path) and resolve with just the jobId.
           window.postMessage({ [DESKTOP_EXPORT_PORT_MARKER]: true, jobId }, "*", [port]);
           resolve({ jobId });
+        };
+        ipcRenderer.once(CHANNELS.exportPortHandoff, handler);
+        ipcRenderer.invoke(CHANNELS.exportStart, args).catch((error) => {
+          // The handoff can never arrive once start itself failed; drop the
+          // listener so repeated failures cannot leak it.
+          ipcRenderer.removeListener(CHANNELS.exportPortHandoff, handler);
+          reject(error);
         });
-        ipcRenderer.invoke(CHANNELS.exportStart, args);
       }),
     writeAudioWav: (jobId: string, wav: ArrayBuffer) =>
       ipcRenderer.invoke(CHANNELS.exportWriteAudioWav, { jobId, wav }),

@@ -168,6 +168,20 @@ describe("reelctl command parsing and safety", () => {
     expect(JSON.parse(stdout[0]!)).toEqual({ ok: true, value: { revision: 4, requirements: [{ ref: "Q1", title: "Opening", status: "ready", priority: "high", markerIds: ["m1"], updatedAt: 12 }] } });
   });
 
+  it("lists requirements for a directly-opened project that has no workspace id", async () => {
+    const api = makeClient([entry("project.get_state", "project_get_state")]);
+    (api.status as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true, apiVersion: 1, instanceId: "i", projectId: "p", workspaceId: null, projectEpoch: "e", access: "write",
+    });
+    (api.command as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      value: { revision: 2, project: { requirements: { items: [{ id: "r1", number: 1, title: "Solo", status: "ready", markerIds: [], updatedAt: 3 }] } } },
+    });
+    const stdout: string[] = [];
+    await expect(runReelctl(["requirements", "list", "--compact"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
+    expect(JSON.parse(stdout[0]!)).toEqual({ ok: true, value: { revision: 2, requirements: [{ ref: "Q1", title: "Solo", status: "ready", priority: undefined, markerIds: [], updatedAt: 3 }] } });
+  });
+
   it("updates a requirement through one revision-guarded edit.apply", async () => {
     const api = makeClient([
       entry("project.get_state", "project_get_state"),

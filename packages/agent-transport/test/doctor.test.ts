@@ -46,11 +46,8 @@ async function runDoctor(env: Record<string, string | undefined>): Promise<{ exi
 }
 
 describe("doctor: report shape and environment facts", () => {
-  it("with no roots configured: exit 1 degraded, provider gaps named honestly", async () => {
-    if (!runtimeHealthy) {
-      console.warn("[doctor] SKIP usable/degraded verdict test: chromium/ffmpeg unavailable");
-      return;
-    }
+  // SKIP reason when gated: chromium/ffmpeg unavailable
+  it.skipIf(!runtimeHealthy)("with no roots configured: exit 1 degraded, provider gaps named honestly", async () => {
     const { exitCode, report } = await runDoctor({});
     expect(exitCode).toBe(1);
     expect(report.verdict.classification).toBe("degraded");
@@ -70,11 +67,8 @@ describe("doctor: report shape and environment facts", () => {
     expect(typeof report.browserReaper.reaped).toBe("boolean");
   });
 
-  it("with all three root classes configured and healthy: exit 0 usable, canonicalized roots echoed", async () => {
-    if (!runtimeHealthy) {
-      console.warn("[doctor] SKIP usable verdict test: chromium/ffmpeg unavailable");
-      return;
-    }
+  // SKIP reason when gated: chromium/ffmpeg unavailable
+  it.skipIf(!runtimeHealthy)("with all three root classes configured and healthy: exit 0 usable, canonicalized roots echoed", async () => {
     const { exitCode, report } = await runDoctor({
       REELTERMINAL_AVE_MEDIA_ROOTS: roots.mediaRoot,
       REELTERMINAL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
@@ -95,11 +89,8 @@ describe("doctor: report shape and environment facts", () => {
     expect(report.verdict.reasons).toEqual([]);
   });
 
-  it("flags a misconfigured root (relative / missing) as degraded, never refuses", async () => {
-    if (!runtimeHealthy) {
-      console.warn("[doctor] SKIP misconfigured root test: chromium/ffmpeg unavailable");
-      return;
-    }
+  // SKIP reason when gated: chromium/ffmpeg unavailable
+  it.skipIf(!runtimeHealthy)("flags a misconfigured root (relative / missing) as degraded, never refuses", async () => {
     const { exitCode, report } = await runDoctor({
       REELTERMINAL_AVE_MEDIA_ROOTS: "relative/media",
       REELTERMINAL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
@@ -110,11 +101,8 @@ describe("doctor: report shape and environment facts", () => {
     expect(report.verdict.reasons.join("\n")).toContain('mediaRoot "relative/media" is relative');
   });
 
-  it("warns on an over-broad root (filesystem root) and classifies degraded", async () => {
-    if (!runtimeHealthy) {
-      console.warn("[doctor] SKIP over-broad root test: chromium/ffmpeg unavailable");
-      return;
-    }
+  // SKIP reason when gated: chromium/ffmpeg unavailable
+  it.skipIf(!runtimeHealthy)("warns on an over-broad root (filesystem root) and classifies degraded", async () => {
     const { exitCode, report } = await runDoctor({
       REELTERMINAL_AVE_MEDIA_ROOTS: "/",
       REELTERMINAL_AVE_ARTIFACT_ROOT: roots.artifactRoot,
@@ -164,11 +152,8 @@ describe("doctor: orphan-artifact listing and checkpoint residue", () => {
 });
 
 describe("doctor: exit code 2 unusable", () => {
-  it("classifies unusable when ffmpeg is not resolvable (verify cannot run)", async () => {
-    if (!chromiumAvailable()) {
-      console.warn("[doctor] SKIP unusable test: this probe needs chromium to isolate the ffmpeg failure");
-      return;
-    }
+  // SKIP reason when gated: this probe needs chromium to isolate the ffmpeg failure
+  it.skipIf(!chromiumAvailable())("classifies unusable when ffmpeg is not resolvable (verify cannot run)", async () => {
     // A PATH that cannot contain ffmpeg on ANY platform: macOS keeps it in
     // /opt/homebrew/bin, but ubuntu CI apt-installs it into /usr/bin, so a
     // "minimal system PATH" still resolves it there. An empty temp dir is
@@ -186,11 +171,9 @@ describe("doctor: exit code 2 unusable", () => {
       // The chromium runtime may still be healthy — the ffmpeg gap alone is
       // unusable per the doctor contract.
       const report = JSON.parse(handle.stdout) as DoctorReport;
-      expect([1, 2]).toContain(exitCode);
-      if (report.ffmpeg.available === false) {
-        expect(exitCode).toBe(2);
-        expect(report.verdict.classification).toBe("unusable");
-      }
+      expect(report.ffmpeg.available).toBe(false);
+      expect(exitCode).toBe(2);
+      expect(report.verdict.classification).toBe("unusable");
     } finally {
       await rm(emptyBin, { recursive: true, force: true });
     }

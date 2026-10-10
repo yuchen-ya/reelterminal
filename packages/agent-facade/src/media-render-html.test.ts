@@ -349,6 +349,7 @@ describe("media.render_html", () => {
     const withoutHtml = await facadeWith({ ...plain, renderHtmlPng: undefined })[
       "capabilities.get"
     ]();
+    expect(withoutHtml.ok).toBe(true);
     if (withoutHtml.ok) {
       expect(withoutHtml.value.mediaRenderHtml.available).toBe(false);
     }
@@ -356,6 +357,7 @@ describe("media.render_html", () => {
     const withoutRoots = await facadeWith(fakeProvider().provider, [])[
       "capabilities.get"
     ]();
+    expect(withoutRoots.ok).toBe(true);
     if (withoutRoots.ok) {
       expect(withoutRoots.value.mediaRenderHtml.available).toBe(false);
       expect(withoutRoots.value.mediaRenderHtml.reason).toContain("media roots");

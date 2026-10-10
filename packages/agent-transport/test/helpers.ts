@@ -34,8 +34,12 @@ export function chromiumAvailable(): boolean {
 }
 
 export function ffmpegAvailable(): boolean {
-  for (const dir of (process.env.PATH ?? "").split(":")) {
-    if (dir && existsSync(path.join(dir, "ffmpeg")) && existsSync(path.join(dir, "ffprobe"))) {
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (
+      dir &&
+      (existsSync(path.join(dir, "ffmpeg")) || existsSync(path.join(dir, "ffmpeg.exe"))) &&
+      (existsSync(path.join(dir, "ffprobe")) || existsSync(path.join(dir, "ffprobe.exe")))
+    ) {
       return true;
     }
   }

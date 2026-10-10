@@ -78,6 +78,13 @@ describe("html policy — structural rules", () => {
   it("rejects the srcset attribute", () => {
     expect(codeOf('<img src="a.png" srcset="b.png 2x">')).toBe("srcset");
     expect(codeOf("<img SRCSET = 'b.png 2x'>")).toBe("srcset");
+    // imagesrcset (link rel=preload as=image) carries the same candidate
+    // list; a plain \bsrcset never matched it (no boundary inside the name).
+    expect(
+      codeOf('<link rel=preload as=image imagesrcset="https://x/a.png 2x">'),
+    ).toBe("srcset");
+    // `/` is an attribute separator in HTML5, so it anchors the name too.
+    expect(codeOf("<img/srcset='b.png 2x'>")).toBe("srcset");
   });
 });
 
@@ -86,6 +93,10 @@ describe("html policy — script surfaces", () => {
     expect(codeOf('<div onclick="alert(1)">x</div>')).toBe("eventHandler");
     expect(codeOf("<body ONLOAD = 'go()'>")).toBe("eventHandler");
     expect(codeOf("<svg onload=go()>")).toBe("eventHandler");
+    // `/` is an attribute separator in HTML5 — the classic slash-form
+    // evasions must not slip past the separator anchor.
+    expect(codeOf("<svg/onload=alert(1)>")).toBe("eventHandler");
+    expect(codeOf("<img/src/onerror=alert(1)>")).toBe("eventHandler");
     // data-* attributes with 'on' inside are innocent.
     expect(validateHtmlContent('<div data-online="true">x</div>').ok).toBe(
       true,
@@ -169,6 +180,29 @@ describe("html policy — external references", () => {
       "externalResource",
     );
     expect(codeOf("<style>@import 'https://x/y.css';</style>")).toBe(
+      "externalResource",
+    );
+  });
+
+  it("rejects CSS backslash-escape evasion in url() and @import targets", () => {
+    // CSS decodes \68 to `h`, so the browser would fetch https://... while a
+    // literal-token scan sees "\68 ttps:..." and finds no scheme.
+    expect(
+      codeOf(
+        '<style>body{background:url("\\68 ttps://cdn.example/x.png")}</style>',
+      ),
+    ).toBe("externalResource");
+    expect(
+      codeOf("<style>a{background:url(\\68ttps://cdn.example/x.png)}</style>"),
+    ).toBe("externalResource");
+    expect(codeOf("<style>@import '\\2f etc/x.css';</style>")).toBe(
+      "externalResource",
+    );
+    // A decoded escape must not read as an allowed relative path either.
+    expect(classifyHtmlReferenceUrl("\\68ttps://cdn.example/x").kind).toBe(
+      "externalResource",
+    );
+    expect(classifyHtmlReferenceUrl("lo\\63 al.png").kind).toBe(
       "externalResource",
     );
   });

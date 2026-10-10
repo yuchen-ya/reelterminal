@@ -9,6 +9,10 @@ describe("sanitizeGenerationInfo", () => {
     expect(sanitizeGenerationInfo("GPT Voice Agent 1.2.0 — 语音生成完成")).toBe(
       "GPT Voice Agent 1.2.0 — 语音生成完成",
     );
+    // Prose slashes without a path prefix stay readable.
+    expect(sanitizeGenerationInfo("渲染进度 3/5，模型 v2")).toBe(
+      "渲染进度 3/5，模型 v2",
+    );
   });
 
   it("collapses absolute windows/posix paths and file URIs", () => {
@@ -26,10 +30,28 @@ describe("sanitizeGenerationInfo", () => {
     expect(uri).not.toContain("file:///C:/secret/a.mp3");
   });
 
+  it("collapses UNC windows paths", () => {
+    const out = sanitizeGenerationInfo("copied \\\\nas\\share\\voice.wav done");
+    expect(out).not.toContain("\\\\nas\\share\\voice.wav");
+    expect(out).toContain("[路径已省略]");
+  });
+
+  it("collapses posix paths that follow punctuation like =", () => {
+    const out = sanitizeGenerationInfo("output=/home/u/secret/a.wav");
+    expect(out).not.toContain("/home/u/secret/a.wav");
+    expect(out).toContain("[路径已省略]");
+  });
+
   it("removes credential-shaped assignments", () => {
     const out = sanitizeGenerationInfo("used api_key=sk-abc123 and token: t-xyz; done");
     expect(out).not.toContain("sk-abc123");
     expect(out).not.toContain("t-xyz");
+    expect(out).toContain("[凭据已移除]");
+  });
+
+  it("removes the bearer scheme together with its token", () => {
+    const out = sanitizeGenerationInfo("authorization: Bearer abc123");
+    expect(out).not.toContain("abc123");
     expect(out).toContain("[凭据已移除]");
   });
 

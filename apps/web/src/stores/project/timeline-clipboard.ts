@@ -131,8 +131,12 @@ export function planTimelinePaste(project: Project, clipboard: ClipboardCapture,
   const originTime = Math.min(...clipboard.items.map(item => item.clip.startTime));
   const clipIds: string[] = [];
   for (const item of clipboard.items) {
+    const capturedTrack = item.kind === "media"
+      ? clipboard.tracks.find(track => track.id === item.clip.trackId)
+      : undefined;
+    if (item.kind === "media" && !capturedTrack) throw new ClipboardPasteError(i18n.t("previewClipboard.missingTrack", { name: item.clip.trackId }));
     const expectedType = item.kind === "media"
-      ? clipboard.tracks.find(track => track.id === item.clip.trackId)!.type
+      ? capturedTrack!.type
       : item.kind === "text" ? "text" : "graphics";
     const compatible = (track: Track) => !track.locked && track.type === expectedType;
     const destination = project.timeline.tracks.find(track => track.id === item.clip.trackId && compatible(track))

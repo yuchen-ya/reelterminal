@@ -69,15 +69,17 @@ export class AutoSaveManager {
   private savedSnapshotByProject = new Map<string, string>();
   private savedRevisionByProject = new Map<string, number>();
   private dirtyRevisionByProject = new Map<string, number>();
+  // Dirty-time scheduling windows, keyed like the revision maps so one
+  // project's failure backoff never delays a different project's due save.
+  private firstDirtyAtByProject = new Map<string, number>();
+  private latestDirtyAtByProject = new Map<string, number>();
+  private retryNotBeforeByProject = new Map<string, number>();
   private currentSlot: number = 0;
   private listeners: Map<AutoSaveEventType, Set<AutoSaveEventCallback>> =
     new Map();
 
   private pendingProject: Project | null = null;
   private dirtyRevision = 0;
-  private firstDirtyAt: number | null = null;
-  private latestDirtyAt: number | null = null;
-  private retryNotBefore = 0;
   private status: AutoSaveStatus = "idle";
 
   constructor(config: Partial<AutoSaveConfig> = {}) {
@@ -173,10 +175,12 @@ export class AutoSaveManager {
       this.pendingProject = project;
     }
     const now = Date.now();
-    if (!this.hasPendingRevision()) {
-      this.firstDirtyAt = now;
+    if (this.pendingProject) {
+      if (!this.hasPendingRevision()) {
+        this.firstDirtyAtByProject.set(this.pendingProject.id, now);
+      }
+      this.latestDirtyAtByProject.set(this.pendingProject.id, now);
     }
-    this.latestDirtyAt = now;
     this.dirtyRevision += 1;
     if (this.pendingProject) {
       this.dirtyRevisionByProject.set(
@@ -200,18 +204,21 @@ export class AutoSaveManager {
       !this.config.enabled ||
       !this.automaticSaveRunning ||
       !this.pendingProject ||
-      !this.hasPendingRevision() ||
-      this.firstDirtyAt === null ||
-      this.latestDirtyAt === null
+      !this.hasPendingRevision()
     ) {
+      return;
+    }
+    const firstDirtyAt = this.firstDirtyAtByProject.get(this.pendingProject.id);
+    const latestDirtyAt = this.latestDirtyAtByProject.get(this.pendingProject.id);
+    if (firstDirtyAt === undefined || latestDirtyAt === undefined) {
       return;
     }
 
     const dueAt = Math.max(
-      this.retryNotBefore,
+      this.retryNotBeforeByProject.get(this.pendingProject.id) ?? 0,
       Math.min(
-        this.firstDirtyAt + this.config.interval,
-        this.latestDirtyAt + this.config.debounceTime,
+        firstDirtyAt + this.config.interval,
+        latestDirtyAt + this.config.debounceTime,
       ),
     );
     this.debounceTimeoutId = setTimeout(() => {
@@ -219,7 +226,7 @@ export class AutoSaveManager {
       const request = this.capturePendingRevision();
       if (!request) return;
       void this.enqueueSave(request).catch((error: unknown) => {
-        this.handleSaveFailure(error, "Auto-save failed");
+        this.handleSaveFailure(error, "Auto-save failed", request.project.id);
       });
     }, Math.max(0, dueAt - Date.now()));
   }
@@ -292,7 +299,7 @@ export class AutoSaveManager {
     if (snapshot === this.savedSnapshotByProject.get(project.id)) {
       this.markRevisionSaved(project.id, revision);
       if (!this.hasPendingRevision()) {
-        this.retryNotBefore = 0;
+        this.retryNotBeforeByProject.delete(project.id);
         this.clearScheduledSave();
         this.status = "saved";
         this.emit("saved", { projectId: project.id, timestamp: Date.now() });
@@ -304,7 +311,7 @@ export class AutoSaveManager {
     this.emit("saving", { projectId: project.id, revision });
     await this.save(project, snapshot);
     this.savedSnapshotByProject.set(project.id, snapshot);
-    this.retryNotBefore = 0;
+    this.retryNotBeforeByProject.delete(project.id);
     this.markRevisionSaved(project.id, revision);
     if (!this.hasPendingRevision()) {
       this.clearScheduledSave();
@@ -327,9 +334,11 @@ export class AutoSaveManager {
       projectId,
       Math.max(this.savedRevisionByProject.get(projectId) ?? 0, revision),
     );
-    if (!this.hasPendingRevision()) {
-      this.firstDirtyAt = null;
-      this.latestDirtyAt = null;
+    // This project's scheduling window is done once no revision of it is
+    // left unresolved; other projects keep their own windows.
+    if (revision >= (this.dirtyRevisionByProject.get(projectId) ?? 0)) {
+      this.firstDirtyAtByProject.delete(projectId);
+      this.latestDirtyAtByProject.delete(projectId);
     }
   }
 
@@ -346,12 +355,14 @@ export class AutoSaveManager {
     this.emit("saved", { projectId, timestamp: Date.now() });
   }
 
-  private handleSaveFailure(error: unknown, message: string): void {
+  private handleSaveFailure(error: unknown, message: string, projectId: string): void {
     console.error("[AutoSave] Save failed:", error);
     const now = Date.now();
-    this.firstDirtyAt = now;
-    this.latestDirtyAt = now;
-    this.retryNotBefore = now + Math.min(this.config.interval, 30_000);
+    // Back off only the failed project's scheduling window: a different
+    // project's due save must not wait out this retry delay.
+    this.firstDirtyAtByProject.set(projectId, now);
+    this.latestDirtyAtByProject.set(projectId, now);
+    this.retryNotBeforeByProject.set(projectId, now + Math.min(this.config.interval, 30_000));
     this.status = "error";
     this.emit("error", { error, message });
     this.scheduleAutomaticSave();
@@ -656,8 +667,8 @@ export class AutoSaveManager {
     this.clearScheduledSave();
     this.pendingProject = project;
     const now = Date.now();
-    if (!this.hasPendingRevision()) this.firstDirtyAt = now;
-    this.latestDirtyAt = now;
+    if (!this.hasPendingRevision()) this.firstDirtyAtByProject.set(project.id, now);
+    this.latestDirtyAtByProject.set(project.id, now);
     this.dirtyRevision += 1;
     this.dirtyRevisionByProject.set(project.id, this.dirtyRevision);
     this.status = "pending";
@@ -667,7 +678,7 @@ export class AutoSaveManager {
     try {
       await this.enqueueSave(request, project.id);
     } catch (error) {
-      this.handleSaveFailure(error, "Save failed");
+      this.handleSaveFailure(error, "Save failed", project.id);
       throw error;
     }
   }

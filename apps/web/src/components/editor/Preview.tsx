@@ -122,6 +122,7 @@ import {
 } from "./preview/frame-scheduler";
 import { commitRenderedFrame } from "./preview/frame-commit";
 import { compareTracksForComposite } from "./preview/composite-track-order";
+import { hasOverlappingSortedVideoClips } from "./preview/native-playback-overlap";
 import { clipBackgroundRemovalSettings } from "./preview/background-removal-settings";
 import { ProcessingOverlay } from "./ProcessingOverlay";
 import {
@@ -213,6 +214,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   const animationRef = useRef<number | null>(null);
   const renderBridgeInitialized = useRef<boolean>(false);
   const lastGoodFrameRef = useRef<ImageBitmap | null>(null);
+  const lastGoodPlaybackCanvasRef = useRef<OffscreenCanvas | null>(null);
+  const playbackCanvasBackRef = useRef<OffscreenCanvas | null>(null);
   const offscreenCanvasRef = useRef<OffscreenCanvas | null>(null);
   const decodeRequestSeqRef = useRef(0);
   const scrubVideoReleaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -335,6 +338,10 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   const [isRenderBridgeReady, setIsRenderBridgeReady] = useState(false);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const [videoAreaSize, setVideoAreaSize] = useState({ width: 0, height: 0 });
+  const [comparisonControlsContainer, setComparisonControlsContainer] =
+    useState<HTMLElement | null>(null);
+  const [comparisonSettingsContainer, setComparisonSettingsContainer] =
+    useState<HTMLElement | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [previewZoom, setPreviewZoom] = useState<PreviewZoom>({ mode: "fit" });
@@ -349,6 +356,73 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   // next real click on the preview canvas is converted to normalized 0..1
   // coordinates against the project frame and stored in the editor context.
   const [targetPointArmed, setTargetPointArmed] = useState(false);
+  const setComparisonControlsContainerRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      setComparisonControlsContainer(element);
+    },
+    [],
+  );
+  const setComparisonSettingsContainerRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      setComparisonSettingsContainer(element);
+    },
+    [],
+  );
+
+  const getLastGoodPreviewFrame = useCallback(
+    () => lastGoodPlaybackCanvasRef.current ?? lastGoodFrameRef.current,
+    [],
+  );
+
+  const clearPlaybackCanvasBuffers = useCallback(() => {
+    lastGoodPlaybackCanvasRef.current = null;
+    playbackCanvasBackRef.current = null;
+  }, []);
+
+  const rememberPlaybackFrame = useCallback(
+    (
+      source: CanvasImageSource,
+      width: number,
+      height: number,
+    ): void => {
+      let front = lastGoodPlaybackCanvasRef.current;
+      let back = playbackCanvasBackRef.current;
+      if (
+        !front ||
+        !back ||
+        front.width !== width ||
+        front.height !== height ||
+        back.width !== width ||
+        back.height !== height
+      ) {
+        try {
+          front = new OffscreenCanvas(width, height);
+          back = new OffscreenCanvas(width, height);
+        } catch {
+          return;
+        }
+      }
+
+      const context = back.getContext("2d");
+      if (!context) return;
+
+      try {
+        context.clearRect(0, 0, width, height);
+        context.drawImage(source, 0, 0, width, height);
+      } catch {
+        // A failed best-effort snapshot leaves the previously confirmed frame
+        // in the front buffer for the next fallback draw.
+        return;
+      }
+
+      const previousBitmap = lastGoodFrameRef.current;
+      lastGoodPlaybackCanvasRef.current = back;
+      playbackCanvasBackRef.current = front;
+      lastGoodFrameRef.current = null;
+      previousBitmap?.close();
+    },
+    [],
+  );
   const agentTargetPoint = useEditorContextStore((state) => state.canvasPoint);
   const setAgentTargetPoint = useEditorContextStore(
     (state) => state.setCanvasPoint,
@@ -901,8 +975,13 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
       lastGoodFrameRef.current?.close();
       lastGoodFrameRef.current = null;
+      clearPlaybackCanvasBuffers();
     };
-  }, [releaseScrubVideoElements, releaseVideoElement]);
+  }, [
+    clearPlaybackCanvasBuffers,
+    releaseScrubVideoElements,
+    releaseVideoElement,
+  ]);
 
   // Set canvas internal resolution ONLY when project settings change
   // This follows the WebGPU best practice of keeping internal resolution fixed
@@ -1951,31 +2030,38 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       if (hasActiveCompound) {
         const frame = await getRenderBridge().renderFrame(time);
         if (frame) {
-          // Same commit discipline as the decode path. `frame.image` stays
-          // owned by the render bridge / engine store — never closed here.
+          // RenderBridge transfers this frame to Preview, which owns it through
+          // the commit and paint below.
           const scheduler = frameSchedulerRef.current;
-          const commitResult = await commitRenderedFrame(
-            {
-              isCurrent: () => !token || !scheduler || scheduler.isCurrent(token),
-              claimCommit: () =>
-                !token || !scheduler || scheduler.markCommitted(token),
-              lastGood: lastGoodFrameRef,
-            },
-            {
-              produce: () => createImageBitmap(frame.image),
-              paint: () => {
-                mainCtx.clearRect(0, 0, canvas.width, canvas.height);
-                mainCtx.drawImage(
-                  frame.image,
-                  0,
-                  0,
-                  canvas.width,
-                  canvas.height,
-                );
+          try {
+            const commitResult = await commitRenderedFrame(
+              {
+                isCurrent: () => !token || !scheduler || scheduler.isCurrent(token),
+                claimCommit: () =>
+                  !token || !scheduler || scheduler.markCommitted(token),
+                lastGood: lastGoodFrameRef,
               },
-            },
-          );
-          return commitResult === "committed";
+              {
+                produce: () => createImageBitmap(frame.image),
+                paint: (committedFrame) => {
+                  mainCtx.clearRect(0, 0, canvas.width, canvas.height);
+                  mainCtx.drawImage(
+                    committedFrame,
+                    0,
+                    0,
+                    canvas.width,
+                    canvas.height,
+                  );
+                },
+              },
+            );
+            if (commitResult === "committed") {
+              clearPlaybackCanvasBuffers();
+            }
+            return commitResult === "committed";
+          } finally {
+            frame.image.close();
+          }
         }
       }
 
@@ -2003,7 +2089,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
       let hasRenderedFrame = false;
       let shouldClearCanvas = true;
-      const hadBackground = Boolean(lastGoodFrameRef.current);
+      const lastGoodFrame = getLastGoodPreviewFrame();
+      const hadBackground = Boolean(lastGoodFrame);
       // A keyed (or otherwise transparent) full-frame video replaces the
       // picture rather than compositing over it. Baking it over the previous
       // frame let stale pixels shine through every transparent region and be
@@ -2024,9 +2111,9 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           })),
         ),
       });
-      if (renderBase === "lastFrame" && lastGoodFrameRef.current) {
+      if (renderBase === "lastFrame" && lastGoodFrame) {
         ctx.drawImage(
-          lastGoodFrameRef.current,
+          lastGoodFrame,
           0,
           0,
           canvas.width,
@@ -2521,6 +2608,9 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
             },
           },
         );
+        if (commitResult === "committed") {
+          clearPlaybackCanvasBuffers();
+        }
         return commitResult === "committed";
       }
 
@@ -2545,7 +2635,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         mainCtx.clearRect(0, 0, canvas.width, canvas.height);
         if (
           renderBase === "lastFrame" ||
-          !lastGoodFrameRef.current ||
+          !lastGoodFrame ||
           activeSubtitles.length > 0
         ) {
           // The offscreen canvas still holds the previous frame as its base
@@ -2557,7 +2647,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           // by a newer seek): fall back to the last good frame instead of
           // flashing the bare background fill.
           mainCtx.drawImage(
-            lastGoodFrameRef.current,
+            lastGoodFrame,
             0,
             0,
             canvas.width,
@@ -2585,6 +2675,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       clipMasksById,
       drawClipFrame,
       fillPreviewBackground,
+      clearPlaybackCanvasBuffers,
+      getLastGoodPreviewFrame,
       isDark,
       isPlaying,
       project.adjustmentLayers,
@@ -2633,7 +2725,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       // Never clear a confirmed picture to a solid placeholder while a frame
       // is still expected: the last successfully committed frame stays on
       // screen and only real overlays are redrawn over it.
-      const lastGood = lastGoodFrameRef.current;
+      const lastGood = getLastGoodPreviewFrame();
       if (lastGood) {
         ctx.drawImage(lastGood, 0, 0, fallbackCanvas.width, fallbackCanvas.height);
       } else {
@@ -2769,7 +2861,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       const targetCanvas = canvasRef.current;
       const targetContext = targetCanvas?.getContext("2d");
       if (!targetCanvas || !targetContext || !isCurrent()) return;
-      await commitRenderedFrame(
+      const commitResult = await commitRenderedFrame(
         {
           isCurrent,
           claimCommit: () => !token || !scheduler || scheduler.markCommitted(token),
@@ -2783,6 +2875,9 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           },
         },
       );
+      if (commitResult === "committed") {
+        clearPlaybackCanvasBuffers();
+      }
     },
     [
       timelineTracks,
@@ -2794,6 +2889,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       allSubtitles,
       hasActiveMotionInstances,
       fillPreviewBackground,
+      clearPlaybackCanvasBuffers,
+      getLastGoodPreviewFrame,
       isDark,
       isPlaying,
       tr,
@@ -2929,13 +3026,12 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       allVideoClips.sort((a, b) => a.clip.startTime - b.clip.startTime);
 
       // Check for overlapping clips (multi-layer) - can't use native playback for compositing
-      for (let i = 0; i < allVideoClips.length - 1; i++) {
-        const current = allVideoClips[i];
-        const next = allVideoClips[i + 1];
-        const currentEnd = current.clip.startTime + current.clip.duration;
-        if (next.clip.startTime < currentEnd) {
-          return { canUse: false, clips: [] };
-        }
+      if (
+        hasOverlappingSortedVideoClips(
+          allVideoClips.map(({ clip }) => clip),
+        )
+      ) {
+        return { canUse: false, clips: [] };
       }
 
       // Note: Text/graphics overlays are now supported in native video playback
@@ -3835,18 +3931,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           );
         }
 
-        try {
-          // Create-and-validate the replacement before touching the old
-          // bitmap — a failed encode must not lose the remembered frame.
-          const nextFrame = await createImageBitmap(canvas);
-          if (nextFrame.width > 0 && nextFrame.height > 0) {
-            const previousFrame = lastGoodFrameRef.current;
-            lastGoodFrameRef.current = nextFrame;
-            previousFrame?.close();
-          } else {
-            nextFrame.close();
-          }
-        } catch {}
+        rememberPlaybackFrame(canvas, canvas.width, canvas.height);
 
         lastPresentedFrameAtRef.current = performance.now();
         rafId = requestAnimationFrame(() => {
@@ -3947,6 +4032,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       renderOverlayClipsInTrackOrder,
       fillPreviewBackground,
       setPlayheadPosition,
+      rememberPlaybackFrame,
       timelineTracks,
     ],
   );
@@ -3976,6 +4062,10 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       pause();
       return;
     }
+
+    // A paused preview render may still be awaiting decode. Invalidate its
+    // commit before playback starts so a late frame cannot replace live output.
+    frameSchedulerRef.current?.invalidate();
 
     let isActive = true;
     let nativeCleanup: ((preserveCaches?: boolean) => void) | null = null;
@@ -4717,9 +4807,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
               audioGraph.seekTo(nextTime);
               lastPresentedFrameAtRef.current = performance.now();
               isProcessingFrame = false;
-              animationRef.current = requestAnimationFrame(
-                processMultiTrackFrame,
-              );
+              scheduleMultiTrackFrameAt(performance.now());
               return;
             } else {
               isProcessingFrame = false;
@@ -4748,13 +4836,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
             lastFrameTimestamp = now;
             isProcessingFrame = false;
             if (isActive) {
-              if (delay > 0) {
-                setTimeout(() => {
-                  if (isActive) animationRef.current = requestAnimationFrame(processMultiTrackFrame);
-                }, delay);
-              } else {
-                animationRef.current = requestAnimationFrame(processMultiTrackFrame);
-              }
+              scheduleMultiTrackFrameAt(now + delay);
             }
             return;
           }
@@ -4987,19 +5069,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                   lastFrameTimestamp = nowTr;
                   isProcessingFrame = false;
                   if (isActive) {
-                    if (delayTr > 0) {
-                      setTimeout(() => {
-                        if (isActive) {
-                          animationRef.current = requestAnimationFrame(
-                            processMultiTrackFrame,
-                          );
-                        }
-                      }, delayTr);
-                    } else {
-                      animationRef.current = requestAnimationFrame(
-                        processMultiTrackFrame,
-                      );
-                    }
+                    scheduleMultiTrackFrameAt(nowTr + delayTr);
                   }
                   return;
                 } catch (error) {
@@ -5477,23 +5547,14 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
             mainCtx.drawImage(offscreenCanvasRef.current!, 0, 0);
             lastPresentedFrameAtRef.current = performance.now();
 
-            try {
-              // Create-and-validate the replacement before touching the old
-              // bitmap — a failed encode must not lose the remembered frame.
-              const nextFrame = await createImageBitmap(
-                offscreenCanvasRef.current!,
-              );
-              if (nextFrame.width > 0 && nextFrame.height > 0) {
-                const previousFrame = lastGoodFrameRef.current;
-                lastGoodFrameRef.current = nextFrame;
-                previousFrame?.close();
-              } else {
-                nextFrame.close();
-              }
-            } catch {}
-          } else if (lastGoodFrameRef.current) {
+            rememberPlaybackFrame(
+              offscreenCanvasRef.current!,
+              canvas.width,
+              canvas.height,
+            );
+          } else if (getLastGoodPreviewFrame()) {
             ctx.drawImage(
-              lastGoodFrameRef.current,
+              getLastGoodPreviewFrame()!,
               0,
               0,
               canvas.width,
@@ -5529,19 +5590,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           isProcessingFrame = false;
 
           if (isActive) {
-            if (delay > 0) {
-              setTimeout(() => {
-                if (isActive) {
-                  animationRef.current = requestAnimationFrame(
-                    processMultiTrackFrame,
-                  );
-                }
-              }, delay);
-            } else {
-              animationRef.current = requestAnimationFrame(
-                processMultiTrackFrame,
-              );
-            }
+            scheduleMultiTrackFrameAt(now + delay);
           }
         } catch (error) {
           isProcessingFrame = false;
@@ -5551,7 +5600,20 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         }
       };
 
-      animationRef.current = requestAnimationFrame(processMultiTrackFrame);
+      function scheduleMultiTrackFrameAt(dueAt: number): void {
+        if (!isActive) return;
+        const waitForDueFrame = (timestamp: number) => {
+          if (!isActive) return;
+          if (timestamp < dueAt) {
+            animationRef.current = requestAnimationFrame(waitForDueFrame);
+            return;
+          }
+          void processMultiTrackFrame();
+        };
+        animationRef.current = requestAnimationFrame(waitForDueFrame);
+      }
+
+      scheduleMultiTrackFrameAt(performance.now());
     };
 
     const findNextClipStartTime = (afterTime: number): number | null => {
@@ -5701,6 +5763,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     previewRes.scale,
     hasActiveMotionInstances,
     renderMotionInstancesForTrack,
+    getLastGoodPreviewFrame,
+    rememberPlaybackFrame,
     project.motionInstances,
     clipMasksById,
     drawClipFrame,
@@ -5804,6 +5868,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     frameSchedulerRef.current?.invalidate();
     lastGoodFrameRef.current?.close();
     lastGoodFrameRef.current = null;
+    clearPlaybackCanvasBuffers();
 
     cleanupPlaybackResources();
     for (const entry of nativeVideoCacheRef.current.values()) {
@@ -5846,6 +5911,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     projectRevision,
     isPlaying,
     releaseScrubVideoElements,
+    clearPlaybackCanvasBuffers,
     cleanupPlaybackResources,
     releaseVideoElement,
     fillPreviewBackground,
@@ -7255,11 +7321,17 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         />
       )}
 
+      <div
+        ref={setComparisonControlsContainerRef}
+        className="w-full shrink-0 empty:hidden"
+      />
+
+      <div className="flex flex-1 min-h-0 min-w-0">
       {/* Video Area */}
       <div
         ref={videoAreaRef}
         className={`flex-1 min-h-0 min-w-0 relative flex bg-bg-1 transition-all duration-300 ${
-          isMaximized || isFullscreen ? "p-0" : "p-[18px]"
+          isMaximized || isFullscreen ? "p-0" : referenceComparison ? "p-[4px]" : "p-[18px]"
         } ${previewFrameHasOverflow ? "items-start justify-start overflow-auto" : "items-center justify-center overflow-hidden"}`}
         onMouseMove={interactionMode !== "none" ? handleMouseMove : undefined}
         onMouseUp={handleMouseUp}
@@ -7747,9 +7819,19 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                 </div>
               );
             })}
-          <ReferenceComparisonPanel timelineCanvasRef={canvasRef} userMuted={userMuted} />
+          <ReferenceComparisonPanel
+            timelineCanvasRef={canvasRef}
+            userMuted={userMuted}
+            controlsContainer={comparisonControlsContainer}
+            settingsContainer={comparisonSettingsContainer}
+          />
         </div>
         </ContextMenu>
+      </div>
+      <div
+        ref={setComparisonSettingsContainerRef}
+        className="w-80 max-w-[40%] shrink-0 min-h-0 overflow-y-auto empty:hidden"
+      />
       </div>
 
       {/* Player Controls with integrated Scrub Bar */}

@@ -39,13 +39,15 @@ export const AGENT_MEDIA_TASK_MODAL_ID = "agentMediaTask";
 interface TaskListState {
   readonly tasks: readonly AgentMediaTaskRecord[];
   readonly unreadable: number;
+  readonly listError: string | null;
 }
 
-function useAgentMediaTaskList(): TaskListState {
+function useAgentMediaTaskList(): TaskListState & { readonly reload: () => Promise<void> } {
   const service = useMemo(() => getAgentMediaTaskService(), []);
   const [state, setState] = useState<TaskListState>(() => ({
     tasks: service.getSnapshot(),
     unreadable: 0,
+    listError: null,
   }));
   const reload = useCallback(async () => {
     const result = await service.list();
@@ -53,14 +55,20 @@ function useAgentMediaTaskList(): TaskListState {
       setState({
         tasks: result.value.tasks,
         unreadable: result.value.unreadable.length,
+        listError: null,
       });
+    } else {
+      // A failed ledger read must stay distinguishable from an empty ledger
+      // instead of collapsing into the "No tasks yet" empty state (same
+      // failure-aware pattern as TemplatesBrowserPanel's cloud fetch).
+      setState({ tasks: [], unreadable: 0, listError: result.message });
     }
   }, [service]);
   useEffect(() => {
     void reload();
     return subscribeAgentMediaTasks(() => void reload());
   }, [reload]);
-  return state;
+  return useMemo(() => ({ ...state, reload }), [state, reload]);
 }
 
 /** Shared controller dependencies: ledger service + the open project. */
@@ -357,7 +365,7 @@ export const AgentMediaTaskDialog: React.FC = () => {
   const project = useProjectStore((state) => state.project);
 
   const open = activeModal === AGENT_MEDIA_TASK_MODAL_ID;
-  const { tasks, unreadable } = useAgentMediaTaskList();
+  const { tasks, unreadable, listError, reload } = useAgentMediaTaskList();
 
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<{ id: string; code: string; message: string } | null>(
@@ -391,6 +399,12 @@ export const AgentMediaTaskDialog: React.FC = () => {
             message: outcome.message ?? String(outcome.code ?? "INTERNAL"),
           });
         }
+      } catch (error) {
+        setRowError({
+          id: record.id,
+          code: "INTERNAL",
+          message: error instanceof Error ? error.message : String(error),
+        });
       } finally {
         setBusy(false);
       }
@@ -503,7 +517,28 @@ export const AgentMediaTaskDialog: React.FC = () => {
             <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-fg-muted">
               {t("agentMediaTasks.tasks")}
             </h3>
-            {tasks.length === 0 ? (
+            {listError ? (
+              <div
+                role="alert"
+                data-testid="amt-list-failed"
+                className="rounded-lg border border-status-error/30 bg-status-error/8 px-3 py-3"
+              >
+                <p className="text-[11px] font-medium text-status-error">
+                  {t("agentMediaTasks.listFailedTitle")}
+                </p>
+                <p className="mt-1 break-all text-[10px] leading-relaxed text-fg-muted">
+                  {listError}
+                </p>
+                <Button
+                  label={t("agentMediaTasks.retry")}
+                  size="sm"
+                  variant="secondary"
+                  className="mt-2"
+                  data-testid="amt-list-retry"
+                  onClick={() => void reload()}
+                />
+              </div>
+            ) : tasks.length === 0 ? (
               <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-[11px] text-fg-muted">
                 {t("agentMediaTasks.emptyTasks")}
               </p>
