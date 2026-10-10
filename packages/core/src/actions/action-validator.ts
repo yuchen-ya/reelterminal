@@ -1641,12 +1641,9 @@ export class ActionValidator {
           }
         } else {
           const sourceIn = action.params.inPoint ?? 0;
-          const paramsWithSpeed = action.params as typeof action.params & {
-            speed?: unknown;
-          };
-          const speed = paramsWithSpeed.speed ?? 1;
+          const speed = action.params.speed ?? 1;
           if (
-            paramsWithSpeed.speed !== undefined &&
+            action.params.speed !== undefined &&
             (typeof speed !== "number" || !Number.isFinite(speed) || speed <= 0)
           ) {
             errors.push({

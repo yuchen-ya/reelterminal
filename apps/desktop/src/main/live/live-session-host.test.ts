@@ -115,6 +115,12 @@ function makeBridgeStub() {
     getState: async () => {
       throw new Error("not exercised by host tests");
     },
+    listRequirements: async () => {
+      throw new Error("not exercised by host tests");
+    },
+    getRequirement: async () => {
+      throw new Error("not exercised by host tests");
+    },
     getContext: async () => {
       throw new Error("not exercised by host tests");
     },

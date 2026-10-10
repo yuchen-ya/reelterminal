@@ -1,0 +1,94 @@
+import { writeFileSync } from "node:fs";
+import path from "node:path";
+import { afterAll, beforeAll, expect, test, vi } from "vitest";
+import { launchApp, type LaunchedApp } from "./harness/launch";
+import { createProjectViaUI } from "./harness/ui";
+import { createEvidence } from "./harness/evidence";
+
+let launched: LaunchedApp;
+let imagePath: string;
+beforeAll(async () => {
+  launched = await launchApp();
+  launched.page.setDefaultTimeout(20_000);
+  await createProjectViaUI(launched.page);
+  imagePath = path.join(launched.runDir, "opening-shot.png");
+  writeFileSync(imagePath, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"));
+});
+afterAll(async () => { await launched?.close(); });
+
+test("project browser keeps search and view controls usable at narrow and wide widths", async () => {
+  const page = launched.page;
+  const panel = page.getByTestId("project-asset-browser");
+  await page.locator('input[type="file"][aria-label="Import media"]').setInputFiles(imagePath);
+  await panel.getByText("opening-shot.png", { exact: true }).waitFor();
+  await panel.getByRole("button", { name: "List view", exact: true }).click();
+  await panel.getByRole("button", { name: "Preview opening-shot.png" }).click();
+  await page.getByRole("dialog").getByRole("img", { name: "opening-shot.png" }).waitFor();
+  await page.getByRole("dialog").getByRole("button", { name: "Add to timeline", exact: true }).click();
+  await page.getByRole("button", { name: "Select clip opening-shot.png", exact: true }).waitFor();
+  await panel.getByRole("button", { name: "Thumbnail view", exact: true }).click();
+  const search = panel.getByRole("textbox", { name: "Search project assets" });
+  await search.fill("no matching media");
+  await vi.waitFor(async () => expect(await panel.locator("[data-live-media-id]").count()).toBe(0));
+  await panel.getByRole("button", { name: "Clear search" }).click();
+  await vi.waitFor(async () => expect(await panel.locator("[data-live-media-id]").count()).toBe(1));
+  await panel.getByRole("button", { name: "Filter and sort", exact: true }).click();
+  await page.getByLabel("Sort media", { exact: true }).selectOption("asc");
+  await page.keyboard.press("Escape");
+  await page.locator(".asset-filter-panel").waitFor({ state: "hidden" });
+  const separator = page.locator('[role="separator"][aria-orientation="vertical"]').first();
+  const evidence = createEvidence("asset-browser-project", page);
+  for (const width of [320, 480, 240]) {
+    const box = (await separator.boundingBox())!;
+    await page.mouse.move(box.x + 2, box.y + 80);
+    await page.mouse.down();
+    await page.mouse.move(width, box.y + 80, { steps: 8 });
+    await page.mouse.up();
+    const bounds = await panel.evaluate((element) => ({ width: element.clientWidth, content: element.scrollWidth }));
+    expect(bounds.content).toBeLessThanOrEqual(bounds.width + 1);
+    expect(await panel.getByRole("button", { name: "Filter and sort", exact: true }).isVisible()).toBe(true);
+    evidence.record(`width-${width}`, bounds);
+    await evidence.screenshot(`width-${width}`);
+  }
+  evidence.flush();
+});
+
+test("personal library supports add, preview, view switching and selection-only batch actions", async () => {
+  const page = launched.page;
+  await page.getByRole("button", { name: "Personal library", exact: true }).click();
+  const panel = page.locator('[data-live-editor-target-id="material-library-panel"]');
+  await panel.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Add media", exact: true }).click();
+  await panel.locator('input[type="file"]').setInputFiles(imagePath);
+  await panel.getByRole("button", { name: "Preview opening-shot.png" }).waitFor();
+  expect(await panel.getAttribute("data-view")).toBe("list");
+  expect(await panel.getByRole("checkbox").count()).toBe(0);
+  await panel.getByRole("button", { name: "Thumbnail view", exact: true }).click();
+  expect(await panel.getAttribute("data-view")).toBe("grid");
+  await panel.getByRole("button", { name: "Preview opening-shot.png" }).click();
+  await page.getByRole("dialog").waitFor();
+  await page.keyboard.press("Escape");
+  await panel.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Add link", exact: true }).click();
+  await page.getByPlaceholder("https://example.com/tutorial").fill("https://example.com/tutorial");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await panel.getByRole("button", { name: /Preview.*example/ }).waitFor();
+  await panel.getByRole("button", { name: "Batch selection", exact: true }).click();
+  await panel.getByRole("checkbox", { name: "Select opening-shot.png" }).check();
+  await panel.getByRole("button", { name: "Organize", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Mark organized", exact: true }).click();
+  await vi.waitFor(async () => expect(await panel.locator(".asset-batch-bar").count()).toBe(0));
+  await panel.getByRole("button", { name: "Filter and sort", exact: true }).click();
+  await page.getByLabel("Organize status", { exact: true }).selectOption("organized");
+  await page.keyboard.press("Escape");
+  await panel.getByRole("button", { name: "Preview opening-shot.png" }).waitFor();
+  await page.locator(".asset-filter-panel").waitFor({ state: "hidden" });
+  await panel.getByRole("button", { name: "Batch selection", exact: true }).click();
+  await panel.getByRole("button", { name: "Add opening-shot.png to project", exact: true }).click();
+  await page.getByText("Added to project", { exact: true }).waitFor();
+  const evidence = createEvidence("asset-browser-library", page);
+  await evidence.screenshot("grid");
+  await panel.getByRole("button", { name: "List view", exact: true }).click();
+  await evidence.screenshot("list");
+  evidence.flush();
+});

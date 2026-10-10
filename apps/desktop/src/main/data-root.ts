@@ -304,7 +304,11 @@ export function changeDataRoot(newRoot: string): {
     return { ok: false, requiresRestart: false, error: "path must be absolute" };
   }
   const currentRoot = session?.activeLayout?.root ?? null;
-  if (currentRoot && path.resolve(currentRoot) === path.resolve(trimmed)) {
+  // normalizedPath matches the case-insensitive comparisons used everywhere
+  // else in this module, so a differently-cased but identical root is not
+  // mistaken for a change (which would rewrite the pointer and demand a
+  // pointless restart + migration).
+  if (currentRoot && normalizedPath(currentRoot) === normalizedPath(trimmed)) {
     return { ok: true, requiresRestart: false };
   }
   try {
@@ -349,7 +353,9 @@ function summarizeMigrationLeftovers(report: MigrationReport): string {
         (item.status === "skipped-missing" && existsSync(item.from)),
     )
     .map((item) =>
-      `• ${item.from} (destination already contains data; source was kept)`,
+      item.status === "skipped-target-exists"
+        ? `• ${item.from} (destination already contains data; source was kept)`
+        : `• ${item.from} (source exists but is not a directory; nothing was moved)`,
     )
     .join("\n");
 }

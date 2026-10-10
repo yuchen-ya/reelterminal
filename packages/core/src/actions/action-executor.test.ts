@@ -799,8 +799,10 @@ describe("ActionExecutor speed-scaled timing deltas", () => {
       slid.duration * (slid.speed ?? 1),
     );
     // A -1 timeline delta re-anchors the neighbor's source inPoint by
-    // -1 * speed source seconds.
-    expect(next).toMatchObject({ startTime: 11.5, inPoint: 12, duration: 4 });
+    // -1 * speed source seconds: the clip's head extends left, so the source
+    // window opens earlier and out - in == duration * speed keeps holding.
+    expect(next).toMatchObject({ startTime: 11.5, inPoint: 8, duration: 4 });
+    expect(next.outPoint - next.inPoint).toBe(next.duration * (next.speed ?? 1));
     const after = getClipTimings(project, ["c1", "c2"]);
 
     expect((await executor.undo(project)).success).toBe(true);

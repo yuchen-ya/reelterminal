@@ -312,8 +312,6 @@ export function applyRequestEnvelope(
 export function requireExplicitSafetyGuards(
   commandName: string,
   args: Record<string, unknown>,
-  _expectedProjectId: string | undefined,
-  _expectedProjectEpoch: string | undefined,
   entry?: CommandCatalogEntry,
 ): void {
   const required = new Set(Array.isArray(entry?.inputSchema.required)

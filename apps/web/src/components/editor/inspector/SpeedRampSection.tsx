@@ -394,7 +394,7 @@ export const SpeedRampSection: React.FC<SpeedRampSectionProps> = ({ clip }) => {
         ...updates,
       },
     }], { groupLabel: "Edit speed configuration", historyOwner: "human" });
-    setError(result.success ? null : result.error?.message ?? "Speed edit failed");
+    setError(result.success ? null : result.error?.message ?? tr("Speed edit failed"));
   };
 
   const handleSpeedChange = (speed: number) => commit({ speed });
@@ -415,7 +415,7 @@ export const SpeedRampSection: React.FC<SpeedRampSectionProps> = ({ clip }) => {
     const localTime = playheadPosition - canonicalClip.startTime;
     if (localTime < 0 || localTime > canonicalClip.duration) return;
     if (speedEngine.getFreezeFrameAtTime(clip.id, localTime)) {
-      setError("The playhead is already inside a freeze frame");
+      setError(tr("The playhead is already inside a freeze frame"));
       return;
     }
     commit({ freezeFrames: [

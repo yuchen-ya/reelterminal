@@ -26,6 +26,7 @@ import path from "node:path";
 import {
   toolPresentation,
   LiveWriterLease,
+  WORKSPACE_VERBS,
   type FacadeResult,
   type FacadeVerb,
   type LiveAgentFacade,
@@ -160,6 +161,10 @@ export function createLiveSessionHost(
   let externalSession: LiveAgentFacade | null = null;
   let externalConnected = false;
   const shownReviews = new Set<string>();
+  const getTaskLedger = (): DurableTaskLedger => {
+    taskLedger ??= new DurableTaskLedger(path.join(deps.artifactRoot, "task-records"));
+    return taskLedger;
+  };
   // Enable/disable are one lifecycle lane. In particular, `enabled` cannot be
   // used as an in-progress lock because it flips only after endpoint startup.
   // Keep this queue settled after failures so a later toggle can recover.
@@ -289,7 +294,7 @@ export function createLiveSessionHost(
     if (!bridge || !lease || !providers) {
       throw new Error("live collaboration is not enabled");
     }
-    taskLedger ??= new DurableTaskLedger(path.join(deps.artifactRoot, "task-records"));
+    const ledger = getTaskLedger();
     const requireWorkspaceReply = async (
       verb: "retainTaskInputs" | "releaseTaskInputs" | "prepareRenderFonts",
       params: Record<string, unknown>,
@@ -335,17 +340,17 @@ export function createLiveSessionHost(
       access: () => accessPreferenceStore.get().access,
       artifactRoot: deps.artifactRoot,
       taskLifecycle: {
-        list: () => taskLedger!.list().map((record) => ({
+        list: () => ledger.list().map((record) => ({
           projectId: record.projectId,
           workspaceId: record.workspaceId,
           status: record.status,
           parameters: record.parameters,
         })),
-        begin: (input: LiveTaskInput) => taskLedger!.begin(input),
+        begin: (input: LiveTaskInput) => ledger.begin(input),
         update: (status: JobStatusView) => {
-          taskLedger!.update(status);
-          const record = taskLedger!.get(status.jobId);
-          if (!record) throw new Error(`Durable task missing after update: ${status.jobId}`);
+          ledger.update(status);
+          // update() throws on an unknown job, so the record exists here.
+          const record = ledger.get(status.jobId)!;
           try {
             deps.emitEvent({
               type: "task",
@@ -498,8 +503,8 @@ export function createLiveSessionHost(
 
   const host: LiveSessionHost = {
     getTaskStates(jobIds) {
-      taskLedger ??= new DurableTaskLedger(path.join(deps.artifactRoot, "task-records"));
-      return Object.fromEntries(jobIds.map((id) => [id, taskLedger!.getState(id)]));
+      const ledger = getTaskLedger();
+      return Object.fromEntries(jobIds.map((id) => [id, ledger.getState(id)]));
     },
     get isEnabled() {
       return enabled;
@@ -600,8 +605,7 @@ export function createLiveSessionHost(
       const required = Array.isArray(entry?.inputSchema.required)
         ? entry.inputSchema.required.filter((field): field is string => typeof field === "string")
         : [];
-      const missing = required.find((field) => record?.[field] === undefined &&
-        !(verb === "editor.get_context" && (field === "projectId" || field === "workspaceId")));
+      const missing = required.find((field) => record?.[field] === undefined);
       if (missing) {
         return { ok: false, error: { code: "INVALID_PARAMS", message: `${verb} requires ${missing}` } };
       }
@@ -620,13 +624,10 @@ export function createLiveSessionHost(
       };
       // Existing project verbs keep their established closed parameter schemas;
       // target IDs travel in request-local context to the canonical renderer.
-      const workspaceVerbs = new Set([
-        "project.save",
-        "project.list", "workspace.list", "workspace.create", "workspace.delete",
-        "workspace.close", "workspace.switch_view", "workspace.list_drafts", "workspace.recover_draft",
-        "node.list", "node.save", "node.restore", "node.rename", "node.media", "node.compare",
-        "media.references", "media.cleanup.plan", "media.cleanup.execute",
-      ]);
+      // The verb list is the facade's WORKSPACE_VERBS (single source of truth,
+      // so a verb added there cannot be silently misrouted here) plus
+      // project.save, whose closed schema carries the ids itself.
+      const workspaceVerbs = new Set<string>(["project.save", ...WORKSPACE_VERBS]);
       let routedParams = params;
       if (!workspaceVerbs.has(verb) && record && ("projectId" in record || "workspaceId" in record)) {
         const { projectId: _projectId, workspaceId: _workspaceId, ...rest } = record;

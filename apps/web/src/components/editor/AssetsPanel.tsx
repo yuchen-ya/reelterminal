@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import {
   Image as ImageIcon, Film, Music, Plus, Upload, Trash2,
   Square, Circle, Triangle, Star, ArrowRight, Hexagon, FileCode, AlertTriangle,
-  RefreshCw, Palette, Video, BookMarked, Search, Pencil, FolderPlus,
+  RefreshCw, Palette, Video, BookMarked, Pencil, FolderPlus,
   Type, Shapes, Wand2, LayoutTemplate, Zap, Shuffle,
 } from "@/icons/lucide-compat";
 import {
@@ -56,6 +56,10 @@ import { markAgentReferenceForMedia } from "../../stores/editor-context-store";
 import { MaterialLibraryPanel } from "./material/MaterialLibraryPanel";
 import { saveProjectMediaToLibrary } from "../../services/material-library/project-save";
 import { WorkAssetsTab } from "./panels/WorkAssetsTab";
+import { ToolcraftPopover as Popover, ToolcraftDropdownMenu as DropdownMenu } from "@reelterminal/ui";
+import { SlidersHorizontal, MoreHorizontal, Play } from "@/icons/lucide-compat";
+import { AssetSearch, AssetViewToggle, type AssetView } from "./asset-browser-controls";
+import { ProjectMediaPreview } from "./ProjectMediaPreview";
 
 // Maps shared SVG validation error codes to localized copy so every
 // rejection category (active content, external references, size limits,
@@ -276,6 +280,7 @@ const MediaThumbnail: React.FC<{
   onRename: (name: string) => Promise<boolean>;
   onDragStart: (e: React.DragEvent) => void;
   onAddToTimeline: () => void;
+  onPreview: () => void;
 }> = ({
   item,
   isSelected,
@@ -287,6 +292,7 @@ const MediaThumbnail: React.FC<{
   onRename,
   onDragStart,
   onAddToTimeline,
+  onPreview,
 }) => {
   const { t } = useTranslation();
   const [isHovered, setIsHovered] = useState(false);
@@ -463,6 +469,7 @@ const MediaThumbnail: React.FC<{
           onClick={onSelect}
           onDoubleClick={(e) => { e.stopPropagation(); onAddToTimeline(); }}
           onKeyDown={handleCardKeyDown}
+          onFocus={() => setIsHovered(true)}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
           className={`relative flex items-center gap-3 px-2 py-1.5 rounded-lg border-2 cursor-pointer transition-all group ${borderClass}`}
@@ -470,7 +477,9 @@ const MediaThumbnail: React.FC<{
         <AgentReferenceBadge kind="media" entityId={item.id} className="left-1 top-1" />
         <ProjectMarkerBadgeStack markers={reviewMarkers} selected={isSelected} />
         {/* Small thumbnail */}
-        <div className="w-12 h-8 rounded-md bg-bg-2 relative overflow-hidden flex-shrink-0">
+        <button type="button" aria-label={t("assetBrowser.previewItem", { name: resolvedName })} disabled={item.isPlaceholder}
+          onClick={(event) => { event.stopPropagation(); onPreview(); }}
+          className="w-12 h-8 rounded-md bg-bg-2 relative overflow-hidden flex-shrink-0">
           {item.thumbnailUrl ? (
             <img src={item.thumbnailUrl} alt={resolvedName} className="w-full h-full object-cover" />
           ) : (
@@ -483,7 +492,7 @@ const MediaThumbnail: React.FC<{
               <AlertTriangle size={12} className="text-yellow-500/70" />
             </div>
           )}
-        </div>
+        </button>
 
         {/* Info */}
         <div className="flex-1 min-w-0">
@@ -579,12 +588,24 @@ const MediaThumbnail: React.FC<{
           onAddToTimeline();
         }}
         onKeyDown={handleCardKeyDown}
-        onMouseEnter={() => setIsHovered(true)}
+        onFocus={() => setIsHovered(true)}
+          onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        className={`h-[78px] bg-bg-2 rounded-lg border relative group cursor-pointer transition-all overflow-hidden ${borderClass}`}
+        className={`aspect-video bg-bg-2 rounded-md border relative group cursor-pointer transition-colors overflow-hidden ${borderClass}`}
       >
         <AgentReferenceBadge kind="media" entityId={item.id} className="left-1 top-1" />
         <ProjectMarkerBadgeStack markers={reviewMarkers} selected={isSelected} />
+        <button type="button" aria-label={t("assetBrowser.previewItem", { name: resolvedName })}
+          title={t("projectAssets.previewSource")} disabled={item.isPlaceholder}
+          onClick={(event) => { event.stopPropagation(); onPreview(); }}
+          className="absolute left-1 bottom-1 z-10 flex h-6 w-6 items-center justify-center rounded bg-bg-1/90 text-fg">
+          <Play size={12} aria-hidden />
+        </button>
+        <button type="button" aria-label={t("Add to timeline")} title={t("Add to timeline")} disabled={item.isPlaceholder}
+          onClick={(event) => { event.stopPropagation(); onAddToTimeline(); }}
+          className="absolute right-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded bg-bg-1/90 text-accent">
+          <Plus size={12} aria-hidden />
+        </button>
         {/* Thumbnail or placeholder */}
         {item.thumbnailUrl ? (
           <img
@@ -692,6 +713,8 @@ const LoadingIndicator: React.FC<{ message: string }> = ({ message }) => (
 export const AssetsPanel: React.FC = () => {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [mediaView, setMediaView] = useState<AssetView>("grid");
+  const [previewMediaId, setPreviewMediaId] = useState<string | null>(null);
   const [assetFilter, setAssetFilter] = useState<"all" | "media" | "single" | "multi">("all");
   const selectedTimelineItems = useUIStore((state) => state.selectedItems);
   const [captureName, setCaptureName] = useState<string | null>(null);
@@ -753,6 +776,7 @@ export const AssetsPanel: React.FC = () => {
     updateSettings,
   } = useProjectStore();
   const mediaItems = project.mediaLibrary.items;
+  const previewMedia = mediaItems.find((item) => item.id === previewMediaId);
 
   // UI store
   const { select, isSelected, startDrag, openModal } = useUIStore();
@@ -1255,95 +1279,63 @@ export const AssetsPanel: React.FC = () => {
         return <MaterialLibraryPanel />;
       case "media":
         return (
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar">
-            <div className="px-4 pt-[18px] shrink-0">
+          <div className="asset-browser" data-testid="project-asset-browser">
+            <div className="asset-browser-header">
               {productionMedia && <MediaProductionEditor key={productionMedia.id} item={productionMedia} onClose={() => setProductionMediaId(null)} />}
-              <div className="font-bold text-[18px] text-fg mb-[14px]">{t("projectAssets.title")}</div>
-              <select aria-label={t("production.filter")} className="mb-3 w-full rounded border border-border bg-bg-2 p-2 text-xs text-fg" value={productionFilter} onChange={(event) => setProductionFilter(event.target.value)}>
-                <option value="">{t("production.all")}</option>
-                {["pending", "adopted", "rejected", ...PRODUCTION_OPERATIONS].map((value) => <option key={value} value={value}>{t(`production.${value}`)}</option>)}
-              </select>
-              <div className="flex gap-2 mb-[18px]">
-                <button
-                  type="button"
-                  aria-label={t("Import media")}
-                  onClick={triggerFileInput}
-                  className="flex-1 flex items-center justify-center gap-[7px] bg-bg border border-border rounded-[9px] p-[10px] font-medium text-[13px] text-fg-2"
-                >
-                  <svg
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="var(--fg-3)"
-                    strokeWidth="1.9"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M12 16V4M7 9l5-5 5 5" />
-                    <path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2" />
-                  </svg>
-                  {t("Import")}</button>
-                <button
-                  type="button"
-                  aria-label={t("Record")}
-                  onClick={() => openModal("recorder")}
-                  className="flex-1 flex items-center justify-center gap-[7px] bg-bg border border-border rounded-[9px] p-[10px] font-medium text-[13px] text-fg-2"
-                >
-                  <svg
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="var(--fg-3)"
-                    strokeWidth="1.9"
-                  >
-                    <circle cx="12" cy="12" r="8" />
-                    <circle cx="12" cy="12" r="3" fill="var(--fg-3)" stroke="none" />
-                  </svg>
-                  {t("Record")}</button>
-                <button
-                  type="button"
-                  aria-label={t("Sort media")}
-                  onClick={() =>
-                    setSortOrder((prev) =>
-                      prev === "none" ? "asc" : prev === "asc" ? "desc" : "none",
-                    )
-                  }
-                  className="w-[42px] flex items-center justify-center bg-bg border border-border rounded-[9px]"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="var(--fg-3)"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                  >
-                    <path d="M3 7h13M3 7l3-3M3 7l3 3M21 17H8M21 17l-3-3M21 17l-3 3" />
-                  </svg>
-                </button>
+              <div className="asset-browser-title">
+                {t("projectAssets.title")}
+                <span className="asset-browser-count">{mediaItems.length + (project.workAssets?.length ?? 0)}</span>
               </div>
-
-              <button type="button" disabled={!selectedTimelineItems.some((item) => item.type === "clip")} onClick={() => setCaptureName("")}
-                className="mb-3 flex w-full items-center justify-center gap-2 rounded-md border border-border px-2 py-2 text-xs text-fg-2 hover:bg-hover disabled:opacity-40"><FolderPlus size={14} />{t("projectAssets.capture")}</button>
+              <div className="asset-browser-toolbar">
+                <button type="button" aria-label={t("Import media")} onClick={triggerFileInput}
+                  className="asset-browser-button asset-browser-button-primary"><Plus size={14} aria-hidden />{t("Import")}</button>
+                <button type="button" aria-label={t("projectAssets.capture")} title={t("projectAssets.capture")}
+                  disabled={!selectedTimelineItems.some((item) => item.type === "clip")} onClick={() => setCaptureName("")}
+                  className="asset-browser-button asset-browser-button-icon"><FolderPlus size={14} aria-hidden /></button>
+                <div className="flex-1" />
+                <AssetViewToggle value={mediaView} onChange={setMediaView} />
+                <DropdownMenu alignment="end" size="sm" button={{ label: t("assetBrowser.more"), isIconOnly: true,
+                  variant: "ghost", icon: <MoreHorizontal size={15} />, className: "asset-browser-button asset-browser-button-icon" }}
+                  items={[{ label: t("Record"), icon: <Circle size={14} />, onClick: () => openModal("recorder") }]} />
+              </div>
               {captureName !== null && <form className="mb-3 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); void captureSelection(); }}>
                 <input autoFocus aria-label={t("workAssets.renameAriaLabel")} placeholder={t("projectAssets.name")} value={captureName} onChange={(event) => setCaptureName(event.target.value)} className="w-full rounded border border-border bg-bg-2 px-2 py-1 text-xs text-fg" />
                 <button disabled={!captureName.trim() || capturing} className="rounded bg-accent px-2 py-1 text-xs text-accent-fg disabled:opacity-40">{t("projectAssets.save")}</button>
                 <button type="button" onClick={() => setCaptureName(null)} className="text-xs text-fg-muted">{t("common.cancel")}</button>
               </form>}
-              <div className="mb-3 grid grid-cols-2 gap-1">{(["all", "media", "single", "multi"] as const).map((kind) => <button key={kind} type="button" aria-pressed={assetFilter === kind} onClick={() => setAssetFilter(kind)} className={`rounded px-2 py-1 text-xs ${assetFilter === kind ? "bg-accent-soft text-accent" : "text-fg-2 hover:bg-hover"}`}>{t(`projectAssets.${kind}`)}</button>)}</div>
-              <div className="flex items-center gap-2 mb-[18px] rounded-[9px] border border-border bg-bg px-2.5 py-1.5">
-                <Search size={13} className="shrink-0 text-fg-3" aria-hidden />
-                <input
-                  value={mediaSearch}
-                  placeholder={t("projectAssets.search")}
-                  onChange={(event) => setMediaSearch(event.target.value)}
-                  className="w-full bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-3"
-                />
+              <div className="asset-browser-search-row">
+                <AssetSearch value={mediaSearch} onChange={setMediaSearch} label={t("projectAssets.search")} />
+                <Popover alignment="end" label={t("assetBrowser.filters")} content={
+                  <div className="asset-filter-panel">
+                    <label>{t("production.filter")}
+                      <select aria-label={t("production.filter")} value={productionFilter} onChange={(event) => setProductionFilter(event.target.value)}>
+                        <option value="">{t("production.all")}</option>
+                        {["pending", "adopted", "rejected", ...PRODUCTION_OPERATIONS].map((value) => <option key={value} value={value}>{t(`production.${value}`)}</option>)}
+                      </select>
+                    </label>
+                    <label>{t("Sort media")}
+                      <select aria-label={t("Sort media")} value={sortOrder} onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}>
+                        <option value="none">{t("assetBrowser.importOrder")}</option>
+                        <option value="asc">{t("assetBrowser.nameAsc")}</option>
+                        <option value="desc">{t("assetBrowser.nameDesc")}</option>
+                      </select>
+                    </label>
+                    <button type="button" className="asset-browser-button" onClick={() => { setProductionFilter(""); setSortOrder("none"); }}>{t("assetBrowser.resetFilters")}</button>
+                  </div>
+                }>
+                  <button type="button" aria-label={t("assetBrowser.filters")} title={t("assetBrowser.filters")}
+                    className="asset-browser-button asset-browser-button-icon"><SlidersHorizontal size={14} aria-hidden />
+                    {productionFilter && <span className="h-1 w-1 rounded-full bg-accent" />}
+                  </button>
+                </Popover>
+              </div>
+              <div className="asset-browser-tabs" role="group" aria-label={t("assetBrowser.categories")}>
+                {(["all", "media", "single", "multi"] as const).map((kind) => <button key={kind} type="button"
+                  aria-label={t(`projectAssets.${kind}`)} aria-pressed={assetFilter === kind}
+                  onClick={() => setAssetFilter(kind)}>{t(`assetBrowser.${kind}`)}</button>)}
               </div>
             </div>
+            <div className="asset-browser-content custom-scrollbar">
 
             {missingAssetsCount > 0 && (
               <div className="px-4 pb-3 space-y-2">
@@ -1381,25 +1373,25 @@ export const AssetsPanel: React.FC = () => {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
             >
-              <div className="px-4 pb-[18px] relative">
+              <div className="relative">
                 {(assetFilter === "all" || assetFilter === "media") && <>
                 {filteredItems.length > 0 && (
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[13px] font-semibold text-fg-2">{t("Project Media")}</span>
-                    <span className="text-[12px] font-medium text-fg-muted">{filteredItems.length}</span>
+                  <div className="asset-browser-section">
+                    <span>{t("Project Media")}</span>
+                    <span>{filteredItems.length}</span>
                   </div>
                 )}
                 {filteredItems.length === 0 ? (
                   assetFilter === "all" && (project.workAssets?.length ?? 0) > 0 ? null :
                   <EmptyState onImport={triggerFileInput} />
                 ) : (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className={mediaView === "grid" ? "asset-browser-grid" : "flex flex-col gap-1"}>
                     {filteredItems.map((item) => (
                       <MediaThumbnail
                         key={item.id}
                         item={item}
                         isSelected={isSelected(item.id)}
-                        viewMode="large"
+                        viewMode={mediaView === "grid" ? "large" : "list"}
                         hasNameConflict={duplicateNameIds.has(item.id)}
                         onSelect={() => handleSelectItem(item.id)}
                         onDelete={() => handleDeleteItem(item.id)}
@@ -1407,20 +1399,10 @@ export const AssetsPanel: React.FC = () => {
                         onRename={(name) => handleRenameMedia(item.id, name)}
                         onDragStart={(e) => handleItemDragStart(e, item)}
                         onAddToTimeline={() => handleAddToTimeline(item)}
+                        onPreview={() => setPreviewMediaId(item.id)}
                       />
                     ))}
-                    <div className="flex flex-col">
-                      <PanelButton
-                        label={t("Add media")}
-                        onClick={triggerFileInput}
-                        className="h-[78px] bg-bg-2 rounded-lg border border-dashed border-border hover:border-accent/50 hover:bg-accent-soft relative flex items-center justify-center cursor-pointer transition-all overflow-hidden group"
-                      >
-                        <div className="flex flex-col items-center gap-1.5">
-                          <Upload size={20} className="text-fg-muted group-hover:text-accent transition-colors" />
-                          <span className="text-[10px] text-fg-muted group-hover:text-accent transition-colors font-medium">{t("Add media")}</span>
-                        </div>
-                      </PanelButton>
-                    </div>
+
                   </div>
                 )}
 
@@ -1434,6 +1416,7 @@ export const AssetsPanel: React.FC = () => {
                   </div>
                 )}
               </div>
+            </div>
             </div>
           </div>
         );
@@ -1748,7 +1731,7 @@ export const AssetsPanel: React.FC = () => {
       className="w-full h-full bg-bg-1 overflow-hidden flex flex-row relative"
     >
       {/* ── Vertical tool rail (icon + label, left) ───────────── */}
-      <div className="flex flex-col items-center gap-1 px-0 py-[14px] border-r border-border bg-bg-1 overflow-y-auto scrollbar-none shrink-0 w-[92px]">
+      <div className="flex flex-col items-center gap-1 py-2 border-r border-border bg-bg-1 overflow-y-auto scrollbar-none shrink-0 w-[64px]">
         {ASSETS_TABS.map((tab) => {
           const Icon = TAB_ICONS[tab.value];
           const isActive = activeTab === tab.value;
@@ -1760,7 +1743,7 @@ export const AssetsPanel: React.FC = () => {
               aria-pressed={isActive}
               title={t(tab.labelKey)}
               onClick={() => setActiveTab(tab.value)}
-              className={`group flex h-16 w-[68px] shrink-0 flex-col items-center justify-center gap-1 rounded-[10px] px-1 py-2 text-[10px] leading-tight tracking-tight transition-colors ${
+              className={`group flex h-14 w-[54px] shrink-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[10px] leading-tight transition-colors ${
                 isActive
                   ? "bg-selected text-accent font-semibold"
                   : "text-fg-muted font-medium"
@@ -1768,7 +1751,7 @@ export const AssetsPanel: React.FC = () => {
             >
               <Icon size={20} strokeWidth={isActive ? 1.8 : 1.7} />
               <span className="block max-w-full text-center leading-[11px]">
-                {t(tab.labelKey)}
+                {t(tab.value === "media" ? "assetBrowser.railMedia" : tab.value === "library" ? "assetBrowser.railLibrary" : tab.labelKey)}
               </span>
             </button>
           );
@@ -1796,7 +1779,7 @@ export const AssetsPanel: React.FC = () => {
 
         {/* Dynamic Section Content */}
         <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden">
-          {activeTab !== "media" && (
+          {activeTab !== "media" && activeTab !== "library" && (
             <div className="min-w-0 px-4 pt-[18px] pb-0 shrink-0">
               <div
                 className="truncate font-bold text-[18px] text-fg"
@@ -1820,6 +1803,11 @@ export const AssetsPanel: React.FC = () => {
           onConfirm={handleConfirmAspectRatioMatch}
           onCancel={handleCancelAspectRatioMatch}
         />
+      )}
+      {previewMedia && (
+        <ProjectMediaPreview key={previewMedia.id} item={previewMedia}
+          projectId={project.id} onClose={() => setPreviewMediaId(null)}
+          onAdd={() => { void handleAddToTimeline(previewMedia); setPreviewMediaId(null); }} />
       )}
 
     </div>

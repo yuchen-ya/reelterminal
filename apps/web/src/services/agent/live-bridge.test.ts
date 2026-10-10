@@ -139,6 +139,39 @@ describe("live-bridge", () => {
     });
   });
 
+  it("reads requirement summaries and details without returning large project caches", async () => {
+    const store = useProjectStore.getState();
+    const requirement = {
+      id: "requirement-one", number: 1, title: "Opening", description: "Keep the title readable",
+      priority: "high" as const, status: "ready" as const, markerIds: ["marker-one"],
+      createdAt: 1, updatedAt: 2,
+    };
+    const project = {
+      ...store.project,
+      requirements: { nextNumber: 3, items: [requirement, { ...requirement, id: "requirement-two", number: 2, status: "done" as const }] },
+      renderFonts: [{ family: "Large cache", style: "normal", weight: "400", dataUrl: "x".repeat(65 * 1024 * 1024) }],
+    };
+    useProjectStore.setState({ project });
+    const revision = getProjectRevision();
+    const listed = await handleLiveBridgeRequest(req("requirements", {
+      requirementVerb: "requirements.list", requirementParams: { status: "ready" },
+    }));
+    expect(listed).toEqual({ ok: true, result: { revision, requirements: [{
+      ref: "Q1", title: "Opening", status: "ready", priority: "high", markerIds: ["marker-one"], updatedAt: 2,
+    }] } });
+    expect(JSON.stringify(listed).length).toBeLessThan(1024);
+    const detail = await handleLiveBridgeRequest(req("requirements", {
+      requirementVerb: "requirements.get", requirementParams: { requirementId: "q1" },
+    }));
+    expect(detail).toEqual({ ok: true, result: { revision, requirement: { ...requirement, ref: "Q1" } } });
+    const missing = await handleLiveBridgeRequest(req("requirements", {
+      requirementVerb: "requirements.get", requirementParams: { requirementId: "Q99" },
+    }));
+    expect(missing).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+    expect(getProjectRevision()).toBe(revision);
+    expect(useProjectStore.getState().project).toBe(project);
+  });
+
   it("rejects a write from a closed and reloaded workspace generation", async () => {
     const defaultTarget = workspaceManager.getActiveTarget()!;
     const trial = await workspaceManager.createWorkspace(defaultTarget.projectId, {

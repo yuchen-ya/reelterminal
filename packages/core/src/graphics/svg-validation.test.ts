@@ -241,6 +241,12 @@ describe("validateSvgContent", () => {
       '<svg xmlns="http://www.w3.org/2000/svg"><SET ATTRIBUTENAME="HREF" to="https://evil.example/x"/></svg>',
       "externalResource",
     );
+    // A ">" inside a preceding attribute value must not truncate the element
+    // before attributeName is seen — an XML parser reads the full tag.
+    expectCode(
+      '<svg xmlns="http://www.w3.org/2000/svg"><image href="assets/pic.png"><set junk="a>b" attributeName="href" to="https://evil.example/x"/></image></svg>',
+      "externalResource",
+    );
   });
 
   it("accepts a benign SMIL animation on a non-URL attribute", () => {

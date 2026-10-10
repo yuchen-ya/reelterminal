@@ -1,7 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolveFfmpegPath } from "./ffmpeg-path";
-import { isSoftwareEncoder } from "./encode-args";
 
 const run = promisify(execFile);
 
@@ -147,15 +146,9 @@ export function selectEncoder(
     ...(pref[platform] ?? []),
   ];
   const ordered = mode === "smallest" ? softwareFirst : hardwareFirst;
-  const pick = ordered.find((c) => available.includes(c));
-  if (pick) return pick;
-  return (
-    [...hardwareFirst, ...softwareFirst].find(
-      (c) => available.includes(c) && isSoftwareEncoder(c),
-    ) ??
-    [...hardwareFirst].find((c) => available.includes(c)) ??
-    null
-  );
+  // Both orderings contain the same encoder set, so the first available hit
+  // in the preferred order is the complete answer.
+  return ordered.find((c) => available.includes(c)) ?? null;
 }
 
 export async function probeEncoders(): Promise<string[]> {

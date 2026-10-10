@@ -122,6 +122,11 @@ import type {
 } from "./providers";
 import { validateObject } from "./validate";
 import {
+  REQUIREMENTS_LIST_SCHEMA, REQUIREMENTS_GET_SCHEMA,
+  type RequirementsListParams, type RequirementsListResult,
+  type RequirementsGetParams, type RequirementsGetResult,
+} from "./requirements";
+import {
   EDIT_APPLY_SCHEMA,
   EMPTY_PARAMS_SCHEMA,
   EXPORT_SETTINGS_SCHEMA,
@@ -741,6 +746,20 @@ export class LiveFacadeSession {
     });
   }
 
+  async requirementsList(params: RequirementsListParams = {}): Promise<FacadeResult<RequirementsListResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<RequirementsListParams>(params, REQUIREMENTS_LIST_SCHEMA, "requirements.list params");
+      return ok(await this.config.store.listRequirements(valid));
+    });
+  }
+
+  async requirementsGet(params: RequirementsGetParams): Promise<FacadeResult<RequirementsGetResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<RequirementsGetParams>(params, REQUIREMENTS_GET_SCHEMA, "requirements.get params");
+      return ok(await this.config.store.getRequirement(valid));
+    });
+  }
+
   async timelineGet(): Promise<FacadeResult<TimelineState>> {
     return this.enqueue(async () => {
       const { project, revision } = await this.config.store.getState();
@@ -1083,7 +1102,16 @@ export class LiveFacadeSession {
         },
       });
       const created = result as { revision?: unknown; defaultWorkspaceId?: unknown; project?: unknown; replayed?: unknown };
-      const revision = typeof created.revision === "number" ? created.revision : 0;
+      // The bridge contract always carries the persisted revision; a missing
+      // or non-numeric one is a protocol bug, not something to paper over
+      // with a fabricated 0.
+      if (typeof created.revision !== "number") {
+        throw new FacadeError(
+          "INTERNAL",
+          "project.create: workspace bridge reply is missing its revision",
+        );
+      }
+      const revision = created.revision;
       const canonicalProject = typeof created.project === "object" && created.project !== null &&
         typeof (created.project as { id?: unknown }).id === "string"
         ? created.project as Project
@@ -1550,8 +1578,17 @@ export class LiveFacadeSession {
         revision?: unknown;
         replayed?: unknown;
       };
+      // The manager's saveNode always reports the persisted revision; falling
+      // back to expectedRevision here would hide a protocol drift behind a
+      // plausible-looking number.
+      if (typeof saved.revision !== "number") {
+        throw new FacadeError(
+          "INTERNAL",
+          "project.save: workspace bridge reply is missing its revision",
+        );
+      }
       return ok<LiveProjectSaveResult>({
-        revision: typeof saved.revision === "number" ? saved.revision : valid.expectedRevision as number,
+        revision: saved.revision,
         ...(typeof saved.node?.id === "string" ? { nodeId: saved.node.id } : {}),
         ...(typeof saved.replayed === "boolean" ? { replayed: saved.replayed } : {}),
       });
@@ -4791,6 +4828,8 @@ export function createLiveFacade(config: LiveFacadeConfig): LiveAgentFacade {
     "project.save": (params) => session.projectSave(params),
     "project.rename": (params) => session.projectRename(params),
     "project.get_state": () => session.projectGetState(),
+    "requirements.list": (params) => session.requirementsList(params),
+    "requirements.get": (params) => session.requirementsGet(params),
     "project.changes": (params) => session.projectChanges(params),
     "media.import": (params) => session.mediaImport(params),
     "media.render_html": (params) => session.mediaRenderHtml(params),

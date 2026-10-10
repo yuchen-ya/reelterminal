@@ -203,6 +203,12 @@ export type ClipAction =
         duration?: number;
         inPoint?: number;
         outPoint?: number;
+        /**
+         * Constant playback speed for the new clip. `duration` is timeline
+         * time while in/out are source-media seconds, so a duration-only add
+         * derives its source range through this factor (see clip/trim).
+         */
+        speed?: number;
         sourceClip?: Clip;
         /**
          * Stable identity pinned by the executor after first application so

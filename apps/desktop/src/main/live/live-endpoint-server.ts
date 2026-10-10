@@ -171,6 +171,7 @@ export interface CommandProjectGuard {
 export interface CommandStatusSnapshot {
   readonly instanceId: string;
   readonly projectId: string | null;
+  readonly workspaceId: string | null;
   readonly projectEpoch: string | null;
   readonly access: "read-only" | "write";
   readonly currentAction: string | null;
@@ -251,6 +252,7 @@ function defaultCommandStatus(): CommandStatusSnapshot {
   return {
     instanceId: `pid-${process.pid}`,
     projectId: null,
+    workspaceId: null,
     projectEpoch: null,
     access: "read-only",
     currentAction: null,
@@ -291,6 +293,7 @@ async function handleCommandApiRequest(
       serverInfo: options.serverInfo,
       instanceId: status.instanceId,
       projectId: status.projectId,
+      workspaceId: status.workspaceId,
       projectEpoch: status.projectEpoch,
       access: status.access,
       currentAction: status.currentAction,

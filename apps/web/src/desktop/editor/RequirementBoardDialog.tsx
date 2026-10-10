@@ -11,7 +11,6 @@ import { useUIStore } from "../../stores/ui-store";
 import { useAgentReferencesStore } from "../../stores/agent-references-store";
 import { getAgentReferenceTargetsForProject } from "../../stores/agent-reference-targets";
 import { locateRequirementReference } from "../../services/requirement-board";
-export const REQUIREMENT_BOARD_MODAL_ID = "requirement-board";
 const STATUS_ORDER: readonly ProjectRequirementStatus[] = ["review", "blocked", "in_progress", "ready", "draft", "done"];
 const INSTRUCTIONS = ["planFirst", "execute", "inspectOnly"] as const;
 const fieldClass = "w-full rounded-md border border-border bg-bg-2 px-3 py-2 text-xs text-fg outline-none focus:border-accent";
@@ -55,6 +54,9 @@ export function RequirementBoardDialog({
     if (modalData?.projectId && modalData.projectId !== project.id) return;
     if (Array.isArray(modalData?.referenceIds)) {
       setReferenceIds(modalData.referenceIds.filter((id): id is string => typeof id === "string"));
+      // Same reset the header's "new" button performs, so an externally
+      // requested prefilled form cannot land on a stale detail view.
+      setSelectedId(null);
       setView("new");
     }
   }, [active, openRequest, modalData, project.id]);

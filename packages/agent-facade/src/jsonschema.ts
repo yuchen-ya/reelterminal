@@ -119,6 +119,7 @@ export const EMITTED_VERB_JSON_SCHEMAS: Readonly<
 
 const PROJECT_WORKSPACE_VERBS = new Set<FacadeVerb>([
   "project.save", "project.rename", "project.get_state", "project.changes",
+  "requirements.list", "requirements.get",
   "media.import", "media.analyze_start", "timeline.get", "timeline.query",
   "timeline.mapSourceTimes", "editor.control",
   "edit.validate", "edit.apply", "history.get", "history.control",
@@ -145,8 +146,13 @@ function liveTargetSchema(verb: FacadeVerb, schema: JsonSchemaObject): JsonSchem
     for (const field of ["projectId", "workspaceId"]) if (!required.includes(field)) required.push(field);
   }
   if (REVISION_GUARDED_VERBS.has(verb)) {
+    // Runtime treats expectedRevision as optional: an omitted value is
+    // guarded with the snapshot revision (same wording as the tool
+    // descriptions). Declare the property but keep it optional so the
+    // advertised schema cannot contradict the documented contract.
+    // Verbs that genuinely require it (project.save) override below with an
+    // explicit required list.
     properties.expectedRevision ??= { type: "integer", minimum: 0 };
-    if (!required.includes("expectedRevision")) required.push("expectedRevision");
   }
   return {
     type: "object",

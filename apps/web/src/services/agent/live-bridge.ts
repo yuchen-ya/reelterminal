@@ -1,5 +1,11 @@
 import { currentProjectEpoch, projectGuardError, projectLedgerScope } from "./project-guard";
-import type { Action } from "@reelterminal/core";
+import {
+  requirementsListView, requirementsGetView,
+  REQUIREMENTS_LIST_SCHEMA, REQUIREMENTS_GET_SCHEMA,
+  type RequirementsListParams, type RequirementsGetParams,
+} from "@reelterminal/agent-facade/requirements";
+import { validateObject } from "@reelterminal/agent-facade/validate";
+import type { Action, MediaItem } from "@reelterminal/core";
 import type {
   DesktopLiveBridgeError as LiveBridgeError,
   DesktopLiveBridgeReply as LiveBridgeReply,
@@ -369,19 +375,17 @@ async function handleApplyActions(
     }
 
     // Check the revision before applying anything; a stale expectation rejects the
-    // whole batch before anything is applied.
-    if (req.expectedRevision === undefined || req.expectedRevision !== runtime.revision) {
-      const currentRevision = runtime.revision;
-      if (currentRevision !== req.expectedRevision) {
-        return {
-          ok: false,
-          error: {
-            code: "CONFLICT",
-            message: `Workspace revision mismatch: expected ${String(req.expectedRevision)}, current ${currentRevision}. Re-read state and retry.`,
-            details: { currentRevision },
-          },
-        };
-      }
+    // whole batch before anything is applied. (An undefined expectation also
+    // rejects: the facade resolves expectedRevision before dispatching.)
+    if (req.expectedRevision !== runtime.revision) {
+      return {
+        ok: false,
+        error: {
+          code: "CONFLICT",
+          message: `Workspace revision mismatch: expected ${String(req.expectedRevision)}, current ${runtime.revision}. Re-read state and retry.`,
+          details: { currentRevision: runtime.revision },
+        },
+      };
     }
     if (req.expectedContextRevision !== undefined) {
       const currentContextRevision = runtime.foreground ? getLiveEditorContext().contextRevision : 0;
@@ -683,6 +687,7 @@ async function handleImportMedia(
     });
     let stagedMediaId: string | undefined;
     let stagedAction: Action | undefined;
+    let stagedMediaItem: MediaItem | undefined;
     try {
       const staged = await stagingStore.getState().importMediaFromPath(req.path, name, {
         projectId: runtime.projectId,
@@ -710,6 +715,7 @@ async function handleImportMedia(
         return { ok: false, error: { code: "DECODE_ERROR", message: "Media importer did not produce a complete import action" } };
       }
       stagedAction = historyEntry.action;
+      stagedMediaItem = mediaItem;
       // Keep imported bytes live for an explicitly requested cleanup while the
       // durable workspace transaction is being prepared.
       trackUncommittedMediaBlob(mediaItem.id, runtime.projectId);
@@ -730,23 +736,23 @@ async function handleImportMedia(
         return { ok: false, error: { code: "CONFLICT", message: "Workspace changed while preparing media import" } };
       }
 
-      const mediaItem = stagedMediaId
-        ? stagingStore.getState().getMediaItem(stagedMediaId)
-        : undefined;
-      if (!mediaItem || !stagedAction) {
+      // The staging store is private to this closure and nothing has written
+      // to it since the staged import was validated above, so the earlier
+      // fetch is still authoritative.
+      if (!stagedMediaItem || !stagedAction) {
         return { ok: false, error: { code: "DECODE_ERROR", message: "Staged media import is incomplete" } };
       }
       const resultMetadata = {
-        mediaId: mediaItem.id,
-        name: mediaItem.name,
-        type: mediaItem.type,
+        mediaId: stagedMediaItem.id,
+        name: stagedMediaItem.name,
+        type: stagedMediaItem.type,
         metadata: {
-          durationSec: mediaItem.metadata.duration,
-          width: mediaItem.metadata.width,
-          height: mediaItem.metadata.height,
-          frameRate: mediaItem.metadata.frameRate,
-          codec: mediaItem.metadata.codec,
-          fileSize: mediaItem.metadata.fileSize,
+          durationSec: stagedMediaItem.metadata.duration,
+          width: stagedMediaItem.metadata.width,
+          height: stagedMediaItem.metadata.height,
+          frameRate: stagedMediaItem.metadata.frameRate,
+          codec: stagedMediaItem.metadata.codec,
+          fileSize: stagedMediaItem.metadata.fileSize,
         },
       };
       let committed: Awaited<ReturnType<typeof workspaceManager.commitActionBatch>>;
@@ -1036,6 +1042,20 @@ export async function handleLiveBridgeRequest(
           },
         };
       }
+      case "requirements": {
+        const runtime = await targetRuntime(req);
+        if (!runtime) return noProject();
+        const items = runtime.state.project.requirements?.items ?? [];
+        if (req.requirementVerb === "requirements.list") {
+          const params = validateObject<RequirementsListParams>(req.requirementParams ?? {}, REQUIREMENTS_LIST_SCHEMA, "requirements.list params");
+          return { ok: true, result: requirementsListView(items, runtime.revision, params) };
+        }
+        if (req.requirementVerb === "requirements.get") {
+          const params = validateObject<RequirementsGetParams>(req.requirementParams, REQUIREMENTS_GET_SCHEMA, "requirements.get params");
+          return { ok: true, result: requirementsGetView(items, runtime.revision, params) };
+        }
+        return { ok: false, error: { code: "INVALID_PARAMS", message: "Unknown requirement query" } };
+      }
       case "getContext": {
         const runtime = await targetRuntime(req);
         if (!runtime) return noProject();
@@ -1121,9 +1141,9 @@ export async function handleLiveBridgeRequest(
       case "workspaceLibrary": {
         if (req.projectId && req.workspaceId) {
           // Verify the request-local runtime generation before the manager's
-          // own workspace-queued persistent operation begins.
-          const runtime = await targetRuntime(req);
-          if (!runtime) return noProject();
+          // own workspace-queued persistent operation begins. The returned
+          // runtime itself is not needed — only its existence.
+          if ((await targetRuntime(req)) === null) return noProject();
         }
         return await handleWorkspaceLibraryRequest(
           req.workspaceVerb as Parameters<typeof handleWorkspaceLibraryRequest>[0],

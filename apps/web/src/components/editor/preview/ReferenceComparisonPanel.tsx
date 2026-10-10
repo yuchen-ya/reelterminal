@@ -557,8 +557,9 @@ export const ReferenceComparisonPanel: React.FC<{
     const mapped = mapTimelineToReference(historyMappingConfig(history, frameRate), playheadPosition);
     const quantized = Math.round(mapped.referenceSec * frameRate) / frameRate;
     // Node id in the key so switching versions always redraws even at the
-    // same mapped time.
-    const key = `${history.nodeId}:${mapped.clamped}:${quantized.toFixed(4)}:${history.renderer.revision}`;
+    // same mapped time; layout too, because switching layouts remounts the
+    // canvas and a paused playhead would otherwise leave it blank.
+    const key = `${history.nodeId}:${history.layout}:${mapped.clamped}:${quantized.toFixed(4)}:${history.renderer.revision}`;
     if (key === historyLastKeyRef.current) return;
     historyLastKeyRef.current = key;
     void runHistoryRender(quantized);
@@ -574,7 +575,7 @@ export const ReferenceComparisonPanel: React.FC<{
       const state = useTimelineStore.getState();
       const mapped = mapTimelineToReference(historyMappingConfig(history, frameRate), state.playheadPosition);
       const quantized = Math.round(mapped.referenceSec * frameRate) / frameRate;
-      const key = `${history.nodeId}:${mapped.clamped}:${quantized.toFixed(4)}:${history.renderer.revision}`;
+      const key = `${history.nodeId}:${history.layout}:${mapped.clamped}:${quantized.toFixed(4)}:${history.renderer.revision}`;
       if (key !== historyLastKeyRef.current) {
         historyLastKeyRef.current = key;
         void runHistoryRender(quantized);

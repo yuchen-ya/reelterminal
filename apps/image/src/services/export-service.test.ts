@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { exportProject, exportArtboard, type ExportOptions } from './export-service';
+import { exportProject, exportArtboard, type ExportFormat, type ExportOptions } from './export-service';
 import type { Project, Artboard } from '../types/project';
 
 // ── Canvas mock ──────────────────────────────────────────────────────────────
@@ -169,11 +169,13 @@ describe('export-service', () => {
 
     it('rejects unsupported formats instead of emitting PNG bytes', async () => {
       const project = makeProject();
+      // Legacy formats are no longer part of the type; the runtime guard
+      // still protects untyped callers from PNG-bytes-under-.svg filenames.
       await expect(
-        exportArtboard(project, project.artboards[0], makeOptions({ format: 'svg' })),
+        exportArtboard(project, project.artboards[0], makeOptions({ format: 'svg' as ExportFormat })),
       ).rejects.toThrow(/unsupported export format/i);
       await expect(
-        exportArtboard(project, project.artboards[0], makeOptions({ format: 'pdf' })),
+        exportArtboard(project, project.artboards[0], makeOptions({ format: 'pdf' as ExportFormat })),
       ).rejects.toThrow(/unsupported export format/i);
     });
 

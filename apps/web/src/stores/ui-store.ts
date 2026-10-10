@@ -26,6 +26,13 @@ export type SelectionType =
 
 export type DesktopPage = "edit" | "motion" | "color" | "deliver";
 
+/**
+ * openModal with this id does not open a floating modal: it pins the desktop
+ * inspector onto the requirement board tab. Single source for the literal so
+ * the store and the callers cannot drift apart.
+ */
+export const REQUIREMENT_BOARD_MODAL_ID = "requirement-board";
+
 export interface SelectionItem {
   type: SelectionType;
   id: string;
@@ -602,7 +609,9 @@ export const useUIStore = create<UIState>()(
         },
 
         openModal: (modalId: string, data?: Record<string, unknown>) => {
-          if (modalId === "requirement-board") {
+          if (modalId === REQUIREMENT_BOARD_MODAL_ID) {
+            // The requirement board is not a floating modal: it pins the
+            // desktop inspector onto its board tab and pokes boardOpenRequest.
             set((state) => ({ desktopInspectorTab: "board", modalData: data ?? null, boardOpenRequest: state.boardOpenRequest + 1 }));
             return;
           }

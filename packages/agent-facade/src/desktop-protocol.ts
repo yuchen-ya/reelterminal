@@ -48,6 +48,7 @@ export interface DesktopCollabSetAccessArgs {
 export type DesktopLiveBridgeKind =
   | "getIdentity"
   | "getState"
+  | "requirements"
   | "getContext"
   | "getProjectChanges"
   | "getHistory"
@@ -74,6 +75,8 @@ export interface DesktopLiveBridgeRequest {
   /** Runtime generation captured by the preceding targeted read in this command. */
   readonly expectedWorkspaceInstanceId?: string;
   readonly kind: DesktopLiveBridgeKind;
+  readonly requirementVerb?: "requirements.list" | "requirements.get";
+  readonly requirementParams?: import("./requirements").RequirementsListParams | import("./requirements").RequirementsGetParams;
   readonly actions?: readonly Action[];
   readonly groupLabel?: string;
   readonly expectedRevision?: number;

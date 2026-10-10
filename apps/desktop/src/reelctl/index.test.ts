@@ -76,11 +76,11 @@ describe("reelctl command parsing and safety", () => {
 
   it("requires revisions and explicit project identity for editor mutations", () => {
     const editEntry = entry("edit.apply", "edit_apply", "idempotent");
-    expect(() => requireExplicitSafetyGuards("edit.apply", { ops: [], projectId: "p", workspaceId: "w" }, "p", "e", editEntry))
+    expect(() => requireExplicitSafetyGuards("edit.apply", { ops: [], projectId: "p", workspaceId: "w" }, editEntry))
       .toThrow(/expectedRevision/);
-    expect(() => requireExplicitSafetyGuards("edit.apply", { ops: [], expectedRevision: 4 }, "p", "e", editEntry))
+    expect(() => requireExplicitSafetyGuards("edit.apply", { ops: [], expectedRevision: 4 }, editEntry))
       .toThrow(/projectId/);
-    expect(() => requireExplicitSafetyGuards("edit.apply", { ops: [], projectId: "p", workspaceId: "w", expectedRevision: 4 }, "p", "e", editEntry))
+    expect(() => requireExplicitSafetyGuards("edit.apply", { ops: [], projectId: "p", workspaceId: "w", expectedRevision: 4 }, editEntry))
       .not.toThrow();
   });
 
@@ -147,48 +147,43 @@ describe("reelctl command parsing and safety", () => {
     expect(JSON.parse(stdout[0]!)).toMatchObject({ ok: true, value: { state: "done" } });
   });
 
-  it("lists compact project requirements without exposing the full project", async () => {
-    const api = makeClient([entry("project.get_state", "project_get_state")]);
+  it("lists compact requirements through the requirement-only query", async () => {
+    const api = makeClient([entry("requirements.list", "requirements_list")]);
     (api.command as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
       value: {
         revision: 4,
-        project: {
-          requirements: {
-            items: [
-              { id: "r1", number: 1, title: "Opening", status: "ready", priority: "high", markerIds: ["m1"], updatedAt: 12, description: "large body" },
-              { id: "r2", number: 2, title: "Done", status: "done", priority: "normal", markerIds: [], updatedAt: 8 },
-            ],
-          },
-        },
+        requirements: [{ ref: "Q1", title: "Opening", status: "ready", priority: "high", markerIds: ["m1"], updatedAt: 12 }],
       },
     });
     const stdout: string[] = [];
     await expect(runReelctl(["requirements", "list", "--status", "ready", "--compact"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
+    expect(api.command).toHaveBeenCalledWith("requirements.list", { projectId: "p", workspaceId: "w", status: "ready" }, expect.objectContaining({ expectedProjectId: "p", expectedProjectEpoch: "e" }));
     expect(JSON.parse(stdout[0]!)).toEqual({ ok: true, value: { revision: 4, requirements: [{ ref: "Q1", title: "Opening", status: "ready", priority: "high", markerIds: ["m1"], updatedAt: 12 }] } });
   });
 
-  it("lists requirements for a directly-opened project that has no workspace id", async () => {
-    const api = makeClient([entry("project.get_state", "project_get_state")]);
+  it("uses explicit target ids when status omits the workspace id", async () => {
+    const api = makeClient([entry("requirements.list", "requirements_list")]);
     (api.status as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true, apiVersion: 1, instanceId: "i", projectId: "p", workspaceId: null, projectEpoch: "e", access: "write",
     });
     (api.command as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
-      value: { revision: 2, project: { requirements: { items: [{ id: "r1", number: 1, title: "Solo", status: "ready", markerIds: [], updatedAt: 3 }] } } },
+      value: { revision: 2, requirements: [{ ref: "Q1", title: "Solo", status: "ready", priority: "normal", markerIds: [], updatedAt: 3 }] },
     });
     const stdout: string[] = [];
-    await expect(runReelctl(["requirements", "list", "--compact"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
-    expect(JSON.parse(stdout[0]!)).toEqual({ ok: true, value: { revision: 2, requirements: [{ ref: "Q1", title: "Solo", status: "ready", priority: undefined, markerIds: [], updatedAt: 3 }] } });
+    await expect(runReelctl(["requirements", "list", "--compact", "--project-id", "target-p", "--workspace-id", "target-w"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
+    expect(api.command).toHaveBeenCalledWith("requirements.list", { projectId: "target-p", workspaceId: "target-w" }, expect.any(Object));
+    expect(JSON.parse(stdout[0]!)).toEqual({ ok: true, value: { revision: 2, requirements: [{ ref: "Q1", title: "Solo", status: "ready", priority: "normal", markerIds: [], updatedAt: 3 }] } });
   });
 
   it("updates a requirement through one revision-guarded edit.apply", async () => {
     const api = makeClient([
-      entry("project.get_state", "project_get_state"),
+      entry("requirements.get", "requirements_get"),
       entry("edit.apply", "edit_apply", "idempotent"),
     ]);
     (api.command as unknown as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce({ ok: true, value: { revision: 7, project: { requirements: { items: [{ id: "internal", number: 3, title: "Audio", status: "ready", markerIds: [] }] } } } })
+      .mockResolvedValueOnce({ ok: true, value: { revision: 7, requirement: { id: "internal", ref: "Q3", title: "Audio", status: "ready", markerIds: [] } } })
       .mockResolvedValueOnce({ ok: true, value: { revision: 8 } });
     const stdout: string[] = [];
     await expect(runReelctl(["requirements", "update", "Q3", "--status", "in_progress", "--agent-note", "Started"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(0);
@@ -197,6 +192,17 @@ describe("reelctl command parsing and safety", () => {
       { projectId: "p", workspaceId: "w", ops: [{ op: "requirement.update", requirementId: "Q3", status: "in_progress", agentNote: "Started" }], expectedRevision: 7 },
       expect.objectContaining({ expectedProjectEpoch: "e", retry: "idempotent" }),
     );
+  });
+
+  it("preserves an explicit stale revision and surfaces the edit conflict", async () => {
+    const api = makeClient([entry("requirements.get", "requirements_get"), entry("edit.apply", "edit_apply", "idempotent")]);
+    (api.command as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce({ ok: true, value: { revision: 7, requirement: { ref: "Q3" } } })
+      .mockResolvedValueOnce({ ok: false, error: { code: "CONFLICT", message: "Revision changed" } });
+    const stdout: string[] = [];
+    await expect(runReelctl(["requirements", "update", "Q3", "--status", "in_progress", "--expected-revision", "6"], { client: api, stdout: (line) => stdout.push(line) })).resolves.toBe(3);
+    expect(api.command).toHaveBeenLastCalledWith("edit.apply", expect.objectContaining({ expectedRevision: 6 }), expect.objectContaining({ expectedProjectEpoch: "e" }));
+    expect(JSON.parse(stdout[0]!)).toMatchObject({ ok: false, error: { code: "CONFLICT" } });
   });
 });
 

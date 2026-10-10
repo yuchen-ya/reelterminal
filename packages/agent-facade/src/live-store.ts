@@ -230,6 +230,9 @@ export interface LiveProjectStore {
   getIdentity(): Promise<LiveProjectIdentity>;
   /** On-demand snapshot read: a detached project clone plus its revision. */
   getState(): Promise<{ project: Project; revision: number }>;
+  /** Requirement-only reads; media caches never cross the store boundary. */
+  listRequirements(params: import("./requirements").RequirementsListParams): Promise<import("./requirements").RequirementsListResult>;
+  getRequirement(params: import("./requirements").RequirementsGetParams): Promise<import("./requirements").RequirementsGetResult>;
   getContext(): Promise<LiveEditorContext>;
   /** Bounded renderer-owned journal covering every canonical project replacement. */
   getProjectChanges(params: ProjectChangesParams): Promise<ProjectChangesResult>;

@@ -1,4 +1,5 @@
 import { PLUGIN_TOOLS } from "./plugins";
+import { MAX_TIMELINE_SOURCE_MAP_POINTS } from "./timeline-source-map";
 /**
  * Machine-readable successful-result schemas for the facade tools.
  *
@@ -664,7 +665,7 @@ const timelineMapSourceTimesResult = (): OutputSchemaNode =>
           },
           ["clipId", "mediaId", "timelineTime", "clipLocalTime", "sourceTime", "sourceTimeFromInPoint", "frozen", "freezeFrameId"],
         ),
-        { minItems: 1, maxItems: 64 },
+        { minItems: 1, maxItems: MAX_TIMELINE_SOURCE_MAP_POINTS },
       ),
     },
     ["revision", "mappings"],
@@ -748,6 +749,16 @@ const valueSchemas: Readonly<Record<string, OutputSchemaNode>> = {
     ["revision", "projectId", "previousName", "name", "replayed"],
   ),
   "project.get_state": projectState(),
+  "requirements.list": objectSchema({
+    revision: integerSchema(0),
+    requirements: arraySchema(objectSchema({
+      ref: stringSchema(), title: stringSchema(), status: stringSchema(),
+      priority: stringSchema(), markerIds: arraySchema(stringSchema()), updatedAt: numberSchema(),
+    }, ["ref", "title", "status", "priority", "markerIds", "updatedAt"])),
+  }, ["revision", "requirements"]),
+  "requirements.get": objectSchema({
+    revision: integerSchema(0), requirement: openObject(),
+  }, ["revision", "requirement"]),
   "project.changes": projectChangesResult(),
   "media.import": mediaImportResult(),
   "media.render_html": objectSchema(

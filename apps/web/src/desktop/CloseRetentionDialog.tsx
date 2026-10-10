@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ToolcraftButton as Button,
@@ -103,9 +103,13 @@ export function CloseRetentionDialog(): JSX.Element | null {
 
   // Each request starts with the preference currently stored in settings;
   // the in-dialog select is only committed when an affirmative close button
-  // is clicked (cancel commits nothing).
+  // is clicked (cancel commits nothing). Track the initialized request so a
+  // phase transition (e.g. retention failure swapping in a "failed" request
+  // object) does not reset what the user already picked.
+  const initializedRequestRef = useRef<CloseRetentionRequest | null>(null);
   useEffect(() => {
-    if (request) {
+    if (request && initializedRequestRef.current !== request) {
+      initializedRequestRef.current = request;
       setPref(useSettingsStore.getState().closeRetention);
       setBusy(false);
     }

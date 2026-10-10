@@ -100,8 +100,10 @@ export class ControlledMediaStore {
       if (error.code === "ENOENT") return [];
       throw error;
     });
+    // mediaId is dot-free (ID_PATTERN), so the `${mediaId}.` prefix can never
+    // match helper names like ".pending-<uuid>"; no extra exclusion is needed.
     const prefix = `${mediaId}.`;
-    const name = names.find((candidate) => candidate.startsWith(prefix) && !candidate.startsWith(".pending-"));
+    const name = names.find((candidate) => candidate.startsWith(prefix));
     return name ? path.join(directory, name) : null;
   }
 

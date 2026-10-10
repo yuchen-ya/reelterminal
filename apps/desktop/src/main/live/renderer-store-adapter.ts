@@ -244,6 +244,12 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
     },
     getContext: () =>
       request("getContext", {}, READ_TIMEOUT_MS) as Promise<LiveEditorContext>,
+    listRequirements: (params) => request("requirements", {
+      requirementVerb: "requirements.list", requirementParams: params,
+    }, READ_TIMEOUT_MS) as ReturnType<LiveProjectStore["listRequirements"]>,
+    getRequirement: (params) => request("requirements", {
+      requirementVerb: "requirements.get", requirementParams: params,
+    }, READ_TIMEOUT_MS) as ReturnType<LiveProjectStore["getRequirement"]>,
     getProjectChanges: (params) =>
       request(
         "getProjectChanges",

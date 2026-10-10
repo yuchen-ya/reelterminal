@@ -82,6 +82,12 @@ import {
   timelineDurationSec,
   timelineStateView,
 } from "./projection";
+import {
+  REQUIREMENTS_LIST_SCHEMA, REQUIREMENTS_GET_SCHEMA,
+  requirementsListView, requirementsGetView,
+  type RequirementsListParams, type RequirementsListResult,
+  type RequirementsGetParams, type RequirementsGetResult,
+} from "./requirements";
 import { createEmptyProject, DEFAULT_PROJECT_SETTINGS } from "./project-factory";
 import type {
   AnalysisGetParams,
@@ -392,6 +398,22 @@ export class AgentFacadeSession {
   async projectGetState(): Promise<FacadeResult<ProjectState>> {
     if (!this.project) return this.noProject();
     return ok(this.projectState());
+  }
+
+  async requirementsList(params: RequirementsListParams = {}): Promise<FacadeResult<RequirementsListResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<RequirementsListParams>(params, REQUIREMENTS_LIST_SCHEMA, "requirements.list params");
+      if (!this.project) return this.noProject();
+      return ok(requirementsListView(this.project.requirements?.items ?? [], this.revision, valid));
+    });
+  }
+
+  async requirementsGet(params: RequirementsGetParams): Promise<FacadeResult<RequirementsGetResult>> {
+    return this.enqueue(async () => {
+      const valid = validateObject<RequirementsGetParams>(params, REQUIREMENTS_GET_SCHEMA, "requirements.get params");
+      if (!this.project) return this.noProject();
+      return ok(requirementsGetView(this.project.requirements?.items ?? [], this.revision, valid));
+    });
   }
 
   async timelineGet(): Promise<FacadeResult<TimelineState>> {

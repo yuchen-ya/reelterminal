@@ -20,7 +20,8 @@ interface BundledFontFace {
   readonly source: string;
 }
 
-function collectFontFamilies(value: unknown, families: Set<string>): void {
+/** Recursively collect every non-empty `fontFamily` string found in `value`. */
+export function collectFontFamilies(value: unknown, families: Set<string>): void {
   if (!value || typeof value !== "object") return;
   if (Array.isArray(value)) {
     value.forEach((item) => collectFontFamilies(item, families));
@@ -232,24 +233,32 @@ export async function installProjectRenderFonts(
   releaseProjectRenderFonts(ownerId);
   const lease = new Set<string>();
   projectFontLeases.set(ownerId, lease);
-  for (const rawFont of project.renderFonts ?? []) {
-    if (!validRenderFont(rawFont)) continue;
-    const key = renderFontInstanceKey(rawFont);
-    let entry = loadedProjectFaces.get(key);
-    if (!entry) {
-      const face = new FontFace(rawFont.family, `url(${JSON.stringify(rawFont.dataUrl)})`, {
-        style: rawFont.style,
-        weight: rawFont.weight,
-        ...(rawFont.unicodeRange ? { unicodeRange: rawFont.unicodeRange } : {}),
-      });
-      await face.load();
-      if (projectFontLeases.get(ownerId) !== lease) return;
-      document.fonts.add(face);
-      entry = { face, owners: new Set() };
-      loadedProjectFaces.set(key, entry);
+  try {
+    for (const rawFont of project.renderFonts ?? []) {
+      if (!validRenderFont(rawFont)) continue;
+      const key = renderFontInstanceKey(rawFont);
+      let entry = loadedProjectFaces.get(key);
+      if (!entry) {
+        const face = new FontFace(rawFont.family, `url(${JSON.stringify(rawFont.dataUrl)})`, {
+          style: rawFont.style,
+          weight: rawFont.weight,
+          ...(rawFont.unicodeRange ? { unicodeRange: rawFont.unicodeRange } : {}),
+        });
+        await face.load();
+        if (projectFontLeases.get(ownerId) !== lease) return;
+        document.fonts.add(face);
+        entry = { face, owners: new Set() };
+        loadedProjectFaces.set(key, entry);
+      }
+      entry.owners.add(ownerId);
+      lease.add(key);
     }
-    entry.owners.add(ownerId);
-    lease.add(key);
+  } catch (error) {
+    // A broken font face must not strand this owner's partial lease and the
+    // faces already installed under it; roll the install back before the
+    // error propagates (unless a concurrent install already took the lease).
+    if (projectFontLeases.get(ownerId) === lease) releaseProjectRenderFonts(ownerId);
+    throw error;
   }
 }
 

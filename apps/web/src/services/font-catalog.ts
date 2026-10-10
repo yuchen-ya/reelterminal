@@ -62,36 +62,30 @@ export const FONT_CATEGORIES = {
   System: ["Arial", "Helvetica", "Times New Roman", "Georgia", "Verdana"],
 } as const;
 
+/** CSS generic family keywords, the only faces the standalone render harness guarantees. */
+const GENERIC_FONT_FAMILIES = [
+  "serif",
+  "sans-serif",
+  "monospace",
+  "cursive",
+  "fantasy",
+  "system-ui",
+  "ui-serif",
+  "ui-sans-serif",
+  "ui-monospace",
+  "emoji",
+  "math",
+  "fangsong",
+] as const;
+
 const BUILTIN_FONTS = new Set([
   ...Object.values(FONT_CATEGORIES).flat(),
-  "serif",
-  "sans-serif",
-  "monospace",
-  "cursive",
-  "fantasy",
-  "system-ui",
-  "ui-serif",
-  "ui-sans-serif",
-  "ui-monospace",
-  "emoji",
-  "math",
-  "fangsong",
+  ...GENERIC_FONT_FAMILIES,
 ].map((font) => font.toLowerCase()));
 
-const RUNTIME_SYSTEM_FONTS = new Set([
-  "serif",
-  "sans-serif",
-  "monospace",
-  "cursive",
-  "fantasy",
-  "system-ui",
-  "ui-serif",
-  "ui-sans-serif",
-  "ui-monospace",
-  "emoji",
-  "math",
-  "fangsong",
-].map((font) => font.toLowerCase()));
+const RUNTIME_SYSTEM_FONTS = new Set(
+  GENERIC_FONT_FAMILIES.map((font) => font.toLowerCase()),
+);
 
 export function isBuiltinFontFamily(family: string): boolean {
   return BUILTIN_FONTS.has(family.trim().toLowerCase());

@@ -163,7 +163,6 @@ export async function createHistoryFrameRenderer(
     .filter(({ track }) => track.type !== "audio" && !track.hidden)
     .sort(compareTracksForComposite);
   for (const { track } of sortedTracks) {
-    if (track.type === "audio") continue;
     for (const clip of track.clips) computedDuration = computedMaxEnd(computedDuration, clip);
   }
   for (const clip of project.textClips ?? []) computedDuration = computedMaxEnd(computedDuration, clip);

@@ -199,8 +199,16 @@ export async function estimateProjectPurge(projectIds: readonly string[]): Promi
   return { bytes: sizeOf(candidates.map((record) => cleanupEntry(record, []))), mediaIds: [...mediaIds] };
 }
 
-export async function createMediaCleanupPlan(projectId?: string, mediaIds: readonly string[] = []): Promise<MediaCleanupPlan> {
+export async function createMediaCleanupPlan(
+  projectId?: string | readonly string[],
+  mediaIds: readonly string[] = [],
+): Promise<MediaCleanupPlan> {
   await workspaceManager.initialize();
+  const scopeIds = projectId === undefined
+    ? []
+    : typeof projectId === "string"
+      ? [projectId]
+      : [...projectId];
   const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   let records: StoredMediaEntry[] = [];
   let references: MediaReference[] = [];
@@ -219,9 +227,9 @@ export async function createMediaCleanupPlan(projectId?: string, mediaIds: reado
   for (const record of records) {
     const recordProjectIds = record.projectIds ?? [record.projectId];
     const projectReferences = references.filter((reference) =>
-      reference.mediaId === record.id && reference.projectId === projectId,
+      reference.mediaId === record.id && scopeIds.includes(reference.projectId),
     );
-    if (projectId && !recordProjectIds.includes(projectId) && projectReferences.length === 0 && !mediaIds.includes(record.id)) continue;
+    if (scopeIds.length > 0 && !recordProjectIds.some((pid) => scopeIds.includes(pid)) && projectReferences.length === 0 && !mediaIds.includes(record.id)) continue;
     const reasons = references
       .filter((reference) => reference.mediaId === record.id)
       .map((reference) => reference.label
@@ -241,7 +249,7 @@ export async function createMediaCleanupPlan(projectId?: string, mediaIds: reado
 
   const plan: MediaCleanupPlan = {
     id,
-    ...(projectId ? { projectId } : {}),
+    ...(scopeIds.length === 1 ? { projectId: scopeIds[0] } : {}),
     createdAt: Date.now(),
     referenceScanReady: !referenceScanError,
     ...(referenceScanError ? { referenceScanError } : {}),
@@ -267,7 +275,7 @@ export async function executeMediaCleanupPlan(
   input: MediaCleanupPlan | { readonly projectId?: string; readonly plan: MediaCleanupPlan },
 ): Promise<MediaCleanupResult> {
   const plan = "plan" in input ? input.plan : input;
-  const requestedProjectId = "plan" in input ? input.projectId : input.projectId;
+  const requestedProjectId = input.projectId;
   const approvedPlan = cleanupPlans.get(plan.id);
   if (!approvedPlan || JSON.stringify(approvedPlan) !== JSON.stringify(plan)) {
     throw new Error("Cleanup plan is unknown, expired, or was modified after review");

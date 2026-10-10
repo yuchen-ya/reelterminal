@@ -1,4 +1,5 @@
 import { PLUGIN_TOOLS } from "./plugins";
+import { MAX_TIMELINE_SOURCE_MAP_POINTS } from "./timeline-source-map";
 import type { FacadeVerb } from "./types";
 
 const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
@@ -34,6 +35,10 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Rename the active project with revision and idempotency guards; never renames an existing checkpoint path.",
   project_get_state:
     "Return the full canonical project state at the current revision.",
+  requirements_list:
+    "List project requirement summaries at one revision without transferring media caches.",
+  requirements_get:
+    "Read one project requirement by Q reference or internal id at one revision.",
   project_changes:
     "Return a bounded, paged structural delta since a project revision, or require a full refresh when history was evicted.",
   media_import:
@@ -46,7 +51,7 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   timeline_query:
     "Query a bounded timeline slice by namespaced refs, ids, time range, track/entity types, and allowlisted fields.",
   timeline_mapSourceTimes:
-    "Map 1–64 explicit absolute timeline times for one clip through Core's playback-speed and freeze evaluator. Returns the snapshot revision, clip-local seconds, source-relative seconds, absolute source-media seconds (inPoint + relative), and freeze status. Points must lie within the clip; no source-to-timeline inverse is provided.",
+    `Map 1–${MAX_TIMELINE_SOURCE_MAP_POINTS} explicit absolute timeline times for one clip through Core's playback-speed and freeze evaluator. Returns the snapshot revision, clip-local seconds, source-relative seconds, absolute source-media seconds (inPoint + relative), and freeze status. Points must lie within the clip; no source-to-timeline inverse is provided.`,
   editor_get_context:
     "Return editor context (selection, playhead, time range, canvas point); headless sessions answer honestly with contextAvailable:false.",
   editor_control:
@@ -148,6 +153,10 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Rename the explicitly targeted project through its canonical undoable action. Supply projectId, workspaceId, and expectedRevision; this changes the display name, never an existing file path.",
   "project.get_state":
     "Return the full canonical project state for the explicit project/workspace target.",
+  "requirements.list":
+    "List requirement summaries for an explicit project/workspace, optionally filtered by status. Returns revision without transferring the full project.",
+  "requirements.get":
+    "Read one requirement by requirementId (Q reference or internal id) in an explicit project/workspace. Returns the requirement and its snapshot revision.",
   "project.changes":
     "Return bounded structural changes for the explicit project/workspace target since a revision, or require a full refresh when retained history is unavailable.",
   "media.import":
@@ -161,7 +170,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "timeline.query":
     "Query a bounded local timeline slice by @A/R refs, ids, time, track/entity type, and allowlisted fields without dumping the full project.",
   "timeline.mapSourceTimes":
-    "Map 1–64 explicit absolute timeline times for one clip through Core's playback-speed and freeze evaluator. Returns the snapshot revision, clip-local seconds, source-relative seconds, absolute source-media seconds (inPoint + relative), and freeze status. Points must lie within the clip; this does not infer an interval or map source time back to timeline time.",
+    `Map 1–${MAX_TIMELINE_SOURCE_MAP_POINTS} explicit absolute timeline times for one clip through Core's playback-speed and freeze evaluator. Returns the snapshot revision, clip-local seconds, source-relative seconds, absolute source-media seconds (inPoint + relative), and freeze status. Points must lie within the clip; this does not infer an interval or map source time back to timeline time.`,
   "editor.get_context":
     "Return live editor context: selection, playhead, time range, canvas point, namespaced Agent references A1/A2, and project/context revisions.",
   "editor.control":

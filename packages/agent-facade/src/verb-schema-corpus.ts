@@ -119,6 +119,16 @@ export const VERB_SCHEMA_CORPUS: Readonly<
     { name: "no params is valid", params: {}, expectValid: true },
     { name: "unknown field", params: { summary: true }, expectValid: false },
   ],
+  "requirements.list": [
+    { name: "all statuses", params: {}, expectValid: true },
+    { name: "ready filter", params: { status: "ready" }, expectValid: true },
+    { name: "invalid status", params: { status: "unknown" }, expectValid: false },
+  ],
+  "requirements.get": [
+    { name: "Q reference", params: { requirementId: "Q1" }, expectValid: true },
+    { name: "missing reference", params: {}, expectValid: false },
+    { name: "empty reference", params: { requirementId: "" }, expectValid: false },
+  ],
   "project.changes": [
     { name: "valid", params: { sinceRevision: 0, limit: 50 }, expectValid: true },
     { name: "missing sinceRevision", params: {}, expectValid: false },

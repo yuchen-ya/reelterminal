@@ -10,13 +10,9 @@ import { useTranslation } from "react-i18next";
 import {
   Bot,
   BookMarked,
-  ChevronDown,
   FileVideo,
-  FolderOpen,
   Hash,
-  Inbox,
   Link2,
-  ListChecks,
   Music,
   Plus,
   Scissors,
@@ -24,9 +20,14 @@ import {
   Sparkles,
   Trash2,
   Undo2,
+  SlidersHorizontal,
+  CheckSquare,
+  X,
+  History,
 } from "lucide-react";
 import type { MaterialJournalEntry, MaterialKind, MaterialRecord } from "@reelterminal/core";
-import { ToolcraftEmptyState } from "@reelterminal/ui";
+import { ToolcraftEmptyState, ToolcraftPopover as Popover, ToolcraftDropdownMenu as DropdownMenu } from "@reelterminal/ui";
+import { AssetSearch, AssetViewToggle, type AssetView } from "../asset-browser-controls";
 import {
   getMaterialLibraryService,
   type MaterialServiceResult,
@@ -71,7 +72,9 @@ export function MaterialLibraryPanel() {
   const { t } = useTranslation();
   const store = useMaterialLibraryStore();
   const hasOpenProject = useProjectStore((s) => s.hasOpenProject);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(store.filters.query);
+  const [view, setView] = useState<AssetView>("list");
+  const [selecting, setSelecting] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
   const [batchTag, setBatchTag] = useState("");
   const [addLinkOpen, setAddLinkOpen] = useState(false);
@@ -92,8 +95,10 @@ export function MaterialLibraryPanel() {
       void useMaterialLibraryStore.getState().refreshJournal();
     };
     window.addEventListener("reelterminal:material-library-changed", onChanged);
-    return () =>
+    return () => {
       window.removeEventListener("reelterminal:material-library-changed", onChanged);
+      if (searchDebounce.current !== null) window.clearTimeout(searchDebounce.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -262,11 +267,10 @@ export function MaterialLibraryPanel() {
     void store.clearSelection();
   };
 
-  const attachSelected = async () => {
-    const attachable = store.items.filter(
+  const attachRecords = async (records: readonly MaterialRecord[]) => {
+    const attachable = records.filter(
       (item) =>
-        store.selectedIds.includes(item.id) &&
-        (item.kind === "media" || item.kind === "segment"),
+        item.kind === "media" || item.kind === "segment",
     );
     if (attachable.length === 0) return;
     setBusy(true);
@@ -310,34 +314,28 @@ export function MaterialLibraryPanel() {
     store.filters.query.trim() !== "";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-live-editor-target-id="material-library-panel">
-      {/* header */}
-      <div className="flex flex-col gap-2.5 px-4 pt-[18px] shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-medium text-fg-2">{t("projectAssets.libraryContents")}</div>
-          <div className="relative flex items-center gap-1.5">
-            {latestAgentEntry ? (
-              <button
-                type="button"
-                onClick={() => undoLatest(latestAgentEntry)}
-                title={latestAgentEntry.label}
-                className="flex items-center gap-1 rounded-[9px] border border-border bg-bg px-2 py-1.5 text-[11px] font-medium text-fg-2 hover:border-accent"
-              >
-                <Undo2 size={12} aria-hidden />
-                {t("material.undoAgentBatch")}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setJournalOpen((open) => !open)}
-              className="flex items-center gap-1 rounded-[9px] border border-border bg-bg px-2 py-1.5 text-[11px] font-medium text-fg-2 hover:border-border-strong"
-            >
-              <ListChecks size={12} aria-hidden />
-              {t("material.history")}
-              <ChevronDown size={11} aria-hidden />
-            </button>
-            {journalOpen ? (
-              <div className="absolute right-0 top-9 z-20 max-h-72 w-80 overflow-auto rounded-[11px] border border-border bg-bg-1 p-1.5 shadow-xl">
+    <div className="asset-browser" data-live-editor-target-id="material-library-panel" data-view={view}>
+      <div className="asset-browser-header">
+        <div className="asset-browser-title">{t("assets.tabs.library")}<span className="asset-browser-count">{store.totalCount}</span></div>
+        <div className="asset-browser-toolbar">
+          <DropdownMenu alignment="start" size="sm" button={{ label: t("assetBrowser.add"), icon: <Plus size={14} />,
+            variant: "ghost", isDisabled: busy, className: "asset-browser-button asset-browser-button-primary" }} items={[
+              { label: t("material.addMedia"), icon: <FileVideo size={14} />, onClick: () => fileInputRef.current?.click() },
+              { label: t("material.addLink"), icon: <Link2 size={14} />, onClick: () => setAddLinkOpen(true) },
+              { label: t("material.addMethod"), icon: <Sparkles size={14} />, onClick: () => setAddMethodOpen(true) },
+            ]} />
+          <button type="button" aria-label={t("assetBrowser.select")} title={t("assetBrowser.select")}
+            aria-pressed={selecting} className="asset-browser-button asset-browser-button-icon"
+            onClick={() => { setSelecting(!selecting); store.clearSelection(); }}><CheckSquare size={14} aria-hidden /></button>
+        {latestAgentEntry && <button type="button" onClick={() => undoLatest(latestAgentEntry)} title={latestAgentEntry.label}
+          aria-label={t("material.undoAgentBatch")} className="asset-browser-button asset-browser-button-icon">
+          <Undo2 size={12} aria-hidden />
+        </button>}
+          <div className="flex-1" />
+          <AssetViewToggle value={view} onChange={setView} />
+          <Popover alignment="end" label={t("material.history")} isOpen={journalOpen} onOpenChange={setJournalOpen} content={
+
+              <div className="max-h-72 w-72 overflow-auto rounded-[11px] border border-border bg-bg-1 p-1.5 shadow-xl">
                 {store.journal.length === 0 ? (
                   <div className="px-2 py-3 text-center text-[12px] text-fg-3">
                     {t("material.historyEmpty")}
@@ -373,185 +371,61 @@ export function MaterialLibraryPanel() {
                   ))
                 )}
               </div>
-            ) : null}
-          </div>
-        </div>
 
-        {/* add buttons */}
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => fileInputRef.current?.click()}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-[9px] border border-border bg-bg p-2 text-[12px] font-medium text-fg-2 hover:border-border-strong disabled:opacity-50"
-          >
-            <Plus size={13} aria-hidden />
-            {t("material.addMedia")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setAddLinkOpen(true)}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-[9px] border border-border bg-bg p-2 text-[12px] font-medium text-fg-2 hover:border-border-strong"
-          >
-            <Link2 size={13} aria-hidden />
-            {t("material.addLink")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setAddMethodOpen(true)}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-[9px] border border-border bg-bg p-2 text-[12px] font-medium text-fg-2 hover:border-border-strong"
-          >
-            <Sparkles size={13} aria-hidden />
-            {t("material.addMethod")}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="video/*,audio/*,image/*"
-            className="hidden"
-            onChange={(event) => void onFilesPicked(event.target.files)}
-          />
+          }><button type="button" aria-label={t("material.history")} title={t("material.history")}
+            className="asset-browser-button asset-browser-button-icon"><History size={14} aria-hidden /></button></Popover>
         </div>
+        <input ref={fileInputRef} type="file" multiple accept="video/*,audio/*,image/*" className="hidden"
+          aria-label={t("material.addMedia")} onChange={(event) => void onFilesPicked(event.target.files)} />
 
-        {/* search */}
-        <div className="flex items-center gap-2 rounded-[9px] border border-border bg-bg px-2.5 py-1.5">
-          <Search size={13} className="shrink-0 text-fg-3" aria-hidden />
-          <input
-            value={search}
-            placeholder={t("material.searchPlaceholder")}
-            onChange={(event) => onSearchChange(event.target.value)}
-            className="w-full bg-transparent text-[12px] text-fg outline-none placeholder:text-fg-3"
-          />
+        <div className="asset-browser-search-row">
+          <AssetSearch value={search} onChange={onSearchChange} label={t("assetBrowser.searchLibrary")} />
+          <Popover alignment="end" label={t("assetBrowser.filters")} content={
+            <div className="asset-filter-panel">
+              <label>{t("assetBrowser.status")}
+                <select aria-label={t("assetBrowser.status")} value={store.filters.status} onChange={(event) => store.setFilters({ status: event.target.value as typeof store.filters.status })}>
+                  {statusChips.map((chip) => <option key={chip.value} value={chip.value}>{t(chip.labelKey)}</option>)}
+                </select>
+              </label>
+              <label>{t("material.tags")}<select aria-label={t("material.tags")} value={store.filters.tag ?? ""} onChange={(event) => store.setFilters({ tag: event.target.value || null })}>
+                <option value="">{t("material.allTags")}</option>{store.allTags.map((tag) => <option key={tag} value={tag}>#{tag}</option>)}
+              </select></label>
+              <label>{t("assetBrowser.sort")}<select aria-label={t("assetBrowser.sort")} value={store.sort} onChange={(event) => store.setSort(event.target.value as typeof store.sort)}>
+                <option value="updated">{t("assetBrowser.recent")}</option><option value="title">{t("assetBrowser.nameAsc")}</option>
+              </select></label>
+              <button type="button" className="asset-browser-button" onClick={() => store.setFilters({ status: "all", tag: null })}>{t("assetBrowser.resetFilters")}</button>
+            </div>
+          }><button type="button" aria-label={t("assetBrowser.filters")} title={t("assetBrowser.filters")}
+            className="asset-browser-button asset-browser-button-icon"><SlidersHorizontal size={14} aria-hidden />
+            {(store.filters.status !== "all" || store.filters.tag) && <span className="h-1 w-1 rounded-full bg-accent" />}
+          </button></Popover>
         </div>
-
-        {/* filters */}
-        <div className="flex flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {KIND_CHIPS.map((chip) => (
-              <button
-                key={chip.value}
-                type="button"
-                onClick={() => void store.setFilters({ kind: chip.value })}
-                className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
-                  store.filters.kind === chip.value
-                    ? "border-accent bg-accent/10 text-accent"
-                    : "border-border bg-bg text-fg-3 hover:border-border-strong"
-                }`}
-              >
-                {t(chip.labelKey)}
-              </button>
-            ))}
-            <span className="mx-1 h-4 w-px bg-border" aria-hidden />
-            {statusChips.map((chip) => (
-              <button
-                key={chip.value}
-                type="button"
-                onClick={() => void store.setFilters({ status: chip.value })}
-                className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
-                  store.filters.status === chip.value
-                    ? "border-accent bg-accent/10 text-accent"
-                    : "border-border bg-bg text-fg-3 hover:border-border-strong"
-                }`}
-              >
-                {chip.value === "inbox" ? <Inbox size={10} aria-hidden /> : null}
-                {t(chip.labelKey)}
-                {chip.value === "inbox" && store.inboxCount > 0 ? (
-                  <span className="rounded-full bg-status-warning/20 px-1.5 text-[10px] text-status-warning">
-                    {store.inboxCount}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-            {store.allTags.length > 0 ? (
-              <select
-                value={store.filters.tag ?? ""}
-                onChange={(event) =>
-                  void store.setFilters({ tag: event.target.value || null })
-                }
-                className="ml-auto rounded-full border border-border bg-bg px-2 py-1 text-[11px] text-fg-3 outline-none"
-              >
-                <option value="">{t("material.allTags")}</option>
-                {store.allTags.map((tag) => (
-                  <option key={tag} value={tag}>
-                    #{tag}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-          </div>
+        <div className="asset-browser-tabs" role="group" aria-label={t("assetBrowser.categories")}>
+          {KIND_CHIPS.map((chip) => <button key={chip.value} type="button" aria-pressed={store.filters.kind === chip.value}
+            onClick={() => store.setFilters({ kind: chip.value })}>{t(chip.labelKey)}</button>)}
         </div>
       </div>
-
-      {/* batch bar */}
-      {store.selectedIds.length > 0 ? (
-        <div className="mx-4 mt-2.5 flex flex-wrap items-center gap-1.5 rounded-[10px] border border-accent/40 bg-accent/5 px-2.5 py-2 shrink-0">
-          <span className="text-[11px] font-semibold text-accent">
-            {t("material.selected", { count: store.selectedIds.length })}
-          </span>
-          <input
-            value={batchTag}
-            placeholder={t("material.batchTagPlaceholder")}
-            onChange={(event) => setBatchTag(event.target.value)}
-            className="w-36 rounded-[8px] border border-border bg-bg px-2 py-1 text-[11px] text-fg outline-none focus:border-accent"
-          />
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void batchAddTags()}
-            className="flex items-center gap-1 rounded-[8px] border border-border bg-bg px-2 py-1 text-[11px] font-medium text-fg-2 hover:border-accent"
-          >
-            <Hash size={11} aria-hidden />
-            {t("material.addTags")}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void batchSetStatus("organized")}
-            className="rounded-[8px] border border-border bg-bg px-2 py-1 text-[11px] font-medium text-fg-2 hover:border-accent"
-          >
-            {t("material.markOrganized")}
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void batchSetStatus("inbox")}
-            className="rounded-[8px] border border-border bg-bg px-2 py-1 text-[11px] font-medium text-fg-2 hover:border-border-strong"
-          >
-            {t("material.moveToInbox")}
-          </button>
-          {hasOpenProject ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void attachSelected()}
-              className="flex items-center gap-1 rounded-[8px] border border-border bg-bg px-2 py-1 text-[11px] font-medium text-fg-2 hover:border-accent"
-            >
-              <FolderOpen size={11} aria-hidden />
-              {t("material.attachToProject")}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void batchRemove()}
-            className="ml-auto flex items-center gap-1 rounded-[8px] border border-status-danger/40 px-2 py-1 text-[11px] font-medium text-status-danger hover:bg-status-danger/10"
-          >
-            <Trash2 size={11} aria-hidden />
-            {t("material.remove")}
-          </button>
-          <button
-            type="button"
-            onClick={() => store.clearSelection()}
-            className="rounded-[8px] px-2 py-1 text-[11px] text-fg-3 hover:text-fg"
-          >
-            {t("Clear")}
-          </button>
-        </div>
-      ) : null}
+      {store.selectedIds.length > 0 && <div className="asset-batch-bar">
+        <span>{t("material.selected", { count: store.selectedIds.length })}</span>
+        {hasOpenProject && <button type="button" disabled={busy || !store.items.some((item) => store.selectedIds.includes(item.id) && (item.kind === "media" || item.kind === "segment"))}
+          aria-label={t("material.attachToProject")} title={t("material.attachToProject")} className="asset-browser-button asset-browser-button-icon"
+          onClick={() => void attachRecords(store.items.filter((item) => store.selectedIds.includes(item.id)))}><Plus size={14} aria-hidden /></button>}
+        <DropdownMenu alignment="start" size="sm" button={{ label: t("assetBrowser.organize"), variant: "ghost", isDisabled: busy, className: "asset-browser-button" }} items={[
+          { label: t("material.markOrganized"), onClick: () => void batchSetStatus("organized") },
+          { label: t("material.moveToInbox"), onClick: () => void batchSetStatus("inbox") },
+          { label: t("assetBrowser.selectAll"), onClick: store.selectAllVisible },
+          { type: "divider" }, { label: t("material.remove"), icon: <Trash2 size={14} />, onClick: () => void batchRemove() },
+        ]} />
+        <Popover alignment="end" label={t("material.addTags")} content={<form className="asset-filter-panel" onSubmit={(event) => { event.preventDefault(); void batchAddTags(); }}>
+          <label>{t("material.tags")}<input value={batchTag} placeholder={t("material.batchTagPlaceholder")} onChange={(event) => setBatchTag(event.target.value)} /></label>
+          <button disabled={busy} className="asset-browser-button asset-browser-button-primary">{t("material.addTags")}</button>
+        </form>}><button type="button" aria-label={t("material.addTags")} title={t("material.addTags")} className="asset-browser-button asset-browser-button-icon"><Hash size={14} aria-hidden /></button></Popover>
+        <div className="flex-1" /><button type="button" aria-label={t("Clear")} className="asset-browser-button asset-browser-button-icon"
+          onClick={() => { store.clearSelection(); setSelecting(false); }}><X size={14} aria-hidden /></button>
+      </div>}
 
       {/* list */}
-      <div className="mt-2.5 min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+      <div className="asset-browser-content custom-scrollbar">
         {store.error ? (
           <div className="rounded-[9px] border border-status-danger/40 bg-status-danger/10 px-3 py-2 text-[12px] text-status-danger">
             {store.error}
@@ -571,82 +445,37 @@ export function MaterialLibraryPanel() {
             />
           )
         ) : (
-          <div className="flex flex-col gap-1.5">
+          <div className={view === "grid" ? "asset-browser-grid asset-library-grid" : "asset-material-list"}>
             {store.items.map((record) => {
               const selected = store.selectedIds.includes(record.id);
-              const fileStatus =
-                record.kind === "media" || record.kind === "segment"
-                  ? store.fileStatuses[record.id]
-                  : undefined;
+              const fileStatus = record.kind === "media" || record.kind === "segment" ? store.fileStatuses[record.id] : undefined;
+              const attachable = record.kind === "media" || record.kind === "segment";
               return (
-                <div
-                  key={record.id}
-                  data-material-id={record.id}
-                  className={`flex cursor-pointer items-center gap-2.5 rounded-[10px] border p-2 ${
-                    selected
-                      ? "border-accent bg-accent/5"
-                      : "border-border bg-bg hover:border-border-strong"
-                  }`}
-                  onClick={() => store.openDetail(record.id)}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    onClick={(event) => event.stopPropagation()}
-                    onChange={() => store.toggleSelected(record.id)}
-                    className="h-3.5 w-3.5 shrink-0 accent-[var(--accent)]"
-                  />
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-border bg-bg-2 text-fg-3">
-                    {record.kind === "media" && record.thumbnailDataUrl ? (
-                      <img
-                        src={record.thumbnailDataUrl}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <RecordIcon record={record} />
-                    )}
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate text-[12.5px] font-medium text-fg">
-                        {record.title}
-                      </span>
-                      <span className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] text-fg-3">
-                        {t(`material.kind.${record.kind}`)}
-                      </span>
-                      {record.organizeStatus === "inbox" ? (
-                        <span className="shrink-0 rounded-full border border-status-warning/40 px-1.5 py-px text-[10px] text-status-warning">
-                          {t("material.status.inbox")}
-                        </span>
-                      ) : null}
-                      {record.updatedBy === "agent" ? (
-                        <span className="flex shrink-0 items-center gap-0.5 rounded-full border border-accent/40 px-1.5 py-px text-[10px] text-accent">
-                          <Bot size={9} aria-hidden />
-                          {t("material.agentBadge")}
-                        </span>
-                      ) : null}
-                      {fileStatus === "missing" ? (
-                        <span className="shrink-0 rounded-full border border-status-danger/40 bg-status-danger/10 px-1.5 py-px text-[10px] text-status-danger">
-                          {t("material.fileMissing")}
-                        </span>
-                      ) : null}
-                      {fileStatus === "unknown" ? (
-                        <span className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] text-fg-3">
-                          {t("material.fileUnknown")}
-                        </span>
-                      ) : null}
+                <article key={record.id} data-material-id={record.id} data-selected={selected} className="asset-material-card">
+                  {(selecting || store.selectedIds.length > 0) && <input type="checkbox" checked={selected}
+                    aria-label={t("assetBrowser.selectItem", { name: record.title })} onChange={() => store.toggleSelected(record.id)} className="asset-material-check" />}
+                  <button type="button" className="asset-material-open" aria-label={t("assetBrowser.previewItem", { name: record.title })}
+                    onClick={() => store.openDetail(record.id)}>
+                    <div className="asset-material-preview">
+                      {record.kind === "media" && record.thumbnailDataUrl ? <img src={record.thumbnailDataUrl} alt="" /> : <RecordIcon record={record} />}
                     </div>
-                    <div className="flex items-center gap-1.5 text-[10.5px] text-fg-3">
-                      {record.tags.length > 0 ? (
-                        <span className="truncate">
-                          {record.tags.map((tag) => `#${tag}`).join(" ")}
-                        </span>
-                      ) : null}
-                      <span className="ml-auto shrink-0">{formatTime(record.updatedAt)}</span>
+                    <div className="asset-material-copy">
+                      <div className="asset-material-title" title={record.title}>{record.title}</div>
+                      <div className="asset-material-meta">
+                        <span>{t(`material.kind.${record.kind}`)}{record.tags.length > 0 ? ` · ${record.tags.map((tag) => `#${tag}`).join(" ")}` : ""}</span>
+                        {record.updatedBy === "agent" && <Bot size={11} aria-label={t("material.agentBadge")} className="shrink-0 text-accent" />}
+                      </div>
+                      {(record.organizeStatus === "inbox" || fileStatus === "missing" || fileStatus === "unknown") && <div className="asset-material-meta">
+                        {record.organizeStatus === "inbox" && <span className="text-status-warning">{t("material.status.inbox")}</span>}
+                        {fileStatus === "missing" && <span className="text-status-danger">{t("material.fileMissing")}</span>}
+                        {fileStatus === "unknown" && <span>{t("material.fileUnknown")}</span>}
+                      </div>}
                     </div>
-                  </div>
-                </div>
+                  </button>
+                  {hasOpenProject && attachable && !selecting && <button type="button" disabled={busy || fileStatus === "missing"}
+                    aria-label={t("assetBrowser.useItem", { name: record.title })} title={t("material.attachToProject")}
+                    onClick={() => void attachRecords([record])} className="asset-material-add asset-browser-button asset-browser-button-icon"><Plus size={14} aria-hidden /></button>}
+                </article>
               );
             })}
             {store.page < store.totalPages ? (

@@ -108,6 +108,14 @@ class FakeLiveStore implements LiveProjectStore {
   async getState() {
     return { project: structuredClone(this.project), revision: this.revision };
   }
+  async listRequirements(params: import("./requirements").RequirementsListParams) {
+    const { requirementsListView } = await import("./requirements");
+    return requirementsListView(this.project.requirements?.items ?? [], this.revision, params);
+  }
+  async getRequirement(params: import("./requirements").RequirementsGetParams) {
+    const { requirementsGetView } = await import("./requirements");
+    return requirementsGetView(this.project.requirements?.items ?? [], this.revision, params);
+  }
 
   async getContext(): Promise<LiveEditorContext> {
     return {

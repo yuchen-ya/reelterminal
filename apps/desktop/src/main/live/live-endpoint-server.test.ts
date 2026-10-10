@@ -43,6 +43,7 @@ let activity = 0;
 let identity = {
   instanceId: "instance-test",
   projectId: "project-test",
+  workspaceId: "workspace-test",
   projectEpoch: "epoch-test",
   access: "read-only" as const,
   currentAction: null as string | null,
@@ -220,6 +221,7 @@ describe("live protocol-neutral Command API", () => {
       serverInfo: { name: "reelterminal-live", version: "test" },
       instanceId: "instance-test",
       projectId: "project-test",
+      workspaceId: "workspace-test",
       projectEpoch: "epoch-test",
       access: "read-only",
       currentAction: null,

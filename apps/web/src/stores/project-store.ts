@@ -829,12 +829,8 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
     };
 
     const buildSerializedColorGrading = (clipId: string): ClipColorGrading => {
-      if (!get().isForeground) {
-        const clip = get().project.timeline.tracks
-          .flatMap((track) => track.clips)
-          .find((candidate) => candidate.id === clipId);
-        return clip?.colorGrading ?? {};
-      }
+      // Only reachable from the foreground branch of updateColorGrading
+      // (background stores exit earlier with a direct action).
       const effectsBridge = getEffectsBridge();
       if (!effectsBridge.isInitialized()) {
         return {};
@@ -2252,7 +2248,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
 
         return get().executeActionBatch([action], {
           groupLabel: "Duplicate clip",
-          historyOwner: "human",
+          historyOwner: get().actionHistory.getActiveOwner(),
         }).result;
         };
         const submit = get().submitWorkspaceMutation;
@@ -2334,7 +2330,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             titleEngine.updateTextClip(clipId, {
               transform: mergeTransform(textClip.transform),
             });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return { success: true };
           }
         }
@@ -2347,7 +2343,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             graphicsEngine.updateShapeClip(clipId, {
               transform: mergeTransform(shapeClip.transform),
             });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return { success: true };
           }
 
@@ -2356,7 +2352,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             graphicsEngine.updateSVGClip(clipId, {
               transform: mergeTransform(svgClip.transform),
             });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return { success: true };
           }
         }
@@ -2393,7 +2389,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
           const textClip = titleEngine.getTextClip(clipId);
           if (textClip) {
             titleEngine.updateTextClip(clipId, { blendMode });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return { success: true };
           }
         }
@@ -2404,13 +2400,13 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
           const shapeClip = graphicsEngine.getShapeClip(clipId);
           if (shapeClip) {
             graphicsEngine.updateShapeClip(clipId, { blendMode });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return { success: true };
           }
           const svgClip = graphicsEngine.getSVGClip(clipId);
           if (svgClip) {
             graphicsEngine.updateSVGClip(clipId, { blendMode });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return { success: true };
           }
         }
@@ -2455,7 +2451,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
           const textClip = titleEngine.getTextClip(clipId);
           if (textClip) {
             titleEngine.updateTextClip(clipId, { blendOpacity: opacity });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return { success: true };
           }
         }
@@ -2465,14 +2461,14 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
           const shapeClip = graphicsEngine.getShapeClip(clipId);
           if (shapeClip) {
             graphicsEngine.updateShapeClip(clipId, { blendOpacity: opacity });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return { success: true };
           }
 
           const svgClip = graphicsEngine.getSVGClip(clipId);
           if (svgClip) {
             graphicsEngine.updateSVGClip(clipId, { blendOpacity: opacity });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return { success: true };
           }
         }
@@ -2507,7 +2503,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
           const textClip = titleEngine.getTextClip(clipId);
           if (textClip) {
             titleEngine.updateTextClip(clipId, { emphasisAnimation });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return { success: true };
           }
         }
@@ -2517,21 +2513,21 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
           const shapeClip = graphicsEngine.getShapeClip(clipId);
           if (shapeClip) {
             graphicsEngine.updateShapeClip(clipId, { emphasisAnimation });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return { success: true };
           }
 
           const svgClip = graphicsEngine.getSVGClip(clipId);
           if (svgClip) {
             graphicsEngine.updateSVGClip(clipId, { emphasisAnimation });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return { success: true };
           }
 
           const stickerClip = graphicsEngine.getStickerClip(clipId);
           if (stickerClip) {
             graphicsEngine.updateStickerClip(clipId, { emphasisAnimation });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return { success: true };
           }
         }
@@ -2582,7 +2578,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             titleEngine.updateTextClip(clipId, {
               transform: { ...textClip.transform, rotate3d },
             });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return true;
           }
         }
@@ -2594,7 +2590,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             graphicsEngine.updateShapeClip(clipId, {
               transform: { ...shapeClip.transform, rotate3d },
             });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return true;
           }
 
@@ -2603,7 +2599,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             graphicsEngine.updateSVGClip(clipId, {
               transform: { ...svgClip.transform, rotate3d },
             });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return true;
           }
         }
@@ -2653,7 +2649,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             titleEngine.updateTextClip(clipId, {
               transform: { ...textClip.transform, perspective },
             });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return true;
           }
         }
@@ -2665,7 +2661,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             graphicsEngine.updateShapeClip(clipId, {
               transform: { ...shapeClip.transform, perspective },
             });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return true;
           }
 
@@ -2674,7 +2670,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             graphicsEngine.updateSVGClip(clipId, {
               transform: { ...svgClip.transform, perspective },
             });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return true;
           }
         }
@@ -2722,7 +2718,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             titleEngine.updateTextClip(clipId, {
               transform: { ...textClip.transform, transformStyle },
             });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return true;
           }
         }
@@ -2734,7 +2730,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             graphicsEngine.updateShapeClip(clipId, {
               transform: { ...shapeClip.transform, transformStyle },
             });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return true;
           }
 
@@ -2743,7 +2739,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
             graphicsEngine.updateSVGClip(clipId, {
               transform: { ...svgClip.transform, transformStyle },
             });
-            set({ project: { ...project, modifiedAt: Date.now() } });
+            set({ project: projectWithOverlayState({ ...project, modifiedAt: Date.now() }) });
             return true;
           }
         }

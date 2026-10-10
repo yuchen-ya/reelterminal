@@ -99,17 +99,6 @@ function entryCanBeIdempotent(entry: CommandCatalogEntry): boolean {
   return entry.retry === "idempotent" && hasSchemaProperty(entry, "idempotencyKey");
 }
 
-function requirementItems(result: FacadeResult<unknown>): readonly Record<string, unknown>[] {
-  if (!result.ok || !isRecord(result.value)) return [];
-  const project = result.value.project;
-  if (!isRecord(project) || !isRecord(project.requirements) || !Array.isArray(project.requirements.items)) return [];
-  return project.requirements.items.filter(isRecord);
-}
-
-function requirementRef(item: Record<string, unknown>): string {
-  return typeof item.number === "number" ? `Q${item.number}` : String(item.id ?? "Q?");
-}
-
 async function runRequirements(
   client: LiveCommandClient,
   argv: readonly string[],
@@ -120,38 +109,30 @@ async function runRequirements(
   }
   const parsed = parseFlags(argv.slice(2));
   const endpointStatus = await client.status();
-  // Requirements live on the project itself and every verb below is
-  // project-scoped (the host strips workspace routing for them), so a
-  // workspace id is optional — a directly-opened project has none.
-  if (typeof endpointStatus.projectId !== "string") {
-    throw new LiveCliError("requirements needs an open project", "business", 3);
+  const projectId = parsed.flags.projectId ?? endpointStatus.projectId;
+  const workspaceId = parsed.flags.workspaceId ?? endpointStatus.workspaceId;
+  if (typeof projectId !== "string" || typeof workspaceId !== "string") {
+    throw new LiveCliError("requirements needs a projectId and workspaceId; read context or pass --project-id and --workspace-id", "args", 2);
   }
-  const target = {
-    projectId: endpointStatus.projectId,
-    ...(typeof endpointStatus.workspaceId === "string" ? { workspaceId: endpointStatus.workspaceId } : {}),
+  const target = { projectId, workspaceId };
+  const guard = {
+    ...(typeof endpointStatus.projectId === "string" ? { expectedProjectId: endpointStatus.projectId } : {}),
+    ...(typeof endpointStatus.projectEpoch === "string" ? { expectedProjectEpoch: endpointStatus.projectEpoch } : {}),
   };
-  const state = await client.command("project.get_state", target, { retry: "safe", addIdempotencyKey: false });
-  if (!state.ok) return { result: state, human: parsed.human, compact: parsed.compact };
-  const items = requirementItems(state);
-  const revision = isRecord(state.value) && typeof state.value.revision === "number" ? state.value.revision : 0;
   if (action === "list") {
-    const requestedStatus = typeof parsed.flags.status === "string" ? parsed.flags.status : undefined;
-    const filtered = items.filter((item) => requestedStatus === undefined || item.status === requestedStatus);
-    const summaries = filtered.map((item) => ({
-      ref: requirementRef(item),
-      title: item.title,
-      status: item.status,
-      priority: item.priority,
-      markerIds: item.markerIds,
-      updatedAt: item.updatedAt,
-    }));
-    return { result: successResult({ revision, requirements: summaries }), human: parsed.human, compact: parsed.compact };
+    const result = await client.command("requirements.list", {
+      ...target,
+      ...(parsed.flags.status === undefined ? {} : { status: parsed.flags.status }),
+    }, { ...guard, retry: "safe", addIdempotencyKey: false });
+    return { result, human: parsed.human, compact: parsed.compact };
   }
   const ref = parsed.positional[0];
   if (!ref) throw new LiveCliError(`requirements ${action} requires a requirement ref such as Q1`, "args", 2);
-  const item = items.find((candidate) => requirementRef(candidate).toLowerCase() === ref.toLowerCase() || candidate.id === ref);
-  if (!item) return { result: { ok: false, error: { code: "NOT_FOUND", message: `Requirement ${ref} was not found` } }, human: parsed.human, compact: parsed.compact };
-  if (action === "get") return { result: successResult({ revision, requirement: { ...item, ref: requirementRef(item) } }), human: parsed.human, compact: parsed.compact };
+  const query = await client.command<{ revision: number; requirement: { ref: string } }>(
+    "requirements.get", { ...target, requirementId: ref },
+    { ...guard, retry: "safe", addIdempotencyKey: false },
+  );
+  if (!query.ok || action === "get") return { result: query, human: parsed.human, compact: parsed.compact };
 
   const status = parsed.flags.status;
   const agentNote = parsed.flags.agentNote ?? parsed.flags.note;
@@ -165,17 +146,17 @@ async function runRequirements(
     ...target,
     ops: [{
       op: "requirement.update",
-      requirementId: requirementRef(item),
+      requirementId: query.value.requirement.ref,
       ...(status === undefined ? {} : { status }),
       ...(agentNote === undefined ? {} : { agentNote }),
       ...(resultMediaIds === undefined ? {} : { resultMediaIds }),
     }],
-    expectedRevision: revision,
+    expectedRevision: parsed.flags.expectedRevision ?? query.value.revision,
+    ...(parsed.flags.idempotencyKey === undefined ? {} : { idempotencyKey: parsed.flags.idempotencyKey }),
   }, {
     retry: entry.retry ?? "never",
     addIdempotencyKey: entryCanBeIdempotent(entry),
-    ...(typeof endpointStatus.projectId === "string" ? { expectedProjectId: endpointStatus.projectId } : {}),
-    ...(typeof endpointStatus.projectEpoch === "string" ? { expectedProjectEpoch: endpointStatus.projectEpoch } : {}),
+    ...guard,
   });
   return { result, human: parsed.human, compact: parsed.compact };
 }
@@ -252,7 +233,7 @@ async function runGenericCall(client: LiveCommandClient, argv: readonly string[]
     expectedProjectEpoch = input.expectedProjectEpoch;
   }
   const outputFields = outputProjection(entry, args, parsed.outputFields);
-  requireExplicitSafetyGuards(entry.name, args, expectedProjectId, expectedProjectEpoch, entry);
+  requireExplicitSafetyGuards(entry.name, args, entry);
   let result = await client.command(entry.name, args, {
     retry: entry.retry ?? "never",
     addIdempotencyKey: entryCanBeIdempotent(entry),
@@ -349,7 +330,7 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
 
   const invocation = withInput(parseInvocation(argv));
   const entry = await readCommandEntry(client, invocation.commandName);
-  requireExplicitSafetyGuards(invocation.commandName, invocation.arguments, invocation.expectedProjectId, invocation.expectedProjectEpoch, entry);
+  requireExplicitSafetyGuards(invocation.commandName, invocation.arguments, entry);
   const outputFields = outputProjection(entry, invocation.arguments, invocation.outputFields);
   let result: FacadeResult<unknown>;
   if (invocation.wait) result = await waitForJob(client, invocation, entry);

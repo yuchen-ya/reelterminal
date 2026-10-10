@@ -1,6 +1,8 @@
 import type { Project, Artboard, Layer, ImageLayer, TextLayer, ShapeLayer, Filter } from '../types/project';
 
-export type ExportFormat = 'png' | 'jpg' | 'webp' | 'svg' | 'pdf';
+// Only raster formats the exporter can actually encode; the runtime guard
+// below still rejects untyped callers pushing legacy 'svg'/'pdf' strings.
+export type ExportFormat = 'png' | 'jpg' | 'webp';
 export type ExportQuality = 'low' | 'medium' | 'high' | 'max';
 
 export interface ExportOptions {

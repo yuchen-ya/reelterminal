@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Project } from "@reelterminal/core";
 import type { JobStatusView } from "@reelterminal/agent-facade";
@@ -28,6 +28,12 @@ export class DurableTaskLedger {
   constructor(private readonly root: string) {
     mkdirSync(root, { recursive: true });
     for (const file of readdirSync(root)) {
+      if (file.endsWith(".tmp")) {
+        // A crash between writeFileSync and renameSync strands a *.json.tmp;
+        // it was never committed, so sweep it instead of letting orphans pile up.
+        rmSync(path.join(root, file), { force: true });
+        continue;
+      }
       if (!file.endsWith(".json")) continue;
       try {
         const record = JSON.parse(readFileSync(path.join(root, file), "utf8")) as DurableTaskRecord;

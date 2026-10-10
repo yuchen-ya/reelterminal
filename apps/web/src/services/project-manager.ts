@@ -860,14 +860,6 @@ export class ProjectManager {
     return id ? this.fileHandlesByProject.get(id) ?? null : null;
   }
 
-  hasUnsavedChanges(project: Project): boolean {
-    const projectWithSavedAt = project as Project & { lastSavedAt?: number };
-    return (
-      !this.getCurrentFileHandle(project.id) ||
-      project.modifiedAt > (projectWithSavedAt.lastSavedAt ?? 0)
-    );
-  }
-
   private rememberFileHandle(projectId: string, handle: ProjectFileRef): void {
     this.fileHandlesByProject.set(projectId, handle);
     this.activeProjectId = projectId;

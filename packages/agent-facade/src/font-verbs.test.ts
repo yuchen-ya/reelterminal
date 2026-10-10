@@ -33,6 +33,12 @@ class FakeStore implements LiveProjectStore {
   async getState() {
     return { project: structuredClone(this.project), revision: this.revision };
   }
+  async listRequirements(): Promise<never> {
+    throw new Error("not needed in these tests");
+  }
+  async getRequirement(): Promise<never> {
+    throw new Error("not needed in these tests");
+  }
   async getContext(): Promise<never> {
     throw new Error("not needed in these tests");
   }

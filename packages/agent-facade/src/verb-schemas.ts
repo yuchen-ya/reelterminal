@@ -1,4 +1,5 @@
 import { PLUGIN_TOOLS } from "./plugins";
+import { REQUIREMENTS_GET_SCHEMA, REQUIREMENTS_LIST_SCHEMA } from "./requirements";
 /**
  * The SINGLE hand-maintained schema declaration per facade verb
  * Both consumers derive from these objects:
@@ -1927,6 +1928,8 @@ export const VERB_PARAM_SCHEMAS: {
   "project.save": PROJECT_SAVE_SCHEMA,
   "project.rename": PROJECT_RENAME_SCHEMA,
   "project.get_state": EMPTY_PARAMS_SCHEMA,
+  "requirements.list": REQUIREMENTS_LIST_SCHEMA,
+  "requirements.get": REQUIREMENTS_GET_SCHEMA,
   "project.changes": PROJECT_CHANGES_SCHEMA,
   "media.import": MEDIA_IMPORT_SCHEMA,
   "media.render_html": MEDIA_RENDER_HTML_SCHEMA,

@@ -1504,8 +1504,10 @@ export class ActionExecutor {
                 ...c,
                 startTime: c.startTime + params.delta,
                 // Timeline delta written into source-media seconds: scale it
-                // for constant-speed clips (see clip/trim).
-                inPoint: c.inPoint - params.delta * (c.speed ?? 1),
+                // for constant-speed clips (see clip/trim). A negative delta
+                // extends this clip's head, so the source window must open
+                // EARLIER — same formula as clip/roll's right clip.
+                inPoint: c.inPoint + params.delta * (c.speed ?? 1),
                 duration: c.duration - params.delta,
               };
             }

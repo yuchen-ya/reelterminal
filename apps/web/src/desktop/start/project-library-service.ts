@@ -111,7 +111,10 @@ export async function purgeLibraryProjects(
   // Legacy cleanup happens while the project is still recoverable in the bin.
   // The workspace transaction retains tombstones against stale recovery imports.
   await workspaceManager.purgeProjects(ids, mediaIds);
-  const plan = await createMediaCleanupPlan(ids[0], mediaIds);
+  // Scope the cleanup to every purged project, not just the first: media of
+  // the other projects must be eligible as candidates too or their blobs are
+  // orphaned in storage forever.
+  const plan = await createMediaCleanupPlan(ids, mediaIds);
   const result = await executeMediaCleanupPlan(plan);
   return {
     reclaimedBytes: result.reclaimedBytes,

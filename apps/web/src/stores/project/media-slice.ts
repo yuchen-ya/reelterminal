@@ -788,16 +788,9 @@ export function createMediaSlice(set: Set, get: Get): MediaSlice {
 
       const sourcePath = desktopFileSourcePath(file);
       const result = await get().importMedia(file, {
-        ...(context ? {
-          projectId,
-          workspaceId: workspaceId ?? undefined,
-          expectedRevision,
-        } : {}),
-        ...(!context ? {
-          projectId,
-          ...(workspaceId ? { workspaceId } : {}),
-          expectedRevision,
-        } : {}),
+        projectId,
+        workspaceId: workspaceId ?? undefined,
+        expectedRevision,
         ...(sourcePath ? { sourcePath } : {}),
         sourceFile: {
           name: file.name,

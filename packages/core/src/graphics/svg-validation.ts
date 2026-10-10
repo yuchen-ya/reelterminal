@@ -85,9 +85,12 @@ const URL_ATTR_RE = /\b(?:xlink:href|href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 // <set attributeName="href" to="https://..."/> inside an <image> — rewriting
 // the reference without tripping URL_ATTR_RE. The retarget itself is rejected,
 // whatever value the animation would write. The lookahead keeps lookalike
-// elements (<settings>, <animateMotion>) out of the match.
+// elements (<settings>, <animateMotion>) out of the match. The body skips
+// over quoted attribute values so a ">" inside a value cannot truncate the
+// element before its attributeName is seen (an XML parser would still read
+// the full element, so the gate must too).
 const SMIL_ELEMENT_RE =
-  /<(?:[a-zA-Z][\w.-]*:)?(?:set|animate|animatetransform)(?![\w.:-])[^>]*>/gi;
+  /<(?:[a-zA-Z][\w.-]*:)?(?:set|animate|animatetransform)(?![\w.:-])(?:"[^"]*"|'[^']*'|[^>"'])*>/gi;
 const SMIL_ATTRIBUTE_NAME_RE =
   /\battributeName\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
 const URL_ATTR_NAMES = new Set(["href", "xlink:href", "src"]);

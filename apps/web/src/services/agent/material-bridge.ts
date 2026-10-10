@@ -249,9 +249,8 @@ async function handleAttach(
       return bridgeError({ code: "CONFLICT", message: "Workspace runtime changed since the targeted read" });
     }
     const scope = projectLedgerScope(target);
-    const projectId = scope;
     const projectLedger = idempotencyKey
-      ? attachLedger.get(projectId)
+      ? attachLedger.get(scope)
       : undefined;
     const prior = idempotencyKey ? projectLedger?.get(idempotencyKey) : undefined;
     if (prior) {
@@ -299,10 +298,10 @@ async function handleAttach(
       });
     }
     if (idempotencyKey) {
-      let ledger = attachLedger.get(projectId);
+      let ledger = attachLedger.get(scope);
       if (!ledger) {
         ledger = new Map();
-        attachLedger.set(projectId, ledger);
+        attachLedger.set(scope, ledger);
       }
       ledger.set(idempotencyKey, { payload, result: result.value });
       if (ledger.size > 500) {

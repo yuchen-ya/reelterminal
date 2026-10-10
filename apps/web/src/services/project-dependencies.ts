@@ -1,4 +1,5 @@
 import { workspaceManager } from "./workspace-manager";
+import { collectFontFamilies } from "./project-render-dependencies";
 
 export interface FontDependencyReference {
   readonly family: string;
@@ -6,21 +7,6 @@ export interface FontDependencyReference {
   readonly kind: "node" | "workspace-draft" | "recovery-draft" | "task" | "history";
   readonly referenceId: string;
   readonly label?: string;
-}
-
-function collectFontFamilies(value: unknown, families: Set<string>): void {
-  if (!value || typeof value !== "object") return;
-  if (Array.isArray(value)) {
-    value.forEach((item) => collectFontFamilies(item, families));
-    return;
-  }
-  for (const [key, child] of Object.entries(value)) {
-    if (key === "fontFamily" && typeof child === "string" && child.trim()) {
-      families.add(child.trim());
-    } else {
-      collectFontFamilies(child, families);
-    }
-  }
 }
 
 /** Return every saved/runtime project root that uses the given font family. */

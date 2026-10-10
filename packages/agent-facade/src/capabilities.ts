@@ -7,6 +7,7 @@ import { opencvToolPreflight } from "./media/opencv-runner";
 import { audioAnalysisPreflight, AUDIO_LIMITS } from "./audio-analysis";
 import { COLOR_POLICY as COLOR_POLICY_DISCLOSURE } from "./color-policy";
 import { PLUGIN_TOOLS } from "./plugins";
+import { MAX_TIMELINE_SOURCE_MAP_POINTS } from "./timeline-source-map";
 /**
  * Live capability reporting derives each claim from what this
  * session has actually been given and from each provider's own live
@@ -688,7 +689,7 @@ export async function buildCapabilities(
           freezeStartTime: "clip-local playback seconds, including preceding freeze durations",
           curveSemantics: "when keyframes are present they replace base speed; the curve integrates in ascending source-relative time, then reverse reflects the resulting offset across the source span; freeze.sourceTime is used literally and is not reflected; easing overshoot is clamped to [0.1, 20]",
           splitTrimReviewRange: "clip.split and clip.trim reject speed-ramped or frozen clips; ReviewRange also rejects reversed clips and currently requires forward constant-speed clips",
-          mappingQueryLimit: 64,
+          mappingQueryLimit: MAX_TIMELINE_SOURCE_MAP_POINTS,
             mappingQueryDirection: "timeline point to source point; no source-to-timeline inverse or endpoint-only nonlinear interval mapping",
             audioLimitations: "The current realtime/export audio schedulers use constant clip speed; they do not evaluate the speed curve or freeze holds. Pitch correction is persisted but is not consumed by these schedulers. Audio during freezes and nonlinear audio retiming require a separate product decision.",
         },

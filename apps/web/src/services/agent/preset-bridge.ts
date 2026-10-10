@@ -15,7 +15,7 @@ import { projectGuardError, projectLedgerScope, type ProjectGuard } from "./proj
  * every committed change, so the GUI preset panels re-render the moment an
  * agent creates, renames, or deletes a preset — no polling either way.
  */
-import type { PresetListItem } from "@reelterminal/agent-facade";
+import { presetApplyTargetProblem, type PresetListItem } from "@reelterminal/agent-facade";
 import type {
   CustomPresetRecord,
   PresetKind,
@@ -99,136 +99,47 @@ function serviceError(
   });
 }
 
-/** Structural re-check of the kind-tagged target (mirrors the facade layer). */
+/**
+ * Structural re-check of the kind-tagged target. The predicate itself lives
+ * in agent-facade (`presetApplyTargetProblem`) so the renderer and the facade
+ * layer can never drift apart; here we only re-tag it as a bridge error and
+ * narrow the already-validated record into the local target type.
+ */
 function parseApplyTarget(raw: unknown):
   | { ok: true; target: PresetApplyTarget }
   | { ok: false; error: PresetBridgeError } {
-  if (typeof raw !== "object" || raw === null) {
-    return {
-      ok: false,
-      error: { code: "INVALID_PARAMS", message: "preset.apply requires a target object" },
-    };
+  const problem = presetApplyTargetProblem(raw);
+  if (problem !== null) {
+    return { ok: false, error: { code: "INVALID_PARAMS", message: problem } };
   }
   const record = raw as Record<string, unknown>;
   const kind = record.kind;
   if (kind === "graphics") {
-    if (
-      record.trackId !== undefined &&
-      (!isString(record.trackId) || record.trackId.length === 0)
-    ) {
-      return {
-        ok: false,
-        error: {
-          code: "INVALID_PARAMS",
-          message:
-            "graphics trackId must be a non-empty graphics track id; omit it to target the first graphics track (one is created when none exists)",
-        },
-      };
-    }
-    if (
-      record.startTime !== undefined &&
-      (typeof record.startTime !== "number" ||
-        !Number.isFinite(record.startTime) ||
-        record.startTime < 0)
-    ) {
-      return {
-        ok: false,
-        error: {
-          code: "INVALID_PARAMS",
-          message: "graphics startTime must be a finite number >= 0 (timeline seconds)",
-        },
-      };
-    }
-    if (
-      record.durationSec !== undefined &&
-      (typeof record.durationSec !== "number" ||
-        !Number.isFinite(record.durationSec) ||
-        record.durationSec <= 0)
-    ) {
-      return {
-        ok: false,
-        error: {
-          code: "INVALID_PARAMS",
-          message:
-            "graphics durationSec must be a finite number > 0 (seconds); omit it for the default 5s",
-        },
-      };
-    }
     return {
       ok: true,
       target: {
         kind: "graphics",
         ...(record.trackId !== undefined ? { trackId: record.trackId as string } : {}),
-        ...(record.startTime !== undefined ? { startTime: record.startTime } : {}),
-        ...(record.durationSec !== undefined ? { durationSec: record.durationSec } : {}),
+        ...(record.startTime !== undefined ? { startTime: record.startTime as number } : {}),
+        ...(record.durationSec !== undefined ? { durationSec: record.durationSec as number } : {}),
       },
     };
   }
   if (kind === "text") {
-    if (record.mode !== "updateStyle" || !isString(record.clipId) || record.clipId.length === 0) {
-      return {
-        ok: false,
-        error: {
-          code: "INVALID_PARAMS",
-          message:
-            'text targets support {"kind":"text","mode":"updateStyle","clipId":...} — create a text clip first, then restyle it from the preset',
-        },
-      };
-    }
     return {
       ok: true,
-      target: { kind: "text", mode: "updateStyle", clipId: record.clipId },
+      target: { kind: "text", mode: "updateStyle", clipId: record.clipId as string },
     };
   }
   if (kind === "effect") {
-    const clipIds = stringArray(record.clipIds);
-    if (!clipIds || clipIds.length === 0) {
-      return {
-        ok: false,
-        error: {
-          code: "INVALID_PARAMS",
-          message: "effect target requires a non-empty clipIds array",
-        },
-      };
-    }
-    return { ok: true, target: { kind: "effect", clipIds } };
-  }
-  if (kind === "transition") {
-    if (!isString(record.clipAId) || record.clipAId.length === 0) {
-      return {
-        ok: false,
-        error: {
-          code: "INVALID_PARAMS",
-          message: "transition target requires clipAId (the clip whose out-point transitions)",
-        },
-      };
-    }
-    if (
-      record.clipBId !== undefined &&
-      (!isString(record.clipBId) || record.clipBId.length === 0)
-    ) {
-      return {
-        ok: false,
-        error: {
-          code: "INVALID_PARAMS",
-          message: "transition clipBId must be a non-empty clip id",
-        },
-      };
-    }
-    return {
-      ok: true,
-      target: {
-        kind: "transition",
-        clipAId: record.clipAId,
-        ...(record.clipBId !== undefined ? { clipBId: record.clipBId as string } : {}),
-      },
-    };
+    return { ok: true, target: { kind: "effect", clipIds: record.clipIds as string[] } };
   }
   return {
-    ok: false,
-    error: {
-      code: "INVALID_PARAMS",
-      message: `unknown target kind "${String(kind)}" (expected text | effect | transition | graphics)`,
+    ok: true,
+    target: {
+      kind: "transition",
+      clipAId: record.clipAId as string,
+      ...(record.clipBId !== undefined ? { clipBId: record.clipBId as string } : {}),
     },
   };
 }

@@ -462,8 +462,11 @@ async function enrichNodeRenderDependencies(node: ProjectNodeRecord): Promise<Pr
     !dependency.startsWith("font-render:") &&
     !dependency.startsWith("image:"),
   );
+  // `node` is a fresh private record from readOne; the fields kept from it are
+  // never mutated below, so a deep clone of the whole record (including the
+  // heavy `project` that is replaced wholesale) would be pure waste.
   return {
-    ...structuredClone(node),
+    ...node,
     project,
     missingDependencies: [...new Set([...nonRenderDependencies, ...renderDependencies])].sort(),
   };
@@ -528,8 +531,7 @@ export class WorkspaceManager {
       return;
     }
     if (this.db) return;
-    if (!this.initializePromise) {
-      this.initializePromise = this.openDatabase().then(async (db) => {
+    this.initializePromise = this.openDatabase().then(async (db) => {
         this.db = db;
         db.onversionchange = () => {
           db.close();
@@ -551,7 +553,6 @@ export class WorkspaceManager {
       }).finally(() => {
         this.initializePromise = null;
       });
-    }
     await this.initializePromise;
   }
 
@@ -932,23 +933,15 @@ export class WorkspaceManager {
     return candidates;
   }
 
-  async getNode(projectId: string, nodeId: string): Promise<ProjectNodeRecord | null>;
-  async getNode(target: { projectId: string; nodeId: string }): Promise<ProjectNodeRecord | null>;
   async getNode(
-    projectIdOrTarget: string | { projectId: string; nodeId: string },
-    nodeId?: string,
+    projectId: string,
+    nodeId: string,
   ): Promise<ProjectNodeRecord | null> {
     await this.initialize();
-    const projectId = typeof projectIdOrTarget === "string"
-      ? projectIdOrTarget
-      : projectIdOrTarget.projectId;
-    const requestedNodeId = typeof projectIdOrTarget === "string"
-      ? nodeId!
-      : projectIdOrTarget.nodeId;
-    const summary = this.nodes.get(requestedNodeId);
+    const summary = this.nodes.get(nodeId);
     this.assertProjectNotDeleted(projectId);
     if (summary && summary.projectId !== projectId) return null;
-    const node = await this.readOne<ProjectNodeRecord>(NODES, requestedNodeId);
+    const node = await this.readOne<ProjectNodeRecord>(NODES, nodeId);
     if (!node || node.projectId !== projectId) return null;
     const enriched = await withMediaReferenceWrite(() => enrichNodeRenderDependencies(node));
     this.nodes.set(enriched.id, nodeSummary(enriched));
@@ -1355,9 +1348,6 @@ export class WorkspaceManager {
         );
         throw new Error(committedBatch.result.error?.message ?? "Action batch failed after durable validation");
       }
-      if (liveStore.getState().workspaceRevision !== nextRevision) {
-        await this.flushWorkspaceWrites(input.target.workspaceId);
-      }
       await this.flushWorkspaceWrites(input.target.workspaceId);
       return {
         batch: committedBatch,
@@ -1726,7 +1716,6 @@ export class WorkspaceManager {
         }
         tx.objectStore(WORKSPACES).put({
           ...targetRecord,
-          baseNodeId: targetRecord.baseNodeId,
           revision: nextRevision,
           updatedAt: Date.now(),
           dirty,
@@ -1898,10 +1887,6 @@ export class WorkspaceManager {
       if (store.getState().workspaceRevision !== currentRevision) {
         tx.abort();
         await completed.catch(() => undefined);
-        throw new Error("Workspace changed while recovering the draft");
-      }
-      if (store.getState().workspaceRevision !== currentRevision) {
-        tx.abort();
         throw new Error("Workspace changed while recovering the draft");
       }
       tx.objectStore(WORKSPACES).put({ ...workspace, baseNodeId: draft.baseNodeId, revision, updatedAt: Date.now(), dirty: true, project: cloneProject(preparedDraft) });

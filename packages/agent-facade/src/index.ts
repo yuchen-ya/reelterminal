@@ -1,5 +1,7 @@
 import { bindBundledTools, type BundledToolBindings } from "./plugin-runtime";
 import { withValidatedFacadeCalls } from "./request-validation";
+import type { RequirementsListParams, RequirementsListResult, RequirementsGetParams, RequirementsGetResult } from "./requirements";
+export type { RequirementsListParams, RequirementsListResult, RequirementsGetParams, RequirementsGetResult } from "./requirements";
 /**
  * @reelterminal/agent-facade — the agent-facing facade.
  *
@@ -85,6 +87,8 @@ export interface AgentFacade extends BundledToolBindings {
     params: ProjectRenameParams,
   ) => Promise<FacadeResult<ProjectRenameResult>>;
   readonly "project.get_state": () => Promise<FacadeResult<ProjectState>>;
+  readonly "requirements.list": (params?: RequirementsListParams) => Promise<FacadeResult<RequirementsListResult>>;
+  readonly "requirements.get": (params: RequirementsGetParams) => Promise<FacadeResult<RequirementsGetResult>>;
   readonly "project.changes": (
     params: ProjectChangesParams,
   ) => Promise<FacadeResult<ProjectChangesResult>>;
@@ -241,6 +245,8 @@ export function createAgentFacade(config: AgentFacadeConfig = {}): AgentFacade {
     "project.save": (params) => session.projectSave(params),
     "project.rename": (params) => session.projectRename(params),
     "project.get_state": () => session.projectGetState(),
+    "requirements.list": (params) => session.requirementsList(params),
+    "requirements.get": (params) => session.requirementsGet(params),
     "project.changes": (params) => session.projectChanges(params),
     ...Object.fromEntries(WORKSPACE_VERBS.map((verb) => [verb, (params: Record<string, unknown> = {}) => session.workspaceCommand(verb, params)])) as Record<WorkspaceVerb, (params?: Record<string, unknown>) => Promise<FacadeResult<unknown>>>,
     "media.import": (params) => session.mediaImport(params),
@@ -445,3 +451,4 @@ export type { SourceInspectInput, SourceInspectResult } from "./plugins/source-i
 
 export { getCommandCatalog, getCommandCatalogEntry } from "./command-catalog";
 export type { CommandCatalogEntry, CommandCatalogMode, CommandEffect, RetryPolicy } from "./command-catalog";
+export { presetApplyTargetProblem } from "./preset-verbs";

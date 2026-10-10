@@ -219,7 +219,9 @@ function convertLottieShape(
         shapeType: shape.ty === "el" ? "ellipse" : "rectangle",
         width: Math.max(1, size[0] * groupTransform.a),
         height: Math.max(1, size[1] * groupTransform.d),
-        style: style(shape.ty === "rc" ? readNumber(shape.r, 0) : 0),
+        // Corner radius must follow the same group scale as the size, or a
+        // scaled group renders sharper corners than the baked-path branch.
+        style: style(shape.ty === "rc" ? readNumber(shape.r, 0) * Math.min(groupTransform.a, groupTransform.d) : 0),
       },
     ];
   }
@@ -274,7 +276,7 @@ function convertTextLayer(
     visible: true,
     locked: false,
     transform,
-    keyframes: transformKeyframes(layer.ks, lottie.fr, layer.ip),
+    keyframes: transformKeyframes(layer.ks, effectiveFrameRate(lottie), layer.ip),
     text: document?.t ?? layer.nm ?? "Lottie Text",
     style: {
       fontFamily: document?.f ?? "Inter",

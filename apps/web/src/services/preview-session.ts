@@ -16,11 +16,14 @@ import {
   captureCurrentViewState,
   workspaceManager,
   type PreviewHandle,
+  type PreviewSource,
   type ProjectNodeSummary,
   type WorkspaceTarget,
   type WorkspaceViewState,
 } from "./workspace-manager";
 import { getTimelineSelectionItem } from "../utils/timeline-item-actions";
+
+export type { PreviewSource };
 
 /**
  * Read-only preview of a historical version node (or an Agent trial
@@ -35,10 +38,6 @@ import { getTimelineSelectionItem } from "../utils/timeline-item-actions";
  * - Multiple enters replace the previewed content without creating
  *   workspaces or nodes.
  */
-
-export type PreviewSource =
-  | { kind: "node"; nodeId: string }
-  | { kind: "workspace"; workspaceId: string };
 
 export interface VersionPreviewInfo {
   projectId: string;
@@ -288,10 +287,10 @@ export const previewSession: PreviewSessionApi = {
     const source = handle;
     const target = { projectId: source.projectId, workspaceId: editingWorkspaceIdAtEnter };
     const view = savedViewState;
-    const expectedRevision = workspaceManager.getSnapshot().workspaces.find(workspace => workspace.id === target.workspaceId)!.revision;
-    source.store.getState().copyClips(clipIds);
     const context = await workspaceManager.getWorkspaceContext(target);
     if (handle !== source) throw new Error(i18next.t("previewClipboard.targetChanged"));
+    const expectedRevision = context.revision;
+    source.store.getState().copyClips(clipIds);
     await previewSession.exit();
     const active = workspaceManager.getActiveTarget();
     if (active?.projectId !== target.projectId || active.workspaceId !== target.workspaceId) throw new Error(i18next.t("previewClipboard.targetChanged"));

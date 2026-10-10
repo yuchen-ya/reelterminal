@@ -6,7 +6,7 @@ import {
   useCollabStore,
   installCollabEventListener,
 } from "../../stores/collab-store";
-import { useUIStore } from "../../stores/ui-store";
+import { useUIStore, REQUIREMENT_BOARD_MODAL_ID } from "../../stores/ui-store";
 import { useProjectStore } from "../../stores/project-store";
 import { toast, useNotificationStore } from "../../stores/notification-store";
 
@@ -122,7 +122,7 @@ export function CollabStatusBar(): JSX.Element {
           type="button"
           data-testid="requirement-board-entry"
           aria-label={t("requirementBoard.title")}
-          onClick={() => openModal("requirement-board", { projectId: useProjectStore.getState().project.id })}
+          onClick={() => openModal(REQUIREMENT_BOARD_MODAL_ID, { projectId: useProjectStore.getState().project.id })}
           className="flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-border bg-bg-2 px-2.5 text-[11px] font-medium text-fg transition-colors hover:bg-hover"
         >
           <LayoutTemplate size={13} aria-hidden />
