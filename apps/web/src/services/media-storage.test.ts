@@ -3,9 +3,18 @@
  */
 import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { saveMediaBlob, loadMediaRecord, getMediaIdsByProject, deleteMediaBlob } from "./media-storage";
+import { DB_NAME, DB_VERSION, STORES, hashMediaBlob, hashMediaBytes } from "@reelterminal/core";
+import {
+  saveMediaBlob,
+  loadMediaRecord,
+  getMediaIdsByProject,
+  deleteMediaBlob,
+  loadProjectMediaMetadata,
+} from "./media-storage";
 
 beforeAll(() => {
+  // One factory for the whole file: the module-level StorageEngine keeps its
+  // connection open across tests, so every database must stay reachable.
   vi.stubGlobal("indexedDB", new IDBFactory());
 });
 
@@ -132,5 +141,169 @@ describe("immutable media storage", () => {
     await deleteMediaBlob(mediaId, projectA);
 
     expect(controlledPaths.has(`${projectB}/${mediaId}.mp4`)).toBe(true);
+  });
+});
+
+/** Raw record write for simulating pre-versioned (hashless) media rows. */
+async function putRawMediaRecord(record: Record<string, unknown>): Promise<void> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const upgraded = request.result;
+      if (upgraded.objectStoreNames.contains(STORES.MEDIA)) return;
+      const mediaStore = upgraded.createObjectStore(STORES.MEDIA, { keyPath: "id" });
+      mediaStore.createIndex("projectId", "projectId", { unique: false });
+      mediaStore.createIndex("projectIds", "projectIds", { unique: false, multiEntry: true });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORES.MEDIA, "readwrite");
+      tx.objectStore(STORES.MEDIA).put(record);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+describe("media metadata reads", () => {
+  afterEach(() => {
+    vi.stubGlobal("window", previousWindow);
+  });
+
+  function stubDesktopMediaStore(mediaStore: Record<string, unknown>): void {
+    vi.stubGlobal("window", {
+      reelterminal: { platform: "desktop", mediaStore },
+    } as unknown as Window);
+  }
+
+  it("reports trusted stored hashes without materializing blob bytes", async () => {
+    const mediaId = `meta-${crypto.randomUUID()}`;
+    const projectId = `project-${crypto.randomUUID()}`;
+    const saved = await saveMediaBlob(projectId, mediaId, new Blob(["meta-bytes"]), metadata);
+
+    const entries = await loadProjectMediaMetadata(projectId, [mediaId]);
+
+    // Exact shape: a trusted hash must arrive without a blob payload.
+    expect(entries).toEqual([{
+      id: mediaId,
+      projectId,
+      projectIds: [projectId],
+      contentHash: saved.contentHash,
+    }]);
+  });
+
+  it("surfaces bytes exactly once for a record created before versioned media", async () => {
+    const mediaId = `legacy-${crypto.randomUUID()}`;
+    const projectId = `project-${crypto.randomUUID()}`;
+    const saved = await saveMediaBlob(projectId, mediaId, new Blob(["legacy-bytes"]), metadata);
+    // Downgrade the durable record to a pre-versioning row: same bytes, no hash.
+    await putRawMediaRecord({
+      id: mediaId,
+      projectId,
+      projectIds: [projectId],
+      blob: new Blob(["legacy-bytes"]),
+      metadata,
+    });
+
+    const entries = await loadProjectMediaMetadata(projectId, [mediaId]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.contentHash).toBeUndefined();
+    expect(await hashMediaBlob(entries[0]?.blob ?? new Blob())).toBe(saved.contentHash);
+  });
+
+  it("reads controlled-only hashes from hash-encoding filenames without byte reads", async () => {
+    const mediaId = `controlled-${crypto.randomUUID()}`;
+    const contentHash = await hashMediaBytes(new TextEncoder().encode("controlled-bytes"));
+    const mediaStore = {
+      listAll: vi.fn(async () => [{
+        projectId: "project-c",
+        mediaId,
+        path: `C:/m/${mediaId}.${contentHash}.mp4`,
+        sizeBytes: 16,
+        contentHash,
+      }]),
+      readAny: vi.fn(async () => {
+        throw new Error("metadata reads must not touch controlled bytes");
+      }),
+    };
+    stubDesktopMediaStore(mediaStore);
+
+    const entries = await loadProjectMediaMetadata("project-c", [mediaId]);
+
+    expect(entries).toEqual([{ id: mediaId, projectId: "project-c", contentHash }]);
+    expect(mediaStore.readAny).not.toHaveBeenCalled();
+  });
+
+  it("does not let a controlled entry shadow a stored record", async () => {
+    const mediaId = `both-${crypto.randomUUID()}`;
+    const projectId = `project-${crypto.randomUUID()}`;
+    const saved = await saveMediaBlob(projectId, mediaId, new Blob(["stored-bytes"]), metadata);
+    const mediaStore = {
+      listAll: vi.fn(async () => [{
+        projectId,
+        mediaId,
+        path: `C:/m/${mediaId}.mp4`,
+        sizeBytes: 12,
+      }]),
+      readAny: vi.fn(async () => new ArrayBuffer(0)),
+    };
+    stubDesktopMediaStore(mediaStore);
+
+    const entries = await loadProjectMediaMetadata(projectId, [mediaId]);
+
+    expect(entries).toEqual([{
+      id: mediaId,
+      projectId,
+      projectIds: [projectId],
+      contentHash: saved.contentHash,
+    }]);
+    expect(mediaStore.readAny).not.toHaveBeenCalled();
+  });
+
+  it("falls back to bytes for controlled-only files without an encoded hash", async () => {
+    const mediaId = `legacy-controlled-${crypto.randomUUID()}`;
+    const bytes = new TextEncoder().encode("legacy-controlled");
+    const mediaStore = {
+      listAll: vi.fn(async () => [{
+        projectId: "project-c",
+        mediaId,
+        path: `C:/m/${mediaId}.mp4`,
+        sizeBytes: bytes.byteLength,
+      }]),
+      readAny: vi.fn(async () => bytes.buffer),
+    };
+    stubDesktopMediaStore(mediaStore);
+
+    const entries = await loadProjectMediaMetadata("project-c", [mediaId]);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.contentHash).toBeUndefined();
+    expect(await hashMediaBlob(entries[0]?.blob ?? new Blob())).toBe(
+      await hashMediaBytes(bytes),
+    );
+    expect(mediaStore.readAny).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits unreadable controlled-only media so checks report it missing", async () => {
+    const mediaId = `gone-controlled-${crypto.randomUUID()}`;
+    const mediaStore = {
+      listAll: vi.fn(async () => [{
+        projectId: "project-c",
+        mediaId,
+        path: `C:/m/${mediaId}.mp4`,
+        sizeBytes: 3,
+      }]),
+      readAny: vi.fn(async () => null),
+    };
+    stubDesktopMediaStore(mediaStore);
+
+    expect(await loadProjectMediaMetadata("project-c", [mediaId])).toEqual([]);
   });
 });

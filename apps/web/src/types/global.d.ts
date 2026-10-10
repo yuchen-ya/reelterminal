@@ -444,12 +444,16 @@ interface ReelTerminalDesktopBridge {
           mediaId: string;
           path: string;
           sizeBytes: number;
+          /** Commit-time hash encoded in the filename; absent on legacy files. */
+          contentHash?: string;
         }[]>;
         listAll(): Promise<{
           projectId: string;
           mediaId: string;
           path: string;
           sizeBytes: number;
+          /** Commit-time hash encoded in the filename; absent on legacy files. */
+          contentHash?: string;
         }[]>;
         clearAll(): Promise<void>;
       };

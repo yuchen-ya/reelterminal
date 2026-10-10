@@ -17,7 +17,7 @@ import type {
   ActionBatchResult,
 } from "../stores/project/action-batch";
 import { withMediaReferenceWrite } from "./media-storage";
-import { loadProjectMedia } from "./media-storage";
+import { loadProjectMedia, loadProjectMediaMetadata } from "./media-storage";
 import { restoreMediaItem } from "../utils/media-recovery";
 import { getUniqueProjectName } from "../utils/project-names";
 import { autoSaveManager } from "./auto-save";
@@ -486,7 +486,9 @@ function collectMediaIdsFromHistory(value: unknown, ids: Set<string>): void {
 async function missingProjectDependencies(project: Project): Promise<string[]> {
   const available = new Set(project.mediaLibrary.items.map((item) => item.id));
   const missing = new Set<string>();
-  const storedMedia = new Map((await loadProjectMedia(
+  // The archive check compares hashes only; byte reads happen solely for
+  // records that predate versioned media (no trusted stored hash).
+  const storedMedia = new Map((await loadProjectMediaMetadata(
     project.id,
     project.mediaLibrary.items.map((item) => item.id),
   )).map((item) => [item.id, item]));
@@ -495,7 +497,12 @@ async function missingProjectDependencies(project: Project): Promise<string[]> {
     if (item.isPlaceholder || !stored) {
       missing.add(item.id);
     } else if (item.contentHash) {
-      const storedHash = stored.contentHash ?? await hashMediaBlob(stored.blob);
+      // A hash computed from legacy bytes is deliberately not persisted back:
+      // the only write path re-puts the whole inline-blob record, re-reading
+      // the bytes this check just avoided, and runs outside the media
+      // reference-write lock on the preview caller path.
+      const storedHash = stored.contentHash
+        ?? (stored.blob ? await hashMediaBlob(stored.blob) : undefined);
       if (storedHash !== item.contentHash) missing.add(item.id);
     }
   }

@@ -11,12 +11,22 @@ const EXTENSION_PATTERN = /^[a-z0-9]{1,10}$/;
 // Exact prefix of in-flight write temporaries; the startup sweep below must
 // never match anything else.
 const PENDING_PREFIX = ".pending-";
+// Committed files are `<mediaId>[.<sha256>].<extension>`; the optional middle
+// segment can only be an embedded content hash because media ids never
+// contain dots and extensions are at most 10 characters.
+const MEDIA_NAME_PATTERN = /^([a-zA-Z0-9_-]{1,128})(?:\.([0-9a-f]{64}))?\.([a-z0-9]{1,10})$/;
 
 export interface ControlledMediaEntry {
   readonly projectId: string;
   readonly mediaId: string;
   readonly path: string;
   readonly sizeBytes: number;
+  /**
+   * Commit-time SHA-256 embedded in the filename, readable without touching
+   * file bytes. Absent for files written before hash-encoding names, where
+   * only the bytes know their hash.
+   */
+  readonly contentHash?: string;
 }
 
 export interface ResolvedControlledMediaVersion extends ControlledMediaEntry {
@@ -88,10 +98,11 @@ export class ControlledMediaStore {
     return path.join(this.root, projectId);
   }
 
-  private mediaPath(projectId: string, mediaId: string, extension: string): string {
+  private mediaPath(projectId: string, mediaId: string, contentHash: string, extension: string): string {
     assertId(mediaId, "media id");
+    if (!HASH_PATTERN.test(contentHash)) throw new Error("Invalid SHA-256 hash");
     if (!EXTENSION_PATTERN.test(extension)) throw new Error("Invalid media extension");
-    return path.join(this.projectDirectory(projectId), `${mediaId}.${extension}`);
+    return path.join(this.projectDirectory(projectId), `${mediaId}.${contentHash}.${extension}`);
   }
 
   private async findMediaPath(projectId: string, mediaId: string): Promise<string | null> {
@@ -142,7 +153,7 @@ export class ControlledMediaStore {
     await mkdir(directory, { recursive: true });
     const sessionId = randomUUID();
     const temporaryPath = path.join(directory, `${PENDING_PREFIX}${sessionId}`);
-    const destinationPath = this.mediaPath(args.projectId, args.mediaId, args.extension);
+    const destinationPath = this.mediaPath(args.projectId, args.mediaId, args.expectedHash, args.extension);
     const file = await open(temporaryPath, "wx");
     this.writes.set(sessionId, {
       ...args,
@@ -272,12 +283,18 @@ export class ControlledMediaStore {
     });
     const entries: ControlledMediaEntry[] = [];
     for (const name of names) {
-      const match = /^([a-zA-Z0-9_-]{1,128})\.([a-z0-9]{1,10})$/.exec(name);
+      const match = MEDIA_NAME_PATTERN.exec(name);
       if (!match) continue;
       const filePath = path.join(directory, name);
       const fileStat = await stat(filePath);
       if (fileStat.isFile()) {
-        entries.push({ projectId, mediaId: match[1], path: filePath, sizeBytes: fileStat.size });
+        entries.push({
+          projectId,
+          mediaId: match[1],
+          path: filePath,
+          sizeBytes: fileStat.size,
+          ...(match[2] ? { contentHash: match[2] } : {}),
+        });
       }
     }
     return entries;
@@ -300,7 +317,7 @@ export class ControlledMediaStore {
     await rm(this.root, { recursive: true, force: true });
   }
 
-  getPath(projectId: string, mediaId: string, extension: string): string {
-    return this.mediaPath(projectId, mediaId, extension);
+  getPath(projectId: string, mediaId: string, contentHash: string, extension: string): string {
+    return this.mediaPath(projectId, mediaId, contentHash, extension);
   }
 }

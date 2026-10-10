@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -41,9 +41,16 @@ describe("ControlledMediaStore", () => {
     expect(await store.read("project-1", "media-1")).toEqual(
       bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
     );
-    expect(await store.listProject("project-1")).toMatchObject([
-      { mediaId: "media-1", path: saved.path, sizeBytes: bytes.byteLength },
+    expect(await store.listProject("project-1")).toEqual([
+      {
+        projectId: "project-1",
+        mediaId: "media-1",
+        path: saved.path,
+        sizeBytes: bytes.byteLength,
+        contentHash: hash(bytes),
+      },
     ]);
+    expect((await store.listAll())[0]?.contentHash).toBe(hash(bytes));
   });
 
   it("treats identical writes as idempotent and rejects different bytes for the same id", async () => {
@@ -62,7 +69,7 @@ describe("ControlledMediaStore", () => {
     await expect(store.commitWrite(session)).rejects.toThrow(/immutable/i);
     expect(await readFile(first.path)).toEqual(original);
     expect((await readdir(path.dirname(first.path))).filter((name) => !name.startsWith(".pending-"))).toEqual([
-      "media-1.mp4",
+      `media-1.${hash(original)}.mp4`,
     ]);
   });
 
@@ -104,6 +111,48 @@ describe("ControlledMediaStore", () => {
     expect(await store.read("project-1", "media-1")).toBeNull();
     expect(await store.listProject("project-1")).toEqual([]);
     expect(await store.listProject("project-2")).toEqual([]);
-    expect(version.path).toContain("media-1.mp4");
+    expect(version.path).toMatch(/media-1\.[0-9a-f]{64}\.mp4$/);
+  });
+
+  it("lists hash-encoded names without reading bytes and keeps legacy names readable", async () => {
+    const bytes = Buffer.from("legacy-bytes");
+    const legacyPath = path.join(root, "project-1", "legacy-media.mp4");
+    await mkdir(path.dirname(legacyPath), { recursive: true });
+    await writeFile(legacyPath, bytes);
+
+    const legacyEntries = await store.listProject("project-1");
+    expect(legacyEntries).toEqual([{
+      projectId: "project-1",
+      mediaId: "legacy-media",
+      path: legacyPath,
+      sizeBytes: bytes.byteLength,
+    }]);
+    expect(await store.read("project-1", "legacy-media")).toEqual(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    );
+
+    // A pre-hash-encoding file keeps working through the immutable commit
+    // path: identical bytes dedupe onto it, different bytes are refused.
+    const session = await store.beginWrite({
+      projectId: "project-1",
+      mediaId: "legacy-media",
+      expectedHash: hash(bytes),
+      extension: "mp4",
+    });
+    await store.writeChunk(session, bytes);
+    const replay = await store.commitWrite(session);
+    expect(replay).toEqual({ path: legacyPath, contentHash: hash(bytes), created: false });
+    const committed = await store.listProject("project-1");
+    expect(committed).toHaveLength(1);
+    expect(committed[0]?.contentHash).toBeUndefined();
+
+    const other = await store.beginWrite({
+      projectId: "project-1",
+      mediaId: "legacy-media",
+      expectedHash: hash(Buffer.from("other-bytes")),
+      extension: "mp4",
+    });
+    await store.writeChunk(other, Buffer.from("other-bytes"));
+    await expect(store.commitWrite(other)).rejects.toThrow(/immutable/i);
   });
 });

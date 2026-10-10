@@ -7,7 +7,7 @@ import { WorkspaceManager } from "./workspace-manager";
 import * as mediaStorage from "./media-storage";
 import { cacheCustomFontBytes, forgetCustomFontBytes } from "./custom-font-storage";
 import * as renderDependencies from "./project-render-dependencies";
-import { PERF_PROJECT_COUNT, seedPerfLibrary, type PerfLibraryHandle } from "./perf-library-fixtures";
+import { PERF_PROJECT_COUNT, perfMediaBytes, seedPerfLibrary, type PerfLibraryHandle } from "./perf-library-fixtures";
 
 /**
  * Counts full-project clones: structuredClone calls whose argument is a bare
@@ -275,6 +275,7 @@ describe("WorkspaceManager perf baselines", () => {
     });
 
     const loadSpy = vi.spyOn(mediaStorage, "loadProjectMedia");
+    const metadataSpy = vi.spyOn(mediaStorage, "loadProjectMediaMetadata");
     const hashSpy = vi.spyOn(core, "hashMediaBlob");
     const start = performance.now();
     const saved = await manager.saveNode({
@@ -283,8 +284,8 @@ describe("WorkspaceManager perf baselines", () => {
       idempotencyKey: "perf-node-c-0",
     });
     const elapsed = performance.now() - start;
-    // The spy wraps the real (never-rejecting) implementation, so every
-    // recorded result settles to a MediaRecord[].
+    // The spies wrap real (never-rejecting) implementations, so every
+    // recorded result settles.
     const loadResults = await Promise.all(
       (loadSpy.mock.results as unknown as { value: Promise<core.MediaRecord[]> }[])
         .map((result) => result.value),
@@ -297,17 +298,141 @@ describe("WorkspaceManager perf baselines", () => {
       ),
       0,
     );
+    const metadataResults = await Promise.all(
+      (metadataSpy.mock.results as unknown as { value: Promise<mediaStorage.StoredMediaMetadataEntry[]> }[])
+        .map((result) => result.value),
+    );
+    const metadataBlobBytes = metadataResults.reduce(
+      (total, entries) => total + entries.reduce((bytes, entry) => bytes + (entry.blob?.size ?? 0), 0),
+      0,
+    );
     console.log(
-      `[perf-baseline][archive-check] loadProjectMedia=${loadSpy.mock.calls.length}` +
+      `[perf-09][archive-check] loadProjectMedia=${loadSpy.mock.calls.length}` +
+      ` metadataReads=${metadataSpy.mock.calls.length}` +
       ` mediaRecordsMaterialized=${materializedRecords} blobBytesMaterialized=${materializedBytes}` +
+      ` metadataBlobBytes=${metadataBlobBytes}` +
       ` hashMediaBlob=${hashSpy.mock.calls.length}` +
       ` missingDependencies=${JSON.stringify(saved.node.missingDependencies)}` +
       ` elapsedMs=${elapsed.toFixed(1)}`,
     );
-    loadSpy.mockRestore();
-    hashSpy.mockRestore();
-    // Only the placeholder item is missing: stored bytes match every
-    // trusted hash and legacy items are not hash-checked today.
+    // Changeset 09: trusted stored hashes verify byte-free. The archive
+    // check runs through loadProjectMediaMetadata once and never touches
+    // loadProjectMedia, a record blob, or hashMediaBlob. Only the
+    // placeholder item is missing: stored bytes match every trusted hash and
+    // legacy items are not hash-checked today. (Counts must be read before
+    // mockRestore resets the spies.)
     expect(saved.node.missingDependencies).toEqual([`perf-media-0-5`]);
+    expect(loadSpy.mock.calls.length).toBe(0);
+    expect(metadataSpy.mock.calls.length).toBe(1);
+    expect(materializedRecords).toBe(0);
+    expect(materializedBytes).toBe(0);
+    expect(metadataBlobBytes).toBe(0);
+    expect(hashSpy.mock.calls.length).toBe(0);
+    loadSpy.mockRestore();
+    metadataSpy.mockRestore();
+    hashSpy.mockRestore();
+  });
+
+  it("still reads bytes once for controlled media without an encoded hash", async () => {
+    const { manager, library } = await seedFresh();
+    const project = library.projects[0];
+    const target = { projectId: project.projectId, workspaceId: project.defaultWorkspaceId };
+    const context = await manager.getWorkspaceContext(target);
+
+    // A desktop controlled store holding a pre-hash-encoding file: the list
+    // result knows the media but not its hash, so only the bytes can verify
+    // the item's trusted hash.
+    const legacyId = "perf-media-controlled-legacy-0";
+    const legacyBytes = perfMediaBytes(0xc0ffee, 24 * 1024);
+    const legacyHash = await core.hashMediaBytes(legacyBytes);
+    const legacyMetadata = {
+      duration: 0,
+      width: 1920,
+      height: 1080,
+      frameRate: 30,
+      codec: "",
+      sampleRate: 0,
+      channels: 0,
+      fileSize: legacyBytes.byteLength,
+    };
+    const bridge = window as unknown as { reelterminal?: unknown };
+    bridge.reelterminal = {
+      platform: "desktop",
+      mediaStore: {
+        listAll: async () => [{
+          projectId: project.projectId,
+          mediaId: legacyId,
+          path: `C:/m/${legacyId}.mp4`,
+          sizeBytes: legacyBytes.byteLength,
+        }],
+        readAny: async () => legacyBytes.buffer,
+      },
+    };
+    try {
+      context.store.setState({
+        project: {
+          ...context.store.getState().project,
+          name: "Perf Project 0 legacy measure",
+          modifiedAt: Date.now(),
+          mediaLibrary: {
+            items: [
+              ...context.store.getState().project.mediaLibrary.items,
+              {
+                id: legacyId,
+                name: legacyId,
+                type: "image" as const,
+                fileHandle: null,
+                blob: null,
+                metadata: legacyMetadata,
+                thumbnailUrl: "data:image/png;base64,AAAA",
+                waveformData: null,
+                contentHash: legacyHash,
+              },
+            ],
+          },
+        },
+      });
+
+      const loadSpy = vi.spyOn(mediaStorage, "loadProjectMedia");
+      const metadataSpy = vi.spyOn(mediaStorage, "loadProjectMediaMetadata");
+      const hashSpy = vi.spyOn(core, "hashMediaBlob");
+      const start = performance.now();
+      const saved = await manager.saveNode({
+        target,
+        name: "Perf node C legacy",
+        idempotencyKey: "perf-node-c-legacy",
+      });
+      const elapsed = performance.now() - start;
+      const metadataResults = await Promise.all(
+        (metadataSpy.mock.results as unknown as { value: Promise<mediaStorage.StoredMediaMetadataEntry[]> }[])
+          .map((result) => result.value),
+      );
+      const metadataBlobBytes = metadataResults.reduce(
+        (total, entries) => total + entries.reduce((bytes, entry) => bytes + (entry.blob?.size ?? 0), 0),
+        0,
+      );
+      console.log(
+        `[perf-09][archive-controlled-legacy] loadProjectMedia=${loadSpy.mock.calls.length}` +
+        ` metadataReads=${metadataSpy.mock.calls.length}` +
+        ` metadataBlobBytes=${metadataBlobBytes}` +
+        ` hashMediaBlob=${hashSpy.mock.calls.length}` +
+        ` missingDependencies=${JSON.stringify(saved.node.missingDependencies)}` +
+        ` elapsedMs=${elapsed.toFixed(1)}`,
+      );
+      // The controlled bytes hash to the item's trusted hash, so only the
+      // placeholder stays missing; exactly the legacy bytes were read and
+      // hashed once, and the trusted items still contributed nothing.
+      expect(saved.node.missingDependencies).toEqual([`perf-media-0-5`]);
+      expect(loadSpy.mock.calls.length).toBe(0);
+      expect(metadataSpy.mock.calls.length).toBe(1);
+      expect(metadataBlobBytes).toBe(24 * 1024);
+      expect(hashSpy.mock.calls.length).toBe(1);
+      loadSpy.mockRestore();
+      metadataSpy.mockRestore();
+      hashSpy.mockRestore();
+    } finally {
+      delete bridge.reelterminal;
+    }
   });
 });
+

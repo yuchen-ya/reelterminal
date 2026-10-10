@@ -149,6 +149,7 @@ const api = {
         mediaId: string;
         path: string;
         sizeBytes: number;
+        contentHash?: string;
       }[]>,
     listAll: () =>
       ipcRenderer.invoke(CHANNELS.mediaStoreListAll) as Promise<{
@@ -156,6 +157,7 @@ const api = {
         mediaId: string;
         path: string;
         sizeBytes: number;
+        contentHash?: string;
       }[]>,
     clearAll: () => ipcRenderer.invoke(CHANNELS.mediaStoreClearAll) as Promise<void>,
   },

@@ -247,6 +247,83 @@ export async function loadProjectMedia(
   return records;
 }
 
+export interface StoredMediaMetadataEntry {
+  readonly id: string;
+  readonly projectId: string;
+  readonly projectIds?: readonly string[];
+  /** Trusted hash recorded durably at ingest; verifies without any bytes. */
+  readonly contentHash?: string;
+  /**
+   * Bytes, present only when no trusted stored hash exists (records created
+   * before versioned media, or controlled files predating hash-encoding
+   * names). Callers that must verify such media hash these already-read bytes
+   * once; no other bytes are materialized by this read.
+   */
+  readonly blob?: Blob;
+}
+
+/**
+ * Read only what an archive integrity check compares: media ids and content
+ * hashes. Mirrors loadProjectMedia's merge order (IDB records first, then
+ * controlled-store-only entries) but never attaches bytes to entries that
+ * carry a trusted stored hash. Computed hashes are intentionally NOT written
+ * back here: the only write path re-puts the whole inline-blob record, which
+ * would re-materialize the bytes this API exists to avoid.
+ */
+export async function loadProjectMediaMetadata(
+  projectId: string,
+  mediaIds?: readonly string[],
+): Promise<StoredMediaMetadataEntry[]> {
+  const entries: StoredMediaMetadataEntry[] = [];
+  const present = new Set<string>();
+  const toEntry = (record: MediaRecord): StoredMediaMetadataEntry => ({
+    id: record.id,
+    projectId: record.projectId,
+    ...(record.projectIds ? { projectIds: record.projectIds } : {}),
+    ...(record.contentHash
+      ? { contentHash: record.contentHash }
+      // Hashless (pre-versioned) records surface their bytes so the caller
+      // can hash them exactly once.
+      : { blob: record.blob }),
+  });
+  const records = mediaIds
+    ? (await Promise.all(mediaIds.map((mediaId) => storage.loadMedia(mediaId))))
+      .filter((record): record is MediaRecord => record !== null)
+    : await storage.getMediaByProject(projectId);
+  for (const record of records) {
+    present.add(record.id);
+    entries.push(toEntry(record));
+  }
+  const mediaStore = desktopMediaStore();
+  if (!mediaStore) return entries;
+  const controlled = mediaIds
+    ? (await mediaStore.listAll()).filter((entry) => mediaIds.includes(entry.mediaId))
+    : await mediaStore.listProject(projectId);
+  for (const entry of controlled) {
+    if (present.has(entry.mediaId)) continue;
+    if (entry.contentHash) {
+      // Hash-encoding filenames expose the commit-time hash with zero reads.
+      present.add(entry.mediaId);
+      entries.push({
+        id: entry.mediaId,
+        projectId: entry.projectId,
+        contentHash: entry.contentHash,
+      });
+      continue;
+    }
+    // Legacy controlled files know their hash nowhere but the bytes.
+    const bytes = await mediaStore.readAny(entry.mediaId);
+    if (!bytes) continue;
+    present.add(entry.mediaId);
+    entries.push({
+      id: entry.mediaId,
+      projectId: entry.projectId,
+      blob: new Blob([bytes]),
+    });
+  }
+  return entries;
+}
+
 export async function getMediaIdsByProject(projectId: string): Promise<string[]> {
   const ids = new Set(await storage.getMediaIdsByProject(projectId));
   const mediaStore = desktopMediaStore();
