@@ -17,6 +17,25 @@ import type { WorkspaceManager } from "./workspace-manager";
 export const PERF_PROJECT_COUNT = 3;
 const BASE_TIMESTAMP = 1_700_000_000_000;
 
+/**
+ * jsdom's Blob lacks arrayBuffer()/stream()/text() (only slice exists), but
+ * hashing at media ingest needs arrayBuffer. Backfill it via FileReader,
+ * which jsdom does implement over its own Blob. Idempotent, and a no-op in
+ * environments (browsers, node) that already provide it.
+ */
+export function ensureBlobAsyncRead(): void {
+  if (typeof Blob === "undefined" || typeof FileReader === "undefined") return;
+  if (typeof Blob.prototype.arrayBuffer === "function") return;
+  Blob.prototype.arrayBuffer = function (this: Blob): Promise<ArrayBuffer> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error ?? new Error("Blob.arrayBuffer shim failed"));
+      reader.readAsArrayBuffer(this);
+    });
+  };
+}
+
 /** Deterministic LCG bytes so media hashes are stable across runs. */
 export function perfMediaBytes(seed: number, sizeBytes: number): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(new ArrayBuffer(sizeBytes));
@@ -112,7 +131,9 @@ export function createPerfProjectSeed(index: number, storedHashes: ReadonlyMap<s
           { type: mimeType(spec.type) },
         ),
         metadata: perfMediaMetadata(spec.sizeBytes, spec.type),
-        thumbnailUrl: null,
+        // A data: thumbnail keeps runtime hydration away from thumbnail
+        // generation (canvas-dependent) in the jsdom test environment.
+        thumbnailUrl: "data:image/png;base64,AAAA",
         waveformData: null,
         ...(spec.placeholder ? { isPlaceholder: true } : {}),
         ...(spec.trustedHash && storedHashes.has(spec.id) ? { contentHash: storedHashes.get(spec.id)! } : {}),
@@ -147,6 +168,7 @@ export function createPerfProjectSeed(index: number, storedHashes: ReadonlyMap<s
  * records; trusted items carry the hash of the stored bytes.
  */
 export async function seedPerfLibrary(manager: WorkspaceManager): Promise<PerfLibraryHandle> {
+  ensureBlobAsyncRead();
   const projects: PerfLibraryHandle["projects"][number][] = [];
   for (let index = 0; index < PERF_PROJECT_COUNT; index++) {
     const preliminary = createPerfProjectSeed(index, new Map());
