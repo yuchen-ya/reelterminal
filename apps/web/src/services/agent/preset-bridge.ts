@@ -15,7 +15,10 @@ import { projectGuardError, projectLedgerScope, type ProjectGuard } from "./proj
  * every committed change, so the GUI preset panels re-render the moment an
  * agent creates, renames, or deletes a preset — no polling either way.
  */
-import { presetApplyTargetProblem, type PresetListItem } from "@reelterminal/agent-facade";
+// Import the value from its defining subpath: importing the facade index
+// here would pull the whole agent-facade (including Node-only modules such
+// as media/path-roots) into the browser bundle.
+import { presetApplyTargetProblem, type PresetListItem } from "@reelterminal/agent-facade/preset-verbs";
 import type {
   CustomPresetRecord,
   PresetKind,
