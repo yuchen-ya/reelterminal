@@ -2,10 +2,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import { Blob as NodeBlob } from "node:buffer";
 import * as core from "@reelterminal/core";
+import type { Project } from "@reelterminal/core";
 import { WorkspaceManager } from "./workspace-manager";
 import * as mediaStorage from "./media-storage";
+import { cacheCustomFontBytes, forgetCustomFontBytes } from "./custom-font-storage";
 import * as renderDependencies from "./project-render-dependencies";
 import { PERF_PROJECT_COUNT, seedPerfLibrary, type PerfLibraryHandle } from "./perf-library-fixtures";
+
+/**
+ * Counts full-project clones: structuredClone calls whose argument is a bare
+ * Project. Storage-driver record deserialization (fake-indexeddb clones whole
+ * node/workspace rows) lands here too, but those arguments carry a nested
+ * `project` key instead of a top-level `timeline`, so they are excluded —
+ * they cost the same on every read path, including the optimized ones.
+ */
+function countProjectClones(spy: { mock: { calls: unknown[][] } }): number {
+  return spy.mock.calls.filter(([value]) => {
+    if (!value || typeof value !== "object") return false;
+    return "timeline" in value && "mediaLibrary" in value && !("project" in value);
+  }).length;
+}
 
 /**
  * Phase-4 performance baselines. These tests run against the fixed dataset
@@ -74,9 +90,58 @@ describe("WorkspaceManager perf baselines", () => {
       ` versionDelta=${manager.getSnapshot().version - versionBefore}` +
       ` prepareProjectRenderFonts=${fontSpy.mock.calls.length} elapsedMs=${elapsed.toFixed(1)}`,
     );
-    expect(listener.mock.calls.length).toBeGreaterThanOrEqual(0);
+    // Changeset 07: re-reads of an unchanged node are silent — no listener
+    // wakes and no snapshot version bumps — while every read still returns
+    // a freshly enriched node (asserted above via node?.project.id).
+    expect(listener.mock.calls.length).toBe(0);
+    expect(manager.getSnapshot().version - versionBefore).toBe(0);
     unsubscribe();
     fontSpy.mockRestore();
+  });
+
+  it("wakes subscribers when a node's enriched dependencies change", async () => {
+    const { manager, library } = await seedFresh();
+    const project = library.projects[0];
+    const target = { projectId: project.projectId, workspaceId: project.defaultWorkspaceId };
+    // A node whose project references a custom font without embedded bytes:
+    // its summary starts with both missing font markers. (The seeded nodes
+    // embed their faces, so they never report font dependencies.)
+    const context = await manager.getWorkspaceContext(target);
+    context.store.setState({
+      project: {
+        ...context.store.getState().project,
+        textClips: [{ style: { fontFamily: "Wake Font" } }] as unknown as Project["textClips"],
+      },
+    });
+    const saved = await manager.saveNode({ target, name: "Perf node wake" });
+    expect(saved.node.missingDependencies)
+      .toEqual(expect.arrayContaining(["font:Wake Font", "font-render:Wake Font"]));
+
+    const listener = vi.fn();
+    const unsubscribe = manager.subscribe(listener);
+    const warm = await manager.getNode(project.projectId, saved.node.id);
+    // Silence on the unchanged re-read must not swallow real updates.
+    expect(listener).toHaveBeenCalledTimes(0);
+    expect(warm?.missingDependencies).toContain("font-render:Wake Font");
+
+    // Registering the font bytes lets enrichment embed the face, so the next
+    // enrichment clears both missing markers for the family.
+    const fontBytes = new Uint8Array([0x00, 0x01, 0x00, 0x00, 0x01, 0x02, 0x03]).buffer;
+    cacheCustomFontBytes("Wake Font", fontBytes);
+    try {
+      const changed = await manager.getNode(project.projectId, saved.node.id);
+      expect(changed?.missingDependencies).not.toContain("font-render:Wake Font");
+      expect(changed?.missingDependencies).not.toContain("font:Wake Font");
+      expect(changed?.missingDependencies.length)
+        .toBeLessThan(warm?.missingDependencies.length ?? 0);
+      expect(listener).toHaveBeenCalledTimes(1);
+      // And the changed summary is cached: a further re-read stays silent.
+      await manager.getNode(project.projectId, saved.node.id);
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      forgetCustomFontBytes("Wake Font");
+    }
+    unsubscribe();
   });
 
   it("measures the font dependency snapshot query over the whole library", async () => {
@@ -101,6 +166,49 @@ describe("WorkspaceManager perf baselines", () => {
     // inputs exist in this seeded state.
     expect(snapshots).toHaveLength(PERF_PROJECT_COUNT * 6);
     cloneSpy?.mockRestore();
+  });
+
+  it("collects font dependency references without cloning projects", async () => {
+    const { manager, library } = await seedFresh();
+    // Drain queued workspace writes so no background structuredClone can run
+    // inside the measured window.
+    await manager.flushOpenWorkspaces();
+    const family = library.projects[0].fontFamily;
+
+    // Parity oracle: the changeset-06 snapshot scan the font query replaced.
+    const snapshots = await manager.getDependencyProjectSnapshots();
+    const expected: Array<{ projectId: string; kind: string; referenceId: string; label?: string }> = [];
+    for (const snapshot of snapshots) {
+      const families = new Set<string>();
+      renderDependencies.collectFontFamilies(snapshot.project, families);
+      renderDependencies.collectFontFamilies(snapshot.historyEntries, families);
+      if (![...families].some((candidate) => candidate.toLowerCase() === family.toLowerCase())) continue;
+      expected.push({
+        projectId: snapshot.projectId,
+        kind: snapshot.kind,
+        referenceId: snapshot.referenceId,
+        ...(snapshot.label ? { label: snapshot.label } : {}),
+      });
+    }
+
+    const cloneSpy = vi.spyOn(globalThis, "structuredClone");
+    const references = await manager.getFontDependencyReferences(family);
+    const projectClones = countProjectClones(cloneSpy);
+    const totalClones = cloneSpy.mock.calls.length;
+    cloneSpy.mockRestore();
+    console.log(
+      `[perf-07][font-references] references=${references.length}` +
+      ` projectClones=${projectClones} structuredCloneCalls=${totalClones}`,
+    );
+    // 2 nodes + 2 workspace records + 2 runtime histories reference the
+    // family. The query must find all of them without cloning a single
+    // project — the remaining structuredClone calls are the storage driver's
+    // own record deserialization, identical for any read of these stores.
+    expect(references).toHaveLength(6);
+    expect(projectClones).toBe(0);
+    expect(references.map((reference) => reference.kind))
+      .toEqual(["node", "node", "workspace-draft", "workspace-draft", "history", "history"]);
+    expect(references).toEqual(expected.map((entry) => ({ family, ...entry })));
   });
 
   it("measures renaming a project whose workspaces are all unloaded", async () => {

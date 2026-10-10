@@ -23,6 +23,7 @@ import { getUniqueProjectName } from "../utils/project-names";
 import { autoSaveManager } from "./auto-save";
 import { blockProjectExports, getExportingProjectIds, unblockProjectExports } from "./project-export-activity";
 import {
+  collectFontFamilies,
   getMissingProjectRenderDependencyIds,
   installProjectRenderFonts,
   prepareProjectRenderFonts,
@@ -194,6 +195,14 @@ export interface DependencyProjectSnapshot {
   project: Project;
   /** Action/history entries may retain dependencies after the current edit removes them. */
   historyEntries?: readonly unknown[];
+}
+
+export interface FontDependencyReference {
+  readonly family: string;
+  readonly projectId: string;
+  readonly kind: "node" | "workspace-draft" | "recovery-draft" | "task" | "history";
+  readonly referenceId: string;
+  readonly label?: string;
 }
 
 export interface WorkspaceManagerSnapshot {
@@ -425,6 +434,31 @@ function nodeSummary(node: ProjectNodeRecord): ProjectNodeSummary {
     ...(node.sourceWorkspaceKind ? { sourceWorkspaceKind: node.sourceWorkspaceKind } : {}),
     ...(node.recycledAt !== undefined ? { recycledAt: node.recycledAt } : {}),
   };
+}
+
+/** Stable equality for node summaries so unchanged re-reads skip publishing. */
+function nodeSummariesEqual(
+  left: ProjectNodeSummary | undefined,
+  right: ProjectNodeSummary,
+): boolean {
+  if (!left) return false;
+  return (
+    left.id === right.id &&
+    left.projectId === right.projectId &&
+    left.parentNodeId === right.parentNodeId &&
+    left.name === right.name &&
+    left.summary === right.summary &&
+    left.createdAt === right.createdAt &&
+    left.formatVersion === right.formatVersion &&
+    left.sourceWorkspaceKind === right.sourceWorkspaceKind &&
+    left.recycledAt === right.recycledAt &&
+    arraysEqual(left.mediaIds, right.mediaIds) &&
+    arraysEqual(left.missingDependencies, right.missingDependencies)
+  );
+}
+
+function arraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 
 function collectMediaIdsFromHistory(value: unknown, ids: Set<string>): void {
@@ -960,8 +994,14 @@ export class WorkspaceManager {
     const node = await this.readOne<ProjectNodeRecord>(NODES, nodeId);
     if (!node || node.projectId !== projectId) return null;
     const enriched = await withMediaReferenceWrite(() => enrichNodeRenderDependencies(node));
-    this.nodes.set(enriched.id, nodeSummary(enriched));
-    this.publish();
+    // Enrichment is deterministic, so a re-read of an unchanged node must not
+    // rebuild the frozen snapshot and wake every subscriber. Only a genuine
+    // summary change (absent entry included) publishes.
+    const nextSummary = nodeSummary(enriched);
+    if (!nodeSummariesEqual(summary, nextSummary)) {
+      this.nodes.set(enriched.id, nextSummary);
+      this.publish();
+    }
     return enriched;
   }
 
@@ -2239,6 +2279,69 @@ export class WorkspaceManager {
       );
     }
     return snapshots;
+  }
+
+  /**
+   * Collect saved/runtime references to a font family across the same sources
+   * as `getDependencyProjectSnapshots` — node projects, workspace records,
+   * recovery drafts, task inputs and live runtime state including undo/redo
+   * history — without cloning any project. Kind values, labels and traversal
+   * order match that query exactly.
+   */
+  async getFontDependencyReferences(family: string): Promise<FontDependencyReference[]> {
+    await this.initialize();
+    const wanted = family.trim().toLowerCase();
+    if (!wanted) return [];
+    const [nodes, workspaces, drafts, tasks] = await Promise.all([
+      this.readAll<ProjectNodeRecord>(NODES),
+      this.readAll<WorkspaceRecord>(WORKSPACES),
+      this.readAll<RecoveryDraftRecord>(DRAFTS),
+      this.readAll<PersistedTaskInput>(TASK_INPUTS),
+    ]);
+    const references: FontDependencyReference[] = [];
+    const add = (
+      project: Project,
+      projectId: string,
+      kind: FontDependencyReference["kind"],
+      referenceId: string,
+      label?: string,
+      historyEntries?: readonly unknown[],
+    ): void => {
+      const families = new Set<string>();
+      collectFontFamilies(project, families);
+      collectFontFamilies(historyEntries, families);
+      if (![...families].some((candidate) => candidate.toLowerCase() === wanted)) return;
+      references.push({ family, projectId, kind, referenceId, ...(label ? { label } : {}) });
+    };
+    for (const node of nodes) add(node.project, node.projectId, "node", node.id, node.name);
+    for (const workspace of workspaces) {
+      add(workspace.project, workspace.projectId, "workspace-draft", workspace.id, workspace.name);
+    }
+    for (const draft of drafts) {
+      add(draft.project, draft.projectId, "recovery-draft", draft.id, draft.source);
+    }
+    for (const task of tasks) add(task.project, task.projectId, "task", task.jobId, "Task input");
+    for (const [workspaceId, runtime] of this.runtimes) {
+      const workspace = this.workspaces.get(workspaceId);
+      if (!workspace) continue;
+      const state = runtime.getState();
+      add(
+        state.getFullProject(),
+        workspace.projectId,
+        "history",
+        workspaceId,
+        `${workspace.name} runtime history`,
+        [
+          ...state.actionHistory.getHistoryEntries(),
+          ...state.actionHistory.getRedoEntries(),
+          ...state.clipUndoStack,
+          ...state.clipRedoStack,
+          ...state.templateUndoStack,
+          ...state.templateRedoStack,
+        ],
+      );
+    }
+    return references;
   }
 
   private async createRecoveryDraft(
