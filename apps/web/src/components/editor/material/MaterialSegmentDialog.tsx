@@ -89,12 +89,15 @@ export function MaterialSegmentDialog({
 
   return (
     <ToolcraftDialog isOpen onOpenChange={(open) => !open && onClose()} width={480}>
-      <ToolcraftDialogHeader
-        title={t("material.saveSegment")}
-        subtitle={parent ? parent.title : ""}
-        onOpenChange={onClose}
-      />
-      <ToolcraftLayout>
+      <ToolcraftLayout
+        header={
+          <ToolcraftDialogHeader
+            title={t("material.saveSegment")}
+            subtitle={parent ? parent.title : ""}
+            onOpenChange={onClose}
+          />
+        }
+      >
         <ToolcraftLayoutContent className="flex flex-col gap-3">
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1.5">

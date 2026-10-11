@@ -199,36 +199,39 @@ export function MaterialDetailDialog() {
       >
         {record && draft ? (
           <>
-            <ToolcraftDialogHeader
-              title={record.title}
-              subtitle={
-                <span className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-border px-2 py-0.5 text-[11px]">
-                    {t(`material.kind.${record.kind}`)}
-                  </span>
-                  {record.updatedBy === "agent" ? (
-                    <span className="flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[11px] text-accent">
-                      <Bot size={11} aria-hidden />
-                      {t("material.agentEdited")}
-                      {record.lastAgentEditAt
-                        ? ` · ${formatDate(record.lastAgentEditAt)}`
-                        : ""}
+            <ToolcraftLayout
+              header={
+                <ToolcraftDialogHeader
+                  title={record.title}
+                  subtitle={
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-border px-2 py-0.5 text-[11px]">
+                        {t(`material.kind.${record.kind}`)}
+                      </span>
+                      {record.updatedBy === "agent" ? (
+                        <span className="flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[11px] text-accent">
+                          <Bot size={11} aria-hidden />
+                          {t("material.agentEdited")}
+                          {record.lastAgentEditAt
+                            ? ` · ${formatDate(record.lastAgentEditAt)}`
+                            : ""}
+                        </span>
+                      ) : null}
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                          record.organizeStatus === "organized"
+                            ? "border-status-success/40 text-status-success"
+                            : "border-status-warning/40 text-status-warning"
+                        }`}
+                      >
+                        {t(`material.status.${record.organizeStatus}`)}
+                      </span>
                     </span>
-                  ) : null}
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-[11px] ${
-                      record.organizeStatus === "organized"
-                        ? "border-status-success/40 text-status-success"
-                        : "border-status-warning/40 text-status-warning"
-                    }`}
-                  >
-                    {t(`material.status.${record.organizeStatus}`)}
-                  </span>
-                </span>
+                  }
+                  onOpenChange={() => openDetail(null)}
+                />
               }
-              onOpenChange={() => openDetail(null)}
-            />
-            <ToolcraftLayout>
+            >
               <ToolcraftLayoutContent className="flex flex-col gap-4">
                 <MaterialPreview record={record} />
 
