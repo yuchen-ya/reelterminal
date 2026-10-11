@@ -3,6 +3,7 @@
 import * as React from "react"
 import * as PopoverPrimitive from "@radix-ui/react-popover"
 
+import { NO_DRAG } from "@reelterminal/ui/lib/app-region"
 import { cn } from "@reelterminal/ui/lib/utils"
 
 const Popover = PopoverPrimitive.Root
@@ -12,10 +13,11 @@ const PopoverTrigger = PopoverPrimitive.Trigger
 const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, align = "center", sideOffset = 4, ...props }, ref) => (
+>(({ className, style, align = "center", sideOffset = 4, ...props }, ref) => (
   <PopoverPrimitive.Portal>
     <PopoverPrimitive.Content
       ref={ref}
+      style={{ ...NO_DRAG, ...style }}
       align={align}
       sideOffset={sideOffset}
       className={cn(

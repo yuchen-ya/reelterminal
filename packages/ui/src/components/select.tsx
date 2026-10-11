@@ -5,6 +5,7 @@ import * as SelectPrimitive from "@radix-ui/react-select"
 import { motion } from "motion/react"
 import { Check, ChevronDown, ChevronUp } from "lucide-react"
 
+import { NO_DRAG } from "@reelterminal/ui/lib/app-region"
 import { cn } from "@reelterminal/ui/lib/utils"
 
 const Select = SelectPrimitive.Root
@@ -70,10 +71,11 @@ SelectScrollDownButton.displayName = SelectPrimitive.ScrollDownButton.displayNam
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = "popper", ...props }, ref) => (
+>(({ className, style, children, position = "popper", ...props }, ref) => (
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
       ref={ref}
+      style={{ ...NO_DRAG, ...style }}
       position={position}
       asChild
       {...props}

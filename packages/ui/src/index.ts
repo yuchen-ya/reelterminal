@@ -1,4 +1,5 @@
 export { cn } from "./lib/utils"
+export { NO_DRAG } from "./lib/app-region"
 
 export { Alert, AlertTitle, AlertDescription } from "./components/alert"
 export { Button, buttonVariants, type ButtonProps } from "./components/button"
