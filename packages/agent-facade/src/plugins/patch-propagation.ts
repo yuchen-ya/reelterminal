@@ -10,7 +10,7 @@ import { FacadeError } from "../errors";
 import type { ToolContext } from "../plugin-api";
 import { definePlugin, defineTool } from "../plugin-api";
 import { artifactRefFor, assertContainedWrittenFile, prepareArtifactDir, requireArtifactRoot } from "../artifact-io";
-import { bestFrameCount, composeContactSheet, extractFramesExact, probeRasterSize, probeVideoFacts } from "../media/frame-exact";
+import { bestFrameCount, composeContactSheet, extractFramesExact, probeRasterSize, probeVideoFacts, suggestedExtractTimeoutMs } from "../media/frame-exact";
 import { probeLabelFont, resolveToolFfmpeg } from "../media/ffmpeg-bin";
 import { opencvToolPreflight, runOpenCvScript } from "../media/opencv-runner";
 import { parseSourceRef, resolveSourceFile } from "./source-ref";
@@ -183,7 +183,9 @@ async function runPatchPropagation(input: PatchPropagationInput, context: ToolCo
     const overlayDir = join(outputDir, "overlays");
     await mkdir(framesDir, { recursive: true });
     await mkdir(overlayDir, { recursive: true });
-    const extracted = await extractFramesExact(binaries.ffmpeg, sourceFile, indices, extractedDir, { timeoutMs: 300_000 });
+    const extracted = await extractFramesExact(
+      binaries.ffmpeg, sourceFile, indices, extractedDir,
+      { ffprobe: binaries.ffprobe, timeoutMs: suggestedExtractTimeoutMs(facts.durationSec) });
     if (extracted.frames.length !== indices.length) {
       throw new FacadeError("JOB_FAILED", `${verb}: exact extraction returned ${extracted.frames.length} of ${indices.length} requested frames`);
     }

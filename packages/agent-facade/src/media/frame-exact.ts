@@ -71,6 +71,7 @@ export interface ProbeStreamJson {
   readonly avg_frame_rate?: string;
   readonly nb_frames?: string;
   readonly nb_read_frames?: string;
+  readonly nb_read_packets?: string;
   readonly duration?: string;
   readonly time_base?: string;
   readonly pix_fmt?: string;
@@ -100,15 +101,16 @@ export function parseFrameRate(raw: string | undefined): number | null {
 export async function ffprobeJson(
   ffprobe: string,
   filePath: string,
-  options: { countFrames?: boolean; readIntervalsSec?: number; signal?: AbortSignal } = {},
+  options: { countFrames?: boolean; countPackets?: boolean; readIntervalsSec?: number; signal?: AbortSignal } = {},
 ): Promise<ProbeJson> {
   const args = ["-v", "error", ...FRAME_INPUT_OPTIONS, "-select_streams", "v:0"];
   if (options.readIntervalsSec !== undefined) {
     args.push("-read_intervals", `%+${options.readIntervalsSec}`);
   }
   if (options.countFrames) args.push("-count_frames");
+  if (options.countPackets) args.push("-count_packets");
   args.push("-show_entries",
-    "stream=codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,nb_frames,nb_read_frames,duration,time_base,pix_fmt",
+    "stream=codec_name,codec_type,width,height,r_frame_rate,avg_frame_rate,nb_frames,nb_read_packets,nb_read_frames,duration,time_base,pix_fmt",
     "-show_format", "-of", "json", filePath);
   const { stdout } = await runToolProcess(ffprobe, args, { signal: options.signal });
   try {
@@ -138,85 +140,144 @@ export interface VideoFacts {
   readonly pixFmt: string | null;
   /** Header nb_frames (instant) — may be absent. */
   readonly headerFrameCount: number | null;
-  /** Decoded nb_read_frames (exact) — only computed when requested. */
+  /**
+   * Demuxed nb_read_packets — one packet ≈ one frame for typical video, no
+   * decoding. The DEFAULT count source when the header lacks nb_frames;
+   * corrupt streams can carry undecodable packets, so it is a proxy.
+   */
+  readonly packetFrameCount: number | null;
+  /** Decoded nb_read_frames (exact) — only computed when explicitly requested. */
   readonly decodedFrameCount: number | null;
   readonly timing: FrameTimingAssessment;
 }
 
-/**
- * Inspect the complete frame PTS sequence before claiming stream-wide CFR.
- * The scan is bounded by packet count and wall time; if either limit is hit,
- * timing is unknown and callers must not convert seconds to frame indices.
- */
-const MAX_TIMING_SCAN_PACKETS = 50_000;
-const TIMING_SCAN_TIMEOUT_MS = 30_000;
+/* ------------------------------------------------------------------ */
+/* Demux-only packet scan (the shared seek table)                      */
+/* ------------------------------------------------------------------ */
 
+/**
+ * One demux pass over the container — NO decoding — yielding every video
+ * packet's PTS in presentation order plus keyframe stats. This single scan
+ * serves three callers (frame counting, CFR/VFR timing verification, and
+ * index→PTS addressing for seek-based extraction) and is cached per source
+ * fingerprint so one tool call does not pay for it three times.
+ */
+export interface PacketScan {
+  /** PTS seconds in PRESENTATION order (sorted); one entry per packet. */
+  readonly pts: readonly number[];
+  readonly packetCount: number;
+  readonly keyframeCount: number;
+  /** False when a bound (packet cap, wall time, output cap) truncated it. */
+  readonly completed: boolean;
+  readonly boundNote: string | null;
+}
+
+const MAX_PACKET_SCAN_PACKETS = 50_000;
+const PACKET_SCAN_TIMEOUT_MS = 30_000;
+const PACKET_SCAN_CACHE_LIMIT = 6;
+
+const packetScanCache = new Map<string, { fingerprint: string; scan: PacketScan }>();
+
+/** Test seam: drop cached scans so behavior under cold cache is provable. */
+export function clearPacketScanCacheForTests(): void {
+  packetScanCache.clear();
+}
+
+const truncatedScan = (note: string, sampled: number): PacketScan => ({
+  pts: [], packetCount: sampled, keyframeCount: 0, completed: false, boundNote: note,
+});
+
+export async function scanPacketPts(
+  ffprobe: string,
+  sourcePath: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<PacketScan> {
+  const info = await stat(sourcePath);
+  const fingerprint = `${info.size}:${Math.round(info.mtimeMs)}`;
+  const cached = packetScanCache.get(sourcePath);
+  if (cached && cached.fingerprint === fingerprint) return cached.scan;
+
+  // CSV keeps the payload ~20 bytes/packet (JSON would be ~150 and can hit
+  // the stdout cap on long streams).
+  let scan: PacketScan;
+  const result = await runToolProcess(
+    ffprobe,
+    ["-v", "error", ...FRAME_INPUT_OPTIONS, "-select_streams", "v:0",
+      "-read_intervals", `%+#${MAX_PACKET_SCAN_PACKETS}`,
+      "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", sourcePath],
+    { timeoutMs: PACKET_SCAN_TIMEOUT_MS, signal: options.signal },
+  ).catch((error: unknown) => {
+    if (error instanceof FfmpegToolError &&
+        (/timed out after \d+ ms/.test(error.message) || error.message.includes("exceeded the resource cap"))) {
+      return null;
+    }
+    throw error;
+  });
+  if (result === null) {
+    scan = truncatedScan(
+      `packet PTS scan exceeded its ${PACKET_SCAN_TIMEOUT_MS} ms or output limit; constant timing cannot be verified and index addressing is unavailable`,
+      0,
+    );
+  } else {
+    const pts: number[] = [];
+    let keyframes = 0;
+    let nonFinite = false;
+    for (const line of result.stdout.toString("utf8").split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const [ptsField, flagsField] = line.split(",");
+      const value = Number(ptsField);
+      if (!Number.isFinite(value)) { nonFinite = true; continue; }
+      pts.push(value);
+      if (flagsField !== undefined && flagsField.includes("K")) keyframes += 1;
+    }
+    if (nonFinite) {
+      scan = truncatedScan(
+        "one or more packets have no finite PTS; constant timing cannot be verified",
+        pts.length,
+      );
+    } else if (pts.length >= MAX_PACKET_SCAN_PACKETS) {
+      scan = truncatedScan(
+        `packet PTS scan reached its ${MAX_PACKET_SCAN_PACKETS}-packet limit; constant timing cannot be verified`,
+        pts.length,
+      );
+      scan = { ...scan, pts: [] }; // partial PTS would invite wrong addressing
+    } else {
+      pts.sort((a, b) => a - b);
+      scan = { pts, packetCount: pts.length, keyframeCount: keyframes, completed: true, boundNote: null };
+    }
+  }
+  if (packetScanCache.size >= PACKET_SCAN_CACHE_LIMIT && !packetScanCache.has(sourcePath)) {
+    const oldest = packetScanCache.keys().next().value;
+    if (oldest !== undefined) packetScanCache.delete(oldest);
+  }
+  packetScanCache.set(sourcePath, { fingerprint, scan });
+  return scan;
+}
+
+/**
+ * Inspect the complete packet PTS sequence before claiming stream-wide CFR.
+ * Demux-only (packet PTS, no -show_frames decode). The scan is bounded by
+ * packet count and wall time; if either limit is hit, timing is unknown and
+ * callers must not convert seconds to frame indices.
+ */
 export async function assessFrameTiming(
   ffprobe: string,
   filePath: string,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; stream?: ProbeStreamJson } = {},
 ): Promise<FrameTimingAssessment> {
   const nominalFps = (stream: ProbeStreamJson | undefined): number | null =>
     parseFrameRate(stream?.avg_frame_rate ?? stream?.r_frame_rate);
-  let probe: {
-    streams?: ProbeStreamJson[];
-    packets_and_frames?: { type?: string; pts_time?: string }[];
-  };
-  try {
-    const result = await runToolProcess(
-      ffprobe,
-      ["-v", "error", ...FRAME_INPUT_OPTIONS, "-select_streams", "v:0",
-        "-read_intervals", `%+#${MAX_TIMING_SCAN_PACKETS}`,
-        "-show_streams", "-show_packets", "-show_frames",
-        "-show_entries", "stream=r_frame_rate,avg_frame_rate:packet=pts_time:frame=pts_time",
-        "-of", "json", filePath],
-      { timeoutMs: TIMING_SCAN_TIMEOUT_MS, signal: options.signal },
-    );
-    try {
-      probe = JSON.parse(result.stdout.toString("utf8")) as typeof probe;
-    } catch (error) {
-      throw new FacadeError("JOB_FAILED", `ffprobe produced invalid timing JSON for ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  } catch (error) {
-    if (error instanceof FfmpegToolError &&
-      (/timed out after \d+ ms/.test(error.message) || error.message.includes("exceeded the resource cap"))) {
-      return {
-        timing: "unknown",
-        fps: null,
-        method: `whole-stream PTS scan exceeded its ${TIMING_SCAN_TIMEOUT_MS} ms or output limit; constant timing cannot be verified`,
-        sampledFrameCount: 0,
-      };
-    }
-    throw error;
+  const scan = await scanPacketPts(ffprobe, filePath, { signal: options.signal });
+  if (!scan.completed) {
+    return { timing: "unknown", fps: null, method: scan.boundNote!, sampledFrameCount: scan.packetCount };
   }
-
-  const stream = probe.streams?.[0];
-  const records = probe.packets_and_frames ?? [];
-  const packetCount = records.reduce((count, record) => count + (record.type === "packet" ? 1 : 0), 0);
-  const frameRecords = records.filter((record) => record.type === "frame");
-  const pts = frameRecords.map((record) =>
-    record.pts_time === undefined ? Number.NaN : Number(record.pts_time));
-  if (packetCount >= MAX_TIMING_SCAN_PACKETS) {
-    return {
-      timing: "unknown",
-      fps: null,
-      method: `whole-stream PTS scan reached its ${MAX_TIMING_SCAN_PACKETS}-packet limit; constant timing cannot be verified`,
-      sampledFrameCount: pts.length,
-    };
-  }
-  if (pts.some((value) => !Number.isFinite(value))) {
-    return {
-      timing: "unknown",
-      fps: null,
-      method: "one or more decoded frames have no finite PTS; constant timing cannot be verified",
-      sampledFrameCount: pts.length,
-    };
-  }
+  const stream = options.stream ?? (await ffprobeJson(ffprobe, filePath, { signal: options.signal })).streams?.find((entry) => entry.codec_type === "video");
+  const pts = scan.pts;
   if (pts.length < 3) {
     return {
       timing: "unknown",
       fps: nominalFps(stream),
-      method: `only ${pts.length} decoded frame PTS; cannot verify constant spacing`,
+      method: `only ${pts.length} packet PTS; cannot verify constant spacing`,
       sampledFrameCount: pts.length,
     };
   }
@@ -235,7 +296,7 @@ export async function assessFrameTiming(
     return {
       timing: "cfr",
       fps: avgRate,
-      method: `all ${pts.length} decoded frame PTS are spaced ${median.toFixed(6)}s apart, agreeing with header r/avg_frame_rate`,
+      method: `all ${pts.length} packet PTS are spaced ${median.toFixed(6)}s apart, agreeing with header r/avg_frame_rate`,
       sampledFrameCount: pts.length,
     };
   }
@@ -243,12 +304,13 @@ export async function assessFrameTiming(
     timing: "vfr",
     fps: headerAgrees ? avgRate : null,
     method: constant
-      ? "all decoded PTS spacing is constant but disagrees with the header rates"
-      : `decoded PTS spacing varies (min ${deltas[0]!.toFixed(6)}s, max ${deltas[deltas.length - 1]!.toFixed(6)}s)`,
+      ? "all packet PTS spacing is constant but disagrees with the header rates"
+      : `packet PTS spacing varies (min ${deltas[0]!.toFixed(6)}s, max ${deltas[deltas.length - 1]!.toFixed(6)}s)`,
     sampledFrameCount: pts.length,
   };
 }
 
+/** Safety bound on the (explicit-only) full-decode frame count. */
 const COUNT_FRAMES_MAX_DURATION_SEC = 600;
 
 export async function probeVideoFacts(
@@ -281,10 +343,21 @@ export async function probeVideoFacts(
   const header = stream.nb_frames !== undefined && stream.nb_frames !== "N/A"
     ? Number(stream.nb_frames)
     : null;
+
+  // Frame counting, cheap-first: a completed packet scan already counted
+  // them (demux-only, usually already cached); a truncated scan falls back
+  // to -count_packets (also demux-only, no accumulation); the exact DECODED
+  // count is computed only when the caller explicitly asks for it.
+  const scan = await scanPacketPts(ffprobe, filePath, { signal: options.signal });
+  let packetCount: number | null = scan.completed ? scan.packetCount : null;
+  if (packetCount === null && header === null) {
+    const counted = await ffprobeJson(ffprobe, filePath, { countPackets: true, signal: options.signal }).catch(() => null);
+    const read = counted?.streams?.[0]?.nb_read_packets;
+    packetCount = read !== undefined && read !== "N/A" && Number.isFinite(Number(read)) ? Number(read) : null;
+  }
+
   let decoded: number | null = null;
-  const wantsDecoded = options.decodedFrameCount
-    ?? (header === null && durationSec > 0 && durationSec <= COUNT_FRAMES_MAX_DURATION_SEC);
-  if (wantsDecoded && durationSec > 0 && durationSec <= COUNT_FRAMES_MAX_DURATION_SEC) {
+  if (options.decodedFrameCount === true && durationSec > 0 && durationSec <= COUNT_FRAMES_MAX_DURATION_SEC) {
     const counted = await ffprobeJson(ffprobe, filePath, { countFrames: true, signal: options.signal });
     const read = counted.streams?.[0]?.nb_read_frames;
     decoded = read !== undefined && read !== "N/A" ? Number(read) : null;
@@ -299,14 +372,16 @@ export async function probeVideoFacts(
     timeBase: stream.time_base ?? null,
     pixFmt: stream.pix_fmt ?? null,
     headerFrameCount: header !== null && Number.isFinite(header) ? header : null,
+    packetFrameCount: packetCount,
     decodedFrameCount: decoded !== null && Number.isFinite(decoded) ? decoded : null,
-    timing: await assessFrameTiming(ffprobe, filePath, { signal: options.signal }),
+    // Cache hit inside: the scan above already ran for the same fingerprint.
+    timing: await assessFrameTiming(ffprobe, filePath, { signal: options.signal, stream }),
   };
 }
 
-/** Frame count to validate requested indices against (decoded > header). */
+/** Frame count to validate requested indices against (decoded > header > packet). */
 export function bestFrameCount(facts: VideoFacts): number | null {
-  return facts.decodedFrameCount ?? facts.headerFrameCount ?? null;
+  return facts.decodedFrameCount ?? facts.headerFrameCount ?? facts.packetFrameCount ?? null;
 }
 
 /**
@@ -350,6 +425,15 @@ export interface ExtractResult {
 
 export const MAX_EXTRACT_FRAMES = 600;
 
+/**
+ * Scaled extraction ceiling: a fixed 180 s default starved long sources
+ * while a healthy extraction only needs time proportional to the source.
+ * 2 min base + 2 s per source second, capped at 10 min.
+ */
+export function suggestedExtractTimeoutMs(durationSec: number): number {
+  return Math.min(600_000, 120_000 + Math.round(Math.max(0, durationSec) * 2_000));
+}
+
 /** Ordered-decode fallback cap: beyond this, refuse instead of grinding. */
 const MAX_ORDERED_DECODE_FRAMES = 50_000;
 
@@ -368,23 +452,192 @@ const MAX_ORDERED_DECODE_FRAMES = 50_000;
  * correct by construction for "the n-th frame when played" and independent
  * of any in-stream counter.
  */
+/**
+ * Seek-addressed extraction: one ffmpeg invocation per cluster of nearby
+ * requests, `-ss` input seeking (keyframe jump + decode-forward) and a
+ * PTS-window select. Pairing trusts ONLY measured PTS — never decode
+ * counters — so a pairing disagreement falls back instead of guessing.
+ */
+const CLUSTER_MAX_FRAME_GAP = 64;
+const MAX_SEEK_CLUSTERS = 24;
+
+/** Internal: seek-mode could not pair outputs honestly; caller falls back. */
+class PtsModeFallbackError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PtsModeFallbackError";
+  }
+}
+
+interface PtsRequest {
+  readonly frame: number;
+  readonly pts: number;
+}
+
+function clusterByFrameGap(indices: readonly number[]): number[][] {
+  const clusters: number[][] = [];
+  for (const index of indices) {
+    const current = clusters[clusters.length - 1];
+    if (current !== undefined && index - current[current.length - 1]! <= CLUSTER_MAX_FRAME_GAP) {
+      current.push(index);
+    } else {
+      clusters.push([index]);
+    }
+  }
+  return clusters;
+}
+
+function medianFrameDelta(pts: readonly number[]): number | null {
+  if (pts.length < 2) return null;
+  const deltas: number[] = [];
+  for (let i = 1; i < pts.length; i++) deltas.push(pts[i]! - pts[i - 1]!);
+  deltas.sort((a, b) => a - b);
+  return deltas[Math.floor(deltas.length / 2)] ?? null;
+}
+
+/** Choose seek addressing only when it is clearly cheaper than sequential. */
+function planSeekExtraction(
+  indices: readonly number[],
+  scan: PacketScan,
+): { requests: PtsRequest[]; frameDeltaSec: number } | null {
+  const maxIndex = indices[indices.length - 1]!;
+  if (!scan.completed || scan.pts.length <= maxIndex || scan.pts.length < 3) return null;
+  const median = medianFrameDelta(scan.pts);
+  if (median === null || !(median > 0)) return null;
+  const clusters = clusterByFrameGap(indices);
+  if (clusters.length > MAX_SEEK_CLUSTERS) return null;
+  // Each cluster pays one keyframe-seek back + its own span.
+  const averageGop = scan.pts.length / Math.max(1, scan.keyframeCount);
+  const estimatedSeekFrames = clusters.reduce(
+    (sum, cluster) => sum + (cluster[cluster.length - 1]! - cluster[0]! + 1) + averageGop,
+    0,
+  );
+  if (estimatedSeekFrames * 2 >= maxIndex + 1) return null;
+  return {
+    requests: indices.map((frame) => ({ frame, pts: scan.pts[frame]! })),
+    frameDeltaSec: median,
+  };
+}
+
+async function extractByPtsWindows(
+  ffmpeg: string,
+  sourcePath: string,
+  requests: readonly PtsRequest[],
+  destDir: string,
+  frameDeltaSec: number,
+  options: { signal?: AbortSignal; timeoutMs?: number },
+): Promise<ExtractedFrame[]> {
+  // eps stays under half the frame delta so a decoded frame can match at
+  // most one window and a window at most one decoded frame.
+  const eps = Math.min(0.05, Math.max(frameDeltaSec * 0.45, 1e-4));
+  const clusters = clusterByFrameGap(requests.map((request) => request.frame));
+  if (clusters.length > MAX_SEEK_CLUSTERS) {
+    throw new PtsModeFallbackError(`seek mode needs at most ${MAX_SEEK_CLUSTERS} clusters, got ${clusters.length}`);
+  }
+  const inputOptions = await frameInputOptions(sourcePath);
+  const ptsByFrame = new Map(requests.map((request) => [request.frame, request.pts]));
+  const frames: ExtractedFrame[] = [];
+  for (const [clusterIndex, clusterIndices] of clusters.entries()) {
+    const cluster = clusterIndices.map((frame) => ({ frame, pts: ptsByFrame.get(frame)! }));
+    const firstPts = cluster[0]!.pts;
+    const lastPts = cluster[cluster.length - 1]!.pts;
+    // Window bounds are clamped at 0: the filter expression parser rejects
+    // a unary minus, and no PTS is negative anyway.
+    const windows = cluster
+      .map(({ pts }) => `between(pts_time,${Math.max(0, pts - eps).toFixed(6)},${(pts + eps).toFixed(6)})`)
+      .join("+");
+    const prefix = `tmpC${clusterIndex}`;
+    // Seek one frame before the first window so the target always sits
+    // inside the decoded range; -t bounds the read just past the last one.
+    const seekSec = Math.max(0, firstPts - frameDeltaSec);
+    const readSec = lastPts - seekSec + frameDeltaSec * 3 + eps * 2;
+    const stderr = await runToolProcess(
+      ffmpeg,
+      ["-hide_banner", "-nostdin", "-loglevel", "info",
+        "-ss", seekSec.toFixed(6), "-t", readSec.toFixed(6), ...inputOptions, "-i", sourcePath,
+        "-vf", `showinfo,select='${windows}'`, "-an", "-fps_mode", "passthrough",
+        join(destDir, `${prefix}-%06d.png`)],
+      options,
+    ).then((result) => result.stderr, (error: unknown) => {
+      // Any invocation failure (not an abort) defers to the sequential
+      // path, which is authoritative and reports the real error if it fails.
+      if (error instanceof FfmpegToolError && !/Cancel/.test(error.message)) {
+        throw new PtsModeFallbackError(`seek-mode invocation failed: ${error.message.slice(-300)}`);
+      }
+      throw error;
+    });
+    const decoded = parseShowinfo(stderr);
+    const passed = decoded.filter((entry) =>
+      cluster.some(({ pts }) => Math.abs(entry.ptsTimeSec - pts) <= eps));
+    if (passed.length !== cluster.length) {
+      throw new PtsModeFallbackError(
+        `seek-mode pairing mismatch near ${firstPts.toFixed(3)}s: decoded ${passed.length} of ${cluster.length} requested frames`,
+      );
+    }
+    for (const [position, request] of cluster.entries()) {
+      if (Math.abs(passed[position]!.ptsTimeSec - request.pts) > eps) {
+        throw new PtsModeFallbackError(`seek-mode pairing out of order for frame ${request.frame}`);
+      }
+      const tempPath = join(destDir, `${prefix}-${String(position + 1).padStart(6, "0")}.png`);
+      const finalPath = join(destDir, `f${String(request.frame).padStart(6, "0")}.png`);
+      const info = await stat(tempPath).catch(() => null);
+      if (!info?.isFile()) {
+        throw new PtsModeFallbackError(`seek-mode output missing for frame ${request.frame}`);
+      }
+      await rename(tempPath, finalPath);
+      frames.push({ path: finalPath, frame: request.frame, ptsTimeSec: passed[position]!.ptsTimeSec });
+    }
+  }
+  return frames;
+}
+
 export async function extractFramesExact(
   ffmpeg: string,
   sourcePath: string,
   indices: readonly number[],
   destDir: string,
-  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+  options: { signal?: AbortSignal; timeoutMs?: number; ffprobe?: string } = {},
 ): Promise<{ frames: ExtractedFrame[]; limitations: string[] }> {
   await mkdir(destDir, { recursive: true });
   const limitations: string[] = [];
+  // Sparse requests on long sources: address frames through the packet PTS
+  // table and decode only covering clusters instead of a whole prefix.
+  if (options.ffprobe && indices.length > 0) {
+    try {
+      const scan = await scanPacketPts(options.ffprobe, sourcePath, { signal: options.signal });
+      const plan = planSeekExtraction(indices, scan);
+      if (plan) {
+        try {
+          const frames = await extractByPtsWindows(ffmpeg, sourcePath, plan.requests, destDir, plan.frameDeltaSec, options);
+          return { frames, limitations };
+        } catch (error) {
+          if (!(error instanceof PtsModeFallbackError)) throw error;
+          // Seek pairing disagreed — wipe partial outputs and let the
+          // sequential pass produce the authoritative answer.
+          for (const entry of await readdir(destDir)) {
+            if (entry.startsWith("tmpC") || /^f\d{6}\.png$/.test(entry)) {
+              await rm(join(destDir, entry), { force: true });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
+      // The index is unavailable (odd container, probe hiccup): the
+      // sequential path below remains fully honest on its own.
+    }
+  }
   const expr = buildSelectExpr(indices);
   let decoded: { counter: number; ptsTimeSec: number }[];
   try {
     // showinfo BEFORE select: its counter is the global decode index.
+    // -frames:v stops the pipeline once every requested frame has passed
+    // through select, so decode does not grind on to the end of the file.
     const { stderr } = await runToolProcess(
       ffmpeg,
       ["-hide_banner", "-nostdin", "-loglevel", "info", ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
-        "-vf", `showinfo,${expr}`, "-an", "-fps_mode", "passthrough", join(destDir, "tmp-%06d.png")],
+        "-vf", `showinfo,${expr}`, "-an", "-fps_mode", "passthrough",
+        "-frames:v", String(indices.length), join(destDir, "tmp-%06d.png")],
       options,
     );
     decoded = parseShowinfo(stderr);
@@ -397,7 +650,7 @@ export async function extractFramesExact(
   const requested = new Set(indices);
   const passed = decoded.filter((item) => requested.has(item.counter));
   const counterTrusted = passed.length === indices.length &&
-    passed.every((item, position) => item.counter === indices[position]);
+    passed.every((item, position) => item.counter === indices[position]!);
   if (!counterTrusted) {
     // The decode counter disagrees with the request (reset, drift or
     // duplicate matches) — wipe the pass-1 output and re-extract by ordered
@@ -413,14 +666,20 @@ export async function extractFramesExact(
   return finalizeExtractedFrames(indices, passed, destDir, limitations);
 }
 
-/** Ordered decode of [0, maxRequested]; pairs output position -> request. */
+/**
+ * Ordered decode of [0, maxRequested]. Pass 1 decodes to `-f null` with
+ * showinfo ONLY (no maxIndex PNG files written to disk); pass 2 extracts the
+ * requested positions through the shared PTS-window seeker. The historical
+ * whole-PNG ordered pass stays as the final safety net if seek pairing
+ * disagrees on an unusual container.
+ */
 async function extractFramesOrdered(
   ffmpeg: string,
   sourcePath: string,
   indices: readonly number[],
   destDir: string,
   limitations: string[],
-  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+  options: { signal?: AbortSignal; timeoutMs?: number; ffprobe?: string } = {},
 ): Promise<{ frames: ExtractedFrame[]; limitations: string[] }> {
   const maxIndex = indices[indices.length - 1]!;
   if (maxIndex + 1 > MAX_ORDERED_DECODE_FRAMES) {
@@ -436,7 +695,7 @@ async function extractFramesOrdered(
       ffmpeg,
       ["-hide_banner", "-nostdin", "-loglevel", "info", ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
         "-vf", "showinfo", "-an", "-fps_mode", "passthrough",
-        "-frames:v", String(maxIndex + 1), join(destDir, "tmp-%06d.png")],
+        "-frames:v", String(maxIndex + 1), "-f", "null", "-"],
       options,
     ));
   } catch (error) {
@@ -451,7 +710,62 @@ async function extractFramesOrdered(
       `extraction mismatch: requested frame ${maxIndex} but the source decodes only ${shown.length} frame(s) — the requested index is beyond the last frame`,
     );
   }
-  return finalizeExtractedFrames(indices, indices.map((index) => shown[index]!), destDir, limitations);
+  const median = medianFrameDelta([...shown].map((entry) => entry.ptsTimeSec).sort((a, b) => a - b));
+  if (median !== null && median > 0) {
+    try {
+      const frames = await extractByPtsWindows(
+        ffmpeg,
+        sourcePath,
+        indices.map((index) => ({ frame: index, pts: shown[index]!.ptsTimeSec })),
+        destDir,
+        median,
+        options,
+      );
+      return { frames, limitations };
+    } catch (error) {
+      if (!(error instanceof PtsModeFallbackError)) throw error;
+      for (const entry of await readdir(destDir)) {
+        if (entry.startsWith("tmpC") || /^f\d{6}\.png$/.test(entry)) {
+          await rm(join(destDir, entry), { force: true });
+        }
+      }
+    }
+  }
+  return extractFramesOrderedPng(ffmpeg, sourcePath, indices, destDir, limitations, options);
+}
+
+/** Historical whole-PNG ordered pass — the never-guess safety net. */
+async function extractFramesOrderedPng(
+  ffmpeg: string,
+  sourcePath: string,
+  indices: readonly number[],
+  destDir: string,
+  limitations: string[],
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<{ frames: ExtractedFrame[]; limitations: string[] }> {
+  const maxIndex = indices[indices.length - 1]!;
+  let stderr: string;
+  try {
+    ({ stderr } = await runToolProcess(
+      ffmpeg,
+      ["-hide_banner", "-nostdin", "-loglevel", "info", ...(await frameInputOptions(sourcePath)), "-i", sourcePath,
+        "-vf", "showinfo", "-an", "-fps_mode", "passthrough",
+        "-frames:v", String(maxIndex + 1), join(destDir, "tmp-%06d.png")],
+      options,
+    ));
+  } catch (error) {
+    await rm(destDir, { recursive: true, force: true });
+    throw error;
+  }
+  const pngShown = parseShowinfo(stderr);
+  if (pngShown.length < maxIndex + 1) {
+    await rm(destDir, { recursive: true, force: true });
+    throw new FacadeError(
+      "JOB_FAILED",
+      `extraction mismatch: requested frame ${maxIndex} but the source decodes only ${pngShown.length} frame(s) — the requested index is beyond the last frame`,
+    );
+  }
+  return finalizeExtractedFrames(indices, indices.map((index) => pngShown[index]!), destDir, limitations);
 }
 
 /** Rename tmp outputs (pass-position order) and attach the showinfo PTS. */

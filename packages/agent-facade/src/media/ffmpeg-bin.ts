@@ -32,6 +32,13 @@ export interface RunResult {
 
 const DEFAULT_TIMEOUT_MS = 180_000;
 const MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
+/**
+ * stderr carries showinfo logs that callers parse; long sequential decodes
+ * legitimately produce tens of MiB. The cap exists so a runaway process
+ * cannot grow the buffer without bound — past it the tool fails loudly
+ * instead of exhausting memory.
+ */
+const MAX_STDERR_BYTES = 64 * 1024 * 1024;
 
 /** Spawn without a shell; capture capped stdout/stderr; honor abort + timeout. */
 export function runToolProcess(
@@ -61,6 +68,7 @@ export function runToolProcess(
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     let stdoutBytes = 0;
+    let stderrBytes = 0;
     let settled = false;
     let failure: Error | undefined;
     const stderrText = () => Buffer.concat(stderrChunks).toString("utf8");
@@ -83,7 +91,14 @@ export function runToolProcess(
         stdoutChunks.push(chunk);
       }
     });
-    child.stderr!.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
+    child.stderr!.on("data", (chunk: Buffer) => {
+      stderrBytes += chunk.length;
+      if (stderrBytes > MAX_STDERR_BYTES) {
+        stop(new FfmpegToolError("tool process stderr exceeded the resource cap"));
+      } else {
+        stderrChunks.push(chunk);
+      }
+    });
     child.on("error", (error) => {
       if (!settled) failure = failure ?? new FfmpegToolError(`failed to spawn ${exe}: ${error.message}`);
     });

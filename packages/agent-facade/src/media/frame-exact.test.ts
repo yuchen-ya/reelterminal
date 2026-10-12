@@ -11,7 +11,7 @@
  *   frames 55-64  testsrc2
  *   frames 65-74  frozen clone of frame 64
  */
-import { mkdtemp, mkdir, rm, writeFile, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile, stat, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -32,6 +32,7 @@ import {
   compareFrameMetrics,
   applyMaskComposite,
   verifyOutsideMaskUnchanged,
+  clearPacketScanCacheForTests,
 } from "./frame-exact";
 
 const binaries = await resolveToolFfmpeg();
@@ -237,6 +238,39 @@ describe("extractFramesExact", () => {
       { counter: 0, ptsTimeSec: 0.3 },
       { counter: 1, ptsTimeSec: 4 },
     ]);
+  });
+});
+
+describe("seek-addressed extraction", () => {
+  it.skipIf(skip())("extracts sparse frames from a long source via clustered seeks, without a decode pass for counting", async () => {
+    // 300 frames with a keyframe every 25: requesting 3 sparse frames must
+    // decode ~3 clusters (~80 frames) instead of the 300-frame prefix.
+    const longPath = join(dir, "long.mp4");
+    await runToolProcess(binaries!.ffmpeg, [
+      "-hide_banner", "-loglevel", "error", "-y",
+      "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=10:duration=30",
+      "-c:v", "libx264", "-crf", "23", "-g", "25", "-pix_fmt", "yuv420p", longPath,
+    ]);
+    const facts = await probeVideoFacts(binaries!.ffprobe, longPath);
+    expect(facts.packetFrameCount).toBe(300);
+    expect(facts.decodedFrameCount).toBeNull(); // default probe does not decode-count
+    expect(facts.timing.timing).toBe("cfr");
+
+    // Force the extractor to build its own index (no stale cache help).
+    clearPacketScanCacheForTests();
+    const outDir = join(dir, "seek-out");
+    const { frames, limitations } = await extractFramesExact(
+      binaries!.ffmpeg, longPath, [5, 150, 295], outDir, { ffprobe: binaries!.ffprobe });
+    expect(frames.map((frame) => frame.frame)).toEqual([5, 150, 295]);
+    expect(frames[0]!.ptsTimeSec).toBeCloseTo(0.5, 3);
+    expect(frames[1]!.ptsTimeSec).toBeCloseTo(15.0, 3);
+    expect(frames[2]!.ptsTimeSec).toBeCloseTo(29.5, 3);
+    expect(limitations).toEqual([]);
+    for (const frame of frames) {
+      expect((await stat(frame.path)).isFile()).toBe(true);
+    }
+    // Exactly the requested PNGs remain — no cluster tmp stragglers.
+    expect((await readdir(outDir)).sort()).toEqual(["f000005.png", "f000150.png", "f000295.png"]);
   });
 });
 

@@ -22,7 +22,7 @@ import { FacadeError } from "../errors";
 import type { ToolContext } from "../plugin-api";
 import { definePlugin, defineTool } from "../plugin-api";
 import { artifactRefFor, assertContainedWrittenFile, prepareArtifactDir, requireArtifactRoot } from "../artifact-io";
-import { probeRasterSize, extractFramesExact, probeVideoFacts, bestFrameCount, composeContactSheet } from "../media/frame-exact";
+import { probeRasterSize, extractFramesExact, probeVideoFacts, bestFrameCount, composeContactSheet, suggestedExtractTimeoutMs } from "../media/frame-exact";
 import { probeLabelFont, resolveToolFfmpeg } from "../media/ffmpeg-bin";
 import { opencvToolPreflight, resolveOpenCvRuntime, runOpenCvScript } from "../media/opencv-runner";
 import { parseSourceRef, resolveSourceFile } from "./source-ref";
@@ -304,7 +304,9 @@ async function runMotionTrack(input: MotionTrackInput, context: ToolContext): Pr
     }
     const indices = Array.from({ length: endFrame - startFrame }, (_, i) => startFrame + i);
     const framesDir = join(outputDir, "frames");
-    const extracted = await extractFramesExact(binaries.ffmpeg, sourceFile, indices, framesDir);
+    const extracted = await extractFramesExact(
+      binaries.ffmpeg, sourceFile, indices, framesDir,
+      { ffprobe: binaries.ffprobe, timeoutMs: suggestedExtractTimeoutMs(facts.durationSec) });
     const firstPng = await probeRasterSize(binaries.ffprobe, extracted.frames[0]!.path);
     // Decoded PNGs carry the AUTOROTATED raster; when it differs from the
     // coded stream dimensions, every coordinate below is in the decoded

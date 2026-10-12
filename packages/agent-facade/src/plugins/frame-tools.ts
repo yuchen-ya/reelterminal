@@ -30,6 +30,7 @@ import {
   probeRasterSize,
   probeVideoFacts,
   resolveTargetFrames,
+  suggestedExtractTimeoutMs,
   verifyOutsideMaskUnchanged,
   type CompareLayout,
   type VideoFacts,
@@ -132,6 +133,7 @@ function factsOutput(facts: VideoFacts) {
     timeBase: facts.timeBase,
     pixFmt: facts.pixFmt,
     headerFrameCount: facts.headerFrameCount,
+    packetFrameCount: facts.packetFrameCount,
     decodedFrameCount: facts.decodedFrameCount,
     frameTiming: facts.timing,
   };
@@ -199,7 +201,9 @@ async function runFramesExtract(input: FramesExtractInput, context: ToolContext)
       totalFrames: total,
     });
     const framesDir = join(outputDir, "frames");
-    const { frames, limitations } = await extractFramesExact(binaries.ffmpeg, sourceFile, indices, framesDir);
+    const { frames, limitations } = await extractFramesExact(
+      binaries.ffmpeg, sourceFile, indices, framesDir,
+      { ffprobe: binaries.ffprobe, timeoutMs: suggestedExtractTimeoutMs(facts.durationSec) });
     const artifacts: (FramesExtractResult["frames"][number])[] = [];
     for (const frame of frames) {
       const verified = await assertContainedWrittenFile(frame.path, root, "frames.extract");
@@ -440,7 +444,9 @@ async function runVideoCompare(input: VideoCompareInput, context: ToolContext): 
         if (refTotal !== null && position.referenceFrame >= refTotal) {
           throw new FacadeError("INVALID_PARAMS", `video.compare: referenceFrame ${position.referenceFrame} is beyond the reference's ${refTotal} frames`);
         }
-        const extracted = await extractFramesExact(binaries.ffmpeg, referenceFile, [position.referenceFrame], join(work, `ref-${index}`));
+        const extracted = await extractFramesExact(
+          binaries.ffmpeg, referenceFile, [position.referenceFrame], join(work, `ref-${index}`),
+          { ffprobe: binaries.ffprobe, timeoutMs: suggestedExtractTimeoutMs(refFacts.durationSec) });
         referencePng = extracted.frames[0]!.path;
         referencePts = extracted.frames[0]!.ptsTimeSec;
       }
@@ -453,7 +459,9 @@ async function runVideoCompare(input: VideoCompareInput, context: ToolContext): 
         if (candTotal !== null && position.candidateFrame >= candTotal) {
           throw new FacadeError("INVALID_PARAMS", `video.compare: candidateFrame ${position.candidateFrame} is beyond the candidate's ${candTotal} frames`);
         }
-        const extracted = await extractFramesExact(binaries.ffmpeg, candidateFile, [position.candidateFrame], join(work, `cand-${index}`));
+        const extracted = await extractFramesExact(
+          binaries.ffmpeg, candidateFile, [position.candidateFrame], join(work, `cand-${index}`),
+          { ffprobe: binaries.ffprobe, timeoutMs: suggestedExtractTimeoutMs(candFacts.durationSec) });
         candidatePng = extracted.frames[0]!.path;
         candidatePts = extracted.frames[0]!.ptsTimeSec;
       }
@@ -573,7 +581,9 @@ async function runPatchApply(input: PatchApplyInput, context: ToolContext): Prom
     const extractedDir = join(outputDir, "extracted");
     const framesDir = join(outputDir, "frames");
     await mkdir(framesDir, { recursive: true });
-    const extracted = await extractFramesExact(binaries.ffmpeg, sourceFile, indices, extractedDir);
+    const extracted = await extractFramesExact(
+      binaries.ffmpeg, sourceFile, indices, extractedDir,
+      { ffprobe: binaries.ffprobe, timeoutMs: suggestedExtractTimeoutMs(facts.durationSec) });
     const manifestFrames: { frame: number; status: "patched" | "untouched"; path: string; sha256: string }[] = [];
     const verificationFailures: { frame: number; differingPixels: number }[] = [];
     for (const frame of extracted.frames) {
