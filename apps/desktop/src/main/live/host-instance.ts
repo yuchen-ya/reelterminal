@@ -118,6 +118,28 @@ function liveDeliveryRoots(): readonly string[] {
   return [agentWorkspaceRoot()];
 }
 
+/**
+ * Host-level knobs for the export ceilings: the no-progress watchdog and
+ * the total budget are pool config, and operators get environment overrides
+ * (REELTERMINAL_EXPORT_WATCHDOG_MS / REELTERMINAL_EXPORT_BUDGET_MS) so a
+ * known-slow machine can raise them without a rebuild. 0 disables the
+ * budget; both must be positive integers otherwise.
+ */
+function chromiumProvidersFromEnv(): Parameters<typeof createChromiumProviders>[0] {
+  const parse = (name: string): number | undefined => {
+    const raw = process.env[name]?.trim();
+    if (!raw) return undefined;
+    const value = Number(raw);
+    return Number.isInteger(value) && value >= 0 ? value : undefined;
+  };
+  const exportWatchdogMs = parse("REELTERMINAL_EXPORT_WATCHDOG_MS");
+  const exportTotalBudgetMs = parse("REELTERMINAL_EXPORT_BUDGET_MS");
+  return {
+    ...(exportWatchdogMs !== undefined && exportWatchdogMs > 0 ? { exportWatchdogMs } : {}),
+    ...(exportTotalBudgetMs !== undefined ? { exportTotalBudgetMs } : {}),
+  };
+}
+
 export function getLiveSessionHost(): LiveSessionHost {
   if (!host) {
     host = createLiveSessionHost({
@@ -126,7 +148,7 @@ export function getLiveSessionHost(): LiveSessionHost {
       deliveryRoots: liveDeliveryRoots(),
       installStoreBridge: installLiveStoreBridge,
       createProviders: (): LiveProviders => {
-        const chromium = createChromiumProviders();
+        const chromium = createChromiumProviders(chromiumProvidersFromEnv());
         return {
           renderProvider: chromium.renderProvider,
           exportProvider: chromium.exportProvider,

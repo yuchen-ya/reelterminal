@@ -116,7 +116,10 @@ describe("export watchdog + runtime recovery E2E", () => {
   });
 
   it("route W watchdog: stops work, cleans up, settles once as error, pool recovers", async () => {
-    const { facade, providers } = await makeSession({ exportWatchdogMs: 250 });
+    // 1 ms no-progress ceiling: fires before the first frame can arrive,
+    // exercising the wedge path deterministically (a healthy export that
+    // keeps producing frames would keep re-arming a larger ceiling).
+    const { facade, providers } = await makeSession({ exportWatchdogMs: 1 });
     const probe = await providers.probe();
     if (probe.summary.exportRoute !== "chromium-webcodecs") {
       console.log("[watchdog] skipping Route-W watchdog: no WebCodecs route here");
@@ -161,7 +164,7 @@ describe("export watchdog + runtime recovery E2E", () => {
   it("route F watchdog: stops ffmpeg+page, cleans up, settles as error, pool recovers", async () => {
     const { facade, providers } = await makeSession({
       forceExportRoute: "chromium-frames-ffmpeg",
-      exportWatchdogMs: 250,
+      exportWatchdogMs: 1,
     });
     const probe = await providers.probe();
     if (!probe.ffmpeg.available) {

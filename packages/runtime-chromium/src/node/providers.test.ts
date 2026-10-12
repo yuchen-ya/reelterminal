@@ -57,6 +57,7 @@ function makeProvider(
   const pool = {
     runtime,
     exportWatchdogMs: 10_000,
+    exportTotalBudgetMs: 3_600_000,
     exportRoute: async () => "chromium-webcodecs" as const,
   } as unknown as ChromiumProviderPool;
   return {
@@ -116,6 +117,66 @@ async function createJobDir(jobId: string): Promise<string> {
 }
 
 describe("ChromiumExportProvider job lifecycle", () => {
+  it("no-progress watchdog: a progressing export survives; a silent one is killed", async () => {
+    const errorMessages: string[] = [];
+    const makeCallbacks = (): ExportCallbacks & { readonly settled: Promise<Terminal> } => {
+      let settle!: (terminal: Terminal) => void;
+      const settled = new Promise<Terminal>((resolve) => { settle = resolve; });
+      let done = false;
+      return {
+        onRunning: () => undefined,
+        onProgress: () => undefined,
+        onDone: () => { if (!done) { done = true; settle("done"); } },
+        onError: (error) => { if (!done) { done = true; errorMessages.push(error.message); settle("error"); } },
+        onCancelled: () => { if (!done) { done = true; settle("cancelled"); } },
+        get settled() { return settled; },
+      } as ExportCallbacks & { readonly settled: Promise<Terminal> };
+    };
+    const poolFor = (exportWatchdogMs: number, streaming: ExportRuntimeCall): ChromiumExportProvider => {
+      const pool = {
+        runtime: {
+          exportWebcodecsStreaming: streaming,
+          abortInPageExport: async () => {
+            pokeWedged?.();
+          },
+          recycle: async () => undefined,
+        },
+        exportWatchdogMs,
+        exportTotalBudgetMs: 0,
+        exportRoute: async () => "chromium-webcodecs" as const,
+      } as unknown as ChromiumProviderPool;
+      return new ChromiumExportProvider(pool);
+    };
+
+    // Steady progress every 20 ms against a 60 ms no-progress ceiling: the
+    // old fixed deadline killed this at 60 ms; renewal must let it finish.
+    const slowButSteady = poolFor(60, async (_project, _media, _settings, writer, onProgress) => {
+      for (let frame = 0; frame < 15; frame += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        onProgress?.({ phase: "rendering", progress: (frame + 1) / 15, currentFrame: frame + 1, totalFrames: 15, bytesWritten: 0 });
+      }
+      await writeSuccessfulOutput(writer);
+      return { success: true, framesRendered: 15 };
+    });
+    const steadyDir = await createJobDir("steady");
+    const steady = makeCallbacks();
+    await slowButSteady.startExport(request("steady", steadyDir), steady);
+    await expect(steady.settled).resolves.toBe("done");
+
+    // Silent route: emits nothing, resolves only when the watchdog's abort
+    // pokes it — must terminalize as an error naming the no-progress ceiling.
+    let pokeWedged!: () => void;
+    const silent = poolFor(60, () => new Promise((resolve) => {
+      pokeWedged = () => resolve({ success: false, errorCode: "ABORTED", errorMessage: "poked" });
+    }));
+    const wedgedDir = await createJobDir("wedged");
+    const wedged = makeCallbacks();
+    await silent.startExport(request("wedged", wedgedDir), wedged);
+    await expect(wedged.settled).resolves.toBe("error");
+    expect(errorMessages.join("\n")).toContain("no-progress watchdog");
+    expect(await readdir(wedgedDir)).toEqual([]);
+  });
+
   it("settles a failed job once, removes partial output, and runs the next job", async () => {
     let calls = 0;
     const { provider } = makeProvider(async (_project, _media, _settings, writer) => {

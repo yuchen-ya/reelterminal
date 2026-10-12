@@ -64,8 +64,17 @@ export interface ChromiumProvidersConfig {
    * capable machine exercise the experiment, never an incapable one lie.
    */
   readonly forceExportRoute?: "chromium-webcodecs" | "chromium-frames-ffmpeg";
-  /** Hard ceiling for one export job; default 600_000 (10 min). */
+  /**
+   * No-progress ceiling for one export job: every progress event re-arms it,
+   * so a job that keeps producing frames is never killed for being slow —
+   * only a genuinely wedged page/encoder is. Default 600_000 (10 min).
+   */
   readonly exportWatchdogMs?: number;
+  /**
+   * Total wall-clock ceiling for one export job regardless of progress;
+   * 0 disables it. Default 3_600_000 (1 h).
+   */
+  readonly exportTotalBudgetMs?: number;
   /**
    * Hard ceiling for ONE probe/hydrate/render page evaluate (default
    * 120_000). Raise it for very large media sets whose hydrate legitimately
@@ -398,7 +407,48 @@ export class ChromiumExportProvider implements ExportProvider {
     callbacks: ExportCallbacks,
     slot: JobSlot,
   ): Promise<void> {
-    const guarded = guardExportCallbacks(callbacks);
+    // Watchdog: a WEDGED page/encoder must never freeze the job (or, via
+    // the shared page, the whole session) forever — but a job that keeps
+    // producing frames is slow, not wedged. Two ceilings: the no-progress
+    // watchdog re-arms on every progress/running event; the total budget
+    // bounds the whole job regardless of progress (0 disables it).
+    const watchdogMs = this.providers.exportWatchdogMs;
+    const totalBudgetMs = this.providers.exportTotalBudgetMs;
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    let budget: ReturnType<typeof setTimeout> | undefined;
+    let fireWatchdog!: (error: ExportWatchdogError) => void;
+    const watchdogFired = new Promise<never>((_resolve, reject) => {
+      fireWatchdog = reject;
+    });
+    // The onRunning wrapper can arm (and fire) the ceiling before the race
+    // below attaches its handler; this no-op keeps an early rejection from
+    // surfacing as an unhandled rejection. The race still sees it.
+    void watchdogFired.catch(() => undefined);
+    const armWatchdog = () => {
+      if (watchdog) clearTimeout(watchdog);
+      watchdog = setTimeout(() => {
+        fireWatchdog(
+          new ExportWatchdogError(
+            `export exceeded the ${watchdogMs}ms no-progress watchdog`,
+          ),
+        );
+      }, watchdogMs);
+    };
+    // Progress re-arms the no-progress ceiling; the budget clock is
+    // unaffected. Wrapped BEFORE the terminal guard so renewal cannot be
+    // suppressed by it.
+    const progressAwareCallbacks: ExportCallbacks = {
+      ...callbacks,
+      onProgress: (event) => {
+        armWatchdog();
+        callbacks.onProgress(event);
+      },
+      onRunning: () => {
+        armWatchdog();
+        callbacks.onRunning();
+      },
+    };
+    const guarded = guardExportCallbacks(progressAwareCallbacks);
     try {
       if (slot.cancelRequested) {
         await sweepExportJobDir(request.jobDir);
@@ -413,19 +463,16 @@ export class ChromiumExportProvider implements ExportProvider {
         throw new Error("no export route available in this runtime");
       }
 
-      // Watchdog: a wedged page/encoder must never freeze the job (or, via
-      // the shared page, the whole session) forever.
-      const watchdogMs = this.providers.exportWatchdogMs;
-      let watchdog: ReturnType<typeof setTimeout> | undefined;
-      const watchdogFired = new Promise<never>((_resolve, reject) => {
-        watchdog = setTimeout(() => {
-          reject(
+      armWatchdog();
+      if (totalBudgetMs > 0) {
+        budget = setTimeout(() => {
+          fireWatchdog(
             new ExportWatchdogError(
-              `export exceeded the ${watchdogMs}ms watchdog`,
+              `export exceeded the ${totalBudgetMs}ms total budget`,
             ),
           );
-        }, watchdogMs);
-      });
+        }, totalBudgetMs);
+      }
       const work: Promise<RouteOutcome> =
         route === "chromium-webcodecs"
           ? this.runWebcodecsRoute(request, guarded, slot)
@@ -450,8 +497,14 @@ export class ChromiumExportProvider implements ExportProvider {
         // terminalize (as error — a timeout is never "cancelled").
         slot.cancelRequested = true; // route loops bail at the next check
         const stopAndUnwind = (async () => {
+          // The in-page abort can itself sit on a wedged evaluate; bound it
+          // so the browser kill below — the thing that actually breaks a
+          // wedged page — always gets to run.
           try {
-            await slot.abortActive?.();
+            await Promise.race([
+              slot.abortActive?.() ?? Promise.resolve(),
+              delay(ABORT_STOP_GRACE_MS),
+            ]);
           } catch {
             /* best effort */
           }
@@ -473,8 +526,6 @@ export class ChromiumExportProvider implements ExportProvider {
         }
         guarded.onError({ code: "JOB_FAILED", message: error.message });
         return;
-      } finally {
-        if (watchdog) clearTimeout(watchdog);
       }
 
       slot.state = "settled";
@@ -502,6 +553,8 @@ export class ChromiumExportProvider implements ExportProvider {
       }
       return;
     } finally {
+      if (watchdog) clearTimeout(watchdog);
+      if (budget) clearTimeout(budget);
       slot.state = "settled";
       // The job is terminal (done, cancelled, error, or watchdog) via every
       // path above: drop its slot so the jobs map cannot grow unboundedly
@@ -743,6 +796,14 @@ class ExportWatchdogError extends Error {
 const WATCHDOG_CLEANUP_GRACE_MS = 30_000;
 
 /**
+ * Bound on the route's own in-page abort during watchdog cleanup. The abort
+ * can sit on the very evaluate that wedged the export; the browser recycle
+ * that follows is what actually breaks it, so the abort must never be able
+ * to starve the recycle.
+ */
+const ABORT_STOP_GRACE_MS = 5_000;
+
+/**
  * Ceiling for a pool preflight probe WAITING on the shared page (e.g. behind
  * an active export). Preflights must answer in bounded time — a busy runtime
  * yields a transient unavailable-with-reason, never a 10-minute stall of the
@@ -758,11 +819,18 @@ export class ChromiumProviderPool {
   readonly runtime: ChromiumRuntime;
   readonly ffmpegConfig: FfmpegConfig;
   /**
-   * Export watchdog: hard ceiling for one export (default 10 min). Public
-   * and mutable so tests can shrink it for one job and restore it after —
-   * the watchdog must never be a way to brick the pool.
+   * Export watchdog: NO-PROGRESS ceiling for one export (default 10 min).
+   * Re-armed by every progress event — steady frame production keeps a slow
+   * job alive; only a wedged page/encoder trips it. Public and mutable so
+   * tests can shrink it for one job and restore it after — the watchdog
+   * must never be a way to brick the pool.
    */
   exportWatchdogMs: number;
+  /**
+   * Total wall-clock ceiling for one export regardless of progress
+   * (default 1 h; 0 disables). Mutable for the same test reasons.
+   */
+  exportTotalBudgetMs: number;
   private readonly config: ChromiumProvidersConfig;
   private probeCache: { readonly generation: number; readonly result: RuntimeProbeResult } | null = null;
   private probeInFlight: Promise<RuntimeProbeResult> | null = null;
@@ -770,6 +838,7 @@ export class ChromiumProviderPool {
   constructor(config: ChromiumProvidersConfig = {}) {
     this.config = config;
     this.exportWatchdogMs = config.exportWatchdogMs ?? 600_000;
+    this.exportTotalBudgetMs = config.exportTotalBudgetMs ?? 3_600_000;
     this.ffmpegConfig = {
       ...(config.ffmpegPath ? { ffmpegPath: config.ffmpegPath } : {}),
       ...(config.ffprobePath ? { ffprobePath: config.ffprobePath } : {}),
