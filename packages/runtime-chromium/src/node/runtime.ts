@@ -39,6 +39,13 @@ export interface ChromiumRuntimeOptions {
    * only ceiling an export needs.)
    */
   readonly pageOpTimeoutMs?: number;
+  /**
+   * Wait bound for PREVIEW-shaped page operations queued behind the page
+   * lock (default 15_000). Past it the caller gets PageLockBusyError
+   * instead of hanging behind a long export; 0 makes previews wait
+   * unboundedly (the historical behavior).
+   */
+  readonly renderPageWaitTimeoutMs?: number;
 }
 
 export interface PageProbeFacts {
@@ -196,6 +203,30 @@ export class HydratedSessionCancelled extends Error {
   constructor() {
     super("cancelled before the page session started");
     this.name = "HydratedSessionCancelled";
+  }
+}
+
+/**
+ * Thrown when a page operation waited on the single-page lock longer than
+ * its wait bound (e.g. a preview queued behind a multi-minute export). A
+ * clear fast failure beats hanging until some outer timeout: the caller
+ * learns the page is busy and can retry when the holder finishes.
+ */
+export class PageLockBusyError extends Error {
+  constructor(label: string, waitedMs: number) {
+    super(`the ${label} stayed busy for over ${waitedMs} ms (a long operation such as an export holds the page); retry when it completes`);
+    this.name = "PageLockBusyError";
+  }
+}
+
+/** Wait bound for preview-shaped page operations queued behind the lock. */
+const RENDER_PAGE_WAIT_TIMEOUT_MS = 15_000;
+
+/** Internal: the caller's wait bound expired before this op started; its rejection is swallowed by the mutex chain. */
+class PageLockAbandonedError extends Error {
+  constructor() {
+    super("page operation abandoned before it started");
+    this.name = "PageLockAbandonedError";
   }
 }
 
@@ -490,26 +521,51 @@ export class ChromiumRuntime {
    * tail — so it still runs, serialized, on the fresh browser, and two
    * operations can never execute concurrently on one page.
    */
-  private async withPageLock<T>(fn: (page: Page) => Promise<T>): Promise<T> {
+  private async withPageLock<T>(
+    fn: (page: Page) => Promise<T>,
+    options: { waitTimeoutMs?: number; busyLabel?: string } = {},
+  ): Promise<T> {
     for (;;) {
       const generationAtEnqueue = this.generationCounter;
+      let started = false;
+      let abandoned = false;
+      let abandonWait!: (error: PageLockBusyError) => void;
+      const impatient = new Promise<never>((_resolve, reject) => {
+        abandonWait = reject;
+      });
       const run = this.mutex.then(async () => {
+        // An operation whose caller already gave up (busy timeout) must not
+        // run as a zombie when its turn finally comes.
+        if (abandoned) throw new PageLockAbandonedError();
+        started = true;
         if (this.generationCounter !== generationAtEnqueue) {
           throw new RuntimeRecycledWhileQueued();
         }
         return fn(await this.ensurePage());
       });
+      let waitTimer: ReturnType<typeof setTimeout> | undefined;
+      if (options.waitTimeoutMs !== undefined) {
+        waitTimer = setTimeout(() => {
+          if (!started) {
+            abandoned = true;
+            abandonWait(new PageLockBusyError(options.busyLabel ?? "render page", options.waitTimeoutMs!));
+          }
+        }, options.waitTimeoutMs);
+        waitTimer.unref?.();
+      }
       this.mutex = run.then(
         () => undefined,
         () => undefined,
       );
       try {
-        return await run;
+        return await (waitTimer === undefined ? run : Promise.race([run, impatient]));
       } catch (error) {
         if (error instanceof RuntimeRecycledWhileQueued && !this.closed) {
           continue; // to the back of the (single) line, on the fresh browser
         }
         throw error;
+      } finally {
+        if (waitTimer !== undefined) clearTimeout(waitTimer);
       }
     }
   }
@@ -654,8 +710,10 @@ export class ChromiumRuntime {
    * One atomic hydrated page session: hydrate from the canonical project,
    * then run `fn` with a render handle — all under the single page lock, so
    * no other operation can clobber the hydrated state mid-export. Long
-   * exports hold the page for their whole duration; other previews/exports
-   * simply queue behind (one browser, one page — documented contract).
+   * exports hold the page for their whole duration; PREVIEW-shaped callers
+   * pass a wait bound so they fail fast with PageLockBusyError instead of
+   * hanging behind a multi-minute export (one browser, one page —
+   * documented contract).
    *
    * `cancelCheck` runs ONCE right after the lock is acquired (before any
    * hydrate work): an operation that was cancelled while it waited —
@@ -668,18 +726,21 @@ export class ChromiumRuntime {
     fn: (session: {
       renderPng(timeSec: number, width: number, height: number, region?: { x: number; y: number; width: number; height: number }): Promise<Buffer>;
     }) => Promise<T>,
-    options: { cancelCheck?: () => boolean } = {},
+    options: { cancelCheck?: () => boolean; waitTimeoutMs?: number } = {},
   ): Promise<T> {
-    return this.withPageLock(async (page) => {
-      if (options.cancelCheck?.() === true) {
-        throw new HydratedSessionCancelled();
-      }
-      await this.hydrateOnPage(page, project, mediaFiles);
-      return fn({
-        renderPng: (timeSec, width, height, region) =>
-          this.renderPngOnPage(page, timeSec, width, height, region),
-      });
-    });
+    return this.withPageLock(
+      async (page) => {
+        if (options.cancelCheck?.() === true) {
+          throw new HydratedSessionCancelled();
+        }
+        await this.hydrateOnPage(page, project, mediaFiles);
+        return fn({
+          renderPng: (timeSec, width, height, region) =>
+            this.renderPngOnPage(page, timeSec, width, height, region),
+        });
+      },
+      { ...(options.waitTimeoutMs !== undefined ? { waitTimeoutMs: options.waitTimeoutMs, busyLabel: "preview render page" } : {}) },
+    );
   }
 
   /* --------------------- isolated render contexts --------------------- */
@@ -722,6 +783,11 @@ export class ChromiumRuntime {
   /* ---------------------------- render ---------------------------- */
 
   /** Hydrate + render one composited frame atomically; returns PNG bytes. */
+  /** Effective preview wait bound (0 = unbounded, the historical behavior). */
+  private get renderPageWaitTimeoutMs(): number {
+    return this.options.renderPageWaitTimeoutMs ?? RENDER_PAGE_WAIT_TIMEOUT_MS;
+  }
+
   async renderPng(
     project: Project,
     mediaFiles: Readonly<Record<string, string>>,
@@ -730,9 +796,11 @@ export class ChromiumRuntime {
     height: number,
     region?: { x: number; y: number; width: number; height: number },
   ): Promise<Buffer> {
+    // Previews are interactive-shape calls: fail fast while an export holds
+    // the page instead of queueing silently for its whole duration.
+    const wait = this.renderPageWaitTimeoutMs > 0 ? { waitTimeoutMs: this.renderPageWaitTimeoutMs } : {};
     return this.withHydratedSession(project, mediaFiles, (session) =>
-      session.renderPng(timeSec, width, height, region),
-    );
+      session.renderPng(timeSec, width, height, region), wait);
   }
 
   /** Hydrate + compose a bounded real PNG contact sheet atomically. */
@@ -757,7 +825,9 @@ export class ChromiumRuntime {
         { samples: samples.map((sample) => ({ ...sample })), width, height },
       );
       return Buffer.from(base64, "base64");
-    });
+    }, this.renderPageWaitTimeoutMs > 0
+      ? { waitTimeoutMs: this.renderPageWaitTimeoutMs, busyLabel: "contact-sheet render page" }
+      : {});
   }
 
   /* --------------------- export: WebCodecs route --------------------- */
