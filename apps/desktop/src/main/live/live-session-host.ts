@@ -350,14 +350,16 @@ export function createLiveSessionHost(
         update: (status: JobStatusView) => {
           ledger.update(status);
           // update() throws on an unknown job, so the record exists here.
-          const record = ledger.get(status.jobId)!;
+          // summary() reads identity without cloning the input snapshot —
+          // this fires on every progress tick.
+          const summary = ledger.summary(status.jobId)!;
           try {
             deps.emitEvent({
               type: "task",
               jobId: status.jobId,
-              kind: status.kind,
-              projectId: record.projectId,
-              workspaceId: record.workspaceId,
+              kind: summary.kind,
+              projectId: summary.projectId,
+              workspaceId: summary.workspaceId,
               state: status.state,
               sourceRevision: status.sourceRevision,
               progress: status.progress

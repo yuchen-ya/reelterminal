@@ -434,7 +434,7 @@ describe("live session host verb dispatch + events", () => {
       ...fixture.deps,
       emitEvent: (event) => {
         if (event.type === "task") {
-          const record = JSON.parse(readFileSync(path.join(fixture.deps.artifactRoot, "task-records", `${event.jobId}.json`), "utf8")) as { status?: { state?: string } };
+          const record = JSON.parse(readFileSync(path.join(fixture.deps.artifactRoot, "task-records", `${event.jobId}.status.json`), "utf8")) as { status?: { state?: string } };
           persistedStateAtEvent = record.status?.state;
         }
         fixture.events.push(event);

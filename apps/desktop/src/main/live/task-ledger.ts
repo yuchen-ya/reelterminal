@@ -21,12 +21,54 @@ export interface DurableTaskRecord extends DurableTaskInput {
 const terminalStates = new Set(["done", "error", "cancelled"]);
 const taskStates = new Set(["queued", "running", "done", "error", "cancelled"]);
 
-/** A fixed task input and its latest status survive a desktop restart. */
-export class DurableTaskLedger {
-  private readonly records = new Map<string, DurableTaskRecord>();
+/** Identity subset of a task — the per-update event emit reads only this. */
+export interface DurableTaskSummary {
+  readonly jobId: string;
+  readonly kind: DurableTaskInput["kind"];
+  readonly projectId: string;
+  readonly workspaceId: string;
+  readonly sourceRevision: number;
+}
 
-  constructor(private readonly root: string) {
+/**
+ * Minimum spacing between two progress-only status writes. Progress is
+ * display-only state: a restart marks any non-terminal task INTERRUPTED
+ * regardless of the last persisted percent, so a trailing write of the
+ * latest value is durable enough without a per-frame fsync.
+ */
+export const PROGRESS_WRITE_INTERVAL_MS = 500;
+
+interface InternalRecord {
+  /** Detached at begin() — later GUI edits to the source project never leak in. */
+  readonly input: DurableTaskInput;
+  status: JobStatusView;
+}
+
+/**
+ * A fixed task input and its latest status survive a desktop restart.
+ *
+ * The two live in SEPARATE files so a progress update rewrites a
+ * kilobyte-sized status document instead of the whole immutable input
+ * (whose font snapshot can weigh tens of MiB):
+ *   <jobId>.json         { formatVersion: 2, ...input }   written once
+ *   <jobId>.status.json  { formatVersion: 2, jobId, status }  rewritten
+ * Legacy v1 single-file records (input + status in one document) are
+ * recognized on load and migrated in place.
+ */
+export class DurableTaskLedger {
+  private readonly root: string;
+  private readonly progressWriteIntervalMs: number;
+  private readonly records = new Map<string, InternalRecord>();
+  private pendingProgress: { jobId: string; status: JobStatusView } | null = null;
+  private progressTimer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(root: string, options: { progressWriteIntervalMs?: number } = {}) {
+    this.root = root;
+    this.progressWriteIntervalMs = options.progressWriteIntervalMs ?? PROGRESS_WRITE_INTERVAL_MS;
     mkdirSync(root, { recursive: true });
+    const inputs = new Map<string, DurableTaskInput>();
+    const statuses = new Map<string, JobStatusView>();
+    const statusesFromFile = new Set<string>();
     for (const file of readdirSync(root)) {
       if (file.endsWith(".tmp")) {
         // A crash between writeFileSync and renameSync strands a *.json.tmp;
@@ -34,30 +76,96 @@ export class DurableTaskLedger {
         rmSync(path.join(root, file), { force: true });
         continue;
       }
-      if (!file.endsWith(".json")) continue;
-      try {
-        const record = JSON.parse(readFileSync(path.join(root, file), "utf8")) as DurableTaskRecord;
-        if (record.formatVersion !== 1 || record.inputProject?.id !== record.projectId ||
-            record.status?.jobId !== record.jobId || record.status.kind !== record.kind ||
-            !taskStates.has(record.status.state) || !Number.isSafeInteger(record.sourceRevision) || record.sourceRevision < 0 || !record.workspaceId ||
-            file !== `${this.validId(record.jobId)}.json`) {
-          throw new Error(`Invalid durable task record: ${file}`);
-        }
-        if (terminalStates.has(record.status.state)) {
-          this.records.set(record.jobId, record);
-        } else {
-          this.commit({ ...record, status: { ...record.status, state: "error",
-            artifact: null, result: null, deliveredTo: null,
-            error: { code: "INTERRUPTED", message: "Desktop restarted before this task completed. Its fixed input is retained; start a new task to retry." },
-            updatedAt: new Date().toISOString() } });
-        }
-      } catch (error) {
-        // One damaged record file must not wedge every later live task, so
-        // quarantine it beside the others and keep loading the rest.
-        renameSync(path.join(root, file), path.join(root, `${file}.corrupt-${Date.now()}`));
-        console.warn(`[task-ledger] quarantined damaged task record ${file}:`, error);
+      if (file.endsWith(".status.json")) {
+        this.loadStatusFile(root, file, statuses, statusesFromFile);
+        continue;
+      }
+      if (file.endsWith(".json")) {
+        this.loadInputFile(root, file, inputs, statuses);
       }
     }
+    for (const [jobId, input] of inputs) {
+      const loaded = statuses.get(jobId);
+      const status = loaded && terminalStates.has(loaded.state)
+        ? loaded
+        : this.interruptedStatus(input, loaded);
+      this.records.set(jobId, { input, status });
+      // Persist when the status changed (restart honesty) or when it only
+      // exists in memory so far (v1 legacy migration / synthesized status).
+      if (loaded !== status || !statusesFromFile.has(jobId)) this.writeStatusFile(jobId, status, true);
+    }
+  }
+
+  private loadStatusFile(root: string, file: string, statuses: Map<string, JobStatusView>, statusesFromFile: Set<string>): void {
+    const jobId = file.slice(0, -".status.json".length);
+    try {
+      const doc = JSON.parse(readFileSync(path.join(root, file), "utf8")) as { formatVersion?: number; jobId?: string; status?: JobStatusView };
+      if (doc.formatVersion !== 2 || doc.jobId !== jobId || !doc.status ||
+          doc.status.jobId !== jobId || (doc.status.kind !== "export" && doc.status.kind !== "analysis") ||
+          !taskStates.has(doc.status.state)) {
+        throw new Error("Invalid status document");
+      }
+      statuses.set(jobId, doc.status);
+      statusesFromFile.add(jobId);
+    } catch (error) {
+      // A damaged status must not take the fixed input down with it:
+      // quarantine it; the input resurfaces as INTERRUPTED below.
+      renameSync(path.join(root, file), path.join(root, `${file}.corrupt-${Date.now()}`));
+      console.warn(`[task-ledger] quarantined damaged status document ${file}:`, error);
+    }
+  }
+
+  private loadInputFile(root: string, file: string, inputs: Map<string, DurableTaskInput>, statuses: Map<string, JobStatusView>): void {
+    const jobId = file.slice(0, -".json".length);
+    try {
+      const record = JSON.parse(readFileSync(path.join(root, file), "utf8")) as Partial<DurableTaskRecord> & { formatVersion?: number };
+      const legacy = record.status !== undefined;
+      if (record.formatVersion !== (legacy ? 1 : 2) ||
+          (record.kind !== "export" && record.kind !== "analysis") ||
+          record.inputProject?.id !== record.projectId ||
+          !Number.isSafeInteger(record.sourceRevision) || (record.sourceRevision ?? -1) < 0 ||
+          !record.workspaceId || !record.jobId || this.validId(record.jobId) !== jobId) {
+        throw new Error(`Invalid durable task record: ${file}`);
+      }
+      const input: DurableTaskInput = {
+        jobId: record.jobId, kind: record.kind, projectId: record.projectId,
+        workspaceId: record.workspaceId, sourceRevision: record.sourceRevision,
+        inputProject: record.inputProject, parameters: record.parameters,
+      };
+      inputs.set(jobId, input);
+      if (legacy) {
+        // v1 single document: keep its recorded status and rewrite the pair
+        // in the split layout. A failed migration write is non-fatal — the
+        // v1 file stays on disk and the next restart retries it.
+        const legacyStatus = record.status as JobStatusView;
+        if (legacyStatus.jobId === jobId && legacyStatus.kind === input.kind && taskStates.has(legacyStatus.state)) {
+          statuses.set(jobId, legacyStatus);
+        }
+        try {
+          this.writeInputFile(input);
+        } catch (error) {
+          console.warn(`[task-ledger] v1→v2 migration write failed for ${file}:`, error);
+        }
+      }
+    } catch (error) {
+      // One damaged record file must not wedge every later live task, so
+      // quarantine it beside the others and keep loading the rest.
+      renameSync(path.join(root, file), path.join(root, `${file}.corrupt-${Date.now()}`));
+      console.warn(`[task-ledger] quarantined damaged task record ${file}:`, error);
+    }
+  }
+
+  /** Restart honesty: unfinished work is reported as an error, never resumed. */
+  private interruptedStatus(input: DurableTaskInput, loaded: JobStatusView | undefined): JobStatusView {
+    return {
+      jobId: input.jobId, kind: input.kind, sourceRevision: input.sourceRevision,
+      state: "error", progress: null, artifact: null, result: null,
+      deliveredTo: null, deliveryError: null,
+      error: { code: "INTERRUPTED", message: "Desktop restarted before this task completed. Its fixed input is retained; start a new task to retry." },
+      route: null, upscalingRequestedButInactive: false, cancelRequested: false,
+      createdAt: loaded?.createdAt ?? new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
   }
 
   private validId(jobId: string): string {
@@ -65,48 +173,113 @@ export class DurableTaskLedger {
     return jobId;
   }
 
-  private commit(record: DurableTaskRecord): void {
-    const target = path.join(this.root, `${this.validId(record.jobId)}.json`);
+  private inputPath(jobId: string): string {
+    return path.join(this.root, `${this.validId(jobId)}.json`);
+  }
+
+  private statusPath(jobId: string): string {
+    return path.join(this.root, `${this.validId(jobId)}.status.json`);
+  }
+
+  private writeAtomic(target: string, serialized: string, flush: boolean): void {
     const temporary = `${target}.tmp`;
-    const serialized = JSON.stringify(record);
-    writeFileSync(temporary, serialized, { encoding: "utf8", flush: true });
+    writeFileSync(temporary, serialized, { encoding: "utf8", flush });
     renameSync(temporary, target);
-    this.records.set(record.jobId, JSON.parse(serialized) as DurableTaskRecord);
+  }
+
+  private writeInputFile(input: DurableTaskInput): void {
+    this.writeAtomic(this.inputPath(input.jobId), JSON.stringify({ formatVersion: 2, ...input }), true);
+  }
+
+  private writeStatusFile(jobId: string, status: JobStatusView, flush: boolean): void {
+    this.writeAtomic(this.statusPath(jobId), JSON.stringify({ formatVersion: 2, jobId, status }), flush);
   }
 
   begin(input: DurableTaskInput): void {
     if (this.records.has(input.jobId)) throw new Error(`Task already exists: ${input.jobId}`);
     if (input.inputProject.id !== input.projectId) throw new Error("Task input project does not match its target");
+    const detached = JSON.parse(JSON.stringify(input)) as DurableTaskInput;
     const now = new Date().toISOString();
-    this.commit({ ...input, formatVersion: 1, status: {
+    const status: JobStatusView = {
       jobId: input.jobId, kind: input.kind, sourceRevision: input.sourceRevision,
       state: "queued", progress: null, artifact: null, result: null, error: null,
       deliveredTo: null, deliveryError: null, route: null,
       upscalingRequestedButInactive: false, cancelRequested: false,
       createdAt: now, updatedAt: now,
-    } });
+    };
+    this.writeInputFile(detached);
+    this.writeStatusFile(input.jobId, status, true);
+    this.records.set(input.jobId, { input: detached, status });
   }
 
   update(status: JobStatusView): void {
     const record = this.records.get(status.jobId);
     if (!record) throw new Error(`Unknown durable task: ${status.jobId}`);
-    if (status.sourceRevision !== record.sourceRevision || status.kind !== record.kind ||
+    if (status.sourceRevision !== record.input.sourceRevision || status.kind !== record.input.kind ||
         !taskStates.has(status.state)) {
       throw new Error("Task status does not match its fixed input");
     }
-    this.commit({ ...record, status });
+    const previousState = record.status.state;
+    record.status = status;
+    // State transitions and terminal states are the load-bearing writes:
+    // they flush synchronously BEFORE the caller exposes the transition. A
+    // same-state progress tick is display-only and coalesces to one write
+    // per interval (a trailing write always lands the latest value).
+    if (status.state !== previousState || terminalStates.has(status.state)) {
+      if (this.pendingProgress?.jobId === status.jobId) this.pendingProgress = null;
+      this.writeStatusFile(status.jobId, status, true);
+      return;
+    }
+    this.pendingProgress = { jobId: status.jobId, status };
+    if (this.progressTimer === null) {
+      this.progressTimer = setTimeout(() => {
+        this.progressTimer = null;
+        this.flushPendingProgress();
+      }, this.progressWriteIntervalMs);
+      this.progressTimer.unref?.();
+    }
+  }
+
+  private flushPendingProgress(): void {
+    const pending = this.pendingProgress;
+    this.pendingProgress = null;
+    if (!pending) return;
+    const record = this.records.get(pending.jobId);
+    if (!record || record.status !== pending.status) return; // superseded or removed
+    try {
+      this.writeStatusFile(pending.jobId, pending.status, false);
+    } catch (error) {
+      // Display-only loss: the next state-changing update writes synchronously
+      // and will surface any real disk failure to the caller.
+      console.warn(`[task-ledger] deferred progress write failed for ${pending.jobId}:`, error);
+    }
+  }
+
+  /** Identity + revision without cloning the (potentially huge) input snapshot. */
+  summary(jobId: string): DurableTaskSummary | null {
+    const record = this.records.get(jobId);
+    if (!record) return null;
+    const { input } = record;
+    return { jobId: input.jobId, kind: input.kind, projectId: input.projectId, workspaceId: input.workspaceId, sourceRevision: input.sourceRevision };
   }
 
   get(jobId: string): DurableTaskRecord | null {
     const record = this.records.get(jobId);
-    return record ? structuredClone(record) : null;
+    if (!record) return null;
+    return { ...structuredClone(record.input), formatVersion: 1, status: { ...record.status } };
   }
 
   getState(jobId: string): JobStatusView["state"] | null {
     return this.records.get(jobId)?.status.state ?? null;
   }
 
+  /**
+   * Composite records for the task list. Input snapshots are shared
+   * references (callers never mutate them); statuses are fresh copies.
+   */
   list(): DurableTaskRecord[] {
-    return [...this.records.values()].map((record) => structuredClone(record));
+    return [...this.records.values()].map((record) => ({
+      ...record.input, formatVersion: 1 as const, status: { ...record.status },
+    }));
   }
 }
