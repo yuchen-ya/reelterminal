@@ -13,6 +13,8 @@ export interface ParsedInvocation {
   readonly compact: boolean;
   readonly outputFile?: string;
   readonly wait?: { readonly intervalMs: number; readonly timeoutMs: number };
+  /** --timeout-ms on a non-wait command: the HTTP request ceiling. */
+  readonly requestTimeoutMs?: number;
 }
 
 const ALIASES: Readonly<Record<string, string>> = {
@@ -273,6 +275,7 @@ export function parseInvocation(tokens: readonly string[]): ParsedInvocation {
     human: parsed.human,
     compact: parsed.compact,
     ...(parsed.outputFile === undefined ? {} : { outputFile: parsed.outputFile }),
+    ...(parsed.timeoutMs === undefined ? {} : { requestTimeoutMs: parsed.timeoutMs }),
   };
 }
 
@@ -376,6 +379,10 @@ workspaceId, expectedRevision, and expectedProjectEpoch, or pass --project-id,
 --workspace-id, and --project-epoch. project-id/workspace-id locate the target;
 expected-project-id is a separate view identity guard. reelctl call keeps
 all catalog commands available even before a dedicated shortcut exists.
+Long synchronous commands (frames extract, patch apply, ...) accept
+--timeout-ms <milliseconds> for the HTTP request ceiling; the default is
+30 s or REELTERMINAL_REQUEST_TIMEOUT_MS. For 'job wait' the same flag sets
+the wait deadline instead.
 Use reelctl schema <command> or reelctl help <command> for exact arguments.
 
 Output is one compact JSON result on stdout. --human pretty-prints it. On context,

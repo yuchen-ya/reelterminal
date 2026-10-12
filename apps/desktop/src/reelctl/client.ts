@@ -12,7 +12,18 @@ import {
 
 const MAX_DESCRIPTOR_BYTES = 64 * 1024;
 const MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
-const REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Per-request ceiling for the live Command API. Long synchronous tools
+ * (frames.extract on big sources, patch.apply) legitimately outlast 30 s;
+ * operators raise the default via REELTERMINAL_REQUEST_TIMEOUT_MS, and
+ * one-off invocations pass --timeout-ms.
+ */
+export function defaultRequestTimeoutMs(): number {
+  const raw = Number(process.env.REELTERMINAL_REQUEST_TIMEOUT_MS?.trim());
+  return Number.isInteger(raw) && raw > 0 ? raw : DEFAULT_REQUEST_TIMEOUT_MS;
+}
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
 export interface CommandApiDescriptor {
@@ -189,6 +200,7 @@ interface RequestOptions {
   readonly body?: unknown;
   readonly signal?: AbortSignal;
   readonly unknownCommand?: boolean;
+  readonly timeoutMs?: number;
 }
 
 function request(endpoint: LiveEndpoint, options: RequestOptions): Promise<unknown> {
@@ -273,7 +285,7 @@ function request(endpoint: LiveEndpoint, options: RequestOptions): Promise<unkno
         }
       });
     });
-    req.setTimeout(REQUEST_TIMEOUT_MS, () => req.destroy(new Error("live Command API request timed out")));
+    req.setTimeout(options.timeoutMs ?? defaultRequestTimeoutMs(), () => req.destroy(new Error("live Command API request timed out")));
     req.on("error", (error) => {
       if (error instanceof LiveCliError) reject(error);
       else reject(new LiveCliError(
@@ -331,6 +343,8 @@ export class LiveCommandClient {
       readonly expectedProjectId?: string;
       readonly expectedProjectEpoch?: string;
       readonly signal?: AbortSignal;
+      /** Per-call HTTP ceiling override (long synchronous tools). */
+      readonly timeoutMs?: number;
     } = {},
   ): Promise<FacadeResult<T>> {
     const status = await this.status(options.signal);
@@ -355,7 +369,13 @@ export class LiveCommandClient {
     let lastError: unknown;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
-        const result = await request(this.endpoint, { method: "POST", path: "/command", body, ...(options.signal === undefined ? {} : { signal: options.signal }) });
+        const result = await request(this.endpoint, {
+          method: "POST",
+          path: "/command",
+          body,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+          ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+        });
         if (!isRecord(result) || typeof result.ok !== "boolean") {
           throw new LiveCliError("live Command API returned an invalid command result", "connection", 4);
         }
@@ -410,7 +430,7 @@ export class LiveCommandClient {
           resolve({ data: bytes.toString("base64"), mimeType });
         });
       });
-      req.setTimeout(REQUEST_TIMEOUT_MS, () => req.destroy());
+      req.setTimeout(defaultRequestTimeoutMs(), () => req.destroy());
       req.on("error", () => resolve(null));
       req.end();
     });

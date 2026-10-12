@@ -61,7 +61,7 @@ describe("durable desktop task ledger", () => {
     directories.push(root);
     const input: DurableTaskInput = {
       jobId: "job-export-2", kind: "export", projectId: "project-a", workspaceId: "workspace-a",
-      sourceRevision: 3, inputProject: { id: "project-a", name: "Big", blob: "x".repeat(2_000_000) } as Project,
+      sourceRevision: 3, inputProject: { id: "project-a", name: "Big", blob: "x".repeat(2_000_000) } as unknown as Project,
       parameters: null,
     };
     const ledger = new DurableTaskLedger(root, { progressWriteIntervalMs: 25 });

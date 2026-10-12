@@ -1,6 +1,6 @@
 import { createServer, type RequestListener, type Server } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { LiveCliError, LiveCommandClient, type LiveEndpoint } from "./client";
+import { LiveCliError, LiveCommandClient, defaultRequestTimeoutMs, type LiveEndpoint } from "./client";
 
 const target = { projectId: "project-1", workspaceId: "workspace-1" };
 const servers: Server[] = [];
@@ -85,6 +85,22 @@ describe("live Command API client", () => {
     });
     await expect(new LiveCommandClient(endpoint).command("edit.apply", { ...target, expectedRevision: 1 }, { retry: "idempotent" }))
       .resolves.toEqual({ ok: false, error: { code: "CONFLICT", message: "project identity changed" } });
+  });
+
+  it("derives the default request ceiling from the environment when valid", () => {
+    const previous = process.env.REELTERMINAL_REQUEST_TIMEOUT_MS;
+    try {
+      expect(defaultRequestTimeoutMs()).toBe(30_000);
+      process.env.REELTERMINAL_REQUEST_TIMEOUT_MS = "300000";
+      expect(defaultRequestTimeoutMs()).toBe(300_000);
+      process.env.REELTERMINAL_REQUEST_TIMEOUT_MS = "not-a-number";
+      expect(defaultRequestTimeoutMs()).toBe(30_000);
+      process.env.REELTERMINAL_REQUEST_TIMEOUT_MS = "-5";
+      expect(defaultRequestTimeoutMs()).toBe(30_000);
+    } finally {
+      if (previous === undefined) delete process.env.REELTERMINAL_REQUEST_TIMEOUT_MS;
+      else process.env.REELTERMINAL_REQUEST_TIMEOUT_MS = previous;
+    }
   });
 
   it("reuses one generated idempotency key for uncertain network retries", async () => {

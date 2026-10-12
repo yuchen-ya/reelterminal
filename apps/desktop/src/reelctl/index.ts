@@ -239,6 +239,7 @@ async function runGenericCall(client: LiveCommandClient, argv: readonly string[]
     addIdempotencyKey: entryCanBeIdempotent(entry),
     ...(expectedProjectId === undefined ? {} : { expectedProjectId }),
     ...(expectedProjectEpoch === undefined ? {} : { expectedProjectEpoch }),
+    ...(parsed.timeoutMs === undefined ? {} : { timeoutMs: parsed.timeoutMs }),
   });
   if (entry.name === "editor.get_context" && parsed.compact) result = compactContextResult(result);
   return {
@@ -339,6 +340,7 @@ export async function runReelctl(argv: readonly string[], options: RunOptions = 
     addIdempotencyKey: entryCanBeIdempotent(entry),
     ...(invocation.expectedProjectId === undefined ? {} : { expectedProjectId: invocation.expectedProjectId }),
     ...(invocation.expectedProjectEpoch === undefined ? {} : { expectedProjectEpoch: invocation.expectedProjectEpoch }),
+    ...(invocation.requestTimeoutMs === undefined ? {} : { timeoutMs: invocation.requestTimeoutMs }),
   });
   if (invocation.commandName === "editor.get_context" && invocation.compact) result = compactContextResult(result);
   output(formatResult(result, {

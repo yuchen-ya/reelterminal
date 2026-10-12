@@ -122,15 +122,20 @@ export class DurableTaskLedger {
       const legacy = record.status !== undefined;
       if (record.formatVersion !== (legacy ? 1 : 2) ||
           (record.kind !== "export" && record.kind !== "analysis") ||
+          typeof record.projectId !== "string" || !record.projectId ||
+          typeof record.workspaceId !== "string" || !record.workspaceId ||
+          typeof record.jobId !== "string" || !record.jobId ||
           record.inputProject?.id !== record.projectId ||
           !Number.isSafeInteger(record.sourceRevision) || (record.sourceRevision ?? -1) < 0 ||
-          !record.workspaceId || !record.jobId || this.validId(record.jobId) !== jobId) {
+          this.validId(record.jobId) !== jobId) {
         throw new Error(`Invalid durable task record: ${file}`);
       }
+      // Presence is guaranteed by the validation above.
+      const checked = record as Pick<DurableTaskRecord, "jobId" | "kind" | "projectId" | "workspaceId" | "sourceRevision" | "inputProject"> & { parameters: unknown };
       const input: DurableTaskInput = {
-        jobId: record.jobId, kind: record.kind, projectId: record.projectId,
-        workspaceId: record.workspaceId, sourceRevision: record.sourceRevision,
-        inputProject: record.inputProject, parameters: record.parameters,
+        jobId: checked.jobId, kind: checked.kind, projectId: checked.projectId,
+        workspaceId: checked.workspaceId, sourceRevision: checked.sourceRevision,
+        inputProject: checked.inputProject, parameters: checked.parameters,
       };
       inputs.set(jobId, input);
       if (legacy) {
