@@ -1,4 +1,5 @@
 import type { AutomationPoint, Effect } from "../types/timeline";
+import type { AudioSpeedTiming } from "./audio-speed-renderer";
 
 export interface AudioWaveformData {
   readonly peaks: Float32Array;
@@ -33,6 +34,9 @@ export interface AudioClipRenderInfo {
   readonly clipId: string;
   readonly mediaId: string;
   readonly sourceTime: number;
+  /** Source PCM seconds consumed by this render range. */
+  readonly sourceDuration?: number;
+  readonly audioTiming?: AudioSpeedTiming;
   readonly clipOffset: number;
   readonly timelineStartTime: number;
   readonly duration: number;

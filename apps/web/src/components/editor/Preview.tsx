@@ -86,6 +86,9 @@ import {
   type Mask,
   type ProjectMarker,
   getTrackTransitionAudioFades,
+  prepareAudioSpeed,
+  prunePreparedAudioSpeed,
+  AudioSpeedCapabilityError,
 } from "@reelterminal/core";
 import { useEngineStore } from "../../stores/engine-store";
 import { loadAudioBuffer as loadDecodedAudioBuffer } from "../../utils/load-audio-buffer";
@@ -1365,7 +1368,6 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       const audioGraph = audioGraphRef.current;
       audioGraph.setPreviewMuted(isMuted);
 
-      const speedEngine = getSpeedEngine();
       const scheduledClips: AudioClipSchedule[] = [];
 
       for (const audioTrack of audioTracks) {
@@ -1436,20 +1438,14 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
               enabledEffects,
             );
 
+            await prepareAudioSpeed(audioGraph.getAudioContext(), previewAudio.audioBuffer, audioClip);
+
             audioGraph.updateTrackEffects(audioTrack.id, previewAudio.effects);
 
-            const clipLocalTime = timelinePosition - audioClip.startTime;
-            const isReverse = speedEngine.isReverse(audioClip.id);
             const transitionFades = getTrackTransitionAudioFades(
               audioTrack,
               audioClip.id,
             );
-
-            let mediaOffset = (audioClip.inPoint || 0) + clipLocalTime;
-            if (isReverse) {
-              mediaOffset = audioBuffer.duration - mediaOffset;
-              mediaOffset = Math.max(0, mediaOffset);
-            }
 
             scheduledClips.push({
               clipId: audioClip.id,
@@ -1457,7 +1453,12 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
               audioBuffer: previewAudio.audioBuffer,
               startTime: audioClip.startTime,
               endTime: clipEnd,
-              mediaOffset,
+              mediaOffset: audioClip.inPoint || 0,
+              mediaEnd: audioClip.outPoint,
+              reversed: audioClip.reversed,
+              speedKeyframes: audioClip.speedKeyframes,
+              freezeFrames: audioClip.freezeFrames,
+              pitchCorrection: audioClip.pitchCorrection,
               volume: audioClip.volume ?? 1,
               volumeAutomation: getResolvedClipVolumeAutomation(audioClip),
               pan: 0,
@@ -1504,6 +1505,9 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     const audioContext = audioGraph.getAudioContext();
 
     const allTracks = [...audioTracks, ...videoTracks];
+    const clipIds = new Set(allTracks.flatMap((track) => track.clips.map((clip) => clip.id)));
+    for (const buffer of audioBufferCacheRef.current.values()) prunePreparedAudioSpeed(buffer, clipIds);
+    const hasSoloTracks = allTracks.some((track) => track.type !== "image" && track.solo);
 
     for (const track of allTracks) {
       for (const clip of track.clips) {
@@ -1538,18 +1542,23 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         }
 
         if (audioBuffer) {
+          let previewBuffer = audioBuffer;
           const audioEffects = getResolvedClipAudioEffects(clip).filter(
             (effect: Effect) => effect.enabled,
           );
           if (audioEffects.length > 0) {
             try {
-              await getPreviewAudioBufferForEffects(audioBuffer, cacheKey, audioEffects);
+              previewBuffer = (await getPreviewAudioBufferForEffects(audioBuffer, cacheKey, audioEffects)).audioBuffer;
             } catch (error) {
               console.warn(
                 `[Preview] Failed to pre-process audio effects for clip ${clip.id}:`,
                 error,
               );
             }
+          }
+          if (!track.muted && (!hasSoloTracks || track.solo) &&
+              (clip.volume > 0 || clip.automation?.volume?.some((point) => point.value > 0))) {
+            await prepareAudioSpeed(audioContext, previewBuffer, clip);
           }
         }
       }
@@ -1611,7 +1620,9 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     (time: number): AudioClipSchedule[] => {
       const tracks = timelineTracksRef.current;
       const tracksWithAudio = tracks.filter(
-        (t) => (t.type === "audio" || t.type === "video") && !t.hidden && !t.muted,
+        (t) => (t.type === "audio" || t.type === "video") && !t.hidden && !t.muted &&
+          (!tracks.some((candidate) => !candidate.hidden &&
+            (candidate.type === "audio" || candidate.type === "video") && candidate.solo) || t.solo),
       );
       const schedules: AudioClipSchedule[] = [];
 
@@ -1660,6 +1671,11 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
             startTime: clip.startTime,
             endTime: clipEnd,
             mediaOffset: clip.inPoint || 0,
+            mediaEnd: clip.outPoint,
+            reversed: clip.reversed,
+            speedKeyframes: clip.speedKeyframes,
+            freezeFrames: clip.freezeFrames,
+            pitchCorrection: clip.pitchCorrection,
             volume: clip.volume ?? 1,
             volumeAutomation: getResolvedClipVolumeAutomation(clip),
             pan: 0,
@@ -3109,9 +3125,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         }
       }
 
-      preDecodeAllAudioBuffers().catch((error) => {
-        console.warn("[Preview] Audio warmup failed:", error);
-      });
+      await preDecodeAllAudioBuffers();
+      if (!nativePlaybackActiveRef.current) return () => {};
 
       const videoCache = nativeVideoCacheRef.current;
       const loadingVideos = new Map<string, Promise<void>>();
@@ -3214,6 +3229,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       const tracksWithAudio = timelineTracks.filter(
         (t) => (t.type === "audio" || t.type === "video") && !t.hidden,
       );
+      audioGraph.retainTracks(new Set(tracksWithAudio.map((track) => track.id)));
       for (const audioTrack of tracksWithAudio) {
         audioGraph.createTrack({
           trackId: audioTrack.id,
@@ -4021,7 +4037,11 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       }
 
       await masterClock.play();
-      audioGraph.startScheduler(getAudioClipsForScheduler);
+      audioGraph.startScheduler(getAudioClipsForScheduler, (error) => {
+        masterClock.pause();
+        pause();
+        toast.error("Audio playback failed", error.message);
+      });
       rafId = requestAnimationFrame(() => { drawFrame(); });
 
       return cleanup;
@@ -4033,6 +4053,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       getAudioClipsForScheduler,
       isMuted,
       preDecodeAllAudioBuffers,
+      pause,
       releaseVideoElement,
       hasActiveMotionInstances,
       renderOverlayClipsInTrackOrder,
@@ -4652,9 +4673,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         return;
       }
 
-      preDecodeAllAudioBuffers().catch((error) => {
-        console.warn("[Preview] Audio warmup failed:", error);
-      });
+      await preDecodeAllAudioBuffers();
+      if (!isActive) return;
 
       if (!audioGraphRef.current) {
         audioGraphRef.current = getRealtimeAudioGraph();
@@ -4665,6 +4685,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       const tracksWithAudio = timelineTracksRef.current.filter(
         (t) => (t.type === "audio" || t.type === "video") && !t.hidden,
       );
+      audioGraph.retainTracks(new Set(tracksWithAudio.map((track) => track.id)));
       for (const track of tracksWithAudio) {
         audioGraph.createTrack({
           trackId: track.id,
@@ -4712,7 +4733,11 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
       audioGraph.seekTo(playbackStartPosition);
       await masterClock.play();
-      audioGraph.startScheduler(getAudioClipsForScheduler);
+      audioGraph.startScheduler(getAudioClipsForScheduler, (error) => {
+        masterClock.pause();
+        pause();
+        toast.error("Audio playback failed", error.message);
+      });
 
       const frameDuration = 1000 / 30;
       let lastFrameTimestamp = performance.now();
@@ -5657,6 +5682,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           );
           return nativeCleanup;
         } catch (error) {
+          if (error instanceof AudioSpeedCapabilityError) throw error;
           console.warn(
             "[Preview] Native video playback failed, falling back to MediaBunny:",
             error,
@@ -5668,6 +5694,10 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
     startPlayback().catch((error) => {
       console.error("[Preview] startPlayback error:", error);
+      cleanupAudioResources();
+      getMasterClock().pause();
+      pause();
+      toast.error("Audio playback failed", error instanceof Error ? error.message : String(error));
     });
 
     return () => {

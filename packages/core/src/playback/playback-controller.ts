@@ -11,6 +11,7 @@ import type {
   FrameRenderResult,
 } from "./types";
 import { DEFAULT_PLAYBACK_CONFIG } from "./types";
+import { prunePreparedAudioSpeed } from "../audio/audio-speed-renderer";
 import {
   MasterTimelineClock,
   initializeMasterClock,
@@ -40,6 +41,7 @@ export class PlaybackController {
   private state: PlaybackState = "stopped";
   private playbackRate: number = 1.0;
   private useRealtimeAudio: boolean = true;
+  private audioPreparationEpoch = 0;
 
   private currentFrame: RenderedFrame | null = null;
   private frameRenderTimes: number[] = [];
@@ -156,6 +158,7 @@ export class PlaybackController {
   }
 
   setProject(project: Project): void {
+    this.audioPreparationEpoch++;
     this.project = project;
     this.state = "stopped";
     this.masterClock.setDuration(project.timeline.duration);
@@ -202,11 +205,36 @@ export class PlaybackController {
       this.masterClock.seek(0);
     }
 
+    const preparationEpoch = ++this.audioPreparationEpoch;
     this.state = "playing";
-
-    await this.preloadAudioBuffers();
+    try {
+      await this.preloadAudioBuffers();
+      if (preparationEpoch !== this.audioPreparationEpoch) return;
+      if (this.config.enableAudio && this.useRealtimeAudio) {
+        const clipIds = new Set(this.project.timeline.tracks.flatMap((track) => track.clips.map((clip) => clip.id)));
+        for (const buffer of this.audioBufferCache.values()) prunePreparedAudioSpeed(buffer, clipIds);
+        for (const schedule of this.getAudioClipsAtTime(0, Infinity)) {
+          await this.realtimeAudioGraph.prepareClip(schedule);
+          if (preparationEpoch !== this.audioPreparationEpoch) return;
+        }
+      }
+    } catch (error) {
+      if (preparationEpoch !== this.audioPreparationEpoch) return;
+      this.state = "paused";
+      this.masterClock.pause();
+      this.stopAudioPlayback();
+      this.emitEvent({ type: "error", time: this.masterClock.currentTime, state: this.state,
+        error: error instanceof Error ? error : new Error(String(error)) });
+      throw error;
+    }
+    if (preparationEpoch !== this.audioPreparationEpoch || this.state !== "playing") return;
     await this.masterClock.play();
+    if (preparationEpoch !== this.audioPreparationEpoch) { this.masterClock.pause(); return; }
     await this.startAudioPlayback();
+    if (preparationEpoch !== this.audioPreparationEpoch || this.state !== "playing") {
+      this.masterClock.pause();
+      return;
+    }
 
     const currentTime = this.masterClock.currentTime;
 
@@ -224,6 +252,7 @@ export class PlaybackController {
   }
 
   pause(): void {
+    this.audioPreparationEpoch++;
     if (this.state !== "playing") return;
 
     this.state = "paused";
@@ -247,6 +276,7 @@ export class PlaybackController {
   }
 
   stop(): void {
+    this.audioPreparationEpoch++;
     const previousState = this.state;
     this.state = "stopped";
 
@@ -591,6 +621,10 @@ export class PlaybackController {
       this.setupTracksInAudioGraph();
       this.realtimeAudioGraph.startScheduler((time) =>
         this.getAudioClipsAtTime(time),
+        (error) => {
+          this.pause();
+          this.emitEvent({ type: "error", time: this.masterClock.currentTime, state: this.state, error });
+        },
       );
     }
   }
@@ -598,10 +632,12 @@ export class PlaybackController {
   private setupTracksInAudioGraph(): void {
     if (!this.project) return;
 
-    const hasSoloTracks = this.project.timeline.tracks.some((t) => t.solo);
+    const tracks = this.project.timeline.tracks.filter((track) => !track.hidden &&
+      (track.type === "audio" || track.type === "video"));
+    const hasSoloTracks = tracks.some((t) => t.solo);
+    this.realtimeAudioGraph.retainTracks(new Set(tracks.map((track) => track.id)));
 
-    for (const track of this.project.timeline.tracks) {
-      if (track.type !== "audio" && track.type !== "video") continue;
+    for (const track of tracks) {
 
       this.realtimeAudioGraph.createTrack({
         trackId: track.id,
@@ -618,18 +654,20 @@ export class PlaybackController {
     }
   }
 
-  private getAudioClipsAtTime(time: number): AudioClipSchedule[] {
+  private getAudioClipsAtTime(time: number, lookAhead = 1): AudioClipSchedule[] {
     if (!this.project || !this.audioEngine) return [];
 
     const schedules: AudioClipSchedule[] = [];
     const { timeline, mediaLibrary } = this.project;
 
     for (const track of timeline.tracks) {
-      if (track.type !== "audio" && track.type !== "video") continue;
+      if (track.hidden || track.muted || (track.type !== "audio" && track.type !== "video") ||
+          (timeline.tracks.some((candidate) => !candidate.hidden &&
+            (candidate.type === "audio" || candidate.type === "video") && candidate.solo) && !track.solo)) continue;
 
       for (const clip of track.clips) {
         const clipEnd = clip.startTime + clip.duration;
-        if (clipEnd <= time || clip.startTime > time + 1) continue;
+        if (clipEnd <= time || clip.startTime > time + lookAhead) continue;
 
         const mediaItem = mediaLibrary.items.find((m) => m.id === clip.mediaId);
         if (!mediaItem?.blob) continue;
@@ -644,6 +682,11 @@ export class PlaybackController {
           startTime: clip.startTime,
           endTime: clipEnd,
           mediaOffset: clip.inPoint,
+          mediaEnd: clip.outPoint,
+          reversed: clip.reversed,
+          speedKeyframes: clip.speedKeyframes,
+          freezeFrames: clip.freezeFrames,
+          pitchCorrection: clip.pitchCorrection,
           volume: clip.volume,
           volumeAutomation: clip.automation?.volume ?? [],
           pan: getPanFromAudioEffects(clip.audioEffects || []),

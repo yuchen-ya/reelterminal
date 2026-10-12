@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { RealtimeAudioGraph } from "./realtime-audio-graph";
 import type { MasterTimelineClock } from "../playback/master-timeline-clock";
 import type { AudioClipSchedule } from "./realtime-audio-graph";
@@ -53,6 +53,11 @@ function makeContext() {
     sampleRate: 48000,
     state: "running" as AudioContextState,
     destination,
+    createBuffer: (channels: number, length: number, sampleRate: number) => {
+      const data = Array.from({ length: channels }, () => new Float32Array(length));
+      return { length, sampleRate, duration: length / sampleRate, numberOfChannels: channels,
+        getChannelData: (channel: number) => data[channel] } as AudioBuffer;
+    },
     createGain: vi.fn(() => {
       const g = makeGain();
       gains.push(g);
@@ -81,10 +86,10 @@ function makeContext() {
   return { ctx, destination, gains, sources, panners };
 }
 
-function makeGraph(fake: ReturnType<typeof makeContext>) {
+function makeGraph(fake: ReturnType<typeof makeContext>, time = () => 0) {
   const clock = {
     getAudioContext: () => fake.ctx,
-    currentTime: 0,
+    get currentTime() { return time(); },
   } as unknown as MasterTimelineClock;
   return new RealtimeAudioGraph(clock);
 }
@@ -102,6 +107,7 @@ function clipSchedule(overrides: Partial<AudioClipSchedule> = {}): AudioClipSche
     pan: 0,
     effects: [],
     speed: 1,
+    pitchCorrection: false,
     ...overrides,
   };
 }
@@ -211,5 +217,123 @@ describe("RealtimeAudioGraph output wiring", () => {
     const masterGain = fake.gains[0];
     graph.dispose();
     expect(masterGain.disconnect).toHaveBeenCalled();
+  });
+});
+
+describe("RealtimeAudioGraph speed scheduling", () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it.each([0.5, 1, 2])("schedules source seconds and timeline boundaries separately at %sx", (speed) => {
+    const fake = makeContext();
+    const graph = makeGraph(fake);
+    graph.scheduleClip(clipSchedule({ audioBuffer: { duration: 12 } as AudioBuffer,
+      startTime: 1, endTime: 1 + 8 / speed, mediaOffset: 3, mediaEnd: 11, speed }));
+    expect(fake.sources[0].playbackRate.value).toBe(speed);
+    expect(fake.sources[0].start).toHaveBeenCalledWith(1, 3, 8);
+    expect(fake.sources[0].stop).toHaveBeenCalledWith(1 + 8 / speed);
+  });
+
+  it.each([0.5, 1, 2])("starts mid-clip at the correct source position at %sx", (speed) => {
+    const fake = makeContext();
+    fake.ctx.currentTime = 10;
+    const graph = makeGraph(fake, () => 2);
+    graph.scheduleClip(clipSchedule({ audioBuffer: { duration: 12 } as AudioBuffer,
+      startTime: 1, endTime: 1 + 8 / speed, mediaOffset: 3, mediaEnd: 11, speed }));
+    expect(fake.sources[0].start).toHaveBeenCalledWith(10, 3 + speed, 8 - speed);
+    expect(fake.sources[0].stop).toHaveBeenCalledWith(10 + 8 / speed - 1);
+  });
+
+  it("bounds a short decoded source and never replays it before the timeline end", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setInterval, clearInterval });
+    const fake = makeContext();
+    let time = 0;
+    const graph = makeGraph(fake, () => time);
+    const schedule = clipSchedule({ audioBuffer: { duration: 3 } as AudioBuffer,
+      endTime: 2, mediaEnd: 4, speed: 2 });
+    graph.startScheduler(() => [schedule]);
+    expect(fake.sources[0].start).toHaveBeenCalledWith(0, 0, 3);
+    expect(fake.sources[0].stop).toHaveBeenCalledWith(1.5);
+    time = 1.5;
+    fake.sources[0].onended!();
+    vi.advanceTimersByTime(200);
+    expect(fake.sources).toHaveLength(1);
+    graph.stopScheduler();
+  });
+
+  it("deduplicates overlapping requests and permits seek and pause/resume to schedule again", () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("window", { setInterval, clearInterval });
+    const fake = makeContext();
+    let time = 0;
+    const graph = makeGraph(fake, () => time);
+    const schedule = clipSchedule({ mediaOffset: 1, mediaEnd: 9, endTime: 4, speed: 2 });
+    graph.startScheduler(() => [schedule]);
+    graph.scheduleClip(schedule);
+    vi.advanceTimersByTime(100);
+    expect(fake.sources).toHaveLength(1);
+    const old = fake.sources[0];
+    time = 1;
+    graph.seekTo(time);
+    old.onended!(); // A stopped source's late callback must not complete the new pass.
+    vi.advanceTimersByTime(100);
+    expect(fake.sources[1].start).toHaveBeenCalledWith(0, 3, 6);
+    graph.stopScheduler();
+    time = 2;
+    graph.startScheduler(() => [schedule]);
+    expect(fake.sources[2].start).toHaveBeenCalledWith(0, 5, 4);
+    graph.stopScheduler();
+  });
+
+  it("does not schedule a clip at or after its end", () => {
+    const fake = makeContext();
+    const graph = makeGraph(fake, () => 4);
+    graph.scheduleClip(clipSchedule({ endTime: 4, speed: 2 }));
+    expect(fake.sources).toHaveLength(0);
+  });
+  it("uses prepared curve PCM for a mid-clip schedule at 1x, without retiming twice", async () => {
+    const fake = makeContext();
+    const source = fake.ctx.createBuffer(1, 48000, 8000);
+    const graph = makeGraph(fake, () => 1);
+    const duration = 4 * Math.log(2);
+    const schedule = clipSchedule({ audioBuffer: source, endTime: duration, mediaOffset: 1, mediaEnd: 5,
+      speed: 17, speedKeyframes: [
+        { id: "a", time: 0, speed: 1, easing: "linear" },
+        { id: "b", time: 4, speed: 2, easing: "linear" },
+      ] });
+    expect(() => graph.scheduleClip(schedule)).toThrow(/not finished preparing/);
+    await graph.prepareClip(schedule);
+    graph.scheduleClip(schedule);
+    expect(fake.sources[0].playbackRate.value).toBe(1);
+    expect(fake.sources[0].buffer!.length).toBe(Math.ceil(duration * 8000));
+    expect(fake.sources[0].start.mock.calls[0][1]).toBe(1);
+    expect(fake.sources[0].start.mock.calls[0][2]).toBeCloseTo(duration - 1, 8);
+  });
+
+  it("reports runtime preparation failures once and stops the scheduling timer", () => {
+    vi.useFakeTimers(); vi.stubGlobal("window", { setInterval, clearInterval });
+    let time = 0;
+    const graph = makeGraph(makeContext(), () => time);
+    const failure = vi.fn();
+    graph.startScheduler((queryTime) => queryTime === 0 ? [] : [clipSchedule({ startTime: 1, speed: 2, pitchCorrection: true })], failure);
+    time = 1;
+    vi.advanceTimersByTime(300);
+    expect(failure).toHaveBeenCalledOnce();
+    expect(failure).toHaveBeenCalledWith(expect.objectContaining({ code: "AUDIO_PITCH_CORRECTION_UNAVAILABLE" }));
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("does not reject unsupported options on a muted track", () => {
+    const fake = makeContext(); const graph = makeGraph(fake);
+    graph.createTrack({ trackId: "track-1", volume: 1, pan: 0, muted: true, solo: false, effects: [] });
+    expect(() => graph.scheduleClip(clipSchedule({ speed: 2, pitchCorrection: true }))).not.toThrow();
+    expect(fake.sources).toHaveLength(0);
+  });
+  it("removes stale solo tracks before scheduling a different project", () => {
+    const fake = makeContext(); const graph = makeGraph(fake);
+    graph.createTrack({ trackId: "previous-project", volume: 1, pan: 0, muted: false, solo: true, effects: [] });
+    graph.createTrack({ trackId: "track-1", volume: 1, pan: 0, muted: false, solo: false, effects: [] });
+    graph.retainTracks(new Set(["track-1"]));
+    graph.scheduleClip(clipSchedule({ speed: 2 }));
+    expect(fake.sources).toHaveLength(1);
   });
 });

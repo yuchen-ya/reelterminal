@@ -8,6 +8,7 @@ import { audioAnalysisPreflight, AUDIO_LIMITS } from "./audio-analysis";
 import { COLOR_POLICY as COLOR_POLICY_DISCLOSURE } from "./color-policy";
 import { PLUGIN_TOOLS } from "./plugins";
 import { MAX_TIMELINE_SOURCE_MAP_POINTS } from "./timeline-source-map";
+import { AUDIO_SPEED_CAPABILITIES } from "@reelterminal/core/audio/audio-speed-renderer";
 /**
  * Live capability reporting derives each claim from what this
  * session has actually been given and from each provider's own live
@@ -691,7 +692,8 @@ export async function buildCapabilities(
           splitTrimReviewRange: "clip.split and clip.trim reject speed-ramped or frozen clips; ReviewRange also rejects reversed clips and currently requires forward constant-speed clips",
           mappingQueryLimit: MAX_TIMELINE_SOURCE_MAP_POINTS,
             mappingQueryDirection: "timeline point to source point; no source-to-timeline inverse or endpoint-only nonlinear interval mapping",
-            audioLimitations: "The current realtime/export audio schedulers use constant clip speed; they do not evaluate the speed curve or freeze holds. Pitch correction is persisted but is not consumed by these schedulers. Audio during freezes and nonlinear audio retiming require a separate product decision.",
+            audioPlayback: AUDIO_SPEED_CAPABILITIES,
+            audioLimitations: "Audible speed changes require pitchCorrection: false (varispeed changes pitch). Curves use the same prepared PCM and source-time kernel in preview/offline rendering. Pitch-preserving audio and audio during freeze holds fail explicitly; mute clip audio or change the speed configuration. Freeze sound still requires a product decision.",
         },
       },
       volumeKeyframes: {

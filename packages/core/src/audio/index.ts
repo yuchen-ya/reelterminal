@@ -4,6 +4,7 @@ export * from "./clip-fade-envelope";
 export * from "./transition-audio-fades";
 export * from "./fft";
 export * from "./audio-engine";
+export * from "./audio-speed-renderer";
 export * from "./realtime-processor";
 export * from "./audio-effects-engine";
 export * from "./audio-effect-routing";

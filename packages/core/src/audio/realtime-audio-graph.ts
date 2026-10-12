@@ -6,6 +6,9 @@ import type { AutomationPoint, Effect } from "../types/timeline";
 import { createNoiseReductionNodeChain } from "./audio-effects-engine";
 import { scheduleVolumeAutomationOnGain } from "./clip-volume-automation";
 import { scheduleClipFadeEnvelope } from "./clip-fade-envelope";
+import { getConstantSpeedAudioRange, getReversedAudioBuffer } from "./clip-audio-timing";
+import { prepareAudioSpeed, getPreparedAudioSpeed, type AudioSpeedTiming } from "./audio-speed-renderer";
+import type { SpeedKeyframe, FreezeFrame } from "../types/timeline";
 
 export interface AudioClipSchedule {
   clipId: string;
@@ -14,6 +17,12 @@ export interface AudioClipSchedule {
   startTime: number;
   endTime: number;
   mediaOffset: number;
+  /** Trim end in source-buffer seconds. Defaults to the decoded buffer end. */
+  mediaEnd?: number;
+  reversed?: boolean;
+  speedKeyframes?: SpeedKeyframe[];
+  freezeFrames?: FreezeFrame[];
+  pitchCorrection?: boolean;
   volume: number;
   volumeAutomation: AutomationPoint[];
   pan: number;
@@ -75,6 +84,9 @@ export class RealtimeAudioGraph {
   private masterGain: GainNode;
   private trackNodes: Map<string, TrackNodes> = new Map();
   private scheduledSources: Map<string, ScheduledSource[]> = new Map();
+  /** A source can end before its clip (short/rounded decoded media). Do not
+   * replay it until an explicit stop/seek begins a new scheduling pass. */
+  private completedClips: Set<string> = new Set();
   private trackConfigs: Map<string, TrackConfig> = new Map();
   private hasSoloTracks = false;
   private impulseResponseCache: Map<string, AudioBuffer> = new Map();
@@ -421,6 +433,12 @@ export class RealtimeAudioGraph {
     this.updateSoloState();
   }
 
+  retainTracks(trackIds: ReadonlySet<string>): void {
+    for (const trackId of this.trackNodes.keys()) {
+      if (!trackIds.has(trackId)) this.removeTrack(trackId);
+    }
+  }
+
   updateTrackVolume(trackId: string, volume: number): void {
     const clamped = Math.max(0, Math.min(4, volume));
     this.trackVolumeOverrides.set(trackId, clamped);
@@ -517,7 +535,26 @@ export class RealtimeAudioGraph {
     }
   }
 
+  private audioTiming(schedule: AudioClipSchedule): AudioSpeedTiming {
+    return { id: schedule.clipId, inPoint: schedule.mediaOffset,
+      outPoint: schedule.mediaEnd ?? schedule.audioBuffer.duration,
+      speed: schedule.speed, reversed: schedule.reversed,
+      pitchCorrection: schedule.pitchCorrection,
+      speedKeyframes: schedule.speedKeyframes, freezeFrames: schedule.freezeFrames };
+  }
+
+  async prepareClip(schedule: AudioClipSchedule): Promise<void> {
+    if (schedule.volume <= 0 && !schedule.volumeAutomation.some((point) => point.value > 0)) return;
+    await prepareAudioSpeed(this.audioContext, schedule.audioBuffer, this.audioTiming(schedule));
+  }
+
   scheduleClip(schedule: AudioClipSchedule): void {
+    if (this.completedClips.has(schedule.clipId) ||
+        this.scheduledSources.get(schedule.trackId)?.some((s) => s.clipId === schedule.clipId)) return;
+    if (schedule.volume <= 0 && !schedule.volumeAutomation.some((point) => point.value > 0)) return;
+    const trackConfig = this.trackConfigs.get(schedule.trackId);
+    if (trackConfig?.muted || (this.hasSoloTracks && !trackConfig?.solo)) return;
+    const prepared = getPreparedAudioSpeed(schedule.audioBuffer, this.audioTiming(schedule));
     const existingNodes = this.trackNodes.get(schedule.trackId);
     const existingConfig = this.trackConfigs.get(schedule.trackId);
 
@@ -541,9 +578,21 @@ export class RealtimeAudioGraph {
     const trackNodes = this.trackNodes.get(schedule.trackId);
     if (!trackNodes) return;
 
+    const duration = schedule.endTime - schedule.startTime;
+    const clipOffset = Math.max(0, this.masterClock.currentTime - schedule.startTime);
+    const range = getConstantSpeedAudioRange({
+      inPoint: Math.max(0, prepared.timing.inPoint),
+      outPoint: Math.min(prepared.timing.outPoint, prepared.buffer.duration),
+      speed: prepared.timing.speed,
+      reversed: prepared.timing.reversed,
+    }, clipOffset, duration - clipOffset);
+    if (!range) {
+      this.completedClips.add(schedule.clipId);
+      return;
+    }
     const source = this.audioContext.createBufferSource();
-    source.buffer = schedule.audioBuffer;
-    source.playbackRate.value = schedule.speed;
+    source.buffer = prepared.timing.reversed ? getReversedAudioBuffer(this.audioContext, prepared.buffer) : prepared.buffer;
+    source.playbackRate.value = range.speed;
 
     const clipGain = this.audioContext.createGain();
     const fadeGain = this.audioContext.createGain();
@@ -552,67 +601,18 @@ export class RealtimeAudioGraph {
     clipGain.connect(fadeGain);
     fadeGain.connect(trackNodes.inputGain);
 
-    const contextStartTime =
-      this.audioContext.currentTime +
-      schedule.startTime -
-      this.masterClock.currentTime;
-    const duration = schedule.endTime - schedule.startTime;
-
-    let playbackStartTime = contextStartTime;
-    let clipOffset = 0;
-    let playbackDuration = duration;
-
-    if (contextStartTime > this.audioContext.currentTime) {
-      scheduleVolumeAutomationOnGain(
-        clipGain,
-        schedule.volumeAutomation,
-        schedule.volume,
-        clipOffset,
-        playbackDuration,
-        playbackStartTime,
-      );
-      scheduleClipFadeEnvelope(fadeGain.gain, {
-        startTime: playbackStartTime,
-        clipOffset,
-        rangeDuration: playbackDuration,
-        clipDuration: duration,
-        fadeIn: schedule.fadeIn,
-        fadeOut: schedule.fadeOut,
-      });
-      source.start(contextStartTime, schedule.mediaOffset, duration);
-    } else {
-      clipOffset = this.masterClock.currentTime - schedule.startTime;
-      const sourceOffset = clipOffset + schedule.mediaOffset;
-      playbackDuration = duration - clipOffset;
-      playbackStartTime = this.audioContext.currentTime;
-
-      if (
-        playbackDuration > 0 &&
-        sourceOffset < schedule.audioBuffer.duration
-      ) {
-        scheduleVolumeAutomationOnGain(
-          clipGain,
-          schedule.volumeAutomation,
-          schedule.volume,
-          clipOffset,
-          playbackDuration,
-          playbackStartTime,
-        );
-        scheduleClipFadeEnvelope(fadeGain.gain, {
-          startTime: playbackStartTime,
-          clipOffset,
-          rangeDuration: playbackDuration,
-          clipDuration: duration,
-          fadeIn: schedule.fadeIn,
-          fadeOut: schedule.fadeOut,
-        });
-        source.start(0, sourceOffset, playbackDuration);
-      } else {
-        source.disconnect();
-        clipGain.disconnect();
-        return;
-      }
-    }
+    const playbackStartTime = this.audioContext.currentTime +
+      Math.max(0, schedule.startTime - this.masterClock.currentTime);
+    const playbackDuration = range.playbackDuration;
+    scheduleVolumeAutomationOnGain(clipGain, schedule.volumeAutomation, schedule.volume,
+      clipOffset, playbackDuration, playbackStartTime);
+    scheduleClipFadeEnvelope(fadeGain.gain, {
+      startTime: playbackStartTime, clipOffset, rangeDuration: playbackDuration,
+      clipDuration: duration, fadeIn: schedule.fadeIn, fadeOut: schedule.fadeOut,
+    });
+    const sourceOffset = prepared.timing.reversed ? source.buffer.duration - range.sourceTime : range.sourceTime;
+    source.start(playbackStartTime, sourceOffset, range.sourceDuration);
+    source.stop(playbackStartTime + playbackDuration);
 
     const scheduled: ScheduledSource = {
       clipId: schedule.clipId,
@@ -631,8 +631,12 @@ export class RealtimeAudioGraph {
         const index = trackSources.indexOf(scheduled);
         if (index > -1) {
           trackSources.splice(index, 1);
+          this.completedClips.add(schedule.clipId);
         }
       }
+      source.disconnect();
+      clipGain.disconnect();
+      fadeGain.disconnect();
     };
   }
 
@@ -643,6 +647,7 @@ export class RealtimeAudioGraph {
   }
 
   stopAllClips(): void {
+    this.completedClips.clear();
     for (const [, sources] of this.scheduledSources) {
       for (const scheduled of sources) {
         try {
@@ -655,6 +660,7 @@ export class RealtimeAudioGraph {
   }
 
   stopClip(clipId: string): void {
+    this.completedClips.delete(clipId);
     for (const [, sources] of this.scheduledSources) {
       const index = sources.findIndex((s) => s.clipId === clipId);
       if (index > -1) {
@@ -682,7 +688,7 @@ export class RealtimeAudioGraph {
     }
   }
 
-  startScheduler(getClipsAtTime: (time: number) => AudioClipSchedule[]): void {
+  startScheduler(getClipsAtTime: (time: number) => AudioClipSchedule[], onError?: (error: Error) => void): void {
     if (this.schedulerIntervalId !== null) return;
 
     this.isPlaying = true;
@@ -718,8 +724,17 @@ export class RealtimeAudioGraph {
       }
     };
 
-    this.schedulerIntervalId = window.setInterval(scheduleAudio, 100);
-    scheduleAudio();
+    const guardedSchedule = () => {
+      try { scheduleAudio(); }
+      catch (error) {
+        this.stopScheduler();
+        const failure = error instanceof Error ? error : new Error(String(error));
+        if (onError) onError(failure);
+        else throw failure;
+      }
+    };
+    this.schedulerIntervalId = window.setInterval(guardedSchedule, 100);
+    guardedSchedule();
   }
 
   stopScheduler(): void {
