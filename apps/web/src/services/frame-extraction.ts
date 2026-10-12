@@ -138,8 +138,12 @@ export function closeFrames(frames: readonly ImageBitmap[]): void {
 /**
  * Default grabber: HTMLVideoElement seek + canvas draw, mirroring the
  * media-bridge thumbnail decode path (muted, metadata preload, seeked
- * await, 2.5 s event timeouts).
+ * await). The per-event bound is generous because a seek in a large/4K
+ * source legitimately takes seconds (the decoder walks from the previous
+ * keyframe); 2.5 s turned real extractions into spurious timeouts.
  */
+export const FRAME_GRABBER_EVENT_TIMEOUT_MS = 10_000;
+
 export const createVideoFrameGrabber: FrameGrabberFactory = async (blob) => {
   const url = URL.createObjectURL(blob);
   const video = document.createElement("video");
@@ -152,7 +156,7 @@ export const createVideoFrameGrabber: FrameGrabberFactory = async (blob) => {
     new Promise<void>((resolve, reject) => {
       const timeoutId = window.setTimeout(
         () => finish(new Error("Frame extraction decode timed out")),
-        2500,
+        FRAME_GRABBER_EVENT_TIMEOUT_MS,
       );
       const finish = (error?: Error) => {
         window.clearTimeout(timeoutId);
