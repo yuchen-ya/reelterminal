@@ -15,10 +15,10 @@ observer、不读时钟、不写文件；启用后所有采集都有明确预算
 | L3 | 合成 fixture、E2E driver、结果比较（P2） | `apps/desktop/e2e/performance/` |
 | L4 | CI 基线与渐进门禁（P6，计划中） | workflow + `scripts/performance/` |
 
-当前已落地 P0–P4。运行与证据边界见 [P2 runner](p2-runner.md)、
+当前已落地 P0–P5。运行与证据边界见 [P2 runner](p2-runner.md)、
 [P3 instrumentation](p3-instrumentation.md)，规模与资产见 [scenarios](scenarios.md)。
-[P4 产品修复](p4-product-fixes.md) 记录行为与兼容边界；P5 的 AV/soak
-与 P6 的 CI 门禁尚未实施。
+[P4 产品修复](p4-product-fixes.md) 记录行为与兼容边界；[P5 AV/资源/导出](p5-stress-measurements.md)
+提供独立采集与压力入口。P6 的 CI 门禁尚未实施。
 
 ## 模式与预算
 

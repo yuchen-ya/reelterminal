@@ -35,9 +35,14 @@ are no copied user projects, IDs, fonts, subtitles, or media.
 | --- | --- | ---: | ---: | --- |
 | T01 | 50 clips: 25 synthetic PNG image clips and 25 text clips on two tracks | 100 | 60 s | Workspace DB v3, synthetic image media, timeline text clips |
 | T02 | 35–50 clips split as evenly as possible between image and text, plus a 32 or 64 MiB font-structure data URL | 2 separate gesture runs | 120 s | Workspace DB v3, synthetic image media, timeline text clips, font structure storage |
+| T03 | 500/2000 clips, 20/50 tracks, one shared synthetic PNG asset | 100 of each timeline operation | 120 s per action capture; bounded run | Real clip hit target, final revision, RGB marker, scroll and zoom |
 | H01 | Fixed small node snapshots in a four-way tree of 10, 100, or 1,000 nodes | 2 | 30 s | Workspace DB v3, node tree snapshot, stable node target, synthetic PNG media |
 | H02 | One node referencing a 32 or 64 MiB font-structure payload | 2 | 60 s | Workspace DB v3, node tree snapshot, font structure storage, synthetic PNG media |
 | P01 | Two image clips and one text clip: target at 0 s for 1 s, control at 6 s for 1 s; move, trim, move, flush save, isolated relaunch readback | 5 | 30 s | Workspace DB v3, synthetic image media, save flush, isolated relaunch |
+| A01 | Synthetic time marker frames and pulse PCM, supported speed/seek modes | Declared paired sample count per mode | Bounded run | AudioContext state, scheduling and output-timestamp capability reported separately |
+| R01 | Fixed one-clip project with ten history nodes; edit, undo, redo, save and preview return | 500/5000 rounds, shorter smoke selectable | Bounded run | Save queue drain, bounded history/journal, resource registry and idle memory |
+| R02 | R01 fixed assets with paced actions and idle observations | Default 30 minutes; maximum 60 minutes | Duration plus explicit cleanup reserve | Rotated local captures; no forced GC |
+| E01 | Three-second synthetic export with fake backend and durable task ledger | Requested sample count | Bounded run | Fixed-input writes and progress/status writes measured separately; backend capability declared |
 
 T01's 100-operation budget is intended for the dedicated distribution run. A
 PR smoke run can select a smaller number in its runner and must report the

@@ -29,9 +29,11 @@ node scripts/performance/compare.mjs --baseline <baseline.result.json> --candida
 `--scenario` 支持逗号列表、重复指定或 `ALL`。其他参数：`--seed`（默认 42）、
 `--samples`、`--repeats`、`--font-mib 32|64`、`--node-count 10|100|1000`、
 `--operation-timeout-ms`（默认 30000，上限 120000）、`--run-timeout-seconds`
-（默认 600，上限 3600）。未知、重复、缺值、超范围及不适用参数立即报错。
+（默认 600，上限 7200）。未知、重复、缺值、超范围及不适用参数立即报错。
 冷测量仅支持 H01/H02，使用 `--cold-launches`（默认 5，上限 10），不能指定
-`--samples`。trace/soak 没有 P2 入口。
+`--samples`。trace 没有 P2 入口；P5 的 AV/规模/资源/导出参数和 soak 入口见
+[P5](p5-stress-measurements.md)。quick/benchmark 默认仍为原先五个场景，显式
+`ALL` 增加 P5 场景但排除长时 R02；`test:perf:soak` 默认只运行 R02。
 
 `--samples N` 是每类动作的重复数：T01 有 N 次 media drag、trim、scroll、zoom、
 seek，各自独立分布；T02 有 N 次 media drag 和 N 次 text drag；H warm 有 N 次
