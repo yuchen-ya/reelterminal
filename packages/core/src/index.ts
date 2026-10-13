@@ -19,6 +19,10 @@ export * from "./animation";
 export * from "./effects";
 export * from "./device";
 export * from "./material";
+// Performance measurement contracts: types, pure helpers and the default-off
+// sink slot. Import-free of React/Electron/Node so every process role can
+// share it (see docs/performance/README.md).
+export * from "./performance";
 export {
   ExportEngine,
   getExportEngine,
