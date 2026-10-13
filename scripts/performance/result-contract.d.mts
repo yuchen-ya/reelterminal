@@ -19,6 +19,7 @@ export const QUANTILE_METHOD: string;
 export function isPlainObject(value: unknown): value is Record<string, unknown>;
 export function fixtureManifestSha256(manifest: unknown): string;
 export function validateResultDocument(document: unknown): ResultValidation;
+export function performanceComparisonIdentity(document: Record<string, unknown>): Record<string, unknown>;
 export function performanceAggregationIdentityDifferences(
   first: unknown,
   candidate: unknown,

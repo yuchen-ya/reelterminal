@@ -490,6 +490,11 @@ function identityProjection(document) {
   };
 }
 
+/** Comparison identity without source/build digests, for safe baseline lookup. */
+export function performanceComparisonIdentity(document) {
+  return identityProjection(document);
+}
+
 /** Exact identity check for repeated samples within one run group.
  * Build digests and all run metadata stay fixed. Environment projection reuses
  * the comparison identity, which excludes only volatile free-RAM readings.
@@ -497,6 +502,7 @@ function identityProjection(document) {
 export function performanceAggregationIdentityDifferences(first, candidate) {
   const ignoredRunKeys = new Set([
     "run_id",
+    "repeat",
     "cold_launch_index",
     "cold_launches",
     "constituent_run_ids",

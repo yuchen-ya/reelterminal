@@ -9,6 +9,7 @@ import {
   compareResultDocuments,
   fixtureManifestSha256,
   parseExactFlags,
+  performanceAggregationIdentityDifferences,
   validateResultDocument,
 } from "./result-contract.mjs";
 
@@ -160,6 +161,18 @@ test("compatible result comparison records deltas while allowing candidate build
   assert.equal(comparison.status, "report_only");
   assert.equal(comparison.reason, "compatible_results");
   assert.equal(comparison.regressions[0].change_percent, 100);
+});
+
+test("aggregation identity allows repeat index changes but keeps build and run configuration fixed", () => {
+  const first = result();
+  first.run.repeat = 0;
+  const second = structuredClone(first);
+  second.run.run_id = "run-repeat-1";
+  second.run.repeat = 1;
+  assert.deepEqual(performanceAggregationIdentityDifferences(first, second), []);
+
+  second.run.sampling.frame_every_n = 2;
+  assert.ok(performanceAggregationIdentityDifferences(first, second).length > 0);
 });
 
 test("warm quick runs report comparable p95 while withholding under-sampled p99", () => {
