@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 export const RESULT_SCHEMA = "reelterminal.performance-result/v1";
 export const FIXTURE_SCHEMA = "reelterminal.performance-fixture/v1";
 export const METRIC_DEFINITION_VERSION = 1;
-export const COLLECTOR_VERSION = "p1-v1";
+export const COLLECTOR_VERSION = "p3-v1";
 export const QUANTILE_METHOD = "nearest_rank";
 
 const RESULT_STATUSES = new Set(["not_run", "complete", "incomplete", "aborted", "invalid"]);

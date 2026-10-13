@@ -29,6 +29,7 @@
     "test:e2e": "vitest run --config e2e/vitest.config.ts",
     "test:perf:counts": "tsc --noEmit --project e2e/performance/tsconfig.json && vitest run --config e2e/performance/vitest.counts.config.ts && node --test ../../scripts/performance/*.node-test.mjs",
     "test:perf:quick": "node ../../scripts/performance/run.mjs --suite quick",
+    "test:perf:calibrate": "cross-env REELTERMINAL_PERFORMANCE_CALIBRATION=1 vitest run --config e2e/vitest.config.ts e2e/performance/probe-calibration.e2e.ts",
     "test:perf:benchmark": "node ../../scripts/performance/run.mjs --suite benchmark",
     "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs",
     "prepare:aurora": "node scripts/prepare-aurora-native.mjs",

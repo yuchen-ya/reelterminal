@@ -70,7 +70,7 @@ const CENSORED_OUTCOMES = new Set<PerformanceOperationOutcome>([
   "superseded",
 ]);
 
-export const PERFORMANCE_COLLECTOR_VERSION = "p1-v1";
+export const PERFORMANCE_COLLECTOR_VERSION = "p3-v1";
 
 function assertOperation(operation: RawPerformanceOperation, index: number): void {
   if (typeof operation.operation_id !== "string" || operation.operation_id.length === 0) {

@@ -11,13 +11,13 @@ observer、不读时钟、不写文件；启用后所有采集都有明确预算
 | L0 | 纯数据契约、Noop sink、sink 注入点 | `packages/core/src/performance/` |
 | L1 | renderer 有界采集器、时钟、observer、脱敏 | `apps/web/src/performance/` |
 | L1' | 主进程会话、跨进程校时、进程采样、工件写入、preload 桥 | `apps/desktop/src/{shared,main,preload}/` |
-| L2 | 产品显式埋点（P3，计划中） | 时间线/保存/历史节点等调用链 |
+| L2 | 产品显式埋点（P3） | 时间线/保存/历史节点/初始化/媒体/IPC |
 | L3 | 合成 fixture、E2E driver、结果比较（P2） | `apps/desktop/e2e/performance/` |
 | L4 | CI 基线与渐进门禁（P6，计划中） | workflow + `scripts/performance/` |
 
-当前已落地 L0、L1 和 L3（P0/P1/P2）。P2 的运行与证据边界见
-[P2 runner](p2-runner.md)，规模与资产见 [scenarios](scenarios.md)。L2 的产品
-阶段埋点及 L4 的 CI 门禁尚未实施。
+当前已落地 P0–P3。运行与证据边界见 [P2 runner](p2-runner.md)、
+[P3 instrumentation](p3-instrumentation.md)，规模与资产见 [scenarios](scenarios.md)。
+P4 的行为优化与 P6 的 CI 门禁尚未实施。
 
 ## 模式与预算
 
@@ -114,7 +114,8 @@ observer、不读时钟、不写文件；启用后所有采集都有明确预算
 ## 回滚
 
 整个体系默认关闭：core 的 sink 槽位为共享 NOOP，web/desktop 采集模块只有
-被显式 `start` 后才安装任何监听；没有任何产品代码路径引用它们（P3 之前）。
+被显式 `start` 后才启用采集。产品埋点默认只经过共享 NOOP；preload 注册
+受控的性能会话接口，时钟响应只在显式握手时读取时钟。
 移除本目录导出或 collector 即可完全回退，业务行为不变。
 
 ## 文件地图（当前已存在）
@@ -127,7 +128,6 @@ apps/web/src/performance/        capture-controller.ts ring-buffer.ts
 apps/desktop/src/shared/         performance-contract.ts（IPC 通道与消息校验）
 apps/desktop/src/main/performance/ session.ts clock-sync.ts
                                  process-sampler.ts artifact-writer.ts（+单测）
-apps/desktop/src/preload/        performance-bridge.ts（独立模块，尚未挂载到
-                                 preload/index.ts；P2 注入隔离 renderer probe）
+apps/desktop/src/preload/        performance-bridge.ts（已接入 preload/index.ts）
 docs/performance/                README.md result-example.json
 ```

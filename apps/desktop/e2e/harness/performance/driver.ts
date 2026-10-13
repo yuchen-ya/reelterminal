@@ -14,6 +14,7 @@ import { enableAgentSessionViaUI } from "../ui";
 import { captureBuildIdentity, readEnvironmentIdentity } from "./identity";
 import { createPerformanceResult, summarizeOperations, type RawPerformanceOperation } from "./result";
 import { readHydratedStructureBytes } from "./structure-probe";
+import { extractProductMeasurements } from "./product-metrics";
 import {
   createPerformanceFixture,
   materializePerformanceFixtureAssets,
@@ -42,6 +43,12 @@ interface RendererWindowEvidence {
   firstInputUs: number | null;
   intervalsMs: number[];
   hiddenDuringAction: boolean;
+  main?: import("../../../src/shared/performance-contract").PerfStopReply;
+}
+
+function captureComplete(window: RendererWindowEvidence): boolean {
+  return !window.hiddenDuringAction && window.report.status === "complete" &&
+    window.main?.ok === true && window.main.mainCapture.status === "complete";
 }
 
 type ProbeGlobal = typeof globalThis & {
@@ -73,7 +80,7 @@ async function markerPixel(page: Page, fixture: PerformanceFixture): Promise<num
   }, fixture.targetMarker!.probe);
 }
 
-async function waitForMarker(page: Page, fixture: PerformanceFixture, timeout: number): Promise<void> {
+export async function waitForMarker(page: Page, fixture: PerformanceFixture, timeout: number): Promise<void> {
   await page.waitForFunction(({ rgb, probe }) => {
     const canvas = document.querySelector<HTMLCanvasElement>('[data-testid="preview-canvas"]');
     if (!canvas || canvas.width === 0 || canvas.height === 0) return false;
@@ -85,7 +92,7 @@ async function waitForMarker(page: Page, fixture: PerformanceFixture, timeout: n
 }
 
 /** Prepare only preferences, database rows and assets; never open the editor or decode a font. */
-async function prepareProfile(fixture: PerformanceFixture): Promise<string> {
+export async function prepareProfile(fixture: PerformanceFixture): Promise<string> {
   const runDir = await mkdtemp(path.join(tmpdir(), "reelterminal-e2e-performance-"));
   try {
     await materializePerformanceFixtureAssets(fixture, path.join(runDir, "assets"));
@@ -169,7 +176,8 @@ async function prepareProfile(fixture: PerformanceFixture): Promise<string> {
   }
 }
 
-async function installProbe(page: Page): Promise<void> {
+export async function installProbe(page: Page): Promise<void> {
+  await page.waitForFunction(() => "__reelterminalPerformanceCapture" in globalThis, null, { timeout: 30_000 });
   const bundle = await build({
     entryPoints: [path.join(E2E_DIR, "harness/performance/renderer-probe.ts")],
     bundle: true, write: false, format: "iife", platform: "browser", target: "chrome142",
@@ -188,20 +196,27 @@ async function verifyHit(target: Locator, x: number, y: number): Promise<void> {
   if (hit !== id) throw new Error("real input hit the wrong clip");
 }
 
-async function dragTo(page: Page, id: string, delta: number, timeout: number, trim = false): Promise<void> {
+export async function dragTo(page: Page, id: string, delta: number, timeout: number, trim = false): Promise<void> {
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
   const target = clipTarget(page, id);
   await target.scrollIntoViewIfNeeded();
   const box = await target.boundingBox();
   if (!box) throw new Error("clip target has no geometry");
   const x = trim ? box.x + box.width - 3 : box.x + Math.min(box.width / 2, 50);
-  const y = box.y + box.height / 2;
+  // Drag the clip body clear of selectable labels/native image drags.
+  const y = trim ? box.y + box.height / 2 : box.y + Math.min(box.height / 4, 8);
   await verifyHit(target, x, y);
   const before = await target.evaluate((element) => ({ transform: (element as HTMLElement).style.transform, width: (element as HTMLElement).style.width }));
   await page.mouse.move(x, y);
   await page.mouse.down();
   // Let React install its gesture listener before the first movement.
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
-  await page.mouse.move(x + delta, y, { steps: 6 });
+  for (let step = 1; step <= 6; step++) {
+    await page.mouse.move(x + delta * step / 6, y);
+    // Keep the requested input rate fixed and let React install/update the
+    // gesture listener before the next move or pointer-up.
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+  }
   await page.mouse.up();
   await page.waitForFunction(({ id, before, trim }) => {
     const element = document.querySelector<HTMLElement>(`[data-live-editor-target-id="${id}"]`);
@@ -255,13 +270,17 @@ export async function runPerformanceScenario(scenarioId: PerformanceScenarioId, 
       await verify();
       // Two finite rendering turns let observer callbacks arrive before freezing.
       await launched!.page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      // Product spans include queued persistence; observe its actual completion
+      // within this operation's existing deadline before freezing evidence.
+      await launched!.page.waitForFunction(({ requireGestureFrame, requireFrame }) => {
+        const api = (globalThis as typeof globalThis & { __reelterminalPerformanceCapture: { pendingSpanCount: number; completedGestureFrameCount: number; committedFrameCount: number } }).__reelterminalPerformanceCapture;
+        return api.pendingSpanCount === 0 && (!requireGestureFrame || api.completedGestureFrameCount > 0) && (!requireFrame || api.committedFrameCount > 0);
+      }, { requireGestureFrame: scenarioId !== "P01" && /timeline_.*_(drag|trim)_verified/.test(metric), requireFrame: /seek/.test(metric) }, { timeout: options.operationTimeoutMs });
       const evidence = await launched!.page.evaluate(() => (globalThis as ProbeGlobal).__reelterminalPerfDriver.stop("ok"));
       activeCapture = false;
       windows.push(evidence);
-      if (evidence.hiddenDuringAction || evidence.report.status !== "complete") throw new Error("capture incomplete or window hidden");
-      const span = evidence.report.events.find((event) => event.kind === "span_end" && event.phase === "driver.operation");
-      if (!span || span.kind !== "span_end") throw new Error("operation endpoint missing");
-      samples.push({ operation_id: id, metric, outcome: "ok", duration_ms: span.spanDurationUs / 1000, target_verified: true });
+      if (!captureComplete(evidence)) throw new Error("capture incomplete or window hidden");
+      samples.push({ operation_id: id, metric, outcome: "ok", duration_ms: evidence.report.wallDurationUs / 1000, target_verified: true });
     } catch (error) {
       if (activeCapture && !launched!.page.isClosed()) {
         windows.push(await launched!.page.evaluate(() => (globalThis as ProbeGlobal).__reelterminalPerfDriver.stop("error")));
@@ -479,15 +498,15 @@ export async function runPerformanceScenario(scenarioId: PerformanceScenarioId, 
       warmup: options.cache === "warm" ? (scenarioId.startsWith("H") ? "one_target_node_preview_then_return" : "two_raf_turns_marker_verified") : "none_editor_not_opened_during_seed",
       repeat, cold_launch_index: coldIndex, physical_disk_cold: "not_measured", font_decode: scenarioId === "T02" || scenarioId === "H02" ? "unsupported_missing_licensed_large_font_fixture" : "not_applicable",
       hydrated_structure_bytes: hydratedStructureBytes,
-      measurement_boundary: "driver_action_start_to_verified_dom_and_canvas_with_two_observer_turns",
-      frame_evidence: "canvas_pixel_marker_and_target_dom_identity", actual_presented: "unsupported", frame_token_instrumentation: "not_run_P3",
+      measurement_boundary: "renderer_capture_start_to_verified_dom_canvas_and_settled_product_spans",
+      frame_evidence: "canvas_pixel_marker_and_target_dom_identity", actual_presented: "unsupported", frame_token_instrumentation: "product_scheduler_seq_epoch_revision",
     },
     build: { ...buildIdentity }, environment: { ...environment }, samples, correctness,
-    validity: { complete: !failure && windows.every((window) => window.report.status === "complete" && !window.hiddenDuringAction), reason_codes: reasonCodes, events_dropped: windows.reduce((sum, window) => sum + window.report.drops.eventsDropped, 0), critical_endpoints_dropped: windows.reduce((sum, window) => sum + window.report.drops.criticalEndpointsDropped, 0), probe_calibrated: false },
+    validity: { complete: !failure && windows.every(captureComplete), reason_codes: [...reasonCodes, ...windows.flatMap(window => window.main?.ok ? window.main.mainCapture.reasonCodes : ["main_capture_unavailable"])], events_dropped: windows.reduce((sum, window) => sum + window.report.drops.eventsDropped + (window.main?.ok ? window.main.mainCapture.eventsDropped : 0), 0), critical_endpoints_dropped: windows.reduce((sum, window) => sum + window.report.drops.criticalEndpointsDropped, 0), probe_calibrated: false },
   });
   await mkdir(path.join(ARTIFACTS_DIR, "performance"), { recursive: true });
   const file = path.join(ARTIFACTS_DIR, "performance", `${runId}.result.json`);
-  let artifactDocument = { ...result, action_windows: windows };
+  let artifactDocument = { ...result, action_windows: windows, product_measurements: windows.map(window => extractProductMeasurements(window.report)) };
   let json = JSON.stringify(artifactDocument, null, 2);
   if (Buffer.byteLength(json) > 10 * 1024 * 1024) {
     failure ??= new Error("performance artifact exceeded 10 MiB budget");

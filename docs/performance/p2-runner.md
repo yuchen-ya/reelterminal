@@ -48,8 +48,10 @@ P2 的时长是 renderer 本地时钟上的 driver 动作窗口：开始采集�
 canvas 验证、两个有限 observer 收尾渲染回合、冻结。它包含输入驱动和验证成本；
 不等于产品 handler 延迟、原生屏幕呈现或纯 CPU 时长。输入收到时间、rAF 间隔、
 LongTask 和事件数字保留在 `action_windows`，rAF 不作为独立操作样本。
-P3 的产品 commit/frame token/save transaction 埋点尚未接入；跨进程时长、实际
-presented、FontFace 安装次数与生产保存队列次数仍不可用。
+P3 已接入产品 commit/frame token/save transaction、字体与保存队列阶段；详见
+[P3 instrumentation](p3-instrumentation.md)。driver 窗口现在由产品 renderer
+capture 的 start/stop 定义，并包含验证和必要的产品 span 收尾；产品端点耗时
+单独输出。跨进程时长与实际 presented 仍不作为成绩。
 
 每个手势先通过 `elementFromPoint` 校验 clip hit target，随后检查真实 UI 变化、
 目标 canvas RGB 和 facade 最终时间。历史节点通过稳定 ID 定位，校验预览节点
@@ -81,8 +83,8 @@ median/range/原始样本。未完成操作记录等待下界，不通过删除�
 
 比较检查 fixture、指标/collector 版本、模式、采样/预算、冷暖类别、构建类型和
 静态运行环境；源代码和 bundle 摘要允许候选改变。invalid/incomplete/incompatible
-不产生退化百分比；无基线或探针未标定时保持 report-only。P2 尚未进行 P3/P6 的
-off/light ABBA 开销标定或速度门禁，不据此宣布产品性能达标。
+不产生退化百分比；无基线或探针未标定时保持 report-only。速度门禁尚未实施；
+P3 提供独立的 off/light ABBA 开销校准入口，结果不自动授权基线。
 
 进程超时有每 run watchdog 和外层 command 总预算。失败 profile 保留用于本机
 排查，成功 profile 删除。程序只持有自己创建的 profile/进程；不得按 Electron
