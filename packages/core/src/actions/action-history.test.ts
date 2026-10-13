@@ -331,6 +331,31 @@ describe("ActionHistory batched pushes (executeActionBatch path)", () => {
     expect(history.getUndoStackSize()).toBe(0);
   });
 
+  it("isolates pointer-gesture units from neighboring rapid-update actions", () => {
+    const history = new ActionHistory();
+    history.setAutoGroupWindow(10_000);
+    history.pushGroup(
+      [{ action: chromaAct("c1", 0.3), inverseAction: chromaAct("c1", 0.2) }],
+      "Keyer adjustment",
+      "human",
+    );
+    history.pushGroup(
+      [{ action: chromaAct("c1", 0.4), inverseAction: chromaAct("c1", 0.3) }],
+      "Timeline gesture",
+      "human",
+      { separateFromNeighbors: true },
+    );
+    history.pushGroup(
+      [{ action: chromaAct("c1", 0.5), inverseAction: chromaAct("c1", 0.4) }],
+      "Keyer adjustment",
+      "human",
+    );
+
+    expect(history.undoGroup()).toHaveLength(1);
+    expect(history.undoGroup()).toHaveLength(1);
+    expect(history.undoGroup()).toHaveLength(1);
+  });
+
   it("distinct targets and non-rapid-update batches stay separate units", () => {
     const history = new ActionHistory();
     history.setAutoGroupWindow(10_000);

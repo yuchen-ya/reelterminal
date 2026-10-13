@@ -280,6 +280,17 @@ export async function runPerformanceScenario(scenarioId: PerformanceScenarioId, 
       activeCapture = false;
       windows.push(evidence);
       if (!captureComplete(evidence)) throw new Error("capture incomplete or window hidden");
+      if (/timeline_.*_(drag|trim)_verified/.test(metric)) {
+        const commits = evidence.report.events.filter(event => event.phase === "semantic-state.committed");
+        const finals = evidence.report.events.filter(event => event.phase === "gesture.final-commit");
+        if (commits.length !== 1 || finals.length !== 1) throw new Error("gesture did not commit exactly one semantic transaction");
+        if ((evidence.report.counters["project.full-json-copies"] ?? 0) !== 0 ||
+            (evidence.report.counters["project.full-structured-clones"] ?? 0) !== 0) {
+          throw new Error("gesture copied the full project for its edit transaction");
+        }
+        correctness.single_transaction_per_gesture_verified = true;
+        correctness.no_full_project_copy_for_gesture_transaction_verified = true;
+      }
       samples.push({ operation_id: id, metric, outcome: "ok", duration_ms: evidence.report.wallDurationUs / 1000, target_verified: true });
     } catch (error) {
       if (activeCapture && !launched!.page.isClosed()) {
@@ -374,9 +385,11 @@ export async function runPerformanceScenario(scenarioId: PerformanceScenarioId, 
         await capture(trim ? "timeline_media_trim_verified_ms" : id === textId ? "timeline_text_drag_verified_ms" : "timeline_media_drag_verified_ms", () => dragTo(launched!.page, id, delta, options.operationTimeoutMs, trim), async () => {
           const deadline = performance.now() + options.operationTimeoutMs;
           let observed: number | undefined;
+          let observedRevision: number | undefined;
           let trackVerified = false;
           while (performance.now() < deadline) {
             const after = await timeline(agent!, targetIdentity);
+            observedRevision = after.revision;
             const afterClip = id === textId ? after.textOverlays.find((clip) => clip.id === id)! : after.tracks.flatMap((track) => track.clips).find((clip) => clip.id === id)!;
             observed = trim ? afterClip.duration : afterClip.startTime;
             trackVerified = afterClip.trackId === beforeClip.trackId;
@@ -387,6 +400,11 @@ export async function runPerformanceScenario(scenarioId: PerformanceScenarioId, 
             correctness.final_state_verified = false;
             throw new Error(`gesture final state mismatch: expected ${expected}, observed ${observed}`);
           }
+          if (observedRevision !== before.revision + 1) {
+            correctness.single_revision_per_gesture_verified = false;
+            throw new Error("gesture did not advance exactly one revision");
+          }
+          correctness.single_revision_per_gesture_verified = true;
           if (scenarioId !== "P01") await waitForMarker(launched!.page, fixture, options.operationTimeoutMs);
         });
         correctness.final_state_verified = true;

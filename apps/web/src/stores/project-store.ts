@@ -118,6 +118,20 @@ import type {
   ProjectChangesResult,
 } from "@reelterminal/agent-facade";
 
+const TIMELINE_EDIT_ACTION_TYPES: ReadonlySet<string> = new Set([
+  "clip/move",
+  "clip/trim",
+  "clip/restoreTiming",
+  "text/update",
+  "text/remove",
+  "shape/update",
+  "shape/remove",
+  "svg/update",
+  "svg/remove",
+  "sticker/update",
+  "sticker/remove",
+]);
+
 /**
  * ProjectState - Complete state interface for project management
  *
@@ -2777,10 +2791,23 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
         const operation = beginPerfOperation("state.action-batch", executingBatchOperation ?? getTimelinePerfOperation());
         let outcome: "ok" | "error" = "error";
         try {
+          const timelineEditOnly = actions.every((action) =>
+            TIMELINE_EDIT_ACTION_TYPES.has(action.type),
+          );
+          const cloneDraft = timelineEditOnly
+            ? () => createTimelineEditDraft(sourceProject)
+            : () => structuredClone(sourceProject);
           const draft = operation
-            ? runMeasured("state.draft-clone", { ...operation.context, parentSpanId: operation.span.id }, () => structuredClone(sourceProject))
-            : structuredClone(sourceProject);
-          operation?.sink.count("project.full-structured-clones", 1);
+            ? runMeasured(
+                timelineEditOnly ? "state.timeline-edit-draft" : "state.draft-clone",
+                { ...operation.context, parentSpanId: operation.span.id },
+                cloneDraft,
+              )
+            : cloneDraft();
+          operation?.sink.count(
+            timelineEditOnly ? "project.timeline-edit-drafts" : "project.full-structured-clones",
+            1,
+          );
           const draftHistory = new ActionHistory();
           const draftExecutor = new ActionExecutor(draftHistory);
           const createdIds = emptyActionBatchCreatedIds();
@@ -2815,7 +2842,10 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
           };
 
           for (const originalAction of actions) {
-            const idsBeforeAction = projectEntityIds(draft);
+            const actionChangesEntityIds = !TIMELINE_EDIT_ACTION_TYPES.has(originalAction.type);
+            const idsBeforeAction = actionChangesEntityIds
+              ? projectEntityIds(draft)
+              : null;
             let action = structuredClone(originalAction);
 
             // Text overlays must belong to a real text track. Resolve or create
@@ -2869,11 +2899,13 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
               restoreDerivedState();
               return { result, applied, createdIds };
             }
-            appendCreatedIdDiff(
-              createdIds,
-              idsBeforeAction,
-              projectEntityIds(draft),
-            );
+            if (idsBeforeAction) {
+              appendCreatedIdDiff(
+                createdIds,
+                idsBeforeAction,
+                projectEntityIds(draft),
+              );
+            }
             applied += 1;
           }
 
@@ -2890,6 +2922,7 @@ export function createProjectStore(options: ProjectStoreOptions = {}) {
                 draftHistory.getHistoryEntries(),
                 options.groupLabel,
                 options.historyOwner,
+                { separateFromNeighbors: options.separateHistoryUnit },
               );
               try {
                 set({
@@ -4767,25 +4800,149 @@ export const useProjectStore: ProjectStoreHook = Object.assign(
 // Every committed mutation path (manual edits, agent edits, engine-aware
 // overlay edits, undo, redo, project load) replaces the `project` reference,
 // so one reference comparison here covers them all. In-memory only.
-// Core ActionExecutor mutates the current Project before the store publishes
-// a replacement reference, so Zustand's prevState may share already-mutated
-// nested arrays. Keep one detached observer snapshot to diff the actual
-// before/after worlds for both GUI and Agent edits. Project documents are JSON
-// data at the persistence boundary. Using that same boundary here also keeps
-// test-only spies or other non-document values from breaking the observer.
+// Keep a detached snapshot of the fields the Agent change journal observes.
+// Project snapshots contain large inline resources (notably fonts) that are
+// unrelated to that journal, so copying the full document for every commit is
+// unnecessary. Action batches operate on a cloned draft; this small projection
+// also protects journal history from the few in-place executor paths.
 function snapshotProjectForChanges(project: Project): Project {
   const operation = beginPerfOperation("state.journal-snapshot", getProjectPerfOperation(project) ?? getTimelinePerfOperation());
-  if (!operation) return JSON.parse(JSON.stringify(project)) as Project;
-  operation.sink.count("project.full-json-copies", 1);
+  const clone = <T,>(value: T): T => value === undefined ? value : structuredClone(value);
+  const createSnapshot = (): Project => ({
+    id: project.id,
+    name: project.name,
+    settings: clone(project.settings),
+    modifiedAt: project.modifiedAt,
+    timeline: {
+      ...project.timeline,
+      tracks: project.timeline.tracks.map((track) => ({
+        id: track.id,
+        type: track.type,
+        name: track.name,
+        locked: track.locked,
+        hidden: track.hidden,
+        muted: track.muted,
+        solo: track.solo,
+        clips: track.clips.map((clip) => ({
+          id: clip.id,
+          trackId: clip.trackId,
+          mediaId: clip.mediaId,
+          startTime: clip.startTime,
+          duration: clip.duration,
+          inPoint: clip.inPoint,
+          outPoint: clip.outPoint,
+          volume: clip.volume,
+          speed: clip.speed,
+          reversed: clip.reversed,
+          fade: clone(clip.fade),
+          transform: clone(clip.transform),
+          keyframes: clone(clip.keyframes),
+          automation: clone(clip.automation),
+          colorGrading: clone(clip.colorGrading),
+        })) as Track["clips"],
+        transitions: (track.transitions ?? []).map((transition) => ({
+          id: transition.id,
+          clipAId: transition.clipAId,
+          clipBId: transition.clipBId,
+          edge: transition.edge,
+          type: transition.type,
+          duration: transition.duration,
+          params: clone(transition.params),
+        })),
+      })),
+      subtitles: project.timeline.subtitles?.map((subtitle) => ({
+        id: subtitle.id,
+        startTime: subtitle.startTime,
+        endTime: subtitle.endTime,
+        text: subtitle.text,
+        style: clone(subtitle.style),
+      })),
+    },
+    textClips: project.textClips?.map((clip) => ({
+      id: clip.id,
+      trackId: clip.trackId,
+      text: clip.text,
+      startTime: clip.startTime,
+      duration: clip.duration,
+      style: clone(clip.style),
+      transform: clone(clip.transform),
+      keyframes: clone(clip.keyframes),
+    })),
+    svgClips: project.svgClips?.map((clip) => ({
+      id: clip.id,
+      trackId: clip.trackId,
+      startTime: clip.startTime,
+      duration: clip.duration,
+      svgContent: clip.svgContent,
+      viewBox: clone(clip.viewBox),
+      transform: clone(clip.transform),
+      keyframes: clone(clip.keyframes),
+      colorStyle: clone(clip.colorStyle),
+      entryAnimation: clone(clip.entryAnimation),
+      exitAnimation: clone(clip.exitAnimation),
+    })),
+    mediaLibrary: {
+      items: project.mediaLibrary.items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        displayName: item.displayName,
+        type: item.type,
+        originalUrl: item.originalUrl,
+        sourceFile: clone(item.sourceFile),
+        metadata: clone(item.metadata),
+      })) as Project["mediaLibrary"]["items"],
+    },
+    markers: project.markers
+      ? {
+          ...project.markers,
+          items: (project.markers.items ?? []).map((marker) => ({
+            id: marker.id,
+            number: marker.number,
+            target: clone(marker.target),
+            label: marker.label,
+            color: marker.color,
+            createdAt: marker.createdAt,
+          })),
+        }
+      : undefined,
+  } as Project);
+
+  if (!operation) return createSnapshot();
+
   try {
-    const serialized = runMeasured("state.journal-stringify", { ...operation.context, parentSpanId: operation.span.id }, () => JSON.stringify(project));
-    const snapshot = runMeasured("state.journal-parse", { ...operation.context, parentSpanId: operation.span.id }, () => JSON.parse(serialized) as Project);
-    endPerfOperation(operation, "ok", { serializedChars: serialized.length });
+    const entityCount = project.timeline.tracks.length
+      + project.timeline.tracks.reduce((count, track) => count + track.clips.length + (track.transitions?.length ?? 0), 0)
+      + (project.textClips?.length ?? 0)
+      + (project.svgClips?.length ?? 0)
+      + project.mediaLibrary.items.length
+      + (project.markers?.items.length ?? 0)
+      + (project.timeline.subtitles?.length ?? 0);
+    operation.sink.count("project.journal-entity-snapshots", entityCount);
+    const snapshot = runMeasured("state.journal-snapshot-fields", { ...operation.context, parentSpanId: operation.span.id }, createSnapshot);
+    endPerfOperation(operation, "ok", { entityCount });
     return snapshot;
   } catch (error) {
     failPerfOperation(operation, error);
     throw error;
   }
+}
+
+/** Copy only the mutable containers touched by move/trim actions and captions. */
+function createTimelineEditDraft(project: Project): Project {
+  return {
+    ...project,
+    timeline: {
+      ...project.timeline,
+      tracks: project.timeline.tracks.map((track) => ({
+        ...track,
+        clips: [...track.clips],
+      })),
+    },
+    textClips: project.textClips ? [...project.textClips] : project.textClips,
+    shapeClips: project.shapeClips ? [...project.shapeClips] : project.shapeClips,
+    svgClips: project.svgClips ? [...project.svgClips] : project.svgClips,
+    stickerClips: project.stickerClips ? [...project.stickerClips] : project.stickerClips,
+  };
 }
 
 /** Current foreground workspace revision. */

@@ -688,6 +688,7 @@ export class InverseActionGenerator {
         duration: clip.duration,
         inPoint: clip.inPoint,
         outPoint: clip.outPoint,
+        keyframes: clip.keyframes,
       }));
     if (clips.length === 0) return null;
     return this.createInverseAction(action, "clip/restoreTiming", { clips });

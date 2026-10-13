@@ -10,11 +10,13 @@ import { registerCaptureCleanup } from "./capture-cleanup";
 interface TimelineGesture {
   operation: PerfOperation;
   pendingActions: number;
+  releaseRecorded: boolean;
   released: boolean;
   closed: boolean;
   revision?: number;
   failed: boolean;
   project?: object;
+  markedFrames: WeakMap<object, Set<number>>;
 }
 let inputGesture: TimelineGesture | undefined;
 let pendingFrame: { project: object; revision: number; operation: PerfOperation } | undefined;
@@ -30,7 +32,15 @@ export function beginTimelineGesture(phase: string): void {
     inputGesture.closed = true;
   }
   const operation = beginPerfOperation(phase)!;
-  inputGesture = { operation, pendingActions: 0, released: false, closed: false, failed: false };
+  inputGesture = {
+    operation,
+    pendingActions: 0,
+    releaseRecorded: false,
+    released: false,
+    closed: false,
+    failed: false,
+    markedFrames: new WeakMap(),
+  };
   markPerfOperation(operation, "input.received");
 }
 
@@ -45,25 +55,69 @@ export function recordTimelineInput(): void {
   markPerfOperation(operation, "input.move-received");
 }
 
-export function finishTimelineGesture(revision: number): void {
+export function finishTimelineGesture(revision: number, expectedOperation?: PerfOperation | null): void {
+  if (arguments.length > 1 && (!expectedOperation || inputGesture?.operation !== expectedOperation)) return;
   const operation = getTimelinePerfOperation();
   if (!operation) return;
+  recordTimelineGestureRelease();
   const gesture = inputGesture!;
   gesture.released = true;
   gesture.revision = revision;
-  markPerfOperation(operation, "input.released");
   settleGesture(gesture);
+}
+
+/** Record the physical pointer release without completing the async commit. */
+export function recordTimelineGestureRelease(): PerfOperation | null {
+  const operation = getTimelinePerfOperation();
+  if (!operation) return null;
+  const gesture = inputGesture!;
+  if (!gesture.releaseRecorded) {
+    gesture.releaseRecorded = true;
+    markPerfOperation(operation, "input.released");
+  }
+  return operation;
 }
 
 function settleGesture(gesture: TimelineGesture): void {
   if (gesture.closed || !gesture.released || gesture.pendingActions !== 0) return;
-  gesture.operation.sink.mark("gesture.final-commit", { ...gesture.operation.context, revision: gesture.revision });
   if (!gesture.failed && gesture.project && gesture.revision !== undefined) {
-    const operation = { ...gesture.operation, context: { ...gesture.operation.context, revision: gesture.revision } };
-    pendingFrame = { project: gesture.project, revision: gesture.revision, operation };
+    if (!hasMarkedFrame(gesture, gesture.project, gesture.revision)) {
+      const operation = { ...gesture.operation, context: { ...gesture.operation.context, revision: gesture.revision } };
+      pendingFrame = { project: gesture.project, revision: gesture.revision, operation };
+    }
+  }
+  if (!gesture.failed) {
+    gesture.operation.sink.mark("gesture.final-commit", {
+      ...gesture.operation.context,
+      ...(gesture.revision !== undefined ? { revision: gesture.revision } : {}),
+    });
   }
   endPerfOperation(gesture.operation, gesture.failed ? "error" : "ok");
   gesture.closed = true;
+}
+
+function hasMarkedFrame(gesture: TimelineGesture, project: object, revision: number): boolean {
+  return gesture.markedFrames.get(project)?.has(revision) ?? false;
+}
+
+function markGestureFrame(
+  gesture: TimelineGesture,
+  project: object,
+  revision: number,
+  frame?: { seq: number; epoch: number },
+): void {
+  let revisions = gesture.markedFrames.get(project);
+  if (!revisions) {
+    revisions = new Set();
+    gesture.markedFrames.set(project, revisions);
+  }
+  if (revisions.has(revision)) return;
+  revisions.add(revision);
+  gesture.operation.sink.mark("gesture.first-valid-frame", {
+    ...gesture.operation.context,
+    revision,
+    ...(frame ? { frameSeq: frame.seq, frameEpoch: frame.epoch } : {}),
+  });
 }
 
 /** Retain the gesture while its existing workspace queue applies the final move. */
@@ -83,7 +137,8 @@ export function beginTimelineAction(): { operation: PerfOperation; complete(revi
   };
 }
 
-export function cancelTimelineGesture(): void {
+export function cancelTimelineGesture(expectedOperation?: PerfOperation | null): void {
+  if (arguments.length > 0 && (!expectedOperation || inputGesture?.operation !== expectedOperation)) return;
   endPerfOperation(getTimelinePerfOperation(), "cancelled");
   if (inputGesture) inputGesture.closed = true;
   inputGesture = undefined;
@@ -98,8 +153,22 @@ export function resetProductPerfFlow(): void {
 registerCaptureCleanup(resetProductPerfFlow);
 
 export function recordGestureFrame(project: object, revision: number, frame?: { seq: number; epoch: number }): void {
+  const sink = getPerfSink();
+  if (!sink.enabled) return;
+  const gesture = inputGesture;
+  if (
+    gesture &&
+    !gesture.closed &&
+    gesture.operation.sink === sink &&
+    gesture.project === project &&
+    gesture.revision === revision
+  ) {
+    markGestureFrame(gesture, project, revision, frame);
+    return;
+  }
+
   const pending = pendingFrame;
-  if (!pending || pending.operation.sink !== getPerfSink()) return;
+  if (!pending || pending.operation.sink !== sink) return;
   if (project !== pending.project || revision !== pending.revision) return;
   pending.operation.sink.mark("gesture.first-valid-frame", {
     ...pending.operation.context,

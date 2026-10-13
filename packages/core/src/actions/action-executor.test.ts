@@ -555,12 +555,26 @@ describe("ActionExecutor compound instance synchronization", () => {
       timestamp: Date.now(),
       params: { clipId: "instance-1", outPoint: 3 },
     } as Action, project);
+    await executor.execute({
+      id: "restore-compound-timing",
+      type: "clip/restoreTiming",
+      timestamp: Date.now(),
+      params: {
+        clips: [{
+          id: "instance-1",
+          startTime: 4,
+          duration: 2,
+          inPoint: 1,
+          outPoint: 5,
+        }],
+      },
+    } as Action, project);
 
     expect(project.nestedInstances[0]).toMatchObject({
-      startTime: 8,
-      duration: 3,
-      inPoint: 0,
-      outPoint: 3,
+      startTime: 4,
+      duration: 2,
+      inPoint: 1,
+      outPoint: 5,
     });
   });
 });

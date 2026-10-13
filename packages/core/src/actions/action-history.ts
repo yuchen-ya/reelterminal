@@ -6,12 +6,19 @@ export interface HistoryEntry {
   readonly timestamp: number;
   readonly description: string;
   readonly groupId?: string;
+  /** Prevent an adjacent rapid-update action from merging across this entry. */
+  readonly autoGroupBarrier?: true;
   /**
    * Undo-unit owner: "agent" for AI batches, undefined
    * for human edits. Open groups are owner-scoped, so a human edit can never
    * join an Agent undo unit (and vice versa), even when their gestures overlap.
    */
   readonly owner?: string;
+}
+
+export interface PushGroupOptions {
+  /** Keep this undo unit separate from rapid-update entries on both sides. */
+  readonly separateFromNeighbors?: boolean;
 }
 
 export interface ActionGroup {
@@ -343,6 +350,7 @@ export class ActionHistory {
     if (
       !groupId &&
       lastEntry &&
+      !lastEntry.autoGroupBarrier &&
       lastEntry.owner === effectiveOwner &&
       timeSinceLastAction < this.autoGroupWindow &&
       lastEntry.action.type === action.type &&
@@ -386,17 +394,19 @@ export class ActionHistory {
     entries: readonly Pick<HistoryEntry, "action" | "inverseAction">[],
     description?: string,
     owner?: string,
+    options: PushGroupOptions = {},
   ): string | null {
     if (entries.length === 0) return null;
     const effectiveOwner = owner ?? this.activeOwner;
-    // A single rapid-update action (a slider drag arriving through the
-    // batched commit path) falls back to push()'s proximity coalescing,
-    // keeping undo granularity identical to the legacy bare-execute drags.
+    // By default, a single rapid-update action (such as a slider update)
+    // keeps push()'s proximity coalescing. Pointer gestures can explicitly
+    // request a strict boundary through separateFromNeighbors.
     // Multi-action batches — the reason pushGroup exists — keep strict
     // one-batch-one-unit semantics, as does anything pushed while a group
     // is open for this owner.
     if (
       entries.length === 1 &&
+      !options.separateFromNeighbors &&
       AUTO_GROUPABLE_TYPES.has(entries[0]!.action.type) &&
       !this.openGroups.some((group) => group.owner === effectiveOwner)
     ) {
@@ -410,6 +420,13 @@ export class ActionHistory {
       try {
         for (const entry of entries) {
           this.push(entry.action, entry.inverseAction, owner);
+        }
+        if (options.separateFromNeighbors) {
+          const lastIndex = this.undoStack.length - 1;
+          const lastEntry = this.undoStack[lastIndex];
+          if (lastEntry) {
+            this.undoStack[lastIndex] = { ...lastEntry, autoGroupBarrier: true };
+          }
         }
       } finally {
         this.endGroup(openedGroupId);

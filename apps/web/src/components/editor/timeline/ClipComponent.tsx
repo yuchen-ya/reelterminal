@@ -18,7 +18,7 @@ import { AgentReferenceBadge } from "./AgentReferenceBadge";
 import { ProjectMarkerBadgeStack } from "../ProjectMarkerBadge";
 import { findMarkersForEntity } from "../../../stores/project/project-marker-selectors";
 import { agentReferenceKindForTrack } from "../../../stores/agent-reference-targets";
-import { beginTimelineGesture, recordTimelineInput, finishTimelineGesture } from "../../../performance/product-flow";
+import { beginTimelineGesture, recordTimelineInput, recordTimelineGestureRelease, finishTimelineGesture, cancelTimelineGesture } from "../../../performance/product-flow";
 
 interface ClipComponentProps {
   clip: Clip;
@@ -29,17 +29,15 @@ interface ClipComponentProps {
   trackHeights: Map<string, number>;
   timelineRef: React.RefObject<HTMLDivElement | null>;
   onSelect: (clipId: string, addToSelection: boolean) => void;
-  onMoveClip: (
-    clipId: string,
-    newStartTime: number,
-    targetTrackId?: string,
-  ) => void;
+  onCommitMoveClips: (
+    moves: Array<{ clipId: string; startTime: number; trackId?: string }>,
+  ) => Promise<boolean> | boolean;
   onSnapIndicator: (time: number | null) => void;
   onTrimClip?: (
     clipId: string,
     edge: "left" | "right",
     newTime: number,
-  ) => void;
+  ) => Promise<boolean> | boolean;
 }
 
 const AUTO_SCROLL_THRESHOLD = 80;
@@ -55,7 +53,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   trackHeights,
   timelineRef,
   onSelect,
-  onMoveClip,
+  onCommitMoveClips,
   onSnapIndicator,
   onTrimClip,
 }) => {
@@ -92,7 +90,6 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [isPendingDrag, setIsPendingDrag] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
-  const [dragYOffset, setDragYOffset] = useState(0);
   const [isInvalidDrop, setIsInvalidDrop] = useState(false);
   const [isTrimming, setIsTrimming] = useState(false);
   const [trimEdge, setTrimEdge] = useState<"left" | "right" | null>(null);
@@ -125,8 +122,17 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   });
   const clipRef = useRef<HTMLDivElement>(null);
   const contextMenuItems = useClipContextMenuItems({ clip, track });
-  const moveCommitRafRef = useRef<number | null>(null);
-  const pendingCommitRef = useRef<(() => void) | null>(null);
+  const dragPreviewElementsRef = useRef(new Map<string, {
+    element: HTMLElement;
+    startTime: number;
+  }>());
+  const trimPreviewRef = useRef<{
+    newTime: number;
+    startTime: number;
+    duration: number;
+  } | null>(null);
+  const gestureActiveRef = useRef(false);
+  const gestureReleasedRef = useRef(false);
 
   // Drag-drop highlight state: "effect" when an effect is hovered over
   // the clip body, "transition-left" / "transition-right" when a
@@ -180,9 +186,11 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     };
     mousePositionRef.current = { x: e.clientX, y: e.clientY };
     dragPendingRef.current = { active: true, startX: e.clientX, startY: e.clientY };
-    setDragYOffset(0);
+    pendingDropRef.current = { time: clip.startTime };
     setIsInvalidDrop(false);
     setIsPendingDrag(true);
+    gestureActiveRef.current = true;
+    gestureReleasedRef.current = false;
     beginTimelineGesture("input.media-drag");
 
     // If this clip is part of a multi-selection, snapshot the other
@@ -408,6 +416,8 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       setIsTrimming(true);
       beginTimelineGesture("input.media-trim");
       setTrimEdge(edge);
+      gestureActiveRef.current = true;
+      gestureReleasedRef.current = false;
       trimStartRef.current = {
         mouseX: e.clientX,
         startTime: clip.startTime,
@@ -433,34 +443,92 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     };
 
     const handlePendingMouseUp = (e: MouseEvent) => {
-      finishTimelineGesture(useProjectStore.getState().projectRevision);
+      gestureActiveRef.current = false;
+      gestureReleasedRef.current = true;
+      cancelTimelineGesture();
       dragPendingRef.current.active = false;
       setIsPendingDrag(false);
       onSelect(clip.id, e.shiftKey || e.metaKey);
     };
 
+    const handleCancel = (event?: KeyboardEvent) => {
+      if (event && event.key !== "Escape") return;
+      if (!gestureActiveRef.current) return;
+      gestureActiveRef.current = false;
+      gestureReleasedRef.current = true;
+      dragPendingRef.current.active = false;
+      setIsPendingDrag(false);
+      cancelTimelineGesture();
+    };
+
+    const handleWindowBlur = () => handleCancel();
+    const handleKeyDown = (event: KeyboardEvent) => handleCancel(event);
+
     window.addEventListener("mousemove", handlePendingMouseMove);
     window.addEventListener("mouseup", handlePendingMouseUp);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       window.removeEventListener("mousemove", handlePendingMouseMove);
       window.removeEventListener("mouseup", handlePendingMouseUp);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isPendingDrag, clip.id, onSelect]);
 
-  useEffect(() => {
-    if (!isDragging) return;
+  useEffect(() => () => {
+    if (gestureActiveRef.current) {
+      gestureActiveRef.current = false;
+      cancelTimelineGesture();
+    }
+    document.body.style.cursor = "";
+  }, []);
 
-    // Wrap the entire drag in a single history group so undo collapses
-    // all the per-frame moves (and any companion clips) into one step.
-    const projectStore = useProjectStore.getState();
-    projectStore.beginHistoryGroup(
-      multiDragSnapshotRef.current.length > 0 ? "Move clips" : "Move clip",
+  useEffect(() => {
+    if (!isDragging || gestureReleasedRef.current) return;
+    let animationFrameId: number | null = null;
+    let released = false;
+    const companions = multiDragSnapshotRef.current;
+    const companionElements = new Map<string, HTMLElement>();
+    for (const element of timelineRef.current?.querySelectorAll<HTMLElement>(
+      '[data-live-editor-target-kind="clip"][data-live-editor-target-id]',
+    ) ?? []) {
+      const id = element.dataset.liveEditorTargetId;
+      if (id && companions.some((companion) => companion.clipId === id)) {
+        companionElements.set(id, element);
+      }
+    }
+    dragPreviewElementsRef.current = new Map(
+      companions.flatMap((companion) => {
+        const element = companionElements.get(companion.clipId);
+        return element ? [[companion.clipId, { element, startTime: companion.startTime }] as const] : [];
+      }),
     );
 
-    let animationFrameId: number | null = null;
+    const applyDragPreview = (startTime: number, yOffset: number): void => {
+      if (clipRef.current) {
+        clipRef.current.style.transform = `translate(${startTime * pixelsPerSecond}px, ${yOffset}px)`;
+      }
+      const delta = startTime - clip.startTime;
+      for (const { element, startTime: companionStart } of dragPreviewElementsRef.current.values()) {
+        element.style.transform = `translateX(${Math.max(0, companionStart + delta) * pixelsPerSecond}px)`;
+      }
+    };
+
+    const resetDragPreview = (): void => {
+      if (clipRef.current) {
+        clipRef.current.style.transform = `translateX(${left}px)`;
+        clipRef.current.style.width = `${width}px`;
+      }
+      for (const { element, startTime } of dragPreviewElementsRef.current.values()) {
+        element.style.transform = `translateX(${startTime * pixelsPerSecond}px)`;
+      }
+      dragPreviewElementsRef.current.clear();
+    };
 
     const scrollLoop = () => {
+      if (released) return;
       if (!timelineRef.current) {
         animationFrameId = requestAnimationFrame(scrollLoop);
         return;
@@ -488,14 +556,8 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
 
     animationFrameId = requestAnimationFrame(scrollLoop);
 
-    const flushPendingCommit = () => {
-      moveCommitRafRef.current = null;
-      const commit = pendingCommitRef.current;
-      pendingCommitRef.current = null;
-      commit?.();
-    };
-
     const handleMouseMove = (e: MouseEvent) => {
+      if (released) return;
       recordTimelineInput();
       mousePositionRef.current.x = e.clientX;
       mousePositionRef.current.y = e.clientY;
@@ -520,7 +582,6 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       const currentScrollTop = timelineRef.current?.scrollTop || 0;
       const scrollDelta = currentScrollTop - dragStartRef.current.scrollTop;
       const yDelta = (e.clientY - dragStartRef.current.mouseY) + scrollDelta;
-      setDragYOffset(yDelta);
 
       const scrollTop = timelineRef.current?.scrollTop || 0;
       const mouseY = e.clientY - timelineRect.top + scrollTop;
@@ -541,90 +602,105 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       }
 
       const isOverDifferentTrackType = hoveredTrackType !== undefined && hoveredTrackType !== track.type;
-      setIsInvalidDrop(isOverDifferentTrackType);
+      setIsInvalidDrop((previous) => previous === isOverDifferentTrackType ? previous : isOverDifferentTrackType);
 
       pendingDropRef.current = { time: snapResult.time, targetTrackId };
-
-      // Coalesce store commits to one per animation frame. A fast mouse
-      // fires many mousemove events between frames; dispatching moveClip on
-      // each one deep-clones the project and re-renders the whole editor
-      // dozens of extra times per frame, which is what made sustained
-      // dragging lag and eventually exhaust memory. We keep the latest move
-      // in a ref and flush it once per frame.
-      const moveTime = snapResult.time;
-      const baseStartTime = clip.startTime;
-      const companions = multiDragSnapshotRef.current;
-      pendingCommitRef.current = () => {
-        onMoveClip(clip.id, moveTime, undefined);
-        // Move every companion clip in the multi-selection by the same
-        // delta. Cross-track moves of the primary don't take any
-        // companions along — that gets too lossy when they live on tracks
-        // of a different type — but same-track drags stay locked.
-        if (companions.length > 0) {
-          const deltaTime = moveTime - baseStartTime;
-          for (const snap of companions) {
-            const newStart = Math.max(0, snap.startTime + deltaTime);
-            onMoveClip(snap.clipId, newStart, undefined);
-          }
-        }
-      };
-      if (moveCommitRafRef.current === null) {
-        moveCommitRafRef.current = requestAnimationFrame(flushPendingCommit);
-      }
+      applyDragPreview(snapResult.time, yDelta);
 
       onSnapIndicator(snapResult.snapped && snapResult.snapPoint ? snapResult.snapPoint.time : null);
     };
 
-    let groupClosed = false;
-    const closeGroup = () => {
-      if (groupClosed) return;
-      groupClosed = true;
-      projectStore.endHistoryGroup();
-    };
-
     const handleMouseUp = () => {
+      if (released) return;
+      released = true;
+      gestureReleasedRef.current = true;
       if (animationFrameId !== null) {
         cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
       }
-
-      // Flush any move queued for the next frame so the clip settles at the
-      // final dragged position instead of one frame behind.
-      if (moveCommitRafRef.current !== null) {
-        cancelAnimationFrame(moveCommitRafRef.current);
-        moveCommitRafRef.current = null;
-      }
-      const pendingCommit = pendingCommitRef.current;
-      pendingCommitRef.current = null;
-      pendingCommit?.();
 
       const { time, targetTrackId } = pendingDropRef.current;
-      if (targetTrackId) {
-        onMoveClip(clip.id, time, targetTrackId);
-      }
+      const candidateMoves: Array<{ clipId: string; startTime: number; trackId?: string }> = [
+        { clipId: clip.id, startTime: time, ...(targetTrackId ? { trackId: targetTrackId } : {}) },
+        ...companions.map((snap) => ({
+          clipId: snap.clipId,
+          startTime: Math.max(0, snap.startTime + time - clip.startTime),
+        })),
+      ];
+      const moves = candidateMoves.filter((move) => {
+        const current = move.clipId === clip.id
+          ? { startTime: clip.startTime, trackId: clip.trackId }
+          : companions.find((companion) => companion.clipId === move.clipId);
+        return current !== undefined && (
+          move.startTime !== current.startTime ||
+          (move.trackId !== undefined && move.trackId !== current.trackId)
+        );
+      });
 
-      setIsDragging(false);
-      setDragYOffset(0);
       setIsInvalidDrop(false);
       onSnapIndicator(null);
       multiDragSnapshotRef.current = [];
-      closeGroup();
-      finishTimelineGesture(useProjectStore.getState().projectRevision);
+      gestureActiveRef.current = false;
+
+      if (moves.length === 0) {
+        cancelTimelineGesture();
+        resetDragPreview();
+        setIsDragging(false);
+        return;
+      }
+
+      const gestureOperation = recordTimelineGestureRelease();
+      void Promise.resolve(onCommitMoveClips(moves)).then(
+        (committed) => {
+          if (committed) {
+            finishTimelineGesture(useProjectStore.getState().projectRevision, gestureOperation);
+          } else {
+            cancelTimelineGesture(gestureOperation);
+            resetDragPreview();
+          }
+        },
+        (error: unknown) => {
+          cancelTimelineGesture(gestureOperation);
+          resetDragPreview();
+          toast.error("Could not move clip", error instanceof Error ? error.message : "The change could not be saved.");
+        },
+      ).finally(() => {
+        setIsDragging(false);
+        setIsInvalidDrop(false);
+      });
     };
+
+    const handleCancel = (event?: KeyboardEvent): void => {
+      if (released || (event && event.key !== "Escape")) return;
+      released = true;
+      gestureReleasedRef.current = true;
+      if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+      gestureActiveRef.current = false;
+      cancelTimelineGesture();
+      resetDragPreview();
+      multiDragSnapshotRef.current = [];
+      setIsDragging(false);
+      setIsInvalidDrop(false);
+      onSnapIndicator(null);
+    };
+    const handleWindowBlur = (): void => handleCancel();
+    const handleKeyDown = (event: KeyboardEvent): void => handleCancel(event);
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
       if (animationFrameId !== null) {
         cancelAnimationFrame(animationFrameId);
       }
-      if (moveCommitRafRef.current !== null) {
-        cancelAnimationFrame(moveCommitRafRef.current);
-        moveCommitRafRef.current = null;
-      }
+      if (!released) handleCancel();
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
-      closeGroup();
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("keydown", handleKeyDown);
     };
   }, [
     isDragging,
@@ -635,23 +711,38 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     clip.duration,
     track.id,
     track.type,
+    left,
+    width,
     allTracks,
     trackHeights,
     timelineRef,
     playheadPosition,
     snapSettings,
-    onMoveClip,
+    onCommitMoveClips,
     onSnapIndicator,
   ]);
 
   useEffect(() => {
-    if (!isTrimming || !trimEdge || !onTrimClip) return;
+    if (!isTrimming || !trimEdge || !onTrimClip || gestureReleasedRef.current) return;
+    let released = false;
+
+    const resetTrimPreview = (): void => {
+      trimPreviewRef.current = null;
+      if (clipRef.current) {
+        clipRef.current.style.transform = `translateX(${left}px)`;
+        clipRef.current.style.width = `${width}px`;
+      }
+    };
 
     const handleMouseMove = (e: MouseEvent) => {
+      if (released) return;
       recordTimelineInput();
       const deltaX = e.clientX - trimStartRef.current.mouseX;
       const deltaTime = deltaX / pixelsPerSecond;
 
+      let newTime: number;
+      let startTime = trimStartRef.current.startTime;
+      let duration: number;
       if (trimEdge === "left") {
         const newStartTime = Math.max(
           0,
@@ -660,7 +751,9 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         const maxStartTime =
           trimStartRef.current.startTime + trimStartRef.current.duration - 0.1;
         const clampedStartTime = Math.min(newStartTime, maxStartTime);
-        onTrimClip(clip.id, "left", clampedStartTime);
+        newTime = clampedStartTime;
+        startTime = clampedStartTime;
+        duration = trimStartRef.current.startTime + trimStartRef.current.duration - clampedStartTime;
       } else {
         const newEndTime =
           trimStartRef.current.startTime +
@@ -668,25 +761,84 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
           deltaTime;
         const minEndTime = trimStartRef.current.startTime + 0.1;
         const clampedEndTime = Math.max(newEndTime, minEndTime);
-        onTrimClip(clip.id, "right", clampedEndTime);
+        newTime = clampedEndTime;
+        duration = clampedEndTime - trimStartRef.current.startTime;
+      }
+      trimPreviewRef.current = { newTime, startTime, duration };
+      if (clipRef.current) {
+        clipRef.current.style.transform = `translateX(${startTime * pixelsPerSecond}px)`;
+        clipRef.current.style.width = `${duration * pixelsPerSecond}px`;
       }
     };
 
     const handleMouseUp = () => {
-      finishTimelineGesture(useProjectStore.getState().projectRevision);
+      if (released) return;
+      released = true;
+      gestureReleasedRef.current = true;
+      const preview = trimPreviewRef.current;
+      const originalTime = trimEdge === "left"
+        ? trimStartRef.current.startTime
+        : trimStartRef.current.startTime + trimStartRef.current.duration;
+      const changed = preview !== null && preview.newTime !== originalTime;
+      gestureActiveRef.current = false;
+      if (!changed || !preview) {
+        cancelTimelineGesture();
+        resetTrimPreview();
+        setIsTrimming(false);
+        setTrimEdge(null);
+        document.body.style.cursor = "";
+        return;
+      }
+
+      const gestureOperation = recordTimelineGestureRelease();
+      void Promise.resolve(onTrimClip(clip.id, trimEdge, preview.newTime)).then(
+        (committed) => {
+          if (committed) {
+            finishTimelineGesture(useProjectStore.getState().projectRevision, gestureOperation);
+          } else {
+            cancelTimelineGesture(gestureOperation);
+            resetTrimPreview();
+          }
+        },
+        (error: unknown) => {
+          cancelTimelineGesture(gestureOperation);
+          resetTrimPreview();
+          toast.error("Could not trim clip", error instanceof Error ? error.message : "The change could not be saved.");
+        },
+      ).finally(() => {
+        setIsTrimming(false);
+        setTrimEdge(null);
+        document.body.style.cursor = "";
+      });
+    };
+
+    const handleCancel = (event?: KeyboardEvent): void => {
+      if (released || (event && event.key !== "Escape")) return;
+      released = true;
+      gestureReleasedRef.current = true;
+      gestureActiveRef.current = false;
+      cancelTimelineGesture();
+      resetTrimPreview();
       setIsTrimming(false);
       setTrimEdge(null);
       document.body.style.cursor = "";
     };
+    const handleWindowBlur = (): void => handleCancel();
+    const handleKeyDown = (event: KeyboardEvent): void => handleCancel(event);
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      if (!released) handleCancel();
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isTrimming, trimEdge, clip.id, pixelsPerSecond, onTrimClip]);
+  }, [isTrimming, trimEdge, clip.id, pixelsPerSecond, onTrimClip, left, width]);
 
   const thumbnailCount = Math.max(1, Math.floor(width / 60));
   // Renamed media must show its displayName here too (parity with the
@@ -777,7 +929,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
           }`}
           style={{
             transform: isDragging
-              ? `translate(${left}px, ${dragYOffset}px)`
+              ? `translate(${left}px, 0px)`
               : `translateX(${left}px)`,
             width: `${width}px`,
             willChange: isInteracting ? 'transform, width' : 'auto',

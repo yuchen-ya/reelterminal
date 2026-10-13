@@ -129,7 +129,7 @@ export class ActionExecutor {
         },
       };
     }
-    const projectSnapshot = this.snapshotForHistory(project, operation);
+    const projectSnapshot = this.snapshotForHistory(project, operation, action);
     const inverseAction = operation
       ? runMeasured("action.inverse-generate", { ...operation.context, parentSpanId: operation.span.id }, () => this.inverseGenerator.generate(action, projectSnapshot))
       : this.inverseGenerator.generate(action, projectSnapshot);
@@ -206,7 +206,7 @@ export class ActionExecutor {
         },
       };
     }
-    const projectSnapshot = this.snapshotForHistory(historyBeforeProject, operation);
+    const projectSnapshot = this.snapshotForHistory(historyBeforeProject, operation, action);
     const inverseAction = operation
       ? runMeasured("action.inverse-generate", { ...operation.context, parentSpanId: operation.span.id }, () => this.inverseGenerator.generate(action, projectSnapshot))
       : this.inverseGenerator.generate(action, projectSnapshot);
@@ -238,7 +238,27 @@ export class ActionExecutor {
     }
   }
 
-  private snapshotForHistory(project: Project, parent?: PerfOperation): Project {
+  private snapshotForHistory(project: Project, parent: PerfOperation | undefined, action: Action): Project {
+    // These actions produce inverses from timing primitives, keyframe arrays,
+    // and overlay records. Their handlers replace project fields instead of
+    // mutating the prior values, so retaining the pre-action project reference
+    // avoids serializing inline resources for a timeline gesture.
+    if (
+      action.type === "clip/move" ||
+      action.type === "clip/trim" ||
+      action.type === "clip/restoreTiming" ||
+      action.type === "text/update" ||
+      action.type === "text/remove" ||
+      action.type === "shape/update" ||
+      action.type === "shape/remove" ||
+      action.type === "svg/update" ||
+      action.type === "svg/remove" ||
+      action.type === "sticker/update" ||
+      action.type === "sticker/remove"
+    ) {
+      parent?.sink.count("project.inverse-snapshot-reuses", 1);
+      return project;
+    }
     const operation = beginPerfOperation("action.inverse-snapshot", parent);
     if (!operation) return JSON.parse(JSON.stringify(project)) as Project;
     operation.sink.count("project.full-json-copies", 1);
@@ -1226,6 +1246,9 @@ export class ActionExecutor {
                   duration: snapshot.duration,
                   inPoint: snapshot.inPoint,
                   outPoint: snapshot.outPoint,
+                  ...(snapshot.keyframes !== undefined
+                    ? { keyframes: snapshot.keyframes }
+                    : {}),
                 }
               : clip;
           }),
@@ -1749,31 +1772,33 @@ export class ActionExecutor {
     // A compound instance has a normal timeline clip as its editable shell.
     // Keep the persisted instance timing in lockstep so inspector state,
     // autosave and export never observe stale coordinates after an edit/undo.
-    if (
-      action.type === "clip/move" ||
-      action.type === "clip/trim" ||
-      action.type === "clip/slip" ||
-      action.type === "clip/trimToPlayhead"
-    ) {
-      const clipId = (action.params as { clipId?: string }).clipId;
-      const updatedClip = clipId ? this.findClip(timeline, clipId) : null;
-      if (updatedClip && project.nestedInstances?.some((item) => item.id === clipId)) {
-        (project as Project & { nestedInstances: typeof project.nestedInstances }).nestedInstances = project.nestedInstances.map(
-          (item) =>
-            item.id === clipId
-              ? {
-                  ...item,
-                  trackId: updatedClip.trackId,
-                  startTime: updatedClip.startTime,
-                  duration: updatedClip.duration,
-                  inPoint: updatedClip.inPoint,
-                  outPoint: updatedClip.outPoint,
-                  transform: updatedClip.transform,
-                  volume: updatedClip.volume,
-                }
-              : item,
-        );
-      }
+    const changedTimingClipIds = action.type === "clip/restoreTiming"
+      ? new Set((action.params as { clips: readonly ClipTimingSnapshot[] }).clips.map((snapshot) => snapshot.id))
+      : action.type === "clip/move" ||
+          action.type === "clip/trim" ||
+          action.type === "clip/slip" ||
+          action.type === "clip/trimToPlayhead"
+        ? new Set([(action.params as { clipId?: string }).clipId].filter((id): id is string => typeof id === "string"))
+        : null;
+    if (changedTimingClipIds && project.nestedInstances?.some((item) => changedTimingClipIds.has(item.id))) {
+      (project as Project & { nestedInstances: typeof project.nestedInstances }).nestedInstances = project.nestedInstances.map(
+        (item) => {
+          if (!changedTimingClipIds.has(item.id)) return item;
+          const updatedClip = this.findClip(timeline, item.id);
+          return updatedClip
+            ? {
+                ...item,
+                trackId: updatedClip.trackId,
+                startTime: updatedClip.startTime,
+                duration: updatedClip.duration,
+                inPoint: updatedClip.inPoint,
+                outPoint: updatedClip.outPoint,
+                transform: updatedClip.transform,
+                volume: updatedClip.volume,
+              }
+            : item;
+        },
+      );
     }
   }
 

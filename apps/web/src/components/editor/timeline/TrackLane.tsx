@@ -43,24 +43,27 @@ interface TrackLaneProps {
     clipId: string,
     newStartTime: number,
     targetTrackId?: string,
-  ) => void;
-  onMoveTextClip: (clipId: string, newStartTime: number) => void;
+  ) => Promise<boolean> | boolean;
+  onCommitMoveClips: (
+    moves: Array<{ clipId: string; startTime: number; trackId?: string }>,
+  ) => Promise<boolean> | boolean;
+  onMoveTextClip: (clipId: string, newStartTime: number) => Promise<boolean> | boolean;
   onSnapIndicator: (time: number | null) => void;
   onTrimClip?: (
     clipId: string,
     edge: "left" | "right",
     newTime: number,
-  ) => void;
+  ) => Promise<boolean> | boolean;
   onTrimTextClip: (
     clipId: string,
     edge: "left" | "right",
     newTime: number,
-  ) => void;
+  ) => Promise<boolean> | boolean;
   onTrimShapeClip: (
     clipId: string,
     edge: "left" | "right",
     newTime: number,
-  ) => void;
+  ) => Promise<boolean> | boolean;
   scrollX: number;
   trackHeight: number;
   onResizeTrack: (trackId: string, newHeight: number) => void;
@@ -85,6 +88,7 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
   onDropMedia,
   onDropWorkAsset,
   onMoveClip,
+  onCommitMoveClips,
   onMoveTextClip,
   onSnapIndicator,
   onTrimClip,
@@ -311,7 +315,7 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
               trackHeights={trackHeights}
               timelineRef={timelineRef}
               onSelect={onSelectClip}
-              onMoveClip={onMoveClip}
+              onCommitMoveClips={onCommitMoveClips}
               onSnapIndicator={onSnapIndicator}
               onTrimClip={onTrimClip}
             />

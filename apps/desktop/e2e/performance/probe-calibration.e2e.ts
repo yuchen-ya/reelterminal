@@ -159,7 +159,8 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
           const exportMs = performance.now() - exportStarted;
           if (report) {
             expect(report.status).toBe("complete");
-            expect(report.counters["project.full-json-copies"]).toBeGreaterThan(0);
+            expect(report.events.filter(event => event.phase === "semantic-state.committed")).toHaveLength(6);
+            expect(report.counters["project.full-json-copies"] ?? 0).toBe(0);
           } else {
             expect(await page.evaluate(() => (globalThis as unknown as CalibrationGlobal).__reelterminalPerformanceCapture.activeRunId)).toBeNull();
           }

@@ -1,4 +1,6 @@
 import { beginTimelineGesture, finishTimelineGesture, cancelTimelineGesture } from "../../performance/product-flow";
+import { v4 as uuidv4 } from "uuid";
+import type { Action } from "@reelterminal/core";
 import React, {
   useRef,
   useCallback,
@@ -88,10 +90,8 @@ import {
   type TrackLayerFilter,
 } from "./timeline/track-layer-filter";
 import { getTrackDragAutoScrollDelta } from "./timeline/track-drag-auto-scroll";
-import {
-  moveLinkedCaptions,
-  trimLinkedCaptions,
-} from "../../utils/linked-caption-edit";
+import { getLinkedCaptions } from "../../utils/linked-caption-edit";
+import { buildClipMoveActionBatch } from "../../utils/timeline-gesture-actions";
 import { CaptionBatchSelectButton } from "./timeline/CaptionBatchSelectButton";
 import { useTranslation } from "react-i18next";
 
@@ -909,34 +909,57 @@ export const Timeline: React.FC = () => {
     [tr],
   );
 
-  const { moveClip } = useProjectStore();
-  const handleMoveClip = useCallback(
-    async (clipId: string, newStartTime: number, targetTrackId?: string) => {
+  const handleCommitMoveClips = useCallback(
+    async (moves: Array<{ clipId: string; startTime: number; trackId?: string }>): Promise<boolean> => {
       // Read-only version preview: dragging clips must not modify anything.
-      if (blockPreviewEditInteraction()) return;
+      if (blockPreviewEditInteraction()) return false;
       const store = useProjectStore.getState();
-      const isGraphic = Boolean(
-        store.getShapeClip(clipId) ||
-          store.getSVGClip(clipId) ||
-          store.getStickerClip(clipId),
-      );
-      if (isGraphic) {
-        store.updateOverlayClipTiming(clipId, {
-          startTime: newStartTime,
-        });
-      } else {
-        const sourceClip = store.getClip(clipId);
-        const result = await moveClip(clipId, newStartTime, targetTrackId);
-        if (result.success && sourceClip) {
-          moveLinkedCaptions(
-            useProjectStore.getState(),
-            sourceClip,
-            newStartTime,
-          );
-        }
-      }
+      const actions = buildClipMoveActionBatch(store, moves);
+
+      if (actions.length === 0) return false;
+      const result = await store.submitActionBatch(actions, {
+        groupLabel: moves.length > 1 ? "Move clips" : "Move clip",
+        historyOwner: "human",
+        separateHistoryUnit: true,
+      });
+      return result.result.success;
     },
-    [moveClip],
+    [],
+  );
+
+  const submitOverlayTiming = useCallback(
+    async (
+      clipId: string,
+      updates: { startTime?: number; duration?: number },
+      groupLabel: string,
+    ): Promise<boolean> => {
+      if (blockPreviewEditInteraction()) return false;
+      const store = useProjectStore.getState();
+      const actionType: Action["type"] | undefined = store.getTextClip(clipId)
+        ? "text/update"
+        : store.getShapeClip(clipId)
+          ? "shape/update"
+          : store.getSVGClip(clipId)
+            ? "svg/update"
+            : store.getStickerClip(clipId)
+              ? "sticker/update"
+              : undefined;
+      if (!actionType) return false;
+      const result = await store.submitActionBatch([{
+        type: actionType,
+        id: uuidv4(),
+        timestamp: Date.now(),
+        params: { clipId, updates },
+      }], { groupLabel, historyOwner: "human", separateHistoryUnit: true });
+      return result.result.success;
+    },
+    [],
+  );
+
+  const handleMoveOverlayClip = useCallback(
+    (clipId: string, newStartTime: number) =>
+      submitOverlayTiming(clipId, { startTime: Math.max(0, newStartTime) }, "Move graphic clip"),
+    [submitOverlayTiming],
   );
 
   const [snapIndicatorTime, setSnapIndicatorTime] = React.useState<
@@ -949,41 +972,35 @@ export const Timeline: React.FC = () => {
 
   const handleTrimTextClip = useCallback(
     (clipId: string, edge: "left" | "right", newTime: number) => {
-      if (blockPreviewEditInteraction()) return;
       const store = useProjectStore.getState();
       const textClip = store.getTextClip(clipId);
-      if (!textClip) return;
+      if (!textClip) return false;
       const newDuration =
         edge === "left"
           ? Math.max(0.1, textClip.startTime + textClip.duration - newTime)
           : Math.max(0.1, newTime - textClip.startTime);
-      store.updateOverlayClipTiming(clipId, {
+      return submitOverlayTiming(clipId, {
         ...(edge === "left" ? { startTime: newTime } : {}),
         duration: newDuration,
-      });
+      }, "Trim text clip");
     },
-    [],
+    [submitOverlayTiming],
   );
 
   const handleMoveTextClip = useCallback(
-    (clipId: string, newStartTime: number) => {
-      if (blockPreviewEditInteraction()) return;
-      useProjectStore.getState().updateOverlayClipTiming(clipId, {
-        startTime: Math.max(0, newStartTime),
-      });
-    },
-    [],
+    (clipId: string, newStartTime: number) =>
+      submitOverlayTiming(clipId, { startTime: Math.max(0, newStartTime) }, "Move text clip"),
+    [submitOverlayTiming],
   );
 
   const handleTrimShapeClip = useCallback(
     (clipId: string, edge: "left" | "right", newTime: number) => {
-      if (blockPreviewEditInteraction()) return;
       const store = useProjectStore.getState();
       const graphicClip =
         store.getShapeClip(clipId) ||
         store.getSVGClip(clipId) ||
         store.getStickerClip(clipId);
-      if (!graphicClip) return;
+      if (!graphicClip) return false;
       const newDuration =
         edge === "left"
           ? Math.max(
@@ -992,35 +1009,26 @@ export const Timeline: React.FC = () => {
             )
           : Math.max(0.1, newTime - graphicClip.startTime);
 
-      store.updateOverlayClipTiming(clipId, {
+      return submitOverlayTiming(clipId, {
         ...(edge === "left" ? { startTime: newTime } : {}),
         duration: newDuration,
-      });
+      }, "Trim graphic clip");
     },
-    [],
+    [submitOverlayTiming],
   );
 
   const handleTrimClip = useCallback(
-    (clipId: string, edge: "left" | "right", newTime: number) => {
-      if (blockPreviewEditInteraction()) return;
-      const clip = tracks.flatMap((t) => t.clips).find((c) => c.id === clipId);
-      if (!clip) return;
+    async (clipId: string, edge: "left" | "right", newTime: number): Promise<boolean> => {
+      if (blockPreviewEditInteraction()) return false;
+      const store = useProjectStore.getState();
+      const clip = store.getClip(clipId);
+      if (!clip) return false;
 
       const oldDuration = clip.duration;
       const newDuration =
         edge === "left"
           ? Math.max(0.1, clip.startTime + clip.duration - newTime)
           : Math.max(0.1, newTime - clip.startTime);
-
-      const updates =
-        edge === "left"
-          ? {
-              startTime: newTime,
-              duration: newDuration,
-            }
-          : {
-              duration: newDuration,
-            };
 
       const adjustedKeyframes = (clip.keyframes ?? []).map((kf) => {
         if (kf.id.startsWith("kf-exit-")) {
@@ -1030,32 +1038,57 @@ export const Timeline: React.FC = () => {
         return kf;
       });
 
-      useProjectStore.setState((state) => ({
-        project: {
-          ...state.project,
-          timeline: {
-            ...state.project.timeline,
-            tracks: state.project.timeline.tracks.map((track) => ({
-              ...track,
-              clips: track.clips.map((c) =>
-                c.id === clipId
-                  ? { ...c, ...updates, keyframes: adjustedKeyframes }
-                  : c,
-              ),
-            })),
-          },
-          modifiedAt: Date.now(),
-        },
-      }));
       const newStartTime = edge === "left" ? newTime : clip.startTime;
-      trimLinkedCaptions(
-        useProjectStore.getState(),
-        clip,
-        newStartTime,
-        newStartTime + newDuration,
-      );
+      const newEndTime = newStartTime + newDuration;
+      const actions: Action[] = [{
+        type: "clip/restoreTiming",
+        id: uuidv4(),
+        timestamp: Date.now(),
+        params: {
+          clips: [{
+            id: clip.id,
+            startTime: newStartTime,
+            duration: newDuration,
+            inPoint: clip.inPoint,
+            outPoint: clip.outPoint,
+            keyframes: adjustedKeyframes,
+          }],
+        },
+      }];
+      for (const caption of getLinkedCaptions(store, clip)) {
+        const captionEnd = caption.startTime + caption.duration;
+        const clippedStart = Math.max(caption.startTime, newStartTime);
+        const clippedEnd = Math.min(captionEnd, newEndTime);
+        if (clippedEnd - clippedStart < 0.1) {
+          actions.push({
+            type: "text/remove",
+            id: uuidv4(),
+            timestamp: Date.now(),
+            params: { clipId: caption.id },
+          });
+        } else if (
+          clippedStart !== caption.startTime ||
+          clippedEnd !== captionEnd
+        ) {
+          actions.push({
+            type: "text/update",
+            id: uuidv4(),
+            timestamp: Date.now(),
+            params: {
+              clipId: caption.id,
+              updates: { startTime: clippedStart, duration: clippedEnd - clippedStart },
+            },
+          });
+        }
+      }
+      const result = await store.submitActionBatch(actions, {
+        groupLabel: "Trim clip",
+        historyOwner: "human",
+        separateHistoryUnit: true,
+      });
+      return result.result.success;
     },
-    [tracks],
+    [],
   );
 
   const addTrackItems: DropdownMenuOption[] = useMemo(
@@ -1809,7 +1842,8 @@ export const Timeline: React.FC = () => {
                   onSelectClip={handleSelectClip}
                   onDropMedia={handleDropMedia}
                   onDropWorkAsset={handleDropWorkAsset}
-                  onMoveClip={handleMoveClip}
+                  onMoveClip={handleMoveOverlayClip}
+                  onCommitMoveClips={handleCommitMoveClips}
                   onSnapIndicator={handleSnapIndicator}
                   onTrimClip={
                     track.type === "video" ||

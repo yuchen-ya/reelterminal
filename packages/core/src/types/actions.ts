@@ -190,7 +190,7 @@ export type TrackAction =
 export type ClipTimingSnapshot = Pick<
   Clip,
   "id" | "startTime" | "duration" | "inPoint" | "outPoint"
->;
+> & { keyframes?: Clip["keyframes"] };
 
 export type ClipAction =
   | {

@@ -16,6 +16,8 @@ export interface ActionBatchCreatedIds {
 export interface ActionBatchOptions {
   readonly groupLabel: string;
   readonly historyOwner?: string;
+  /** Isolate a committed pointer gesture from adjacent rapid-update actions. */
+  readonly separateHistoryUnit?: boolean;
   /** Optional pre-gesture state used to construct the first action's inverse. */
   readonly historyBeforeProject?: Project;
 }

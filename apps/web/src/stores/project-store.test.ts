@@ -13,6 +13,7 @@ import type {
   MediaItem,
   MotionShaderDef,
   Transition,
+  TextClip,
 } from "@reelterminal/core";
 import {
   clearGeneratedMotionShaders,
@@ -215,7 +216,7 @@ describe("ProjectStore", () => {
       expect(counts[1]).toBe(counts[0]);
       expect(report.status).toBe("complete");
       expect(report.counters["project.full-structured-clones"]).toBe(1);
-      expect(report.counters["project.full-json-copies"]).toBe(2);
+      expect(report.counters["project.full-json-copies"]).toBe(1);
       const events = [...report.events, ...report.criticalEvents];
       expect(events.some(event => event.phase === "semantic-state.committed")).toBe(true);
       expect(events.some(event => event.phase === "gesture.final-commit")).toBe(true);
@@ -226,6 +227,263 @@ describe("ProjectStore", () => {
       if (controller.activeRunId) controller.stopCapture();
       setPerfSink(null);
       unsubscribes.forEach(unsubscribe => unsubscribe());
+    }
+  });
+
+  it("moves a multi-clip gesture with one undo unit and no full-project JSON copies", async () => {
+    const emptyProject = createEmptyProject("synthetic timeline gesture");
+    const fontPayload = "data:font/woff2;base64," + "Q".repeat(256 * 1024);
+    const trackId = "gesture-track";
+    const project = {
+      ...emptyProject,
+      performanceFixture: {
+        syntheticFontStructure: { dataUrlStructure: fontPayload },
+      },
+      timeline: {
+        ...emptyProject.timeline,
+        tracks: [{
+      id: trackId,
+      type: "video",
+      name: "V1",
+          clips: ["gesture-primary", "gesture-companion", "gesture-stationary"].map((id, index) => ({
+        id,
+        mediaId: `media-${index}`,
+        trackId,
+        startTime: index * 5,
+        duration: 2,
+        inPoint: 0,
+        outPoint: 2,
+        effects: [],
+        audioEffects: [],
+        transform: {
+          position: { x: 0, y: 0 },
+          scale: { x: 1, y: 1 },
+          anchor: { x: 0.5, y: 0.5 },
+          rotation: 0,
+          opacity: 1,
+        },
+        volume: 1,
+        keyframes: [],
+      })),
+      transitions: [],
+      locked: false,
+      hidden: false,
+      muted: false,
+      solo: false,
+        }],
+      },
+    } as Project & { performanceFixture: { syntheticFontStructure: { dataUrlStructure: string } } };
+
+    const store = createProjectStore({ initialProject: project, isStaging: true });
+    const controller = new CaptureController();
+    controller.startCapture({
+      mode: "counts",
+      runId: "multi-clip-gesture-copy-regression",
+      observerHost: {},
+      budgets: { inputSampleEveryN: 1, frameSampleEveryN: 1, memorySampleIntervalSeconds: 0 },
+    });
+    const publishedProjects: Project[] = [];
+    const unsubscribe = store.subscribe((state, previous) => {
+      if (state.project !== previous.project) publishedProjects.push(state.project);
+    });
+    const clipStartTimes = (): Record<string, number> => Object.fromEntries(
+      store.getState().project.timeline.tracks[0]?.clips.map((clip) => [clip.id, clip.startTime]) ?? [],
+    );
+
+    try {
+      const result = store.getState().executeActionBatch([
+        {
+          type: "clip/move",
+          id: "gesture-move-primary",
+          timestamp: 1,
+          params: { clipId: "gesture-primary", startTime: 12 },
+        },
+        {
+          type: "clip/move",
+          id: "gesture-move-companion",
+          timestamp: 2,
+          params: { clipId: "gesture-companion", startTime: 17 },
+        },
+      ], { groupLabel: "Move clips", historyOwner: "human" });
+
+      expect(result.result.success).toBe(true);
+      expect(clipStartTimes()).toEqual({ "gesture-primary": 12, "gesture-companion": 17, "gesture-stationary": 10 });
+      expect((store.getState().project as typeof project).performanceFixture).toBe(project.performanceFixture);
+      expect(store.getState().project.timeline.tracks[0]?.clips.find((clip) => clip.id === "gesture-stationary"))
+        .toBe(project.timeline.tracks[0]?.clips.find((clip) => clip.id === "gesture-stationary"));
+      expect(publishedProjects).toHaveLength(1);
+      expect(store.getState().actionHistory.canUndo()).toBe(true);
+      expect(JSON.stringify(store.getState().project)).toContain(fontPayload);
+
+      const undone = await store.getState().undo();
+      expect(undone.success).toBe(true);
+      expect(clipStartTimes()).toEqual({ "gesture-primary": 0, "gesture-companion": 5, "gesture-stationary": 10 });
+      expect(store.getState().actionHistory.canRedo()).toBe(true);
+
+      const redone = await store.getState().redo();
+      expect(redone.success).toBe(true);
+      expect(clipStartTimes()).toEqual({ "gesture-primary": 12, "gesture-companion": 17, "gesture-stationary": 10 });
+
+      const report = controller.stopCapture();
+      expect(report.status).toBe("complete");
+      expect(report.counters["project.full-json-copies"] ?? 0).toBe(0);
+      expect(report.counters["project.full-structured-clones"] ?? 0).toBe(0);
+      expect(report.counters["project.timeline-edit-drafts"]).toBe(1);
+      expect(JSON.stringify(report)).not.toContain(fontPayload);
+    } finally {
+      if (controller.activeRunId) controller.stopCapture();
+      unsubscribe();
+    }
+  });
+
+  it("undoes and redoes a trimmed clip and its exit keyframes without copying the project", async () => {
+    const emptyProject = createEmptyProject("synthetic trim gesture");
+    const fontPayload = "data:font/woff2;base64," + "R".repeat(256 * 1024);
+    const trackId = "trim-gesture-track";
+    const clip = {
+      id: "trim-gesture-clip",
+      mediaId: "trim-gesture-media",
+      trackId,
+      startTime: 3,
+      duration: 5,
+      inPoint: 0,
+      outPoint: 5,
+      effects: [],
+      audioEffects: [],
+      transform: {
+        position: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 },
+        anchor: { x: 0.5, y: 0.5 },
+        rotation: 0,
+        opacity: 1,
+      },
+      volume: 1,
+      keyframes: [{ id: "kf-exit-opacity", property: "opacity", time: 4, value: 0 }],
+    };
+    const caption: TextClip = {
+      id: "trim-gesture-caption",
+      trackId: "trim-gesture-caption-track",
+      startTime: 3.2,
+      duration: 1.2,
+      text: "caption",
+      style: {
+        fontFamily: "Arial",
+        fontSize: 24,
+        fontWeight: 400,
+        fontStyle: "normal",
+        color: "#ffffff",
+        textAlign: "left",
+        verticalAlign: "middle",
+        lineHeight: 1,
+        letterSpacing: 0,
+      },
+      transform: {
+        position: { x: 0, y: 0 },
+        scale: { x: 1, y: 1 },
+        anchor: { x: 0.5, y: 0.5 },
+        rotation: 0,
+        opacity: 1,
+      },
+      keyframes: [],
+      metadata: { captionSourceClipId: "trim-gesture-clip" },
+    };
+    const project = {
+      ...emptyProject,
+      performanceFixture: {
+        syntheticFontStructure: { dataUrlStructure: fontPayload },
+      },
+      textClips: [
+        caption,
+        { ...caption, id: "trim-gesture-short-caption", startTime: 7.95, duration: 0.05 },
+      ],
+      timeline: {
+        ...emptyProject.timeline,
+        duration: 8,
+        tracks: [{
+          id: trackId,
+          type: "video",
+          name: "V1",
+          clips: [clip],
+          transitions: [],
+          locked: false,
+          hidden: false,
+          muted: false,
+          solo: false,
+        }],
+      },
+    } as unknown as Project;
+    const store = createProjectStore({ initialProject: project, isStaging: true });
+    const controller = new CaptureController();
+    controller.startCapture({
+      mode: "counts",
+      runId: "trim-gesture-copy-regression",
+      observerHost: {},
+      budgets: { inputSampleEveryN: 1, frameSampleEveryN: 1, memorySampleIntervalSeconds: 0 },
+    });
+
+    try {
+      const result = store.getState().executeActionBatch([{
+        type: "clip/restoreTiming",
+        id: "trim-gesture-commit",
+        timestamp: 1,
+        params: {
+          clips: [{
+            id: clip.id,
+            startTime: 3.5,
+            duration: 4.5,
+            inPoint: 0,
+            outPoint: 5,
+            keyframes: [{ ...clip.keyframes[0], time: 3.5 }],
+          }],
+        },
+      }, {
+        type: "text/update",
+        id: "trim-caption-update",
+        timestamp: 2,
+        params: {
+          clipId: "trim-gesture-caption",
+          updates: { startTime: 3.5, duration: 0.9 },
+        },
+      }, {
+        type: "text/remove",
+        id: "trim-caption-remove",
+        timestamp: 3,
+        params: { clipId: "trim-gesture-short-caption" },
+      }], { groupLabel: "Trim clip", historyOwner: "human" });
+      expect(result.result.success).toBe(true);
+      expect(store.getState().project.timeline.tracks[0]?.clips[0]).toMatchObject({
+        startTime: 3.5,
+        duration: 4.5,
+        keyframes: [{ id: "kf-exit-opacity", time: 3.5 }],
+      });
+      expect(store.getState().project.textClips?.[0]).toMatchObject({ startTime: 3.5, duration: 0.9 });
+      expect(store.getState().project.textClips).toHaveLength(1);
+
+      expect((await store.getState().undo()).success).toBe(true);
+      expect(store.getState().project.timeline.tracks[0]?.clips[0]).toMatchObject({
+        startTime: 3,
+        duration: 5,
+        keyframes: [{ id: "kf-exit-opacity", time: 4 }],
+      });
+      expect(store.getState().project.textClips?.[0]).toMatchObject({ startTime: 3.2, duration: 1.2 });
+      expect(store.getState().project.textClips).toHaveLength(2);
+      expect((await store.getState().redo()).success).toBe(true);
+      expect(store.getState().project.timeline.tracks[0]?.clips[0]).toMatchObject({
+        startTime: 3.5,
+        duration: 4.5,
+        keyframes: [{ id: "kf-exit-opacity", time: 3.5 }],
+      });
+      expect(store.getState().project.textClips?.[0]).toMatchObject({ startTime: 3.5, duration: 0.9 });
+      expect(store.getState().project.textClips).toHaveLength(1);
+
+      const report = controller.stopCapture();
+      expect(report.counters["project.full-json-copies"] ?? 0).toBe(0);
+      expect(report.counters["project.full-structured-clones"] ?? 0).toBe(0);
+      expect(report.counters["project.timeline-edit-drafts"]).toBe(1);
+      expect(report.counters["project.inverse-snapshot-reuses"]).toBe(3);
+      expect(JSON.stringify(report)).not.toContain(fontPayload);
+    } finally {
+      if (controller.activeRunId) controller.stopCapture();
     }
   });
 

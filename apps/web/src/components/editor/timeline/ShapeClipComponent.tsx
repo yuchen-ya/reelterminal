@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { ToolcraftContextMenu as ContextMenu } from "@reelterminal/ui";
 import { Shapes, FileCode, Smile } from "@/icons/lucide-compat";
 import type { ShapeClip, SVGClip, StickerClip } from "@reelterminal/core";
@@ -10,7 +10,8 @@ import { useUIStore } from "../../../stores/ui-store";
 import { AgentReferenceBadge } from "./AgentReferenceBadge";
 import { ProjectMarkerBadgeStack } from "../ProjectMarkerBadge";
 import { findMarkersForEntity } from "../../../stores/project/project-marker-selectors";
-import { beginTimelineGesture, recordTimelineInput, finishTimelineGesture } from "../../../performance/product-flow";
+import { beginTimelineGesture, recordTimelineInput, recordTimelineGestureRelease, finishTimelineGesture, cancelTimelineGesture } from "../../../performance/product-flow";
+import { toast } from "../../../stores/notification-store";
 
 type GraphicClipUnion = ShapeClip | SVGClip | StickerClip;
 
@@ -19,8 +20,8 @@ interface ShapeClipComponentProps {
   pixelsPerSecond: number;
   isSelected: boolean;
   onSelect: (clipId: string, addToSelection: boolean) => void;
-  onTrim: (clipId: string, edge: "left" | "right", newTime: number) => void;
-  onMoveClip: (clipId: string, newStartTime: number) => void;
+  onTrim: (clipId: string, edge: "left" | "right", newTime: number) => Promise<boolean> | boolean;
+  onMoveClip: (clipId: string, newStartTime: number) => Promise<boolean> | boolean;
 }
 
 export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
@@ -35,7 +36,14 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const [isTrimming, setIsTrimming] = useState<"left" | "right" | null>(null);
-  const historyGroupOpenRef = useRef(false);
+  const gestureActiveRef = useRef(false);
+  const gestureReleasedRef = useRef(false);
+  const previewStartTimeRef = useRef<number | null>(null);
+  const trimPreviewRef = useRef<{
+    newTime: number;
+    startTime: number;
+    duration: number;
+  } | null>(null);
   const { snapSettings } = useUIStore();
   const { playheadPosition } = useTimelineStore();
   const projectMarkers = useProjectStore((state) => state.project.markers);
@@ -55,18 +63,6 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
   const left = shapeClip.startTime * pixelsPerSecond;
   const width = shapeClip.duration * pixelsPerSecond;
 
-  const beginTimingGesture = useCallback((description: string) => {
-    if (historyGroupOpenRef.current) return;
-    useProjectStore.getState().beginHistoryGroup(description);
-    historyGroupOpenRef.current = true;
-  }, []);
-
-  const endTimingGesture = useCallback(() => {
-    if (!historyGroupOpenRef.current) return;
-    useProjectStore.getState().endHistoryGroup();
-    historyGroupOpenRef.current = false;
-  }, []);
-
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     if (useProjectStore.getState().readOnlyPreview) {
@@ -74,7 +70,7 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
       onSelect(shapeClip.id, e.shiftKey || e.metaKey || e.ctrlKey);
       return;
     }
-    if (isTrimming) return;
+    if (isTrimming || gestureActiveRef.current) return;
     e.stopPropagation();
 
     const rect = clipRef.current?.getBoundingClientRect();
@@ -82,8 +78,10 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
 
     const offsetX = e.clientX - rect.left;
     setDragOffset(offsetX);
+    previewStartTimeRef.current = shapeClip.startTime;
+    gestureActiveRef.current = true;
+    gestureReleasedRef.current = false;
     setIsDragging(true);
-    beginTimingGesture("Move graphic clip");
     beginTimelineGesture("input.graphics-drag");
     onSelect(shapeClip.id, e.shiftKey || e.metaKey || e.ctrlKey);
   };
@@ -95,12 +93,14 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
   };
 
   const handleTrimStart = (e: React.MouseEvent, edge: "left" | "right") => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || gestureActiveRef.current) return;
     if (useProjectStore.getState().readOnlyPreview) return;
     e.stopPropagation();
     e.preventDefault();
     setIsTrimming(edge);
-    beginTimingGesture("Trim graphic clip");
+    gestureActiveRef.current = true;
+    gestureReleasedRef.current = false;
+    trimPreviewRef.current = null;
     beginTimelineGesture("input.graphics-trim");
     trimStartRef.current = {
       mouseX: e.clientX,
@@ -112,9 +112,19 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
   };
 
   useEffect(() => {
-    if (!isDragging) return;
+    if (!isDragging || gestureReleasedRef.current) return;
+    let released = false;
+
+    const restorePreview = (): void => {
+      previewStartTimeRef.current = null;
+      if (clipRef.current) {
+        const originalStartTime = shapeClip.startTime;
+        clipRef.current.style.transform = `translateX(${originalStartTime * pixelsPerSecond}px)`;
+      }
+    };
 
     const handleMouseMove = (e: MouseEvent) => {
+      if (released) return;
       recordTimelineInput();
       const timelineElement = clipRef.current?.parentElement;
       if (!timelineElement) return;
@@ -133,68 +143,185 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
         pixelsPerSecond,
         shapeClip.duration,
       );
-      onMoveClip(shapeClip.id, snapResult.time);
+      previewStartTimeRef.current = snapResult.time;
+      if (clipRef.current) {
+        clipRef.current.style.transform = `translateX(${snapResult.time * pixelsPerSecond}px)`;
+      }
     };
 
     const handleMouseUp = () => {
-      setIsDragging(false);
-      endTimingGesture();
-      finishTimelineGesture(useProjectStore.getState().projectRevision);
+      if (released) return;
+      released = true;
+      gestureReleasedRef.current = true;
+      const gestureOperation = recordTimelineGestureRelease();
+      const newStartTime = previewStartTimeRef.current;
+      if (newStartTime === null || newStartTime === shapeClip.startTime) {
+        cancelTimelineGesture(gestureOperation);
+        gestureActiveRef.current = false;
+        restorePreview();
+        setIsDragging(false);
+        return;
+      }
+      void Promise.resolve().then(() => onMoveClip(shapeClip.id, newStartTime)).then(
+        (committed) => {
+          if (committed) finishTimelineGesture(useProjectStore.getState().projectRevision, gestureOperation);
+          else {
+            cancelTimelineGesture(gestureOperation);
+            restorePreview();
+            toast.error("Could not move graphic clip", "The change could not be saved.");
+          }
+        },
+        (error: unknown) => {
+          cancelTimelineGesture(gestureOperation);
+          restorePreview();
+          toast.error("Could not move graphic clip", error instanceof Error ? error.message : "The change could not be saved.");
+        },
+      ).finally(() => {
+        gestureActiveRef.current = false;
+        setIsDragging(false);
+      });
     };
+
+    const handleCancel = (event?: KeyboardEvent): void => {
+      if (released || (event && event.key !== "Escape")) return;
+      released = true;
+      gestureReleasedRef.current = true;
+      cancelTimelineGesture();
+      gestureActiveRef.current = false;
+      restorePreview();
+      setIsDragging(false);
+    };
+    const handleWindowBlur = (): void => handleCancel();
+    const handleKeyDown = (event: KeyboardEvent): void => handleCancel(event);
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      if (!released) handleCancel();
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isDragging, dragOffset, pixelsPerSecond, shapeClip.id, shapeClip.duration, onMoveClip, snapSettings, playheadPosition, endTimingGesture]);
+  }, [isDragging, dragOffset, pixelsPerSecond, shapeClip.id, shapeClip.startTime, shapeClip.duration, onMoveClip, snapSettings, playheadPosition]);
 
   useEffect(() => {
-    if (!isTrimming) return;
+    if (!isTrimming || gestureReleasedRef.current) return;
+    let released = false;
+
+    const restorePreview = (): void => {
+      trimPreviewRef.current = null;
+      if (clipRef.current) {
+        clipRef.current.style.transform = `translateX(${trimStartRef.current.startTime * pixelsPerSecond}px)`;
+        clipRef.current.style.width = `${Math.max(trimStartRef.current.duration * pixelsPerSecond, 40)}px`;
+      }
+    };
+
+    const restoreBodyStyles = (): void => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
 
     const handleMouseMove = (e: MouseEvent) => {
+      if (released) return;
       recordTimelineInput();
       const deltaX = e.clientX - trimStartRef.current.mouseX;
       const deltaTime = deltaX / pixelsPerSecond;
 
+      let newTime: number;
+      let startTime = trimStartRef.current.startTime;
+      let duration: number;
       if (isTrimming === "left") {
-        const newStartTime = Math.max(
+        newTime = Math.max(
           0,
           trimStartRef.current.startTime + deltaTime,
         );
         const maxStartTime =
           trimStartRef.current.startTime + trimStartRef.current.duration - 0.1;
-        const clampedStartTime = Math.min(newStartTime, maxStartTime);
-        onTrim(shapeClip.id, "left", clampedStartTime);
+        newTime = Math.min(newTime, maxStartTime);
+        startTime = newTime;
+        duration = trimStartRef.current.startTime + trimStartRef.current.duration - newTime;
       } else {
-        const newEndTime =
+        newTime =
           trimStartRef.current.startTime +
           trimStartRef.current.duration +
           deltaTime;
         const minEndTime = trimStartRef.current.startTime + 0.1;
-        const clampedEndTime = Math.max(newEndTime, minEndTime);
-        onTrim(shapeClip.id, "right", clampedEndTime);
+        newTime = Math.max(newTime, minEndTime);
+        duration = newTime - trimStartRef.current.startTime;
+      }
+      trimPreviewRef.current = { newTime, startTime, duration };
+      if (clipRef.current) {
+        clipRef.current.style.transform = `translateX(${startTime * pixelsPerSecond}px)`;
+        clipRef.current.style.width = `${Math.max(duration * pixelsPerSecond, 40)}px`;
       }
     };
 
     const handleMouseUp = () => {
-      setIsTrimming(null);
-      endTimingGesture();
-      finishTimelineGesture(useProjectStore.getState().projectRevision);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
+      if (released) return;
+      released = true;
+      gestureReleasedRef.current = true;
+      const gestureOperation = recordTimelineGestureRelease();
+      restoreBodyStyles();
+      const preview = trimPreviewRef.current;
+      const originalTime = isTrimming === "left"
+        ? trimStartRef.current.startTime
+        : trimStartRef.current.startTime + trimStartRef.current.duration;
+      if (!preview || preview.newTime === originalTime) {
+        cancelTimelineGesture(gestureOperation);
+        gestureActiveRef.current = false;
+        restorePreview();
+        return;
+      }
+      void Promise.resolve().then(() => onTrim(shapeClip.id, isTrimming, preview.newTime)).then(
+        (committed) => {
+          if (committed) finishTimelineGesture(useProjectStore.getState().projectRevision, gestureOperation);
+          else {
+            cancelTimelineGesture(gestureOperation);
+            restorePreview();
+            toast.error("Could not trim graphic clip", "The change could not be saved.");
+          }
+        },
+        (error: unknown) => {
+          cancelTimelineGesture(gestureOperation);
+          restorePreview();
+          toast.error("Could not trim graphic clip", error instanceof Error ? error.message : "The change could not be saved.");
+        },
+      ).finally(() => {
+        gestureActiveRef.current = false;
+        setIsTrimming(null);
+      });
     };
+
+    const handleCancel = (event?: KeyboardEvent): void => {
+      if (released || (event && event.key !== "Escape")) return;
+      released = true;
+      gestureReleasedRef.current = true;
+      cancelTimelineGesture();
+      gestureActiveRef.current = false;
+      restorePreview();
+      restoreBodyStyles();
+      setIsTrimming(null);
+    };
+    const handleWindowBlur = (): void => handleCancel();
+    const handleKeyDown = (event: KeyboardEvent): void => handleCancel(event);
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
+      if (!released) handleCancel();
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isTrimming, shapeClip.id, pixelsPerSecond, onTrim, endTimingGesture]);
+  }, [isTrimming, shapeClip.id, pixelsPerSecond, onTrim]);
 
   const isShape = shapeClip.type === "shape";
   const isSticker = shapeClip.type === "sticker" || shapeClip.type === "emoji";

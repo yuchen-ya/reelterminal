@@ -93,7 +93,7 @@ const renderClip = () => {
       trackHeights={new Map([[trackId, 72]])}
       timelineRef={{ current: null }}
       onSelect={() => {}}
-      onMoveClip={() => {}}
+      onCommitMoveClips={() => true}
       onSnapIndicator={() => {}}
     />,
   );

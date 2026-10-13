@@ -1732,6 +1732,13 @@ export class ActionValidator {
               path: `params.clips[${index}]`,
             });
           }
+          if (snapshot.keyframes !== undefined && !Array.isArray(snapshot.keyframes)) {
+            errors.push({
+              code: "INVALID_PARAMS",
+              message: "Clip timing snapshot keyframes must be an array",
+              path: `params.clips[${index}].keyframes`,
+            });
+          }
         }
         break;
 
