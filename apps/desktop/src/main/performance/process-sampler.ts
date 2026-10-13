@@ -2,9 +2,8 @@
  * Low-frequency process-level sampling (design phase P1).
  *
  * Reads Electron's app.getAppMetrics() through an injected source so the
- * module stays testable without Electron. GPU-process RSS is committed
- * memory, NOT GPU VRAM — there is no trustworthy in-page/main VRAM API, so
- * VRAM stays unreported rather than approximated.
+ * module stays testable without Electron. GPU-process working-set RSS is
+ * process memory, NOT GPU VRAM; VRAM stays unreported rather than guessed.
  */
 import type { PerfProcessSampleSummary } from "../../shared/performance-contract";
 
@@ -28,13 +27,13 @@ export interface ProcessSamplerOptions {
 const ROLE_BY_TYPE: Readonly<Record<string, string>> = {
   Browser: "main",
   Renderer: "renderer",
+  Tab: "renderer",
   GPU: "gpu",
   Utility: "utility",
-  Zygote: "zygote",
 };
 
-function roleForType(type: string): string {
-  return ROLE_BY_TYPE[type] ?? type.toLowerCase();
+function roleForType(type: string): string | null {
+  return ROLE_BY_TYPE[type] ?? null;
 }
 
 export class ProcessSampler {
@@ -83,6 +82,11 @@ export class ProcessSampler {
     this.handle = this.timers.set(() => this.collect(), intervalMs);
   }
 
+  /** Collect one app-owned process sample without changing the timer state. */
+  sampleNow(): void {
+    this.collect();
+  }
+
   stop(): void {
     if (this.handle === null) return;
     this.timers.clear(this.handle);
@@ -102,12 +106,14 @@ export class ProcessSampler {
     }
     const tsUs = this.nowUs();
     for (const entry of metrics) {
+      const role = roleForType(entry.type);
+      if (role === null || !Number.isInteger(entry.pid) || entry.pid <= 0) continue;
       // Electron reports workingSetSize in kilobytes.
       const rssBytes = Number.isFinite(entry.memory?.workingSetSize)
         ? entry.memory.workingSetSize * 1024
         : null;
-      if (rssBytes === null) continue;
-      this.push({ tsUs, role: roleForType(entry.type), pid: entry.pid, rssBytes });
+      if (rssBytes === null || rssBytes < 0) continue;
+      this.push({ tsUs, role, pid: entry.pid, rssBytes });
     }
   }
 

@@ -11,6 +11,8 @@ export {
   rendererCaptureController,
   DEFAULT_CRITICAL_PHASE_TESTS,
 } from "./capture-controller";
+export { readProductPerformanceResources } from "./resource-snapshot";
+export type { ProductPerformanceResourceSnapshot } from "./resource-snapshot";
 export type {
   ActiveCaptureMode,
   CaptureHandle,

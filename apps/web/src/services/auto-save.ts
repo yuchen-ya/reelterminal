@@ -53,6 +53,14 @@ export type AutoSaveStatus =
   | "saved"
   | "error";
 
+export interface AutoSavePerformanceResources {
+  readonly status: AutoSaveStatus;
+  readonly automaticSaveRunning: boolean;
+  readonly pendingRevision: boolean;
+  readonly scheduledSave: boolean;
+  readonly queuedSaveOperations: number;
+}
+
 interface PendingSaveRevision {
   project: Project;
   revision: number;
@@ -66,6 +74,7 @@ export class AutoSaveManager {
   private initializePromise: Promise<void> | null = null;
   private automaticSaveRunning = false;
   private saveTail: Promise<void> = Promise.resolve();
+  private queuedSaveOperations = 0;
   private savedSnapshotByProject = new Map<string, string>();
   private savedRevisionByProject = new Map<string, number>();
   private dirtyRevisionByProject = new Map<string, number>();
@@ -258,6 +267,7 @@ export class AutoSaveManager {
     initial: PendingSaveRevision,
     drainProjectId?: string,
   ): Promise<void> {
+    this.queuedSaveOperations += 1;
     const operation = this.saveTail.then(async () => {
       let request: PendingSaveRevision | null = initial;
       while (request) {
@@ -275,6 +285,7 @@ export class AutoSaveManager {
     // automatic retries still need to run. Callers retain the rejecting task.
     this.saveTail = operation.catch(() => undefined);
     return operation.finally(() => {
+      this.queuedSaveOperations -= 1;
       if (this.hasPendingRevision()) {
         this.scheduleAutomaticSave();
       }
@@ -663,6 +674,17 @@ export class AutoSaveManager {
 
   getStatus(): AutoSaveStatus {
     return this.status;
+  }
+
+  /** Current save-queue state without exposing project identifiers or snapshots. */
+  readPerformanceResources(): AutoSavePerformanceResources {
+    return {
+      status: this.status,
+      automaticSaveRunning: this.automaticSaveRunning,
+      pendingRevision: this.hasPendingRevision(),
+      scheduledSave: this.debounceTimeoutId !== null,
+      queuedSaveOperations: this.queuedSaveOperations,
+    };
   }
 
   on(event: AutoSaveEventType, callback: AutoSaveEventCallback): void {

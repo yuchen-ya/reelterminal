@@ -16,6 +16,21 @@ const modelObjectUrls = new Map<string, string>();
 
 const MODEL_MAX_BYTES = 256 * 1024 * 1024;
 
+export interface MotionAssetResolverResourceCounts {
+  readonly imageBitmapCacheEntries: number;
+  readonly videoElementCacheEntries: number;
+  readonly ownedObjectUrls: number;
+}
+
+/** Exact cache and object-URL counts for this resolver module. */
+export function getMotionAssetResolverResourceCounts(): MotionAssetResolverResourceCounts {
+  return {
+    imageBitmapCacheEntries: imageBitmapCache.size,
+    videoElementCacheEntries: videoElementCache.size,
+    ownedObjectUrls: videoObjectUrls.size + modelObjectUrls.size,
+  };
+}
+
 type DesktopFetchUrl = (args: {
   url: string;
   maxBytes?: number;

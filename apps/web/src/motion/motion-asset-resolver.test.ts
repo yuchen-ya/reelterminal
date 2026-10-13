@@ -10,6 +10,7 @@ import type { CreationProjectState } from "@reelterminal/core/creation/index";
 import {
   clearWebMotionAssetBitmapCache,
   createWebMotionAssetResolver,
+  getMotionAssetResolverResourceCounts,
 } from "./motion-asset-resolver";
 
 const defaultMotionTransform = {
@@ -65,6 +66,9 @@ describe("web motion asset resolver", () => {
     await expect(resolver.resolveImageAsset(asset)).resolves.toBe(bitmap);
     expect(createImageBitmapMock).toHaveBeenCalledTimes(1);
     expect(createImageBitmapMock).toHaveBeenCalledWith(blob);
+    expect(getMotionAssetResolverResourceCounts().imageBitmapCacheEntries).toBe(1);
+    clearWebMotionAssetBitmapCache();
+    expect(getMotionAssetResolverResourceCounts().imageBitmapCacheEntries).toBe(0);
   });
 
   it("ignores non-image motion assets", async () => {
@@ -124,9 +128,11 @@ describe("web motion asset resolver", () => {
     });
     const blob = createObjectURL.mock.calls[0]?.[0] as Blob;
     expect(blob.type).toBe("model/gltf-binary");
+    expect(getMotionAssetResolverResourceCounts().ownedObjectUrls).toBe(1);
 
     clearWebMotionAssetBitmapCache();
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:motion-model-1");
+    expect(getMotionAssetResolverResourceCounts().ownedObjectUrls).toBe(0);
 
     if (originalCreateObjectURL) {
       Object.defineProperty(URL, "createObjectURL", {

@@ -224,6 +224,14 @@ function parseCursor(
 export class ProjectChangeJournal {
   private revisions: RevisionChanges[] = [];
 
+  getRetainedRevisionCount(): number {
+    return this.revisions.length;
+  }
+
+  getRetainedChangeCount(): number {
+    return this.revisions.reduce((count, revision) => count + revision.changes.length, 0);
+  }
+
   reset(): void {
     this.revisions = [];
   }

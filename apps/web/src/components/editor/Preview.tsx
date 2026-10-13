@@ -1,6 +1,10 @@
 import { ReviewRangeControl } from "./preview/ReviewRangeControl";
 import { getPerfSink, markPerfOperation, withPerfSpan } from "@reelterminal/core";
 import { getProjectPerfOperation } from "../../performance/product-flow";
+import {
+  releasePreviewResourceCounts,
+  registerPreviewResourceReader,
+} from "../../performance/resource-snapshot";
 import { getPreviewPerfOperation, getPreviewViewGeneration, previewSession } from "../../services/preview-session";
 import { VersionPreviewLoadingStatus } from "../../desktop/editor/VersionPreviewLoadingStatus";
 import { recordCommittedPreviewFrame } from "./preview/frame-performance";
@@ -226,6 +230,8 @@ interface ClipWithPlaceholder {
 }
 
 export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true }) => {
+  const previewResourceOwnerRef = useRef<object>({});
+  const previewOwnedBlobUrlCountRef = useRef(0);
   const { t: tr } = useTranslation();
   const previewSessionState = useSyncExternalStore(previewSession.subscribe, previewSession.getSnapshot);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -528,6 +534,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       video.onerror = null;
       video.load();
       URL.revokeObjectURL(url);
+      previewOwnedBlobUrlCountRef.current -= 1;
     },
     [],
   );
@@ -1771,6 +1778,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
         if (!cached) {
           const url = URL.createObjectURL(mediaBlob);
+          previewOwnedBlobUrlCountRef.current += 1;
           const video = document.createElement("video");
           video.src = url;
           video.muted = true;
@@ -3264,6 +3272,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           : mediaItem.blob)!;
         const cacheId = videoCacheId;
         const url = URL.createObjectURL(playBlob);
+        previewOwnedBlobUrlCountRef.current += 1;
         const video = document.createElement("video");
         video.src = url;
         video.muted = true;
@@ -7211,6 +7220,19 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   // CropModeView receives a usable src in the very same commit.
   const cropMediaUrlRef = useRef<string | null>(null);
 
+  useEffect(() => {
+    registerPreviewResourceReader(previewResourceOwnerRef.current, () => ({
+      videoCacheEntries:
+        videoElementCacheRef.current.size + nativeVideoCacheRef.current.size,
+      imageBitmapCacheEntries:
+        imageBitmapCacheRef.current.size +
+        nativeImageBitmapCacheRef.current.size +
+        motionAssetBitmapCacheRef.current.size,
+      ownedBlobUrls: previewOwnedBlobUrlCountRef.current,
+    }));
+    return () => releasePreviewResourceCounts(previewResourceOwnerRef.current);
+  }, []);
+
   const cropMediaData = useMemo(() => {
     if (!cropMode || !cropClipId || !cropClip) return null;
 
@@ -7221,9 +7243,11 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     if (mediaItem.blob) {
       if (cropMediaUrlRef.current) {
         URL.revokeObjectURL(cropMediaUrlRef.current);
+        previewOwnedBlobUrlCountRef.current -= 1;
       }
       src = URL.createObjectURL(mediaItem.blob);
       cropMediaUrlRef.current = src;
+      previewOwnedBlobUrlCountRef.current += 1;
     } else if (mediaItem.contentUrl ?? mediaItem.originalUrl) {
       src = mediaItem.contentUrl ?? mediaItem.originalUrl ?? null;
     }
@@ -7241,6 +7265,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       if (cropMediaUrlRef.current) {
         URL.revokeObjectURL(cropMediaUrlRef.current);
         cropMediaUrlRef.current = null;
+        previewOwnedBlobUrlCountRef.current -= 1;
       }
     },
     [],

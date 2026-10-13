@@ -12,6 +12,7 @@ import {
   type CaptureHandle,
   type CaptureReport,
 } from "./capture-controller";
+import type { ProductPerformanceResourceSnapshot } from "./resource-snapshot";
 
 export const PRODUCT_PERFORMANCE_CAPTURE_GLOBAL = "__reelterminalPerformanceCapture";
 
@@ -31,6 +32,7 @@ export interface ProductCaptureStartRequest {
 export interface ProductPerformanceCaptureApi {
   start(request: unknown): CaptureHandle;
   stop(): CaptureReport;
+  readResources(): Promise<ProductPerformanceResourceSnapshot>;
   readonly activeRunId: string | null;
   readonly pendingSpanCount: number;
   readonly committedFrameCount: number;
@@ -132,10 +134,13 @@ export function parseProductCaptureStartRequest(value: unknown): ProductCaptureS
 export function installProductPerformanceCaptureBridge(
   target: Window,
   controller: ProductCaptureController = rendererCaptureController,
+  readResources: () => Promise<ProductPerformanceResourceSnapshot> = async () =>
+    (await import("./resource-snapshot")).readProductPerformanceResources(),
 ): ProductPerformanceCaptureApi {
   const api: ProductPerformanceCaptureApi = {
     start: (request) => controller.startCapture(parseProductCaptureStartRequest(request)),
     stop: () => controller.stopCapture(),
+    readResources,
     get activeRunId() {
       return controller.activeRunId;
     },

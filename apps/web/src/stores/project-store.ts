@@ -4693,6 +4693,41 @@ export function getActiveProjectRuntimeStore(): typeof primaryProjectStore {
   return activeProjectStore;
 }
 
+/** Bounded, identifier-free history counts for the opt-in resource snapshot. */
+export function getActiveProjectHistoryResourceCounts(): {
+  actionUndo: number;
+  actionRedo: number;
+  templateUndo: number;
+  templateRedo: number;
+  redoJournal: number;
+  changeJournalEntries: number;
+  changeJournalRevisions: number;
+} {
+  return getProjectHistoryResourceCountsForStore(getActiveProjectStore());
+}
+
+export function getProjectHistoryResourceCountsForStore(store: StoreApi<ProjectState>): {
+  actionUndo: number;
+  actionRedo: number;
+  templateUndo: number;
+  templateRedo: number;
+  redoJournal: number;
+  changeJournalEntries: number;
+  changeJournalRevisions: number;
+} {
+  const state = store.getState();
+  const runtime = projectStoreRuntimes.get(store)!;
+  return {
+    actionUndo: state.actionHistory.getUndoStackSize(),
+    actionRedo: state.actionHistory.getRedoStackSize(),
+    templateUndo: state.templateUndoStack.length,
+    templateRedo: state.templateRedoStack.length,
+    redoJournal: state.redoJournal.length,
+    changeJournalEntries: runtime.journal.getRetainedChangeCount(),
+    changeJournalRevisions: runtime.journal.getRetainedRevisionCount(),
+  };
+}
+
 /** Make a preserved workspace runtime the store observed by existing GUI code. */
 export function activateProjectStore(
   store: typeof primaryProjectStore,

@@ -9,14 +9,18 @@ function fakeSource(entries: AppMetricEntry[] | (() => AppMetricEntry[])): Proce
 
 function fakeTimers() {
   const callbacks: Array<() => void> = [];
+  const cleared: unknown[] = [];
   return {
     timers: {
       set: (cb: () => void) => {
         callbacks.push(cb);
         return callbacks.length;
       },
-      clear: () => undefined,
+      clear: (handle: unknown) => {
+        cleared.push(handle);
+      },
     },
+    cleared,
     tick(): void {
       for (const cb of [...callbacks]) cb();
     },
@@ -72,6 +76,41 @@ describe("ProcessSampler", () => {
     harness.tick();
     expect(sampler.samples).toHaveLength(0);
     expect(sampler.running).toBe(false);
+  });
+
+  it("samples only app-owned roles and allows an idle read without starting a timer", () => {
+    const harness = fakeTimers();
+    const sampler = new ProcessSampler(
+      fakeSource([
+        ...METRICS,
+        { type: "Tab", pid: 350, memory: { workingSetSize: 40 } },
+        { type: "Zygote", pid: 400, memory: { workingSetSize: 10 } },
+        { type: "Other", pid: 500, memory: { workingSetSize: 20 } },
+        { type: "Renderer", pid: 0, memory: { workingSetSize: 30 } },
+      ]),
+      { timers: harness.timers, nowUs: () => 42 },
+    );
+
+    sampler.sampleNow();
+
+    expect(sampler.samples.map(({ role }) => role)).toEqual(["main", "renderer", "gpu", "renderer"]);
+    expect(sampler.samples.every((sample) => sample.tsUs === 42)).toBe(true);
+    expect(sampler.running).toBe(false);
+    expect(harness.cleared).toEqual([]);
+  });
+
+  it("clears its interval on stop and permits another explicit sample while stopped", () => {
+    const harness = fakeTimers();
+    const sampler = new ProcessSampler(fakeSource(METRICS.slice(0, 1)), {
+      timers: harness.timers,
+    });
+    sampler.start();
+    sampler.stop();
+    sampler.sampleNow();
+
+    expect(sampler.running).toBe(false);
+    expect(harness.cleared).toEqual([1]);
+    expect(sampler.samples).toHaveLength(2);
   });
 
   it("flips to unsupported and stops when the metrics API throws", () => {

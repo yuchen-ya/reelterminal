@@ -3,7 +3,11 @@ import { IDBFactory } from "fake-indexeddb";
 import i18next from "i18next";
 import type { Action, Project } from "@reelterminal/core";
 import { createEmptyProject } from "../stores/project/project-helpers";
-import { createProjectStore, getActiveProjectRuntimeStore } from "../stores/project-store";
+import {
+  createProjectStore,
+  getActiveProjectRuntimeStore,
+  getProjectHistoryResourceCountsForStore,
+} from "../stores/project-store";
 import { WorkspaceManager, WorkspaceManagerError, isSubstantiveProject, type WorkspaceContextHandle, type WorkspaceRecord } from "./workspace-manager";
 import { cloneProject } from "./workspace-record-transforms";
 import * as renderDependencies from "./project-render-dependencies";
@@ -186,6 +190,92 @@ describe("WorkspaceManager", () => {
   beforeEach(() => {
     globalThis.indexedDB = new IDBFactory();
   });
+
+  it("reports pending workspace writes and returns queue counts to zero after flush", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(createEmptyProject("Queue resources"));
+    const target = {
+      projectId: created.project.id,
+      workspaceId: created.defaultWorkspaceId,
+    };
+    const context = await manager.getWorkspaceContext(target);
+    const runtimes = manager.readPerformanceResources().runtimes;
+
+    context.store.setState({
+      project: {
+        ...context.store.getState().project,
+        modifiedAt: Date.now() + 1,
+      },
+    });
+    expect(manager.readPerformanceResources()).toMatchObject({
+      runtimes,
+      queuedWrites: 1,
+      activeWriteDrainCount: 1,
+    });
+
+    await manager.flushWorkspace(target);
+
+    expect(manager.readPerformanceResources()).toMatchObject({
+      runtimes,
+      queuedWrites: 0,
+      activeWriteDrainCount: 0,
+      queuedCommandCount: 0,
+      failedWriteCount: 0,
+    });
+  });
+
+  it.each([500, 5000])("keeps edit history bounded through %i real edit/undo/redo operations", async (rounds) => {
+    const manager = new WorkspaceManager();
+    const project = interleavedFixtureProject("History resource soak", "history-media", "history-clip");
+    const created = await manager.createProject(project);
+    const target = { projectId: project.id, workspaceId: created.defaultWorkspaceId };
+    const { store } = await manager.getWorkspaceContext(target);
+
+    for (let index = 0; index < rounds; index += 1) {
+      const result = store.getState().executeActionBatch([{
+        type: "clip/move",
+        id: `history-move-${index}`,
+        timestamp: Date.now() + index,
+        params: { clipId: "history-clip", startTime: index + 1 },
+      }], {
+        groupLabel: `Move history clip ${index}`,
+        historyOwner: "human",
+        separateHistoryUnit: true,
+      });
+      if (!result.result.success) throw new Error(`history edit ${index} failed`);
+    }
+    await manager.flushWorkspace(target);
+
+    const historyDepth = Math.min(rounds, 1_000);
+    const afterEdits = getProjectHistoryResourceCountsForStore(store);
+    expect(afterEdits.actionUndo).toBe(historyDepth);
+    expect(afterEdits.changeJournalRevisions).toBeLessThanOrEqual(256);
+    expect(manager.readPerformanceResources()).toMatchObject({ queuedWrites: 0, pendingWrites: 0 });
+
+    const undoRevision = store.getState().workspaceRevision;
+    await manager.withWorkspaceWrite(target, undoRevision, async ({ store: queuedStore }) => {
+      for (let index = 0; index < historyDepth; index += 1) {
+        const result = await queuedStore.getState().undo({ alreadySerialized: true });
+        if (!result.success) throw new Error(`history undo ${index} failed`);
+      }
+    });
+    expect(store.getState().project.timeline.tracks[0]?.clips[0]?.startTime).toBe(rounds - historyDepth);
+    expect(getProjectHistoryResourceCountsForStore(store).actionRedo).toBe(historyDepth);
+
+    const redoRevision = store.getState().workspaceRevision;
+    await manager.withWorkspaceWrite(target, redoRevision, async ({ store: queuedStore }) => {
+      for (let index = 0; index < historyDepth; index += 1) {
+        const result = await queuedStore.getState().redo({ alreadySerialized: true });
+        if (!result.success) throw new Error(`history redo ${index} failed`);
+      }
+    });
+    const finalHistory = getProjectHistoryResourceCountsForStore(store);
+    expect(store.getState().project.timeline.tracks[0]?.clips[0]?.startTime).toBe(rounds);
+    expect(finalHistory.actionUndo).toBe(historyDepth);
+    expect(finalHistory.actionRedo).toBe(0);
+    expect(finalHistory.changeJournalRevisions).toBeLessThanOrEqual(256);
+    expect(manager.readPerformanceResources()).toMatchObject({ queuedWrites: 0, pendingWrites: 0 });
+  }, 60_000);
 
   it("persists independent workspaces, immutable node branches, recovery drafts and idempotent results", async () => {
     const manager = new WorkspaceManager();

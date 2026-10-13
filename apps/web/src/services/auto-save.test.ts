@@ -133,6 +133,31 @@ describe("AutoSaveManager", () => {
     manager.stop();
   });
 
+  it("reports a queued forced save and returns the queue count to zero when drained", async () => {
+    const manager = new AutoSaveManager();
+    const saving = deferred<void>();
+    internals(manager).save = vi.fn(() => saving.promise);
+
+    const pending = manager.forceSave(project("Queued save"));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(manager.readPerformanceResources()).toMatchObject({
+      queuedSaveOperations: 1,
+      pendingRevision: true,
+      status: "saving",
+    });
+
+    saving.resolve();
+    await pending;
+
+    expect(manager.readPerformanceResources()).toMatchObject({
+      queuedSaveOperations: 0,
+      pendingRevision: false,
+      scheduledSave: false,
+      status: "saved",
+    });
+  });
+
   it("does not delay another project's due save with a failed project's backoff", async () => {
     vi.useFakeTimers();
     const manager = new AutoSaveManager({ debounceTime: 10, interval: 30_000 });

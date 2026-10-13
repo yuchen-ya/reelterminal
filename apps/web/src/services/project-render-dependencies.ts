@@ -23,6 +23,27 @@ const loadedProjectFaces = new Map<string, Map<string, {
 const projectFontLeases = new Map<string, Map<string, Set<string>>>();
 const projectFontResources = new Map<string, readonly ProjectRenderFont[]>();
 
+export interface ProjectRenderFontResourceCounts {
+  readonly leaseOwners: number;
+  readonly leasedFaces: number;
+  readonly loadedFaces: number;
+}
+
+/** Exact counts for faces and leases owned by this module's font lifecycle. */
+export function getProjectRenderFontResourceCounts(): ProjectRenderFontResourceCounts {
+  let leasedFaces = 0;
+  for (const lease of projectFontLeases.values()) {
+    for (const dataUrls of lease.values()) leasedFaces += dataUrls.size;
+  }
+  let loadedFaces = 0;
+  for (const faces of loadedProjectFaces.values()) loadedFaces += faces.size;
+  return {
+    leaseOwners: projectFontLeases.size,
+    leasedFaces,
+    loadedFaces,
+  };
+}
+
 interface BundledFontFace {
   readonly family: string;
   readonly style: string;

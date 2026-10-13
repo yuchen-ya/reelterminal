@@ -82,6 +82,19 @@ export interface WorkspaceTarget {
   workspaceId: string;
 }
 
+export interface WorkspacePerformanceResources {
+  readonly runtimes: number;
+  readonly queuedWrites: number;
+  /** Queued writes, active drains, and queued workspace commands. */
+  readonly pendingWrites: number;
+  readonly initializingRuntimeCount: number;
+  readonly editedWorkspaceCount: number;
+  readonly activeWriteDrainCount: number;
+  readonly queuedCommandCount: number;
+  readonly failedWriteCount: number;
+  readonly activeWorkspace: boolean;
+}
+
 export interface ProjectRecord {
   id: string;
   name: string;
@@ -463,6 +476,24 @@ export class WorkspaceManager {
   };
 
   readonly getSnapshot = (): WorkspaceManagerSnapshot => this.snapshot;
+
+  /** Queue and runtime counts without exposing workspace or project identifiers. */
+  readPerformanceResources(): WorkspacePerformanceResources {
+    const queuedWrites = this.queuedWorkspaceWrites.size;
+    const activeWriteDrains = this.workspaceWriteDrains.size;
+    const queuedCommands = this.workspaceCommandTails.size;
+    return {
+      runtimes: this.runtimes.size,
+      queuedWrites,
+      pendingWrites: queuedWrites + activeWriteDrains + queuedCommands,
+      initializingRuntimeCount: this.runtimeInitializations.size,
+      editedWorkspaceCount: this.editedWorkspaces.size,
+      activeWriteDrainCount: activeWriteDrains,
+      queuedCommandCount: queuedCommands,
+      failedWriteCount: this.failedWorkspaceWrites.size,
+      activeWorkspace: this.activeTarget !== null,
+    };
+  }
 
   async initialize(): Promise<void> {
     if (this.initializePromise) {

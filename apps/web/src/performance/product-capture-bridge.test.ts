@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { beginPerfOperation, endPerfOperation, getPerfSink, NOOP_SINK } from "@reelterminal/core";
 import { CaptureController } from "./capture-controller";
 import {
@@ -6,6 +6,7 @@ import {
   parseProductCaptureStartRequest,
   PRODUCT_PERFORMANCE_CAPTURE_GLOBAL,
 } from "./product-capture-bridge";
+import type { ProductPerformanceResourceSnapshot } from "./resource-snapshot";
 
 describe("product performance capture bridge", () => {
   it("starts and stops the controller from the product module realm", () => {
@@ -67,5 +68,95 @@ describe("product performance capture bridge", () => {
     });
     expect(() => parseProductCaptureStartRequest({ mode: "trace", budgets: { captureSeconds: 121 } })).toThrow();
     expect(() => parseProductCaptureStartRequest({ mode: "light", budgets: { inputSampleEveryN: 0 } })).toThrow();
+  });
+
+  it("reads a resource snapshot while capture remains off", async () => {
+    const snapshot = {
+      schemaVersion: 1,
+      capturedAtUs: 42,
+      history: {
+        actionUndo: 0,
+        actionRedo: 0,
+        templateUndo: 0,
+        templateRedo: 0,
+        redoJournal: 0,
+        changeJournalEntries: 0,
+        changeJournalRevisions: 0,
+      },
+      workspace: {
+        runtimes: 0,
+        queuedWrites: 0,
+        pendingWrites: 0,
+        initializingRuntimeCount: 0,
+        editedWorkspaceCount: 0,
+        activeWriteDrainCount: 0,
+        queuedCommandCount: 0,
+        failedWriteCount: 0,
+        activeWorkspace: false,
+      },
+      autoSave: {
+        status: "idle",
+        automaticSaveRunning: false,
+        pendingRevision: false,
+        scheduledSave: false,
+        queuedSaveOperations: 0,
+      },
+      fonts: {
+        projectLeases: 0,
+        leasedFaces: 0,
+        projectFaces: 0,
+        documentFaces: null,
+      },
+      media: {
+        ownedBlobUrls: 0,
+        motionImageBitmapCacheEntries: 0,
+        motionVideoElementCacheEntries: 0,
+        previewVideoCacheEntries: 0,
+        previewImageBitmapCacheEntries: 0,
+        allBlobUrls: null,
+        decoderContexts: null,
+        webWorkers: null,
+      },
+    } satisfies ProductPerformanceResourceSnapshot;
+    const readResources = vi.fn(async () => snapshot);
+    const controller = new CaptureController();
+    const api = installProductPerformanceCaptureBridge(
+      {} as Window,
+      controller,
+      readResources,
+    );
+
+    await expect(api.readResources()).resolves.toBe(snapshot);
+    expect(readResources).toHaveBeenCalledOnce();
+    expect(api.activeRunId).toBeNull();
+    expect(getPerfSink()).toBe(NOOP_SINK);
+  });
+
+  it("returns live product resource counts and explicit unavailable values with capture off", async () => {
+    const api = installProductPerformanceCaptureBridge({} as Window, new CaptureController());
+
+    const snapshot = await api.readResources();
+
+    expect(snapshot.schemaVersion).toBe(1);
+    expect(snapshot.history).toMatchObject({
+      actionUndo: expect.any(Number),
+      actionRedo: expect.any(Number),
+      changeJournalEntries: expect.any(Number),
+    });
+    expect(snapshot.workspace).toMatchObject({
+      queuedWrites: 0,
+      pendingWrites: 0,
+      runtimes: expect.any(Number),
+    });
+    expect(snapshot.autoSave.queuedSaveOperations).toBe(0);
+    expect(snapshot.media).toMatchObject({
+      ownedBlobUrls: expect.any(Number),
+      previewVideoCacheEntries: expect.any(Number),
+      previewImageBitmapCacheEntries: expect.any(Number),
+      decoderContexts: null,
+      webWorkers: null,
+    });
+    expect(api.activeRunId).toBeNull();
+    expect(getPerfSink()).toBe(NOOP_SINK);
   });
 });
