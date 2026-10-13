@@ -76,6 +76,41 @@ import { MotionHighQualityRenderer } from "../motion/motion-gpu-render";
 import { renderAuroraPreviewToImageBitmap } from "../motion/native-aurora-bridge";
 import type { MotionAsset } from "../motion/types";
 import { resolveCreationMotionSceneBinding } from "../creation/render-binding";
+import {
+  beginPerfOperation,
+  endPerfOperation,
+  failPerfOperation,
+  markPerfOperation,
+  type PerfOperation,
+} from "../performance";
+
+function runVideoEngineInitializationStep<T>(
+  phase: string,
+  parent: PerfOperation | undefined,
+  action: (operation: PerfOperation | undefined) => Promise<T>,
+): Promise<T> {
+  const operation = beginPerfOperation(phase, parent);
+  if (!operation) return action(undefined);
+
+  let result: Promise<T>;
+  try {
+    result = action(operation);
+  } catch (error) {
+    failPerfOperation(operation, error);
+    throw error;
+  }
+
+  return result.then(
+    (value) => {
+      endPerfOperation(operation, "ok");
+      return value;
+    },
+    (error) => {
+      failPerfOperation(operation, error);
+      throw error;
+    },
+  );
+}
 
 // A clip requests background removal but no initialized engine can serve it
 // (e.g. headless export or a fresh session where the model was never loaded
@@ -177,16 +212,27 @@ export class VideoEngine {
    * Initializes the VideoEngine, setting up decoders and GPU compositor.
    * Must be called before rendering frames.
    */
-  async initialize(): Promise<void> {
+  async initialize(parent?: PerfOperation): Promise<void> {
     if (this.initialized) return;
+
+    const operation = beginPerfOperation("video_engine.initialize", parent);
 
     if (!this.isWebCodecsSupported()) {
       console.warn("[VideoEngine] WebCodecs not supported in this browser");
     }
 
     try {
-      this.mediabunny = await import("mediabunny");
+      this.mediabunny = await runVideoEngineInitializationStep(
+        "video_engine.import_mediabunny",
+        operation,
+        () => import("mediabunny"),
+      );
     } catch (error) {
+      if (operation) {
+        markPerfOperation(operation, "video_engine.mediabunny_unavailable", {
+          available: false,
+        });
+      }
       console.warn(
         "[VideoEngine] MediaBunny not available, some features will be limited:",
         error,
@@ -197,9 +243,19 @@ export class VideoEngine {
     try {
       if (this.useParallelDecoding) {
         this.parallelDecoder = getParallelFrameDecoder();
-        await this.parallelDecoder.initialize();
+        await runVideoEngineInitializationStep(
+          "video_engine.parallel_decoder_initialize",
+          operation,
+          (parallelInitializationOperation) =>
+            this.parallelDecoder!.initialize(parallelInitializationOperation),
+        );
       }
     } catch (error) {
+      if (operation) {
+        markPerfOperation(operation, "video_engine.parallel_decoder_fallback", {
+          fallback_used: true,
+        });
+      }
       console.warn(
         "[VideoEngine] Parallel decoder initialization failed:",
         error,
@@ -208,6 +264,19 @@ export class VideoEngine {
     }
 
     this.initialized = true;
+    endPerfOperation(
+      operation,
+      "ok",
+      operation
+        ? {
+            mediabunny_available: this.mediabunny !== null,
+            parallel_decode_enabled: this.useParallelDecoding,
+            ...(this.useParallelDecoding
+              ? { parallel_decoder_available: this.parallelDecoder !== null }
+              : {}),
+          }
+        : undefined,
+    );
   }
 
   private isWebCodecsSupported(): boolean {

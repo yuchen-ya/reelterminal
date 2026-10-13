@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { MediaItem } from "@reelterminal/core";
+import {
+  getPerfSink,
+  setPerfSink,
+  type MediaItem,
+  type PerfSink,
+} from "@reelterminal/core";
 import { restoreMediaItem } from "./media-recovery";
 
 /**
@@ -36,6 +41,57 @@ function makeItem(overrides: Partial<MediaItem> = {}): MediaItem {
 }
 
 describe("restoreMediaItem", () => {
+  it("records restore and thumbnail work with numeric dimensions while preserving media bytes", async () => {
+    const events: Array<{
+      kind: "begin" | "end" | "mark";
+      phase: string;
+      dims?: Readonly<Record<string, number | boolean>>;
+    }> = [];
+    let spanId = 0;
+    const previousSink = getPerfSink();
+    const sink: PerfSink = {
+      enabled: true,
+      mode: "trace",
+      runId: "media-restore-test",
+      begin: (phase) => {
+        events.push({ kind: "begin", phase });
+        spanId += 1;
+        return { id: spanId, startedUs: spanId };
+      },
+      end: (_span, _outcome, dims) => {
+        events.push({ kind: "end", phase: "", dims });
+      },
+      mark: (phase, _context, dims) => {
+        events.push({ kind: "mark", phase, dims });
+      },
+      count: () => undefined,
+    };
+    const storedBlob = new Blob(["restored audio"]);
+    setPerfSink(sink);
+
+    try {
+      const restored = await restoreMediaItem(
+        makeItem({ type: "audio", thumbnailUrl: null }),
+        storedBlob,
+      );
+
+      expect(restored.blob).toBe(storedBlob);
+      expect(restored.isPlaceholder).toBeUndefined();
+    } finally {
+      setPerfSink(previousSink);
+    }
+
+    expect(events.some((event) => event.kind === "begin" && event.phase === "media.restore_item")).toBe(true);
+    expect(events.some((event) => event.kind === "begin" && event.phase === "media.thumbnail.generate")).toBe(true);
+    expect(events.some((event) => event.kind === "end" && event.dims?.media_found === true)).toBe(true);
+    expect(events.every((event) =>
+      Object.values(event.dims ?? {}).every((value) =>
+        typeof value === "number" || typeof value === "boolean",
+      ),
+    )).toBe(true);
+    expect(JSON.stringify(events)).not.toContain("clip.mp4");
+  });
+
   it("marks an item as missing when the media store record is absent and the snapshot blob is the deserialized fake {}", async () => {
     const item = makeItem({ blob: SNAPSHOT_FAKE_BLOB });
 

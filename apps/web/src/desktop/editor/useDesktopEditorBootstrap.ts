@@ -7,6 +7,12 @@ import { initializePlaybackBridge } from "../../bridges/playback-bridge";
 import { initializeRenderBridge } from "../../bridges/render-bridge";
 import { initializeEffectsBridge } from "../../bridges/effects-bridge";
 import { initializeTransitionBridge, syncTransitionBridgeFromProject } from "../../bridges/transition-bridge";
+import {
+  beginPerfOperation,
+  endPerfOperation,
+  failPerfOperation,
+  type PerfOperation,
+} from "@reelterminal/core";
 
 export interface DesktopEditorBootstrapState {
   ready: boolean;
@@ -36,52 +42,125 @@ const waitForEngine = (): Promise<void> => {
   });
 };
 
+function runBootstrapStep<T>(
+  phase: string,
+  parent: PerfOperation | undefined,
+  action: (operation: PerfOperation | undefined) => Promise<T>,
+): Promise<T> {
+  const operation = beginPerfOperation(phase, parent);
+  if (!operation) return action(undefined);
+
+  let result: Promise<T>;
+  try {
+    result = action(operation);
+  } catch (error) {
+    failPerfOperation(operation, error);
+    throw error;
+  }
+
+  return result.then(
+    (value) => {
+      endPerfOperation(operation, "ok");
+      return value;
+    },
+    (error) => {
+      failPerfOperation(operation, error);
+      throw error;
+    },
+  );
+}
+
 const runBootstrap = async (): Promise<void> => {
-  const engineState = useEngineStore.getState();
-  if (!engineState.initialized && !engineState.initializing) {
-    await engineState.initialize();
-  } else if (engineState.initializing) {
-    await waitForEngine();
-  }
-
-  const settledEngine = useEngineStore.getState();
-  if (!settledEngine.initialized) {
-    throw new Error(settledEngine.initError || "Engine initialization failed");
-  }
-
-  await initializeMediaBridge();
-  await initializePlaybackBridge();
-  await initializeRenderBridge();
-
-  const { width, height } = useProjectStore.getState().project.settings;
-
+  const bootstrapOperation = beginPerfOperation("editor.bootstrap");
   try {
-    await initializeEffectsBridge(width, height);
-  } catch (effectsError) {
-    console.error(
-      "[useDesktopEditorBootstrap] EffectsBridge initialization failed:",
-      effectsError,
-    );
-  }
+    const engineState = useEngineStore.getState();
+    if (!engineState.initialized && !engineState.initializing) {
+      await runBootstrapStep(
+        "editor.bootstrap.engine_initialize",
+        bootstrapOperation,
+        (operation) => engineState.initialize(operation),
+      );
+    } else if (engineState.initializing) {
+      await runBootstrapStep(
+        "editor.bootstrap.engine_wait",
+        bootstrapOperation,
+        waitForEngine,
+      );
+    }
 
-  try {
-    initializeTransitionBridge(width, height);
-    syncTransitionBridgeFromProject(useProjectStore.getState().project);
-  } catch (transitionError) {
-    console.error(
-      "[useDesktopEditorBootstrap] TransitionBridge initialization failed:",
-      transitionError,
-    );
-  }
+    const settledEngine = useEngineStore.getState();
+    if (!settledEngine.initialized) {
+      throw new Error(settledEngine.initError || "Engine initialization failed");
+    }
 
-  // Enables crash recovery and feeds the desktop unsaved-changes guard.
-  try {
-    await useProjectStore.getState().initializeAutoSave();
-  } catch (autoSaveError) {
-    console.error(
-      "[useDesktopEditorBootstrap] AutoSave initialization failed:",
-      autoSaveError,
+    await runBootstrapStep(
+      "editor.bootstrap.media_bridge",
+      bootstrapOperation,
+      initializeMediaBridge,
     );
+    await runBootstrapStep(
+      "editor.bootstrap.playback_bridge",
+      bootstrapOperation,
+      initializePlaybackBridge,
+    );
+    await runBootstrapStep(
+      "editor.bootstrap.render_bridge",
+      bootstrapOperation,
+      initializeRenderBridge,
+    );
+
+    const { width, height } = useProjectStore.getState().project.settings;
+
+    try {
+      await runBootstrapStep(
+        "editor.bootstrap.effects_bridge",
+        bootstrapOperation,
+        () => initializeEffectsBridge(width, height),
+      );
+    } catch (effectsError) {
+      console.error(
+        "[useDesktopEditorBootstrap] EffectsBridge initialization failed:",
+        effectsError,
+      );
+    }
+
+    const transitionOperation = beginPerfOperation(
+      "editor.bootstrap.transition_bridge",
+      bootstrapOperation,
+    );
+    try {
+      initializeTransitionBridge(width, height);
+      syncTransitionBridgeFromProject(useProjectStore.getState().project);
+      endPerfOperation(transitionOperation, "ok");
+    } catch (transitionError) {
+      failPerfOperation(transitionOperation, transitionError);
+      console.error(
+        "[useDesktopEditorBootstrap] TransitionBridge initialization failed:",
+        transitionError,
+      );
+    }
+
+    // Enables crash recovery and feeds the desktop unsaved-changes guard.
+    try {
+      await runBootstrapStep(
+        "editor.bootstrap.autosave",
+        bootstrapOperation,
+        () => useProjectStore.getState().initializeAutoSave(),
+      );
+    } catch (autoSaveError) {
+      console.error(
+        "[useDesktopEditorBootstrap] AutoSave initialization failed:",
+        autoSaveError,
+      );
+    }
+    endPerfOperation(
+      bootstrapOperation,
+      "ok",
+      bootstrapOperation ? { width, height } : undefined,
+    );
+  } catch (error) {
+    failPerfOperation(bootstrapOperation, error);
+    throw error;
   }
 };
 

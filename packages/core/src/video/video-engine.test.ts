@@ -1,4 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  beginPerfOperation,
+  endPerfOperation,
+  getPerfSink,
+  setPerfSink,
+  type PerfContext,
+  type PerfOperation,
+  type PerfSink,
+} from "../performance";
 import type { Project } from "../types/project";
 import type { MotionComposition, MotionScene3DLayer } from "../motion/types";
 
@@ -187,5 +196,64 @@ describe("VideoEngine motion asset resolver", () => {
 
     result?.release?.();
     expect(image.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps initialization usable when parallel decoder startup fails", async () => {
+    vi.stubGlobal("navigator", { hardwareConcurrency: 1 });
+    vi.stubGlobal("self", {
+      onmessage: null,
+      postMessage: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+    const decoderModule = await import("./parallel-frame-decoder");
+    decoderModule.disposeParallelDecoder();
+    const decoder = decoderModule.getParallelFrameDecoder();
+    const events: Array<{ phase: string; spanId: number; parentSpanId?: number }> = [];
+    let nextSpanId = 0;
+    const previousSink = getPerfSink();
+    const sink: PerfSink = {
+      enabled: true,
+      mode: "trace",
+      runId: "video-engine-initialize-test",
+      begin: (phase, context: PerfContext) => {
+        const spanId = ++nextSpanId;
+        events.push({ phase, spanId, parentSpanId: context.parentSpanId });
+        return { id: spanId, startedUs: spanId };
+      },
+      end: () => undefined,
+      mark: () => undefined,
+      count: () => undefined,
+    };
+    setPerfSink(sink);
+    const bootstrapOperation = beginPerfOperation("test.bootstrap");
+    let decoderParent: PerfOperation | undefined;
+    vi.spyOn(decoder, "initialize").mockImplementation(async (parent) => {
+      decoderParent = parent;
+      throw new Error("worker startup failed");
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { VideoEngine } = await import("./video-engine");
+
+    try {
+      const engine = new VideoEngine();
+      await engine.initialize(bootstrapOperation);
+
+      expect(engine.isInitialized()).toBe(true);
+      expect(engine.getParallelDecoder()).toBeNull();
+      expect(warn).toHaveBeenCalledWith(
+        "[VideoEngine] Parallel decoder initialization failed:",
+        expect.any(Error),
+      );
+      const videoEngineSpan = events.find((event) => event.phase === "video_engine.initialize");
+      const parallelDecoderSpan = events.find((event) => event.phase === "video_engine.parallel_decoder_initialize");
+      expect(videoEngineSpan?.parentSpanId).toBe(bootstrapOperation?.span.id);
+      expect(parallelDecoderSpan?.parentSpanId).toBe(videoEngineSpan?.spanId);
+      expect(decoderParent?.span.id).toBe(parallelDecoderSpan?.spanId);
+    } finally {
+      endPerfOperation(bootstrapOperation, "ok");
+      setPerfSink(previousSink);
+      decoderModule.disposeParallelDecoder();
+    }
   });
 });

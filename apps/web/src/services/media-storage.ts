@@ -1,6 +1,12 @@
 import { StorageEngine, hashMediaBlob } from "@reelterminal/core";
 import type { MediaRecord, MediaMetadata } from "@reelterminal/core";
 import {
+  beginPerfOperation,
+  endPerfOperation,
+  failPerfOperation,
+  markPerfOperation,
+} from "@reelterminal/core";
+import {
   LEGACY_AUTO_SAVE_DB_NAME,
   LEGACY_PROJECT_DB_NAME,
   LEGACY_TEMPLATE_DB_NAME,
@@ -192,16 +198,59 @@ export async function saveMediaBlob(
 }
 
 export async function loadMediaBlob(mediaId: string, projectId?: string): Promise<Blob | null> {
-  const record = await storage.loadMedia(mediaId);
-  if (record?.blob) return record.blob;
-  const mediaStore = desktopMediaStore();
-  if (!mediaStore) return null;
-  if (projectId) {
-    const scoped = await mediaStore.read({ projectId, mediaId });
-    if (scoped) return new Blob([scoped]);
+  const operation = beginPerfOperation("media_storage.read_blob");
+  if (operation) {
+    markPerfOperation(operation, "media_storage.read_blob_started", {
+      project_scoped: projectId !== undefined,
+    });
   }
-  const bytes = await mediaStore.readAny(mediaId);
-  return bytes ? new Blob([bytes]) : null;
+  try {
+    const record = await storage.loadMedia(mediaId);
+    if (record?.blob) {
+      endPerfOperation(
+        operation,
+        "ok",
+        operation ? { found: true, media_bytes: record.blob.size } : undefined,
+      );
+      return record.blob;
+    }
+    const mediaStore = desktopMediaStore();
+    if (!mediaStore) {
+      endPerfOperation(
+        operation,
+        "ok",
+        operation ? { found: false, media_bytes: 0 } : undefined,
+      );
+      return null;
+    }
+    if (projectId) {
+      markPerfOperation(operation, "media_storage.read_scoped_file");
+      const scoped = await mediaStore.read({ projectId, mediaId });
+      if (scoped) {
+        const blob = new Blob([scoped]);
+        endPerfOperation(
+          operation,
+          "ok",
+          operation ? { found: true, media_bytes: blob.size } : undefined,
+        );
+        return blob;
+      }
+    }
+    markPerfOperation(operation, "media_storage.read_any_file");
+    const bytes = await mediaStore.readAny(mediaId);
+    const blob = bytes ? new Blob([bytes]) : null;
+    endPerfOperation(
+      operation,
+      "ok",
+      operation
+        ? { found: blob !== null, media_bytes: blob?.size ?? 0 }
+        : undefined,
+    );
+    return blob;
+  } catch (error) {
+    failPerfOperation(operation, error);
+    throw error;
+  }
 }
 
 export async function loadMediaRecord(mediaId: string): Promise<MediaRecord | null> {
@@ -212,39 +261,71 @@ export async function loadProjectMedia(
   projectId: string,
   mediaIds?: readonly string[],
 ): Promise<MediaRecord[]> {
-  const records = mediaIds
-    ? (await Promise.all(mediaIds.map((mediaId) => storage.loadMedia(mediaId))))
-      .filter((record): record is MediaRecord => record !== null)
-    : await storage.getMediaByProject(projectId);
-  const present = new Set(records.map((record) => record.id));
-  const mediaStore = desktopMediaStore();
-  if (!mediaStore) return records;
-  const controlled = mediaIds
-    ? (await mediaStore.listAll()).filter((entry) => mediaIds.includes(entry.mediaId))
-    : await mediaStore.listProject(projectId);
-  for (const entry of controlled) {
-    if (present.has(entry.mediaId)) continue;
-    const bytes = await mediaStore.readAny(entry.mediaId);
-    if (!bytes) continue;
-    records.push({
-      id: entry.mediaId,
-      projectId,
-      blob: new Blob([bytes]),
-      // The project description remains authoritative for metadata; restore
-      // uses the item metadata and only consumes this record's bytes.
-      metadata: {
-        duration: 0,
-        width: 0,
-        height: 0,
-        frameRate: 0,
-        codec: "",
-        sampleRate: 0,
-        channels: 0,
-        fileSize: entry.sizeBytes,
-      },
+  const operation = beginPerfOperation("media_storage.restore_read");
+  if (operation) {
+    markPerfOperation(operation, "media_storage.restore_read_started", {
+      has_media_filter: mediaIds !== undefined,
+      ...(mediaIds ? { requested_media_count: mediaIds.length } : {}),
     });
   }
-  return records;
+  try {
+    const records = mediaIds
+      ? (await Promise.all(mediaIds.map((mediaId) => storage.loadMedia(mediaId))))
+        .filter((record): record is MediaRecord => record !== null)
+      : await storage.getMediaByProject(projectId);
+    const present = new Set(records.map((record) => record.id));
+    let mediaBytes = records.reduce((total, record) => total + (record.blob?.size ?? 0), 0);
+    const mediaStore = desktopMediaStore();
+    if (!mediaStore) {
+      endPerfOperation(
+        operation,
+        "ok",
+        operation
+          ? { restored_media_count: records.length, media_bytes: mediaBytes }
+          : undefined,
+      );
+      return records;
+    }
+    const controlled = mediaIds
+      ? (await mediaStore.listAll()).filter((entry) => mediaIds.includes(entry.mediaId))
+      : await mediaStore.listProject(projectId);
+    for (const entry of controlled) {
+      if (present.has(entry.mediaId)) continue;
+      markPerfOperation(operation, "media_storage.restore_read_controlled_file");
+      const bytes = await mediaStore.readAny(entry.mediaId);
+      if (!bytes) continue;
+      const blob = new Blob([bytes]);
+      mediaBytes += blob.size;
+      records.push({
+        id: entry.mediaId,
+        projectId,
+        blob,
+        // The project description remains authoritative for metadata; restore
+        // uses the item metadata and only consumes this record's bytes.
+        metadata: {
+          duration: 0,
+          width: 0,
+          height: 0,
+          frameRate: 0,
+          codec: "",
+          sampleRate: 0,
+          channels: 0,
+          fileSize: entry.sizeBytes,
+        },
+      });
+    }
+    endPerfOperation(
+      operation,
+      "ok",
+      operation
+        ? { restored_media_count: records.length, media_bytes: mediaBytes }
+        : undefined,
+    );
+    return records;
+  } catch (error) {
+    failPerfOperation(operation, error);
+    throw error;
+  }
 }
 
 export interface StoredMediaMetadataEntry {

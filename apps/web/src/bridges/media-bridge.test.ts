@@ -6,6 +6,10 @@ const { mockImportMedia } = vi.hoisted(() => ({
 }));
 
 vi.mock("@reelterminal/core", () => ({
+  beginPerfOperation: vi.fn().mockReturnValue(undefined),
+  endPerfOperation: vi.fn(),
+  failPerfOperation: vi.fn(),
+  markPerfOperation: vi.fn(),
   initializeMediaImportService: vi.fn().mockResolvedValue({
     importMedia: mockImportMedia,
     getSupportedFormats: vi.fn().mockReturnValue({

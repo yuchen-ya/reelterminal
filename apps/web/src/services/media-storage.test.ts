@@ -3,9 +3,20 @@
  */
 import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { DB_NAME, DB_VERSION, STORES, hashMediaBlob, hashMediaBytes } from "@reelterminal/core";
+import {
+  DB_NAME,
+  DB_VERSION,
+  STORES,
+  getPerfSink,
+  hashMediaBlob,
+  hashMediaBytes,
+  setPerfSink,
+  type Outcome,
+  type PerfSink,
+} from "@reelterminal/core";
 import {
   saveMediaBlob,
+  loadProjectMedia,
   loadMediaRecord,
   getMediaIdsByProject,
   deleteMediaBlob,
@@ -36,6 +47,55 @@ const metadata = {
 };
 
 describe("immutable media storage", () => {
+  it("records project media reads without exposing media identifiers", async () => {
+    const mediaId = `read-${crypto.randomUUID()}`;
+    const projectId = `project-${crypto.randomUUID()}`;
+    const blob = new Blob(["readable media"]);
+    await saveMediaBlob(projectId, mediaId, blob, metadata);
+
+    const events: Array<{
+      phase: string;
+      outcome?: Outcome;
+      dims?: Readonly<Record<string, number | boolean>>;
+    }> = [];
+    const phaseBySpan = new Map<number, string>();
+    let nextSpanId = 0;
+    const previousSink = getPerfSink();
+    setPerfSink({
+      enabled: true,
+      mode: "trace",
+      runId: "media-storage-test",
+      begin: (phase) => {
+        const id = ++nextSpanId;
+        phaseBySpan.set(id, phase);
+        events.push({ phase });
+        return { id, startedUs: id };
+      },
+      end: (span, outcome, dims) => {
+        events.push({ phase: phaseBySpan.get(span.id) ?? "", outcome, dims });
+      },
+      mark: (phase, _context, dims) => events.push({ phase, dims }),
+      count: () => undefined,
+    } satisfies PerfSink);
+
+    try {
+      const records = await loadProjectMedia(projectId, [mediaId]);
+      expect(records).toHaveLength(1);
+      expect(records[0]?.blob?.size).toBe(blob.size);
+    } finally {
+      setPerfSink(previousSink);
+    }
+
+    expect(events.some((event) => event.phase === "media_storage.restore_read")).toBe(true);
+    expect(events.some((event) => event.dims?.media_bytes === blob.size)).toBe(true);
+    expect(JSON.stringify(events)).not.toContain(mediaId);
+    expect(events.every((event) =>
+      Object.values(event.dims ?? {}).every((value) =>
+        typeof value === "number" || typeof value === "boolean",
+      ),
+    )).toBe(true);
+  });
+
   it("reuses one content id across projects without overwriting or losing either owner", async () => {
     const mediaId = `shared-${crypto.randomUUID()}`;
     const projectA = `project-a-${crypto.randomUUID()}`;

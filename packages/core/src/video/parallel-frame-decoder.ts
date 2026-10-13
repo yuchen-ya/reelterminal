@@ -4,6 +4,13 @@ import type {
   WorkerResponse,
 } from "./decode-worker";
 import { createDecodeWorkerUrl } from "./decode-worker";
+import {
+  beginPerfOperation,
+  endPerfOperation,
+  failPerfOperation,
+  markPerfOperation,
+  type PerfOperation,
+} from "../performance";
 
 export interface FrameDecodeRequest {
   clipId: string;
@@ -64,27 +71,34 @@ export class ParallelFrameDecoder {
     return this.initialized && this.mediabunnyAvailable;
   }
 
-  async initialize(): Promise<void> {
+  async initialize(parent?: PerfOperation): Promise<void> {
     if (this.initialized) return;
     if (this.initPromise) return this.initPromise;
 
-    this.initPromise = this.doInitialize();
+    this.initPromise = this.doInitialize(parent);
     return this.initPromise;
   }
 
-  private async doInitialize(): Promise<void> {
+  private async doInitialize(parent?: PerfOperation): Promise<void> {
+    const initializeOperation = beginPerfOperation("parallel_decoder.initialize", parent);
+    if (initializeOperation) {
+      markPerfOperation(initializeOperation, "parallel_decoder.initialize_started", {
+        worker_count: this.workerCount,
+      });
+    }
     const workerPromises: Promise<WorkerState>[] = [];
     // Every Worker created below is registered here immediately so that a
     // failed initialization can terminate them instead of orphaning them.
     const createdWorkers: Worker[] = [];
 
     for (let i = 0; i < this.workerCount; i++) {
-      workerPromises.push(this.createWorker(i, createdWorkers));
+      workerPromises.push(this.createWorker(i, createdWorkers, initializeOperation));
     }
 
     try {
       this.workers = await Promise.all(workerPromises);
     } catch (error) {
+      failPerfOperation(initializeOperation, error);
       // Init failed: terminate all created workers (ready or still starting),
       // then rethrow the original rejection to preserve its timing/identity.
       for (const worker of createdWorkers) {
@@ -100,18 +114,46 @@ export class ParallelFrameDecoder {
     }
     this.mediabunnyAvailable = this.workers.some((w) => w.mediabunnyAvailable);
     this.initialized = true;
+    endPerfOperation(
+      initializeOperation,
+      "ok",
+      initializeOperation
+        ? {
+            worker_count: this.workers.length,
+            available_worker_count: this.workers.filter((worker) => worker.mediabunnyAvailable).length,
+          }
+        : undefined,
+    );
   }
 
   private async createWorker(
     index: number,
     createdWorkers: Worker[],
+    parent: PerfOperation | undefined,
   ): Promise<WorkerState> {
     return new Promise((resolve, reject) => {
-      const workerUrl = createDecodeWorkerUrl();
-      this.workerUrls.push(workerUrl);
-
-      const worker = new Worker(workerUrl, { type: "module" });
-      createdWorkers.push(worker);
+      const operation = beginPerfOperation("parallel_decoder.worker_initialize", parent);
+      if (operation) {
+        markPerfOperation(operation, "parallel_decoder.worker_initialize_started", {
+          worker_index: index,
+        });
+      }
+      let worker: Worker;
+      try {
+        const workerUrl = createDecodeWorkerUrl();
+        this.workerUrls.push(workerUrl);
+        worker = new Worker(workerUrl, { type: "module" });
+        createdWorkers.push(worker);
+        if (operation) {
+          markPerfOperation(operation, "parallel_decoder.worker_spawned", {
+            worker_index: index,
+          });
+        }
+      } catch (error) {
+        failPerfOperation(operation, error);
+        reject(error);
+        return;
+      }
 
       const state: WorkerState = {
         worker,
@@ -123,17 +165,39 @@ export class ParallelFrameDecoder {
         mediabunnyAvailable: false,
       };
 
+      let initializationSettled = false;
+      const failInitialization = (error: unknown, outcome?: "timeout") => {
+        if (initializationSettled) return;
+        initializationSettled = true;
+        if (outcome === "timeout") endPerfOperation(operation, "timeout");
+        else failPerfOperation(operation, error);
+        reject(error);
+      };
+
       const initTimeout = setTimeout(() => {
-        reject(new Error(`Worker ${index} initialization timed out`));
+        const error = new Error(`Worker ${index} initialization timed out`);
+        failInitialization(error, "timeout");
       }, 10000);
 
       worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
         const response = event.data;
 
         if (response.type === "ready") {
+          if (initializationSettled) return;
+          initializationSettled = true;
           clearTimeout(initTimeout);
           state.workerId = response.workerId;
           state.mediabunnyAvailable = response.mediabunnyAvailable ?? false;
+          if (operation) {
+            markPerfOperation(operation, "parallel_decoder.worker_ready", {
+              mediabunny_available: state.mediabunnyAvailable,
+            });
+          }
+          endPerfOperation(
+            operation,
+            "ok",
+            operation ? { mediabunny_available: state.mediabunnyAvailable } : undefined,
+          );
           resolve(state);
           return;
         }
@@ -146,10 +210,15 @@ export class ParallelFrameDecoder {
       worker.onerror = (error) => {
         console.error(`[ParallelFrameDecoder] Worker ${index} error:`, error);
         clearTimeout(initTimeout);
-        reject(error);
+        failInitialization(error);
       };
 
-      worker.postMessage({ type: "init" });
+      try {
+        worker.postMessage({ type: "init" });
+      } catch (error) {
+        clearTimeout(initTimeout);
+        failInitialization(error);
+      }
     });
   }
 

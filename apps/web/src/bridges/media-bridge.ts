@@ -9,7 +9,30 @@ import type {
   WaveformData,
   MediaTrackInfo,
 } from "@reelterminal/core";
+import {
+  beginPerfOperation,
+  endPerfOperation,
+  failPerfOperation,
+  markPerfOperation,
+  type PerfOperation,
+} from "@reelterminal/core";
 import { useProjectStore } from "../stores/project-store";
+
+async function runMediaOperation<T>(
+  phase: string,
+  parent: PerfOperation | undefined,
+  action: () => Promise<T> | T,
+): Promise<T> {
+  const operation = beginPerfOperation(phase, parent);
+  try {
+    const result = await action();
+    endPerfOperation(operation, "ok");
+    return result;
+  } catch (error) {
+    failPerfOperation(operation, error);
+    throw error;
+  }
+}
 
 /**
  * Import progress callback type
@@ -53,12 +76,33 @@ export class MediaBridge {
     file: File | Blob,
     count = 10,
     width = 160,
+    parent?: PerfOperation,
   ): Promise<{ timestamp: number; dataUrl: string }[]> {
+    const operation = beginPerfOperation("media.thumbnail.video_element", parent);
+    if (operation) {
+      markPerfOperation(operation, "media.thumbnail.video_element_started", {
+        blob_bytes: file.size,
+        requested_count: count,
+        requested_width: width,
+      });
+    }
     if (typeof document === "undefined") {
+      endPerfOperation(operation, "ok", operation ? { thumbnail_count: 0 } : undefined);
       return [];
     }
 
-    const url = URL.createObjectURL(file);
+    let url: string;
+    try {
+      url = URL.createObjectURL(file);
+    } catch (error) {
+      failPerfOperation(operation, error);
+      return [];
+    }
+    if (operation) {
+      markPerfOperation(operation, "media.thumbnail.source_url_created", {
+        blob_bytes: file.size,
+      });
+    }
     const video = document.createElement("video");
     video.src = url;
     video.muted = true;
@@ -69,6 +113,7 @@ export class MediaBridge {
       video.removeAttribute("src");
       video.load();
       URL.revokeObjectURL(url);
+      markPerfOperation(operation, "media.thumbnail.source_url_revoked");
     };
 
     const waitForEvent = (
@@ -124,6 +169,11 @@ export class MediaBridge {
       canvas.height = height;
       const ctx = canvas.getContext("2d");
       if (!ctx) {
+        endPerfOperation(
+          operation,
+          "ok",
+          operation ? { thumbnail_count: 0 } : undefined,
+        );
         return [];
       }
 
@@ -143,8 +193,14 @@ export class MediaBridge {
         });
       }
 
+      endPerfOperation(
+        operation,
+        "ok",
+        operation ? { thumbnail_count: thumbnails.length } : undefined,
+      );
       return thumbnails;
-    } catch {
+    } catch (error) {
+      failPerfOperation(operation, error);
       return [];
     } finally {
       cleanup();
@@ -160,15 +216,19 @@ export class MediaBridge {
       return;
     }
 
+    const operation = beginPerfOperation("media_bridge.initialize");
     try {
       // Initialize the media import service
       this.mediaImportService = await initializeMediaImportService();
       this.waveformGenerator = getWaveformGenerator();
       this.initialized = true;
+      endPerfOperation(operation, "ok");
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Unknown initialization error";
-      throw new Error(`MediaBridge initialization failed: ${errorMessage}`);
+      const wrappedError = new Error(`MediaBridge initialization failed: ${errorMessage}`);
+      failPerfOperation(operation, wrappedError);
+      throw wrappedError;
     }
   }
 
@@ -203,6 +263,14 @@ export class MediaBridge {
     }
 
     const projectStateBefore = this.captureProjectState();
+    const operation = beginPerfOperation("media_bridge.import");
+    if (operation) {
+      markPerfOperation(operation, "media_bridge.import_started", {
+        media_bytes: file.size,
+        quick_mode: quickMode,
+        waveform_requested: generateWaveform,
+      });
+    }
 
     try {
       const result = await this.mediaImportService.importMedia(file, {
@@ -216,6 +284,7 @@ export class MediaBridge {
       });
 
       if (!result.success || !result.media) {
+        endPerfOperation(operation, "error", operation ? { success: false } : undefined);
         return {
           success: false,
           error: result.error || "Import failed",
@@ -226,6 +295,7 @@ export class MediaBridge {
 
       const metadata = result.media.metadata;
       if (!this.validateMetadata(metadata)) {
+        endPerfOperation(operation, "error", operation ? { success: false } : undefined);
         return {
           success: false,
           error: "Failed to extract valid metadata from media file",
@@ -233,14 +303,27 @@ export class MediaBridge {
         };
       }
 
-      return {
+      const importResult = {
         success: true,
         media: result.media,
         warnings: result.warnings,
         hasWaveform: result.media.waveformData !== null,
       };
+      endPerfOperation(
+        operation,
+        "ok",
+        operation
+          ? {
+              success: true,
+              thumbnail_count: result.media.thumbnails?.length ?? 0,
+              waveform_available: importResult.hasWaveform,
+            }
+          : undefined,
+      );
+      return importResult;
     } catch (error) {
       this.restoreProjectState(projectStateBefore);
+      failPerfOperation(operation, error);
 
       const errorMessage =
         error instanceof Error ? error.message : "Unknown import error";
@@ -260,11 +343,23 @@ export class MediaBridge {
       return [];
     }
 
+    const operation = beginPerfOperation("media_bridge.generate_thumbnails");
+    if (operation) {
+      markPerfOperation(operation, "media_bridge.generate_thumbnails_started", {
+        media_bytes: file.size,
+        requested_count: 10,
+        requested_width: 160,
+      });
+    }
     try {
-      const thumbnails = await this.mediaImportService.generateThumbnailsForMedia(
-        file,
-        mediaType,
-        { count: 10, width: 160 },
+      const thumbnails = await runMediaOperation(
+        "media_bridge.thumbnail_service",
+        operation,
+        () => this.mediaImportService!.generateThumbnailsForMedia(
+          file,
+          mediaType,
+          { count: 10, width: 160 },
+        ),
       );
 
       const mapped = thumbnails.map((thumb) => ({
@@ -273,14 +368,51 @@ export class MediaBridge {
       })).filter((t) => t.dataUrl);
 
       if (mapped.length > 0 || mediaType !== "video") {
+        endPerfOperation(
+          operation,
+          "ok",
+          operation ? { thumbnail_count: mapped.length } : undefined,
+        );
         return mapped;
       }
 
-      return await this.generateVideoElementThumbnails(file, 10, 160);
-    } catch {
-      if (mediaType === "video") {
-        return await this.generateVideoElementThumbnails(file, 10, 160);
+      const fallbackThumbnails = await this.generateVideoElementThumbnails(
+        file,
+        10,
+        160,
+        operation,
+      );
+      endPerfOperation(
+        operation,
+        "ok",
+        operation
+          ? { thumbnail_count: fallbackThumbnails.length, fallback_used: true }
+          : undefined,
+      );
+      return fallbackThumbnails;
+    } catch (error) {
+      if (operation) {
+        markPerfOperation(operation, "media_bridge.thumbnail_fallback", {
+          fallback_used: mediaType === "video",
+        });
       }
+      if (mediaType === "video") {
+        const fallbackThumbnails = await this.generateVideoElementThumbnails(
+          file,
+          10,
+          160,
+          operation,
+        );
+        endPerfOperation(
+          operation,
+          "ok",
+          operation
+            ? { thumbnail_count: fallbackThumbnails.length, fallback_used: true }
+            : undefined,
+        );
+        return fallbackThumbnails;
+      }
+      endPerfOperation(operation, "error", operation ? { thumbnail_count: 0 } : undefined);
       return [];
     }
   }
@@ -338,6 +470,13 @@ export class MediaBridge {
       return null;
     }
 
+    const operation = beginPerfOperation("media_bridge.generate_waveform");
+    if (operation) {
+      markPerfOperation(operation, "media_bridge.generate_waveform_started", {
+        media_bytes: file.size,
+        samples_per_second: samplesPerSecond,
+      });
+    }
     try {
       const waveformData = await this.waveformGenerator.generateWaveform(
         file,
@@ -348,11 +487,27 @@ export class MediaBridge {
       // Validate waveform data
       // Store peaks array proportional to duration
       if (!this.validateWaveformData(waveformData)) {
+        endPerfOperation(
+          operation,
+          "error",
+          operation ? { valid: false } : undefined,
+        );
         return null;
       }
 
+      endPerfOperation(
+        operation,
+        "ok",
+        operation
+          ? {
+              sample_count: waveformData.peaks.length,
+              duration_seconds: waveformData.duration,
+            }
+          : undefined,
+      );
       return waveformData;
     } catch (error) {
+      failPerfOperation(operation, error);
       console.error("MediaBridge: Waveform generation error:", error);
       return null;
     }
@@ -372,6 +527,12 @@ export class MediaBridge {
       return null;
     }
 
+    const operation = beginPerfOperation("media_bridge.extract_metadata");
+    if (operation) {
+      markPerfOperation(operation, "media_bridge.extract_metadata_started", {
+        media_bytes: file.size,
+      });
+    }
     try {
       // Use the media import service to validate and extract metadata
       const result = await this.mediaImportService.importMedia(file as File, {
@@ -381,11 +542,26 @@ export class MediaBridge {
       });
 
       if (!result.success || !result.media) {
+        endPerfOperation(operation, "error", operation ? { success: false } : undefined);
         return null;
       }
 
-      return result.media.metadata;
+      const metadata = result.media.metadata;
+      endPerfOperation(
+        operation,
+        "ok",
+        operation
+          ? {
+              success: true,
+              duration_seconds: metadata.duration,
+              width: metadata.width,
+              height: metadata.height,
+            }
+          : undefined,
+      );
+      return metadata;
     } catch (error) {
+      failPerfOperation(operation, error);
       console.error("MediaBridge: Metadata extraction error:", error);
       return null;
     }
