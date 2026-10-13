@@ -10,6 +10,7 @@ import {
 import type { PerfOperation } from "@reelterminal/core";
 import {
   activateProjectStore,
+  getActiveProjectRuntimeStore,
   useProjectStore,
 } from "../stores/project-store";
 import { useUIStore, type SelectionItem } from "../stores/ui-store";
@@ -64,13 +65,37 @@ export interface PreviewSessionState {
   active: boolean;
   busy: boolean;
   info: VersionPreviewInfo | null;
+  loading: PreviewLoadingState | null;
+}
+
+export type PreviewLoadPhase =
+  | "requesting"
+  | "reading-snapshot"
+  | "hydrating-media"
+  | "restoring-store"
+  | "loading-fonts"
+  | "activating"
+  | "awaiting-first-valid-frame"
+  | "restoring-context";
+
+export interface PreviewLoadingState {
+  generation: number;
+  source: PreviewSource | { kind: "editing" };
+  label: string;
+  phase: PreviewLoadPhase;
+  startedAt: number;
+  cancellable: boolean;
 }
 
 export interface PreviewSessionApi {
   subscribe(listener: () => void): () => void;
   getSnapshot(): PreviewSessionState;
   /** Begin (or switch) the read-only preview. Pauses playback first. */
-  enter(source: PreviewSource): Promise<void>;
+  enter(source: PreviewSource, options?: { label?: string }): Promise<void>;
+  /** Cancel the pending request and return to the last frame-ready context. */
+  cancelPending(): Promise<void>;
+  /** Restore editing when the activated history request cannot render a valid frame. */
+  failPendingFrame(project: object, error: unknown): Promise<void>;
   /** Return to current editing, restoring the saved view state. */
   exit(): Promise<void>;
   /** Copy selected historical clips and insert them at the editing view's original playhead. */
@@ -89,7 +114,7 @@ export interface PreviewSessionApi {
   getNodeSummary(projectId: string, nodeId: string): Promise<ProjectNodeSummary | null>;
 }
 
-let snapshot: PreviewSessionState = Object.freeze({ active: false, busy: false, info: null });
+let snapshot: PreviewSessionState = Object.freeze({ active: false, busy: false, info: null, loading: null });
 const listeners = new Set<() => void>();
 
 function publish(partial: Partial<PreviewSessionState>): void {
@@ -103,12 +128,36 @@ let handle: PreviewHandle | null = null;
 let savedViewState: WorkspaceViewState | null = null;
 /** Active workspace when preview began; a change means the user left the context. */
 let editingWorkspaceIdAtEnter: string | null = null;
+let editingStoreAtEnter: ReturnType<typeof getActiveProjectRuntimeStore> | null = null;
 let managerUnsubscribe: (() => void) | null = null;
 /** One "preview is read-only" hint per session, fired on the first blocked edit. */
 let readOnlyToastShown = false;
-/** Measurement-only generation used to reject a late frame from an old node request. */
+/** Synchronous view generation used by the frame scheduler to reject stale commits. */
 let previewGeneration = 0;
-let pendingFirstFrame: { operation: PerfOperation; generation: number; project: object | null } | null = null;
+let pendingFirstFrame: { operation?: PerfOperation; generation: number; project: object } | null = null;
+let stableHandle: PreviewHandle | null = null;
+let stableInfo: VersionPreviewInfo | null = null;
+
+interface PreviewRollbackContext {
+  handle: PreviewHandle | null;
+  info: VersionPreviewInfo | null;
+  viewState: WorkspaceViewState;
+  savedViewState: WorkspaceViewState | null;
+  editingWorkspaceId: string | null;
+  editingStore: ReturnType<typeof getActiveProjectRuntimeStore> | null;
+}
+
+interface PreviewRequest {
+  generation: number;
+  source: PreviewSource;
+  label: string;
+  controller: AbortController;
+  rollback: PreviewRollbackContext;
+  operation?: PerfOperation;
+  candidate: PreviewHandle | null;
+}
+
+let activeRequest: PreviewRequest | null = null;
 
 function finishPendingFirstFrame(outcome: "cancelled" | "superseded"): void {
   const pending = pendingFirstFrame;
@@ -116,12 +165,31 @@ function finishPendingFirstFrame(outcome: "cancelled" | "superseded"): void {
   pendingFirstFrame = null;
   endPerfOperation(pending.operation, outcome, { viewGeneration: pending.generation });
 }
-registerCaptureCleanup(() => finishPendingFirstFrame("cancelled"));
+
+function endRequestOperation(request: PreviewRequest | null, outcome: "cancelled" | "superseded"): void {
+  if (!request?.operation) return;
+  if (pendingFirstFrame?.operation === request.operation) {
+    finishPendingFirstFrame(outcome);
+  } else {
+    endPerfOperation(request.operation, outcome, { viewGeneration: request.generation });
+  }
+}
+registerCaptureCleanup(() => {
+  const pending = pendingFirstFrame;
+  if (!pending?.operation) return;
+  endPerfOperation(pending.operation, "cancelled", { viewGeneration: pending.generation });
+  pendingFirstFrame = { generation: pending.generation, project: pending.project };
+  if (activeRequest?.generation === pending.generation) activeRequest.operation = undefined;
+});
+
+export function getPreviewViewGeneration(): number {
+  return previewGeneration;
+}
 
 /** Active historical-node operation, optionally restricted to its rendered project identity. */
 export function getPreviewPerfOperation(project?: object): PerfOperation | undefined {
   const pending = pendingFirstFrame;
-  if (!pending || !handle || !pending.project) {
+  if (!pending || !handle || !pending.operation || pending.generation !== previewGeneration) {
     return undefined;
   }
   const activeProject = handle.store.getState().project;
@@ -132,19 +200,41 @@ export function getPreviewPerfOperation(project?: object): PerfOperation | undef
 /** Close the current node-open operation on its first committed content frame. */
 export function recordPreviewFirstFrame(
   project: object,
-  frameContext: { seq: number; epoch: number; revision: number },
+  frameContext: {
+    seq: number;
+    epoch: number;
+    revision: number;
+    viewGeneration?: number;
+    contentAvailable?: boolean;
+  },
 ): void {
+  if (frameContext.contentAvailable === false) return;
   const operation = getPreviewPerfOperation(project);
   const pending = pendingFirstFrame;
-  if (!operation || !pending || operation !== pending.operation) return;
-  operation.sink.mark("node.first-valid-frame", {
-    ...operation.context,
-    frameSeq: frameContext.seq,
-    frameEpoch: frameContext.epoch,
-    revision: frameContext.revision,
-  });
-  endPerfOperation(operation, "ok", { revision: frameContext.revision });
+  if (
+    !pending || pending.generation !== previewGeneration || pending.project !== project ||
+    (frameContext.viewGeneration !== undefined && frameContext.viewGeneration !== pending.generation)
+  ) return;
+  if (operation && operation === pending.operation) {
+    operation.sink.mark("node.first-valid-frame", {
+      ...operation.context,
+      frameSeq: frameContext.seq,
+      frameEpoch: frameContext.epoch,
+      revision: frameContext.revision,
+    });
+    endPerfOperation(operation, "ok", { revision: frameContext.revision });
+  }
   pendingFirstFrame = null;
+  const request = activeRequest;
+  if (request?.generation === previewGeneration) {
+    activeRequest = null;
+    stableHandle = handle;
+    stableInfo = snapshot.info;
+    if (request.rollback.handle && request.rollback.handle !== handle) {
+      void disposePreviewHandle(request.rollback.handle);
+    }
+  }
+  publish({ busy: false, loading: null });
 }
 
 /** Pause playback through the same two choke points as workspace switchView. */
@@ -216,39 +306,270 @@ interface TeardownOptions {
 }
 
 async function teardown(options: TeardownOptions): Promise<void> {
+  const generation = ++previewGeneration;
+  const request = activeRequest;
+  activeRequest = null;
+  request?.controller.abort();
+  endRequestOperation(request, "cancelled");
   finishPendingFirstFrame("cancelled");
   const currentHandle = handle;
+  const editingStore = editingStoreAtEnter;
   handle = null;
+  stableHandle = null;
+  stableInfo = null;
   const view = savedViewState;
   savedViewState = null;
   editingWorkspaceIdAtEnter = null;
+  editingStoreAtEnter = null;
   readOnlyToastShown = false;
   if (managerUnsubscribe) {
     managerUnsubscribe();
     managerUnsubscribe = null;
   }
   if (!currentHandle) {
-    publish({ active: false, busy: false, info: null });
+    publish({ active: false, busy: false, info: null, loading: null });
     return;
   }
   pausePlayback();
   try {
     if (options.restoreView) {
-      // The active workspace never changed during preview; re-activate it
-      // defensively so the global store points at the editing runtime again.
-      const target = workspaceManager.getActiveTarget();
-      if (target) await workspaceManager.activateWorkspace(target);
+      // History preview never changes the workspace record. Reactivate the
+      // exact edit runtime captured at entry without an async late activation.
+      if (editingStore) activateProjectStore(editingStore);
       applyViewState(view);
       if (options.validateSelection) pruneSelectionAfterRestore();
+      window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
     }
   } finally {
     try {
       await currentHandle.dispose();
-    } catch {
+    } catch (error) {
       // Font release failures must not leave the session stuck active.
+      console.warn("Could not release history preview resources", error);
     }
-    publish({ active: false, busy: false, info: null });
+    if (generation === previewGeneration) {
+      publish({ active: false, busy: false, info: null, loading: null });
+    }
   }
+}
+
+function captureRollbackContext(): PreviewRollbackContext {
+  const viewState = captureCurrentViewState();
+  if (!handle && !savedViewState) {
+    savedViewState = viewState;
+    editingWorkspaceIdAtEnter = workspaceManager.getActiveTarget()?.workspaceId ?? null;
+    editingStoreAtEnter = getActiveProjectRuntimeStore();
+  }
+  return {
+    handle: stableHandle,
+    info: stableInfo,
+    viewState,
+    savedViewState,
+    editingWorkspaceId: editingWorkspaceIdAtEnter,
+    editingStore: editingStoreAtEnter,
+  };
+}
+
+function previewLoadPhase(managerPhase: string): PreviewLoadPhase | null {
+  switch (managerPhase) {
+    case "reading-snapshot": return "reading-snapshot";
+    case "hydrating-media": return "hydrating-media";
+    case "restoring-store": return "restoring-store";
+    case "loading-fonts": return "loading-fonts";
+    case "ready": return "activating";
+    default: return null;
+  }
+}
+
+function isCurrentRequest(request: PreviewRequest): boolean {
+  return activeRequest === request && request.generation === previewGeneration && !request.controller.signal.aborted;
+}
+
+async function disposePreviewHandle(previewHandle: PreviewHandle | null): Promise<void> {
+  if (!previewHandle) return;
+  try {
+    await previewHandle.dispose();
+  } catch (error) {
+    console.warn("[preview-session] Could not release a historical preview handle", error);
+  }
+}
+
+async function restoreRollbackContext(
+  rollback: PreviewRollbackContext,
+  generation: number,
+  returnToEditing: boolean,
+  candidate: PreviewHandle | null,
+): Promise<void> {
+  pausePlayback();
+  if (!returnToEditing && rollback.handle) {
+    if (generation !== previewGeneration) return;
+    activateProjectStore(rollback.handle.store);
+    handle = rollback.handle;
+    applyViewState(rollback.viewState);
+    readOnlyToastShown = false;
+    pendingFirstFrame = {
+      generation,
+      project: rollback.handle.store.getState().project,
+    };
+    publish({
+      active: true,
+      busy: true,
+      info: rollback.info,
+      loading: {
+        generation,
+        source: rollback.info?.nodeId
+          ? { kind: "node", nodeId: rollback.info.nodeId }
+          : { kind: "editing" },
+        label: rollback.info?.nodeName ?? i18next.t("versioning.workspace"),
+        phase: "restoring-context",
+        startedAt: performance.now(),
+        cancellable: true,
+      },
+    });
+    await disposePreviewHandle(candidate && candidate !== rollback.handle ? candidate : null);
+    if (generation !== previewGeneration) return;
+    window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
+    return;
+  }
+
+  if (managerUnsubscribe) {
+    managerUnsubscribe();
+    managerUnsubscribe = null;
+  }
+  const currentHandle = handle;
+  handle = null;
+  const retiredStableHandle = stableHandle;
+  stableHandle = null;
+  stableInfo = null;
+  if (generation !== previewGeneration) return;
+  if (rollback.editingStore) {
+    activateProjectStore(rollback.editingStore);
+  } else {
+    const editWorkspaceId = rollback.editingWorkspaceId ?? editingWorkspaceIdAtEnter;
+    const target = editWorkspaceId
+      ? { projectId: rollback.info?.projectId ?? workspaceManager.getActiveTarget()?.projectId ?? "", workspaceId: editWorkspaceId }
+      : workspaceManager.getActiveTarget();
+    if (target?.projectId) {
+      await workspaceManager.activateWorkspace(target);
+      if (generation !== previewGeneration) return;
+    }
+  }
+  if (generation !== previewGeneration) return;
+  applyViewState(rollback.savedViewState ?? savedViewState);
+  savedViewState = null;
+  editingWorkspaceIdAtEnter = null;
+  editingStoreAtEnter = null;
+  readOnlyToastShown = false;
+  const editingProject = useProjectStore.getState().project;
+  pendingFirstFrame = { generation, project: editingProject };
+  publish({
+    active: false,
+    busy: true,
+    info: null,
+    loading: {
+      generation,
+      source: { kind: "editing" },
+      label: i18next.t("versioning.workspace"),
+      phase: "restoring-context",
+      startedAt: performance.now(),
+      cancellable: true,
+    },
+  });
+  const handlesToDispose = new Set<PreviewHandle>();
+  if (candidate) handlesToDispose.add(candidate);
+  if (currentHandle) handlesToDispose.add(currentHandle);
+  if (retiredStableHandle) handlesToDispose.add(retiredStableHandle);
+  for (const previewHandle of handlesToDispose) await disposePreviewHandle(previewHandle);
+  if (generation !== previewGeneration) return;
+  window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
+}
+
+async function cancelCurrentRequest(returnToEditing: boolean): Promise<void> {
+  const request = activeRequest;
+  if (!request) return;
+  const generation = ++previewGeneration;
+  activeRequest = null;
+  request.controller.abort();
+  endRequestOperation(request, "cancelled");
+  finishPendingFirstFrame("cancelled");
+
+  if (!request.candidate && handle === request.rollback.handle) {
+    if (returnToEditing && request.rollback.handle) {
+      await restoreRollbackContext(request.rollback, generation, true, null);
+      return;
+    }
+    if (returnToEditing) {
+      savedViewState = null;
+      editingWorkspaceIdAtEnter = null;
+      editingStoreAtEnter = null;
+      publish({ active: false, busy: false, info: null, loading: null });
+      return;
+    }
+    publish({ busy: false, loading: null });
+    return;
+  }
+  await restoreRollbackContext(request.rollback, generation, returnToEditing, request.candidate);
+}
+
+function finishRestoringContextWait(outcome: "cancelled" | "failed", error?: unknown): boolean {
+  const pending = pendingFirstFrame;
+  if (
+    !pending || pending.generation !== previewGeneration ||
+    snapshot.loading?.phase !== "restoring-context"
+  ) return false;
+
+  pendingFirstFrame = null;
+  previewGeneration += 1;
+  if (outcome === "failed") {
+    toast.error(
+      i18next.t("versioning.failed"),
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  publish({ busy: false, loading: null });
+  window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate", {
+    detail: { discardRetainedFrame: true },
+  }));
+  return true;
+}
+
+function retargetPendingEditingFrame(project: object): void {
+  const pending = pendingFirstFrame;
+  if (
+    !pending || pending.generation !== previewGeneration ||
+    snapshot.loading?.phase !== "restoring-context" ||
+    snapshot.loading.source.kind !== "editing"
+  ) return;
+
+  pendingFirstFrame = { ...pending, project };
+  window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
+}
+
+async function failCurrentFrame(project: object, error: unknown): Promise<void> {
+  const pending = pendingFirstFrame;
+  const request = activeRequest;
+  if (
+    !pending || pending.project !== project || pending.generation !== previewGeneration
+  ) return;
+
+  if (!request) {
+    if (snapshot.loading?.phase === "restoring-context") {
+      finishRestoringContextWait("failed", error);
+    }
+    return;
+  }
+  if (request.generation !== previewGeneration) return;
+
+  pendingFirstFrame = null;
+  failPerfOperation(request.operation, error);
+  const generation = ++previewGeneration;
+  activeRequest = null;
+  request.controller.abort();
+  toast.error(
+    i18next.t("versioning.failed"),
+    error instanceof Error ? error.message : String(error),
+  );
+  await restoreRollbackContext(request.rollback, generation, true, request.candidate);
 }
 
 /** True when a concurrent edit was detected (both results kept, nothing overwritten). */
@@ -266,55 +587,86 @@ export const previewSession: PreviewSessionApi = {
     return snapshot;
   },
 
-  async enter(source) {
-    // Guard busy reentrancy: rapid double-clicks must not interleave sessions.
-    if (snapshot.busy) return;
+  async enter(source, options) {
+    const rollback = activeRequest?.rollback ?? captureRollbackContext();
+    const previousRequest = activeRequest;
+    const generation = ++previewGeneration;
+    previousRequest?.controller.abort();
+    endRequestOperation(previousRequest, "superseded");
     finishPendingFirstFrame("superseded");
+
     const captureEnabled = source.kind === "node" && getPerfSink().enabled;
-    const generation = captureEnabled ? ++previewGeneration : 0;
     const operation = captureEnabled
       ? beginPerfOperation("node.preview", undefined, { viewGeneration: generation })
       : undefined;
-    if (operation) {
-      pendingFirstFrame = { operation, generation, project: null };
-      markPerfOperation(operation, "node.preview.requested");
-    }
-    publish({ busy: true });
+    if (operation) markPerfOperation(operation, "node.preview.requested");
+    const request: PreviewRequest = {
+      generation,
+      source,
+      label: options?.label ?? (source.kind === "node" ? source.nodeId : source.workspaceId),
+      controller: new AbortController(),
+      rollback,
+      operation,
+      candidate: null,
+    };
+    activeRequest = request;
+    pausePlayback();
+    publish({
+      busy: true,
+      loading: {
+        generation,
+        source,
+        label: request.label,
+        phase: "requesting",
+        startedAt: performance.now(),
+        cancellable: true,
+      },
+    });
+
     try {
-      // Entering a preview pauses current playback first; exiting restores
-      // the original (paused) position without auto-playing.
-      pausePlayback();
-      // Capture the editing view state only when no preview is active yet:
-      // repeated enters swap preview content and must not stack captures.
-      if (!handle) {
-        savedViewState = captureCurrentViewState();
-        editingWorkspaceIdAtEnter =
-          workspaceManager.getActiveTarget()?.workspaceId ?? null;
+      const newHandle = await workspaceManager.createPreviewHandle(source, operation, {
+        signal: request.controller.signal,
+        onPhase: (managerPhase) => {
+          if (!isCurrentRequest(request)) return;
+          const phase = previewLoadPhase(managerPhase);
+          if (phase && snapshot.loading?.generation === generation) {
+            publish({ loading: { ...snapshot.loading, phase } });
+          }
+        },
+      });
+      if (!isCurrentRequest(request)) {
+        await disposePreviewHandle(newHandle);
+        return;
       }
-      const newHandle = await workspaceManager.createPreviewHandle(source, operation);
+      request.candidate = newHandle;
+
+      // This is the only activation point. A generation check immediately
+      // before it prevents any late manager result from taking over the view.
+      if (!isCurrentRequest(request)) {
+        await disposePreviewHandle(newHandle);
+        return;
+      }
       const previousHandle = handle;
-      handle = newHandle;
-      const pending = pendingFirstFrame;
-      if (operation && pending && pending.operation === operation) {
-        pending.project = newHandle.store.getState().project;
-      }
-      readOnlyToastShown = false;
-      if (previousHandle) {
-        try {
-          await previousHandle.dispose();
-        } catch {
-          // Keep swapping content even if releasing the old fonts fails.
-        }
-      }
       activateProjectStore(newHandle.store);
-      // The preview starts at the node's beginning, paused (no autoplay).
+      handle = newHandle;
+      request.candidate = newHandle;
+      readOnlyToastShown = false;
       useTimelineStore.setState({
         playheadPosition: 0,
         playheadInteractionRevision:
           useTimelineStore.getState().playheadInteractionRevision + 1,
         playbackState: "paused",
       });
+
+      pendingFirstFrame = {
+        ...(operation ? { operation } : {}),
+        generation,
+        project: newHandle.store.getState().project,
+      };
       if (operation) {
+        markPerfOperation(operation, "node.preview.activated", { viewGeneration: generation });
+        // Snapshot/store readiness precedes content readiness; keep the P3
+        // state metric independent of the first valid canvas frame.
         markPerfOperation(operation, "node.preview.ready", { viewGeneration: generation });
       }
       startManagerWatch();
@@ -331,24 +683,70 @@ export const previewSession: PreviewSessionApi = {
           missingDependencies: [...newHandle.missingDependencies],
           agentTrial: newHandle.label.agentTrial,
         },
+        loading: {
+          generation,
+          source,
+          label: newHandle.label.name,
+          phase: "awaiting-first-valid-frame",
+          startedAt: snapshot.loading?.startedAt ?? performance.now(),
+          cancellable: true,
+        },
       });
+      window.dispatchEvent(new CustomEvent("reelterminal:preview-invalidate"));
+
+      // A superseded candidate is no longer the visible store. Keep the last
+      // frame-ready handle leased as the rollback context until this request
+      // commits its first frame.
+      if (previousHandle && previousHandle !== rollback.handle) {
+        await disposePreviewHandle(previousHandle);
+      }
     } catch (error) {
-      if (pendingFirstFrame?.operation === operation) pendingFirstFrame = null;
+      if (!isCurrentRequest(request)) return;
+      activeRequest = null;
+      finishPendingFirstFrame("cancelled");
       failPerfOperation(operation, error);
-      publish({ busy: false });
+      if (handle || request.rollback.handle) {
+        const restoreGeneration = ++previewGeneration;
+        request.controller.abort();
+        await restoreRollbackContext(request.rollback, restoreGeneration, true, request.candidate);
+      } else {
+        if (request.candidate) await disposePreviewHandle(request.candidate);
+        publish({ active: false, busy: false, info: null, loading: null });
+        savedViewState = null;
+        editingWorkspaceIdAtEnter = null;
+        editingStoreAtEnter = null;
+      }
       throw error;
     }
   },
 
+  async cancelPending() {
+    if (!activeRequest && finishRestoringContextWait("cancelled")) return;
+    await cancelCurrentRequest(false);
+  },
+
+  async failPendingFrame(project, error) {
+    await failCurrentFrame(project, error);
+  },
+
   async exit() {
-    if (!snapshot.active && !handle) return;
-    if (snapshot.busy) return;
-    publish({ busy: true });
-    try {
-      await teardown({ restoreView: true });
-    } finally {
-      // teardown already published the inactive state (busy: false included).
+    if (activeRequest) {
+      await cancelCurrentRequest(true);
+      return;
     }
+    if (pendingFirstFrame && snapshot.loading?.phase === "restoring-context") {
+      if (!snapshot.active) {
+        finishRestoringContextWait("cancelled");
+      } else {
+        await restoreRollbackContext(captureRollbackContext(), ++previewGeneration, true, null);
+      }
+      return;
+    }
+    if (!snapshot.active && !handle) {
+      return;
+    }
+    if (snapshot.busy) return;
+    await restoreRollbackContext(captureRollbackContext(), ++previewGeneration, true, null);
   },
 
   async copyToCurrent(clipIds) {
@@ -371,6 +769,7 @@ export const previewSession: PreviewSessionApi = {
     const current = workspaceManager.getActiveTarget();
     if (current?.projectId !== target.projectId || current.workspaceId !== target.workspaceId) return;
     const state = context.store.getState();
+    retargetPendingEditingFrame(state.project);
     const selection = state.lastPastedClipIds
       .map(id => getTimelineSelectionItem(state, id))
       .filter((item): item is SelectionItem => item !== null);
@@ -382,7 +781,7 @@ export const previewSession: PreviewSessionApi = {
     if (!handle || !snapshot.active || !snapshot.info) {
       throw new Error("No version preview is active");
     }
-    if (snapshot.busy) return;
+    if (snapshot.busy || snapshot.loading) return;
     publish({ busy: true });
     const info = snapshot.info;
     const target: WorkspaceTarget | null = workspaceManager.getActiveTarget();
@@ -462,13 +861,19 @@ export function isPreviewActive(): boolean {
   return snapshot.active;
 }
 
+/** Editing stays blocked while the canvas still represents a different context. */
+export function isPreviewInteractionBlocked(): boolean {
+  return snapshot.active || snapshot.loading?.phase === "restoring-context";
+}
+
 /**
  * Timeline/Timeline-adjacent edit gate. Returns true when a read-only preview
  * is active and the interaction must not run; the first blocked attempt per
  * session shows one "preview is read-only" hint.
  */
 export function blockPreviewEditInteraction(): boolean {
-  if (!isPreviewActive()) return false;
+  if (!isPreviewInteractionBlocked()) return false;
+  if (!snapshot.active) return true;
   if (!readOnlyToastShown) {
     readOnlyToastShown = true;
     toast.info(i18next.t("versioning.previewReadOnly"));

@@ -19,13 +19,13 @@ export function VersionPreviewBanner() {
     : undefined;
 
   const handleReturn = () => {
-    if (busy || state.busy) return;
+    if (busy || state.busy && !state.loading) return;
     setBusy(true);
     void previewSession.exit().finally(() => setBusy(false));
   };
 
   const handleAdopt = () => {
-    if (busy || state.busy) return;
+    if (busy || state.busy || state.loading) return;
     setBusy(true);
     void previewSession.adopt().finally(() => setBusy(false));
   };
@@ -54,7 +54,7 @@ export function VersionPreviewBanner() {
           type="button"
           data-testid="version-preview-adopt"
           onClick={handleAdopt}
-          disabled={busy || state.busy}
+          disabled={busy || state.busy || state.loading !== null}
           className="rounded-md border border-accent/40 bg-accent-soft px-2 py-1 text-accent transition-colors duration-200 ease-out hover:bg-hover disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"
         >
           {t("versioning.previewAdopt")}
@@ -63,7 +63,7 @@ export function VersionPreviewBanner() {
           type="button"
           data-testid="version-preview-return"
           onClick={handleReturn}
-          disabled={busy || state.busy}
+          disabled={busy || state.busy && !state.loading}
           className="rounded-md px-2 py-1 text-fg-2 transition-colors duration-200 ease-out hover:bg-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:transition-none"
         >
           {t("versioning.previewReturn")}

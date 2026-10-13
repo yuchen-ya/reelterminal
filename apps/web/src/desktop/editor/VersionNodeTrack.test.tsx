@@ -11,6 +11,7 @@ const fixture = vi.hoisted(() => ({
   preview: { active: false, busy: false, info: null } as Record<string, unknown>,
   listeners: new Set<() => void>(),
   enter: vi.fn(),
+  cancelPending: vi.fn(),
   exit: vi.fn(),
   adopt: vi.fn(),
   renameNode: vi.fn(),
@@ -40,6 +41,7 @@ vi.mock("../../services/preview-session", () => ({
     },
     getSnapshot: () => fixture.preview,
     enter: fixture.enter,
+    cancelPending: fixture.cancelPending,
     exit: fixture.exit,
     adopt: fixture.adopt,
     getNodeSummary: async () => null,
@@ -96,6 +98,7 @@ beforeEach(() => {
   fixture.snapshot = baseSnapshot();
   fixture.preview = { active: false, busy: false, info: null };
   fixture.enter.mockResolvedValue(undefined);
+  fixture.cancelPending.mockResolvedValue(undefined);
   fixture.exit.mockResolvedValue(undefined);
   fixture.adopt.mockResolvedValue(undefined);
   fixture.renameNode.mockImplementation(async (_input: { name: string }) => ({
@@ -104,6 +107,13 @@ beforeEach(() => {
   fixture.deleteNode.mockResolvedValue(undefined);
   fixture.restoreDeletedNode.mockResolvedValue(undefined);
 });
+
+function publishPreviewState(state: Record<string, unknown>): void {
+  act(() => {
+    fixture.preview = state;
+    fixture.listeners.forEach((listener) => listener());
+  });
+}
 
 describe("inspector archive browser", () => {
   it("shows an honest empty state without fake unretained trial nodes", () => {
@@ -146,13 +156,88 @@ describe("inspector archive browser", () => {
     expect(within(screen.getByTestId("version-node-retained-trial")).getByText("Trial")).toBeInTheDocument();
   });
   it("double click previews, while adopting needs the explicit action", async () => {
+    fixture.enter.mockImplementation(async () => {
+      publishPreviewState({
+        active: true,
+        busy: false,
+        info: { nodeId: "root" },
+        loading: {
+          generation: 1,
+          source: { kind: "node", nodeId: "root" },
+          label: "Root A",
+          phase: "awaiting-first-valid-frame",
+          startedAt: performance.now(),
+          cancellable: true,
+        },
+      });
+    });
     render(<VersionNodeTrack />);
     fireEvent.doubleClick(screen.getByTestId("version-node-root"));
-    await waitFor(() => expect(fixture.enter).toHaveBeenCalledWith({ kind: "node", nodeId: "root" }));
+    await waitFor(() => expect(fixture.enter).toHaveBeenCalledWith({ kind: "node", nodeId: "root" }, { label: "Root A" }));
     expect(fixture.adopt).not.toHaveBeenCalled();
     fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 20, clientY: 20 });
     fireEvent.click(screen.getByTestId("version-menu-adopt"));
+    await waitFor(() => expect(fixture.enter).toHaveBeenCalledTimes(2));
+    expect(fixture.adopt).not.toHaveBeenCalled();
+    publishPreviewState({
+      active: true,
+      busy: false,
+      info: { nodeId: "root" },
+      loading: null,
+    });
     await waitFor(() => expect(fixture.adopt).toHaveBeenCalledOnce());
+  });
+
+  it("does not adopt when the preview is cancelled before its first valid frame", async () => {
+    fixture.enter.mockImplementation(async () => {
+      publishPreviewState({
+        active: true,
+        busy: false,
+        info: { nodeId: "root" },
+        loading: {
+          generation: 1,
+          source: { kind: "node", nodeId: "root" },
+          label: "Root A",
+          phase: "awaiting-first-valid-frame",
+          startedAt: performance.now(),
+          cancellable: true,
+        },
+      });
+    });
+    render(<VersionNodeTrack />);
+    fireEvent.contextMenu(screen.getByTestId("version-node-root"), { clientX: 20, clientY: 20 });
+    fireEvent.click(screen.getByTestId("version-menu-adopt"));
+    await waitFor(() => expect(fixture.enter).toHaveBeenCalledOnce());
+    const saveButton = screen.getByTestId("create-save-point") as HTMLButtonElement;
+    await waitFor(() => expect(saveButton.disabled).toBe(true));
+
+    publishPreviewState({
+      active: false,
+      busy: true,
+      info: null,
+      loading: {
+        generation: 2,
+        source: { kind: "editing" },
+        label: "Current workspace",
+        phase: "restoring-context",
+        startedAt: performance.now(),
+        cancellable: true,
+      },
+    });
+    await waitFor(() => expect(saveButton.disabled).toBe(false));
+    expect(fixture.adopt).not.toHaveBeenCalled();
+  });
+  it("keeps node switching available while a previous preview request is pending", () => {
+    fixture.enter.mockImplementation(() => new Promise<void>(() => {}));
+    render(<VersionNodeTrack />);
+
+    fireEvent.doubleClick(screen.getByTestId("version-node-root"));
+    fireEvent.doubleClick(screen.getByTestId("version-node-branch"));
+    fireEvent.doubleClick(screen.getByTestId("version-node-child"));
+
+    expect(fixture.enter).toHaveBeenNthCalledWith(1, { kind: "node", nodeId: "root" }, { label: "Root A" });
+    expect(fixture.enter).toHaveBeenNthCalledWith(2, { kind: "node", nodeId: "branch" }, { label: "Alternate A" });
+    expect(fixture.enter).toHaveBeenNthCalledWith(3, { kind: "node", nodeId: "child" }, { label: "Continuation A" });
   });
   it("lays out portal context actions as four full-width rows", () => {
     const style = document.createElement("style");
@@ -194,7 +279,7 @@ describe("inspector archive browser", () => {
     fireEvent.contextMenu(screen.getByTestId("version-node-branch"), { clientX: 20, clientY: 20 });
     expect(screen.queryByTestId("version-rename-input")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("version-menu-preview"));
-    await waitFor(() => expect(fixture.enter).toHaveBeenCalledWith({ kind: "node", nodeId: "branch" }));
+    await waitFor(() => expect(fixture.enter).toHaveBeenCalledWith({ kind: "node", nodeId: "branch" }, { label: "Alternate A" }));
     expect(screen.getByTestId("archive-details")).toHaveTextContent("Alternate A");
     expect(fixture.renameNode).not.toHaveBeenCalled();
   });
@@ -223,5 +308,47 @@ describe("inspector archive browser", () => {
     render(<VersionNodeTrack />);
     fireEvent.click(screen.getByTestId("version-node-root"));
     expect(screen.getByTestId("archive-details")).toHaveTextContent("This save point is missing media or fonts and cannot be fully restored.");
+  });
+  it("shows the current load phase and offers cancellation", async () => {
+    fixture.preview = {
+      active: false,
+      busy: true,
+      info: null,
+      loading: {
+        generation: 2,
+        source: { kind: "node", nodeId: "root" },
+        label: "Root A",
+        phase: "reading-snapshot",
+        startedAt: performance.now(),
+        cancellable: true,
+      },
+    };
+    render(<VersionNodeTrack />);
+
+    expect(screen.getByTestId("preview-loading-status")).toHaveTextContent("Loading “Root A”");
+    expect(screen.getByTestId("preview-loading-stage")).toHaveTextContent("Reading saved project");
+    fireEvent.click(screen.getByTestId("cancel-preview-loading"));
+    await waitFor(() => expect(fixture.cancelPending).toHaveBeenCalledOnce());
+  });
+  it("cancels a busy preview before closing the archive sidebar", async () => {
+    fixture.preview = {
+      active: false,
+      busy: true,
+      info: null,
+      loading: {
+        generation: 3,
+        source: { kind: "node", nodeId: "root" },
+        label: "Root A",
+        phase: "loading-fonts",
+        startedAt: performance.now(),
+        cancellable: true,
+      },
+    };
+    const onClose = vi.fn();
+    render(<VersionNodeTrack onClose={onClose} />);
+
+    fireEvent.click(screen.getByTestId("close-archives"));
+    await waitFor(() => expect(fixture.exit).toHaveBeenCalledOnce());
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
   });
 });

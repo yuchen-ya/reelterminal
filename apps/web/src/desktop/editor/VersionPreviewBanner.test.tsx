@@ -15,6 +15,7 @@ const { enter, exit, adopt, getState } = vi.hoisted(() => {
     active: false,
     busy: false,
     info: null,
+    loading: null,
   };
   return {
     enter: vi.fn(() => Promise.resolve()),
@@ -40,7 +41,7 @@ vi.mock("../../services/preview-session", async (importOriginal) => {
   };
 });
 
-let state: PreviewSessionState = { active: false, busy: false, info: null };
+let state: PreviewSessionState = { active: false, busy: false, info: null, loading: null };
 
 function setState(next: Partial<PreviewSessionState>): void {
   state = { ...state, ...next };
@@ -51,7 +52,7 @@ describe("VersionPreviewBanner", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
-    setState({ active: false, busy: false, info: null });
+    setState({ active: false, busy: false, info: null, loading: null });
   });
 
   it("renders nothing while no preview is active", () => {

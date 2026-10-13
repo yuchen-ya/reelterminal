@@ -5,10 +5,14 @@ import type { FrameRequestToken } from "./frame-scheduler";
 
 /** Called after the owned bitmap was painted; this is canvas commit, not presentation. */
 export function recordCommittedPreviewFrame(project: object, token?: FrameRequestToken, contentAvailable = true): void {
-  if (!getPerfSink().enabled || !token) return;
-  markPerfOperation(token.performance, "frame.committed", { contentAvailable });
+  if (!token) return;
+  if (getPerfSink().enabled) {
+    markPerfOperation(token.performance, "frame.committed", { contentAvailable });
+  }
   if (contentAvailable) {
+    recordPreviewFirstFrame(project, { ...token, contentAvailable });
+  }
+  if (contentAvailable && getPerfSink().enabled) {
     recordGestureFrame(project, token.revision, token);
-    recordPreviewFirstFrame(project, token);
   }
 }

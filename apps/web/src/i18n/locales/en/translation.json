@@ -1029,7 +1029,18 @@
     "previewingShort": "Previewing",
     "compareCurrent": "Compare with current edit",
     "more": "More",
-    "previewSaveTarget": "Creating a save point records the actual current edit; the previewed point stays unchanged."
+    "previewSaveTarget": "Creating a save point records the actual current edit; the previewed point stays unchanged.",
+    "previewLoading": "Loading “{{name}}”",
+    "previewElapsed": "Elapsed {{seconds}} s",
+    "previewCancel": "Cancel loading",
+    "previewStageRequesting": "Starting request…",
+    "previewStageReadingSnapshot": "Reading saved project…",
+    "previewStageHydratingMedia": "Restoring media…",
+    "previewStageRestoringStore": "Preparing preview state…",
+    "previewStageLoadingFonts": "Loading fonts…",
+    "previewStageActivating": "Switching preview…",
+    "previewStageFirstFrame": "Waiting for the first valid frame…",
+    "previewStageRestoringContext": "Restoring the previous editing view…"
   },
   "closeRetention": {
     "title": "Create a save point before closing?",

@@ -22,6 +22,8 @@ export interface FrameRequestToken {
   readonly time: number;
   /** Project revision the request was made against. */
   readonly revision: number;
+  /** Version of the active view (for example a history preview request). */
+  readonly viewGeneration?: number;
   /** Measurement-only correlation; absent when capture is off. */
   readonly performance?: PerfOperation;
 }
@@ -34,9 +36,12 @@ export class FrameRenderScheduler {
   private committedSeq = 0;
   private latestRevision = 0;
   private running = false;
-  private pending: { time: number; revision: number; performance?: PerfOperation } | null = null;
+  private pending: { time: number; revision: number; viewGeneration?: number; performance?: PerfOperation } | null = null;
 
-  constructor(private readonly runner: FrameRenderRunner) {}
+  constructor(
+    private readonly runner: FrameRenderRunner,
+    private readonly getViewGeneration?: () => number,
+  ) {}
 
   /**
    * Ask for a frame at `time`. While a render is in flight the previous
@@ -50,10 +55,19 @@ export class FrameRenderScheduler {
       ? beginPerfOperation("frame.render", parent, { frameSeq: this.seq, frameEpoch: this.epoch, revision })
       : undefined;
     if (operation) {
-      this.pending = { time, revision, performance: operation };
+      this.pending = {
+        time,
+        revision,
+        ...(this.getViewGeneration ? { viewGeneration: this.getViewGeneration() } : {}),
+        performance: operation,
+      };
       operation.sink.mark("frame.requested", operation.context, { timelineTimeSeconds: time });
     } else {
-      this.pending = { time, revision };
+      this.pending = {
+        time,
+        revision,
+        ...(this.getViewGeneration ? { viewGeneration: this.getViewGeneration() } : {}),
+      };
     }
     void this.pump();
   }
@@ -76,7 +90,9 @@ export class FrameRenderScheduler {
   isCurrent(token: FrameRequestToken): boolean {
     return (
       token.epoch === this.epoch &&
+      token.seq === this.seq &&
       token.revision === this.latestRevision &&
+      (token.viewGeneration === undefined || token.viewGeneration === this.getViewGeneration?.()) &&
       token.seq > this.committedSeq
     );
   }
@@ -110,6 +126,7 @@ export class FrameRenderScheduler {
           epoch: this.epoch,
           time: target.time,
           revision: target.revision,
+          ...(target.viewGeneration !== undefined ? { viewGeneration: target.viewGeneration } : {}),
           ...(target.performance ? { performance: target.performance } : {}),
         };
         markPerfOperation(token.performance, "frame.started");

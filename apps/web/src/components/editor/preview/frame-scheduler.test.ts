@@ -85,6 +85,30 @@ describe("FrameRenderScheduler", () => {
     expect(scheduler.markCommitted(first)).toBe(false);
   });
 
+  it("expires an in-flight frame as soon as a newer request is queued", async () => {
+    const tokens: FrameRequestToken[] = [];
+    let releaseFirst: (() => void) | null = null;
+    const scheduler = new FrameRenderScheduler(async (token) => {
+      tokens.push(token);
+      if (tokens.length === 1) {
+        await new Promise<void>((resolve) => { releaseFirst = resolve; });
+      }
+    });
+
+    scheduler.request(1, 10);
+    await tick();
+    const first = tokens[0]!;
+    scheduler.request(2, 10);
+
+    expect(scheduler.isCurrent(first)).toBe(false);
+    expect(scheduler.markCommitted(first)).toBe(false);
+
+    releaseFirst!();
+    await tick();
+    await tick();
+    expect(scheduler.markCommitted(tokens[1]!)).toBe(true);
+  });
+
   it("expires results when the world changes underneath them", async () => {
     const tokens: FrameRequestToken[] = [];
     const scheduler = new FrameRenderScheduler(async (token) => {
@@ -97,6 +121,21 @@ describe("FrameRenderScheduler", () => {
     scheduler.invalidate();
     expect(scheduler.isCurrent(tokens[0])).toBe(false);
     expect(scheduler.markCommitted(tokens[0])).toBe(false);
+  });
+
+  it("expires frames immediately when the owning view generation changes", async () => {
+    const tokens: FrameRequestToken[] = [];
+    let viewGeneration = 1;
+    const scheduler = new FrameRenderScheduler(async (token) => {
+      tokens.push(token);
+    }, () => viewGeneration);
+
+    scheduler.request(1, 10);
+    await tick();
+    viewGeneration += 1;
+
+    expect(scheduler.isCurrent(tokens[0]!)).toBe(false);
+    expect(scheduler.markCommitted(tokens[0]!)).toBe(false);
   });
 
   it("expires results made against an older project revision", async () => {

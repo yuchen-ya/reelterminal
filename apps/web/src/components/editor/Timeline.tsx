@@ -61,7 +61,10 @@ import { useUIStore } from "../../stores/ui-store";
 import { toast } from "../../stores/notification-store";
 import { useEngineStore } from "../../stores/engine-store";
 import { getPlaybackBridge } from "../../bridges/playback-bridge";
-import { blockPreviewEditInteraction, isPreviewActive } from "../../services/preview-session";
+import {
+  blockPreviewEditInteraction,
+  isPreviewInteractionBlocked,
+} from "../../services/preview-session";
 import {
   deleteTimelineItem,
   duplicateTimelineItem,
@@ -1566,7 +1569,7 @@ export const Timeline: React.FC = () => {
         onContextMenuCapture={(e) => {
           // Preview clips use the existing context menu with copy-only items.
           // Blank/track editing menus remain unavailable.
-          if (isPreviewActive() && !(e.target as HTMLElement).closest("[data-live-editor-target-id]")) {
+          if (isPreviewInteractionBlocked() && !(e.target as HTMLElement).closest("[data-live-editor-target-id]")) {
             e.preventDefault();
             e.stopPropagation();
           }

@@ -1,8 +1,10 @@
 import { ReviewRangeControl } from "./preview/ReviewRangeControl";
 import { getPerfSink, markPerfOperation, withPerfSpan } from "@reelterminal/core";
 import { getProjectPerfOperation } from "../../performance/product-flow";
-import { getPreviewPerfOperation } from "../../services/preview-session";
+import { getPreviewPerfOperation, getPreviewViewGeneration, previewSession } from "../../services/preview-session";
+import { VersionPreviewLoadingStatus } from "../../desktop/editor/VersionPreviewLoadingStatus";
 import { recordCommittedPreviewFrame } from "./preview/frame-performance";
+import { canCommitHistoryFrame } from "./preview/history-frame-readiness";
 import { SelectionTransformOverlay } from "./preview/SelectionTransformOverlay";
 import { collectNativePlaybackImageClips } from "./preview/native-playback-image-clips";
 import { computeLetterboxGeometry } from "./preview/overlay-geometry";
@@ -20,6 +22,7 @@ import React, {
   useCallback,
   useState,
   useMemo,
+  useSyncExternalStore,
 } from "react";
 import {
   Play,
@@ -224,6 +227,7 @@ interface ClipWithPlaceholder {
 
 export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true }) => {
   const { t: tr } = useTranslation();
+  const previewSessionState = useSyncExternalStore(previewSession.subscribe, previewSession.getSnapshot);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const videoAreaRef = useRef<HTMLDivElement>(null);
@@ -387,7 +391,11 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   );
 
   const getLastGoodPreviewFrame = useCallback(
-    () => lastGoodPlaybackCanvasRef.current ?? lastGoodFrameRef.current,
+    () => {
+      const phase = previewSession.getSnapshot().loading?.phase;
+      if (phase === "awaiting-first-valid-frame" || phase === "restoring-context") return null;
+      return lastGoodPlaybackCanvasRef.current ?? lastGoodFrameRef.current;
+    },
     [],
   );
 
@@ -622,7 +630,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   // when any part of the project changes (including clips)
   const project = useProjectStore((state) => state.project);
   const workspaceId = useProjectStore((state) => state.workspaceId);
-  const previewViewIdentityRef = useRef({ projectId: project.id, workspaceId });
+  const previewViewIdentityRef = useRef({ projectId: project.id, workspaceId, viewGeneration: null as number | null });
   const getMediaItem = useProjectStore((state) => state.getMediaItem);
 
   useEffect(() => {
@@ -2126,6 +2134,28 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       const videoTracks = timelineTracks.filter(
         (t) => (t.type === "video" || t.type === "image") && !t.hidden,
       );
+      const expectedVideoClipIds = new Set(
+        videoTracks.flatMap((track) => track.clips
+          .filter((clip) =>
+            time >= clip.startTime && time < clip.startTime + clip.duration &&
+            !(clip as ClipWithPlaceholder).isPlaceholder,
+          )
+          .map((clip) => clip.id)),
+      );
+      const decodedVideoClipIds = new Set<string>();
+      const isHistoryFramePending = () => {
+        const phase = previewSession.getSnapshot().loading?.phase;
+        return phase === "awaiting-first-valid-frame" || phase === "restoring-context";
+      };
+      const hasCompleteVideoContent = () =>
+        [...expectedVideoClipIds].every((clipId) => decodedVideoClipIds.has(clipId));
+      const hasActivePlaceholder = videoTracks.some((track) =>
+        track.clips.some((clip) =>
+          time >= clip.startTime && time < clip.startTime + clip.duration &&
+          (clip as ClipWithPlaceholder).isPlaceholder,
+        ),
+      );
+      if (isHistoryFramePending() && hasActivePlaceholder) return false;
 
       let hasRenderedFrame = false;
       let shouldClearCanvas = true;
@@ -2198,6 +2228,15 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                 canvas.height,
               )
             : null;
+          if (clipAFrame && !(transitionInfo.clipA as ClipWithPlaceholder).isPlaceholder) {
+            decodedVideoClipIds.add(transitionInfo.clipA.id);
+          }
+          if (
+            clipBFrame && transitionInfo.clipB &&
+            !(transitionInfo.clipB as ClipWithPlaceholder).isPlaceholder
+          ) {
+            decodedVideoClipIds.add(transitionInfo.clipB.id);
+          }
           const blankFrame = transitionInfo.clipB
             ? null
             : await createTransparentImageBitmap(canvas.width, canvas.height);
@@ -2403,6 +2442,9 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                 );
 
                 if (frame) {
+                  if (!(clip as ClipWithPlaceholder).isPlaceholder) {
+                    decodedVideoClipIds.add(clip.id);
+                  }
                   // Blur canvas fill for images: decodeClipFrame returns a raw
                   // (un-letterboxed) bitmap for images, so paint it cover-fit +
                   // blurred behind everything before the contained clip is drawn
@@ -2629,6 +2671,13 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       }
 
       if (hasRenderedFrame && offscreenCanvasRef.current) {
+        const completeVideoContent = hasCompleteVideoContent();
+        if (!canCommitHistoryFrame({
+          historyFramePending: isHistoryFramePending(),
+          renderedContent: hasRenderedFrame,
+          expectedVideoClipIds,
+          decodedVideoClipIds,
+        })) return false;
         markPerfOperation(token?.performance, "frame.composited");
         // Single commit entry: only a complete frame belonging to the newest
         // request reaches the canvas, and the remembered bitmap is replaced
@@ -2650,7 +2699,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           },
         );
         if (commitResult === "committed") {
-          recordCommittedPreviewFrame(project, token);
+          recordCommittedPreviewFrame(project, token, completeVideoContent);
           clearPlaybackCanvasBuffers();
         }
         return commitResult === "committed";
@@ -2763,17 +2812,36 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
       const activeShapeClips = getActiveShapeClips(allShapeClips, time);
       const activeTextClips = getActiveTextClips(allTextClips, time);
+      const hasActiveVideoContent = timelineTracks.some((track) =>
+        (track.type === "video" || track.type === "image") && !track.hidden &&
+        track.clips.some((clip) =>
+          time >= clip.startTime && time < clip.startTime + clip.duration &&
+          !(clip as ClipWithPlaceholder).isPlaceholder,
+        ),
+      );
+      const historyFramePhase = previewSession.getSnapshot().loading?.phase;
+      const historyFramePending =
+        historyFramePhase === "awaiting-first-valid-frame" || historyFramePhase === "restoring-context";
+      const hasActivePlaceholder = timelineTracks.some((track) =>
+        (track.type === "video" || track.type === "image") && !track.hidden &&
+        track.clips.some((clip) =>
+          time >= clip.startTime && time < clip.startTime + clip.duration &&
+          (clip as ClipWithPlaceholder).isPlaceholder,
+        ),
+      );
 
       // Never clear a confirmed picture to a solid placeholder while a frame
       // is still expected: the last successfully committed frame stays on
       // screen and only real overlays are redrawn over it.
       const lastGood = getLastGoodPreviewFrame();
-      if (lastGood) {
+      const retainLastGoodFrame = Boolean(
+        lastGood && !(historyFramePending && hasActivePlaceholder),
+      );
+      if (lastGood && retainLastGoodFrame) {
         ctx.drawImage(lastGood, 0, 0, fallbackCanvas.width, fallbackCanvas.height);
       } else {
-        // Nothing confirmed yet — or the timeline genuinely has no visible
-        // content here. Show the project background (canvas fill mode), not
-        // a flat theme slab.
+        // Nothing confirmed yet, or the target contains an intentional media
+        // placeholder. Paint its own background instead of mixing old pixels.
         fillPreviewBackground(ctx, time, fallbackCanvas.width, fallbackCanvas.height);
       }
 
@@ -2793,7 +2861,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         if (track.type === "video" || track.type === "image") {
           // The name plate is only honest when no picture exists at all;
           // over a kept frame it would just obscure the preview.
-          if (lastGood) continue;
+          if (retainLastGoodFrame) continue;
           for (const clip of track.clips) {
             const clipStart = clip.startTime;
             const clipEnd = clip.startTime + clip.duration;
@@ -2903,6 +2971,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       const targetCanvas = canvasRef.current;
       const targetContext = targetCanvas?.getContext("2d");
       if (!targetCanvas || !targetContext || !isCurrent()) return;
+      if (historyFramePending && hasActiveVideoContent) return;
       const commitResult = await commitRenderedFrame(
         {
           isCurrent,
@@ -2918,7 +2987,14 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         },
       );
       if (commitResult === "committed") {
-        recordCommittedPreviewFrame(useProjectStore.getState().project, token, false);
+        // A committed background is a valid first frame for an intentionally
+        // empty timeline. A media clip awaiting decode is not: keep loading
+        // until its actual content frame commits.
+        recordCommittedPreviewFrame(
+          useProjectStore.getState().project,
+          token,
+          !hasActiveVideoContent,
+        );
         clearPlaybackCanvasBuffers();
       }
     },
@@ -2955,6 +3031,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   const frameSchedulerRef = useRef<FrameRenderScheduler | null>(null);
   if (!frameSchedulerRef.current) {
     frameSchedulerRef.current = new FrameRenderScheduler(async (token) => {
+      const projectAtStart = useProjectStore.getState().project;
       try {
         const rendered = await renderFrameDirectlyRef.current(token.time, token);
         if (!rendered) {
@@ -2962,8 +3039,11 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         }
       } catch (error) {
         console.warn("[Preview] frame render failed:", error);
+        if (frameSchedulerRef.current?.isCurrent(token)) {
+          await previewSession.failPendingFrame(projectAtStart, error);
+        }
       }
-    });
+    }, getPreviewViewGeneration);
   }
 
   const requestFrameRender = useCallback((time: number) => {
@@ -5862,14 +5942,30 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   // scheduler epoch; playback effects stop their old loop on workspace pause.
   useEffect(() => {
     const previous = previewViewIdentityRef.current;
-    if (previous.projectId === project.id && previous.workspaceId === workspaceId) return;
-    previewViewIdentityRef.current = { projectId: project.id, workspaceId };
+    const loadingViewGeneration =
+      previewSessionState.loading?.phase === "awaiting-first-valid-frame" ||
+      previewSessionState.loading?.phase === "restoring-context"
+        ? previewSessionState.loading.generation
+        : previous.viewGeneration;
+    if (
+      previous.projectId === project.id &&
+      previous.workspaceId === workspaceId &&
+      previous.viewGeneration === loadingViewGeneration
+    ) return;
+    previewViewIdentityRef.current = {
+      projectId: project.id,
+      workspaceId,
+      viewGeneration: loadingViewGeneration,
+    };
 
     releaseScrubVideoElements();
     frameSchedulerRef.current?.invalidate();
-    lastGoodFrameRef.current?.close();
-    lastGoodFrameRef.current = null;
-    clearPlaybackCanvasBuffers();
+    const keepPreviousHistoryFrame = previewSessionState.loading !== null;
+    if (!keepPreviousHistoryFrame) {
+      lastGoodFrameRef.current?.close();
+      lastGoodFrameRef.current = null;
+      clearPlaybackCanvasBuffers();
+    }
 
     cleanupPlaybackResources();
     for (const entry of nativeVideoCacheRef.current.values()) {
@@ -5898,7 +5994,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
-    if (canvas && context) {
+    if (canvas && context && !keepPreviousHistoryFrame) {
       context.clearRect(0, 0, canvas.width, canvas.height);
       fillPreviewBackground(context, playheadPosition, canvas.width, canvas.height);
     }
@@ -5908,6 +6004,8 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     project.id,
     project.modifiedAt,
     workspaceId,
+    previewSessionState.loading?.generation,
+    previewSessionState.loading?.phase,
     playheadPosition,
     projectRevision,
     isPlaying,
@@ -5920,8 +6018,31 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   ]);
 
   const [previewInvalidateCounter, setPreviewInvalidateCounter] = useState(0);
+  const fillPreviewBackgroundRef = useRef(fillPreviewBackground);
   useEffect(() => {
-    const handler = () => {
+    fillPreviewBackgroundRef.current = fillPreviewBackground;
+  }, [fillPreviewBackground]);
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const discardRetainedFrame =
+        (event as CustomEvent<{ discardRetainedFrame?: boolean }>).detail?.discardRetainedFrame;
+      if (discardRetainedFrame) {
+        lastGoodFrameRef.current?.close();
+        lastGoodFrameRef.current = null;
+        clearPlaybackCanvasBuffers();
+        const canvas = canvasRef.current;
+        const context = canvas?.getContext("2d");
+        if (canvas && context) {
+          context.clearRect(0, 0, canvas.width, canvas.height);
+          fillPreviewBackgroundRef.current(
+            context,
+            playheadPositionRef.current,
+            canvas.width,
+            canvas.height,
+          );
+        }
+      }
+      frameSchedulerRef.current?.invalidate();
       processedAudioBufferCacheRef.current.clear();
       if (audioGraphRef.current) {
         audioGraphRef.current.seekTo(getMasterClock().currentTime);
@@ -5930,7 +6051,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     };
     window.addEventListener("reelterminal:preview-invalidate", handler);
     return () => window.removeEventListener("reelterminal:preview-invalidate", handler);
-  }, []);
+  }, [clearPlaybackCanvasBuffers]);
 
   useEffect(() => {
     if (isPlaying || previewInvalidateCounter === 0) return;
@@ -7221,6 +7342,15 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
                   : "default",
             }}
           />
+
+          {previewSessionState.loading ? (
+            <div
+              data-testid="preview-loading-overlay"
+              className="absolute inset-0 z-40 flex items-start justify-center bg-black/20 p-4 backdrop-blur-[1px]"
+            >
+              <VersionPreviewLoadingStatus className="w-full max-w-sm" />
+            </div>
+          ) : null}
 
           {agentTargetMarkerStyle ? (
             <div

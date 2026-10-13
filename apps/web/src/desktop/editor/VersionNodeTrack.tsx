@@ -7,6 +7,7 @@ import { useUIStore } from "../../stores/ui-store";
 import { toast, useNotificationStore } from "../../stores/notification-store";
 import { createHistoryFrameRenderer } from "../../components/editor/preview/history-frame-renderer";
 import { activateHistoryComparison } from "../../components/editor/preview/ReferenceComparisonPanel";
+import { VersionPreviewLoadingStatus } from "./VersionPreviewLoadingStatus";
 const PALETTE = ["#69aaa0", "#b493bc", "#c59b67", "#779ac5", "#a7ad73", "#c7838c", "#8fa3af", "#aa987b"];
 const ROW_HEIGHT = 30;
 const feedback = "transition-[color,background-color,opacity] duration-150 motion-reduce:transition-none";
@@ -24,6 +25,36 @@ function nodeColors(nodes: readonly ProjectNodeSummary[]): Map<string, string> {
     return index;
   };
   return new Map(nodes.map(node => [node.id, PALETTE[colorIndex(node)]!]));
+}
+
+function waitForNodePreviewReady(nodeId: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    let unsubscribe: (() => void) | undefined;
+    let settled = false;
+    const finish = (ready: boolean) => {
+      if (settled) return;
+      settled = true;
+      unsubscribe?.();
+      resolve(ready);
+    };
+    const check = () => {
+      const state = previewSession.getSnapshot();
+      if (state.active && state.info?.nodeId === nodeId && !state.busy && state.loading == null) {
+        finish(true);
+        return;
+      }
+      if (state.loading == null && !state.busy) {
+        finish(false);
+        return;
+      }
+      if (state.loading?.source.kind === "editing" ||
+          (state.loading?.source.kind === "node" && state.loading.source.nodeId !== nodeId)) {
+        finish(false);
+      }
+    };
+    unsubscribe = previewSession.subscribe(check);
+    check();
+  });
 }
 
 /** Inspector archive browser: read summaries until the user asks to preview. */
@@ -136,10 +167,12 @@ export function VersionNodeTrack({
     setSelectedId(nodeId);
     setRename(null);
     setMenu(null);
-    void perform(() => previewSession.enter({
+    void previewSession.enter({
       kind: "node",
       nodeId
-    }));
+    }, { label: byId.get(nodeId)?.name ?? nodeId }).catch((error) => {
+      toast.error(t("versioning.failed"), error instanceof Error ? error.message : String(error));
+    });
   };
   const removeNode = (nodeId: string) => void perform(async () => {
     setMenu(null);
@@ -169,8 +202,8 @@ export function VersionNodeTrack({
     await previewSession.enter({
       kind: "node",
       nodeId
-    });
-    await previewSession.adopt();
+    }, { label: byId.get(nodeId)?.name ?? nodeId });
+    if (await waitForNodePreviewReady(nodeId)) await previewSession.adopt();
   });
   const commitRename = () => {
     if (!selected || !rename?.trim()) return;
@@ -219,6 +252,13 @@ export function VersionNodeTrack({
     const target = workspaceManager.getActiveTarget();
     if (target?.projectId === id && target.workspaceId === editId) useUIStore.getState().showCurrentArchive();
   });
+  const closeTrack = () => {
+    if (preview.loading?.cancellable) {
+      void previewSession.exit().finally(() => onClose?.());
+      return;
+    }
+    onClose?.();
+  };
   const menuActions = (nodeId: string, contextMenu = false) => <>
     <button role="menuitem" data-testid={contextMenu ? "version-menu-preview" : undefined} onClick={() => previewNode(nodeId)}>{t("versioning.menuPreview")}</button>
     <button role="menuitem" data-testid={contextMenu ? "version-menu-rename" : undefined} onClick={() => {
@@ -234,8 +274,9 @@ export function VersionNodeTrack({
     <header className="shrink-0 space-y-2 border-b border-border p-3">
       <div className="flex items-center justify-between gap-2"><h2 className="font-medium">{t("versioning.trackLabel")}</h2>
         <div className="flex items-center gap-1"><button type="button" data-testid="create-save-point" disabled={busy} onClick={save} className={`rounded border border-border px-2 py-1 text-fg-2 hover:bg-hover ${feedback}`}>{t("versioning.retainMenu")}</button>
-        {onClose ? <button type="button" aria-label={t("desktopInspector.close")} data-testid="close-archives" onClick={onClose} className="h-6 w-6 rounded text-fg-3 hover:bg-hover hover:text-fg">×</button> : null}</div></div>
+        {onClose ? <button type="button" aria-label={t("desktopInspector.close")} data-testid="close-archives" onClick={closeTrack} className="h-6 w-6 rounded text-fg-3 hover:bg-hover hover:text-fg">×</button> : null}</div></div>
       {preview.active ? <p className="leading-relaxed text-fg-2">{t("versioning.previewSaveTarget")}</p> : null}
+      <VersionPreviewLoadingStatus className="mx-3 mb-2" />
       {base && !byId.has(base) ? <p data-testid="current-edit-endpoint" className="text-fg-2">{t("versioning.recycledBase")}</p> : workspace?.dirty && nodes.length > 0 ? <p className="text-fg-2">{t("versioning.newEdits")}</p> : null}
     </header>
     <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar">

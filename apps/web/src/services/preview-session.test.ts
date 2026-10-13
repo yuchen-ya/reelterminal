@@ -23,6 +23,7 @@ import * as renderDependencies from "./project-render-dependencies";
 import { workspaceManager } from "./workspace-manager";
 import {
   blockPreviewEditInteraction,
+  getPreviewViewGeneration,
   getPreviewPerfOperation,
   isPreviewActive,
   previewSession,
@@ -107,6 +108,12 @@ function textSelection(id: string): SelectionItem {
   return { type: "text-clip", id, trackId: TEXT_TRACK_ID };
 }
 
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 describe("previewSession", () => {
   beforeAll(() => {
     globalThis.indexedDB = new IDBFactory();
@@ -131,6 +138,15 @@ describe("previewSession", () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     if (isPreviewActive()) await previewSession.exit();
+    const restoredState = previewSession.getSnapshot();
+    if (!restoredState.active && restoredState.loading?.phase === "restoring-context") {
+      recordPreviewFirstFrame(useProjectStore.getState().project, {
+        seq: 100,
+        epoch: 100,
+        revision: useProjectStore.getState().projectRevision,
+        contentAvailable: true,
+      });
+    }
     useNotificationStore.setState({ notifications: [] });
   });
 
@@ -193,6 +209,7 @@ describe("previewSession", () => {
       expect(getPreviewPerfOperation(projectB)).toBeDefined();
       recordPreviewFirstFrame(projectB, { seq: 2, epoch: 7, revision: 4 });
       expect(getPreviewPerfOperation(projectB)).toBeUndefined();
+      expect(previewSession.getSnapshot()).toMatchObject({ busy: false, loading: null });
 
       const report = controller.stopCapture();
       expect(report.openSpans).toBe(0);
@@ -210,6 +227,442 @@ describe("previewSession", () => {
     } finally {
       if (controller.activeRunId) controller.stopCapture();
     }
+  });
+
+  it("does not complete loading on a background-only frame", async () => {
+    const target = await createProject("Empty preview frame");
+    await workspaceManager.activateWorkspace(target);
+    const nodeId = await saveNodeNamed(target, "Empty preview", "A");
+    await previewSession.enter({ kind: "node", nodeId });
+    const project = getActiveProjectRuntimeStore().getState().project;
+
+    recordPreviewFirstFrame(project, {
+      seq: 1,
+      epoch: 1,
+      revision: 0,
+      contentAvailable: false,
+    });
+    expect(previewSession.getSnapshot().loading?.phase).toBe("awaiting-first-valid-frame");
+
+    recordPreviewFirstFrame(project, {
+      seq: 2,
+      epoch: 1,
+      revision: 0,
+      contentAvailable: true,
+    });
+    expect(previewSession.getSnapshot()).toMatchObject({ busy: false, loading: null });
+  });
+
+  it("keeps lifecycle completion active after a performance capture is stopped", async () => {
+    const target = await createProject("Stop capture during preview");
+    await workspaceManager.activateWorkspace(target);
+    const nodeId = await saveNodeNamed(target, "Capture stop", "A");
+    const controller = new CaptureController();
+    controller.startCapture({ mode: "trace" });
+    try {
+      await previewSession.enter({ kind: "node", nodeId });
+      const project = getActiveProjectRuntimeStore().getState().project;
+      const report = controller.stopCapture();
+      expect(report.openSpans).toBe(0);
+      expect(previewSession.getSnapshot().loading?.phase).toBe("awaiting-first-valid-frame");
+
+      recordPreviewFirstFrame(project, { seq: 12, epoch: 4, revision: 0, contentAvailable: true });
+      expect(previewSession.getSnapshot()).toMatchObject({ busy: false, loading: null });
+    } finally {
+      if (controller.activeRunId) controller.stopCapture();
+    }
+  });
+
+  it("lets the last A→B→C request win and disposes every stale handle", async () => {
+    const target = await createProject("Latest preview request");
+    await workspaceManager.activateWorkspace(target);
+    const nodeA = await saveNodeNamed(target, "Latest A", "A");
+    const nodeB = await saveNodeNamed(target, "Latest B", "B");
+    const nodeC = await saveNodeNamed(target, "Latest C", "C");
+    const originalCreate = workspaceManager.createPreviewHandle.bind(workspaceManager);
+    const gates = new Map([[nodeA, deferred()], [nodeB, deferred()], [nodeC, deferred()]]);
+    const createdHandles: Awaited<ReturnType<typeof workspaceManager.createPreviewHandle>>[] = [];
+    vi.spyOn(workspaceManager, "createPreviewHandle").mockImplementation(async (source, parent) => {
+      await gates.get(source.kind === "node" ? source.nodeId : source.workspaceId)?.promise;
+      const handle = await originalCreate(source, parent);
+      createdHandles.push(handle);
+      vi.spyOn(handle, "dispose");
+      return handle;
+    });
+
+    const first = previewSession.enter({ kind: "node", nodeId: nodeA });
+    const second = previewSession.enter({ kind: "node", nodeId: nodeB });
+    const latest = previewSession.enter({ kind: "node", nodeId: nodeC });
+    gates.get(nodeB)!.resolve();
+    gates.get(nodeA)!.resolve();
+    gates.get(nodeC)!.resolve();
+    await Promise.all([first, second, latest]);
+
+    expect(previewSession.getSnapshot().info?.nodeId).toBe(nodeC);
+    expect(createdHandles).toHaveLength(3);
+    const staleHandles = createdHandles.filter((created) => created.label.name !== "C");
+    expect(staleHandles).toHaveLength(2);
+    for (const stale of staleHandles) expect(stale.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a pending enter on exit and disposes a handle that resolves late", async () => {
+    const target = await createProject("Cancel preview request");
+    await workspaceManager.activateWorkspace(target);
+    const editingStore = getActiveProjectRuntimeStore();
+    const nodeId = await saveNodeNamed(target, "Cancel preview", "A");
+    const gate = deferred();
+    const originalCreate = workspaceManager.createPreviewHandle.bind(workspaceManager);
+    const createdHandles: Awaited<ReturnType<typeof workspaceManager.createPreviewHandle>>[] = [];
+    vi.spyOn(workspaceManager, "createPreviewHandle").mockImplementation(async (source, parent) => {
+      await gate.promise;
+      const createdHandle = await originalCreate(source, parent);
+      createdHandles.push(createdHandle);
+      vi.spyOn(createdHandle, "dispose");
+      return createdHandle;
+    });
+
+    const entering = previewSession.enter({ kind: "node", nodeId });
+    await previewSession.exit();
+    gate.resolve();
+    await entering;
+
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: false, info: null, loading: null });
+    expect(getActiveProjectRuntimeStore()).toBe(editingStore);
+    expect(createdHandles[0]?.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("cancels an activated request, restores the edit view, and ignores its late frame", async () => {
+    const target = await createProject("Cancel active preview");
+    await workspaceManager.activateWorkspace(target);
+    const editing = await workspaceManager.getWorkspaceContext(target);
+    const nodeId = await saveNodeNamed(target, "Cancel active preview", "A");
+    editing.store.getState().executeActionBatch([{
+      type: "track/add",
+      id: "cancel-preview-track-add",
+      timestamp: Date.now(),
+      params: { trackType: "video", trackId: "edit-track" },
+    }], { groupLabel: "Unsaved edit", historyOwner: "human" });
+    useUIStore.setState({
+      selectedItems: [{ type: "clip", id: "edit-selection", trackId: "edit-track" }],
+      lastSelectedItem: { type: "clip", id: "edit-selection", trackId: "edit-track" },
+    });
+    const selectionBefore = useUIStore.getState().selectedItems;
+    const undoBefore = editing.store.getState().actionHistory.getHistoryEntries();
+    const dirtyBefore = editing.store.getState().workspaceDirty;
+
+    await previewSession.enter({ kind: "node", nodeId });
+    const stalePreviewProject = getActiveProjectRuntimeStore().getState().project;
+    expect(previewSession.getSnapshot().loading?.phase).toBe("awaiting-first-valid-frame");
+    await previewSession.cancelPending();
+
+    expect(getActiveProjectRuntimeStore()).toBe(editing.store);
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: true });
+    recordPreviewFirstFrame(stalePreviewProject, {
+      seq: 3,
+      epoch: 9,
+      revision: 0,
+      contentAvailable: true,
+    });
+    expect(previewSession.getSnapshot().loading?.phase).toBe("restoring-context");
+    recordPreviewFirstFrame(editing.store.getState().project, {
+      seq: 4,
+      epoch: 9,
+      revision: editing.store.getState().projectRevision,
+      contentAvailable: true,
+    });
+
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: false, loading: null });
+    expect(editing.store.getState().actionHistory.getHistoryEntries()).toEqual(undoBefore);
+    expect(editing.store.getState().workspaceDirty).toBe(dirtyBefore);
+    expect(useUIStore.getState().selectedItems).toEqual(selectionBefore);
+  });
+
+  it("keeps normal preview exit in restoring-context until the editing frame is valid", async () => {
+    const target = await createProject("Exit waits for editing frame");
+    await workspaceManager.activateWorkspace(target);
+    const editing = await workspaceManager.getWorkspaceContext(target);
+    const nodeId = await saveNodeNamed(target, "Exit restore", "A");
+    editing.store.getState().executeActionBatch([{
+      type: "track/add",
+      id: "exit-preview-edit-track",
+      timestamp: Date.now(),
+      params: { trackType: "video", trackId: "edit-track" },
+    }], { groupLabel: "Unsaved edit", historyOwner: "human" });
+    useUIStore.setState({
+      selectedItems: [{ type: "clip", id: "edit-selection", trackId: "edit-track" }],
+      lastSelectedItem: { type: "clip", id: "edit-selection", trackId: "edit-track" },
+    });
+    const selectionBefore = useUIStore.getState().selectedItems;
+    const undoBefore = editing.store.getState().actionHistory.getHistoryEntries();
+    const dirtyBefore = editing.store.getState().workspaceDirty;
+
+    await previewSession.enter({ kind: "node", nodeId });
+    const previewProject = getActiveProjectRuntimeStore().getState().project;
+    recordPreviewFirstFrame(previewProject, {
+      seq: 20,
+      epoch: 12,
+      revision: 0,
+      contentAvailable: true,
+    });
+    expect(previewSession.getSnapshot().loading).toBeNull();
+
+    await previewSession.exit();
+
+    expect(getActiveProjectRuntimeStore()).toBe(editing.store);
+    expect(previewSession.getSnapshot()).toMatchObject({
+      active: false,
+      busy: true,
+      loading: { phase: "restoring-context", source: { kind: "editing" }, cancellable: true },
+    });
+    expect(blockPreviewEditInteraction()).toBe(true);
+    expect(editing.store.getState().actionHistory.getHistoryEntries()).toEqual(undoBefore);
+    expect(editing.store.getState().workspaceDirty).toBe(dirtyBefore);
+    expect(useUIStore.getState().selectedItems).toEqual(selectionBefore);
+
+    recordPreviewFirstFrame(editing.store.getState().project, {
+      seq: 21,
+      epoch: 12,
+      revision: editing.store.getState().projectRevision,
+      contentAvailable: true,
+    });
+
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: false, loading: null });
+    expect(blockPreviewEditInteraction()).toBe(false);
+    expect(editing.store.getState().actionHistory.getHistoryEntries()).toEqual(undoBefore);
+    expect(editing.store.getState().workspaceDirty).toBe(dirtyBefore);
+    expect(useUIStore.getState().selectedItems).toEqual(selectionBefore);
+  });
+
+  it("restores editing when an activated node cannot render its first valid frame", async () => {
+    const target = await createProject("Failed preview frame");
+    await workspaceManager.activateWorkspace(target);
+    const editing = await workspaceManager.getWorkspaceContext(target);
+    const nodeId = await saveNodeNamed(target, "Failed preview frame", "A");
+    await previewSession.enter({ kind: "node", nodeId });
+    const failedProject = getActiveProjectRuntimeStore().getState().project;
+
+    await previewSession.failPendingFrame(failedProject, new Error("decoder failed"));
+
+    expect(getActiveProjectRuntimeStore()).toBe(editing.store);
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: true });
+    recordPreviewFirstFrame(failedProject, {
+      seq: 5,
+      epoch: 10,
+      revision: 0,
+      contentAvailable: true,
+    });
+    expect(previewSession.getSnapshot().loading?.phase).toBe("restoring-context");
+    recordPreviewFirstFrame(editing.store.getState().project, {
+      seq: 6,
+      epoch: 10,
+      revision: editing.store.getState().projectRevision,
+      contentAvailable: true,
+    });
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: false, loading: null });
+  });
+
+  it("ends a failed editing return-frame wait without losing editor state", async () => {
+    const target = await createProject("Failed editing return frame");
+    await workspaceManager.activateWorkspace(target);
+    const editing = await workspaceManager.getWorkspaceContext(target);
+    const nodeId = await saveNodeNamed(target, "Return failure", "A");
+    editing.store.getState().executeActionBatch([{
+      type: "track/add",
+      id: "return-failure-edit-track",
+      timestamp: Date.now(),
+      params: { trackType: "video", trackId: "edit-track" },
+    }], { groupLabel: "Unsaved edit", historyOwner: "human" });
+    const selection = { type: "clip" as const, id: "edit-selection", trackId: "edit-track" };
+    useUIStore.setState({ selectedItems: [selection], lastSelectedItem: selection });
+    const undoBefore = editing.store.getState().actionHistory.getHistoryEntries();
+    const dirtyBefore = editing.store.getState().workspaceDirty;
+    const selectionBefore = useUIStore.getState().selectedItems;
+
+    await previewSession.enter({ kind: "node", nodeId });
+    recordPreviewFirstFrame(getActiveProjectRuntimeStore().getState().project, {
+      seq: 30, epoch: 15, revision: 0, contentAvailable: true,
+    });
+    await previewSession.exit();
+    const returnProject = editing.store.getState().project;
+    const returnGeneration = previewSession.getSnapshot().loading?.generation;
+    expect(previewSession.getSnapshot().loading).toMatchObject({ phase: "restoring-context", cancellable: true });
+
+    await previewSession.failPendingFrame(returnProject, new Error("editing decoder failed"));
+
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: false, loading: null });
+    expect(blockPreviewEditInteraction()).toBe(false);
+    expect(useNotificationStore.getState().notifications.some((notification) =>
+      notification.type === "error" && notification.message === "editing decoder failed",
+    )).toBe(true);
+    expect(editing.store.getState().actionHistory.getHistoryEntries()).toEqual(undoBefore);
+    expect(editing.store.getState().workspaceDirty).toBe(dirtyBefore);
+    expect(useUIStore.getState().selectedItems).toEqual(selectionBefore);
+
+    // A late frame from the failed return cannot complete the old generation.
+    recordPreviewFirstFrame(returnProject, {
+      seq: 31,
+      epoch: 15,
+      revision: editing.store.getState().projectRevision,
+      viewGeneration: returnGeneration,
+      contentAvailable: true,
+    });
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: false, loading: null });
+    expect(getPreviewViewGeneration()).toBeGreaterThan(returnGeneration!);
+    expect(editing.store.getState().actionHistory.getHistoryEntries()).toEqual(undoBefore);
+  });
+
+  it("cancels the editing return-frame gate on exit and ignores its late frame", async () => {
+    const target = await createProject("Cancel editing return frame");
+    await workspaceManager.activateWorkspace(target);
+    const editing = await workspaceManager.getWorkspaceContext(target);
+    const nodeId = await saveNodeNamed(target, "Return cancel", "A");
+    editing.store.getState().executeActionBatch([{
+      type: "track/add",
+      id: "return-cancel-edit-track",
+      timestamp: Date.now(),
+      params: { trackType: "video", trackId: "edit-track" },
+    }], { groupLabel: "Unsaved edit", historyOwner: "human" });
+    const selection = { type: "clip" as const, id: "edit-selection", trackId: "edit-track" };
+    useUIStore.setState({ selectedItems: [selection], lastSelectedItem: selection });
+    const undoBefore = editing.store.getState().actionHistory.getHistoryEntries();
+    const dirtyBefore = editing.store.getState().workspaceDirty;
+    const selectionBefore = useUIStore.getState().selectedItems;
+
+    await previewSession.enter({ kind: "node", nodeId });
+    recordPreviewFirstFrame(getActiveProjectRuntimeStore().getState().project, {
+      seq: 32, epoch: 16, revision: 0, contentAvailable: true,
+    });
+    await previewSession.exit();
+    const returnProject = editing.store.getState().project;
+    const returnGeneration = previewSession.getSnapshot().loading?.generation;
+    expect(blockPreviewEditInteraction()).toBe(true);
+
+    // The track close action also calls exit(); in restoring-context it cancels
+    // the wait instead of returning early because the preview handle is gone.
+    await previewSession.exit();
+
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: false, loading: null });
+    expect(blockPreviewEditInteraction()).toBe(false);
+    recordPreviewFirstFrame(returnProject, {
+      seq: 33,
+      epoch: 16,
+      revision: editing.store.getState().projectRevision,
+      viewGeneration: returnGeneration,
+      contentAvailable: true,
+    });
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: false, loading: null });
+    expect(getPreviewViewGeneration()).toBeGreaterThan(returnGeneration!);
+    expect(editing.store.getState().actionHistory.getHistoryEntries()).toEqual(undoBefore);
+    expect(editing.store.getState().workspaceDirty).toBe(dirtyBefore);
+    expect(useUIStore.getState().selectedItems).toEqual(selectionBefore);
+  });
+
+  it("retargets copy-to-current's return-frame gate to the pasted editing project", async () => {
+    const target = await createProject("Copy return frame");
+    await workspaceManager.activateWorkspace(target);
+    const editing = await workspaceManager.getWorkspaceContext(target);
+    await editing.store.getState().addTrack("graphics");
+    const graphicsTrack = editing.store.getState().project.timeline.tracks.find((track) => track.type === "graphics")!;
+    const shape = editing.store.getState().createShapeClip(graphicsTrack.id, 0, "rectangle", 1)!;
+    const saved = await workspaceManager.saveNode({ target, name: "Text clip node" });
+
+    await previewSession.enter({ kind: "node", nodeId: saved.node.id });
+    const previewProject = getActiveProjectRuntimeStore().getState().project;
+    recordPreviewFirstFrame(previewProject, {
+      seq: 34, epoch: 17, revision: 0, contentAvailable: true,
+    });
+    const projectBeforePaste = editing.store.getState().project;
+
+    await previewSession.copyToCurrent([shape.id]);
+
+    const pastedProject = editing.store.getState().project;
+    expect(pastedProject).not.toBe(projectBeforePaste);
+    expect((pastedProject.shapeClips ?? []).length).toBe(2);
+    expect(previewSession.getSnapshot().loading).toMatchObject({ phase: "restoring-context", source: { kind: "editing" } });
+    expect(blockPreviewEditInteraction()).toBe(true);
+
+    // The pre-paste project frame is stale; only the newly published edit can
+    // satisfy the pending return gate.
+    recordPreviewFirstFrame(projectBeforePaste, {
+      seq: 35,
+      epoch: 17,
+      revision: editing.store.getState().projectRevision,
+      contentAvailable: true,
+    });
+    expect(previewSession.getSnapshot().loading?.phase).toBe("restoring-context");
+    recordPreviewFirstFrame(pastedProject, {
+      seq: 36,
+      epoch: 17,
+      revision: editing.store.getState().projectRevision,
+      contentAvailable: true,
+    });
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: false, loading: null });
+    expect(blockPreviewEditInteraction()).toBe(false);
+  });
+
+  it("keeps dirty edit, selection, and undo state when node loading fails", async () => {
+    const target = await createProject("Failed preview preserves edits");
+    await workspaceManager.activateWorkspace(target);
+    const editing = await workspaceManager.getWorkspaceContext(target);
+    const nodeId = await saveNodeNamed(target, "Failed preview", "A");
+    const action = {
+      type: "track/add",
+      id: "preview-failure-add-track",
+      timestamp: Date.now(),
+      params: { trackType: "video", trackId: "edit-track" },
+    } as const;
+    editing.store.getState().executeActionBatch([action], {
+      groupLabel: "Edit before preview",
+      historyOwner: "human",
+    });
+    expect(editing.store.getState().canUndo()).toBe(true);
+    useUIStore.setState({
+      selectedItems: [{ type: "clip", id: "edit-selection", trackId: "edit-track" }],
+      lastSelectedItem: { type: "clip", id: "edit-selection", trackId: "edit-track" },
+    });
+    const projectBefore = editing.store.getState().project;
+    const undoBefore = editing.store.getState().actionHistory.getHistoryEntries();
+    const selectionBefore = useUIStore.getState().selectedItems;
+    const dirtyBefore = editing.store.getState().workspaceDirty;
+    expect(dirtyBefore).toBe(true);
+    vi.spyOn(workspaceManager, "createPreviewHandle").mockRejectedValueOnce(new Error("font load failed"));
+
+    await expect(previewSession.enter({ kind: "node", nodeId })).rejects.toThrow("font load failed");
+
+    expect(getActiveProjectRuntimeStore()).toBe(editing.store);
+    expect(editing.store.getState().project).toBe(projectBefore);
+    expect(editing.store.getState().actionHistory.getHistoryEntries()).toEqual(undoBefore);
+    expect(editing.store.getState().workspaceDirty).toBe(dirtyBefore);
+    expect(useUIStore.getState().selectedItems).toEqual(selectionBefore);
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: false, loading: null });
+  });
+
+  it("returns from the previous history preview to editing when a replacement load fails", async () => {
+    const target = await createProject("Failed replacement preview");
+    await workspaceManager.activateWorkspace(target);
+    const editing = await workspaceManager.getWorkspaceContext(target);
+    const nodeA = await saveNodeNamed(target, "Previous preview", "A");
+    const nodeB = await saveNodeNamed(target, "Failed replacement", "B");
+    await previewSession.enter({ kind: "node", nodeId: nodeA });
+    recordPreviewFirstFrame(getActiveProjectRuntimeStore().getState().project, {
+      seq: 7,
+      epoch: 11,
+      revision: 0,
+      contentAvailable: true,
+    });
+    vi.spyOn(workspaceManager, "createPreviewHandle").mockRejectedValueOnce(new Error("snapshot missing"));
+
+    await expect(previewSession.enter({ kind: "node", nodeId: nodeB })).rejects.toThrow("snapshot missing");
+
+    expect(getActiveProjectRuntimeStore()).toBe(editing.store);
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: true });
+    recordPreviewFirstFrame(editing.store.getState().project, {
+      seq: 8,
+      epoch: 11,
+      revision: editing.store.getState().projectRevision,
+      contentAvailable: true,
+    });
+    expect(previewSession.getSnapshot()).toMatchObject({ active: false, busy: false, loading: null });
   });
 
   it("rejects executeAction on the preview store", async () => {
@@ -249,7 +702,15 @@ describe("previewSession", () => {
     expect(hints).toHaveLength(1);
 
     await previewSession.exit();
+    expect(blockPreviewEditInteraction()).toBe(true);
+    recordPreviewFirstFrame(useProjectStore.getState().project, {
+      seq: 22,
+      epoch: 13,
+      revision: useProjectStore.getState().projectRevision,
+      contentAvailable: true,
+    });
     expect(blockPreviewEditInteraction()).toBe(false);
+    expect(hints).toHaveLength(1);
   });
 
   it("swaps content on repeated enters, keeps a single capture, restores on exit and releases fonts", async () => {
@@ -289,6 +750,12 @@ describe("previewSession", () => {
     useTimelineStore.setState({ playheadPosition: 9 });
 
     await previewSession.exit();
+    recordPreviewFirstFrame(useProjectStore.getState().project, {
+      seq: 101,
+      epoch: 101,
+      revision: useProjectStore.getState().projectRevision,
+      contentAvailable: true,
+    });
 
     expect(previewSession.getSnapshot()).toMatchObject({
       active: false,
@@ -339,6 +806,9 @@ describe("previewSession", () => {
     });
 
     await previewSession.enter({ kind: "node", nodeId });
+    recordPreviewFirstFrame(getActiveProjectRuntimeStore().getState().project, {
+      seq: 60, epoch: 20, revision: 0, contentAvailable: true,
+    });
     await previewSession.adopt();
 
     // Preview ended, node content is loaded into the editing workspace.
@@ -396,6 +866,9 @@ describe("previewSession", () => {
     const revisionBeforeAdopt = editing.store.getState().workspaceRevision;
 
     await previewSession.enter({ kind: "node", nodeId });
+    recordPreviewFirstFrame(getActiveProjectRuntimeStore().getState().project, {
+      seq: 61, epoch: 21, revision: 0, contentAvailable: true,
+    });
 
     // A concurrent edit lands while the adoption is being prepared
     // (restoreNode reads the node through getNode).
@@ -469,6 +942,9 @@ describe("previewSession", () => {
       workspaceId: trial.id,
       nodeName: "Agent trial cut",
       agentTrial: true,
+    });
+    recordPreviewFirstFrame(getActiveProjectRuntimeStore().getState().project, {
+      seq: 62, epoch: 22, revision: 0, contentAvailable: true,
     });
 
     await previewSession.adopt();

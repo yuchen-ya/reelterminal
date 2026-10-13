@@ -1029,7 +1029,18 @@
     "previewingShort": "预览中",
     "compareCurrent": "与当前编辑对比",
     "more": "更多",
-    "previewSaveTarget": "创建存档点记录实际的当前编辑，不改变正在预览的存档。"
+    "previewSaveTarget": "创建存档点记录实际的当前编辑，不改变正在预览的存档。",
+    "previewLoading": "正在加载「{{name}}」",
+    "previewElapsed": "已用 {{seconds}} 秒",
+    "previewCancel": "取消加载",
+    "previewStageRequesting": "正在发起请求…",
+    "previewStageReadingSnapshot": "正在读取存档…",
+    "previewStageHydratingMedia": "正在恢复素材…",
+    "previewStageRestoringStore": "正在准备预览状态…",
+    "previewStageLoadingFonts": "正在加载字体…",
+    "previewStageActivating": "正在切换预览…",
+    "previewStageFirstFrame": "正在等待首个有效画面…",
+    "previewStageRestoringContext": "正在恢复之前的编辑视图…"
   },
   "closeRetention": {
     "title": "关闭前创建一个存档点？",
