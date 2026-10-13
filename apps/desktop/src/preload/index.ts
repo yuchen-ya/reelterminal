@@ -12,6 +12,7 @@ import type {
   LiveCollabStatus,
   LiveEvent,
 } from "../shared/live";
+import { installPerformanceBridge } from "./performance-bridge";
 
 // The desktop bridge is exposed as window.reelterminal.
 const api = {
@@ -292,3 +293,4 @@ const api = {
 };
 
 contextBridge.exposeInMainWorld("reelterminal", api);
+installPerformanceBridge();

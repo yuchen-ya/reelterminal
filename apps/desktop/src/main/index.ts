@@ -5,7 +5,7 @@
 // install runs first, so the packaged (app.asar.unpacked) binary path is in
 // place before esbuild ever reads the environment.
 import "./esbuild-binary-path";
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell, type IpcMainEvent } from "electron";
 import path from "node:path";
 import { z } from "zod";
 import { registerAppSchemePrivileges, handleAppScheme, APP_INDEX } from "./protocol";
@@ -56,6 +56,7 @@ import {
   changeDataRoot,
 } from "./data-root";
 import { getEditorWebContents, registerEditorWindow } from "./editor-window";
+import { PerformanceSessionManager } from "./performance/session";
 import {
   fileWriters,
   showSaveDialog,
@@ -157,6 +158,8 @@ function developmentIconPath(): string {
   return path.join(__dirname, "../../build/icon.png");
 }
 
+let performanceSessionManager: PerformanceSessionManager | null = null;
+
 function createWindow(): void {
   const isMac = process.platform === "darwin";
   const win = new BrowserWindow({
@@ -180,6 +183,11 @@ function createWindow(): void {
     },
   });
   registerEditorWindow(win);
+  win.webContents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
+    if (!isInPlace && isMainFrame) performanceSessionManager?.abortActiveSession();
+  });
+  win.webContents.on("render-process-gone", () => performanceSessionManager?.abortActiveSession());
+  win.once("closed", () => performanceSessionManager?.abortActiveSession());
   // Only the trusted editor may capture installed font bytes for snapshots.
   win.webContents.session.setPermissionCheckHandler((contents, permission, origin) =>
     permission !== "local-fonts" || (contents === win.webContents && isAllowedNavigation(origin, APP_INDEX)),
@@ -196,6 +204,43 @@ function createWindow(): void {
   installLoadFailureRecovery(win);
   installPreloadFailureNotice(win);
   win.loadURL(APP_INDEX);
+}
+
+function installPerformanceSessionIpc(): void {
+  const manager = new PerformanceSessionManager({
+    nowUs: () => Number(process.hrtime.bigint() / 1_000n),
+    send: (channel, payload) => {
+      const contents = getEditorWebContents();
+      if (contents && !contents.isDestroyed()) contents.send(channel, payload);
+    },
+    ipc: {
+      handle: (channel, handler) => {
+        ipcMain.handle(channel, async (event, payload) => {
+          assertEditorIpcSender(event);
+          return handler(payload);
+        });
+        return () => ipcMain.removeHandler(channel);
+      },
+      on: (channel, listener) => {
+        const pongListener = (event: IpcMainEvent, payload: unknown): void => {
+          const contents = getEditorWebContents();
+          if (
+            !contents ||
+            event.sender !== contents ||
+            event.senderFrame !== contents.mainFrame
+          ) {
+            return;
+          }
+          listener(payload);
+        };
+        ipcMain.on(channel, pongListener);
+        return () => ipcMain.removeListener(channel, pongListener);
+      },
+    },
+    processMetricsSource: { getAppMetrics: () => app.getAppMetrics() },
+  });
+  manager.install();
+  performanceSessionManager = manager;
 }
 
 app.whenReady().then(async () => {
@@ -340,6 +385,7 @@ app.whenReady().then(async () => {
   registerAgentTaskIpc(liveSessionHost);
   registerAnalysisRecordsIpc(liveSessionHost);
   registerProductionIpc(liveSessionHost, liveMediaRoots());
+  installPerformanceSessionIpc();
   createWindow();
   await liveSessionHost.enable();
   initAutoUpdater();
@@ -394,6 +440,7 @@ app.on("before-quit", () => {
 // idempotent and simply run again.
 let liveSessionHostDisposed = false;
 app.on("will-quit", (event) => {
+  performanceSessionManager?.uninstall();
   disposeAuroraClient();
   cancelAllExports();
   if (liveSessionHostDisposed) return;

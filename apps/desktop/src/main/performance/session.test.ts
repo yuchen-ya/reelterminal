@@ -1,4 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import {
+  beginPerfOperation,
+  endPerfOperation,
+  getPerfSink,
+  markPerfOperation,
+  NOOP_SINK,
+  validatePerformanceEvent,
+} from "@reelterminal/core";
 import {
   PERFORMANCE_CONTRACT_SCHEMA_VERSION,
   PERFORMANCE_IPC,
@@ -96,13 +104,174 @@ describe("PerformanceSessionManager", () => {
     const stop = (await harness.invoke(PERFORMANCE_IPC.stop, {
       schemaVersion: SCHEMA,
       runId: start.runId,
-      rendererReport: { status: "complete", secretFree: true },
     })) as { ok: true; runId: string; sessionDurationUs: number; processSamples: unknown[] };
     expect(stop.ok).toBe(true);
     expect(manager.active).toBeNull();
     expect(stop.sessionDurationUs).toBeGreaterThan(0);
     expect(stop.processSamples.length).toBeGreaterThanOrEqual(1);
-    expect(manager.lastRendererReport).toEqual({ status: "complete", secretFree: true });
+  });
+
+  it("captures main-process IPC spans on their own monotonic clock", async () => {
+    const { manager, harness } = makeManager();
+    const start = (await harness.invoke(PERFORMANCE_IPC.start, {
+      schemaVersion: SCHEMA,
+      runId: "shared-run",
+      mode: "light",
+    })) as { ok: true; runId: string };
+    const operation = beginPerfOperation("live.ipc.main.request", undefined, {
+      operationId: "live-call-1",
+    });
+    markPerfOperation(operation, "live.ipc.main.reply", { ok: true });
+    endPerfOperation(operation, "ok");
+
+    const stop = (await harness.invoke(PERFORMANCE_IPC.stop, {
+      schemaVersion: SCHEMA,
+      runId: start.runId,
+    })) as {
+      ok: true;
+      mainCapture: {
+        runId: string;
+        clockId: string;
+        processEpoch: string;
+        events: readonly unknown[];
+      };
+    };
+    expect(stop.mainCapture.runId).toBe("shared-run");
+    expect(stop.mainCapture.clockId).toContain("main-clock-");
+    expect(stop.mainCapture.processEpoch).toContain("main-epoch-");
+    expect(stop.mainCapture.events).toHaveLength(3);
+    for (const event of stop.mainCapture.events) {
+      expect(validatePerformanceEvent(event).valid).toBe(true);
+      expect(event).toMatchObject({ processRole: "main", runId: "shared-run" });
+    }
+    manager.uninstall();
+  });
+
+  it("auto-stops the main sink at the requested duration and returns its final report", async () => {
+    vi.useFakeTimers();
+    const { manager, harness } = makeManager();
+    try {
+      const start = (await harness.invoke(PERFORMANCE_IPC.start, {
+        schemaVersion: SCHEMA,
+        runId: "bounded-run",
+        mode: "counts",
+        budgets: { captureSeconds: 1 },
+      })) as { ok: true; runId: string };
+      expect(manager.active?.runId).toBe(start.runId);
+      expect(getPerfSink()).not.toBe(NOOP_SINK);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(manager.active).toBeNull();
+      expect(getPerfSink()).toBe(NOOP_SINK);
+      const stop = (await harness.invoke(PERFORMANCE_IPC.stop, {
+        schemaVersion: SCHEMA,
+        runId: start.runId,
+      })) as {
+        ok: true;
+        mainCapture: {
+          runId: string;
+          status: string;
+          reasonCodes: readonly string[];
+          events: readonly unknown[];
+        };
+      };
+      expect(stop.mainCapture.runId).toBe(start.runId);
+      expect(stop.mainCapture.status).toBe("incomplete");
+      expect(stop.mainCapture.reasonCodes).toContain("main_capture_budget_exceeded");
+      expect(stop.mainCapture.events).toHaveLength(0);
+    } finally {
+      manager.uninstall();
+      vi.useRealTimers();
+    }
+  });
+
+  it("anchors the hard duration before clock sync and rejects an expired start", async () => {
+    vi.useFakeTimers();
+    const harness = fakeIpc();
+    let mainUs = 0;
+    const manager = new PerformanceSessionManager({
+      nowUs: () => mainUs,
+      send: () => undefined,
+      ipc: harness.ipc,
+      sleep: async () => undefined,
+      clockSyncOptions: { attempts: 1, timeoutMs: 10_000, attemptSpacingMs: 0, minSamples: 1 },
+    });
+    manager.install();
+    try {
+      const startPromise = harness.invoke(PERFORMANCE_IPC.start, {
+        schemaVersion: SCHEMA,
+        runId: "expires-during-handshake",
+        mode: "light",
+        runClockHandshake: true,
+        budgets: { captureSeconds: 1 },
+      });
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      const start = await startPromise as { ok: boolean; error?: string };
+      expect(start).toEqual({ ok: false, error: "capture_expired" });
+      expect(manager.active).toBeNull();
+      expect(getPerfSink()).toBe(NOOP_SINK);
+    } finally {
+      manager.uninstall();
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels an old renderer clock handshake before starting a fresh session", async () => {
+    const harness = fakeIpc();
+    let runLabel = "first";
+    let mainUs = 0;
+    const manager = new PerformanceSessionManager({
+      nowUs: () => (mainUs += 10),
+      send: (channel, payload) => {
+        if (channel !== PERFORMANCE_IPC.clockPing || runLabel !== "second") return;
+        const ping = payload as { attempt: number };
+        const m0Us = mainUs;
+        queueMicrotask(() => {
+          harness.dispatch(PERFORMANCE_IPC.clockPong, {
+            schemaVersion: SCHEMA,
+            attempt: ping.attempt,
+            r1Us: m0Us,
+            r2Us: m0Us,
+          });
+        });
+      },
+      ipc: harness.ipc,
+      sleep: async () => undefined,
+      clockSyncOptions: { attempts: 1, timeoutMs: 10_000, attemptSpacingMs: 0, minSamples: 1 },
+    });
+    manager.install();
+    const request = (runId: string) => ({
+      schemaVersion: SCHEMA,
+      runId,
+      mode: "light",
+      runClockHandshake: true,
+      budgets: { captureSeconds: 30 },
+    });
+    try {
+      const firstPromise = harness.invoke(PERFORMANCE_IPC.start, request("first-run"));
+      manager.abortActiveSession();
+      runLabel = "second";
+      const second = await harness.invoke(PERFORMANCE_IPC.start, request("second-run")) as {
+        ok: boolean;
+        runId?: string;
+        clock?: { valid: boolean } | null;
+      };
+      const first = await firstPromise as { ok: boolean; error?: string };
+
+      expect(first).toEqual({ ok: false, error: "capture_expired" });
+      expect(second).toMatchObject({ ok: true, runId: "second-run", clock: { valid: true } });
+      expect(manager.active?.runId).toBe("second-run");
+      const stop = await harness.invoke(PERFORMANCE_IPC.stop, {
+        schemaVersion: SCHEMA,
+        runId: "second-run",
+      }) as { ok: boolean };
+      expect(stop.ok).toBe(true);
+      expect(manager.lastClockEstimate?.valid).toBe(true);
+    } finally {
+      manager.uninstall();
+    }
   });
 
   it("refuses duplicate sessions and unknown stops", async () => {
@@ -195,5 +364,6 @@ describe("PerformanceSessionManager", () => {
     })) as { ok: boolean; clock: { valid: boolean } | null };
     expect(start.ok).toBe(true);
     expect(start.clock?.valid).toBe(false);
+    manager.uninstall();
   });
 });

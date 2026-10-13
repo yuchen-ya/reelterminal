@@ -1,5 +1,5 @@
 /**
- * Preload bridge for the performance system (design phase P1).
+ * Preload bridge for controlled performance sessions.
  *
  * Exposes ONLY controlled start/stop invokes plus an automatic clock-pong
  * responder: a ping arrives, the bridge answers once with r1/r2 taken from
@@ -7,9 +7,8 @@
  * capture clock. No fs surface, no raw project getters, and malformed pings
  * get no reply at all (their timestamps could not be trusted anyway).
  *
- * NOT registered by preload/index.ts in P1 — its existing test asserts a
- * single exposed bridge. Registration happens together with the e2e driver
- * wiring (P2), behind the performance capture being explicitly requested.
+ * This surface is separate from the product bridge and has no filesystem or
+ * project access. Capture remains dormant until an explicit start invoke.
  */
 import { contextBridge, ipcRenderer } from "electron";
 import {

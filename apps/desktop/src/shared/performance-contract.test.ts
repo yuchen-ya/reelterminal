@@ -29,19 +29,24 @@ describe("performance contract guards", () => {
     expect(isPerfStartRequest({ schemaVersion: 2, mode: "light" })).toBe(false);
     expect(isPerfStartRequest({ schemaVersion: SCHEMA, mode: "off" })).toBe(false);
     expect(isPerfStartRequest({ schemaVersion: SCHEMA, mode: "light", runId: 7 })).toBe(false);
+    expect(isPerfStartRequest({ schemaVersion: SCHEMA, mode: "light", runId: "C:\\private\\project" })).toBe(false);
+    expect(isPerfStartRequest({ schemaVersion: SCHEMA, mode: "light", runId: "r".repeat(129) })).toBe(false);
     expect(isPerfStartRequest({ schemaVersion: SCHEMA, mode: "light", budgets: { captureSeconds: "x" } })).toBe(false);
+    expect(isPerfStartRequest({ schemaVersion: SCHEMA, mode: "light", budgets: { captureSeconds: 0 } })).toBe(false);
+    expect(isPerfStartRequest({ schemaVersion: SCHEMA, mode: "light", budgets: { captureSeconds: 121 } })).toBe(false);
     expect(isPerfStartRequest(null)).toBe(false);
     expect(isPerfStartRequest("start")).toBe(false);
   });
 
   it("accepts a well-formed stop request and rejects drift", () => {
     expect(isPerfStopRequest({ schemaVersion: SCHEMA, runId: "r" })).toBe(true);
-    expect(
-      isPerfStopRequest({ schemaVersion: SCHEMA, runId: "r", reason: "user_stop", rendererReport: { a: 1 } }),
-    ).toBe(true);
+    expect(isPerfStopRequest({ schemaVersion: SCHEMA, runId: "r", reason: "user_stop" })).toBe(true);
     expect(isPerfStopRequest({ schemaVersion: SCHEMA })).toBe(false);
     expect(isPerfStopRequest({ schemaVersion: SCHEMA, runId: "" })).toBe(false);
     expect(isPerfStopRequest({ schemaVersion: SCHEMA, runId: "r", reason: 5 })).toBe(false);
+    expect(isPerfStopRequest({ schemaVersion: SCHEMA, runId: "r", rendererReport: { a: 1 } })).toBe(false);
+    expect(isPerfStopRequest({ schemaVersion: SCHEMA, runId: "C:\\private\\project" })).toBe(false);
+    expect(isPerfStopRequest({ schemaVersion: SCHEMA, runId: "r".repeat(129) })).toBe(false);
   });
 
   it("validates clock pings and pongs", () => {

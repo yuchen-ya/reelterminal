@@ -7,6 +7,8 @@ import {
 } from "@reelterminal/agent-facade";
 import type { Action } from "@reelterminal/core/types/actions";
 import { createLiveStoreBridge } from "./renderer-store-adapter";
+import { MainPerformanceCapture } from "../performance/main-capture";
+import { getPerfSink, setPerfSink, type PerfDims } from "@reelterminal/core";
 import type {
   LiveBridgeRequest,
   LiveBridgeReply,
@@ -33,6 +35,79 @@ const fakeAction = {
 } as unknown as Action;
 
 describe("createLiveStoreBridge", () => {
+  it("records main-local request spans when an opt-in capture is active", async () => {
+    let nowUs = 0;
+    const capture = new MainPerformanceCapture("live-run", "light", nowUs, () => ++nowUs);
+    const previousSink = getPerfSink();
+    setPerfSink(capture);
+    try {
+      const { bridge, validSender } = makeBridge();
+      const pending = bridge.store.getIdentity();
+      bridge.handleResponse(validSender, {
+        callId: "call-1",
+        ok: true,
+        result: { projectId: "project-a", projectName: "Project", windowId: "main" },
+      });
+      await pending;
+    } finally {
+      setPerfSink(previousSink);
+    }
+
+    const report = capture.finish(nowUs);
+    expect(report.events.map((event) => event.phase)).toEqual([
+      "live.ipc.main.request",
+      "live.ipc.main.send",
+      "live.ipc.main.receive",
+      "live.ipc.main.request",
+    ]);
+    expect(report.events.every((event) => event.processRole === "main")).toBe(true);
+  });
+
+  it("keeps live IPC working when the optional main measurement clock fails", async () => {
+    const previousSink = getPerfSink();
+    const capture = new MainPerformanceCapture("live-run", "light", 0, () => {
+      throw new Error("clock unavailable");
+    });
+    setPerfSink(capture);
+    let result: unknown;
+    try {
+      const { bridge, validSender } = makeBridge();
+      const pending = bridge.store.getIdentity();
+      bridge.handleResponse(validSender, {
+        callId: "call-1",
+        ok: true,
+        result: { projectId: "project-a", projectName: "Project", windowId: "main" },
+      });
+      result = await pending;
+    } finally {
+      setPerfSink(previousSink);
+    }
+
+    expect(result).toEqual({ projectId: "project-a", projectName: "Project", windowId: "main" });
+    const report = capture.finish(1);
+    expect(report.collectorErrors).toBeGreaterThan(0);
+    expect(report.status).toBe("incomplete");
+  });
+
+  it("counts rejected event dimensions as incomplete measurement data", () => {
+    let nowUs = 0;
+    const capture = new MainPerformanceCapture("live-run", "light", nowUs, () => ++nowUs);
+    const operation = capture.begin("live.ipc.main.request", {
+      runId: "live-run",
+      operationId: "live-call-1",
+    });
+    capture.end(
+      operation,
+      "ok",
+      { ok: true, privateLabel: "discard-me" } as unknown as PerfDims,
+    );
+
+    const report = capture.finish(nowUs);
+    expect(report.truncatedFields).toBe(1);
+    expect(report.reasonCodes).toContain("main_fields_truncated");
+    expect(report.events.at(-1)).not.toHaveProperty("dims.privateLabel");
+  });
+
   it("routes workspace-manager requests to the explicit target and guards the runtime generation", async () => {
     const { bridge, sent, validSender } = makeBridge();
     const context = {

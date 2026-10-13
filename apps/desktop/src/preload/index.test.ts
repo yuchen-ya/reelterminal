@@ -37,12 +37,16 @@ const exposedApi = (name: string): AnyApi => {
 };
 
 describe("preload bridge naming", () => {
-  it("exposes only the reelterminal bridge", () => {
+  it("exposes the product bridge and the controlled performance surface", () => {
     expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledWith(
       "reelterminal",
       expect.anything(),
     );
-    expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledTimes(1);
+    expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledWith(
+      "reelterminalPerformance",
+      expect.objectContaining({ start: expect.any(Function), stop: expect.any(Function) }),
+    );
+    expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledTimes(2);
   });
 
 

@@ -212,6 +212,25 @@ describe("ClockSynchronizer", () => {
     await expect(synchronizer.runHandshake()).rejects.toThrow();
     await first;
   });
+
+  it("cancels a pending exchange and settles the handshake without waiting for timeout", async () => {
+    const transport = makeTransport(0);
+    const blackhole: ClockSyncTransport = { ...transport, sendPing: () => undefined };
+    const synchronizer = new ClockSynchronizer(blackhole, {
+      attempts: 7,
+      timeoutMs: 10_000,
+      attemptSpacingMs: 0,
+    });
+    const handshake = synchronizer.runHandshake();
+    expect(synchronizer.isRunning).toBe(true);
+
+    synchronizer.cancel();
+    const result = await handshake;
+
+    expect(synchronizer.isRunning).toBe(false);
+    expect(result.valid).toBe(false);
+    expect(result.invalidReason).toBe("no_valid_samples");
+  });
 });
 
 describe("cross-process conversions", () => {

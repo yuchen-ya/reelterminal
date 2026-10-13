@@ -11,6 +11,7 @@ import { registerServiceWorker } from "./services/service-worker";
 import { initCustomFonts } from "./components/editor/inspector/font-options";
 import { setEncoderBackendFactory, setMediaCdnOverrides } from "@reelterminal/core";
 import { NativeFFmpegBackend } from "./services/native-ffmpeg-backend";
+import { installProductPerformanceCaptureBridge } from "./performance/product-capture-bridge";
 import {
   REELTERMINAL_FFMPEG_CORE_URL,
   REELTERMINAL_VIDSTAB_MT_URL,
@@ -35,6 +36,7 @@ const isDesktop =
   typeof window !== "undefined" && window.reelterminal?.platform === "desktop";
 
 if (isDesktop) {
+  installProductPerformanceCaptureBridge(window);
   setEncoderBackendFactory(
     () =>
       new NativeFFmpegBackend(

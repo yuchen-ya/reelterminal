@@ -516,6 +516,8 @@ declare global {
   interface Window {
     /** Primary desktop bridge namespace, exposed by the Electron preload. */
     reelterminal?: ReelTerminalDesktopBridge;
+    /** Explicitly started capture hook backed by the product renderer module graph. */
+    __reelterminalPerformanceCapture?: import("../performance/product-capture-bridge").ProductPerformanceCaptureApi;
     /**
      * @deprecated Legacy bridge alias — the SAME object as
      * `window.reelterminal` (preload exposes both names for one

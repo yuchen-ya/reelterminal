@@ -141,6 +141,8 @@ export interface PerfSpan {
 export interface PerfSink {
   readonly enabled: boolean;
   readonly mode: CaptureMode;
+  /** Capture identity, when supplied by a collector. */
+  readonly runId?: string;
   begin(phase: string, ctx: PerfContext): PerfSpan;
   end(span: PerfSpan, outcome: Outcome, dims?: PerfDims): void;
   mark(phase: string, ctx: PerfContext, dims?: PerfDims): void;

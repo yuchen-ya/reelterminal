@@ -236,6 +236,8 @@ export class ClockSynchronizer {
   private readonly timeoutMs: number;
   private readonly minSamples: number;
   private running = false;
+  private cancelled = false;
+  private cancelPendingExchange: (() => void) | null = null;
 
   constructor(transport: ClockSyncTransport, options: ClockSyncOptions = {}) {
     this.transport = transport;
@@ -249,20 +251,29 @@ export class ClockSynchronizer {
     return this.running;
   }
 
+  cancel(): void {
+    this.cancelled = true;
+    this.cancelPendingExchange?.();
+  }
+
   async runHandshake(): Promise<ClockSyncResult> {
     if (this.running) throw new Error("clock-sync: handshake already running");
     this.running = true;
+    this.cancelled = false;
     const samples: ClockHandshakeSample[] = [];
     try {
       for (let attempt = 1; attempt <= this.attempts; attempt += 1) {
+        if (this.cancelled) break;
         const pong = await this.exchange(attempt);
+        if (this.cancelled) break;
         if (pong) samples.push(pong);
         if (attempt < this.attempts) await this.transport.delay(this.spacingMs);
       }
     } finally {
       this.running = false;
+      this.cancelPendingExchange = null;
     }
-    const estimate = estimateClockOffset(samples, { minSamples: this.minSamples });
+    const estimate = estimateClockOffset(this.cancelled ? [] : samples, { minSamples: this.minSamples });
     const estimatedAtUs = this.transport.nowUs();
     return { ...estimate, estimatedAtUs };
   }
@@ -270,11 +281,13 @@ export class ClockSynchronizer {
   private exchange(attempt: number): Promise<ClockHandshakeSample | null> {
     return new Promise((resolve) => {
       let settled = false;
+      let cancel = (): void => undefined;
       const finish = (sample: ClockHandshakeSample | null): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
         unsubscribe();
+        if (this.cancelPendingExchange === cancel) this.cancelPendingExchange = null;
         resolve(sample);
       };
       const unsubscribe = this.transport.onPong((pong) => {
@@ -289,6 +302,8 @@ export class ClockSynchronizer {
         });
       });
       const timeout = setTimeout(() => finish(null), this.timeoutMs);
+      cancel = () => finish(null);
+      this.cancelPendingExchange = cancel;
       this.m0Us = this.transport.nowUs();
       this.transport.sendPing({ schemaVersion: PERFORMANCE_CONTRACT_SCHEMA_VERSION, attempt });
     });

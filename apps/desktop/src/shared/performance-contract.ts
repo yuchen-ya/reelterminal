@@ -8,6 +8,7 @@
  * only these known fields cross the bridge. Error replies carry a code, never
  * a free-form message.
  */
+import type { PerfEvent } from "@reelterminal/core";
 
 export const PERFORMANCE_IPC = {
   start: "reelterminal:performance:start",
@@ -20,8 +21,29 @@ export const PERFORMANCE_CONTRACT_SCHEMA_VERSION = 1;
 
 export type PerfSessionMode = "counts" | "light" | "trace";
 
+export interface PerfMainCaptureReport {
+  readonly runId: string;
+  readonly mode: PerfSessionMode;
+  readonly clockId: string;
+  readonly processEpoch: string;
+  readonly startedUs: number;
+  readonly stoppedUs: number;
+  readonly status: "complete" | "incomplete";
+  readonly events: readonly PerfEvent[];
+  readonly counters: Readonly<Record<string, number>>;
+  readonly eventsDropped: number;
+  readonly labelsDropped: number;
+  readonly spansDropped: number;
+  readonly truncatedFields: number;
+  readonly collectorErrors: number;
+  readonly openSpans: number;
+  readonly reasonCodes: readonly string[];
+}
+
 export type PerfSessionErrorCode =
   | "session_already_active"
+  | "sink_slot_occupied"
+  | "capture_expired"
   | "no_active_session"
   | "invalid_request"
   | "internal_error";
@@ -56,8 +78,6 @@ export interface PerfStopRequest {
   readonly schemaVersion: number;
   readonly runId: string;
   readonly reason?: string;
-  /** Renderer capture report; already sanitized by the renderer. */
-  readonly rendererReport?: unknown;
 }
 
 export type PerfStopReply =
@@ -67,6 +87,7 @@ export type PerfStopReply =
       readonly sessionDurationUs: number;
       readonly clock: PerfClockEstimateSummary | null;
       readonly processSamples: readonly PerfProcessSampleSummary[];
+      readonly mainCapture: PerfMainCaptureReport;
     }
   | { readonly ok: false; readonly error: PerfSessionErrorCode };
 
@@ -100,17 +121,28 @@ function isPerfSessionMode(value: unknown): value is PerfSessionMode {
   return value === "counts" || value === "light" || value === "trace";
 }
 
+const PERF_RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+export function isPerfRunId(value: unknown): value is string {
+  return typeof value === "string" && PERF_RUN_ID_PATTERN.test(value);
+}
+
 export function isPerfStartRequest(value: unknown): value is PerfStartRequest {
   if (!isPlainObject(value) || !hasSchemaVersion(value)) return false;
+  if (Object.keys(value).some((key) => !["schemaVersion", "runId", "mode", "runClockHandshake", "budgets"].includes(key))) return false;
   if (!isPerfSessionMode(value.mode)) return false;
-  if (value.runId !== undefined && typeof value.runId !== "string") return false;
+  if (value.runId !== undefined && !isPerfRunId(value.runId)) return false;
   if (value.runClockHandshake !== undefined && typeof value.runClockHandshake !== "boolean") {
     return false;
   }
   if (value.budgets !== undefined) {
     if (!isPlainObject(value.budgets)) return false;
+    if (Object.keys(value.budgets).some((key) => key !== "captureSeconds")) return false;
     const seconds = value.budgets.captureSeconds;
-    if (seconds !== undefined && (typeof seconds !== "number" || !Number.isFinite(seconds))) {
+    if (
+      seconds !== undefined &&
+      (typeof seconds !== "number" || !Number.isInteger(seconds) || seconds < 1 || seconds > 120)
+    ) {
       return false;
     }
   }
@@ -119,8 +151,9 @@ export function isPerfStartRequest(value: unknown): value is PerfStartRequest {
 
 export function isPerfStopRequest(value: unknown): value is PerfStopRequest {
   if (!isPlainObject(value) || !hasSchemaVersion(value)) return false;
-  if (typeof value.runId !== "string" || value.runId.length === 0) return false;
-  if (value.reason !== undefined && typeof value.reason !== "string") return false;
+  if (Object.keys(value).some((key) => !["schemaVersion", "runId", "reason"].includes(key))) return false;
+  if (!isPerfRunId(value.runId)) return false;
+  if (value.reason !== undefined && (typeof value.reason !== "string" || value.reason.length > 64)) return false;
   return true;
 }
 

@@ -37,6 +37,7 @@ import type {
   PerfSpan,
 } from "@reelterminal/core";
 import { PerfRingBuffer } from "./ring-buffer";
+import { releaseProductMeasurements } from "./capture-cleanup";
 import { createRendererClock, type RendererPerfClock } from "./renderer-clock";
 import {
   INVALID_PHASE_LABEL,
@@ -73,6 +74,7 @@ export interface PerfTimerApi {
 /** Phases whose events belong to the never-sampled critical store. */
 export const DEFAULT_CRITICAL_PHASE_TESTS: readonly ((phase: string) => boolean)[] = [
   (p) => p.startsWith("gesture.final-commit"),
+  (p) => p.startsWith("gesture.first-valid-frame"),
   (p) => p.startsWith("semantic-state.committed"),
   (p) => p.startsWith("save.confirmed"),
   (p) => p.startsWith("save.storage-transaction-committed"),
@@ -206,6 +208,18 @@ export class CaptureController {
     return this.active?.runId ?? null;
   }
 
+  get pendingSpanCount(): number {
+    return this.active?.openSpanIds.size ?? 0;
+  }
+
+  get committedFrameCount(): number {
+    return this.active?.counters.get("mark:frame.committed") ?? 0;
+  }
+
+  get completedGestureFrameCount(): number {
+    return this.active?.counters.get("mark:gesture.first-valid-frame") ?? 0;
+  }
+
   get lastReport(): CaptureReport | null {
     return this.lastReportValue;
   }
@@ -332,6 +346,7 @@ export class CaptureController {
       // Already finished (e.g. auto-stop raced the user stop).
       throw new PerfCaptureError("no_active_capture");
     }
+    releaseProductMeasurements();
     capture.closed = true;
     if (capture.autoStopHandle !== null) capture.timers.clear(capture.autoStopHandle);
     if (capture.memoryHandle !== null) capture.timers.clear(capture.memoryHandle);
@@ -447,6 +462,7 @@ export class CaptureController {
     const sink: PerfSink = {
       enabled: true,
       mode: capture.mode,
+      runId: capture.runId,
       begin: (phase, ctx) => {
         const fallbackSpan: CollectorSpan = {
           id: 0,
@@ -462,7 +478,7 @@ export class CaptureController {
           const label = internLabel(phase);
           bump(`span:${label}`, 1);
           const record = shouldRecord(label);
-          const startedUs = capture.clock.nowUs();
+          const startedUs = capture.mode === "counts" ? 0 : capture.clock.nowUs();
           capture.spanSeq += 1;
           const span: CollectorSpan = {
             id: capture.spanSeq,

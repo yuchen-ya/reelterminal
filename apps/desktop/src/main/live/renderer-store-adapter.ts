@@ -19,6 +19,13 @@ import { commandProjectContext } from "./command-context";
 import { ipcMain, type IpcMainEvent, type WebContents } from "electron";
 import { randomUUID } from "node:crypto";
 import {
+  beginPerfOperation,
+  endPerfOperation,
+  failPerfOperation,
+  getPerfSink,
+  markPerfOperation,
+} from "@reelterminal/core";
+import {
   FacadeError,
   LiveStoreConflictError,
   type LiveApplyActionsResult,
@@ -86,6 +93,7 @@ interface PendingCall {
   readonly resolve: (value: unknown) => void;
   readonly reject: (reason: Error) => void;
   readonly timer: ReturnType<typeof setTimeout>;
+  readonly performanceOperation: ReturnType<typeof beginPerfOperation>;
 }
 
 function captureWorkspaceInstanceId(value: unknown): void {
@@ -150,15 +158,20 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
   ): Promise<unknown> => {
     const callId = genId();
     return new Promise<unknown>((resolve, reject) => {
+      const performanceOperation = getPerfSink().enabled
+        ? beginPerfOperation("live.ipc.main.request", undefined, { operationId: `live-${callId}` })
+        : undefined;
       const timer = setTimeout(() => {
         pending.delete(callId);
+        if (performanceOperation) endPerfOperation(performanceOperation, "timeout");
         reject(
           new Error(`Live store '${kind}' timed out after ${timeoutMs}ms`),
         );
       }, timeoutMs);
-      pending.set(callId, { resolve, reject, timer });
+      pending.set(callId, { resolve, reject, timer, performanceOperation });
       try {
         const context = commandProjectContext.getStore();
+        if (performanceOperation) markPerfOperation(performanceOperation, "live.ipc.main.send");
         deps.send({
           callId,
           kind,
@@ -174,6 +187,7 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
       } catch (error) {
         clearTimeout(timer);
         pending.delete(callId);
+        if (performanceOperation) failPerfOperation(performanceOperation, error);
         reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
@@ -189,6 +203,10 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
     if (!call) return;
     pending.delete(response.callId);
     clearTimeout(call.timer);
+    if (call.performanceOperation) {
+      markPerfOperation(call.performanceOperation, "live.ipc.main.receive", { ok: response.ok });
+      endPerfOperation(call.performanceOperation, response.ok ? "ok" : "error");
+    }
     if (response.ok) {
       call.resolve(response.result);
       return;
@@ -220,6 +238,7 @@ export function createLiveStoreBridge(deps: LiveStoreBridgeDeps): LiveStoreBridg
   const teardown = (reason: string): void => {
     for (const call of pending.values()) {
       clearTimeout(call.timer);
+      if (call.performanceOperation) endPerfOperation(call.performanceOperation, "cancelled");
       call.reject(new Error(reason));
     }
     pending.clear();

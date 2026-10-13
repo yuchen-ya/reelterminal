@@ -4,6 +4,7 @@
  * One session at a time, coordinating:
  * - the renderer capture (started/stopped through the preload bridge's
  *   invoke channels — the renderer owns its own ring buffer and report);
+ * - a bounded main-process event sink for main-local live IPC spans;
  * - the cross-process clock handshake (initiated by main over the ping/pong
  *   channels; late pongs from earlier attempts are dropped by the
  *   synchronizer);
@@ -17,6 +18,7 @@
  * answered with no_active_session).
  */
 import { randomBytes } from "node:crypto";
+import { getPerfSink, NOOP_SINK, resolvePerfBudgets, setPerfSink } from "@reelterminal/core";
 import {
   PERFORMANCE_IPC,
   isPerfClockPong,
@@ -27,6 +29,7 @@ import type {
   PerfClockEstimateSummary,
   PerfClockPing,
   PerfClockPong,
+  PerfMainCaptureReport,
   PerfProcessSampleSummary,
   PerfSessionMode,
   PerfStartReply,
@@ -45,6 +48,7 @@ import {
   type TimestampRef,
 } from "./clock-sync";
 import { ProcessSampler, type ProcessMetricsSource } from "./process-sampler";
+import { MainPerformanceCapture } from "./main-capture";
 
 export interface PerformanceSessionIpc {
   handle(channel: string, handler: (payload: unknown) => Promise<unknown>): () => void;
@@ -71,6 +75,11 @@ export interface ActiveSessionInfo {
 
 interface ActiveSession extends ActiveSessionInfo {
   sampler: ProcessSampler | null;
+  captureTimer: ReturnType<typeof setTimeout> | null;
+  cleanupTimer: ReturnType<typeof setTimeout> | null;
+  stoppedUs?: number;
+  mainCaptureReport?: PerfMainCaptureReport;
+  processSamples?: readonly PerfProcessSampleSummary[];
 }
 
 function generateRunId(): string {
@@ -83,13 +92,14 @@ export class PerformanceSessionManager {
   private uninstalls: Array<() => void> = [];
   private lastEstimate: ClockSyncResult | null = null;
   private synchronizer: ClockSynchronizer | null = null;
+  private mainCapture: MainPerformanceCapture | null = null;
 
   constructor(deps: PerformanceSessionDeps) {
     this.deps = deps;
   }
 
   get active(): ActiveSessionInfo | null {
-    return this.session
+    return this.session && this.session.stoppedUs === undefined
       ? { runId: this.session.runId, mode: this.session.mode, startedUs: this.session.startedUs }
       : null;
   }
@@ -97,17 +107,6 @@ export class PerformanceSessionManager {
   get lastClockEstimate(): ClockSyncResult | null {
     return this.lastEstimate;
   }
-
-  /**
-   * The renderer capture report received with the last successful stop —
-   * already sanitized renderer-side; main persists it via the artifact
-   * writer (P2 wiring).
-   */
-  get lastRendererReport(): unknown {
-    return this.lastRendererReportValue;
-  }
-
-  private lastRendererReportValue: unknown = null;
 
   install(): void {
     if (this.uninstalls.length > 0) return;
@@ -124,11 +123,20 @@ export class PerformanceSessionManager {
   uninstall(): void {
     for (const uninstall of this.uninstalls) uninstall();
     this.uninstalls = [];
-    this.synchronizer = null;
-    if (this.session) {
-      this.session.sampler?.stop();
-      this.session = null;
+    this.abortActiveSession();
+  }
+
+  /** Release bounded capture state when the renderer reloads, exits or crashes. */
+  abortActiveSession(): void {
+    this.cancelClockSynchronizer();
+    const session = this.session;
+    if (!session) return;
+    if (session.stoppedUs === undefined) {
+      this.finishCapture(session, this.deps.nowUs());
+    } else {
+      this.clearSessionTimers(session);
     }
+    this.session = null;
   }
 
   async runClockHandshake(): Promise<ClockSyncResult> {
@@ -152,7 +160,7 @@ export class PerformanceSessionManager {
     );
     this.synchronizer = synchronizer;
     const result = await synchronizer.runHandshake();
-    this.lastEstimate = result;
+    if (this.synchronizer === synchronizer) this.lastEstimate = result;
     return result;
   }
 
@@ -167,18 +175,51 @@ export class PerformanceSessionManager {
 
   private async handleStart(request: PerfStartRequest): Promise<PerfStartReply> {
     if (this.session) return { ok: false, error: "session_already_active" };
+    if (getPerfSink() !== NOOP_SINK) return { ok: false, error: "sink_slot_occupied" };
     const runId = request.runId ?? generateRunId();
+    this.lastEstimate = null;
+    const startedUs = this.deps.nowUs();
     const sampler =
       this.deps.processMetricsSource != null
         ? new ProcessSampler(this.deps.processMetricsSource, { nowUs: this.deps.nowUs })
         : null;
-    this.session = { runId, mode: request.mode, startedUs: this.deps.nowUs(), sampler };
+    const session: ActiveSession = {
+      runId,
+      mode: request.mode,
+      startedUs,
+      sampler,
+      captureTimer: null,
+      cleanupTimer: null,
+    };
+    this.session = session;
+    const mainCapture = new MainPerformanceCapture(runId, request.mode, startedUs, this.deps.nowUs);
+    this.mainCapture = mainCapture;
+    setPerfSink(mainCapture);
     sampler?.start();
     let clock: PerfClockEstimateSummary | null = null;
-    if (request.runClockHandshake) {
-      // A failed handshake degrades to valid:false, it never blocks.
-      const result = await this.runClockHandshake();
-      clock = summarizeEstimate(result);
+    const captureSeconds = resolvePerfBudgets(request.mode, request.budgets).captureSeconds;
+    try {
+      const remainingMs = Math.max(
+        0,
+        captureSeconds * 1_000 - (this.deps.nowUs() - startedUs) / 1_000,
+      );
+      session.captureTimer = setTimeout(() => this.expireCapture(session), remainingMs);
+      if (request.runClockHandshake) {
+        // A failed handshake degrades to valid:false, it never blocks.
+        const result = await this.runClockHandshake();
+        clock = summarizeEstimate(result);
+      }
+      const expired =
+        this.session !== session ||
+        session.stoppedUs !== undefined ||
+        this.deps.nowUs() - startedUs >= captureSeconds * 1_000_000;
+      if (expired) {
+        if (this.session === session) this.abortActiveSession();
+        return { ok: false, error: "capture_expired" };
+      }
+    } catch {
+      if (this.session === session) this.abortActiveSession();
+      return { ok: false, error: "internal_error" };
     }
     return { ok: true, runId, clock };
   }
@@ -187,21 +228,83 @@ export class PerformanceSessionManager {
     const session = this.session;
     if (!session) return { ok: false, error: "no_active_session" };
     if (request.runId !== session.runId) return { ok: false, error: "invalid_request" };
-    this.session = null;
-    session.sampler?.stop();
-    if (request.rendererReport !== undefined) {
-      this.lastRendererReportValue = request.rendererReport;
+    if (session.stoppedUs === undefined) {
+      this.finishCapture(session, this.deps.nowUs());
+    } else {
+      this.clearSessionTimers(session);
     }
-    const processSamples: readonly PerfProcessSampleSummary[] = session.sampler
-      ? session.sampler.samples
-      : [];
+    this.session = null;
+    const stoppedUs = session.stoppedUs as number;
+    const processSamples = session.processSamples ?? (session.sampler ? session.sampler.samples : []);
     return {
       ok: true,
       runId: session.runId,
-      sessionDurationUs: this.deps.nowUs() - session.startedUs,
+      sessionDurationUs: stoppedUs - session.startedUs,
       clock: this.lastEstimate ? summarizeEstimate(this.lastEstimate) : null,
       processSamples,
+      mainCapture: session.mainCaptureReport
+        ? session.mainCaptureReport
+        : {
+            runId: session.runId,
+            mode: session.mode,
+            clockId: "unavailable",
+            processEpoch: "unavailable",
+            startedUs: session.startedUs,
+            stoppedUs,
+            status: "incomplete",
+            events: [],
+            counters: {},
+            eventsDropped: 0,
+            labelsDropped: 0,
+            spansDropped: 0,
+            truncatedFields: 0,
+            collectorErrors: 0,
+            openSpans: 0,
+            reasonCodes: ["main_capture_unavailable"],
+          },
     };
+  }
+
+  private finishCapture(session: ActiveSession, stoppedUs: number, reasonCode?: string): void {
+    this.cancelClockSynchronizer();
+    this.clearSessionTimers(session);
+    session.sampler?.stop();
+    session.stoppedUs = stoppedUs;
+    session.processSamples = session.sampler ? session.sampler.samples : [];
+    const mainCapture = this.mainCapture;
+    this.mainCapture = null;
+    if (mainCapture) {
+      if (getPerfSink() === mainCapture) setPerfSink(null);
+      session.mainCaptureReport = mainCapture.finish(
+        stoppedUs,
+        reasonCode === undefined ? [] : [reasonCode],
+      );
+    }
+  }
+
+  private clearSessionTimers(session: ActiveSession): void {
+    if (session.captureTimer !== null) {
+      clearTimeout(session.captureTimer);
+      session.captureTimer = null;
+    }
+    if (session.cleanupTimer !== null) {
+      clearTimeout(session.cleanupTimer);
+      session.cleanupTimer = null;
+    }
+  }
+
+  private expireCapture(session: ActiveSession): void {
+    if (this.session !== session || session.stoppedUs !== undefined) return;
+    this.finishCapture(session, this.deps.nowUs(), "main_capture_budget_exceeded");
+    session.cleanupTimer = setTimeout(() => {
+      if (this.session === session && session.stoppedUs !== undefined) this.session = null;
+    }, 30_000);
+  }
+
+  private cancelClockSynchronizer(): void {
+    const synchronizer = this.synchronizer;
+    this.synchronizer = null;
+    synchronizer?.cancel();
   }
 }
 

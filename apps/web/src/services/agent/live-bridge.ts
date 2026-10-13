@@ -31,6 +31,13 @@ import type {
   HistoryGetResult,
   ProjectChangesParams,
 } from "@reelterminal/agent-facade";
+import {
+  beginPerfOperation,
+  endPerfOperation,
+  failPerfOperation,
+  getPerfSink,
+  markPerfOperation,
+} from "@reelterminal/core";
 import { getLiveEditorContext } from "../../stores/editor-context-store";
 import { useUIStore, type SelectionItem } from "../../stores/ui-store";
 import { useTimelineStore } from "../../stores/timeline-store";
@@ -1179,7 +1186,21 @@ export function installLiveBridge(): () => void {
   const bridge = window.reelterminal?.liveBridge;
   if (!bridge) return () => {};
   return bridge.onRequest(async (req) => {
-    const reply = await handleLiveBridgeRequest(req);
-    window.reelterminal?.liveBridge?.respond({ callId: req.callId, ...reply });
+    const operation = getPerfSink().enabled
+      ? beginPerfOperation("live.ipc.renderer.request", undefined, { operationId: `live-${req.callId}` })
+      : undefined;
+    try {
+      if (operation) markPerfOperation(operation, "live.ipc.renderer.receive");
+      const reply = await handleLiveBridgeRequest(req);
+      if (operation) {
+        markPerfOperation(operation, "live.ipc.renderer.handler_complete", { ok: reply.ok });
+        markPerfOperation(operation, "live.ipc.renderer.reply");
+      }
+      window.reelterminal?.liveBridge?.respond({ callId: req.callId, ...reply });
+      if (operation) endPerfOperation(operation, reply.ok ? "ok" : "error");
+    } catch (error) {
+      if (operation) failPerfOperation(operation, error);
+      throw error;
+    }
   });
 }
