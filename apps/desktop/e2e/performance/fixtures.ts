@@ -7,7 +7,8 @@ import type { Project } from "@reelterminal/core/types/project";
 import type { Clip, Track, Transform } from "@reelterminal/core/types/timeline";
 import type { TextClip } from "@reelterminal/core/text/types";
 
-export type PerformanceScenarioId = "T01" | "T02" | "H01" | "H02" | "P01";
+export type TimelinePerformanceScenarioId = "T01" | "T02" | "T03" | "H01" | "H02" | "P01";
+export type PerformanceScenarioId = TimelinePerformanceScenarioId | "A01" | "R01" | "R02" | "E01";
 export type FixtureParameter = string | number | boolean;
 
 export interface PerformanceFixtureAsset {
@@ -165,7 +166,7 @@ export interface PerformanceFixture {
 }
 
 export interface PerformanceFixtureRequest {
-  readonly scenarioId: PerformanceScenarioId;
+  readonly scenarioId: TimelinePerformanceScenarioId;
   readonly seed: string;
   readonly parameters?: Readonly<Record<string, FixtureParameter>>;
 }
@@ -760,6 +761,43 @@ function createT01(seed: string): PerformanceFixture {
   };
 }
 
+function createT03(seed: string, parameters: Readonly<Record<string, FixtureParameter>>): PerformanceFixture {
+  assertOnlyParameters("T03", parameters, ["clipCount", "trackCount"]);
+  const clipCount = parameterChoice(parameters, "clipCount", 500, [500, 2000] as const);
+  const trackCount = parameterChoice(parameters, "trackCount", 20, [20, 50] as const);
+  // Keep media bytes fixed while scaling timeline geometry and subscriptions.
+  const base = createT01(seed);
+  const imageAsset = base.assets[0]!;
+  const imageTrackIds = Array.from({ length: trackCount - 1 }, (_, index) => `scale-image-track-${index}`);
+  const clipsPerTrack = Math.floor((clipCount - 1) / imageTrackIds.length);
+  const extraClips = (clipCount - 1) % imageTrackIds.length;
+  const tracks = imageTrackIds.map((id, trackIndex) => makeTrack(id, "image",
+    Array.from({ length: clipsPerTrack + (trackIndex < extraClips ? 1 : 0) }, (_, index) => ({
+      ...makeImageClip(index, imageAsset.assetId, id, 5),
+      id: `scale-clip-${trackIndex}-${index}`,
+      // Only the target occupies the marker's warmup interval.
+      startTime: trackIndex === 0 && index === 0 ? 0 : 6 + index * 1.25,
+    }))));
+  const textTrack = makeTrack("scale-text-track", "text", []);
+  const text = { ...base.project!.textClips![0]!, trackId: textTrack.id };
+  const project: PerformanceFixtureProject = {
+    ...base.project!, id: `performance-t03-${seedTag(seed)}`, name: "Synthetic performance fixture T03",
+    mediaLibrary: { items: [base.project!.mediaLibrary.items[0]!] },
+    timeline: { ...base.project!.timeline, tracks: [...tracks, textTrack], duration: 6 + Math.ceil(clipCount / imageTrackIds.length) * 1.25 },
+    textClips: [text],
+  };
+  const target = targetForProject(project, colorFor(seed, "T01-target"));
+  const { workspaceId, records } = workspaceRecords(project);
+  return {
+    project, ...target, workspaceId, records, assets: [imageAsset],
+    manifest: baseManifest({
+      scenarioId: "T03", seed, parameters: { clipCount, trackCount, imageClipCount: clipCount - 1, textClipCount: 1, independentMediaCount: 1 },
+      expectedSemantics: ["Scale only timeline clip and track counts with fixed synthetic media.", "Real pointer input hits the stable target and commits exactly one revision; wheel input changes the visible scroll region."],
+      assets: [imageAsset], requiredCapabilities: ["workspace-db-v3", "synthetic-image-media", "timeline-text-clips"], expectedOperations: 100, timeBudgetMs: 120_000,
+    }),
+  };
+}
+
 function createT02(
   seed: string,
   parameters: Readonly<Record<string, FixtureParameter>>,
@@ -1051,6 +1089,8 @@ export function createPerformanceFixture(request: PerformanceFixtureRequest): Pe
       return createT01(request.seed);
     case "T02":
       return createT02(request.seed, parameters);
+    case "T03":
+      return createT03(request.seed, parameters);
     case "H01":
       return createH01(request.seed, parameters);
     case "H02":

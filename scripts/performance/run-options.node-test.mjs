@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   PERFORMANCE_SCENARIOS,
+  QUICK_SCENARIOS,
   parseRunOptions,
   runTimeoutMs,
 } from "./run-options.mjs";
 
 test("quick and benchmark suites apply documented defaults and accept pnpm separators", () => {
   const quick = parseRunOptions(["--", "--suite", "quick"]);
-  assert.deepEqual(quick.scenarios, PERFORMANCE_SCENARIOS);
+  assert.deepEqual(quick.scenarios, QUICK_SCENARIOS);
   assert.equal(quick.samples, 25);
   assert.equal(quick.repeats, 2);
   assert.equal(quick.cache, "warm");
@@ -28,8 +29,28 @@ test("scenario selection accepts repeatable or comma-separated IDs and ALL", () 
     parseRunOptions(["--suite", "quick", "--scenario", "T01,T02", "--scenario", "P01"]).scenarios,
     ["T01", "T02", "P01"],
   );
-  assert.deepEqual(parseRunOptions(["--suite", "quick", "--scenario", "ALL"]).scenarios, PERFORMANCE_SCENARIOS);
+  assert.deepEqual(parseRunOptions(["--suite", "quick", "--scenario", "ALL"]).scenarios, PERFORMANCE_SCENARIOS.filter((id) => id !== "R02"));
   assert.equal(parseRunOptions(["--suite", "quick", "--serial", "--report-only"]).suite, "quick");
+});
+
+test("P5 scale, edit and soak options are consumed strictly with an elapsed bound", () => {
+  const scale = parseRunOptions(["--suite", "benchmark", "--scenario", "T03,A01,E01", "--clip-count", "2000", "--track-count", "50"]);
+  assert.equal(scale.clipCount, 2000);
+  assert.equal(scale.trackCount, 50);
+  const soak = parseRunOptions(["--suite", "soak", "--duration-seconds", "30", "--action-interval-ms", "500"]);
+  assert.deepEqual(soak.scenarios, ["R02"]);
+  assert.equal(soak.durationSeconds, 30);
+  assert.equal(soak.runTimeoutSeconds, 150);
+  assert.equal(soak.repeats, 1);
+  assert.equal(parseRunOptions(["--suite", "soak", "--scenario", "R01", "--edit-rounds", "5000"]).editRounds, 5000);
+  for (const args of [
+    ["--suite", "quick", "--scenario", "R02"],
+    ["--suite", "soak", "--scenario", "T03"],
+    ["--suite", "quick", "--clip-count", "500"],
+    ["--suite", "quick", "--scenario", "T03", "--track-count", "21"],
+    ["--suite", "soak", "--duration-seconds", "1800", "--run-timeout-seconds", "1859"],
+    ["--suite", "soak", "--duration-seconds", "3601"],
+  ]) assert.throws(() => parseRunOptions(args));
 });
 
 test("cold profile runs use history scenarios and cold launch count instead of samples", () => {

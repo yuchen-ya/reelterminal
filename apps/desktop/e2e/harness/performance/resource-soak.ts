@@ -1,0 +1,273 @@
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { performance } from "node:perf_hooks";
+import type { TimelineState } from "@reelterminal/agent-facade";
+import type { CaptureReport } from "../../../../web/src/performance";
+import type { ProductPerformanceCaptureApi } from "../../../../web/src/performance/product-capture-bridge";
+import type { PerfStopReply } from "../../../src/shared/performance-contract";
+import { createPerformanceFixture, performanceFixtureManifestSha256 } from "../../performance/fixtures";
+import { launchApp, type LaunchedApp } from "../launch";
+import { connectExternalAgent, type ExternalAgent } from "../mcp-client";
+import { ARTIFACTS_DIR } from "../paths";
+import { enableAgentSessionViaUI } from "../ui";
+import { installProbe, prepareProfile, waitForMarker, type PerformanceRunOptions } from "./driver";
+import { captureBuildIdentity, readEnvironmentIdentity } from "./identity";
+import { createPerformanceResult, summarizeOperations, type RawPerformanceOperation } from "./result";
+import { summarizeIdleMemory, type IdleResourceSample } from "./resource-trend";
+import { validateResultDocument } from "../../../../../scripts/performance/result-contract.mjs";
+
+type ResourceGlobal = typeof globalThis & {
+  __reelterminalPerformanceCapture: ProductPerformanceCaptureApi;
+  __reelterminalPerfDriver: {
+    start(runId: string, id: string, seconds: number): Promise<void>;
+    stop(outcome: string): Promise<{ report: CaptureReport; main: PerfStopReply; hiddenDuringAction: boolean }>;
+  };
+};
+
+/** Serial edit/undo/redo with fixed assets, rotated captures, and idle samples. */
+export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options: PerformanceRunOptions, repeat: number): Promise<string> {
+  const base = createPerformanceFixture({ scenarioId: "H01", seed: options.seed, parameters: { nodeCount: 10 } });
+  const fixture = {
+    ...base,
+    manifest: {
+      ...base.manifest, scenarioId,
+      parameters: { editRounds: scenarioId === "R01" ? options.editRounds : 0, durationSeconds: scenarioId === "R02" ? options.durationSeconds : 0, actionIntervalMs: options.actionIntervalMs, clipCount: 1, nodeCount: 10 },
+      expectedSemantics: ["Fixed clip/media/node count through edit, undo, redo, save and history preview return.", "Idle save queues drain and temporary resources return to their warmed baseline.", "Memory observations use idle segments without forced GC; RSS is not VRAM."],
+      expectedOperations: scenarioId === "R01" ? options.editRounds : Math.ceil(options.durationSeconds * 1000 / options.actionIntervalMs),
+      timeBudgetMs: options.runTimeoutSeconds * 1000,
+    },
+  };
+  const runId = `${scenarioId.toLowerCase()}-${Date.now()}-${repeat}`;
+  const build = await captureBuildIdentity();
+  if (!build.build_verified) throw new Error("resource soak requires a matching production build");
+  const runDir = await prepareProfile(fixture);
+  let launched: LaunchedApp | undefined;
+  let agent: ExternalAgent | undefined;
+  let environment: Awaited<ReturnType<typeof readEnvironmentIdentity>> | undefined;
+  let failure: unknown;
+  let timedOut = false;
+  let activeCapture = false;
+  const operations: RawPerformanceOperation[] = [];
+  const idle: IdleResourceSample[] = [];
+  const reasons: string[] = [];
+  let eventsDropped = 0;
+  let endpointsDropped = 0;
+  let rounds = 0;
+  let revision = 0;
+  let started = 0;
+  let measuredElapsedMs = 0;
+  const correctness: Record<string, boolean | null> = { final_state_verified: null, target_frame_verified: null, resources_returned_verified: null, save_queue_drained_verified: null };
+  const runDeadline = performance.now() + options.runTimeoutSeconds * 1000;
+  const watchdog = setTimeout(() => {
+    timedOut = true;
+    void launched?.close({ keepRunDir: true }).catch((error) => { failure ??= error; });
+  }, options.runTimeoutSeconds * 1000);
+  try {
+    launched = await launchApp({ runDir, skipLocaleReload: true });
+    const page = launched.page;
+    page.setDefaultTimeout(options.operationTimeoutMs);
+    await launched.app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]!;
+      window.setContentSize(1280, 800); window.show(); window.focus();
+    });
+    environment = await readEnvironmentIdentity(launched);
+    if (!environment.visible || environment.devtools_open) throw new Error("invalid resource-soak window");
+    await installProbe(page);
+    await page.getByRole("button", { name: `Open ${fixture.project!.name}`, exact: true }).click();
+    await enableAgentSessionViaUI(page, launched.endpointFile);
+    agent = await connectExternalAgent(launched.endpointFile);
+    const target = { projectId: fixture.projectId!, workspaceId: fixture.workspaceId! };
+    const read = async () => {
+      const reply = await agent!.callTool<TimelineState>("timeline_get", target, { timeoutMs: options.operationTimeoutMs });
+      if (!reply.ok) throw new Error(`resource timeline read failed: ${reply.error?.code}`);
+      revision = reply.value!.revision;
+      return reply.value!;
+    };
+    const initial = await read();
+    const clip = initial.tracks.flatMap((track) => track.clips)[0]!;
+    const clipBox = await page.locator(`[data-live-editor-target-id="${clip.id}"]`).first().boundingBox();
+    const rulerBox = await page.getByTestId("timeline-time-ruler").boundingBox();
+    if (!clipBox || !rulerBox) throw new Error("resource fixture timeline geometry unavailable");
+    await page.mouse.click(rulerBox.x + 3 * clipBox.width / clip.duration, rulerBox.y + rulerBox.height / 2);
+    const currentMarker = { ...fixture, targetMarker: { ...fixture.targetMarker!, rgb: [210, 75, 75] as const } };
+    const verifyPlayhead = async () => {
+      const context = await agent!.callTool<{ playheadSeconds: number }>("editor_get_context", target, { timeoutMs: options.operationTimeoutMs });
+      if (!context.ok || Math.abs(context.value!.playheadSeconds - 3) > 0.06) throw new Error("resource history preview did not preserve the editing playhead");
+    };
+    const stateMatches = async (time: number) => {
+      const state = await read();
+      const clips = state.tracks.flatMap((track) => track.clips);
+      if (clips.length !== 1 || state.tracks.length !== initial.tracks.length || Math.abs(clips[0]!.startTime - time) > 0.001 || clips[0]!.mediaId !== clip.mediaId || clips[0]!.duration !== clip.duration) throw new Error("resource cycle changed fixed fixture state");
+      await waitForMarker(page, currentMarker, options.operationTimeoutMs);
+    };
+    const historyRoundTrip = async () => {
+      const node = page.getByTestId(`version-node-${fixture.targetNodeId}`);
+      if (!await node.isVisible()) await page.getByTestId("current-archive-entry").click();
+      await node.scrollIntoViewIfNeeded(); await node.dblclick();
+      await page.getByTestId("version-preview-banner").waitFor();
+      await waitForMarker(page, fixture, options.operationTimeoutMs);
+      await page.getByTestId("version-preview-return").click();
+      await page.getByTestId("version-preview-banner").waitFor({ state: "hidden" });
+      await verifyPlayhead();
+      await waitForMarker(page, currentMarker, options.operationTimeoutMs);
+    };
+    const settleAndSample = async () => {
+      // Save completion is observed through the production queue registry.
+      await page.keyboard.press("Control+s");
+      await page.waitForFunction(async () => {
+        const snapshot = await (globalThis as ResourceGlobal).__reelterminalPerformanceCapture.readResources();
+        return snapshot.workspace.queuedWrites === 0 && snapshot.workspace.pendingWrites === 0;
+      }, null, { timeout: options.operationTimeoutMs });
+      // One full second without actions after the durable queue has drained.
+      await page.waitForTimeout(1000);
+      const renderer = await page.evaluate(async () => ({
+        resources: await (globalThis as ResourceGlobal).__reelterminalPerformanceCapture.readResources(),
+        heap: (globalThis.performance as globalThis.Performance & { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? null,
+        visible: !document.hidden,
+      }));
+      if (!renderer.visible) throw new Error("resource-soak window hidden");
+      if (renderer.resources.workspace.failedWriteCount > 0) throw new Error("resource-soak save failed instead of draining successfully");
+      const rss = await launched!.app.evaluate(({ app }) => app.getAppMetrics().filter((metric) => ["Browser", "Tab", "Renderer", "GPU", "Utility"].includes(metric.type)).map((metric) => ({
+        role: metric.type === "Browser" ? "main" : metric.type === "Tab" ? "renderer" : metric.type.toLowerCase(),
+        process_epoch: `${metric.pid}-${metric.creationTime}`,
+        rss_bytes: metric.memory?.workingSetSize === undefined ? null : metric.memory.workingSetSize * 1024,
+      })));
+      idle.push({ elapsed_ms: performance.now() - started, heap_bytes: renderer.heap, rss, resources: renderer.resources as unknown as Record<string, unknown> });
+      correctness.save_queue_drained_verified = true;
+      console.info("PERFORMANCE_RESOURCE_PROGRESS", {
+        scenario: scenarioId,
+        elapsed_seconds: Math.round((performance.now() - started) / 1000),
+        completed_rounds: rounds,
+        pending_writes: renderer.resources.workspace.pendingWrites,
+        undo_entries: renderer.resources.history.actionUndo,
+        owned_blob_urls: renderer.resources.media.ownedBlobUrls,
+      });
+      return renderer.resources;
+    };
+    // Prime both views and optional worker initialization outside measured runs.
+    await verifyPlayhead();
+    await historyRoundTrip();
+    await stateMatches(clip.startTime);
+    if (scenarioId === "R02" && runDeadline - performance.now() < (options.durationSeconds + 60) * 1000) {
+      reasons.push("insufficient_measurement_budget");
+      throw new Error("resource-soak startup left insufficient time for measurement and cleanup; increase --run-timeout-seconds");
+    }
+    started = performance.now();
+    const baseline = await settleAndSample();
+    let lastIdle = started;
+    while (scenarioId === "R01" ? rounds < options.editRounds : performance.now() - started < options.durationSeconds * 1000) {
+      if (timedOut) throw new Error("resource-soak elapsed budget exceeded");
+      const operationId = `edit-undo-redo-${rounds}`;
+      const cycleStart = performance.now();
+      await page.evaluate(({ runId, operationId, seconds }) => (globalThis as ResourceGlobal).__reelterminalPerfDriver.start(runId, operationId, seconds), { runId, operationId, seconds: options.operationTimeoutMs / 1000 });
+      activeCapture = true;
+      const beforeTime = rounds % 2 === 0 ? clip.startTime : clip.startTime + 0.5;
+      const afterTime = rounds % 2 === 0 ? clip.startTime + 0.5 : clip.startTime;
+      const moved = await agent.callTool<{ revision: number }>("edit_apply", { ...target, expectedRevision: revision, ops: [{ op: "clip.move", clipId: clip.id, startTime: afterTime }] }, { timeoutMs: options.operationTimeoutMs });
+      if (!moved.ok || moved.value!.revision !== revision + 1) throw new Error("soak edit did not commit one revision");
+      revision = moved.value!.revision;
+      await stateMatches(afterTime);
+      for (const action of ["undo", "redo"] as const) {
+        const reply = await agent.callTool<{ revision: number }>("history_control", { ...target, action, expectedRevision: revision, idempotencyKey: `${runId}-${rounds}-${action}` }, { timeoutMs: options.operationTimeoutMs });
+        if (!reply.ok || reply.value!.revision !== revision + 1) throw new Error(`soak ${action} failed: ${reply.error?.code ?? `revision ${revision} -> ${reply.value!.revision}`}`);
+        revision = reply.value!.revision;
+        await stateMatches(action === "undo" ? beforeTime : afterTime);
+      }
+      await page.waitForFunction(() => (globalThis as ResourceGlobal).__reelterminalPerformanceCapture.pendingSpanCount === 0, null, { timeout: options.operationTimeoutMs });
+      const evidence = await page.evaluate(() => (globalThis as ResourceGlobal).__reelterminalPerfDriver.stop("ok"));
+      activeCapture = false;
+      eventsDropped += evidence.report.drops.eventsDropped + (evidence.main.ok ? evidence.main.mainCapture.eventsDropped : 0);
+      endpointsDropped += evidence.report.drops.criticalEndpointsDropped;
+      if (evidence.hiddenDuringAction || evidence.report.status !== "complete" || !evidence.main.ok || evidence.main.mainCapture.status !== "complete") throw new Error("resource cycle capture incomplete");
+      operations.push({ operation_id: operationId, metric: "edit_undo_redo_content_verified_ms", outcome: "ok", duration_ms: evidence.report.wallDurationUs / 1000, target_verified: true });
+      rounds++;
+      if (performance.now() - lastIdle >= 30_000 || (scenarioId === "R01" && rounds % 100 === 0)) {
+        await historyRoundTrip(); await stateMatches(afterTime); await settleAndSample(); lastIdle = performance.now();
+      }
+      if (scenarioId === "R02") {
+        const remaining = options.actionIntervalMs - (performance.now() - cycleStart);
+        if (remaining > 0) await page.waitForTimeout(remaining);
+      }
+    }
+    await historyRoundTrip();
+    await stateMatches(rounds % 2 === 0 ? clip.startTime : clip.startTime + 0.5);
+    const final = await settleAndSample();
+    // History is intentionally retained but bounded; transient view leases return.
+    if (final.history.actionUndo > 1000 || final.history.actionRedo !== 0 || final.history.changeJournalRevisions > 256) throw new Error("history/journal exceeded its production bound");
+    for (const key of ["projectLeases", "projectFaces"] as const) if (final.fonts[key] !== baseline.fonts[key]) throw new Error("font leases did not return to the warmed baseline");
+    if (final.workspace.runtimes !== baseline.workspace.runtimes || final.media.ownedBlobUrls !== baseline.media.ownedBlobUrls) throw new Error("runtime/blob resource count grew across fixed-asset cycles");
+    for (const key of ["previewVideoCacheEntries", "previewImageBitmapCacheEntries", "motionImageBitmapCacheEntries", "motionVideoElementCacheEntries"] as const) {
+      if (final.media[key] !== baseline.media[key]) throw new Error("fixed-media caches did not return to their warmed baseline");
+    }
+    correctness.final_state_verified = true; correctness.target_frame_verified = true; correctness.resources_returned_verified = true;
+    measuredElapsedMs = performance.now() - started;
+  } catch (error) {
+    failure = error;
+    reasons.push(timedOut ? "run_timeout" : "resource_soak_failed");
+    operations.push({ operation_id: `failed-${rounds}`, metric: "edit_undo_redo_content_verified_ms", outcome: timedOut || (error as Error).name === "TimeoutError" ? "timeout" : "failed", duration_ms: null, waited_ms: started ? performance.now() - started : 0, target_verified: false });
+  } finally {
+    clearTimeout(watchdog);
+    if (activeCapture && launched && !launched.page.isClosed()) {
+      try { await launched.page.evaluate(() => (globalThis as ResourceGlobal).__reelterminalPerfDriver.stop("error")); }
+      catch (error) { failure ??= error; reasons.push("capture_cleanup_failed"); }
+    }
+    try { await agent?.close(); } catch (error) { failure ??= error; reasons.push("connector_cleanup_failed"); }
+    try { await launched?.close({ keepRunDir: true }); } catch (error) { failure ??= error; reasons.push("process_cleanup_failed"); }
+  }
+  const directory = path.join(ARTIFACTS_DIR, "performance");
+  await mkdir(directory, { recursive: true });
+  if (!environment) {
+    await writeFile(path.join(directory, `${runId}.preflight.json`), JSON.stringify({ schema: "reelterminal.performance-preflight/v1", status: "invalid", reason_codes: [...reasons, "environment_unavailable"], retained_profile: runDir, build }));
+    throw failure ?? new Error("resource-soak environment unavailable");
+  }
+  const result = createPerformanceResult({
+    run: {
+      run_id: runId,
+      scenario_id: scenarioId,
+      scenario_version: 1,
+      seed: options.seed,
+      fixture_manifest: fixture.manifest,
+      fixture_manifest_sha256: performanceFixtureManifestSha256(fixture.manifest),
+      mode: "light",
+      cache_state: "warm_fixed_views",
+      sampling: { input_every_n: 1, frame_every_n: 1 },
+      budgets: { capture_seconds: options.operationTimeoutMs / 1000, events_capacity: 16384, run_seconds: options.runTimeoutSeconds },
+      expected_operations: operations.length,
+      completed_rounds: rounds,
+      requested_duration_seconds: scenarioId === "R02" ? options.durationSeconds : null,
+      elapsed_ms: measuredElapsedMs || (started ? performance.now() - started : 0),
+      action_interval_ms: options.actionIntervalMs,
+      warmup: "one_history_preview_return",
+      actual_presented: "unsupported",
+      forced_gc: false,
+    },
+    build: { ...build }, environment: { ...environment }, samples: operations, correctness,
+    validity: { complete: !failure, reason_codes: reasons, events_dropped: eventsDropped, critical_endpoints_dropped: endpointsDropped, probe_calibrated: false },
+  });
+  const third = Math.max(1, Math.floor(operations.length / 3));
+  const artifactDocument = {
+    ...result,
+    idle_samples: idle,
+    memory_trends: summarizeIdleMemory(idle),
+    distributions_by_phase: {
+      early: summarizeOperations(operations.slice(0, third), "warm", !failure),
+      middle: summarizeOperations(operations.slice(third, third * 2), "warm", !failure),
+      late: summarizeOperations(operations.slice(third * 2), "warm", !failure),
+    },
+  };
+  const json = JSON.stringify(artifactDocument, null, 2);
+  const file = path.join(directory, `${runId}.result.json`);
+  if (Buffer.byteLength(json) > 10 * 1024 * 1024) {
+    await writeFile(file.replace(/\.result\.json$/, ".preflight.json"), JSON.stringify({
+      schema: "reelterminal.performance-preflight/v1", status: "invalid",
+      reason_codes: ["artifact_budget_exceeded"], run_id: runId, completed_rounds: rounds,
+    }));
+    throw new Error("resource-soak artifact exceeds 10 MiB budget");
+  }
+  await writeFile(file, json);
+  const validation = validateResultDocument(artifactDocument);
+  if (!validation.valid) throw new Error(`resource-soak result invalid: ${validation.errors.join("; ")}`);
+  if (failure) throw failure;
+  await rm(runDir, { recursive: true, force: true });
+  return file;
+}

@@ -31,6 +31,7 @@
     "test:perf:quick": "node ../../scripts/performance/run.mjs --suite quick",
     "test:perf:calibrate": "cross-env REELTERMINAL_PERFORMANCE_CALIBRATION=1 vitest run --config e2e/vitest.config.ts e2e/performance/probe-calibration.e2e.ts",
     "test:perf:benchmark": "node ../../scripts/performance/run.mjs --suite benchmark",
+    "test:perf:soak": "node ../../scripts/performance/run.mjs --suite soak",
     "fetch:ffmpeg": "node scripts/fetch-ffmpeg.mjs",
     "prepare:aurora": "node scripts/prepare-aurora-native.mjs",
     "pack": "pnpm run build && electron-builder --dir",

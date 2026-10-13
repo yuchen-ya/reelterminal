@@ -12,20 +12,22 @@ import { ARTIFACTS_DIR, E2E_DIR } from "../paths";
 import { connectExternalAgent, type ExternalAgent } from "../mcp-client";
 import { enableAgentSessionViaUI } from "../ui";
 import { captureBuildIdentity, readEnvironmentIdentity } from "./identity";
-import { createPerformanceResult, summarizeOperations, type RawPerformanceOperation } from "./result";
+import { createPerformanceResult, type RawPerformanceOperation } from "./result";
 import { readHydratedStructureBytes } from "./structure-probe";
 import { extractProductMeasurements } from "./product-metrics";
+import { createActionWindowArtifactParts, type ActionWindowArtifactReference } from "./action-window-artifacts";
 import {
   createPerformanceFixture,
   materializePerformanceFixtureAssets,
   performanceFixtureManifestSha256,
   type PerformanceFixture,
   type PerformanceScenarioId,
+  type TimelinePerformanceScenarioId,
 } from "../../performance/fixtures";
 import { validateResultDocument } from "../../../../../scripts/performance/result-contract.mjs";
 
 export interface PerformanceRunOptions {
-  suite: "quick" | "benchmark";
+  suite: "quick" | "benchmark" | "soak";
   scenarios: PerformanceScenarioId[];
   seed: string;
   samples: number;
@@ -34,6 +36,11 @@ export interface PerformanceRunOptions {
   coldLaunches: number;
   fontMiB: 32 | 64;
   nodeCount: 10 | 100 | 1000;
+  clipCount: 500 | 2000;
+  trackCount: 20 | 50;
+  editRounds: number;
+  durationSeconds: number;
+  actionIntervalMs: number;
   operationTimeoutMs: number;
   runTimeoutSeconds: number;
 }
@@ -190,6 +197,16 @@ function clipTarget(page: Page, id: string): Locator {
   return page.locator(`[data-live-editor-target-id="${id}"]`).first();
 }
 
+async function selectClipsWithKeyboard(page: Page, ids: readonly string[]): Promise<void> {
+  await page.keyboard.press("Escape");
+  for (const [index, id] of ids.entries()) {
+    await clipTarget(page, id).press(index === 0 ? "Enter" : "Control+Enter");
+  }
+  await page.waitForFunction((ids) => ids.every((id) =>
+    document.querySelector(`[data-live-editor-target-id="${id}"]`)?.getAttribute("aria-pressed") === "true",
+  ), ids);
+}
+
 async function verifyHit(target: Locator, x: number, y: number): Promise<void> {
   const id = await target.getAttribute("data-live-editor-target-id");
   const hit = await target.page().evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("[data-live-editor-target-id]")?.getAttribute("data-live-editor-target-id"), { x, y });
@@ -200,6 +217,23 @@ export async function dragTo(page: Page, id: string, delta: number, timeout: num
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
   const target = clipTarget(page, id);
   await target.scrollIntoViewIfNeeded();
+  const scroller = page.getByTestId("timeline-tracks-scroll");
+  if (trim) {
+    // scrollIntoView cannot reveal both ends of an oversized clip. Aim its
+    // right trim handle inside the scroll viewport, with room for movement.
+    await scroller.evaluate((element, id) => {
+      const clip = element.querySelector(`[data-live-editor-target-id="${id}"]`)!;
+      const viewport = element.getBoundingClientRect();
+      const end = clip.getBoundingClientRect().right - 3;
+      if (end > viewport.right - 80) element.scrollLeft += end - (viewport.right - 80);
+      else if (end < viewport.left + 80) element.scrollLeft += end - (viewport.left + 80);
+    }, id);
+  } else {
+    // The synthetic drag targets stay near the beginning. Keep the full
+    // gesture inside the viewport even when the clip is wider than it.
+    await scroller.evaluate((element) => { element.scrollLeft = 0; });
+  }
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   const box = await target.boundingBox();
   if (!box) throw new Error("clip target has no geometry");
   const x = trim ? box.x + box.width - 3 : box.x + Math.min(box.width / 2, 50);
@@ -211,6 +245,11 @@ export async function dragTo(page: Page, id: string, delta: number, timeout: num
   await page.mouse.down();
   // Let React install its gesture listener before the first movement.
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  const downBox = await target.boundingBox();
+  if (!downBox || Math.abs(downBox.x - box.x) > 1) {
+    await page.mouse.up();
+    throw new Error(`pointer-down changed clip geometry: ${box.x} -> ${downBox?.x}`);
+  }
   for (let step = 1; step <= 6; step++) {
     await page.mouse.move(x + delta * step / 6, y);
     // Keep the requested input rate fixed and let React install/update the
@@ -237,8 +276,8 @@ async function timeline(agent: ExternalAgent, target: { projectId: string; works
   return result.value!;
 }
 
-export async function runPerformanceScenario(scenarioId: PerformanceScenarioId, options: PerformanceRunOptions, repeat: number, coldIndex = 0): Promise<string> {
-  const parameters: Record<string, number> = scenarioId === "T02" || scenarioId === "H02" ? { fontPayloadMiB: options.fontMiB } : scenarioId === "H01" ? { nodeCount: options.nodeCount } : {};
+export async function runPerformanceScenario(scenarioId: TimelinePerformanceScenarioId, options: PerformanceRunOptions, repeat: number, coldIndex = 0): Promise<string> {
+  const parameters: Record<string, number> = scenarioId === "T02" || scenarioId === "H02" ? { fontPayloadMiB: options.fontMiB } : scenarioId === "H01" ? { nodeCount: options.nodeCount } : scenarioId === "T03" ? { clipCount: options.clipCount, trackCount: options.trackCount } : {};
   const fixture = createPerformanceFixture({ scenarioId, seed: options.seed, parameters });
   const targetIdentity = { projectId: fixture.projectId!, workspaceId: fixture.workspaceId! };
   const runId = `${scenarioId.toLowerCase()}-${Date.now()}-${repeat}-${coldIndex}`;
@@ -362,7 +401,7 @@ export async function runPerformanceScenario(scenarioId: PerformanceScenarioId, 
       if (await snap.count()) await snap.click();
       const mediaId = fixture.targetMediaClipId!;
       const textId = fixture.targetTextClipId!;
-      if (scenarioId === "P01") {
+      if (scenarioId === "P01" || scenarioId === "T03") {
         const slider = launched.page.getByRole("slider", { name: "Timeline zoom", exact: true });
         const box = (await slider.boundingBox())!;
         // Real range input establishes a stable ~100 px/s view before gestures.
@@ -398,7 +437,12 @@ export async function runPerformanceScenario(scenarioId: PerformanceScenarioId, 
           }
           if (!trackVerified || observed === undefined || Math.abs(observed - expected) > 0.06) {
             correctness.final_state_verified = false;
-            throw new Error(`gesture final state mismatch: expected ${expected}, observed ${observed}`);
+            const geometry = await clipTarget(launched!.page, id).evaluate((element) => ({
+              width: element.getBoundingClientRect().width,
+              zoom: document.querySelector('[aria-label="Timeline zoom"]')?.getAttribute("aria-valuetext"),
+              scrollLeft: document.querySelector('[data-testid="timeline-tracks-scroll"]')?.scrollLeft,
+            }));
+            throw new Error(`gesture final state mismatch: expected ${expected}, observed ${observed}, pps ${pixelsPerSecond}, geometry ${JSON.stringify(geometry)}`);
           }
           if (observedRevision !== before.revision + 1) {
             correctness.single_revision_per_gesture_verified = false;
@@ -453,9 +497,39 @@ export async function runPerformanceScenario(scenarioId: PerformanceScenarioId, 
       } else {
         for (let index = 0; index < options.samples; index++) {
           const direction = index % 2 === 0 ? 1 : -1;
+          // Each single-selection distribution starts from a known selection.
+          if (scenarioId === "T03") await selectClipsWithKeyboard(launched.page, [mediaId]);
           await move(mediaId, direction * pixelsPerSecond * 0.5);
           if (scenarioId === "T02") await move(textId, direction * pixelsPerSecond * 0.5);
-          if (scenarioId === "T01") {
+          if (scenarioId === "T03") {
+            const state = await timeline(agent, targetIdentity);
+            const clips = state.tracks.flatMap((track) => track.clips);
+            const primary = clips.find((clip) => clip.id === mediaId)!;
+            const companion = clips.find((clip) => clip.trackId === primary.trackId && clip.id !== mediaId)!;
+            const selected = [primary, companion];
+            const secondId = selected[1]!.id;
+            await selectClipsWithKeyboard(launched.page, [mediaId, secondId]);
+            await capture("timeline_multiselect_drag_verified_ms", () => dragTo(launched!.page, mediaId, direction * pixelsPerSecond * 0.25, options.operationTimeoutMs), async () => {
+              const deadline = performance.now() + options.operationTimeoutMs;
+              let verified = false;
+              let observed: { revision: number; times: number[] } | undefined;
+              while (performance.now() < deadline) {
+                const after = await timeline(agent!, targetIdentity);
+                observed = { revision: after.revision, times: selected.map((before) => after.tracks.flatMap((track) => track.clips).find((clip) => clip.id === before.id)!.startTime) };
+                verified = after.revision === state.revision + 1 && selected.every((before) => {
+                  const actual = after.tracks.flatMap((track) => track.clips).find((clip) => clip.id === before.id)!;
+                  return actual.trackId === before.trackId && Math.abs(actual.startTime - before.startTime - direction * 0.25) <= 0.06;
+                });
+                if (verified) break;
+                await new Promise((resolve) => setTimeout(resolve, 50));
+              }
+              if (!verified) throw new Error(`multi-selection gesture mismatch: revision ${state.revision} -> ${observed?.revision}; start times ${selected.map((clip) => clip.startTime)} -> ${observed?.times}`);
+              await waitForMarker(launched!.page, fixture, options.operationTimeoutMs);
+            });
+            await selectClipsWithKeyboard(launched.page, [mediaId]);
+            correctness.multiselection_transaction_verified = true;
+          }
+          if (scenarioId === "T01" || scenarioId === "T03") {
             await move(mediaId, direction * pixelsPerSecond * 0.2, true);
             const scroller = launched.page.getByTestId("timeline-tracks-scroll");
             const beforeScroll = await scroller.evaluate((element) => element.scrollLeft);
@@ -522,16 +596,26 @@ export async function runPerformanceScenario(scenarioId: PerformanceScenarioId, 
     build: { ...buildIdentity }, environment: { ...environment }, samples, correctness,
     validity: { complete: !failure && windows.every(captureComplete), reason_codes: [...reasonCodes, ...windows.flatMap(window => window.main?.ok ? window.main.mainCapture.reasonCodes : ["main_capture_unavailable"])], events_dropped: windows.reduce((sum, window) => sum + window.report.drops.eventsDropped + (window.main?.ok ? window.main.mainCapture.eventsDropped : 0), 0), critical_endpoints_dropped: windows.reduce((sum, window) => sum + window.report.drops.criticalEndpointsDropped, 0), probe_calibrated: false },
   });
-  await mkdir(path.join(ARTIFACTS_DIR, "performance"), { recursive: true });
-  const file = path.join(ARTIFACTS_DIR, "performance", `${runId}.result.json`);
-  let artifactDocument = { ...result, action_windows: windows, product_measurements: windows.map(window => extractProductMeasurements(window.report)) };
+  const artifactDirectory = path.join(ARTIFACTS_DIR, "performance");
+  await mkdir(artifactDirectory, { recursive: true });
+  const file = path.join(artifactDirectory, `${runId}.result.json`);
+  let artifactDocument: Record<string, unknown> = {
+    ...result,
+    action_windows: windows,
+    product_measurements: windows.map(window => extractProductMeasurements(window.report)),
+  };
   let json = JSON.stringify(artifactDocument, null, 2);
+  let actionWindowArtifactReferences: readonly ActionWindowArtifactReference[] = [];
   if (Buffer.byteLength(json) > 10 * 1024 * 1024) {
-    failure ??= new Error("performance artifact exceeded 10 MiB budget");
+    const bundle = createActionWindowArtifactParts(windows, runId);
+    for (const part of bundle.parts) {
+      await writeFile(path.join(artifactDirectory, part.reference.artifact), part.content);
+    }
+    actionWindowArtifactReferences = bundle.descriptor.artifacts;
     artifactDocument = {
-      ...artifactDocument, status: artifactDocument.status === "invalid" ? "invalid" : "incomplete",
-      validity: { ...artifactDocument.validity, complete: false, reason_codes: [...artifactDocument.validity.reason_codes, "artifact_budget_exceeded"] },
-      metrics: summarizeOperations(samples, String(result.run.cache_state), false), action_windows: [],
+      ...artifactDocument,
+      action_windows: bundle.descriptor,
+      artifacts: [...result.artifacts, ...bundle.descriptor.artifacts],
     };
     json = JSON.stringify(artifactDocument, null, 2);
   }
@@ -540,8 +624,9 @@ export async function runPerformanceScenario(scenarioId: PerformanceScenarioId, 
       schema: "reelterminal.performance-preflight/v1", status: "invalid", run_id: runId,
       reason_codes: ["artifact_budget_exceeded"], requested_operations: samples.length,
       retained_profile: runDir,
+      action_window_artifacts: actionWindowArtifactReferences,
     }, null, 2));
-    throw new Error("performance result remains above 10 MiB after omitting action windows");
+    throw new Error("performance result remains above 10 MiB after externalizing action windows");
   }
   const validation = validateResultDocument(artifactDocument);
   await writeFile(file, json);

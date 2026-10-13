@@ -222,6 +222,20 @@ test("invalid, missing-baseline, and uncalibrated results remain report-only wit
   assert.deepEqual(uncalibrated.regressions, []);
 });
 
+test("setup failure can retain zero actual operations without fabricating timeout samples", () => {
+  const artifact = result();
+  artifact.status = "invalid";
+  artifact.validity.complete = false;
+  artifact.validity.reason_codes = ["setup_failed"];
+  artifact.run.expected_operations = 0;
+  artifact.operations = [];
+  artifact.metrics = {};
+  assert.equal(validateResultDocument(artifact).valid, true);
+  artifact.status = "complete";
+  artifact.validity.complete = true;
+  assert.equal(validateResultDocument(artifact).valid, false);
+});
+
 test("an unverified build failure artifact is valid when it contains no measured operations", () => {
   const artifact = result();
   artifact.status = "invalid";

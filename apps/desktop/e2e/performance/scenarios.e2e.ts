@@ -3,6 +3,9 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { acquirePerformanceLock, runPerformanceScenario, type PerformanceRunOptions } from "../harness/performance/driver";
 import { combineColdPerformanceResults } from "../harness/performance/result";
+import { runResourceSoakScenario } from "../harness/performance/resource-soak";
+import { runPlaybackAvScenario } from "../harness/performance/playback-av";
+import { runExportPerformanceScenario } from "../harness/performance/export-scenario";
 import { validateResultDocument } from "../../../../scripts/performance/result-contract.mjs";
 
 const rawOptions = process.env.REELTERMINAL_PERFORMANCE_OPTIONS;
@@ -14,6 +17,13 @@ const options = rawOptions ? JSON.parse(rawOptions) as PerformanceRunOptions : n
     try {
       for (const scenario of options!.scenarios) {
         for (let repeat = 0; repeat < options!.repeats; repeat++) {
+          if (scenario === "A01" || scenario === "R01" || scenario === "R02" || scenario === "E01") {
+            const file = scenario === "A01" ? await runPlaybackAvScenario(options!, repeat)
+              : scenario === "E01" ? await runExportPerformanceScenario(options!, repeat)
+              : await runResourceSoakScenario(scenario, options!, repeat);
+            console.info("PERFORMANCE_RESULT", file);
+            continue;
+          }
           const launches = options!.cache === "warm" ? 1 : options!.coldLaunches;
           const files: string[] = [];
           for (let index = 0; index < launches; index++) {

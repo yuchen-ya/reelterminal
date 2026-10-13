@@ -18,7 +18,7 @@ const METRIC_STATUSES = new Set([
 ]);
 const MODES = new Set(["counts", "light", "trace"]);
 const OUTCOMES = new Set(["ok", "failed", "timeout", "cancelled", "superseded"]);
-const SCENARIOS = new Set(["T01", "T02", "H01", "H02", "P01"]);
+const SCENARIOS = new Set(["T01", "T02", "T03", "H01", "H02", "P01", "A01", "R01", "R02", "E01"]);
 const HASH_PATTERN = /^[a-f0-9]{64}$/i;
 const METRIC_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
@@ -328,7 +328,10 @@ export function validateResultDocument(document) {
       if (!isFiniteNonNegative(run.budgets.capture_seconds) || run.budgets.capture_seconds === 0) errors.push("run.budgets.capture_seconds must be > 0");
       if (!Number.isInteger(run.budgets.events_capacity) || run.budgets.events_capacity < 1) errors.push("run.budgets.events_capacity must be a positive integer");
     }
-    if (!Number.isInteger(run.expected_operations) || run.expected_operations < 1) errors.push("run.expected_operations must be a positive integer");
+    const minimumOperations = document.status === "complete" ? 1 : 0;
+    if (!Number.isInteger(run.expected_operations) || run.expected_operations < minimumOperations) {
+      errors.push(`run.expected_operations must be an integer >= ${minimumOperations}`);
+    }
     const manifest = run.fixture_manifest;
     checkFixtureManifest(manifest, errors);
     if (isPlainObject(manifest)) {

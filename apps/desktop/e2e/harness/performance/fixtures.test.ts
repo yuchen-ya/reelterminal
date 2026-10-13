@@ -42,6 +42,16 @@ function pngCenterRgb(url: string | undefined): number[] {
 }
 
 describe("deterministic performance fixtures", () => {
+  test.each([[500, 20], [2000, 50]] as const)("T03 scales %i clips across %i tracks with fixed media", (clipCount, trackCount) => {
+    const fixture = createPerformanceFixture({ scenarioId: "T03", seed: "42", parameters: { clipCount, trackCount } });
+    const project = fixture.project!;
+    expect(project.timeline.tracks).toHaveLength(trackCount);
+    expect(project.timeline.tracks.flatMap((track) => track.clips).length + project.textClips!.length).toBe(clipCount);
+    expect(project.mediaLibrary.items).toHaveLength(1);
+    expect(project.timeline.tracks[0]!.clips[0]).toMatchObject({ id: fixture.targetMediaClipId, startTime: 0, duration: 5 });
+    expect(pngCenterRgb(project.mediaLibrary.items[0]!.contentUrl)).toEqual(fixture.targetMarker!.rgb);
+    expect(createPerformanceFixture({ scenarioId: "T03", seed: "42", parameters: { clipCount, trackCount } }).manifest).toEqual(fixture.manifest);
+  });
   test("same seed recreates the same T01 project and manifest; changing it changes identities", () => {
     const first = createPerformanceFixture({ scenarioId: "T01", seed: "review-seed" });
     const repeated = createPerformanceFixture({ scenarioId: "T01", seed: "review-seed" });
