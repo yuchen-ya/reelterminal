@@ -22,6 +22,12 @@
       "reason": "Isolated test profiles set the existing persisted locale key; no user profile is modified."
     },
     {
+      "files": "apps/desktop/e2e/harness/performance/driver.ts",
+      "pattern": "openreel-locale|openreel-onboarding-complete|openreel-db",
+      "category": 4,
+      "reason": "Synthetic performance profiles seed the application's existing preference keys and IndexedDB database; these persisted identifiers must match production readers."
+    },
+    {
       "files": "apps/desktop/e2e/preview-controls.e2e.ts",
       "pattern": "openreel-locale",
       "category": 4,
@@ -165,12 +171,6 @@
       "pattern": "openreel[-_.][a-z0-9_-]*",
       "category": 4,
       "reason": "legacy 持久化标识：注释引用 openreel-project@2 checkpoint 格式。"
-    },
-    {
-      "files": "packages/agent-facade/src/tool-catalog.ts",
-      "pattern": "\\.openreel",
-      "category": 4,
-      "reason": "legacy 持久化标识：工具描述引用 .openreel 项目文件格式（格式说明，非品牌）。"
     },
     {
       "files": "packages/agent-facade/src/live-session.ts",

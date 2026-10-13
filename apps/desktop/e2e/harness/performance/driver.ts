@@ -45,7 +45,7 @@ export interface PerformanceRunOptions {
   runTimeoutSeconds: number;
 }
 
-interface RendererWindowEvidence {
+export interface RendererWindowEvidence {
   report: CaptureReport;
   firstInputUs: number | null;
   intervalsMs: number[];
@@ -53,9 +53,14 @@ interface RendererWindowEvidence {
   main?: import("../../../src/shared/performance-contract").PerfStopReply;
 }
 
-function captureComplete(window: RendererWindowEvidence): boolean {
-  return !window.hiddenDuringAction && window.report.status === "complete" &&
-    window.main?.ok === true && window.main.mainCapture.status === "complete";
+export function captureComplete(window: RendererWindowEvidence): boolean {
+  const mainCapture = window.main?.ok === true ? window.main.mainCapture : null;
+  return !window.hiddenDuringAction &&
+    window.report.status === "complete" &&
+    window.report.drops.eventsDropped === 0 &&
+    window.report.drops.criticalEndpointsDropped === 0 &&
+    mainCapture?.status === "complete" &&
+    mainCapture.eventsDropped === 0;
 }
 
 type ProbeGlobal = typeof globalThis & {

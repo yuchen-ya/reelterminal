@@ -44,6 +44,8 @@ function coldResult(
     cacheState?: string;
     freeBytes?: number;
     validityComplete?: boolean;
+    eventsDropped?: number;
+    criticalEndpointsDropped?: number;
     outcome?: RawPerformanceOperation["outcome"];
     correctness?: Readonly<Record<string, boolean | null>>;
   } = {},
@@ -117,6 +119,8 @@ function coldResult(
       validity: {
         complete: overrides.validityComplete ?? true,
         reason_codes: overrides.validityComplete === false ? ["capture_incomplete"] : [],
+        events_dropped: overrides.eventsDropped ?? 0,
+        critical_endpoints_dropped: overrides.criticalEndpointsDropped ?? 0,
         probe_calibrated: false,
       },
     }),
@@ -210,6 +214,35 @@ describe("performance result aggregation", () => {
     expect(metric.p50).toBeNull();
     expect(metric.p95).toBeNull();
     expect(metric.p99).toBeNull();
+  });
+
+  it("invalidates a wrong target frame and removes its performance distribution", () => {
+    const result = coldResult(0, 42, {
+      correctness: { target_frame_verified: false },
+    });
+    const metric = result.metrics.history_cold_entry_content_verified_ms;
+
+    expect(result.status).toBe("invalid");
+    expect(result.validity.complete).toBe(false);
+    expect(metric.status).toBe("failed");
+    expect(metric.p50).toBeNull();
+    expect(metric.p95).toBeNull();
+    expect(metric.p99).toBeNull();
+    expect(validateResultDocument(result).valid).toBe(true);
+  });
+
+  it("marks dropped capture events incomplete and removes its performance distribution", () => {
+    const result = coldResult(0, 42, { eventsDropped: 1 });
+    const metric = result.metrics.history_cold_entry_content_verified_ms;
+
+    expect(result.status).toBe("incomplete");
+    expect(result.validity.complete).toBe(false);
+    expect(result.validity.events_dropped).toBe(1);
+    expect(metric.status).toBe("failed");
+    expect(metric.p50).toBeNull();
+    expect(metric.p95).toBeNull();
+    expect(metric.p99).toBeNull();
+    expect(validateResultDocument(result).valid).toBe(true);
   });
 
   it("preserves an unverified build failure without inventing measurement rows", () => {

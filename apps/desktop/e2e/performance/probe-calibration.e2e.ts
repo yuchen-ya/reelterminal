@@ -7,14 +7,14 @@ import { launchApp, type LaunchedApp } from "../harness/launch";
 import { ARTIFACTS_DIR } from "../harness/paths";
 import { connectExternalAgent, type ExternalAgent } from "../harness/mcp-client";
 import { enableAgentSessionViaUI } from "../harness/ui";
-import { acquirePerformanceLock, prepareProfile, installProbe, dragTo, waitForMarker } from "../harness/performance/driver";
+import { acquirePerformanceLock, captureComplete, prepareProfile, installProbe, dragTo, waitForMarker, type RendererWindowEvidence } from "../harness/performance/driver";
 import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/performance/identity";
 import { createPerformanceFixture } from "./fixtures";
 
 interface CalibrationGlobal {
   __reelterminalPerfDriver: {
     start(runId: string, operationId: string, seconds: number): Promise<void>;
-    stop(outcome: "ok"): Promise<{ report: CaptureReport }>;
+    stop(outcome: "ok"): Promise<RendererWindowEvidence>;
   };
   __reelterminalPerformanceCapture: {
     start(request: unknown): void;
@@ -102,6 +102,28 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
         return api.pendingSpanCount === 0;
       }, null, { timeout: 30_000 });
 
+      await start("probe-hidden-window");
+      // Inject visibility at the browser boundary. Native window hiding can
+      // suspend renderer IPC under automation, including capture teardown.
+      const hiddenCapture = await page.evaluate(async () => {
+        Object.defineProperty(document, "hidden", { configurable: true, value: true });
+        try {
+          document.dispatchEvent(new Event("visibilitychange"));
+          return await (globalThis as unknown as CalibrationGlobal).__reelterminalPerfDriver.stop("ok");
+        } finally {
+          Reflect.deleteProperty(document, "hidden");
+          document.dispatchEvent(new Event("visibilitychange"));
+        }
+      });
+      expect(hiddenCapture.hiddenDuringAction).toBe(true);
+      expect(captureComplete(hiddenCapture)).toBe(false);
+      controls.hiddenWindow = {
+        source: "synthetic_visibilitychange",
+        hiddenDuringAction: hiddenCapture.hiddenDuringAction,
+        rejectedByDriver: !captureComplete(hiddenCapture),
+      };
+      await waitForMarker(page, fixture, 30_000);
+
       await start("probe-blocking");
       await page.evaluate(() => new Promise<void>(resolve => setTimeout(() => {
         const deadline = performance.now() + 80;
@@ -182,16 +204,25 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
       await cdp.detach();
       success = true;
     } finally {
-      if (!success && !artifactWritten) {
-        await mkdir(directory, { recursive: true });
-        if (launched && !launched.page.isClosed()) {
-          await launched.page.screenshot({ path: artifact.replace(/\.json$/, ".png") });
+      try {
+        if (!success && !artifactWritten) {
+          await mkdir(directory, { recursive: true });
+          await writeFile(artifact, JSON.stringify({ schema: "reelterminal.probe-calibration/v1", status: "invalid", controls, runs }, null, 2));
+          if (launched && !launched.page.isClosed()) {
+            await launched.page.screenshot({ path: artifact.replace(/\.json$/, ".png"), timeout: 5_000 });
+          }
         }
-        await writeFile(artifact, JSON.stringify({ schema: "reelterminal.probe-calibration/v1", status: "invalid", controls, runs }, null, 2));
+      } finally {
+        try {
+          await agent?.close();
+        } finally {
+          try {
+            await launched?.close({ keepRunDir: !success });
+          } finally {
+            await release();
+          }
+        }
       }
-      if (agent) await agent.close();
-      if (launched) await launched.close({ keepRunDir: !success });
-      await release();
     }
   }, 600_000);
 });
