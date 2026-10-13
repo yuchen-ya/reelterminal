@@ -1,0 +1,515 @@
+import { build } from "esbuild";
+import { open, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { performance } from "node:perf_hooks";
+import type { Locator, Page } from "playwright-core";
+import type { Project } from "@reelterminal/core/types/project";
+import type { TimelineState } from "@reelterminal/agent-facade";
+import type { CaptureReport } from "../../../../web/src/performance";
+import { launchApp, type LaunchedApp } from "../launch";
+import { ARTIFACTS_DIR, E2E_DIR } from "../paths";
+import { connectExternalAgent, type ExternalAgent } from "../mcp-client";
+import { enableAgentSessionViaUI } from "../ui";
+import { captureBuildIdentity, readEnvironmentIdentity } from "./identity";
+import { createPerformanceResult, summarizeOperations, type RawPerformanceOperation } from "./result";
+import { readHydratedStructureBytes } from "./structure-probe";
+import {
+  createPerformanceFixture,
+  materializePerformanceFixtureAssets,
+  performanceFixtureManifestSha256,
+  type PerformanceFixture,
+  type PerformanceScenarioId,
+} from "../../performance/fixtures";
+import { validateResultDocument } from "../../../../../scripts/performance/result-contract.mjs";
+
+export interface PerformanceRunOptions {
+  suite: "quick" | "benchmark";
+  scenarios: PerformanceScenarioId[];
+  seed: string;
+  samples: number;
+  repeats: number;
+  cache: "warm" | "fresh-profile" | "reused-profile";
+  coldLaunches: number;
+  fontMiB: 32 | 64;
+  nodeCount: 10 | 100 | 1000;
+  operationTimeoutMs: number;
+  runTimeoutSeconds: number;
+}
+
+interface RendererWindowEvidence {
+  report: CaptureReport;
+  firstInputUs: number | null;
+  intervalsMs: number[];
+  hiddenDuringAction: boolean;
+}
+
+type ProbeGlobal = typeof globalThis & {
+  __reelterminalPerfDriver: {
+    start(runId: string, operationId: string, seconds: number): void;
+    stop(outcome: "ok" | "error" | "timeout"): RendererWindowEvidence;
+  };
+};
+
+/** Refuse concurrent performance desktops, including independent command invocations. */
+export async function acquirePerformanceLock(): Promise<() => Promise<void>> {
+  await mkdir(ARTIFACTS_DIR, { recursive: true });
+  const lockPath = path.join(ARTIFACTS_DIR, "performance.lock");
+  const file = await open(lockPath, "wx");
+  await file.writeFile(JSON.stringify({ pid: process.pid }));
+  return async () => { await file.close(); await rm(lockPath); };
+}
+
+export function markerMatches(actual: readonly number[], expected: readonly number[]): boolean {
+  return actual.length >= 3 && expected.length === 3 && expected.every((value, index) => Math.abs(actual[index]! - value) <= 8);
+}
+
+async function markerPixel(page: Page, fixture: PerformanceFixture): Promise<number[]> {
+  return page.getByTestId("preview-canvas").evaluate((element, probe) => {
+    const canvas = element as HTMLCanvasElement;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("preview canvas pixels unavailable");
+    return Array.from(context.getImageData(Math.floor(canvas.width * probe.x), Math.floor(canvas.height * probe.y), 1, 1).data);
+  }, fixture.targetMarker!.probe);
+}
+
+async function waitForMarker(page: Page, fixture: PerformanceFixture, timeout: number): Promise<void> {
+  await page.waitForFunction(({ rgb, probe }) => {
+    const canvas = document.querySelector<HTMLCanvasElement>('[data-testid="preview-canvas"]');
+    if (!canvas || canvas.width === 0 || canvas.height === 0) return false;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("preview canvas pixels unavailable");
+    const pixel = context.getImageData(Math.floor(canvas.width * probe.x), Math.floor(canvas.height * probe.y), 1, 1).data;
+    return rgb.every((value, index) => Math.abs(pixel[index]! - value) <= 8);
+  }, fixture.targetMarker!, { timeout, polling: "raf" });
+}
+
+/** Prepare only preferences, database rows and assets; never open the editor or decode a font. */
+async function prepareProfile(fixture: PerformanceFixture): Promise<string> {
+  const runDir = await mkdtemp(path.join(tmpdir(), "reelterminal-e2e-performance-"));
+  try {
+    await materializePerformanceFixtureAssets(fixture, path.join(runDir, "assets"));
+    const launched = await launchApp({ runDir });
+    try {
+      await launched.page.getByTestId("project-library").waitFor({ timeout: 30_000 });
+      // JSON transport avoids Playwright recursively expanding the core Project union.
+      const seedJson = JSON.stringify({ records: fixture.records!, assets: fixture.assets.filter((asset) => asset.kind === "synthetic-image") });
+      await launched.page.evaluate(async (seedJson) => {
+        const { records, assets } = JSON.parse(seedJson) as { records: NonNullable<PerformanceFixture["records"]>; assets: PerformanceFixture["assets"] };
+        localStorage.setItem("openreel-locale", "en");
+        localStorage.setItem("openreel-onboarding-complete", "true");
+        const openDb = (name: string, version: number, upgrade?: (db: IDBDatabase) => void) => new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open(name, version);
+          request.onupgradeneeded = () => upgrade?.(request.result);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+          request.onblocked = () => reject(new Error("fixture database blocked"));
+        });
+        const done = (transaction: IDBTransaction) => new Promise<void>((resolve, reject) => {
+          transaction.oncomplete = () => resolve();
+          transaction.onabort = () => reject(transaction.error ?? new Error("fixture transaction aborted"));
+          transaction.onerror = () => reject(transaction.error);
+        });
+        const mediaAssets = assets.filter((asset) => asset.kind === "synthetic-image");
+        const blobs = new Map(mediaAssets.map((asset) => [asset.assetId, new Blob([Uint8Array.from(atob(asset.content), (character) => character.charCodeAt(0))], { type: asset.mediaType })]));
+        const hydrate = (project: Project): Project => ({ ...project, mediaLibrary: { items: project.mediaLibrary.items.map((item) => ({ ...item, blob: blobs.get(item.id)! })) } });
+        const workspaceDb = await openDb("reelterminal-workspaces", 3);
+        const stores = ["projects", "workspaces", "nodes", "nodeSummaries"];
+        const transaction = workspaceDb.transaction(stores, "readwrite");
+        const committed = done(transaction);
+        for (const record of records.projects) transaction.objectStore("projects").put(record);
+        for (const record of records.workspaces) transaction.objectStore("workspaces").put({ ...record, project: hydrate(record.project) });
+        for (const record of records.nodes) transaction.objectStore("nodes").put({ ...record, project: hydrate(record.project) });
+        for (const record of records.nodeSummaries) transaction.objectStore("nodeSummaries").put(record);
+        await committed;
+        workspaceDb.close();
+        const mediaDb = await openDb("openreel-db", 4, (db) => {
+          for (const name of ["projects", "media", "cache", "waveforms", "fileHandles", "dirHandles"]) {
+            if (db.objectStoreNames.contains(name)) continue;
+            const keyPath = name === "waveforms" ? "mediaId" : name === "cache" ? "key" : "id";
+            const store = db.createObjectStore(name, { keyPath });
+            if (name === "media") {
+              store.createIndex("projectId", "projectId");
+              store.createIndex("projectIds", "projectIds", { multiEntry: true });
+            }
+            if (name === "projects") store.createIndex("modifiedAt", "modifiedAt");
+          }
+        });
+        const mediaTransaction = mediaDb.transaction("media", "readwrite");
+        const mediaCommitted = done(mediaTransaction);
+        for (const asset of mediaAssets) {
+          const project = [...records.workspaces, ...records.nodes].map((record) => record.project).find((project) => project.mediaLibrary.items.some((item) => item.id === asset.assetId))!;
+          const item = project.mediaLibrary.items.find((item) => item.id === asset.assetId)!;
+          mediaTransaction.objectStore("media").put({ id: item.id, projectId: records.projects[0]!.id, projectIds: [records.projects[0]!.id], blob: blobs.get(item.id), metadata: item.metadata, contentHash: asset.sha256 });
+        }
+        await mediaCommitted;
+        mediaDb.close();
+      }, seedJson);
+    } finally {
+      await launched.close({ keepRunDir: true });
+    }
+    // Only regenerable caches in our own disposable profile are removed.
+    // This creates a seeded fresh profile, not a physical-disk-cold experiment.
+    const profile = path.resolve(runDir, "user-data");
+    for (const name of ["Cache", "Code Cache", "GPUCache", "DawnGraphiteCache", "DawnWebGPUCache"]) {
+      const target = path.resolve(profile, name);
+      if (path.dirname(target) !== profile) throw new Error("profile cache escaped owned directory");
+      await rm(target, { recursive: true, force: true });
+    }
+    return runDir;
+  } catch (error) {
+    const directory = path.join(ARTIFACTS_DIR, "performance");
+    await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, `preparation-${Date.now()}.json`), JSON.stringify({
+      schema: "reelterminal.performance-preflight/v1", status: "invalid",
+      reason_codes: ["profile_preparation_failed"], scenario_id: fixture.manifest.scenarioId,
+      retained_profile: runDir, error_kind: error instanceof Error ? error.name : "unknown",
+    }, null, 2));
+    throw error;
+  }
+}
+
+async function installProbe(page: Page): Promise<void> {
+  const bundle = await build({
+    entryPoints: [path.join(E2E_DIR, "harness/performance/renderer-probe.ts")],
+    bundle: true, write: false, format: "iife", platform: "browser", target: "chrome142",
+    alias: { "@reelterminal/core": path.resolve(E2E_DIR, "../../../packages/core/src/performance/index.ts") },
+  });
+  await page.evaluate(bundle.outputFiles![0]!.text);
+}
+
+function clipTarget(page: Page, id: string): Locator {
+  return page.locator(`[data-live-editor-target-id="${id}"]`).first();
+}
+
+async function verifyHit(target: Locator, x: number, y: number): Promise<void> {
+  const id = await target.getAttribute("data-live-editor-target-id");
+  const hit = await target.page().evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("[data-live-editor-target-id]")?.getAttribute("data-live-editor-target-id"), { x, y });
+  if (hit !== id) throw new Error("real input hit the wrong clip");
+}
+
+async function dragTo(page: Page, id: string, delta: number, timeout: number, trim = false): Promise<void> {
+  const target = clipTarget(page, id);
+  await target.scrollIntoViewIfNeeded();
+  const box = await target.boundingBox();
+  if (!box) throw new Error("clip target has no geometry");
+  const x = trim ? box.x + box.width - 3 : box.x + Math.min(box.width / 2, 50);
+  const y = box.y + box.height / 2;
+  await verifyHit(target, x, y);
+  const before = await target.evaluate((element) => ({ transform: (element as HTMLElement).style.transform, width: (element as HTMLElement).style.width }));
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  // Let React install its gesture listener before the first movement.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  await page.mouse.move(x + delta, y, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForFunction(({ id, before, trim }) => {
+    const element = document.querySelector<HTMLElement>(`[data-live-editor-target-id="${id}"]`);
+    return element && (trim ? element.style.width !== before.width : element.style.transform !== before.transform);
+  }, { id, before, trim }, { timeout, polling: "raf" });
+}
+
+async function seek(page: Page, time: number, pixelsPerSecond: number): Promise<void> {
+  const ruler = page.getByTestId("timeline-time-ruler");
+  const box = await ruler.boundingBox();
+  if (!box) throw new Error("timeline ruler has no geometry");
+  await page.mouse.click(box.x + time * pixelsPerSecond, box.y + box.height / 2);
+}
+
+async function timeline(agent: ExternalAgent, target: { projectId: string; workspaceId: string }) {
+  const result = await agent.callTool<TimelineState>("timeline_get", target, { timeoutMs: 30_000 });
+  if (!result.ok) throw new Error(`timeline read failed: ${result.error?.code} ${result.error?.message}`);
+  return result.value!;
+}
+
+export async function runPerformanceScenario(scenarioId: PerformanceScenarioId, options: PerformanceRunOptions, repeat: number, coldIndex = 0): Promise<string> {
+  const parameters: Record<string, number> = scenarioId === "T02" || scenarioId === "H02" ? { fontPayloadMiB: options.fontMiB } : scenarioId === "H01" ? { nodeCount: options.nodeCount } : {};
+  const fixture = createPerformanceFixture({ scenarioId, seed: options.seed, parameters });
+  const targetIdentity = { projectId: fixture.projectId!, workspaceId: fixture.workspaceId! };
+  const runId = `${scenarioId.toLowerCase()}-${Date.now()}-${repeat}-${coldIndex}`;
+  const buildIdentity = await captureBuildIdentity();
+  if (!buildIdentity.build_verified) throw new Error(`Performance requires a verified production build: ${buildIdentity.build_reason}`);
+  const runDir = await prepareProfile(fixture);
+  let launched: LaunchedApp | undefined;
+  let agent: ExternalAgent | undefined;
+  let environment: Awaited<ReturnType<typeof readEnvironmentIdentity>> | undefined;
+  let timedOut = false;
+  let failure: unknown;
+  let activeCapture = false;
+  const samples: RawPerformanceOperation[] = [];
+  const windows: RendererWindowEvidence[] = [];
+  const correctness: Record<string, boolean | null> = { target_frame_verified: null, durable_final_revision_verified: null };
+  let hydratedStructureBytes: number | null = null;
+  const reasonCodes: string[] = [];
+  const watchdog = setTimeout(() => {
+    timedOut = true;
+    void launched?.close({ keepRunDir: true }).catch((error) => { failure ??= error; });
+  }, options.runTimeoutSeconds * 1000);
+  const capture = async (metric: string, action: () => Promise<void>, verify: () => Promise<void>) => {
+    const id = `${metric}-${samples.length + 1}`;
+    await launched!.page.evaluate(({ runId, id, seconds }) => (globalThis as ProbeGlobal).__reelterminalPerfDriver.start(runId, id, seconds), { runId, id, seconds: options.operationTimeoutMs / 1000 });
+    activeCapture = true;
+    const started = performance.now();
+    try {
+      await action();
+      await verify();
+      // Two finite rendering turns let observer callbacks arrive before freezing.
+      await launched!.page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      const evidence = await launched!.page.evaluate(() => (globalThis as ProbeGlobal).__reelterminalPerfDriver.stop("ok"));
+      activeCapture = false;
+      windows.push(evidence);
+      if (evidence.hiddenDuringAction || evidence.report.status !== "complete") throw new Error("capture incomplete or window hidden");
+      const span = evidence.report.events.find((event) => event.kind === "span_end" && event.phase === "driver.operation");
+      if (!span || span.kind !== "span_end") throw new Error("operation endpoint missing");
+      samples.push({ operation_id: id, metric, outcome: "ok", duration_ms: span.spanDurationUs / 1000, target_verified: true });
+    } catch (error) {
+      if (activeCapture && !launched!.page.isClosed()) {
+        windows.push(await launched!.page.evaluate(() => (globalThis as ProbeGlobal).__reelterminalPerfDriver.stop("error")));
+        activeCapture = false;
+      }
+      samples.push({ operation_id: id, metric, outcome: timedOut || (error as Error).name === "TimeoutError" ? "timeout" : "failed", duration_ms: null, waited_ms: performance.now() - started, target_verified: false });
+      throw error;
+    }
+  };
+  try {
+    if (options.cache === "reused-profile") {
+      const prime = await launchApp({ runDir, skipLocaleReload: true });
+      await prime.close({ keepRunDir: true });
+    }
+    launched = await launchApp({ runDir, skipLocaleReload: true });
+    launched.page.setDefaultTimeout(options.operationTimeoutMs);
+    await launched.app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]!;
+      window.setContentSize(1280, 800);
+      window.show();
+      window.focus();
+    });
+    environment = await readEnvironmentIdentity(launched);
+    if (!environment.visible || environment.devtools_open) throw new Error("invalid performance window state");
+    await installProbe(launched.page);
+    const openProject = () => launched!.page.getByRole("button", { name: `Open ${fixture.project!.name}`, exact: true }).click();
+    const openNode = async () => {
+      const target = launched!.page.getByTestId(`version-node-${fixture.targetNodeId}`);
+      if (!await target.isVisible()) await launched!.page.getByTestId("current-archive-entry").click();
+      await target.scrollIntoViewIfNeeded();
+      await target.dblclick();
+      await launched!.page.getByTestId("version-preview-banner").waitFor();
+    };
+    const verifyNode = async () => {
+      const name = fixture.records!.nodes.find((node) => node.id === fixture.targetNodeId)!.name;
+      if (!(await launched!.page.getByTestId("version-preview-banner").innerText()).includes(name)) throw new Error("history node identity mismatch");
+      await waitForMarker(launched!.page, fixture, options.operationTimeoutMs);
+      correctness.target_frame_verified = true;
+    };
+    if (scenarioId.startsWith("H")) {
+      if (options.cache !== "warm") {
+        await capture("history_cold_entry_content_verified_ms", async () => { await openProject(); await openNode(); }, verifyNode);
+      } else {
+        await openProject();
+        // Fixed one-node warmup, then return to a visibly different current frame.
+        await openNode();
+        await verifyNode();
+        await launched.page.getByTestId("version-preview-return").click();
+        for (let index = 0; index < options.samples; index++) {
+          await launched.page.waitForFunction(() => !document.querySelector('[data-testid="version-preview-banner"]'));
+          await waitForMarker(launched.page, { ...fixture, targetMarker: { ...fixture.targetMarker!, rgb: [210, 75, 75] } }, options.operationTimeoutMs);
+          if (markerMatches(await markerPixel(launched.page, fixture), fixture.targetMarker!.rgb)) throw new Error("old target frame remained before history request");
+          await capture("history_warm_node_content_verified_ms", openNode, verifyNode);
+          await launched.page.getByTestId("version-preview-return").click();
+        }
+      }
+    } else {
+      await openProject();
+      await launched.page.getByTestId("agent-access-status").waitFor();
+      await enableAgentSessionViaUI(launched.page, launched.endpointFile);
+      await launched.waitForEndpointFile();
+      agent = await connectExternalAgent(launched.endpointFile);
+      if (scenarioId === "T02") {
+        hydratedStructureBytes = await readHydratedStructureBytes(launched, targetIdentity, options.operationTimeoutMs);
+        if (hydratedStructureBytes !== fixture.manifest.parameters.fontDataUrlUtf8Bytes) throw new Error("synthetic structure payload missing after hydration");
+      }
+      const snap = launched.page.getByRole("button", { name: "Snap on (N)", exact: true });
+      if (await snap.count()) await snap.click();
+      const mediaId = fixture.targetMediaClipId!;
+      const textId = fixture.targetTextClipId!;
+      if (scenarioId === "P01") {
+        const slider = launched.page.getByRole("slider", { name: "Timeline zoom", exact: true });
+        const box = (await slider.boundingBox())!;
+        // Real range input establishes a stable ~100 px/s view before gestures.
+        await launched.page.mouse.click(box.x + box.width * 0.85, box.y + box.height / 2);
+        await launched.page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+      }
+      const initialBox = await clipTarget(launched.page, mediaId).boundingBox();
+      if (!initialBox) throw new Error("target clip missing");
+      const initial = await timeline(agent, targetIdentity);
+      const initialClip = initial.tracks.flatMap((track) => track.clips).find((clip) => clip.id === mediaId)!;
+      let pixelsPerSecond = initialBox.width / initialClip.duration;
+      await seek(launched.page, scenarioId === "P01" ? 0.5 : 3, pixelsPerSecond);
+      await waitForMarker(launched.page, fixture, options.operationTimeoutMs);
+      // Fixed rendering warmup; no measured edits are used to warm history.
+      await launched.page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      const move = async (id: string, delta: number, trim = false) => {
+        const before = await timeline(agent!, targetIdentity);
+        const beforeClip = id === textId ? before.textOverlays.find((clip) => clip.id === id)! : before.tracks.flatMap((track) => track.clips).find((clip) => clip.id === id)!;
+        const expected = (trim ? beforeClip.duration : beforeClip.startTime) + delta / pixelsPerSecond;
+        await capture(trim ? "timeline_media_trim_verified_ms" : id === textId ? "timeline_text_drag_verified_ms" : "timeline_media_drag_verified_ms", () => dragTo(launched!.page, id, delta, options.operationTimeoutMs, trim), async () => {
+          const deadline = performance.now() + options.operationTimeoutMs;
+          let observed: number | undefined;
+          let trackVerified = false;
+          while (performance.now() < deadline) {
+            const after = await timeline(agent!, targetIdentity);
+            const afterClip = id === textId ? after.textOverlays.find((clip) => clip.id === id)! : after.tracks.flatMap((track) => track.clips).find((clip) => clip.id === id)!;
+            observed = trim ? afterClip.duration : afterClip.startTime;
+            trackVerified = afterClip.trackId === beforeClip.trackId;
+            if (trackVerified && Math.abs(observed - expected) <= 0.06) break;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          if (!trackVerified || observed === undefined || Math.abs(observed - expected) > 0.06) {
+            correctness.final_state_verified = false;
+            throw new Error(`gesture final state mismatch: expected ${expected}, observed ${observed}`);
+          }
+          if (scenarioId !== "P01") await waitForMarker(launched!.page, fixture, options.operationTimeoutMs);
+        });
+        correctness.final_state_verified = true;
+        if (scenarioId !== "P01") correctness.target_frame_verified = true;
+      };
+      if (scenarioId === "P01") {
+        for (let index = 0; index < options.samples; index++) {
+          if (index > 0) {
+            // Repeat the fixture gesture sequence from its original duration.
+            await dragTo(launched.page, mediaId, -0.5 * pixelsPerSecond, options.operationTimeoutMs, true);
+          }
+          for (const step of fixture.gesturePlan!.steps) {
+            const state = await timeline(agent, targetIdentity);
+            const clip = state.tracks.flatMap((track) => track.clips).find((clip) => clip.id === mediaId)!;
+            const delta = step.kind === "trim" ? step.duration - clip.duration : step.startTime - clip.startTime;
+            await move(mediaId, delta * pixelsPerSecond, step.kind === "trim");
+          }
+        }
+        // A known different frame rules out a stale pre-gesture target bitmap.
+        await seek(launched.page, 6.25, pixelsPerSecond);
+        await waitForMarker(launched.page, { ...fixture, targetMarker: fixture.controlMarker! }, options.operationTimeoutMs);
+        await seek(launched.page, 4.25, pixelsPerSecond);
+        await waitForMarker(launched.page, fixture, options.operationTimeoutMs);
+        correctness.target_frame_verified = true;
+        const oldSaveToasts = launched.page.getByTestId("notification-toast").filter({ hasText: "Current edits saved" });
+        for (const toast of await oldSaveToasts.all()) await toast.getByRole("button", { name: "Dismiss notification" }).click();
+        await oldSaveToasts.first().waitFor({ state: "hidden" });
+        await capture("save_flush_confirmed_ms", () => launched!.page.keyboard.press("Control+s"), async () => {
+          await launched!.page.getByTestId("notification-toast").getByText("Current edits saved", { exact: true }).last().waitFor();
+        });
+        const stateBefore = await timeline(agent, targetIdentity);
+        await agent.close();
+        agent = undefined;
+        launched = await launched.relaunch();
+        await openProject();
+        await enableAgentSessionViaUI(launched.page, launched.endpointFile);
+        agent = await connectExternalAgent(launched.endpointFile);
+        const readback = await timeline(agent, targetIdentity);
+        const actual = readback.tracks.flatMap((track) => track.clips).find((clip) => clip.id === mediaId)!;
+        const expected = fixture.gesturePlan!.expectedDurableState;
+        if (readback.revision !== stateBefore.revision || Math.abs(actual.startTime - expected.startTime) > 0.06 || Math.abs(actual.duration - expected.duration) > 0.06) {
+          correctness.durable_final_revision_verified = false;
+          throw new Error("durable final revision or clip timing lost on relaunch");
+        }
+        correctness.durable_final_revision_verified = true;
+      } else {
+        for (let index = 0; index < options.samples; index++) {
+          const direction = index % 2 === 0 ? 1 : -1;
+          await move(mediaId, direction * pixelsPerSecond * 0.5);
+          if (scenarioId === "T02") await move(textId, direction * pixelsPerSecond * 0.5);
+          if (scenarioId === "T01") {
+            await move(mediaId, direction * pixelsPerSecond * 0.2, true);
+            const scroller = launched.page.getByTestId("timeline-tracks-scroll");
+            const beforeScroll = await scroller.evaluate((element) => element.scrollLeft);
+            const box = (await scroller.boundingBox())!;
+            await capture("timeline_scroll_verified_ms", async () => { await launched!.page.mouse.move(box.x + 100, box.y + 30); await launched!.page.mouse.wheel(120, 0); }, async () => {
+              await launched!.page.waitForFunction((before) => document.querySelector('[data-testid="timeline-tracks-scroll"]')!.scrollLeft !== before, beforeScroll);
+            });
+            // Restore scroll outside the measured window before aiming the next control.
+            await scroller.evaluate((element) => { element.scrollLeft = 0; });
+            const beforeZoom = await clipTarget(launched.page, mediaId).boundingBox();
+            await capture("timeline_zoom_verified_ms", () => launched!.page.getByRole("button", { name: direction > 0 ? "Zoom in" : "Zoom out", exact: true }).click(), async () => {
+              await launched!.page.waitForFunction(({ id, width }) => document.querySelector(`[data-live-editor-target-id="${id}"]`)!.getBoundingClientRect().width !== width, { id: mediaId, width: beforeZoom!.width });
+            });
+            const newBox = (await clipTarget(launched.page, mediaId).boundingBox())!;
+            const state = await timeline(agent, targetIdentity);
+            pixelsPerSecond = newBox.width / state.tracks.flatMap((track) => track.clips).find((clip) => clip.id === mediaId)!.duration;
+            const requestedTime = index % 2 === 0 ? 2.5 : 3;
+            await capture("timeline_seek_content_verified_ms", () => seek(launched!.page, requestedTime, pixelsPerSecond), async () => {
+              const context = await agent!.callTool<{ playheadSeconds: number }>("editor_get_context", targetIdentity, { timeoutMs: options.operationTimeoutMs });
+              if (!context.ok || Math.abs(context.value!.playheadSeconds - requestedTime) > 0.06) throw new Error("seek did not reach requested playhead");
+              await waitForMarker(launched!.page, fixture, options.operationTimeoutMs);
+            });
+          }
+        }
+      }
+    }
+  } catch (error) {
+    failure = error;
+    reasonCodes.push(timedOut ? "run_timeout" : "scenario_failed");
+    if (correctness.target_frame_verified !== true) correctness.target_frame_verified = false;
+    if (launched && !launched.page.isClosed()) {
+      const evidenceDirectory = path.join(ARTIFACTS_DIR, "performance");
+      await mkdir(evidenceDirectory, { recursive: true });
+      await launched.page.screenshot({ path: path.join(evidenceDirectory, `${runId}.failure.png`) });
+    }
+  } finally {
+    clearTimeout(watchdog);
+    try { await agent?.close(); } catch (error) { failure ??= error; reasonCodes.push("connector_cleanup_failed"); }
+    try { await launched?.close({ keepRunDir: true }); } catch (error) { failure ??= error; reasonCodes.push("process_cleanup_failed"); }
+  }
+  if (!environment) {
+    const directory = path.join(ARTIFACTS_DIR, "performance");
+    await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, `${runId}.preflight.json`), JSON.stringify({
+      schema: "reelterminal.performance-preflight/v1", status: "invalid", run_id: runId,
+      reason_codes: [...reasonCodes, "environment_unavailable"], retained_profile: runDir,
+      build: buildIdentity, fixture_manifest: fixture.manifest,
+    }, null, 2));
+    throw failure ?? new Error("environment capture missing");
+  }
+  if (samples.length === 0) samples.push({ operation_id: "setup", metric: "scenario_setup_failed_ms", outcome: "failed", duration_ms: null, target_verified: false });
+  const result = createPerformanceResult({
+    run: {
+      run_id: runId, scenario_id: scenarioId, scenario_version: fixture.manifest.version, seed: options.seed,
+      fixture_manifest: fixture.manifest, fixture_manifest_sha256: performanceFixtureManifestSha256(fixture.manifest),
+      expected_operations: samples.length, mode: "light", cache_state: options.cache === "warm" ? "warm_fixed_prepare" : options.cache === "fresh-profile" ? "fresh_profile_process_cold" : "reused_profile_process_cold",
+      sampling: { input_every_n: 1, frame_every_n: 1 }, budgets: { capture_seconds: options.operationTimeoutMs / 1000, events_capacity: 16384, run_seconds: options.runTimeoutSeconds },
+      warmup: options.cache === "warm" ? (scenarioId.startsWith("H") ? "one_target_node_preview_then_return" : "two_raf_turns_marker_verified") : "none_editor_not_opened_during_seed",
+      repeat, cold_launch_index: coldIndex, physical_disk_cold: "not_measured", font_decode: scenarioId === "T02" || scenarioId === "H02" ? "unsupported_missing_licensed_large_font_fixture" : "not_applicable",
+      hydrated_structure_bytes: hydratedStructureBytes,
+      measurement_boundary: "driver_action_start_to_verified_dom_and_canvas_with_two_observer_turns",
+      frame_evidence: "canvas_pixel_marker_and_target_dom_identity", actual_presented: "unsupported", frame_token_instrumentation: "not_run_P3",
+    },
+    build: { ...buildIdentity }, environment: { ...environment }, samples, correctness,
+    validity: { complete: !failure && windows.every((window) => window.report.status === "complete" && !window.hiddenDuringAction), reason_codes: reasonCodes, events_dropped: windows.reduce((sum, window) => sum + window.report.drops.eventsDropped, 0), critical_endpoints_dropped: windows.reduce((sum, window) => sum + window.report.drops.criticalEndpointsDropped, 0), probe_calibrated: false },
+  });
+  await mkdir(path.join(ARTIFACTS_DIR, "performance"), { recursive: true });
+  const file = path.join(ARTIFACTS_DIR, "performance", `${runId}.result.json`);
+  let artifactDocument = { ...result, action_windows: windows };
+  let json = JSON.stringify(artifactDocument, null, 2);
+  if (Buffer.byteLength(json) > 10 * 1024 * 1024) {
+    failure ??= new Error("performance artifact exceeded 10 MiB budget");
+    artifactDocument = {
+      ...artifactDocument, status: artifactDocument.status === "invalid" ? "invalid" : "incomplete",
+      validity: { ...artifactDocument.validity, complete: false, reason_codes: [...artifactDocument.validity.reason_codes, "artifact_budget_exceeded"] },
+      metrics: summarizeOperations(samples, String(result.run.cache_state), false), action_windows: [],
+    };
+    json = JSON.stringify(artifactDocument, null, 2);
+  }
+  if (Buffer.byteLength(json) > 10 * 1024 * 1024) {
+    await writeFile(file.replace(/\.result\.json$/, ".preflight.json"), JSON.stringify({
+      schema: "reelterminal.performance-preflight/v1", status: "invalid", run_id: runId,
+      reason_codes: ["artifact_budget_exceeded"], requested_operations: samples.length,
+      retained_profile: runDir,
+    }, null, 2));
+    throw new Error("performance result remains above 10 MiB after omitting action windows");
+  }
+  const validation = validateResultDocument(artifactDocument);
+  await writeFile(file, json);
+  if (!failure) await rm(runDir, { recursive: true, force: true });
+  if (!validation.valid) throw new Error(`Performance result invalid: ${validation.errors.join("; ")}`);
+  if (failure) throw failure;
+  return file;
+}

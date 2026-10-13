@@ -56,6 +56,8 @@ export interface LaunchOptions {
   keepRunDir?: boolean;
   /** Additional process env for hermetic provider fixtures. Isolation paths win. */
   env?: NodeJS.ProcessEnv;
+  /** Prepared performance profiles already contain locale preferences; cold runs must not reload. */
+  skipLocaleReload?: boolean;
 }
 
 function makeRunDirs(runDir?: string): {
@@ -77,6 +79,7 @@ function makeRunDirs(runDir?: string): {
 async function launch(
   paths: ReturnType<typeof makeRunDirs>,
   extraEnv: NodeJS.ProcessEnv = {},
+  skipLocaleReload = false,
 ): Promise<LaunchedApp> {
   if (!existsSync(MAIN_BUNDLE_PATH) || !existsSync(LIVE_MCP_CONNECTOR_PATH)) {
     throw new Error(
@@ -170,8 +173,10 @@ async function launch(
     // Every desktop UI E2E uses English labels. The isolated profile has no
     // user preference, so explicitly seed that preference and reload before
     // a spec starts driving the UI (the host OS can be zh-CN).
-    await page.evaluate(() => localStorage.setItem("openreel-locale", "en"));
-    await page.reload({ waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
+    if (!skipLocaleReload) {
+      await page.evaluate(() => localStorage.setItem("openreel-locale", "en"));
+      await page.reload({ waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
+    }
   } catch (error) {
     const pageState = await page.evaluate(() => ({
       url: `${location.origin}${location.pathname}`,
@@ -218,7 +223,7 @@ async function launch(
 
     async relaunch() {
       await handle.close({ keepRunDir: true });
-      return launch(paths, extraEnv);
+      return launch(paths, extraEnv, skipLocaleReload);
     },
 
     close(options = {}) {
@@ -281,5 +286,5 @@ async function launch(
 
 export async function launchApp(options: LaunchOptions = {}): Promise<LaunchedApp> {
   const paths = makeRunDirs(options.runDir);
-  return launch(paths, options.env);
+  return launch(paths, options.env, options.skipLocaleReload);
 }

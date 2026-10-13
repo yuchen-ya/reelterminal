@@ -20,3 +20,8 @@ Requires the built desktop renderer/main, Electron, and (for pixel/export specs)
 Chromium plus ffmpeg/ffprobe. Run specs selectively using the separate
 `e2e/vitest.config.ts`. Test fixture files stay in isolated run directories;
 retained evidence follows the harness evidence policy. Never print descriptors.
+
+The P2 synthetic performance suite is opt-in and remains skipped by ordinary
+E2E runs. Use `test:perf:counts`, `test:perf:quick`, or `test:perf:benchmark`;
+see [P2 runner](../../../docs/performance/p2-runner.md) for strict CLI options,
+production build stamps, cold/warm definitions and measurement limitations.

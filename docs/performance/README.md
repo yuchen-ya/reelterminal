@@ -12,11 +12,12 @@ observer、不读时钟、不写文件；启用后所有采集都有明确预算
 | L1 | renderer 有界采集器、时钟、observer、脱敏 | `apps/web/src/performance/` |
 | L1' | 主进程会话、跨进程校时、进程采样、工件写入、preload 桥 | `apps/desktop/src/{shared,main,preload}/` |
 | L2 | 产品显式埋点（P3，计划中） | 时间线/保存/历史节点等调用链 |
-| L3 | 合成 fixture、E2E driver、结果比较（P2，计划中） | `apps/desktop/e2e/performance/` |
+| L3 | 合成 fixture、E2E driver、结果比较（P2） | `apps/desktop/e2e/performance/` |
 | L4 | CI 基线与渐进门禁（P6，计划中） | workflow + `scripts/performance/` |
 
-当前已落地的是 L0 与 L1（设计阶段 P0/P1）；L2–L4 尚未实施，本文档中涉及
-它们的部分是契约约定，不是已存在的能力。
+当前已落地 L0、L1 和 L3（P0/P1/P2）。P2 的运行与证据边界见
+[P2 runner](p2-runner.md)，规模与资产见 [scenarios](scenarios.md)。L2 的产品
+阶段埋点及 L4 的 CI 门禁尚未实施。
 
 ## 模式与预算
 
@@ -28,8 +29,8 @@ observer、不读时钟、不写文件；启用后所有采集都有明确预算
 - `light`：有界 span + LongTask/EventTiming + 低频内存采样，用于基准与
   本地诊断。高频 `input.*` / `frame.*` 阶段按固定 1/N 采样，语义端点
   （最终提交、错误、取消、保存确认、首帧）全量保留且进入独立关键缓冲。
-- `trace`：短 CDP/Chromium trace 的标记模式（trace 本体由 P2 driver 通过
-  CDP 抓取）；采集时长硬上限 30 秒，且不与 light 成绩混合比较。
+- `trace`：短 CDP/Chromium trace 的标记模式；采集时长硬上限 30 秒，且不与
+  light 成绩混合比较。P2 命令尚未提供 trace 入口。
 
 默认预算（`DEFAULT_PERF_BUDGETS`，可被 `resolvePerfBudgets` 按模式收紧）：
 单次 capture 30 秒（trace 默认 10 秒、上限 30 秒）、事件环形缓冲 16384 条、
@@ -99,7 +100,7 @@ observer、不读时钟、不写文件；启用后所有采集都有明确预算
 - 匿名 ID 按 run 随机 salt 哈希（FNV-1a 双轮），同一名称跨 run 不可关联。
 - 禁止读取/输出 live endpoint 描述符。真实工程 trace 只留本机。
 
-## 基线与比较（P2+ 落地时的规则）
+## 基线与比较
 
 - 结果身份必须包含：schema/metric 版本、collector 版本、scenario 与
   fixture manifest hash、模式、coldWarm 类别、source HEAD + dirty digest、
@@ -127,6 +128,6 @@ apps/desktop/src/shared/         performance-contract.ts（IPC 通道与消息�
 apps/desktop/src/main/performance/ session.ts clock-sync.ts
                                  process-sampler.ts artifact-writer.ts（+单测）
 apps/desktop/src/preload/        performance-bridge.ts（独立模块，尚未挂载到
-                                 preload/index.ts——P2 driver 接线时再注册）
+                                 preload/index.ts；P2 注入隔离 renderer probe）
 docs/performance/                README.md result-example.json
 ```

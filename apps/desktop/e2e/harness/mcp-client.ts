@@ -170,7 +170,7 @@ export async function connectExternalAgent(endpointFile: string): Promise<Extern
   return {
     client,
 
-    async callTool(name, args = {}, options = {}) {
+    async callTool<T = unknown>(name: string, args: Record<string, unknown> = {}, options: { timeoutMs?: number } = {}) {
       const result = await request(
         "tools/call",
         { name, arguments: args },
