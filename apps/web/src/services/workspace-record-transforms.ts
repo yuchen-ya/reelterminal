@@ -27,9 +27,16 @@ export function isSubstantiveProject(project: Project): boolean {
 export function cloneProject(project: Project, parent?: PerfOperation): Project {
   const operation = beginPerfOperation("workspace.project-clone", parent);
   try {
-    const copy = structuredClone(project);
+    // Omit immutable, possibly huge embedded font strings from the structured
+    // clone itself; replacing the cloned property afterwards would still copy
+    // the full data URLs.
+    const copy = structuredClone({ ...project, renderFonts: undefined });
     const result = {
       ...copy,
+      // ProjectRenderFont entries are immutable snapshots and their data URLs
+      // can be tens of megabytes. Keep the resource collection shared across
+      // workspace clones instead of copying those strings with the project.
+      ...(project.renderFonts !== undefined ? { renderFonts: project.renderFonts } : {}),
       mediaLibrary: {
         ...copy.mediaLibrary,
         items: copy.mediaLibrary.items.map((item) => ({ ...item, blob: null })),

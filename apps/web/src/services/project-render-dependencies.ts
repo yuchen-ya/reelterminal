@@ -11,11 +11,17 @@ const SVG_IMAGE_TAG_RE = /<(?:[\w.-]+:)?(?:image|feImage|use)\b[^>]*>/gi;
 const SVG_URL_ATTRIBUTE_RE = /\b(?:xlink:href|href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
 const CSS_URL_RE = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/gi;
 const FONT_FACE_RE = /@font-face\s*\{([^{}]*)\}/gi;
-const loadedProjectFaces = new Map<string, {
+const EMPTY_RENDER_FONTS: readonly ProjectRenderFont[] = Object.freeze([]);
+const validatedFontCollections = new WeakMap<
+  readonly ProjectRenderFont[],
+  readonly ProjectRenderFont[]
+>();
+const loadedProjectFaces = new Map<string, Map<string, {
   readonly face: FontFace;
   readonly owners: Set<string>;
-}>();
-const projectFontLeases = new Map<string, Set<string>>();
+}>>();
+const projectFontLeases = new Map<string, Map<string, Set<string>>>();
+const projectFontResources = new Map<string, readonly ProjectRenderFont[]>();
 
 interface BundledFontFace {
   readonly family: string;
@@ -149,8 +155,30 @@ function renderFontKey(font: ProjectRenderFont): string {
   return `${font.family.toLowerCase()}\u0000${font.style}\u0000${font.weight}\u0000${font.unicodeRange ?? ""}`;
 }
 
-function renderFontInstanceKey(font: ProjectRenderFont): string {
-  return `${renderFontKey(font)}\u0000${font.dataUrl}`;
+function getValidatedRenderFonts(
+  fonts: readonly ProjectRenderFont[],
+): { readonly validFonts: readonly ProjectRenderFont[]; readonly cacheHit: boolean } {
+  const cached = validatedFontCollections.get(fonts);
+  if (cached) return { validFonts: cached, cacheHit: true };
+
+  const validFonts = fonts.filter(validRenderFont);
+  validatedFontCollections.set(fonts, validFonts);
+  return { validFonts, cacheHit: false };
+}
+
+function endFontValidation(
+  operation: PerfOperation | undefined,
+  fonts: readonly ProjectRenderFont[],
+  validFonts: readonly ProjectRenderFont[],
+  cacheHit: boolean,
+): void {
+  endPerfOperation(operation, "ok", operation ? {
+    candidates: fonts.length,
+    valid: validFonts.length,
+    invalid: fonts.length - validFonts.length,
+    cacheHit,
+    fullValidations: cacheHit ? 0 : fonts.length,
+  } : undefined);
 }
 
 function renderFontMime(source: string): string {
@@ -172,16 +200,13 @@ export async function prepareProjectRenderFonts(
     const families = new Set<string>();
     collectFontFamilies(project, families);
     const needed = new Map([...families].map((family) => [family.toLowerCase(), family]));
-    const rawFonts = Array.isArray(project.renderFonts) ? project.renderFonts : [];
+    const rawFonts = Array.isArray(project.renderFonts) ? project.renderFonts : EMPTY_RENDER_FONTS;
     const validation = operation
       ? beginPerfOperation("font.validate", operation)
       : undefined;
-    const validFonts = rawFonts.filter(validRenderFont);
-    endPerfOperation(validation, "ok", validation ? {
-      candidates: rawFonts.length,
-      valid: validFonts.length,
-      invalid: rawFonts.length - validFonts.length,
-    } : undefined);
+    const validationResult = getValidatedRenderFonts(rawFonts);
+    const validFonts = validationResult.validFonts;
+    endFontValidation(validation, rawFonts, validFonts, validationResult.cacheHit);
     const existing = validFonts.filter((font) => needed.has(font.family.toLowerCase()));
     const capturedFamilies = new Set(existing.map((font) => font.family.toLowerCase()));
     const renderFonts = [...existing];
@@ -283,7 +308,11 @@ export async function prepareProjectRenderFonts(
       throw error;
     }
 
-    const result = { ...project, renderFonts };
+    const completeRenderFonts = renderFonts.length === rawFonts.length &&
+      renderFonts.every((font, index) => font === rawFonts[index])
+      ? rawFonts
+      : renderFonts;
+    const result = { ...project, renderFonts: completeRenderFonts };
     endPerfOperation(operation, "ok", operation ? {
       families: needed.size,
       capturedFonts: renderFonts.length,
@@ -304,42 +333,46 @@ export async function installProjectRenderFonts(
 ): Promise<void> {
   const operation = beginPerfOperation("font.install", parent);
   if (typeof FontFace === "undefined" || typeof document === "undefined") {
-    const rawFonts = project.renderFonts ?? [];
-    const validFonts = operation ? rawFonts.filter(validRenderFont) : [];
+    const rawFonts = project.renderFonts ?? EMPTY_RENDER_FONTS;
+    const { validFonts, cacheHit } = getValidatedRenderFonts(rawFonts);
     const validation = operation
       ? beginPerfOperation("font.validate", operation)
       : undefined;
-    endPerfOperation(validation, "ok", validation ? {
-      candidates: rawFonts.length,
-      valid: validFonts.length,
-      invalid: rawFonts.length - validFonts.length,
-    } : undefined);
+    endFontValidation(validation, rawFonts, validFonts, cacheHit);
     endPerfOperation(operation, "ok", operation ? {
       supported: false,
       candidates: rawFonts.length,
     } : undefined);
     return;
   }
+  const rawFonts = project.renderFonts ?? EMPTY_RENDER_FONTS;
   const validation = operation
     ? beginPerfOperation("font.validate", operation)
     : undefined;
-  const rawFonts = project.renderFonts ?? [];
-  const validFonts = rawFonts.filter(validRenderFont);
-  endPerfOperation(validation, "ok", validation ? {
-    candidates: rawFonts.length,
-    valid: validFonts.length,
-    invalid: rawFonts.length - validFonts.length,
-  } : undefined);
+  const { validFonts, cacheHit } = getValidatedRenderFonts(rawFonts);
+  endFontValidation(validation, rawFonts, validFonts, cacheHit);
+
+  if (projectFontResources.get(ownerId) === rawFonts && projectFontLeases.has(ownerId)) {
+    endPerfOperation(operation, "ok", operation ? {
+      candidates: validFonts.length,
+      loaded: 0,
+      reused: validFonts.length,
+      leased: projectFontLeases.get(ownerId)?.size ?? 0,
+      cacheHit: true,
+    } : undefined);
+    return;
+  }
 
   releaseProjectRenderFonts(ownerId, operation);
-  const lease = new Set<string>();
+  const lease = new Map<string, Set<string>>();
   projectFontLeases.set(ownerId, lease);
   try {
     let loaded = 0;
     let reused = 0;
     for (const rawFont of validFonts) {
-      const key = renderFontInstanceKey(rawFont);
-      let entry = loadedProjectFaces.get(key);
+      const key = renderFontKey(rawFont);
+      let fontData = loadedProjectFaces.get(key);
+      let entry = fontData?.get(rawFont.dataUrl);
       if (!entry) {
         const loadOperation = operation
           ? beginPerfOperation("font.load", operation)
@@ -362,7 +395,9 @@ export async function installProjectRenderFonts(
         }
         document.fonts.add(face);
         entry = { face, owners: new Set() };
-        loadedProjectFaces.set(key, entry);
+        fontData ??= new Map();
+        fontData.set(rawFont.dataUrl, entry);
+        loadedProjectFaces.set(key, fontData);
         if (operation) loaded += 1;
       } else {
         if (operation) reused += 1;
@@ -371,15 +406,21 @@ export async function installProjectRenderFonts(
         ? beginPerfOperation("font.lease-acquire", operation)
         : undefined;
       entry.owners.add(ownerId);
-      lease.add(key);
+      let fontDataUrls = lease.get(key);
+      if (!fontDataUrls) {
+        fontDataUrls = new Set();
+        lease.set(key, fontDataUrls);
+      }
+      fontDataUrls.add(rawFont.dataUrl);
       endPerfOperation(leaseOperation, "ok", leaseOperation ? { leased: 1 } : undefined);
     }
     endPerfOperation(operation, "ok", operation ? {
       candidates: validFonts.length,
       loaded,
       reused,
-      leased: lease.size,
+      leased: [...lease.values()].reduce((total, urls) => total + urls.size, 0),
     } : undefined);
+    projectFontResources.set(ownerId, rawFonts);
   } catch (error) {
     // A broken font face must not strand this owner's partial lease and the
     // faces already installed under it; roll the install back before the
@@ -394,6 +435,7 @@ export async function installProjectRenderFonts(
 export function releaseProjectRenderFonts(ownerId: string, parent?: PerfOperation): void {
   const operation = beginPerfOperation("font.lease-release", parent);
   const keys = projectFontLeases.get(ownerId);
+  projectFontResources.delete(ownerId);
   if (!keys) {
     endPerfOperation(operation, "ok", operation ? { released: 0 } : undefined);
     return;
@@ -404,18 +446,22 @@ export function releaseProjectRenderFonts(ownerId: string, parent?: PerfOperatio
     return;
   }
   let released = 0;
-  for (const key of keys) {
-    const entry = loadedProjectFaces.get(key);
-    if (!entry) continue;
-    entry.owners.delete(ownerId);
-    if (entry.owners.size === 0) {
-      document.fonts.delete(entry.face);
-      loadedProjectFaces.delete(key);
-      if (operation) released += 1;
+  for (const [key, dataUrls] of keys) {
+    const fontData = loadedProjectFaces.get(key);
+    for (const dataUrl of dataUrls) {
+      const entry = fontData?.get(dataUrl);
+      if (!entry) continue;
+      entry.owners.delete(ownerId);
+      if (entry.owners.size === 0) {
+        document.fonts.delete(entry.face);
+        fontData?.delete(dataUrl);
+        if (operation) released += 1;
+      }
     }
+    if (fontData?.size === 0) loadedProjectFaces.delete(key);
   }
   endPerfOperation(operation, "ok", operation ? {
-    leased: keys.size,
+    leased: [...keys.values()].reduce((total, urls) => total + urls.size, 0),
     released,
   } : undefined);
 }

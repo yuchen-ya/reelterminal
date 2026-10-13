@@ -72,6 +72,10 @@ const DRAFTS = "drafts";
 const IDEMPOTENCY = "idempotency";
 const TASK_INPUTS = "taskInputs";
 const FOLDERS = "folders";
+const projectEngineeringByteCache = new WeakMap<Project, number>();
+const renderFontsEngineeringByteCache = new WeakMap<NonNullable<Project["renderFonts"]>, number>();
+const engineeringTextEncoder = new TextEncoder();
+const renderFontsJsonPropertyBytes = engineeringTextEncoder.encode('"renderFonts":').byteLength;
 
 export interface WorkspaceTarget {
   projectId: string;
@@ -84,6 +88,8 @@ export interface ProjectRecord {
   defaultWorkspaceId: string;
   createdAt: number;
   modifiedAt: number;
+  /** Exact UTF-8 byte length of the default workspace project JSON. */
+  engineeringBytes?: number;
   folderId?: string;
   recycledAt?: number;
   /** Retained to prevent legacy snapshots from resurrecting a purged project. */
@@ -182,6 +188,19 @@ export interface RetentionCandidate {
 export type PreviewSource =
   | { kind: "node"; nodeId: string }
   | { kind: "workspace"; workspaceId: string };
+
+export type PreviewLoadPhase =
+  | "reading-snapshot"
+  | "hydrating-media"
+  | "restoring-store"
+  | "loading-fonts"
+  | "ready"
+  | "cancelled";
+
+export interface PreviewHandleOptions {
+  signal?: AbortSignal;
+  onPhase?: (phase: PreviewLoadPhase) => void;
+}
 
 export interface PreviewHandle {
   store: ProjectStore;
@@ -301,6 +320,64 @@ type WorkspaceListener = () => void;
 type ProjectStore = ReturnType<typeof createProjectStore>;
 
 const FIRST_NODE_NAME_FALLBACK = "首次存档";
+
+function projectEngineeringBytes(project: Project): number {
+  const cached = projectEngineeringByteCache.get(project);
+  if (cached !== undefined) return cached;
+
+  const renderFonts = project.renderFonts;
+  let bytes: number;
+  if (renderFonts === undefined) {
+    bytes = engineeringTextEncoder.encode(JSON.stringify(project)).byteLength;
+  } else {
+    let renderFontsJsonBytes = renderFontsEngineeringByteCache.get(renderFonts);
+    if (renderFontsJsonBytes === undefined) {
+      renderFontsJsonBytes = engineeringTextEncoder.encode(JSON.stringify(renderFonts)).byteLength;
+      renderFontsEngineeringByteCache.set(renderFonts, renderFontsJsonBytes);
+    }
+
+    const projectWithoutRenderFonts = { ...project, renderFonts: undefined };
+    const projectWithoutRenderFontsJson = JSON.stringify(projectWithoutRenderFonts);
+    bytes = engineeringTextEncoder.encode(projectWithoutRenderFontsJson).byteLength;
+    // Every Project has required fields, so restoring this property adds one
+    // comma as well as its key and the cached array value.
+    bytes += 1 + renderFontsJsonPropertyBytes + renderFontsJsonBytes;
+  }
+
+  projectEngineeringByteCache.set(project, bytes);
+  return bytes;
+}
+
+function hasEngineeringBytes(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function throwIfPreviewAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException("Preview load was cancelled", "AbortError");
+}
+
+function previewObjectUrls(project: Project): Set<string> {
+  const urls = new Set<string>();
+  for (const item of project.mediaLibrary.items) {
+    if (item.thumbnailUrl?.startsWith("blob:")) urls.add(item.thumbnailUrl);
+    for (const thumbnail of item.filmstripThumbnails ?? []) {
+      if (thumbnail.url.startsWith("blob:")) urls.add(thumbnail.url);
+    }
+  }
+  return urls;
+}
+
+function newlyCreatedPreviewObjectUrls(source: Project, hydrated: Project): Set<string> {
+  const retained = previewObjectUrls(source);
+  const created = previewObjectUrls(hydrated);
+  for (const url of retained) created.delete(url);
+  return created;
+}
+
+function releasePreviewObjectUrls(urls: Set<string>): void {
+  for (const url of urls) URL.revokeObjectURL(url);
+  urls.clear();
+}
 
 /** Capture the per-workspace editor view state from the global UI stores. */
 export function captureCurrentViewState(): WorkspaceViewState {
@@ -431,26 +508,43 @@ export class WorkspaceManager {
   async listLibraryEntries(): Promise<ProjectLibraryEntry[]> {
     await this.initialize();
     await this.flushOpenWorkspaces();
-    return [...this.projects.values()]
+    const legacySummaryUpdates: ProjectRecord[] = [];
+    const entries = [...this.projects.values()]
       .filter((record) => record.deletedAt === undefined)
       .map((record) => {
         const workspace = this.workspaces.get(record.defaultWorkspaceId)!;
         const project = workspace.project;
+        let projectRecord = record;
+        if (!hasEngineeringBytes(record.engineeringBytes)) {
+          projectRecord = {
+            ...record,
+            engineeringBytes: projectEngineeringBytes(project),
+          };
+          legacySummaryUpdates.push(projectRecord);
+        }
         const thumbnail =
           project.mediaLibrary.items.find((item) =>
             item.thumbnailUrl?.startsWith("data:image/"),
           )?.thumbnailUrl ?? undefined;
         return {
-          ...record,
+          ...projectRecord,
           modifiedAt: Math.max(record.modifiedAt, project.modifiedAt),
           duration: project.timeline.duration,
           width: project.settings.width,
           height: project.settings.height,
-          engineeringBytes: new TextEncoder().encode(JSON.stringify(project))
-            .byteLength,
+          engineeringBytes: projectRecord.engineeringBytes!,
           thumbnail,
         };
       });
+    if (legacySummaryUpdates.length > 0) {
+      const tx = this.requireDb().transaction(PROJECTS, "readwrite");
+      const completed = transactionDone(tx);
+      const store = tx.objectStore(PROJECTS);
+      legacySummaryUpdates.forEach((record) => store.put(record));
+      await completed;
+      legacySummaryUpdates.forEach((record) => this.projects.set(record.id, record));
+    }
+    return entries;
   }
 
   async listFolders(): Promise<ProjectFolder[]> {
@@ -952,6 +1046,7 @@ export class WorkspaceManager {
         workspace.project = { ...snapshot, name };
         result.project = workspace.project;
       }
+      projectRecord.engineeringBytes = projectEngineeringBytes(workspace.project);
       tx.objectStore(PROJECTS).add(projectRecord);
       tx.objectStore(WORKSPACES).add(workspace);
       if (idemKey) tx.objectStore(IDEMPOTENCY).put({ key: idemKey, request, result });
@@ -1086,23 +1181,32 @@ export class WorkspaceManager {
   async createPreviewHandle(
     source: PreviewSource,
     parent?: PerfOperation,
+    options: PreviewHandleOptions = {},
   ): Promise<PreviewHandle> {
+    const sourceId = source.kind === "node" ? source.nodeId : source.workspaceId;
+    const ownerKey = `preview:${sourceId}:${uuidv4()}`;
+    const objectUrls = new Set<string>();
+    const reportPhase = (phase: PreviewLoadPhase): void => options.onPhase?.(phase);
     const operation = parent
       ? beginPerfOperation("node.preview.prepare", parent)
       : undefined;
     try {
+      throwIfPreviewAborted(options.signal);
       await this.initialize();
+      throwIfPreviewAborted(options.signal);
       let projectId: string;
       let project: Project;
       let label: PreviewHandle["label"];
       let missingDependencies: string[];
-      const sourceId = source.kind === "node" ? source.nodeId : source.workspaceId;
+      reportPhase("reading-snapshot");
+      throwIfPreviewAborted(options.signal);
       const sourceRead = operation
         ? beginPerfOperation(source.kind === "node" ? "node.snapshot-read" : "preview.workspace-read", operation)
         : undefined;
       try {
         if (source.kind === "node") {
           const node = await this.readOne<ProjectNodeRecord>(NODES, source.nodeId);
+          throwIfPreviewAborted(options.signal);
           if (!node) {
             throw new WorkspaceManagerError("NOT_FOUND", `Unknown node ${source.nodeId}`);
           }
@@ -1113,6 +1217,7 @@ export class WorkspaceManager {
         } else {
           const record = this.workspaces.get(source.workspaceId)
             ?? await this.readOne<WorkspaceRecord>(WORKSPACES, source.workspaceId);
+          throwIfPreviewAborted(options.signal);
           if (!record) {
             throw new WorkspaceManagerError("NOT_FOUND", `Unknown workspace ${source.workspaceId}`);
           }
@@ -1123,23 +1228,31 @@ export class WorkspaceManager {
         }
         endPerfOperation(sourceRead, "ok", sourceRead ? { found: true } : undefined);
       } catch (error) {
-        failPerfOperation(sourceRead, error);
+        if (options.signal?.aborted) endPerfOperation(sourceRead, "cancelled");
+        else failPerfOperation(sourceRead, error);
         throw error;
       }
       this.assertProjectNotDeleted(projectId);
+      reportPhase("hydrating-media");
+      throwIfPreviewAborted(options.signal);
       const hydrate = operation
         ? beginPerfOperation("node.media-hydrate", operation)
         : undefined;
       let projectWithMedia: Project;
       try {
         projectWithMedia = await withMediaReferenceWrite(() => this.hydrateProject(project));
+        for (const url of newlyCreatedPreviewObjectUrls(project, projectWithMedia)) objectUrls.add(url);
+        throwIfPreviewAborted(options.signal);
         endPerfOperation(hydrate, "ok", hydrate ? {
           mediaItems: projectWithMedia.mediaLibrary.items.length,
         } : undefined);
       } catch (error) {
-        failPerfOperation(hydrate, error);
+        if (options.signal?.aborted) endPerfOperation(hydrate, "cancelled");
+        else failPerfOperation(hydrate, error);
         throw error;
       }
+      reportPhase("restoring-store");
+      throwIfPreviewAborted(options.signal);
       const storeRestore = operation
         ? beginPerfOperation("node.preview-store-restore", operation)
         : undefined;
@@ -1147,8 +1260,12 @@ export class WorkspaceManager {
       store.getState().loadProject(projectWithMedia);
       store.setState({ readOnlyPreview: true });
       endPerfOperation(storeRestore, "ok");
-      const ownerKey = `preview:${sourceId}`;
+      reportPhase("loading-fonts");
+      throwIfPreviewAborted(options.signal);
       await withMediaReferenceWrite(() => installProjectRenderFonts(projectWithMedia, ownerKey, operation));
+      throwIfPreviewAborted(options.signal);
+      reportPhase("ready");
+      throwIfPreviewAborted(options.signal);
       if (operation) {
         markPerfOperation(operation, "node.preview.handle-ready", {
           missingDependencies: missingDependencies.length,
@@ -1158,17 +1275,28 @@ export class WorkspaceManager {
         mediaItems: projectWithMedia.mediaLibrary.items.length,
         missingDependencies: missingDependencies.length,
       } : undefined);
+      let disposed = false;
       return {
         store,
         projectId,
         label,
         missingDependencies,
         dispose: async () => {
+          if (disposed) return;
+          disposed = true;
           releaseProjectRenderFonts(ownerKey);
+          releasePreviewObjectUrls(objectUrls);
         },
       };
     } catch (error) {
-      failPerfOperation(operation, error);
+      releaseProjectRenderFonts(ownerKey);
+      releasePreviewObjectUrls(objectUrls);
+      if (options.signal?.aborted) {
+        reportPhase("cancelled");
+        endPerfOperation(operation, "cancelled");
+      } else {
+        failPerfOperation(operation, error);
+      }
       throw error;
     }
   }
@@ -1297,6 +1425,7 @@ export class WorkspaceManager {
           dirty,
           project,
         };
+        const projectRecord = this.projectRecordForWorkspaceSnapshot(nextWorkspace, project);
         await input.beforePersist?.();
         if (liveStore.getState().workspaceRevision !== context.revision) {
           throw new WorkspaceManagerError(
@@ -1305,12 +1434,15 @@ export class WorkspaceManager {
             { expectedRevision: context.revision },
           );
         }
-        const stores = idempotencyKey
-          ? [WORKSPACES, IDEMPOTENCY]
-          : [WORKSPACES];
+        const stores = [
+          WORKSPACES,
+          ...(idempotencyKey ? [IDEMPOTENCY] : []),
+          ...(projectRecord ? [PROJECTS] : []),
+        ];
         const tx = this.requireDb().transaction(stores, "readwrite");
         const completed = transactionDone(tx);
         tx.objectStore(WORKSPACES).put(nextWorkspace);
+        if (projectRecord) tx.objectStore(PROJECTS).put(projectRecord);
         if (idempotencyKey && request) {
           tx.objectStore(IDEMPOTENCY).put({
             key: idempotencyKey,
@@ -1320,7 +1452,10 @@ export class WorkspaceManager {
         }
         await completed;
         interleavedEdit = liveStore.getState().workspaceRevision !== context.revision;
-        if (!interleavedEdit) this.workspaces.set(record.id, nextWorkspace);
+        if (!interleavedEdit) {
+          this.workspaces.set(record.id, nextWorkspace);
+          if (projectRecord) this.projects.set(projectRecord.id, projectRecord);
+        }
       });
 
       // Some synchronous GUI overlay edits do not use the asynchronous write
@@ -1515,9 +1650,22 @@ export class WorkspaceManager {
               missingDependencies: await missingProjectDependencies(project),
             };
           }
-          const stores = idemKey
-            ? [NODES, NODE_SUMMARIES, WORKSPACES, IDEMPOTENCY]
-            : [NODES, NODE_SUMMARIES, WORKSPACES];
+          const savedWorkspace: WorkspaceRecord = {
+            ...record,
+            baseNodeId: node!.id,
+            revision,
+            updatedAt: Date.now(),
+            dirty: false,
+            project,
+          };
+          const projectRecord = this.projectRecordForWorkspaceSnapshot(savedWorkspace, project);
+          const stores = [
+            NODES,
+            NODE_SUMMARIES,
+            WORKSPACES,
+            ...(idemKey ? [IDEMPOTENCY] : []),
+            ...(projectRecord ? [PROJECTS] : []),
+          ];
           const transactionOperation = beginPerfOperation("save.storage-transaction", operation);
           const tx = this.requireDb().transaction(stores, "readwrite");
           const completed = transactionDone(tx);
@@ -1536,14 +1684,8 @@ export class WorkspaceManager {
             tx.objectStore(NODES).add(node!);
             tx.objectStore(NODE_SUMMARIES).put(nodeSummary(node!));
           }
-          tx.objectStore(WORKSPACES).put({
-            ...record,
-            baseNodeId: node!.id,
-            revision,
-            updatedAt: Date.now(),
-            dirty: false,
-            project,
-          });
+          tx.objectStore(WORKSPACES).put(savedWorkspace);
+          if (projectRecord) tx.objectStore(PROJECTS).put(projectRecord);
           if (idemKey) tx.objectStore(IDEMPOTENCY).put({ key: idemKey, request, result });
           try {
             await completed;
@@ -1551,6 +1693,7 @@ export class WorkspaceManager {
             failPerfOperation(transactionOperation, error);
             throw error;
           }
+          if (projectRecord) this.projects.set(projectRecord.id, projectRecord);
           endPerfOperation(transactionOperation, "ok", transactionOperation ? {
             objectStores: stores.length,
             nodeWritten: node !== baseNode,
@@ -1641,7 +1784,21 @@ export class WorkspaceManager {
       ...(protectionDraftId ? { protectionDraftId } : {}),
     };
     await withMediaReferenceWrite(async () => {
-      const stores = idemKey ? [WORKSPACES, IDEMPOTENCY] : [WORKSPACES];
+      const restoredProject = cloneProject(node.project);
+      const restoredWorkspace: WorkspaceRecord = {
+        ...targetRecord,
+        baseNodeId: node.id,
+        revision: nextRevision,
+        updatedAt: Date.now(),
+        dirty: false,
+        project: restoredProject,
+      };
+      const projectRecord = this.projectRecordForWorkspaceSnapshot(restoredWorkspace, restoredProject);
+      const stores = [
+        WORKSPACES,
+        ...(idemKey ? [IDEMPOTENCY] : []),
+        ...(projectRecord ? [PROJECTS] : []),
+      ];
       const tx = this.requireDb().transaction(stores, "readwrite");
       const completed = transactionDone(tx);
       if (store.getState().workspaceRevision !== revision) {
@@ -1653,16 +1810,14 @@ export class WorkspaceManager {
           { expectedRevision: revision },
         );
       }
-      tx.objectStore(WORKSPACES).put({
-        ...targetRecord,
-        baseNodeId: node.id,
-        revision: nextRevision,
-        updatedAt: Date.now(),
-        dirty: false,
-        project: cloneProject(node.project),
-      });
+      if (projectRecord) {
+        const projectStore = tx.objectStore(PROJECTS);
+        projectStore.put(projectRecord);
+      }
+      tx.objectStore(WORKSPACES).put(restoredWorkspace);
       if (idemKey) tx.objectStore(IDEMPOTENCY).put({ key: idemKey, request, result });
       await completed;
+      if (projectRecord) this.projects.set(projectRecord.id, projectRecord);
     });
     if (store.getState().workspaceRevision !== revision) {
       // Same compensation as every other interleaved-edit loser
@@ -1756,7 +1911,17 @@ export class WorkspaceManager {
       );
       const dirty = !baseProjectKey || baseProjectKey !== editableProjectKey(preparedProject);
       await withMediaReferenceWrite(async () => {
-        const tx = this.requireDb().transaction(WORKSPACES, "readwrite");
+        const adoptedProject = cloneProject(preparedProject);
+        const adoptedWorkspace: WorkspaceRecord = {
+          ...targetRecord,
+          revision: nextRevision,
+          updatedAt: Date.now(),
+          dirty,
+          project: adoptedProject,
+        };
+        const projectRecord = this.projectRecordForWorkspaceSnapshot(adoptedWorkspace, adoptedProject);
+        const stores = [WORKSPACES, ...(projectRecord ? [PROJECTS] : [])];
+        const tx = this.requireDb().transaction(stores, "readwrite");
         const completed = transactionDone(tx);
         if (store.getState().workspaceRevision !== revision) {
           tx.abort();
@@ -1767,14 +1932,10 @@ export class WorkspaceManager {
             { expectedRevision: revision },
           );
         }
-        tx.objectStore(WORKSPACES).put({
-          ...targetRecord,
-          revision: nextRevision,
-          updatedAt: Date.now(),
-          dirty,
-          project: cloneProject(preparedProject),
-        });
+        tx.objectStore(WORKSPACES).put(adoptedWorkspace);
+        if (projectRecord) tx.objectStore(PROJECTS).put(projectRecord);
         await completed;
+        if (projectRecord) this.projects.set(projectRecord.id, projectRecord);
       });
       if (store.getState().workspaceRevision !== revision) {
         await this.persistCurrentWorkspaceAndRemoveActionReceipt(targetRecord, store);
@@ -1942,7 +2103,21 @@ export class WorkspaceManager {
     }
     const revision = currentRevision + 1;
     await withMediaReferenceWrite(async () => {
-      const stores = idemKey ? [WORKSPACES, IDEMPOTENCY] : [WORKSPACES];
+      const recoveredProject = cloneProject(preparedDraft);
+      const recoveredWorkspace: WorkspaceRecord = {
+        ...workspace,
+        baseNodeId: draft.baseNodeId,
+        revision,
+        updatedAt: Date.now(),
+        dirty: true,
+        project: recoveredProject,
+      };
+      const projectRecord = this.projectRecordForWorkspaceSnapshot(recoveredWorkspace, recoveredProject);
+      const stores = [
+        WORKSPACES,
+        ...(idemKey ? [IDEMPOTENCY] : []),
+        ...(projectRecord ? [PROJECTS] : []),
+      ];
       const tx = this.requireDb().transaction(stores, "readwrite");
       const completed = transactionDone(tx);
       if (store.getState().workspaceRevision !== currentRevision) {
@@ -1954,9 +2129,11 @@ export class WorkspaceManager {
           { expectedRevision: currentRevision },
         );
       }
-      tx.objectStore(WORKSPACES).put({ ...workspace, baseNodeId: draft.baseNodeId, revision, updatedAt: Date.now(), dirty: true, project: cloneProject(preparedDraft) });
+      tx.objectStore(WORKSPACES).put(recoveredWorkspace);
+      if (projectRecord) tx.objectStore(PROJECTS).put(projectRecord);
       if (idemKey) tx.objectStore(IDEMPOTENCY).put({ key: idemKey, request, result: { revision } });
       await completed;
+      if (projectRecord) this.projects.set(projectRecord.id, projectRecord);
     });
     if (store.getState().workspaceRevision !== currentRevision) {
       // Shared interleaved-edit compensation; publish and the draft-specific
@@ -2345,6 +2522,7 @@ export class WorkspaceManager {
           dirty: true,
           project: cloneProject(await prepareProjectRenderFonts(current.getFullProject())),
         };
+        projectRecord!.engineeringBytes = projectEngineeringBytes(workspace.project);
         const tx = this.requireDb().transaction([PROJECTS, WORKSPACES], "readwrite");
         const completed = transactionDone(tx);
         tx.objectStore(PROJECTS).put(projectRecord!);
@@ -2519,6 +2697,7 @@ export class WorkspaceManager {
     const operation = beginPerfOperation("save.workspace-snapshot", parent);
     try {
       let preparedWorkspace!: WorkspaceRecord;
+      let updatedProjectRecord: ProjectRecord | undefined;
       let transaction: PerfOperation | undefined;
       let skipped = false;
       await withMediaReferenceWrite(async () => {
@@ -2528,6 +2707,7 @@ export class WorkspaceManager {
             ...workspace,
             project: cloneProject(await prepareProjectRenderFonts(workspace.project, prepare), prepare),
           };
+          updatedProjectRecord = this.projectRecordForWorkspaceSnapshot(preparedWorkspace);
           endPerfOperation(prepare, "ok", prepare ? {
             revision: preparedWorkspace.revision,
             mediaItems: preparedWorkspace.project.mediaLibrary.items.length,
@@ -2554,14 +2734,15 @@ export class WorkspaceManager {
             return;
           }
           store.put(preparedWorkspace);
-          const projectRecord = this.projects.get(workspace.projectId);
-          if (!projectRecord) {
+          const existingProjectRecord = this.projects.get(workspace.projectId);
+          if (!existingProjectRecord) {
             // Keep the workspace write durable even when the project row is
             // absent; throwing here would kill background persistence on every
             // retry of this snapshot.
             console.error("[WorkspaceManager] Project record missing during workspace snapshot persistence", workspace.projectId, workspace.id);
           } else {
-            tx.objectStore(PROJECTS).put(projectRecord);
+            updatedProjectRecord ??= existingProjectRecord;
+            tx.objectStore(PROJECTS).put(updatedProjectRecord);
           }
           await completed;
         } catch (error) {
@@ -2573,6 +2754,7 @@ export class WorkspaceManager {
         endPerfOperation(operation, "superseded", operation ? { revision: preparedWorkspace.revision } : undefined);
         return;
       }
+      if (updatedProjectRecord) this.projects.set(updatedProjectRecord.id, updatedProjectRecord);
       markPerfOperation(transaction, "save.storage-transaction-committed", transaction ? {
         revision: preparedWorkspace.revision,
         projectRows: this.projects.has(workspace.projectId) ? 1 : 0,
@@ -2618,17 +2800,22 @@ export class WorkspaceManager {
           dirty: !baseProjectKey || baseProjectKey !== editableProjectKey(liveProject),
           project,
         };
-        const stores = idempotencyKey
-          ? [WORKSPACES, IDEMPOTENCY]
-          : [WORKSPACES];
+        const projectRecord = this.projectRecordForWorkspaceSnapshot(preserved);
+        const stores = [
+          WORKSPACES,
+          ...(idempotencyKey ? [IDEMPOTENCY] : []),
+          ...(projectRecord ? [PROJECTS] : []),
+        ];
         const tx = this.requireDb().transaction(stores, "readwrite");
         const completed = transactionDone(tx);
         tx.objectStore(WORKSPACES).put(preserved);
         if (idempotencyKey) tx.objectStore(IDEMPOTENCY).delete(idempotencyKey);
+        if (projectRecord) tx.objectStore(PROJECTS).put(projectRecord);
         await completed;
         if (store.getState().workspaceRevision !== revision) continue;
 
         this.workspaces.set(record.id, preserved);
+        if (projectRecord) this.projects.set(projectRecord.id, projectRecord);
         return;
       }
     });
@@ -2866,6 +3053,19 @@ export class WorkspaceManager {
   private requireDb(): IDBDatabase {
     if (!this.db) throw new Error("Workspace manager is not initialized");
     return this.db;
+  }
+
+  private projectRecordForWorkspaceSnapshot(
+    workspace: WorkspaceRecord,
+    project: Project = workspace.project,
+  ): ProjectRecord | undefined {
+    const record = this.projects.get(workspace.projectId);
+    if (!record || record.defaultWorkspaceId !== workspace.id) return undefined;
+    return {
+      ...record,
+      modifiedAt: Math.max(record.modifiedAt, project.modifiedAt),
+      engineeringBytes: projectEngineeringBytes(project),
+    };
   }
 
   private async readOne<T>(storeName: string, key: IDBValidKey): Promise<T | null> {

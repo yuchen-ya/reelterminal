@@ -5,6 +5,7 @@ import type { Action, Project } from "@reelterminal/core";
 import { createEmptyProject } from "../stores/project/project-helpers";
 import { createProjectStore, getActiveProjectRuntimeStore } from "../stores/project-store";
 import { WorkspaceManager, WorkspaceManagerError, isSubstantiveProject, type WorkspaceContextHandle, type WorkspaceRecord } from "./workspace-manager";
+import { cloneProject } from "./workspace-record-transforms";
 import * as renderDependencies from "./project-render-dependencies";
 import * as mediaRecovery from "../utils/media-recovery";
 
@@ -1291,6 +1292,129 @@ describe("WorkspaceManager", () => {
     expect(persisted?.project.timeline.tracks).toHaveLength(0);
   });
 
+  it("reports preview loading phases and releases font leases when the request is cancelled", async () => {
+    const manager = new WorkspaceManager();
+    const controller = new AbortController();
+    const phases: string[] = [];
+    const added: FontFace[] = [];
+    const deleted: FontFace[] = [];
+    const fontsDescriptor = Object.getOwnPropertyDescriptor(document, "fonts");
+    class MockFontFace {
+      constructor(readonly family: string) {}
+      async load() {
+        controller.abort();
+        return this as unknown as FontFace;
+      }
+    }
+    vi.stubGlobal("FontFace", MockFontFace);
+    Object.defineProperty(document, "fonts", {
+      configurable: true,
+      value: {
+        add: (face: FontFace) => added.push(face),
+        delete: (face: FontFace) => { deleted.push(face); return true; },
+      },
+    });
+    const project = {
+      ...createEmptyProject("Cancelled preview"),
+      textClips: [{ style: { fontFamily: "Cancelled Preview Font" } }] as unknown as Project["textClips"],
+      renderFonts: [{
+        family: "Cancelled Preview Font",
+        style: "normal",
+        weight: "400",
+        dataUrl: "data:font/woff2;base64,AAAA",
+      }],
+    } as Project;
+    try {
+      const created = await manager.createProject(project);
+
+      await expect(manager.createPreviewHandle(
+        { kind: "workspace", workspaceId: created.defaultWorkspaceId },
+        undefined,
+        { signal: controller.signal, onPhase: (phase) => phases.push(phase) },
+      )).rejects.toMatchObject({ name: "AbortError" });
+
+      expect(phases).toEqual([
+        "reading-snapshot",
+        "hydrating-media",
+        "restoring-store",
+        "loading-fonts",
+        "cancelled",
+      ]);
+      expect(added).toHaveLength(1);
+      expect(deleted).toEqual(added);
+    } finally {
+      vi.unstubAllGlobals();
+      if (fontsDescriptor) Object.defineProperty(document, "fonts", fontsDescriptor);
+      else delete (document as unknown as { fonts?: unknown }).fonts;
+    }
+  });
+
+  it("releases preview-created object URLs on disposal and hydration cancellation", async () => {
+    const manager = new WorkspaceManager();
+    const base = createEmptyProject("Preview media cleanup");
+    const mediaId = "preview-cleanup-image";
+    const mediaItem = {
+      id: mediaId,
+      name: "preview.png",
+      type: "image" as const,
+      fileHandle: null,
+      blob: null,
+      metadata: {
+        duration: 0,
+        width: 1,
+        height: 1,
+        frameRate: 0,
+        codec: "",
+        sampleRate: 0,
+        channels: 0,
+        fileSize: 1,
+      },
+      thumbnailUrl: null,
+      waveformData: null,
+    } satisfies Project["mediaLibrary"]["items"][number];
+    const project = {
+      ...base,
+      mediaLibrary: { ...base.mediaLibrary, items: [mediaItem] },
+    };
+    const created = await manager.createProject(project, { loadRuntime: false });
+    const controller = new AbortController();
+    const revoked: string[] = [];
+    let restoreCount = 0;
+    let abortOnRestore: AbortController | undefined;
+    const restore = vi.spyOn(mediaRecovery, "restoreMediaItem").mockImplementation(async (item) => {
+      restoreCount += 1;
+      const thumbnailUrl = `blob:preview-cleanup-${restoreCount}`;
+      abortOnRestore?.abort();
+      return { ...item, thumbnailUrl };
+    });
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation((url) => {
+      revoked.push(url);
+    });
+    try {
+      const handle = await manager.createPreviewHandle({
+        kind: "workspace",
+        workspaceId: created.defaultWorkspaceId,
+      });
+      expect(revoked).toEqual([]);
+      await handle.dispose();
+      expect(revoked).toEqual(["blob:preview-cleanup-1"]);
+
+      abortOnRestore = controller;
+      await expect(manager.createPreviewHandle(
+        { kind: "workspace", workspaceId: created.defaultWorkspaceId },
+        undefined,
+        { signal: controller.signal },
+      )).rejects.toMatchObject({ name: "AbortError" });
+      expect(revoked).toEqual([
+        "blob:preview-cleanup-1",
+        "blob:preview-cleanup-2",
+      ]);
+    } finally {
+      restore.mockRestore();
+      revoke.mockRestore();
+    }
+  });
+
   it("rejects executeAction on read-only preview stores without affecting normal stores", async () => {
     const previewStore = createProjectStore({ readOnlyPreview: true });
     previewStore.getState().loadProject(createEmptyProject("Read-only preview"));
@@ -1313,25 +1437,197 @@ describe("WorkspaceManager", () => {
     expect(result.success).toBe(true);
   });
 
-  it("coalesces rapid workspace edits into one durable write of the newest state", async () => {
+  it("shares immutable render-font resources across editable project clones", () => {
+    const project = {
+      ...createEmptyProject("Shared font resource"),
+      renderFonts: [{
+        family: "Shared Font",
+        style: "normal",
+        weight: "400",
+        dataUrl: `data:font/woff2;base64,${"A".repeat(1024)}`,
+      }],
+    } as Project;
+
+    const cloneSpy = vi.spyOn(globalThis, "structuredClone");
+    try {
+      const copy = cloneProject(project);
+
+      expect(copy).not.toBe(project);
+      expect(copy.renderFonts).toBe(project.renderFonts);
+      expect(cloneSpy).toHaveBeenCalledTimes(1);
+      expect((cloneSpy.mock.calls[0][0] as Project).renderFonts).toBeUndefined();
+    } finally {
+      cloneSpy.mockRestore();
+    }
+  });
+
+  it("coalesces edits queued during an in-flight save and keeps the latest revision durable", async () => {
     const manager = new WorkspaceManager();
     const created = await manager.createProject(createEmptyProject("Coalesce"));
     const target = { projectId: created.project.id, workspaceId: created.defaultWorkspaceId };
+    const internals = manager as unknown as {
+      persistWorkspaceSnapshot: (workspace: WorkspaceRecord) => Promise<void>;
+    };
+    const persistSnapshot = internals.persistWorkspaceSnapshot.bind(manager);
+    let releaseFirstWrite!: () => void;
+    const firstWriteGate = new Promise<void>((resolve) => { releaseFirstWrite = resolve; });
+    let firstWriteStarted!: () => void;
+    const started = new Promise<void>((resolve) => { firstWriteStarted = resolve; });
+    let persistCalls = 0;
     const persistSpy = vi.spyOn(
       manager as unknown as { persistWorkspaceSnapshot: (workspace: unknown) => Promise<void> },
       "persistWorkspaceSnapshot",
-    );
+    ).mockImplementation(async (workspace) => {
+      persistCalls += 1;
+      if (persistCalls === 1) {
+        firstWriteStarted();
+        await firstWriteGate;
+      }
+      await persistSnapshot(workspace as WorkspaceRecord);
+    });
     const context = await manager.getWorkspaceContext(target);
     context.store.setState({ project: { ...context.store.getState().project, name: "edit-1" } });
+    await started;
     context.store.setState({ project: { ...context.store.getState().project, name: "edit-2" } });
     context.store.setState({ project: { ...context.store.getState().project, name: "edit-3" } });
+    releaseFirstWrite();
     await manager.flushWorkspace(target);
-    expect(persistSpy).toHaveBeenCalledTimes(1);
+    expect(persistSpy.mock.calls.map(([workspace]) => (workspace as WorkspaceRecord).revision))
+      .toEqual([1, 3]);
     persistSpy.mockRestore();
 
     const restarted = new WorkspaceManager();
     const reopened = await restarted.getWorkspaceContext(target);
     expect(reopened.store.getState().project.name).toBe("edit-3");
+    expect(reopened.revision).toBe(3);
+  });
+
+  it("reads library engineeringBytes from the persisted project summary", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(createEmptyProject("Library summary"));
+    await manager.flushWorkspace({ projectId: created.project.id, workspaceId: created.defaultWorkspaceId });
+    const workspace = (manager as unknown as { workspaces: Map<string, WorkspaceRecord> })
+      .workspaces.get(created.defaultWorkspaceId)!;
+    const expectedBytes = new TextEncoder().encode(JSON.stringify(workspace.project)).byteLength;
+    const stringify = vi.spyOn(JSON, "stringify");
+    try {
+      const entries = await manager.listLibraryEntries();
+      expect(entries.find((entry) => entry.id === created.project.id)?.engineeringBytes)
+        .toBe(expectedBytes);
+      expect(stringify).not.toHaveBeenCalledWith(workspace.project);
+    } finally {
+      stringify.mockRestore();
+    }
+
+    const context = await manager.getWorkspaceContext({
+      projectId: created.project.id,
+      workspaceId: created.defaultWorkspaceId,
+    });
+    context.store.setState({
+      project: { ...context.store.getState().project, name: "Library summary after save" },
+    });
+    await manager.flushWorkspace({ projectId: created.project.id, workspaceId: created.defaultWorkspaceId });
+    const latestWorkspace = (manager as unknown as { workspaces: Map<string, WorkspaceRecord> })
+      .workspaces.get(created.defaultWorkspaceId)!;
+    const latestExpectedBytes = new TextEncoder().encode(JSON.stringify(latestWorkspace.project)).byteLength;
+    const latestEntry = (await manager.listLibraryEntries())
+      .find((entry) => entry.id === created.project.id);
+    expect(latestEntry?.engineeringBytes).toBe(latestExpectedBytes);
+  });
+
+  it("reuses render-font JSON bytes across project summaries without changing exact UTF-8 size", async () => {
+    const manager = new WorkspaceManager();
+    const renderFonts: NonNullable<Project["renderFonts"]> = [{
+      family: "共享字体 Ω",
+      style: "normal",
+      weight: "400",
+      dataUrl: "data:font/woff2;base64,AA==",
+    }];
+    const makeProject = (name: string): Project => ({
+      ...createEmptyProject(name),
+      textClips: [{ style: { fontFamily: "共享字体 Ω" } }] as unknown as Project["textClips"],
+      renderFonts,
+    });
+
+    const first = await manager.createProject(makeProject("第一份工程 — 東京"));
+    const workspaces = (manager as unknown as { workspaces: Map<string, WorkspaceRecord> }).workspaces;
+    const firstProject = workspaces.get(first.defaultWorkspaceId)!.project;
+    const secondProject = makeProject("第二份工程 — Montréal");
+    const stringify = vi.spyOn(JSON, "stringify");
+    let second: Awaited<ReturnType<WorkspaceManager["createProject"]>> | undefined;
+    try {
+      second = await manager.createProject(secondProject);
+
+      expect(stringify.mock.calls.some(([value]) => value === renderFonts)).toBe(false);
+      expect(stringify.mock.calls.some(([value]) =>
+        value !== null && typeof value === "object" &&
+        !Array.isArray(value) &&
+        (value as Project).renderFonts === renderFonts,
+      )).toBe(false);
+    } finally {
+      stringify.mockRestore();
+    }
+
+    if (!second) throw new Error("Second project creation did not complete");
+    const workspace = workspaces.get(second.defaultWorkspaceId)!;
+    expect(workspace.project).not.toBe(firstProject);
+    expect(workspace.project).not.toBe(secondProject);
+    expect(workspace.project.renderFonts).toBe(firstProject.renderFonts);
+    expect(workspace.project.renderFonts).toBe(renderFonts);
+    const expectedBytes = new TextEncoder().encode(JSON.stringify(workspace.project)).byteLength;
+    expect(second.projectRecord.engineeringBytes).toBe(expectedBytes);
+    expect((await manager.listLibraryEntries())
+      .find((entry) => entry.id === second.project.id)?.engineeringBytes).toBe(expectedBytes);
+  });
+
+  it("backfills legacy library summaries once and persists them for later reads", async () => {
+    const manager = new WorkspaceManager();
+    const created = await manager.createProject(createEmptyProject("Legacy library summary"));
+    const database = (manager as unknown as { db: IDBDatabase | null }).db;
+    if (!database) throw new Error("Workspace database was not initialized");
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction("projects", "readwrite");
+      const store = transaction.objectStore("projects");
+      const request = store.get(created.project.id);
+      request.onsuccess = () => {
+        const record = request.result as Record<string, unknown>;
+        delete record.engineeringBytes;
+        store.put(record);
+      };
+      request.onerror = () => reject(request.error);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+
+    const reopened = new WorkspaceManager();
+    await reopened.initialize();
+    const legacyWorkspace = (reopened as unknown as { workspaces: Map<string, WorkspaceRecord> })
+      .workspaces.get(created.defaultWorkspaceId)!;
+    const expectedBytes = new TextEncoder().encode(JSON.stringify(legacyWorkspace.project)).byteLength;
+    const stringify = vi.spyOn(JSON, "stringify");
+    const projectSerializeCount = (): number => stringify.mock.calls
+      .filter(([value]) => value !== null && typeof value === "object" &&
+        (value as Project).id === legacyWorkspace.project.id &&
+        (value as Project).renderFonts === undefined).length;
+    try {
+      const entries = await reopened.listLibraryEntries();
+      expect(entries.find((entry) => entry.id === created.project.id)?.engineeringBytes)
+        .toBe(expectedBytes);
+      expect(projectSerializeCount()).toBe(1);
+
+      await reopened.listLibraryEntries();
+      expect(projectSerializeCount()).toBe(1);
+      const persisted = await new Promise<Record<string, unknown> | undefined>((resolve, reject) => {
+        const transaction = database.transaction("projects", "readonly");
+        const request = transaction.objectStore("projects").get(created.project.id);
+        request.onsuccess = () => resolve(request.result as Record<string, unknown> | undefined);
+        request.onerror = () => reject(request.error);
+      });
+      expect(persisted?.engineeringBytes).toBe(expectedBytes);
+    } finally {
+      stringify.mockRestore();
+    }
   });
 
   it("a settled failed background write still blocks close flush until a successful retry", async () => {

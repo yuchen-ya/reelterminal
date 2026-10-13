@@ -126,6 +126,7 @@ describe("project render dependencies", () => {
     });
     const prepared = await prepareProjectRenderFonts(original);
     expect(prepared.renderFonts).toEqual(original.renderFonts);
+    expect(prepared.renderFonts).toBe(original.renderFonts);
 
     const loaded: Array<{ family: string; source: string; descriptors: FontFaceDescriptors }> = [];
     class MockFontFace {
@@ -186,6 +187,51 @@ describe("project render dependencies", () => {
     releaseProjectRenderFonts("workspace-b");
     expect(deleted).toHaveLength(1);
     expect(deleted[0]).toBe(added[0]);
+  });
+
+  it("reuses validation and an owner's installed faces for the same immutable font resources", async () => {
+    class MockFontFace {
+      async load() { return this as unknown as FontFace; }
+    }
+    const added: FontFace[] = [];
+    vi.stubGlobal("FontFace", MockFontFace);
+    Object.defineProperty(document, "fonts", {
+      configurable: true,
+      value: { add: (face: FontFace) => added.push(face), delete: () => true },
+    });
+    const project = projectWith({
+      renderFonts: [{
+        family: "Cached Project Font",
+        style: "normal",
+        weight: "400",
+        dataUrl: `data:font/woff2;base64,${"A".repeat(1024)}`,
+      }],
+    });
+    const ownerId = "font-cache-owner";
+    const controller = new CaptureController();
+    controller.startCapture({ mode: "trace" });
+    try {
+      await installProjectRenderFonts(project, ownerId);
+      await installProjectRenderFonts(project, ownerId);
+
+      const report = controller.stopCapture();
+      const validations = report.events.filter((event) =>
+        event.kind === "span_end" && event.phase === "font.validate",
+      );
+      expect(validations).toHaveLength(2);
+      expect(validations[0]).toMatchObject({ dims: { candidates: 1, valid: 1, invalid: 0 } });
+      expect(validations[1]).toMatchObject({ dims: {
+        candidates: 1,
+        valid: 1,
+        invalid: 0,
+        cacheHit: true,
+        fullValidations: 0,
+      } });
+      expect(added).toHaveLength(1);
+    } finally {
+      releaseProjectRenderFonts(ownerId);
+      if (controller.activeRunId) controller.stopCapture();
+    }
   });
 
   it("records privacy-safe font validation, loading and lease stages", async () => {
