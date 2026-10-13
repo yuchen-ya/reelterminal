@@ -53,7 +53,6 @@ describe("ParallelFrameDecoder initialization measurements", () => {
     }
     vi.stubGlobal("Worker", FakeWorker);
     vi.stubGlobal("navigator", { hardwareConcurrency: 2 });
-    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:decode-worker");
 
     try {
       const parent = beginPerfOperation("test.parent");
@@ -79,5 +78,87 @@ describe("ParallelFrameDecoder initialization measurements", () => {
     } finally {
       setPerfSink(previousSink);
     }
+  });
+
+  it("starts a local module worker and cancels every pending peer on failure", async () => {
+    vi.useFakeTimers();
+    const workers: FakeWorker[] = [];
+    class FakeWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      postMessage = vi.fn();
+      terminate = vi.fn();
+      constructor(readonly url: URL, readonly options: WorkerOptions) {
+        workers.push(this);
+      }
+    }
+    vi.stubGlobal("Worker", FakeWorker);
+    vi.stubGlobal("navigator", { hardwareConcurrency: 2 });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const decoder = new ParallelFrameDecoder(2);
+    const initialization = decoder.initialize();
+    const rejection = expect(initialization).rejects.toMatchObject({ message: "module failed" });
+    expect(workers).toHaveLength(2);
+    expect(workers[0].url.pathname).toMatch(/decode-worker\.ts$/);
+    expect(workers[0].options.type).toBe("module");
+    workers[0].onerror?.({ message: "module failed" } as ErrorEvent);
+    await rejection;
+    expect(workers.every((worker) => worker.terminate.mock.calls.length === 1)).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(decoder.isAvailable()).toBe(false);
+    decoder.dispose();
+  });
+
+  it("cannot become available when disposed during startup", async () => {
+    vi.useFakeTimers();
+    let worker!: FakeWorker;
+    class FakeWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      postMessage = vi.fn();
+      terminate = vi.fn();
+      constructor() { worker = this; }
+    }
+    vi.stubGlobal("Worker", FakeWorker);
+    vi.stubGlobal("navigator", { hardwareConcurrency: 1 });
+    const decoder = new ParallelFrameDecoder(1);
+    const initialization = decoder.initialize();
+    const rejection = expect(initialization).rejects.toThrow("Decoder disposed");
+    // Ready was delivered, but Promise.all has not activated the pool yet.
+    worker.onmessage?.({ data: { type: "ready", workerId: 1, mediabunnyAvailable: true } } as MessageEvent);
+    decoder.dispose();
+    await rejection;
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+    expect(decoder.isAvailable()).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(["before pool activation", "after pool activation"])("retires a ready worker that crashes %s", async (timing) => {
+    vi.useFakeTimers();
+    let worker!: FakeWorker;
+    class FakeWorker {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: ErrorEvent) => void) | null = null;
+      postMessage = vi.fn();
+      terminate = vi.fn();
+      constructor() { worker = this; }
+    }
+    vi.stubGlobal("Worker", FakeWorker);
+    vi.stubGlobal("navigator", { hardwareConcurrency: 1 });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const decoder = new ParallelFrameDecoder(1);
+    const initialization = decoder.initialize();
+    worker.onmessage?.({ data: { type: "ready", workerId: 1, mediabunnyAvailable: true } } as MessageEvent);
+    if (timing === "after pool activation") {
+      await initialization;
+      expect(decoder.isAvailable()).toBe(true);
+    }
+    worker.onerror?.({ message: "worker crashed" } as ErrorEvent);
+    await initialization;
+    expect(decoder.isAvailable()).toBe(false);
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+    decoder.dispose();
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

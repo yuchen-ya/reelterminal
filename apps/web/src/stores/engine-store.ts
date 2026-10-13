@@ -28,11 +28,29 @@ import {
   getPerfSink,
   endPerfOperation,
   failPerfOperation,
-  markPerfOperation,
   type PerfOperation,
 } from "@reelterminal/core";
 
 const lazyEngineCache = new Map<string, unknown>();
+let initializationGeneration = 0;
+let initializationTask: Promise<void> | null = null;
+let pendingInitializationCleanup: { generation: number; dispose(): void } | null = null;
+
+interface PendingEngineSet {
+  videoEngine: VideoEngine | null;
+  audioEngine: AudioEngine | null;
+  playbackController: PlaybackController | null;
+  photoEngine: PhotoEngine | null;
+  exportEngine: ExportEngine | null;
+}
+
+function disposePendingEngines(engines: PendingEngineSet): void {
+  engines.videoEngine?.dispose();
+  engines.audioEngine?.dispose();
+  engines.playbackController?.dispose();
+  engines.photoEngine?.dispose();
+  engines.exportEngine?.dispose();
+}
 
 async function getOrCreateEngine<T>(
   key: string,
@@ -109,11 +127,8 @@ export interface EngineState {
   initError: string | null;
   /**
    * Whether the parallel decode workers have their mediabunny decoder
-   * available (observable state). `null` = no parallel decoder, i.e.
-   * the feature is not in use. `false` = workers lost decode capability
-   * (bundled + CDN mediabunny both failed to load); playback then falls
-   * back to element-based decoding, so this is surfaced as observable
-   * state rather than a blocking error.
+   * available. `null` = not started or still preparing; `false` = worker
+   * preparation failed. Rendering remains available through the main decoder.
    */
   parallelDecodeAvailable: boolean | null;
   videoEngine: VideoEngine | null;
@@ -193,112 +208,158 @@ export const useEngineStore = create<EngineState>()(
     playbackStats: DEFAULT_PLAYBACK_STATS,
 
     initialize: async (parent?: PerfOperation) => {
-      const state = get();
+      if (get().initialized || get().initializing) return;
 
-      if (state.initialized || state.initializing) {
-        return;
+      // dispose() makes the visible state idle immediately, but the previous
+      // initialization can still be awaiting an engine. Let its stale path
+      // finish cleanup before a new generation reuses singleton engines.
+      const previousTask = initializationTask;
+      if (previousTask) {
+        await previousTask.catch(() => undefined);
+        if (get().initialized || get().initializing) return;
       }
 
+      const generation = ++initializationGeneration;
       set({ initializing: true, initError: null });
       const initializeOperation = beginPerfOperation("engine.initialize", parent);
+      const pendingEngines: PendingEngineSet = {
+        videoEngine: null,
+        audioEngine: null,
+        playbackController: null,
+        photoEngine: null,
+        exportEngine: null,
+      };
+      const cleanup = (): void => disposePendingEngines(pendingEngines);
+      const pendingEntry = { generation, dispose: cleanup };
+      pendingInitializationCleanup = pendingEntry;
+      const isObsolete = (): boolean => generation !== initializationGeneration;
+      const stopIfObsolete = (): boolean => {
+        if (!isObsolete()) return false;
+        cleanup();
+        if (pendingInitializationCleanup === pendingEntry) {
+          pendingInitializationCleanup = null;
+        }
+        endPerfOperation(initializeOperation, "cancelled");
+        return true;
+      };
 
-      try {
-        const videoEngine = getVideoEngine();
-        const audioEngine = getAudioEngine();
-        const playbackController = getPlaybackController();
-        const photoEngine = getPhotoEngine();
-        const exportEngine = getExportEngine();
-
-        const titleOperation = beginPerfOperation(
-          "engine.initialize.title",
-          initializeOperation,
-        );
+      const run = (async () => {
         try {
-          coreTitleEngine.initialize(1920, 1080);
-          endPerfOperation(titleOperation, "ok");
-        } catch (error) {
-          failPerfOperation(titleOperation, error);
-          throw error;
-        }
+          const videoEngine = pendingEngines.videoEngine = getVideoEngine();
+          const audioEngine = pendingEngines.audioEngine = getAudioEngine();
+          const playbackController = pendingEngines.playbackController = getPlaybackController();
+          const photoEngine = pendingEngines.photoEngine = getPhotoEngine();
+          const exportEngine = pendingEngines.exportEngine = getExportEngine();
 
-        await runEngineInitializationStep(
-          "engine.initialize.video",
-          initializeOperation,
-          (operation) => videoEngine.initialize(operation),
-        );
-        await runEngineInitializationStep(
-          "engine.initialize.audio",
-          initializeOperation,
-          () => audioEngine.initialize(),
-        );
-        await runEngineInitializationStep(
-          "engine.initialize.playback_controller",
-          initializeOperation,
-          () => playbackController.initialize(videoEngine, audioEngine),
-        );
-        await runEngineInitializationStep(
-          "engine.initialize.export",
-          initializeOperation,
-          () => exportEngine.initialize(),
-        );
-
-        // Decode workers report mediabunnyAvailable on init. When the
-        // bundled import and the CDN fallback both failed, the parallel
-        // decoder is present but unusable — record it (with one console
-        // warning) instead of failing playback, which still works via the
-        // element-based decode path.
-        const parallelDecoder = videoEngine.getParallelDecoder();
-        const parallelDecodeAvailable = parallelDecoder
-          ? parallelDecoder.isAvailable()
-          : null;
-        if (parallelDecoder && !parallelDecodeAvailable) {
-          if (initializeOperation) {
-            markPerfOperation(initializeOperation, "engine.parallel_decode_fallback", {
-              available: false,
-            });
-          }
-          console.warn(
-            "[engine] parallel frame decoding unavailable: mediabunny could not be loaded in decode workers; playback falls back to element-based decoding",
+          const titleOperation = beginPerfOperation(
+            "engine.initialize.title",
+            initializeOperation,
           );
-        }
+          try {
+            coreTitleEngine.initialize(1920, 1080);
+            endPerfOperation(titleOperation, "ok");
+          } catch (error) {
+            failPerfOperation(titleOperation, error);
+            throw error;
+          }
 
-        set({
-          initialized: true,
-          initializing: false,
-          initError: null,
-          parallelDecodeAvailable,
-          videoEngine,
-          audioEngine,
-          playbackController,
-          titleEngine: coreTitleEngine,
-          graphicsEngine: coreGraphicsEngine,
-          photoEngine,
-          exportEngine,
-        });
-        endPerfOperation(
-          initializeOperation,
-          "ok",
-          parallelDecodeAvailable === null
-            ? undefined
-            : { parallel_decode_available: parallelDecodeAvailable },
-        );
-      } catch (error) {
-        failPerfOperation(initializeOperation, error);
-        const errorMessage =
-          error instanceof Error
+          await runEngineInitializationStep(
+            "engine.initialize.video",
+            initializeOperation,
+            (operation) => videoEngine.initialize(operation),
+          );
+          if (stopIfObsolete()) return;
+
+          await runEngineInitializationStep(
+            "engine.initialize.audio",
+            initializeOperation,
+            () => audioEngine.initialize(),
+          );
+          if (stopIfObsolete()) return;
+
+          await runEngineInitializationStep(
+            "engine.initialize.playback_controller",
+            initializeOperation,
+            () => playbackController.initialize(videoEngine, audioEngine),
+          );
+          if (stopIfObsolete()) return;
+
+          await runEngineInitializationStep(
+            "engine.initialize.export",
+            initializeOperation,
+            () => exportEngine.initialize(),
+          );
+          if (stopIfObsolete()) return;
+
+          if (pendingInitializationCleanup === pendingEntry) {
+            pendingInitializationCleanup = null;
+          }
+          set({
+            initialized: true,
+            initializing: false,
+            initError: null,
+            parallelDecodeAvailable: null,
+            videoEngine,
+            audioEngine,
+            playbackController,
+            titleEngine: coreTitleEngine,
+            graphicsEngine: coreGraphicsEngine,
+            photoEngine,
+            exportEngine,
+          });
+          if (isObsolete()) {
+            endPerfOperation(initializeOperation, "cancelled");
+            return;
+          }
+          endPerfOperation(initializeOperation, "ok");
+
+          // Optional workers must not hold bootstrap or the first valid frame.
+          // Publish capability only after the worker module has actually loaded.
+          void videoEngine.initializeParallelDecoding().then((available) => {
+            if (generation === initializationGeneration && get().initialized && get().videoEngine === videoEngine) {
+              set({ parallelDecodeAvailable: available });
+            }
+          });
+        } catch (error) {
+          if (isObsolete()) {
+            cleanup();
+            if (pendingInitializationCleanup === pendingEntry) {
+              pendingInitializationCleanup = null;
+            }
+            endPerfOperation(initializeOperation, "cancelled");
+            return;
+          }
+
+          cleanup();
+          if (pendingInitializationCleanup === pendingEntry) {
+            pendingInitializationCleanup = null;
+          }
+          const errorMessage = error instanceof Error
             ? error.message
             : "Unknown initialization error";
-        set({
-          initialized: false,
-          initializing: false,
-          initError: errorMessage,
-        });
-        throw error;
-      }
+          set({
+            initialized: false,
+            initializing: false,
+            initError: errorMessage,
+          });
+          failPerfOperation(initializeOperation, error);
+          throw error;
+        }
+      })();
+      const trackedTask = run.finally(() => {
+        if (initializationTask === trackedTask) initializationTask = null;
+      });
+      initializationTask = trackedTask;
+      await trackedTask;
     },
 
     dispose: () => {
+      initializationGeneration++;
       const state = get();
+
+      const pendingCleanup = pendingInitializationCleanup;
+      pendingInitializationCleanup = null;
+      pendingCleanup?.dispose();
 
       state.videoEngine?.dispose();
       state.audioEngine?.dispose();

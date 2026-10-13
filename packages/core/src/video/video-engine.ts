@@ -169,6 +169,8 @@ export class VideoEngine {
 
   private parallelDecoder: ParallelFrameDecoder | null = null;
   private useParallelDecoding = true;
+  private parallelDecoderPreparation: Promise<boolean> | null = null;
+  private decoderGeneration = 0;
   private videoElementCache: Map<
     string,
     { video: HTMLVideoElement; url: string }
@@ -214,6 +216,7 @@ export class VideoEngine {
    */
   async initialize(parent?: PerfOperation): Promise<void> {
     if (this.initialized) return;
+    const generation = this.decoderGeneration;
 
     const operation = beginPerfOperation("video_engine.initialize", parent);
 
@@ -240,29 +243,11 @@ export class VideoEngine {
       this.mediabunny = null;
     }
 
-    try {
-      if (this.useParallelDecoding) {
-        this.parallelDecoder = getParallelFrameDecoder();
-        await runVideoEngineInitializationStep(
-          "video_engine.parallel_decoder_initialize",
-          operation,
-          (parallelInitializationOperation) =>
-            this.parallelDecoder!.initialize(parallelInitializationOperation),
-        );
-      }
-    } catch (error) {
-      if (operation) {
-        markPerfOperation(operation, "video_engine.parallel_decoder_fallback", {
-          fallback_used: true,
-        });
-      }
-      console.warn(
-        "[VideoEngine] Parallel decoder initialization failed:",
-        error,
-      );
-      this.parallelDecoder = null;
+    if (generation !== this.decoderGeneration) {
+      if (!this.initialized) this.mediabunny = null;
+      endPerfOperation(operation, "cancelled");
+      return;
     }
-
     this.initialized = true;
     endPerfOperation(
       operation,
@@ -270,13 +255,35 @@ export class VideoEngine {
       operation
         ? {
             mediabunny_available: this.mediabunny !== null,
-            parallel_decode_enabled: this.useParallelDecoding,
-            ...(this.useParallelDecoding
-              ? { parallel_decoder_available: this.parallelDecoder !== null }
-              : {}),
           }
         : undefined,
     );
+  }
+
+  /** Optional worker preparation; normal rendering is ready before this runs. */
+  initializeParallelDecoding(): Promise<boolean> {
+    if (!this.useParallelDecoding) return Promise.resolve(false);
+    if (this.parallelDecoderPreparation) return this.parallelDecoderPreparation;
+    const generation = this.decoderGeneration;
+    const decoder = getParallelFrameDecoder();
+    this.parallelDecoder = decoder;
+    const operation = beginPerfOperation("video_engine.parallel_decoder_initialize");
+    this.parallelDecoderPreparation = decoder.initialize(operation).then(
+      () => {
+        endPerfOperation(operation, "ok", operation ? { available: decoder.isAvailable() } : undefined);
+        return generation === this.decoderGeneration && decoder.isAvailable();
+      },
+      (error) => {
+        failPerfOperation(operation, error);
+        if (generation === this.decoderGeneration) {
+          this.parallelDecoder = null;
+          console.warn("[VideoEngine] Parallel decoder initialization failed:", error);
+        }
+        // Worker failure has a defined recovery: the existing renderer decoder.
+        return false;
+      },
+    );
+    return this.parallelDecoderPreparation;
   }
 
   private isWebCodecsSupported(): boolean {
@@ -3315,6 +3322,10 @@ export class VideoEngine {
    * Call when the engine is no longer needed to free memory.
    */
   dispose(): void {
+    this.decoderGeneration++;
+    this.parallelDecoder?.dispose();
+    this.parallelDecoder = null;
+    this.parallelDecoderPreparation = null;
     this.clearCache();
     this.clearVideoElementCache();
     for (const bitmap of this.staticImageCache.values()) {

@@ -24,6 +24,7 @@ const defaultMotionTransform = {
 
 describe("VideoEngine motion asset resolver", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     Object.defineProperty(globalThis, "reelterminal", {
       configurable: true,
@@ -238,6 +239,8 @@ describe("VideoEngine motion asset resolver", () => {
     try {
       const engine = new VideoEngine();
       await engine.initialize(bootstrapOperation);
+      expect(decoder.initialize).not.toHaveBeenCalled();
+      await engine.initializeParallelDecoding();
 
       expect(engine.isInitialized()).toBe(true);
       expect(engine.getParallelDecoder()).toBeNull();
@@ -248,7 +251,7 @@ describe("VideoEngine motion asset resolver", () => {
       const videoEngineSpan = events.find((event) => event.phase === "video_engine.initialize");
       const parallelDecoderSpan = events.find((event) => event.phase === "video_engine.parallel_decoder_initialize");
       expect(videoEngineSpan?.parentSpanId).toBe(bootstrapOperation?.span.id);
-      expect(parallelDecoderSpan?.parentSpanId).toBe(videoEngineSpan?.spanId);
+      expect(parallelDecoderSpan).toBeDefined();
       expect(decoderParent?.span.id).toBe(parallelDecoderSpan?.spanId);
     } finally {
       endPerfOperation(bootstrapOperation, "ok");

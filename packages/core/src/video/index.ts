@@ -26,7 +26,7 @@ export * from "./webgpu-effects-processor";
 
 // Parallel decoding
 export * from "./parallel-frame-decoder";
-export * from "./decode-worker";
+export type { DecodeRequest, DecodeResponse, InitResponse, WorkerResponse } from "./decode-worker";
 
 // GPU Compositing
 export * from "./gpu-compositor";
