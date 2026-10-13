@@ -18,6 +18,7 @@ import { AgentReferenceBadge } from "./AgentReferenceBadge";
 import { ProjectMarkerBadgeStack } from "../ProjectMarkerBadge";
 import { findMarkersForEntity } from "../../../stores/project/project-marker-selectors";
 import { agentReferenceKindForTrack } from "../../../stores/agent-reference-targets";
+import { beginTimelineGesture, recordTimelineInput, finishTimelineGesture } from "../../../performance/product-flow";
 
 interface ClipComponentProps {
   clip: Clip;
@@ -182,6 +183,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     setDragYOffset(0);
     setIsInvalidDrop(false);
     setIsPendingDrag(true);
+    beginTimelineGesture("input.media-drag");
 
     // If this clip is part of a multi-selection, snapshot the other
     // selected clips' start positions so we can drag them as a group.
@@ -404,6 +406,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         if (track.locked || !onTrimClip) return;
       e.stopPropagation();
       setIsTrimming(true);
+      beginTimelineGesture("input.media-trim");
       setTrimEdge(edge);
       trimStartRef.current = {
         mouseX: e.clientX,
@@ -417,6 +420,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     if (!isPendingDrag) return;
 
     const handlePendingMouseMove = (e: MouseEvent) => {
+      recordTimelineInput();
       const dx = e.clientX - dragPendingRef.current.startX;
       const dy = e.clientY - dragPendingRef.current.startY;
       const distance = Math.sqrt(dx * dx + dy * dy);
@@ -429,6 +433,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     };
 
     const handlePendingMouseUp = (e: MouseEvent) => {
+      finishTimelineGesture(useProjectStore.getState().projectRevision);
       dragPendingRef.current.active = false;
       setIsPendingDrag(false);
       onSelect(clip.id, e.shiftKey || e.metaKey);
@@ -491,6 +496,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     };
 
     const handleMouseMove = (e: MouseEvent) => {
+      recordTimelineInput();
       mousePositionRef.current.x = e.clientX;
       mousePositionRef.current.y = e.clientY;
 
@@ -602,6 +608,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       onSnapIndicator(null);
       multiDragSnapshotRef.current = [];
       closeGroup();
+      finishTimelineGesture(useProjectStore.getState().projectRevision);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -641,6 +648,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     if (!isTrimming || !trimEdge || !onTrimClip) return;
 
     const handleMouseMove = (e: MouseEvent) => {
+      recordTimelineInput();
       const deltaX = e.clientX - trimStartRef.current.mouseX;
       const deltaTime = deltaX / pixelsPerSecond;
 
@@ -665,6 +673,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     };
 
     const handleMouseUp = () => {
+      finishTimelineGesture(useProjectStore.getState().projectRevision);
       setIsTrimming(false);
       setTrimEdge(null);
       document.body.style.cursor = "";

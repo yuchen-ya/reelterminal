@@ -10,6 +10,7 @@ import { useUIStore } from "../../../stores/ui-store";
 import { AgentReferenceBadge } from "./AgentReferenceBadge";
 import { ProjectMarkerBadgeStack } from "../ProjectMarkerBadge";
 import { findMarkersForEntity } from "../../../stores/project/project-marker-selectors";
+import { beginTimelineGesture, recordTimelineInput, finishTimelineGesture } from "../../../performance/product-flow";
 
 interface TextClipComponentProps {
   textClip: TextClip;
@@ -82,6 +83,7 @@ export const TextClipComponent: React.FC<TextClipComponentProps> = ({
     setDragOffset(clickX - clipStartX);
     setIsDragging(true);
     beginTimingGesture("Move text clip");
+    beginTimelineGesture("input.text-drag");
 
     onSelect(textClip.id, e.shiftKey || e.metaKey || e.ctrlKey);
   };
@@ -96,6 +98,7 @@ export const TextClipComponent: React.FC<TextClipComponentProps> = ({
     if (!isDragging || !onMoveClip) return;
 
     const handleMouseMove = (e: MouseEvent) => {
+      recordTimelineInput();
       const rect = clipRef.current?.parentElement?.getBoundingClientRect();
       if (!rect) return;
 
@@ -118,6 +121,7 @@ export const TextClipComponent: React.FC<TextClipComponentProps> = ({
     const handleMouseUp = () => {
       setIsDragging(false);
       endTimingGesture();
+      finishTimelineGesture(useProjectStore.getState().projectRevision);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -136,6 +140,7 @@ export const TextClipComponent: React.FC<TextClipComponentProps> = ({
     e.preventDefault();
     setIsTrimming(edge);
     beginTimingGesture("Trim text clip");
+    beginTimelineGesture("input.text-trim");
     trimStartRef.current = {
       mouseX: e.clientX,
       startTime: textClip.startTime,
@@ -149,6 +154,7 @@ export const TextClipComponent: React.FC<TextClipComponentProps> = ({
     if (!isTrimming) return;
 
     const handleMouseMove = (e: MouseEvent) => {
+      recordTimelineInput();
       const deltaX = e.clientX - trimStartRef.current.mouseX;
       const deltaTime = deltaX / pixelsPerSecond;
 
@@ -175,6 +181,7 @@ export const TextClipComponent: React.FC<TextClipComponentProps> = ({
     const handleMouseUp = () => {
       setIsTrimming(null);
       endTimingGesture();
+      finishTimelineGesture(useProjectStore.getState().projectRevision);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };

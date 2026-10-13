@@ -1,4 +1,13 @@
 import i18next from "i18next";
+import { registerCaptureCleanup } from "../performance/capture-cleanup";
+import {
+  beginPerfOperation,
+  endPerfOperation,
+  failPerfOperation,
+  getPerfSink,
+  markPerfOperation,
+} from "@reelterminal/core";
+import type { PerfOperation } from "@reelterminal/core";
 import {
   activateProjectStore,
   useProjectStore,
@@ -97,6 +106,46 @@ let editingWorkspaceIdAtEnter: string | null = null;
 let managerUnsubscribe: (() => void) | null = null;
 /** One "preview is read-only" hint per session, fired on the first blocked edit. */
 let readOnlyToastShown = false;
+/** Measurement-only generation used to reject a late frame from an old node request. */
+let previewGeneration = 0;
+let pendingFirstFrame: { operation: PerfOperation; generation: number; project: object | null } | null = null;
+
+function finishPendingFirstFrame(outcome: "cancelled" | "superseded"): void {
+  const pending = pendingFirstFrame;
+  if (!pending) return;
+  pendingFirstFrame = null;
+  endPerfOperation(pending.operation, outcome, { viewGeneration: pending.generation });
+}
+registerCaptureCleanup(() => finishPendingFirstFrame("cancelled"));
+
+/** Active historical-node operation, optionally restricted to its rendered project identity. */
+export function getPreviewPerfOperation(project?: object): PerfOperation | undefined {
+  const pending = pendingFirstFrame;
+  if (!pending || !handle || !pending.project) {
+    return undefined;
+  }
+  const activeProject = handle.store.getState().project;
+  if (activeProject !== pending.project || (project && activeProject !== project)) return undefined;
+  return pending.operation;
+}
+
+/** Close the current node-open operation on its first committed content frame. */
+export function recordPreviewFirstFrame(
+  project: object,
+  frameContext: { seq: number; epoch: number; revision: number },
+): void {
+  const operation = getPreviewPerfOperation(project);
+  const pending = pendingFirstFrame;
+  if (!operation || !pending || operation !== pending.operation) return;
+  operation.sink.mark("node.first-valid-frame", {
+    ...operation.context,
+    frameSeq: frameContext.seq,
+    frameEpoch: frameContext.epoch,
+    revision: frameContext.revision,
+  });
+  endPerfOperation(operation, "ok", { revision: frameContext.revision });
+  pendingFirstFrame = null;
+}
 
 /** Pause playback through the same two choke points as workspace switchView. */
 function pausePlayback(): void {
@@ -167,6 +216,7 @@ interface TeardownOptions {
 }
 
 async function teardown(options: TeardownOptions): Promise<void> {
+  finishPendingFirstFrame("cancelled");
   const currentHandle = handle;
   handle = null;
   const view = savedViewState;
@@ -219,6 +269,16 @@ export const previewSession: PreviewSessionApi = {
   async enter(source) {
     // Guard busy reentrancy: rapid double-clicks must not interleave sessions.
     if (snapshot.busy) return;
+    finishPendingFirstFrame("superseded");
+    const captureEnabled = source.kind === "node" && getPerfSink().enabled;
+    const generation = captureEnabled ? ++previewGeneration : 0;
+    const operation = captureEnabled
+      ? beginPerfOperation("node.preview", undefined, { viewGeneration: generation })
+      : undefined;
+    if (operation) {
+      pendingFirstFrame = { operation, generation, project: null };
+      markPerfOperation(operation, "node.preview.requested");
+    }
     publish({ busy: true });
     try {
       // Entering a preview pauses current playback first; exiting restores
@@ -231,9 +291,13 @@ export const previewSession: PreviewSessionApi = {
         editingWorkspaceIdAtEnter =
           workspaceManager.getActiveTarget()?.workspaceId ?? null;
       }
-      const newHandle = await workspaceManager.createPreviewHandle(source);
+      const newHandle = await workspaceManager.createPreviewHandle(source, operation);
       const previousHandle = handle;
       handle = newHandle;
+      const pending = pendingFirstFrame;
+      if (operation && pending && pending.operation === operation) {
+        pending.project = newHandle.store.getState().project;
+      }
       readOnlyToastShown = false;
       if (previousHandle) {
         try {
@@ -250,6 +314,9 @@ export const previewSession: PreviewSessionApi = {
           useTimelineStore.getState().playheadInteractionRevision + 1,
         playbackState: "paused",
       });
+      if (operation) {
+        markPerfOperation(operation, "node.preview.ready", { viewGeneration: generation });
+      }
       startManagerWatch();
       publish({
         active: true,
@@ -266,6 +333,8 @@ export const previewSession: PreviewSessionApi = {
         },
       });
     } catch (error) {
+      if (pendingFirstFrame?.operation === operation) pendingFirstFrame = null;
+      failPerfOperation(operation, error);
       publish({ busy: false });
       throw error;
     }

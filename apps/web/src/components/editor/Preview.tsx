@@ -1,4 +1,8 @@
 import { ReviewRangeControl } from "./preview/ReviewRangeControl";
+import { getPerfSink, markPerfOperation, withPerfSpan } from "@reelterminal/core";
+import { getProjectPerfOperation } from "../../performance/product-flow";
+import { getPreviewPerfOperation } from "../../services/preview-session";
+import { recordCommittedPreviewFrame } from "./preview/frame-performance";
 import { SelectionTransformOverlay } from "./preview/SelectionTransformOverlay";
 import { collectNativePlaybackImageClips } from "./preview/native-playback-image-clips";
 import { computeLetterboxGeometry } from "./preview/overlay-geometry";
@@ -2030,6 +2034,14 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       time: number,
       token?: FrameRequestToken,
     ): Promise<boolean> => {
+      const decodeFrame = token?.performance
+        ? async (...args: Parameters<typeof decodeClipFrame>) => {
+            const operation = token.performance!;
+            const frame = await withPerfSpan("frame.decode", { ...operation.context, parentSpanId: operation.span.id }, () => decodeClipFrame(...args));
+            markPerfOperation(operation, "frame.decoded", { frameAvailable: Boolean(frame) });
+            return frame;
+          }
+        : decodeClipFrame;
       const canvas = canvasRef.current;
       if (!canvas) return false;
 
@@ -2055,6 +2067,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       );
       if (hasActiveCompound) {
         const frame = await getRenderBridge().renderFrame(time);
+        markPerfOperation(token?.performance, "frame.decoded", { frameAvailable: Boolean(frame) });
         if (frame) {
           // RenderBridge transfers this frame to Preview, which owns it through
           // the commit and paint below.
@@ -2082,6 +2095,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
               },
             );
             if (commitResult === "committed") {
+              recordCommittedPreviewFrame(project, token);
               clearPlaybackCanvasBuffers();
             }
             return commitResult === "committed";
@@ -2170,14 +2184,14 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
 
       if (transitionInfo) {
         try {
-          const clipAFrame = await decodeClipFrame(
+          const clipAFrame = await decodeFrame(
             transitionInfo.clipA,
             time,
             canvas.width,
             canvas.height,
           );
           const clipBFrame = transitionInfo.clipB
-            ? await decodeClipFrame(
+            ? await decodeFrame(
                 transitionInfo.clipB,
                 time,
                 canvas.width,
@@ -2381,7 +2395,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
               const clipEnd = clip.startTime + clip.duration;
 
               if (time >= clipStart && time < clipEnd) {
-                const frame = await decodeClipFrame(
+                const frame = await decodeFrame(
                   clip,
                   time,
                   canvas.width,
@@ -2615,6 +2629,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
       }
 
       if (hasRenderedFrame && offscreenCanvasRef.current) {
+        markPerfOperation(token?.performance, "frame.composited");
         // Single commit entry: only a complete frame belonging to the newest
         // request reaches the canvas, and the remembered bitmap is replaced
         // create-first so a failed encode can never lose the old picture.
@@ -2635,6 +2650,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
           },
         );
         if (commitResult === "committed") {
+          recordCommittedPreviewFrame(project, token);
           clearPlaybackCanvasBuffers();
         }
         return commitResult === "committed";
@@ -2902,6 +2918,7 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
         },
       );
       if (commitResult === "committed") {
+        recordCommittedPreviewFrame(useProjectStore.getState().project, token, false);
         clearPlaybackCanvasBuffers();
       }
     },
@@ -2950,9 +2967,11 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
   }
 
   const requestFrameRender = useCallback((time: number) => {
+    const state = useProjectStore.getState();
     frameSchedulerRef.current?.request(
       time,
-      useProjectStore.getState().projectRevision,
+      state.projectRevision,
+      getPerfSink().enabled ? getPreviewPerfOperation(state.project) ?? getProjectPerfOperation(state.project) : undefined,
     );
   }, []);
 
@@ -5777,6 +5796,10 @@ export const Preview: React.FC<{ showHeader?: boolean }> = ({ showHeader = true 
     // projectRevision bumps on every committed mutation
     // (manual, agent, undo/redo), including paths that never stamp modifiedAt.
     const revisionChanged = projectRevision !== lastRevisionForRenderRef.current;
+    if (revisionChanged) {
+      const operation = getProjectPerfOperation(project);
+      if (operation) operation.sink.mark("visual-state.committed", { ...operation.context, revision: projectRevision });
+    }
 
     lastModifiedAtRef.current = project.modifiedAt;
     lastPlayheadForRenderRef.current = playheadPosition;

@@ -1,3 +1,4 @@
+import { beginTimelineGesture, finishTimelineGesture, cancelTimelineGesture } from "../../performance/product-flow";
 import React, {
   useRef,
   useCallback,
@@ -139,6 +140,7 @@ const TLTool = ({
 );
 
 export const Timeline: React.FC = () => {
+  useEffect(() => cancelTimelineGesture, []);
   const { t: tr } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const tracksRef = useRef<HTMLDivElement>(null);
@@ -1590,12 +1592,14 @@ export const Timeline: React.FC = () => {
                   bridge.scrubTo(time);
                 }}
                 onScrubStart={() => {
+                  beginTimelineGesture("input.seek");
                   const bridge = getPlaybackBridge();
                   bridge.startScrubbing();
                 }}
                 onScrubEnd={() => {
                   const bridge = getPlaybackBridge();
                   bridge.endScrubbing();
+                  finishTimelineGesture(useProjectStore.getState().projectRevision);
                 }}
               />
             </div>

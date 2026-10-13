@@ -1,4 +1,10 @@
-import { type Action, type Project } from "@reelterminal/core";
+import {
+  beginPerfOperation,
+  endPerfOperation,
+  failPerfOperation,
+  markPerfOperation,
+} from "@reelterminal/core";
+import type { Action, PerfOperation, Project } from "@reelterminal/core";
 import { v4 as uuidv4 } from "uuid";
 import i18next from "i18next";
 import { useUIStore, type SelectionItem } from "../stores/ui-store";
@@ -833,23 +839,55 @@ export class WorkspaceManager {
   async getNode(
     projectId: string,
     nodeId: string,
+    parent?: PerfOperation,
   ): Promise<ProjectNodeRecord | null> {
-    await this.initialize();
-    const summary = this.nodes.get(nodeId);
-    this.assertProjectNotDeleted(projectId);
-    if (summary && summary.projectId !== projectId) return null;
-    const node = await this.readOne<ProjectNodeRecord>(NODES, nodeId);
-    if (!node || node.projectId !== projectId) return null;
-    const enriched = await withMediaReferenceWrite(() => enrichNodeRenderDependencies(node));
-    // Enrichment is deterministic, so a re-read of an unchanged node must not
-    // rebuild the frozen snapshot and wake every subscriber. Only a genuine
-    // summary change (absent entry included) publishes.
-    const nextSummary = nodeSummary(enriched);
-    if (!nodeSummariesEqual(summary, nextSummary)) {
-      this.nodes.set(enriched.id, nextSummary);
-      this.publish();
+    const operation = beginPerfOperation("node.read", parent);
+    try {
+      await this.initialize();
+      const summary = this.nodes.get(nodeId);
+      this.assertProjectNotDeleted(projectId);
+      if (summary && summary.projectId !== projectId) {
+        endPerfOperation(operation, "ok", operation ? { found: false } : undefined);
+        return null;
+      }
+      const node = await this.readOne<ProjectNodeRecord>(NODES, nodeId);
+      if (!node || node.projectId !== projectId) {
+        endPerfOperation(operation, "ok", operation ? { found: false } : undefined);
+        return null;
+      }
+      const enrichment = operation
+        ? beginPerfOperation("node.dependencies-enrich", operation)
+        : undefined;
+      let enriched: ProjectNodeRecord;
+      try {
+        enriched = await withMediaReferenceWrite(() => enrichNodeRenderDependencies(node));
+        endPerfOperation(enrichment, "ok", enrichment ? {
+          mediaIds: enriched.mediaIds.length,
+          missingDependencies: enriched.missingDependencies.length,
+        } : undefined);
+      } catch (error) {
+        failPerfOperation(enrichment, error);
+        throw error;
+      }
+      // Enrichment is deterministic, so a re-read of an unchanged node must not
+      // rebuild the frozen snapshot and wake every subscriber. Only a genuine
+      // summary change (absent entry included) publishes.
+      const nextSummary = nodeSummary(enriched);
+      const changed = !nodeSummariesEqual(summary, nextSummary);
+      if (changed) {
+        this.nodes.set(enriched.id, nextSummary);
+        this.publish();
+      }
+      endPerfOperation(operation, "ok", operation ? {
+        found: true,
+        changedSummary: changed,
+        mediaIds: enriched.mediaIds.length,
+      } : undefined);
+      return enriched;
+    } catch (error) {
+      failPerfOperation(operation, error);
+      throw error;
     }
-    return enriched;
   }
 
   async createProject(
@@ -1045,49 +1083,94 @@ export class WorkspaceManager {
   }
 
   /** Detached read-only preview session: never persisted, never activated. */
-  async createPreviewHandle(source: PreviewSource): Promise<PreviewHandle> {
-    await this.initialize();
-    let projectId: string;
-    let project: Project;
-    let label: PreviewHandle["label"];
-    let missingDependencies: string[];
-    const sourceId = source.kind === "node" ? source.nodeId : source.workspaceId;
-    if (source.kind === "node") {
-      const node = await this.readOne<ProjectNodeRecord>(NODES, source.nodeId);
-      if (!node) {
-        throw new WorkspaceManagerError("NOT_FOUND", `Unknown node ${source.nodeId}`);
+  async createPreviewHandle(
+    source: PreviewSource,
+    parent?: PerfOperation,
+  ): Promise<PreviewHandle> {
+    const operation = parent
+      ? beginPerfOperation("node.preview.prepare", parent)
+      : undefined;
+    try {
+      await this.initialize();
+      let projectId: string;
+      let project: Project;
+      let label: PreviewHandle["label"];
+      let missingDependencies: string[];
+      const sourceId = source.kind === "node" ? source.nodeId : source.workspaceId;
+      const sourceRead = operation
+        ? beginPerfOperation(source.kind === "node" ? "node.snapshot-read" : "preview.workspace-read", operation)
+        : undefined;
+      try {
+        if (source.kind === "node") {
+          const node = await this.readOne<ProjectNodeRecord>(NODES, source.nodeId);
+          if (!node) {
+            throw new WorkspaceManagerError("NOT_FOUND", `Unknown node ${source.nodeId}`);
+          }
+          projectId = node.projectId;
+          project = node.project;
+          label = { name: node.name, summary: node.summary, createdAt: node.createdAt, agentTrial: false };
+          missingDependencies = [...node.missingDependencies];
+        } else {
+          const record = this.workspaces.get(source.workspaceId)
+            ?? await this.readOne<WorkspaceRecord>(WORKSPACES, source.workspaceId);
+          if (!record) {
+            throw new WorkspaceManagerError("NOT_FOUND", `Unknown workspace ${source.workspaceId}`);
+          }
+          projectId = record.projectId;
+          project = record.project;
+          label = { name: record.name, summary: "", createdAt: record.updatedAt, agentTrial: record.kind === "trial" };
+          missingDependencies = await missingProjectDependencies(project);
+        }
+        endPerfOperation(sourceRead, "ok", sourceRead ? { found: true } : undefined);
+      } catch (error) {
+        failPerfOperation(sourceRead, error);
+        throw error;
       }
-      projectId = node.projectId;
-      project = node.project;
-      label = { name: node.name, summary: node.summary, createdAt: node.createdAt, agentTrial: false };
-      missingDependencies = [...node.missingDependencies];
-    } else {
-      const record = this.workspaces.get(source.workspaceId)
-        ?? await this.readOne<WorkspaceRecord>(WORKSPACES, source.workspaceId);
-      if (!record) {
-        throw new WorkspaceManagerError("NOT_FOUND", `Unknown workspace ${source.workspaceId}`);
+      this.assertProjectNotDeleted(projectId);
+      const hydrate = operation
+        ? beginPerfOperation("node.media-hydrate", operation)
+        : undefined;
+      let projectWithMedia: Project;
+      try {
+        projectWithMedia = await withMediaReferenceWrite(() => this.hydrateProject(project));
+        endPerfOperation(hydrate, "ok", hydrate ? {
+          mediaItems: projectWithMedia.mediaLibrary.items.length,
+        } : undefined);
+      } catch (error) {
+        failPerfOperation(hydrate, error);
+        throw error;
       }
-      projectId = record.projectId;
-      project = record.project;
-      label = { name: record.name, summary: "", createdAt: record.updatedAt, agentTrial: record.kind === "trial" };
-      missingDependencies = await missingProjectDependencies(project);
+      const storeRestore = operation
+        ? beginPerfOperation("node.preview-store-restore", operation)
+        : undefined;
+      const store = createProjectStore({ isForeground: false });
+      store.getState().loadProject(projectWithMedia);
+      store.setState({ readOnlyPreview: true });
+      endPerfOperation(storeRestore, "ok");
+      const ownerKey = `preview:${sourceId}`;
+      await withMediaReferenceWrite(() => installProjectRenderFonts(projectWithMedia, ownerKey, operation));
+      if (operation) {
+        markPerfOperation(operation, "node.preview.handle-ready", {
+          missingDependencies: missingDependencies.length,
+        });
+      }
+      endPerfOperation(operation, "ok", operation ? {
+        mediaItems: projectWithMedia.mediaLibrary.items.length,
+        missingDependencies: missingDependencies.length,
+      } : undefined);
+      return {
+        store,
+        projectId,
+        label,
+        missingDependencies,
+        dispose: async () => {
+          releaseProjectRenderFonts(ownerKey);
+        },
+      };
+    } catch (error) {
+      failPerfOperation(operation, error);
+      throw error;
     }
-    this.assertProjectNotDeleted(projectId);
-    const projectWithMedia = await withMediaReferenceWrite(() => this.hydrateProject(project));
-    const store = createProjectStore({ isForeground: false });
-    store.getState().loadProject(projectWithMedia);
-    store.setState({ readOnlyPreview: true });
-    const ownerKey = `preview:${sourceId}`;
-    await withMediaReferenceWrite(() => installProjectRenderFonts(projectWithMedia, ownerKey));
-    return {
-      store,
-      projectId,
-      label,
-      missingDependencies,
-      dispose: async () => {
-        releaseProjectRenderFonts(ownerKey);
-      },
-    };
   }
 
   async withWorkspaceWrite<T>(
@@ -1365,120 +1448,159 @@ export class WorkspaceManager {
   async saveNode(input: NodeCommandOptions & { name?: string; summary?: string }): Promise<{ node: ProjectNodeRecord; revision: number; replayed: boolean }> {
     await this.initialize();
     return this.withWorkspaceCommand(input.target.workspaceId, async () => {
-    await this.flushWorkspaceWrites(input.target.workspaceId);
-    const record = await this.requireWorkspace(input.target);
-    const context = await this.getWorkspaceContext(input.target);
-    const store = context.store;
-    const state = store.getState();
-    const revision = state.workspaceRevision;
-    const request = stableStringify({
-      target: input.target,
-      expectedRevision: input.expectedRevision ?? null,
-      name: input.name,
-      summary: input.summary ?? "",
-    });
-    const idemKey = input.idempotencyKey
-      ? this.idempotencyKey("node.save", input.idempotencyKey, input.target.workspaceId)
-      : undefined;
-    if (idemKey) {
-      const replay = await this.readIdempotency<{ nodeId: string; revision: number }>(idemKey, request);
-      if (replay) {
-        const node = await this.getNode(input.target.projectId, replay.nodeId);
-        if (!node) throw new Error("Saved node is missing from persistent storage");
-        return { node, revision: replay.revision, replayed: true };
-      }
-    }
-    this.assertRevision(input.expectedRevision, revision);
-    if (input.expectedRevision !== undefined && input.expectedRevision !== record.revision) {
-      throw new WorkspaceManagerError(
-        "CONFLICT",
-        `Workspace revision conflict: expected ${input.expectedRevision}, current ${record.revision}`,
-        { expected: input.expectedRevision, current: record.revision },
-      );
-    }
-    let project = cloneProject(state.getFullProject());
-    let node: ProjectNodeRecord | null = null;
-    const baseNode = record.baseNodeId ? await this.getNode(record.projectId, record.baseNodeId) : null;
-    if (baseNode && editableProjectKey(baseNode.project) === editableProjectKey(project)) {
-      node = baseNode;
-    } else {
-      node = {
-        id: uuidv4(),
-        projectId: record.projectId,
-        parentNodeId: record.baseNodeId,
-        name: input.name?.trim() || this.generateAutoNodeName(record.projectId),
-        summary: input.summary ?? "",
-        createdAt: Date.now(),
-        formatVersion: 1,
-        project,
-        mediaIds: projectMediaIds(project),
-        missingDependencies: [],
-        ...(record.kind === "trial" ? { sourceWorkspaceKind: "trial" as const } : {}),
-      };
-    }
-    const result = { nodeId: node.id, revision };
-    await withMediaReferenceWrite(async () => {
-      project = cloneProject(await prepareProjectRenderFonts(project));
-      if (node !== baseNode) {
-        node = {
-          ...node!,
-          project,
-          mediaIds: projectMediaIds(project),
-          missingDependencies: await missingProjectDependencies(project),
+      const operation = beginPerfOperation("save.node");
+      try {
+        await this.flushWorkspaceWrites(input.target.workspaceId, operation);
+        const record = await this.requireWorkspace(input.target);
+        const context = await this.getWorkspaceContext(input.target);
+        const store = context.store;
+        const state = store.getState();
+        const revision = state.workspaceRevision;
+        markPerfOperation(operation, "save.requested", operation ? { revision } : undefined);
+        const request = stableStringify({
+          target: input.target,
+          expectedRevision: input.expectedRevision ?? null,
+          name: input.name,
+          summary: input.summary ?? "",
+        }, operation);
+        const idemKey = input.idempotencyKey
+          ? this.idempotencyKey("node.save", input.idempotencyKey, input.target.workspaceId)
+          : undefined;
+        if (idemKey) {
+          const replay = await this.readIdempotency<{ nodeId: string; revision: number }>(idemKey, request);
+          if (replay) {
+            const node = await this.getNode(input.target.projectId, replay.nodeId, operation);
+            if (!node) throw new Error("Saved node is missing from persistent storage");
+            markPerfOperation(operation, "save.confirmed", operation ? { revision: replay.revision, replayed: true } : undefined);
+            endPerfOperation(operation, "ok", operation ? { revision: replay.revision, replayed: true } : undefined);
+            return { node, revision: replay.revision, replayed: true };
+          }
+        }
+        this.assertRevision(input.expectedRevision, revision);
+        if (input.expectedRevision !== undefined && input.expectedRevision !== record.revision) {
+          throw new WorkspaceManagerError(
+            "CONFLICT",
+            `Workspace revision conflict: expected ${input.expectedRevision}, current ${record.revision}`,
+            { expected: input.expectedRevision, current: record.revision },
+          );
+        }
+        let project = cloneProject(state.getFullProject(), operation);
+        let node: ProjectNodeRecord | null = null;
+        const baseNode = record.baseNodeId ? await this.getNode(record.projectId, record.baseNodeId, operation) : null;
+        if (baseNode && editableProjectKey(baseNode.project, operation) === editableProjectKey(project, operation)) {
+          node = baseNode;
+        } else {
+          node = {
+            id: uuidv4(),
+            projectId: record.projectId,
+            parentNodeId: record.baseNodeId,
+            name: input.name?.trim() || this.generateAutoNodeName(record.projectId),
+            summary: input.summary ?? "",
+            createdAt: Date.now(),
+            formatVersion: 1,
+            project,
+            mediaIds: projectMediaIds(project),
+            missingDependencies: [],
+            ...(record.kind === "trial" ? { sourceWorkspaceKind: "trial" as const } : {}),
+          };
+        }
+        const result = { nodeId: node.id, revision };
+        await withMediaReferenceWrite(async () => {
+          project = cloneProject(await prepareProjectRenderFonts(project, operation), operation);
+          if (node !== baseNode) {
+            node = {
+              ...node!,
+              project,
+              mediaIds: projectMediaIds(project),
+              missingDependencies: await missingProjectDependencies(project),
+            };
+          }
+          const stores = idemKey
+            ? [NODES, NODE_SUMMARIES, WORKSPACES, IDEMPOTENCY]
+            : [NODES, NODE_SUMMARIES, WORKSPACES];
+          const transactionOperation = beginPerfOperation("save.storage-transaction", operation);
+          const tx = this.requireDb().transaction(stores, "readwrite");
+          const completed = transactionDone(tx);
+          if (store.getState().workspaceRevision !== revision) {
+            tx.abort();
+            await completed.catch(() => undefined);
+            const conflict = new WorkspaceManagerError(
+              "CONFLICT",
+              "Workspace changed while saving the node",
+              { expectedRevision: revision },
+            );
+            failPerfOperation(transactionOperation, conflict);
+            throw conflict;
+          }
+          if (node !== baseNode) {
+            tx.objectStore(NODES).add(node!);
+            tx.objectStore(NODE_SUMMARIES).put(nodeSummary(node!));
+          }
+          tx.objectStore(WORKSPACES).put({
+            ...record,
+            baseNodeId: node!.id,
+            revision,
+            updatedAt: Date.now(),
+            dirty: false,
+            project,
+          });
+          if (idemKey) tx.objectStore(IDEMPOTENCY).put({ key: idemKey, request, result });
+          try {
+            await completed;
+          } catch (error) {
+            failPerfOperation(transactionOperation, error);
+            throw error;
+          }
+          endPerfOperation(transactionOperation, "ok", transactionOperation ? {
+            objectStores: stores.length,
+            nodeWritten: node !== baseNode,
+          } : undefined);
+          markPerfOperation(transactionOperation, "save.storage-transaction-committed", transactionOperation ? { revision } : undefined);
+          markPerfOperation(operation, "save.storage-transaction-committed", operation ? { revision } : undefined);
+        });
+        this.nodes.set(node.id, nodeSummary(node));
+        this.workspaceBaseProjectKeys.set(input.target.workspaceId, editableProjectKey(node.project, operation));
+        const latestState = store.getState();
+        const changedDuringSave = latestState.workspaceRevision !== revision;
+        const latestProject = changedDuringSave
+          ? cloneProject(latestState.getFullProject(), operation)
+          : project;
+        const dirty = changedDuringSave && editableProjectKey(latestProject, operation) !== editableProjectKey(node.project, operation);
+        const updated: WorkspaceRecord = {
+          ...record,
+          baseNodeId: node.id,
+          revision: latestState.workspaceRevision,
+          updatedAt: Date.now(),
+          dirty,
+          project: latestProject,
         };
+        if (changedDuringSave) {
+          await this.persistWorkspaceSnapshot(updated, operation);
+        }
+        this.workspaces.set(record.id, updated);
+        store.setState({ workspaceBaseNodeId: node.id, workspaceDirty: dirty });
+        this.publish();
+        const resultClone = operation
+          ? beginPerfOperation("save.node-result-clone", operation)
+          : undefined;
+        let returnedNode: ProjectNodeRecord;
+        try {
+          returnedNode = structuredClone(node);
+          endPerfOperation(resultClone, "ok", resultClone ? {
+            mediaItems: node.project.mediaLibrary.items.length,
+            renderFonts: node.project.renderFonts?.length ?? 0,
+          } : undefined);
+        } catch (error) {
+          failPerfOperation(resultClone, error);
+          throw error;
+        }
+        markPerfOperation(operation, "save.confirmed", operation ? { revision, replayed: false } : undefined);
+        endPerfOperation(operation, "ok", operation ? { revision, changedDuringSave } : undefined);
+        return { node: returnedNode, revision, replayed: false };
+      } catch (error) {
+        failPerfOperation(operation, error);
+        throw error;
       }
-      const stores = idemKey
-        ? [NODES, NODE_SUMMARIES, WORKSPACES, IDEMPOTENCY]
-        : [NODES, NODE_SUMMARIES, WORKSPACES];
-      const tx = this.requireDb().transaction(stores, "readwrite");
-      const completed = transactionDone(tx);
-      if (store.getState().workspaceRevision !== revision) {
-        tx.abort();
-        await completed.catch(() => undefined);
-        throw new WorkspaceManagerError(
-          "CONFLICT",
-          "Workspace changed while saving the node",
-          { expectedRevision: revision },
-        );
-      }
-      if (node !== baseNode) {
-        tx.objectStore(NODES).add(node!);
-        tx.objectStore(NODE_SUMMARIES).put(nodeSummary(node!));
-      }
-      tx.objectStore(WORKSPACES).put({
-        ...record,
-        baseNodeId: node!.id,
-        revision,
-        updatedAt: Date.now(),
-        dirty: false,
-        project,
-      });
-      if (idemKey) tx.objectStore(IDEMPOTENCY).put({ key: idemKey, request, result });
-      await completed;
-    });
-    this.nodes.set(node.id, nodeSummary(node));
-    this.workspaceBaseProjectKeys.set(input.target.workspaceId, editableProjectKey(node.project));
-    const latestState = store.getState();
-    const changedDuringSave = latestState.workspaceRevision !== revision;
-    const latestProject = changedDuringSave
-      ? cloneProject(latestState.getFullProject())
-      : project;
-    const dirty = changedDuringSave && editableProjectKey(latestProject) !== editableProjectKey(node.project);
-    const updated: WorkspaceRecord = {
-      ...record,
-      baseNodeId: node.id,
-      revision: latestState.workspaceRevision,
-      updatedAt: Date.now(),
-      dirty,
-      project: latestProject,
-    };
-    if (changedDuringSave) {
-      await this.persistWorkspaceSnapshot(updated);
-    }
-    this.workspaces.set(record.id, updated);
-    store.setState({ workspaceBaseNodeId: node.id, workspaceDirty: dirty });
-    this.publish();
-    return { node: structuredClone(node), revision, replayed: false };
     });
   }
 
@@ -2303,32 +2425,42 @@ export class WorkspaceManager {
     if (this.runtimeUnsubscribers.has(record.id)) return;
     const unsubscribe = store.subscribe((state, previousState) => {
       if (state.project === previousState.project || (this.runtimeSuspension.get(record.id) ?? 0) > 0) return;
-      this.editedWorkspaces.add(record.id);
-      const project = cloneProject(state.getFullProject());
-      if (state.project.name !== previousState.project.name) {
-        const projectRecord = this.projects.get(record.projectId);
-        if (!projectRecord) {
-          // A missing project record must not kill this subscriber (and with
-          // it background persistence): skip the rename sync and keep going.
-          console.error("[WorkspaceManager] Project record missing for workspace runtime", record.projectId, record.id);
-        } else {
-          this.projects.set(record.projectId, { ...projectRecord, name: project.name, modifiedAt: project.modifiedAt });
+      const operation = beginPerfOperation("save.workspace-change");
+      try {
+        this.editedWorkspaces.add(record.id);
+        const project = cloneProject(state.getFullProject(), operation);
+        if (state.project.name !== previousState.project.name) {
+          const projectRecord = this.projects.get(record.projectId);
+          if (!projectRecord) {
+            // A missing project record must not kill this subscriber (and with
+            // it background persistence): skip the rename sync and keep going.
+            console.error("[WorkspaceManager] Project record missing for workspace runtime", record.projectId, record.id);
+          } else {
+            this.projects.set(record.projectId, { ...projectRecord, name: project.name, modifiedAt: project.modifiedAt });
+          }
         }
+        const baseProjectKey = this.workspaceBaseProjectKeys.get(record.id) ?? null;
+        const dirty = !baseProjectKey || baseProjectKey !== editableProjectKey(project, operation);
+        const updated: WorkspaceRecord = {
+          ...this.workspaces.get(record.id)!,
+          revision: state.workspaceRevision,
+          updatedAt: Date.now(),
+          dirty,
+          baseNodeId: state.workspaceBaseNodeId,
+          project,
+        };
+        this.workspaces.set(record.id, updated);
+        store.setState({ workspaceDirty: dirty });
+        this.publish();
+        this.scheduleWorkspaceWrite(updated, operation);
+        endPerfOperation(operation, "ok", operation ? {
+          revision: state.workspaceRevision,
+          mediaItems: project.mediaLibrary.items.length,
+        } : undefined);
+      } catch (error) {
+        failPerfOperation(operation, error);
+        throw error;
       }
-      const baseProjectKey = this.workspaceBaseProjectKeys.get(record.id) ?? null;
-      const dirty = !baseProjectKey || baseProjectKey !== editableProjectKey(project);
-      const updated: WorkspaceRecord = {
-        ...this.workspaces.get(record.id)!,
-        revision: state.workspaceRevision,
-        updatedAt: Date.now(),
-        dirty,
-        baseNodeId: state.workspaceBaseNodeId,
-        project,
-      };
-      this.workspaces.set(record.id, updated);
-      store.setState({ workspaceDirty: dirty });
-      this.publish();
-      this.scheduleWorkspaceWrite(updated);
     });
     this.runtimeUnsubscribers.set(record.id, unsubscribe);
   }
@@ -2337,9 +2469,17 @@ export class WorkspaceManager {
    * Coalesce rapid workspace edits: only the newest queued snapshot is
    * persisted, and a drain always finishes with the latest state durable.
    */
-  private scheduleWorkspaceWrite(record: WorkspaceRecord): void {
+  private scheduleWorkspaceWrite(record: WorkspaceRecord, parent?: PerfOperation): void {
+    const operation = beginPerfOperation("save.workspace-queue", parent);
     this.queuedWorkspaceWrites.set(record.id, record);
-    if (this.workspaceWriteDrains.has(record.id)) return;
+    if (this.workspaceWriteDrains.has(record.id)) {
+      endPerfOperation(operation, "ok", operation ? {
+        queued: true,
+        drainAlreadyRunning: true,
+        revision: record.revision,
+      } : undefined);
+      return;
+    }
     const drain = (async () => {
       try {
         await Promise.resolve();
@@ -2365,35 +2505,88 @@ export class WorkspaceManager {
     })();
     this.workspaceWriteDrains.set(record.id, drain);
     void drain.catch((error) => console.error("[WorkspaceManager] Workspace draft save failed", error));
+    endPerfOperation(operation, "ok", operation ? {
+      queued: true,
+      drainAlreadyRunning: false,
+      revision: record.revision,
+    } : undefined);
   }
 
-  private async persistWorkspaceSnapshot(workspace: WorkspaceRecord): Promise<void> {
-    await withMediaReferenceWrite(async () => {
-      const preparedWorkspace: WorkspaceRecord = {
-        ...workspace,
-        project: cloneProject(await prepareProjectRenderFonts(workspace.project)),
-      };
-      const tx = this.requireDb().transaction([WORKSPACES, PROJECTS], "readwrite");
-      const completed = transactionDone(tx);
-      const store = tx.objectStore(WORKSPACES);
-      const persisted = await requestResult(store.get(workspace.id));
-      if (!persisted || persisted.revision > preparedWorkspace.revision) {
-        tx.abort();
-        await completed.catch(() => undefined);
+  private async persistWorkspaceSnapshot(
+    workspace: WorkspaceRecord,
+    parent?: PerfOperation,
+  ): Promise<void> {
+    const operation = beginPerfOperation("save.workspace-snapshot", parent);
+    try {
+      let preparedWorkspace!: WorkspaceRecord;
+      let transaction: PerfOperation | undefined;
+      let skipped = false;
+      await withMediaReferenceWrite(async () => {
+        const prepare = beginPerfOperation("save.snapshot-prepare", operation);
+        try {
+          preparedWorkspace = {
+            ...workspace,
+            project: cloneProject(await prepareProjectRenderFonts(workspace.project, prepare), prepare),
+          };
+          endPerfOperation(prepare, "ok", prepare ? {
+            revision: preparedWorkspace.revision,
+            mediaItems: preparedWorkspace.project.mediaLibrary.items.length,
+            renderFonts: preparedWorkspace.project.renderFonts?.length ?? 0,
+          } : undefined);
+        } catch (error) {
+          failPerfOperation(prepare, error);
+          throw error;
+        }
+        transaction = beginPerfOperation("save.storage-transaction", operation);
+        try {
+          const tx = this.requireDb().transaction([WORKSPACES, PROJECTS], "readwrite");
+          const completed = transactionDone(tx);
+          const store = tx.objectStore(WORKSPACES);
+          const persisted = await requestResult(store.get(workspace.id));
+          if (!persisted || persisted.revision > preparedWorkspace.revision) {
+            tx.abort();
+            await completed.catch(() => undefined);
+            skipped = true;
+            endPerfOperation(transaction, "superseded", transaction ? {
+              revision: preparedWorkspace.revision,
+              persisted: Boolean(persisted),
+            } : undefined);
+            return;
+          }
+          store.put(preparedWorkspace);
+          const projectRecord = this.projects.get(workspace.projectId);
+          if (!projectRecord) {
+            // Keep the workspace write durable even when the project row is
+            // absent; throwing here would kill background persistence on every
+            // retry of this snapshot.
+            console.error("[WorkspaceManager] Project record missing during workspace snapshot persistence", workspace.projectId, workspace.id);
+          } else {
+            tx.objectStore(PROJECTS).put(projectRecord);
+          }
+          await completed;
+        } catch (error) {
+          failPerfOperation(transaction, error);
+          throw error;
+        }
+      });
+      if (skipped) {
+        endPerfOperation(operation, "superseded", operation ? { revision: preparedWorkspace.revision } : undefined);
         return;
       }
-      store.put(preparedWorkspace);
-      const projectRecord = this.projects.get(workspace.projectId);
-      if (!projectRecord) {
-        // Keep the workspace write durable even when the project row is
-        // absent; throwing here would kill background persistence on every
-        // retry of this snapshot.
-        console.error("[WorkspaceManager] Project record missing during workspace snapshot persistence", workspace.projectId, workspace.id);
-      } else {
-        tx.objectStore(PROJECTS).put(projectRecord);
-      }
-      await completed;
-    });
+      markPerfOperation(transaction, "save.storage-transaction-committed", transaction ? {
+        revision: preparedWorkspace.revision,
+        projectRows: this.projects.has(workspace.projectId) ? 1 : 0,
+      } : undefined);
+      endPerfOperation(transaction, "ok", transaction ? {
+        revision: preparedWorkspace.revision,
+        objectStores: 2,
+      } : undefined);
+      markPerfOperation(operation, "save.confirmed", operation ? { revision: preparedWorkspace.revision } : undefined);
+      endPerfOperation(operation, "ok", operation ? { revision: preparedWorkspace.revision } : undefined);
+    } catch (error) {
+      failPerfOperation(operation, error);
+      throw error;
+    }
   }
 
   /**
@@ -2441,15 +2634,27 @@ export class WorkspaceManager {
     });
   }
 
-  private async flushWorkspaceWrites(workspaceId: string): Promise<void> {
-    const failed = this.failedWorkspaceWrites.get(workspaceId);
-    if (failed && !this.workspaceWriteDrains.has(workspaceId)) {
-      this.scheduleWorkspaceWrite(this.workspaces.get(workspaceId) ?? failed);
-    }
-    while (true) {
-      const drain = this.workspaceWriteDrains.get(workspaceId);
-      if (!drain) return;
-      await drain;
+  private async flushWorkspaceWrites(workspaceId: string, parent?: PerfOperation): Promise<void> {
+    const operation = beginPerfOperation("save.flush", parent);
+    try {
+      const failed = this.failedWorkspaceWrites.get(workspaceId);
+      const retried = Boolean(failed && !this.workspaceWriteDrains.has(workspaceId));
+      if (retried && failed) {
+        this.scheduleWorkspaceWrite(this.workspaces.get(workspaceId) ?? failed, operation);
+      }
+      let drainsWaited = 0;
+      while (true) {
+        const drain = this.workspaceWriteDrains.get(workspaceId);
+        if (!drain) {
+          endPerfOperation(operation, "ok", operation ? { retried, drainsWaited } : undefined);
+          return;
+        }
+        if (operation) drainsWaited += 1;
+        await drain;
+      }
+    } catch (error) {
+      failPerfOperation(operation, error);
+      throw error;
     }
   }
 

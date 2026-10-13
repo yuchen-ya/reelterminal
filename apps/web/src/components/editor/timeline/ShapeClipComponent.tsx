@@ -10,6 +10,7 @@ import { useUIStore } from "../../../stores/ui-store";
 import { AgentReferenceBadge } from "./AgentReferenceBadge";
 import { ProjectMarkerBadgeStack } from "../ProjectMarkerBadge";
 import { findMarkersForEntity } from "../../../stores/project/project-marker-selectors";
+import { beginTimelineGesture, recordTimelineInput, finishTimelineGesture } from "../../../performance/product-flow";
 
 type GraphicClipUnion = ShapeClip | SVGClip | StickerClip;
 
@@ -83,6 +84,7 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
     setDragOffset(offsetX);
     setIsDragging(true);
     beginTimingGesture("Move graphic clip");
+    beginTimelineGesture("input.graphics-drag");
     onSelect(shapeClip.id, e.shiftKey || e.metaKey || e.ctrlKey);
   };
 
@@ -99,6 +101,7 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
     e.preventDefault();
     setIsTrimming(edge);
     beginTimingGesture("Trim graphic clip");
+    beginTimelineGesture("input.graphics-trim");
     trimStartRef.current = {
       mouseX: e.clientX,
       startTime: shapeClip.startTime,
@@ -112,6 +115,7 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
     if (!isDragging) return;
 
     const handleMouseMove = (e: MouseEvent) => {
+      recordTimelineInput();
       const timelineElement = clipRef.current?.parentElement;
       if (!timelineElement) return;
 
@@ -135,6 +139,7 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
     const handleMouseUp = () => {
       setIsDragging(false);
       endTimingGesture();
+      finishTimelineGesture(useProjectStore.getState().projectRevision);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -150,6 +155,7 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
     if (!isTrimming) return;
 
     const handleMouseMove = (e: MouseEvent) => {
+      recordTimelineInput();
       const deltaX = e.clientX - trimStartRef.current.mouseX;
       const deltaTime = deltaX / pixelsPerSecond;
 
@@ -176,6 +182,7 @@ export const ShapeClipComponent: React.FC<ShapeClipComponentProps> = ({
     const handleMouseUp = () => {
       setIsTrimming(null);
       endTimingGesture();
+      finishTimelineGesture(useProjectStore.getState().projectRevision);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };

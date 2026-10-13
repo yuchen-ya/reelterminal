@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "@reelterminal/core";
+import { CaptureController } from "../performance/capture-controller";
 
 const fontStorage = vi.hoisted(() => ({
   families: new Set<string>(),
@@ -185,6 +186,47 @@ describe("project render dependencies", () => {
     releaseProjectRenderFonts("workspace-b");
     expect(deleted).toHaveLength(1);
     expect(deleted[0]).toBe(added[0]);
+  });
+
+  it("records privacy-safe font validation, loading and lease stages", async () => {
+    class MockFontFace {
+      constructor(readonly family: string) {}
+      async load() { return this as unknown as FontFace; }
+    }
+    vi.stubGlobal("FontFace", MockFontFace);
+    Object.defineProperty(document, "fonts", {
+      configurable: true,
+      value: { add: () => undefined, delete: () => true },
+    });
+    const project = projectWith({
+      renderFonts: [
+        { family: "Sensitive Family Name", style: "normal", weight: "400", dataUrl: "data:font/woff2;base64,AAAA" },
+        { family: "Broken", style: "normal", weight: "400", dataUrl: "file:///outside/font.ttf" },
+      ],
+    });
+    const controller = new CaptureController();
+    controller.startCapture({ mode: "trace" });
+    try {
+      await installProjectRenderFonts(project, "perf-owner");
+      releaseProjectRenderFonts("perf-owner");
+      const report = controller.stopCapture();
+      expect(report.openSpans).toBe(0);
+      const phases = report.events.map((event) => event.phase);
+      expect(phases).toEqual(expect.arrayContaining([
+        "font.install",
+        "font.validate",
+        "font.lease-acquire",
+        "font.load",
+        "font.lease-release",
+      ]));
+      expect(JSON.stringify(report.events)).not.toContain("Sensitive Family Name");
+      expect(report.events.find((event) =>
+        event.kind === "span_end" && event.phase === "font.validate",
+      )).toMatchObject({ dims: { candidates: 2, valid: 1, invalid: 1 } });
+    } finally {
+      releaseProjectRenderFonts("perf-owner");
+      if (controller.activeRunId) controller.stopCapture();
+    }
   });
 
   it("reports SVG and motion image URLs without embedded or media-backed bytes", async () => {

@@ -11,6 +11,8 @@
  * task from painting over a newer picture.
  */
 
+import { beginPerfOperation, endPerfOperation, getPerfSink, markPerfOperation, type PerfOperation } from "@reelterminal/core";
+
 export interface FrameRequestToken {
   /** Monotonic id of the request; later requests supersede earlier ones. */
   readonly seq: number;
@@ -20,6 +22,8 @@ export interface FrameRequestToken {
   readonly time: number;
   /** Project revision the request was made against. */
   readonly revision: number;
+  /** Measurement-only correlation; absent when capture is off. */
+  readonly performance?: PerfOperation;
 }
 
 export type FrameRenderRunner = (token: FrameRequestToken) => Promise<void>;
@@ -30,7 +34,7 @@ export class FrameRenderScheduler {
   private committedSeq = 0;
   private latestRevision = 0;
   private running = false;
-  private pending: { time: number; revision: number } | null = null;
+  private pending: { time: number; revision: number; performance?: PerfOperation } | null = null;
 
   constructor(private readonly runner: FrameRenderRunner) {}
 
@@ -38,10 +42,19 @@ export class FrameRenderScheduler {
    * Ask for a frame at `time`. While a render is in flight the previous
    * pending target is replaced (latest wins) and this returns immediately.
    */
-  request(time: number, revision: number): void {
+  request(time: number, revision: number, parent?: PerfOperation): void {
     this.seq += 1;
     this.latestRevision = revision;
-    this.pending = { time, revision };
+    endPerfOperation(this.pending?.performance, "superseded");
+    const operation = getPerfSink().enabled
+      ? beginPerfOperation("frame.render", parent, { frameSeq: this.seq, frameEpoch: this.epoch, revision })
+      : undefined;
+    if (operation) {
+      this.pending = { time, revision, performance: operation };
+      operation.sink.mark("frame.requested", operation.context, { timelineTimeSeconds: time });
+    } else {
+      this.pending = { time, revision };
+    }
     void this.pump();
   }
 
@@ -51,6 +64,7 @@ export class FrameRenderScheduler {
    */
   invalidate(): void {
     this.epoch += 1;
+    endPerfOperation(this.pending?.performance, "cancelled");
     this.pending = null;
   }
 
@@ -75,6 +89,7 @@ export class FrameRenderScheduler {
   markCommitted(token: FrameRequestToken): boolean {
     if (!this.isCurrent(token)) return false;
     this.committedSeq = token.seq;
+    markPerfOperation(token.performance, "frame.commit-claimed");
     return true;
   }
 
@@ -95,8 +110,16 @@ export class FrameRenderScheduler {
           epoch: this.epoch,
           time: target.time,
           revision: target.revision,
+          ...(target.performance ? { performance: target.performance } : {}),
         };
-        await this.runner(token);
+        markPerfOperation(token.performance, "frame.started");
+        try {
+          await this.runner(token);
+          endPerfOperation(token.performance, token.seq === this.committedSeq ? "ok" : this.isCurrent(token) ? "error" : "superseded");
+        } catch (error) {
+          endPerfOperation(token.performance, "error");
+          throw error;
+        }
       }
     } finally {
       this.running = false;

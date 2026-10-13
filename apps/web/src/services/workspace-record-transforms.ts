@@ -5,6 +5,12 @@
  * transaction/request wrappers. No store, i18n or media I/O dependencies.
  */
 import type { Project } from "@reelterminal/core";
+import {
+  beginPerfOperation,
+  endPerfOperation,
+  failPerfOperation,
+} from "@reelterminal/core";
+import type { PerfOperation } from "@reelterminal/core";
 import type { ProjectNodeRecord, ProjectNodeSummary } from "./workspace-manager";
 
 /** A real edit exists: empty skeleton projects never become retention candidates. */
@@ -18,33 +24,61 @@ export function isSubstantiveProject(project: Project): boolean {
     (project.markers?.items.length ?? 0) > 0;
 }
 
-export function cloneProject(project: Project): Project {
-  const copy = structuredClone(project);
-  return {
-    ...copy,
-    mediaLibrary: {
-      ...copy.mediaLibrary,
-      items: copy.mediaLibrary.items.map((item) => ({ ...item, blob: null })),
-    },
-  };
+export function cloneProject(project: Project, parent?: PerfOperation): Project {
+  const operation = beginPerfOperation("workspace.project-clone", parent);
+  try {
+    const copy = structuredClone(project);
+    const result = {
+      ...copy,
+      mediaLibrary: {
+        ...copy.mediaLibrary,
+        items: copy.mediaLibrary.items.map((item) => ({ ...item, blob: null })),
+      },
+    };
+    endPerfOperation(operation, "ok", operation ? {
+      cloneCount: 1,
+      mediaItems: result.mediaLibrary.items.length,
+      renderFonts: result.renderFonts?.length ?? 0,
+    } : undefined);
+    return result;
+  } catch (error) {
+    failPerfOperation(operation, error);
+    throw error;
+  }
 }
 
-export function stableStringify(value: unknown): string {
+function stableStringifyValue(value: unknown): string {
   if (Array.isArray(value)) {
-    return `[${value.map(stableStringify).join(",")}]`;
+    return `[${value.map(stableStringifyValue).join(",")}]`;
   }
   if (value && typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>)
       .filter(([, item]) => item !== undefined)
       .sort(([left], [right]) => left.localeCompare(right));
     return `{${entries
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringifyValue(item)}`)
       .join(",")}}`;
   }
   return JSON.stringify(value);
 }
 
-export function editableProjectKey(project: Project): string {
+export function stableStringify(value: unknown, parent?: PerfOperation): string {
+  const operation = beginPerfOperation("workspace.stable-serialize", parent);
+  try {
+    const serialized = stableStringifyValue(value);
+    endPerfOperation(operation, "ok", operation ? {
+      serializationCount: 1,
+      serializedChars: serialized.length,
+    } : undefined);
+    return serialized;
+  } catch (error) {
+    failPerfOperation(operation, error);
+    throw error;
+  }
+}
+
+export function editableProjectKey(project: Project, parent?: PerfOperation): string {
+  const operation = beginPerfOperation("workspace.editable-project-key", parent);
   const ignoredFields = new Set([
     "blob",
     "modifiedAt",
@@ -72,7 +106,14 @@ export function editableProjectKey(project: Project): string {
     }
     return value;
   };
-  return stableStringify(normalize(cloneProject(project)));
+  try {
+    const key = stableStringify(normalize(cloneProject(project, operation)), operation);
+    endPerfOperation(operation, "ok", operation ? { serializedChars: key.length } : undefined);
+    return key;
+  } catch (error) {
+    failPerfOperation(operation, error);
+    throw error;
+  }
 }
 
 export function projectMediaIds(project: Project): string[] {

@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { useProjectStore } from "./project-store";
+import { createProjectStore, useProjectStore } from "./project-store";
+import { setPerfSink, type PerfEvent } from "@reelterminal/core";
+import { CaptureController } from "../performance/capture-controller";
+import { beginTimelineGesture, finishTimelineGesture, cancelTimelineGesture } from "../performance/product-flow";
 import { useEngineStore } from "./engine-store";
 import { useNotificationStore } from "./notification-store";
 import { useUIStore } from "./ui-store";
@@ -185,6 +188,45 @@ describe("ProjectStore", () => {
     mockEffectsBridgeState.clipEffects.clear();
     mockTransitionBridgeState.trackTransitions.clear();
     useProjectStore.getState().createNewProject();
+  });
+
+  it("measures the real copy path without adding project publications or changing undo", () => {
+    const project = createEmptyProject("synthetic telemetry project");
+    const payload = "data:font/woff2;base64," + "Q".repeat(128 * 1024);
+    Object.assign(project, { performanceFixture: { syntheticFontStructure: payload } });
+    const off = createProjectStore({ initialProject: structuredClone(project), isStaging: true });
+    const light = createProjectStore({ initialProject: structuredClone(project), isStaging: true });
+    const action: Action = { type: "track/add", id: "probe-track-add", timestamp: 1, params: { trackType: "video", trackId: "probe-track" } };
+    const counts = [0, 0];
+    const unsubscribes = [off, light].map((store, index) => store.subscribe(() => counts[index]++));
+    const controller = new CaptureController();
+    try {
+      setPerfSink(null);
+      const offResult = off.getState().executeActionBatch([action], { groupLabel: "Add track", historyOwner: "human" });
+      controller.startCapture({ mode: "light", runId: "product-copy-test", observerHost: {}, budgets: { inputSampleEveryN: 1, frameSampleEveryN: 1, memorySampleIntervalSeconds: 0 } });
+      beginTimelineGesture("input.media-drag");
+      const lightResult = light.getState().executeActionBatch([action], { groupLabel: "Add track", historyOwner: "human" });
+      finishTimelineGesture(light.getState().projectRevision);
+      const report = controller.stopCapture();
+      expect(lightResult).toEqual(offResult);
+      expect(light.getState().project.timeline).toEqual(off.getState().project.timeline);
+      expect(light.getState().workspaceRevision).toBe(off.getState().workspaceRevision);
+      expect(light.getState().actionHistory.getHistoryEntries()).toHaveLength(1);
+      expect(counts[1]).toBe(counts[0]);
+      expect(report.status).toBe("complete");
+      expect(report.counters["project.full-structured-clones"]).toBe(1);
+      expect(report.counters["project.full-json-copies"]).toBe(2);
+      const events = [...report.events, ...report.criticalEvents];
+      expect(events.some(event => event.phase === "semantic-state.committed")).toBe(true);
+      expect(events.some(event => event.phase === "gesture.final-commit")).toBe(true);
+      expect(JSON.stringify(report)).not.toContain(payload);
+      expect(events.filter((event): event is Extract<PerfEvent, { kind: "span_end" }> => event.kind === "span_end").some(event => (event.dims?.serializedChars as number) >= payload.length)).toBe(true);
+    } finally {
+      cancelTimelineGesture();
+      if (controller.activeRunId) controller.stopCapture();
+      setPerfSink(null);
+      unsubscribes.forEach(unsubscribe => unsubscribe());
+    }
   });
 
   it("publishes a batched project edit and its undo entry as one observable commit", () => {

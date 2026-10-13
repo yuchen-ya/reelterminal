@@ -9,6 +9,7 @@
 import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import i18next from "i18next";
+import { CaptureController } from "../performance/capture-controller";
 import type { TextClip } from "@reelterminal/core";
 import { createEmptyProject } from "../stores/project/project-helpers";
 import {
@@ -22,8 +23,10 @@ import * as renderDependencies from "./project-render-dependencies";
 import { workspaceManager } from "./workspace-manager";
 import {
   blockPreviewEditInteraction,
+  getPreviewPerfOperation,
   isPreviewActive,
   previewSession,
+  recordPreviewFirstFrame,
 } from "./preview-session";
 
 const TEXT_TRACK_ID = "text-track-1";
@@ -165,6 +168,48 @@ describe("previewSession", () => {
     // Entering paused playback and reset the playhead to the node beginning.
     expect(useTimelineStore.getState().playheadPosition).toBe(0);
     expect(useTimelineStore.getState().playbackState).toBe("paused");
+  });
+
+  it("correlates the first valid history frame to the current node project", async () => {
+    const target = await createProject("Frame correlation");
+    await workspaceManager.activateWorkspace(target);
+    const nodeA = await saveNodeNamed(target, "Frame A", "A");
+    const nodeB = await saveNodeNamed(target, "Frame B", "B");
+    const controller = new CaptureController();
+    controller.startCapture({ mode: "trace" });
+    try {
+      await previewSession.enter({ kind: "node", nodeId: nodeA });
+      const projectA = getActiveProjectRuntimeStore().getState().project;
+      expect(getPreviewPerfOperation(projectA)).toBeDefined();
+
+      await previewSession.enter({ kind: "node", nodeId: nodeB });
+      const projectB = getActiveProjectRuntimeStore().getState().project;
+      expect(projectB).not.toBe(projectA);
+      expect(getPreviewPerfOperation(projectA)).toBeUndefined();
+      expect(getPreviewPerfOperation(projectB)).toBeDefined();
+
+      // A late frame from the replaced node cannot finish the current request.
+      recordPreviewFirstFrame(projectA, { seq: 1, epoch: 7, revision: 4 });
+      expect(getPreviewPerfOperation(projectB)).toBeDefined();
+      recordPreviewFirstFrame(projectB, { seq: 2, epoch: 7, revision: 4 });
+      expect(getPreviewPerfOperation(projectB)).toBeUndefined();
+
+      const report = controller.stopCapture();
+      expect(report.openSpans).toBe(0);
+      const firstFrame = report.criticalEvents.filter((event) =>
+        event.phase === "node.first-valid-frame",
+      );
+      expect(firstFrame).toHaveLength(1);
+      expect(firstFrame[0]).toMatchObject({
+        kind: "mark",
+        frameSeq: 2,
+        frameEpoch: 7,
+        revision: 4,
+      });
+      expect(report.events.some((event) => event.phase === "node.preview.ready")).toBe(true);
+    } finally {
+      if (controller.activeRunId) controller.stopCapture();
+    }
   });
 
   it("rejects executeAction on the preview store", async () => {

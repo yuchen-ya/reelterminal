@@ -3,6 +3,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { Blob as NodeBlob } from "node:buffer";
 import * as core from "@reelterminal/core";
 import type { Project } from "@reelterminal/core";
+import { CaptureController } from "../performance/capture-controller";
 import { WorkspaceManager } from "./workspace-manager";
 import * as mediaStorage from "./media-storage";
 import { cacheCustomFontBytes, forgetCustomFontBytes } from "./custom-font-storage";
@@ -142,6 +143,73 @@ describe("WorkspaceManager perf baselines", () => {
       forgetCustomFontBytes("Wake Font");
     }
     unsubscribe();
+  });
+
+  it("confirms a saved node only after its storage transaction commits", async () => {
+    const { manager, library } = await seedFresh();
+    const project = library.projects[0];
+    const target = { projectId: project.projectId, workspaceId: project.defaultWorkspaceId };
+    const context = await manager.getWorkspaceContext(target);
+    const controller = new CaptureController();
+    controller.startCapture({ mode: "trace" });
+    try {
+      context.store.setState({
+        project: { ...context.store.getState().project, name: "Durability check" },
+      });
+      const saved = await manager.saveNode({ target, name: "Durability check" });
+      expect(saved.node.name).toBe("Durability check");
+
+      const report = controller.stopCapture();
+      const events = report.events;
+      expect(report.openSpans).toBe(0);
+      const confirmation = events.find((event) => event.phase === "save.confirmed");
+      expect(confirmation).toBeDefined();
+      const operationId = confirmation && "operationId" in confirmation
+        ? confirmation.operationId
+        : undefined;
+      const commit = events.find((event) =>
+        event.phase === "save.storage-transaction-committed" &&
+        "operationId" in event &&
+        event.operationId === operationId &&
+        event.seq < (confirmation?.seq ?? 0),
+      );
+      expect(commit).toBeDefined();
+      expect(confirmation).toMatchObject({ kind: "mark" });
+      expect(events.find((event) =>
+        event.kind === "span_end" && event.phase === "workspace.project-clone",
+      )).toMatchObject({ dims: { mediaItems: expect.any(Number), renderFonts: expect.any(Number) } });
+      expect(events.find((event) =>
+        event.kind === "span_end" && event.phase === "workspace.stable-serialize",
+      )).toMatchObject({ dims: { serializedChars: expect.any(Number) } });
+      expect(events.find((event) =>
+        event.kind === "span_end" && event.phase === "font.validate",
+      )).toMatchObject({ dims: { candidates: expect.any(Number), valid: expect.any(Number) } });
+    } finally {
+      if (controller.activeRunId) controller.stopCapture();
+    }
+  });
+
+  it("does not confirm a node save when snapshot preparation fails", async () => {
+    const { manager, library } = await seedFresh();
+    const project = library.projects[0];
+    const target = { projectId: project.projectId, workspaceId: project.defaultWorkspaceId };
+    await manager.flushWorkspace(target);
+    const fontPreparation = vi
+      .spyOn(renderDependencies, "prepareProjectRenderFonts")
+      .mockRejectedValueOnce(new Error("synthetic font preparation failure"));
+    const controller = new CaptureController();
+    controller.startCapture({ mode: "trace" });
+    try {
+      await expect(manager.saveNode({ target, name: "Will not commit" }))
+        .rejects.toThrow("synthetic font preparation failure");
+      const report = controller.stopCapture();
+      expect(report.openSpans).toBe(0);
+      expect(report.criticalEvents.some((event) => event.phase === "save.confirmed")).toBe(false);
+      expect(report.criticalEvents.some((event) => event.phase === "save.storage-transaction-committed")).toBe(false);
+    } finally {
+      fontPreparation.mockRestore();
+      if (controller.activeRunId) controller.stopCapture();
+    }
   });
 
   it("measures the font dependency snapshot query over the whole library", async () => {
@@ -435,4 +503,3 @@ describe("WorkspaceManager perf baselines", () => {
     }
   });
 });
-

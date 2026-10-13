@@ -59,6 +59,7 @@ import { InverseActionGenerator } from "./inverse-action-generator";
 import { getActionHandler } from "./registry";
 import "./handlers";
 import { calculateProjectDuration } from "../timeline/project-duration";
+import { beginPerfOperation, endPerfOperation, failPerfOperation, runMeasured, withPerfSpan, type PerfOperation } from "../performance";
 
 type ExecutableTimelineAction = TimelineAction & Pick<Action, "id">;
 
@@ -95,12 +96,28 @@ export class ActionExecutor {
     this.inverseGenerator = new InverseActionGenerator();
   }
 
-  async execute(
+  execute(
     action: Action,
     project: Project,
     historyOwner?: string,
+    parent?: PerfOperation,
   ): Promise<ActionResult> {
-    const validationResult = this.validator.validate(action, project);
+    const operation = beginPerfOperation("action.execute", parent);
+    const pending = this.executeAction(action, project, historyOwner, operation);
+    if (!operation) return pending;
+    return pending.then(result => {
+      endPerfOperation(operation, result.success ? "ok" : "error");
+      return result;
+    }, error => {
+      failPerfOperation(operation, error);
+      throw error;
+    });
+  }
+
+  private async executeAction(action: Action, project: Project, historyOwner?: string, operation?: PerfOperation): Promise<ActionResult> {
+    const validationResult = operation
+      ? runMeasured("action.validate", { ...operation.context, parentSpanId: operation.span.id }, () => this.validator.validate(action, project))
+      : this.validator.validate(action, project);
 
     if (!validationResult.valid) {
       return {
@@ -112,13 +129,16 @@ export class ActionExecutor {
         },
       };
     }
-    const projectSnapshot = JSON.parse(JSON.stringify(project));
-    const inverseAction = this.inverseGenerator.generate(
-      action,
-      projectSnapshot,
-    );
+    const projectSnapshot = this.snapshotForHistory(project, operation);
+    const inverseAction = operation
+      ? runMeasured("action.inverse-generate", { ...operation.context, parentSpanId: operation.span.id }, () => this.inverseGenerator.generate(action, projectSnapshot))
+      : this.inverseGenerator.generate(action, projectSnapshot);
     try {
-      await this.applyAction(action as ExecutableTimelineAction, project);
+      if (operation) {
+        await withPerfSpan("action.apply", { ...operation.context, parentSpanId: operation.span.id }, () => this.applyAction(action as ExecutableTimelineAction, project));
+      } else {
+        await this.applyAction(action as ExecutableTimelineAction, project);
+      }
       // Resolve generated-id markers while this action's newly-created entity is
       // still the latest one. Deferring resolution until undo makes every entry
       // in a grouped add operation target the final created entity instead.
@@ -126,7 +146,11 @@ export class ActionExecutor {
         ? this.resolveSpecialMarkers(inverseAction)
         : null;
       this.pinLiveDeletedMedia(action, resolvedInverseAction);
-      this.history.push(action, resolvedInverseAction, historyOwner);
+      if (operation) {
+        runMeasured("action.history-push", { ...operation.context, parentSpanId: operation.span.id }, () => this.history.push(action, resolvedInverseAction, historyOwner));
+      } else {
+        this.history.push(action, resolvedInverseAction, historyOwner);
+      }
 
       return {
         success: true,
@@ -155,8 +179,23 @@ export class ActionExecutor {
     project: Project,
     historyOwner?: string,
     historyBeforeProject: Project = project,
+    parent?: PerfOperation,
   ): ActionResult {
-    const validationResult = this.validator.validate(action, project);
+    const operation = beginPerfOperation("action.execute-sync", parent);
+    try {
+      const result = this.executeActionSync(action, project, historyOwner, historyBeforeProject, operation);
+      endPerfOperation(operation, result.success ? "ok" : "error");
+      return result;
+    } catch (error) {
+      failPerfOperation(operation, error);
+      throw error;
+    }
+  }
+
+  private executeActionSync(action: Action, project: Project, historyOwner: string | undefined, historyBeforeProject: Project, operation?: PerfOperation): ActionResult {
+    const validationResult = operation
+      ? runMeasured("action.validate", { ...operation.context, parentSpanId: operation.span.id }, () => this.validator.validate(action, project))
+      : this.validator.validate(action, project);
     if (!validationResult.valid) {
       return {
         success: false,
@@ -167,15 +206,25 @@ export class ActionExecutor {
         },
       };
     }
-    const projectSnapshot = JSON.parse(JSON.stringify(historyBeforeProject));
-    const inverseAction = this.inverseGenerator.generate(action, projectSnapshot);
+    const projectSnapshot = this.snapshotForHistory(historyBeforeProject, operation);
+    const inverseAction = operation
+      ? runMeasured("action.inverse-generate", { ...operation.context, parentSpanId: operation.span.id }, () => this.inverseGenerator.generate(action, projectSnapshot))
+      : this.inverseGenerator.generate(action, projectSnapshot);
     try {
-      this.applyActionSync(action as ExecutableTimelineAction, project);
+      if (operation) {
+        runMeasured("action.apply", { ...operation.context, parentSpanId: operation.span.id }, () => this.applyActionSync(action as ExecutableTimelineAction, project));
+      } else {
+        this.applyActionSync(action as ExecutableTimelineAction, project);
+      }
       const resolvedInverseAction = inverseAction
         ? this.resolveSpecialMarkers(inverseAction)
         : null;
       this.pinLiveDeletedMedia(action, resolvedInverseAction);
-      this.history.push(action, resolvedInverseAction, historyOwner);
+      if (operation) {
+        runMeasured("action.history-push", { ...operation.context, parentSpanId: operation.span.id }, () => this.history.push(action, resolvedInverseAction, historyOwner));
+      } else {
+        this.history.push(action, resolvedInverseAction, historyOwner);
+      }
       return { success: true, actionId: action.id };
     } catch (error) {
       return {
@@ -186,6 +235,22 @@ export class ActionExecutor {
             error instanceof Error ? error.message : "Unknown error occurred",
         },
       };
+    }
+  }
+
+  private snapshotForHistory(project: Project, parent?: PerfOperation): Project {
+    const operation = beginPerfOperation("action.inverse-snapshot", parent);
+    if (!operation) return JSON.parse(JSON.stringify(project)) as Project;
+    operation.sink.count("project.full-json-copies", 1);
+    try {
+      const context = { ...operation.context, parentSpanId: operation.span.id };
+      const serialized = runMeasured("action.snapshot-stringify", context, () => JSON.stringify(project));
+      const snapshot = runMeasured("action.snapshot-parse", context, () => JSON.parse(serialized) as Project);
+      endPerfOperation(operation, "ok", { serializedChars: serialized.length });
+      return snapshot;
+    } catch (error) {
+      failPerfOperation(operation, error);
+      throw error;
     }
   }
 
