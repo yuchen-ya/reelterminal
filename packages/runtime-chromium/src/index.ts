@@ -25,6 +25,23 @@ export {
   type WebcodecsExportOutcome,
 } from "./node/runtime";
 export {
+  ExportPerformanceCapture,
+  EXPORT_PERFORMANCE_PHASES,
+  adaptPerfSinkForExport,
+  beginExportPerformanceSpan,
+  endExportPerformanceSpan,
+  markExportPerformance,
+  withExportPerformance,
+  withExportPerformanceSpan,
+  type ExportPerformanceCaptureOptions,
+  type ExportPerformanceEvent,
+  type ExportPerformanceOutcome,
+  type ExportPerformancePhase,
+  type ExportPerformanceReport,
+  type ExportPerformanceSink,
+  type ExportPerformanceSpan,
+} from "./node/export-performance";
+export {
   ChromiumExportProvider,
   ChromiumProviderPool,
   ChromiumRenderProvider,

@@ -1,7 +1,12 @@
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { getPerfSink, type PerfContext, type PerfSpan } from "@reelterminal/core";
 import type { Project } from "@reelterminal/core";
 import type { JobStatusView } from "@reelterminal/agent-facade";
+import {
+  withExportPerformance,
+  type ExportPerformanceSink,
+} from "@reelterminal/runtime-chromium";
 
 export interface DurableTaskInput {
   readonly jobId: string;
@@ -58,13 +63,23 @@ interface InternalRecord {
 export class DurableTaskLedger {
   private readonly root: string;
   private readonly progressWriteIntervalMs: number;
+  private readonly onInputWrite?: (jobId: string) => void;
+  private readonly exportPerformanceSinkForJob?: (jobId: string) => ExportPerformanceSink | undefined;
   private readonly records = new Map<string, InternalRecord>();
   private pendingProgress: { jobId: string; status: JobStatusView } | null = null;
   private progressTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(root: string, options: { progressWriteIntervalMs?: number } = {}) {
+  constructor(root: string, options: {
+    progressWriteIntervalMs?: number;
+    /** Test observation at the actual immutable-input write boundary. */
+    onInputWrite?: (jobId: string) => void;
+    /** Optional local collector used by deterministic export regression scenarios. */
+    exportPerformanceSinkForJob?: (jobId: string) => ExportPerformanceSink | undefined;
+  } = {}) {
     this.root = root;
     this.progressWriteIntervalMs = options.progressWriteIntervalMs ?? PROGRESS_WRITE_INTERVAL_MS;
+    this.onInputWrite = options.onInputWrite;
+    this.exportPerformanceSinkForJob = options.exportPerformanceSinkForJob;
     mkdirSync(root, { recursive: true });
     const inputs = new Map<string, DurableTaskInput>();
     const statuses = new Map<string, JobStatusView>();
@@ -193,11 +208,62 @@ export class DurableTaskLedger {
   }
 
   private writeInputFile(input: DurableTaskInput): void {
-    this.writeAtomic(this.inputPath(input.jobId), JSON.stringify({ formatVersion: 2, ...input }), true);
+    this.measureWrite(input.jobId, "export.write", "export.input-writes", () => {
+      this.writeAtomic(this.inputPath(input.jobId), JSON.stringify({ formatVersion: 2, ...input }), true);
+    });
+    try {
+      this.onInputWrite?.(input.jobId);
+    } catch {
+      // Test observers are observational; they must not change persistence semantics.
+    }
   }
 
   private writeStatusFile(jobId: string, status: JobStatusView, flush: boolean): void {
-    this.writeAtomic(this.statusPath(jobId), JSON.stringify({ formatVersion: 2, jobId, status }), flush);
+    this.measureWrite(jobId, "export.status.persist", "export.status-writes", () => {
+      this.writeAtomic(this.statusPath(jobId), JSON.stringify({ formatVersion: 2, jobId, status }), flush);
+    });
+  }
+
+  /** Measure only the actual atomic file write. The default/off path is the existing write directly. */
+  private measureWrite(jobId: string, phase: string, countName: string, write: () => void): void {
+    let exportSink: ExportPerformanceSink | undefined;
+    try { exportSink = this.exportPerformanceSinkForJob?.(jobId); } catch { /* observational */ }
+    let exportSinkEnabled = false;
+    try { exportSinkEnabled = exportSink?.enabled === true; } catch { /* observational */ }
+    if (exportSinkEnabled && exportSink) {
+      const exportPhase = phase === "export.status.persist" ? "status.persist" : "write";
+      withExportPerformance(exportSink, exportPhase, write);
+      return;
+    }
+
+    const sink = getPerfSink();
+    if (!sink.enabled) {
+      write();
+      return;
+    }
+
+    const context: PerfContext = {
+      runId: sink.runId ?? "durable-task-ledger",
+      operationId: jobId,
+    };
+    let span: PerfSpan | null = null;
+    try {
+      span = sink.begin(phase, context);
+    } catch {
+      // Instrumentation is observational; an unavailable span must not affect persistence.
+    }
+    try {
+      write();
+    } catch (error) {
+      if (span) {
+        try { sink.end(span, "error"); } catch { /* observational */ }
+      }
+      throw error;
+    }
+    if (span) {
+      try { sink.end(span, "ok"); } catch { /* observational */ }
+    }
+    try { sink.count(countName, 1, context); } catch { /* observational */ }
   }
 
   begin(input: DurableTaskInput): void {

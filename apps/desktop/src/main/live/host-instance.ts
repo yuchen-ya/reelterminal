@@ -9,12 +9,14 @@
  * Electron-free and unit-testable.
  */
 import { app } from "electron";
+import { getPerfSink } from "@reelterminal/core";
 import { mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { createLiveFacade } from "@reelterminal/agent-facade";
 import {
   createChromiumProviders,
   FfmpegArtifactVerifier,
+  adaptPerfSinkForExport,
 } from "@reelterminal/runtime-chromium";
 import { CHANNELS } from "../../shared/channels";
 import {
@@ -148,7 +150,20 @@ export function getLiveSessionHost(): LiveSessionHost {
       deliveryRoots: liveDeliveryRoots(),
       installStoreBridge: installLiveStoreBridge,
       createProviders: (): LiveProviders => {
-        const chromium = createChromiumProviders(chromiumProvidersFromEnv());
+        const chromium = createChromiumProviders({
+          ...chromiumProvidersFromEnv(),
+          exportPerformanceSinkFactory: (jobId) => {
+            const sink = getPerfSink();
+            let runId = `live-export-${jobId}`;
+            try {
+              const suppliedRunId = sink.runId;
+              if (typeof suppliedRunId === "string" && suppliedRunId.length > 0) runId = suppliedRunId;
+            } catch {
+              // Collector metadata is observational and cannot veto an export.
+            }
+            return adaptPerfSinkForExport(sink, { runId, operationId: jobId });
+          },
+        });
         return {
           renderProvider: chromium.renderProvider,
           exportProvider: chromium.exportProvider,

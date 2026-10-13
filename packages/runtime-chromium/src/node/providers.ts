@@ -45,6 +45,13 @@ import {
 } from "./probe";
 import { renderHtmlPng as renderHtmlPngOnRuntime } from "./html-render";
 import { ChromiumRuntime, HydratedSessionCancelled, PartFileWriter } from "./runtime";
+import {
+  beginExportPerformanceSpan,
+  endExportPerformanceSpan,
+  markExportPerformance,
+  withExportPerformanceSpan,
+  type ExportPerformanceSink,
+} from "./export-performance";
 
 export interface ChromiumProvidersConfig {
   /** Explicit chromium executable; defaults to the Playwright-managed one. */
@@ -81,6 +88,8 @@ export interface ChromiumProvidersConfig {
    * exceeds two minutes.
    */
   readonly pageOpTimeoutMs?: number;
+  /** Optional explicit adapter for production export captures (for example the active main PerfSink). */
+  readonly exportPerformanceSinkFactory?: (jobId: string) => ExportPerformanceSink | undefined;
 }
 
 /** Files an export job may write into its job dir (swept on non-done ends). */
@@ -154,7 +163,9 @@ export function guardExportCallbacks(
 
 interface JobSlot {
   cancelRequested: boolean;
+  watchdogTimedOut: boolean;
   state: "queued" | "active" | "settled";
+  readonly performanceSink?: ExportPerformanceSink;
   /**
    * Route-specific hard stop for the currently running work (in-page abort
    * for Route W, ffmpeg kill for Route F). Set by the route while it runs;
@@ -373,14 +384,29 @@ export class ChromiumExportProvider implements ExportProvider {
   async startExport(
     request: ExportVideoRequest,
     callbacks: ExportCallbacks,
+    performanceSink?: ExportPerformanceSink,
   ): Promise<void> {
-    const slot: JobSlot = { cancelRequested: false, state: "queued" };
+    let exportSink = performanceSink;
+    if (!exportSink) {
+      try {
+        exportSink = this.providers.exportPerformanceSinkForJob(request.jobId);
+      } catch {
+        // A collector factory is observational and cannot veto an export.
+      }
+    }
+    const slot: JobSlot = { cancelRequested: false, watchdogTimedOut: false, state: "queued", performanceSink: exportSink };
+    const submitSpan = beginExportPerformanceSpan(exportSink, "submit");
+    const queueSpan = beginExportPerformanceSpan(exportSink, "queue");
     this.jobs.set(request.jobId, slot);
-    const run = this.exportChain.then(() => this.runJob(request, callbacks, slot));
+    const run = this.exportChain.then(() => {
+      endExportPerformanceSpan(exportSink, queueSpan, "ok");
+      return this.runJob(request, callbacks, slot);
+    });
     this.exportChain = run.then(
       () => undefined,
       () => undefined,
     );
+    endExportPerformanceSpan(exportSink, submitSpan, "ok");
     // Deliberately NOT awaited: the contract is a prompt return; settlement
     // arrives exclusively through the callbacks.
     void run.catch(() => undefined);
@@ -390,6 +416,7 @@ export class ChromiumExportProvider implements ExportProvider {
     const slot = this.jobs.get(jobId);
     if (!slot || slot.state === "settled") return;
     slot.cancelRequested = true;
+    markExportPerformance(slot.performanceSink, "cancel");
     if (slot.state === "active") {
       // Route F checks the flag between frames; Route W needs the in-page
       // abort to leave the encode loop promptly.
@@ -407,6 +434,7 @@ export class ChromiumExportProvider implements ExportProvider {
     callbacks: ExportCallbacks,
     slot: JobSlot,
   ): Promise<void> {
+    const performanceSink = slot.performanceSink;
     // Watchdog: a WEDGED page/encoder must never freeze the job (or, via
     // the shared page, the whole session) forever — but a job that keeps
     // producing frames is slow, not wedged. Two ceilings: the no-progress
@@ -437,15 +465,21 @@ export class ChromiumExportProvider implements ExportProvider {
     // Progress re-arms the no-progress ceiling; the budget clock is
     // unaffected. Wrapped BEFORE the terminal guard so renewal cannot be
     // suppressed by it.
-    const progressAwareCallbacks: ExportCallbacks = {
-      ...callbacks,
+    const measuredCallbacks: ExportCallbacks = {
+      onRunning: callbacks.onRunning,
       onProgress: (event) => {
         armWatchdog();
         callbacks.onProgress(event);
       },
+      onDone: callbacks.onDone,
+      onError: callbacks.onError,
+      onCancelled: callbacks.onCancelled,
+    };
+    const progressAwareCallbacks: ExportCallbacks = {
+      ...measuredCallbacks,
       onRunning: () => {
         armWatchdog();
-        callbacks.onRunning();
+        measuredCallbacks.onRunning();
       },
     };
     const guarded = guardExportCallbacks(progressAwareCallbacks);
@@ -458,7 +492,7 @@ export class ChromiumExportProvider implements ExportProvider {
       slot.state = "active";
       guarded.onRunning();
 
-      const route = await this.providers.exportRoute();
+      const route = await withExportPerformanceSpan(performanceSink, "prepare", () => this.providers.exportRoute());
       if (route === "unavailable") {
         throw new Error("no export route available in this runtime");
       }
@@ -495,6 +529,7 @@ export class ChromiumExportProvider implements ExportProvider {
         // Watchdog fired. Order matters: REALLY stop the underlying work,
         // let its own cleanup run, sweep whatever is left, and only then
         // terminalize (as error — a timeout is never "cancelled").
+        slot.watchdogTimedOut = true;
         slot.cancelRequested = true; // route loops bail at the next check
         const stopAndUnwind = (async () => {
           // The in-page abort can itself sit on a wedged evaluate; bound it
@@ -590,7 +625,7 @@ export class ChromiumExportProvider implements ExportProvider {
     slot: JobSlot,
   ): Promise<RouteOutcome> {
     const finalPath = join(request.jobDir, "output.mp4");
-    const writer = await PartFileWriter.open(finalPath);
+    const writer = await withExportPerformanceSpan(slot.performanceSink, "prepare", () => PartFileWriter.open(finalPath, slot.performanceSink));
     if (slot.cancelRequested) {
       // Cancelled (or watchdog-stopped) before any page work began — no
       // zombie export behind an already-terminal job.
@@ -617,7 +652,11 @@ export class ChromiumExportProvider implements ExportProvider {
             bytesWritten: event.bytesWritten,
           });
         },
-        { cancelCheck: () => slot.cancelRequested },
+        {
+          cancelCheck: () => slot.cancelRequested,
+          timeoutCheck: () => slot.watchdogTimedOut,
+          performanceSink: slot.performanceSink,
+        },
       );
     } catch (error) {
       await writer.discard().catch(() => undefined);
@@ -664,7 +703,7 @@ export class ChromiumExportProvider implements ExportProvider {
     callbacks: ExportCallbacks,
     slot: JobSlot,
   ): Promise<RouteOutcome> {
-    const binaries = await resolveFfmpegBinaries(this.providers.ffmpegConfig);
+    const binaries = await withExportPerformanceSpan(slot.performanceSink, "prepare", () => resolveFfmpegBinaries(this.providers.ffmpegConfig));
     if (!binaries) {
       throw new Error(
         "frames→ffmpeg route selected but no ffmpeg binary is available",
@@ -687,6 +726,7 @@ export class ChromiumExportProvider implements ExportProvider {
       frameRate,
       destPath: partPath,
     });
+    const encodeSpan = beginExportPerformanceSpan(slot.performanceSink, "encode");
     slot.abortActive = () => encoder.abort();
 
     let framesFed = 0;
@@ -696,7 +736,16 @@ export class ChromiumExportProvider implements ExportProvider {
         request.project,
         request.mediaFiles,
         async (session) => {
-          callbacks.onProgress({
+          const emitProgress = (event: ExportProgressEvent): void => {
+            markExportPerformance(slot.performanceSink, "progress", {
+              progress: event.percent,
+              ...(event.currentFrame !== undefined ? { currentFrame: event.currentFrame } : {}),
+              ...(event.totalFrames !== undefined ? { totalFrames: event.totalFrames } : {}),
+              bytesWritten: event.bytesWritten ?? 0,
+            });
+            callbacks.onProgress(event);
+          };
+          emitProgress({
             phase: "rendering",
             percent: 0,
             currentFrame: 0,
@@ -706,17 +755,17 @@ export class ChromiumExportProvider implements ExportProvider {
             if (slot.cancelRequested) {
               throw new FramesJobCancelled();
             }
-            const png = await session.renderPng(
+            const png = await withExportPerformanceSpan(slot.performanceSink, "render", () => session.renderPng(
               frame / frameRate,
               width,
               height,
-            );
+            ));
             if (png.length === 0) {
               throw new Error(`frame ${frame} rendered to an empty PNG`);
             }
-            await encoder.writeFrame(png);
+            await withExportPerformanceSpan(slot.performanceSink, "write", () => encoder.writeFrame(png));
             framesFed += 1;
-            callbacks.onProgress({
+            emitProgress({
               phase: "rendering",
               percent: (frame + 1) / totalFrames,
               currentFrame: frame + 1,
@@ -728,13 +777,18 @@ export class ChromiumExportProvider implements ExportProvider {
         { cancelCheck: () => slot.cancelRequested },
       );
       if (slot.cancelRequested) throw new FramesJobCancelled();
+      markExportPerformance(slot.performanceSink, "progress", {
+        progress: 0.98,
+        currentFrame: totalFrames,
+        totalFrames,
+      });
       callbacks.onProgress({
         phase: "muxing",
         percent: 0.98,
         currentFrame: totalFrames,
         totalFrames,
       });
-      const sizeBytes = await encoder.finish();
+      const sizeBytes = await withExportPerformanceSpan(slot.performanceSink, "finalize", () => encoder.finish());
       if (sizeBytes === 0) {
         throw new Error("ffmpeg produced an empty MP4");
       }
@@ -742,6 +796,7 @@ export class ChromiumExportProvider implements ExportProvider {
       // mirror the Route-W post-completion check (see runWebcodecsRoute).
       if (slot.cancelRequested) throw new FramesJobCancelled();
       await rename(partPath, finalPath);
+      endExportPerformanceSpan(slot.performanceSink, encodeSpan, "ok");
       // The frames route renders directly at the target size — its pipeline
       // has no upscale stage at all, so a REQUESTED pass is disclosed as
       // inactive instead of silently vanishing.
@@ -759,6 +814,11 @@ export class ChromiumExportProvider implements ExportProvider {
       };
     } catch (error) {
       encoder.abort();
+      endExportPerformanceSpan(
+        slot.performanceSink,
+        encodeSpan,
+        error instanceof FramesJobCancelled || error instanceof HydratedSessionCancelled ? "cancelled" : "error",
+      );
       await rm(partPath, { force: true }).catch(() => undefined);
       await rm(finalPath, { force: true }).catch(() => undefined);
       if (
@@ -852,6 +912,10 @@ export class ChromiumProviderPool {
         ? { pageOpTimeoutMs: config.pageOpTimeoutMs }
         : {}),
     });
+  }
+
+  exportPerformanceSinkForJob(jobId: string): ExportPerformanceSink | undefined {
+    return this.config.exportPerformanceSinkFactory?.(jobId);
   }
 
   /** The explicitly pinned route, if any (null = probe-derived default). */

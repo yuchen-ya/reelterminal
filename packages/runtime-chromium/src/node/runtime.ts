@@ -21,6 +21,14 @@ import type { Project } from "@reelterminal/core/types/project";
 
 import { buildBrowserEntry } from "./bundle";
 import { extractFrameRgba, resolveFfmpegBinaries } from "./ffmpeg";
+import {
+  beginExportPerformanceSpan,
+  endExportPerformanceSpan,
+  markExportPerformance,
+  withExportPerformanceSpan,
+  type ExportPerformanceSink,
+  type ExportPerformanceSpan,
+} from "./export-performance";
 
 export interface ChromiumRuntimeOptions {
   /** Explicit chromium executable; defaults to the Playwright-managed one. */
@@ -115,10 +123,11 @@ export class PartFileWriter {
   private constructor(
     readonly partPath: string,
     readonly finalPath: string,
+    private readonly performanceSink?: ExportPerformanceSink,
   ) {}
 
-  static async open(finalPath: string): Promise<PartFileWriter> {
-    const writer = new PartFileWriter(`${finalPath}.part`, finalPath);
+  static async open(finalPath: string, performanceSink?: ExportPerformanceSink): Promise<PartFileWriter> {
+    const writer = new PartFileWriter(`${finalPath}.part`, finalPath, performanceSink);
     writer.fd = await open(writer.partPath, "w");
     return writer;
   }
@@ -132,21 +141,25 @@ export class PartFileWriter {
   }
 
   async writeBase64(base64: string): Promise<void> {
-    if (!this.fd) throw new Error("PartFileWriter is closed");
-    const buffer = Buffer.from(base64, "base64");
-    await this.fd.write(buffer, 0, buffer.length, this.position);
-    this.position += buffer.length;
-    if (this.position > this.bytesWritten) this.bytesWritten = this.position;
+    await withExportPerformanceSpan(this.performanceSink, "write", async () => {
+      if (!this.fd) throw new Error("PartFileWriter is closed");
+      const buffer = Buffer.from(base64, "base64");
+      await this.fd.write(buffer, 0, buffer.length, this.position);
+      this.position += buffer.length;
+      if (this.position > this.bytesWritten) this.bytesWritten = this.position;
+    });
   }
 
   /** Close and atomically rename into place. Only route to real artifacts. */
   async finalize(): Promise<number> {
-    if (this.fd) {
-      await this.fd.close();
-      this.fd = null;
-    }
-    await rename(this.partPath, this.finalPath);
-    return this.bytesWritten;
+    return withExportPerformanceSpan(this.performanceSink, "finalize", async () => {
+      if (this.fd) {
+        await this.fd.close();
+        this.fd = null;
+      }
+      await rename(this.partPath, this.finalPath);
+      return this.bytesWritten;
+    });
   }
 
   /**
@@ -876,23 +889,68 @@ export class ChromiumRuntime {
     },
     writer: PartFileWriter,
     onProgress: (event: ExportProgressJson) => void,
-    options: { cancelCheck?: () => boolean } = {},
+    options: {
+      cancelCheck?: () => boolean;
+      timeoutCheck?: () => boolean;
+      performanceSink?: ExportPerformanceSink;
+    } = {},
   ): Promise<WebcodecsExportOutcome> {
     return this.withPageLock(async (page) => {
       if (options.cancelCheck?.() === true) {
+        markExportPerformance(options.performanceSink, "cancel");
         throw new HydratedSessionCancelled();
       }
-      await this.hydrateOnPage(page, project, mediaFiles);
-      await this.ensureSinkBindings(page);
+      await withExportPerformanceSpan(options.performanceSink, "prepare", async () => {
+        await this.hydrateOnPage(page, project, mediaFiles);
+        await this.ensureSinkBindings(page);
+      });
+      let activePhase: "render" | "encode" | "finalize" | null = null;
+      let activeSpan: ExportPerformanceSpan | null = null;
+      const timeoutTriggered = (): boolean => {
+        try {
+          return options.timeoutCheck?.() === true;
+        } catch {
+          return false;
+        }
+      };
+      const endActivePhase = (outcome: "ok" | "error" | "cancelled" | "timeout") => {
+        endExportPerformanceSpan(options.performanceSink, activeSpan, outcome);
+        activePhase = null;
+        activeSpan = null;
+      };
+      let exportOutcome: "ok" | "error" | "cancelled" | "timeout" = "error";
       this.sinkBridge = {
         seek: (position) => writer.seek(position),
         writeBase64: (base64) => writer.writeBase64(base64),
         finalize: () => writer.finalize(),
         discard: () => writer.discard(),
-        progress: onProgress,
+        progress: (event) => {
+          markExportPerformance(options.performanceSink, "progress", {
+            progress: event.progress,
+            currentFrame: event.currentFrame,
+            totalFrames: event.totalFrames,
+            bytesWritten: event.bytesWritten,
+          });
+          const nextPhase = event.phase === "rendering"
+            ? "render"
+            : event.phase === "encoding"
+              ? "encode"
+              : event.phase === "muxing"
+                ? "finalize"
+                : null;
+          if (nextPhase !== activePhase) {
+            endActivePhase("ok");
+            if (nextPhase) {
+              activePhase = nextPhase;
+              activeSpan = beginExportPerformanceSpan(options.performanceSink, nextPhase);
+            }
+          }
+          onProgress(event);
+          if (event.phase === "complete") endActivePhase("ok");
+        },
       };
       try {
-        return (await page.evaluate(
+        const outcome = (await page.evaluate(
           (exportSettings) =>
             (window as never as {
               __openreelRender: {
@@ -901,7 +959,24 @@ export class ChromiumRuntime {
             }).__openreelRender.exportToMp4Webcodecs(exportSettings),
           settings,
         )) as WebcodecsExportOutcome;
+        exportOutcome = timeoutTriggered()
+          ? "timeout"
+          : outcome.success
+            ? "ok"
+            : outcome.errorCode === "CANCELLED"
+              ? "cancelled"
+              : "error";
+        return outcome;
+      } catch (error) {
+        exportOutcome = timeoutTriggered()
+          ? "timeout"
+          : error instanceof HydratedSessionCancelled ||
+              (typeof error === "object" && error !== null && "name" in error && (error as { name?: unknown }).name === "AbortError")
+            ? "cancelled"
+            : "error";
+        throw error;
       } finally {
+        endActivePhase(exportOutcome);
         this.sinkBridge = null;
       }
     });

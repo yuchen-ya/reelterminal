@@ -9,6 +9,17 @@ import { CHANNELS } from "../../shared/channels";
 import { CfrWriter } from "../sidecar/cfr";
 import { selectEncoder, probeEncoders } from "../sidecar/encoder-probe";
 import type { ExportCodec, EncodeMode } from "../sidecar/encode-args";
+import type { PerfSink } from "@reelterminal/core";
+import {
+  adaptPerfSinkForExport,
+  beginExportPerformanceSpan,
+  endExportPerformanceSpan,
+  markExportPerformance,
+  withExportPerformance,
+  withExportPerformanceSpan,
+  type ExportPerformanceSink,
+  type ExportPerformanceSpan,
+} from "@reelterminal/runtime-chromium";
 
 export interface ExportStartArgs {
   width: number;
@@ -37,6 +48,9 @@ interface JobEntry {
   audioWavPath: string;
   started: boolean;
   audioQueue: Promise<void>;
+  audioSpan: ExportPerformanceSpan | null;
+  queueSpan: ExportPerformanceSpan | null;
+  performanceSink?: ExportPerformanceSink;
   queue: Promise<void>;
 }
 
@@ -75,8 +89,21 @@ export function resolveExportArgs(
   };
 }
 
-export async function startExport(wc: WebContents, args: ExportStartArgs): Promise<{ jobId: string }> {
+export async function startExport(
+  wc: WebContents,
+  args: ExportStartArgs,
+  perfSink?: PerfSink,
+): Promise<{ jobId: string }> {
   const jobId = randomUUID();
+  let runId = `main-export-${jobId}`;
+  try {
+    const suppliedRunId = perfSink?.runId;
+    if (typeof suppliedRunId === "string" && suppliedRunId.length > 0) runId = suppliedRunId;
+  } catch {
+    // A malformed collector identity must not interfere with export startup.
+  }
+  const performanceSink = adaptPerfSinkForExport(perfSink, { runId, operationId: jobId });
+  markExportPerformance(performanceSink, "submit");
   const encoders = await probeEncoders();
   const audioWavPath = path.join(os.tmpdir(), `reelterminal-${jobId}.wav`);
   const exportArgs = resolveExportArgs(args, process.platform, encoders, audioWavPath);
@@ -90,6 +117,9 @@ export async function startExport(wc: WebContents, args: ExportStartArgs): Promi
     audioWavPath,
     started: false,
     audioQueue: Promise.resolve(),
+    audioSpan: null,
+    queueSpan: beginExportPerformanceSpan(performanceSink, "queue"),
+    performanceSink,
     queue: Promise.resolve(),
   };
 
@@ -108,13 +138,17 @@ export async function startExport(wc: WebContents, args: ExportStartArgs): Promi
     if (msg.type === "frame" && msg.buffer) {
       const buffer = msg.buffer;
       const ts = msg.ts ?? 0;
+      markExportPerformance(performanceSink, "render");
+      const queueSpan = beginExportPerformanceSpan(performanceSink, "queue");
       entry.queue = entry.queue
         .then(async () => {
+          endExportPerformanceSpan(performanceSink, queueSpan, "ok");
           if (!entry.cfr) return;
           await entry.cfr.push(new Uint8Array(buffer), ts);
           port1.postMessage({ type: "credit", credits: 1 });
         })
         .catch((err) => {
+          endExportPerformanceSpan(performanceSink, queueSpan, "error");
           port1.postMessage({
             type: "error",
             message: err instanceof Error ? err.message : String(err),
@@ -138,7 +172,9 @@ export async function writeAudioWav(args: { jobId: string; wav: ArrayBuffer }): 
   if (!entry) throw new Error(`unknown export job ${args.jobId}`);
   if (entry.started) return;
   entry.audioQueue = entry.audioQueue.then(() =>
-    fs.writeFile(entry.audioWavPath, Buffer.from(args.wav)),
+    withExportPerformanceSpan(entry.performanceSink, "audio", () =>
+      fs.writeFile(entry.audioWavPath, Buffer.from(args.wav)),
+    ),
   );
   await entry.audioQueue;
   startNativeExportJob(args.jobId, entry);
@@ -153,8 +189,11 @@ export async function writeAudioChunk(args: {
   if (!entry) throw new Error(`unknown export job ${args.jobId}`);
   if (entry.started) throw new Error(`audio already finalized for export job ${args.jobId}`);
 
+  entry.audioSpan ??= beginExportPerformanceSpan(entry.performanceSink, "audio");
   entry.audioQueue = entry.audioQueue.then(() =>
-    writeFileChunk(entry.audioWavPath, args.chunk, args.position),
+    withExportPerformanceSpan(entry.performanceSink, "write", () =>
+      writeFileChunk(entry.audioWavPath, args.chunk, args.position),
+    ),
   );
   await entry.audioQueue;
 }
@@ -162,7 +201,15 @@ export async function writeAudioChunk(args: {
 export async function finishAudio(args: { jobId: string }): Promise<void> {
   const entry = jobs.get(args.jobId);
   if (!entry) throw new Error(`unknown export job ${args.jobId}`);
-  await entry.audioQueue;
+  try {
+    await entry.audioQueue;
+    endExportPerformanceSpan(entry.performanceSink, entry.audioSpan, "ok");
+    entry.audioSpan = null;
+  } catch (error) {
+    endExportPerformanceSpan(entry.performanceSink, entry.audioSpan, "error");
+    entry.audioSpan = null;
+    throw error;
+  }
   startNativeExportJob(args.jobId, entry);
 }
 
@@ -187,28 +234,36 @@ async function writeFileChunk(
 
 function startNativeExportJob(jobId: string, entry: JobEntry): void {
   if (entry.started) return;
-  entry.job = new ExportJob(
-    entry.exportArgs,
-    (frame) => entry.port.postMessage({ type: "progress", frame }),
-    () => {
-      entry.port.postMessage({ type: "done" });
-      cleanupJob(jobId);
-    },
-    (msg) => {
-      entry.port.postMessage({ type: "error", message: msg });
-      cleanupJob(jobId);
-    },
-  );
-  entry.cfr = new CfrWriter(entry.exportArgs.frameRate, async (f) => {
-    await entry.job!.writeFrame(f);
+  endExportPerformanceSpan(entry.performanceSink, entry.queueSpan, "ok");
+  entry.queueSpan = null;
+  withExportPerformance(entry.performanceSink, "prepare", () => {
+    entry.job = new ExportJob(
+      entry.exportArgs,
+      (frame) => entry.port.postMessage({ type: "progress", frame }),
+      () => {
+        entry.port.postMessage({ type: "done" });
+        cleanupJob(jobId, "ok");
+      },
+      (msg) => {
+        entry.port.postMessage({ type: "error", message: msg });
+        cleanupJob(jobId, "error");
+      },
+      entry.performanceSink,
+    );
+    entry.cfr = new CfrWriter(entry.exportArgs.frameRate, async (f) => {
+      await entry.job!.writeFrame(f);
+    });
+    entry.job.start();
+    entry.started = true;
+    entry.port.postMessage({ type: "credit", credits: initialFrameCredits(entry.exportArgs) });
   });
-  entry.job.start();
-  entry.started = true;
-  entry.port.postMessage({ type: "credit", credits: initialFrameCredits(entry.exportArgs) });
 }
 
 export function cancelAllExports(): void {
   for (const [, entry] of jobs) {
+    markExportPerformance(entry.performanceSink, "cancel");
+    endExportPerformanceSpan(entry.performanceSink, entry.audioSpan, "cancelled");
+    endExportPerformanceSpan(entry.performanceSink, entry.queueSpan, "cancelled");
     try {
       entry.job?.cancel();
     } catch {
@@ -219,9 +274,11 @@ export function cancelAllExports(): void {
   jobs.clear();
 }
 
-function cleanupJob(jobId: string): void {
+function cleanupJob(jobId: string, outcome: "ok" | "error"): void {
   const entry = jobs.get(jobId);
   if (!entry) return;
+  endExportPerformanceSpan(entry.performanceSink, entry.audioSpan, outcome);
+  endExportPerformanceSpan(entry.performanceSink, entry.queueSpan, outcome);
   void fs.rm(entry.audioWavPath, { force: true }).catch(() => {});
   jobs.delete(jobId);
 }
@@ -229,6 +286,9 @@ function cleanupJob(jobId: string): void {
 export async function cancelExport(args: { jobId: string }): Promise<void> {
   const entry = jobs.get(args.jobId);
   if (!entry) return;
+  markExportPerformance(entry.performanceSink, "cancel");
+  endExportPerformanceSpan(entry.performanceSink, entry.audioSpan, "cancelled");
+  endExportPerformanceSpan(entry.performanceSink, entry.queueSpan, "cancelled");
   entry.job?.cancel();
   try {
     await fs.rm(entry.audioWavPath, { force: true });

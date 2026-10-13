@@ -64,7 +64,11 @@ describe("durable desktop task ledger", () => {
       sourceRevision: 3, inputProject: { id: "project-a", name: "Big", blob: "x".repeat(2_000_000) } as unknown as Project,
       parameters: null,
     };
-    const ledger = new DurableTaskLedger(root, { progressWriteIntervalMs: 25 });
+    const inputWrites = new Map<string, number>();
+    const ledger = new DurableTaskLedger(root, {
+      progressWriteIntervalMs: 25,
+      onInputWrite: (jobId) => inputWrites.set(jobId, (inputWrites.get(jobId) ?? 0) + 1),
+    });
     ledger.begin(input);
     const inputBytes = readFileSync(path.join(root, "job-export-2.json"));
     const running = { ...ledger.get(input.jobId)!.status, state: "running" as const };
@@ -75,6 +79,7 @@ describe("durable desktop task ledger", () => {
     // Same-state progress coalesces: the synchronous burst must not have
     // touched the input document at all.
     expect(readFileSync(path.join(root, "job-export-2.json")).equals(inputBytes)).toBe(true);
+    expect(inputWrites.get(input.jobId)).toBe(1);
     await new Promise((resolve) => setTimeout(resolve, 80));
     const persisted = JSON.parse(readFileSync(path.join(root, "job-export-2.status.json"), "utf8"));
     expect(persisted.status.progress.percent).toBe(0.5);

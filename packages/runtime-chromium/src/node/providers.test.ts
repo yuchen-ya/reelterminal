@@ -59,6 +59,7 @@ function makeProvider(
     exportWatchdogMs: 10_000,
     exportTotalBudgetMs: 3_600_000,
     exportRoute: async () => "chromium-webcodecs" as const,
+    exportPerformanceSinkForJob: () => undefined,
   } as unknown as ChromiumProviderPool;
   return {
     provider: new ChromiumExportProvider(pool),
@@ -144,6 +145,7 @@ describe("ChromiumExportProvider job lifecycle", () => {
         exportWatchdogMs,
         exportTotalBudgetMs: 0,
         exportRoute: async () => "chromium-webcodecs" as const,
+        exportPerformanceSinkForJob: () => undefined,
       } as unknown as ChromiumProviderPool;
       return new ChromiumExportProvider(pool);
     };
@@ -166,14 +168,19 @@ describe("ChromiumExportProvider job lifecycle", () => {
     // Silent route: emits nothing, resolves only when the watchdog's abort
     // pokes it — must terminalize as an error naming the no-progress ceiling.
     let pokeWedged!: () => void;
-    const silent = poolFor(60, () => new Promise((resolve) => {
-      pokeWedged = () => resolve({ success: false, errorCode: "ABORTED", errorMessage: "poked" });
+    let timeoutObservedByRuntime = false;
+    const silent = poolFor(60, (_project, _media, _settings, _writer, _progress, options) => new Promise((resolve) => {
+      pokeWedged = () => {
+        timeoutObservedByRuntime = options?.timeoutCheck?.() === true;
+        resolve({ success: false, errorCode: "ABORTED", errorMessage: "poked" });
+      };
     }));
     const wedgedDir = await createJobDir("wedged");
     const wedged = makeCallbacks();
     await silent.startExport(request("wedged", wedgedDir), wedged);
     await expect(wedged.settled).resolves.toBe("error");
     expect(errorMessages.join("\n")).toContain("no-progress watchdog");
+    expect(timeoutObservedByRuntime).toBe(true);
     expect(await readdir(wedgedDir)).toEqual([]);
   });
 

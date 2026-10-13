@@ -8,6 +8,7 @@ import "./esbuild-binary-path";
 import { app, BrowserWindow, ipcMain, shell, type IpcMainEvent } from "electron";
 import path from "node:path";
 import { z } from "zod";
+import { getPerfSink } from "@reelterminal/core";
 import { registerAppSchemePrivileges, handleAppScheme, APP_INDEX } from "./protocol";
 import { installNavigationGuard, isAllowedNavigation } from "./nav-guard";
 import { handle, assertEditorIpcSender } from "./ipc";
@@ -338,7 +339,7 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle(CHANNELS.exportStart, (e, raw) => {
     assertEditorIpcSender(e);
-    return startExport(e.sender, raw);
+    return startExport(e.sender, raw, getPerfSink());
   });
   handle(
     CHANNELS.exportWriteAudioWav,

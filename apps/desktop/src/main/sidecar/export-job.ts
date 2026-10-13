@@ -1,6 +1,13 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { resolveFfmpegPath } from "./ffmpeg-path";
 import { videoEncodeArgs, type EncodeMode, type ExportCodec } from "./encode-args";
+import {
+  beginExportPerformanceSpan,
+  endExportPerformanceSpan,
+  markExportPerformance,
+  type ExportPerformanceSink,
+  type ExportPerformanceSpan,
+} from "@reelterminal/runtime-chromium";
 
 export interface ExportArgs {
   width: number;
@@ -54,22 +61,31 @@ export class ExportJob {
   private progressBuf = "";
   private stderrTail = "";
   private finished = false;
+  private cancelRequested = false;
+  private encodeSpan: ExportPerformanceSpan | null = null;
+  private finalizeSpan: ExportPerformanceSpan | null = null;
 
   constructor(
     private readonly args: ExportArgs,
     private readonly onFrame: (frame: number) => void,
     private readonly onDone: () => void,
     private readonly onError: (msg: string) => void,
+    private readonly performanceSink?: ExportPerformanceSink,
   ) {}
 
   start(): void {
+    this.encodeSpan = beginExportPerformanceSpan(this.performanceSink, "encode");
+    markExportPerformance(this.performanceSink, "audio", { included: this.args.audioWavPath.length > 0 });
     this.proc = spawn(resolveFfmpegPath(), buildFfmpegArgs(this.args));
     this.proc.stderr.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
       this.progressBuf += text;
       this.stderrTail = (this.stderrTail + text).slice(-4096);
       const parsed = parseProgressBlock(this.progressBuf);
-      if (parsed) this.onFrame(parsed.frame);
+      if (parsed) {
+        markExportPerformance(this.performanceSink, "progress", { currentFrame: parsed.frame });
+        this.onFrame(parsed.frame);
+      }
       if (this.progressBuf.length > 16384) {
         this.progressBuf = this.progressBuf.slice(-4096);
       }
@@ -83,13 +99,19 @@ export class ExportJob {
     });
     this.proc.on("error", (e) => {
       this.finished = true;
+      endExportPerformanceSpan(this.performanceSink, this.encodeSpan, "error");
+      endExportPerformanceSpan(this.performanceSink, this.finalizeSpan, "error");
       this.onError(e.message);
     });
     this.proc.on("close", (code) => {
       this.finished = true;
       if (code === 0) {
+        endExportPerformanceSpan(this.performanceSink, this.encodeSpan, "ok");
+        endExportPerformanceSpan(this.performanceSink, this.finalizeSpan, "ok");
         this.onDone();
       } else {
+        endExportPerformanceSpan(this.performanceSink, this.encodeSpan, "error");
+        endExportPerformanceSpan(this.performanceSink, this.finalizeSpan, "error");
         const detail = this.stderrTail.trim();
         this.onError(
           `ffmpeg exited with code ${code}${detail ? `: ${detail}` : ""}`,
@@ -99,28 +121,43 @@ export class ExportJob {
   }
 
   async writeFrame(frame: Uint8Array): Promise<void> {
-    const proc = this.proc;
-    if (!proc) throw new Error("job not started");
-    if (this.finished || !proc.stdin.writable) {
-      return;
+    const span = beginExportPerformanceSpan(this.performanceSink, "write");
+    let outcome: "ok" | "error" | "cancelled" = "ok";
+    try {
+      const proc = this.proc;
+      if (!proc) throw new Error("job not started");
+      if (this.finished || !proc.stdin.writable) {
+        outcome = this.cancelRequested ? "cancelled" : "error";
+        return;
+      }
+      if (proc.stdin.write(frame)) {
+        return;
+      }
+      await new Promise<void>((resolve) => {
+        const settle = (settledOutcome: "ok" | "error" | "cancelled"): void => {
+          proc.stdin.off("drain", onDrain);
+          proc.stdin.off("close", onClose);
+          proc.stdin.off("error", onError);
+          outcome = settledOutcome;
+          resolve();
+        };
+        const onDrain = (): void => settle("ok");
+        const onClose = (): void => settle(this.cancelRequested ? "cancelled" : "error");
+        const onError = (): void => settle(this.cancelRequested ? "cancelled" : "error");
+        proc.stdin.once("drain", onDrain);
+        proc.stdin.once("close", onClose);
+        proc.stdin.once("error", onError);
+      });
+    } catch (error) {
+      outcome = "error";
+      throw error;
+    } finally {
+      endExportPerformanceSpan(this.performanceSink, span, outcome);
     }
-    if (proc.stdin.write(frame)) {
-      return;
-    }
-    await new Promise<void>((resolve) => {
-      const settle = (): void => {
-        proc.stdin.off("drain", settle);
-        proc.stdin.off("close", settle);
-        proc.stdin.off("error", settle);
-        resolve();
-      };
-      proc.stdin.once("drain", settle);
-      proc.stdin.once("close", settle);
-      proc.stdin.once("error", settle);
-    });
   }
 
   endInput(): void {
+    this.finalizeSpan = beginExportPerformanceSpan(this.performanceSink, "finalize");
     if (this.proc && this.proc.stdin.writable) {
       this.proc.stdin.end();
     }
@@ -128,6 +165,10 @@ export class ExportJob {
 
   cancel(): void {
     this.finished = true;
+    this.cancelRequested = true;
+    markExportPerformance(this.performanceSink, "cancel");
+    endExportPerformanceSpan(this.performanceSink, this.encodeSpan, "cancelled");
+    endExportPerformanceSpan(this.performanceSink, this.finalizeSpan, "cancelled");
     this.proc?.kill("SIGKILL");
   }
 }
