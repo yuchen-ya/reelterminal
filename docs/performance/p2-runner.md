@@ -1,7 +1,7 @@
 # P2 合成场景与结果工具
 
-P2 提供默认跳过的真实 Electron suite、确定性 fixture、生产构建身份、动作窗口和
-离线校验/比较。它使用 `launchApp` 的独立 profile、endpoint 与媒体目录，串行
+P2 已完成并提供默认跳过的真实 Electron suite、确定性 fixture、生产构建身份、动作窗口
+和离线校验/比较。它使用 `launchApp` 的独立 profile、endpoint 与媒体目录，串行
 运行并只关闭启动柄所属进程。生成资源写入 harness 的系统临时目录；结果和失败
 截图写入 `apps/desktop/e2e/.artifacts/performance/`，不进入 Git。
 
@@ -34,6 +34,9 @@ node scripts/performance/compare.mjs --baseline <baseline.result.json> --candida
 `--samples`。trace 没有 P2 入口；P5 的 AV/规模/资源/导出参数和 soak 入口见
 [P5](p5-stress-measurements.md)。quick/benchmark 默认仍为原先五个场景，显式
 `ALL` 增加 P5 场景但排除长时 R02；`test:perf:soak` 默认只运行 R02。
+
+`--serial` 和 `--report-only` 显式声明 runner 已固定的策略：所有 suite 始终串行，
+runner 不执行耗时门禁。P6 的报告策略由 `ci-report.mjs --policy` 单独控制。
 
 `--samples N` 是每类动作的重复数：T01 有 N 次 media drag、trim、scroll、zoom、
 seek，各自独立分布；T02 有 N 次 media drag 和 N 次 text drag；H warm 有 N 次
@@ -85,8 +88,11 @@ median/range/原始样本。未完成操作记录等待下界，不通过删除�
 
 比较检查 fixture、指标/collector 版本、模式、采样/预算、冷暖类别、构建类型和
 静态运行环境；源代码和 bundle 摘要允许候选改变。invalid/incomplete/incompatible
-不产生退化百分比；无基线或探针未标定时保持 report-only。速度门禁尚未实施；
-P3 提供独立的 off/light ABBA 开销校准入口，结果不自动授权基线。
+不产生退化百分比；无基线或探针未标定时保持 report-only。P6 已加入 CI 报告和
+人工审阅的 baseline proposal；当前没有固定 Windows runner 的已批准基线，速度
+没有硬门禁，默认 report-only；固定 runner 接入 ready baseline 后才可报告 warning。
+P3 提供独立的 off/light ABBA 开销校准入口，结果不自动授权
+基线。CI 矩阵、报告命令和基线更新规则见 [P6 CI 与基线](p6-ci-baselines.md)。
 
 进程超时有每 run watchdog 和外层 command 总预算。失败 profile 保留用于本机
 排查，成功 profile 删除。程序只持有自己创建的 profile/进程；不得按 Electron

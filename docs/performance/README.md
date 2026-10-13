@@ -13,12 +13,16 @@ observer、不读时钟、不写文件；启用后所有采集都有明确预算
 | L1' | 主进程会话、跨进程校时、进程采样、工件写入、preload 桥 | `apps/desktop/src/{shared,main,preload}/` |
 | L2 | 产品显式埋点（P3） | 时间线/保存/历史节点/初始化/媒体/IPC |
 | L3 | 合成 fixture、E2E driver、结果比较（P2） | `apps/desktop/e2e/performance/` |
-| L4 | CI 基线与渐进门禁（P6，计划中） | workflow + `scripts/performance/` |
+| L4 | CI 报告与人工审阅基线（P6） | `.github/workflows/performance.yml` + `scripts/performance/` |
 
-当前已落地 P0–P5。运行与证据边界见 [P2 runner](p2-runner.md)、
+P0–P6 的实现和阶段文档均已落地。P2 场景与 P5 压力入口、验收记录见
+[P2 runner](p2-runner.md) 和 [P5 AV/资源/导出](p5-stress-measurements.md)；
+CI 触发、baseline proposal 与现场排查见 [P6 CI 与基线](p6-ci-baselines.md)
+及 [incident runbook](incident-runbook.md)。目前没有固定 Windows runner 的
+批准性能基线或 P6 CI 实测结论，且没有耗时硬门禁；默认 report-only，固定 runner
+接入 ready baseline 后可选择 warning。运行与证据边界见
 [P3 instrumentation](p3-instrumentation.md)，规模与资产见 [scenarios](scenarios.md)。
-[P4 产品修复](p4-product-fixes.md) 记录行为与兼容边界；[P5 AV/资源/导出](p5-stress-measurements.md)
-提供独立采集与压力入口。P6 的 CI 门禁尚未实施。
+[P4 产品修复](p4-product-fixes.md) 记录行为与兼容边界。
 
 ## 模式与预算
 
@@ -31,7 +35,8 @@ observer、不读时钟、不写文件；启用后所有采集都有明确预算
   本地诊断。高频 `input.*` / `frame.*` 阶段按固定 1/N 采样，语义端点
   （最终提交、错误、取消、保存确认、首帧）全量保留且进入独立关键缓冲。
 - `trace`：短 CDP/Chromium trace 的标记模式；采集时长硬上限 30 秒，且不与
-  light 成绩混合比较。P2 命令尚未提供 trace 入口。
+  light 成绩混合比较。P2 命令尚未提供 trace 入口；需要归因时遵循
+  [incident runbook](incident-runbook.md) 的本机隔离与脱敏边界。
 
 默认预算（`DEFAULT_PERF_BUDGETS`，可被 `resolvePerfBudgets` 按模式收紧）：
 单次 capture 30 秒（trace 默认 10 秒、上限 30 秒）、事件环形缓冲 16384 条、
@@ -111,6 +116,8 @@ observer、不读时钟、不写文件；启用后所有采集都有明确预算
   `report_only/baseline_missing`，确定性/功能性测试仍硬失败。
 - 长时运行每 30–60 秒空闲段重校时；探针自身开销（off/light ABBA）超标时
   结果标 `probe_overhead_exceeded`，不用于产品结论。
+- P6 的 PR、main 和 nightly 执行策略及报告状态见 [P6 CI 与基线](p6-ci-baselines.md)。
+  baseline proposal 需要人工审阅；workflow 不自动把失败或更慢的历史成绩接纳为基线。
 
 ## 回滚
 

@@ -1,6 +1,7 @@
 # P5：分布、AV、资源压力与导出采集
 
-本阶段以 `b3c667d7` 为起点，沿用唯一 checkout。开始时 README 中英、两份
+P5 的 AV、资源 soak、导出采集和本机验收记录已完成。阶段以 `b3c667d7` 为起点，沿用唯一
+checkout。开始时 README 中英、两份
 翻译和 `gui-manual.ts` 的五项未提交修改保留，未纳入 P5 提交。所有 GUI 验收
 使用 harness 的隔离 profile、endpoint 和媒体根；合成资产写入系统临时目录，
 JSON 证据写入 `apps/desktop/e2e/.artifacts/performance/`。
@@ -82,8 +83,9 @@ AudioContext suspended、timestamp 不可用和不支持的模式必须显式报
 不支持的阶段为 unavailable，不能用 0 表示完成。E01 fake backend 的耗时只
 验证采集、队列、进度及持久化契约，不代表真实编解码性能。
 
-所有耗时继续 report-only，缺少标定基线不建立速度硬门禁。失败/超时/censored
-样本保留，丢事件或错误状态不能产生正常 tail。P6 的 CI 和基线策略仍独立。
+耗时默认 report-only，且没有速度硬门禁；缺少标定基线时不产生性能结论。失败/超时/censored
+样本保留，丢事件或错误状态不能产生正常 tail。P6 的 CI 报告和人工基线提案已接入，
+但没有固定 runner 的已批准基线或 P6 实测结果；详见 [P6 CI 与基线](p6-ci-baselines.md)。
 
 ## 本次验收
 
