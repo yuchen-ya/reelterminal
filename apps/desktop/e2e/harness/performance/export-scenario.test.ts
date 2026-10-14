@@ -2,6 +2,27 @@ import { readFile, rm } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PerformanceRunOptions } from "./driver";
 
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    readFile: async (...args: Parameters<typeof actual.readFile>) => {
+      if (typeof args[0] !== "string" || !args[0].endsWith(".status.json")) {
+        return actual.readFile(...args);
+      }
+      // Widen the real async-read window: on Windows an open destination
+      // handle blocks the ledger's synchronous rename during progress flush.
+      const handle = await actual.open(args[0], "r");
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return await handle.readFile(args[1]);
+      } finally {
+        await handle.close();
+      }
+    },
+  };
+});
+
 vi.mock("./identity", () => ({
   captureBuildIdentity: async () => ({
     source_head: "b".repeat(40),

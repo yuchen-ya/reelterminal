@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
@@ -651,7 +652,10 @@ async function runPersistenceSentinel(
 
 async function waitForPersistedProgress(statusPath: string, deadlineAt: number): Promise<boolean> {
   while (performance.now() < deadlineAt) {
-    const document = JSON.parse(await readFile(statusPath, "utf8")) as { status?: JobStatusView };
+    // The ledger writes synchronously on this event loop. An async read leaves
+    // a Windows file handle open across its timer callback and blocks rename.
+    // Read this small status document synchronously so it closes before yielding.
+    const document = JSON.parse(readFileSync(statusPath, "utf8")) as { status?: JobStatusView };
     if (document.status?.progress?.percent === 1) return true;
     const remainingMs = deadlineAt - performance.now();
     if (remainingMs <= 0) break;
