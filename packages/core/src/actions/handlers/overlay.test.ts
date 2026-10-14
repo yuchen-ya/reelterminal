@@ -46,6 +46,36 @@ function textClip(id: string, text: string) {
 }
 
 describe("overlay handlers (project-authoritative)", () => {
+  it("bounded text creation preserves an existing overlay through undo/redo", async () => {
+    const executor = new ActionExecutor(); const project = makeProject();
+    await executor.execute(act("text/create", { clip: textClip("existing", "kept") }), project);
+    const clips = Array.from({ length: 256 }, (_, i) => textClip("caption-" + i, "Cue " + i));
+    expect((await executor.execute(act("text/createMany", { clips }), project)).success).toBe(true);
+    expect(textClips(project)).toHaveLength(257);
+    await executor.undo(project); expect(textClips(project).map(c => c.id)).toEqual(["existing"]);
+    await executor.redo(project); expect(textClips(project).map(c => c.id)).toEqual(["existing", ...clips.map(c => c.id)]);
+  });
+
+  it("undoing bulk removal restores original overlay order", async () => {
+    const executor = new ActionExecutor(); const project = makeProject();
+    const clips = ["a", "b", "c", "d"].map(id => textClip(id, id));
+    await executor.execute(act("text/createMany", { clips }), project);
+    await executor.execute(act("text/removeMany", { clipIds: ["c", "a"] }), project);
+    expect(textClips(project).map(c => c.id)).toEqual(["b", "d"]);
+    await executor.undo(project); expect(textClips(project).map(c => c.id)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it.each([
+    Array.from({ length: 257 }, (_, i) => textClip(String(i), "too many")),
+    [textClip("duplicate", "a"), textClip("duplicate", "b")],
+    [textClip("valid", "a"), { ...textClip("bad", "b"), trackId: "missing" }],
+    [{ ...textClip("bad-time", "b"), duration: -1 }],
+  ].map(clips => [clips]))("rejects an invalid text bulk payload atomically %#", async clips => {
+    const executor = new ActionExecutor(); const project = makeProject();
+    expect((await executor.execute(act("text/createMany", { clips }), project)).success).toBe(false);
+    expect(textClips(project)).toEqual([]); expect(executor.getHistory().canUndo()).toBe(false);
+  });
+
   it("text/create appends to project.textClips and undoes", async () => {
     const executor = new ActionExecutor();
     const project = makeProject();

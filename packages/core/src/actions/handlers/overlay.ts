@@ -187,6 +187,57 @@ const OVERLAY_DEFS: ReadonlyArray<{ prefix: string; field: OverlayField }> = [
   { prefix: "sticker", field: "stickerClips" },
 ];
 
+// Subtitle imports use bounded payloads inside the ordinary atomic action
+// batch. Keep the 256-action guard and the retained history capacity intact.
+const TEXT_CLIPS_PER_ACTION = 256;
+registerActionHandler({
+  type: "text/createMany",
+  synchronous: true,
+  validate(action, project) {
+    const { clips, indices } = action.params as { clips?: OverlayItem[]; indices?: number[] };
+    if (!Array.isArray(clips) || !clips.length || clips.length > TEXT_CLIPS_PER_ACTION) return err("text/createMany requires 1–256 clips");
+    const ids = new Set(getOverlays(project, "textClips").map(clip => clip.id));
+    for (const clip of clips) {
+      if (!clip || typeof clip.id !== "string" || !clip.id || ids.has(clip.id)) return err("text/createMany clip ids must be unique");
+      if (!project.timeline.tracks.some(track => track.type === "text" && track.id === clip.trackId)) return err("text/createMany requires existing text tracks");
+      if (typeof clip.text !== "string" || typeof clip.startTime !== "number" || !Number.isFinite(clip.startTime) || clip.startTime < 0 || typeof clip.duration !== "number" || !Number.isFinite(clip.duration) || clip.duration <= 0) return err("text/createMany requires valid text and timing");
+      ids.add(clip.id);
+    }
+    if (indices !== undefined && (!Array.isArray(indices) || indices.length !== clips.length || indices.some((index, i) => !Number.isInteger(index) || index < 0 || index >= ids.size || (i > 0 && index <= indices[i - 1]!)))) return err("text/createMany restore indices must be ordered and in range");
+    return ok();
+  },
+  apply(action, project) {
+    const { clips, indices } = action.params as { clips: OverlayItem[]; indices?: number[] };
+    const result = [...getOverlays(project, "textClips")];
+    if (indices) clips.forEach((clip, i) => result.splice(indices[i]!, 0, clip));
+    else result.push(...clips);
+    setOverlays(project, "textClips", result);
+  },
+  invert(action) {
+    const { clips } = action.params as { clips: OverlayItem[] };
+    return { type: "text/removeMany", id: `inverse-${action.id}`, timestamp: Date.now(), params: { clipIds: clips.map(clip => clip.id) } };
+  },
+});
+registerActionHandler({
+  type: "text/removeMany",
+  synchronous: true,
+  validate(action, project) {
+    const { clipIds } = action.params as { clipIds?: string[] };
+    const existing = new Set(getOverlays(project, "textClips").map(clip => clip.id));
+    return Array.isArray(clipIds) && clipIds.length > 0 && clipIds.length <= TEXT_CLIPS_PER_ACTION && new Set(clipIds).size === clipIds.length && clipIds.every(id => typeof id === "string" && existing.has(id)) ? ok() : err("text/removeMany requires 1–256 distinct existing clips");
+  },
+  apply(action, project) {
+    const ids = new Set((action.params as { clipIds: string[] }).clipIds);
+    setOverlays(project, "textClips", getOverlays(project, "textClips").filter(clip => !ids.has(clip.id)));
+  },
+  invert(action, project) {
+    const ids = new Set((action.params as { clipIds: string[] }).clipIds);
+    const clips: OverlayItem[] = []; const indices: number[] = [];
+    getOverlays(project, "textClips").forEach((clip, i) => { if (ids.has(clip.id)) { clips.push(clip); indices.push(i); } });
+    return { type: "text/createMany", id: `inverse-${action.id}`, timestamp: Date.now(), params: { clips, indices } };
+  },
+});
+
 for (const def of OVERLAY_DEFS) {
   for (const handler of makeOverlayHandlers(def.prefix, def.field)) {
     registerActionHandler(handler);

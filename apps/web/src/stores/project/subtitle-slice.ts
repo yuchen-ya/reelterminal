@@ -146,6 +146,7 @@ export function createSubtitleSlice(_set: Set, get: Get): SubtitleSlice {
       const captionsTrack = project.timeline.tracks.find(track => track.type === "text" && track.name === "Captions");
       const trackId = captionsTrack?.id ?? `track-${uuidv4()}`;
       const actions: Action[] = [];
+      const importedClips: TextClip[] = [];
       if (!captionsTrack) actions.push(
         { type: "track/add", id: uuidv4(), timestamp: Date.now(), params: { trackType: "text", position: 0, trackId } },
         { type: "track/rename", id: uuidv4(), timestamp: Date.now(), params: { trackId, name: "Captions" } },
@@ -174,8 +175,11 @@ export function createSubtitleSlice(_set: Set, get: Get): SubtitleSlice {
               captionMaxWordsPerLine: maxWordsPerLine,
             },
           );
-          actions.push({ type: "text/create", id: uuidv4(), timestamp: Date.now(), params: { clip } });
+          importedClips.push(clip);
         }
+      }
+      for (let offset = 0; offset < importedClips.length; offset += 256) {
+        actions.push({ type: "text/createMany", id: uuidv4(), timestamp: Date.now(), params: { clips: importedClips.slice(offset, offset + 256) } });
       }
       const apply = () => {
         const state = get();

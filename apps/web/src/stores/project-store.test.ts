@@ -2761,6 +2761,38 @@ describe("ProjectStore - Text Clips", () => {
 });
 
 describe("ProjectStore - Subtitles (consolidated into text clips)", () => {
+  it("retains the general 256-action guard and rolls back an invalid caption chunk", () => {
+    const state = useProjectStore.getState();
+    const before = structuredClone(state.project);
+    const tooMany = Array.from({ length: 257 }, (_, i) => ({ type: "project/rename", id: "rename-" + i, timestamp: i, params: { name: "Name " + i } }));
+    expect(state.executeActionBatch(tooMany, { groupLabel: "guard" }).result.success).toBe(false);
+    expect(state.executeActionBatch([
+      { type: "track/add", id: "new-track", timestamp: 0, params: { trackId: "caption-track", trackType: "text" } },
+      { type: "text/createMany", id: "invalid", timestamp: 1, params: { clips: [{ id: "bad", trackId: "missing", text: "Rejected", startTime: 0, duration: 1 }] } },
+    ], { groupLabel: "rollback" }).result.success).toBe(false);
+    expect(useProjectStore.getState().project).toEqual(before);
+    expect(state.actionHistory.canUndo()).toBe(false);
+  });
+
+  it.each(["srt", "vtt"])("imports 1000 %s cues atomically without expanding the action limit", async format => {
+    useProjectStore.getState().createNewProject();
+    await useProjectStore.getState().importSRT("1\n00:00:00,000 --> 00:00:01,000\nExisting");
+    const before = structuredClone(useProjectStore.getState().project);
+    const timestamp = (seconds: number) => [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60].map(n => String(n).padStart(2, "0")).join(":") + (format === "vtt" ? ".000" : ",000");
+    const content = (format === "vtt" ? "WEBVTT\n\n" : "") + Array.from({ length: 1000 }, (_, i) => `${i + 1}\n${timestamp(i * 2 + 2)} --> ${timestamp(i * 2 + 3)}\nCue ${i}\n`).join("\n");
+    const result = await useProjectStore.getState().importSRT(content);
+    expect(result).toEqual({ success: true, errors: [] });
+    const after = structuredClone(useProjectStore.getState().project);
+    expect(after.textClips).toHaveLength(1001);
+    expect(after.textClips?.at(-1)).toMatchObject({ text: "Cue 999", startTime: 2000, duration: 1 });
+    expect(useProjectStore.getState().actionHistory.getHistoryEntries().length).toBeLessThan(10);
+    await useProjectStore.getState().undo();
+    expect(useProjectStore.getState().project.textClips).toEqual(before.textClips);
+    expect(useProjectStore.getState().project.timeline).toEqual(before.timeline);
+    await useProjectStore.getState().redo();
+    expect(useProjectStore.getState().project.textClips).toEqual(after.textClips);
+  });
+
   beforeEach(() => {
     useProjectStore.getState().createNewProject();
     const titleEngine = useEngineStore.getState().getTitleEngine();

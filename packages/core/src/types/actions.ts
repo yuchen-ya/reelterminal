@@ -558,6 +558,8 @@ export type WorkAssetAction =
 // Overlay actions (text / shape / svg / sticker clips, authoritative on the project)
 export type OverlayAction =
   | { type: "text/create"; params: { clip: TextClip } }
+  | { type: "text/createMany"; params: { clips: TextClip[]; indices?: number[] } }
+  | { type: "text/removeMany"; params: { clipIds: string[] } }
   | { type: "text/update"; params: { clipId: string; updates: Partial<TextClip> } }
   | { type: "text/remove"; params: { clipId: string } }
   | { type: "shape/create"; params: { clip: ShapeClip } }
