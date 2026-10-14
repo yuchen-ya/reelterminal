@@ -55,7 +55,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * the manual binds to the APP, not only the facade.
  */
 export const GUI_MANUAL_CONTENT_VERSION = "1.7.1" as const;
-export const GUI_MANUAL_APP_VERSION = "1.0.1" as const;
+export const GUI_MANUAL_APP_VERSION = "1.1.1" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
 /** Agent-facing payload limits for the help verbs. */
