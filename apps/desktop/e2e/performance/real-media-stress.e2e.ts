@@ -10,6 +10,7 @@ import { createProjectViaUI, enableAgentSessionViaUI } from "../harness/ui";
 import { ARTIFACTS_DIR } from "../harness/paths";
 import { acquirePerformanceLock } from "../harness/performance/driver";
 import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/performance/identity";
+import { createExportResourceObserver } from "../harness/performance/export-resource-observer";
 
 // Opt-in real runtime exercise; the E01 fake backend is never installed here.
 (process.env.REELTERMINAL_REAL_MEDIA_STRESS === "1" ? test : test.skip)("three independent 1080p sources, edit/play/seek/history and ten serial real exports", async () => {
@@ -20,6 +21,7 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
   const launched = await launchApp({ keepRunDir: true });
   let agent: ExternalAgent | undefined;
   let activeJob: string | undefined;
+  let resourceObserver: Awaited<ReturnType<typeof createExportResourceObserver>> | undefined;
   const record: any = { status: "running", scale: { width: 1920, height: 1080, fps: 30, duration_seconds: 12, independent_sources: 3, source_durations_seconds: [12, 18, 12], video_tracks: 3, text_tracks: 1 }, settings: { width: 1920, height: 1080, frameRate: 30, codec: "h264", format: "mp4", videoBitrateKbps: 6000 }, encoding: "runtime_default_chromium_webcodecs_with_audio", encoder_preference: "prefer-hardware_then_no-preference", actual_hardware_encoder: { status: "unsupported_not_exposed", name: null }, source_encoding: "software_libx264_AAC", exports: [], operations: [], sources: [], continuous_playback: [], retained_profile: launched.runDir };
   const flush = () => writeFile(path.join(evidence, "result.json"), JSON.stringify(record, null, 2));
   const ffmpeg = process.env.REELTERMINAL_FFMPEG_PATH || "ffmpeg";
@@ -101,6 +103,13 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     target = { projectId: ctx.identity.projectId, workspaceId: ctx.identity.workspaceId };
     const caps = await call("capabilities_get");
     record.environment = await readEnvironmentIdentity(launched);
+    const observationSeconds = Number(process.env.REELTERMINAL_REAL_MEDIA_RESOURCE_OBSERVATION_SECONDS ?? 0);
+    if (!Number.isInteger(observationSeconds) || observationSeconds < 0 || observationSeconds > 3600) throw new Error("invalid post-export resource observation duration");
+    if (observationSeconds > 0) {
+      resourceObserver = await createExportResourceObserver(launched, path.join(evidence, "export-resources.jsonl"));
+      record.resource_observer = { artifact: "export-resources.jsonl", post_export_idle_seconds: observationSeconds, forced_gc: false, workload_unchanged: true };
+      await resourceObserver.sample("before_playback_and_exports");
+    }
     record.capabilities = caps;
     const jobRoot = path.join(caps.mediaImport.recommendedRoot, "jobs", id);
     const sourceRoot = path.join(jobRoot, "source");
@@ -326,12 +335,24 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
       // Keep all ten outputs as evidence, outside the profile cleaned on success.
       await copyFile(destination, path.join(evidence, `export-${index}.mp4`));
       await flush(); console.info("REAL_EXPORT_COMPLETE", { index, elapsed_ms: entry.elapsed_ms });
+      await resourceObserver?.sample(`after_export_${index}`);
       if (index === 0) {
         await normalize("interleave-between-exports");
         expect((await call("job_status", { jobId: job.jobId })).state).toBe("done");
         expect((await call("job_status", { jobId: firstAudioJob.jobId })).state).toBe("done");
         expect((await state()).revision).toBe(record.fixed_export_revision);
       }
+    }
+    if (resourceObserver) {
+      const idleStarted = performance.now();
+      record.post_export_idle_started_epoch_ms = Date.now();
+      await flush();
+      while (performance.now() - idleStarted < observationSeconds * 1000) {
+        await launched.page.waitForTimeout(Math.max(0, Math.min(30_000, observationSeconds * 1000 - (performance.now() - idleStarted))));
+        await resourceObserver.sample("post_export_idle");
+        console.info("REAL_EXPORT_IDLE_PROGRESS", { elapsed_seconds: Math.round((performance.now() - idleStarted) / 1000) });
+      }
+      record.post_export_idle_elapsed_ms = performance.now() - idleStarted;
     }
     record.resources = await launched.page.evaluate(async () => (globalThis as any).__reelterminalPerformanceCapture.readResources());
     expect(record.resources.workspace.pendingWrites).toBe(0);
@@ -356,6 +377,7 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
       await writeFile(path.join(evidence, `${name}.redacted.log`), lines.join("\n").replace(/\b[a-f0-9]{64}\b/gi, "[redacted]"));
     }
     await flush();
+    await resourceObserver?.close().catch(() => undefined);
     await agent?.close();
     await launched.close({ keepRunDir: record.status !== "passed" });
     await release();
