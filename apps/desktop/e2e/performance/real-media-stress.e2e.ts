@@ -254,6 +254,28 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
     expect(record.encoder_failure.artifact).toBeNull();
     expect(existsSync(failedDestination)).toBe(false);
     await flush();
+    // Exercise the new audio job type in the same process as real exports.
+    // Register before the fixed ten-export measurement; subsequent normalize
+    // jobs are deliberately not registered and cannot alter its timeline.
+    const normalize = async (key: string) => {
+      const sourceRevision = (await state()).revision;
+      const submitted = await call("audio_process_normalize", { ...target, mediaId: mediaIds[0], audioStream: 0, startSec: 1, endSec: 11, targetLufs: -18, truePeakDbtp: -1, loudnessRangeLu: 11, sampleRate: 48000, channels: 2, expectedRevision: sourceRevision, idempotencyKey: key });
+      activeJob = submitted.jobId;
+      const job = await waitJob(activeJob!);
+      activeJob = undefined;
+      record.interleaved_audio_jobs ??= []; record.interleaved_audio_jobs.push(job); await flush();
+      expect(job.state).toBe("done");
+      expect((await state()).revision).toBe(sourceRevision);
+      const metadata = probe(job.result.path);
+      expect(metadata.streams[0]).toMatchObject({ codec_name: "pcm_s24le", sample_rate: "48000", channels: 2, duration_ts: 480000 });
+      run(ffmpeg, ["-v", "error", "-i", job.result.path, "-f", "null", "-"]);
+      await copyFile(job.result.path, path.join(evidence, key + ".wav"));
+      return job;
+    };
+    const firstAudioJob = await normalize("interleave-before-export");
+    record.interleaved_registration = await call("audio_process_register", { ...target, jobId: firstAudioJob.jobId, expectedRevision: (await state()).revision });
+    record.fixed_export_revision = (await state()).revision;
+    await flush();
     for (let index = 0; index < 10; index++) {
       const destination = path.join(outputRoot, `export-${index}.mp4`);
       const start = performance.now();
@@ -304,6 +326,12 @@ import { captureBuildIdentity, readEnvironmentIdentity } from "../harness/perfor
       // Keep all ten outputs as evidence, outside the profile cleaned on success.
       await copyFile(destination, path.join(evidence, `export-${index}.mp4`));
       await flush(); console.info("REAL_EXPORT_COMPLETE", { index, elapsed_ms: entry.elapsed_ms });
+      if (index === 0) {
+        await normalize("interleave-between-exports");
+        expect((await call("job_status", { jobId: job.jobId })).state).toBe("done");
+        expect((await call("job_status", { jobId: firstAudioJob.jobId })).state).toBe("done");
+        expect((await state()).revision).toBe(record.fixed_export_revision);
+      }
     }
     record.resources = await launched.page.evaluate(async () => (globalThis as any).__reelterminalPerformanceCapture.readResources());
     expect(record.resources.workspace.pendingWrites).toBe(0);
