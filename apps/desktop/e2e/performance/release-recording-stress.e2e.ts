@@ -124,6 +124,7 @@ const native = process.env.REELTERMINAL_FEATURE_NATIVE_CAPTURE === "1";
       try { return JSON.parse(await readFile(c.record.native_cancel_confirmation_file, "utf8")); }
       catch { return null; }
     }, { timeout: 5000 }).toEqual({ app_pid: c.record.application.pid, owned_window_title: title, action: "cancel_native_picker" });
+    await copyFile(c.record.native_cancel_confirmation_file, path.join(c.evidence, "native-picker-cancel-confirmation.json"));
     const cancelled = await c.call("project_get_state");
     expect(cancelled.revision).toBe(before.revision);
     expect(cancelled.project.mediaLibrary.items).toEqual(before.project.mediaLibrary.items);
