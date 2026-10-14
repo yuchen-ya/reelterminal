@@ -1,6 +1,6 @@
 import { test, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { copyFile } from "node:fs/promises";
+import { copyFile, readFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { runReleaseFeature } from "../harness/performance/release-feature";
@@ -113,10 +113,17 @@ const native = process.env.REELTERMINAL_FEATURE_NATIVE_CAPTURE === "1";
     expect(await dialog.getByRole("checkbox", { name: "Microphone", exact: true }).getAttribute("aria-checked")).toBe("false");
     expect(await dialog.getByRole("switch", { name: "Webcam recording", exact: true }).getAttribute("aria-checked")).toBe("false");
     const before = await c.call("project_get_state");
+    c.record.native_cancel_confirmation_file = path.join(c.app.runDir, "native-picker-cancel-confirmation.json");
     await c.flush();
     await dialog.getByRole("button", { name: "Start Recording", exact: true }).click();
     console.info("NATIVE_CAPTURE_CANCEL_PICKER", { app_pid: c.record.application.pid, owned_window_title: title });
     await dialog.getByText("Recording Error", { exact: true }).waitFor({ timeout: 120_000 });
+    // The UI operator writes this only after observing and cancelling the
+    // actual native picker. An automatic permission error is not a cancel pass.
+    await expect.poll(async () => {
+      try { return JSON.parse(await readFile(c.record.native_cancel_confirmation_file, "utf8")); }
+      catch { return null; }
+    }, { timeout: 5000 }).toEqual({ app_pid: c.record.application.pid, owned_window_title: title, action: "cancel_native_picker" });
     const cancelled = await c.call("project_get_state");
     expect(cancelled.revision).toBe(before.revision);
     expect(cancelled.project.mediaLibrary.items).toEqual(before.project.mediaLibrary.items);
