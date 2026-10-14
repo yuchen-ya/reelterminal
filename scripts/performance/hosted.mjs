@@ -49,8 +49,9 @@ export function stabilityCompletion(record, documents, report) {
     if (scenario === "R01" && document.run?.completed_rounds !== options.editRounds) reasons.push("rounds_incomplete");
     if (scenario === "R02" && (document.run?.requested_duration_seconds !== options.durationSeconds ||
         !(document.run?.elapsed_ms >= options.durationSeconds * 1000) || !(document.run?.completed_rounds > 0))) reasons.push("continuous_duration_incomplete");
-    if (scenario === "R02" && options.saturateHistory && !(document.history_saturation?.edits >= document.history_saturation?.capacity && document.history_saturation?.capacity > 0)) reasons.push("history_saturation_missing");
-    return { scenario, status: reasons.length ? "failed" : "passed", reason_codes: reasons,
+    if (scenario === "R02" && options.saturateHistory && !(document.history_saturation?.capacity > 0 &&
+        document.history_saturation?.plateauCounts?.length === 10 && document.history_saturation.plateauCounts.every(value => value === document.history_saturation.capacity))) reasons.push("history_saturation_missing");
+    return { scenario, status: reasons.length ? "failed" : "passed", reason_codes: [...new Set(reasons)],
       operations: document.operations?.length ?? 0,
       correctness: Object.fromEntries(Object.entries(document.correctness ?? {}).filter(([key, value]) => /^[a-z_]+$/.test(key) && (typeof value === "boolean" || value === null))) };
   });
@@ -74,6 +75,7 @@ export function resourceEvidence(document) {
       edits: numeric(document.history_saturation.edits),
       elapsed_ms: numeric(document.history_saturation.elapsed_ms),
     } : null,
+    capture: calibrationEvidence({ controls: { currentCapture: document.last_capture } }).capture,
     idle: (document.idle_samples ?? []).map(sample => ({
       elapsed_ms: numeric(sample.elapsed_ms), heap_bytes: numeric(sample.heap_bytes),
       dom_nodes: numeric(sample.dom?.nodes), event_listeners: numeric(sample.dom?.event_listeners),

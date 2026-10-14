@@ -60,6 +60,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
   let started = 0;
   let measuredElapsedMs = 0;
   let saturation: { capacity: number; edits: number; plateauCounts: number[]; elapsed_ms: number } | null = null;
+  let lastCapture: Record<string, unknown> | null = null;
   const correctness: Record<string, boolean | null> = { final_state_verified: null, target_frame_verified: null, resources_returned_verified: null, save_queue_drained_verified: null };
   const runDeadline = performance.now() + options.runTimeoutSeconds * 1000;
   const watchdog = setTimeout(() => {
@@ -207,9 +208,20 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
       await page.waitForFunction(() => (globalThis as ResourceGlobal).__reelterminalPerformanceCapture.pendingSpanCount === 0, null, { timeout: options.operationTimeoutMs });
       const evidence = await page.evaluate(() => (globalThis as ResourceGlobal).__reelterminalPerfDriver.stop("ok"));
       activeCapture = false;
+      lastCapture = {
+        status: evidence.report.status, reasonCodes: evidence.report.reasonCodes,
+        wallDurationUs: evidence.report.wallDurationUs, hiddenDuringAction: evidence.hiddenDuringAction,
+        rendererOpenSpans: evidence.report.openSpans,
+        mainStatus: evidence.main.ok ? evidence.main.mainCapture.status : "unavailable",
+        mainReasonCodes: evidence.main.ok ? evidence.main.mainCapture.reasonCodes : ["main_capture_unavailable"],
+        mainOpenSpans: evidence.main.ok ? evidence.main.mainCapture.openSpans : null,
+      };
       eventsDropped += evidence.report.drops.eventsDropped + (evidence.main.ok ? evidence.main.mainCapture.eventsDropped : 0);
       endpointsDropped += evidence.report.drops.criticalEndpointsDropped;
-      if (evidence.hiddenDuringAction || evidence.report.status !== "complete" || !evidence.main.ok || evidence.main.mainCapture.status !== "complete") throw new Error("resource cycle capture incomplete");
+      if (evidence.hiddenDuringAction || evidence.report.status !== "complete" || !evidence.main.ok || evidence.main.mainCapture.status !== "complete") {
+        console.info("RESOURCE_CAPTURE_FAILURE", JSON.stringify(lastCapture));
+        throw new Error("resource cycle capture incomplete");
+      }
       operations.push({ operation_id: operationId, metric: "edit_undo_redo_content_verified_ms", outcome: "ok", duration_ms: evidence.report.wallDurationUs / 1000, target_verified: true });
       rounds++;
       if (performance.now() - lastIdle >= 30_000 || (scenarioId === "R01" && rounds % 100 === 0)) {
@@ -287,6 +299,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
   const third = Math.max(1, Math.floor(operations.length / 3));
   const artifactDocument = {
     ...result,
+    last_capture: lastCapture,
     history_saturation: saturation,
     idle_samples: idle,
     memory_trends: summarizeIdleMemory(idle),

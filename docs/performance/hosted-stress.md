@@ -261,3 +261,13 @@ gh workflow run performance.yml --repo yuchen-ya/reelterminal --ref main -f comm
 Only standard hosted Windows, serial execution, synthetic isolated profiles,
 small anonymous summaries and three-day retention are used. This purpose change
 does not modify the original local runner options or touch a running local test.
+
+The first stability smoke on `a86995410dde8076241427f953b268fe990ca9a5`
+([38572816686](https://github.com/yuchen-ya/reelterminal/actions/runs/38572816686))
+passed all 261 contracts and four scenarios. R02 failed after 28 cycles and
+29.597 seconds with `resource cycle capture incomplete`; its requested 60 seconds
+were not completed. The original R02 artifact did not retain the collector's
+specific reason, so a capture-budget or background-span cause is not established.
+Forward diagnostics now retain only bounded renderer/main capture statuses and
+reason codes, while retaining the original failure. No long stability run was
+started from this failed smoke.

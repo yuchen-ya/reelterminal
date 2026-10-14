@@ -25,7 +25,7 @@ test("stability coverage rejects missing results, wrong commits, partial soaks a
     run: { run_id: `${scenario}-${command.options.nodeCount}-${index}`, scenario_id: scenario,
       fixture_manifest: { parameters: { nodeCount: command.options.nodeCount, clipCount: command.options.clipCount, trackCount: command.options.trackCount } },
       completed_rounds: scenario === "R01" ? 500 : 1600, requested_duration_seconds: 1800, elapsed_ms: 1800100 },
-    history_saturation: { capacity: 1000, edits: 1001 },
+    history_saturation: { capacity: 1000, edits: 1001, plateauCounts: Array(10).fill(1000) },
     operations: [{ outcome: "ok" }], correctness: { undo_redo_full_state_verified: true, target_frame_verified: true },
   })));
   const report = { purpose: "stability", status: "stability_passed", counts: { hard_failures: 0, results: 7 },
@@ -34,6 +34,12 @@ test("stability coverage rejects missing results, wrong commits, partial soaks a
   assert.equal(check().status, "passed");
   assert.deepEqual(check().counts, { passed: 7, failed: 0, not_run: 0 });
   assert.equal(check().performance_qualified, false);
+  const saturated = documents.find(document => document.run.scenario_id === "R02");
+  saturated.history_saturation.edits = 20;
+  assert.equal(check().status, "passed"); // Pre-existing undo entries can need fewer edits.
+  saturated.history_saturation.plateauCounts[0] = 999;
+  assert.equal(check().counts.failed, 1);
+  saturated.history_saturation.plateauCounts[0] = 1000;
   const soak = documents.find(document => document.run.scenario_id === "R02");
   soak.run.elapsed_ms = 1799999;
   assert.equal(check().status, "failed");
@@ -58,9 +64,10 @@ test("representative soak stays continuous for 30 minutes after real history sat
 
 test("resource projection omits arbitrary strings, paths and credentials", () => {
   const secret = "private/path/token";
-  const result = resourceEvidence({ retained_profile: secret, run: { scenario_id: "R02", completed_rounds: 50, elapsed_ms: 1800000 }, history_saturation: { capacity: 1000, token: secret }, idle_samples: [{ heap_bytes: 42, path: secret, rss: [{ role: secret, rss_bytes: 100, process_epoch: secret }] }] });
+  const result = resourceEvidence({ retained_profile: secret, last_capture: { status: "incomplete", reasonCodes: ["spans_left_open", secret], mainStatus: "incomplete", mainReasonCodes: ["main_spans_left_open", secret], token: secret }, run: { scenario_id: "R02", completed_rounds: 50, elapsed_ms: 1800000 }, history_saturation: { capacity: 1000, token: secret }, idle_samples: [{ heap_bytes: 42, path: secret, rss: [{ role: secret, rss_bytes: 100, process_epoch: secret }] }] });
   assert.equal(result.idle[0].heap_bytes, 42);
   assert.equal(JSON.stringify(result).includes(secret), false);
+  assert.deepEqual(result.capture.main_reason_codes, ["main_spans_left_open"]);
 });
 
 test("failed calibration retains capture reason and timing without raw controls", () => {
