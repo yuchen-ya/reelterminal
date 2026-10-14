@@ -14,8 +14,13 @@ test("hosted profiles reserve installation/build headroom within a 210-minute jo
 });
 
 test("stability profiles reuse the original workloads without changing performance profiles", () => {
-  assert.deepEqual(hostedPlan("stability-smoke"), hostedPlan("smoke"));
   assert.deepEqual(hostedPlan("stability"), hostedPlan("stress"));
+  assert.deepEqual(hostedPlan("stability-smoke").slice(0, -1), hostedPlan("smoke").slice(0, -1));
+  const shortSoak = hostedPlan("stability-smoke").at(-1).options;
+  assert.equal(shortSoak.durationSeconds, 60);
+  assert.equal(shortSoak.saturateHistory, true);
+  assert.equal(shortSoak.runTimeoutSeconds, 600);
+  assert.equal(hostedPlan("smoke").at(-1).options.saturateHistory, false);
 });
 
 test("stability coverage rejects missing results, wrong commits, partial soaks and false correctness", () => {

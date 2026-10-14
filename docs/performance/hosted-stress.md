@@ -227,11 +227,14 @@ and macOS audio-normalize corrections were verified rather than reimplemented.
 ## Cloud stability purpose (explicitly selected after the blocked stress)
 
 The existing manual workflow also accepts `stability-smoke` and `stability`.
-These reuse the exact smoke/stress workload plans in the table above, but the
+These reuse the smoke/stress workloads in the table above, but the
 purpose is crash-free completion and data correctness, not performance
 qualification. The standalone probe-overhead calibration is not run for these
 two profiles. The original `smoke`/`stress` profiles retain their 2% calibration
 gate unchanged; the failed Windows results above remain failures.
+After the saturation warmup failure below, `stability-smoke` also warms history
+to real capacity before its 60-second R02 check, within the existing 600-second
+budget. Performance `smoke` retains its original unsaturated 60-second plan.
 
 No operation, capture-completeness, visibility, structural, correct-state,
 save/reopen or resource-bound assertion is removed. Timings and memory trends
@@ -271,3 +274,30 @@ specific reason, so a capture-budget or background-span cause is not established
 Forward diagnostics now retain only bounded renderer/main capture statuses and
 reason codes, while retaining the original failure. No long stability run was
 started from this failed smoke.
+
+The diagnostic smoke on `2bd62dc187d2e125da0cfc6c633165f81da2843b`
+([38574201919](https://github.com/yuchen-ya/reelterminal/actions/runs/38574201919))
+passed five scenarios, including 59 R02 cycles over the requested 60-second
+observation (62.059 seconds with final checks). The earlier capture failure did
+not recur; its cause remains unclassified rather than declared fixed.
+The same-SHA long stability run
+([38575256510](https://github.com/yuchen-ya/reelterminal/actions/runs/38575256510))
+passed six configurations, including all 150 T03 operations, 25 large-history
+previews and 500 R01 cycles. R02 failed in history saturation before observation:
+zero measured rounds, zero measured duration, no 30-minute coverage.
+Both report steps returned failure intentionally to propagate the real failed
+scenario. They still wrote seven result records and the resource summary, and
+the small artifact upload completed. This was not a report-generation error.
+
+Static inspection and a focused regression using the real production
+`ActionHistory` reproduce a warmup mistake: repeated same-clip edits less than
+100 ms apart form one proximity group. Production preserves atomic undo when
+that entire group exceeds capacity, so a count of API edits alone does not
+establish a bounded capacity plateau. Cloud warmup performed about 100 edits per
+five seconds, consistent with this path; its original error lacked the actual
+count, so the precise failed cloud count cannot be reconstructed. Warmup now
+waits 150 ms between completed real edits to create independent undo units,
+outside the measured interval. The real capacity and all ten plateau assertions
+remain unchanged, with numeric failure counts and the warmup interval recorded.
+No production grouping policy, history cap, operation timeout or performance
+threshold is changed.

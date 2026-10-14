@@ -22,7 +22,7 @@ export function hostedPlan(profile) {
       ["--suite", "benchmark", "--scenario", "H01", "--node-count", "1000", "--samples", "25", "--run-timeout-seconds", "1200"],
     ] : []),
     ["--suite", "soak", "--scenario", "R01", "--edit-rounds", short ? "10" : "500", "--run-timeout-seconds", short ? "600" : "1800"],
-    ["--suite", "soak", "--scenario", "R02", "--duration-seconds", short ? "60" : "1800", "--run-timeout-seconds", short ? "600" : "3000", ...(!short ? ["--saturate-history"] : [])],
+    ["--suite", "soak", "--scenario", "R02", "--duration-seconds", short ? "60" : "1800", "--run-timeout-seconds", short ? "600" : "3000", ...(!short || profile === "stability-smoke" ? ["--saturate-history"] : [])],
   ];
   return commands.map(args => ({ args: [...args, ...serial], options: parseRunOptions([...args, ...serial]), status: "not_run" }));
 }
@@ -74,6 +74,7 @@ export function resourceEvidence(document) {
       capacity: numeric(document.history_saturation.capacity),
       edits: numeric(document.history_saturation.edits),
       elapsed_ms: numeric(document.history_saturation.elapsed_ms),
+      interval_ms: numeric(document.history_saturation.interval_ms),
     } : null,
     capture: calibrationEvidence({ controls: { currentCapture: document.last_capture } }).capture,
     idle: (document.idle_samples ?? []).map(sample => ({

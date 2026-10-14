@@ -15,7 +15,7 @@ import { installProbe, prepareProfile, waitForMarker, type PerformanceRunOptions
 import { captureBuildIdentity, readEnvironmentIdentity } from "./identity";
 import { createPerformanceResult, summarizeOperations, type RawPerformanceOperation } from "./result";
 import { summarizeIdleMemory, type IdleResourceSample } from "./resource-trend";
-import { saturateHistory } from "./history-saturation";
+import { saturateHistory, HISTORY_WARMUP_INTERVAL_MS } from "./history-saturation";
 import { validateResultDocument } from "../../../../../scripts/performance/result-contract.mjs";
 
 type ResourceGlobal = typeof globalThis & {
@@ -59,7 +59,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
   let revision = 0;
   let started = 0;
   let measuredElapsedMs = 0;
-  let saturation: { capacity: number; edits: number; plateauCounts: number[]; elapsed_ms: number } | null = null;
+  let saturation: { capacity: number; edits: number; plateauCounts: number[]; elapsed_ms: number; interval_ms: number } | null = null;
   let lastCapture: Record<string, unknown> | null = null;
   const correctness: Record<string, boolean | null> = { final_state_verified: null, target_frame_verified: null, resources_returned_verified: null, save_queue_drained_verified: null };
   const runDeadline = performance.now() + options.runTimeoutSeconds * 1000;
@@ -168,8 +168,9 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
           revision = moved.value!.revision;
           if (index % 100 === 0) console.info("PERFORMANCE_HISTORY_WARMUP", { edits: index + 1 });
         },
+        () => page.waitForTimeout(HISTORY_WARMUP_INTERVAL_MS),
       );
-      saturation = { ...saturated, elapsed_ms: performance.now() - warmStarted };
+      saturation = { ...saturated, elapsed_ms: performance.now() - warmStarted, interval_ms: HISTORY_WARMUP_INTERVAL_MS };
       // Restore the fixed start using another real edit if warmup ended offset.
       const state = await read();
       if (state.tracks.flatMap(track => track.clips)[0]!.startTime !== clip.startTime) {
