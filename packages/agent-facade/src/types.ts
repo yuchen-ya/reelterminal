@@ -732,7 +732,7 @@ export interface MediaAnalyzeStartResult {
 
 export interface AnalysisJobResult {
   readonly analysisTypes: readonly MediaAnalysisType[];
-  /** Bounded result summary. Large providers must return ArtifactRefs instead. */
+  /** Audio scalar facts/counts and analysisRecord handle; dense audio data is read via analysis.get. */
   readonly summary: Readonly<Record<string, unknown>>;
   readonly artifacts: readonly ArtifactRef[];
 }
@@ -2209,9 +2209,42 @@ export interface AnalysisListParams {
   readonly limit?: number;
 }
 
-export interface AnalysisGetParams {
-  readonly recordId: string;
+export const ANALYSIS_EVENT_SERIES = [
+  "audioSummary.onsets",
+  "audioSummary.silence",
+  "silence.silentRegions",
+  "beatGrid.beats",
+] as const;
+
+export type AnalysisEventSeries = (typeof ANALYSIS_EVENT_SERIES)[number];
+
+interface AnalysisGetSourceWindow {
+  /** Original source-media seconds. The requested interval is half-open. */
+  readonly startSec?: number;
+  readonly endSec?: number;
 }
+
+export type AnalysisGetParams =
+  | {
+      readonly recordId: string;
+      /** Defaults to summary. Summary is intentionally compact. */
+      readonly view?: "summary";
+    }
+  | ({
+      readonly recordId: string;
+      readonly view: "events";
+      readonly series: AnalysisEventSeries;
+      /** Maximum page size is 256; defaults to 100. */
+      readonly limit?: number;
+      /** Opaque cursor returned by the preceding page. */
+      readonly cursor?: string;
+    } & AnalysisGetSourceWindow)
+  | ({
+      readonly recordId: string;
+      readonly view: "waveform";
+      /** Maximum returned points is 600; defaults to 150. */
+      readonly maxPoints?: number;
+    } & AnalysisGetSourceWindow);
 
 export type AnalysisListResult = readonly {
   readonly id: string;

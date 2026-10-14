@@ -109,10 +109,13 @@ import {
 import { probeLocalMediaFile } from "./media/node-media-adapter";
 import { assessColorSupport, probeColorMetadata } from "./color-policy";
 import {
-  loadAnalysisRecord,
+  compactAnalysisFacts,
+  getAnalysisRecordView,
   listAnalysisRecords,
+  removeAnalysisRecord,
   resolveRecheckTarget,
   saveAnalysisRecord,
+  validateAnalysisGetQuery,
 } from "./analysis-records";
 import {
   composeComparisonVideo,
@@ -1245,6 +1248,7 @@ export class AgentFacadeSession {
         (type) => type === "audioSummary" || type === "silence" || type === "beatGrid",
       );
       if (audioBackedTypes.length > 0) {
+        requireArtifactRoot(this.config.artifactRoot, "media.analyze_start audio analysis");
         const ready = await audioAnalysisPreflight();
         if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
       }
@@ -2311,12 +2315,13 @@ export class AgentFacadeSession {
     });
   }
 
-  /** analysis.get — one full record with provenance and staleness. */
+  /** analysis.get — compact view by default; explicit detail requests are paged. */
   async analysisGet(params: AnalysisGetParams): Promise<FacadeResult<unknown>> {
     return this.enqueue(async () => {
       const valid = validateObject<AnalysisGetParams>(params, ANALYSIS_GET_SCHEMA, "analysis.get params");
+      validateAnalysisGetQuery(valid);
       const artifactRoot = requireArtifactRoot(this.config.artifactRoot, "analysis.get");
-      return ok(await loadAnalysisRecord(artifactRoot, valid.recordId));
+      return ok(await getAnalysisRecordView(artifactRoot, valid));
     });
   }
 
@@ -2737,6 +2742,7 @@ export class AgentFacadeSession {
     recheckOfRecordId?: string,
     silenceParams?: import("./types").MediaSilenceAnalysisParams,
   ): Promise<void> {
+    let persistedRecordId: string | null = null;
     try {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       if (controller.signal.aborted) {
@@ -2832,11 +2838,15 @@ export class AgentFacadeSession {
         ...(candidates?.blackFrames ? { blackFrames: { ...candidates.blackFrames, mediaId, sourceFingerprint } } : {}),
         ...(candidates?.duplicateFrames ? { duplicateFrames: { ...candidates.duplicateFrames, mediaId, sourceFingerprint } } : {}),
       };
-      // Durable, traceable record (P2): observations/inferences/
-      // recommendations stay separated, provenance and honest unknowns are
-      // pinned, and a recheck links to its predecessor. Records need an
-      // artifactRoot; without one the analysis completes exactly as before
-      // (ephemeral job summary only) — never a silent failure of the job.
+      const compactSummary = {
+        ...summary,
+        ...(audio ? { audioSummary: compactAnalysisFacts("audioSummary", summary.audioSummary!) } : {}),
+        ...(silence ? { silence: compactAnalysisFacts("silence", summary.silence!) } : {}),
+        ...(beatGrid ? { beatGrid: compactAnalysisFacts("beatGrid", summary.beatGrid!) } : {}),
+      };
+      // Durable, traceable record: audio analysis requires artifactRoot so
+      // full event facts remain readable; non-audio analyses can still return
+      // an ephemeral job summary when no record root is configured.
       let recordRef: { id: string; recordPath: string; recheckOf: string | null } | null = null;
       if (this.config.artifactRoot) {
       let recheckTarget = null;
@@ -2927,20 +2937,43 @@ export class AgentFacadeSession {
           : null,
       });
       recordRef = { id: saved.id, recordPath: saved.recordPath, recheckOf: saved.recheckOf };
+      persistedRecordId = saved.id;
+      }
+      if (controller.signal.aborted) {
+        if (persistedRecordId && this.config.artifactRoot) {
+          await removeAnalysisRecord(this.config.artifactRoot, persistedRecordId);
+          persistedRecordId = null;
+        }
+        this.jobs.markCancelled(jobId);
+        return;
       }
       this.jobs.markAnalysisDone(jobId, {
         analysisTypes,
         summary: {
-          ...summary,
+          ...compactSummary,
           ...(recordRef ? { analysisRecord: recordRef } : {}),
         },
         artifacts: [],
       });
+      if (this.jobs.get(jobId)?.state === "done") {
+        persistedRecordId = null;
+      } else if (persistedRecordId && this.config.artifactRoot) {
+        await removeAnalysisRecord(this.config.artifactRoot, persistedRecordId);
+        persistedRecordId = null;
+      }
     } catch (error) {
-      if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
+      let failure: unknown = error;
+      if (persistedRecordId && this.config.artifactRoot) {
+        try {
+          await removeAnalysisRecord(this.config.artifactRoot, persistedRecordId);
+        } catch (cleanupError) {
+          failure = new Error(`${error instanceof Error ? error.message : String(error)}; saved analysis record cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`);
+        }
+      }
+      if (controller.signal.aborted && failure === error) { this.jobs.markCancelled(jobId); return; }
       this.jobs.markError(jobId, {
-        code: error instanceof FacadeError ? error.code : "JOB_FAILED",
-        message: error instanceof Error ? error.message : String(error),
+        code: failure instanceof FacadeError ? failure.code : "JOB_FAILED",
+        message: failure instanceof Error ? failure.message : String(failure),
       });
     } finally {
       this.analysisControllers.delete(jobId);

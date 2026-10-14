@@ -20,20 +20,54 @@ import type {
   ExportProgressEvent,
   ExportProvider,
 } from "./providers";
+import { compactAnalysisFacts } from "./analysis-records";
 import type { AnalysisJobResult, JobStatusView } from "./types";
+
+function compactAnalysisJobResult(result: AnalysisJobResult): AnalysisJobResult {
+  const summary: Record<string, unknown> = {};
+  for (const [source, value] of Object.entries(result.summary)) {
+    const projected = (source === "audioSummary" || source === "silence" || source === "beatGrid") &&
+      value !== null && typeof value === "object" && !Array.isArray(value)
+      ? compactAnalysisFacts(source, value as Record<string, unknown>)
+      : value;
+    // Clone only after dropping audio arrays so status reads do not copy dense
+    // waveform/event data merely to omit it from the returned view.
+    summary[source] = structuredClone(projected);
+  }
+  return {
+    analysisTypes: [...result.analysisTypes],
+    summary,
+    artifacts: structuredClone(result.artifacts),
+  };
+}
+
+/** Compact a status loaded from disk or a registry; never mutates its source. */
+export function compactJobStatusView(status: JobStatusView): JobStatusView {
+  const { result, ...fields } = status;
+  return {
+    ...structuredClone(fields),
+    // Persisted legacy results can contain pre-compact audio arrays, and old
+    // failed/cancelled records could retain results from before the invariant.
+    result: status.state !== "done" || !result
+      ? null
+      : status.kind === "analysis"
+        ? compactAnalysisJobResult(result)
+        : structuredClone(result),
+  };
+}
 
 /** The public job.status view of a registry record (a fresh copy). */
 export function jobStatusView(job: JobRecord): JobStatusView {
-  return {
+  return compactJobStatusView({
     jobId: job.jobId,
     kind: job.kind,
     ...(job.projectId !== undefined ? { projectId: job.projectId } : {}),
     ...(job.workspaceId !== undefined ? { workspaceId: job.workspaceId } : {}),
     state: job.state,
-    progress: job.progress ? { ...job.progress } : null,
-    artifact: job.artifact ? { ...job.artifact } : null,
-    result: job.result ? structuredClone(job.result) : null,
-    error: job.error ? { ...job.error } : null,
+    progress: job.progress,
+    artifact: job.artifact,
+    result: job.result,
+    error: job.error,
     deliveredTo: job.deliveredTo,
     deliveryError: job.deliveryError,
     sourceRevision: job.sourceRevision,
@@ -42,7 +76,7 @@ export function jobStatusView(job: JobRecord): JobStatusView {
     cancelRequested: job.cancelRequested,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
-  };
+  });
 }
 
 export const JOB_STATES = ["queued", "running", "done", "error", "cancelled"] as const;

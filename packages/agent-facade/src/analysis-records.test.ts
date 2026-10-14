@@ -265,11 +265,12 @@ describe("analysis records (P2)", () => {
     const { loadAnalysisRecord } = await import("./analysis-records");
     const legacyJson = JSON.parse(await readFile(saved.recordPath, "utf8")) as Record<string, unknown>;
     legacyJson.schemaVersion = 1;
+    delete legacyJson.audioDetailsComplete;
     delete legacyJson.sourceRevision;
     delete legacyJson.coordinateSpace;
     await writeFile(saved.recordPath, `${JSON.stringify(legacyJson)}\n`, "utf8");
     const legacy = await loadAnalysisRecord(artifactRoot, saved.id);
-    expect(legacy.schemaVersion).toBe(2);
+    expect(legacy.schemaVersion).toBe(3);
     expect(legacy.sourceRevision).toBeNull();
     expect(legacy.coordinateSpace).toBe("source");
     const legacyList = await facade["analysis.list"]({ mediaId });
@@ -279,7 +280,7 @@ describe("analysis records (P2)", () => {
     });
     expect(await facade["analysis.get"]({ recordId: saved.id })).toMatchObject({
       ok: true,
-      value: { schemaVersion: 2, sourceRevision: null, coordinateSpace: "source" },
+      value: { schemaVersion: 3, sourceRevision: null, coordinateSpace: "source" },
     });
   });
 });

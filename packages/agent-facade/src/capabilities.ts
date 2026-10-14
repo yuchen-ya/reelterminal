@@ -559,7 +559,15 @@ export async function buildCapabilities(
       types: Object.fromEntries(
         MEDIA_ANALYSIS_TYPES.map((type) => [
           type,
-          type === "videoReview" ? (ctx.mediaRoots.length > 0 && !noArtifactRoot ? videoReady : { available: false, reason: "videoReview needs media roots, artifactRoot, local FFmpeg and a user-provided cloud provider credential" }) : type === "audioSummary" && ctx.mediaRoots.length > 0 ? { ...audioReady, details: { ...audioReady.details, ...AUDIO_LIMITS, maxSourceFileBytes: 2 * 1024 * 1024 * 1024, coordinateSpace: "source", changesProject: false, agentAudioConsumption: false } } : type === "technicalQuality" && ctx.mediaRoots.length > 0
+          type === "videoReview" ? (ctx.mediaRoots.length > 0 && !noArtifactRoot ? videoReady : { available: false, reason: "videoReview needs media roots, artifactRoot, local FFmpeg and a user-provided cloud provider credential" }) : type === "audioSummary"
+            ? !ctx.mediaRoots.length
+              ? { available: false, reason: "No media roots are configured, so the source file cannot be read for audio analysis.", requires: "a configured media root containing the source" }
+              : noArtifactRoot
+                ? { available: false, reason: "Audio analysis requires artifactRoot to persist the complete analysis record.", requires: "artifactRoot" }
+                : !audioReady.available
+                  ? { available: false, reason: audioReady.reason }
+                  : { ...audioReady, details: { ...audioReady.details, ...AUDIO_LIMITS, maxSourceFileBytes: 2 * 1024 * 1024 * 1024, coordinateSpace: "source", changesProject: false, agentAudioConsumption: false, eventAccess: "Use analysis.get view:'events' for paged onset and silence details, and view:'waveform' for bounded waveform samples." } }
+            : type === "technicalQuality" && ctx.mediaRoots.length > 0
             ? {
                 available: true,
                 details: {
@@ -578,6 +586,8 @@ export async function buildCapabilities(
                     reason: "No media roots are configured, so the source file cannot be read for audio analysis.",
                     requires: "a configured media root containing the source",
                   }
+                : noArtifactRoot
+                  ? { available: false, reason: "Audio analysis requires artifactRoot to persist the complete analysis record.", requires: "artifactRoot" }
                 : !audioReady.available
                   ? { available: false, reason: audioReady.reason }
                   : {
@@ -589,10 +599,10 @@ export async function buildCapabilities(
                             agentAudioConsumption: false,
                             provider: "local-ffmpeg-pcm-silence-kernel",
                             kernel: "core detectSilenceRangesInPcm — the same silence kernel and defaults as the GUI silence-cut panel",
-                            fields: ["silentRegions", "totalSilenceDurationSec", "parameters"],
+                            fields: ["analysis.get events (silentRegions)", "totalSilenceDurationSec", "parameters"],
                             defaults: { thresholdDb: -40, minDurationSec: 0.5, paddingSec: 0.1 },
                             tuning: "media.analyze_start silenceParams {thresholdDb, minDurationSec, paddingSec}",
-                            workflow: "cut the reported silentRegions with clip.split + clip.rippleDelete ops in one edit.apply batch (one undo unit)",
+                            workflow: "page silentRegions with analysis.get view:'events', then cut those source-time ranges with clip.split + clip.rippleDelete ops in one edit.apply batch (one undo unit)",
                             coordinateSpace: "source",
                             changesProject: false,
                           }
@@ -602,9 +612,9 @@ export async function buildCapabilities(
                             agentAudioConsumption: false,
                             provider: "local-ffmpeg-pcm-beat-engine",
                             kernel: "core BeatDetectionEngine.analyzePcm — the same beat detector as the GUI beat-sync panel",
-                            fields: ["beats", "bpm", "confidence"],
+                            fields: ["analysis.get events (beats)", "bpm", "confidence"],
                             downbeats: "not available: no downbeat detector is installed",
-                            workflow: "beat sync via clip.move + clip.trim ops; beat auto-edit plans expand via the shared core expandCutPlanToActions into clip.move/trim/add/remove ops applied as one edit.apply batch (one undo unit)",
+                            workflow: "page beats with analysis.get view:'events', then beat sync via clip.move + clip.trim ops; beat auto-edit plans expand via the shared core expandCutPlanToActions into clip.move/trim/add/remove ops applied as one edit.apply batch (one undo unit)",
                             coordinateSpace: "source",
                             changesProject: false,
                           },

@@ -77,6 +77,30 @@ describe("emitted MCP output schemas", () => {
     expect((analysisValue.properties as Schema).coordinateSpace).toEqual({ const: "source" });
   });
 
+  it("bounds analysis event pages and waveform output while exposing historical completeness", () => {
+    const schema = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["analysis.get"] as unknown as Schema;
+    const value = (schema.properties as Schema).value as Schema;
+    const properties = value.properties as Schema;
+    expect((properties.schemaVersion as Schema).enum).toEqual([3]);
+    expect(properties.view).toEqual({ enum: ["summary", "events", "waveform"] });
+
+    const details = properties.details as Schema;
+    expect(details.maxItems).toBe(4);
+    const detail = details.items as Schema;
+    expect(detail.required).toEqual(["series", "totalCount", "storedCount", "complete"]);
+    expect((detail.properties as Schema).totalCount).toMatchObject({ anyOf: [{ type: "integer", minimum: 0 }, { const: null }] });
+
+    const events = properties.events as Schema;
+    expect(((events.properties as Schema).items as Schema).maxItems).toBe(256);
+    expect(((events.properties as Schema).limit as Schema)).toMatchObject({ type: "integer", minimum: 1, maximum: 256 });
+    expect(events.required).toContain("storedMatched");
+    expect((events.properties as Schema).storedMatched).toEqual({ type: "integer", minimum: 0 });
+    expect((events.properties as Schema).totalMatched).toMatchObject({ anyOf: [{ type: "integer", minimum: 0 }, { const: null }] });
+    const waveform = properties.waveform as Schema;
+    expect(((waveform.properties as Schema).points as Schema).maxItems).toBe(600);
+    expect((waveform.properties as Schema).maxPoints).toMatchObject({ type: "integer", minimum: 1, maximum: 600 });
+  });
+
   it("exposes workspace routing identity from editor.get_context without requiring it headlessly", () => {
     const schema = EMITTED_VERB_OUTPUT_JSON_SCHEMAS["editor.get_context"] as unknown as Schema;
     const value = (schema.properties as Schema).value as Schema;

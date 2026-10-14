@@ -5,7 +5,7 @@ import { FacadeError } from "./errors";
 import { resolveToolFfmpeg } from "./media/ffmpeg-bin";
 import type { MediaSilenceAnalysisParams } from "./types";
 
-export const AUDIO_LIMITS = { maxRangeSec: 120, maxConcurrentPerSession: 2, timeoutMs: 60000, maxProcessOutputBytes: 16 * 1024 * 1024, maxWaveformBins: 600, maxEvents: 256 } as const;
+export const AUDIO_LIMITS = { maxRangeSec: 120, maxConcurrentPerSession: 2, timeoutMs: 60000, maxProcessOutputBytes: 16 * 1024 * 1024, maxWaveformBins: 600, maxEventsPerPage: 256 } as const;
 let running = 0;
 /** Local subprocesses only: no shell, remote provider, uploads or paid dependency. */
 function run(binary: string, args: string[], signal?: AbortSignal): Promise<{ out: Buffer; err: string }> {
@@ -103,7 +103,7 @@ export async function analyzeSilence(
   progress(.7);
   const ranges = detectSilenceRangesInPcm(pcm, rate, thresholdDb, minDurationSec, paddingSec);
   progress(1);
-  const regions = ranges.slice(0, AUDIO_LIMITS.maxEvents).map((r) => ({
+  const regions = ranges.map((r) => ({
     startSec: range.startSec + r.start,
     endSec: range.startSec + r.end,
     durationSec: r.end - r.start,
@@ -116,7 +116,7 @@ export async function analyzeSilence(
     parameters: { thresholdDb, minDurationSec, paddingSec },
     silentRegions: regions,
     regionCount: ranges.length,
-    truncated: ranges.length > AUDIO_LIMITS.maxEvents,
+    truncated: false,
     totalSilenceDurationSec: ranges.reduce((sum, region) => sum + region.end - region.start, 0),
     algorithm: "Shared core silence kernel (100ms max-amplitude windows, dBFS threshold, padding + minimum-duration filtering) over FFmpeg-extracted mono PCM; same detectSilenceRangesInPcm as the GUI silence-cut panel",
     limitations: ["Silence is an amplitude-threshold judgment, not a semantic pause; adjust thresholdDb/minDurationSec/paddingSec to match the material.", "Source seconds only; map through clip trim/offset before editing. Results do not change gain, markers, playback, selection or project revision."],
@@ -144,7 +144,7 @@ export async function analyzeBeatGrid(
   if (pcm.length < 2048) throw new FacadeError("INVALID_PARAMS", "beatGrid range is too short: at least ~0.1 seconds of audio is required");
   const result = await analyzeBeatsInPcm(pcm, BEAT_GRID_ANALYSIS_RATE);
   progress(1);
-  const beats = result.beats.slice(0, AUDIO_LIMITS.maxEvents).map((beat) => ({
+  const beats = result.beats.map((beat) => ({
     timeSec: range.startSec + beat.time,
     strength: beat.strength,
     index: beat.index,
@@ -158,7 +158,7 @@ export async function analyzeBeatGrid(
     confidence: result.confidence,
     beats,
     beatCount: result.beats.length,
-    truncated: result.beats.length > AUDIO_LIMITS.maxEvents,
+    truncated: false,
     algorithm: "Shared core BeatDetectionEngine (RMS-energy onsets, adaptive threshold, interval-histogram BPM) over FFmpeg-extracted mono PCM; same analyzer as the GUI beat-sync panel",
     limitations: ["Beats and bpm are analyzer inferences from energy periodicity, not ground truth or perceptual annotations.", "Downbeats are not reported: no downbeat detector is installed.", "Source seconds only; map through clip trim/speed before editing. Results do not change gain, markers, playback, selection or project revision."],
   };
@@ -200,7 +200,7 @@ export async function summarizePcm(pcm: Buffer, startSec: number) {
     mono[i] = Math.abs(left) >= Math.abs(right) ? left : right;
   }
   const silenceRanges = detectSilenceRangesInPcm(mono, rate, -60, 0.2, 0);
-  const silence = silenceRanges.slice(0, AUDIO_LIMITS.maxEvents)
+  const silence = silenceRanges
     .map((range) => ({ startSec: startSec + range.start, endSec: startSec + range.end }));
   const silenceCount = silenceRanges.length;
   const beatAnalysis = await analyzeBeatsInPcm(mono, rate, {
@@ -220,8 +220,9 @@ export async function summarizePcm(pcm: Buffer, startSec: number) {
       peak: Math.max(...peaks.slice(i * stride, (i + 1) * stride)),
     })) };
   });
-  return { waveform, onsets: onsets.slice(0, 256), onsetCount: onsets.length, silence, silenceCount,
-    truncated: onsets.length > 256 || silenceCount > 256,
+  const totalSilenceDurationSec = silenceRanges.reduce((sum, range) => sum + range.end - range.start, 0);
+  return { waveform, onsets, onsetCount: onsets.length, silence, silenceCount, totalSilenceDurationSec,
+    truncated: false,
     bpmCandidates,
     analysisResolutionSec: .01, detectionUncertaintySec: null,
     parameters: { analysisSampleRate: rate, analysisChannels: 2, hopSec: .01, silenceThresholdDbfs: -60, silenceMinSec: .2, onsetRatio: 2.5, silenceAndBpmChannelStrategy: "strongest absolute sample across stereo channels, preserving sign", silenceAndBpmSource: "shared core kernels (detectSilenceRangesInPcm + BeatDetectionEngine)" },

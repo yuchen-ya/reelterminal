@@ -18,6 +18,51 @@ const ARTIFACT: ArtifactRef = {
 };
 
 describe("JobRegistry", () => {
+  it("projects restored audio jobs compactly and hides legacy failed or cancelled results", () => {
+    const legacyResult = {
+      analysisTypes: ["audioSummary", "silence", "beatGrid"] as const,
+      summary: {
+        audioSummary: { waveform: [{ rms: 0.5 }], onsets: [{ timeSec: 1 }], silence: [], integratedLufs: -18 },
+        silence: { silentRegions: [{ startSec: 1, endSec: 2 }], totalSilenceDurationSec: 1 },
+        beatGrid: { beats: [{ timeSec: 1 }], bpm: 120 },
+      },
+      artifacts: [],
+    };
+    const status = (jobId: string, state: JobStatusView["state"]): JobStatusView => ({
+      jobId,
+      kind: "analysis",
+      state,
+      progress: null,
+      artifact: null,
+      result: legacyResult,
+      error: null,
+      deliveredTo: null,
+      deliveryError: null,
+      sourceRevision: 1,
+      route: null,
+      upscalingRequestedButInactive: false,
+      cancelRequested: false,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:01.000Z",
+    });
+
+    const registry = new JobRegistry();
+    registry.restore(status("legacy-done", "done"));
+    registry.restore(status("legacy-error", "error"));
+    registry.restore(status("legacy-cancelled", "cancelled"));
+
+    const done = jobStatusView(registry.get("legacy-done")!);
+    expect(done.result?.summary).toEqual({
+      audioSummary: { integratedLufs: -18 },
+      silence: { totalSilenceDurationSec: 1 },
+      beatGrid: { bpm: 120 },
+    });
+    expect(jobStatusView(registry.get("legacy-error")!).result).toBeNull();
+    expect(jobStatusView(registry.get("legacy-cancelled")!).result).toBeNull();
+    // Projection is an output contract; restoring the durable source remains lossless.
+    expect(registry.get("legacy-done")?.result?.summary.audioSummary).toHaveProperty("waveform");
+  });
+
   it("follows queued → running → done with progress", () => {
     const reg = new JobRegistry();
     reg.create("j1", 2);

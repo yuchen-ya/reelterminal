@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { bindTools, type ToolContext } from "../plugin-api";
@@ -8,6 +8,7 @@ import { createEmptyProject } from "../project-factory";
 import { JobRegistry, jobStatusView } from "../jobs";
 import { ok, fail, FacadeError } from "../errors";
 import type { MediaItem } from "@reelterminal/core/types/project";
+import type { JobStatusView } from "../types";
 
 describe("durable local analysis batches", () => {
   let root: string;
@@ -154,6 +155,59 @@ describe("durable local analysis batches", () => {
     });
     const conflict = await changed["batch.resume"]({ batchId: input.batchId });
     expect(!conflict.ok && conflict.error.code).toBe("CONFLICT");
+  });
+
+  it("compacts legacy dense audio results from a batch manifest when the registry has no job", async () => {
+    const tools = bindTools(productionBatchesPlugin.tools, context);
+    await tools["batch.start"](input);
+
+    const file = join(root, "production-batches", "review-1.json");
+    const batch = JSON.parse(await readFile(file, "utf8")) as import("./production-batches").BatchRecord;
+    const legacyStatus: JobStatusView = {
+      jobId: "job-legacy-audio",
+      kind: "analysis",
+      state: "done",
+      progress: null,
+      artifact: null,
+      result: {
+        analysisTypes: ["audioSummary"],
+        summary: {
+          audioSummary: {
+            waveform: Array.from({ length: 650 }, (_, index) => ({ startSec: index / 100, endSec: (index + 1) / 100, rms: 0.2, peak: 0.4 })),
+            onsets: [{ timeSec: 1 }],
+            silence: [],
+            integratedLufs: -18,
+          },
+        },
+        artifacts: [],
+      },
+      error: null,
+      deliveredTo: null,
+      deliveryError: null,
+      sourceRevision: 3,
+      route: null,
+      upscalingRequestedButInactive: false,
+      cancelRequested: false,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:01.000Z",
+    };
+    batch.items[0]!.jobId = legacyStatus.jobId;
+    batch.items[0]!.status = legacyStatus;
+    await writeFile(file, JSON.stringify(batch));
+
+    registry = new JobRegistry(); // After restart, current() has no entry for this old job.
+    const recovered = await bindTools(productionBatchesPlugin.tools, context)["batch.get"]({ batchId: input.batchId });
+    expect(recovered.ok).toBe(true);
+    if (!recovered.ok) return;
+    const recoveredBatch = recovered.value as typeof batch;
+    const audio = recoveredBatch.items[0]!.status!.result!.summary.audioSummary as Record<string, unknown>;
+    expect(audio).toMatchObject({ integratedLufs: -18 });
+    expect(audio).not.toHaveProperty("waveform");
+    expect(audio).not.toHaveProperty("onsets");
+    expect(audio).not.toHaveProperty("silence");
+
+    const persisted = JSON.parse(await readFile(file, "utf8")) as typeof batch;
+    expect(persisted.items[0]!.status!.result!.summary.audioSummary).not.toHaveProperty("waveform");
   });
 
   it("does not duplicate running jobs and retries failures only when explicitly selected", async () => {

@@ -232,6 +232,11 @@ export interface OpenReelAnalysisRecordSummary {
 
 export interface OpenReelAnalysisRecord extends OpenReelAnalysisRecordSummary {
   schemaVersion: number;
+  /** Null for v1 historical records whose project revision cannot be reconstructed. */
+  sourceRevision: number | null;
+  coordinateSpace: "source";
+  /** Present only when every audio event was persisted; absent on older records. */
+  audioDetailsComplete?: true;
   createdAt: string;
   rangeSec: { startSec: number; endSec: number };
   subject: {
@@ -246,6 +251,7 @@ export interface OpenReelAnalysisRecord extends OpenReelAnalysisRecordSummary {
     endSec: number;
     cloudUpload: boolean;
     reviewQuestion?: string;
+    silenceParams?: { thresholdDb: number; minDurationSec: number; paddingSec: number };
   };
   provenance: readonly {
     kind: "local-measurement" | "static-sampling" | "cloud-opinion";

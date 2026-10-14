@@ -62,6 +62,21 @@ function manySilenceRangesPcm(count: number) {
   }
   return data;
 }
+/** Each event has three 100ms silent windows followed by one tone window. */
+function manySummarySilenceRangesPcm(count: number) {
+  const windowSamples = 800;
+  const windowCount = count * 4;
+  const data = Buffer.alloc(windowSamples * windowCount * 8);
+  for (let window = 3; window < windowCount; window += 4) {
+    for (let i = 0; i < windowSamples; i++) {
+      const sample = .5 * Math.sin(i * .05);
+      const offset = (window * windowSamples + i) * 8;
+      data.writeFloatLE(sample, offset);
+      data.writeFloatLE(sample, offset + 4);
+    }
+  }
+  return data;
+}
 function wav(data: Buffer, channels = 2, rate = 8000) {
   const header = Buffer.alloc(44);
   header.write("RIFF"); header.writeUInt32LE(36 + data.length, 4); header.write("WAVEfmt ", 8);
@@ -115,6 +130,12 @@ describe("local audio analysis", () => {
     try {
       const path = join(root, "clicks.wav");
       await writeFile(path, wav(pcm([.5, 1, 1.5, 2, 2.5, 3])));
+      const noRecordFacade = createAgentFacade({ mediaRoots: [root] });
+      await noRecordFacade["project.create"]({ name: "Audio without storage" });
+      const noRecordImport = await noRecordFacade["media.import"]({ path });
+      if (!noRecordImport.ok) throw new Error(noRecordImport.error.message);
+      expect(await noRecordFacade["media.analyze_start"]({ mediaId: noRecordImport.value.mediaId, analysisTypes: ["audioSummary"] }))
+        .toMatchObject({ ok: false, error: { code: "UNSUPPORTED", message: expect.stringContaining("artifactRoot") } });
       const result = await analyzeLocalAudio(path, { startSec: 0, endSec: 6 }, new AbortController().signal);
       expect(result.channels).toBe(2); expect(result.sampleRate).toBe(8000);
       expect(result.integratedLufs).not.toBeNull(); expect(result.truePeakDbtp).not.toBeNull();
@@ -132,7 +153,7 @@ describe("local audio analysis", () => {
       expect(monoResult.durationSec).toBeCloseTo(1, 2);
       const controller = new AbortController(); controller.abort();
       await expect(analyzeLocalAudio(path, { startSec: 0, endSec: 6 }, controller.signal)).rejects.toThrow("Cancelled");
-      const facade = createAgentFacade({ mediaRoots: [root] });
+      const facade = createAgentFacade({ mediaRoots: [root], artifactRoot: join(root, "artifacts") });
       await facade["project.create"]({ name: "Audio test" });
       const imported = await facade["media.import"]({ path });
       if (!imported.ok) throw new Error(imported.error.message);
@@ -146,6 +167,12 @@ describe("local audio analysis", () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
       expect(status).toMatchObject({ ok: true, value: { state: "done", result: { summary: { audioSummary: { coordinateSpace: "source" } } } } });
+      if (status?.ok) {
+        const jobAudio = (status.value.result?.summary as Record<string, any>).audioSummary;
+        expect(jobAudio).not.toHaveProperty("waveform");
+        expect(jobAudio).not.toHaveProperty("onsets");
+        expect(jobAudio).not.toHaveProperty("silence");
+      }
       expect(await facade["project.get_state"]()).toEqual(before);
       const next = await facade["media.analyze_start"]({ mediaId: imported.value.mediaId, analysisTypes: ["audioSummary"], endSec: 6 });
       if (!next.ok) throw new Error(next.error.message);
@@ -188,7 +215,7 @@ describe("local audio analysis", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 15000);
 
-  it("counts silence duration across all ranges when the preview is truncated", async () => {
+  it("returns all silence ranges and counts their full duration", async () => {
     const root = await mkdtemp(join(tmpdir(), "rt-many-silence-fixture-"));
     try {
       const rangeCount = 257;
@@ -196,13 +223,24 @@ describe("local audio analysis", () => {
       await writeFile(path, wav(manySilenceRangesPcm(rangeCount)));
       const result = await analyzeSilence(path, { startSec: 0, endSec: (rangeCount * 2 - 1) / 10 }, { minDurationSec: 0.05, paddingSec: 0 }, new AbortController().signal);
       expect(result.regionCount).toBe(rangeCount);
-      expect(result.silentRegions).toHaveLength(256);
-      expect(result.truncated).toBe(true);
-      const previewDuration = result.silentRegions.reduce((sum, region) => sum + region.durationSec, 0);
+      expect(result.silentRegions).toHaveLength(rangeCount);
+      expect(result.truncated).toBe(false);
+      const reportedDuration = result.silentRegions.reduce((sum, region) => sum + region.durationSec, 0);
       expect(result.totalSilenceDurationSec).toBeCloseTo(rangeCount / 10, 5);
-      expect(result.totalSilenceDurationSec).toBeGreaterThan(previewDuration + 0.09);
+      expect(result.totalSilenceDurationSec).toBeCloseTo(reportedDuration, 5);
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 15000);
+
+  it("keeps audioSummary events beyond the former 256-event preview boundary", async () => {
+    const rangeCount = 257;
+    const summary = await summarizePcm(manySummarySilenceRangesPcm(rangeCount), 3);
+    expect(summary.silenceCount).toBe(rangeCount);
+    expect(summary.silence).toHaveLength(rangeCount);
+    expect(summary.onsetCount).toBeGreaterThan(256);
+    expect(summary.onsets).toHaveLength(summary.onsetCount);
+    expect(summary.totalSilenceDurationSec).toBeCloseTo(rangeCount * 0.3, 4);
+    expect(summary.truncated).toBe(false);
+  });
 
   it("analyzes beat grids through the shared beat engine and omits downbeats", async () => {
     const root = await mkdtemp(join(tmpdir(), "rt-beat-fixture-"));
@@ -218,6 +256,7 @@ describe("local audio analysis", () => {
       expect(result.bpm).toBeLessThan(135);
       expect(result.confidence).toBeGreaterThan(.7);
       expect(result.beatCount).toBeGreaterThanOrEqual(10);
+      expect(result.beats).toHaveLength(result.beatCount);
       expect(result.truncated).toBe(false);
       expect(result.beats[0]!.index).toBe(0);
       expect(Math.abs(result.beats[0]!.timeSec - 0.5)).toBeLessThan(0.15);
@@ -248,8 +287,10 @@ describe("local audio analysis", () => {
       expect(summary.silence.parameters).toEqual(silenceParams);
       expect(summary.silence.mediaId).toBe(imported.value.mediaId);
       expect(summary.silence.sourceFingerprint).toHaveProperty("size");
+      expect(summary.silence).not.toHaveProperty("silentRegions");
       expect(summary.beatGrid.bpm).toBeGreaterThan(100);
-      expect(summary.beatGrid.beats.length).toBeGreaterThan(0);
+      expect(summary.beatGrid.beatCount).toBeGreaterThan(0);
+      expect(summary.beatGrid).not.toHaveProperty("beats");
       expect(summary.beatGrid).not.toHaveProperty("downbeats");
       expect(summary.technicalQuality).toHaveProperty("readable", true);
 
@@ -293,4 +334,18 @@ describe("local audio analysis", () => {
       expect(defaultRecord).toMatchObject({ ok: true, value: { config: { silenceParams: DEFAULT_SILENCE_ANALYSIS_PARAMS } } });
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 15000);
+
+  it("returns all beat grid events beyond the former 256-event preview boundary", async () => {
+    const root = await mkdtemp(join(tmpdir(), "rt-many-beats-fixture-"));
+    try {
+      const beatTimes = Array.from({ length: 300 }, (_, index) => .5 + index * .3);
+      const path = join(root, "many-beats.wav");
+      await writeFile(path, wav(burstPcm(beatTimes, 91)));
+      const result = await analyzeBeatGrid(path, { startSec: 0, endSec: 91 }, new AbortController().signal);
+      expect(result.beatCount).toBeGreaterThan(256);
+      expect(result.beats).toHaveLength(result.beatCount);
+      expect(result.truncated).toBe(false);
+      expect(result.beats.at(-1)!.index).toBe(result.beatCount - 1);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 30000);
 });

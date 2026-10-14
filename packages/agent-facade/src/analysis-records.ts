@@ -18,14 +18,14 @@
  *  - RECHECK: re-running with the stored configuration links the new record
  *    to the previous one (recheckOf), so before/after evidence is one query.
  */
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { FacadeError } from "./errors";
-import type { MediaSilenceAnalysisParams } from "./types";
+import type { AnalysisGetParams, MediaSilenceAnalysisParams } from "./types";
 
-export const ANALYSIS_RECORDS_SCHEMA_VERSION = 2;
+export const ANALYSIS_RECORDS_SCHEMA_VERSION = 3;
 
 /** Where a finding/record came from — the anti-fabrication axis. */
 export type AnalysisProvenance =
@@ -43,6 +43,8 @@ export interface AnalysisSubjectFacts {
 
 export interface AnalysisRecord {
   readonly schemaVersion: typeof ANALYSIS_RECORDS_SCHEMA_VERSION;
+  /** Absent on historical records whose event arrays may already be truncated. */
+  readonly audioDetailsComplete?: true;
   readonly id: string;
   readonly projectId: string;
   /** Project revision captured when the analysis job was created. */
@@ -136,6 +138,7 @@ export async function saveAnalysisRecord(
   await mkdir(dir, { recursive: true });
   const full: AnalysisRecord = {
     schemaVersion: ANALYSIS_RECORDS_SCHEMA_VERSION,
+    audioDetailsComplete: true,
     id: `analysis-${randomUUID()}`,
     createdAt: record.createdAt ?? new Date().toISOString(),
     finishedAt: new Date().toISOString(),
@@ -172,12 +175,181 @@ export async function loadAnalysisRecord(
       sourceRevision: null,
       coordinateSpace: "source",
     } as unknown as AnalysisRecord;
-  } else if (parsed.schemaVersion === ANALYSIS_RECORDS_SCHEMA_VERSION) {
-    record = parsed as unknown as AnalysisRecord;
+  } else if (parsed.schemaVersion === 2 || parsed.schemaVersion === ANALYSIS_RECORDS_SCHEMA_VERSION) {
+    record = { ...parsed, schemaVersion: ANALYSIS_RECORDS_SCHEMA_VERSION } as unknown as AnalysisRecord;
   } else {
     throw new FacadeError("JOB_FAILED", `analysis record "${recordId}" has unsupported schema version ${parsed.schemaVersion}`);
   }
   return { ...record, stale: await assertStaleness(record), recordPath };
+}
+
+/** Roll back a record if cancellation or checkpoint failure prevents job success. */
+export async function removeAnalysisRecord(artifactRoot: string, recordId: string): Promise<void> {
+  if (!/^analysis-[0-9a-f-]{8,}$/i.test(recordId)) {
+    throw new FacadeError("INVALID_PARAMS", "Invalid analysis record id");
+  }
+  await rm(resolvePath(recordsDir(artifactRoot), `${recordId}.json`), { force: true });
+}
+
+const AUDIO_SERIES = {
+  "audioSummary.onsets": { source: "audioSummary", field: "onsets", count: "onsetCount" },
+  "audioSummary.silence": { source: "audioSummary", field: "silence", count: "silenceCount" },
+  "silence.silentRegions": { source: "silence", field: "silentRegions", count: "regionCount" },
+  "beatGrid.beats": { source: "beatGrid", field: "beats", count: "beatCount" },
+} as const;
+type AudioSeries = keyof typeof AUDIO_SERIES;
+
+/** The stored facts are full; job and Agent summary views omit dense audio arrays. */
+export function compactAnalysisFacts(source: string, facts: Record<string, unknown>): Record<string, unknown> {
+  const omitted = source === "audioSummary" ? ["waveform", "onsets", "silence"]
+    : source === "silence" ? ["silentRegions"] : source === "beatGrid" ? ["beats"] : [];
+  return Object.fromEntries(Object.entries(facts).filter(([key]) => !omitted.includes(key)));
+}
+
+interface AudioDetailAvailability {
+  readonly series: AudioSeries;
+  readonly totalCount: number | null;
+  readonly storedCount: number;
+  /** False means paging cannot recover information lost by the historical analyzer. */
+  readonly complete: boolean;
+}
+interface AudioEvent extends Record<string, unknown> {
+  readonly id: string;
+  readonly timeSec?: number;
+  readonly startSec?: number;
+  readonly endSec?: number;
+}
+interface WaveformPoint {
+  readonly startSec: number;
+  readonly endSec: number;
+  readonly rms: number;
+  readonly peak: number;
+}
+export interface AnalysisAgentView extends AnalysisRecordView {
+  readonly view: "summary" | "events" | "waveform";
+  readonly details: readonly AudioDetailAvailability[];
+  readonly events?: {
+    readonly series: AudioSeries;
+    readonly window: { readonly startSec: number; readonly endSec: number };
+    readonly limit: number;
+    /** Unknown when historical truncation discarded matching events. */
+    readonly totalMatched: number | null;
+    readonly storedMatched: number;
+    readonly items: readonly AudioEvent[];
+    readonly nextCursor: string | null;
+    readonly complete: boolean;
+  };
+  readonly waveform?: {
+    readonly window: { readonly startSec: number; readonly endSec: number };
+    readonly maxPoints: number;
+    readonly points: readonly WaveformPoint[];
+    readonly complete: boolean;
+  };
+}
+
+function audioFacts(record: AnalysisRecord, source: string): Record<string, unknown> | undefined {
+  return record.observations.find((observation) => observation.source === source)?.facts as Record<string, unknown> | undefined;
+}
+
+function audioAvailability(record: AnalysisRecord): AudioDetailAvailability[] {
+  return (Object.entries(AUDIO_SERIES) as [AudioSeries, typeof AUDIO_SERIES[AudioSeries]][]).flatMap(([series, definition]) => {
+    const facts = audioFacts(record, definition.source);
+    if (!facts) return [];
+    const storedCount = (facts[definition.field] as unknown[] | undefined)?.length ?? 0;
+    const totalCount = typeof facts[definition.count] === "number" ? facts[definition.count] as number : null;
+    return [{ series, storedCount, totalCount, complete: totalCount === storedCount && (record.audioDetailsComplete === true || facts.truncated === false) }];
+  });
+}
+
+function invalidQuery(message: string): never {
+  throw new FacadeError("INVALID_PARAMS", message);
+}
+
+/** Check view-specific combinations before root requirements or disk access. */
+export function validateAnalysisGetQuery(params: AnalysisGetParams): void {
+  const view = params.view ?? "summary";
+  const allowed = view === "summary" ? ["recordId", "view"]
+    : view === "events" ? ["recordId", "view", "series", "startSec", "endSec", "limit", "cursor"]
+    : ["recordId", "view", "startSec", "endSec", "maxPoints"];
+  for (const key of Object.keys(params)) {
+    if (!allowed.includes(key)) invalidQuery(`${key} is not valid for analysis.get view ${view}`);
+  }
+  if (params.view === "events" && (!params.series || !Object.hasOwn(AUDIO_SERIES, params.series))) {
+    invalidQuery("events view requires a supported audio series");
+  }
+}
+
+/** Read a validated Agent query. Desktop GUI loaders intentionally keep the full record. */
+export async function getAnalysisRecordView(artifactRoot: string, params: AnalysisGetParams): Promise<AnalysisAgentView> {
+  const view = params.view ?? "summary";
+  const record = await loadAnalysisRecord(artifactRoot, params.recordId);
+  const details = audioAvailability(record);
+  const summary: AnalysisAgentView = {
+    ...record, view, details,
+    observations: record.observations.map((observation) => observation.facts
+      ? { ...observation, facts: compactAnalysisFacts(String(observation.source), observation.facts as Record<string, unknown>) }
+      : observation),
+  };
+  if (params.view !== "events" && params.view !== "waveform") return summary;
+  const startSec = params.startSec ?? record.rangeSec.startSec;
+  const endSec = params.endSec ?? record.rangeSec.endSec;
+  if (!(Number.isFinite(startSec) && Number.isFinite(endSec) && startSec >= record.rangeSec.startSec && endSec <= record.rangeSec.endSec && startSec < endSec)) {
+    invalidQuery("analysis.get requires a nonempty source-seconds window within the stored analysis range");
+  }
+  const window = { startSec, endSec };
+  if (params.view === "events") {
+    const series = params.series;
+    const definition = AUDIO_SERIES[series];
+    const availability = details.find((detail) => detail.series === series);
+    if (!availability) throw new FacadeError("NOT_FOUND", `Record does not contain ${series}`);
+    const limit = params.limit ?? 100;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 256) invalidQuery("events limit must be an integer in [1, 256]");
+    const facts = audioFacts(record, definition.source)!;
+    const all = (facts[definition.field] as (number | Record<string, unknown>)[]).map((event, index): AudioEvent => ({
+      ...(typeof event === "number" ? { timeSec: event } : event),
+      id: `${record.id}/${series}/${index}`,
+    }));
+    all.sort((a, b) => (a.timeSec ?? a.startSec!) - (b.timeSec ?? b.startSec!));
+    const matched = all.filter((event) => event.timeSec !== undefined
+      ? event.timeSec >= startSec && event.timeSec < endSec
+      : event.startSec! < endSec && event.endSec! > startSec);
+    // A transparent cursor binds the page to the immutable record and normalized query.
+    // It is an offset, not a credential; arbitrary valid offsets are safe.
+    const query = [record.id, series, startSec, endSec, limit];
+    let offset = 0;
+    if (params.cursor) {
+      let decoded: unknown;
+      try { decoded = JSON.parse(Buffer.from(params.cursor, "base64url").toString("utf8")); }
+      catch { invalidQuery("Invalid analysis events cursor"); }
+      if (!Array.isArray(decoded) || decoded.length !== 6 || query.some((value, index) => value !== decoded[index])) invalidQuery("Cursor does not match the record, series, window and limit");
+      offset = decoded[5] as number;
+      if (!Number.isInteger(offset) || offset < 0 || offset > matched.length) invalidQuery("Cursor offset is outside the available event window");
+    }
+    const items = matched.slice(offset, offset + limit);
+    const nextOffset = offset + items.length;
+    const nextCursor = nextOffset < matched.length ? Buffer.from(JSON.stringify([...query, nextOffset])).toString("base64url") : null;
+    return { ...summary, events: { series, window, limit, totalMatched: availability.complete ? matched.length : null, storedMatched: matched.length, items, nextCursor, complete: availability.complete } };
+  }
+  const maxPoints = params.maxPoints ?? 150;
+  if (!Number.isInteger(maxPoints) || maxPoints < 1 || maxPoints > 600) invalidQuery("waveform maxPoints must be an integer in [1, 600]");
+  const facts = audioFacts(record, "audioSummary");
+  const levels = facts?.waveform as { binDurationSec: number; bins: { rms: number; peak: number }[] }[] | undefined;
+  if (!levels?.length) throw new FacadeError("NOT_FOUND", "Record does not contain an audioSummary waveform");
+  const level = levels.reduce((best, candidate) => candidate.binDurationSec < best.binDurationSec ? candidate : best);
+  const waveformStart = facts!.startSec as number;
+  const waveformEnd = Math.min(record.rangeSec.endSec, waveformStart + (facts!.durationSec as number));
+  const points = level.bins.map((bin, index) => ({ ...bin, startSec: waveformStart + index * level.binDurationSec, endSec: Math.min(waveformEnd, waveformStart + (index + 1) * level.binDurationSec) }))
+    .filter((bin) => bin.startSec < endSec && bin.endSec > startSec);
+  const stride = Math.max(1, Math.ceil(points.length / maxPoints));
+  const bounded: WaveformPoint[] = [];
+  for (let index = 0; index < points.length; index += stride) {
+    const group = points.slice(index, index + stride);
+    const duration = group.reduce((sum, point) => sum + point.endSec - point.startSec, 0);
+    bounded.push({ startSec: group[0]!.startSec, endSec: group[group.length - 1]!.endSec,
+      rms: Math.sqrt(group.reduce((sum, point) => sum + point.rms ** 2 * (point.endSec - point.startSec), 0) / duration),
+      peak: Math.max(...group.map((point) => point.peak)) });
+  }
+  return { ...summary, waveform: { window, maxPoints, points: bounded, complete: waveformEnd >= endSec } };
 }
 
 /** List records (newest first), optionally filtered by media id. */

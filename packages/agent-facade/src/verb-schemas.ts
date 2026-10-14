@@ -16,7 +16,7 @@ import { REQUIREMENTS_GET_SCHEMA, REQUIREMENTS_LIST_SCHEMA } from "./requirement
  * boundary superset filter, and the runtime validators remain the only
  * authority — a payload can be schema-valid and still fail INVALID_PARAMS.
  */
-import { EDIT_OP_TYPES, MEDIA_ANALYSIS_TYPES } from "./types";
+import { ANALYSIS_EVENT_SERIES, EDIT_OP_TYPES, MEDIA_ANALYSIS_TYPES } from "./types";
 import { MATERIAL_LIBRARY_LIMITS } from "./material-library";
 import { FONT_LIBRARY_LIMITS } from "./font-library";
 import { PRESET_LIBRARY_LIMITS } from "./preset-verbs";
@@ -860,6 +860,41 @@ export const ANALYSIS_GET_SCHEMA: ObjectSchema = {
     describe: 'an analysis record id ("analysis-<uuid>") from analysis.list',
     required: true,
     emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  view: {
+    check: oneOf(["summary", "events", "waveform"] as const),
+    describe: '"summary" (default), "events", or "waveform"',
+    emits: { kind: "leaf", schema: { enum: ["summary", "events", "waveform"] } },
+  },
+  series: {
+    check: oneOf(ANALYSIS_EVENT_SERIES),
+    describe: "an event series; valid only for view=events",
+    emits: { kind: "leaf", schema: { enum: ANALYSIS_EVENT_SERIES } },
+  },
+  startSec: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative source-media second; valid only for events/waveform windows",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  endSec: {
+    check: isNonNegativeNumber,
+    describe: "a non-negative source-media second greater than startSec; windows are half-open",
+    emits: { kind: "leaf", schema: { type: "number", minimum: 0 } },
+  },
+  limit: {
+    check: (value) => typeof value === "number" && isPositiveInteger(value) && value <= 256,
+    describe: "an integer from 1 to 256; valid only for events (default 100)",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1, maximum: 256 } },
+  },
+  cursor: {
+    check: isNonEmptyString,
+    describe: "a non-empty cursor returned by the preceding events page",
+    emits: { kind: "leaf", schema: { type: "string", minLength: 1 } },
+  },
+  maxPoints: {
+    check: (value) => typeof value === "number" && isPositiveInteger(value) && value <= 600,
+    describe: "an integer from 1 to 600; valid only for waveform (default 150)",
+    emits: { kind: "leaf", schema: { type: "integer", minimum: 1, maximum: 600 } },
   },
 };
 

@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { definePlugin, defineTool, type ToolContext } from "../plugin-api";
 import { FacadeError } from "../errors";
 import { requireArtifactRoot, prepareArtifactDir } from "../artifact-io";
+import { compactJobStatusView } from "../jobs";
 import {
   isNonEmptyString,
   isNonNegativeInteger,
@@ -201,6 +202,9 @@ function load(file: string): BatchRecord {
     )
   )
     throw new FacadeError("INVALID_PARAMS", "Invalid batch manifest inputs");
+  for (const item of batch.items) {
+    if (item.status) item.status = compactJobStatusView(item.status);
+  }
   return batch;
 }
 
@@ -210,10 +214,9 @@ function refresh(batch: BatchRecord, context: ToolContext): void {
   for (const item of batch.items) {
     if (!item.jobId) continue;
     const status = context.analysisJobs.current(item.jobId);
-    if (status) {
-      item.status = status;
-      item.error = status.error?.message ?? null;
-    }
+    if (status) item.status = compactJobStatusView(status);
+    else if (item.status) item.status = compactJobStatusView(item.status);
+    if (item.status) item.error = item.status.error?.message ?? null;
   }
 }
 

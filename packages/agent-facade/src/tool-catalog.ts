@@ -46,7 +46,7 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
   media_render_html:
     "Render constrained local HTML/CSS to a transparent-capable PNG artifact inside the media roots (needs the local playwright Chromium); output flows to media.import by path. Scripts, frames, event handlers and network references are rejected; relative assets resolve only inside assetsRoot; blocked/missing assets are listed, not failed.",
   media_analyze_start:
-    "Start an asynchronous analysis job for an imported media item; unavailable analysis types fail honestly before a job is created.",
+    "Start an asynchronous analysis job for an imported media item; unavailable analysis types fail honestly before a job is created. Audio analysis requires artifactRoot to persist complete details. Poll job.status for a compact audio summary and analysisRecord.id, then use analysis.get for explicit event pages or waveform samples.",
   timeline_get: "Return the compact timeline view (tracks, clips, text overlays).",
   timeline_query:
     "Query a bounded timeline slice by namespaced refs, ids, time range, track/entity types, and allowlisted fields.",
@@ -72,14 +72,14 @@ const HEADLESS_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Sample 1–12 real frames for a clip or time range; each frame is fitted into a per-frame byte budget (default 1.5 MiB, maxFrameBytes tunes it) — lossless PNG when it fits, otherwise a JPEG quality/width ladder — with per-frame fidelity metadata plus a contact sheet when supported.",
   export_start:
     "Start an export job for a snapshot of the current project; returns a jobId immediately.",
-  job_status: "Return the current status of an export or media-analysis job.",
+  job_status: "Return the current status of an export or media-analysis job. Completed audio results contain scalar summaries, counts and analysisRecord.id; event arrays and waveform bins require an explicit analysis.get request.",
   job_cancel: "Request cooperative cancellation of an export or media-analysis job (idempotent on terminal jobs).",
   verify_artifact:
     "Verify an artifact with ffprobe/pixel checks and return the report as data.",
   analysis_list:
     "List durable analysis records (newest first): subject media, analysis types, staleness and recheck linkage. Filter by mediaId.",
   analysis_get:
-    "Return one full analysis record: separated observations/inferences/recommendations, provenance (local measurement / static sampling / cloud opinion), explicit unknowns, the exact recheck configuration, and current staleness against the source file.",
+    "Read a durable analysis record. Defaults to compact summary; audio event arrays and waveform bins are omitted. Use view:'events' with one of audioSummary.onsets, audioSummary.silence, silence.silentRegions, or beatGrid.beats for a half-open source-time window and bounded pages (limit ≤256, default 100); pass the returned cursor unchanged to continue. Use view:'waveform' for a bounded source window (maxPoints ≤600, default 150). Summary includes per-series stored/total counts and completeness; historical truncation is disclosed. Metadata, provenance, unknowns, recheck configuration, and staleness remain available.",
   material_list:
     "Unavailable headless — the user-level material library lives in the desktop GUI renderer.",
   material_get:
@@ -164,7 +164,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "media.render_html":
     "Render constrained local HTML/CSS markup to a PNG file under the media roots (default <mediaRoots[0]>/jobs/html-render/<requestKey>/), then media.import that path to put it on the timeline. source is {kind:'path',path} (an .html file inside a media root) or {kind:'inline',html} (raw markup ≤512 KiB). width/height are even integers in [2,4096]; transparent defaults to true; timeoutMs defaults to 30000 (≤120000). Scripts, iframe/object/embed, event handlers, javascript:/non-image data: URIs and network references (http(s), file, protocol-relative, srcset, CSS url(http)/@import/@font-face url(http)) are rejected; local subresources resolve only inside assetsRoot and remote/missing ones are aborted and returned in missingAssets — the render still succeeds. Requires this machine's playwright Chromium (same supply as preview) and a configured media root; transparent PNGs composite cleanly over the timeline. Changes no project state — import the returned path afterwards.",
   "media.analyze_start":
-    "Start a read-only asynchronous analysis job. videoReview sends an explicit <=20s source range to the selected cloud provider (default Alibaba qwen3.5-omni-flash via DASHSCOPE_API_KEY; REELTERMINAL_VIDEO_REVIEW_PROVIDER selects the provider), requires artifactRoot and cloudUpload:true; optional reviewQuestion (<=1000 chars). The bounded inspection copy is transcoded once and cached (source fingerprint + range keyed); each review still uploads once. Returns fallible cloud opinions, not acceptance; no automatic retry. audioSummary uses local FFmpeg for LUFS, true peak, waveforms, silence and onset/periodicity candidates with explicit source startSec/endSec (max 120s), without listening or editing; capabilities_get reports each analysis type honestly.",
+    "Start a read-only asynchronous analysis job. videoReview sends an explicit <=20s source range to the selected cloud provider (default Alibaba qwen3.5-omni-flash via DASHSCOPE_API_KEY; REELTERMINAL_VIDEO_REVIEW_PROVIDER selects the provider), requires artifactRoot and cloudUpload:true; optional reviewQuestion (<=1000 chars). The bounded inspection copy is transcoded once and cached (source fingerprint + range keyed); each review still uploads once. Returns fallible cloud opinions, not acceptance; no automatic retry. audioSummary uses local FFmpeg for LUFS, true peak, waveforms, silence and onset/periodicity candidates with explicit source startSec/endSec (max 120s), without listening or editing. audioSummary/silence/beatGrid require artifactRoot and persist complete audio details; job.status returns a compact audio summary and analysisRecord.id, then analysis.get reads explicit event pages or waveform samples. capabilities_get reports each analysis type honestly.",
   "timeline.get":
     "Return the compact timeline view (tracks, clips, text overlays) at the current revision. Persisted review markers use namespaced ids R1, R2, and so on.",
   "timeline.query":
@@ -195,7 +195,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
     'Sample 1–12 real frames plus a contact sheet when supported. Pass exactly ONE selector: clipId (a timeline clip id from timeline_get) or timeRange as {"startSec": <number>, "endSec": <number>} in timeline seconds with endSec > startSec ≥ 0. Optional: sampleCount (1–12, default 6), width/height (even, ≤1024), maxFrameBytes (per-frame byte budget, 32768–8388608, default 1572864; oversized PNGs are JPEG-re-encoded to fit, with frames[].fidelity disclosing the delivered raster/format).',
   "export.start":
     'Start an export job for a snapshot of the current project; returns a jobId immediately. Optional destinationPath "<deliveryRoot>/jobs/<slug>/output/<name>.mp4" copies the verified artifact into the Agent workspace deliverables directory after completion (never overwrites; see capabilities_get.export.details.deliveryRoots). Poll job.status until done, then check deliveredTo/deliveryError.',
-  "job.status": "Return the current status of an export or media-analysis job.",
+  "job.status": "Return the current status of an export or media-analysis job. Completed audio results contain scalar summaries, counts and analysisRecord.id; event arrays and waveform bins require an explicit analysis.get request.",
   "job.cancel":
     "Request cooperative cancellation of an export or media-analysis job (idempotent on terminal jobs).",
   "verify.artifact":
@@ -203,7 +203,7 @@ const LIVE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "analysis.list":
     "List durable analysis records (newest first): subject media, analysis types, staleness (source-changed/missing vs current) and recheck linkage. Filter by mediaId.",
   "analysis.get":
-    "Return one full analysis record: separated observations/inferences/recommendations, provenance per source (local measurement / static sampling / cloud opinion), explicit unknowns, the exact stored configuration for a same-config recheck (media.analyze_start recheckOfRecordId), and current staleness. Cloud model text is stored as data — it is never executed and never becomes a quality verdict.",
+    "Read a durable analysis record. Defaults to compact summary; audio event arrays and waveform bins are omitted. Use view:'events' with one of audioSummary.onsets, audioSummary.silence, silence.silentRegions, or beatGrid.beats for a half-open source-time window and bounded pages (limit ≤256, default 100); pass the returned cursor unchanged to continue. Use view:'waveform' for a bounded source window (maxPoints ≤600, default 150). Summary includes per-series stored/total counts and completeness; historical truncation is disclosed. Metadata, provenance, unknowns, recheck configuration, and staleness remain available. Cloud model text is stored as data — it is never executed and never becomes a quality verdict.",
   "material.list":
     "Search and paginate the user-level material library (media, segments, links, methods) by kind, tag, organize status and free-text query. The library is user state, independent of the open project.",
   "material.get":

@@ -46,7 +46,7 @@ import type {
   RenderProvider,
 } from "./providers";
 import { READ_ONLY_VERBS } from "./types";
-import type { MediaImportResult } from "./types";
+import type { AnalysisGetParams, MediaImportResult } from "./types";
 import { writeTinyMp4 } from "./media/fixtures/tiny-mp4";
 
 /* --------------------------- FakeLiveStore --------------------------- */
@@ -504,6 +504,7 @@ function liveFacade(
     store: LiveProjectStore;
     prepareRenderProject: (project: Project) => Promise<Project>;
     taskInputReferences: LiveTaskInputReferences;
+    taskLifecycle: import("./live-session").LiveTaskLifecycle;
     executionScope: () => string;
   }>,
 ): LiveAgentFacade {
@@ -521,6 +522,7 @@ function liveFacade(
     ...(opts?.workspaceLibrary ? { workspaceLibrary: opts.workspaceLibrary } : {}),
     ...(opts?.prepareRenderProject ? { prepareRenderProject: opts.prepareRenderProject } : {}),
     ...(opts?.taskInputReferences ? { taskInputReferences: opts.taskInputReferences } : {}),
+    ...(opts?.taskLifecycle ? { taskLifecycle: opts.taskLifecycle } : {}),
     ...(opts?.executionScope ? { executionScope: opts.executionScope } : {}),
   });
 }
@@ -2640,6 +2642,35 @@ describe("live cloud review is read-only", () => {
 });
 
 describe("live local audio analysis parity", () => {
+  it("removes a saved record when the completion checkpoint fails", async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-audio-checkpoint-"));
+    const sourcePath = await writeFloatWav(mediaRoot, 6, [.5, 1, 1.5, 2, 2.5, 3]);
+    const localStore = new FakeLiveStore();
+    const facade = liveFacade({
+      store: localStore,
+      mediaRoots: [mediaRoot],
+      taskLifecycle: {
+        list: () => [],
+        begin: () => undefined,
+        update: (job) => {
+          if (job.state === "done") throw new Error("checkpoint unavailable");
+        },
+      },
+    });
+    try {
+      const imported = await facade["media.import"]({ path: sourcePath });
+      if (!imported.ok) throw new Error(imported.error.message);
+      const started = await facade["media.analyze_start"]({ mediaId: imported.value.mediaId, analysisTypes: ["audioSummary"] });
+      if (!started.ok) throw new Error(started.error.message);
+      const job = await waitForJob(facade, started.value.jobId, 15000);
+      expect(job).toMatchObject({ state: "error", result: null, error: { code: "BATCH_PERSISTENCE_FAILED" } });
+      expect(await facade["analysis.list"]({ mediaId: imported.value.mediaId })).toMatchObject({ ok: true, value: [] });
+    } finally {
+      await facade.dispose();
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
+  }, 20000);
+
   it("runs silence and beatGrid, records effective silence parameters, and discloses matching limits", async () => {
     const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-audio-"));
     const sourcePath = await writeFloatWav(mediaRoot, 6, [.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5]);
@@ -2651,11 +2682,11 @@ describe("live local audio analysis parity", () => {
       if (!caps.ok) throw new Error(caps.error.message);
       expect(caps.value.mediaAnalysis.types.silence).toMatchObject({
         available: true,
-        details: { maxRangeSec: 120, maxConcurrentPerSession: 2, maxEvents: 256, coordinateSpace: "source" },
+        details: { maxRangeSec: 120, maxConcurrentPerSession: 2, maxEventsPerPage: 256, coordinateSpace: "source" },
       });
       expect(caps.value.mediaAnalysis.types.beatGrid).toMatchObject({
         available: true,
-        details: { maxRangeSec: 120, maxConcurrentPerSession: 2, maxEvents: 256, coordinateSpace: "source" },
+        details: { maxRangeSec: 120, maxConcurrentPerSession: 2, maxEventsPerPage: 256, coordinateSpace: "source" },
       });
 
       const imported = await facade["media.import"]({ path: sourcePath });
@@ -2669,7 +2700,7 @@ describe("live local audio analysis parity", () => {
 
       const started = await facade["media.analyze_start"]({
         mediaId: imported.value.mediaId,
-        analysisTypes: ["silence", "beatGrid"],
+        analysisTypes: ["audioSummary", "silence", "beatGrid"],
         silenceParams: { minDurationSec: 0.1 },
       });
       if (!started.ok) throw new Error(started.error.message);
@@ -2682,9 +2713,14 @@ describe("live local audio analysis parity", () => {
         mediaId: imported.value.mediaId,
       });
       expect(summary.silence.regionCount).toBeGreaterThan(0);
+      expect(summary.silence).not.toHaveProperty("silentRegions");
       expect(summary.beatGrid).toMatchObject({ coordinateSpace: "source", mediaId: imported.value.mediaId });
       expect(summary.beatGrid.bpm).toBeGreaterThan(100);
-      expect(summary.beatGrid.beats.length).toBeGreaterThan(0);
+      expect(summary.beatGrid.beatCount).toBeGreaterThan(0);
+      expect(summary.beatGrid).not.toHaveProperty("beats");
+      expect(summary.audioSummary).not.toHaveProperty("waveform");
+      expect(summary.audioSummary).not.toHaveProperty("onsets");
+      expect(summary.audioSummary).not.toHaveProperty("silence");
 
       const recordId = (summary.analysisRecord as { id: string }).id;
       const record = await facade["analysis.get"]({ recordId });
@@ -2702,6 +2738,34 @@ describe("live local audio analysis parity", () => {
           ]),
         },
       });
+
+      const headless = createAgentFacade({ artifactRoot });
+      const expectParity = async (params: AnalysisGetParams) => {
+        const headlessResult = await headless["analysis.get"](params);
+        const liveResult = await facade["analysis.get"](params);
+        expect(headlessResult.ok).toBe(true);
+        expect(liveResult).toEqual(headlessResult);
+        return headlessResult;
+      };
+      await expectParity({ recordId });
+
+      const query: AnalysisGetParams = { recordId, view: "events", series: "beatGrid.beats", startSec: 1, endSec: 3, limit: 2 };
+      const firstPage = await expectParity(query);
+      if (!firstPage.ok) throw new Error(firstPage.error.message);
+      const firstEvents = (firstPage.value as { events: { items: Array<{ timeSec: number }>; nextCursor: string | null } }).events;
+      expect(firstEvents.items.every((event) => event.timeSec >= 1 && event.timeSec < 3)).toBe(true);
+      expect(firstEvents.nextCursor).toBeTruthy();
+      const nextPage = await expectParity({ ...query, cursor: firstEvents.nextCursor! });
+      if (!nextPage.ok) throw new Error(nextPage.error.message);
+      const nextEvents = (nextPage.value as { events: { items: Array<{ timeSec: number }> } }).events;
+      expect(nextEvents.items.every((event) => event.timeSec >= 1 && event.timeSec < 3)).toBe(true);
+      expect(nextEvents.items.some((event) => firstEvents.items.some((item) => item.timeSec === event.timeSec))).toBe(false);
+
+      const waveform = await expectParity({ recordId, view: "waveform", startSec: 0, endSec: 6, maxPoints: 7 });
+      if (!waveform.ok) throw new Error(waveform.error.message);
+      expect((waveform.value as { waveform: { points: unknown[]; maxPoints: number } }).waveform)
+        .toMatchObject({ maxPoints: 7 });
+      expect((waveform.value as { waveform: { points: unknown[] } }).waveform.points.length).toBeLessThanOrEqual(7);
 
       const longPath = await writeFloatWav(mediaRoot, 121);
       const longImport = await facade["media.import"]({ path: longPath });
