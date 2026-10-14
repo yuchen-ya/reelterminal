@@ -48,8 +48,10 @@ export class WebGPURenderer implements Renderer {
 
   // Uniform buffers
   private layerUniformBuffer: GPUBuffer | null = null;
-  private transformUniformBuffer: GPUBuffer | null = null;
-  private borderRadiusUniformBuffer: GPUBuffer | null = null;
+  // Queue writes execute before the submitted render pass. Each draw needs
+  // independent storage or all layers observe the last transform written.
+  private drawUniformBuffers: GPUBuffer[] = [];
+  private drawUniformIndex = 0;
 
   // Sampler for texture sampling
   private textureSampler: GPUSampler | null = null;
@@ -281,18 +283,15 @@ export class WebGPURenderer implements Renderer {
       size: 32,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-    this.transformUniformBuffer = this.device.createBuffer({
-      label: "Transform Uniform Buffer",
+  }
+
+  private nextDrawUniformBuffer(): GPUBuffer {
+    const index = this.drawUniformIndex++;
+    return this.drawUniformBuffers[index] ?? (this.drawUniformBuffers[index] = this.device!.createBuffer({
+      label: `Layer ${index} Transform Uniform Buffer`,
       size: 96,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-
-    // Border radius uniform buffer (80 bytes: 64 for matrix + 16 for params)
-    this.borderRadiusUniformBuffer = this.device.createBuffer({
-      label: "Border Radius Uniform Buffer",
-      size: 80,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
+    }));
   }
 
   private createTextureSampler(): void {
@@ -508,11 +507,11 @@ export class WebGPURenderer implements Renderer {
 
     // Destroy uniform buffers
     this.layerUniformBuffer?.destroy();
-    this.transformUniformBuffer?.destroy();
-    this.borderRadiusUniformBuffer?.destroy();
+    for (const buffer of this.drawUniformBuffers) buffer.destroy();
+    this.drawUniformBuffers = [];
+    this.drawUniformIndex = 0;
     this.layerUniformBuffer = null;
-    this.transformUniformBuffer = null;
-    this.borderRadiusUniformBuffer = null;
+
     this.compositePipeline = null;
     this.transformPipeline = null;
     this.borderRadiusPipeline = null;
@@ -541,6 +540,7 @@ export class WebGPURenderer implements Renderer {
     if (!this.device || this.isDeviceLost) return;
 
     this.layers = [];
+    this.drawUniformIndex = 0;
     // Swap frame buffers for double-buffering
     this.currentFrameBuffer = 1 - this.currentFrameBuffer;
   }
@@ -631,6 +631,7 @@ export class WebGPURenderer implements Renderer {
 
     buffer.unmap();
     buffer.destroy();
+    for (const unused of this.drawUniformBuffers.splice(this.drawUniformIndex)) unused.destroy();
 
     const imageData = new ImageData(dstData, this.width, this.height);
     this.lastRenderTime = performance.now() - startTime;
@@ -676,7 +677,6 @@ export class WebGPURenderer implements Renderer {
     if (
       !this.device ||
       !this.transformPipeline ||
-      !this.transformUniformBuffer ||
       !this.transformUniformLayout ||
       !this.transformTextureLayout ||
       !this.textureSampler
@@ -697,8 +697,9 @@ export class WebGPURenderer implements Renderer {
       layer.borderRadius,
       layer.transform.crop,
     );
+    const uniformBuffer = this.nextDrawUniformBuffer();
     this.device.queue.writeBuffer(
-      this.transformUniformBuffer,
+      uniformBuffer,
       0,
       uniformData.buffer as ArrayBuffer,
     );
@@ -706,7 +707,7 @@ export class WebGPURenderer implements Renderer {
       label: "Transform Uniform Bind Group",
       layout: this.transformUniformLayout,
       entries: [
-        { binding: 0, resource: { buffer: this.transformUniformBuffer } },
+        { binding: 0, resource: { buffer: uniformBuffer } },
       ],
     });
 
@@ -734,7 +735,6 @@ export class WebGPURenderer implements Renderer {
     if (
       !this.device ||
       !this.borderRadiusPipeline ||
-      !this.borderRadiusUniformBuffer ||
       !this.borderRadiusUniformLayout ||
       !this.borderRadiusTextureLayout ||
       !this.textureSampler
@@ -757,8 +757,9 @@ export class WebGPURenderer implements Renderer {
     uniformData[18] = this.width / this.height; // aspect ratio
     uniformData[19] = 0.01; // smoothness for anti-aliasing
 
+    const uniformBuffer = this.nextDrawUniformBuffer();
     this.device.queue.writeBuffer(
-      this.borderRadiusUniformBuffer,
+      uniformBuffer,
       0,
       uniformData.buffer as ArrayBuffer,
     );
@@ -766,7 +767,7 @@ export class WebGPURenderer implements Renderer {
       label: "Border Radius Uniform Bind Group",
       layout: this.borderRadiusUniformLayout,
       entries: [
-        { binding: 0, resource: { buffer: this.borderRadiusUniformBuffer } },
+        { binding: 0, resource: { buffer: uniformBuffer } },
       ],
     });
 
