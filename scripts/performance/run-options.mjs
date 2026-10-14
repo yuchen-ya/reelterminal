@@ -15,7 +15,7 @@ const VALUE_FLAGS = new Set([
   "--run-timeout-seconds",
   "--clip-count", "--track-count", "--edit-rounds", "--duration-seconds", "--action-interval-ms",
 ]);
-const BOOLEAN_FLAGS = new Set(["--serial", "--report-only"]);
+const BOOLEAN_FLAGS = new Set(["--serial", "--report-only", "--saturate-history"]);
 
 function removePnpmSeparator(argv) {
   const separatorIndex = argv.indexOf("--");
@@ -100,13 +100,14 @@ function parseScenarios(values, suite) {
 
 /** Parse strict runner flags into the normalized object passed to the E2E child. */
 export function parseRunOptions(argv) {
-  const { values, scenarios: scenarioValues } = parseFlags(argv);
+  const { values, scenarios: scenarioValues, booleans } = parseFlags(argv);
   const suite = values.get("--suite");
   if (suite !== "quick" && suite !== "benchmark" && suite !== "soak") {
     throw new TypeError("--suite is required and must be quick, benchmark, or soak");
   }
 
   const scenarios = parseScenarios(scenarioValues, suite);
+  if (booleans.has("--saturate-history") && !scenarios.includes("R02")) throw new TypeError("--saturate-history requires R02");
   if (scenarios.includes("R02") && suite !== "soak") throw new TypeError("R02 requires the opt-in soak suite");
   if (suite === "soak" && scenarios.some((id) => id !== "R01" && id !== "R02")) throw new TypeError("soak supports only R01 and R02");
   for (const [flag, required] of [["--clip-count", "T03"], ["--track-count", "T03"], ["--edit-rounds", "R01"], ["--duration-seconds", "R02"], ["--action-interval-ms", "R02"]]) {
@@ -173,6 +174,7 @@ export function parseRunOptions(argv) {
 
   return {
     suite,
+    saturateHistory: booleans.has("--saturate-history"),
     scenarios,
     seed,
     samples,
@@ -201,4 +203,4 @@ export function runTimeoutMs(options) {
 }
 
 export const PERFORMANCE_RUN_USAGE =
-  "Usage: node ../../scripts/performance/run.mjs --suite quick|benchmark|soak [--scenario ID[,ID]|ALL] [--seed VALUE] [--samples N] [--repeats N] [--cache warm|fresh-profile|reused-profile] [--cold-launches N] [--font-mib 32|64] [--node-count 10|100|1000] [--clip-count 500|2000] [--track-count 20|50] [--edit-rounds 1..5000] [--duration-seconds 1..3600] [--action-interval-ms 100..60000] [--operation-timeout-ms N] [--run-timeout-seconds N] [--serial] [--report-only]";
+  "Usage: node ../../scripts/performance/run.mjs --suite quick|benchmark|soak [--scenario ID[,ID]|ALL] [--seed VALUE] [--samples N] [--repeats N] [--cache warm|fresh-profile|reused-profile] [--cold-launches N] [--font-mib 32|64] [--node-count 10|100|1000] [--clip-count 500|2000] [--track-count 20|50] [--edit-rounds 1..5000] [--duration-seconds 1..3600] [--action-interval-ms 100..60000] [--saturate-history] [--operation-timeout-ms N] [--run-timeout-seconds N] [--serial] [--report-only]";

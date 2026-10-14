@@ -14,6 +14,7 @@ import { installProbe, prepareProfile, waitForMarker, type PerformanceRunOptions
 import { captureBuildIdentity, readEnvironmentIdentity } from "./identity";
 import { createPerformanceResult, summarizeOperations, type RawPerformanceOperation } from "./result";
 import { summarizeIdleMemory, type IdleResourceSample } from "./resource-trend";
+import { saturateHistory } from "./history-saturation";
 import { validateResultDocument } from "../../../../../scripts/performance/result-contract.mjs";
 
 type ResourceGlobal = typeof globalThis & {
@@ -31,7 +32,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
     ...base,
     manifest: {
       ...base.manifest, scenarioId,
-      parameters: { editRounds: scenarioId === "R01" ? options.editRounds : 0, durationSeconds: scenarioId === "R02" ? options.durationSeconds : 0, actionIntervalMs: options.actionIntervalMs, clipCount: 1, nodeCount: 10 },
+      parameters: { editRounds: scenarioId === "R01" ? options.editRounds : 0, durationSeconds: scenarioId === "R02" ? options.durationSeconds : 0, actionIntervalMs: options.actionIntervalMs, clipCount: 1, nodeCount: 10, saturateHistory: options.saturateHistory ?? false },
       expectedSemantics: ["Fixed clip/media/node count through edit, undo, redo, save and history preview return.", "Idle save queues drain and temporary resources return to their warmed baseline.", "Memory observations use idle segments without forced GC; RSS is not VRAM."],
       expectedOperations: scenarioId === "R01" ? options.editRounds : Math.ceil(options.durationSeconds * 1000 / options.actionIntervalMs),
       timeBudgetMs: options.runTimeoutSeconds * 1000,
@@ -56,6 +57,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
   let revision = 0;
   let started = 0;
   let measuredElapsedMs = 0;
+  let saturation: { capacity: number; edits: number; plateauCounts: number[]; elapsed_ms: number } | null = null;
   const correctness: Record<string, boolean | null> = { final_state_verified: null, target_frame_verified: null, resources_returned_verified: null, save_queue_drained_verified: null };
   const runDeadline = performance.now() + options.runTimeoutSeconds * 1000;
   const watchdog = setTimeout(() => {
@@ -148,6 +150,28 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
     await verifyPlayhead();
     await historyRoundTrip();
     await stateMatches(clip.startTime);
+    if (options.saturateHistory) {
+      const warmStarted = performance.now();
+      const saturated = await saturateHistory(
+        () => page.evaluate(async () => (await (globalThis as ResourceGlobal).__reelterminalPerformanceCapture.readResources()).history),
+        async (index) => {
+          const moved = await agent!.callTool<{ revision: number }>("edit_apply", { ...target, expectedRevision: revision, ops: [{ op: "clip.move", clipId: clip.id, startTime: index % 2 === 0 ? clip.startTime + 0.5 : clip.startTime }] }, { timeoutMs: options.operationTimeoutMs });
+          if (!moved.ok || moved.value!.revision !== revision + 1) throw new Error("history warmup edit did not commit one revision");
+          revision = moved.value!.revision;
+          if (index % 100 === 0) console.info("PERFORMANCE_HISTORY_WARMUP", { edits: index + 1 });
+        },
+      );
+      saturation = { ...saturated, elapsed_ms: performance.now() - warmStarted };
+      // Restore the fixed start using another real edit if warmup ended offset.
+      const state = await read();
+      if (state.tracks.flatMap(track => track.clips)[0]!.startTime !== clip.startTime) {
+        const restored = await agent.callTool<{ revision: number }>("edit_apply", { ...target, expectedRevision: revision, ops: [{ op: "clip.move", clipId: clip.id, startTime: clip.startTime }] }, { timeoutMs: options.operationTimeoutMs });
+        if (!restored.ok) throw new Error("history warmup final edit failed");
+        revision = restored.value!.revision;
+      }
+      await stateMatches(clip.startTime);
+      await historyRoundTrip();
+    }
     if (scenarioId === "R02" && runDeadline - performance.now() < (options.durationSeconds + 60) * 1000) {
       reasons.push("insufficient_measurement_budget");
       throw new Error("resource-soak startup left insufficient time for measurement and cleanup; increase --run-timeout-seconds");
@@ -193,7 +217,11 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
     await stateMatches(rounds % 2 === 0 ? clip.startTime : clip.startTime + 0.5);
     const final = await settleAndSample();
     // History is intentionally retained but bounded; transient view leases return.
-    if (final.history.actionUndo > 1000 || final.history.actionRedo !== 0 || final.history.changeJournalRevisions > 256) throw new Error("history/journal exceeded its production bound");
+    if (final.history.actionUndo > final.history.actionCapacity || final.history.actionRedo !== 0 || final.history.changeJournalRevisions > 256) throw new Error("history/journal exceeded its production bound");
+    if (saturation && idle.some(sample => {
+      const history = sample.resources.history as { actionUndo: number; actionCapacity: number };
+      return history.actionCapacity !== saturation!.capacity || history.actionUndo !== saturation!.capacity;
+    })) throw new Error("history capacity was not stable throughout observation");
     for (const key of ["projectLeases", "projectFaces"] as const) if (final.fonts[key] !== baseline.fonts[key]) throw new Error("font leases did not return to the warmed baseline");
     if (final.workspace.runtimes !== baseline.workspace.runtimes || final.media.ownedBlobUrls !== baseline.media.ownedBlobUrls) throw new Error("runtime/blob resource count grew across fixed-asset cycles");
     for (const key of ["previewVideoCacheEntries", "previewImageBitmapCacheEntries", "motionImageBitmapCacheEntries", "motionVideoElementCacheEntries"] as const) {
@@ -205,6 +233,10 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
     failure = error;
     reasons.push(timedOut ? "run_timeout" : "resource_soak_failed");
     operations.push({ operation_id: `failed-${rounds}`, metric: "edit_undo_redo_content_verified_ms", outcome: timedOut || (error as Error).name === "TimeoutError" ? "timeout" : "failed", duration_ms: null, waited_ms: started ? performance.now() - started : 0, target_verified: false });
+    const failureDirectory = path.join(ARTIFACTS_DIR, "performance");
+    await mkdir(failureDirectory, { recursive: true });
+    await writeFile(path.join(failureDirectory, `${runId}.failure.json`), JSON.stringify({ error: String(error), completed_rounds: rounds, history_saturation: saturation, idle_samples: idle }, null, 2));
+    await launched?.page.screenshot({ path: path.join(failureDirectory, `${runId}.failure.png`), timeout: 5_000 }).catch(() => undefined);
   } finally {
     clearTimeout(watchdog);
     if (activeCapture && launched && !launched.page.isClosed()) {
@@ -247,6 +279,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
   const third = Math.max(1, Math.floor(operations.length / 3));
   const artifactDocument = {
     ...result,
+    history_saturation: saturation,
     idle_samples: idle,
     memory_trends: summarizeIdleMemory(idle),
     distributions_by_phase: {

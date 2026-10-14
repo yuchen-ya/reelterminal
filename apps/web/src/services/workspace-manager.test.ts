@@ -161,25 +161,16 @@ function expectedFirstNodeName(): string {
 /**
  * Mirrors WorkspaceManager.generateAutoNodeName's Intl.DateTimeFormat
  * construction (default locale, numeric month/day, 2-digit hour/minute) and
- * turns its formatToParts output into an anchored pattern, so the assertion
- * holds under any locale's separators.
+ * uses format itself: some ICU versions return different whitespace from
+ * formatToParts, even for the same locale and options.
  */
-function autoNodeNamePattern(): RegExp {
-  const source = new Intl.DateTimeFormat(undefined, {
+function timestampNodeName(time: number): string {
+  return new Intl.DateTimeFormat(undefined, {
     month: "numeric",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  })
-    .formatToParts(new Date())
-    .map((part) => {
-      if (["month", "day", "hour", "minute"].includes(part.type)) return "\\d{1,2}";
-      if (part.type === "literal") return part.value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      // dayPeriod may flip (AM/PM) between name generation and this check.
-      return "[^\\d]*";
-    })
-    .join("");
-  return new RegExp(`^${source}$`);
+  }).format(new Date(time));
 }
 
 describe("WorkspaceManager", () => {
@@ -1210,13 +1201,13 @@ describe("WorkspaceManager", () => {
 
     const context = await manager.getWorkspaceContext(target);
     await context.store.getState().addTrack("video");
+    const beforeSave = Date.now();
     const second = await manager.saveNode({ target });
+    const afterSave = Date.now();
     expect(second.node.id).not.toBe(first.node.id);
     expect(second.node.name).not.toBe(expectedFirstNodeName());
-    // Locale-proof: build the expected shape from the SAME
-    // Intl.DateTimeFormat construction generateAutoNodeName uses instead of
-    // hard-coding one locale's separators.
-    expect(second.node.name).toMatch(autoNodeNamePattern());
+    // Exact formatting on either side also handles a minute boundary.
+    expect([timestampNodeName(beforeSave), timestampNodeName(afterSave)]).toContain(second.node.name);
 
     await context.store.getState().addTrack("audio");
     const explicit = await manager.saveNode({ target, name: "Custom" });

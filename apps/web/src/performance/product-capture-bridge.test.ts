@@ -75,6 +75,7 @@ describe("product performance capture bridge", () => {
       schemaVersion: 1,
       capturedAtUs: 42,
       history: {
+        actionCapacity: 1000,
         actionUndo: 0,
         actionRedo: 0,
         templateUndo: 0,
@@ -139,6 +140,7 @@ describe("product performance capture bridge", () => {
 
     expect(snapshot.schemaVersion).toBe(1);
     expect(snapshot.history).toMatchObject({
+      actionCapacity: expect.any(Number),
       actionUndo: expect.any(Number),
       actionRedo: expect.any(Number),
       changeJournalEntries: expect.any(Number),

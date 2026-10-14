@@ -28,6 +28,7 @@ import { validateResultDocument } from "../../../../../scripts/performance/resul
 
 export interface PerformanceRunOptions {
   suite: "quick" | "benchmark" | "soak";
+  saturateHistory?: boolean;
   scenarios: PerformanceScenarioId[];
   seed: string;
   samples: number;

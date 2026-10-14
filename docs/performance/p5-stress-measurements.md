@@ -23,6 +23,13 @@ pnpm --filter @reelterminal/desktop test:perf:soak -- --scenario R01 --edit-roun
 # 默认 1800 秒，硬上限 3600 秒；显式短时选项只用于 smoke，不能称为 30 分钟验收。
 pnpm --filter @reelterminal/desktop test:perf:soak -- --scenario R02 --duration-seconds 1800 --action-interval-ms 1000 --serial
 pnpm --filter @reelterminal/desktop test:perf:soak -- --scenario R02 --duration-seconds 30 --serial
+
+# 先读取实际历史容量并用真实编辑达到稳定上限，再在同一进程观察完整 60 分钟。
+# 预热不计入 duration，但计入 run timeout；不改容量、不清空历史、不强制 GC。
+pnpm --filter @reelterminal/desktop test:perf:soak -- --scenario R02 --saturate-history --duration-seconds 3600 --run-timeout-seconds 7200 --serial --report-only
+
+# 独立 1080p 视频、真实运行时软件编码、10 次串行导出及取消恢复。
+REELTERMINAL_REAL_MEDIA_STRESS=1 pnpm --filter @reelterminal/desktop exec vitest run --config e2e/vitest.config.ts e2e/performance/real-media-stress.e2e.ts
 ```
 
 UI 和导出通过同一个 command 锁及 suite 内串行 dispatch 运行。普通 E2E 不

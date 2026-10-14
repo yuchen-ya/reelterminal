@@ -73,6 +73,12 @@ test("cold profile runs use history scenarios and cold launch count instead of s
   assert.equal(runTimeoutMs(options), 2 * 3 * 3 * (600 + 120) * 1_000);
 });
 
+test("history saturation is explicit and restricted to R02", () => {
+  assert.equal(parseRunOptions(["--suite", "soak", "--saturate-history"]).saturateHistory, true);
+  assert.equal(parseRunOptions(["--suite", "soak"]).saturateHistory, false);
+  assert.throws(() => parseRunOptions(["--suite", "quick", "--saturate-history"]));
+});
+
 test("rejects unknown, duplicate, missing, malformed, and unsupported cold options", () => {
   const invalidArguments = [
     ["--suite", "quick", "--trace"],

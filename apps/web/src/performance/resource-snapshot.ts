@@ -46,6 +46,7 @@ export interface ProductPerformanceResourceSnapshot {
   readonly schemaVersion: 1;
   readonly capturedAtUs: number;
   readonly history: {
+    readonly actionCapacity: number;
     readonly actionUndo: number;
     readonly actionRedo: number;
     readonly templateUndo: number;

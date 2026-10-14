@@ -4695,6 +4695,7 @@ export function getActiveProjectRuntimeStore(): typeof primaryProjectStore {
 
 /** Bounded, identifier-free history counts for the opt-in resource snapshot. */
 export function getActiveProjectHistoryResourceCounts(): {
+  actionCapacity: number;
   actionUndo: number;
   actionRedo: number;
   templateUndo: number;
@@ -4707,6 +4708,7 @@ export function getActiveProjectHistoryResourceCounts(): {
 }
 
 export function getProjectHistoryResourceCountsForStore(store: StoreApi<ProjectState>): {
+  actionCapacity: number;
   actionUndo: number;
   actionRedo: number;
   templateUndo: number;
@@ -4718,6 +4720,7 @@ export function getProjectHistoryResourceCountsForStore(store: StoreApi<ProjectS
   const state = store.getState();
   const runtime = projectStoreRuntimes.get(store)!;
   return {
+    actionCapacity: state.actionHistory.getMaxHistorySize(),
     actionUndo: state.actionHistory.getUndoStackSize(),
     actionRedo: state.actionHistory.getRedoStackSize(),
     templateUndo: state.templateUndoStack.length,
