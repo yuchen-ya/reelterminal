@@ -340,7 +340,8 @@ describe("ClipComponent timeline gesture previews", () => {
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
     const track = setGestureProject();
     const onCommitMoveClips = vi.fn<MoveCommit>().mockResolvedValue(true);
-    const onTrimClip = vi.fn<TrimCommit>().mockResolvedValue(true);
+    let completeTrim!: (committed: boolean) => void;
+    const onTrimClip = vi.fn<TrimCommit>(() => new Promise<boolean>(resolve => { completeTrim = resolve; }));
     const { root } = renderClips(track, { onCommitMoveClips, onTrimClip });
     const primary = root.querySelector<HTMLElement>('[data-live-editor-target-id="clip-primary"]')!;
     const leftTrimHandle = primary.querySelector<HTMLElement>(".cursor-ew-resize")!;
@@ -353,6 +354,15 @@ describe("ClipComponent timeline gesture previews", () => {
     act(() => fireEvent.mouseUp(window));
     await waitFor(() => expect(onTrimClip).toHaveBeenCalledTimes(1));
     expect(onTrimClip).toHaveBeenCalledWith("clip-primary", "left", 0.5);
+    expect(primary.style.willChange).toBe("transform, width");
+    // The preview changed, but a second body drag is guarded until commit ends.
+    act(() => fireEvent.mouseDown(primary, { button: 0, clientX: 30, clientY: 10 }));
+    act(() => fireEvent.mouseMove(window, { clientX: 60, clientY: 10 }));
+    expect(primary.style.pointerEvents).toBe("auto");
+    expect(onCommitMoveClips).not.toHaveBeenCalled();
+    act(() => fireEvent.mouseUp(window));
+    await act(async () => { completeTrim(true); });
+    await waitFor(() => expect(primary.style.willChange).toBe("auto"));
 
     onTrimClip.mockClear();
     act(() => fireEvent.mouseDown(leftTrimHandle, { button: 0, clientX: 0, clientY: 10 }));

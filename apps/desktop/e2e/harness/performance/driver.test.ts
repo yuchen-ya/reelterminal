@@ -47,7 +47,7 @@ function windowEvidence(overrides: Partial<RendererWindowEvidence> = {}): Render
 describe("performance driver helpers", () => {
   it("optional drag timing preserves the same browser calls, pointer stimulus and eight rAF waits", async () => {
     let lastCalls: string[] = [];
-    const run = async (timing?: DragTiming, hitState: "good" | "transient" | "blocked" = "good") => {
+    const run = async (timing?: DragTiming, hitState: "good" | "transient" | "blocked" | "stuck_commit" = "good") => {
       const calls: string[] = [];
       lastCalls = calls;
       let hitReads = 0;
@@ -73,7 +73,7 @@ describe("performance driver helpers", () => {
           }
           if (source.includes("elementFromPoint")) {
             hitReads++;
-            return hitState === "good" || (hitState === "transient" && hitReads > 1) ? "clip" : "other";
+            return hitState === "good" || hitState === "stuck_commit" || (hitState === "transient" && hitReads > 1) ? "clip" : "other";
           }
           if (source.includes("return evidence.points")) return Array.from({ length: 7 }, (_, index) => ({ x: 150 + index * 4, y: 28 }));
         },
@@ -83,11 +83,24 @@ describe("performance driver helpers", () => {
           up: async () => { calls.push("up"); },
         },
         screenshot: async () => { calls.push("diagnostic"); throw new Error("diagnostic unavailable"); },
-        waitForFunction: async (fn: Function, _args: unknown, options: { timeout: number }) => {
+        waitForFunction: async (fn: Function, args: unknown, options: { timeout: number }) => {
           if (fn.toString().includes("elementFromPoint")) {
             calls.push("wait:hit");
             expect(options.timeout).toBe(5000);
             if (hitState === "blocked") throw new Error("input target never became actionable");
+          } else if (fn.toString().includes("willChange")) {
+            calls.push("wait:commit-release");
+            const element = { style: { willChange: "transform, width", pointerEvents: "auto", width: "124px" } };
+            const predicate = runInNewContext(`(${fn.toString()})`, { document: { querySelector: () => element } });
+            // A changed preview width alone used to let the next gesture start.
+            expect(element.style.width).not.toBe("100px");
+            expect(predicate(args)).toBe(false);
+            if (hitState === "stuck_commit") throw new Error("clip commit did not settle");
+            element.style.willChange = "auto";
+            element.style.pointerEvents = "none";
+            expect(predicate(args)).toBe(false);
+            element.style.pointerEvents = "auto";
+            expect(predicate(args)).toBe(true);
           } else calls.push("verify");
         },
       };
@@ -103,6 +116,10 @@ describe("performance driver helpers", () => {
     await expect(run(undefined, "blocked")).rejects.toThrow("input target never became actionable");
     expect(lastCalls).not.toContain("down");
     expect(lastCalls).toContain("diagnostic");
+    await expect(run(undefined, "stuck_commit")).rejects.toThrow("clip commit did not settle");
+    expect(lastCalls).not.toContain("verify");
+    const settled = await run();
+    expect(settled.indexOf("wait:commit-release")).toBeLessThan(settled.indexOf("verify"));
   });
   it("rejects unplanned pointer coordinates while allowing browser pixel rounding", () => {
     const planned = [{ x: 100.4, y: 30.2 }, { x: 110.8, y: 30.2 }];
