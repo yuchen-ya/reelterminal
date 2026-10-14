@@ -172,7 +172,9 @@ async function launch(
     }
     // firstWindow may expose about:blank before main starts loadURL. Its load
     // state is already complete, but storage is unavailable in that document.
-    await page.waitForURL("app://reelterminal/index.html", { waitUntil: "domcontentloaded", timeout: PAGE_LOAD_TIMEOUT_MS });
+    // Observe the renderer document directly: custom-scheme navigation can
+    // finish before Playwright attaches its navigation lifecycle listener.
+    await page.waitForFunction(() => location.href === "app://reelterminal/index.html" && document.readyState !== "loading", null, { timeout: PAGE_LOAD_TIMEOUT_MS });
     // Every desktop UI E2E uses English labels. The isolated profile has no
     // user preference, so explicitly seed that preference and reload before
     // a spec starts driving the UI (the host OS can be zh-CN).
