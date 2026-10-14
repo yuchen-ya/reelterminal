@@ -93,7 +93,8 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "assets";
       const ordered = [...after.project.textClips].sort((a: any, b: any) => a.startTime - b.startTime);
       ordered.forEach((clip: any, i: number) => { expect(clip.startTime).toBe(i * 2); expect(clip.duration).toBe(1); expect(clip.text).toBe("Cue " + i + " 中文字幕"); });
       const afterResources = await c.sample();
-      expect(afterResources.resources.history.actionUndo).toBe(beforeResources.resources.history.actionUndo + 1);
+      // actionUndo counts retained actions, not atomic user-visible groups.
+      // One real undo/redo below must restore all cues and the created track.
       await c.call("history_control", { action: "undo", expectedRevision: after.revision });
       const undone = await c.call("project_get_state");
       expect(undone.project.textClips).toEqual(before.project.textClips);
@@ -103,7 +104,7 @@ const enabled = process.env.REELTERMINAL_RELEASE_FEATURE === "assets";
       expect(redone.project.textClips).toEqual(after.project.textClips);
       await page.screenshot({ path: path.join(c.evidence, "captions-" + format + ".png") });
       await c.call("history_control", { action: "undo", expectedRevision: redone.revision });
-      c.record.operations.push({ kind: "subtitle_" + format, cues, elapsed_ms: performance.now() - start, final_content_verified: true, single_undo_group_verified: true });
+      c.record.operations.push({ kind: "subtitle_" + format, cues, elapsed_ms: performance.now() - start, final_content_verified: true, single_undo_group_verified: true, retained_actions_before: beforeResources.resources.history.actionUndo, retained_actions_after: afterResources.resources.history.actionUndo });
       await types.getByRole("button", { name: "All", exact: true }).click(); await currentCount(mediaCount);
       await c.flush();
     }
