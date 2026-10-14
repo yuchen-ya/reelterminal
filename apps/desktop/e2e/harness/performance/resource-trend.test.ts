@@ -15,4 +15,15 @@ describe("idle resource trends", () => {
     expect(summary.processes.every((process) => process.bytes_per_minute === null)).toBe(true);
     expect(summary.vram).toEqual({ status: "unsupported", bytes: null });
   });
+  it("keeps independent main and renderer heap series with honest missing values", () => {
+    const result = summarizeIdleMemory([0, 60000, 120000].map((elapsed_ms, index) => ({
+      elapsed_ms, heap_bytes: 400 - index * 100,
+      main_memory: { heap_used_bytes: 100 + index * 50, heap_total_bytes: 1000, external_bytes: 0, array_buffer_bytes: 0 },
+      resources: {}, rss: [],
+    })));
+    expect(result.heap.bytes_per_minute).toBe(-100);
+    expect(result.main_heap.bytes_per_minute).toBe(50);
+    expect(summarizeIdleMemory([]).main_heap.n).toBe(0);
+  });
+
 });

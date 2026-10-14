@@ -1,5 +1,6 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import type { TimelineState } from "@reelterminal/agent-facade";
 import type { CDPSession } from "playwright-core";
@@ -26,6 +27,8 @@ type ResourceGlobal = typeof globalThis & {
   };
 };
 
+class UserRequestedResourceStop extends Error {}
+
 /** Serial edit/undo/redo with fixed assets, rotated captures, and idle samples. */
 export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options: PerformanceRunOptions, repeat: number): Promise<string> {
   const base = createPerformanceFixture({ scenarioId: "H01", seed: options.seed, parameters: { nodeCount: 10 } });
@@ -42,7 +45,10 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
   const runId = `${scenarioId.toLowerCase()}-${Date.now()}-${repeat}`;
   const build = await captureBuildIdentity();
   if (!build.build_verified) throw new Error("resource soak requires a matching production build");
+  const directory = path.join(ARTIFACTS_DIR, "performance");
+  await mkdir(directory, { recursive: true });
   const runDir = await prepareProfile(fixture);
+  await writeFile(path.join(directory, `${runId}.profile.json`), JSON.stringify({ run_id: runId, retained_profile: runDir, source_head: build.source_head }));
   let launched: LaunchedApp | undefined;
   let agent: ExternalAgent | undefined;
   let cdp: CDPSession | undefined;
@@ -50,6 +56,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
   let failure: unknown;
   let timedOut = false;
   let activeCapture = false;
+  let userRequestedStop = false;
   const operations: RawPerformanceOperation[] = [];
   const idle: IdleResourceSample[] = [];
   const reasons: string[] = [];
@@ -137,12 +144,20 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
       // Read available V8/DOM metrics during stable idle, without requesting GC.
       const metrics = await cdp!.send("Performance.getMetrics");
       const heap = Object.fromEntries(metrics.metrics.map((metric: { name: string; value: number }) => [metric.name, metric.value]));
-      const rss = await launched!.app.evaluate(({ app }) => app.getAppMetrics().filter((metric) => ["Browser", "Tab", "Renderer", "GPU", "Utility"].includes(metric.type)).map((metric) => ({
-        role: metric.type === "Browser" ? "main" : metric.type === "Tab" ? "renderer" : metric.type.toLowerCase(),
-        process_epoch: `${metric.pid}-${metric.creationTime}`,
-        rss_bytes: metric.memory?.workingSetSize === undefined ? null : metric.memory.workingSetSize * 1024,
-      })));
-      idle.push({ elapsed_ms: performance.now() - started, heap_bytes: heap.JSHeapUsedSize ?? renderer.heap, heap_source: heap.JSHeapUsedSize !== undefined ? "CDP_JSHeapUsedSize" : renderer.heap !== null ? "Chromium_estimate" : "unavailable", heap_total_bytes: heap.JSHeapTotalSize ?? null, dom: { nodes: heap.Nodes ?? null, documents: heap.Documents ?? null, event_listeners: heap.JSEventListeners ?? null }, rss, resources: renderer.resources as unknown as Record<string, unknown> });
+      const main = await launched!.app.evaluate(({ app }) => {
+        const memory = process.memoryUsage();
+        return {
+          main_memory: { heap_used_bytes: memory.heapUsed, heap_total_bytes: memory.heapTotal, external_bytes: memory.external, array_buffer_bytes: memory.arrayBuffers },
+          rss: app.getAppMetrics().filter((metric) => ["Browser", "Tab", "Renderer", "GPU", "Utility"].includes(metric.type)).map((metric) => ({
+            role: metric.type === "Browser" ? "main" : metric.type === "Tab" ? "renderer" : metric.type.toLowerCase(),
+            process_epoch: `${metric.pid}-${metric.creationTime}`,
+            rss_bytes: metric.memory?.workingSetSize === undefined ? null : metric.memory.workingSetSize * 1024,
+          })),
+        };
+      });
+      const sample: IdleResourceSample = { elapsed_ms: performance.now() - started, heap_bytes: heap.JSHeapUsedSize ?? renderer.heap, heap_source: heap.JSHeapUsedSize !== undefined ? "CDP_JSHeapUsedSize" : renderer.heap !== null ? "Chromium_estimate" : "unavailable", heap_total_bytes: heap.JSHeapTotalSize ?? null, main_memory: main.main_memory, dom: { nodes: heap.Nodes ?? null, documents: heap.Documents ?? null, event_listeners: heap.JSEventListeners ?? null }, rss: main.rss, resources: renderer.resources as unknown as Record<string, unknown> };
+      idle.push(sample);
+      await appendFile(path.join(directory, `${runId}.idle.jsonl`), `${JSON.stringify(sample)}\n`);
       correctness.save_queue_drained_verified = true;
       console.info("PERFORMANCE_RESOURCE_PROGRESS", {
         scenario: scenarioId,
@@ -150,6 +165,8 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
         completed_rounds: rounds,
         pending_writes: renderer.resources.workspace.pendingWrites,
         undo_entries: renderer.resources.history.actionUndo,
+        renderer_heap_mib: Math.round((sample.heap_bytes ?? 0) / 1048576 * 100) / 100,
+        main_heap_mib: Math.round(main.main_memory.heap_used_bytes / 1048576 * 100) / 100,
         owned_blob_urls: renderer.resources.media.ownedBlobUrls,
       });
       return renderer.resources;
@@ -190,6 +207,12 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
     let lastIdle = started;
     while (scenarioId === "R01" ? rounds < options.editRounds : performance.now() - started < options.durationSeconds * 1000) {
       if (timedOut) throw new Error("resource-soak elapsed budget exceeded");
+      // An explicit external marker asks for a complete idle boundary, never
+      // kills the editor or bypasses final queue/state/resource verification.
+      if (process.env.REELTERMINAL_RESOURCE_STOP_FILE && existsSync(process.env.REELTERMINAL_RESOURCE_STOP_FILE)) {
+        userRequestedStop = true;
+        break;
+      }
       const operationId = `edit-undo-redo-${rounds}`;
       const cycleStart = performance.now();
       await page.evaluate(({ runId, operationId, seconds }) => (globalThis as ResourceGlobal).__reelterminalPerfDriver.start(runId, operationId, seconds), { runId, operationId, seconds: options.operationTimeoutMs / 1000 });
@@ -255,10 +278,11 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
     }
     correctness.final_state_verified = true; correctness.target_frame_verified = true; correctness.resources_returned_verified = true;
     measuredElapsedMs = performance.now() - started;
+    if (userRequestedStop) throw new UserRequestedResourceStop("user requested a graceful resource-soak stop");
   } catch (error) {
     failure = error;
-    reasons.push(timedOut ? "run_timeout" : "resource_soak_failed");
-    operations.push({ operation_id: `failed-${rounds}`, metric: "edit_undo_redo_content_verified_ms", outcome: timedOut || (error as Error).name === "TimeoutError" ? "timeout" : "failed", duration_ms: null, waited_ms: started ? performance.now() - started : 0, target_verified: false });
+    reasons.push(error instanceof UserRequestedResourceStop ? "user_requested_stop" : timedOut ? "run_timeout" : "resource_soak_failed");
+    operations.push({ operation_id: `failed-${rounds}`, metric: "edit_undo_redo_content_verified_ms", outcome: error instanceof UserRequestedResourceStop ? "cancelled" : timedOut || (error as Error).name === "TimeoutError" ? "timeout" : "failed", duration_ms: null, waited_ms: started ? performance.now() - started : 0, target_verified: false });
     const failureDirectory = path.join(ARTIFACTS_DIR, "performance");
     await mkdir(failureDirectory, { recursive: true });
     await writeFile(path.join(failureDirectory, `${runId}.failure.json`), JSON.stringify({ error: String(error), completed_rounds: rounds, history_saturation: saturation, idle_samples: idle }, null, 2));
@@ -273,8 +297,6 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
     await cdp?.detach().catch(() => undefined);
     try { await launched?.close({ keepRunDir: true }); } catch (error) { failure ??= error; reasons.push("process_cleanup_failed"); }
   }
-  const directory = path.join(ARTIFACTS_DIR, "performance");
-  await mkdir(directory, { recursive: true });
   if (!environment) {
     await writeFile(path.join(directory, `${runId}.preflight.json`), JSON.stringify({ schema: "reelterminal.performance-preflight/v1", status: "invalid", reason_codes: [...reasons, "environment_unavailable"], retained_profile: runDir, build }));
     throw failure ?? new Error("resource-soak environment unavailable");
@@ -299,6 +321,7 @@ export async function runResourceSoakScenario(scenarioId: "R01" | "R02", options
       warmup: "one_history_preview_return",
       actual_presented: "unsupported",
       forced_gc: false,
+      user_requested_stop: userRequestedStop,
     },
     build: { ...build }, environment: { ...environment }, samples: operations, correctness,
     validity: { complete: !failure, reason_codes: reasons, events_dropped: eventsDropped, critical_endpoints_dropped: endpointsDropped, probe_calibrated: false },

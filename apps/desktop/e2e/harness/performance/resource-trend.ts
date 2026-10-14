@@ -3,6 +3,7 @@ export interface IdleResourceSample {
   heap_bytes: number | null;
   heap_source?: "CDP_JSHeapUsedSize" | "Chromium_estimate" | "unavailable";
   heap_total_bytes?: number | null;
+  main_memory?: { heap_used_bytes: number; heap_total_bytes: number; external_bytes: number; array_buffer_bytes: number };
   dom?: { nodes: number | null; documents: number | null; event_listeners: number | null };
   rss: readonly { role: string; process_epoch: string; rss_bytes: number | null }[];
   resources: Record<string, unknown>;
@@ -26,6 +27,7 @@ export function summarizeIdleMemory(samples: readonly IdleResourceSample[]) {
   return {
     basis: "stable_idle_no_forced_gc",
     heap: idleMemoryTrend(samples.map((sample) => ({ elapsed_ms: sample.elapsed_ms, bytes: sample.heap_bytes }))),
+    main_heap: idleMemoryTrend(samples.map((sample) => ({ elapsed_ms: sample.elapsed_ms, bytes: sample.main_memory?.heap_used_bytes ?? null }))),
     processes: [...epochs].map(([epoch, role]) => ({
       role, process_epoch: epoch,
       ...idleMemoryTrend(samples.map((sample) => ({ elapsed_ms: sample.elapsed_ms, bytes: sample.rss.find((process) => process.process_epoch === epoch)?.rss_bytes ?? null }))),
