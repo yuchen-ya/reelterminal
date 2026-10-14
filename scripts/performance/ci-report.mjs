@@ -14,15 +14,16 @@ import {
   validateBaselineManifest,
 } from "./p6-support.mjs";
 
-const usage = "Usage: node scripts/performance/ci-report.mjs --directory DIR [--baseline FILE] [--calibration FILE_OR_DIR] --policy report-only|warning --fixed-runner true|false --json FILE --markdown FILE";
+const usage = "Usage: node scripts/performance/ci-report.mjs --directory DIR [--purpose performance|stability] [--baseline FILE] [--calibration FILE_OR_DIR] --policy report-only|warning --fixed-runner true|false --json FILE --markdown FILE";
 const policyValue = (value) => value === "report-only" || value === "warning";
 const booleanValue = (value) => value === "true" || value === "false";
 
-function compareRun(evaluation, baseline, policy) {
+function compareRun(evaluation, baseline, policy, purpose) {
   const document = evaluation.document;
   if (!document) return { status: "hard_failure", reason_codes: evaluation.hardFailures, metrics: [] };
   if (evaluation.hardFailures.length > 0) return { status: "hard_failure", reason_codes: evaluation.hardFailures, metrics: [] };
   if (document.run?.mode === "trace") return { status: "trace_only", reason_codes: ["trace_mode_not_comparable"], metrics: [] };
+  if (purpose === "stability") return { status: "stability_verified", reason_codes: ["timings_reference_only", "performance_not_evaluated"], metrics: [] };
   if (!evaluation.calibration.matched) return { status: "report_only", reason_codes: [evaluation.calibration.reason], metrics: [] };
   if (!evaluation.eligible) return { status: "report_only", reason_codes: evaluation.ineligibleReasons, metrics: [] };
   if (!baseline) return { status: "report_only", reason_codes: ["baseline_missing"], metrics: [] };
@@ -58,9 +59,10 @@ function compareRun(evaluation, baseline, policy) {
 
 function markdownReport(report) {
   const lines = [
-    "# ReelTerminal performance CI report",
+    report.purpose === "stability" ? "# ReelTerminal cloud stability report" : "# ReelTerminal performance CI report",
     "",
     `Status: **${report.status}**`,
+    ...(report.purpose === "stability" ? ["Purpose: stability only. No performance qualification; timings are reference only. Correctness, operation completion, capture and structural hard failures remain enforced."] : []),
     `Policy: ${report.policy.effective} (requested ${report.policy.requested}); fixed runner: ${report.policy.fixed_runner}`,
     `Baseline: ${report.baseline.status}; calibrated inputs: ${report.calibration.input_count}`,
     `Results: ${report.counts.results}; preflights: ${report.counts.preflights}; duration warnings: ${report.counts.warnings}; hard failures: ${report.counts.hard_failures}`,
@@ -95,7 +97,7 @@ function markdownReport(report) {
     lines.push("", "## Hard failures", "");
     for (const failure of report.hard_failures) lines.push(`- Run ${failure.index}: ${failure.reason_codes.join(", ")}`);
   }
-  lines.push("", "Duration comparisons use run-level quantiles. A warning requires both a relative increase above 20% and an absolute increase above 10 ms. Uncalibrated or incompatible measurements remain report-only.", "");
+  lines.push("", report.purpose === "stability" ? "Timing distributions are reference only; no baseline comparison or probe-overhead qualification is performed." : "Duration comparisons use run-level quantiles. A warning requires both a relative increase above 20% and an absolute increase above 10 ms. Uncalibrated or incompatible measurements remain report-only.", "");
   return lines.join("\n");
 }
 
@@ -109,6 +111,7 @@ let flags;
 try {
   flags = parseCliOptions(process.argv.slice(2), {
     "--directory": { required: true },
+    "--purpose": { validate: value => ["performance", "stability"].includes(value) },
     "--baseline": {},
     "--calibration": {},
     "--policy": { required: true, validate: policyValue },
@@ -151,9 +154,15 @@ if (flags) {
     }
 
     const fixedRunner = flags["--fixed-runner"] === "true";
+    const purpose = flags["--purpose"] ?? "performance";
     const effectivePolicy = fixedRunner && flags["--policy"] === "warning" ? "warning" : "report-only";
     const evaluations = [];
-    for (const item of collection.results) evaluations.push(await evaluateResultArtifact(item, calibrations));
+    for (const item of collection.results) {
+      const evaluation = await evaluateResultArtifact(item, calibrations);
+      if (purpose === "stability" && evaluation.document?.run?.mode === "trace") evaluation.hardFailures.push("trace_not_stability_evidence");
+      if (purpose === "stability" && !["T01", "T02", "T03", "H01", "H02", "P01", "A01", "R01", "R02", "E01"].includes(evaluation.document?.run?.scenario_id)) evaluation.hardFailures.push("stability_correctness_contract_unknown");
+      evaluations.push(evaluation);
+    }
     const seenRuns = new Set();
     const runs = evaluations.map((evaluation, offset) => {
       const index = offset + 1;
@@ -161,7 +170,7 @@ if (flags) {
       if (evidence.run_key && seenRuns.has(evidence.run_key)) evaluation.hardFailures.push("duplicate_run_id");
       if (evidence.run_key) seenRuns.add(evidence.run_key);
       evidence.hard_failures = [...new Set(evaluation.hardFailures)];
-      evidence.comparison = compareRun(evaluation, baseline, effectivePolicy);
+      evidence.comparison = compareRun(evaluation, baseline, effectivePolicy, purpose);
       return evidence;
     });
 
@@ -178,8 +187,10 @@ if (flags) {
     const warnings = runs.filter((run) => run.comparison.status === "warning").length;
     const report = {
       schema: "reelterminal.performance-ci-report/v1",
+      purpose,
+      performance_qualified: false,
       generated_at: new Date().toISOString(),
-      status: hardFailures.length > 0 ? "failed" : warnings > 0 ? "warning" : "report_only",
+      status: hardFailures.length > 0 ? "failed" : purpose === "stability" ? "stability_passed" : warnings > 0 ? "warning" : "report_only",
       policy: { requested: flags["--policy"], effective: effectivePolicy, fixed_runner: fixedRunner },
       baseline: { status: baselineStatus, errors: baselineErrors },
       calibration: {

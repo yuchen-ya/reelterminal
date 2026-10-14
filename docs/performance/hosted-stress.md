@@ -223,3 +223,41 @@ also failed separately (Windows 74 passed / 34 failed / 15 skipped; macOS
 contracts; other UI failures need their own reproduction. These are not covered
 or certified fixed by the performance smoke. The user's earlier source-detail
 and macOS audio-normalize corrections were verified rather than reimplemented.
+
+## Cloud stability purpose (explicitly selected after the blocked stress)
+
+The existing manual workflow also accepts `stability-smoke` and `stability`.
+These reuse the exact smoke/stress workload plans in the table above, but the
+purpose is crash-free completion and data correctness, not performance
+qualification. The standalone probe-overhead calibration is not run for these
+two profiles. The original `smoke`/`stress` profiles retain their 2% calibration
+gate unchanged; the failed Windows results above remain failures.
+
+No operation, capture-completeness, visibility, structural, correct-state,
+save/reopen or resource-bound assertion is removed. Timings and memory trends
+are reference observations with no performance pass claim or baseline comparison.
+The final hosted summary additionally rejects missing scenario records, a
+mismatched tested SHA, incomplete R01 rounds, absent T03 undo/redo evidence,
+missing history saturation or an R02 elapsed duration shorter than requested.
+A successful report says `stability_passed` and `performance_qualified: false`.
+Trace-only or unknown correctness contracts cannot qualify as stability evidence.
+
+Coverage is specific: T03 checks single/multiple clip edits, full-state undo/redo
+and content frames on 2,000 clips / 50 tracks; H01 verifies node identity and
+target frame with 1,000 nodes; P01 verifies revision and clip timing after save
+and process relaunch. R01/R02 verify edit/undo/redo state, history-preview return,
+save-queue drain and fixed-resource bounds. R02 observes one continuous 30-minute
+interval after real history saturation; its final queue check does not itself
+verify R02 process-relaunch persistence. P01 supplies the separate relaunch check.
+No selected scenario is timing-only. There is no explicit injected-crash/recovery,
+real-media export, physical GPU, audio-device or long local interactive coverage.
+
+```sh
+gh workflow run performance.yml --repo yuchen-ya/reelterminal --ref main -f commit=<full-SHA> -f profile=stability-smoke
+# Inspect actual success and evidence first, then use the identical SHA:
+gh workflow run performance.yml --repo yuchen-ya/reelterminal --ref main -f commit=<same-SHA> -f profile=stability
+```
+
+Only standard hosted Windows, serial execution, synthetic isolated profiles,
+small anonymous summaries and three-day retention are used. This purpose change
+does not modify the original local runner options or touch a running local test.

@@ -1,15 +1,52 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hostedPlan, resourceEvidence, calibrationEvidence } from "./hosted.mjs";
+import { hostedPlan, resourceEvidence, calibrationEvidence, stabilityCompletion } from "./hosted.mjs";
+import { runKey } from "./p6-support.mjs";
 import { runTimeoutMs } from "./run-options.mjs";
 
 test("hosted profiles reserve installation/build headroom within a 210-minute job", () => {
-  for (const profile of ["smoke", "stress"]) {
+  for (const profile of ["smoke", "stress", "stability-smoke", "stability"]) {
     const plan = hostedPlan(profile);
     assert.ok(plan.reduce((ms, command) => ms + runTimeoutMs(command.options), 0) < 180 * 60_000);
     assert.ok(plan.every(command => command.options.repeats === 1));
   }
   assert.throws(() => hostedPlan("all"));
+});
+
+test("stability profiles reuse the original workloads without changing performance profiles", () => {
+  assert.deepEqual(hostedPlan("stability-smoke"), hostedPlan("smoke"));
+  assert.deepEqual(hostedPlan("stability"), hostedPlan("stress"));
+});
+
+test("stability coverage rejects missing results, wrong commits, partial soaks and false correctness", () => {
+  const record = { commit: "a".repeat(40), commands: hostedPlan("stability").map(command => ({ ...command, status: "passed" })) };
+  const documents = record.commands.flatMap(command => command.options.scenarios.map((scenario, index) => ({
+    status: "complete", validity: { complete: true }, build: { source_head: record.commit },
+    run: { run_id: `${scenario}-${command.options.nodeCount}-${index}`, scenario_id: scenario,
+      fixture_manifest: { parameters: { nodeCount: command.options.nodeCount, clipCount: command.options.clipCount, trackCount: command.options.trackCount } },
+      completed_rounds: scenario === "R01" ? 500 : 1600, requested_duration_seconds: 1800, elapsed_ms: 1800100 },
+    history_saturation: { capacity: 1000, edits: 1001 },
+    operations: [{ outcome: "ok" }], correctness: { undo_redo_full_state_verified: true, target_frame_verified: true },
+  })));
+  const report = { purpose: "stability", status: "stability_passed", counts: { hard_failures: 0, results: 7 },
+    runs: documents.map(document => ({ run_key: runKey(document.run.run_id), comparison: { status: "stability_verified" }, hard_failures: [] })) };
+  const check = () => stabilityCompletion(record, documents, report);
+  assert.equal(check().status, "passed");
+  assert.deepEqual(check().counts, { passed: 7, failed: 0, not_run: 0 });
+  assert.equal(check().performance_qualified, false);
+  const soak = documents.find(document => document.run.scenario_id === "R02");
+  soak.run.elapsed_ms = 1799999;
+  assert.equal(check().status, "failed");
+  assert.equal(check().counts.failed, 1);
+  soak.run.elapsed_ms = 1800100;
+  documents[0].build.source_head = "b".repeat(40);
+  assert.equal(check().counts.failed, 1);
+  documents[0].build.source_head = record.commit;
+  report.runs[0].comparison.status = "hard_failure";
+  report.runs[0].hard_failures = ["correctness_failed"];
+  assert.equal(check().counts.failed, 1);
+  documents.pop();
+  assert.equal(check().counts.not_run, 1);
 });
 
 test("representative soak stays continuous for 30 minutes after real history saturation", () => {

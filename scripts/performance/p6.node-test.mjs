@@ -13,6 +13,29 @@ const baselineCli = path.join(here, "manage-baseline.mjs");
 const reportCli = path.join(here, "ci-report.mjs");
 const sha = "a".repeat(64);
 
+test("stability reporting needs no calibration and never claims performance qualification, while correctness still fails", (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "reelterminal-stability-report-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runs = fixtureDirectory(root, "runs");
+  const result = performanceResult({ runId: "stability", durationScale: 100 });
+  writeResult(runs, result);
+  const output = path.join(root, "report.json");
+  const markdown = path.join(root, "report.md");
+  const args = ["--directory", runs, "--purpose", "stability", "--policy", "report-only", "--fixed-runner", "false", "--json", output, "--markdown", markdown];
+  assert.equal(runCli(reportCli, args).status, 0);
+  const report = JSON.parse(readFileSync(output, "utf8"));
+  assert.equal(report.status, "stability_passed");
+  assert.equal(report.performance_qualified, false);
+  assert.equal(report.calibration.input_count, 0);
+  assert.equal(report.runs[0].comparison.status, "stability_verified");
+  assert.deepEqual(report.runs[0].comparison.metrics, []);
+  assert.match(readFileSync(markdown, "utf8"), /No performance qualification/);
+  result.correctness.target_frame_verified = false;
+  writeResult(runs, result);
+  assert.equal(runCli(reportCli, args).status, 1);
+  assert.equal(JSON.parse(readFileSync(output, "utf8")).status, "failed");
+});
+
 function fixtureManifest(scenarioId = "H02") {
   return {
     schema: "reelterminal.performance-fixture/v1",

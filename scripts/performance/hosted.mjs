@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseRunOptions } from "./run-options.mjs";
+import { runKey } from "./p6-support.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const output = path.join(root, "apps/desktop/e2e/.artifacts/performance-ci");
@@ -12,17 +13,52 @@ const evidence = path.join(output, "hosted.json");
 const serial = ["--repeats", "1", "--serial", "--report-only"];
 
 export function hostedPlan(profile) {
-  if (!["smoke", "stress"].includes(profile)) throw new Error("profile must be smoke or stress");
+  if (!["smoke", "stress", "stability-smoke", "stability"].includes(profile)) throw new Error("unknown hosted profile");
+  const short = profile === "smoke" || profile === "stability-smoke";
   const commands = [
     ["--suite", "quick", "--scenario", "T01,H01,P01", "--samples", "5", "--run-timeout-seconds", "600"],
-    ...(profile === "stress" ? [
+    ...(!short ? [
       ["--suite", "benchmark", "--scenario", "T03", "--clip-count", "2000", "--track-count", "50", "--samples", "25", "--run-timeout-seconds", "1200"],
       ["--suite", "benchmark", "--scenario", "H01", "--node-count", "1000", "--samples", "25", "--run-timeout-seconds", "1200"],
     ] : []),
-    ["--suite", "soak", "--scenario", "R01", "--edit-rounds", profile === "smoke" ? "10" : "500", "--run-timeout-seconds", profile === "smoke" ? "600" : "1800"],
-    ["--suite", "soak", "--scenario", "R02", "--duration-seconds", profile === "smoke" ? "60" : "1800", "--run-timeout-seconds", profile === "smoke" ? "600" : "3000", ...(profile === "stress" ? ["--saturate-history"] : [])],
+    ["--suite", "soak", "--scenario", "R01", "--edit-rounds", short ? "10" : "500", "--run-timeout-seconds", short ? "600" : "1800"],
+    ["--suite", "soak", "--scenario", "R02", "--duration-seconds", short ? "60" : "1800", "--run-timeout-seconds", short ? "600" : "3000", ...(!short ? ["--saturate-history"] : [])],
   ];
   return commands.map(args => ({ args: [...args, ...serial], options: parseRunOptions([...args, ...serial]), status: "not_run" }));
+}
+
+// Completion coverage is independent of elapsed-time performance qualification.
+export function stabilityCompletion(record, documents, report) {
+  const expected = record.commands.flatMap(command => command.options.scenarios.map(scenario => ({ scenario, options: command.options })));
+  const unused = new Set(documents);
+  const scenarios = expected.map(({ scenario, options }) => {
+    const document = [...unused].find(item => item.run?.scenario_id === scenario &&
+      (scenario !== "H01" || item.run?.fixture_manifest?.parameters?.nodeCount === options.nodeCount));
+    if (!document) return { scenario, status: "not_run", reason_codes: ["result_missing"] };
+    unused.delete(document);
+    const reasons = [];
+    const checked = report?.runs?.find(item => item.run_key === runKey(document.run.run_id));
+    if (!checked || checked.comparison?.status !== "stability_verified") reasons.push(...(checked?.hard_failures?.length ? checked.hard_failures : ["deterministic_evidence_missing"]));
+    if (document.build?.source_head !== record.commit) reasons.push("tested_commit_mismatch");
+    if (document.status !== "complete" || document.validity?.complete !== true) reasons.push("run_not_complete");
+    if (document.operations?.length < 1 || !Array.isArray(document.operations)) reasons.push("operations_missing");
+    if (scenario === "T03" && (document.correctness?.undo_redo_full_state_verified !== true ||
+        document.run?.fixture_manifest?.parameters?.clipCount !== options.clipCount ||
+        document.run?.fixture_manifest?.parameters?.trackCount !== options.trackCount)) reasons.push("dense_state_evidence_missing");
+    if (scenario === "P01" && document.correctness?.target_frame_verified !== true) reasons.push("saved_frame_evidence_missing");
+    if (scenario === "R01" && document.run?.completed_rounds !== options.editRounds) reasons.push("rounds_incomplete");
+    if (scenario === "R02" && (document.run?.requested_duration_seconds !== options.durationSeconds ||
+        !(document.run?.elapsed_ms >= options.durationSeconds * 1000) || !(document.run?.completed_rounds > 0))) reasons.push("continuous_duration_incomplete");
+    if (scenario === "R02" && options.saturateHistory && !(document.history_saturation?.edits >= document.history_saturation?.capacity && document.history_saturation?.capacity > 0)) reasons.push("history_saturation_missing");
+    return { scenario, status: reasons.length ? "failed" : "passed", reason_codes: reasons,
+      operations: document.operations?.length ?? 0,
+      correctness: Object.fromEntries(Object.entries(document.correctness ?? {}).filter(([key, value]) => /^[a-z_]+$/.test(key) && (typeof value === "boolean" || value === null))) };
+  });
+  const reportValid = report?.purpose === "stability" && report.status === "stability_passed" && report.counts?.hard_failures === 0 && report.counts?.results === expected.length;
+  return { purpose: "stability", performance_qualified: false, timings: "reference_only",
+    status: reportValid && unused.size === 0 && record.commands.every(command => command.status === "passed") && scenarios.every(item => item.status === "passed") ? "passed" : "failed",
+    counts: { passed: scenarios.filter(item => item.status === "passed").length, failed: scenarios.filter(item => item.status === "failed").length, not_run: scenarios.filter(item => item.status === "not_run").length },
+    deterministic_report_passed: reportValid, unexpected_results: unused.size, scenarios };
 }
 
 // Strict numeric projection: never upload profiles, paths, endpoint data, or raw traces.
@@ -108,6 +144,8 @@ async function main(mode) {
     if (!/^[a-f0-9]{40}$/.test(sha ?? "") || head.status !== 0 || head.stdout.trim() !== sha) throw new Error("checkout must match the full requested commit SHA");
     const record = {
       commit: sha, profile: process.env.PERF_PROFILE, os: process.platform, arch: process.arch,
+      purpose: process.env.PERF_PROFILE?.startsWith("stability") ? "stability" : "performance",
+      performance_qualified: false,
       runner: process.env.RUNNER_ENVIRONMENT, runner_image: process.env.ImageOS,
       runner_image_version: process.env.ImageVersion, cpu: os.cpus()[0]?.model,
       logical_cores: os.cpus().length, total_memory_bytes: os.totalmem(),
@@ -130,6 +168,7 @@ async function main(mode) {
     const record = JSON.parse(await readFile(evidence, "utf8"));
     record.resources = [];
     record.calibrations = [];
+    const documents = [];
     const directory = path.join(root, "apps/desktop/e2e/.artifacts/performance");
     for (const file of await readdir(directory).catch(error => { if (error.code === "ENOENT") return []; throw error; })) {
       if (file.startsWith("probe-calibration-") && file.endsWith(".json")) {
@@ -137,10 +176,18 @@ async function main(mode) {
       }
       if (!file.endsWith(".result.json")) continue;
       const document = JSON.parse(await readFile(path.join(directory, file), "utf8"));
+      documents.push(document);
       if (["R01", "R02"].includes(document.run?.scenario_id)) record.resources.push(resourceEvidence(document));
     }
+    if (record.purpose === "stability") {
+      const report = JSON.parse(await readFile(path.join(output, "report.json"), "utf8"));
+      record.stability = stabilityCompletion(record, documents, report);
+      if (record.stability.status !== "passed") process.exitCode = 1;
+    }
     await writeFile(evidence, JSON.stringify(record, null, 2));
-    const summary = [`Commit: ${record.commit}`, `Profile: ${record.profile}; OS: ${record.os}/${record.arch}; runner: ${record.runner}/${record.runner_image}`, record.boundary, ...record.commands.map(command => `${command.options.scenarios.join(",")}: ${command.status}; ${command.args.join(" ")}`)].join("\n\n");
+    const summary = [`Commit: ${record.commit}`, `Profile: ${record.profile}; purpose: ${record.purpose}; OS: ${record.os}/${record.arch}; runner: ${record.runner}/${record.runner_image}`,
+      record.purpose === "stability" ? `Stability: ${record.stability.status}; passed/failed/not run: ${record.stability.counts.passed}/${record.stability.counts.failed}/${record.stability.counts.not_run}. Timings are reference only; performance qualification was not evaluated.` : "Original performance calibration applies.",
+      record.boundary, ...record.commands.map(command => `${command.options.scenarios.join(",")}: ${command.status}; ${command.args.join(" ")}`)].join("\n\n");
     await writeFile(path.join(output, "hosted.md"), summary + "\n");
   } else throw new Error("use prepare, run, or summarize");
 }

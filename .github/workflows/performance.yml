@@ -1,5 +1,5 @@
 name: Performance regression
-run-name: Performance ${{ inputs.profile || 'contracts' }} @ ${{ inputs.commit || github.sha }}
+run-name: ${{ startsWith(inputs.profile, 'stability') && 'Cloud stability' || 'Performance' }} ${{ inputs.profile || 'contracts' }} @ ${{ inputs.commit || github.sha }}
 
 on:
   pull_request:
@@ -13,11 +13,11 @@ on:
         required: true
         type: string
       profile:
-        description: Short trial first; stress includes one continuous 30-minute soak
+        description: Performance or stability-only; run matching short profile before long profile
         required: true
         default: smoke
         type: choice
-        options: [smoke, stress]
+        options: [smoke, stress, stability-smoke, stability]
 
 permissions:
   contents: read
@@ -90,29 +90,31 @@ jobs:
       - name: Build the measured production bundles
         run: pnpm --filter @reelterminal/desktop build
       - name: Calibrate the production probe without changing thresholds
+        if: inputs.profile == 'smoke' || inputs.profile == 'stress'
         timeout-minutes: 12
         run: pnpm --filter @reelterminal/desktop test:perf:calibrate
       - name: Run existing synthetic scenarios serially, stopping at the first failure
         run: node scripts/performance/hosted.mjs run
       - name: Write anonymous report and retain functional failures
         if: always()
-        run: >-
-          node scripts/performance/ci-report.mjs
-          --directory apps/desktop/e2e/.artifacts/performance
-          --calibration apps/desktop/e2e/.artifacts/performance
-          --baseline docs/performance/baselines/manifest.json
-          --policy report-only --fixed-runner false
-          --json apps/desktop/e2e/.artifacts/performance-ci/report.json
-          --markdown apps/desktop/e2e/.artifacts/performance-ci/report.md
+        run: |
+          $reportArgs = @('--directory', 'apps/desktop/e2e/.artifacts/performance', '--policy', 'report-only', '--fixed-runner', 'false', '--json', 'apps/desktop/e2e/.artifacts/performance-ci/report.json', '--markdown', 'apps/desktop/e2e/.artifacts/performance-ci/report.md')
+          if ($env:PERF_PROFILE.StartsWith('stability')) {
+            $reportArgs += @('--purpose', 'stability')
+          } else {
+            $reportArgs += @('--calibration', 'apps/desktop/e2e/.artifacts/performance', '--baseline', 'docs/performance/baselines/manifest.json')
+          }
+          node scripts/performance/ci-report.mjs @reportArgs
       - name: Add bounded resource evidence and job summary
         if: always()
         run: |
           node scripts/performance/hosted.mjs summarize
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $summaryExit = $LASTEXITCODE
           Get-Content apps/desktop/e2e/.artifacts/performance-ci/hosted.md | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
           if (Test-Path apps/desktop/e2e/.artifacts/performance-ci/report.md) {
             Get-Content apps/desktop/e2e/.artifacts/performance-ci/report.md | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
           }
+          exit $summaryExit
       - name: Retain only anonymous summaries and small resource diagnostics
         if: always()
         uses: actions/upload-artifact@v4
