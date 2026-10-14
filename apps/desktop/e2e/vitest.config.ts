@@ -23,7 +23,6 @@ export default defineConfig({
     // live stack or a port.
     fileParallelism: false,
     pool: "forks",
-    poolOptions: { forks: { singleFork: true } },
     testTimeout: 600_000,
     hookTimeout: 420_000,
     retry: 0,
