@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { saveAnalysisRecord } from "@reelterminal/agent-facade/analysis-records";
+import { saveAnalysisRecord, type AnalysisRecord } from "@reelterminal/agent-facade/analysis-records";
 import { createAnalysisRecordsService } from "./analysis-records-service";
 
 const dirs: string[] = [];
@@ -11,7 +11,7 @@ afterEach(async () => {
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true })));
 });
 
-async function fixture(cloudUpload = false) {
+async function fixture(cloudUpload = false, silenceParams?: AnalysisRecord["config"]["silenceParams"]) {
   const root = await mkdtemp(path.join(os.tmpdir(), "reelterminal-analysis-ui-"));
   dirs.push(root);
   const sourcePath = path.join(root, "source.mp4");
@@ -32,15 +32,16 @@ async function fixture(cloudUpload = false) {
     },
     analysisTypes: cloudUpload
       ? ["technicalQuality", "videoReview"]
-      : ["technicalQuality", "audioSummary"],
+      : silenceParams ? ["silence"] : ["technicalQuality", "audioSummary"],
     rangeSec: { startSec: 1, endSec: 3 },
     config: {
       analysisTypes: cloudUpload
         ? ["technicalQuality", "videoReview"]
-        : ["technicalQuality", "audioSummary"],
+        : silenceParams ? ["silence"] : ["technicalQuality", "audioSummary"],
       startSec: 1,
       endSec: 3,
       cloudUpload,
+      ...(silenceParams ? { silenceParams } : {}),
       ...(cloudUpload ? { reviewQuestion: "Check sync" } : {}),
     },
     provenance: [],
@@ -104,6 +105,25 @@ describe("analysis records desktop service", () => {
     });
     expect(params).not.toHaveProperty("cloudUpload");
     expect(params).not.toHaveProperty("reviewQuestion");
+    expect(params).not.toHaveProperty("silenceParams");
+  });
+
+  it("rechecks silence with the effective tuning saved in its record", async () => {
+    const silenceParams = { thresholdDb: -32, minDurationSec: 0.3, paddingSec: 0.05 };
+    const { root, record } = await fixture(false, silenceParams);
+    const host = { isEnabled: true, callExternal: vi.fn().mockResolvedValue({ ok: true }) };
+    const service = createAnalysisRecordsService(root, host);
+
+    await service.recheck({ projectId: "project-a", recordId: record.id });
+
+    expect(host.callExternal).toHaveBeenCalledWith("media.analyze_start", expect.objectContaining({
+      mediaId: record.subject.mediaId,
+      analysisTypes: ["silence"],
+      startSec: 1,
+      endSec: 3,
+      silenceParams,
+      recheckOfRecordId: record.id,
+    }));
   });
 
   it("requires fresh per-run authorization before repeating cloud review", async () => {

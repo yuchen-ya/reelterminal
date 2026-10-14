@@ -1,5 +1,5 @@
 import { reviewVideo, videoReviewPreflight } from "./video-review";
-import { analyzeLocalAudio, audioAnalysisPreflight } from "./audio-analysis";
+import { AUDIO_LIMITS, analyzeBeatGrid, analyzeLocalAudio, analyzeSilence, audioAnalysisPreflight, resolveSilenceAnalysisParams } from "./audio-analysis";
 import { runVideoCandidateAnalyses, videoCandidatesPreflight, type VideoCandidateBundle } from "./video-candidates";
 import { resolveToolFfmpeg } from "./media/ffmpeg-bin";
 import { probeVideoFacts } from "./media/frame-exact";
@@ -1534,19 +1534,27 @@ export class LiveFacadeSession {
       } else if (valid.reviewQuestion !== undefined || valid.cloudUpload !== undefined) {
         throw new FacadeError("INVALID_PARAMS", "cloudUpload/reviewQuestion apply only to videoReview");
       }
-      if (valid.analysisTypes.includes("audioSummary")) {
+      if (valid.silenceParams !== undefined && !valid.analysisTypes.includes("silence")) {
+        throw new FacadeError("INVALID_PARAMS", "silenceParams apply only when analysisTypes includes \"silence\"");
+      }
+      const silenceParams = valid.analysisTypes.includes("silence")
+        ? resolveSilenceAnalysisParams(valid.silenceParams) : undefined;
+      const audioBackedTypes = valid.analysisTypes.filter(
+        (type) => type === "audioSummary" || type === "silence" || type === "beatGrid",
+      );
+      if (audioBackedTypes.length > 0) {
         const ready = await audioAnalysisPreflight();
         if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
       }
       const unavailable = valid.analysisTypes.filter(
-        (type) => type !== "technicalQuality" && type !== "audioSummary" && type !== "videoReview" &&
+        (type) => type !== "technicalQuality" && type !== "audioSummary" && type !== "videoReview" && type !== "silence" && type !== "beatGrid" &&
           type !== "sceneCuts" && type !== "blackFrames" && type !== "duplicateFrames",
       );
       if (unavailable.length > 0) {
         throw new FacadeError(
           "UNSUPPORTED",
           `media.analyze_start: unavailable analysis types: ${unavailable.join(", ")}`,
-          { unavailableTypes: unavailable, availableTypes: ["technicalQuality", "sceneCuts", "blackFrames", "duplicateFrames"] },
+          { unavailableTypes: unavailable, availableTypes: ["technicalQuality", "audioSummary", "silence", "beatGrid", "sceneCuts", "blackFrames", "duplicateFrames"] },
         );
       }
       const videoCandidateTypes = valid.analysisTypes.filter(
@@ -1571,13 +1579,14 @@ export class LiveFacadeSession {
       const startSec = valid.startSec ?? 0;
       const endSec = valid.endSec ?? media.metadata.duration;
       if (!(endSec > startSec) || endSec > media.metadata.duration ||
-          (valid.analysisTypes.includes("audioSummary") && endSec - startSec > 120)) {
-        throw new FacadeError("INVALID_PARAMS", "Analysis requires 0 ≤ startSec < endSec ≤ source duration; audioSummary range is at most 120 seconds. Split longer sources into explicit ranges.");
+          (audioBackedTypes.length > 0 && endSec - startSec > AUDIO_LIMITS.maxRangeSec)) {
+        throw new FacadeError("INVALID_PARAMS", "Analysis requires 0 ≤ startSec < endSec ≤ source duration; audioSummary, silence and beatGrid ranges are at most 120 seconds. Split longer sources into explicit ranges.");
       }
       const payload = {
         mediaId: valid.mediaId,
         analysisTypes: [...valid.analysisTypes].sort(),
         startSec: valid.startSec, endSec: valid.endSec, cloudUpload: valid.cloudUpload, reviewQuestion: valid.reviewQuestion,
+        silenceParams,
       };
       const receipt = await this.replayLookup<{
         jobId: string;
@@ -1668,6 +1677,7 @@ export class LiveFacadeSession {
         state.revision,
         valid.reviewQuestion,
         valid.recheckOfRecordId,
+        silenceParams,
       );
       return ok<MediaAnalyzeStartResult>({
         ...ledgerValue,
@@ -3789,6 +3799,7 @@ export class LiveFacadeSession {
     sourceRevision: number,
     reviewQuestion?: string,
     recheckOfRecordId?: string,
+    silenceParams?: import("./types").MediaSilenceAnalysisParams,
   ): Promise<void> {
     try {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -3811,8 +3822,13 @@ export class LiveFacadeSession {
       this.jobs.markProgress(jobId, { phase: "preparing", percent: .1 });
       const video = analysisTypes.includes("videoReview")
         ? await reviewVideo(sourcePath, range, this.config.artifactRoot!, controller.signal, reviewQuestion, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: .1 + percent * .7 })) : undefined;
+      const otherAudioRequested = analysisTypes.includes("silence") || analysisTypes.includes("beatGrid");
       const audio = analysisTypes.includes("audioSummary")
-        ? await analyzeLocalAudio(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .8 + percent * .15 : percent })) : undefined;
+        ? await analyzeLocalAudio(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .8 + percent * .15 : otherAudioRequested ? percent * .5 : percent })) : undefined;
+      const silence = analysisTypes.includes("silence")
+        ? await analyzeSilence(sourcePath, range, silenceParams, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .95 + percent * .025 : otherAudioRequested || analysisTypes.includes("audioSummary") ? .5 + percent * .25 : percent })) : undefined;
+      const beatGrid = analysisTypes.includes("beatGrid")
+        ? await analyzeBeatGrid(sourcePath, range, controller.signal, (percent) => this.jobs.markProgress(jobId, { phase: "rendering", percent: video ? .975 + percent * .025 : analysisTypes.includes("audioSummary") || analysisTypes.includes("silence") ? .75 + percent * .25 : percent })) : undefined;
       if (controller.signal.aborted) { this.jobs.markCancelled(jobId); return; }
       const videoCandidateTypes = analysisTypes.filter(
         (type) => type === "sceneCuts" || type === "blackFrames" || type === "duplicateFrames",
@@ -3843,6 +3859,8 @@ export class LiveFacadeSession {
       const summary = {
         ...(video ? { videoReview: { ...video, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
         ...(audio ? { audioSummary: { ...audio, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
+        ...(silence ? { silence: { ...silence, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
+        ...(beatGrid ? { beatGrid: { ...beatGrid, mediaId, sourceFingerprint: { size: file.size, lastModified: Math.round(file.mtimeMs) } } } : {}),
         technicalQuality: {
           mediaId,
           name,
@@ -3899,6 +3917,7 @@ export class LiveFacadeSession {
           endSec: range.endSec,
           cloudUpload: analysisTypes.includes("videoReview"),
           ...(reviewQuestion !== undefined ? { reviewQuestion } : {}),
+          ...(silence ? { silenceParams: silence.parameters } : {}),
         },
         provenance: [
           ...(analysisTypes.includes("technicalQuality")
@@ -3906,6 +3925,12 @@ export class LiveFacadeSession {
             : []),
           ...(analysisTypes.includes("audioSummary")
             ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-ebur128", analysisType: "audioSummary" }]
+            : []),
+          ...(analysisTypes.includes("silence")
+            ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-pcm-silence-kernel", analysisType: "silence" }]
+            : []),
+          ...(analysisTypes.includes("beatGrid")
+            ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-pcm-beat-engine", analysisType: "beatGrid" }]
             : []),
           ...(analysisTypes.includes("sceneCuts")
             ? [{ kind: "local-measurement" as const, provider: "local-ffmpeg-scene-score", analysisType: "sceneCuts" }]
@@ -3921,13 +3946,20 @@ export class LiveFacadeSession {
         observations: [
           { source: "technicalQuality", facts: summary.technicalQuality },
           ...(audio ? [{ source: "audioSummary", facts: audio }] : []),
+          ...(silence ? [{ source: "silence", facts: silence }] : []),
+          ...(beatGrid ? [{ source: "beatGrid", facts: beatGrid }] : []),
           ...(candidates?.sceneCuts ? [{ source: "sceneCuts", facts: candidates.sceneCuts }] : []),
           ...(candidates?.blackFrames ? [{ source: "blackFrames", facts: candidates.blackFrames }] : []),
           ...(candidates?.duplicateFrames ? [{ source: "duplicateFrames", facts: candidates.duplicateFrames }] : []),
         ],
-        inferences: audio?.bpmCandidates
-          ? [{ source: "audioSummary", note: "BPM candidates are analyzer inferences from periodicity, not ground truth", bpmCandidates: audio.bpmCandidates }]
-          : [],
+        inferences: [
+          ...(audio?.bpmCandidates
+            ? [{ source: "audioSummary", note: "BPM candidates are analyzer inferences from periodicity, not ground truth", bpmCandidates: audio.bpmCandidates }]
+            : []),
+          ...(beatGrid
+            ? [{ source: "beatGrid", note: "beats and bpm are analyzer inferences from energy periodicity, not ground truth; no downbeat detector is installed", bpm: beatGrid.bpm, confidence: beatGrid.confidence, beatCount: beatGrid.beatCount }]
+            : []),
+        ],
         recommendations: [],
         unknowns: [
           ...(video ? [{ field: "videoReview.serverSamplingFps", note: "The cloud provider does not disclose its sampling rate; short events may be missed" }] : []),
@@ -3936,6 +3968,9 @@ export class LiveFacadeSession {
             { field: "videoReview.eventLocalizationUncertaintySec", note: "The provider does not disclose frame-level event localization uncertainty." },
             { field: "videoReview.audioDetectionUncertaintySec", note: "The provider does not disclose frame-level audio event localization uncertainty." },
           ] : []),
+          ...(analysisTypes.includes("beatGrid")
+            ? [{ field: "beatGrid.downbeats", note: "No downbeat detector is installed; beatGrid results intentionally omit downbeats" }]
+            : []),
         ],
         recheckOf: recheckTarget ? recheckTarget.id : null,
         cloudOpinion: video

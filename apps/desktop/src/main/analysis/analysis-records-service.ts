@@ -121,6 +121,7 @@ export function createAnalysisRecordsService(
         analysisTypes: [...record.config.analysisTypes],
         startSec: record.config.startSec,
         endSec: record.config.endSec,
+        ...(record.config.silenceParams ? { silenceParams: record.config.silenceParams } : {}),
         recheckOfRecordId: record.id,
         idempotencyKey: `analysis-gui-recheck-${randomUUID()}`,
         ...(usesCloud

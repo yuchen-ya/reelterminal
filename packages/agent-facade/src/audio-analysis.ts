@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { detectSilenceRangesInPcm } from "@reelterminal/core/audio/audio-engine";
 import { analyzeBeatsInPcm } from "@reelterminal/core/audio/beat-detection-engine";
 import { FacadeError } from "./errors";
+import { resolveToolFfmpeg } from "./media/ffmpeg-bin";
+import type { MediaSilenceAnalysisParams } from "./types";
 
 export const AUDIO_LIMITS = { maxRangeSec: 120, maxConcurrentPerSession: 2, timeoutMs: 60000, maxProcessOutputBytes: 16 * 1024 * 1024, maxWaveformBins: 600, maxEvents: 256 } as const;
 let running = 0;
@@ -11,7 +13,7 @@ function run(binary: string, args: string[], signal?: AbortSignal): Promise<{ ou
   if (running >= 4) return Promise.reject(new Error("Local audio process limit reached; retry after current jobs finish"));
   running++;
   return new Promise((resolve, reject) => {
-    const child = spawn(binary, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(binary, args, { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     const chunks: Buffer[] = []; const errors: Buffer[] = [];
     let size = 0; let failure: Error | undefined;
     const stop = (message: string) => { failure = new Error(message); child.kill("SIGKILL"); };
@@ -33,19 +35,27 @@ function run(binary: string, args: string[], signal?: AbortSignal): Promise<{ ou
     });
   });
 }
+async function requireAudioBinaries(signal?: AbortSignal) {
+  if (signal?.aborted) throw new Error("Cancelled");
+  const binaries = await resolveToolFfmpeg();
+  if (!binaries) throw new FacadeError("UNSUPPORTED", "Local audio analysis needs ffmpeg and ffprobe on PATH or REELTERMINAL_FFMPEG_PATH / REELTERMINAL_FFPROBE_PATH");
+  return binaries;
+}
+
 export async function audioAnalysisPreflight() {
   try {
-    const ff = await run("ffmpeg", ["-hide_banner", "-filters"]);
-    await run("ffprobe", ["-version"]);
+    const binaries = await requireAudioBinaries();
+    const ff = await run(binaries.ffmpeg, ["-hide_banner", "-filters"]);
     if (!ff.out.toString().includes("loudnorm")) throw new Error("FFmpeg loudnorm filter missing");
     return { available: true, details: { provider: "local-ffmpeg-pcm-loudnorm", ...AUDIO_LIMITS } };
-  } catch (error) { return { available: false, reason: `Local audio analysis needs ffmpeg (loudnorm) and ffprobe on PATH: ${String(error)}` }; }
+  } catch (error) { return { available: false, reason: `Local audio analysis needs ffmpeg (loudnorm) and ffprobe on PATH or REELTERMINAL_FFMPEG_PATH / REELTERMINAL_FFPROBE_PATH: ${String(error)}` }; }
 }
 
 /** Mono f32le PCM decode of the requested range at the given analysis rate. */
 async function extractMonoPcm(path: string, range: { startSec: number; endSec: number }, rate: number, signal: AbortSignal) {
+  const binaries = await requireAudioBinaries(signal);
   const input = ["-hide_banner", "-nostdin", "-v", "info", "-ss", String(range.startSec), "-t", String(range.endSec - range.startSec), "-i", path, "-map", "0:a:0", "-vn", "-threads", "1"];
-  const pcm = await run("ffmpeg", [...input, "-ar", String(rate), "-ac", "1", "-f", "f32le", "pipe:1"], signal);
+  const pcm = await run(binaries.ffmpeg, [...input, "-ar", String(rate), "-ac", "1", "-f", "f32le", "pipe:1"], signal);
   const samples = new Float32Array(pcm.out.length / 4);
   for (let i = 0; i < samples.length; i++) {
     const x = pcm.out.readFloatLE(i * 4);
@@ -56,11 +66,22 @@ async function extractMonoPcm(path: string, range: { startSec: number; endSec: n
 }
 
 function validateAudioRange(range: { startSec: number; endSec: number }) {
-  if (!(range.startSec >= 0 && range.endSec > range.startSec && range.endSec - range.startSec <= 120)) throw new FacadeError("INVALID_PARAMS", "Audio range must be 0–120 seconds in source coordinates");
+  if (!(Number.isFinite(range.startSec) && Number.isFinite(range.endSec) && range.startSec >= 0 && range.endSec > range.startSec && range.endSec - range.startSec <= AUDIO_LIMITS.maxRangeSec)) throw new FacadeError("INVALID_PARAMS", "Audio range must be 0–120 seconds in source coordinates");
 }
 
 /** GUI silence-cut panel defaults (apps/web silence-cut-bridge DEFAULT_SILENCE_SETTINGS). */
 export const DEFAULT_SILENCE_ANALYSIS_PARAMS = { thresholdDb: -40, minDurationSec: 0.5, paddingSec: 0.1 } as const;
+
+/** Resolve the effective tuning once at the request boundary and in direct calls. */
+export function resolveSilenceAnalysisParams(params?: MediaSilenceAnalysisParams) {
+  const thresholdDb = params?.thresholdDb ?? DEFAULT_SILENCE_ANALYSIS_PARAMS.thresholdDb;
+  const minDurationSec = params?.minDurationSec ?? DEFAULT_SILENCE_ANALYSIS_PARAMS.minDurationSec;
+  const paddingSec = params?.paddingSec ?? DEFAULT_SILENCE_ANALYSIS_PARAMS.paddingSec;
+  if (!(Number.isFinite(thresholdDb) && thresholdDb >= -120 && thresholdDb <= 0)) throw new FacadeError("INVALID_PARAMS", "silenceParams.thresholdDb must be a finite number in [-120, 0] dBFS");
+  if (!(Number.isFinite(minDurationSec) && minDurationSec >= 0 && minDurationSec <= 10)) throw new FacadeError("INVALID_PARAMS", "silenceParams.minDurationSec must be a finite number in [0, 10] seconds");
+  if (!(Number.isFinite(paddingSec) && paddingSec >= 0 && paddingSec <= 10)) throw new FacadeError("INVALID_PARAMS", "silenceParams.paddingSec must be a finite number in [0, 10] seconds");
+  return { thresholdDb, minDurationSec, paddingSec };
+}
 
 /**
  * "silence" analysis: the shared core silence kernel over ffmpeg-extracted
@@ -71,17 +92,12 @@ export const DEFAULT_SILENCE_ANALYSIS_PARAMS = { thresholdDb: -40, minDurationSe
 export async function analyzeSilence(
   path: string,
   range: { startSec: number; endSec: number },
-  params: { thresholdDb?: number; minDurationSec?: number; paddingSec?: number } | undefined,
+  params: MediaSilenceAnalysisParams | undefined,
   signal: AbortSignal,
   progress: (percent: number) => void = () => {},
 ) {
   validateAudioRange(range);
-  const thresholdDb = params?.thresholdDb ?? DEFAULT_SILENCE_ANALYSIS_PARAMS.thresholdDb;
-  const minDurationSec = params?.minDurationSec ?? DEFAULT_SILENCE_ANALYSIS_PARAMS.minDurationSec;
-  const paddingSec = params?.paddingSec ?? DEFAULT_SILENCE_ANALYSIS_PARAMS.paddingSec;
-  if (!(Number.isFinite(thresholdDb) && thresholdDb >= -120 && thresholdDb <= 0)) throw new FacadeError("INVALID_PARAMS", "silenceParams.thresholdDb must be a finite number in [-120, 0] dBFS");
-  if (!(Number.isFinite(minDurationSec) && minDurationSec >= 0 && minDurationSec <= 10)) throw new FacadeError("INVALID_PARAMS", "silenceParams.minDurationSec must be a finite number in [0, 10] seconds");
-  if (!(Number.isFinite(paddingSec) && paddingSec >= 0 && paddingSec <= 10)) throw new FacadeError("INVALID_PARAMS", "silenceParams.paddingSec must be a finite number in [0, 10] seconds");
+  const { thresholdDb, minDurationSec, paddingSec } = resolveSilenceAnalysisParams(params);
   const rate = 8000;
   const pcm = await extractMonoPcm(path, range, rate, signal);
   progress(.7);
@@ -101,7 +117,7 @@ export async function analyzeSilence(
     silentRegions: regions,
     regionCount: ranges.length,
     truncated: ranges.length > AUDIO_LIMITS.maxEvents,
-    totalSilenceDurationSec: regions.reduce((sum, region) => sum + region.durationSec, 0),
+    totalSilenceDurationSec: ranges.reduce((sum, region) => sum + region.end - region.start, 0),
     algorithm: "Shared core silence kernel (100ms max-amplitude windows, dBFS threshold, padding + minimum-duration filtering) over FFmpeg-extracted mono PCM; same detectSilenceRangesInPcm as the GUI silence-cut panel",
     limitations: ["Silence is an amplitude-threshold judgment, not a semantic pause; adjust thresholdDb/minDurationSec/paddingSec to match the material.", "Source seconds only; map through clip trim/offset before editing. Results do not change gain, markers, playback, selection or project revision."],
   };
@@ -174,10 +190,15 @@ export async function summarizePcm(pcm: Buffer, startSec: number) {
       onsets.push(startSec + i * .01); lastOnset = i;
     }
   }
-  // Silence and BPM come from the same shared core kernels the GUI uses —
-  // the facade keeps no second silence/beat implementation of its own.
+  // Select the strongest channel at each sample, preserving its sign. Both
+  // kernels operate on amplitude/energy: this retains right-only activity
+  // and avoids cancellation of anti-phase channels in an arithmetic downmix.
   const mono = new Float32Array(pcm.length / 8);
-  for (let i = 0; i < mono.length; i++) mono[i] = pcm.readFloatLE(i * 8);
+  for (let i = 0; i < mono.length; i++) {
+    const left = pcm.readFloatLE(i * 8);
+    const right = pcm.readFloatLE(i * 8 + 4);
+    mono[i] = Math.abs(left) >= Math.abs(right) ? left : right;
+  }
   const silenceRanges = detectSilenceRangesInPcm(mono, rate, -60, 0.2, 0);
   const silence = silenceRanges.slice(0, AUDIO_LIMITS.maxEvents)
     .map((range) => ({ startSec: startSec + range.start, endSec: startSec + range.end }));
@@ -203,19 +224,20 @@ export async function summarizePcm(pcm: Buffer, startSec: number) {
     truncated: onsets.length > 256 || silenceCount > 256,
     bpmCandidates,
     analysisResolutionSec: .01, detectionUncertaintySec: null,
-    parameters: { analysisSampleRate: rate, analysisChannels: 2, hopSec: .01, silenceThresholdDbfs: -60, silenceMinSec: .2, onsetRatio: 2.5, silenceAndBpmSource: "shared core kernels (detectSilenceRangesInPcm + BeatDetectionEngine)" },
+    parameters: { analysisSampleRate: rate, analysisChannels: 2, hopSec: .01, silenceThresholdDbfs: -60, silenceMinSec: .2, onsetRatio: 2.5, silenceAndBpmChannelStrategy: "strongest absolute sample across stereo channels, preserving sign", silenceAndBpmSource: "shared core kernels (detectSilenceRangesInPcm + BeatDetectionEngine)" },
   };
 }
 
 export async function analyzeLocalAudio(path: string, range: { startSec: number; endSec: number }, signal: AbortSignal, progress: (percent: number) => void = () => {}) {
   validateAudioRange(range);
-  const probe = await run("ffprobe", ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate,channels,channel_layout", "-of", "json", path], signal);
+  const binaries = await requireAudioBinaries(signal);
+  const probe = await run(binaries.ffprobe, ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate,channels,channel_layout", "-of", "json", path], signal);
   const stream = JSON.parse(probe.out.toString()).streams?.[0];
   if (!stream) throw new FacadeError("UNSUPPORTED", "Source contains no audio stream");
   const input = ["-hide_banner", "-nostdin", "-v", "info", "-ss", String(range.startSec), "-t", String(range.endSec - range.startSec), "-i", path, "-map", "0:a:0", "-vn", "-threads", "1"];
-  const pcm = await run("ffmpeg", [...input, "-ar", "8000", "-ac", "2", "-f", "f32le", "pipe:1"], signal);
+  const pcm = await run(binaries.ffmpeg, [...input, "-ar", "8000", "-ac", "2", "-f", "f32le", "pipe:1"], signal);
   progress(.55);
-  const loudness = await run("ffmpeg", [...input, "-af", "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"], signal);
+  const loudness = await run(binaries.ffmpeg, [...input, "-af", "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"], signal);
   progress(.9);
   const match = loudness.err.match(/\{\s*"input_i"[\s\S]*?\}/);
   if (!match) throw new Error("FFmpeg did not return measured loudness");

@@ -1,5 +1,5 @@
 import { reviewVideo, videoReviewPreflight } from "./video-review";
-import { analyzeLocalAudio, analyzeSilence, analyzeBeatGrid, audioAnalysisPreflight } from "./audio-analysis";
+import { analyzeLocalAudio, analyzeSilence, analyzeBeatGrid, audioAnalysisPreflight, resolveSilenceAnalysisParams, AUDIO_LIMITS } from "./audio-analysis";
 import { runVideoCandidateAnalyses, videoCandidatesPreflight, type VideoCandidateBundle } from "./video-candidates";
 import { resolveToolFfmpeg } from "./media/ffmpeg-bin";
 import { probeVideoFacts } from "./media/frame-exact";
@@ -1239,6 +1239,8 @@ export class AgentFacadeSession {
       if (valid.silenceParams !== undefined && !valid.analysisTypes.includes("silence")) {
         throw new FacadeError("INVALID_PARAMS", "silenceParams apply only when analysisTypes includes \"silence\"");
       }
+      const silenceParams = valid.analysisTypes.includes("silence")
+        ? resolveSilenceAnalysisParams(valid.silenceParams) : undefined;
       const audioBackedTypes = valid.analysisTypes.filter(
         (type) => type === "audioSummary" || type === "silence" || type === "beatGrid",
       );
@@ -1281,14 +1283,14 @@ export class AgentFacadeSession {
       const startSec = valid.startSec ?? 0;
       const endSec = valid.endSec ?? media.metadata.duration;
       if (!(endSec > startSec) || endSec > media.metadata.duration ||
-          (audioBackedTypes.length > 0 && endSec - startSec > 120)) {
+          (audioBackedTypes.length > 0 && endSec - startSec > AUDIO_LIMITS.maxRangeSec)) {
         throw new FacadeError("INVALID_PARAMS", "Analysis requires 0 ≤ startSec < endSec ≤ source duration; audioSummary, silence and beatGrid ranges are at most 120 seconds. Split longer sources into explicit ranges.");
       }
       const payload = {
         mediaId: valid.mediaId,
         analysisTypes: [...valid.analysisTypes].sort(),
         startSec: valid.startSec, endSec: valid.endSec, cloudUpload: valid.cloudUpload, reviewQuestion: valid.reviewQuestion,
-        silenceParams: valid.silenceParams,
+        silenceParams,
       };
       const prior = this.beginMutation<{
         jobId: string;
@@ -1332,7 +1334,7 @@ export class AgentFacadeSession {
         const ready = await videoReviewPreflight();
         if (!ready.available) throw new FacadeError("UNSUPPORTED", ready.reason!);
       }
-      if (this.analysisControllers.size >= 2) throw new FacadeError("UNSUPPORTED", "At most two analysis jobs per session; wait or cancel an existing job.");
+      if (this.analysisControllers.size >= AUDIO_LIMITS.maxConcurrentPerSession) throw new FacadeError("UNSUPPORTED", "At most two analysis jobs per session; wait or cancel an existing job.");
       const sourcePath = resolution.path;
       const sourceRevision = this.revision;
       const projectId = this.project.id;
@@ -1361,7 +1363,7 @@ export class AgentFacadeSession {
         sourceRevision,
         valid.reviewQuestion,
         valid.recheckOfRecordId,
-        valid.silenceParams,
+        silenceParams,
       );
       return ok<MediaAnalyzeStartResult>({
         ...ledgerValue,
@@ -2858,6 +2860,7 @@ export class AgentFacadeSession {
           startSec: range.startSec,
           endSec: range.endSec,
           cloudUpload: analysisTypes.includes("videoReview"),
+          ...(silence ? { silenceParams: silence.parameters } : {}),
           ...(reviewQuestion !== undefined ? { reviewQuestion } : {}),
         },
         provenance: [

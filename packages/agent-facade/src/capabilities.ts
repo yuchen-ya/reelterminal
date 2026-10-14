@@ -584,6 +584,9 @@ export async function buildCapabilities(
                       available: true,
                       details: type === "silence"
                         ? {
+                            ...AUDIO_LIMITS,
+                            maxSourceFileBytes: 2 * 1024 * 1024 * 1024,
+                            agentAudioConsumption: false,
                             provider: "local-ffmpeg-pcm-silence-kernel",
                             kernel: "core detectSilenceRangesInPcm — the same silence kernel and defaults as the GUI silence-cut panel",
                             fields: ["silentRegions", "totalSilenceDurationSec", "parameters"],
@@ -594,6 +597,9 @@ export async function buildCapabilities(
                             changesProject: false,
                           }
                         : {
+                            ...AUDIO_LIMITS,
+                            maxSourceFileBytes: 2 * 1024 * 1024 * 1024,
+                            agentAudioConsumption: false,
                             provider: "local-ffmpeg-pcm-beat-engine",
                             kernel: "core BeatDetectionEngine.analyzePcm — the same beat detector as the GUI beat-sync panel",
                             fields: ["beats", "bpm", "confidence"],

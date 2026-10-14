@@ -525,6 +525,39 @@ function liveFacade(
   });
 }
 
+async function writeFloatWav(
+  root: string,
+  durationSec: number,
+  beatTimes: readonly number[] = [],
+): Promise<string> {
+  const sampleRate = 8000;
+  const data = Buffer.alloc(sampleRate * durationSec * 4);
+  for (const time of beatTimes) {
+    for (let offset = 0; offset < 960; offset++) {
+      const index = Math.round(time * sampleRate) + offset;
+      if (index >= sampleRate * durationSec) break;
+      const sample = 0.8 * Math.sin(offset * 0.06) * Math.exp(-offset / 220);
+      data.writeFloatLE(sample, index * 4);
+    }
+  }
+  const header = Buffer.alloc(44);
+  header.write("RIFF");
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write("WAVEfmt ", 8);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(3, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 4, 28);
+  header.writeUInt16LE(4, 32);
+  header.writeUInt16LE(32, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(data.length, 40);
+  const filePath = path.join(root, `audio-${durationSec}.wav`);
+  await writeFile(filePath, Buffer.concat([header, data]));
+  return filePath;
+}
+
 const TEXT_BATCH = [
   { op: "track.add", trackType: "text", trackId: "t1" },
   { op: "text.create", text: "Hello live", startTime: 0, duration: 2 },
@@ -2604,6 +2637,87 @@ describe("live cloud review is read-only", () => {
       expect(network).toHaveBeenCalledTimes(1);
     } finally { facade.dispose(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); }
   });
+});
+
+describe("live local audio analysis parity", () => {
+  it("runs silence and beatGrid, records effective silence parameters, and discloses matching limits", async () => {
+    const mediaRoot = await mkdtemp(path.join(artifactRoot, "live-audio-"));
+    const sourcePath = await writeFloatWav(mediaRoot, 6, [.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5]);
+    const importedStore = new FakeLiveStore();
+    const facade = liveFacade({ store: importedStore, mediaRoots: [mediaRoot] });
+    try {
+      const caps = await facade["capabilities.get"]();
+      expect(caps.ok).toBe(true);
+      if (!caps.ok) throw new Error(caps.error.message);
+      expect(caps.value.mediaAnalysis.types.silence).toMatchObject({
+        available: true,
+        details: { maxRangeSec: 120, maxConcurrentPerSession: 2, maxEvents: 256, coordinateSpace: "source" },
+      });
+      expect(caps.value.mediaAnalysis.types.beatGrid).toMatchObject({
+        available: true,
+        details: { maxRangeSec: 120, maxConcurrentPerSession: 2, maxEvents: 256, coordinateSpace: "source" },
+      });
+
+      const imported = await facade["media.import"]({ path: sourcePath });
+      if (!imported.ok) throw new Error(imported.error.message);
+      const silenceParamsWithoutSilence = await facade["media.analyze_start"]({
+        mediaId: imported.value.mediaId,
+        analysisTypes: ["beatGrid"],
+        silenceParams: { thresholdDb: -40 },
+      });
+      expect(silenceParamsWithoutSilence).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS" } });
+
+      const started = await facade["media.analyze_start"]({
+        mediaId: imported.value.mediaId,
+        analysisTypes: ["silence", "beatGrid"],
+        silenceParams: { minDurationSec: 0.1 },
+      });
+      if (!started.ok) throw new Error(started.error.message);
+      const job = await waitForJob(facade, started.value.jobId, 15000);
+      expect(job).toMatchObject({ state: "done" });
+      const summary = job.result?.summary as Record<string, any>;
+      expect(summary.silence).toMatchObject({
+        parameters: { thresholdDb: -40, minDurationSec: 0.1, paddingSec: 0.1 },
+        coordinateSpace: "source",
+        mediaId: imported.value.mediaId,
+      });
+      expect(summary.silence.regionCount).toBeGreaterThan(0);
+      expect(summary.beatGrid).toMatchObject({ coordinateSpace: "source", mediaId: imported.value.mediaId });
+      expect(summary.beatGrid.bpm).toBeGreaterThan(100);
+      expect(summary.beatGrid.beats.length).toBeGreaterThan(0);
+
+      const recordId = (summary.analysisRecord as { id: string }).id;
+      const record = await facade["analysis.get"]({ recordId });
+      expect(record).toMatchObject({
+        ok: true,
+        value: {
+          config: { silenceParams: { thresholdDb: -40, minDurationSec: 0.1, paddingSec: 0.1 } },
+          provenance: expect.arrayContaining([
+            { kind: "local-measurement", provider: "local-ffmpeg-pcm-silence-kernel", analysisType: "silence" },
+            { kind: "local-measurement", provider: "local-ffmpeg-pcm-beat-engine", analysisType: "beatGrid" },
+          ]),
+          observations: expect.arrayContaining([
+            expect.objectContaining({ source: "silence" }),
+            expect.objectContaining({ source: "beatGrid" }),
+          ]),
+        },
+      });
+
+      const longPath = await writeFloatWav(mediaRoot, 121);
+      const longImport = await facade["media.import"]({ path: longPath });
+      if (!longImport.ok) throw new Error(longImport.error.message);
+      const tooLong = await facade["media.analyze_start"]({
+        mediaId: longImport.value.mediaId,
+        analysisTypes: ["beatGrid"],
+        startSec: 0,
+        endSec: 120.5,
+      });
+      expect(tooLong).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS", message: expect.stringContaining("120 seconds") } });
+    } finally {
+      await facade.dispose();
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
+  }, 30000);
 });
 
 describe("live verbs forward idempotencyKey to the store seam", () => {

@@ -23,6 +23,7 @@ import { resolve as resolvePath } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { FacadeError } from "./errors";
+import type { MediaSilenceAnalysisParams } from "./types";
 
 export const ANALYSIS_RECORDS_SCHEMA_VERSION = 2;
 
@@ -61,6 +62,8 @@ export interface AnalysisRecord {
     readonly endSec: number;
     readonly cloudUpload: boolean;
     readonly reviewQuestion?: string;
+    /** Effective silence tuning, including defaults; absent on historical records. */
+    readonly silenceParams?: Required<MediaSilenceAnalysisParams>;
   };
   readonly provenance: readonly {
     readonly kind: AnalysisProvenance;

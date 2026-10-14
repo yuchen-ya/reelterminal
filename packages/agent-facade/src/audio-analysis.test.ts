@@ -36,6 +36,32 @@ function burstPcm(times: number[], duration = 6) {
   }
   return data;
 }
+/** Sharp attacks encoded in the right channel only. */
+function rightChannelBurstPcm(times: number[], duration = 6) {
+  const data = Buffer.alloc(8000 * duration * 8);
+  for (const time of times) for (let i = 0; i < 960; i++) {
+    const index = Math.round(time * 8000) + i;
+    if (index * 8 + 7 >= data.length) break;
+    const sample = .8 * Math.sin(i * .06) * Math.exp(-i / 220);
+    data.writeFloatLE(sample, index * 8 + 4);
+  }
+  return data;
+}
+/** Alternating 100ms silence/tone windows produce many distinct detector ranges. */
+function manySilenceRangesPcm(count: number) {
+  const windowSamples = 800;
+  const windowCount = count * 2 - 1;
+  const data = Buffer.alloc(windowSamples * windowCount * 8);
+  for (let window = 1; window < windowCount; window += 2) {
+    for (let i = 0; i < windowSamples; i++) {
+      const sample = .5 * Math.sin(i * .05);
+      const offset = (window * windowSamples + i) * 8;
+      data.writeFloatLE(sample, offset);
+      data.writeFloatLE(sample, offset + 4);
+    }
+  }
+  return data;
+}
 function wav(data: Buffer, channels = 2, rate = 8000) {
   const header = Buffer.alloc(44);
   header.write("RIFF"); header.writeUInt32LE(36 + data.length, 4); header.write("WAVEfmt ", 8);
@@ -61,17 +87,27 @@ describe("local audio analysis", () => {
   });
   it("derives bpmCandidates from the shared beat kernel only above its confidence gate", async () => {
     // A click train spanning the whole buffer matches the kernel's beat grid.
+    // pcm() writes opposite polarity to the two channels; shared-core input
+    // must preserve this real signal instead of averaging it away.
     const steady = await summarizePcm(pcm([.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5]), 0);
     expect(steady.bpmCandidates).toHaveLength(1);
     const candidate = steady.bpmCandidates[0]!;
     expect(candidate.bpm).toBeGreaterThan(100);
     expect(candidate.bpm).toBeLessThan(135);
     expect(candidate.confidence).toBeGreaterThan(.7);
+    expect(steady.silence).not.toEqual([{ startSec: 0, endSec: 6 }]);
     // Silence forces zero confidence: no bpm candidates are invented.
     const silent = await summarizePcm(pcm([]), 0);
     expect(silent.bpmCandidates).toEqual([]);
     expect(silent.silence).toEqual([{ startSec: 0, endSec: 6 }]);
     expect(await summarizePcm(pcm([.3, .77, 1.6, 2.8, 3.13, 4.01]), 0).then((r) => r.bpmCandidates)).toEqual([]);
+  });
+  it("uses right-channel-only transients for onsets, silence and beat analysis", async () => {
+    const rightOnly = await summarizePcm(rightChannelBurstPcm([.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5]), 0);
+    expect(rightOnly.onsets.length).toBeGreaterThan(0);
+    expect(rightOnly.bpmCandidates).toHaveLength(1);
+    expect(rightOnly.bpmCandidates[0]!.confidence).toBeGreaterThan(.7);
+    expect(rightOnly.silence).not.toEqual([{ startSec: 0, endSec: 6 }]);
   });
   it("runs real FFmpeg loudness, bounded jobs and cancellation without changing revision", async () => {
     expect((await audioAnalysisPreflight()).available).toBe(true);
@@ -152,6 +188,22 @@ describe("local audio analysis", () => {
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 15000);
 
+  it("counts silence duration across all ranges when the preview is truncated", async () => {
+    const root = await mkdtemp(join(tmpdir(), "rt-many-silence-fixture-"));
+    try {
+      const rangeCount = 257;
+      const path = join(root, "many-gaps.wav");
+      await writeFile(path, wav(manySilenceRangesPcm(rangeCount)));
+      const result = await analyzeSilence(path, { startSec: 0, endSec: (rangeCount * 2 - 1) / 10 }, { minDurationSec: 0.05, paddingSec: 0 }, new AbortController().signal);
+      expect(result.regionCount).toBe(rangeCount);
+      expect(result.silentRegions).toHaveLength(256);
+      expect(result.truncated).toBe(true);
+      const previewDuration = result.silentRegions.reduce((sum, region) => sum + region.durationSec, 0);
+      expect(result.totalSilenceDurationSec).toBeCloseTo(rangeCount / 10, 5);
+      expect(result.totalSilenceDurationSec).toBeGreaterThan(previewDuration + 0.09);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  }, 15000);
+
   it("analyzes beat grids through the shared beat engine and omits downbeats", async () => {
     const root = await mkdtemp(join(tmpdir(), "rt-beat-fixture-"));
     try {
@@ -171,30 +223,74 @@ describe("local audio analysis", () => {
       expect(Math.abs(result.beats[0]!.timeSec - 0.5)).toBeLessThan(0.15);
       expect(result.beats.every((b) => Number.isFinite(b.timeSec) && b.strength > 0)).toBe(true);
       await expect(analyzeBeatGrid(path, { startSec: 0, endSec: 121 }, signal)).rejects.toThrow("120");
-      const facade = createAgentFacade({ mediaRoots: [root] });
+      const artifactRoot = join(root, "artifacts");
+      const facade = createAgentFacade({ mediaRoots: [root], artifactRoot });
       await facade["project.create"]({ name: "Beat test" });
       const imported = await facade["media.import"]({ path });
       if (!imported.ok) throw new Error(imported.error.message);
+      const waitForJob = async (jobId: string) => {
+        for (let i = 0; i < 200; i++) {
+          const next = await facade["job.status"]({ jobId });
+          if (next.ok && ["done", "error", "cancelled"].includes(next.value.state)) return next;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        throw new Error(`Audio analysis job ${jobId} did not finish`);
+      };
       // silenceParams without the silence type are rejected.
       const bad = await facade["media.analyze_start"]({ mediaId: imported.value.mediaId, analysisTypes: ["beatGrid"], silenceParams: { thresholdDb: -40 } });
       expect(bad).toMatchObject({ ok: false, error: { code: "INVALID_PARAMS" } });
-      const started = await facade["media.analyze_start"]({ mediaId: imported.value.mediaId, analysisTypes: ["silence", "beatGrid"], silenceParams: { minDurationSec: 0.3 } });
+      const silenceParams = { thresholdDb: -35, minDurationSec: 0.3, paddingSec: 0.2 };
+      const started = await facade["media.analyze_start"]({ mediaId: imported.value.mediaId, analysisTypes: ["silence", "beatGrid"], silenceParams });
       if (!started.ok) throw new Error(started.error.message);
-      let status;
-      for (let i = 0; i < 200; i++) {
-        status = await facade["job.status"]({ jobId: started.value.jobId });
-        if (status.ok && ["done", "error", "cancelled"].includes(status.value.state)) break;
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
+      const status = await waitForJob(started.value.jobId);
       expect(status).toMatchObject({ ok: true, value: { state: "done" } });
       const summary = (status as { ok: true; value: { result: { summary: Record<string, any> } } }).value.result.summary;
-      expect(summary.silence.parameters).toEqual({ thresholdDb: -40, minDurationSec: 0.3, paddingSec: 0.1 });
+      expect(summary.silence.parameters).toEqual(silenceParams);
       expect(summary.silence.mediaId).toBe(imported.value.mediaId);
       expect(summary.silence.sourceFingerprint).toHaveProperty("size");
       expect(summary.beatGrid.bpm).toBeGreaterThan(100);
       expect(summary.beatGrid.beats.length).toBeGreaterThan(0);
       expect(summary.beatGrid).not.toHaveProperty("downbeats");
       expect(summary.technicalQuality).toHaveProperty("readable", true);
+
+      const originalRecordId = (summary.analysisRecord as { id: string }).id;
+      const originalRecordResult = await facade["analysis.get"]({ recordId: originalRecordId });
+      if (!originalRecordResult.ok) throw new Error(originalRecordResult.error.message);
+      const originalRecord = originalRecordResult.value as { config: { analysisTypes: ("silence" | "beatGrid")[]; startSec: number; endSec: number; silenceParams: typeof silenceParams } };
+      expect(originalRecord.config.silenceParams).toEqual(silenceParams);
+
+      const recheckStarted = await facade["media.analyze_start"]({
+        mediaId: imported.value.mediaId,
+        analysisTypes: originalRecord.config.analysisTypes,
+        startSec: originalRecord.config.startSec,
+        endSec: originalRecord.config.endSec,
+        silenceParams: originalRecord.config.silenceParams,
+        recheckOfRecordId: originalRecordId,
+      });
+      if (!recheckStarted.ok) throw new Error(recheckStarted.error.message);
+      const recheckStatus = await waitForJob(recheckStarted.value.jobId);
+      expect(recheckStatus).toMatchObject({ ok: true, value: { state: "done" } });
+      const recheckSummary = (recheckStatus as { ok: true; value: { result: { summary: Record<string, any> } } }).value.result.summary;
+      expect(recheckSummary.silence.parameters).toEqual(originalRecord.config.silenceParams);
+      const recheckRecordResult = await facade["analysis.get"]({ recordId: (recheckSummary.analysisRecord as { id: string }).id });
+      if (!recheckRecordResult.ok) throw new Error(recheckRecordResult.error.message);
+      expect(recheckRecordResult.value).toMatchObject({
+        config: { silenceParams: originalRecord.config.silenceParams },
+        recheckOf: originalRecordId,
+      });
+
+      const defaultStarted = await facade["media.analyze_start"]({
+        mediaId: imported.value.mediaId,
+        analysisTypes: ["silence"],
+        startSec: originalRecord.config.startSec,
+        endSec: originalRecord.config.endSec,
+      });
+      if (!defaultStarted.ok) throw new Error(defaultStarted.error.message);
+      const defaultStatus = await waitForJob(defaultStarted.value.jobId);
+      expect(defaultStatus).toMatchObject({ ok: true, value: { state: "done" } });
+      const defaultSummary = (defaultStatus as { ok: true; value: { result: { summary: Record<string, any> } } }).value.result.summary;
+      const defaultRecord = await facade["analysis.get"]({ recordId: (defaultSummary.analysisRecord as { id: string }).id });
+      expect(defaultRecord).toMatchObject({ ok: true, value: { config: { silenceParams: DEFAULT_SILENCE_ANALYSIS_PARAMS } } });
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 15000);
 });
