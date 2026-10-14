@@ -2,7 +2,7 @@ import { mkdir, writeFile, appendFile } from "node:fs/promises";
 import path from "node:path";
 import { launchApp, type LaunchedApp } from "../launch";
 import { connectExternalAgent, type ExternalAgent } from "../mcp-client";
-import { createProjectViaUI, enableAgentSessionViaUI } from "../ui";
+import { createProjectViaUI, enableAgentSessionViaUI, openRecentProjectViaUI } from "../ui";
 import { ARTIFACTS_DIR } from "../paths";
 import type { CDPSession } from "playwright-core";
 import { acquirePerformanceLock } from "./driver";
@@ -94,9 +94,9 @@ export async function runReleaseFeature(
       await context!.agent.close();
       await cdp?.detach().catch(() => undefined);
       context!.app = await context!.app.relaunch();
-      if (await context!.app.page.getByTestId("project-library").isVisible()) {
-        await context!.app.page.getByRole("button", { name: "Open " + record.project_name, exact: true }).click();
-      }
+      // Relaunch initially exposes a loading document. Wait for the library
+      // and the saved card rather than racing its first render with isVisible.
+      await openRecentProjectViaUI(context!.app.page, record.project_name);
       await enableAgentSessionViaUI(context!.app.page, context!.app.endpointFile);
       context!.agent = await connectExternalAgent(context!.app.endpointFile);
       await connect();

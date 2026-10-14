@@ -77,7 +77,7 @@ const native = process.env.REELTERMINAL_FEATURE_NATIVE_CAPTURE === "1";
       await c.flush();
       expect(Number.isFinite(packetEnd)).toBe(true);
       expect(Math.abs(packetEnd - seconds)).toBeLessThanOrEqual(1);
-      execFileSync("ffmpeg", ["-v", "error", "-i", file, "-f", "null", "-"], { timeout: 60_000 });
+      execFileSync("ffmpeg", ["-v", "error", "-i", file, "-fps_mode", "passthrough", "-f", "null", "-"], { timeout: 60_000 });
       const frames = [1, Math.max(1.5, seconds - 1)].map(t => execFileSync("ffmpeg", ["-v", "error", "-ss", String(t), "-i", file, "-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"], { maxBuffer: 16 * 1024 * 1024, timeout: 60_000 }));
       const hashes = frames.map(bytes => createHash("sha256").update(bytes).digest("hex"));
       expect(hashes[0]).not.toBe(hashes[1]);
