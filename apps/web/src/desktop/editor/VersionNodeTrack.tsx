@@ -259,7 +259,13 @@ export function VersionNodeTrack({
     }
     onClose?.();
   };
+  const showNodeAssets = (nodeId: string) => {
+      useUIStore.getState().setPanelVisible("mediaLibrary", true);
+      window.dispatchEvent(new CustomEvent("reelterminal:node-assets", { detail: { projectId: id, nodeId } }));
+      setMenu(null);
+  };
   const menuActions = (nodeId: string, contextMenu = false) => <>
+    <button role="menuitem" onClick={() => showNodeAssets(nodeId)}>{t("projectMediaFilters.viewNodeAssets")}</button>
     <button role="menuitem" data-testid={contextMenu ? "version-menu-preview" : undefined} onClick={() => previewNode(nodeId)}>{t("versioning.menuPreview")}</button>
     <button role="menuitem" data-testid={contextMenu ? "version-menu-rename" : undefined} onClick={() => {
       setSelectedId(nodeId);
@@ -357,13 +363,16 @@ export function VersionNodeTrack({
         {selected.summary ? <p className="whitespace-pre-wrap break-words leading-relaxed text-fg-2">{selected.summary}</p> : null}
         {selected.missingDependencies.length ? <p className="leading-relaxed text-status-warning">{t("versioning.missing")}</p> : null}
         <div className="flex flex-wrap gap-2"><button type="button" disabled={busy} onClick={() => previewNode(selected.id)} className={`rounded border border-border px-2 py-1.5 hover:bg-hover ${feedback}`}>{t("versioning.menuPreview")}</button>
+          <button type="button" onClick={() => showNodeAssets(selected.id)} className={`rounded border border-border px-2 py-1.5 hover:bg-hover ${feedback}`}>{t("projectMediaFilters.viewNodeAssets")}</button>
           <button type="button" disabled={busy} onClick={compare} className={`rounded border border-border px-2 py-1.5 text-fg-2 hover:bg-hover ${feedback}`}>{t("versioning.compareCurrent")}</button>
           <details><summary className="cursor-pointer rounded px-2 py-1.5 text-fg-2 hover:bg-hover">{t("versioning.more")}</summary><div role="menu" className="archive-menu mt-1 rounded border border-border bg-bg-2 p-1">{menuActions(selected.id)}</div></details></div>
       </div> : null}
     </div>
     {menu ? createPortal(<div role="menu" data-testid="version-node-menu" className="reelterminal-desktop archive-menu fixed z-[var(--z-popover)] w-52 rounded-md border border-border bg-bg-1 p-1 text-xs text-fg shadow-md" style={{
       left: Math.max(4, Math.min(menu.x, window.innerWidth - 216)),
-      top: Math.max(4, Math.min(menu.y, window.innerHeight - 160))
+      top: Math.max(4, Math.min(menu.y, window.innerHeight - 184)),
+      maxHeight: "calc(100vh - 8px)",
+      overflowY: "auto"
     }} onPointerDown={event => event.stopPropagation()}>{menuActions(menu.nodeId, true)}</div>, document.body) : null}
   </section>;
 }

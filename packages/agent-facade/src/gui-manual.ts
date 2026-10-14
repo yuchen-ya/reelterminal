@@ -54,7 +54,7 @@ export type HelpVerb = (typeof HELP_VERBS)[number];
  * drifting. FACADE_VERSION (types.ts) remains the facade protocol version —
  * the manual binds to the APP, not only the facade.
  */
-export const GUI_MANUAL_CONTENT_VERSION = "1.7.1" as const;
+export const GUI_MANUAL_CONTENT_VERSION = "1.7.2" as const;
 export const GUI_MANUAL_APP_VERSION = "1.1.1" as const;
 export const GUI_MANUAL_LANGUAGES = ["zh", "en"] as const;
 
@@ -125,7 +125,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
       { zh: "首页选择“视频编辑器”，再点击横屏（16:9）、竖屏（9:16）或方形（1:1）。动画制作使用“动态图形创作”，它是另一个工作区。", en: "On the start screen, choose Video Editor, then Horizontal (16:9), Vertical (9:16), or Square (1:1). Motion Creator is a separate workspace for animation." },
     ],
     steps: [
-      { zh: "导入：点击左侧素材面板的“导入”，选择本地视频、音频或图片。素材出现在列表后，拖到下方时间线。导入素材不会自动放到轨道上。", en: "Import: use Import in the left media panel to choose local video, audio, or images. Drag an imported item onto the timeline; importing alone does not place it on a track." },
+      { zh: "导入：点击左侧素材面板的“导入”，选择本地视频、音频或图片，再拖到时间线。SRT/VTT 字幕也可由此导入，会按文件时间码直接添加到字幕轨。", en: "Import: choose local video, audio, or images in the left media panel, then drag them onto the timeline. SRT/VTT files use the same import control and add captions directly at their file timecodes." },
       { zh: "剪辑：拖动片段调整位置，拖动两端修剪长度。把播放头移到切点，选中片段后按 S 分割；选中不要的部分后按 Delete。", en: "Edit: drag a clip to move it and drag its edges to trim. Move the playhead to a cut, select the clip, and press S to split; select unwanted parts and press Delete." },
       { zh: "检查：点击播放器下方的播放按钮，或按空格播放/暂停。选中片段后，在右侧检查器调整变换、音量或效果；先确认片段已选中。", en: "Review: use the player Play button or Space to play/pause. Select a clip before adjusting its transform, volume, or effects in the right inspector." },
       { zh: "保存：默认快捷键 Ctrl+S（Mac 为 Cmd+S）立即保存到本机项目存储，之后从首页“本地项目”继续编辑。导出视频用于播放或分享；本机存储和自动保存不能替代文件备份。", en: "Save: the default Ctrl+S (Cmd+S on Mac) immediately saves to local project storage; reopen it from Local projects on the start screen. Exported video is for playback or sharing; local storage and autosave do not replace a file backup." },
@@ -517,14 +517,16 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
     title: { zh: "项目媒体面板", en: "Project Media Panel" },
     // @source apps/web/src/components/editor/AssetsPanel.tsx:83-155(tabs),236,250-322(F2/rename),700-807(import),738(short-id)
     summary: {
-      zh: "\"媒体\"标签存放本项目导入的视频、音频与图像，支持改名（F2）与拖入时间线。",
-      en: "The Media tab holds this project's imported video, audio, and images, with rename (F2) and drag-to-timeline.",
+      zh: "项目素材支持按视频、音频、图片、字幕筛选；查看范围可切换到存档节点，只读查看该节点保留的媒体。",
+      en: "Project assets filter by video, audio, images or subtitles. View scope can select a saved node to inspect its retained media without changing the current edit.",
     },
     entry: [
       { zh: "编辑器左侧面板 → \"媒体\" 标签。", en: "Left panel in the editor → the Media tab." },
     ],
     steps: [
       { zh: "导入：面板顶部的导入控件选择本地文件；录制控件也在此区域。", en: "Import: the panel-top import control picks local files; recording controls share this area." },
+      { zh: "筛选：选择素材类型；“查看范围”选择当前编辑或某个存档节点。存档树的“查看此节点素材”也会定位到该范围。节点列表标明时间线使用或仅保留，可勾选只看使用中的素材。", en: "Filter by media type, then choose Current edit or a save point in View scope. View this node's media in the archive tree selects the same scope. Node media indicate timeline use versus retention; a checkbox narrows the list to used media." },
+      { zh: "字幕：导入或拖入 SRT/VTT，按文件时间码添加到字幕轨；一次撤销可撤回整个文件。字幕类型页可浏览内容；部分无效段落会明确提示。", en: "Import or drop SRT/VTT to add captions at their file timecodes. One undo removes the whole file's import. Browse the Subtitles type to see cue text; invalid segments produce an explicit warning." },
       { zh: "使用：把媒体卡片拖到时间线成为片段。", en: "Use: drag a media card onto the timeline to make a clip." },
       { zh: "改名：选中后按 F2（默认），或右键选\"重命名\"，或双击名称，输入后回车确认。", en: "Rename: select and press F2 (the default), right-click → Rename, or double-click the name; Enter commits." },
     ],
@@ -538,7 +540,7 @@ export const GUI_MANUAL_SCREENS: readonly ManualScreen[] = [
         en: "Media items with identical names automatically get a short id suffix to stay distinguishable.",
       },
     ],
-    keywords: ["media", "import", "rename", "F2", "媒体", "导入", "改名", "重命名"],
+    keywords: ["media", "import", "rename", "F2", "audio", "filter", "SRT", "VTT", "subtitles", "save point", "媒体", "导入", "改名", "重命名", "音频", "筛选", "字幕", "存档"],
   },
   {
     id: "work-assets",

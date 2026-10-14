@@ -23,6 +23,12 @@
 .asset-browser-tabs button { flex: 1 0 auto; padding: 8px 4px; border-bottom: 2px solid transparent; white-space: nowrap; color: var(--fg-muted); font-size: 11px; }
 .asset-browser-tabs button:hover { color: var(--fg-2); }
 .asset-browser-tabs button[aria-pressed="true"] { border-bottom-color: var(--accent); color: var(--accent); }
+.project-media-scope { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 12px; color: var(--fg-muted); }
+.project-media-scope select { min-width: 0; flex: 1; padding: 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+.project-media-types { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 8px; }
+.project-media-types button { padding: 5px 10px; border-radius: 6px; color: var(--fg-muted); font-size: 12px; }
+.project-media-types button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.project-media-types button:focus-visible { outline: 1px solid var(--accent); }
 .asset-browser-content { container-type: inline-size; min-height: 0; flex: 1; overflow-y: auto; padding: 12px; }
 .asset-browser-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px 10px; }
 .asset-browser-grid > * { min-width: 0; }

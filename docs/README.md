@@ -2,6 +2,7 @@
 
 ## Product and usage
 
+- [`PROJECT-ASSETS-FILTERS.md`](PROJECT-ASSETS-FILTERS.md) — project media types, save-point scope and SRT/VTT import.
 - [`../README.md`](../README.md) — product overview and quick start.
 - [`USER-GUIDE.md`](USER-GUIDE.md) — desktop onboarding, editor help, and save-versus-retain basics.
 - [`AGENT-GUIDE.md`](AGENT-GUIDE.md) — connecting an external Agent.
