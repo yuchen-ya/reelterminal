@@ -102,7 +102,11 @@ const native = process.env.REELTERMINAL_FEATURE_NATIVE_CAPTURE === "1";
     const page = c.app.page;
     const title = "REELTERMINAL OWNED TEST WINDOW " + c.record.application.pid;
     await page.evaluate(title => { document.title = title; }, title);
-    await c.app.app.evaluate(({ BrowserWindow }, title) => { BrowserWindow.getAllWindows()[0]!.setTitle(title); }, title);
+    await c.app.app.evaluate(({ BrowserWindow }, title) => {
+      const window = BrowserWindow.getAllWindows()[0]!;
+      window.on("page-title-updated", event => event.preventDefault());
+      window.setTitle(title);
+    }, title);
     c.record.owned_window_title = title;
     await page.getByTestId("project-asset-browser").getByRole("button", { name: "More actions", exact: true }).click();
     await page.getByText("Record", { exact: true }).click();
@@ -114,7 +118,16 @@ const native = process.env.REELTERMINAL_FEATURE_NATIVE_CAPTURE === "1";
     expect(await dialog.getByRole("switch", { name: "Webcam recording", exact: true }).getAttribute("aria-checked")).toBe("false");
     const before = await c.call("project_get_state");
     c.record.native_cancel_confirmation_file = path.join(c.app.runDir, "native-picker-cancel-confirmation.json");
+    c.record.native_operator_ready_file = path.join(c.app.runDir, "native-ui-operator-ready.json");
     await c.flush();
+    console.info("NATIVE_CAPTURE_UI_READY", { app_pid: c.record.application.pid, owned_window_title: title });
+    // Bind the UI tool while this process is guaranteed to remain alive;
+    // only then request the time-limited system source picker.
+    await expect.poll(async () => {
+      try { return JSON.parse(await readFile(c.record.native_operator_ready_file, "utf8")); }
+      catch { return null; }
+    }, { timeout: 60_000 }).toEqual({ app_pid: c.record.application.pid, owned_window_title: title, action: "owned_window_bound" });
+    await copyFile(c.record.native_operator_ready_file, path.join(c.evidence, "native-ui-operator-ready.json"));
     await dialog.getByRole("button", { name: "Start Recording", exact: true }).click();
     console.info("NATIVE_CAPTURE_CANCEL_PICKER", { app_pid: c.record.application.pid, owned_window_title: title });
     await dialog.getByText("Recording Error", { exact: true }).waitFor({ timeout: 120_000 });
