@@ -204,7 +204,8 @@ export function createTransformMatrix(
 ): Float32Array {
   const matrix = new Float32Array(16);
   const normalizedX = (position.x / canvasWidth) * 2;
-  const normalizedY = (position.y / canvasHeight) * 2;
+  // Editor/Canvas2D pixel coordinates grow down; WebGPU clip space grows up.
+  const normalizedY = -(position.y / canvasHeight) * 2;
 
   // Pre-compute trig values
   const cos = Math.cos(rotation);
